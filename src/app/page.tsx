@@ -26,15 +26,16 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   return (
     <main className="landing grid h-dvh gap-x-10 gap-y-4 p-6 short:gap-y-2.5 short:p-4 tiny:gap-y-2 tiny:p-3 lg:p-10 lg:short:p-6">
+      <header className="[grid-area:title]">
+        <h1 className="text-3xl leading-tight font-medium tracking-tight short:text-2xl tiny:text-xl lg:text-5xl lg:short:text-3xl">
+          {LANDING.heading}
+        </h1>
+      </header>
+
       <div className="flex min-h-0 flex-col gap-4 [grid-area:text] short:gap-2.5 tiny:gap-2 lg:justify-center lg:gap-6 lg:short:gap-3">
-        <header className="flex flex-col gap-2 short:gap-1">
-          <h1 className="text-3xl leading-tight font-medium tracking-tight short:text-2xl tiny:text-xl lg:text-5xl lg:short:text-3xl">
-            {LANDING.heading}
-          </h1>
-          <p className="text-base text-neutral-700 short:text-sm tiny:text-xs lg:text-lg lg:short:text-base">
-            {LANDING.subline}
-          </p>
-        </header>
+        <p className="text-base text-neutral-700 short:text-sm tiny:text-xs lg:text-lg lg:short:text-base">
+          {LANDING.subline}
+        </p>
         <p className="text-sm leading-relaxed short:text-xs short:leading-snug lg:text-base lg:short:text-sm">
           {LANDING.forWhom}
         </p>

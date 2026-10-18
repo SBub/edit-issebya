@@ -33,7 +33,7 @@ for (const viewport of VIEWPORTS) {
     await expectInsideRoot(page, page.getByText("1200 EUR + VAT", { exact: true }));
 
     const card = page.getByRole("region", { name: "Edited reels" }).getByRole("article").first();
-    for (const part of ["reel-media", "reel-label", "reel-title", "reel-caption"]) {
+    for (const part of ["reel-media", "reel-label"]) {
       await expectInsideRoot(page, card.getByTestId(part));
     }
 

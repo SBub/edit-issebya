@@ -21,7 +21,7 @@ const END_TOLERANCE = 1;
  * The track is only as tall as a card needs (see `.reel-track` in
  * globals.css) and the block is centred, so when the slots are narrow the
  * spare height goes above and below the whole slider, not between a video
- * and its caption.
+ * and its label.
  */
 export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
   const trackRef = useRef<HTMLUListElement | null>(null);

@@ -11,15 +11,17 @@ nothing is hidden.
 
 ## Layout
 
-- `src/app/page.tsx` renders one `<main class="landing grid h-dvh">` with three grid areas:
-  - `text`: the `h1`, the sub-line, the for-whom text, an `<ol aria-label="Process">` of the four
+- `src/app/page.tsx` renders one `<main class="landing grid h-dvh">` with four grid areas:
+  - `title`: a `header` with the `h1`, across the top.
+  - `text`: the sub-line, the for-whom text, an `<ol aria-label="Process">` of the four
     `LANDING.steps`, the offer line and the price from `formatOfferPrice()`.
   - `slider`: `ReelSlider` (`src/components/ReelSlider.tsx`).
   - `cta`: `CallRequest` (`src/components/CallRequest.tsx`).
 - All copy lives in `src/content/landing.ts` (`LANDING`), read by the page and the specs alike.
-- `src/app/globals.css` defines the `.landing` grid. On narrow screens it is one column (slider,
-  text, CTA). At `@media (min-width: 64rem), (min-width: 48rem) and (orientation: landscape)` it
-  becomes two columns: the slider on the left, text and CTA on the right.
+- `src/app/globals.css` defines the `.landing` grid. The title row spans the full width. Below it,
+  on narrow screens, one column (slider, text, CTA). At `@media (min-width: 64rem), (min-width:
+48rem) and (orientation: landscape)` two columns: the slider on the left, text and CTA on the
+  right.
 - Every row is sized from the main's `h-dvh`. The slider media is the only part that flexes.
 - The page is white in every colour scheme: `:root` sets `color-scheme: light` and there is no
   dark override. `html` and `body` both carry the background.
@@ -71,8 +73,9 @@ in `ReelSlider` and in `CallRequest`.
 ## How to add a reel
 
 1. Put `<id>.mp4` and `<id>.jpg` in `public/reels/`.
-2. Add an entry to `REELS` in `src/content/reels.ts` with `id`, `title` (short), `caption` (fits two
-   lines), `label`, `duration`, `videoSrc: "/reels/<id>.mp4"` and `poster: "/reels/<id>.jpg"`.
+2. Add an entry to `REELS` in `src/content/reels.ts` with `id`, `title` (names the card for screen
+   readers), `label` (shown under the video), `videoSrc: "/reels/<id>.mp4"` and
+   `poster: "/reels/<id>.jpg"`.
 3. The slider and its specs pick it up. Run `yarn test:e2e` to confirm nothing scrolls.
 
 The `id` is the `reel_id` sent with `reel_played` (see `app_docs/analytics.md`), so an existing id
@@ -80,18 +83,17 @@ never changes.
 
 ## Card styling sources
 
-`ReelCard` takes its text block, never its code, from the issebya.homes website's
-`apps/website/src/app/(main)/shop/ui/ProductCard.tsx`: the label, title-and-duration and caption
-under the media. The card has no colour or padding of its own: it sits on the page's white.
+`ReelCard` takes its label, never its code, from the issebya.homes website's
+`apps/website/src/app/(main)/shop/ui/ProductCard.tsx`: the small, spaced, uppercase line under the
+media. There is no visible title, duration or caption, and no card colour or padding: the video
+and its label sit on the page's white. The title is an `sr-only` `h3` that names the card.
 
 Type follows the ADW dashboard (build.issebya.com): Tailwind's default sans stack, no web font.
 
 Deliberate differences from the shop card:
 
-- the media is 9:16: the media area is a size container and the 9:16 box takes the largest size
-  that fits it;
-- the title is underlined at rest;
-- the caption is clamped to two lines (`line-clamp-2`).
+- the media is 9:16: the card is a size container and the 9:16 box takes the largest size that
+  fits it above the fixed-height label row (`--reel-label`).
 
 ## Rules
 

@@ -42,39 +42,40 @@ body {
 }
 
 /*
- * The landing grid. One column (slider, text, CTA) where only the slider row
- * flexes; two columns (slider on the left, text and CTA on the right) on wide
- * screens and on tablets in landscape. Every row is sized from the main's
+ * The landing grid. The title is a header row across the top. Below it, one
+ * column (slider, text, CTA) where only the slider row flexes; two columns
+ * (slider on the left, text and CTA on the right) on wide screens and on
+ * tablets in landscape. Every row is sized from the main's
  * h-dvh, so nothing on html or body is ever clipped.
  */
 .landing {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto auto;
-  grid-template-areas: "slider" "text" "cta";
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "title" "slider" "text" "cta";
 }
 
 @media (min-width: 64rem), (min-width: 48rem) and (orientation: landscape) {
   .landing {
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-    grid-template-rows: minmax(0, 1fr) auto;
-    grid-template-areas: "slider text" "slider cta";
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "title title" "slider text" "slider cta";
   }
 }
 
 /*
  * The track's natural height (set on the track, inside the slider's size
- * container, since a container query never matches the container itself): one slot's 9:16 video plus the caption block
+ * container, since a container query never matches the container itself): one slot's 9:16 video plus the label row
  * under it. Slot widths mirror the container query basis steps in
  * ReelSlider. It is a height, not a minimum: when the slider row is shorter,
  * the track shrinks (min-h-0) and the card's media box fits the video inside.
  */
 .reel-track {
   --reel-slot: 85cqw;
-  --reel-caption: 6.25rem;
+  --reel-label: 1.75rem;
 }
 @media (max-height: 700px) {
   .reel-track {
-    --reel-caption: 5rem;
+    --reel-label: 1.5rem;
   }
 }
 @container (min-width: 28rem) {
@@ -93,16 +94,16 @@ body {
   }
 }
 .reel-track {
-  height: calc(var(--reel-slot) * 16 / 9 + var(--reel-caption));
+  height: calc(var(--reel-slot) * 16 / 9 + var(--reel-label));
 }
 
 /*
- * ReelCard's column (see the component). Portrait cards: the column, and so
- * the caption, is as wide as the video that fits. Landscape cards (one slot
- * on a phone): the caption takes the full width and the video is centred.
+ * ReelCard's column (see the component). Portrait cards: the column is as
+ * wide as the video that fits. Landscape cards (one slot on a phone): the
+ * column takes the full width and the video is centred.
  */
 .reel-column {
-  width: min(100cqw, calc((100cqh - var(--reel-caption)) * 9 / 16));
+  width: min(100cqw, calc((100cqh - var(--reel-label)) * 9 / 16));
 }
 .reel-column .reel-video {
   width: 100%;
@@ -112,7 +113,7 @@ body {
     width: 100cqw;
   }
   .reel-column .reel-video {
-    width: min(100cqw, calc((100cqh - var(--reel-caption)) * 9 / 16));
+    width: min(100cqw, calc((100cqh - var(--reel-label)) * 9 / 16));
     margin-inline: auto;
   }
 }
