@@ -12,8 +12,8 @@ yarn install        # also installs the lefthook git hooks
 yarn dev            # http://localhost:3000 (set PORT to change it)
 ```
 
-Copy `.env.example` to `.env.local` and fill in the values you need; nothing is required for the
-placeholder page.
+Copy `.env.example` to `.env.local` and fill in the values you need; nothing is required to build
+or run the page.
 
 ## Checks
 
@@ -23,6 +23,9 @@ yarn build
 yarn playwright install chromium   # once
 yarn test:e2e                       # Playwright specs in e2e/
 ```
+
+`yarn test:e2e` starts its own server with the Stripe mock on. Against a server that is already
+running, start that one as `E2E_MOCK_STRIPE=true yarn dev`.
 
 ## Docs
 

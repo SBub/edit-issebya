@@ -1,21 +1,30 @@
 @import "tailwindcss";
 
 /*
+ * Height steps for the one-screen layout. Width alone cannot tell 320x568 from
+ * 390x844, so text and spacing also step down with the viewport height.
+ */
+@custom-variant short (@media (max-height: 700px));
+@custom-variant tiny (@media (max-height: 600px));
+
+@theme inline {
+  --font-sans: var(--font-work);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  /* The shop card's cream, from the issebya.homes website. */
+  --color-reel-card: #f1eac8;
+}
+
+/*
  * The page colour, defined once. `html` carries it as well as `body`: the
  * canvas, the scrollbar gutter and the overscroll area are painted from the
- * root, not from the body box.
+ * root, not from the body box. Light only: the page stays white under a dark
+ * colour scheme.
  */
 :root {
   --background: var(--color-white);
   --foreground: var(--color-neutral-900);
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: var(--color-neutral-950);
-    --foreground: var(--color-neutral-100);
-  }
+  color-scheme: light;
 }
 
 html {
@@ -33,4 +42,28 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/*
+ * The landing grid. One column (text, slider, CTA) where only the slider row
+ * flexes; two columns (text and CTA beside the slider) on wide screens and on
+ * tablets in landscape. Every row is sized from the main's h-dvh, so nothing
+ * on html or body is ever clipped.
+ */
+.landing {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "text" "slider" "cta";
+}
+
+@media (min-width: 64rem), (min-width: 48rem) and (orientation: landscape) {
+  .landing {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: "text slider" "cta slider";
+  }
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
 }
