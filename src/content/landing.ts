@@ -5,10 +5,10 @@ export const LANDING = {
   forWhom:
     "For founders and experts who film talking heads themselves. You bring the face and the ideas; I take care of the taste.",
   steps: [
-    "You record and send the raw takes.",
-    "I cut, caption and colour each reel.",
-    "You review; I refine once.",
-    "You post eight finished reels.",
+    "Discovery call to understand your project.",
+    "A proposed visual identity for your reels.",
+    "You record your talking heads.",
+    "I edit them, consistent with the visual identity.",
   ],
   offer: "8 reels, each under 30 seconds.",
   cta: "Book your discovery call",

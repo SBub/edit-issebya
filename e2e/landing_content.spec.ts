@@ -5,6 +5,14 @@ import { ctaButton, expectInsideRoot, VIEWPORTS, waitForPageReady } from "./view
 // Every required element is visible and fully inside the root box at every
 // listed viewport: nothing is hidden or cut off to make the page fit.
 
+// The issue's four process steps, deliberately not read from LANDING.
+const PROCESS_STEPS = [
+  "Discovery call to understand your project.",
+  "A proposed visual identity for your reels.",
+  "You record your talking heads.",
+  "I edit them, consistent with the visual identity.",
+];
+
 for (const viewport of VIEWPORTS) {
   test(`all required content is visible at ${viewport.width}x${viewport.height}`, async ({
     page,
@@ -18,6 +26,7 @@ for (const viewport of VIEWPORTS) {
 
     const steps = page.getByRole("list", { name: "Process" }).getByRole("listitem");
     await expect(steps).toHaveCount(4);
+    await expect(steps).toHaveText(PROCESS_STEPS);
     for (const step of await steps.all()) await expectInsideRoot(page, step);
 
     await expectInsideRoot(page, page.getByText(LANDING.offer));
