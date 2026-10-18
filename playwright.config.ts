@@ -18,6 +18,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   // A flaky spec should fail, not be retried into green, locally and in CI.
   retries: 0,
+  // One worker, deliberately. Playwright runs separate files in parallel by
+  // default, but every spec here drives the same process-global state: one
+  // server, and in it one Stripe mock capture and one missing-key toggle (see
+  // src/lib/e2e-stripe-mock.ts). Parallel files would race on them: one spec's
+  // DELETE of the capture or its keyMissing toggle would land in another's
+  // checkout.
+  workers: 1,
   use: {
     baseURL: BASE_URL,
     viewport: VIEWPORT,
@@ -38,7 +45,11 @@ export default defineConfig({
     // Let next close its sockets before any fallback SIGKILL.
     gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
     // Pins the spawned server to the port baseURL points at; `next dev` and
-    // `next start` both read PORT, so nothing passes --port.
-    env: { PORT },
+    // `next start` both read PORT, so nothing passes --port. E2E_MOCK_STRIPE
+    // turns on the in-process Stripe mock (src/instrumentation.ts) and its
+    // /api/e2e-stripe-mock route, for `yarn dev` and `yarn start` alike. An
+    // adopted server never sees this env, so ADW's /prepare_app server must
+    // be started with the same flag set to true in front of `yarn dev`.
+    env: { PORT, E2E_MOCK_STRIPE: "true" },
   },
 });
