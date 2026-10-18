@@ -11,6 +11,7 @@ export const LANDING = {
     "I edit them, consistent with the visual identity.",
   ],
   offer: "8 reels, each under 30 seconds.",
+  variations: "These are variations. Your variant will match your project's ICP and UVP.",
   cta: "Book your discovery call",
   cancelled: "Payment was not completed. You can try again any time.",
   thankYou:

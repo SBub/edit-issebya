@@ -55,15 +55,17 @@ in `ReelSlider` and in `CallRequest`.
 
 - `ReelSlider` is a scroll-snap track (`snap-x snap-mandatory`) that scrolls inside the slider box,
   never the page. Moving uses `scrollBy` on the track, never `scrollIntoView`.
-- Card slots follow the slider's own width through a container query: one per view on phones, two,
-  three, then up to four on wide screens.
-- Previous and next buttons have the accessible names "Previous reel" and "Next reel" and are
-  disabled at the ends. The end states are kept in step with a scroll listener and a
-  `ResizeObserver`.
-- ArrowLeft and ArrowRight move the slider when focus is inside it. Smooth scrolling is off under
+- Card slots follow the slider's own width through a container query: one per view on phones (85%
+  of the width, so the next card peeks in and the swipe is discoverable), two, three, then up to
+  four on wide screens.
+- There are no previous/next buttons. The track moves by swiping or scrolling, and ArrowLeft and
+  ArrowRight move it when focus is inside it. Smooth scrolling is off under
   `prefers-reduced-motion: reduce`.
-- No autoplay. `ReelCard` videos are `muted`, `playsInline`, `loop`, paused until clicked, with no
-  unmute control. A reel without `videoSrc` renders "Reel coming soon".
+- Under the track, `LANDING.variations` says the reels are variations and the buyer's will match
+  their project's ICP and UVP.
+- No autoplay. `ReelCard` videos are `playsInline`, `loop` and paused until clicked, and play with
+  sound. Starting one pauses any other (a `reel-play` document event), so only one is heard at a
+  time. A reel without `videoSrc` renders "Reel coming soon".
 - Specs: `e2e/reel_slider.spec.ts`.
 
 ## How to add a reel

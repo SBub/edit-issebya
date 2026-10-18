@@ -69,7 +69,7 @@ body {
  * the track shrinks (min-h-0) and the card's media box fits the video inside.
  */
 .reel-track {
-  --reel-slot: 100cqw;
+  --reel-slot: 85cqw;
   --reel-caption: 6.25rem;
 }
 @media (max-height: 700px) {

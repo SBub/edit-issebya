@@ -1,7 +1,7 @@
 "use client";
 
 import posthog from "posthog-js";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Reel } from "@/content/reels";
 
 /**
@@ -72,17 +72,30 @@ export function ReelCard({ reel }: { reel: Reel }) {
   );
 }
 
-// Muted, inline and paused until clicked; never autoplays and has no unmute
-// control. React does not reliably reflect `muted` as an attribute, so the ref
-// sets the property too.
+// The event a playing reel sends so the others stop: only one reel is heard
+// at a time.
+const PLAY_EVENT = "reel-play";
+
+// Inline and paused until clicked, with sound; never autoplays. Playing one
+// reel pauses any other.
 function ReelVideo({ reel, src }: { reel: Reel; src: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playing, setPlaying] = useState(false);
+
+  // Another reel starting is an external event this one follows.
+  useEffect(() => {
+    const onOtherPlay = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== reel.id) videoRef.current?.pause();
+    };
+    document.addEventListener(PLAY_EVENT, onOtherPlay);
+    return () => document.removeEventListener(PLAY_EVENT, onOtherPlay);
+  }, [reel.id]);
 
   function toggle() {
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
+      document.dispatchEvent(new CustomEvent(PLAY_EVENT, { detail: reel.id }));
       video
         .play()
         .then(() => {
@@ -104,13 +117,9 @@ function ReelVideo({ reel, src }: { reel: Reel; src: string }) {
       className="relative block h-full w-full"
     >
       <video
-        ref={(el) => {
-          videoRef.current = el;
-          if (el) el.muted = true;
-        }}
+        ref={videoRef}
         src={src}
         poster={reel.poster ?? undefined}
-        muted
         playsInline
         loop
         preload="metadata"
