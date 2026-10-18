@@ -1,0 +1,7 @@
+node_modules
+.yarn
+.pnp.*
+.next
+*.tsbuildinfo
+yarn.lock
+next-env.d.ts

@@ -1,0 +1,24 @@
+# Installed into .git/hooks by `lefthook install`, which `yarn install` runs
+# through the `postinstall` script. No manual step.
+#
+# pre-commit keeps the fast checks; pre-push runs the unit tests once per push.
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      glob: "*.{ts,tsx,js,jsx,mjs,json,md,mdx,css,yml,yaml}"
+      run: yarn prettier --write --ignore-unknown {staged_files}
+      stage_fixed: true
+    lint:
+      glob: "*.{ts,tsx,js,jsx,mjs}"
+      run: yarn lint
+    typecheck:
+      glob: "*.{ts,tsx}"
+      run: yarn typecheck
+    knip:
+      glob: "*.{ts,tsx,js,mjs,json}"
+      run: yarn knip
+pre-push:
+  commands:
+    tests:
+      run: yarn test

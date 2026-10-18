@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/*
+ * The page colour, defined once. `html` carries it as well as `body`: the
+ * canvas, the scrollbar gutter and the overscroll area are painted from the
+ * root, not from the body box.
+ */
+:root {
+  --background: var(--color-white);
+  --foreground: var(--color-neutral-900);
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: var(--color-neutral-950);
+    --foreground: var(--color-neutral-100);
+  }
+}
+
+html {
+  background: var(--background);
+  color: var(--foreground);
+  /*
+   * Reserves the scrollbar's width on every page so the layout does not shift
+   * when a page starts to scroll. Linux Chromium (CI) paints a 15px gutter,
+   * macOS overlay scrollbars none: e2e specs measure fixed elements from the
+   * root box, never from window.innerWidth (see AGENTS.md, Testing).
+   */
+  scrollbar-gutter: stable;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
