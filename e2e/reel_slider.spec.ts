@@ -78,7 +78,9 @@ test("clicking a reel toggles play", async ({ page }) => {
   const next = slider.getByRole("button", { name: "Next reel" });
   for (let i = 0; i < REELS.indexOf(reel); i++) await next.click();
   await slider.getByRole("button", { name: `Play ${reel.title}` }).click();
-  const video = slider.getByRole("button", { name: `Pause ${reel.title}` }).locator("video");
+  // Located through the card, not the button: the button's name flips between
+  // Play and Pause, so a locator built on it stops matching after a click.
+  const video = slider.getByRole("article", { name: reel.title }).locator("video");
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
   expect(await video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(true);
   await slider.getByRole("button", { name: `Pause ${reel.title}` }).click();

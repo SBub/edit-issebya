@@ -13,6 +13,10 @@ const END_TOLERANCE = 1;
 
 /**
  * A scroll-snap track of reel cards with previous/next buttons and arrow keys.
+ * The track is only as tall as a card needs (see `.reel-track` in
+ * globals.css) and the block is centred, so when the slots are narrow the
+ * spare height goes above and below the whole slider, not between a video
+ * and its caption.
  * No autoplay. The track scrolls inside the slider box, so it never widens the
  * page. Card slots follow the slider's own width (a container query): one per
  * view on phones, up to four on wide screens.
@@ -74,7 +78,7 @@ export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
       aria-roledescription="carousel"
       aria-label="Edited reels"
       onKeyDown={onKeyDown}
-      className="flex h-full min-h-0 flex-col gap-2 [container-type:inline-size] short:gap-1.5"
+      className="reel-slider flex h-full min-h-0 flex-col justify-center gap-2 [container-type:inline-size] short:gap-1.5"
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium short:text-xs">Edited reels</h2>
@@ -95,7 +99,7 @@ export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
         ref={trackRef}
         tabIndex={0}
         aria-label="Reels"
-        className="flex min-h-0 flex-1 snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 [&::-webkit-scrollbar]:hidden"
+        className="reel-track flex min-h-0 flex-[0_1_auto] snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 [&::-webkit-scrollbar]:hidden"
       >
         {reels.map((reel) => (
           <li

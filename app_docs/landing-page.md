@@ -17,9 +17,9 @@ nothing is hidden.
   - `slider`: `ReelSlider` (`src/components/ReelSlider.tsx`).
   - `cta`: `CallRequest` (`src/components/CallRequest.tsx`).
 - All copy lives in `src/content/landing.ts` (`LANDING`), read by the page and the specs alike.
-- `src/app/globals.css` defines the `.landing` grid. On narrow screens it is one column (text,
-  slider, CTA). At `@media (min-width: 64rem), (min-width: 48rem) and (orientation: landscape)` it
-  becomes two columns: text and CTA on the left, the slider on the right.
+- `src/app/globals.css` defines the `.landing` grid. On narrow screens it is one column (slider,
+  text, CTA). At `@media (min-width: 64rem), (min-width: 48rem) and (orientation: landscape)` it
+  becomes two columns: the slider on the left, text and CTA on the right.
 - Every row is sized from the main's `h-dvh`. The slider media is the only part that flexes.
 - The page is white in every colour scheme: `:root` sets `color-scheme: light` and there is no
   dark override. `html` and `body` both carry the background.
@@ -48,8 +48,8 @@ two custom variants step down with the viewport height:
 - `@custom-variant short (@media (max-height: 700px))`
 - `@custom-variant tiny (@media (max-height: 600px))`
 
-`short:`, `tiny:` and `lg:short:` reduce text size, gaps and padding in `page.tsx`, in `ReelCard`
-(`short:p-2.5`), in `ReelSlider` and in `CallRequest`.
+`short:`, `tiny:` and `lg:short:` reduce text size, gaps and padding in `page.tsx`, in `ReelCard`,
+in `ReelSlider` and in `CallRequest`.
 
 ## Reel slider
 
@@ -78,13 +78,11 @@ never changes.
 
 ## Card styling sources
 
-`ReelCard` is copied, never imported, from the issebya.homes website:
+`ReelCard` takes its text block, never its code, from the issebya.homes website's
+`apps/website/src/app/(main)/shop/ui/ProductCard.tsx`: the label, title-and-duration and caption
+under the media. The card has no colour or padding of its own: it sits on the page's white.
 
-- `apps/website/src/app/(main)/shop/ui/ProductCard.tsx`: the cream box, the `p-3.5` padding, and
-  the label, title-and-duration and caption block.
-- its `src/app/globals.css`: the cream `#f1eac8`, here `--color-reel-card` (`bg-reel-card`).
-- its `src/app/layout.tsx`: Work Sans through `next/font/google`, here `--font-work`, exposed as
-  `--font-sans`.
+Type follows the ADW dashboard (build.issebya.com): Tailwind's default sans stack, no web font.
 
 Deliberate differences from the shop card:
 

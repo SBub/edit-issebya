@@ -36,7 +36,7 @@ export function rootBox(page: Page): Promise<RootBox> {
   });
 }
 
-// Fonts loaded (Work Sans changes line breaks) and the first reel card shown.
+// Fonts loaded (they change line breaks) and the first reel card shown.
 export async function waitForPageReady(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await expect(

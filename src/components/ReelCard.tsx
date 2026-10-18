@@ -5,26 +5,34 @@ import { useRef, useState } from "react";
 import type { Reel } from "@/content/reels";
 
 /**
- * One reel in the slider, styled after the issebya.homes shop card
- * (apps/website/src/app/(main)/shop/ui/ProductCard.tsx): the cream box, the
- * p-3.5 padding and the label, title-and-duration and caption block. Unlike
- * the shop card the media is 9:16, the title is underlined at rest, and the
- * caption clamps to two lines.
+ * One reel in the slider, laid out after the issebya.homes shop card
+ * (apps/website/src/app/(main)/shop/ui/ProductCard.tsx): the label,
+ * title-and-duration and caption block under the media, on the page's white
+ * with no card colour. Unlike the shop card the media is 9:16, the title is
+ * underlined at rest, and the caption clamps to two lines.
  *
- * The media area is a size container and the only part of the card that
- * flexes: the 9:16 box inside takes the largest size that fits it, so the card
- * never overflows its slot at any slot width or height.
+ * The card is a size container. Inside it, one column holds the 9:16 video
+ * and the text block under it; the column takes the largest width at which
+ * the video plus the fixed-height text block (`--reel-caption`, set with the
+ * track in globals.css) fit the card, so the text is always as wide as its
+ * video and every card's video is the same size, whatever its caption. A
+ * card wider than it is tall (one slot on a phone) keeps the full width for
+ * the text and centres the video above it (see `.reel-column` in globals.css).
  */
-const REEL_CARD_BOX_CLASS = "flex flex-col h-full bg-reel-card p-3.5 short:p-2.5";
-
 export function ReelCard({ reel }: { reel: Reel }) {
   const titleId = `reel-${reel.id}-title`;
 
   return (
-    <article aria-labelledby={titleId} className={`${REEL_CARD_BOX_CLASS} text-foreground`}>
-      <div data-testid="reel-media" className="relative min-h-0 flex-1 [container-type:size]">
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="relative aspect-[9/16] w-[min(100cqw,calc(100cqh*9/16))] overflow-hidden">
+    <article
+      aria-labelledby={titleId}
+      className="relative h-full text-foreground [container-type:size]"
+    >
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="reel-column flex flex-col">
+          <div
+            data-testid="reel-media"
+            className="reel-video relative aspect-[9/16] overflow-hidden"
+          >
             {reel.videoSrc ? (
               <ReelVideo reel={reel} src={reel.videoSrc} />
             ) : (
@@ -33,26 +41,32 @@ export function ReelCard({ reel }: { reel: Reel }) {
               </div>
             )}
           </div>
-        </div>
-      </div>
 
-      <div className="flex flex-col gap-1.5 pt-3 text-xs short:gap-1 short:pt-2">
-        <p data-testid="reel-label" className="text-center text-[10px] tracking-[0.2em] uppercase">
-          {reel.label}
-        </p>
-        <div className="flex justify-between gap-2 text-sm font-medium short:text-xs">
-          <h3
-            id={titleId}
-            data-testid="reel-title"
-            className="truncate underline underline-offset-4"
-          >
-            {reel.title}
-          </h3>
-          <span className="shrink-0">{reel.duration}</span>
+          <div className="flex h-(--reel-caption) flex-col gap-1.5 overflow-hidden pt-3 text-xs short:gap-1 short:pt-2">
+            <p
+              data-testid="reel-label"
+              className="text-center text-[10px] tracking-[0.2em] uppercase"
+            >
+              {reel.label}
+            </p>
+            <div className="flex justify-between gap-2 text-sm font-medium short:text-xs">
+              <h3
+                id={titleId}
+                data-testid="reel-title"
+                className="truncate underline underline-offset-4"
+              >
+                {reel.title}
+              </h3>
+              <span className="shrink-0">{reel.duration}</span>
+            </div>
+            <p
+              data-testid="reel-caption"
+              className="line-clamp-2 leading-relaxed short:leading-snug"
+            >
+              {reel.caption}
+            </p>
+          </div>
         </div>
-        <p data-testid="reel-caption" className="line-clamp-2 leading-relaxed short:leading-snug">
-          {reel.caption}
-        </p>
       </div>
     </article>
   );
