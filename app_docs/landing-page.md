@@ -1,5 +1,9 @@
 # Landing page
 
+**Specifications:**
+
+- specs/issue-1-adw-d5416729-sdlc_planner-one-page-landing-checkout.md
+
 The whole site is one screen at `/`: a heading, the process, the offer and its price, a slider of
 edited reels and one call to action that opens the discovery-call form (see
 `app_docs/checkout.md`). At every supported viewport the page never scrolls, nothing is clipped and
