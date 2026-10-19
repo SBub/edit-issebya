@@ -151,6 +151,25 @@ Unset, or any other value: no tax parameter is sent.
 - The action never throws to the client. On `unavailable` the dialog shows the `role="alert"`
   message, keeps the values and stays on `/`.
 
+## Form dialog layout
+
+- The `<dialog>` has only `max-h-[calc(100dvh-2rem)]` (no height) and is a flex column when
+  open. The form and its scrolling body are `min-h-0 flex-auto`, never `flex-1`: with a 0% flex
+  basis, Safari's WebKit (iPhone and macOS, Safari 18 era) sized the dialog from the basis and
+  showed only the header bar, while Chromium and Playwright's newer WebKit sized it from the
+  content. Basis `auto` takes the content size everywhere; `min-h-0` lets the body shrink and
+  scroll when the dialog reaches its max height.
+- Spec: `e2e/dialog_form.spec.ts`, in Chromium and WebKit (the `webkit` project runs only this
+  spec; CI installs both browsers). It checks the Name field, the terms checkbox and the
+  Continue button are visible inside the viewport at 390x844, 1440x830, 1800x830, 390x480 and
+  1440x480, and that the form and its body have `flex-basis: auto`, which catches the collapse
+  in every engine.
+- Locally on macOS 14, Playwright's own WebKit build is frozen and fails to open a page. Run
+  the WebKit project against `playwright run-server` in the official
+  `mcr.microsoft.com/playwright:v1.64.0-noble` image and set `PW_WEBKIT_WS` to its `ws://`
+  endpoint (the container must reach the dev server's port, for example through a small TCP
+  proxy to `host.docker.internal`).
+
 ## Thank-you dialog
 
 - `/?checkout=success&session_id=...` opens the thank-you dialog from the URL alone.
@@ -231,6 +250,8 @@ This code has not been run against a real Stripe account.
 - Never pre-tick or require the newsletter box, and never let it change the submit button's
   disabled state. Email a buyer a newsletter only when their `newsletter` metadata is `"true"`.
 - Never throw from `startCheckout`; return a typed result.
+- Never give the form dialog's flex children a 0% flex basis (`flex-1`): Safari collapses the
+  dialog to its header.
 - Never create the Stripe client at module load.
 - Never copy the offer name, the offer description or the custom text into `checkout-params.ts`;
   the first two are read from `OFFER`, the custom text from `LANDING`.

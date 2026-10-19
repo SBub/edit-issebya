@@ -158,13 +158,17 @@ export function CallRequest({
         title={LANDING.cta}
         onClose={() => ctaRef.current?.focus()}
       >
+        {/* flex-auto, never flex-1: with a 0% basis, Safari sizes the dialog
+            (only max-height, no height) from the basis and collapses it to
+            the header bar. Basis auto takes the content size; min-h-0 lets the
+            body shrink and scroll when the dialog hits its max-height. */}
         <form
           noValidate
           onSubmit={onSubmit}
           onInput={onInput}
-          className="flex min-h-0 flex-1 flex-col"
+          className="flex min-h-0 flex-auto flex-col"
         >
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div className="min-h-0 flex-auto overflow-y-auto px-5 py-4">
             <CallFormFields errors={errors} onTermsChange={setTermsAccepted} />
           </div>
           <div className="flex flex-col gap-2 border-t border-neutral-200 px-5 py-4">

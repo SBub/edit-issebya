@@ -30,9 +30,27 @@ export default defineConfig({
     baseURL: BASE_URL,
     viewport: VIEWPORT,
   },
-  // Chromium only; Firefox and WebKit are out of scope. The device preset
-  // brings its own 1280x720 viewport, so the review one is repeated after it.
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: VIEWPORT } }],
+  // Chromium runs every spec. WebKit runs the dialog spec only: the live
+  // checkout dialog once showed just its header bar in Safari (iPhone and
+  // macOS) while Chromium rendered it fine. Firefox is out of scope. The
+  // device presets bring their own viewports, so the review one is repeated.
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: VIEWPORT } },
+    {
+      name: "webkit",
+      testMatch: "**/dialog_form.spec.ts",
+      use: {
+        ...devices["Desktop Safari"],
+        viewport: VIEWPORT,
+        // Optional remote WebKit (`playwright run-server` in the official
+        // Linux image) for machines whose local WebKit build is frozen, such
+        // as macOS 14. Unset in CI, which runs WebKit natively.
+        ...(process.env.PW_WEBKIT_WS
+          ? { connectOptions: { wsEndpoint: process.env.PW_WEBKIT_WS } }
+          : {}),
+      },
+    },
+  ],
   webServer: {
     // CI has just run `yarn build`; locally the ADW run's server is usually
     // already up and adopted.
