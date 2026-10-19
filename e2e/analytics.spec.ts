@@ -24,7 +24,8 @@ test("nothing reaches PostHog through load, slider, form and checkout", async ({
   await page.setViewportSize({ width: 375, height: 667 });
   await page.goto("/");
   await waitForPageReady(page);
-  await page.getByRole("button", { name: "Next reel" }).click();
+  await page.getByRole("list", { name: "Reels" }).focus();
+  await page.keyboard.press("ArrowRight");
   await ctaButton(page).click();
   await fillValidForm(formDialog(page));
   await formDialog(page).getByRole("button", { name: "Continue to payment" }).click();

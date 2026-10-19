@@ -2,8 +2,9 @@ import { expect, test, type Locator } from "@playwright/test";
 import { REELS } from "../src/content/reels";
 import { waitForPageReady } from "./viewport";
 
-// One card per view at phone width; previous/next buttons and arrow keys move
-// the track; videos never autoplay and are always muted.
+// One card per view at phone width with the next one peeking in; swiping and
+// the arrow keys move the track; there are no buttons; videos never autoplay,
+// play with sound when clicked, and only one plays at a time.
 
 test.use({ viewport: { width: 375, height: 667 } });
 
@@ -19,37 +20,31 @@ test.beforeEach(async ({ page }) => {
   await waitForPageReady(page);
 });
 
-test("previous, next and the arrow keys move between cards", async ({ page }) => {
+test("the arrow keys and a swipe move between cards, with no buttons", async ({ page }) => {
   const slider = page.getByRole("region", { name: "Edited reels" });
   const track = slider.getByRole("list", { name: "Reels" });
   const cards = slider.getByRole("article");
-  const previous = slider.getByRole("button", { name: "Previous reel" });
-  const next = slider.getByRole("button", { name: "Next reel" });
 
   await expect(cards).toHaveCount(REELS.length);
+  await expect(slider.getByRole("button", { name: /reel$/ })).toHaveCount(0);
   expect(await inView(cards.nth(0), track)).toBe(true);
   expect(await inView(cards.nth(1), track)).toBe(false);
-  await expect(previous).toBeDisabled();
-
-  await next.click();
-  await expect.poll(() => inView(cards.nth(1), track)).toBe(true);
-  await expect(previous).toBeEnabled();
+  // The next card peeks in, so a swipe is discoverable.
+  const [second, box] = await Promise.all([cards.nth(1).boundingBox(), track.boundingBox()]);
+  expect(second && box && second.x < box.x + box.width).toBe(true);
 
   await track.focus();
   await page.keyboard.press("ArrowRight");
-  await expect.poll(() => inView(cards.nth(2), track)).toBe(true);
-  await page.keyboard.press("ArrowLeft");
   await expect.poll(() => inView(cards.nth(1), track)).toBe(true);
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(() => inView(cards.nth(0), track)).toBe(true);
 
-  for (let i = 1; i < REELS.length - 1; i++) {
-    await next.click();
-    await expect.poll(() => inView(cards.nth(i + 1), track)).toBe(true);
-  }
-  await expect(next).toBeDisabled();
-  expect(await inView(cards.nth(REELS.length - 1), track)).toBe(true);
+  // A swipe is a horizontal scroll of the track; snapping lands on a card.
+  await track.evaluate((el) => el.scrollBy({ left: el.clientWidth, behavior: "auto" }));
+  await expect.poll(() => inView(cards.nth(1), track)).toBe(true);
 });
 
-test("videos are muted, inline and paused, never autoplaying", async ({ page }) => {
+test("videos are inline and paused with sound on, never autoplaying", async ({ page }) => {
   const videos = page.locator("video");
   await expect(videos).toHaveCount(REELS.filter((r) => r.videoSrc !== null).length);
   const states = await videos.evaluateAll((els) =>
@@ -61,7 +56,7 @@ test("videos are muted, inline and paused, never autoplaying", async ({ page }) 
     })),
   );
   for (const state of states) {
-    expect(state).toEqual({ muted: true, autoplay: false, paused: true, playsInline: true });
+    expect(state).toEqual({ muted: false, autoplay: false, paused: true, playsInline: true });
   }
 });
 
@@ -70,17 +65,27 @@ test("placeholder reels say they are coming soon", async ({ page }) => {
   await expect(page.getByText("Reel coming soon", { exact: true })).toHaveCount(placeholders);
 });
 
-test("clicking a reel toggles play", async ({ page }) => {
-  const reel = REELS.find((r) => r.videoSrc !== null);
-  test.skip(reel === undefined, "all reels are placeholders");
-  if (!reel) return;
+test("clicking a reel toggles play, and starting another pauses it", async ({ page }) => {
+  const playable = REELS.filter((r) => r.videoSrc !== null);
+  test.skip(playable.length < 2, "needs two real reels");
+  const [first, second] = playable;
+  if (!first || !second) return;
+  await page.setViewportSize({ width: 1440, height: 900 });
   const slider = page.getByRole("region", { name: "Edited reels" });
-  const next = slider.getByRole("button", { name: "Next reel" });
-  for (let i = 0; i < REELS.indexOf(reel); i++) await next.click();
-  await slider.getByRole("button", { name: `Play ${reel.title}` }).click();
-  const video = slider.getByRole("button", { name: `Pause ${reel.title}` }).locator("video");
-  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
-  expect(await video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(true);
-  await slider.getByRole("button", { name: `Pause ${reel.title}` }).click();
-  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  // Located through the card, not the button: the button's name flips between
+  // Play and Pause, so a locator built on it stops matching after a click.
+  const video = (reel: typeof first) =>
+    slider.getByRole("article", { name: reel.title }).locator("video");
+  const paused = (reel: typeof first) => video(reel).evaluate((v: HTMLVideoElement) => v.paused);
+
+  await slider.getByRole("button", { name: `Play ${first.title}` }).click();
+  await expect.poll(() => paused(first)).toBe(false);
+  expect(await video(first).evaluate((v: HTMLVideoElement) => v.muted)).toBe(false);
+
+  await slider.getByRole("button", { name: `Play ${second.title}` }).click();
+  await expect.poll(() => paused(second)).toBe(false);
+  await expect.poll(() => paused(first)).toBe(true);
+
+  await slider.getByRole("button", { name: `Pause ${second.title}` }).click();
+  await expect.poll(() => paused(second)).toBe(true);
 });

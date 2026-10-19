@@ -29,16 +29,16 @@ unregisters it; any other value does nothing. The PostHog test-account filter ma
 
 ## Events
 
-| event                   | when                                                                                             | properties                                                  |
-| ----------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| `$pageview`             | PostHog default capture                                                                          | UTM properties captured by PostHog                          |
-| `reel_slider_navigated` | previous or next, by button or arrow key (`ReelSlider.tsx`)                                      | `direction` (`prev`/`next`), `method` (`button`/`keyboard`) |
-| `reel_played`           | a reel starts playing on tap or click (`ReelCard.tsx`)                                           | `reel_id`                                                   |
-| `cta_clicked`           | the CTA opens the dialog                                                                         | none                                                        |
-| `call_form_started`     | first input in the dialog, once per dialog open                                                  | none                                                        |
-| `call_form_submitted`   | a submit that passes client validation                                                           | none (never the answers)                                    |
-| `checkout_started`      | the action returned a Checkout URL, before navigating                                            | none                                                        |
-| `purchase_completed`    | thank-you state shown, once per `session_id` (guarded in `sessionStorage`, wrapped in try/catch) | `session_id`                                                |
+| event                   | when                                                                                                 | properties                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `$pageview`             | PostHog default capture                                                                              | UTM properties captured by PostHog                         |
+| `reel_slider_navigated` | the track settles on a new card after a swipe or scroll, or an arrow key moves it (`ReelSlider.tsx`) | `direction` (`prev`/`next`), `method` (`swipe`/`keyboard`) |
+| `reel_played`           | a reel starts playing on tap or click (`ReelCard.tsx`)                                               | `reel_id`                                                  |
+| `cta_clicked`           | the CTA opens the dialog                                                                             | none                                                       |
+| `call_form_started`     | first input in the dialog, once per dialog open                                                      | none                                                       |
+| `call_form_submitted`   | a submit that passes client validation                                                               | none (never the answers)                                   |
+| `checkout_started`      | the action returned a Checkout URL, before navigating                                                | none                                                       |
+| `purchase_completed`    | thank-you state shown, once per `session_id` (guarded in `sessionStorage`, wrapped in try/catch)     | `session_id`                                               |
 
 The last five are sent from `src/components/CallRequest.tsx`.
 

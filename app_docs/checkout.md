@@ -1,6 +1,6 @@
 # Checkout
 
-The call to action opens a discovery-call form. A valid submit creates a Stripe Checkout Session
+The call to action ("Start your 30 days") opens the checkout form. A valid submit creates a Stripe Checkout Session
 through a server action and sends the browser to Stripe. After payment Stripe returns to `/`, which
 shows a thank-you dialog. The form answers and the UTM values travel in the session's metadata, so
 the Stripe Dashboard shows who paid and why.
@@ -31,22 +31,27 @@ falling back to `siteUrl` (`src/lib/site-url.ts`: `NEXT_PUBLIC_SITE_URL`, then
 
 ## Fields and metadata keys
 
-The six `CALL_REQUEST_FIELDS`, in order: `name`, `email`, `company_role`, `content_link`,
-`reels_purpose`, `call_times`.
+The form asks as little as possible. `CALL_REQUEST_FIELDS`, in order: `name`, `email`, `socials`,
+`terms` (`src/lib/call-request.ts`, rendered by `src/components/CallForm.tsx`).
 
-- All are required and trimmed, at most 500 characters (Stripe's cap on a metadata value).
-- `email` is pattern-checked; `content_link` must be an `http` or `https` URL.
+- `name` and `email` are required, trimmed, at most 500 characters; `email` is pattern-checked.
+- `socials` is optional: one row to start, more with the + button (up to 10), each removable.
+  Empty rows are dropped. A link without a scheme gets `https://` (`instagram.com/you` is what
+  people type); anything that is still not an `http(s)` URL with a dotted host is rejected. The
+  links, joined one per line, are capped at 500 characters.
+- `terms` is a required checkbox linking to `/terms` and `/privacy` (both stubs for now).
 - The browser and the action run the same validator, so their messages are identical.
 
-The six field keys are the Stripe metadata keys, plus the five `UTM_KEYS`: `utm_source`,
-`utm_medium`, `utm_campaign`, `utm_term`, `utm_content` (first value of a repeated parameter,
-trimmed, capped at 500, empty values and unknown keys dropped). `customer_email` is the email.
+Stripe metadata (`toCheckoutMetadata`): `name`, `email`, `socials` (one link per line, empty when
+none), `terms_accepted` (`"true"`), plus the five `UTM_KEYS`: `utm_source`, `utm_medium`,
+`utm_campaign`, `utm_term`, `utm_content` (first value of a repeated parameter, trimmed, capped at
+500, empty values and unknown keys dropped). `customer_email` is the email.
 
 ## Price
 
-`OFFER` in `src/lib/offer.ts`: `amountCents: 120000`, `currency: "eur"`, product name
-"8 reels under 30 seconds". `buildCheckoutParams` sends it as `price_data` with
-`tax_behavior: "exclusive"`. `formatOfferPrice()` renders "1200 EUR + VAT" from the same constant,
+`OFFER` in `src/lib/offer.ts`: `amountCents: 99000`, `currency: "eur"`, product name
+"8 reels under 1 minute". `buildCheckoutParams` sends it as `price_data` with
+`tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR + VAT" from the same constant,
 so the shown price and the charged price come from one place.
 
 ## Tax flag
@@ -122,7 +127,7 @@ This code has not been run against a real Stripe account.
 ## Rules
 
 - Never let the shown price and the charged price drift: both come from `OFFER`.
-- Never rename a metadata key (the six field keys and the five UTM keys).
+- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted` and the five UTM keys).
 - Never throw from `startCheckout`; return a typed result.
 - Never create the Stripe client at module load.
 - Never make the E2E mock, its route or `sk_test_e2e_mock` do anything unless `E2E_MOCK_STRIPE` is

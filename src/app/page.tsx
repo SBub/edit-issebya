@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CallRequest, type CheckoutState } from "@/components/CallRequest";
 import { ReelSlider } from "@/components/ReelSlider";
 import { LANDING } from "@/content/landing";
@@ -12,11 +13,12 @@ function checkoutState(value: SearchParams[string]): CheckoutState {
 }
 
 /**
- * The whole site on one screen. The main is h-dvh and every grid row is sized
- * from it, so at every supported viewport nothing scrolls, nothing on html or
- * body is clipped and nothing is hidden: the slider's media is the only part
- * that flexes, and text steps down with the short and tiny height variants
- * (see app_docs/landing-page.md).
+ * Wide screens (and tablets in landscape): the whole site on one screen. The
+ * main is 100dvh and every grid row is sized from it, so nothing scrolls,
+ * nothing on html or body is clipped and nothing is hidden: the slider's
+ * media is the only part that flexes. Narrow screens stack the slider, text
+ * and CTA and scroll vertically (never sideways); the slider gets a fixed
+ * share of the screen there. See app_docs/landing-page.md.
  */
 export default async function HomePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
@@ -25,42 +27,98 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const utm = pickUtm(params);
 
   return (
-    <main className="landing grid h-dvh gap-x-10 gap-y-4 p-6 short:gap-y-2.5 short:p-4 tiny:gap-y-2 tiny:p-3 lg:p-10 lg:short:p-6">
-      <div className="flex min-h-0 flex-col gap-4 [grid-area:text] short:gap-2.5 tiny:gap-2 lg:justify-center lg:gap-6 lg:short:gap-3">
-        <header className="flex flex-col gap-2 short:gap-1">
-          <h1 className="text-3xl leading-tight font-medium tracking-tight short:text-2xl tiny:text-xl lg:text-5xl lg:short:text-3xl">
-            {LANDING.heading}
-          </h1>
-          <p className="text-base text-neutral-700 short:text-sm tiny:text-xs lg:text-lg lg:short:text-base">
-            {LANDING.subline}
-          </p>
-        </header>
-        <p className="text-sm leading-relaxed short:text-xs short:leading-snug lg:text-base lg:short:text-sm">
-          {LANDING.forWhom}
-        </p>
-        <ol
-          aria-label="Process"
-          className="flex list-inside list-decimal flex-col gap-1 text-sm short:gap-0.5 short:text-xs lg:text-base lg:short:text-sm"
+    <main className="landing grid gap-x-10 gap-y-4 p-6 short:gap-y-2.5 short:p-4 tiny:gap-y-2 tiny:p-3 lg:p-10 lg:short:p-6">
+      <header className="[grid-area:title]">
+        <h1
+          aria-label={`${LANDING.brand.name} ${LANDING.brand.suffix}`}
+          className="text-xl font-semibold tracking-tight short:text-lg"
         >
-          {LANDING.steps.map((step) => (
-            <li key={step}>{step}</li>
+          {LANDING.brand.name}
+          <sub className="ml-0.5 align-sub text-[0.5em] font-normal tracking-normal">
+            {LANDING.brand.suffix}
+          </sub>
+        </h1>
+      </header>
+
+      <div className="flex min-h-0 flex-col gap-4 [grid-area:text] short:gap-2.5 tiny:gap-2 lg:justify-center lg:gap-6 lg:mid:gap-3 lg:short:gap-3">
+        <div className="flex flex-col gap-3 text-sm leading-relaxed short:gap-1.5 short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
+          {LANDING.description.map((paragraph) => (
+            <p key={paragraph}>{paragraph}</p>
           ))}
-        </ol>
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-          <p className="text-sm short:text-xs lg:text-base lg:short:text-sm">{LANDING.offer}</p>
-          <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:short:text-lg">
-            {formatOfferPrice()}
-          </p>
         </div>
+        <section
+          aria-label="How it works"
+          className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
+        >
+          <h2 className="font-medium">{LANDING.howItWorks.title}</h2>
+          <ol className="list-inside list-decimal">
+            {LANDING.howItWorks.steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </section>
+        <section
+          aria-label="What you get"
+          className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
+        >
+          <h2 className="font-medium">{LANDING.whatYouGet.title}</h2>
+          <ul className="list-inside list-disc">
+            {LANDING.whatYouGet.items.map((item) => (
+              <li key={item.text}>
+                {item.text}
+                {"note" in item ? (
+                  <span className="text-neutral-500">
+                    {" "}
+                    ({item.note.lead}{" "}
+                    <Link href={item.note.href} className="underline underline-offset-2">
+                      {item.note.link}
+                    </Link>
+                    )
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+        <p className="text-sm leading-relaxed short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
+          {LANDING.closing}
+        </p>
       </div>
 
-      <div className="min-h-0 [grid-area:slider]">
+      <div className="reel-area min-h-0 [grid-area:slider]">
         <ReelSlider reels={REELS} />
       </div>
 
-      <div className="[grid-area:cta] lg:max-w-sm">
+      <section
+        aria-label="Offer"
+        className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-5 [grid-area:cta] short:gap-2 short:p-4 lg:max-w-md lg:mid:gap-2 lg:mid:p-4"
+      >
+        <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
+          {formatOfferPrice()}
+        </p>
         <CallRequest checkout={checkout} sessionId={sessionId} utm={utm} />
-      </div>
+        <p className="text-xs leading-relaxed text-neutral-600">{LANDING.afterPurchase}</p>
+        <p className="text-xs text-neutral-600">
+          {LANDING.questions.lead}{" "}
+          <a
+            href={LANDING.questions.href}
+            className="text-neutral-900 underline underline-offset-2 hover:text-fuchsia-700"
+          >
+            {LANDING.questions.link}
+          </a>
+          .
+        </p>
+      </section>
+
+      <footer className="text-xs text-neutral-500 [grid-area:footer]">
+        <nav aria-label="Legal" className="flex gap-4">
+          {LANDING.footer.map((item) => (
+            <Link key={item.href} href={item.href} className="hover:text-neutral-900">
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      </footer>
     </main>
   );
 }

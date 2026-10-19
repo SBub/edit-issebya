@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import { LANDING } from "../src/content/landing";
-import { CALL_REQUEST_FIELDS } from "../src/lib/call-request";
 import {
   ctaButton,
   FIELD_LABELS,
@@ -35,12 +34,14 @@ test("a valid submit goes through Checkout and back to the thank-you dialog", as
   expect(body).not.toBeNull();
   expect(body?.["mode"]).toBe("payment");
   expect(body?.["customer_email"]).toBe(VALID_FORM.email);
-  expect(body?.["line_items[0][price_data][unit_amount]"]).toBe("120000");
+  expect(body?.["line_items[0][price_data][unit_amount]"]).toBe("99000");
   expect(body?.["line_items[0][price_data][currency]"]).toBe("eur");
   expect(body?.["line_items[0][price_data][tax_behavior]"]).toBe("exclusive");
-  for (const field of CALL_REQUEST_FIELDS) {
-    expect(body?.[`metadata[${field}]`]).toBe(VALID_FORM[field]);
-  }
+  expect(body?.["metadata[name]"]).toBe(VALID_FORM.name);
+  expect(body?.["metadata[email]"]).toBe(VALID_FORM.email);
+  // https:// added to the bare host, one link per line.
+  expect(body?.["metadata[socials]"]).toBe("https://instagram.com/ana\nhttps://ana.example.com/");
+  expect(body?.["metadata[terms_accepted]"]).toBe("true");
   expect(body?.["metadata[utm_source]"]).toBe("test");
   expect(body?.["metadata[utm_campaign]"]).toBe("spring");
   expect(body).not.toHaveProperty("metadata[utm_medium]");
@@ -62,11 +63,16 @@ test("without a Stripe key the dialog shows an alert and keeps the answers", asy
     await expect(dialog.getByRole("alert")).toHaveText(LANDING.unavailable);
     expect(new URL(page.url()).pathname).toBe("/");
     expect(new URL(page.url()).search).toBe("");
-    for (const [field, label] of Object.entries(FIELD_LABELS)) {
-      await expect(dialog.getByLabel(label, { exact: true })).toHaveValue(
-        VALID_FORM[field as keyof typeof VALID_FORM],
-      );
-    }
+    await expect(dialog.getByLabel(FIELD_LABELS.name, { exact: true })).toHaveValue(
+      VALID_FORM.name,
+    );
+    await expect(dialog.getByLabel(FIELD_LABELS.email, { exact: true })).toHaveValue(
+      VALID_FORM.email,
+    );
+    await expect(dialog.getByLabel("Social media links 2", { exact: true })).toHaveValue(
+      VALID_FORM.socials[1],
+    );
+    await expect(dialog.getByRole("checkbox")).toBeChecked();
     const captured = await (await request.get(MOCK_ROUTE)).json();
     expect(captured.body).toBeNull();
   } finally {

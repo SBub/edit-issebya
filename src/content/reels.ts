@@ -1,53 +1,36 @@
 // The reels in the slider, in order. To add a real one, put `<id>.mp4` and
 // `<id>.jpg` in public/reels/ and set videoSrc and poster to `/reels/<id>.mp4`
-// and `/reels/<id>.jpg`; keep the title short and the caption to two lines
+// and `/reels/<id>.jpg`; the title names the card for screen readers
 // (see app_docs/landing-page.md). A null videoSrc renders "Reel coming soon".
 
 export interface Reel {
   id: string;
   title: string;
-  caption: string;
   label: string;
-  duration: string;
   videoSrc: string | null;
   poster: string | null;
 }
 
 export const REELS: readonly Reel[] = [
   {
-    id: "founder-story",
-    title: "Founder story",
-    caption: "Why the company exists, told in one take and cut to the beat.",
-    label: "Founder",
-    duration: "0:28",
-    videoSrc: null,
-    poster: null,
+    id: "poster-reel-04",
+    title: "Poster",
+    label: "Visual identity 1",
+    videoSrc: "/reels/poster-reel-04.mp4",
+    poster: "/reels/poster-reel-04.jpg",
   },
   {
-    id: "expert-tip",
-    title: "Expert tip",
-    caption: "One idea, one minute of footage, twenty-five seconds on screen.",
-    label: "Expert",
-    duration: "0:25",
-    videoSrc: null,
-    poster: null,
+    id: "statement-reel-01",
+    title: "Statement",
+    label: "Visual identity 2",
+    videoSrc: "/reels/statement-reel-01.mp4",
+    poster: "/reels/statement-reel-01.jpg",
   },
   {
-    id: "product-demo",
-    title: "Product demo",
-    caption: "Talking head and screen, captioned so it works without sound.",
-    label: "Product",
-    duration: "0:22",
-    videoSrc: null,
-    poster: null,
-  },
-  {
-    id: "behind-the-scenes",
-    title: "Behind the scenes",
-    caption: "A day at work, trimmed to the moments that carry the story.",
-    label: "Studio",
-    duration: "0:29",
-    videoSrc: null,
-    poster: null,
+    id: "editorial-reel-02",
+    title: "Editorial",
+    label: "Visual identity 3",
+    videoSrc: "/reels/editorial-reel-02.mp4",
+    poster: "/reels/editorial-reel-02.jpg",
   },
 ];

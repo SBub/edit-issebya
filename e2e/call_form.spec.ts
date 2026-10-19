@@ -12,7 +12,7 @@ test.beforeEach(async ({ page, request }) => {
   await expect(formDialog(page)).toBeVisible();
 });
 
-test("an empty submit marks all six fields invalid and calls nothing", async ({
+test("an empty submit marks name, email and terms invalid and calls nothing", async ({
   page,
   request,
 }) => {
@@ -21,22 +21,33 @@ test("an empty submit marks all six fields invalid and calls nothing", async ({
   for (const label of Object.values(FIELD_LABELS)) {
     await expect(dialog.getByLabel(label, { exact: true })).toHaveAttribute("aria-invalid", "true");
   }
-  await expect(dialog.getByText(CALL_REQUEST_MESSAGES.required)).toHaveCount(6);
+  await expect(dialog.getByRole("checkbox")).toHaveAttribute("aria-invalid", "true");
+  await expect(dialog.getByText(CALL_REQUEST_MESSAGES.required)).toHaveCount(2);
+  await expect(dialog.getByText(CALL_REQUEST_MESSAGES.terms)).toBeVisible();
+  // Socials are optional: an empty row is not an error.
+  await expect(dialog.getByText(CALL_REQUEST_MESSAGES.url)).toHaveCount(0);
   const captured = await (await request.get(MOCK_ROUTE)).json();
   expect(captured.body).toBeNull();
 });
 
-test("a bad email and a non-URL link show their own messages until fixed", async ({ page }) => {
+test("social rows are added with + and removed with x", async ({ page }) => {
   const dialog = formDialog(page);
-  for (const [field, label] of Object.entries(FIELD_LABELS)) {
-    await dialog
-      .getByLabel(label, { exact: true })
-      .fill(VALID_FORM[field as keyof typeof VALID_FORM]);
-  }
+  await expect(dialog.getByRole("button", { name: /^Remove link/ })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Add another link" }).click();
+  await dialog.getByRole("button", { name: "Add another link" }).click();
+  await expect(dialog.getByLabel(/^Social media links \d$/)).toHaveCount(3);
+  await dialog.getByRole("button", { name: "Remove link 2" }).click();
+  await expect(dialog.getByLabel(/^Social media links \d$/)).toHaveCount(2);
+});
+
+test("a bad email and a bad link show their own messages until fixed", async ({ page }) => {
+  const dialog = formDialog(page);
+  await dialog.getByLabel(FIELD_LABELS.name, { exact: true }).fill(VALID_FORM.name);
+  await dialog.getByRole("checkbox").check();
   const email = dialog.getByLabel(FIELD_LABELS.email, { exact: true });
-  const link = dialog.getByLabel(FIELD_LABELS.content_link, { exact: true });
+  const link = dialog.getByLabel("Social media links 1", { exact: true });
   await email.fill("not-an-email");
-  await link.fill("example.com");
+  await link.fill("not a link");
   await dialog.getByRole("button", { name: "Continue to payment" }).click();
 
   await expect(dialog.getByText(CALL_REQUEST_MESSAGES.email)).toBeVisible();
@@ -46,11 +57,23 @@ test("a bad email and a non-URL link show their own messages until fixed", async
   await expect(link).toHaveAttribute("aria-invalid", "true");
 
   await email.fill(VALID_FORM.email);
-  await link.fill(VALID_FORM.content_link);
+  await link.fill(VALID_FORM.socials[0]);
   await expect(dialog.getByText(CALL_REQUEST_MESSAGES.email)).toHaveCount(0);
   await expect(dialog.getByText(CALL_REQUEST_MESSAGES.url)).toHaveCount(0);
   await expect(email).not.toHaveAttribute("aria-invalid", "true");
   await expect(link).not.toHaveAttribute("aria-invalid", "true");
+});
+
+test("the terms and privacy links open their pages", async ({ page }) => {
+  const dialog = formDialog(page);
+  await expect(dialog.getByRole("link", { name: "terms and conditions" })).toHaveAttribute(
+    "href",
+    "/terms",
+  );
+  await expect(dialog.getByRole("link", { name: "privacy policy" })).toHaveAttribute(
+    "href",
+    "/privacy",
+  );
 });
 
 test("Escape closes the dialog and focuses the CTA", async ({ page }) => {

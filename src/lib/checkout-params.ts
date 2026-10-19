@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import type { CallRequest } from "./call-request";
+import { toCheckoutMetadata, type CallRequest } from "./call-request";
 import { OFFER } from "./offer";
 import type { Utm } from "./utm";
 
@@ -20,7 +20,7 @@ export function automaticTaxEnabled(value: string | undefined): boolean {
   return value === "true";
 }
 
-// The Checkout Session for one discovery call. The answers and the UTM values
+// The Checkout Session for the offer. The form answers and the UTM values
 // travel in metadata, so the Stripe Dashboard shows who paid and why.
 export function buildCheckoutParams({
   request,
@@ -42,7 +42,7 @@ export function buildCheckoutParams({
       },
     ],
     customer_email: request.email,
-    metadata: { ...request, ...utm },
+    metadata: { ...toCheckoutMetadata(request), ...utm },
     success_url: `${origin}/?checkout=success&session_id=${SESSION_ID_PLACEHOLDER}`,
     cancel_url: `${origin}/?checkout=cancelled`,
     ...(automaticTax
