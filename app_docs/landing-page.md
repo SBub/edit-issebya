@@ -77,21 +77,27 @@ page.
 
 ## Height variants
 
-Width alone cannot tell 320x568 from 390x844 (the case the comment in `globals.css` calls out), so
-two custom variants step down with the viewport height:
+Three custom variants step text, gaps and padding down with the viewport height, in the
+one-screen layout only: `mid` (`max-height: 820px`), `short` (700px) and `tiny` (600px), each
+combined with the two-column breakpoint (`(min-width: 64rem)`, or `(min-width: 48rem)` in
+landscape) as block-form `@custom-variant`s with `@slot` in `globals.css` (the shorthand form
+cannot take a comma media list). The stacked layout scrolls, so height never tightens it: a phone
+in portrait never matches any of them, at any height. The `.reel-track` label height step uses
+the same condition.
 
-- `@custom-variant short (@media (max-height: 700px))`
-- `@custom-variant tiny (@media (max-height: 600px))`
+`short:`, `tiny:`, `mid:` and `lg:short:` reduce text size, gaps and padding in `page.tsx`,
+`Brand.tsx` (`PAGE_PADDING`, `BRAND_CLASS`), `ReelCard`, `ReelSlider` and `CallRequest`.
 
-`short:`, `tiny:` and `lg:short:` reduce text size, gaps and padding in `page.tsx`, in `ReelCard`,
-in `ReelSlider` and in `CallRequest`.
+Lists ("How we work together", "What you get") use hanging indents (`list-outside pl-5`, so
+wrapped lines align with the text), `space-y-1` between items and `mb-2` under the heading;
+`mid:` drops both so the one-screen column still fits.
 
 ### Equal gaps
 
 Every gap between consecutive blocks is the same, on every viewport.
 
-- Stacked: one value, `--landing-gap` on `.landing` (2rem; 0.75rem at `max-height: 700px`,
-  0.5rem at `max-height: 600px`), is the grid's `row-gap` and the `gap` of `.landing-intro` and
+- Stacked: one value, `--landing-gap` on `.landing` (3rem, at every phone height), is the grid's
+  `row-gap` and the `gap` of `.landing-intro` and
   `.landing-details`. So title, quote, introduction, reels, "How we work together", "What you
   get", closing line, offer box and footer are all that far apart.
 - Two columns: the offer box sits inside `.landing-text` (on phones `.landing-text` is
@@ -102,8 +108,10 @@ Every gap between consecutive blocks is the same, on every viewport.
   `max-height: 820px`, `max-height` 6rem), so they grow equally into the free height and the
   column can never overflow. The left column's rows (title, slider, footer) keep `row-gap` 1rem
   (0.625rem at `max-height: 700px`).
-- Spec: `e2e/equal_gaps.spec.ts` measures the gaps at 1440x900, 1280x800 and on a phone
-  (390x844, reels included) and requires them equal within 1px.
+- Spec: `e2e/equal_gaps.spec.ts` measures the gaps at 1440x900 and 1280x800 (equal within 1px)
+  and on phones at 390x844, 375x667 and 320x568 (all 48px within 1px, reels and footer
+  included), checks the section text keeps its size on a short phone, and checks the hanging
+  indents and item spacing.
 
 ## Reel slider
 
@@ -179,6 +187,8 @@ Deliberate differences from the shop card:
 - Never use a non-white page background, in any colour scheme.
 - Never give two consecutive blocks of the text column (or of the stacked page) different gaps:
   one `--landing-gap` when stacked, identical `.landing-spacer`s in two columns.
+- Never let a height-based variant or media query tighten the stacked layout: height steps are
+  for the one-screen layout only.
 - Never autoplay a reel or play sound unasked.
 - Never measure from `window.innerWidth` or `window.innerHeight` in specs; measure from the root
   box.

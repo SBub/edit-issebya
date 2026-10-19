@@ -48,13 +48,60 @@ for (const size of [
   });
 }
 
-test("on a phone the gaps between consecutive blocks are equal, reels included", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+// The stacked layout scrolls, so height never tightens it: 48px (3rem)
+// between every pair of blocks at every phone height.
+for (const size of [
+  { width: 390, height: 844 },
+  { width: 375, height: 667 },
+  { width: 320, height: 568 },
+]) {
+  test(`on a ${size.width}x${size.height} phone every gap is 48px, reels included`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(size);
+    await page.goto("/");
+    await waitForPageReady(page);
+    const [quote, intro, ...rest] = textBlocks(page);
+    const reels = page.locator(".reel-area");
+    const footer = page.locator("main > footer");
+    const values = await gaps([quote!, intro!, reels, ...rest, footer]);
+    expectEqual(values);
+    for (const value of values)
+      expect(Math.abs(value - 48), values.join(", ")).toBeLessThanOrEqual(1);
+  });
+}
+
+test("on a phone the section text does not shrink with the height", async ({ page }) => {
+  const sizes = [];
+  for (const size of [
+    { width: 375, height: 844 },
+    { width: 375, height: 568 },
+  ]) {
+    await page.setViewportSize(size);
+    await page.goto("/");
+    await waitForPageReady(page);
+    sizes.push(
+      await page
+        .getByRole("region", { name: "How we work together" })
+        .evaluate((element) => getComputedStyle(element).fontSize),
+    );
+  }
+  expect(sizes[0]).toBe(sizes[1]);
+});
+
+test("list items use hanging indents with a little air between them", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
   await page.goto("/");
   await waitForPageReady(page);
-  const [quote, intro, ...rest] = textBlocks(page);
-  const reels = page.locator(".reel-area");
-  expectEqual(await gaps([quote!, intro!, reels, ...rest]));
+  const list = page.getByRole("region", { name: "What you get" }).getByRole("list");
+  const style = await list.evaluate((element) => ({
+    position: getComputedStyle(element).listStylePosition,
+    paddingLeft: parseFloat(getComputedStyle(element).paddingLeft),
+    itemGap:
+      element.children[1]!.getBoundingClientRect().top -
+      element.children[0]!.getBoundingClientRect().bottom,
+  }));
+  expect(style.position).toBe("outside");
+  expect(style.paddingLeft).toBeGreaterThan(0);
+  expect(style.itemGap).toBeGreaterThanOrEqual(4);
 });

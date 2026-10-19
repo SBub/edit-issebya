@@ -9,6 +9,12 @@ import { EARLY_BIRD, formatOfferPrice, OFFER } from "@/lib/offer";
 import { currentOfferPrice } from "@/lib/offer-price";
 import { pickUtm } from "@/lib/utm";
 
+// The two lists: hanging indents (markers outside, wrapped lines align with
+// the text), a little air between items and under the heading. `mid:` (one
+// screen, 820px tall or less) drops the air so the column still fits.
+const LIST_HEADING = "mb-2 font-medium mid:mb-0";
+const LIST = "list-outside space-y-1 pl-5 mid:space-y-0";
+
 type SearchParams = Record<string, string | string[] | undefined>;
 
 function checkoutState(value: SearchParams[string]): CheckoutState {
@@ -68,8 +74,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             aria-label="How we work together"
             className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
           >
-            <h2 className="font-medium">{LANDING.howItWorks.title}</h2>
-            <ol className="list-inside list-decimal">
+            <h2 className={LIST_HEADING}>{LANDING.howItWorks.title}</h2>
+            <ol className={`list-decimal ${LIST}`}>
               {LANDING.howItWorks.steps.map((step) => (
                 <li key={step}>{step}</li>
               ))}
@@ -80,8 +86,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             aria-label="What you get"
             className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
           >
-            <h2 className="font-medium">{LANDING.whatYouGet.title}</h2>
-            <ul className="list-inside list-disc">
+            <h2 className={LIST_HEADING}>{LANDING.whatYouGet.title}</h2>
+            <ul className={`list-disc ${LIST}`}>
               {LANDING.whatYouGet.items.map((item) => (
                 <li key={item.text}>
                   {item.text}

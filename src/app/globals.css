@@ -1,12 +1,30 @@
 @import "tailwindcss";
 
 /*
- * Height steps for the one-screen layout. Width alone cannot tell 320x568 from
- * 390x844, so text and spacing also step down with the viewport height.
+ * Height steps for the one-screen layout only: there every row is sized from
+ * the viewport height, so text and spacing step down on shorter screens. The
+ * stacked layout scrolls, so height never tightens it: each step also needs
+ * the two-column breakpoint ((min-width: 64rem), or (min-width: 48rem) in
+ * landscape), and a phone in portrait never matches.
  */
-@custom-variant mid (@media (max-height: 820px));
-@custom-variant short (@media (max-height: 700px));
-@custom-variant tiny (@media (max-height: 600px));
+@custom-variant mid {
+  @media (min-width: 64rem) and (max-height: 820px),
+    (min-width: 48rem) and (orientation: landscape) and (max-height: 820px) {
+    @slot;
+  }
+}
+@custom-variant short {
+  @media (min-width: 64rem) and (max-height: 700px),
+    (min-width: 48rem) and (orientation: landscape) and (max-height: 700px) {
+    @slot;
+  }
+}
+@custom-variant tiny {
+  @media (min-width: 64rem) and (max-height: 600px),
+    (min-width: 48rem) and (orientation: landscape) and (max-height: 600px) {
+    @slot;
+  }
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -62,7 +80,7 @@ body {
    * introduction, reels, the two sections, closing line, offer box, footer),
    * used by the grid and by .landing-intro and .landing-details alike.
    */
-  --landing-gap: 2rem;
+  --landing-gap: 3rem;
   row-gap: var(--landing-gap);
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto auto auto auto auto;
@@ -85,16 +103,6 @@ body {
 }
 .landing-spacer {
   display: none;
-}
-@media (max-height: 700px) {
-  .landing {
-    --landing-gap: 0.75rem;
-  }
-}
-@media (max-height: 600px) {
-  .landing {
-    --landing-gap: 0.5rem;
-  }
 }
 .landing .reel-area {
   height: min(75svh, 40rem);
@@ -157,7 +165,8 @@ body {
   --reel-slot: 85cqw;
   --reel-label: 1.75rem;
 }
-@media (max-height: 700px) {
+@media (min-width: 64rem) and (max-height: 700px),
+  (min-width: 48rem) and (orientation: landscape) and (max-height: 700px) {
   .reel-track {
     --reel-label: 1.5rem;
   }
