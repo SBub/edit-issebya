@@ -27,7 +27,7 @@ for (const viewport of VIEWPORTS) {
     }
     await expect(items.getByRole("link", { name: "terms of service apply" })).toHaveAttribute(
       "href",
-      "/terms",
+      "/terms#reel-length",
     );
     for (const item of await items.all()) await expectInsideRoot(page, item);
     await expectInsideRoot(page, page.getByText(LANDING.closing, { exact: true }));

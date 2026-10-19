@@ -6,3 +6,4 @@ One line per feature doc in `app_docs/`, saying when to read it; read the lines 
 - Read `app_docs/checkout.md` when changing the checkout form, the server action, the price, Stripe Checkout parameters or tax, the thank-you dialog, or the E2E Stripe mock.
 - Read `app_docs/analytics.md` when changing PostHog start-up, the `?internal` tag, adding, renaming or removing an event, or touching UTM handling.
 - Read `app_docs/confirmation-email.md` when changing the Stripe webhook, the confirmation email or owner notice copy, Resend, the email variables, or the E2E Resend mock.
+- Read `app_docs/legal-pages.md` when changing the terms or privacy pages, the provider facts or placeholders in `src/content/legal.ts`, the complaints book link, or anything the legal texts describe (price, reel length, footage window, data processors, analytics cookies).

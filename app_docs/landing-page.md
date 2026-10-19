@@ -35,16 +35,14 @@ Nothing is clipped and nothing is hidden.
     the prefilled text are defined once in `LANDING.questions`, the `href` is built by
     `whatsAppUrl` in `src/lib/whatsapp.ts`). The same link is used on `/`, `/terms` and `/privacy`.
 - All copy lives in `src/content/landing.ts` (`LANDING`), read by the page and the specs alike.
-- `footer`: a `nav` named "Legal" with links to `/terms` and `/privacy` (draft pages through
-  `src/components/LegalPage.tsx`). `/privacy` is a plain-language draft for GDPR, marked "Draft":
-  what we collect (name, email, social links, the newsletter choice; payment by Stripe, never the
-  card details), where it is stored (Stripe, Resend, PostHog on the live site only), why, how
-  long, your rights (including withdrawing newsletter consent) and the contact
-  `edit@issebya.com`. `/terms` says personal data is handled as the privacy policy describes and
-  links it. The checkout form's optional newsletter box is described in `app_docs/checkout.md`. `LegalPage` shares the landing page's padding (`PAGE_PADDING`)
-  and brand placement and typography (`BRAND_CLASS`, `BrandName`), all from
-  `src/components/Brand.tsx`, left aligned, so the brand sits at the same spot on all three pages.
-  Specs: `e2e/legal_pages.spec.ts`.
+- `footer`: a `nav` named "Legal" with links to `/terms`, `/privacy` and the "Complaints book"
+  (`LANDING.complaintsBook`, https://www.livroreclamacoes.pt, new tab), wrapping on narrow
+  phones. The legal pages and their content are described in `app_docs/legal-pages.md`.
+  `LegalPage` shares the landing page's padding (`PAGE_PADDING`) and brand placement and
+  typography (`BRAND_CLASS`, `BrandName`), all from `src/components/Brand.tsx`, left aligned, so
+  the brand sits at the same spot on all three pages. Specs: `e2e/legal_pages.spec.ts`.
+- The "8 reels, each under 1 min" item's note ("longer ones: terms of service apply") links to
+  `/terms#reel-length`.
 - `src/app/globals.css` defines the `.landing` grid. Narrow screens: one column (title, the
   quote and the introduction, the reels, then "How we work together", "What you get" and the closing
   line, CTA, footer): `.landing-text` is `display: contents` there, so `.landing-intro` and

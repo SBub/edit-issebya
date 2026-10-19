@@ -1,11 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { LANDING } from "../src/content/landing";
+import { LEGAL } from "../src/content/legal";
 import { waitForPageReady } from "./viewport";
 
 // Written out, not read from LANDING, so a wrong constant fails here.
 const WHATSAPP_TEXT = "Hi, I saw your reel editing offer and have a few questions before I start";
 
-const LEGAL = [
+const LEGAL_PAGES = [
   { path: "/terms", title: "Terms and conditions" },
   { path: "/privacy", title: "Privacy policy" },
 ];
@@ -41,7 +42,7 @@ test.describe("WhatsApp link", () => {
 
 test.describe("brand position", () => {
   for (const size of SIZES) {
-    for (const legal of LEGAL) {
+    for (const legal of LEGAL_PAGES) {
       test(`${legal.path} keeps the landing brand's place at ${size.width}x${size.height}`, async ({
         page,
       }) => {
@@ -63,25 +64,128 @@ test.describe("brand position", () => {
   }
 });
 
-test("the privacy policy is a marked draft with the GDPR sections and a contact", async ({
-  page,
-}) => {
+test("the privacy policy has the GDPR sections, the CNPD and a contact", async ({ page }) => {
   await page.goto("/privacy");
-  await expect(page.getByText(/^Draft\./)).toBeVisible();
+  await expect(page.getByText("Draft: placeholders pending.", { exact: true })).toBeVisible();
+  await expect(page.getByText(`Last updated: ${LEGAL.lastUpdated}`, { exact: true })).toBeVisible();
   for (const title of [
+    "Who is responsible",
     "What we collect",
-    "Where it is stored",
-    "Why",
-    "How long",
+    "Why we use it, and on what legal basis",
+    "Who we share it with",
+    "How long we keep it",
     "Your rights",
+    "Cookies and analytics",
     "Contact",
+    "Applicable law",
   ]) {
     await expect(page.getByRole("heading", { level: 2, name: title, exact: true })).toBeVisible();
   }
-  await expect(page.getByRole("link", { name: "edit@issebya.com" })).toHaveAttribute(
+  const main = page.getByRole("main");
+  await expect(main.getByRole("link", { name: LEGAL.email }).first()).toHaveAttribute(
     "href",
-    "mailto:edit@issebya.com",
+    `mailto:${LEGAL.email}`,
   );
+  await expect(main.getByRole("link", { name: /CNPD/ })).toHaveAttribute(
+    "href",
+    "https://www.cnpd.pt",
+  );
+  for (const processor of ["Stripe", "Resend", "PostHog", "Google", "Vercel"]) {
+    await expect(main.getByRole("region", { name: "Who we share it with" })).toContainText(
+      processor,
+    );
+  }
+  await expect(
+    main.getByRole("region", { name: "Why we use it, and on what legal basis" }),
+  ).toContainText("portfolio");
+  // The one open point: analytics consent.
+  await expect(
+    main.getByRole("region", { name: "Cookies and analytics" }).getByText("[[CONFIRM]]"),
+  ).toHaveCount(1);
+  await expect(main.getByText("[[CONFIRM]]")).toHaveCount(1);
+  await expect(main).not.toContainText("\u2014");
+});
+
+test("the terms cover the provider, the service, withdrawal and complaints", async ({ page }) => {
+  await page.goto("/terms");
+  const main = page.getByRole("main");
+  await expect(page.getByText("Draft: placeholders pending.", { exact: true })).toBeVisible();
+  for (const title of [
+    "Who we are",
+    "The service",
+    "Reel length",
+    "Price and payment",
+    "Your footage and the footage window",
+    "Revisions",
+    "Your content",
+    "Your right to withdraw (consumers)",
+    "Liability",
+    "Events outside our control",
+    "Changes to these terms",
+    "Personal data",
+    "Complaints and disputes",
+    "Applicable law",
+  ]) {
+    await expect(page.getByRole("heading", { level: 2, name: title, exact: true })).toBeVisible();
+  }
+  const provider = main.getByRole("region", { name: "Who we are" });
+  for (const fact of [LEGAL.ownerName, LEGAL.nif, LEGAL.address, LEGAL.email]) {
+    await expect(provider).toContainText(fact);
+  }
+  const price = main.getByRole("region", { name: "Price and payment" });
+  await expect(price).toContainText("590 EUR");
+  await expect(price).toContainText("990 EUR");
+  await expect(price).toContainText("article 53");
+  const reelLength = main.getByRole("region", { name: "Reel length" });
+  await expect(reelLength).toContainText("up to 2 minutes counts as 2 reels");
+  await expect(reelLength).toContainText("2 minutes and 10 seconds counts as 3 reels");
+  await expect(
+    main.getByRole("region", { name: "Your footage and the footage window" }),
+  ).toContainText("expire and are not refunded");
+  await expect(main.getByRole("region", { name: "Revisions" })).toContainText(
+    "one round of revisions",
+  );
+  await expect(main.getByRole("region", { name: "Your content" })).toContainText(
+    "unless you tell us not to",
+  );
+  const withdrawal = main.getByRole("region", { name: "Your right to withdraw (consumers)" });
+  await expect(withdrawal).toContainText("14 days");
+  await expect(withdrawal).toContainText("Model withdrawal form");
+  await expect(withdrawal).toContainText("no legal right of withdrawal");
+  const complaints = main.getByRole("region", { name: "Complaints and disputes" });
+  await expect(complaints.getByRole("link", { name: LEGAL.complaintsBook })).toHaveAttribute(
+    "href",
+    LEGAL.complaintsBook,
+  );
+  await expect(complaints.getByRole("link", { name: LEGAL.adrEntity.name })).toHaveAttribute(
+    "href",
+    LEGAL.adrEntity.url,
+  );
+  // The terms have no [[CONFIRM]] left; only the identity and ADR placeholders.
+  await expect(main.getByText("[[CONFIRM]]")).toHaveCount(0);
+  for (const placeholder of ["[[OWNER_NAME]]", "[[NIF]]", "[[ADDRESS]]", "[[ADR_ENTITY]]"]) {
+    await expect(main).toContainText(placeholder);
+  }
+  await expect(main).not.toContainText("\u2014");
+});
+
+test("the reel-length note on / opens the terms at the reel-length section", async ({ page }) => {
+  await page.goto("/");
+  const link = page.getByRole("link", { name: "terms of service apply" });
+  await expect(link).toHaveAttribute("href", "/terms#reel-length");
+  await link.click();
+  await expect(page).toHaveURL(/\/terms#reel-length$/);
+  await expect(page.getByRole("heading", { level: 2, name: "Reel length" })).toBeInViewport();
+});
+
+test("the footer links the complaints book next to the legal pages", async ({ page }) => {
+  await page.goto("/");
+  const link = page
+    .getByRole("navigation", { name: "Legal" })
+    .getByRole("link", { name: LANDING.complaintsBook.label });
+  await expect(link).toHaveAttribute("href", "https://www.livroreclamacoes.pt");
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", /noopener/);
 });
 
 test("the terms link to the privacy policy for personal data", async ({ page }) => {

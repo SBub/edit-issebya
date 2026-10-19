@@ -35,7 +35,7 @@ export const LANDING = {
       { text: "A recording guide, so your footage edits into the best possible reel" },
       {
         text: "8 reels, each under 1 min",
-        note: { lead: "longer ones:", link: "terms of service apply", href: "/terms" },
+        note: { lead: "longer ones:", link: "terms of service apply", href: "/terms#reel-length" },
       },
       { text: "30 days to send me footage for all 8, starting once your visual identity is ready" },
     ],
@@ -56,6 +56,9 @@ export const LANDING = {
     { label: "Terms and conditions", href: "/terms" },
     { label: "Privacy policy", href: "/privacy" },
   ],
+  // The Livro de Reclamações Eletrónico, which Portuguese law requires every
+  // online seller to show prominently: next to the legal links.
+  complaintsBook: { label: "Complaints book", href: "https://www.livroreclamacoes.pt" },
   cancelled: "Payment was not completed. You can try again any time.",
   thankYou:
     "Thank you. Your payment is in. Check your inbox: a confirmation email with a link to book your discovery call is on its way",

@@ -14,6 +14,10 @@ export const OFFER = {
   description: "Visual identity, recording guide and 30 days to send footage",
   reelCount: 8,
   maxSeconds: 60,
+  // Days to send footage for every reel, counted from when the visual
+  // identity is ready, and hours to deliver each reel once its footage is in.
+  footageDays: 30,
+  deliveryHours: 24,
 } as const;
 
 // "990 EUR", derived from the amount. No thousands separator, so the
@@ -48,4 +52,11 @@ export function priceFor(soldCount: number): OfferPrice {
   const sold = Number.isFinite(soldCount) ? Math.max(0, Math.floor(soldCount)) : EARLY_BIRD.spots;
   if (sold >= EARLY_BIRD.spots) return STANDARD_PRICE;
   return { amountCents: EARLY_BIRD.amountCents, tier: "early", spotsLeft: EARLY_BIRD.spots - sold };
+}
+
+// How many of the offer's reels a finished reel uses: one per started block
+// of maxSeconds. Up to 1 minute is 1 reel, over 1 and up to 2 minutes is 2,
+// and so on (the terms' "Reel length" rule).
+export function reelSlotsFor(seconds: number): number {
+  return Math.max(1, Math.ceil(seconds / OFFER.maxSeconds));
 }

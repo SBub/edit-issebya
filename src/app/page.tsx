@@ -149,12 +149,20 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       </div>
 
       <footer className="text-xs text-neutral-500 [grid-area:footer]">
-        <nav aria-label="Legal" className="flex gap-4">
+        <nav aria-label="Legal" className="flex flex-wrap gap-x-4 gap-y-1">
           {LANDING.footer.map((item) => (
             <Link key={item.href} href={item.href} className="hover:text-neutral-900">
               {item.label}
             </Link>
           ))}
+          <a
+            href={LANDING.complaintsBook.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-neutral-900"
+          >
+            {LANDING.complaintsBook.label}
+          </a>
         </nav>
       </footer>
     </main>
