@@ -16,19 +16,15 @@ function checkoutState(value: SearchParams[string]): CheckoutState {
 }
 
 /**
- * Two-column layout only: the room above, between and below "How we work
- * together" and "What you get". At least the old tight gap, growing into the
- * text column's free height up to 6rem, so tall screens get clearly more air
- * and the column never overflows. Hidden in the stacked layout, where the
- * gaps on .landing-details apply.
+ * Two-column layout only: one between every pair of blocks in the right
+ * column (quote, introduction, the two sections, closing line, offer box).
+ * All are identical flex items (globals.css, .landing-spacer), so the gaps
+ * are always equal: each grows into the column's free height from a minimum
+ * up to 6rem. Hidden in the stacked layout, where one grid and flex gap
+ * (--landing-gap) spaces the same blocks.
  */
 function Spacer() {
-  return (
-    <div
-      aria-hidden="true"
-      className="landing-spacer hidden lg:block lg:max-h-24 lg:min-h-12 lg:flex-1 lg:mid:min-h-3 lg:short:min-h-3"
-    />
-  );
+  return <div aria-hidden="true" className="landing-spacer" />;
 }
 
 /**
@@ -48,25 +44,26 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const price = await currentOfferPrice({ fresh: false });
 
   return (
-    <main className={`landing grid gap-x-10 gap-y-4 short:gap-y-2.5 tiny:gap-y-2 ${PAGE_PADDING}`}>
+    <main className={`landing grid gap-x-10 ${PAGE_PADDING}`}>
       <header className="[grid-area:title]">
         <h1 aria-label={`${LANDING.brand.name} ${LANDING.brand.suffix}`} className={BRAND_CLASS}>
           <BrandName />
         </h1>
       </header>
 
-      <div className="landing-text min-h-0 flex-col gap-4 short:gap-2.5 tiny:gap-2 lg:justify-center lg:gap-0">
-        <div className="landing-intro flex flex-col gap-3 text-sm leading-relaxed short:gap-1.5 short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
+      <div className="landing-text min-h-0 flex-col justify-center">
+        <div className="landing-intro flex flex-col text-sm leading-relaxed short:gap-1.5 short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
           {/* The page's tagline, highlighted and first: the owner's own
               words, so a styled paragraph, not a blockquote (nothing is
               quoted from elsewhere). The curly quotes are part of the text. */}
           <p className="text-lg leading-snug font-semibold text-neutral-900 italic short:text-sm tiny:text-sm lg:text-xl lg:mid:text-lg lg:short:text-base">
             “{LANDING.quote}”
           </p>
+          <Spacer />
           <p>{LANDING.intro}</p>
         </div>
         <Spacer />
-        <div className="landing-details flex flex-col gap-8 py-4 short:gap-2.5 short:py-0 tiny:gap-2">
+        <div className="landing-details flex flex-col">
           <section
             aria-label="How we work together"
             className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
@@ -107,44 +104,46 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             {LANDING.closing}
           </p>
         </div>
+        <Spacer />
+        {/* Inside the text column so its gap matches the others; on phones
+            .landing-text is display: contents and grid-area cta places it. */}
+        <section
+          aria-label="Offer"
+          className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-5 [grid-area:cta] short:gap-2 short:p-4 lg:max-w-md lg:mid:gap-2 lg:mid:p-4"
+        >
+          {price.tier === "early" ? (
+            <div className="flex flex-col gap-1 short:gap-0.5">
+              <p className="flex flex-wrap items-baseline gap-x-2 text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
+                <span>
+                  {formatOfferPrice({ amountCents: price.amountCents, currency: OFFER.currency })}
+                </span>
+                <s className="text-sm font-normal text-neutral-500 short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm">
+                  <span className="sr-only">was </span>
+                  {formatOfferPrice()}
+                </s>
+              </p>
+              <p className="text-xs text-fuchsia-700">
+                {LANDING.earlyBird(price.spotsLeft, EARLY_BIRD.spots)}
+              </p>
+            </div>
+          ) : (
+            <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
+              {formatOfferPrice()}
+            </p>
+          )}
+          <CallRequest checkout={checkout} sessionId={sessionId} utm={utm} />
+          <p className="text-xs leading-relaxed text-neutral-600">{LANDING.afterPurchase}</p>
+          <p className="text-xs text-neutral-600">
+            {LANDING.questions.lead}{" "}
+            <QuestionsLink className="text-neutral-900 underline underline-offset-2 hover:text-fuchsia-700" />
+            .
+          </p>
+        </section>
       </div>
 
       <div className="reel-area min-h-0 [grid-area:slider]">
         <ReelSlider reels={REELS} />
       </div>
-
-      <section
-        aria-label="Offer"
-        className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-5 [grid-area:cta] short:gap-2 short:p-4 lg:max-w-md lg:mid:gap-2 lg:mid:p-4"
-      >
-        {price.tier === "early" ? (
-          <div className="flex flex-col gap-1 short:gap-0.5">
-            <p className="flex flex-wrap items-baseline gap-x-2 text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
-              <span>
-                {formatOfferPrice({ amountCents: price.amountCents, currency: OFFER.currency })}
-              </span>
-              <s className="text-sm font-normal text-neutral-500 short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm">
-                <span className="sr-only">was </span>
-                {formatOfferPrice()}
-              </s>
-            </p>
-            <p className="text-xs text-fuchsia-700">
-              {LANDING.earlyBird(price.spotsLeft, EARLY_BIRD.spots)}
-            </p>
-          </div>
-        ) : (
-          <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
-            {formatOfferPrice()}
-          </p>
-        )}
-        <CallRequest checkout={checkout} sessionId={sessionId} utm={utm} />
-        <p className="text-xs leading-relaxed text-neutral-600">{LANDING.afterPurchase}</p>
-        <p className="text-xs text-neutral-600">
-          {LANDING.questions.lead}{" "}
-          <QuestionsLink className="text-neutral-900 underline underline-offset-2 hover:text-fuchsia-700" />
-          .
-        </p>
-      </section>
 
       <footer className="text-xs text-neutral-500 [grid-area:footer]">
         <nav aria-label="Legal" className="flex gap-4">

@@ -45,11 +45,12 @@ Nothing is clipped and nothing is hidden.
   `src/components/Brand.tsx`, left aligned, so the brand sits at the same spot on all three pages.
   Specs: `e2e/legal_pages.spec.ts`.
 - `src/app/globals.css` defines the `.landing` grid. Narrow screens: one column (title, the
-  introduction paragraphs, the reels, then "How we work together", "What you get" and the closing
+  quote and the introduction, the reels, then "How we work together", "What you get" and the closing
   line, CTA, footer): `.landing-text` is `display: contents` there, so `.landing-intro` and
   `.landing-details` are placed around the slider. At `@media (min-width: 64rem), (min-width: 48rem) and (orientation:
-landscape)` two columns: brand, slider and footer on the left; the text from the top, then the
-  offer section, on the right.
+landscape)` two columns: brand, slider and footer on the left; the text, then the offer
+  section, in one flex column on the right (grid areas `"title text" "slider text" "footer
+text"`).
 - On one-screen viewports the main is `100dvh` and every row is sized from it; the slider media is
   the only part that flexes. On stacked viewports the main is at least `100dvh`, grows with its
   content, and the slider area (`.reel-area`) is `min(75svh, 40rem)` tall so the reels stay a
@@ -86,14 +87,24 @@ two custom variants step down with the viewport height:
 `short:`, `tiny:` and `lg:short:` reduce text size, gaps and padding in `page.tsx`, in `ReelCard`,
 in `ReelSlider` and in `CallRequest`.
 
-"How we work together" and "What you get" get extra room. In the stacked layout
-`.landing-details` has `gap-8` between its blocks and `py-4` around them (on top of the grid's
-`gap-y-4`); `short:` and `tiny:` keep their tight gaps and `short:py-0`. In the two-column layout
-`.landing-details` is `display: contents` and three `Spacer`s in `page.tsx` sit between the
-introduction, the two sections and the closing line. Each is at least the old gap (`lg:min-h-12`,
-`lg:mid:min-h-3`, `lg:short:min-h-3`) and grows into the text column's free height up to 6rem
-(`lg:flex-1 lg:max-h-24`), so tall screens get clearly more air and the column can never
-overflow: one-screen viewports still never scroll.
+### Equal gaps
+
+Every gap between consecutive blocks is the same, on every viewport.
+
+- Stacked: one value, `--landing-gap` on `.landing` (2rem; 0.75rem at `max-height: 700px`,
+  0.5rem at `max-height: 600px`), is the grid's `row-gap` and the `gap` of `.landing-intro` and
+  `.landing-details`. So title, quote, introduction, reels, "How we work together", "What you
+  get", closing line, offer box and footer are all that far apart.
+- Two columns: the offer box sits inside `.landing-text` (on phones `.landing-text` is
+  `display: contents`, so `[grid-area:cta]` still places it), and `.landing-intro` and
+  `.landing-details` are `display: contents`, so quote, introduction, the two sections, closing
+  line and offer box are flex items of one column. A `Spacer` (`.landing-spacer`) sits between
+  every pair; all are identical (`flex: 1 1 0`, `min-height` 1rem, 0.5rem at
+  `max-height: 820px`, `max-height` 6rem), so they grow equally into the free height and the
+  column can never overflow. The left column's rows (title, slider, footer) keep `row-gap` 1rem
+  (0.625rem at `max-height: 700px`).
+- Spec: `e2e/equal_gaps.spec.ts` measures the gaps at 1440x900, 1280x800 and on a phone
+  (390x844, reels included) and requires them equal within 1px.
 
 ## Reel slider
 
@@ -167,6 +178,8 @@ Deliberate differences from the shop card:
 - Never set `overflow: hidden` or `overflow: clip` on `html` or `body`.
 - Never hide or cut off a required element below a breakpoint to make it fit.
 - Never use a non-white page background, in any colour scheme.
+- Never give two consecutive blocks of the text column (or of the stacked page) different gaps:
+  one `--landing-gap` when stacked, identical `.landing-spacer`s in two columns.
 - Never autoplay a reel or play sound unasked.
 - Never measure from `window.innerWidth` or `window.innerHeight` in specs; measure from the root
   box.

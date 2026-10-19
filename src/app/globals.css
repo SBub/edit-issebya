@@ -47,9 +47,9 @@ body {
  * stack the slider, text and CTA and the page scrolls vertically: the slider
  * area takes most of a screen so the reels stay a usable size. Wide screens
  * and tablets in landscape are one screen with no scroll: two columns (brand,
- * slider and footer on the left; text from the top, then the offer, on the
- * right), every row sized from the main's 100dvh, the slider row the only one
- * that flexes.
+ * slider and footer on the left; the text and then the offer in one flex
+ * column on the right), every row sized from the main's 100dvh, the slider
+ * row the only one that flexes.
  */
 .landing {
   /*
@@ -57,6 +57,13 @@ body {
    * scrolls changes dvh, which re-measured every reel on each scroll step.
    */
   min-height: 100svh;
+  /*
+   * Stacked: one gap between every pair of consecutive blocks (title, quote,
+   * introduction, reels, the two sections, closing line, offer box, footer),
+   * used by the grid and by .landing-intro and .landing-details alike.
+   */
+  --landing-gap: 2rem;
+  row-gap: var(--landing-gap);
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto auto auto auto auto;
   grid-template-areas: "title" "intro" "slider" "details" "cta" "footer";
@@ -70,9 +77,24 @@ body {
 }
 .landing-intro {
   grid-area: intro;
+  gap: var(--landing-gap);
 }
 .landing-details {
   grid-area: details;
+  gap: var(--landing-gap);
+}
+.landing-spacer {
+  display: none;
+}
+@media (max-height: 700px) {
+  .landing {
+    --landing-gap: 0.75rem;
+  }
+}
+@media (max-height: 600px) {
+  .landing {
+    --landing-gap: 0.5rem;
+  }
 }
 .landing .reel-area {
   height: min(75svh, 40rem);
@@ -82,25 +104,45 @@ body {
   .landing {
     height: 100dvh;
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
-    grid-template-areas: "title text" "slider text" "slider cta" "footer cta";
+    /* The left column's rows (title, slider, footer). */
+    row-gap: 1rem;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "title text" "slider text" "footer text";
   }
+  /*
+   * The right column is one flex column: quote, introduction, the two
+   * sections, closing line and offer box, with an identical .landing-spacer
+   * between every pair, so all gaps are equal. .landing-intro and
+   * .landing-details dissolve into it.
+   */
   .landing-text {
     display: flex;
     grid-area: text;
   }
-  .landing-intro {
-    grid-area: auto;
-  }
-  /*
-   * Its children join .landing-text's column, so the spacers in page.tsx
-   * share one flex container with the introduction.
-   */
+  .landing-intro,
   .landing-details {
     display: contents;
   }
+  .landing-spacer {
+    display: block;
+    flex: 1 1 0;
+    min-height: 1rem;
+    max-height: 6rem;
+  }
   .landing .reel-area {
     height: auto;
+  }
+}
+@media (min-width: 64rem) and (max-height: 820px),
+  (min-width: 48rem) and (orientation: landscape) and (max-height: 820px) {
+  .landing-spacer {
+    min-height: 0.5rem;
+  }
+}
+@media (min-width: 64rem) and (max-height: 700px),
+  (min-width: 48rem) and (orientation: landscape) and (max-height: 700px) {
+  .landing {
+    row-gap: 0.625rem;
   }
 }
 
