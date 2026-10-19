@@ -1,7 +1,6 @@
 // The landing page copy, read by the page and the e2e specs alike.
 export const LANDING = {
   brand: { name: "edit", suffix: "issebya" },
-  heading: "You record. I edit, with taste.",
   // Each paragraph is a list of sentences, one per line, with no full stops.
   description: [
     [

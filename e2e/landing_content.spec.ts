@@ -13,7 +13,7 @@ for (const viewport of VIEWPORTS) {
     await page.goto("/");
     await waitForPageReady(page);
 
-    await expectInsideRoot(page, page.getByRole("heading", { level: 1, name: LANDING.heading }));
+    await expectInsideRoot(page, page.getByRole("heading", { level: 1, name: "edit issebya" }));
     await expectInsideRoot(page, page.getByLabel("edit issebya", { exact: true }));
     // Every sentence of the description, on its own line and without a full stop.
     for (const sentence of LANDING.description.flat()) {

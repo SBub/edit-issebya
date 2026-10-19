@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     }),
   ),
   title: "edit issebya",
-  description: LANDING.heading,
+  description: LANDING.description[0][0],
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

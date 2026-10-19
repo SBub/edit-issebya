@@ -26,8 +26,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   return (
     <main className="landing grid h-dvh gap-x-10 gap-y-4 p-6 short:gap-y-2.5 short:p-4 tiny:gap-y-2 tiny:p-3 lg:p-10 lg:short:p-6">
-      <header className="flex flex-col gap-3 [grid-area:title] short:gap-1.5 lg:gap-4 lg:short:gap-2">
-        <p
+      <header className="[grid-area:title]">
+        <h1
           aria-label={`${LANDING.brand.name} ${LANDING.brand.suffix}`}
           className="text-xl font-semibold tracking-tight short:text-lg"
         >
@@ -35,9 +35,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <sub className="ml-0.5 align-sub text-[0.5em] font-normal tracking-normal">
             {LANDING.brand.suffix}
           </sub>
-        </p>
-        <h1 className="text-3xl leading-tight font-medium tracking-tight short:text-2xl tiny:text-xl lg:text-5xl lg:short:text-3xl">
-          {LANDING.heading}
         </h1>
       </header>
 
