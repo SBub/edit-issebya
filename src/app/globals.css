@@ -52,7 +52,11 @@ body {
  * that flexes.
  */
 .landing {
-  min-height: 100dvh;
+  /*
+   * svh, not dvh: on phones the address bar showing and hiding while the page
+   * scrolls changes dvh, which re-measured every reel on each scroll step.
+   */
+  min-height: 100svh;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto auto auto auto;
   grid-template-areas: "title" "slider" "text" "cta" "footer";
@@ -126,6 +130,13 @@ body {
   .reel-column .reel-video {
     width: min(100cqw, calc((100cqh - var(--reel-label)) * 9 / 16));
     margin-inline: auto;
+  }
+}
+
+/* The full-screen button is for phones; wide screens show the reels large. */
+@media (min-width: 64rem), (min-width: 48rem) and (orientation: landscape) {
+  .reel-fullscreen {
+    display: none;
   }
 }
 

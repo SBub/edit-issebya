@@ -89,3 +89,41 @@ test("clicking a reel toggles play, and starting another pauses it", async ({ pa
   await slider.getByRole("button", { name: `Pause ${second.title}` }).click();
   await expect.poll(() => paused(second)).toBe(true);
 });
+
+test("on a phone the first reel's video is centred on the screen", async ({ page }) => {
+  const media = page.getByTestId("reel-media").first();
+  const box = await media.boundingBox();
+  const width = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(box).not.toBeNull();
+  if (!box) return;
+  expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThanOrEqual(2);
+});
+
+test("on a phone each reel has a full-screen button that plays it full screen", async ({
+  page,
+}) => {
+  const reel = REELS.find((r) => r.videoSrc !== null);
+  test.skip(reel === undefined, "all reels are placeholders");
+  if (!reel) return;
+  // Headless Chromium has no real full screen: record the call instead.
+  await page.evaluate(() => {
+    (window as unknown as { fullscreenCalls: number }).fullscreenCalls = 0;
+    HTMLVideoElement.prototype.requestFullscreen = function () {
+      (window as unknown as { fullscreenCalls: number }).fullscreenCalls += 1;
+      return Promise.resolve();
+    };
+  });
+  const button = page.getByRole("button", { name: `Full screen ${reel.title}` });
+  await expect(button).toBeVisible();
+  await button.click();
+  expect(
+    await page.evaluate(() => (window as unknown as { fullscreenCalls: number }).fullscreenCalls),
+  ).toBe(1);
+  const video = page.getByRole("article", { name: reel.title }).locator("video");
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
+});
+
+test("wide screens show no full-screen button", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByRole("button", { name: /^Full screen / })).toHaveCount(0);
+});
