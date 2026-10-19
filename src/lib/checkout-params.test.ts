@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { LANDING } from "../content/landing";
 import {
   automaticTaxEnabled,
   buildCheckoutParams,
+  offerDescription,
   SESSION_ID_PLACEHOLDER,
+  STRIPE_CUSTOM_TEXT_MAX_LENGTH,
+  STRIPE_DESCRIPTION_MAX_LENGTH,
 } from "./checkout-params";
 import type { CallRequest } from "./call-request";
 import { OFFER } from "./offer";
@@ -14,6 +18,10 @@ const REQUEST: CallRequest = {
   terms: true,
 };
 const ORIGIN = "https://edit.issebya.com";
+
+// The joining rule, restated: each "What you get" text, in order, joined with
+// ". " and ending with ".".
+const EXPECTED_DESCRIPTION = `${LANDING.whatYouGet.items.map((item) => item.text).join(". ")}.`;
 
 function build(automaticTax = false, utm = {}) {
   return buildCheckoutParams({ request: REQUEST, utm, origin: ORIGIN, automaticTax });
@@ -29,12 +37,38 @@ describe("the Checkout params builder", () => {
           currency: OFFER.currency,
           unit_amount: OFFER.amountCents,
           tax_behavior: "exclusive",
-          product_data: { name: OFFER.productName },
+          product_data: { name: OFFER.productName, description: EXPECTED_DESCRIPTION },
         },
         quantity: 1,
       },
     ]);
     expect(params.customer_email).toBe(REQUEST.email);
+  });
+
+  it("describes the offer with the What you get items", () => {
+    expect(offerDescription()).toBe(EXPECTED_DESCRIPTION);
+    expect(offerDescription()).toBe(
+      "Your visual identity (on our first project together). A recording guide, so your footage edits into the best possible reel. 8 reels, each under 1 min. 30 days to send me footage for all 8, starting once your visual identity is ready.",
+    );
+    const description = offerDescription();
+    expect(description).not.toContain("\n");
+    expect(description.endsWith(".")).toBe(true);
+    for (const item of LANDING.whatYouGet.items) {
+      expect(description).toContain(item.text);
+      if ("note" in item) expect(description).not.toContain(item.note.link);
+    }
+    expect(description.length).toBeLessThanOrEqual(STRIPE_DESCRIPTION_MAX_LENGTH);
+  });
+
+  it("says what happens after payment next to the Pay button", () => {
+    const params = build();
+    expect(params.custom_text).toEqual({ submit: { message: LANDING.afterPurchase } });
+    expect(LANDING.afterPurchase.length).toBeLessThanOrEqual(STRIPE_CUSTOM_TEXT_MAX_LENGTH);
+  });
+
+  it("never asks Stripe for terms consent, with tax on or off", () => {
+    expect(build(false)).not.toHaveProperty("consent_collection");
+    expect(build(true)).not.toHaveProperty("consent_collection");
   });
 
   it("carries the answers under their literal keys and no UTM by default", () => {

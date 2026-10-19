@@ -37,6 +37,13 @@ test("a valid submit goes through Checkout and back to the thank-you dialog", as
   expect(body?.["line_items[0][price_data][unit_amount]"]).toBe("99000");
   expect(body?.["line_items[0][price_data][currency]"]).toBe("eur");
   expect(body?.["line_items[0][price_data][tax_behavior]"]).toBe("exclusive");
+  expect(body?.["line_items[0][price_data][product_data][name]"]).toBe("8 reels under 1 minute");
+  // Same joining rule as the unit test: each "What you get" text, ". ", ending ".".
+  expect(body?.["line_items[0][price_data][product_data][description]"]).toBe(
+    `${LANDING.whatYouGet.items.map((item) => item.text).join(". ")}.`,
+  );
+  expect(body?.["custom_text[submit][message]"]).toBe(LANDING.afterPurchase);
+  expect(Object.keys(body ?? {}).some((key) => key.startsWith("consent_collection"))).toBe(false);
   expect(body?.["metadata[name]"]).toBe(VALID_FORM.name);
   expect(body?.["metadata[email]"]).toBe(VALID_FORM.email);
   // https:// added to the bare host, one link per line.

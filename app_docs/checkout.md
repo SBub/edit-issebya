@@ -47,12 +47,30 @@ none), `terms_accepted` (`"true"`), plus the five `UTM_KEYS`: `utm_source`, `utm
 `utm_campaign`, `utm_term`, `utm_content` (first value of a repeated parameter, trimmed, capped at
 500, empty values and unknown keys dropped). `customer_email` is the email.
 
+`confirmation_email_sent` is the one key the code writes after creation: an ISO timestamp the
+Stripe webhook sets once both confirmation emails are accepted (`app_docs/confirmation-email.md`).
+
 ## Price
 
 `OFFER` in `src/lib/offer.ts`: `amountCents: 99000`, `currency: "eur"`, product name
 "8 reels under 1 minute". `buildCheckoutParams` sends it as `price_data` with
 `tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR + VAT" from the same constant,
 so the shown price and the charged price come from one place.
+
+What Checkout shows about the offer:
+
+- `product_data.description` on the line item: the `LANDING.whatYouGet.items[].text` values, in
+  order, joined with `". "` and ending with `"."` (`offerDescription()`). The note on the reel
+  length item is left out because Checkout cannot render its link. No newlines.
+- `custom_text.submit.message` on the session: `LANDING.afterPurchase`, shown next to the Pay
+  button. No other `custom_text` key.
+- Limits (`STRIPE_DESCRIPTION_MAX_LENGTH`, `STRIPE_CUSTOM_TEXT_MAX_LENGTH`): 40000 characters for
+  the description and 1200 for custom text, from Stripe's OpenAPI spec (`maxLength` on
+  `POST /v1/checkout/sessions`) and the installed SDK's type comment ("Text can be up to 1200
+  characters in length"). The unit test checks both.
+- No `consent_collection`: `terms_of_service: "required"` needs a terms URL in the Stripe
+  account's public details, or the session create fails. The site's form already requires the
+  terms checkbox (`terms_accepted`).
 
 ## Tax flag
 
@@ -82,15 +100,18 @@ Unset, or any other value: no tax parameter is sent.
 ## Thank-you dialog
 
 - `/?checkout=success&session_id=...` opens the thank-you dialog from the URL alone.
-- It does not retrieve or confirm the session with Stripe (there is no webhook), so anyone with the
-  URL can see it. The Stripe Dashboard is the source of truth for who paid.
+- It does not retrieve or confirm the session with Stripe, so anyone with the URL can see it, and
+  it is not proof of payment. The Stripe Dashboard is the source of truth for who paid.
+- Its text (`LANDING.thankYou`) points the buyer to the confirmation email, which the Stripe
+  webhook sends after payment (`app_docs/confirmation-email.md`).
 - `?checkout=cancelled` shows a short `role="status"` note under the CTA and nothing else.
 - Closing the thank-you dialog resets the URL to `/`.
 
 ## E2E Stripe mock
 
 - On only when `E2E_MOCK_STRIPE` is exactly `"true"`: set in `playwright.config.ts`
-  `webServer.env`, or by hand as `E2E_MOCK_STRIPE=true yarn dev` for the ADW server.
+  `webServer.env`, or by hand as `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn dev` for the ADW
+  server.
 - `src/instrumentation.ts` then registers an in-process msw network that answers
   `POST https://api.stripe.com/v1/checkout/sessions` with an id `cs_test_e2e_<uuid>` and the
   success URL as its `url`, and captures the raw request body.
@@ -100,7 +121,10 @@ Unset, or any other value: no tax parameter is sent.
   missing-key toggle, `DELETE` clears the capture. Every method answers 404 without the flag.
 - The shared state lives on `globalThis` under `Symbol.for` keys (`src/lib/e2e-stripe-mock.ts`), so
   every bundle in the server process sees it. That is why specs run with `workers: 1`.
-- Specs: `e2e/checkout.spec.ts`, `e2e/call_form.spec.ts`.
+- The create handler also stores each session for the webhook's retrieve and update calls, and
+  `/api/e2e-stripe-mock` also lists, clears and sets the payment status of the stored sessions; see
+  `app_docs/confirmation-email.md`, "E2E mocks", which also covers the Resend mock.
+- Specs: `e2e/checkout.spec.ts`, `e2e/call_form.spec.ts`, `e2e/confirmation_email.spec.ts`.
 
 ### msw 3 deviation
 
@@ -116,20 +140,33 @@ the `ClientRequestInterceptor` passthrough socket bug
 
 None of this is done by the code:
 
-- `STRIPE_SECRET_KEY` in Vercel: the live key for Production, a test key for Preview.
-- Stripe Tax: the Lisbon origin address, the Portugal registration and any OSS registrations, and
-  the services tax code as the account default. Then set `STRIPE_AUTOMATIC_TAX=true`.
-- Checkout branding and the public business name.
-- Receipt emails for successful payments.
+1. In Vercel, set `STRIPE_SECRET_KEY`: the live key for Production, a test key for Preview.
+2. In Stripe, enable Stripe Tax: the Lisbon origin address, the Portugal registration (and any OSS
+   registration), the services tax code as the account default. Then set
+   `STRIPE_AUTOMATIC_TAX=true` in Vercel and redeploy.
+3. In Stripe settings (Business, Public details, Branding): the public business name, the brand
+   colour and icon or logo for Checkout, and the support email.
+4. In Stripe public details, set the terms of service URL `https://edit.issebya.com/terms` and the
+   privacy policy URL `https://edit.issebya.com/privacy`; in Checkout settings, enable "Legal
+   policies" and "Contact information" so Checkout links them. Only after this could
+   `consent_collection.terms_of_service` be considered (a separate change).
+5. Receipt emails for successful payments.
+6. Make one test-mode payment and check the Checkout page shows the description under the product
+   name and the custom text next to the Pay button.
 
 This code has not been run against a real Stripe account.
 
 ## Rules
 
 - Never let the shown price and the charged price drift: both come from `OFFER`.
-- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted` and the five UTM keys).
+- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted`, the five UTM keys and
+  `confirmation_email_sent`).
 - Never throw from `startCheckout`; return a typed result.
 - Never create the Stripe client at module load.
+- Never copy the offer description or the custom text into `checkout-params.ts`; both are read
+  from `LANDING`.
+- Do not send `consent_collection.terms_of_service` unless a terms URL is set in the Stripe
+  account's public details.
 - Never make the E2E mock, its route or `sk_test_e2e_mock` do anything unless `E2E_MOCK_STRIPE` is
   exactly `"true"`.
 - Never commit a real Stripe key.
