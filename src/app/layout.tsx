@@ -14,8 +14,8 @@ export const metadata: Metadata = {
       VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
     }),
   ),
-  title: "edit.issebya.com",
-  description: LANDING.subline,
+  title: "edit issebya",
+  description: LANDING.heading,
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

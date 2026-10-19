@@ -44,9 +44,9 @@ trimmed, capped at 500, empty values and unknown keys dropped). `customer_email`
 
 ## Price
 
-`OFFER` in `src/lib/offer.ts`: `amountCents: 120000`, `currency: "eur"`, product name
-"8 reels under 30 seconds". `buildCheckoutParams` sends it as `price_data` with
-`tax_behavior: "exclusive"`. `formatOfferPrice()` renders "1200 EUR + VAT" from the same constant,
+`OFFER` in `src/lib/offer.ts`: `amountCents: 99000`, `currency: "eur"`, product name
+"8 reels under 1 minute". `buildCheckoutParams` sends it as `price_data` with
+`tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR + VAT" from the same constant,
 so the shown price and the charged price come from one place.
 
 ## Tax flag

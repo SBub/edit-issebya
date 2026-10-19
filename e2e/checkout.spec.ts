@@ -35,7 +35,7 @@ test("a valid submit goes through Checkout and back to the thank-you dialog", as
   expect(body).not.toBeNull();
   expect(body?.["mode"]).toBe("payment");
   expect(body?.["customer_email"]).toBe(VALID_FORM.email);
-  expect(body?.["line_items[0][price_data][unit_amount]"]).toBe("120000");
+  expect(body?.["line_items[0][price_data][unit_amount]"]).toBe("99000");
   expect(body?.["line_items[0][price_data][currency]"]).toBe("eur");
   expect(body?.["line_items[0][price_data][tax_behavior]"]).toBe("exclusive");
   for (const field of CALL_REQUEST_FIELDS) {

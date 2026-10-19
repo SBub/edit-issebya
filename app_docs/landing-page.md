@@ -4,7 +4,7 @@
 
 - specs/issue-1-adw-d5416729-sdlc_planner-one-page-landing-checkout.md
 
-The whole site is one screen at `/`: a heading, the process, the offer and its price, a slider of
+The whole site is one screen at `/`: the brand, a heading, a description, the offer and its price, a slider of
 edited reels and one call to action that opens the discovery-call form (see
 `app_docs/checkout.md`). At every supported viewport the page never scrolls, nothing is clipped and
 nothing is hidden.
@@ -12,9 +12,12 @@ nothing is hidden.
 ## Layout
 
 - `src/app/page.tsx` renders one `<main class="landing grid h-dvh">` with four grid areas:
-  - `title`: a `header` with the `h1`, across the top.
-  - `text`: the sub-line, the for-whom text, an `<ol aria-label="Process">` of the four
-    `LANDING.steps`, the offer line and the price from `formatOfferPrice()`.
+  - `title`: a `header` across the top with the brand ("edit" with "issebya" set small and low on
+    its right, a `sub`, like a chemical index) and the `h1`.
+  - `text`: `LANDING.description` (paragraphs of sentences, each sentence on its own line and with
+    no full stop), the offer line ("8 reels, each under 1 min*"), the price from
+    `formatOfferPrice()` under it, and `LANDING.offerNote` (the offer is valid for 30 days from
+    purchase).
   - `slider`: `ReelSlider` (`src/components/ReelSlider.tsx`).
   - `cta`: `CallRequest` (`src/components/CallRequest.tsx`).
 - All copy lives in `src/content/landing.ts` (`LANDING`), read by the page and the specs alike.

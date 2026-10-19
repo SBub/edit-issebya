@@ -3,7 +3,7 @@ import { formatOfferPrice, OFFER } from "./offer";
 
 describe("formatOfferPrice", () => {
   it("shows the offer price with VAT on top", () => {
-    expect(formatOfferPrice()).toBe("1200 EUR + VAT");
+    expect(formatOfferPrice()).toBe("990 EUR + VAT");
   });
 
   it("is derived from the amount, not a second literal", () => {
