@@ -1,6 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { CALL_REQUEST_MESSAGES } from "../src/lib/call-request";
-import { ctaButton, FIELD_LABELS, formDialog, MOCK_ROUTE, VALID_FORM } from "./viewport";
+import {
+  ctaButton,
+  FIELD_LABELS,
+  formDialog,
+  MOCK_ROUTE,
+  VALID_FORM,
+  newsletterCheckbox,
+  termsCheckbox,
+} from "./viewport";
 
 // Inline validation runs before the server action, which is never called with
 // invalid answers; Escape closes the dialog and focus returns to the CTA.
@@ -16,10 +24,27 @@ test("the submit button is disabled until the terms box is ticked", async ({ pag
   const dialog = formDialog(page);
   const submit = dialog.getByRole("button", { name: "Continue to payment" });
   await expect(submit).toBeDisabled();
-  await dialog.getByRole("checkbox").check();
+  await termsCheckbox(dialog).check();
   await expect(submit).toBeEnabled();
-  await dialog.getByRole("checkbox").uncheck();
+  await termsCheckbox(dialog).uncheck();
   await expect(submit).toBeDisabled();
+});
+
+test("the newsletter box is optional, unticked and never enables the submit button", async ({
+  page,
+}) => {
+  const dialog = formDialog(page);
+  const submit = dialog.getByRole("button", { name: "Continue to payment" });
+  const newsletter = newsletterCheckbox(dialog);
+  await expect(newsletter).toBeVisible();
+  await expect(newsletter).not.toBeChecked();
+  await expect(newsletter).not.toHaveAttribute("required", /.*/);
+  await newsletter.check();
+  await expect(submit).toBeDisabled();
+  await termsCheckbox(dialog).check();
+  await expect(submit).toBeEnabled();
+  await newsletter.uncheck();
+  await expect(submit).toBeEnabled();
 });
 
 // With the button disabled, a missing terms tick never reaches the client
@@ -30,12 +55,12 @@ test("an empty submit with terms ticked marks name and email invalid and calls n
   request,
 }) => {
   const dialog = formDialog(page);
-  await dialog.getByRole("checkbox").check();
+  await termsCheckbox(dialog).check();
   await dialog.getByRole("button", { name: "Continue to payment" }).click();
   for (const label of Object.values(FIELD_LABELS)) {
     await expect(dialog.getByLabel(label, { exact: true })).toHaveAttribute("aria-invalid", "true");
   }
-  await expect(dialog.getByRole("checkbox")).not.toHaveAttribute("aria-invalid", "true");
+  await expect(termsCheckbox(dialog)).not.toHaveAttribute("aria-invalid", "true");
   await expect(dialog.getByText(CALL_REQUEST_MESSAGES.required)).toHaveCount(2);
   await expect(dialog.getByText(CALL_REQUEST_MESSAGES.terms)).toHaveCount(0);
   // Socials are optional: an empty row is not an error.
@@ -57,7 +82,7 @@ test("social rows are added with + and removed with x", async ({ page }) => {
 test("a bad email and a bad link show their own messages until fixed", async ({ page }) => {
   const dialog = formDialog(page);
   await dialog.getByLabel(FIELD_LABELS.name, { exact: true }).fill(VALID_FORM.name);
-  await dialog.getByRole("checkbox").check();
+  await termsCheckbox(dialog).check();
   const email = dialog.getByLabel(FIELD_LABELS.email, { exact: true });
   const link = dialog.getByLabel("Social media links 1", { exact: true });
   await email.fill("not-an-email");

@@ -164,6 +164,16 @@ export function CallFormFields({
         </label>
         <FieldError id="terms-error" error={errors.terms} />
       </div>
+
+      {/* Optional and unticked: GDPR consent is never pre-ticked or required. */}
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          name="newsletter"
+          type="checkbox"
+          className="mt-0.5 size-4 shrink-0 accent-fuchsia-700"
+        />
+        <span>{CALL_REQUEST_LABELS.newsletter}</span>
+      </label>
     </div>
   );
 }

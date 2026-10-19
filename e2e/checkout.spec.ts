@@ -7,6 +7,8 @@ import {
   formDialog,
   MOCK_ROUTE,
   VALID_FORM,
+  newsletterCheckbox,
+  termsCheckbox,
 } from "./viewport";
 
 // A valid submit creates a Checkout Session through the in-process Stripe mock
@@ -56,9 +58,28 @@ test("a valid submit goes through Checkout and back to the thank-you dialog", as
   // https:// added to the bare host, one link per line.
   expect(body?.["metadata[socials]"]).toBe("https://instagram.com/ana\nhttps://ana.example.com/");
   expect(body?.["metadata[terms_accepted]"]).toBe("true");
+  // The newsletter box was left unticked: recorded as no.
+  expect(body?.["metadata[newsletter]"]).toBe("false");
   expect(body?.["metadata[utm_source]"]).toBe("test");
   expect(body?.["metadata[utm_campaign]"]).toBe("spring");
   expect(body).not.toHaveProperty("metadata[utm_medium]");
+});
+
+test("a ticked newsletter box travels as metadata newsletter true", async ({ page, request }) => {
+  expect((await request.delete(MOCK_ROUTE)).ok()).toBe(true);
+  await page.goto("/");
+  await ctaButton(page).click();
+  const dialog = formDialog(page);
+  await fillValidForm(dialog);
+  await newsletterCheckbox(dialog).check();
+  await dialog.getByRole("button", { name: "Continue to payment" }).click();
+
+  await page.waitForURL(/\/\?checkout=success&session_id=cs_test_e2e_/);
+  const { body } = (await (await request.get(MOCK_ROUTE)).json()) as {
+    body: Record<string, string> | null;
+  };
+  expect(body?.["metadata[newsletter]"]).toBe("true");
+  expect(body?.["metadata[terms_accepted]"]).toBe("true");
 });
 
 test("without a Stripe key the dialog shows an alert and keeps the answers", async ({
@@ -86,7 +107,7 @@ test("without a Stripe key the dialog shows an alert and keeps the answers", asy
     await expect(dialog.getByLabel("Social media links 2", { exact: true })).toHaveValue(
       VALID_FORM.socials[1],
     );
-    await expect(dialog.getByRole("checkbox")).toBeChecked();
+    await expect(termsCheckbox(dialog)).toBeChecked();
     const captured = await (await request.get(MOCK_ROUTE)).json();
     expect(captured.body).toBeNull();
   } finally {

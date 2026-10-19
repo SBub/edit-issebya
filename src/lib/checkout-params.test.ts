@@ -17,6 +17,7 @@ const REQUEST: CallRequest = {
   email: "ana@example.com",
   socials: ["https://instagram.com/ana", "https://ana.example.com/"],
   terms: true,
+  newsletter: false,
 };
 const ORIGIN = "https://edit.issebya.com";
 
@@ -95,6 +96,7 @@ describe("the Checkout params builder", () => {
       email: "ana@example.com",
       socials: "https://instagram.com/ana\nhttps://ana.example.com/",
       terms_accepted: "true",
+      newsletter: "false",
     });
   });
 

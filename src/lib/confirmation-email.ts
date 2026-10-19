@@ -91,10 +91,12 @@ export function buildBuyerEmail({
   };
 }
 
-// The metadata keys the owner sees, in form order then UTM order. The form's
-// `terms` field travels as `terms_accepted` (toCheckoutMetadata).
+// The metadata keys the owner sees, in form order, the newsletter choice, then
+// UTM order. The form's `terms` field travels as `terms_accepted`
+// (toCheckoutMetadata).
 const OWNER_NOTICE_KEYS: readonly string[] = [
   ...CALL_REQUEST_FIELDS.map((field) => (field === "terms" ? "terms_accepted" : field)),
+  "newsletter",
   ...UTM_KEYS,
 ];
 

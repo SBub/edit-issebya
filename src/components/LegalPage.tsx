@@ -8,7 +8,7 @@ import { LANDING } from "@/content/landing";
  * title and the body. It shares the landing page's padding and brand
  * placement, so the brand stays put between pages; the brand link is a
  * direct flex child, so its top is the padding edge like the landing `h1`.
- * Both pages are stubs until the owner's texts are ready.
+ * Both pages are drafts until the owner's texts are ready.
  */
 export function LegalPage({ title, children }: { title: string; children: ReactNode }) {
   return (

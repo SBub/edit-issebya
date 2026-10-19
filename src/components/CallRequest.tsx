@@ -39,6 +39,7 @@ function formValues(form: HTMLFormElement): Record<string, unknown> {
     email: value("email"),
     socials: data.getAll("socials").filter((entry) => typeof entry === "string"),
     terms: data.get("terms") === "on",
+    newsletter: data.get("newsletter") === "on",
   };
 }
 

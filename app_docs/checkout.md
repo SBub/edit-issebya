@@ -39,15 +39,21 @@ The form asks as little as possible. `CALL_REQUEST_FIELDS`, in order: `name`, `e
   Empty rows are dropped. A link without a scheme gets `https://` (`instagram.com/you` is what
   people type); anything that is still not an `http(s)` URL with a dotted host is rejected. The
   links, joined one per line, are capped at 500 characters.
-- `terms` is a required checkbox linking to `/terms` and `/privacy` (both stubs for now). The
+- `terms` is a required checkbox linking to `/terms` and `/privacy` (both drafts for now). The
   "Continue to payment" button carries the native `disabled` attribute until the box is ticked,
   and again if it is unticked (`termsAccepted` in `CallRequest`, fed by `onTermsChange` from
   `CallFormFields`). So the terms error is no longer reachable from the browser; the server action
   still validates `terms` with `parseCallRequest` and returns it as a field error.
+- `newsletter` is an optional checkbox below terms, unticked by default: "Send me occasional
+  emails with new offers and tips. Unsubscribe any time" (`CALL_REQUEST_LABELS.newsletter`). It is
+  GDPR consent, so it is never pre-ticked, never required and never affects the submit button.
+  `parseCallRequest` reads `true` or `"on"` as yes and anything else as no; it never errors. It is
+  not in `CALL_REQUEST_FIELDS` (that list is the fields that can show an error).
 - The browser and the action run the same validator, so their messages are identical.
 
 Stripe metadata (`toCheckoutMetadata`): `name`, `email`, `socials` (one link per line, empty when
-none), `terms_accepted` (`"true"`), plus the five `UTM_KEYS`: `utm_source`, `utm_medium`,
+none), `terms_accepted` (`"true"`), `newsletter` (`"true"` or `"false"`, the record of the
+buyer's choice), plus the five `UTM_KEYS`: `utm_source`, `utm_medium`,
 `utm_campaign`, `utm_term`, `utm_content` (first value of a repeated parameter, trimmed, capped at
 500, empty values and unknown keys dropped). `customer_email` is the email.
 
@@ -173,8 +179,10 @@ This code has not been run against a real Stripe account.
 ## Rules
 
 - Never let the shown price and the charged price drift: both come from `OFFER`.
-- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted`, the five UTM keys and
-  `confirmation_email_sent`).
+- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted`, `newsletter`, the
+  five UTM keys and `confirmation_email_sent`).
+- Never pre-tick or require the newsletter box, and never let it change the submit button's
+  disabled state. Email a buyer a newsletter only when their `newsletter` metadata is `"true"`.
 - Never throw from `startCheckout`; return a typed result.
 - Never create the Stripe client at module load.
 - Never copy the offer name, the offer description or the custom text into `checkout-params.ts`;

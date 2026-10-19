@@ -62,3 +62,31 @@ test.describe("brand position", () => {
     }
   }
 });
+
+test("the privacy policy is a marked draft with the GDPR sections and a contact", async ({
+  page,
+}) => {
+  await page.goto("/privacy");
+  await expect(page.getByText(/^Draft\./)).toBeVisible();
+  for (const title of [
+    "What we collect",
+    "Where it is stored",
+    "Why",
+    "How long",
+    "Your rights",
+    "Contact",
+  ]) {
+    await expect(page.getByRole("heading", { level: 2, name: title, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole("link", { name: "edit@issebya.com" })).toHaveAttribute(
+    "href",
+    "mailto:edit@issebya.com",
+  );
+});
+
+test("the terms link to the privacy policy for personal data", async ({ page }) => {
+  await page.goto("/terms");
+  await expect(
+    page.getByRole("main").getByRole("link", { name: "privacy policy", exact: true }),
+  ).toHaveAttribute("href", "/privacy");
+});

@@ -92,6 +92,7 @@ describe("the owner notice", () => {
       metadata: {
         utm_campaign: "spring",
         terms_accepted: "true",
+        newsletter: "true",
         socials: "https://instagram.com/ana\nhttps://ana.example.com/",
         email: "ana@example.com",
         name: "Ana Test",
@@ -110,6 +111,7 @@ describe("the owner notice", () => {
         "https://instagram.com/ana",
         "https://ana.example.com/",
         "terms_accepted: true",
+        "newsletter: true",
         "utm_source: ig",
         "utm_campaign: spring",
         "",

@@ -81,7 +81,7 @@ logged (`console.error`, names only, never values).
   images, no tracking, no external CSS.
 - Owner: a separate email (not a CC), from `EMAIL_FROM`, to `EMAIL_REPLY_TO`, reply-to the buyer,
   subject `New payment: <name>`. Plain text: each metadata key and value in `CALL_REQUEST_FIELDS`
-  order (`terms` as `terms_accepted`) then `UTM_KEYS` order, socials one link per line, then the
+  order (`terms` as `terms_accepted`), then `newsletter`, then `UTM_KEYS` order, socials one link per line, then the
   session id, `amount_total` and `currency`. Nothing else.
 
 ## Variables
