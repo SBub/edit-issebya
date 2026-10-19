@@ -19,12 +19,14 @@ function expectAbsolute(url: string) {
 test("/ has Open Graph and Twitter tags with absolute image URLs", async ({ page, request }) => {
   await page.goto("/");
   expect(await meta(page, "property", "og:title")).toBe("edit issebya");
-  expect(await meta(page, "property", "og:description")).toBe(LANDING.description[0]);
+  expect(await meta(page, "property", "og:description")).toBe(LANDING.quote);
   expect(await meta(page, "property", "og:site_name")).toBe("edit issebya");
   expect(await meta(page, "property", "og:type")).toBe("website");
   expect(await meta(page, "property", "og:image:width")).toBe("1200");
   expect(await meta(page, "property", "og:image:height")).toBe("630");
   expect(await meta(page, "property", "og:image:alt")).not.toBe("");
+  expect(await meta(page, "name", "description")).toBe(LANDING.quote);
+  expect(await meta(page, "name", "twitter:description")).toBe(LANDING.quote);
   expect(await meta(page, "name", "twitter:card")).toBe("summary_large_image");
 
   const ogImage = await meta(page, "property", "og:image");

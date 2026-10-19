@@ -14,7 +14,7 @@ export const OG_IMAGE_ALT =
 const POSTER = { width: 214, height: 380 };
 
 // "Your ideas deserve reels that look like your brand", no full stop.
-const HEADLINE = LANDING.description[0].split(".")[0];
+const HEADLINE = LANDING.quote.split(".")[0];
 
 // The posters, read from public/ and inlined: the image renders without a
 // request back to the site.

@@ -13,10 +13,12 @@ const questions = {
 // The landing page copy, read by the page and the e2e specs alike.
 export const LANDING = {
   brand: { name: "edit", suffix: "issebya" },
-  description: [
-    "Your ideas deserve reels that look like your brand. And you deserve your evenings back.",
+  // The highlighted quote, then the introduction under it. The quote is also
+  // the meta, Open Graph and Twitter description, and its first sentence is
+  // the Open Graph image's headline. No trailing full stop in the quote.
+  intro:
     "I'm a reel editor for founders and experts. I give your reels one consistent look, so people recognise you in the feed and remember your name.",
-  ],
+  quote: "Your ideas deserve reels that look like your brand. And you deserve your evenings back",
   howItWorks: {
     title: "How we work together:",
     steps: [

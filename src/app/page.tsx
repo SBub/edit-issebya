@@ -57,9 +57,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
       <div className="landing-text min-h-0 flex-col gap-4 short:gap-2.5 tiny:gap-2 lg:justify-center lg:gap-0">
         <div className="landing-intro flex flex-col gap-3 text-sm leading-relaxed short:gap-1.5 short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
-          {LANDING.description.map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
-          ))}
+          {/* The page's tagline, highlighted and first: the owner's own
+              words, so a styled paragraph, not a blockquote (nothing is
+              quoted from elsewhere). The curly quotes are part of the text. */}
+          <p className="text-lg leading-snug font-semibold text-neutral-900 italic short:text-sm tiny:text-sm lg:text-xl lg:mid:text-lg lg:short:text-base">
+            “{LANDING.quote}”
+          </p>
+          <p>{LANDING.intro}</p>
         </div>
         <Spacer />
         <div className="landing-details flex flex-col gap-8 py-4 short:gap-2.5 short:py-0 tiny:gap-2">

@@ -16,10 +16,13 @@ Nothing is clipped and nothing is hidden.
 - `src/app/page.tsx` renders one `<main class="landing grid">` with four grid areas:
   - `title`: a `header` across the top with the brand as the `h1` ("edit" with "issebya" set small
     and low on its right, a `sub`, like a chemical index; its accessible name is "edit issebya").
-  - `text`: `LANDING.description` (paragraphs of sentences, each sentence on its own line and with
-    no full stop), the offer line ("8 reels, each under 1 min*"), the price from
-    `formatOfferPrice()` under it, and `LANDING.offerNote` (the offer is valid for 30 days from
-    purchase).
+  - `text`: the quote (`LANDING.quote`, "Your ideas deserve reels that look like your brand. And
+    you deserve your evenings back") first and highlighted: in curly quotes, italic, `font-semibold`,
+    two steps above the body text (`text-lg`, `lg:text-xl`) and stepped down by `short:`,
+    `tiny:`, `lg:mid:` and `lg:short:`. No trailing full stop inside the quote. It is a `p`, not a
+    `blockquote`: the owner's own tagline, not a quotation from elsewhere. Then the introduction
+    (`LANDING.intro`, "I'm a reel editor for founders and experts...") as body text, then "How we
+    work together", "What you get" and the closing line.
   - `slider`: `ReelSlider` (`src/components/ReelSlider.tsx`).
   - `cta`: a bordered `section` named "Offer" (`rounded-lg border-neutral-200`, the ADW
     dashboard's card style): the price (while early-bird spots remain, "590 EUR + VAT" with the
@@ -131,12 +134,12 @@ never changes.
 ## Link previews
 
 - `src/app/layout.tsx` sets `openGraph` (`type` website, `siteName` and `title` "edit issebya",
-  `description` `LANDING.description[0]`, `locale` en) and `twitter` (`card`
+  `description` `LANDING.quote`, `locale` en) and `twitter` (`card`
   `summary_large_image`). `metadataBase` makes every image URL absolute.
 - `src/app/opengraph-image.tsx` and `src/app/twitter-image.tsx` are Next's file conventions and
   both render `renderOgImage()` (`src/components/OgImage.tsx`, `ImageResponse` from `next/og`):
   1200x630, white, the "edit" wordmark with "issebya" set small and low, a short fuchsia-700 rule,
-  the first sentence of the introduction, and the first three `REELS` posters as rounded 9:16
+  the first sentence of `LANDING.quote`, and the first three `REELS` posters as rounded 9:16
   thumbnails, read from `public/` with `fs/promises` and inlined as data URLs. The config exports
   (`alt`, `size`, `contentType`) stay literal in each route file.
 - `src/app/icon.tsx`: the 32x32 favicon, an "e" in neutral-900 on white.

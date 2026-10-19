@@ -15,9 +15,8 @@ for (const viewport of VIEWPORTS) {
 
     await expectInsideRoot(page, page.getByRole("heading", { level: 1, name: "edit issebya" }));
     await expectInsideRoot(page, page.getByLabel("edit issebya", { exact: true }));
-    for (const paragraph of LANDING.description) {
-      await expectInsideRoot(page, page.getByText(paragraph, { exact: true }));
-    }
+    await expectInsideRoot(page, page.getByText(LANDING.intro, { exact: true }));
+    await expectInsideRoot(page, page.getByText(`“${LANDING.quote}”`, { exact: true }));
     const steps = page.getByRole("region", { name: "How we work together" }).getByRole("listitem");
     await expect(steps).toHaveText([...LANDING.howItWorks.steps]);
     for (const step of await steps.all()) await expectInsideRoot(page, step);
@@ -83,11 +82,34 @@ for (const item of LANDING.footer) {
   });
 }
 
+test("the highlighted quote comes first, then the introduction", async ({ page }) => {
+  await page.goto("/");
+  const intro = page.getByText(LANDING.intro, { exact: true });
+  const quote = page.getByText(`“${LANDING.quote}”`, { exact: true });
+  const introBox = await intro.boundingBox();
+  const quoteBox = await quote.boundingBox();
+  expect(introBox && quoteBox && quoteBox.y + quoteBox.height <= introBox.y).toBe(true);
+  expect(LANDING.quote.endsWith(".")).toBe(false);
+  const style = await quote.evaluate((element) => {
+    const quoteStyle = getComputedStyle(element);
+    const introStyle = getComputedStyle(element.nextElementSibling as Element);
+    return {
+      fontStyle: quoteStyle.fontStyle,
+      fontWeight: Number(quoteStyle.fontWeight),
+      quoteSize: parseFloat(quoteStyle.fontSize),
+      introSize: parseFloat(introStyle.fontSize),
+    };
+  });
+  expect(style.fontStyle).toBe("italic");
+  expect(style.fontWeight).toBeGreaterThanOrEqual(600);
+  expect(style.quoteSize).toBeGreaterThan(style.introSize);
+});
+
 test("on a phone the reels sit between the introduction and the details", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await waitForPageReady(page);
-  const intro = await page.getByText(LANDING.description[0], { exact: true }).boundingBox();
+  const intro = await page.getByText(LANDING.intro, { exact: true }).boundingBox();
   const reels = await page.getByRole("region", { name: "Edited reels" }).boundingBox();
   const details = await page.getByRole("region", { name: "How we work together" }).boundingBox();
   expect(intro && reels && details).toBeTruthy();
@@ -102,7 +124,8 @@ test("on a wide screen all the text stays in the right column", async ({ page })
   await waitForPageReady(page);
   const reels = await page.getByRole("region", { name: "Edited reels" }).boundingBox();
   for (const locator of [
-    page.getByText(LANDING.description[0], { exact: true }),
+    page.getByText(LANDING.intro, { exact: true }),
+    page.getByText(`“${LANDING.quote}”`, { exact: true }),
     page.getByRole("region", { name: "How we work together" }),
   ]) {
     const box = await locator.boundingBox();
