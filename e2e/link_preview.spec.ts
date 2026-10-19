@@ -60,3 +60,12 @@ test("/ links a PNG icon", async ({ page, request }) => {
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toBe("image/png");
 });
+
+test("/ links a 180x180 PNG Apple touch icon", async ({ page, request }) => {
+  await page.goto("/");
+  const link = page.locator('link[rel="apple-touch-icon"]').first();
+  await expect(link).toHaveAttribute("sizes", "180x180");
+  const response = await request.get((await link.getAttribute("href")) ?? "");
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toBe("image/png");
+});
