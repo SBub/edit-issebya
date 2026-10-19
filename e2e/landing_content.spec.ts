@@ -34,10 +34,16 @@ for (const viewport of VIEWPORTS) {
 
     await expectInsideRoot(page, ctaButton(page));
 
-    // The text column never runs into the CTA below it.
-    const price = await page.getByText("990 EUR + VAT", { exact: true }).boundingBox();
-    const cta = await ctaButton(page).boundingBox();
-    expect(price && cta && price.y + price.height <= cta.y + 0.5).toBe(true);
+    await expectInsideRoot(page, page.getByText(LANDING.afterPurchase, { exact: true }));
+    await expect(page.getByRole("link", { name: LANDING.questions.link })).toHaveAttribute(
+      "href",
+      LANDING.questions.href,
+    );
+
+    // The text column never runs into the offer section below it.
+    const closing = await page.getByText(LANDING.closing, { exact: true }).boundingBox();
+    const offer = await page.getByRole("region", { name: "Offer" }).boundingBox();
+    expect(closing && offer && closing.y + closing.height <= offer.y + 0.5).toBe(true);
   });
 }
 

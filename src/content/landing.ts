@@ -27,7 +27,14 @@ export const LANDING = {
     "That works out to 2 reels a week. It's for founders who treat content as a distribution channel, not a side project.",
   variations:
     "These are variations. Your variant will match your project's ICP and UVP or already established brand identity",
-  cta: "Book your discovery call",
+  cta: "Start your 30 days",
+  afterPurchase:
+    "After payment, you get a confirmation email and I'll reach out to set up our discovery call.",
+  questions: {
+    lead: "Questions first?",
+    link: "Message me here",
+    href: "mailto:sveta@issebya.com",
+  },
   cancelled: "Payment was not completed. You can try again any time.",
   thankYou:
     "Thank you. Your payment is in. I will email you within two working days to set up the discovery call.",

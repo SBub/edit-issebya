@@ -20,7 +20,11 @@ Nothing is clipped and nothing is hidden.
     `formatOfferPrice()` under it, and `LANDING.offerNote` (the offer is valid for 30 days from
     purchase).
   - `slider`: `ReelSlider` (`src/components/ReelSlider.tsx`).
-  - `cta`: `CallRequest` (`src/components/CallRequest.tsx`).
+  - `cta`: a bordered `section` named "Offer" (`rounded-lg border-neutral-200`, the ADW
+    dashboard's card style): the price, `CallRequest` (`src/components/CallRequest.tsx`, the "Start
+    your 30 days" button in the dashboard's Work with me style: fuchsia 700, `rounded-md`), what
+    happens after payment (`LANDING.afterPurchase`) and a "Questions first? Message me here" mail
+    link (`LANDING.questions`).
 - All copy lives in `src/content/landing.ts` (`LANDING`), read by the page and the specs alike.
 - `src/app/globals.css` defines the `.landing` grid. The title row spans the full width. Below it,
   on narrow screens, one column (slider, text, CTA). At `@media (min-width: 64rem), (min-width:

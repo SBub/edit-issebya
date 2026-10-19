@@ -70,18 +70,31 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         <p className="text-sm leading-relaxed short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
           {LANDING.closing}
         </p>
-        <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
-          {formatOfferPrice()}
-        </p>
       </div>
 
       <div className="reel-area min-h-0 [grid-area:slider]">
         <ReelSlider reels={REELS} />
       </div>
 
-      <div className="[grid-area:cta] lg:max-w-sm">
+      <section
+        aria-label="Offer"
+        className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-5 [grid-area:cta] short:gap-2 short:p-4 lg:max-w-md lg:mid:gap-2 lg:mid:p-4"
+      >
+        <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
+          {formatOfferPrice()}
+        </p>
         <CallRequest checkout={checkout} sessionId={sessionId} utm={utm} />
-      </div>
+        <p className="text-xs leading-relaxed text-neutral-600">{LANDING.afterPurchase}</p>
+        <p className="text-xs text-neutral-600">
+          {LANDING.questions.lead}{" "}
+          <a
+            href={LANDING.questions.href}
+            className="text-neutral-900 underline underline-offset-2 hover:text-fuchsia-700"
+          >
+            {LANDING.questions.link}
+          </a>
+        </p>
+      </section>
     </main>
   );
 }

@@ -94,11 +94,11 @@ export async function fillValidForm(
 }
 
 export function formDialog(page: Page): Locator {
-  return page.getByRole("dialog", { name: "Book your discovery call" });
+  return page.getByRole("dialog", { name: "Start your 30 days" });
 }
 
 export function ctaButton(page: Page): Locator {
-  return page.getByRole("button", { name: "Book your discovery call" });
+  return page.getByRole("button", { name: "Start your 30 days" });
 }
 
 export const MOCK_ROUTE = "/api/e2e-stripe-mock";
