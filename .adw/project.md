@@ -48,8 +48,11 @@ From the worktree root, in order. The main checkout is two directories up from `
    invent a value for a missing file.
 2. `yarn install --immutable` (`postinstall` runs `lefthook install`). An install that would change
    `yarn.lock` is a finding, not something to paper over with a mutable install.
-3. `yarn playwright install chromium`, the browser `@playwright/test` needs. Browsers live in the
-   user cache, so this is a no-op once present.
+3. `yarn playwright install chromium webkit`, the browsers `@playwright/test` needs (WebKit
+   runs only `e2e/dialog_form.spec.ts`). Browsers live in the user cache, so this is a no-op once
+   present. On macOS 14 the local WebKit build is frozen and cannot open a page: point
+   `PW_WEBKIT_WS` at a `playwright run-server` in the official Linux image instead (see
+   `app_docs/checkout.md`, "Form dialog layout").
 4. Verify with `yarn build` (see Build).
 
 Do not start the dev server during install.
@@ -74,7 +77,8 @@ and last the E2E suite `yarn test:e2e`.
 The unit layer is `src/**/*.test.ts` for pure helpers in `src/lib/`. There is no component test
 layer; the browser layer is the Playwright suite below.
 
-E2E code suite: `e2e/*.spec.ts` (`@playwright/test`, chromium, `playwright.config.ts`), run last by
+E2E code suite: `e2e/*.spec.ts` (`@playwright/test`, chromium, plus webkit for the dialog spec,
+`playwright.config.ts`), run last by
 the test phase as `PORT=<run port> yarn test:e2e`. The `/prepare_app` server must already be up on
 this run's port, started as `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn dev` (an adopted
 server never sees `webServer.env`, and the checkout and confirmation email specs need the mocks), which `reuseExistingServer` adopts; never

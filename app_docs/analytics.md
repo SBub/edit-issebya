@@ -26,6 +26,17 @@ the components is a no-op.
 - `src/lib/analytics.test.ts` covers the gate. `e2e/analytics.spec.ts` asserts that no PostHog
   request is made and no `ph_` storage is written.
 
+## Owner opt-out (`?notrack`)
+
+Visiting any page with `?notrack` stores `edit_notrack` = `"1"` in this device's localStorage and
+`?track` removes it; both parameters are then removed from the address bar
+(`history.replaceState`, other parameters kept). While the flag is set, `startAnalytics` never
+initialises PostHog and `capture` (`src/lib/track.ts`, the only way components send events)
+does nothing. The switch runs in `instrumentation-client.ts` in every environment; all storage
+access is wrapped in try/catch (`src/lib/notrack.ts`). Specs: `src/lib/notrack.test.ts`,
+`src/lib/track.test.ts`, `e2e/notrack.spec.ts`. It is the owner's own switch, set deliberately,
+so the privacy policy does not mention it.
+
 ## Internal tag
 
 After init, `?internal=1` registers the super property `internal: true` and `?internal=0`
@@ -46,7 +57,8 @@ unregisters it; any other value does nothing. The PostHog test-account filter ma
 | `checkout_started`      | the action returned a Checkout URL, before navigating                                                                 | none                                                             |
 | `purchase_completed`    | thank-you state shown, once per `session_id` per page load (guarded in memory, never in storage)                      | `session_id`                                                     |
 
-The last five are sent from `src/components/CallRequest.tsx`.
+The last five are sent from `src/components/CallRequest.tsx`. All go through `capture`
+(`src/lib/track.ts`).
 
 ## UTM values
 
@@ -58,6 +70,8 @@ metadata (see `app_docs/checkout.md`).
 - Never rename an event or a property.
 - Never send form answers to PostHog.
 - Never import `posthog-js` in `src/lib/analytics.ts`; pass the client in as an adapter.
+- Never call `posthog.capture` from a component; use `capture` from `src/lib/track.ts`, which
+  honours the `?notrack` opt-out.
 - Never initialise PostHog under `navigator.webdriver` or outside production.
 - Never drop `cookieless_mode: "always"` or write anything to cookies, local or session storage
   for analytics: the site has no consent banner. `e2e/analytics.spec.ts` asserts no cookies and
