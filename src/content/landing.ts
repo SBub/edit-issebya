@@ -43,6 +43,6 @@ export const LANDING = {
   ],
   cancelled: "Payment was not completed. You can try again any time.",
   thankYou:
-    "Thank you. Your payment is in. I will email you within two working days to set up the discovery call.",
+    "Thank you. Your payment is in. Check your inbox: a confirmation email with a link to book your discovery call is on its way.",
   unavailable: "Payment is not available right now. Please try again later.",
 } as const;

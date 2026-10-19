@@ -24,8 +24,8 @@ yarn playwright install chromium   # once
 yarn test:e2e                       # Playwright specs in e2e/
 ```
 
-`yarn test:e2e` starts its own server with the Stripe mock on. Against a server that is already
-running, start that one as `E2E_MOCK_STRIPE=true yarn dev`.
+`yarn test:e2e` starts its own server with the Stripe and Resend mocks on. Against a server that is
+already running, start that one as `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn dev`.
 
 ## Docs
 

@@ -1,25 +1,41 @@
-import { isE2EMockStripe, setLastCheckout } from "@/lib/e2e-stripe-mock";
+import { isE2EMockResend, recordEmail } from "@/lib/e2e-resend-mock";
+import {
+  getSession,
+  isE2EMockStripe,
+  setLastCheckout,
+  storeSession,
+  updateSessionMetadata,
+  formMetadata,
+} from "@/lib/e2e-stripe-mock";
 
 export async function register() {
-  if (process.env.NEXT_RUNTIME === "nodejs" && isE2EMockStripe()) {
-    await registerE2EStripeMock();
+  if (process.env.NEXT_RUNTIME === "nodejs" && (isE2EMockStripe() || isE2EMockResend())) {
+    await registerE2EMocks({ stripe: isE2EMockStripe(), resend: isE2EMockResend() });
   }
 }
 
 /**
- * Starts an in-process MSW network so the Playwright suite can mock the one
- * server-side Stripe call (`POST https://api.stripe.com/v1/checkout/sessions`,
- * made by the startCheckout server action in src/app/actions.ts). Playwright's
+ * Starts an in-process MSW network so the Playwright suite can mock the
+ * server-side Stripe calls (`POST https://api.stripe.com/v1/checkout/sessions`,
+ * made by the startCheckout server action in src/app/actions.ts, and the
+ * session retrieve and update the Stripe webhook makes) and the Resend email
+ * call (`POST https://api.resend.com/emails`, made by the webhook). Playwright's
  * browser-level `page.route()` cannot see it, since it happens inside this
  * Next.js server process. The handler stores the raw request body for the
  * /api/e2e-stripe-mock route and answers with a session whose url is the
  * success_url, so the browser lands back on `/?checkout=success`.
  *
- * Strictly opt-in: E2E_MOCK_STRIPE must be exactly "true", set only by
- * playwright.config.ts's webServer.env or by hand for the ADW server. Unset,
- * this is a no-op.
+ * The create handler also stores the session it answered with, so the
+ * retrieve and update handlers can read and merge into it. The Resend handler
+ * records every request (JSON body and Idempotency-Key header) and does not
+ * emulate idempotency, so a spec that sees no second email proves the
+ * webhook's own flag check.
+ *
+ * Strictly opt-in: E2E_MOCK_STRIPE or E2E_MOCK_RESEND must be exactly "true",
+ * set only by playwright.config.ts's webServer.env or by hand for the ADW
+ * server, and each flag adds only its own handlers. Unset, this is a no-op.
  */
-async function registerE2EStripeMock(): Promise<void> {
+async function registerE2EMocks(flags: { stripe: boolean; resend: boolean }): Promise<void> {
   // webpackIgnore skips bundling these dynamic imports entirely (supported by
   // both webpack and Turbopack). Without it, Next's dev bundler also tries to
   // build msw into the Edge instrumentation graph (it builds every runtime
@@ -32,7 +48,7 @@ async function registerE2EStripeMock(): Promise<void> {
   // successor of msw 2's SetupServerApi, and what setupServer() is built on),
   // instead of setupServer(), which installs all four interceptors. The Stripe
   // client under the flag goes through the global fetch (see src/lib/stripe.ts),
-  // so nothing else is needed. It also keeps clear of a real bug class:
+  // and the Resend SDK always does, so nothing else is needed. It also keeps clear of a real bug class:
   // ClientRequestInterceptor proxies every outgoing http/https call in the
   // process through its passthrough socket even when nothing matches, and in
   // @mswjs/interceptors before 0.42 that socket could be torn down under
@@ -46,22 +62,56 @@ async function registerE2EStripeMock(): Promise<void> {
   const { http, HttpResponse } = await import(/* webpackIgnore: true */ "msw");
   const { FetchInterceptor } = await import(/* webpackIgnore: true */ "@mswjs/interceptors/fetch");
 
+  const stripeHandlers = [
+    http.post("https://api.stripe.com/v1/checkout/sessions", async ({ request }) => {
+      const body = await request.text();
+      setLastCheckout(body);
+      const params = new URLSearchParams(body);
+      const successUrl = params.get("success_url") ?? "";
+      const id = `cs_test_e2e_${crypto.randomUUID()}`;
+      return HttpResponse.json(
+        storeSession(id, successUrl.replace("{CHECKOUT_SESSION_ID}", id), params),
+      );
+    }),
+    http.get("https://api.stripe.com/v1/checkout/sessions/:id", ({ params }) => {
+      const session = getSession(String(params.id));
+      return session ? HttpResponse.json(session) : stripeNotFound(String(params.id));
+    }),
+    http.post("https://api.stripe.com/v1/checkout/sessions/:id", async ({ params, request }) => {
+      const metadata = formMetadata(new URLSearchParams(await request.text()));
+      const session = updateSessionMetadata(String(params.id), metadata);
+      return session ? HttpResponse.json(session) : stripeNotFound(String(params.id));
+    }),
+  ];
+
+  // Stripe's error shape for an unknown id.
+  function stripeNotFound(id: string) {
+    return HttpResponse.json(
+      {
+        error: {
+          type: "invalid_request_error",
+          code: "resource_missing",
+          message: `No such checkout.session: '${id}'`,
+        },
+      },
+      { status: 404 },
+    );
+  }
+
+  const resendHandlers = [
+    http.post("https://api.resend.com/emails", async ({ request }) => {
+      recordEmail({
+        body: await request.json(),
+        idempotencyKey: request.headers.get("Idempotency-Key"),
+      });
+      return HttpResponse.json({ id: crypto.randomUUID() });
+    }),
+  ];
+
   const network = defineNetwork({
     sources: [new InterceptorSource({ interceptors: [new FetchInterceptor()] })],
-    handlers: [
-      http.post("https://api.stripe.com/v1/checkout/sessions", async ({ request }) => {
-        const body = await request.text();
-        setLastCheckout(body);
-        const successUrl = new URLSearchParams(body).get("success_url") ?? "";
-        const id = `cs_test_e2e_${crypto.randomUUID()}`;
-        return HttpResponse.json({
-          id,
-          object: "checkout.session",
-          url: successUrl.replace("{CHECKOUT_SESSION_ID}", id),
-        });
-      }),
-    ],
-    // Only the Stripe call above is mocked; everything else passes through.
+    handlers: [...(flags.stripe ? stripeHandlers : []), ...(flags.resend ? resendHandlers : [])],
+    // Only the calls above are mocked; everything else passes through.
     onUnhandledFrame: "bypass",
     context: { quiet: true },
   });

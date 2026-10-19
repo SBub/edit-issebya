@@ -20,8 +20,9 @@ export default defineConfig({
   retries: 0,
   // One worker, deliberately. Playwright runs separate files in parallel by
   // default, but every spec here drives the same process-global state: one
-  // server, and in it one Stripe mock capture and one missing-key toggle (see
-  // src/lib/e2e-stripe-mock.ts). Parallel files would race on them: one spec's
+  // server, and in it one Stripe mock capture and session map, one Resend
+  // recording and the missing-key and missing-config toggles (see
+  // src/lib/e2e-stripe-mock.ts and src/lib/e2e-resend-mock.ts). Parallel files would race on them: one spec's
   // DELETE of the capture or its keyMissing toggle would land in another's
   // checkout.
   workers: 1,
@@ -46,10 +47,11 @@ export default defineConfig({
     gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
     // Pins the spawned server to the port baseURL points at; `next dev` and
     // `next start` both read PORT, so nothing passes --port. E2E_MOCK_STRIPE
-    // turns on the in-process Stripe mock (src/instrumentation.ts) and its
-    // /api/e2e-stripe-mock route, for `yarn dev` and `yarn start` alike. An
+    // and E2E_MOCK_RESEND turn on the in-process Stripe and Resend mocks
+    // (src/instrumentation.ts) and their /api/e2e-stripe-mock and
+    // /api/e2e-resend-mock routes, for `yarn dev` and `yarn start` alike. An
     // adopted server never sees this env, so ADW's /prepare_app server must
-    // be started with the same flag set to true in front of `yarn dev`.
-    env: { PORT, E2E_MOCK_STRIPE: "true" },
+    // be started with both flags set to true in front of `yarn dev`.
+    env: { PORT, E2E_MOCK_STRIPE: "true", E2E_MOCK_RESEND: "true" },
   },
 });

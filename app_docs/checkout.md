@@ -47,6 +47,9 @@ none), `terms_accepted` (`"true"`), plus the five `UTM_KEYS`: `utm_source`, `utm
 `utm_campaign`, `utm_term`, `utm_content` (first value of a repeated parameter, trimmed, capped at
 500, empty values and unknown keys dropped). `customer_email` is the email.
 
+`confirmation_email_sent` is the one key the code writes after creation: an ISO timestamp the
+Stripe webhook sets once both confirmation emails are accepted (`app_docs/confirmation-email.md`).
+
 ## Price
 
 `OFFER` in `src/lib/offer.ts`: `amountCents: 99000`, `currency: "eur"`, product name
@@ -97,15 +100,18 @@ Unset, or any other value: no tax parameter is sent.
 ## Thank-you dialog
 
 - `/?checkout=success&session_id=...` opens the thank-you dialog from the URL alone.
-- It does not retrieve or confirm the session with Stripe (there is no webhook), so anyone with the
-  URL can see it. The Stripe Dashboard is the source of truth for who paid.
+- It does not retrieve or confirm the session with Stripe, so anyone with the URL can see it, and
+  it is not proof of payment. The Stripe Dashboard is the source of truth for who paid.
+- Its text (`LANDING.thankYou`) points the buyer to the confirmation email, which the Stripe
+  webhook sends after payment (`app_docs/confirmation-email.md`).
 - `?checkout=cancelled` shows a short `role="status"` note under the CTA and nothing else.
 - Closing the thank-you dialog resets the URL to `/`.
 
 ## E2E Stripe mock
 
 - On only when `E2E_MOCK_STRIPE` is exactly `"true"`: set in `playwright.config.ts`
-  `webServer.env`, or by hand as `E2E_MOCK_STRIPE=true yarn dev` for the ADW server.
+  `webServer.env`, or by hand as `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn dev` for the ADW
+  server.
 - `src/instrumentation.ts` then registers an in-process msw network that answers
   `POST https://api.stripe.com/v1/checkout/sessions` with an id `cs_test_e2e_<uuid>` and the
   success URL as its `url`, and captures the raw request body.
@@ -115,7 +121,10 @@ Unset, or any other value: no tax parameter is sent.
   missing-key toggle, `DELETE` clears the capture. Every method answers 404 without the flag.
 - The shared state lives on `globalThis` under `Symbol.for` keys (`src/lib/e2e-stripe-mock.ts`), so
   every bundle in the server process sees it. That is why specs run with `workers: 1`.
-- Specs: `e2e/checkout.spec.ts`, `e2e/call_form.spec.ts`.
+- The create handler also stores each session for the webhook's retrieve and update calls, and
+  `/api/e2e-stripe-mock` also lists, clears and sets the payment status of the stored sessions; see
+  `app_docs/confirmation-email.md`, "E2E mocks", which also covers the Resend mock.
+- Specs: `e2e/checkout.spec.ts`, `e2e/call_form.spec.ts`, `e2e/confirmation_email.spec.ts`.
 
 ### msw 3 deviation
 
@@ -150,7 +159,8 @@ This code has not been run against a real Stripe account.
 ## Rules
 
 - Never let the shown price and the charged price drift: both come from `OFFER`.
-- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted` and the five UTM keys).
+- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted`, the five UTM keys and
+  `confirmation_email_sent`).
 - Never throw from `startCheckout`; return a typed result.
 - Never create the Stripe client at module load.
 - Never copy the offer description or the custom text into `checkout-params.ts`; both are read
