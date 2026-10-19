@@ -1,3 +1,15 @@
+// Relative, not `@/`: the e2e specs import this file by relative path and
+// Playwright does not resolve the alias.
+import { whatsAppUrl } from "../lib/whatsapp";
+
+const questions = {
+  lead: "Questions first?",
+  link: "Message me here",
+  // WhatsApp: the number digits only, and the message the chat opens with.
+  number: "351920742845",
+  text: "Hi, I saw your reel editing offer and have a few questions before I start",
+} as const;
+
 // The landing page copy, read by the page and the e2e specs alike.
 export const LANDING = {
   brand: { name: "edit", suffix: "issebya" },
@@ -32,11 +44,7 @@ export const LANDING = {
     "These are variations. Your variant will match your project's ICP and UVP or already established brand identity",
   cta: "Start your 30 days",
   afterPurchase: "Your confirmation email has a link to book our discovery call.",
-  questions: {
-    lead: "Questions first?",
-    link: "Message me here",
-    href: "mailto:sveta@issebya.com",
-  },
+  questions: { ...questions, href: whatsAppUrl(questions.number, questions.text) },
   footer: [
     { label: "Terms and conditions", href: "/terms" },
     { label: "Privacy policy", href: "/privacy" },

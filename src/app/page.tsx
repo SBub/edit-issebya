@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { BRAND_CLASS, BrandName, PAGE_PADDING } from "@/components/Brand";
 import { CallRequest, type CheckoutState } from "@/components/CallRequest";
+import { QuestionsLink } from "@/components/QuestionsLink";
 import { ReelSlider } from "@/components/ReelSlider";
 import { LANDING } from "@/content/landing";
 import { REELS } from "@/content/reels";
@@ -27,16 +29,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const utm = pickUtm(params);
 
   return (
-    <main className="landing grid gap-x-10 gap-y-4 p-6 short:gap-y-2.5 short:p-4 tiny:gap-y-2 tiny:p-3 lg:p-10 lg:short:p-6">
+    <main className={`landing grid gap-x-10 gap-y-4 short:gap-y-2.5 tiny:gap-y-2 ${PAGE_PADDING}`}>
       <header className="[grid-area:title]">
-        <h1
-          aria-label={`${LANDING.brand.name} ${LANDING.brand.suffix}`}
-          className="text-xl font-semibold tracking-tight short:text-lg"
-        >
-          {LANDING.brand.name}
-          <sub className="ml-0.5 align-sub text-[0.5em] font-normal tracking-normal">
-            {LANDING.brand.suffix}
-          </sub>
+        <h1 aria-label={`${LANDING.brand.name} ${LANDING.brand.suffix}`} className={BRAND_CLASS}>
+          <BrandName />
         </h1>
       </header>
 
@@ -100,12 +96,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         <p className="text-xs leading-relaxed text-neutral-600">{LANDING.afterPurchase}</p>
         <p className="text-xs text-neutral-600">
           {LANDING.questions.lead}{" "}
-          <a
-            href={LANDING.questions.href}
-            className="text-neutral-900 underline underline-offset-2 hover:text-fuchsia-700"
-          >
-            {LANDING.questions.link}
-          </a>
+          <QuestionsLink className="text-neutral-900 underline underline-offset-2 hover:text-fuchsia-700" />
           .
         </p>
       </section>
