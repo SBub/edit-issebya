@@ -160,9 +160,14 @@ never changes.
   the first sentence of `LANDING.quote`, and the first three `REELS` posters as rounded 9:16
   thumbnails, read from `public/` with `fs/promises` and inlined as data URLs. The config exports
   (`alt`, `size`, `contentType`) stay literal in each route file.
-- `src/app/icon.tsx`: the 32x32 favicon, an "e" in neutral-900 on white.
-- Spec: `e2e/link_preview.spec.ts` (the `og:` and `twitter:` tags, absolute image URLs, both images
-  and the icon answer 200 `image/png`).
+- `src/app/icon.tsx` (32x32 favicon) and `src/app/apple-icon.tsx` (180x180 Apple touch icon)
+  both render `renderBrandIcon` (`src/components/BrandIcon.tsx`): the header's wordmark ("edit"
+  in semibold with "issebya" small and low on its right), black on white, centred, about 90% of
+  the width. Fonts: Geist SemiBold and Regular in `assets/fonts` (SIL Open Font License,
+  `Geist-OFL.txt`), because the image renderer only ships a regular weight. At 32px "issebya" is
+  too small to read; it shows as a fine grey line.
+- Spec: `e2e/link_preview.spec.ts` (the `og:` and `twitter:` tags, absolute image URLs, both images,
+  the icon and the Apple touch icon answer 200 `image/png`).
 
 ## Card styling sources
 
