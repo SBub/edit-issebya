@@ -14,11 +14,11 @@ const questions = {
 export const LANDING = {
   brand: { name: "edit", suffix: "issebya" },
   description: [
-    "Your ideas deserve reels that look like your brand. And you deserve your evenings back. Editing eats hours that should go into your business. Hand that part to me.",
+    "Your ideas deserve reels that look like your brand. And you deserve your evenings back.",
     "I'm a reel editor for founders and experts. I give your reels one consistent look, so people recognise you in the feed and remember your name.",
   ],
   howItWorks: {
-    title: "How it works:",
+    title: "How we work together:",
     steps: [
       "Discovery call to understand your brand, ICP and UVP",
       "I propose a visual identity for your reels",
