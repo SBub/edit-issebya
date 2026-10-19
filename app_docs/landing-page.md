@@ -24,11 +24,16 @@ Nothing is clipped and nothing is hidden.
   - `cta`: a bordered `section` named "Offer" (`rounded-lg border-neutral-200`, the ADW
     dashboard's card style): the price, `CallRequest` (`src/components/CallRequest.tsx`, the "Start
     your 30 days" button in the dashboard's Work with me style: fuchsia 700, `rounded-md`), what
-    happens after payment (`LANDING.afterPurchase`) and a "Questions first? Message me here" mail
-    link (`LANDING.questions`).
+    happens after payment (`LANDING.afterPurchase`) and "Questions first? Message me here", a link
+    that opens a WhatsApp chat in a new tab (`src/components/QuestionsLink.tsx`; the number and
+    the prefilled text are defined once in `LANDING.questions`, the `href` is built by
+    `whatsAppUrl` in `src/lib/whatsapp.ts`). The same link is used on `/`, `/terms` and `/privacy`.
 - All copy lives in `src/content/landing.ts` (`LANDING`), read by the page and the specs alike.
 - `footer`: a `nav` named "Legal" with links to `/terms` and `/privacy` (stub pages through
-  `src/components/LegalPage.tsx`).
+  `src/components/LegalPage.tsx`). `LegalPage` shares the landing page's padding (`PAGE_PADDING`)
+  and brand placement and typography (`BRAND_CLASS`, `BrandName`), all from
+  `src/components/Brand.tsx`, left aligned, so the brand sits at the same spot on all three pages.
+  Specs: `e2e/legal_pages.spec.ts`.
 - `src/app/globals.css` defines the `.landing` grid. Narrow screens: one column (title, slider,
   text, CTA, footer). At `@media (min-width: 64rem), (min-width: 48rem) and (orientation:
 landscape)` two columns: brand, slider and footer on the left; the text from the top, then the
@@ -122,3 +127,5 @@ Deliberate differences from the shop card:
 - Never measure from `window.innerWidth` or `window.innerHeight` in specs; measure from the root
   box.
 - Do not change the `id` of an existing reel.
+- Never give the terms and privacy pages a different container, padding or brand position from
+  `/`.
