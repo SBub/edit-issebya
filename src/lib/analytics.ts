@@ -28,6 +28,8 @@ export interface AnalyticsEnv {
 export interface AnalyticsBrowser {
   webdriver: boolean | undefined;
   search: string;
+  // This device opted out with `?notrack` (src/lib/notrack.ts).
+  trackingDisabled: boolean;
 }
 
 /**
@@ -57,7 +59,8 @@ export interface AnalyticsClient {
 
 /**
  * Initialises PostHog on production, with both variables set, in a browser
- * that is not automated (`navigator.webdriver` is not true), then applies the
+ * that is not automated (`navigator.webdriver` is not true) and has not opted
+ * out with `?notrack`, then applies the
  * `?internal=` tag. Tagging only adds a super property the PostHog filter
  * hides; it never opts out. Returns whether PostHog was initialised.
  */
@@ -71,7 +74,8 @@ export function startAnalytics(
     !env.projectToken ||
     !env.host ||
     browser === undefined ||
-    browser.webdriver === true
+    browser.webdriver === true ||
+    browser.trackingDisabled
   ) {
     return false;
   }

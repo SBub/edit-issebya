@@ -1,6 +1,6 @@
 "use client";
 
-import posthog from "posthog-js";
+import { capture } from "@/lib/track";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { Reel } from "@/content/reels";
 import { LANDING } from "@/content/landing";
@@ -60,7 +60,7 @@ export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     keyboardScroll.current = true;
     track.scrollTo({ left: index * slotStep(track), behavior: reduce ? "auto" : "smooth" });
-    posthog.capture("reel_slider_navigated", {
+    capture("reel_slider_navigated", {
       direction: index > active ? "next" : "prev",
       method: "dot",
     });
@@ -81,7 +81,7 @@ export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
         keyboardScroll.current = false;
         return;
       }
-      posthog.capture("reel_slider_navigated", { direction, method: "swipe" });
+      capture("reel_slider_navigated", { direction, method: "swipe" });
     };
     track.addEventListener("scrollend", onScrollEnd);
     return () => track.removeEventListener("scrollend", onScrollEnd);
@@ -101,7 +101,7 @@ export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
       left: direction === "next" ? step : -step,
       behavior: reduce ? "auto" : "smooth",
     });
-    posthog.capture("reel_slider_navigated", { direction, method: "keyboard" });
+    capture("reel_slider_navigated", { direction, method: "keyboard" });
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {

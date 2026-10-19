@@ -1,6 +1,6 @@
 "use client";
 
-import posthog from "posthog-js";
+import { capture } from "@/lib/track";
 import {
   useEffect,
   useRef,
@@ -82,11 +82,11 @@ export function CallRequest({
     if (dialog && !dialog.open) dialog.showModal();
     if (!sessionId || PURCHASES_SENT.has(sessionId)) return;
     PURCHASES_SENT.add(sessionId);
-    posthog.capture("purchase_completed", { session_id: sessionId });
+    capture("purchase_completed", { session_id: sessionId });
   }, [checkout, sessionId]);
 
   function openForm() {
-    posthog.capture("cta_clicked");
+    capture("cta_clicked");
     startedRef.current = false;
     formDialogRef.current?.showModal();
   }
@@ -94,7 +94,7 @@ export function CallRequest({
   function onInput(event: FormEvent<HTMLFormElement>) {
     if (!startedRef.current) {
       startedRef.current = true;
-      posthog.capture("call_form_started");
+      capture("call_form_started");
     }
     const name = (event.target as HTMLInputElement).name as CallRequestField;
     if (!CALL_REQUEST_FIELDS.includes(name)) return;
@@ -122,11 +122,11 @@ export function CallRequest({
       return;
     }
     setErrors({});
-    posthog.capture("call_form_submitted");
+    capture("call_form_submitted");
     startTransition(async () => {
       const result = await startCheckout({ fields: { ...parsed.value }, utm: { ...utm } });
       if (result.ok) {
-        posthog.capture("checkout_started");
+        capture("checkout_started");
         window.location.assign(result.url);
       } else if (result.error === "invalid") {
         setErrors(result.fieldErrors);

@@ -1,6 +1,6 @@
 "use client";
 
-import posthog from "posthog-js";
+import { capture } from "@/lib/track";
 import { useEffect, useRef, useState } from "react";
 import type { Reel } from "@/content/reels";
 
@@ -81,7 +81,7 @@ function ReelVideo({ reel, src }: { reel: Reel; src: string }) {
         .play()
         .then(() => {
           setPlaying(true);
-          posthog.capture("reel_played", { reel_id: reel.id });
+          capture("reel_played", { reel_id: reel.id });
         })
         .catch(() => setPlaying(false));
     } else {
@@ -103,7 +103,7 @@ function ReelVideo({ reel, src }: { reel: Reel; src: string }) {
       video.webkitEnterFullscreen?.();
     }
     video.play().catch(() => undefined);
-    posthog.capture("reel_fullscreen", { reel_id: reel.id });
+    capture("reel_fullscreen", { reel_id: reel.id });
   }
 
   return (

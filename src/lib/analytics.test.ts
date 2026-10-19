@@ -39,7 +39,11 @@ function fakeAnalyticsClient() {
 describe("startAnalytics", () => {
   it("never initialises an automated browser, even with ?internal=1", () => {
     const client = fakeAnalyticsClient();
-    const started = startAnalytics(PROD, { webdriver: true, search: "?internal=1" }, client);
+    const started = startAnalytics(
+      PROD,
+      { webdriver: true, search: "?internal=1", trackingDisabled: false },
+      client,
+    );
     expect(started).toBe(false);
     expect(client.init).not.toHaveBeenCalled();
     expect(client.register).not.toHaveBeenCalled();
@@ -48,7 +52,9 @@ describe("startAnalytics", () => {
 
   it("initialises a real browser on production without tagging", () => {
     const client = fakeAnalyticsClient();
-    expect(startAnalytics(PROD, { webdriver: false, search: "" }, client)).toBe(true);
+    expect(
+      startAnalytics(PROD, { webdriver: false, search: "", trackingDisabled: false }, client),
+    ).toBe(true);
     expect(client.init).toHaveBeenCalledTimes(1);
     expect(client.init).toHaveBeenCalledWith("phc_test", PROD.host);
     expect(client.register).not.toHaveBeenCalled();
@@ -57,13 +63,17 @@ describe("startAnalytics", () => {
 
   it("treats an undefined webdriver like false", () => {
     const client = fakeAnalyticsClient();
-    startAnalytics(PROD, { webdriver: undefined, search: "" }, client);
+    startAnalytics(PROD, { webdriver: undefined, search: "", trackingDisabled: false }, client);
     expect(client.init).toHaveBeenCalledTimes(1);
   });
 
   it("registers internal after init on ?internal=1", () => {
     const client = fakeAnalyticsClient();
-    startAnalytics(PROD, { webdriver: false, search: "?internal=1" }, client);
+    startAnalytics(
+      PROD,
+      { webdriver: false, search: "?internal=1", trackingDisabled: false },
+      client,
+    );
     expect(client.register).toHaveBeenCalledTimes(1);
     expect(client.register).toHaveBeenCalledWith({ internal: true });
     expect(client.init.mock.invocationCallOrder[0]).toBeLessThan(
@@ -74,7 +84,11 @@ describe("startAnalytics", () => {
 
   it("unregisters internal on ?internal=0", () => {
     const client = fakeAnalyticsClient();
-    startAnalytics(PROD, { webdriver: false, search: "?internal=0" }, client);
+    startAnalytics(
+      PROD,
+      { webdriver: false, search: "?internal=0", trackingDisabled: false },
+      client,
+    );
     expect(client.unregister).toHaveBeenCalledTimes(1);
     expect(client.unregister).toHaveBeenCalledWith("internal");
     expect(client.register).not.toHaveBeenCalled();
@@ -87,7 +101,11 @@ describe("startAnalytics", () => {
     ["a missing host", { ...PROD, host: undefined }],
   ])("does nothing with %s", (_label, env) => {
     const client = fakeAnalyticsClient();
-    const started = startAnalytics(env, { webdriver: false, search: "?internal=1" }, client);
+    const started = startAnalytics(
+      env,
+      { webdriver: false, search: "?internal=1", trackingDisabled: false },
+      client,
+    );
     expect(started).toBe(false);
     expect(client.init).not.toHaveBeenCalled();
     expect(client.register).not.toHaveBeenCalled();
@@ -97,6 +115,20 @@ describe("startAnalytics", () => {
     const client = fakeAnalyticsClient();
     expect(() => startAnalytics(PROD, undefined, client)).not.toThrow();
     expect(client.init).not.toHaveBeenCalled();
+  });
+});
+
+describe("startAnalytics on an opted-out device", () => {
+  it("never initialises PostHog after ?notrack", () => {
+    const client = { init: vi.fn(), register: vi.fn(), unregister: vi.fn() };
+    const started = startAnalytics(
+      { vercelEnv: "production", projectToken: "phc_x", host: "https://eu.i.posthog.com" },
+      { webdriver: false, search: "?internal=1", trackingDisabled: true },
+      client,
+    );
+    expect(started).toBe(false);
+    expect(client.init).not.toHaveBeenCalled();
+    expect(client.register).not.toHaveBeenCalled();
   });
 });
 
