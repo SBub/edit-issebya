@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { parseCallRequest, type CallRequestErrors } from "@/lib/call-request";
 import { automaticTaxEnabled, buildCheckoutParams } from "@/lib/checkout-params";
+import { currentOfferPrice } from "@/lib/offer-price";
 import { getKeyMissingToggle, isE2EMockStripe } from "@/lib/e2e-stripe-mock";
 import { siteUrl } from "@/lib/site-url";
 import { createStripeClient } from "@/lib/stripe";
@@ -61,6 +62,8 @@ export async function startCheckout(input: {
       utm: pickUtm(input?.utm ?? {}),
       origin: await requestOrigin(),
       automaticTax: automaticTaxEnabled(process.env.STRIPE_AUTOMATIC_TAX),
+      // Counted again now, uncached: the early-bird price is enforced here.
+      price: await currentOfferPrice({ fresh: true }),
     });
     const session = await createStripeClient(key, mock).checkout.sessions.create(params);
     if (!session.url) {

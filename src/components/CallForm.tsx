@@ -32,7 +32,15 @@ function FieldError({ id, error }: { id: string; error: string | undefined }) {
  * messages come from parseCallRequest, the same validator the server action
  * runs.
  */
-export function CallFormFields({ errors }: { errors: CallRequestErrors }) {
+export function CallFormFields({
+  errors,
+  onTermsChange,
+}: {
+  errors: CallRequestErrors;
+  // Tells the dialog whether the terms box is ticked, so it can enable the
+  // submit button. The checkbox itself stays uncontrolled.
+  onTermsChange: (checked: boolean) => void;
+}) {
   // Row keys, not values: the inputs stay uncontrolled.
   const [rows, setRows] = useState<number[]>([0]);
   const [nextRow, setNextRow] = useState(1);
@@ -138,6 +146,7 @@ export function CallFormFields({ errors }: { errors: CallRequestErrors }) {
             name="terms"
             type="checkbox"
             required
+            onChange={(event) => onTermsChange(event.currentTarget.checked)}
             aria-invalid={errors.terms ? true : undefined}
             aria-describedby={describe(!!errors.terms && "terms-error")}
             className="mt-0.5 size-4 shrink-0 accent-fuchsia-700"
@@ -155,6 +164,16 @@ export function CallFormFields({ errors }: { errors: CallRequestErrors }) {
         </label>
         <FieldError id="terms-error" error={errors.terms} />
       </div>
+
+      {/* Optional and unticked: GDPR consent is never pre-ticked or required. */}
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          name="newsletter"
+          type="checkbox"
+          className="mt-0.5 size-4 shrink-0 accent-fuchsia-700"
+        />
+        <span>{CALL_REQUEST_LABELS.newsletter}</span>
+      </label>
     </div>
   );
 }

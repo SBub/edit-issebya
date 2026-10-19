@@ -76,12 +76,15 @@ logged (`console.error`, names only, never values).
   (`src/lib/confirmation-email.ts`), its unit test and the e2e spec.
 - Buyer: subject `You're in. Let's book your discovery call`, from `EMAIL_FROM`, to the buyer,
   reply-to `EMAIL_REPLY_TO`. Plain text is the copy with `[Name]` (the trimmed `metadata.name`)
-  and `👉 Book your call: <BOOKING_URL>`; HTML is the same text in `<p>`, `<ul>`, `<ol>`,
-  `<strong>` for the three headings and one `<a>` for the booking link, with the name escaped. No
+  and `👉 Book your call: <BOOKING_URL>`, and, before the sign-off, "Work starts right away. See <site>/terms#withdrawal for
+  cancellations" ( `termsUrl` in
+  `readEmailConfig`, built from `siteUrl`, fixed to `https://site.e2e.test/terms#withdrawal`
+  under `E2E_MOCK_RESEND`). HTML is the same text in `<p>`, `<ul>`, `<ol>`, `<strong>` for the
+  three headings and two `<a>`s (booking, and the terms URL shown as its own text), with the name escaped. No
   images, no tracking, no external CSS.
 - Owner: a separate email (not a CC), from `EMAIL_FROM`, to `EMAIL_REPLY_TO`, reply-to the buyer,
   subject `New payment: <name>`. Plain text: each metadata key and value in `CALL_REQUEST_FIELDS`
-  order (`terms` as `terms_accepted`) then `UTM_KEYS` order, socials one link per line, then the
+  order (`terms` as `terms_accepted`), then `newsletter`, then `UTM_KEYS` order, socials one link per line, then the
   session id, `amount_total` and `currency`. Nothing else.
 
 ## Variables

@@ -1,3 +1,4 @@
+import { siteUrl } from "./site-url";
 import { stripeSecretKey } from "./stripe-key";
 
 // What the Stripe webhook needs before it can send the confirmation emails,
@@ -13,7 +14,11 @@ export const E2E_EMAIL_CONFIG = {
   from: "E2E Sender <from@e2e.test>",
   replyTo: "owner@e2e.test",
   bookingUrl: "https://booking.e2e.test/call",
+  termsUrl: "https://site.e2e.test/terms#withdrawal",
 } as const;
+
+// Where the confirmation email points for the withdrawal terms.
+const WITHDRAWAL_TERMS_PATH = "/terms#withdrawal";
 
 // The one metadata key the code writes: an ISO timestamp, set on the session
 // after both emails are accepted.
@@ -31,6 +36,8 @@ export interface WebhookEnv {
   EMAIL_FROM?: string;
   EMAIL_REPLY_TO?: string;
   BOOKING_URL?: string;
+  NEXT_PUBLIC_SITE_URL?: string;
+  VERCEL_PROJECT_PRODUCTION_URL?: string;
   E2E_MOCK_STRIPE?: string;
   E2E_MOCK_RESEND?: string;
 }
@@ -54,6 +61,9 @@ export interface EmailConfig {
   from: string;
   replyTo: string;
   bookingUrl: string;
+  // The withdrawal section of the terms on the public site (siteUrl), linked
+  // from the buyer's email; never missing, siteUrl always has a fallback.
+  termsUrl: string;
 }
 
 // The Stripe key travels on the failure too: the webhook still needs it to
@@ -85,6 +95,13 @@ export function readEmailConfig(
         ? E2E_EMAIL_CONFIG.bookingUrl
         : (env.BOOKING_URL?.trim() ?? "");
 
+  const termsUrl = mockResend
+    ? E2E_EMAIL_CONFIG.termsUrl
+    : `${siteUrl({
+        NEXT_PUBLIC_SITE_URL: env.NEXT_PUBLIC_SITE_URL,
+        VERCEL_PROJECT_PRODUCTION_URL: env.VERCEL_PROJECT_PRODUCTION_URL,
+      })}${WITHDRAWAL_TERMS_PATH}`;
+
   const missing: string[] = [];
   if (!stripeKey) missing.push("STRIPE_SECRET_KEY");
   if (!resendKey) missing.push("RESEND_API_KEY");
@@ -93,7 +110,7 @@ export function readEmailConfig(
   if (!isHttpsUrl(bookingUrl)) missing.push("BOOKING_URL");
 
   if (missing.length > 0 || !stripeKey) return { ok: false, missing, stripeKey };
-  return { ok: true, config: { stripeKey, resendKey, from, replyTo, bookingUrl } };
+  return { ok: true, config: { stripeKey, resendKey, from, replyTo, bookingUrl, termsUrl } };
 }
 
 export interface WebhookFacts {

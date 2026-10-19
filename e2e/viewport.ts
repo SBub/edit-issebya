@@ -85,7 +85,15 @@ export async function fillValidForm(dialog: Locator): Promise<void> {
   await dialog.getByLabel("Social media links 1", { exact: true }).fill(VALID_FORM.socials[0]);
   await dialog.getByRole("button", { name: "Add another link" }).click();
   await dialog.getByLabel("Social media links 2", { exact: true }).fill(VALID_FORM.socials[1]);
-  await dialog.getByRole("checkbox").check();
+  await termsCheckbox(dialog).check();
+}
+
+export function termsCheckbox(dialog: Locator): Locator {
+  return dialog.getByRole("checkbox", { name: /^I agree to the terms and conditions/ });
+}
+
+export function newsletterCheckbox(dialog: Locator): Locator {
+  return dialog.getByRole("checkbox", { name: /^Send me occasional emails/ });
 }
 
 export function formDialog(page: Page): Locator {

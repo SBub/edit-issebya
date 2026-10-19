@@ -1,5 +1,5 @@
 import posthog from "posthog-js";
-import { startAnalytics } from "@/lib/analytics";
+import { posthogInitOptions, startAnalytics } from "@/lib/analytics";
 
 // PostHog browser analytics, production only. All three variables are public
 // and inlined at build time. NEXT_PUBLIC_VERCEL_ENV is set by Vercel itself
@@ -20,12 +20,7 @@ const browser =
 
 startAnalytics({ vercelEnv, projectToken, host: posthogHost }, browser, {
   init: (token, host) => {
-    posthog.init(token, {
-      api_host: host,
-      defaults: "2026-01-30",
-      capture_exceptions: true,
-      debug: process.env.NODE_ENV === "development",
-    });
+    posthog.init(token, posthogInitOptions(host, process.env.NODE_ENV === "development"));
   },
   register: (properties) => {
     posthog.register(properties);

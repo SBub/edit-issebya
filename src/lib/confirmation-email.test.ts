@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildBuyerEmail, buildOwnerNotice, escapeHtml } from "./confirmation-email";
 
 const BOOKING_URL = "https://booking.example.com/call";
+const TERMS_URL = "https://edit.issebya.com/terms#withdrawal";
 
 // The owner's copy, character for character, for the name "Ana Test".
 const EXPECTED_TEXT = `Hi Ana Test,
@@ -30,6 +31,8 @@ What happens after the call
 2. Once your visual identity is ready, your 30 days start. Send me footage for all 8 reels within that time.
 3. For each reel, you send the A and B roll, and I deliver the edited reel within 24 hours.
 
+Work starts right away. See https://edit.issebya.com/terms#withdrawal for cancellations
+
 If anything comes up, just reply to this email.
 
 Talk soon,
@@ -37,21 +40,30 @@ Sveta`;
 
 describe("the buyer email", () => {
   it("has the exact subject and plain text", () => {
-    const email = buildBuyerEmail({ name: "  Ana Test ", bookingUrl: BOOKING_URL });
+    const email = buildBuyerEmail({
+      name: "  Ana Test ",
+      bookingUrl: BOOKING_URL,
+      termsUrl: TERMS_URL,
+    });
     expect(email.subject).toBe("You're in. Let's book your discovery call");
     expect(email.text).toBe(EXPECTED_TEXT);
   });
 
   it("is deterministic", () => {
-    const a = buildBuyerEmail({ name: "Ana Test", bookingUrl: BOOKING_URL });
-    const b = buildBuyerEmail({ name: "Ana Test", bookingUrl: BOOKING_URL });
+    const a = buildBuyerEmail({ name: "Ana Test", bookingUrl: BOOKING_URL, termsUrl: TERMS_URL });
+    const b = buildBuyerEmail({ name: "Ana Test", bookingUrl: BOOKING_URL, termsUrl: TERMS_URL });
     expect(a).toEqual(b);
   });
 
-  it("has simple HTML: one booking link, the three headings in bold, both lists", () => {
-    const { html } = buildBuyerEmail({ name: "Ana Test", bookingUrl: BOOKING_URL });
+  it("has simple HTML: the booking and terms links, the three headings in bold, both lists", () => {
+    const { html } = buildBuyerEmail({
+      name: "Ana Test",
+      bookingUrl: BOOKING_URL,
+      termsUrl: TERMS_URL,
+    });
     expect(html).toContain(`👉 <a href="${BOOKING_URL}">Book your call</a>`);
-    expect(html.match(/<a /g)).toHaveLength(1);
+    expect(html).toContain(`See <a href="${TERMS_URL}">${TERMS_URL}</a> for cancellations`);
+    expect(html.match(/<a /g)).toHaveLength(2);
     for (const heading of [
       "Next step: book your discovery call",
       "How to prepare",
@@ -66,14 +78,20 @@ describe("the buyer email", () => {
   });
 
   it("escapes the name in HTML and keeps it verbatim in plain text", () => {
-    const email = buildBuyerEmail({ name: "<b>x</b>", bookingUrl: BOOKING_URL });
+    const email = buildBuyerEmail({
+      name: "<b>x</b>",
+      bookingUrl: BOOKING_URL,
+      termsUrl: TERMS_URL,
+    });
     expect(email.html).toContain("Hi &lt;b&gt;x&lt;/b&gt;,");
     expect(email.html).not.toContain("<b>x</b>");
     expect(email.text.startsWith("Hi <b>x</b>,\n")).toBe(true);
   });
 
   it("never reads a $ in the name as a replacement pattern", () => {
-    expect(buildBuyerEmail({ name: "A$&B", bookingUrl: BOOKING_URL }).text).toMatch(/^Hi A\$&B,/);
+    expect(
+      buildBuyerEmail({ name: "A$&B", bookingUrl: BOOKING_URL, termsUrl: TERMS_URL }).text,
+    ).toMatch(/^Hi A\$&B,/);
   });
 });
 
@@ -92,6 +110,7 @@ describe("the owner notice", () => {
       metadata: {
         utm_campaign: "spring",
         terms_accepted: "true",
+        newsletter: "true",
         socials: "https://instagram.com/ana\nhttps://ana.example.com/",
         email: "ana@example.com",
         name: "Ana Test",
@@ -110,6 +129,7 @@ describe("the owner notice", () => {
         "https://instagram.com/ana",
         "https://ana.example.com/",
         "terms_accepted: true",
+        "newsletter: true",
         "utm_source: ig",
         "utm_campaign: spring",
         "",

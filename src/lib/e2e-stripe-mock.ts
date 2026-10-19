@@ -122,3 +122,58 @@ export function setSessionPaymentStatus(id: string, paymentStatus: string): Mock
 export function clearSessions(): void {
   sessionMap().clear();
 }
+
+// How many paid sessions of the offer the mock's sessions list reports, so a
+// spec can put the page in the early-bird or the sold-out state. Reset to 0 by
+// the route's DELETE.
+const SOLD_COUNT = Symbol.for("edit-issebya.e2eStripeSoldCount");
+
+const soldSlots = globalThis as typeof globalThis & { [SOLD_COUNT]?: number };
+
+export function getSoldCountToggle(): number {
+  return soldSlots[SOLD_COUNT] ?? 0;
+}
+
+export function setSoldCountToggle(value: number): void {
+  soldSlots[SOLD_COUNT] = value;
+}
+
+interface ListedSession {
+  id: string;
+  object: "checkout.session";
+  status: string;
+  payment_status: string;
+  metadata: Record<string, string>;
+}
+
+/**
+ * The sessions the mocked `GET /v1/checkout/sessions` lists: `soldCount` paid
+ * sessions of the offer, plus one unpaid session of it and one paid session of
+ * another offer, which the sold count must skip.
+ */
+export function listedSessions(soldCount: number, offerId: string): ListedSession[] {
+  const sold = Array.from({ length: soldCount }, (_, i) => ({
+    id: `cs_test_e2e_sold_${i}`,
+    object: "checkout.session" as const,
+    status: "complete",
+    payment_status: "paid",
+    metadata: { offer: offerId },
+  }));
+  return [
+    ...sold,
+    {
+      id: "cs_test_e2e_unpaid",
+      object: "checkout.session",
+      status: "open",
+      payment_status: "unpaid",
+      metadata: { offer: offerId },
+    },
+    {
+      id: "cs_test_e2e_other_offer",
+      object: "checkout.session",
+      status: "complete",
+      payment_status: "paid",
+      metadata: { offer: "another-offer" },
+    },
+  ];
+}

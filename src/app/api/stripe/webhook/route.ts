@@ -36,6 +36,8 @@ function env(): WebhookEnv {
     EMAIL_FROM: process.env.EMAIL_FROM,
     EMAIL_REPLY_TO: process.env.EMAIL_REPLY_TO,
     BOOKING_URL: process.env.BOOKING_URL,
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
     E2E_MOCK_STRIPE: process.env.E2E_MOCK_STRIPE,
     E2E_MOCK_RESEND: process.env.E2E_MOCK_RESEND,
   };
@@ -79,7 +81,11 @@ async function sendBoth(session: Stripe.Checkout.Session, config: EmailConfig): 
   );
   if (ownerResult.error) throw ownerResult.error;
 
-  const email = buildBuyerEmail({ name: metadata.name ?? "", bookingUrl: config.bookingUrl });
+  const email = buildBuyerEmail({
+    name: metadata.name ?? "",
+    bookingUrl: config.bookingUrl,
+    termsUrl: config.termsUrl,
+  });
   const buyerResult = await resend.emails.send(
     {
       from: config.from,

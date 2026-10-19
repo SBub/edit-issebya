@@ -39,11 +39,22 @@ The form asks as little as possible. `CALL_REQUEST_FIELDS`, in order: `name`, `e
   Empty rows are dropped. A link without a scheme gets `https://` (`instagram.com/you` is what
   people type); anything that is still not an `http(s)` URL with a dotted host is rejected. The
   links, joined one per line, are capped at 500 characters.
-- `terms` is a required checkbox linking to `/terms` and `/privacy` (both stubs for now).
+- `terms` is a required checkbox linking to `/terms` and `/privacy` (see `app_docs/legal-pages.md`), labelled "I agree to the terms and conditions and the privacy policy". The
+  "Continue to payment" button carries the native `disabled` attribute until the box is ticked,
+  and again if it is unticked (`termsAccepted` in `CallRequest`, fed by `onTermsChange` from
+  `CallFormFields`). So the terms error is no longer reachable from the browser; the server action
+  still validates `terms` with `parseCallRequest` and returns it as a field error.
+- `newsletter` is an optional checkbox below terms, unticked by default: "Send me occasional
+  emails with new offers and tips. Unsubscribe any time" (`CALL_REQUEST_LABELS.newsletter`). It is
+  GDPR consent, so it is never pre-ticked, never required and never affects the submit button.
+  `parseCallRequest` reads `true` or `"on"` as yes and anything else as no; it never errors. It is
+  not in `CALL_REQUEST_FIELDS` (that list is the fields that can show an error).
 - The browser and the action run the same validator, so their messages are identical.
 
 Stripe metadata (`toCheckoutMetadata`): `name`, `email`, `socials` (one link per line, empty when
-none), `terms_accepted` (`"true"`), plus the five `UTM_KEYS`: `utm_source`, `utm_medium`,
+none), `terms_accepted` (`"true"`), `newsletter` (`"true"` or `"false"`, the record of the
+buyer's choice), `offer` (`"reels-8"`, what the sold count looks for), `price_tier` (`"early"` or
+`"standard"`), plus the five `UTM_KEYS`: `utm_source`, `utm_medium`,
 `utm_campaign`, `utm_term`, `utm_content` (first value of a repeated parameter, trimmed, capped at
 500, empty values and unknown keys dropped). `customer_email` is the email.
 
@@ -53,15 +64,54 @@ Stripe webhook sets once both confirmation emails are accepted (`app_docs/confir
 ## Price
 
 `OFFER` in `src/lib/offer.ts`: `amountCents: 99000`, `currency: "eur"`, product name
-"8 reels under 1 minute". `buildCheckoutParams` sends it as `price_data` with
-`tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR + VAT" from the same constant,
+"8 reels, each under 1 minute", description "Visual identity, recording guide and 30 days to send
+footage" (no trailing full stop, like `LANDING.afterPurchase` and `LANDING.thankYou`). `buildCheckoutParams` sends it as `price_data` with
+`tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR" from the same constant,
 so the shown price and the charged price come from one place.
+
+No VAT: the owner is VAT exempt in Portugal (art. 53 CIVA exemption). Prices show and charge
+with no "+ VAT", the offer box says "VAT exempt under art. 53 CIVA" (`LANDING.vatExempt`) under
+the price, and Stripe Tax stays off. `tax_behavior` only matters with Stripe Tax on, so it is
+left as is.
+
+### Early-bird price
+
+- The first 4 buyers pay 590 EUR, everyone after 990 EUR: `EARLY_BIRD`
+  (`amountCents: 59000`, `spots: 4`) and `priceFor(soldCount)` in `src/lib/offer.ts`, which
+  returns `amountCents`, `tier` (`"early"` or `"standard"`) and `spotsLeft`. `STANDARD_PRICE` is
+  the full price and the fallback.
+- The sold count comes from Stripe, there is no database: every session carries metadata
+  `offer` (`OFFER.id`, `"reels-8"`), and `countSold` (`src/lib/sold-count.ts`) walks
+  `checkout.sessions.list({ status: "complete", limit: 100 })` with the SDK's auto-pagination and
+  counts the sessions with `status` `complete`, `payment_status` `paid` and that `offer`.
+- `currentOfferPrice` (`src/lib/offer-price.ts`): the page uses it cached for 60 seconds with
+  `unstable_cache` (this app does not opt into Cache Components, and Next 16's guide for that
+  setup names `unstable_cache` for non-fetch data). The server action calls it with
+  `fresh: true` at checkout time, so the charged amount is always counted again on the server and
+  never taken from the client. Under `E2E_MOCK_STRIPE` the cache is skipped so the specs' toggle
+  shows at once.
+- Any failure (no key, Stripe unreachable) logs and falls back to the full price, on the page and
+  at Checkout: a discount that cannot be checked is never shown or charged.
+- `buildCheckoutParams` takes the price, sends its `amountCents` as `unit_amount` and records
+  metadata `price_tier`. The product name and description do not change.
+- The count only sees paid sessions, so two buyers in Checkout at the same time for the last spot
+  can both get the early price. Accepted: at most a spot or two over.
+- On the page, while spots remain: "590 EUR", the full price struck through next to it
+  (`<s>` with an `sr-only` "was"), and "First 4 clients only, N of 4 spots left"
+  (`LANDING.earlyBird`). After 4 sold: "990 EUR" alone.
 
 What Checkout shows about the offer:
 
-- `product_data.description` on the line item: the `LANDING.whatYouGet.items[].text` values, in
-  order, joined with `". "` and ending with `"."` (`offerDescription()`). The note on the reel
-  length item is left out because Checkout cannot render its link. No newlines.
+- `product_data.description` on the line item: `OFFER.description`, one short line (no
+  newlines). The full list stays on the landing page's "What you get".
+- `product_data.images` on the line item: `<origin>/reels/poster-reel-04.jpg` as a thumbnail, sent
+  only when the origin starts with `https://` (`PRODUCT_IMAGE_PATH`). Stripe fetches the image
+  itself, so a `http://localhost` origin (dev, E2E) sends no `images` key.
+- `branding_settings` on the session (`CHECKOUT_BRANDING`, `SessionCreateParams.BrandingSettings`
+  in the stripe 23.0.0 types): `display_name` "edit issebya" (from `LANDING.brand`, shown at the
+  top instead of the Stripe account's business name), `background_color` `#ffffff`,
+  `button_color` `#a21caf` (Tailwind fuchsia-700, the site's CTA colour), `border_style`
+  `rounded`. No `icon` or `logo`: those need an uploaded Stripe File id.
 - `custom_text.submit.message` on the session: `LANDING.afterPurchase`, shown next to the Pay
   button. No other `custom_text` key.
 - Limits (`STRIPE_DESCRIPTION_MAX_LENGTH`, `STRIPE_CUSTOM_TEXT_MAX_LENGTH`): 40000 characters for
@@ -73,6 +123,10 @@ What Checkout shows about the offer:
   terms checkbox (`terms_accepted`).
 
 ## Tax flag
+
+Off for this owner: she is VAT exempt (art. 53 CIVA), so `STRIPE_AUTOMATIC_TAX` stays unset in
+every environment. The support stays in the code for the day she registers for VAT (then the
+page copy and the "VAT exempt" line change too).
 
 `STRIPE_AUTOMATIC_TAX` turns Stripe Tax on, and only the exact string `"true"` does
 (`automaticTaxEnabled`). Then the session also gets:
@@ -124,7 +178,13 @@ Unset, or any other value: no tax parameter is sent.
 - The create handler also stores each session for the webhook's retrieve and update calls, and
   `/api/e2e-stripe-mock` also lists, clears and sets the payment status of the stored sessions; see
   `app_docs/confirmation-email.md`, "E2E mocks", which also covers the Resend mock.
-- Specs: `e2e/checkout.spec.ts`, `e2e/call_form.spec.ts`, `e2e/confirmation_email.spec.ts`.
+- The mock also answers `GET https://api.stripe.com/v1/checkout/sessions` (the sold count's
+  list call, paginated by `limit` and `starting_after`): `soldCount` paid sessions of the offer
+  plus one unpaid and one of another offer, which the count must skip (`listedSessions`).
+  `POST { soldCount }` on `/api/e2e-stripe-mock` sets it; `DELETE` resets it to 0, so by default
+  the page is in the early-bird state.
+- Specs: `e2e/checkout.spec.ts`, `e2e/call_form.spec.ts`, `e2e/confirmation_email.spec.ts`,
+  `e2e/early_bird.spec.ts`.
 
 ### msw 3 deviation
 
@@ -141,30 +201,42 @@ the `ClientRequestInterceptor` passthrough socket bug
 None of this is done by the code:
 
 1. In Vercel, set `STRIPE_SECRET_KEY`: the live key for Production, a test key for Preview.
-2. In Stripe, enable Stripe Tax: the Lisbon origin address, the Portugal registration (and any OSS
-   registration), the services tax code as the account default. Then set
-   `STRIPE_AUTOMATIC_TAX=true` in Vercel and redeploy.
-3. In Stripe settings (Business, Public details, Branding): the public business name, the brand
-   colour and icon or logo for Checkout, and the support email.
+2. Stripe Tax: not now. The owner is VAT exempt (art. 53 CIVA), so leave it off and leave
+   `STRIPE_AUTOMATIC_TAX` unset. Only if she registers for VAT: enable Stripe Tax (the Lisbon
+   origin address, the Portugal registration and any OSS registration, the services tax code as
+   the account default), set `STRIPE_AUTOMATIC_TAX=true` in Vercel, redeploy, and change the page
+   copy.
+3. In Stripe settings (Business, Public details, Branding): the public business name (still used in
+   terms, receipts and statements; the Checkout header uses `branding_settings.display_name`), an
+   icon or logo, and the support email.
 4. In Stripe public details, set the terms of service URL `https://edit.issebya.com/terms` and the
    privacy policy URL `https://edit.issebya.com/privacy`; in Checkout settings, enable "Legal
    policies" and "Contact information" so Checkout links them. Only after this could
    `consent_collection.terms_of_service` be considered (a separate change).
 5. Receipt emails for successful payments.
-6. Make one test-mode payment and check the Checkout page shows the description under the product
-   name and the custom text next to the Pay button.
+6. Make one test-mode payment and check the Checkout page shows "edit issebya" at the
+   top, the thumbnail and the short description next to the product name, and the custom text next
+   to the Pay button.
 
 This code has not been run against a real Stripe account.
 
 ## Rules
 
 - Never let the shown price and the charged price drift: both come from `OFFER`.
-- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted`, the five UTM keys and
-  `confirmation_email_sent`).
+- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted`, `newsletter`, `offer`, `price_tier`, the five UTM keys and `confirmation_email_sent`). Never change
+  `OFFER.id`: the sold count finds the offer's sessions by it.
+- Never show "+ VAT" or turn Stripe Tax on while the owner is VAT exempt (art. 53 CIVA).
+- Never take the amount from the client: the server action counts the sold spots again at
+  checkout time. Never show or charge the early-bird price when the count fails.
+- Never pre-tick or require the newsletter box, and never let it change the submit button's
+  disabled state. Email a buyer a newsletter only when their `newsletter` metadata is `"true"`.
 - Never throw from `startCheckout`; return a typed result.
 - Never create the Stripe client at module load.
-- Never copy the offer description or the custom text into `checkout-params.ts`; both are read
-  from `LANDING`.
+- Never copy the offer name, the offer description or the custom text into `checkout-params.ts`;
+  the first two are read from `OFFER`, the custom text from `LANDING`.
+- Never send `product_data.images` for an origin that is not `https://`.
+- Never enable the submit button while the terms box is unticked, and never drop the server-side
+  `terms` check because of it.
 - Do not send `consent_collection.terms_of_service` unless a terms URL is set in the Stripe
   account's public details.
 - Never make the E2E mock, its route or `sk_test_e2e_mock` do anything unless `E2E_MOCK_STRIPE` is

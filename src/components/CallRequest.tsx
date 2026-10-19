@@ -26,7 +26,7 @@ export type CheckoutState = "success" | "cancelled" | null;
 // The ADW dashboard's Work with me button (src/lib/accent.ts there): fuchsia
 // 700, hover 800, white label (700 passes WCAG AA, 500 does not), rounded-md.
 const PRIMARY_BUTTON =
-  "w-full rounded-md bg-fuchsia-700 px-5 py-3 text-sm font-medium text-white hover:bg-fuchsia-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700 disabled:cursor-wait disabled:opacity-70 short:py-2.5 tiny:py-2";
+  "w-full rounded-md bg-fuchsia-700 px-5 py-3 text-sm font-medium text-white hover:bg-fuchsia-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700 disabled:opacity-70 short:py-2.5 tiny:py-2";
 
 function formValues(form: HTMLFormElement): Record<string, unknown> {
   const data = new FormData(form);
@@ -39,8 +39,12 @@ function formValues(form: HTMLFormElement): Record<string, unknown> {
     email: value("email"),
     socials: data.getAll("socials").filter((entry) => typeof entry === "string"),
     terms: data.get("terms") === "on",
+    newsletter: data.get("newsletter") === "on",
   };
 }
+
+// Session ids purchase_completed was sent for in this page load.
+const PURCHASES_SENT = new Set<string>();
 
 /**
  * The page's one call to action and everything behind it: the form dialog, the
@@ -63,22 +67,21 @@ export function CallRequest({
   const [errors, setErrors] = useState<CallRequestErrors>({});
   const [unavailable, setUnavailable] = useState(false);
   const [pending, startTransition] = useTransition();
+  // The submit button stays disabled until the terms box is ticked; the
+  // server action still validates terms on its own.
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // The thank-you dialog is opened through the DOM dialog API, an external
-  // system. purchase_completed is sent once per session id, guarded in
-  // sessionStorage against strict-mode double effects and reloads.
+  // system. purchase_completed is sent once per session id per page load,
+  // guarded in memory against strict-mode double effects. Nothing is written
+  // to the device (no consent banner, see app_docs/analytics.md), so a reload
+  // of the thank-you URL sends it again: count unique session_id values.
   useEffect(() => {
     if (checkout !== "success") return;
     const dialog = thanksDialogRef.current;
     if (dialog && !dialog.open) dialog.showModal();
-    if (!sessionId) return;
-    const key = `purchase_completed:${sessionId}`;
-    try {
-      if (window.sessionStorage.getItem(key)) return;
-      window.sessionStorage.setItem(key, "1");
-    } catch {
-      // sessionStorage can throw (private mode); count the purchase anyway.
-    }
+    if (!sessionId || PURCHASES_SENT.has(sessionId)) return;
+    PURCHASES_SENT.add(sessionId);
     posthog.capture("purchase_completed", { session_id: sessionId });
   }, [checkout, sessionId]);
 
@@ -162,7 +165,7 @@ export function CallRequest({
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-            <CallFormFields errors={errors} />
+            <CallFormFields errors={errors} onTermsChange={setTermsAccepted} />
           </div>
           <div className="flex flex-col gap-2 border-t border-neutral-200 px-5 py-4">
             {unavailable ? (
@@ -170,7 +173,11 @@ export function CallRequest({
                 {LANDING.unavailable}
               </p>
             ) : null}
-            <button type="submit" disabled={pending} className={PRIMARY_BUTTON}>
+            <button
+              type="submit"
+              disabled={pending || !termsAccepted}
+              className={`${PRIMARY_BUTTON} ${pending ? "disabled:cursor-wait" : "disabled:cursor-not-allowed"}`}
+            >
               {pending ? "Redirecting..." : "Continue to payment"}
             </button>
           </div>

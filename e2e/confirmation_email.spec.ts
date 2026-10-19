@@ -105,6 +105,7 @@ test("a paid session gets the buyer email and the owner notice, once, even on re
   const expected = buildBuyerEmail({
     name: VALID_FORM.name,
     bookingUrl: E2E_EMAIL_CONFIG.bookingUrl,
+    termsUrl: E2E_EMAIL_CONFIG.termsUrl,
   });
   expect(buyer?.body.to).toBe(VALID_FORM.email);
   expect(buyer?.body.from).toBe(E2E_EMAIL_CONFIG.from);
@@ -115,6 +116,10 @@ test("a paid session gets the buyer email and the owner notice, once, even on re
   expect(buyer?.body.text).toContain("Hi Ana Test,\n");
   expect(buyer?.body.text).toContain("👉 Book your call: https://booking.e2e.test/call");
   expect(buyer?.body.html).toContain('href="https://booking.e2e.test/call"');
+  // The durable record of the request to start right away (DL 24/2014 art. 15).
+  expect(buyer?.body.text).toContain(
+    "Work starts right away. See https://site.e2e.test/terms#withdrawal for cancellations",
+  );
 
   const owner = sent.find((email) => email.idempotencyKey === `owner-notice/${sessionId}`);
   expect(owner, "owner notice").toBeDefined();

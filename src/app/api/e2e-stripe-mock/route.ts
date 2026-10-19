@@ -7,6 +7,7 @@ import {
   setKeyMissingToggle,
   setLastCheckout,
   setSessionPaymentStatus,
+  setSoldCountToggle,
 } from "@/lib/e2e-stripe-mock";
 
 /**
@@ -14,8 +15,10 @@ import {
  * GET returns the last captured Checkout request body, parsed, and the stored
  * sessions; POST `{ keyMissing }` makes the server action (and the webhook)
  * behave as if no Stripe key were set, and POST `{ sessionId, paymentStatus }`
- * sets a stored session's payment_status; DELETE clears the capture and the
- * sessions, so a spec that asserts "no request was made" never sees an
+ * sets a stored session's payment_status, and POST `{ soldCount }` sets how
+ * many paid sessions of the offer the mocked sessions list reports (the
+ * early-bird state); DELETE clears the capture and the sessions and resets
+ * the sold count to 0, so a spec that asserts "no request was made" never sees an
  * earlier spec's capture on the shared server.
  *
  * Every method 404s unless E2E_MOCK_STRIPE is exactly "true", so the route is
@@ -42,7 +45,12 @@ export async function POST(request: Request) {
     keyMissing?: unknown;
     sessionId?: unknown;
     paymentStatus?: unknown;
+    soldCount?: unknown;
   } | null;
+  if (typeof payload?.soldCount === "number" && Number.isInteger(payload.soldCount)) {
+    setSoldCountToggle(payload.soldCount);
+    return NextResponse.json({ soldCount: payload.soldCount });
+  }
   if (typeof payload?.sessionId === "string" && typeof payload.paymentStatus === "string") {
     const session = setSessionPaymentStatus(payload.sessionId, payload.paymentStatus);
     return session ? NextResponse.json({ session }) : notFound();
@@ -56,5 +64,6 @@ export function DELETE() {
   if (!isE2EMockStripe()) return notFound();
   setLastCheckout(null);
   clearSessions();
+  setSoldCountToggle(0);
   return NextResponse.json({ body: null, sessions: [] });
 }

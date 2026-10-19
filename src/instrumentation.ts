@@ -1,6 +1,9 @@
 import { isE2EMockResend, recordEmail } from "@/lib/e2e-resend-mock";
+import { OFFER } from "@/lib/offer";
 import {
   getSession,
+  getSoldCountToggle,
+  listedSessions,
   isE2EMockStripe,
   setLastCheckout,
   storeSession,
@@ -72,6 +75,22 @@ async function registerE2EMocks(flags: { stripe: boolean; resend: boolean }): Pr
       return HttpResponse.json(
         storeSession(id, successUrl.replace("{CHECKOUT_SESSION_ID}", id), params),
       );
+    }),
+    // The sold count's list call, paginated like Stripe: `limit` per page,
+    // `starting_after` the last id of the previous page.
+    http.get("https://api.stripe.com/v1/checkout/sessions", ({ request }) => {
+      const query = new URL(request.url).searchParams;
+      const all = listedSessions(getSoldCountToggle(), OFFER.id);
+      const limit = Number(query.get("limit") ?? 10) || 10;
+      const after = query.get("starting_after");
+      const start = after ? all.findIndex((session) => session.id === after) + 1 : 0;
+      const data = all.slice(start, start + limit);
+      return HttpResponse.json({
+        object: "list",
+        url: "/v1/checkout/sessions",
+        has_more: start + limit < all.length,
+        data,
+      });
     }),
     http.get("https://api.stripe.com/v1/checkout/sessions/:id", ({ params }) => {
       const session = getSession(String(params.id));

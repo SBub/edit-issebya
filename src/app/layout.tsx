@@ -15,7 +15,21 @@ export const metadata: Metadata = {
     }),
   ),
   title: "edit issebya",
-  description: LANDING.description[0],
+  description: LANDING.quote,
+  // Link previews. The image comes from the opengraph-image and twitter-image
+  // file conventions next to this layout, made absolute by metadataBase.
+  openGraph: {
+    type: "website",
+    siteName: "edit issebya",
+    title: "edit issebya",
+    description: LANDING.quote,
+    locale: "en",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "edit issebya",
+    description: LANDING.quote,
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

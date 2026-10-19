@@ -16,30 +16,40 @@ Nothing is clipped and nothing is hidden.
 - `src/app/page.tsx` renders one `<main class="landing grid">` with four grid areas:
   - `title`: a `header` across the top with the brand as the `h1` ("edit" with "issebya" set small
     and low on its right, a `sub`, like a chemical index; its accessible name is "edit issebya").
-  - `text`: `LANDING.description` (paragraphs of sentences, each sentence on its own line and with
-    no full stop), the offer line ("8 reels, each under 1 min*"), the price from
-    `formatOfferPrice()` under it, and `LANDING.offerNote` (the offer is valid for 30 days from
-    purchase).
+  - `text`: the quote (`LANDING.quote`, "Your ideas deserve reels that look like your brand. And
+    you deserve your evenings back") first and highlighted: in curly quotes, italic, `font-semibold`,
+    two steps above the body text (`text-lg`, `lg:text-xl`) and stepped down by `short:`,
+    `tiny:`, `lg:mid:` and `lg:short:`. No trailing full stop inside the quote. It is a `p`, not a
+    `blockquote`: the owner's own tagline, not a quotation from elsewhere. Then the introduction
+    (`LANDING.intro`, "I'm a reel editor for founders and experts...") as body text, then "How we
+    work together", "What you get" and the closing line.
   - `slider`: `ReelSlider` (`src/components/ReelSlider.tsx`).
   - `cta`: a bordered `section` named "Offer" (`rounded-lg border-neutral-200`, the ADW
-    dashboard's card style): the price, `CallRequest` (`src/components/CallRequest.tsx`, the "Start
+    dashboard's card style): the price (while early-bird spots remain, "590 EUR" with the
+    full price struck through and "First 4 clients only, N of 4 spots left"; always the grey line "VAT exempt under art. 53
+    CIVA" (`LANDING.vatExempt`) under the price, with no "+ VAT" anywhere; see
+    `app_docs/checkout.md`, "Early-bird price"), `CallRequest` (`src/components/CallRequest.tsx`, the "Start
     your 30 days" button in the dashboard's Work with me style: fuchsia 700, `rounded-md`), what
     happens after payment (`LANDING.afterPurchase`) and "Questions first? Message me here", a link
     that opens a WhatsApp chat in a new tab (`src/components/QuestionsLink.tsx`; the number and
     the prefilled text are defined once in `LANDING.questions`, the `href` is built by
     `whatsAppUrl` in `src/lib/whatsapp.ts`). The same link is used on `/`, `/terms` and `/privacy`.
 - All copy lives in `src/content/landing.ts` (`LANDING`), read by the page and the specs alike.
-- `footer`: a `nav` named "Legal" with links to `/terms` and `/privacy` (stub pages through
-  `src/components/LegalPage.tsx`). `LegalPage` shares the landing page's padding (`PAGE_PADDING`)
-  and brand placement and typography (`BRAND_CLASS`, `BrandName`), all from
-  `src/components/Brand.tsx`, left aligned, so the brand sits at the same spot on all three pages.
-  Specs: `e2e/legal_pages.spec.ts`.
+- `footer`: a `nav` named "Legal" with links to `/terms`, `/privacy` and the "Complaints book"
+  (`LANDING.complaintsBook`, https://www.livroreclamacoes.pt, new tab), wrapping on narrow
+  phones. The legal pages and their content are described in `app_docs/legal-pages.md`.
+  `LegalPage` shares the landing page's padding (`PAGE_PADDING`) and brand placement and
+  typography (`BRAND_CLASS`, `BrandName`), all from `src/components/Brand.tsx`, left aligned, so
+  the brand sits at the same spot on all three pages. Specs: `e2e/legal_pages.spec.ts`.
+- The "8 reels, each under 1 min" item's note ("longer ones: terms of service apply") links to
+  `/terms#reel-length`.
 - `src/app/globals.css` defines the `.landing` grid. Narrow screens: one column (title, the
-  introduction paragraphs, the reels, then "How we work together", "What you get" and the closing
+  quote and the introduction, the reels, then "How we work together", "What you get" and the closing
   line, CTA, footer): `.landing-text` is `display: contents` there, so `.landing-intro` and
   `.landing-details` are placed around the slider. At `@media (min-width: 64rem), (min-width: 48rem) and (orientation:
-landscape)` two columns: brand, slider and footer on the left; the text from the top, then the
-  offer section, on the right.
+landscape)` two columns: brand, slider and footer on the left; the text, then the offer
+  section, in one flex column on the right (grid areas `"title text" "slider text" "footer
+text"`).
 - On one-screen viewports the main is `100dvh` and every row is sized from it; the slider media is
   the only part that flexes. On stacked viewports the main is at least `100dvh`, grows with its
   content, and the slider area (`.reel-area`) is `min(75svh, 40rem)` tall so the reels stay a
@@ -67,14 +77,41 @@ page.
 
 ## Height variants
 
-Width alone cannot tell 320x568 from 390x844 (the case the comment in `globals.css` calls out), so
-two custom variants step down with the viewport height:
+Three custom variants step text, gaps and padding down with the viewport height, in the
+one-screen layout only: `mid` (`max-height: 820px`), `short` (700px) and `tiny` (600px), each
+combined with the two-column breakpoint (`(min-width: 64rem)`, or `(min-width: 48rem)` in
+landscape) as block-form `@custom-variant`s with `@slot` in `globals.css` (the shorthand form
+cannot take a comma media list). The stacked layout scrolls, so height never tightens it: a phone
+in portrait never matches any of them, at any height. The `.reel-track` label height step uses
+the same condition.
 
-- `@custom-variant short (@media (max-height: 700px))`
-- `@custom-variant tiny (@media (max-height: 600px))`
+`short:`, `tiny:`, `mid:` and `lg:short:` reduce text size, gaps and padding in `page.tsx`,
+`Brand.tsx` (`PAGE_PADDING`, `BRAND_CLASS`), `ReelCard`, `ReelSlider` and `CallRequest`.
 
-`short:`, `tiny:` and `lg:short:` reduce text size, gaps and padding in `page.tsx`, in `ReelCard`,
-in `ReelSlider` and in `CallRequest`.
+Lists ("How we work together", "What you get") use hanging indents (`list-outside pl-5`, so
+wrapped lines align with the text), `space-y-1` between items and `mb-2` under the heading;
+`mid:` drops both so the one-screen column still fits.
+
+### Equal gaps
+
+Every gap between consecutive blocks is the same, on every viewport.
+
+- Stacked: one value, `--landing-gap` on `.landing` (3rem, at every phone height), is the grid's
+  `row-gap` and the `gap` of `.landing-intro` and
+  `.landing-details`. So title, quote, introduction, reels, "How we work together", "What you
+  get", closing line, offer box and footer are all that far apart.
+- Two columns: the offer box sits inside `.landing-text` (on phones `.landing-text` is
+  `display: contents`, so `[grid-area:cta]` still places it), and `.landing-intro` and
+  `.landing-details` are `display: contents`, so quote, introduction, the two sections, closing
+  line and offer box are flex items of one column. A `Spacer` (`.landing-spacer`) sits between
+  every pair; all are identical (`flex: 1 1 0`, `min-height` 1rem, 0.5rem at
+  `max-height: 820px`, `max-height` 6rem), so they grow equally into the free height and the
+  column can never overflow. The left column's rows (title, slider, footer) keep `row-gap` 1rem
+  (0.625rem at `max-height: 700px`).
+- Spec: `e2e/equal_gaps.spec.ts` measures the gaps at 1440x900 and 1280x800 (equal within 1px)
+  and on phones at 390x844, 375x667 and 320x568 (all 48px within 1px, reels and footer
+  included), checks the section text keeps its size on a short phone, and checks the hanging
+  indents and item spacing.
 
 ## Reel slider
 
@@ -112,6 +149,21 @@ in `ReelSlider` and in `CallRequest`.
 The `id` is the `reel_id` sent with `reel_played` (see `app_docs/analytics.md`), so an existing id
 never changes.
 
+## Link previews
+
+- `src/app/layout.tsx` sets `openGraph` (`type` website, `siteName` and `title` "edit issebya",
+  `description` `LANDING.quote`, `locale` en) and `twitter` (`card`
+  `summary_large_image`). `metadataBase` makes every image URL absolute.
+- `src/app/opengraph-image.tsx` and `src/app/twitter-image.tsx` are Next's file conventions and
+  both render `renderOgImage()` (`src/components/OgImage.tsx`, `ImageResponse` from `next/og`):
+  1200x630, white, the "edit" wordmark with "issebya" set small and low, a short fuchsia-700 rule,
+  the first sentence of `LANDING.quote`, and the first three `REELS` posters as rounded 9:16
+  thumbnails, read from `public/` with `fs/promises` and inlined as data URLs. The config exports
+  (`alt`, `size`, `contentType`) stay literal in each route file.
+- `src/app/icon.tsx`: the 32x32 favicon, an "e" in neutral-900 on white.
+- Spec: `e2e/link_preview.spec.ts` (the `og:` and `twitter:` tags, absolute image URLs, both images
+  and the icon answer 200 `image/png`).
+
 ## Card styling sources
 
 `ReelCard` takes its label, never its code, from the issebya.homes website's
@@ -133,6 +185,10 @@ Deliberate differences from the shop card:
 - Never set `overflow: hidden` or `overflow: clip` on `html` or `body`.
 - Never hide or cut off a required element below a breakpoint to make it fit.
 - Never use a non-white page background, in any colour scheme.
+- Never give two consecutive blocks of the text column (or of the stacked page) different gaps:
+  one `--landing-gap` when stacked, identical `.landing-spacer`s in two columns.
+- Never let a height-based variant or media query tighten the stacked layout: height steps are
+  for the one-screen layout only.
 - Never autoplay a reel or play sound unasked.
 - Never measure from `window.innerWidth` or `window.innerHeight` in specs; measure from the root
   box.

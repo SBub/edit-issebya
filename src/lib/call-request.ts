@@ -1,5 +1,5 @@
-// The checkout form: name, email, any number of optional social links and the
-// terms checkbox, and the one validator the browser and the server action both
+// The checkout form: name, email, any number of optional social links, the
+// terms checkbox and the optional newsletter checkbox, and the one validator the browser and the server action both
 // run, so their messages are identical. `toCheckoutMetadata` turns a valid
 // request into Stripe metadata: its keys are what the Stripe Dashboard (and
 // the confirmation email) read, so never rename them.
@@ -14,6 +14,8 @@ export interface CallRequest {
   // Absolute http(s) links; empty when the buyer has no social media yet.
   socials: string[];
   terms: true;
+  // Opt-in to the newsletter (GDPR consent): unticked by default, never required.
+  newsletter: boolean;
 }
 
 export type CallRequestErrors = Partial<Record<CallRequestField, string>>;
@@ -28,6 +30,7 @@ export const CALL_REQUEST_LABELS = {
   socials: "Social media links",
   addSocial: "Add another link",
   removeSocial: "Remove link",
+  newsletter: "Send me occasional emails with new offers and tips. Unsubscribe any time",
 } as const;
 
 export const CALL_REQUEST_HINTS = {
@@ -66,6 +69,8 @@ export type ParsedCallRequest =
 
 // Non-string values count as missing; every value is trimmed; empty social
 // rows are dropped. `terms` must be exactly true (or the checkbox's "on").
+// `newsletter` is yes only for true or "on"; anything else is no, never an
+// error.
 export function parseCallRequest(input: Record<string, unknown>): ParsedCallRequest {
   const errors: CallRequestErrors = {};
 
@@ -95,19 +100,22 @@ export function parseCallRequest(input: Record<string, unknown>): ParsedCallRequ
   }
 
   if (input.terms !== true && input.terms !== "on") errors.terms = CALL_REQUEST_MESSAGES.terms;
+  const newsletter = input.newsletter === true || input.newsletter === "on";
 
   return Object.keys(errors).length > 0
     ? { ok: false, errors }
-    : { ok: true, value: { name, email, socials, terms: true } };
+    : { ok: true, value: { name, email, socials, terms: true, newsletter } };
 }
 
-// One string per key, as Stripe metadata requires: socials one per line, and
-// the terms acceptance recorded alongside the payment.
+// One string per key, as Stripe metadata requires: socials one per line, the
+// terms acceptance recorded alongside the payment, and the newsletter choice
+// as "true" or "false" (the record of consent, or of its absence).
 export function toCheckoutMetadata(request: CallRequest): Record<string, string> {
   return {
     name: request.name,
     email: request.email,
     socials: request.socials.join("\n"),
     terms_accepted: "true",
+    newsletter: request.newsletter ? "true" : "false",
   };
 }

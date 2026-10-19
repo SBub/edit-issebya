@@ -18,8 +18,24 @@ describe("parseCallRequest", () => {
   it("accepts name, email and terms with no social links", () => {
     expect(parseCallRequest({ ...VALID, name: "  Ana  " })).toEqual({
       ok: true,
-      value: { name: "Ana", email: "ana@example.com", socials: [], terms: true },
+      value: { name: "Ana", email: "ana@example.com", socials: [], terms: true, newsletter: false },
     });
+  });
+
+  it("reads the newsletter box as yes only for true or the checkbox's on", () => {
+    for (const newsletter of [true, "on"]) {
+      const result = parseCallRequest({ ...VALID, newsletter });
+      expect(result.ok && result.value.newsletter).toBe(true);
+    }
+    for (const newsletter of [undefined, false, "", "off", "true", 1, "yes"]) {
+      const result = parseCallRequest({ ...VALID, newsletter });
+      expect(result.ok).toBe(true);
+      expect(result.ok && result.value.newsletter).toBe(false);
+    }
+  });
+
+  it("never reports a newsletter error", () => {
+    expect(errorsFor({ newsletter: "nonsense" })).not.toHaveProperty("newsletter");
   });
 
   it("accepts the checkbox's form value", () => {
@@ -63,6 +79,7 @@ describe("parseCallRequest", () => {
       value: {
         ...VALID,
         socials: ["https://instagram.com/ana", "http://ana.example.com/x"],
+        newsletter: false,
       },
     });
   });
@@ -101,12 +118,22 @@ describe("normaliseLink", () => {
 describe("toCheckoutMetadata", () => {
   it("joins socials one per line and records the terms acceptance", () => {
     expect(
-      toCheckoutMetadata({ ...VALID, socials: ["https://a.com/", "https://b.com/"], terms: true }),
+      toCheckoutMetadata({
+        ...VALID,
+        socials: ["https://a.com/", "https://b.com/"],
+        terms: true,
+        newsletter: false,
+      }),
     ).toEqual({
       name: "Ana",
       email: "ana@example.com",
       socials: "https://a.com/\nhttps://b.com/",
       terms_accepted: "true",
+      newsletter: "false",
     });
+  });
+
+  it("records a newsletter opt-in as the string true", () => {
+    expect(toCheckoutMetadata({ ...VALID, terms: true, newsletter: true }).newsletter).toBe("true");
   });
 });
