@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage } from "@/components/LegalPage";
-import { LANDING } from "@/content/landing";
+import { QuestionsLink } from "@/components/QuestionsLink";
 
 export const metadata: Metadata = { title: "Privacy policy, edit issebya" };
 
@@ -15,11 +15,7 @@ export default function PrivacyPage() {
         take the payment.
       </p>
       <p>
-        Questions?{" "}
-        <a href={LANDING.questions.href} className="underline underline-offset-2">
-          {LANDING.questions.link}
-        </a>
-        .
+        Questions? <QuestionsLink className="underline underline-offset-2" />.
       </p>
     </LegalPage>
   );
