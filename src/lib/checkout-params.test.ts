@@ -48,7 +48,7 @@ describe("the Checkout params builder", () => {
 
   it("names the offer briefly, with a one-line description", () => {
     expect(OFFER.productName).toBe("8 reels, each under 1 minute");
-    expect(OFFER.description).toBe("Visual identity, recording guide and 30 days to send footage.");
+    expect(OFFER.description).toBe("Visual identity, recording guide and 30 days to send footage");
     expect(OFFER.description).not.toContain("\n");
     expect(OFFER.description.length).toBeLessThanOrEqual(STRIPE_DESCRIPTION_MAX_LENGTH);
   });

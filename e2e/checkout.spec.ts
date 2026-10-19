@@ -41,7 +41,7 @@ test("a valid submit goes through Checkout and back to the thank-you dialog", as
     "8 reels, each under 1 minute",
   );
   expect(body?.["line_items[0][price_data][product_data][description]"]).toBe(
-    "Visual identity, recording guide and 30 days to send footage.",
+    "Visual identity, recording guide and 30 days to send footage",
   );
   // The dev server's origin is http://localhost, which Stripe cannot fetch: no thumbnail.
   expect(Object.keys(body ?? {}).some((key) => key.includes("[product_data][images]"))).toBe(false);

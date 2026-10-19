@@ -76,11 +76,14 @@ two custom variants step down with the viewport height:
 `short:`, `tiny:` and `lg:short:` reduce text size, gaps and padding in `page.tsx`, in `ReelCard`,
 in `ReelSlider` and in `CallRequest`.
 
-"How we work together" and "What you get" get extra room on tall screens: in the stacked layout
+"How we work together" and "What you get" get extra room. In the stacked layout
 `.landing-details` has `gap-8` between its blocks and `py-4` around them (on top of the grid's
-`gap-y-4`); in the two-column layout `.landing-text` and `.landing-details` use `lg:gap-12`. The
-`short:`, `tiny:`, `lg:mid:` and `lg:short:` variants keep their tight gaps (and `short:py-0`),
-so the one-screen viewports still never scroll.
+`gap-y-4`); `short:` and `tiny:` keep their tight gaps and `short:py-0`. In the two-column layout
+`.landing-details` is `display: contents` and three `Spacer`s in `page.tsx` sit between the
+introduction, the two sections and the closing line. Each is at least the old gap (`lg:min-h-12`,
+`lg:mid:min-h-3`, `lg:short:min-h-3`) and grows into the text column's free height up to 6rem
+(`lg:flex-1 lg:max-h-24`), so tall screens get clearly more air and the column can never
+overflow: one-screen viewports still never scroll.
 
 ## Reel slider
 

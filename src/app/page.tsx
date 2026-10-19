@@ -15,6 +15,22 @@ function checkoutState(value: SearchParams[string]): CheckoutState {
 }
 
 /**
+ * Two-column layout only: the room above, between and below "How we work
+ * together" and "What you get". At least the old tight gap, growing into the
+ * text column's free height up to 6rem, so tall screens get clearly more air
+ * and the column never overflows. Hidden in the stacked layout, where the
+ * gaps on .landing-details apply.
+ */
+function Spacer() {
+  return (
+    <div
+      aria-hidden="true"
+      className="landing-spacer hidden lg:block lg:max-h-24 lg:min-h-12 lg:flex-1 lg:mid:min-h-3 lg:short:min-h-3"
+    />
+  );
+}
+
+/**
  * Wide screens (and tablets in landscape): the whole site on one screen. The
  * main is 100dvh and every grid row is sized from it, so nothing scrolls,
  * nothing on html or body is clipped and nothing is hidden: the slider's
@@ -36,13 +52,14 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         </h1>
       </header>
 
-      <div className="landing-text min-h-0 flex-col gap-4 short:gap-2.5 tiny:gap-2 lg:justify-center lg:gap-12 lg:mid:gap-3 lg:short:gap-3">
+      <div className="landing-text min-h-0 flex-col gap-4 short:gap-2.5 tiny:gap-2 lg:justify-center lg:gap-0">
         <div className="landing-intro flex flex-col gap-3 text-sm leading-relaxed short:gap-1.5 short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
           {LANDING.description.map((paragraph) => (
             <p key={paragraph}>{paragraph}</p>
           ))}
         </div>
-        <div className="landing-details flex flex-col gap-8 py-4 short:gap-2.5 short:py-0 tiny:gap-2 lg:gap-12 lg:py-0 lg:mid:gap-3 lg:short:gap-3">
+        <Spacer />
+        <div className="landing-details flex flex-col gap-8 py-4 short:gap-2.5 short:py-0 tiny:gap-2">
           <section
             aria-label="How we work together"
             className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
@@ -54,6 +71,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               ))}
             </ol>
           </section>
+          <Spacer />
           <section
             aria-label="What you get"
             className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
@@ -77,6 +95,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               ))}
             </ul>
           </section>
+          <Spacer />
           <p className="text-sm leading-relaxed short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
             {LANDING.closing}
           </p>

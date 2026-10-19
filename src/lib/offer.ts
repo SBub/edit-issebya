@@ -7,7 +7,7 @@ export const OFFER = {
   // The line item on Stripe Checkout: a short name and a one-line description,
   // so the Checkout page reads like a product, not a paragraph.
   productName: "8 reels, each under 1 minute",
-  description: "Visual identity, recording guide and 30 days to send footage.",
+  description: "Visual identity, recording guide and 30 days to send footage",
   reelCount: 8,
   maxSeconds: 60,
 } as const;

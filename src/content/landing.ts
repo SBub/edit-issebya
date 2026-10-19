@@ -38,12 +38,11 @@ export const LANDING = {
       { text: "30 days to send me footage for all 8, starting once your visual identity is ready" },
     ],
   },
-  closing:
-    "That works out to 2 reels a week. It's for founders who treat content as a distribution channel, not a side project.",
+  closing: "That works out to 2 reels a week",
   variations:
     "These are variations. Your variant will match your project's ICP and UVP or already established brand identity",
   cta: "Start your 30 days",
-  afterPurchase: "Your confirmation email has a link to book our discovery call.",
+  afterPurchase: "Your confirmation email has a link to book our discovery call",
   questions: { ...questions, href: whatsAppUrl(questions.number, questions.text) },
   footer: [
     { label: "Terms and conditions", href: "/terms" },
@@ -51,6 +50,6 @@ export const LANDING = {
   ],
   cancelled: "Payment was not completed. You can try again any time.",
   thankYou:
-    "Thank you. Your payment is in. Check your inbox: a confirmation email with a link to book your discovery call is on its way.",
+    "Thank you. Your payment is in. Check your inbox: a confirmation email with a link to book your discovery call is on its way",
   unavailable: "Payment is not available right now. Please try again later.",
 } as const;

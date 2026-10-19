@@ -58,7 +58,7 @@ Stripe webhook sets once both confirmation emails are accepted (`app_docs/confir
 
 `OFFER` in `src/lib/offer.ts`: `amountCents: 99000`, `currency: "eur"`, product name
 "8 reels, each under 1 minute", description "Visual identity, recording guide and 30 days to send
-footage.". `buildCheckoutParams` sends it as `price_data` with
+footage" (no trailing full stop, like `LANDING.afterPurchase` and `LANDING.thankYou`). `buildCheckoutParams` sends it as `price_data` with
 `tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR + VAT" from the same constant,
 so the shown price and the charged price come from one place.
 

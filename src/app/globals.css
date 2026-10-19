@@ -89,9 +89,15 @@ body {
     display: flex;
     grid-area: text;
   }
-  .landing-intro,
-  .landing-details {
+  .landing-intro {
     grid-area: auto;
+  }
+  /*
+   * Its children join .landing-text's column, so the spacers in page.tsx
+   * share one flex container with the introduction.
+   */
+  .landing-details {
+    display: contents;
   }
   .landing .reel-area {
     height: auto;
