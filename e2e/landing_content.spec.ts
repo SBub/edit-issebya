@@ -18,7 +18,7 @@ for (const viewport of VIEWPORTS) {
     for (const paragraph of LANDING.description) {
       await expectInsideRoot(page, page.getByText(paragraph, { exact: true }));
     }
-    const steps = page.getByRole("region", { name: "How it works" }).getByRole("listitem");
+    const steps = page.getByRole("region", { name: "How we work together" }).getByRole("listitem");
     await expect(steps).toHaveText([...LANDING.howItWorks.steps]);
     for (const step of await steps.all()) await expectInsideRoot(page, step);
     const items = page.getByRole("region", { name: "What you get" }).getByRole("listitem");
@@ -77,3 +77,30 @@ for (const item of LANDING.footer) {
     await expect(page).toHaveURL(/\/$/);
   });
 }
+
+test("on a phone the reels sit between the introduction and the details", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await waitForPageReady(page);
+  const intro = await page.getByText(LANDING.description[0], { exact: true }).boundingBox();
+  const reels = await page.getByRole("region", { name: "Edited reels" }).boundingBox();
+  const details = await page.getByRole("region", { name: "How we work together" }).boundingBox();
+  expect(intro && reels && details).toBeTruthy();
+  if (!intro || !reels || !details) return;
+  expect(intro.y + intro.height).toBeLessThanOrEqual(reels.y);
+  expect(reels.y + reels.height).toBeLessThanOrEqual(details.y);
+});
+
+test("on a wide screen all the text stays in the right column", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await waitForPageReady(page);
+  const reels = await page.getByRole("region", { name: "Edited reels" }).boundingBox();
+  for (const locator of [
+    page.getByText(LANDING.description[0], { exact: true }),
+    page.getByRole("region", { name: "How we work together" }),
+  ]) {
+    const box = await locator.boundingBox();
+    expect(reels && box && box.x >= reels.x + reels.width).toBe(true);
+  }
+});

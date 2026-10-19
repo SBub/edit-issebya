@@ -129,3 +129,27 @@ test("wide screens show no full-screen button", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByRole("button", { name: /^Full screen / })).toHaveCount(0);
 });
+
+test("on a phone dots show which reel is in view and jump to another", async ({ page }) => {
+  const slider = page.getByRole("region", { name: "Edited reels" });
+  const track = slider.getByRole("list", { name: "Reels" });
+  const cards = slider.getByRole("article");
+  const dots = slider.getByRole("group", { name: "Choose a reel" }).getByRole("button");
+  await expect(dots).toHaveCount(REELS.length);
+  await expect(dots.nth(0)).toHaveAttribute("aria-current", "true");
+
+  const last = REELS.length - 1;
+  await dots.nth(last).click();
+  await expect.poll(() => inView(cards.nth(last), track)).toBe(true);
+  await expect(dots.nth(last)).toHaveAttribute("aria-current", "true");
+  await expect(dots.nth(0)).not.toHaveAttribute("aria-current", "true");
+
+  // A swipe moves the current dot too.
+  await track.evaluate((el) => el.scrollTo({ left: 0, behavior: "auto" }));
+  await expect(dots.nth(0)).toHaveAttribute("aria-current", "true");
+});
+
+test("wide screens, where every reel fits, show no dots", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByRole("group", { name: "Choose a reel" })).toHaveCount(0);
+});

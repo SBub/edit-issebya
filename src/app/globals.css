@@ -58,8 +58,21 @@ body {
    */
   min-height: 100svh;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto auto auto;
-  grid-template-areas: "title" "slider" "text" "cta" "footer";
+  grid-template-rows: auto auto auto auto auto auto;
+  grid-template-areas: "title" "intro" "slider" "details" "cta" "footer";
+}
+/*
+ * Stacked: the text block dissolves into the grid so the reels sit between
+ * the introduction and the details. One screen: it is one column on the right.
+ */
+.landing-text {
+  display: contents;
+}
+.landing-intro {
+  grid-area: intro;
+}
+.landing-details {
+  grid-area: details;
 }
 .landing .reel-area {
   height: min(75svh, 40rem);
@@ -71,6 +84,14 @@ body {
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
     grid-template-rows: auto minmax(0, 1fr) auto auto;
     grid-template-areas: "title text" "slider text" "slider cta" "footer cta";
+  }
+  .landing-text {
+    display: flex;
+    grid-area: text;
+  }
+  .landing-intro,
+  .landing-details {
+    grid-area: auto;
   }
   .landing .reel-area {
     height: auto;

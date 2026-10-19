@@ -34,8 +34,10 @@ Nothing is clipped and nothing is hidden.
   and brand placement and typography (`BRAND_CLASS`, `BrandName`), all from
   `src/components/Brand.tsx`, left aligned, so the brand sits at the same spot on all three pages.
   Specs: `e2e/legal_pages.spec.ts`.
-- `src/app/globals.css` defines the `.landing` grid. Narrow screens: one column (title, slider,
-  text, CTA, footer). At `@media (min-width: 64rem), (min-width: 48rem) and (orientation:
+- `src/app/globals.css` defines the `.landing` grid. Narrow screens: one column (title, the
+  introduction paragraphs, the reels, then "How we work together", "What you get" and the closing
+  line, CTA, footer): `.landing-text` is `display: contents` there, so `.landing-intro` and
+  `.landing-details` are placed around the slider. At `@media (min-width: 64rem), (min-width: 48rem) and (orientation:
 landscape)` two columns: brand, slider and footer on the left; the text from the top, then the
   offer section, on the right.
 - On one-screen viewports the main is `100dvh` and every row is sized from it; the slider media is
@@ -81,6 +83,9 @@ in `ReelSlider` and in `CallRequest`.
 - Card slots follow the slider's own width through a container query: one per view on phones,
   centred (`snap-center`, with 7.5% padding either side so the neighbours peek in and the swipe is
   discoverable), two, three, then up to four on wide screens.
+- When the track overflows (phones, tablets in portrait), dots under it show which reel is in
+  view (`aria-current`) and jump to one when tapped; wide screens, where every reel fits, show
+  none.
 - On phones each reel has a "Full screen" button (top right of the video) that plays it full
   screen with sound: `requestFullscreen` on the video, or `webkitEnterFullscreen` on iOS Safari.
   Wide screens hide it (`.reel-fullscreen` in globals.css).

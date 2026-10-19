@@ -1,7 +1,7 @@
 "use client";
 
 import posthog from "posthog-js";
-import { useEffect, useRef, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { Reel } from "@/content/reels";
 import { LANDING } from "@/content/landing";
 import { ReelCard } from "./ReelCard";
@@ -29,6 +29,42 @@ export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
   // Set while an arrow key's scroll runs, so its scrollend is not counted again
   // as a swipe.
   const keyboardScroll = useRef(false);
+  // Which card is in view, and whether the track overflows at all (on wide
+  // screens every reel fits, so the dots are not shown).
+  const [active, setActive] = useState(0);
+  const [overflows, setOverflows] = useState(false);
+
+  // The track's scroll position and size are an external system: a scroll
+  // listener and a ResizeObserver keep the dots in step with them.
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const update = () => {
+      setOverflows(track.scrollWidth > track.clientWidth + END_TOLERANCE);
+      const step = slotStep(track);
+      setActive(step > 0 ? Math.round(track.scrollLeft / step) : 0);
+    };
+    update();
+    track.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(track);
+    return () => {
+      track.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, []);
+
+  function goTo(index: number) {
+    const track = trackRef.current;
+    if (!track) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    keyboardScroll.current = true;
+    track.scrollTo({ left: index * slotStep(track), behavior: reduce ? "auto" : "smooth" });
+    posthog.capture("reel_slider_navigated", {
+      direction: index > active ? "next" : "prev",
+      method: "dot",
+    });
+  }
 
   // A swipe or scroll that settles on a new position is the slider
   // interaction PostHog counts; the browser's scrollend is the external event.
@@ -57,9 +93,7 @@ export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
     const start = track.scrollLeft <= END_TOLERANCE;
     const end = track.scrollLeft + track.clientWidth >= track.scrollWidth - END_TOLERANCE;
     if ((direction === "prev" && start) || (direction === "next" && end)) return;
-    const slot = track.firstElementChild as HTMLElement | null;
-    const gap = parseFloat(getComputedStyle(track).columnGap) || 0;
-    const step = (slot?.offsetWidth ?? track.clientWidth) + gap;
+    const step = slotStep(track);
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     keyboardScroll.current = true;
     // scrollBy on the track only: scrollIntoView could scroll the page.
@@ -104,6 +138,32 @@ export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
           </li>
         ))}
       </ul>
+      {overflows ? (
+        <div className="flex justify-center gap-2 pt-1" role="group" aria-label="Choose a reel">
+          {reels.map((reel, index) => (
+            <button
+              key={reel.id}
+              type="button"
+              aria-label={`Show ${reel.title}`}
+              aria-current={index === active ? "true" : undefined}
+              onClick={() => goTo(index)}
+              className="flex size-6 items-center justify-center"
+            >
+              <span
+                aria-hidden="true"
+                className={`block h-2 rounded-full transition-[width] ${index === active ? "w-5 bg-neutral-900" : "w-2 bg-neutral-300"}`}
+              />
+            </button>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
+}
+
+// One card's width plus the gap: the distance between two snap points.
+function slotStep(track: HTMLElement): number {
+  const slot = track.firstElementChild as HTMLElement | null;
+  const gap = parseFloat(getComputedStyle(track).columnGap) || 0;
+  return (slot?.offsetWidth ?? track.clientWidth) + gap;
 }

@@ -36,49 +36,51 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         </h1>
       </header>
 
-      <div className="flex min-h-0 flex-col gap-4 [grid-area:text] short:gap-2.5 tiny:gap-2 lg:justify-center lg:gap-6 lg:mid:gap-3 lg:short:gap-3">
-        <div className="flex flex-col gap-3 text-sm leading-relaxed short:gap-1.5 short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
+      <div className="landing-text min-h-0 flex-col gap-4 short:gap-2.5 tiny:gap-2 lg:justify-center lg:gap-6 lg:mid:gap-3 lg:short:gap-3">
+        <div className="landing-intro flex flex-col gap-3 text-sm leading-relaxed short:gap-1.5 short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
           {LANDING.description.map((paragraph) => (
             <p key={paragraph}>{paragraph}</p>
           ))}
         </div>
-        <section
-          aria-label="How it works"
-          className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
-        >
-          <h2 className="font-medium">{LANDING.howItWorks.title}</h2>
-          <ol className="list-inside list-decimal">
-            {LANDING.howItWorks.steps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
-        </section>
-        <section
-          aria-label="What you get"
-          className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
-        >
-          <h2 className="font-medium">{LANDING.whatYouGet.title}</h2>
-          <ul className="list-inside list-disc">
-            {LANDING.whatYouGet.items.map((item) => (
-              <li key={item.text}>
-                {item.text}
-                {"note" in item ? (
-                  <span className="text-neutral-500">
-                    {" "}
-                    ({item.note.lead}{" "}
-                    <Link href={item.note.href} className="underline underline-offset-2">
-                      {item.note.link}
-                    </Link>
-                    )
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-        <p className="text-sm leading-relaxed short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
-          {LANDING.closing}
-        </p>
+        <div className="landing-details flex flex-col gap-4 short:gap-2.5 tiny:gap-2 lg:gap-6 lg:mid:gap-3 lg:short:gap-3">
+          <section
+            aria-label="How we work together"
+            className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
+          >
+            <h2 className="font-medium">{LANDING.howItWorks.title}</h2>
+            <ol className="list-inside list-decimal">
+              {LANDING.howItWorks.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </section>
+          <section
+            aria-label="What you get"
+            className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
+          >
+            <h2 className="font-medium">{LANDING.whatYouGet.title}</h2>
+            <ul className="list-inside list-disc">
+              {LANDING.whatYouGet.items.map((item) => (
+                <li key={item.text}>
+                  {item.text}
+                  {"note" in item ? (
+                    <span className="text-neutral-500">
+                      {" "}
+                      ({item.note.lead}{" "}
+                      <Link href={item.note.href} className="underline underline-offset-2">
+                        {item.note.link}
+                      </Link>
+                      )
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+          <p className="text-sm leading-relaxed short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
+            {LANDING.closing}
+          </p>
+        </div>
       </div>
 
       <div className="reel-area min-h-0 [grid-area:slider]">
