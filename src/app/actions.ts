@@ -30,13 +30,13 @@ async function requestOrigin(): Promise<string> {
 }
 
 /**
- * Validates the discovery-call answers again, then creates a Stripe Checkout
+ * Validates the form answers again, then creates a Stripe Checkout
  * Session carrying them and the UTM values in its metadata. Never throws to the
  * client: every failure is a typed result, and errors are logged here without
  * the answers.
  */
 export async function startCheckout(input: {
-  fields: Record<string, string>;
+  fields: Record<string, unknown>;
   utm: Record<string, string>;
 }): Promise<StartCheckoutResult> {
   const parsed = parseCallRequest(input?.fields ?? {});

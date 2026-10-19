@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CallRequest, type CheckoutState } from "@/components/CallRequest";
 import { ReelSlider } from "@/components/ReelSlider";
 import { LANDING } from "@/content/landing";
@@ -63,7 +64,19 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <h2 className="font-medium">{LANDING.whatYouGet.title}</h2>
           <ul className="list-inside list-disc">
             {LANDING.whatYouGet.items.map((item) => (
-              <li key={item}>{item}</li>
+              <li key={item.text}>
+                {item.text}
+                {"note" in item ? (
+                  <span className="text-neutral-500">
+                    {" "}
+                    ({item.note.lead}{" "}
+                    <Link href={item.note.href} className="underline underline-offset-2">
+                      {item.note.link}
+                    </Link>
+                    )
+                  </span>
+                ) : null}
+              </li>
             ))}
           </ul>
         </section>
@@ -93,8 +106,19 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           >
             {LANDING.questions.link}
           </a>
+          .
         </p>
       </section>
+
+      <footer className="text-xs text-neutral-500 [grid-area:footer]">
+        <nav aria-label="Legal" className="flex gap-4">
+          {LANDING.footer.map((item) => (
+            <Link key={item.href} href={item.href} className="hover:text-neutral-900">
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      </footer>
     </main>
   );
 }

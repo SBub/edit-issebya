@@ -22,7 +22,14 @@ for (const viewport of VIEWPORTS) {
     await expect(steps).toHaveText([...LANDING.howItWorks.steps]);
     for (const step of await steps.all()) await expectInsideRoot(page, step);
     const items = page.getByRole("region", { name: "What you get" }).getByRole("listitem");
-    await expect(items).toHaveText([...LANDING.whatYouGet.items]);
+    await expect(items).toHaveCount(LANDING.whatYouGet.items.length);
+    for (const [i, item] of LANDING.whatYouGet.items.entries()) {
+      await expect(items.nth(i)).toContainText(item.text);
+    }
+    await expect(items.getByRole("link", { name: "terms of service apply" })).toHaveAttribute(
+      "href",
+      "/terms",
+    );
     for (const item of await items.all()) await expectInsideRoot(page, item);
     await expectInsideRoot(page, page.getByText(LANDING.closing, { exact: true }));
     await expectInsideRoot(page, page.getByText("990 EUR + VAT", { exact: true }));
@@ -40,6 +47,14 @@ for (const viewport of VIEWPORTS) {
       LANDING.questions.href,
     );
 
+    for (const item of LANDING.footer) {
+      const link = page
+        .getByRole("navigation", { name: "Legal" })
+        .getByRole("link", { name: item.label });
+      await expectInsideRoot(page, link);
+      await expect(link).toHaveAttribute("href", item.href);
+    }
+
     // The text column never runs into the offer section below it.
     const closing = await page.getByText(LANDING.closing, { exact: true }).boundingBox();
     const offer = await page.getByRole("region", { name: "Offer" }).boundingBox();
@@ -53,3 +68,12 @@ test("the background stays white under a dark colour scheme", async ({ page }) =
   const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(background).toBe("rgb(255, 255, 255)");
 });
+
+for (const item of LANDING.footer) {
+  test(`${item.label} has its own page with a way home`, async ({ page }) => {
+    await page.goto(item.href);
+    await expect(page.getByRole("heading", { level: 1, name: item.label })).toBeVisible();
+    await page.getByRole("link", { name: "edit issebya, home" }).click();
+    await expect(page).toHaveURL(/\/$/);
+  });
+}

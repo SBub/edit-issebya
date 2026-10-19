@@ -4,16 +4,14 @@ import {
   buildCheckoutParams,
   SESSION_ID_PLACEHOLDER,
 } from "./checkout-params";
-import { CALL_REQUEST_FIELDS } from "./call-request";
+import type { CallRequest } from "./call-request";
 import { OFFER } from "./offer";
 
-const REQUEST = {
+const REQUEST: CallRequest = {
   name: "Ana",
   email: "ana@example.com",
-  company_role: "Acme, founder",
-  content_link: "https://example.com/me",
-  reels_purpose: "Grow my audience",
-  call_times: "weekdays",
+  socials: ["https://instagram.com/ana", "https://ana.example.com/"],
+  terms: true,
 };
 const ORIGIN = "https://edit.issebya.com";
 
@@ -39,18 +37,24 @@ describe("the Checkout params builder", () => {
     expect(params.customer_email).toBe(REQUEST.email);
   });
 
-  it("carries the six answers under their literal keys and no UTM by default", () => {
+  it("carries the answers under their literal keys and no UTM by default", () => {
     const params = build();
-    expect(Object.keys(params.metadata ?? {})).toEqual([
-      "name",
-      "email",
-      "company_role",
-      "content_link",
-      "reels_purpose",
-      "call_times",
-    ]);
-    expect(Object.keys(params.metadata ?? {})).toEqual([...CALL_REQUEST_FIELDS]);
-    expect(params.metadata).toMatchObject(REQUEST);
+    expect(params.metadata).toEqual({
+      name: "Ana",
+      email: "ana@example.com",
+      socials: "https://instagram.com/ana\nhttps://ana.example.com/",
+      terms_accepted: "true",
+    });
+  });
+
+  it("sends an empty socials value when the buyer has none", () => {
+    const params = buildCheckoutParams({
+      request: { ...REQUEST, socials: [] },
+      utm: {},
+      origin: ORIGIN,
+      automaticTax: false,
+    });
+    expect(params.metadata).toMatchObject({ socials: "" });
   });
 
   it("adds the given UTM values to metadata", () => {

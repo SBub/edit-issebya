@@ -46,15 +46,16 @@ body {
  * The landing grid. The title is a header row across the top. Narrow screens
  * stack the slider, text and CTA and the page scrolls vertically: the slider
  * area takes most of a screen so the reels stay a usable size. Wide screens
- * and tablets in landscape are one screen with no scroll: two columns (slider
- * on the left, text and CTA on the right), every row sized from the main's
- * 100dvh, the slider row the only one that flexes.
+ * and tablets in landscape are one screen with no scroll: two columns (brand,
+ * slider and footer on the left; text from the top, then the offer, on the
+ * right), every row sized from the main's 100dvh, the slider row the only one
+ * that flexes.
  */
 .landing {
   min-height: 100dvh;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto auto;
-  grid-template-areas: "title" "slider" "text" "cta";
+  grid-template-rows: auto auto auto auto auto;
+  grid-template-areas: "title" "slider" "text" "cta" "footer";
 }
 .landing .reel-area {
   height: min(75svh, 40rem);
@@ -64,8 +65,8 @@ body {
   .landing {
     height: 100dvh;
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    grid-template-areas: "title title" "slider text" "slider cta";
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "title text" "slider text" "slider cta" "footer cta";
   }
   .landing .reel-area {
     height: auto;

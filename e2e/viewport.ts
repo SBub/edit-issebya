@@ -69,28 +69,23 @@ export async function expectInsideRoot(page: Page, locator: Locator): Promise<vo
 export const VALID_FORM = {
   name: "Ana Test",
   email: "ana@example.com",
-  company_role: "Acme, founder",
-  content_link: "https://example.com/ana",
-  reels_purpose: "Explain the product in short clips",
-  call_times: "weekdays 10:00 to 13:00 Lisbon time",
+  socials: ["instagram.com/ana", "https://ana.example.com"],
 } as const;
 
 export const FIELD_LABELS = {
   name: "Name",
   email: "Email",
-  company_role: "Company and role",
-  content_link: "Link to your content",
-  reels_purpose: "What should the reels do for you?",
-  call_times: "Good times for a call",
 } as const;
 
-export async function fillValidForm(
-  dialog: Locator,
-  values: Record<keyof typeof VALID_FORM, string> = VALID_FORM,
-): Promise<void> {
-  for (const [field, label] of Object.entries(FIELD_LABELS)) {
-    await dialog.getByLabel(label, { exact: true }).fill(values[field as keyof typeof VALID_FORM]);
-  }
+// Name, email, two social rows (the second through the + button) and the
+// terms checkbox.
+export async function fillValidForm(dialog: Locator): Promise<void> {
+  await dialog.getByLabel(FIELD_LABELS.name, { exact: true }).fill(VALID_FORM.name);
+  await dialog.getByLabel(FIELD_LABELS.email, { exact: true }).fill(VALID_FORM.email);
+  await dialog.getByLabel("Social media links 1", { exact: true }).fill(VALID_FORM.socials[0]);
+  await dialog.getByRole("button", { name: "Add another link" }).click();
+  await dialog.getByLabel("Social media links 2", { exact: true }).fill(VALID_FORM.socials[1]);
+  await dialog.getByRole("checkbox").check();
 }
 
 export function formDialog(page: Page): Locator {

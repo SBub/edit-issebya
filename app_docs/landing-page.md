@@ -5,7 +5,8 @@
 - specs/issue-1-adw-d5416729-sdlc_planner-one-page-landing-checkout.md
 
 The whole site is one page at `/`: the brand, a description, how it works, what you get, the price,
-a slider of edited reels and one call to action that opens the discovery-call form (see
+a slider of edited reels, one call to action that opens the checkout form, and a footer with the
+terms and privacy links (see
 `app_docs/checkout.md`). On wide screens and tablets in landscape it is one screen that never
 scrolls; on phones and tablets in portrait it stacks and scrolls vertically, never sideways.
 Nothing is clipped and nothing is hidden.
@@ -26,10 +27,12 @@ Nothing is clipped and nothing is hidden.
     happens after payment (`LANDING.afterPurchase`) and a "Questions first? Message me here" mail
     link (`LANDING.questions`).
 - All copy lives in `src/content/landing.ts` (`LANDING`), read by the page and the specs alike.
-- `src/app/globals.css` defines the `.landing` grid. The title row spans the full width. Below it,
-  on narrow screens, one column (slider, text, CTA). At `@media (min-width: 64rem), (min-width:
-48rem) and (orientation: landscape)` two columns: the slider on the left, text and CTA on the
-  right.
+- `footer`: a `nav` named "Legal" with links to `/terms` and `/privacy` (stub pages through
+  `src/components/LegalPage.tsx`).
+- `src/app/globals.css` defines the `.landing` grid. Narrow screens: one column (title, slider,
+  text, CTA, footer). At `@media (min-width: 64rem), (min-width: 48rem) and (orientation:
+landscape)` two columns: brand, slider and footer on the left; the text from the top, then the
+  offer section, on the right.
 - On one-screen viewports the main is `100dvh` and every row is sized from it; the slider media is
   the only part that flexes. On stacked viewports the main is at least `100dvh`, grows with its
   content, and the slider area (`.reel-area`) is `min(75svh, 40rem)` tall so the reels stay a

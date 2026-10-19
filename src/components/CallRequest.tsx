@@ -28,14 +28,18 @@ export type CheckoutState = "success" | "cancelled" | null;
 const PRIMARY_BUTTON =
   "w-full rounded-md bg-fuchsia-700 px-5 py-3 text-sm font-medium text-white hover:bg-fuchsia-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700 disabled:cursor-wait disabled:opacity-70 short:py-2.5 tiny:py-2";
 
-function formValues(form: HTMLFormElement): Record<string, string> {
+function formValues(form: HTMLFormElement): Record<string, unknown> {
   const data = new FormData(form);
-  const values: Record<string, string> = {};
-  for (const field of CALL_REQUEST_FIELDS) {
-    const value = data.get(field);
-    values[field] = typeof value === "string" ? value : "";
-  }
-  return values;
+  const value = (key: string) => {
+    const raw = data.get(key);
+    return typeof raw === "string" ? raw : "";
+  };
+  return {
+    name: value("name"),
+    email: value("email"),
+    socials: data.getAll("socials").filter((entry) => typeof entry === "string"),
+    terms: data.get("terms") === "on",
+  };
 }
 
 /**
@@ -90,6 +94,7 @@ export function CallRequest({
       posthog.capture("call_form_started");
     }
     const name = (event.target as HTMLInputElement).name as CallRequestField;
+    if (!CALL_REQUEST_FIELDS.includes(name)) return;
     if (!errors[name]) return;
     const result = parseCallRequest(formValues(event.currentTarget));
     const next = result.ok ? undefined : result.errors[name];
@@ -116,7 +121,7 @@ export function CallRequest({
     setErrors({});
     posthog.capture("call_form_submitted");
     startTransition(async () => {
-      const result = await startCheckout({ fields: parsed.value, utm: { ...utm } });
+      const result = await startCheckout({ fields: { ...parsed.value }, utm: { ...utm } });
       if (result.ok) {
         posthog.capture("checkout_started");
         window.location.assign(result.url);
