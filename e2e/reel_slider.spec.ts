@@ -90,13 +90,15 @@ test("clicking a reel toggles play, and starting another pauses it", async ({ pa
   await expect.poll(() => paused(second)).toBe(true);
 });
 
-test("on a phone the first reel's video is centred on the screen", async ({ page }) => {
-  const media = page.getByTestId("reel-media").first();
-  const box = await media.boundingBox();
-  const width = await page.evaluate(() => document.documentElement.clientWidth);
-  expect(box).not.toBeNull();
-  if (!box) return;
-  expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThanOrEqual(2);
+test("on a phone the first reel's video is centred in the slider", async ({ page }) => {
+  // Against the slider's box, not the window: Linux Chromium (CI) draws a 15px
+  // scrollbar on the scrolling phone layout, phones overlay theirs.
+  const media = await page.getByTestId("reel-media").first().boundingBox();
+  const slider = await page.getByRole("region", { name: "Edited reels" }).boundingBox();
+  expect(media && slider).toBeTruthy();
+  if (!media || !slider) return;
+  const offset = media.x + media.width / 2 - (slider.x + slider.width / 2);
+  expect(Math.abs(offset)).toBeLessThanOrEqual(2);
 });
 
 test("on a phone each reel has a full-screen button that plays it full screen", async ({
