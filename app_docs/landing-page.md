@@ -121,6 +121,21 @@ overflow: one-screen viewports still never scroll.
 The `id` is the `reel_id` sent with `reel_played` (see `app_docs/analytics.md`), so an existing id
 never changes.
 
+## Link previews
+
+- `src/app/layout.tsx` sets `openGraph` (`type` website, `siteName` and `title` "edit issebya",
+  `description` `LANDING.description[0]`, `locale` en) and `twitter` (`card`
+  `summary_large_image`). `metadataBase` makes every image URL absolute.
+- `src/app/opengraph-image.tsx` and `src/app/twitter-image.tsx` are Next's file conventions and
+  both render `renderOgImage()` (`src/components/OgImage.tsx`, `ImageResponse` from `next/og`):
+  1200x630, white, the "edit" wordmark with "issebya" set small and low, a short fuchsia-700 rule,
+  the first sentence of the introduction, and the first three `REELS` posters as rounded 9:16
+  thumbnails, read from `public/` with `fs/promises` and inlined as data URLs. The config exports
+  (`alt`, `size`, `contentType`) stay literal in each route file.
+- `src/app/icon.tsx`: the 32x32 favicon, an "e" in neutral-900 on white.
+- Spec: `e2e/link_preview.spec.ts` (the `og:` and `twitter:` tags, absolute image URLs, both images
+  and the icon answer 200 `image/png`).
+
 ## Card styling sources
 
 `ReelCard` takes its label, never its code, from the issebya.homes website's
