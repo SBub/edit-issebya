@@ -1,21 +1,46 @@
 @import "tailwindcss";
 
 /*
+ * Height steps for the one-screen layout only: there every row is sized from
+ * the viewport height, so text and spacing step down on shorter screens. The
+ * stacked layout scrolls, so height never tightens it: each step also needs
+ * the two-column breakpoint ((min-width: 64rem), or (min-width: 48rem) in
+ * landscape), and a phone in portrait never matches.
+ */
+@custom-variant mid {
+  @media (min-width: 64rem) and (max-height: 820px),
+    (min-width: 48rem) and (orientation: landscape) and (max-height: 820px) {
+    @slot;
+  }
+}
+@custom-variant short {
+  @media (min-width: 64rem) and (max-height: 700px),
+    (min-width: 48rem) and (orientation: landscape) and (max-height: 700px) {
+    @slot;
+  }
+}
+@custom-variant tiny {
+  @media (min-width: 64rem) and (max-height: 600px),
+    (min-width: 48rem) and (orientation: landscape) and (max-height: 600px) {
+    @slot;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+/*
  * The page colour, defined once. `html` carries it as well as `body`: the
  * canvas, the scrollbar gutter and the overscroll area are painted from the
- * root, not from the body box.
+ * root, not from the body box. Light only: the page stays white under a dark
+ * colour scheme.
  */
 :root {
   --background: var(--color-white);
   --foreground: var(--color-neutral-900);
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: var(--color-neutral-950);
-    --foreground: var(--color-neutral-100);
-  }
+  color-scheme: light;
 }
 
 html {
@@ -33,4 +58,166 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/*
+ * The landing grid. The title is a header row across the top. Narrow screens
+ * stack the slider, text and CTA and the page scrolls vertically: the slider
+ * area takes most of a screen so the reels stay a usable size. Wide screens
+ * and tablets in landscape are one screen with no scroll: two columns (brand,
+ * slider and footer on the left; the text and then the offer in one flex
+ * column on the right), every row sized from the main's 100dvh, the slider
+ * row the only one that flexes.
+ */
+.landing {
+  /*
+   * svh, not dvh: on phones the address bar showing and hiding while the page
+   * scrolls changes dvh, which re-measured every reel on each scroll step.
+   */
+  min-height: 100svh;
+  /*
+   * Stacked: one gap between every pair of consecutive blocks (title, quote,
+   * introduction, reels, the two sections, closing line, offer box, footer),
+   * used by the grid and by .landing-intro and .landing-details alike.
+   */
+  --landing-gap: 3rem;
+  row-gap: var(--landing-gap);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto auto auto;
+  grid-template-areas: "title" "intro" "slider" "details" "cta" "footer";
+}
+/*
+ * Stacked: the text block dissolves into the grid so the reels sit between
+ * the introduction and the details. One screen: it is one column on the right.
+ */
+.landing-text {
+  display: contents;
+}
+.landing-intro {
+  grid-area: intro;
+  gap: var(--landing-gap);
+}
+.landing-details {
+  grid-area: details;
+  gap: var(--landing-gap);
+}
+.landing-spacer {
+  display: none;
+}
+.landing .reel-area {
+  height: min(75svh, 40rem);
+}
+
+@media (min-width: 64rem), (min-width: 48rem) and (orientation: landscape) {
+  .landing {
+    height: 100dvh;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    /* The left column's rows (title, slider, footer). */
+    row-gap: 1rem;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "title text" "slider text" "footer text";
+  }
+  /*
+   * The right column is one flex column: quote, introduction, the two
+   * sections, closing line and offer box, with an identical .landing-spacer
+   * between every pair, so all gaps are equal. .landing-intro and
+   * .landing-details dissolve into it.
+   */
+  .landing-text {
+    display: flex;
+    grid-area: text;
+  }
+  .landing-intro,
+  .landing-details {
+    display: contents;
+  }
+  .landing-spacer {
+    display: block;
+    flex: 1 1 0;
+    min-height: 1rem;
+    max-height: 6rem;
+  }
+  .landing .reel-area {
+    height: auto;
+  }
+}
+@media (min-width: 64rem) and (max-height: 820px),
+  (min-width: 48rem) and (orientation: landscape) and (max-height: 820px) {
+  .landing-spacer {
+    min-height: 0.5rem;
+  }
+}
+@media (min-width: 64rem) and (max-height: 700px),
+  (min-width: 48rem) and (orientation: landscape) and (max-height: 700px) {
+  .landing {
+    row-gap: 0.625rem;
+  }
+}
+
+/*
+ * The track's natural height (set on the track, inside the slider's size
+ * container, since a container query never matches the container itself): one slot's 9:16 video plus the label row
+ * under it. Slot widths mirror the container query basis steps in
+ * ReelSlider. It is a height, not a minimum: when the slider row is shorter,
+ * the track shrinks (min-h-0) and the card's media box fits the video inside.
+ */
+.reel-track {
+  --reel-slot: 85cqw;
+  --reel-label: 1.75rem;
+}
+@media (min-width: 64rem) and (max-height: 700px),
+  (min-width: 48rem) and (orientation: landscape) and (max-height: 700px) {
+  .reel-track {
+    --reel-label: 1.5rem;
+  }
+}
+@container (min-width: 28rem) {
+  .reel-track {
+    --reel-slot: calc((100cqw - 0.75rem) / 2);
+  }
+}
+@container (min-width: 44rem) {
+  .reel-track {
+    --reel-slot: calc((100cqw - 1.5rem) / 3);
+  }
+}
+@container (min-width: 60rem) {
+  .reel-track {
+    --reel-slot: calc((100cqw - 2.25rem) / 4);
+  }
+}
+.reel-track {
+  height: calc(var(--reel-slot) * 16 / 9 + var(--reel-label));
+}
+
+/*
+ * ReelCard's column (see the component). Portrait cards: the column is as
+ * wide as the video that fits. Landscape cards (one slot on a phone): the
+ * column takes the full width and the video is centred.
+ */
+.reel-column {
+  width: min(100cqw, calc((100cqh - var(--reel-label)) * 9 / 16));
+}
+.reel-column .reel-video {
+  width: 100%;
+}
+@container (orientation: landscape) {
+  .reel-column {
+    width: 100cqw;
+  }
+  .reel-column .reel-video {
+    width: min(100cqw, calc((100cqh - var(--reel-label)) * 9 / 16));
+    margin-inline: auto;
+  }
+}
+
+/* The full-screen button is for phones; wide screens show the reels large. */
+@media (min-width: 64rem), (min-width: 48rem) and (orientation: landscape) {
+  .reel-fullscreen {
+    display: none;
+  }
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
 }

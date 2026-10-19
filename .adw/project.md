@@ -14,6 +14,9 @@ be kept in step with them and with `README.md`.
 - name: `edit-issebya`
 - kind: `single-app`. One Next.js 16 app (App Router) at the repository root: the one-page landing
   site for edit.issebya.com. No workspaces, no task runner, no `apps/*`, no `pyproject.toml`.
+  It sells through Stripe Checkout (a server action), sends a confirmation email after payment
+  through a Stripe webhook and Resend (`/api/stripe/webhook`), and measures with PostHog (browser,
+  production only); all are optional at build and run time.
 - default branch: `develop`. `master` is production.
 - package manager: Yarn 4.18.1 (Berry, node-modules linker, pinned via `packageManager`, provided by
   corepack). Never `npm`, `npx`, `pnpm` or `bun`; `yarn dlx` only for an unavoidable one-off binary.
@@ -21,12 +24,17 @@ be kept in step with them and with `README.md`.
 
 ## Workspaces
 
-| name         | path | dev command | port variable | default port | health URL | ADW may start |
-| ------------ | ---- | ----------- | ------------- | ------------ | ---------- | ------------- |
-| edit-issebya | `.`  | `yarn dev`  | `PORT`        | 3000         | `/`        | yes           |
+| name         | path | dev command                                          | port variable | default port | health URL | ADW may start |
+| ------------ | ---- | ---------------------------------------------------- | ------------- | ------------ | ---------- | ------------- |
+| edit-issebya | `.`  | `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn dev` | `PORT`        | 3000         | `/`        | yes           |
 
 - `yarn dev` is exactly `next dev`; it takes its port from `PORT`, so nothing passes `--port`.
-- `/` answering 200 proves the server is up. The app reads no database and no external service.
+- ADW starts it as `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn dev`: the flags turn on the
+  in-process Stripe and Resend mocks (`src/instrumentation.ts`) and the `/api/e2e-stripe-mock` and
+  `/api/e2e-resend-mock` routes the checkout and confirmation email specs need.
+- `/` answering 200 proves the server is up. The app reads no database; it calls Stripe when the
+  form is submitted and Stripe and Resend when the webhook is called, and under the flags those
+  calls never leave the process.
 - `target_apps` from the engine is always empty for this repository; every command runs from the
   root, unfiltered. `/classify_app` answers `{"target_apps": []}` here.
 
@@ -35,8 +43,8 @@ be kept in step with them and with `README.md`.
 From the worktree root, in order. The main checkout is two directories up from `trees/<adw_id>/`.
 
 1. Copy from the main checkout, each only if it exists there: `.env.development` (read by
-   `yarn dev` and by the ADW toolkit) and `.env.local` (read in every mode). Neither is required
-   today: the placeholder page builds and runs with no variables. Never copy `.env.example`; never
+   `yarn dev` and by the ADW toolkit) and `.env.local` (read in every mode). Neither is required:
+   the page builds and runs with no variables. Never copy `.env.example`; never
    invent a value for a missing file.
 2. `yarn install --immutable` (`postinstall` runs `lefthook install`). An install that would change
    `yarn.lock` is a finding, not something to paper over with a mutable install.
@@ -48,7 +56,10 @@ Do not start the dev server during install.
 
 ## Build
 
-- `yarn build` (`next build`, unfiltered). Needs no environment variables today.
+- `yarn build` (`next build`, unfiltered). Needs no environment variables. Optional:
+  `STRIPE_SECRET_KEY`, `STRIPE_AUTOMATIC_TAX`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`,
+  `EMAIL_FROM`, `EMAIL_REPLY_TO`, `BOOKING_URL` (server), `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`,
+  `NEXT_PUBLIC_POSTHOG_HOST` and `NEXT_PUBLIC_VERCEL_ENV` (set by Vercel, never by hand).
 
 ## Tests
 
@@ -65,8 +76,11 @@ layer; the browser layer is the Playwright suite below.
 
 E2E code suite: `e2e/*.spec.ts` (`@playwright/test`, chromium, `playwright.config.ts`), run last by
 the test phase as `PORT=<run port> yarn test:e2e`. The `/prepare_app` server must already be up on
-this run's port, which `reuseExistingServer` adopts; never set `CI=1` in a run (it disables reuse
-and switches the server to `yarn start`). A user-visible change adds or extends a spec there.
+this run's port, started as `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn dev` (an adopted
+server never sees `webServer.env`, and the checkout and confirmation email specs need the mocks), which `reuseExistingServer` adopts; never
+set `CI=1` in a run (it disables reuse and switches the server to `yarn start`). Specs run with
+`workers: 1`: they share one server's mock state (Stripe capture and sessions, Resend recording)
+and its missing-key and missing-config toggles. A user-visible change adds or extends a spec there.
 Measure fixed or edge-aligned elements from the root box, never from `window.innerWidth`
 (`scrollbar-gutter: stable` reserves 15px on Linux Chromium and none on macOS).
 
@@ -117,8 +131,10 @@ and E2E on every pull request and push to `develop` and `master`.
 
 ## Review
 
-- Open at `http://localhost:$PORT`: `/` (today a placeholder: the `edit.issebya.com` heading and a
-  Coming soon line). Capture it at desktop 1920x1080 and mobile 375x667, full page, into
+- Open at `http://localhost:$PORT`: `/` (the one-screen landing page), `/` after clicking "Book
+  your discovery call" (the form dialog open), and `/?checkout=success&session_id=cs_test_review`
+  (the thank-you dialog). Capture each at 1920x1080, 375x667 and 320x568, nine captures,
+  viewport-sized, not full page (the page must never scroll), into
   `agents/<adw_id>/<agent_name>/review_img/` in the worktree.
 - A helper in `src/lib/` has no rendered surface: no visual review, evidence is the diff, the tests
   and the spec's commands.
