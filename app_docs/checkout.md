@@ -54,6 +54,21 @@ none), `terms_accepted` (`"true"`), plus the five `UTM_KEYS`: `utm_source`, `utm
 `tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR + VAT" from the same constant,
 so the shown price and the charged price come from one place.
 
+What Checkout shows about the offer:
+
+- `product_data.description` on the line item: the `LANDING.whatYouGet.items[].text` values, in
+  order, joined with `". "` and ending with `"."` (`offerDescription()`). The note on the reel
+  length item is left out because Checkout cannot render its link. No newlines.
+- `custom_text.submit.message` on the session: `LANDING.afterPurchase`, shown next to the Pay
+  button. No other `custom_text` key.
+- Limits (`STRIPE_DESCRIPTION_MAX_LENGTH`, `STRIPE_CUSTOM_TEXT_MAX_LENGTH`): 40000 characters for
+  the description and 1200 for custom text, from Stripe's OpenAPI spec (`maxLength` on
+  `POST /v1/checkout/sessions`) and the installed SDK's type comment ("Text can be up to 1200
+  characters in length"). The unit test checks both.
+- No `consent_collection`: `terms_of_service: "required"` needs a terms URL in the Stripe
+  account's public details, or the session create fails. The site's form already requires the
+  terms checkbox (`terms_accepted`).
+
 ## Tax flag
 
 `STRIPE_AUTOMATIC_TAX` turns Stripe Tax on, and only the exact string `"true"` does
@@ -116,11 +131,19 @@ the `ClientRequestInterceptor` passthrough socket bug
 
 None of this is done by the code:
 
-- `STRIPE_SECRET_KEY` in Vercel: the live key for Production, a test key for Preview.
-- Stripe Tax: the Lisbon origin address, the Portugal registration and any OSS registrations, and
-  the services tax code as the account default. Then set `STRIPE_AUTOMATIC_TAX=true`.
-- Checkout branding and the public business name.
-- Receipt emails for successful payments.
+1. In Vercel, set `STRIPE_SECRET_KEY`: the live key for Production, a test key for Preview.
+2. In Stripe, enable Stripe Tax: the Lisbon origin address, the Portugal registration (and any OSS
+   registration), the services tax code as the account default. Then set
+   `STRIPE_AUTOMATIC_TAX=true` in Vercel and redeploy.
+3. In Stripe settings (Business, Public details, Branding): the public business name, the brand
+   colour and icon or logo for Checkout, and the support email.
+4. In Stripe public details, set the terms of service URL `https://edit.issebya.com/terms` and the
+   privacy policy URL `https://edit.issebya.com/privacy`; in Checkout settings, enable "Legal
+   policies" and "Contact information" so Checkout links them. Only after this could
+   `consent_collection.terms_of_service` be considered (a separate change).
+5. Receipt emails for successful payments.
+6. Make one test-mode payment and check the Checkout page shows the description under the product
+   name and the custom text next to the Pay button.
 
 This code has not been run against a real Stripe account.
 
@@ -130,6 +153,10 @@ This code has not been run against a real Stripe account.
 - Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted` and the five UTM keys).
 - Never throw from `startCheckout`; return a typed result.
 - Never create the Stripe client at module load.
+- Never copy the offer description or the custom text into `checkout-params.ts`; both are read
+  from `LANDING`.
+- Do not send `consent_collection.terms_of_service` unless a terms URL is set in the Stripe
+  account's public details.
 - Never make the E2E mock, its route or `sk_test_e2e_mock` do anything unless `E2E_MOCK_STRIPE` is
   exactly `"true"`.
 - Never commit a real Stripe key.
