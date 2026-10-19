@@ -46,6 +46,8 @@ export const LANDING = {
     "These are variations. Your variant will match your project's ICP and UVP or already established brand identity",
   cta: "Start your 30 days",
   // Under the early-bird price while spots remain.
+  // Under the price: the owner charges no VAT (Portugal, art. 53 CIVA).
+  vatExempt: "VAT exempt under art. 53 CIVA",
   earlyBird: (spotsLeft: number, spots: number) =>
     `First ${spots} clients only, ${spotsLeft} of ${spots} spots left`,
   afterPurchase: "Your confirmation email has a link to book our discovery call",

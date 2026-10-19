@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { ctaButton, fillValidForm, formDialog, MOCK_ROUTE } from "./viewport";
 
-// The early-bird price: the first 4 paid sessions of the offer pay 590 EUR +
-// VAT, everyone after 990. The sold count comes from the mocked Stripe
+// The early-bird price: the first 4 paid sessions of the offer pay 590 EUR,
+// everyone after 990 (no VAT: the owner is exempt). The sold count comes from the mocked Stripe
 // sessions list, set through the mock route's soldCount toggle (DELETE resets
 // it to 0).
 
@@ -37,13 +37,15 @@ test("while spots remain the page shows 590 with 990 struck through and charges 
   expect((await page.request.post(MOCK_ROUTE, { data: { soldCount: 3 } })).ok()).toBe(true);
   await page.goto("/");
   const box = offer(page);
-  await expect(box.getByText("590 EUR + VAT", { exact: true })).toBeVisible();
+  await expect(box.getByText("590 EUR", { exact: true })).toBeVisible();
   const struck = box.locator("s");
-  await expect(struck).toHaveText("was 990 EUR + VAT");
+  await expect(struck).toHaveText("was 990 EUR");
   await expect(struck.locator(".sr-only")).toHaveText("was");
   await expect(
     box.getByText("First 4 clients only, 1 of 4 spots left", { exact: true }),
   ).toBeVisible();
+  await expect(box.getByText("VAT exempt under art. 53 CIVA", { exact: true })).toBeVisible();
+  await expect(box).not.toContainText("+ VAT");
 
   const body = await checkoutBody(page, page.request);
   expect(body["line_items[0][price_data][unit_amount]"]).toBe("59000");
@@ -62,10 +64,12 @@ test("after 4 sold the page shows only 990 and charges 99000", async ({ page }) 
   expect((await page.request.post(MOCK_ROUTE, { data: { soldCount: 4 } })).ok()).toBe(true);
   await page.goto("/");
   const box = offer(page);
-  await expect(box.getByText("990 EUR + VAT", { exact: true })).toBeVisible();
-  await expect(box.getByText("590 EUR + VAT")).toHaveCount(0);
+  await expect(box.getByText("990 EUR", { exact: true })).toBeVisible();
+  await expect(box.getByText("590 EUR")).toHaveCount(0);
   await expect(box.locator("s")).toHaveCount(0);
   await expect(box.getByText(/spots left/)).toHaveCount(0);
+  await expect(box.getByText("VAT exempt under art. 53 CIVA", { exact: true })).toBeVisible();
+  await expect(box).not.toContainText("+ VAT");
 
   const body = await checkoutBody(page, page.request);
   expect(body["line_items[0][price_data][unit_amount]"]).toBe("99000");
@@ -75,7 +79,7 @@ test("after 4 sold the page shows only 990 and charges 99000", async ({ page }) 
 
 test("the price is counted again at checkout, not taken from the page", async ({ page }) => {
   await page.goto("/");
-  await expect(offer(page).getByText("590 EUR + VAT", { exact: true })).toBeVisible();
+  await expect(offer(page).getByText("590 EUR", { exact: true })).toBeVisible();
   // The last spot sells while this buyer is on the page.
   expect((await page.request.post(MOCK_ROUTE, { data: { soldCount: 4 } })).ok()).toBe(true);
   const body = await checkoutBody(page, page.request);
@@ -87,7 +91,7 @@ test("without a Stripe key the page shows the full price", async ({ page }) => {
   expect((await page.request.post(MOCK_ROUTE, { data: { keyMissing: true } })).ok()).toBe(true);
   try {
     await page.goto("/");
-    await expect(offer(page).getByText("990 EUR + VAT", { exact: true })).toBeVisible();
+    await expect(offer(page).getByText("990 EUR", { exact: true })).toBeVisible();
     await expect(offer(page).locator("s")).toHaveCount(0);
   } finally {
     await page.request.post(MOCK_ROUTE, { data: { keyMissing: false } });

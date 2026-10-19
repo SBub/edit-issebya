@@ -111,8 +111,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           aria-label="Offer"
           className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-5 [grid-area:cta] short:gap-2 short:p-4 lg:max-w-md lg:mid:gap-2 lg:mid:p-4"
         >
-          {price.tier === "early" ? (
-            <div className="flex flex-col gap-1 short:gap-0.5">
+          <div className="flex flex-col gap-1 short:gap-0.5">
+            {price.tier === "early" ? (
               <p className="flex flex-wrap items-baseline gap-x-2 text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
                 <span>
                   {formatOfferPrice({ amountCents: price.amountCents, currency: OFFER.currency })}
@@ -122,15 +122,18 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                   {formatOfferPrice()}
                 </s>
               </p>
+            ) : (
+              <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
+                {formatOfferPrice()}
+              </p>
+            )}
+            <p className="text-xs text-neutral-500">{LANDING.vatExempt}</p>
+            {price.tier === "early" ? (
               <p className="text-xs text-fuchsia-700">
                 {LANDING.earlyBird(price.spotsLeft, EARLY_BIRD.spots)}
               </p>
-            </div>
-          ) : (
-            <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
-              {formatOfferPrice()}
-            </p>
-          )}
+            ) : null}
+          </div>
           <CallRequest checkout={checkout} sessionId={sessionId} utm={utm} />
           <p className="text-xs leading-relaxed text-neutral-600">{LANDING.afterPurchase}</p>
           <p className="text-xs text-neutral-600">

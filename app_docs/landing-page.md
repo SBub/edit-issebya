@@ -25,8 +25,9 @@ Nothing is clipped and nothing is hidden.
     work together", "What you get" and the closing line.
   - `slider`: `ReelSlider` (`src/components/ReelSlider.tsx`).
   - `cta`: a bordered `section` named "Offer" (`rounded-lg border-neutral-200`, the ADW
-    dashboard's card style): the price (while early-bird spots remain, "590 EUR + VAT" with the
-    full price struck through and "First 4 clients only, N of 4 spots left"; see
+    dashboard's card style): the price (while early-bird spots remain, "590 EUR" with the
+    full price struck through and "First 4 clients only, N of 4 spots left"; always the grey line "VAT exempt under art. 53
+    CIVA" (`LANDING.vatExempt`) under the price, with no "+ VAT" anywhere; see
     `app_docs/checkout.md`, "Early-bird price"), `CallRequest` (`src/components/CallRequest.tsx`, the "Start
     your 30 days" button in the dashboard's Work with me style: fuchsia 700, `rounded-md`), what
     happens after payment (`LANDING.afterPurchase`) and "Questions first? Message me here", a link

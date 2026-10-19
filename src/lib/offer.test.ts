@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { EARLY_BIRD, formatOfferPrice, OFFER, priceFor, STANDARD_PRICE } from "./offer";
 
 describe("formatOfferPrice", () => {
-  it("shows the offer price with VAT on top", () => {
-    expect(formatOfferPrice()).toBe("990 EUR + VAT");
+  it("shows the offer price with no VAT (the owner is VAT exempt)", () => {
+    expect(formatOfferPrice()).toBe("990 EUR");
+    expect(formatOfferPrice()).not.toContain("VAT");
   });
 
   it("is derived from the amount, not a second literal", () => {
-    expect(formatOfferPrice()).toBe(`${OFFER.amountCents / 100} EUR + VAT`);
-    expect(formatOfferPrice({ amountCents: 99000, currency: "eur" })).toBe("990 EUR + VAT");
+    expect(formatOfferPrice()).toBe(`${OFFER.amountCents / 100} EUR`);
+    expect(formatOfferPrice({ amountCents: 99000, currency: "eur" })).toBe("990 EUR");
   });
 });
 
@@ -33,7 +34,7 @@ describe("priceFor", () => {
 
   it("formats the early-bird price like the full one", () => {
     expect(formatOfferPrice({ amountCents: EARLY_BIRD.amountCents, currency: "eur" })).toBe(
-      "590 EUR + VAT",
+      "590 EUR",
     );
   });
 });

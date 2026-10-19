@@ -47,7 +47,9 @@ function productImages(origin: string): { images?: string[] } {
 }
 
 // Stripe Tax is opt-in: only the exact string "true" turns it on, so a
-// half-configured account never sends tax parameters by accident.
+// half-configured account never sends tax parameters by accident. It stays
+// off for this owner, who is VAT exempt (art. 53 CIVA); the support is kept
+// for the day she registers for VAT.
 export function automaticTaxEnabled(value: string | undefined): boolean {
   return value === "true";
 }
@@ -68,6 +70,7 @@ export function buildCheckoutParams({
         price_data: {
           currency: OFFER.currency,
           unit_amount: price.amountCents,
+          // Only matters with Stripe Tax on, which it is not (VAT exempt).
           tax_behavior: "exclusive",
           product_data: {
             name: OFFER.productName,

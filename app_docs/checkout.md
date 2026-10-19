@@ -66,12 +66,17 @@ Stripe webhook sets once both confirmation emails are accepted (`app_docs/confir
 `OFFER` in `src/lib/offer.ts`: `amountCents: 99000`, `currency: "eur"`, product name
 "8 reels, each under 1 minute", description "Visual identity, recording guide and 30 days to send
 footage" (no trailing full stop, like `LANDING.afterPurchase` and `LANDING.thankYou`). `buildCheckoutParams` sends it as `price_data` with
-`tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR + VAT" from the same constant,
+`tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR" from the same constant,
 so the shown price and the charged price come from one place.
+
+No VAT: the owner is VAT exempt in Portugal (art. 53 CIVA exemption). Prices show and charge
+with no "+ VAT", the offer box says "VAT exempt under art. 53 CIVA" (`LANDING.vatExempt`) under
+the price, and Stripe Tax stays off. `tax_behavior` only matters with Stripe Tax on, so it is
+left as is.
 
 ### Early-bird price
 
-- The first 4 buyers pay 590 EUR + VAT, everyone after 990 EUR + VAT: `EARLY_BIRD`
+- The first 4 buyers pay 590 EUR, everyone after 990 EUR: `EARLY_BIRD`
   (`amountCents: 59000`, `spots: 4`) and `priceFor(soldCount)` in `src/lib/offer.ts`, which
   returns `amountCents`, `tier` (`"early"` or `"standard"`) and `spotsLeft`. `STANDARD_PRICE` is
   the full price and the fallback.
@@ -91,9 +96,9 @@ so the shown price and the charged price come from one place.
   metadata `price_tier`. The product name and description do not change.
 - The count only sees paid sessions, so two buyers in Checkout at the same time for the last spot
   can both get the early price. Accepted: at most a spot or two over.
-- On the page, while spots remain: "590 EUR + VAT", the full price struck through next to it
+- On the page, while spots remain: "590 EUR", the full price struck through next to it
   (`<s>` with an `sr-only` "was"), and "First 4 clients only, N of 4 spots left"
-  (`LANDING.earlyBird`). After 4 sold: "990 EUR + VAT" alone.
+  (`LANDING.earlyBird`). After 4 sold: "990 EUR" alone.
 
 What Checkout shows about the offer:
 
@@ -118,6 +123,10 @@ What Checkout shows about the offer:
   terms checkbox (`terms_accepted`).
 
 ## Tax flag
+
+Off for this owner: she is VAT exempt (art. 53 CIVA), so `STRIPE_AUTOMATIC_TAX` stays unset in
+every environment. The support stays in the code for the day she registers for VAT (then the
+page copy and the "VAT exempt" line change too).
 
 `STRIPE_AUTOMATIC_TAX` turns Stripe Tax on, and only the exact string `"true"` does
 (`automaticTaxEnabled`). Then the session also gets:
@@ -192,9 +201,11 @@ the `ClientRequestInterceptor` passthrough socket bug
 None of this is done by the code:
 
 1. In Vercel, set `STRIPE_SECRET_KEY`: the live key for Production, a test key for Preview.
-2. In Stripe, enable Stripe Tax: the Lisbon origin address, the Portugal registration (and any OSS
-   registration), the services tax code as the account default. Then set
-   `STRIPE_AUTOMATIC_TAX=true` in Vercel and redeploy.
+2. Stripe Tax: not now. The owner is VAT exempt (art. 53 CIVA), so leave it off and leave
+   `STRIPE_AUTOMATIC_TAX` unset. Only if she registers for VAT: enable Stripe Tax (the Lisbon
+   origin address, the Portugal registration and any OSS registration, the services tax code as
+   the account default), set `STRIPE_AUTOMATIC_TAX=true` in Vercel, redeploy, and change the page
+   copy.
 3. In Stripe settings (Business, Public details, Branding): the public business name (still used in
    terms, receipts and statements; the Checkout header uses `branding_settings.display_name`), an
    icon or logo, and the support email.
@@ -215,6 +226,7 @@ This code has not been run against a real Stripe account.
 - Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted`, `newsletter`,
   `offer`, `price_tier`, the five UTM keys and `confirmation_email_sent`). Never change
   `OFFER.id`: the sold count finds the offer's sessions by it.
+- Never show "+ VAT" or turn Stripe Tax on while the owner is VAT exempt (art. 53 CIVA).
 - Never take the amount from the client: the server action counts the sold spots again at
   checkout time. Never show or charge the early-bird price when the count fails.
 - Never pre-tick or require the newsletter box, and never let it change the submit button's

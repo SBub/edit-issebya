@@ -34,9 +34,10 @@ for (const viewport of VIEWPORTS) {
     // The mock reports no sold spots: the early-bird price, the struck full
     // price and the spots line (e2e/early_bird.spec.ts covers both states).
     const offerBox = page.getByRole("region", { name: "Offer" });
-    await expectInsideRoot(page, offerBox.getByText("590 EUR + VAT", { exact: true }));
-    await expectInsideRoot(page, offerBox.locator("s", { hasText: "990 EUR + VAT" }));
+    await expectInsideRoot(page, offerBox.getByText("590 EUR", { exact: true }));
+    await expectInsideRoot(page, offerBox.locator("s", { hasText: "990 EUR" }));
     await expectInsideRoot(page, offerBox.getByText(/spots left$/));
+    await expectInsideRoot(page, offerBox.getByText(LANDING.vatExempt, { exact: true }));
 
     const card = page.getByRole("region", { name: "Edited reels" }).getByRole("article").first();
     for (const part of ["reel-media", "reel-label"]) {
