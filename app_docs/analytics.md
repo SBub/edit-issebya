@@ -11,8 +11,13 @@ the components is a no-op.
 - It reads `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`, `NEXT_PUBLIC_POSTHOG_HOST` and
   `NEXT_PUBLIC_VERCEL_ENV` literally (they are inlined at build time) and calls `startAnalytics`
   (`src/lib/analytics.ts`) with an adapter over `posthog-js` (1.438.12).
-- The adapter's `init` calls `posthog.init` with `api_host`, `defaults: "2026-01-30"` and
-  `capture_exceptions: true`.
+- The adapter's `init` calls `posthog.init` with `posthogInitOptions` (`src/lib/analytics.ts`):
+  `api_host`, `defaults: "2026-01-30"`, `capture_exceptions: true` and
+  `cookieless_mode: "always"`. In that mode (posthog-js 1.438.12, `@posthog/types`
+  `PostHogConfig`) PostHog sets no cookie and uses no local or session storage; identity is a
+  privacy-preserving hash made on PostHog's servers. Nothing is stored on the visitor's device, so
+  no cookie banner is needed (Lei 41/2004 article 5), and the privacy policy says so. The PostHog
+  project must have cookieless mode turned on in its settings, or these events are dropped.
 - PostHog initialises only when all of these hold:
   - `NEXT_PUBLIC_VERCEL_ENV === "production"` (set by Vercel, never by hand);
   - the token and the host are both set;
@@ -39,7 +44,7 @@ unregisters it; any other value does nothing. The PostHog test-account filter ma
 | `call_form_started`     | first input in the dialog, once per dialog open                                                                       | none                                                             |
 | `call_form_submitted`   | a submit that passes client validation                                                                                | none (never the answers)                                         |
 | `checkout_started`      | the action returned a Checkout URL, before navigating                                                                 | none                                                             |
-| `purchase_completed`    | thank-you state shown, once per `session_id` (guarded in `sessionStorage`, wrapped in try/catch)                      | `session_id`                                                     |
+| `purchase_completed`    | thank-you state shown, once per `session_id` per page load (guarded in memory, never in storage)                      | `session_id`                                                     |
 
 The last five are sent from `src/components/CallRequest.tsx`.
 
@@ -54,4 +59,8 @@ metadata (see `app_docs/checkout.md`).
 - Never send form answers to PostHog.
 - Never import `posthog-js` in `src/lib/analytics.ts`; pass the client in as an adapter.
 - Never initialise PostHog under `navigator.webdriver` or outside production.
+- Never drop `cookieless_mode: "always"` or write anything to cookies, local or session storage
+  for analytics: the site has no consent banner. `e2e/analytics.spec.ts` asserts no cookies and
+  empty local and session storage after the whole purchase flow. A reload of the thank-you URL
+  sends `purchase_completed` again, so count unique `session_id` values.
 - Never rename the `internal` super property.

@@ -3,6 +3,7 @@ import {
   BOOKING_TOKEN,
   CONFIRMATION_EMAIL,
   NAME_TOKEN,
+  TERMS_TOKEN,
   type EmailBlock,
 } from "../content/confirmation-email";
 import { CALL_REQUEST_FIELDS } from "./call-request";
@@ -33,20 +34,34 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-function textLine(line: string, name: string, bookingUrl: string): string {
-  return fill(fill(line, NAME_TOKEN, name), BOOKING_TOKEN, `${BOOKING_LINK_TEXT}: ${bookingUrl}`);
+interface Links {
+  bookingUrl: string;
+  termsUrl: string;
 }
 
-function htmlLine(line: string, name: string, bookingUrl: string): string {
-  const link = `<a href="${escapeHtml(bookingUrl)}">${BOOKING_LINK_TEXT}</a>`;
-  return fill(fill(escapeHtml(line), NAME_TOKEN, escapeHtml(name)), BOOKING_TOKEN, link);
+function textLine(line: string, name: string, links: Links): string {
+  return fill(
+    fill(fill(line, NAME_TOKEN, name), BOOKING_TOKEN, `${BOOKING_LINK_TEXT}: ${links.bookingUrl}`),
+    TERMS_TOKEN,
+    links.termsUrl,
+  );
 }
 
-function blockText(block: EmailBlock, name: string, bookingUrl: string): string {
+function htmlLine(line: string, name: string, links: Links): string {
+  const booking = `<a href="${escapeHtml(links.bookingUrl)}">${BOOKING_LINK_TEXT}</a>`;
+  const terms = `<a href="${escapeHtml(links.termsUrl)}">${escapeHtml(links.termsUrl)}</a>`;
+  return fill(
+    fill(fill(escapeHtml(line), NAME_TOKEN, escapeHtml(name)), BOOKING_TOKEN, booking),
+    TERMS_TOKEN,
+    terms,
+  );
+}
+
+function blockText(block: EmailBlock, name: string, links: Links): string {
   switch (block.kind) {
     case "paragraph":
       return [...(block.heading ? [block.heading] : []), ...block.lines]
-        .map((line) => textLine(line, name, bookingUrl))
+        .map((line) => textLine(line, name, links))
         .join("\n");
     case "bullets":
       return block.items.map((item) => `- ${item}`).join("\n");
@@ -57,10 +72,10 @@ function blockText(block: EmailBlock, name: string, bookingUrl: string): string 
   }
 }
 
-function blockHtml(block: EmailBlock, name: string, bookingUrl: string): string {
+function blockHtml(block: EmailBlock, name: string, links: Links): string {
   switch (block.kind) {
     case "paragraph": {
-      const lines = block.lines.map((line) => htmlLine(line, name, bookingUrl));
+      const lines = block.lines.map((line) => htmlLine(line, name, links));
       const heading = block.heading ? [`<strong>${escapeHtml(block.heading)}</strong>`] : [];
       return `<p>${[...heading, ...lines].join("<br>\n")}</p>`;
     }
@@ -78,16 +93,19 @@ function blockHtml(block: EmailBlock, name: string, bookingUrl: string): string 
 export function buildBuyerEmail({
   name,
   bookingUrl,
+  termsUrl,
 }: {
   name: string;
   bookingUrl: string;
+  termsUrl: string;
 }): Required<BuiltEmail> {
+  const links = { bookingUrl, termsUrl };
   const trimmed = name.trim();
   const blocks: readonly EmailBlock[] = CONFIRMATION_EMAIL.blocks;
   return {
     subject: CONFIRMATION_EMAIL.subject,
-    text: blocks.map((block) => blockText(block, trimmed, bookingUrl)).join("\n\n"),
-    html: `${blocks.map((block) => blockHtml(block, trimmed, bookingUrl)).join("\n")}\n`,
+    text: blocks.map((block) => blockText(block, trimmed, links)).join("\n\n"),
+    html: `${blocks.map((block) => blockHtml(block, trimmed, links)).join("\n")}\n`,
   };
 }
 

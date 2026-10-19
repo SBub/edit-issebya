@@ -61,6 +61,9 @@ test("a valid submit goes through Checkout and back to the thank-you dialog", as
   // https:// added to the bare host, one link per line.
   expect(body?.["metadata[socials]"]).toBe("https://instagram.com/ana\nhttps://ana.example.com/");
   expect(body?.["metadata[terms_accepted]"]).toBe("true");
+  // Only the keys above: no start-now or business-purchase flags.
+  expect(body).not.toHaveProperty("metadata[start_now_consent]");
+  expect(body).not.toHaveProperty("metadata[business_purchase]");
   // The newsletter box was left unticked: recorded as no.
   expect(body?.["metadata[newsletter]"]).toBe("false");
   expect(body?.["metadata[utm_source]"]).toBe("test");

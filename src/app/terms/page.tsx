@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Confirm, EmailLink, ExternalLink, LegalPage, LegalSection } from "@/components/LegalPage";
+import { EmailLink, ExternalLink, LegalPage, LegalSection } from "@/components/LegalPage";
 import { QuestionsLink } from "@/components/QuestionsLink";
 import { LEGAL } from "@/content/legal";
 import { EARLY_BIRD, formatOfferPrice, OFFER, reelSlotsFor } from "@/lib/offer";
@@ -14,7 +14,6 @@ const EARLY_PRICE = formatOfferPrice({
 const STANDARD_PRICE = formatOfferPrice();
 const MINUTES = OFFER.maxSeconds / 60;
 const MINUTE_WORD = MINUTES === 1 ? "minute" : "minutes";
-
 // The terms of the one service the site sells, in plain English, for a sole
 // trader in Portugal selling to businesses and consumers. Every number comes
 // from OFFER or EARLY_BIRD and every provider fact from LEGAL
@@ -42,6 +41,10 @@ export default function TermsPage() {
         <p>
           In these terms, &quot;we&quot; means {LEGAL.tradingName} and &quot;you&quot; means the
           person or business buying the service.
+        </p>
+        <p>
+          The service is sold to businesses and professionals (including sole traders with an open
+          activity) buying it for their business.
         </p>
       </LegalSection>
 
@@ -126,17 +129,19 @@ export default function TermsPage() {
         </ul>
       </LegalSection>
 
-      <LegalSection id="withdrawal" title="Your right to withdraw (consumers)">
+      <LegalSection id="withdrawal" title="Cancellation and right of withdrawal">
         <p>
-          If you buy as a consumer (for purposes outside your trade, business or profession), you
-          can withdraw from this contract within 14 days of the day you pay, without giving a
-          reason.
+          The service is for business use. If you buy for your business or profession, no statutory
+          right of withdrawal applies.
         </p>
+        <p className="font-medium text-neutral-900">If you buy as a consumer</p>
         <p>
-          If you ask us to start the service within those 14 days and then withdraw, you pay an
-          amount proportional to what we have already provided up to the moment you tell us,
-          calculated on the total price. Once the service has been fully provided at your express
-          request, you can no longer withdraw.
+          If you buy for purposes outside your trade, business or profession, the law gives you 14
+          days from the day you pay to withdraw without giving a reason. Work starts once the visual
+          identity process begins, with the discovery call. If you cancel within the 14 days, we
+          refund what you paid minus the value of the work already done (the discovery call, your
+          visual identity and any delivered reels). Once all the work is delivered, you can no
+          longer withdraw.
         </p>
         <p>
           To withdraw, email us at <EmailLink /> with a clear statement that you want to withdraw.
@@ -159,9 +164,6 @@ export default function TermsPage() {
           <p>Date:</p>
           <p className="text-neutral-500">(*) Delete as appropriate.</p>
         </div>
-        <p>
-          If you buy as a business or for your profession, there is no legal right of withdrawal.
-        </p>
       </LegalSection>
 
       <LegalSection id="liability" title="Liability">
@@ -209,9 +211,8 @@ export default function TermsPage() {
         </p>
         <p>
           If you are a consumer, you can take a dispute to an alternative dispute resolution entity:{" "}
-          <ExternalLink href={LEGAL.adrEntity.url}>{LEGAL.adrEntity.name}</ExternalLink>{" "}
-          {LEGAL.adrEntity.placeholder}. The list of all Portuguese consumer dispute resolution
-          entities is on the consumer portal,{" "}
+          <ExternalLink href={LEGAL.adrEntity.url}>{LEGAL.adrEntity.name}</ExternalLink>. The list
+          of all Portuguese consumer dispute resolution entities is on the consumer portal,{" "}
           <ExternalLink href={LEGAL.consumerPortal}>{LEGAL.consumerPortal}</ExternalLink>.
         </p>
       </LegalSection>

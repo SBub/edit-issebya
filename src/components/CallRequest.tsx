@@ -43,6 +43,9 @@ function formValues(form: HTMLFormElement): Record<string, unknown> {
   };
 }
 
+// Session ids purchase_completed was sent for in this page load.
+const PURCHASES_SENT = new Set<string>();
+
 /**
  * The page's one call to action and everything behind it: the form dialog, the
  * thank-you dialog after a paid Checkout and the note after a cancelled one.
@@ -69,20 +72,16 @@ export function CallRequest({
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   // The thank-you dialog is opened through the DOM dialog API, an external
-  // system. purchase_completed is sent once per session id, guarded in
-  // sessionStorage against strict-mode double effects and reloads.
+  // system. purchase_completed is sent once per session id per page load,
+  // guarded in memory against strict-mode double effects. Nothing is written
+  // to the device (no consent banner, see app_docs/analytics.md), so a reload
+  // of the thank-you URL sends it again: count unique session_id values.
   useEffect(() => {
     if (checkout !== "success") return;
     const dialog = thanksDialogRef.current;
     if (dialog && !dialog.open) dialog.showModal();
-    if (!sessionId) return;
-    const key = `purchase_completed:${sessionId}`;
-    try {
-      if (window.sessionStorage.getItem(key)) return;
-      window.sessionStorage.setItem(key, "1");
-    } catch {
-      // sessionStorage can throw (private mode); count the purchase anyway.
-    }
+    if (!sessionId || PURCHASES_SENT.has(sessionId)) return;
+    PURCHASES_SENT.add(sessionId);
     posthog.capture("purchase_completed", { session_id: sessionId });
   }, [checkout, sessionId]);
 

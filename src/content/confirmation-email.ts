@@ -5,11 +5,14 @@
 //
 // The body is a list of blocks separated by one blank line in the plain-text
 // part. `[Name]` is replaced with the buyer's name and `[Book your call]` with
-// the booking link (spelled out in plain text, an <a> in HTML).
+// the booking link (spelled out in plain text, an <a> in HTML), and
+// `[Withdrawal terms]` with the terms' withdrawal URL (spelled out in plain
+// text, an <a> showing the URL in HTML).
 
 export const NAME_TOKEN = "[Name]";
 export const BOOKING_TOKEN = "[Book your call]";
 export const BOOKING_LINK_TEXT = "Book your call";
+export const TERMS_TOKEN = "[Withdrawal terms]";
 
 export type EmailBlock =
   // Lines of one paragraph; an optional bold heading as its first line.
@@ -69,6 +72,12 @@ export const CONFIRMATION_EMAIL = {
         "Once your visual identity is ready, your 30 days start. Send me footage for all 8 reels within that time.",
         "For each reel, you send the A and B roll, and I deliver the edited reel within 24 hours.",
       ],
+    },
+    {
+      // Points to the cancellation and withdrawal terms (a durable copy of
+      // where they are).
+      kind: "paragraph",
+      lines: [`Work starts right away. See ${TERMS_TOKEN} for cancellations`],
     },
     { kind: "paragraph", lines: ["If anything comes up, just reply to this email."] },
     { kind: "paragraph", lines: ["Talk soon,", "Sveta"] },

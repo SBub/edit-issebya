@@ -39,4 +39,9 @@ test("nothing reaches PostHog through load, slider, form and checkout", async ({
   }
   const keys = await page.evaluate(() => Object.keys(window.localStorage));
   expect(keys.filter((key) => key.startsWith("ph_"))).toEqual([]);
+  // Nothing at all is stored on the device through the whole flow: no
+  // cookies, no local or session storage (the purchase guard is in memory).
+  expect(keys).toEqual([]);
+  expect(await page.evaluate(() => Object.keys(window.sessionStorage))).toEqual([]);
+  expect(await page.context().cookies()).toEqual([]);
 });

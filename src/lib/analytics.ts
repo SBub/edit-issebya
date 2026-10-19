@@ -30,6 +30,24 @@ export interface AnalyticsBrowser {
   search: string;
 }
 
+/**
+ * The posthog.init options. `cookieless_mode: "always"` (posthog-js
+ * 1.438.12, @posthog/types PostHogConfig): no cookies, no local or session
+ * storage, identity hashed on PostHog's servers, so nothing is stored on the
+ * visitor's device and no consent banner is needed (Lei 41/2004 art. 5). The
+ * PostHog project must have cookieless mode enabled in its settings, or these
+ * events are dropped.
+ */
+export function posthogInitOptions(host: string, debug: boolean) {
+  return {
+    api_host: host,
+    defaults: "2026-01-30",
+    capture_exceptions: true,
+    cookieless_mode: "always",
+    debug,
+  } as const;
+}
+
 /** The three PostHog calls start-up needs; an adapter over posthog satisfies it. */
 export interface AnalyticsClient {
   init(projectToken: string, host: string): void;

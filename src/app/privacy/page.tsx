@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Confirm, EmailLink, ExternalLink, LegalPage, LegalSection } from "@/components/LegalPage";
+import { EmailLink, ExternalLink, LegalPage, LegalSection } from "@/components/LegalPage";
 import { QuestionsLink } from "@/components/QuestionsLink";
 import { LEGAL } from "@/content/legal";
 
@@ -65,8 +65,8 @@ export default function PrivacyPage() {
             the basis of your consent (article 6(1)(a)). You can withdraw it at any time
           </li>
           <li>
-            To understand how the site is used and improve it (analytics): see &quot;Cookies and
-            analytics&quot; below
+            To understand how the site is used and improve it (anonymous, aggregate analytics): our
+            legitimate interest (article 6(1)(f)); see &quot;Cookies and analytics&quot; below
           </li>
           <li>
             To keep the site secure and answer your messages: our legitimate interest (article
@@ -84,7 +84,7 @@ export default function PrivacyPage() {
         <ul className="list-inside list-disc">
           <li>Stripe: payments</li>
           <li>Resend: sends the confirmation and newsletter emails</li>
-          <li>PostHog: usage analytics, hosted in the EU</li>
+          <li>PostHog: anonymous usage analytics, hosted in the EU</li>
           <li>Google: the booking calendar for the discovery call</li>
           <li>Vercel: hosts the site</li>
         </ul>
@@ -133,15 +133,16 @@ export default function PrivacyPage() {
 
       <LegalSection id="cookies" title="Cookies and analytics">
         <p>
-          The site itself needs no cookies to work. On the live site only, PostHog analytics sets a
-          first-party cookie (named ph_ followed by our project key, ending in _posthog) and stores
-          the same random identifier in your browser&apos;s local storage, so it can tell repeat
-          visits apart. It is not used for advertising and is not shared for marketing.
+          This site stores nothing on your device: no cookies, no local storage and no session
+          storage, for analytics or anything else. That is why there is no cookie banner.
         </p>
         <p>
-          Analytics is not strictly necessary, so under Portuguese law it needs your prior consent.
-          A consent choice is not in place yet.
-          <Confirm />
+          On the live site, PostHog analytics runs in cookieless mode. It does not give your browser
+          an identifier; PostHog&apos;s servers derive a short-lived anonymous hash instead, so we
+          only see anonymous, aggregate statistics about how the site is used. It is not used for
+          advertising or shared for marketing. The legal basis is our legitimate interest in
+          understanding and improving the site (GDPR article 6(1)(f)), and you can object at any
+          time by email.
         </p>
       </LegalSection>
 

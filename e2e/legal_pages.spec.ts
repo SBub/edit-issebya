@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { LANDING } from "../src/content/landing";
 import { LEGAL } from "../src/content/legal";
-import { waitForPageReady } from "./viewport";
+import { ctaButton, formDialog, termsCheckbox, waitForPageReady } from "./viewport";
 
 // Written out, not read from LANDING, so a wrong constant fails here.
 const WHATSAPP_TEXT = "Hi, I saw your reel editing offer and have a few questions before I start";
@@ -66,7 +66,7 @@ test.describe("brand position", () => {
 
 test("the privacy policy has the GDPR sections, the CNPD and a contact", async ({ page }) => {
   await page.goto("/privacy");
-  await expect(page.getByText("Draft: placeholders pending.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Draft: placeholders pending.", { exact: true })).toHaveCount(0);
   await expect(page.getByText(`Last updated: ${LEGAL.lastUpdated}`, { exact: true })).toBeVisible();
   for (const title of [
     "Who is responsible",
@@ -98,18 +98,18 @@ test("the privacy policy has the GDPR sections, the CNPD and a contact", async (
   await expect(
     main.getByRole("region", { name: "Why we use it, and on what legal basis" }),
   ).toContainText("portfolio");
-  // The one open point: analytics consent.
-  await expect(
-    main.getByRole("region", { name: "Cookies and analytics" }).getByText("[[CONFIRM]]"),
-  ).toHaveCount(1);
-  await expect(main.getByText("[[CONFIRM]]")).toHaveCount(1);
+  // Cookieless analytics: nothing stored on the device, legitimate interest.
+  const cookies = main.getByRole("region", { name: "Cookies and analytics" });
+  await expect(cookies).toContainText("no cookies, no local storage and no session");
+  await expect(cookies).toContainText("legitimate");
+  await expect(main).not.toContainText("[[");
   await expect(main).not.toContainText("\u2014");
 });
 
 test("the terms cover the provider, the service, withdrawal and complaints", async ({ page }) => {
   await page.goto("/terms");
   const main = page.getByRole("main");
-  await expect(page.getByText("Draft: placeholders pending.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Draft: placeholders pending.", { exact: true })).toHaveCount(0);
   for (const title of [
     "Who we are",
     "The service",
@@ -118,7 +118,7 @@ test("the terms cover the provider, the service, withdrawal and complaints", asy
     "Your footage and the footage window",
     "Revisions",
     "Your content",
-    "Your right to withdraw (consumers)",
+    "Cancellation and right of withdrawal",
     "Liability",
     "Events outside our control",
     "Changes to these terms",
@@ -148,10 +148,19 @@ test("the terms cover the provider, the service, withdrawal and complaints", asy
   await expect(main.getByRole("region", { name: "Your content" })).toContainText(
     "unless you tell us not to",
   );
-  const withdrawal = main.getByRole("region", { name: "Your right to withdraw (consumers)" });
+  const withdrawal = main.getByRole("region", { name: "Cancellation and right of withdrawal" });
   await expect(withdrawal).toContainText("14 days");
   await expect(withdrawal).toContainText("Model withdrawal form");
-  await expect(withdrawal).toContainText("no legal right of withdrawal");
+  await expect(withdrawal).toContainText("no statutory right of withdrawal applies");
+  await expect(withdrawal).toContainText("Work starts once the visual identity process begins");
+  await expect(withdrawal).not.toContainText("ask us to start");
+  await expect(withdrawal).toContainText("minus the value of the work already done");
+  await expect(withdrawal).toContainText(
+    "Once all the work is delivered, you can no longer withdraw",
+  );
+  await expect(main.getByRole("region", { name: "Who we are" })).toContainText(
+    "buying it for their business",
+  );
   const complaints = main.getByRole("region", { name: "Complaints and disputes" });
   await expect(complaints.getByRole("link", { name: LEGAL.complaintsBook })).toHaveAttribute(
     "href",
@@ -161,12 +170,19 @@ test("the terms cover the provider, the service, withdrawal and complaints", asy
     "href",
     LEGAL.adrEntity.url,
   );
-  // The terms have no [[CONFIRM]] left; only the identity and ADR placeholders.
-  await expect(main.getByText("[[CONFIRM]]")).toHaveCount(0);
-  for (const placeholder of ["[[OWNER_NAME]]", "[[NIF]]", "[[ADDRESS]]", "[[ADR_ENTITY]]"]) {
-    await expect(main).toContainText(placeholder);
-  }
+  // Every placeholder is filled in.
+  await expect(main).not.toContainText("[[");
   await expect(main).not.toContainText("\u2014");
+});
+
+test("the terms checkbox keeps its plain wording", async ({ page }) => {
+  await page.goto("/");
+  await ctaButton(page).click();
+  const dialog = formDialog(page);
+  await expect(termsCheckbox(dialog)).toHaveAccessibleName(
+    "I agree to the terms and conditions and the privacy policy",
+  );
+  await expect(dialog.getByRole("checkbox")).toHaveCount(2);
 });
 
 test("the reel-length note on / opens the terms at the reel-length section", async ({ page }) => {

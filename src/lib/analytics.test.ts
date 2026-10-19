@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { internalTagAction, startAnalytics } from "./analytics";
+import { internalTagAction, posthogInitOptions, startAnalytics } from "./analytics";
 
 describe("internalTagAction", () => {
   it("tags on internal=1", () => {
@@ -97,5 +97,21 @@ describe("startAnalytics", () => {
     const client = fakeAnalyticsClient();
     expect(() => startAnalytics(PROD, undefined, client)).not.toThrow();
     expect(client.init).not.toHaveBeenCalled();
+  });
+});
+
+describe("posthogInitOptions", () => {
+  it("runs PostHog cookieless, so nothing is stored on the device", () => {
+    const options = posthogInitOptions("https://eu.i.posthog.com", false);
+    expect(options).toEqual({
+      api_host: "https://eu.i.posthog.com",
+      defaults: "2026-01-30",
+      capture_exceptions: true,
+      cookieless_mode: "always",
+      debug: false,
+    });
+    // No persistence override that would bring cookies or storage back.
+    expect(options).not.toHaveProperty("persistence");
+    expect(options).not.toHaveProperty("disable_persistence");
   });
 });

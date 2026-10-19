@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { BRAND_CLASS, BrandName, PAGE_PADDING } from "@/components/Brand";
 import { LANDING } from "@/content/landing";
-import { CONFIRM, LEGAL, legalPlaceholdersPending, OWNER_REVIEW_PENDING } from "@/content/legal";
+import { LEGAL, legalPlaceholdersPending } from "@/content/legal";
 
 /**
  * The shell of the terms and privacy pages: the brand linking home, the
@@ -52,13 +52,6 @@ export function LegalSection({
       {children}
     </section>
   );
-}
-
-/** The [[CONFIRM]] marker after a default rule, while the owner's review is pending. */
-export function Confirm() {
-  return OWNER_REVIEW_PENDING ? (
-    <strong className="font-medium text-fuchsia-700"> {CONFIRM}</strong>
-  ) : null;
 }
 
 /** An external link that opens in a new tab. */

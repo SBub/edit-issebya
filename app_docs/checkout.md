@@ -39,7 +39,7 @@ The form asks as little as possible. `CALL_REQUEST_FIELDS`, in order: `name`, `e
   Empty rows are dropped. A link without a scheme gets `https://` (`instagram.com/you` is what
   people type); anything that is still not an `http(s)` URL with a dotted host is rejected. The
   links, joined one per line, are capped at 500 characters.
-- `terms` is a required checkbox linking to `/terms` and `/privacy` (see `app_docs/legal-pages.md`). The
+- `terms` is a required checkbox linking to `/terms` and `/privacy` (see `app_docs/legal-pages.md`), labelled "I agree to the terms and conditions and the privacy policy". The
   "Continue to payment" button carries the native `disabled` attribute until the box is ticked,
   and again if it is unticked (`termsAccepted` in `CallRequest`, fed by `onTermsChange` from
   `CallFormFields`). So the terms error is no longer reachable from the browser; the server action
@@ -223,8 +223,7 @@ This code has not been run against a real Stripe account.
 ## Rules
 
 - Never let the shown price and the charged price drift: both come from `OFFER`.
-- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted`, `newsletter`,
-  `offer`, `price_tier`, the five UTM keys and `confirmation_email_sent`). Never change
+- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted`, `newsletter`, `offer`, `price_tier`, the five UTM keys and `confirmation_email_sent`). Never change
   `OFFER.id`: the sold count finds the offer's sessions by it.
 - Never show "+ VAT" or turn Stripe Tax on while the owner is VAT exempt (art. 53 CIVA).
 - Never take the amount from the client: the server action counts the sold spots again at

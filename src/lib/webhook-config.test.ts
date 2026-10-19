@@ -43,8 +43,22 @@ describe("readEmailConfig", () => {
         from: FULL.EMAIL_FROM,
         replyTo: FULL.EMAIL_REPLY_TO,
         bookingUrl: FULL.BOOKING_URL,
+        termsUrl: "http://localhost:3000/terms#withdrawal",
       },
     });
+  });
+
+  it("links the withdrawal terms on the public site", () => {
+    const result = readEmailConfig(
+      { ...FULL, NEXT_PUBLIC_SITE_URL: "https://edit.issebya.com/" },
+      OFF,
+    );
+    expect(result.ok && result.config.termsUrl).toBe("https://edit.issebya.com/terms#withdrawal");
+    const vercel = readEmailConfig(
+      { ...FULL, VERCEL_PROJECT_PRODUCTION_URL: "edit.issebya.com" },
+      OFF,
+    );
+    expect(vercel.ok && vercel.config.termsUrl).toBe("https://edit.issebya.com/terms#withdrawal");
   });
 
   it("reports each missing variable by name", () => {

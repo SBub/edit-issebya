@@ -1,19 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { CONFIRM, LEGAL, legalPlaceholdersPending, PLACEHOLDER_PATTERN } from "./legal";
+import { LEGAL, legalPlaceholdersPending, PLACEHOLDER_PATTERN } from "./legal";
 
 describe("the legal facts", () => {
-  it("mark every unknown provider fact as a placeholder", () => {
-    expect(LEGAL.ownerName).toBe("[[OWNER_NAME]]");
-    expect(LEGAL.nif).toBe("[[NIF]]");
-    expect(LEGAL.address).toBe("[[ADDRESS]]");
-    expect(LEGAL.adrEntity.placeholder).toBe("[[ADR_ENTITY]]");
-    expect(PLACEHOLDER_PATTERN.test(CONFIRM)).toBe(true);
+  it("are filled in, so the pages are no longer drafts", () => {
+    expect(LEGAL.ownerName).toBe("Sviatlana Buben");
+    expect(LEGAL.nif).toBe("330791745");
+    expect(LEGAL.address).toBe("Lagarto 5, 2705-044 Almoçageme, Portugal");
+    expect(LEGAL.adrEntity.name).toMatch(/^CNIACC/);
     expect(LEGAL.email).toBe("edit@issebya.com");
-    expect(LEGAL.lastUpdated).toBe("2026-10-19");
+    for (const value of Object.values(LEGAL)) {
+      if (typeof value === "string") expect(PLACEHOLDER_PATTERN.test(value)).toBe(false);
+    }
+    expect(legalPlaceholdersPending()).toBe(false);
   });
 
-  it("keep the pages marked as a draft while any placeholder is left", () => {
-    expect(legalPlaceholdersPending()).toBe(true);
+  it("recognise a placeholder", () => {
+    expect(PLACEHOLDER_PATTERN.test("[[NIF]]")).toBe(true);
+    expect(PLACEHOLDER_PATTERN.test("330791745")).toBe(false);
   });
 
   it("use https links for the complaints book, the consumer portal, the CNPD and the ADR entity", () => {
