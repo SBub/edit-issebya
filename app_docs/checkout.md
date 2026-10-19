@@ -53,7 +53,8 @@ The form asks as little as possible. `CALL_REQUEST_FIELDS`, in order: `name`, `e
 
 Stripe metadata (`toCheckoutMetadata`): `name`, `email`, `socials` (one link per line, empty when
 none), `terms_accepted` (`"true"`), `newsletter` (`"true"` or `"false"`, the record of the
-buyer's choice), plus the five `UTM_KEYS`: `utm_source`, `utm_medium`,
+buyer's choice), `offer` (`"reels-8"`, what the sold count looks for), `price_tier` (`"early"` or
+`"standard"`), plus the five `UTM_KEYS`: `utm_source`, `utm_medium`,
 `utm_campaign`, `utm_term`, `utm_content` (first value of a repeated parameter, trimmed, capped at
 500, empty values and unknown keys dropped). `customer_email` is the email.
 
@@ -67,6 +68,32 @@ Stripe webhook sets once both confirmation emails are accepted (`app_docs/confir
 footage" (no trailing full stop, like `LANDING.afterPurchase` and `LANDING.thankYou`). `buildCheckoutParams` sends it as `price_data` with
 `tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR + VAT" from the same constant,
 so the shown price and the charged price come from one place.
+
+### Early-bird price
+
+- The first 4 buyers pay 590 EUR + VAT, everyone after 990 EUR + VAT: `EARLY_BIRD`
+  (`amountCents: 59000`, `spots: 4`) and `priceFor(soldCount)` in `src/lib/offer.ts`, which
+  returns `amountCents`, `tier` (`"early"` or `"standard"`) and `spotsLeft`. `STANDARD_PRICE` is
+  the full price and the fallback.
+- The sold count comes from Stripe, there is no database: every session carries metadata
+  `offer` (`OFFER.id`, `"reels-8"`), and `countSold` (`src/lib/sold-count.ts`) walks
+  `checkout.sessions.list({ status: "complete", limit: 100 })` with the SDK's auto-pagination and
+  counts the sessions with `status` `complete`, `payment_status` `paid` and that `offer`.
+- `currentOfferPrice` (`src/lib/offer-price.ts`): the page uses it cached for 60 seconds with
+  `unstable_cache` (this app does not opt into Cache Components, and Next 16's guide for that
+  setup names `unstable_cache` for non-fetch data). The server action calls it with
+  `fresh: true` at checkout time, so the charged amount is always counted again on the server and
+  never taken from the client. Under `E2E_MOCK_STRIPE` the cache is skipped so the specs' toggle
+  shows at once.
+- Any failure (no key, Stripe unreachable) logs and falls back to the full price, on the page and
+  at Checkout: a discount that cannot be checked is never shown or charged.
+- `buildCheckoutParams` takes the price, sends its `amountCents` as `unit_amount` and records
+  metadata `price_tier`. The product name and description do not change.
+- The count only sees paid sessions, so two buyers in Checkout at the same time for the last spot
+  can both get the early price. Accepted: at most a spot or two over.
+- On the page, while spots remain: "590 EUR + VAT", the full price struck through next to it
+  (`<s>` with an `sr-only` "was"), and "First 4 clients only, N of 4 spots left"
+  (`LANDING.earlyBird`). After 4 sold: "990 EUR + VAT" alone.
 
 What Checkout shows about the offer:
 
@@ -142,7 +169,13 @@ Unset, or any other value: no tax parameter is sent.
 - The create handler also stores each session for the webhook's retrieve and update calls, and
   `/api/e2e-stripe-mock` also lists, clears and sets the payment status of the stored sessions; see
   `app_docs/confirmation-email.md`, "E2E mocks", which also covers the Resend mock.
-- Specs: `e2e/checkout.spec.ts`, `e2e/call_form.spec.ts`, `e2e/confirmation_email.spec.ts`.
+- The mock also answers `GET https://api.stripe.com/v1/checkout/sessions` (the sold count's
+  list call, paginated by `limit` and `starting_after`): `soldCount` paid sessions of the offer
+  plus one unpaid and one of another offer, which the count must skip (`listedSessions`).
+  `POST { soldCount }` on `/api/e2e-stripe-mock` sets it; `DELETE` resets it to 0, so by default
+  the page is in the early-bird state.
+- Specs: `e2e/checkout.spec.ts`, `e2e/call_form.spec.ts`, `e2e/confirmation_email.spec.ts`,
+  `e2e/early_bird.spec.ts`.
 
 ### msw 3 deviation
 
@@ -179,8 +212,11 @@ This code has not been run against a real Stripe account.
 ## Rules
 
 - Never let the shown price and the charged price drift: both come from `OFFER`.
-- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted`, `newsletter`, the
-  five UTM keys and `confirmation_email_sent`).
+- Never rename a metadata key (`name`, `email`, `socials`, `terms_accepted`, `newsletter`,
+  `offer`, `price_tier`, the five UTM keys and `confirmation_email_sent`). Never change
+  `OFFER.id`: the sold count finds the offer's sessions by it.
+- Never take the amount from the client: the server action counts the sold spots again at
+  checkout time. Never show or charge the early-bird price when the count fails.
 - Never pre-tick or require the newsletter box, and never let it change the submit button's
   disabled state. Email a buyer a newsletter only when their `newsletter` metadata is `"true"`.
 - Never throw from `startCheckout`; return a typed result.

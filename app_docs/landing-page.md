@@ -22,7 +22,9 @@ Nothing is clipped and nothing is hidden.
     purchase).
   - `slider`: `ReelSlider` (`src/components/ReelSlider.tsx`).
   - `cta`: a bordered `section` named "Offer" (`rounded-lg border-neutral-200`, the ADW
-    dashboard's card style): the price, `CallRequest` (`src/components/CallRequest.tsx`, the "Start
+    dashboard's card style): the price (while early-bird spots remain, "590 EUR + VAT" with the
+    full price struck through and "First 4 clients only, N of 4 spots left"; see
+    `app_docs/checkout.md`, "Early-bird price"), `CallRequest` (`src/components/CallRequest.tsx`, the "Start
     your 30 days" button in the dashboard's Work with me style: fuchsia 700, `rounded-md`), what
     happens after payment (`LANDING.afterPurchase`) and "Questions first? Message me here", a link
     that opens a WhatsApp chat in a new tab (`src/components/QuestionsLink.tsx`; the number and

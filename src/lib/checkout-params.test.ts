@@ -10,7 +10,7 @@ import {
   STRIPE_DESCRIPTION_MAX_LENGTH,
 } from "./checkout-params";
 import type { CallRequest } from "./call-request";
-import { OFFER } from "./offer";
+import { EARLY_BIRD, OFFER, priceFor, STANDARD_PRICE } from "./offer";
 
 const REQUEST: CallRequest = {
   name: "Ana",
@@ -21,8 +21,8 @@ const REQUEST: CallRequest = {
 };
 const ORIGIN = "https://edit.issebya.com";
 
-function build(automaticTax = false, utm = {}, origin = ORIGIN) {
-  return buildCheckoutParams({ request: REQUEST, utm, origin, automaticTax });
+function build(automaticTax = false, utm = {}, origin = ORIGIN, price = STANDARD_PRICE) {
+  return buildCheckoutParams({ request: REQUEST, utm, origin, automaticTax, price });
 }
 
 describe("the Checkout params builder", () => {
@@ -97,7 +97,24 @@ describe("the Checkout params builder", () => {
       socials: "https://instagram.com/ana\nhttps://ana.example.com/",
       terms_accepted: "true",
       newsletter: "false",
+      offer: "reels-8",
+      price_tier: "standard",
     });
+  });
+
+  it("charges the early-bird amount and records the tier while spots remain", () => {
+    const params = build(false, {}, ORIGIN, priceFor(0));
+    expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(EARLY_BIRD.amountCents);
+    expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(59000);
+    expect(params.line_items?.[0]?.price_data?.tax_behavior).toBe("exclusive");
+    expect(params.metadata).toMatchObject({ offer: "reels-8", price_tier: "early" });
+    expect(params.line_items?.[0]?.price_data?.product_data?.name).toBe(OFFER.productName);
+  });
+
+  it("charges the full amount once the early-bird spots are gone", () => {
+    const params = build(false, {}, ORIGIN, priceFor(EARLY_BIRD.spots));
+    expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(99000);
+    expect(params.metadata).toMatchObject({ offer: "reels-8", price_tier: "standard" });
   });
 
   it("sends an empty socials value when the buyer has none", () => {
@@ -106,6 +123,7 @@ describe("the Checkout params builder", () => {
       utm: {},
       origin: ORIGIN,
       automaticTax: false,
+      price: STANDARD_PRICE,
     });
     expect(params.metadata).toMatchObject({ socials: "" });
   });

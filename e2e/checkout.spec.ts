@@ -36,7 +36,10 @@ test("a valid submit goes through Checkout and back to the thank-you dialog", as
   expect(body).not.toBeNull();
   expect(body?.["mode"]).toBe("payment");
   expect(body?.["customer_email"]).toBe(VALID_FORM.email);
-  expect(body?.["line_items[0][price_data][unit_amount]"]).toBe("99000");
+  // No sold spots in the mock (DELETE resets it): the early-bird price.
+  expect(body?.["line_items[0][price_data][unit_amount]"]).toBe("59000");
+  expect(body?.["metadata[offer]"]).toBe("reels-8");
+  expect(body?.["metadata[price_tier]"]).toBe("early");
   expect(body?.["line_items[0][price_data][currency]"]).toBe("eur");
   expect(body?.["line_items[0][price_data][tax_behavior]"]).toBe("exclusive");
   expect(body?.["line_items[0][price_data][product_data][name]"]).toBe(

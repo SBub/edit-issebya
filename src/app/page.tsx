@@ -5,7 +5,8 @@ import { QuestionsLink } from "@/components/QuestionsLink";
 import { ReelSlider } from "@/components/ReelSlider";
 import { LANDING } from "@/content/landing";
 import { REELS } from "@/content/reels";
-import { formatOfferPrice } from "@/lib/offer";
+import { EARLY_BIRD, formatOfferPrice, OFFER } from "@/lib/offer";
+import { currentOfferPrice } from "@/lib/offer-price";
 import { pickUtm } from "@/lib/utm";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -43,6 +44,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const checkout = checkoutState(params.checkout);
   const sessionId = typeof params.session_id === "string" ? params.session_id : null;
   const utm = pickUtm(params);
+  // Cached for a minute; the server action counts again at checkout time.
+  const price = await currentOfferPrice({ fresh: false });
 
   return (
     <main className={`landing grid gap-x-10 gap-y-4 short:gap-y-2.5 tiny:gap-y-2 ${PAGE_PADDING}`}>
@@ -110,9 +113,26 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         aria-label="Offer"
         className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-5 [grid-area:cta] short:gap-2 short:p-4 lg:max-w-md lg:mid:gap-2 lg:mid:p-4"
       >
-        <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
-          {formatOfferPrice()}
-        </p>
+        {price.tier === "early" ? (
+          <div className="flex flex-col gap-1 short:gap-0.5">
+            <p className="flex flex-wrap items-baseline gap-x-2 text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
+              <span>
+                {formatOfferPrice({ amountCents: price.amountCents, currency: OFFER.currency })}
+              </span>
+              <s className="text-sm font-normal text-neutral-500 short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm">
+                <span className="sr-only">was </span>
+                {formatOfferPrice()}
+              </s>
+            </p>
+            <p className="text-xs text-fuchsia-700">
+              {LANDING.earlyBird(price.spotsLeft, EARLY_BIRD.spots)}
+            </p>
+          </div>
+        ) : (
+          <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
+            {formatOfferPrice()}
+          </p>
+        )}
         <CallRequest checkout={checkout} sessionId={sessionId} utm={utm} />
         <p className="text-xs leading-relaxed text-neutral-600">{LANDING.afterPurchase}</p>
         <p className="text-xs text-neutral-600">

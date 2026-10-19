@@ -38,10 +38,14 @@ export const LANDING = {
       { text: "30 days to send me footage for all 8, starting once your visual identity is ready" },
     ],
   },
-  closing: "That works out to 2 reels a week",
+  closing:
+    "That works out to 2 reels a week. It's for founders who treat content as a distribution channel",
   variations:
     "These are variations. Your variant will match your project's ICP and UVP or already established brand identity",
   cta: "Start your 30 days",
+  // Under the early-bird price while spots remain.
+  earlyBird: (spotsLeft: number, spots: number) =>
+    `First ${spots} clients only, ${spotsLeft} of ${spots} spots left`,
   afterPurchase: "Your confirmation email has a link to book our discovery call",
   questions: { ...questions, href: whatsAppUrl(questions.number, questions.text) },
   footer: [

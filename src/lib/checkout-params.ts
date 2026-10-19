@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
 import { LANDING } from "../content/landing";
 import { toCheckoutMetadata, type CallRequest } from "./call-request";
-import { OFFER } from "./offer";
+import { OFFER, type OfferPrice } from "./offer";
 import type { Utm } from "./utm";
 
 interface CheckoutInput {
@@ -10,6 +10,9 @@ interface CheckoutInput {
   // The site's own origin, no trailing slash; both return URLs land on `/`.
   origin: string;
   automaticTax: boolean;
+  // Computed on the server at checkout time (currentOfferPrice), never taken
+  // from the client.
+  price: OfferPrice;
 }
 
 // Left literal in success_url: Stripe replaces it with the session id.
@@ -56,6 +59,7 @@ export function buildCheckoutParams({
   utm,
   origin,
   automaticTax,
+  price,
 }: CheckoutInput): Stripe.Checkout.SessionCreateParams {
   return {
     mode: "payment",
@@ -63,7 +67,7 @@ export function buildCheckoutParams({
       {
         price_data: {
           currency: OFFER.currency,
-          unit_amount: OFFER.amountCents,
+          unit_amount: price.amountCents,
           tax_behavior: "exclusive",
           product_data: {
             name: OFFER.productName,
@@ -81,7 +85,9 @@ export function buildCheckoutParams({
     custom_text: { submit: { message: LANDING.afterPurchase } },
     branding_settings: CHECKOUT_BRANDING,
     customer_email: request.email,
-    metadata: { ...toCheckoutMetadata(request), ...utm },
+    // `offer` lets the sold count find this offer's sessions; `price_tier`
+    // records which price was charged.
+    metadata: { ...toCheckoutMetadata(request), ...utm, offer: OFFER.id, price_tier: price.tier },
     success_url: `${origin}/?checkout=success&session_id=${SESSION_ID_PLACEHOLDER}`,
     cancel_url: `${origin}/?checkout=cancelled`,
     ...(automaticTax

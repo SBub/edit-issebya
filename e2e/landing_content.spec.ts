@@ -32,7 +32,12 @@ for (const viewport of VIEWPORTS) {
     );
     for (const item of await items.all()) await expectInsideRoot(page, item);
     await expectInsideRoot(page, page.getByText(LANDING.closing, { exact: true }));
-    await expectInsideRoot(page, page.getByText("990 EUR + VAT", { exact: true }));
+    // The mock reports no sold spots: the early-bird price, the struck full
+    // price and the spots line (e2e/early_bird.spec.ts covers both states).
+    const offerBox = page.getByRole("region", { name: "Offer" });
+    await expectInsideRoot(page, offerBox.getByText("590 EUR + VAT", { exact: true }));
+    await expectInsideRoot(page, offerBox.locator("s", { hasText: "990 EUR + VAT" }));
+    await expectInsideRoot(page, offerBox.getByText(/spots left$/));
 
     const card = page.getByRole("region", { name: "Edited reels" }).getByRole("article").first();
     for (const part of ["reel-media", "reel-label"]) {
