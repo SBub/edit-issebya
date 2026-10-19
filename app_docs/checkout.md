@@ -39,7 +39,11 @@ The form asks as little as possible. `CALL_REQUEST_FIELDS`, in order: `name`, `e
   Empty rows are dropped. A link without a scheme gets `https://` (`instagram.com/you` is what
   people type); anything that is still not an `http(s)` URL with a dotted host is rejected. The
   links, joined one per line, are capped at 500 characters.
-- `terms` is a required checkbox linking to `/terms` and `/privacy` (both stubs for now).
+- `terms` is a required checkbox linking to `/terms` and `/privacy` (both stubs for now). The
+  "Continue to payment" button carries the native `disabled` attribute until the box is ticked,
+  and again if it is unticked (`termsAccepted` in `CallRequest`, fed by `onTermsChange` from
+  `CallFormFields`). So the terms error is no longer reachable from the browser; the server action
+  still validates `terms` with `parseCallRequest` and returns it as a field error.
 - The browser and the action run the same validator, so their messages are identical.
 
 Stripe metadata (`toCheckoutMetadata`): `name`, `email`, `socials` (one link per line, empty when
@@ -53,15 +57,23 @@ Stripe webhook sets once both confirmation emails are accepted (`app_docs/confir
 ## Price
 
 `OFFER` in `src/lib/offer.ts`: `amountCents: 99000`, `currency: "eur"`, product name
-"8 reels under 1 minute". `buildCheckoutParams` sends it as `price_data` with
+"8 reels, each under 1 minute", description "Visual identity, recording guide and 30 days to send
+footage.". `buildCheckoutParams` sends it as `price_data` with
 `tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR + VAT" from the same constant,
 so the shown price and the charged price come from one place.
 
 What Checkout shows about the offer:
 
-- `product_data.description` on the line item: the `LANDING.whatYouGet.items[].text` values, in
-  order, joined with `". "` and ending with `"."` (`offerDescription()`). The note on the reel
-  length item is left out because Checkout cannot render its link. No newlines.
+- `product_data.description` on the line item: `OFFER.description`, one short line (no
+  newlines). The full list stays on the landing page's "What you get".
+- `product_data.images` on the line item: `<origin>/reels/poster-reel-04.jpg` as a thumbnail, sent
+  only when the origin starts with `https://` (`PRODUCT_IMAGE_PATH`). Stripe fetches the image
+  itself, so a `http://localhost` origin (dev, E2E) sends no `images` key.
+- `branding_settings` on the session (`CHECKOUT_BRANDING`, `SessionCreateParams.BrandingSettings`
+  in the stripe 23.0.0 types): `display_name` "edit issebya" (from `LANDING.brand`, shown at the
+  top instead of the Stripe account's business name), `background_color` `#ffffff`,
+  `button_color` `#a21caf` (Tailwind fuchsia-700, the site's CTA colour), `border_style`
+  `rounded`. No `icon` or `logo`: those need an uploaded Stripe File id.
 - `custom_text.submit.message` on the session: `LANDING.afterPurchase`, shown next to the Pay
   button. No other `custom_text` key.
 - Limits (`STRIPE_DESCRIPTION_MAX_LENGTH`, `STRIPE_CUSTOM_TEXT_MAX_LENGTH`): 40000 characters for
@@ -144,15 +156,17 @@ None of this is done by the code:
 2. In Stripe, enable Stripe Tax: the Lisbon origin address, the Portugal registration (and any OSS
    registration), the services tax code as the account default. Then set
    `STRIPE_AUTOMATIC_TAX=true` in Vercel and redeploy.
-3. In Stripe settings (Business, Public details, Branding): the public business name, the brand
-   colour and icon or logo for Checkout, and the support email.
+3. In Stripe settings (Business, Public details, Branding): the public business name (still used in
+   terms, receipts and statements; the Checkout header uses `branding_settings.display_name`), an
+   icon or logo, and the support email.
 4. In Stripe public details, set the terms of service URL `https://edit.issebya.com/terms` and the
    privacy policy URL `https://edit.issebya.com/privacy`; in Checkout settings, enable "Legal
    policies" and "Contact information" so Checkout links them. Only after this could
    `consent_collection.terms_of_service` be considered (a separate change).
 5. Receipt emails for successful payments.
-6. Make one test-mode payment and check the Checkout page shows the description under the product
-   name and the custom text next to the Pay button.
+6. Make one test-mode payment and check the Checkout page shows "edit issebya" at the
+   top, the thumbnail and the short description next to the product name, and the custom text next
+   to the Pay button.
 
 This code has not been run against a real Stripe account.
 
@@ -163,8 +177,11 @@ This code has not been run against a real Stripe account.
   `confirmation_email_sent`).
 - Never throw from `startCheckout`; return a typed result.
 - Never create the Stripe client at module load.
-- Never copy the offer description or the custom text into `checkout-params.ts`; both are read
-  from `LANDING`.
+- Never copy the offer name, the offer description or the custom text into `checkout-params.ts`;
+  the first two are read from `OFFER`, the custom text from `LANDING`.
+- Never send `product_data.images` for an origin that is not `https://`.
+- Never enable the submit button while the terms box is unticked, and never drop the server-side
+  `terms` check because of it.
 - Do not send `consent_collection.terms_of_service` unless a terms URL is set in the Stripe
   account's public details.
 - Never make the E2E mock, its route or `sk_test_e2e_mock` do anything unless `E2E_MOCK_STRIPE` is

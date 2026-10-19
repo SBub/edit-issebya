@@ -12,18 +12,32 @@ test.beforeEach(async ({ page, request }) => {
   await expect(formDialog(page)).toBeVisible();
 });
 
-test("an empty submit marks name, email and terms invalid and calls nothing", async ({
+test("the submit button is disabled until the terms box is ticked", async ({ page }) => {
+  const dialog = formDialog(page);
+  const submit = dialog.getByRole("button", { name: "Continue to payment" });
+  await expect(submit).toBeDisabled();
+  await dialog.getByRole("checkbox").check();
+  await expect(submit).toBeEnabled();
+  await dialog.getByRole("checkbox").uncheck();
+  await expect(submit).toBeDisabled();
+});
+
+// With the button disabled, a missing terms tick never reaches the client
+// validator; the server action still rejects it (unit-tested in
+// src/lib/call-request.test.ts).
+test("an empty submit with terms ticked marks name and email invalid and calls nothing", async ({
   page,
   request,
 }) => {
   const dialog = formDialog(page);
+  await dialog.getByRole("checkbox").check();
   await dialog.getByRole("button", { name: "Continue to payment" }).click();
   for (const label of Object.values(FIELD_LABELS)) {
     await expect(dialog.getByLabel(label, { exact: true })).toHaveAttribute("aria-invalid", "true");
   }
-  await expect(dialog.getByRole("checkbox")).toHaveAttribute("aria-invalid", "true");
+  await expect(dialog.getByRole("checkbox")).not.toHaveAttribute("aria-invalid", "true");
   await expect(dialog.getByText(CALL_REQUEST_MESSAGES.required)).toHaveCount(2);
-  await expect(dialog.getByText(CALL_REQUEST_MESSAGES.terms)).toBeVisible();
+  await expect(dialog.getByText(CALL_REQUEST_MESSAGES.terms)).toHaveCount(0);
   // Socials are optional: an empty row is not an error.
   await expect(dialog.getByText(CALL_REQUEST_MESSAGES.url)).toHaveCount(0);
   const captured = await (await request.get(MOCK_ROUTE)).json();

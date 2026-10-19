@@ -37,11 +37,18 @@ test("a valid submit goes through Checkout and back to the thank-you dialog", as
   expect(body?.["line_items[0][price_data][unit_amount]"]).toBe("99000");
   expect(body?.["line_items[0][price_data][currency]"]).toBe("eur");
   expect(body?.["line_items[0][price_data][tax_behavior]"]).toBe("exclusive");
-  expect(body?.["line_items[0][price_data][product_data][name]"]).toBe("8 reels under 1 minute");
-  // Same joining rule as the unit test: each "What you get" text, ". ", ending ".".
-  expect(body?.["line_items[0][price_data][product_data][description]"]).toBe(
-    `${LANDING.whatYouGet.items.map((item) => item.text).join(". ")}.`,
+  expect(body?.["line_items[0][price_data][product_data][name]"]).toBe(
+    "8 reels, each under 1 minute",
   );
+  expect(body?.["line_items[0][price_data][product_data][description]"]).toBe(
+    "Visual identity, recording guide and 30 days to send footage.",
+  );
+  // The dev server's origin is http://localhost, which Stripe cannot fetch: no thumbnail.
+  expect(Object.keys(body ?? {}).some((key) => key.includes("[product_data][images]"))).toBe(false);
+  expect(body?.["branding_settings[display_name]"]).toBe("edit issebya");
+  expect(body?.["branding_settings[background_color]"]).toBe("#ffffff");
+  expect(body?.["branding_settings[button_color]"]).toBe("#a21caf");
+  expect(body?.["branding_settings[border_style]"]).toBe("rounded");
   expect(body?.["custom_text[submit][message]"]).toBe(LANDING.afterPurchase);
   expect(Object.keys(body ?? {}).some((key) => key.startsWith("consent_collection"))).toBe(false);
   expect(body?.["metadata[name]"]).toBe(VALID_FORM.name);
