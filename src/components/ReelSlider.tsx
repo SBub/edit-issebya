@@ -15,8 +15,9 @@ const END_TOLERANCE = 1;
  * A scroll-snap track of reel cards, moved by swiping (or scrolling) and by
  * the arrow keys. No buttons and no autoplay. The track scrolls inside the
  * slider box, so it never widens the page. Card slots follow the slider's own
- * width (a container query): one per view on phones, with the next card
- * peeking in so the swipe is discoverable, up to four on wide screens.
+ * width (a container query): one per view on phones, centred, with the cards
+ * either side peeking in so the swipe is discoverable, up to four on wide
+ * screens.
  *
  * The track is only as tall as a card needs (see `.reel-track` in
  * globals.css) and the block is centred, so when the slots are narrow the
@@ -92,12 +93,12 @@ export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
         ref={trackRef}
         tabIndex={0}
         aria-label="Reels"
-        className="reel-track flex min-h-0 flex-[0_1_auto] snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 [&::-webkit-scrollbar]:hidden"
+        className="reel-track flex min-h-0 px-[7.5%] scroll-px-[7.5%] @min-[28rem]:px-0 @min-[28rem]:scroll-px-0 flex-[0_1_auto] snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 [&::-webkit-scrollbar]:hidden"
       >
         {reels.map((reel) => (
           <li
             key={reel.id}
-            className="h-full shrink-0 basis-[85%] snap-start @min-[28rem]:basis-[calc((100%-0.75rem)/2)] @min-[44rem]:basis-[calc((100%-1.5rem)/3)] @min-[60rem]:basis-[calc((100%-2.25rem)/4)]"
+            className="h-full shrink-0 basis-full snap-center @min-[28rem]:snap-start @min-[28rem]:basis-[calc((100%-0.75rem)/2)] @min-[44rem]:basis-[calc((100%-1.5rem)/3)] @min-[60rem]:basis-[calc((100%-2.25rem)/4)]"
           >
             <ReelCard reel={reel} />
           </li>

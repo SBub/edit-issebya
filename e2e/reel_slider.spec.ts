@@ -89,3 +89,43 @@ test("clicking a reel toggles play, and starting another pauses it", async ({ pa
   await slider.getByRole("button", { name: `Pause ${second.title}` }).click();
   await expect.poll(() => paused(second)).toBe(true);
 });
+
+test("on a phone the first reel's video is centred in the slider", async ({ page }) => {
+  // Against the slider's box, not the window: Linux Chromium (CI) draws a 15px
+  // scrollbar on the scrolling phone layout, phones overlay theirs.
+  const media = await page.getByTestId("reel-media").first().boundingBox();
+  const slider = await page.getByRole("region", { name: "Edited reels" }).boundingBox();
+  expect(media && slider).toBeTruthy();
+  if (!media || !slider) return;
+  const offset = media.x + media.width / 2 - (slider.x + slider.width / 2);
+  expect(Math.abs(offset)).toBeLessThanOrEqual(2);
+});
+
+test("on a phone each reel has a full-screen button that plays it full screen", async ({
+  page,
+}) => {
+  const reel = REELS.find((r) => r.videoSrc !== null);
+  test.skip(reel === undefined, "all reels are placeholders");
+  if (!reel) return;
+  // Headless Chromium has no real full screen: record the call instead.
+  await page.evaluate(() => {
+    (window as unknown as { fullscreenCalls: number }).fullscreenCalls = 0;
+    HTMLVideoElement.prototype.requestFullscreen = function () {
+      (window as unknown as { fullscreenCalls: number }).fullscreenCalls += 1;
+      return Promise.resolve();
+    };
+  });
+  const button = page.getByRole("button", { name: `Full screen ${reel.title}` });
+  await expect(button).toBeVisible();
+  await button.click();
+  expect(
+    await page.evaluate(() => (window as unknown as { fullscreenCalls: number }).fullscreenCalls),
+  ).toBe(1);
+  const video = page.getByRole("article", { name: reel.title }).locator("video");
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
+});
+
+test("wide screens show no full-screen button", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByRole("button", { name: /^Full screen / })).toHaveCount(0);
+});

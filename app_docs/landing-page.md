@@ -78,9 +78,14 @@ in `ReelSlider` and in `CallRequest`.
 
 - `ReelSlider` is a scroll-snap track (`snap-x snap-mandatory`) that scrolls inside the slider box,
   never the page. Moving uses `scrollBy` on the track, never `scrollIntoView`.
-- Card slots follow the slider's own width through a container query: one per view on phones (85%
-  of the width, so the next card peeks in and the swipe is discoverable), two, three, then up to
-  four on wide screens.
+- Card slots follow the slider's own width through a container query: one per view on phones,
+  centred (`snap-center`, with 7.5% padding either side so the neighbours peek in and the swipe is
+  discoverable), two, three, then up to four on wide screens.
+- On phones each reel has a "Full screen" button (top right of the video) that plays it full
+  screen with sound: `requestFullscreen` on the video, or `webkitEnterFullscreen` on iOS Safari.
+  Wide screens hide it (`.reel-fullscreen` in globals.css).
+- The stacked layout's height uses `svh`, never `dvh`: the phone address bar showing and hiding
+  while scrolling changes `dvh`, which re-measured every reel on each scroll step.
 - There are no previous/next buttons. The track moves by swiping or scrolling, and ArrowLeft and
   ArrowRight move it when focus is inside it. Smooth scrolling is off under
   `prefers-reduced-motion: reduce`.

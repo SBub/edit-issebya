@@ -90,35 +90,71 @@ function ReelVideo({ reel, src }: { reel: Reel; src: string }) {
     }
   }
 
+  // Full screen with sound. iOS Safari only offers it on the video element
+  // itself (webkitEnterFullscreen); everywhere else the standard API.
+  function openFullscreen() {
+    const video = videoRef.current as
+      (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+    if (!video) return;
+    document.dispatchEvent(new CustomEvent(PLAY_EVENT, { detail: reel.id }));
+    if (typeof video.requestFullscreen === "function") {
+      video.requestFullscreen().catch(() => undefined);
+    } else {
+      video.webkitEnterFullscreen?.();
+    }
+    video.play().catch(() => undefined);
+    posthog.capture("reel_fullscreen", { reel_id: reel.id });
+  }
+
   return (
-    <button
-      type="button"
-      aria-label={`${playing ? "Pause" : "Play"} ${reel.title}`}
-      onClick={toggle}
-      className="relative block h-full w-full"
-    >
-      <video
-        ref={videoRef}
-        src={src}
-        poster={reel.poster ?? undefined}
-        playsInline
-        loop
-        preload="metadata"
-        onPause={() => setPlaying(false)}
-        className="h-full w-full object-cover"
-      />
-      {playing ? null : (
-        <span
-          aria-hidden="true"
-          className="absolute inset-0 flex items-center justify-center bg-black/10"
-        >
-          <span className="flex size-10 items-center justify-center rounded-full bg-white/90 text-neutral-900">
-            <svg viewBox="0 0 24 24" className="ml-0.5 size-4" fill="currentColor">
-              <path d="M8 5v14l11-7z" />
-            </svg>
+    <div className="relative h-full w-full">
+      <button
+        type="button"
+        aria-label={`${playing ? "Pause" : "Play"} ${reel.title}`}
+        onClick={toggle}
+        className="relative block h-full w-full"
+      >
+        <video
+          ref={videoRef}
+          src={src}
+          poster={reel.poster ?? undefined}
+          playsInline
+          loop
+          preload="metadata"
+          onPause={() => setPlaying(false)}
+          onPlay={() => setPlaying(true)}
+          className="h-full w-full object-cover"
+        />
+        {playing ? null : (
+          <span
+            aria-hidden="true"
+            className="absolute inset-0 flex items-center justify-center bg-black/10"
+          >
+            <span className="flex size-10 items-center justify-center rounded-full bg-white/90 text-neutral-900">
+              <svg viewBox="0 0 24 24" className="ml-0.5 size-4" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </span>
           </span>
-        </span>
-      )}
-    </button>
+        )}
+      </button>
+      <button
+        type="button"
+        aria-label={`Full screen ${reel.title}`}
+        onClick={openFullscreen}
+        className="reel-fullscreen absolute top-2 right-2 flex size-9 items-center justify-center rounded-md bg-white/90 text-neutral-900"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className="size-4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden="true"
+        >
+          <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+        </svg>
+      </button>
+    </div>
   );
 }
