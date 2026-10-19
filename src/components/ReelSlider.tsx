@@ -87,6 +87,7 @@ export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
       className="reel-slider flex h-full min-h-0 flex-col justify-center gap-2 [container-type:inline-size] short:gap-1.5"
     >
       <h2 className="text-sm font-medium short:text-xs">Edited reels</h2>
+      <p className="text-xs text-neutral-600 short:text-[11px]">{LANDING.variations}</p>
       <ul
         ref={trackRef}
         tabIndex={0}
@@ -102,7 +103,6 @@ export function ReelSlider({ reels }: { reels: readonly Reel[] }) {
           </li>
         ))}
       </ul>
-      <p className="text-xs text-neutral-600 short:text-[11px]">{LANDING.variations}</p>
     </section>
   );
 }

@@ -15,14 +15,17 @@ for (const viewport of VIEWPORTS) {
 
     await expectInsideRoot(page, page.getByRole("heading", { level: 1, name: "edit issebya" }));
     await expectInsideRoot(page, page.getByLabel("edit issebya", { exact: true }));
-    // Every sentence of the description, on its own line and without a full stop.
-    for (const sentence of LANDING.description.flat()) {
-      await expectInsideRoot(page, page.getByText(sentence, { exact: true }));
+    for (const paragraph of LANDING.description) {
+      await expectInsideRoot(page, page.getByText(paragraph, { exact: true }));
     }
-
-    await expectInsideRoot(page, page.getByText(LANDING.offer));
+    const steps = page.getByRole("region", { name: "How it works" }).getByRole("listitem");
+    await expect(steps).toHaveText([...LANDING.howItWorks.steps]);
+    for (const step of await steps.all()) await expectInsideRoot(page, step);
+    const items = page.getByRole("region", { name: "What you get" }).getByRole("listitem");
+    await expect(items).toHaveText([...LANDING.whatYouGet.items]);
+    for (const item of await items.all()) await expectInsideRoot(page, item);
+    await expectInsideRoot(page, page.getByText(LANDING.closing, { exact: true }));
     await expectInsideRoot(page, page.getByText("990 EUR + VAT", { exact: true }));
-    await expectInsideRoot(page, page.getByText(LANDING.offerNote));
 
     const card = page.getByRole("region", { name: "Edited reels" }).getByRole("article").first();
     for (const part of ["reel-media", "reel-label"]) {
@@ -30,6 +33,11 @@ for (const viewport of VIEWPORTS) {
     }
 
     await expectInsideRoot(page, ctaButton(page));
+
+    // The text column never runs into the CTA below it.
+    const price = await page.getByText("990 EUR + VAT", { exact: true }).boundingBox();
+    const cta = await ctaButton(page).boundingBox();
+    expect(price && cta && price.y + price.height <= cta.y + 0.5).toBe(true);
   });
 }
 

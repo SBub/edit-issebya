@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
-// Every viewport the page must fit without scrolling (the owner's list).
+// The owner's viewport list. `oneScreen` ones must fit without scrolling; the
+// rest (phones, tablets in portrait) stack and scroll vertically.
 export const VIEWPORTS = [
   { width: 320, height: 568 },
   { width: 360, height: 640 },
@@ -14,6 +15,12 @@ export const VIEWPORTS = [
   { width: 1440, height: 900 },
   { width: 1920, height: 1080 },
 ] as const;
+
+// Mirrors the two-column breakpoint in globals.css: (min-width: 64rem), or
+// (min-width: 48rem) in landscape.
+export function oneScreen(viewport: { width: number; height: number }): boolean {
+  return viewport.width >= 1024 || (viewport.width >= 768 && viewport.width > viewport.height);
+}
 
 export interface RootBox {
   scrollWidth: number;
@@ -44,15 +51,17 @@ export async function waitForPageReady(page: Page): Promise<void> {
   ).toBeVisible();
 }
 
-// The element is visible and its bounding box lies inside the root box.
+// The element is visible and its bounding box lies inside the root box once
+// scrolled to (a no-op on one-screen viewports, which never scroll).
 export async function expectInsideRoot(page: Page, locator: Locator): Promise<void> {
   await expect(locator).toBeVisible();
+  await locator.scrollIntoViewIfNeeded();
   const box = await locator.boundingBox();
   expect(box, "element has a bounding box").not.toBeNull();
   const root = await rootBox(page);
   if (!box) return;
-  expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x).toBeGreaterThanOrEqual(-0.5);
+  expect(box.y).toBeGreaterThanOrEqual(-0.5);
   expect(box.x + box.width).toBeLessThanOrEqual(root.clientWidth + 0.5);
   expect(box.y + box.height).toBeLessThanOrEqual(root.clientHeight + 0.5);
 }

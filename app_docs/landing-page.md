@@ -4,14 +4,15 @@
 
 - specs/issue-1-adw-d5416729-sdlc_planner-one-page-landing-checkout.md
 
-The whole site is one screen at `/`: the brand, a description, the offer and its price, a slider of
-edited reels and one call to action that opens the discovery-call form (see
-`app_docs/checkout.md`). At every supported viewport the page never scrolls, nothing is clipped and
-nothing is hidden.
+The whole site is one page at `/`: the brand, a description, how it works, what you get, the price,
+a slider of edited reels and one call to action that opens the discovery-call form (see
+`app_docs/checkout.md`). On wide screens and tablets in landscape it is one screen that never
+scrolls; on phones and tablets in portrait it stacks and scrolls vertically, never sideways.
+Nothing is clipped and nothing is hidden.
 
 ## Layout
 
-- `src/app/page.tsx` renders one `<main class="landing grid h-dvh">` with four grid areas:
+- `src/app/page.tsx` renders one `<main class="landing grid">` with four grid areas:
   - `title`: a `header` across the top with the brand as the `h1` ("edit" with "issebya" set small
     and low on its right, a `sub`, like a chemical index; its accessible name is "edit issebya").
   - `text`: `LANDING.description` (paragraphs of sentences, each sentence on its own line and with
@@ -25,7 +26,10 @@ nothing is hidden.
   on narrow screens, one column (slider, text, CTA). At `@media (min-width: 64rem), (min-width:
 48rem) and (orientation: landscape)` two columns: the slider on the left, text and CTA on the
   right.
-- Every row is sized from the main's `h-dvh`. The slider media is the only part that flexes.
+- On one-screen viewports the main is `100dvh` and every row is sized from it; the slider media is
+  the only part that flexes. On stacked viewports the main is at least `100dvh`, grows with its
+  content, and the slider area (`.reel-area`) is `min(75svh, 40rem)` tall so the reels stay a
+  usable size.
 - The page is white in every colour scheme: `:root` sets `color-scheme: light` and there is no
   dark override. `html` and `body` both carry the background.
 - `html` has `scrollbar-gutter: stable`, so the layout does not shift if a page starts to scroll.
@@ -35,9 +39,11 @@ nothing is hidden.
 At the eleven viewports in `e2e/viewport.ts` (320x568 up to 1920x1080), with no dialog, with the
 form dialog open and with the thank-you dialog open:
 
-- `scrollHeight <= clientHeight` and `scrollWidth <= clientWidth` on `document.documentElement`;
+- one-screen viewports (`oneScreen()`, mirroring the two-column breakpoint):
+  `scrollHeight <= clientHeight` and `scrollWidth <= clientWidth` on `document.documentElement`;
+- stacked viewports: `scrollWidth <= clientWidth` (vertical scroll is expected);
 - `html` and `body` overflow is neither `hidden` nor `clip`;
-- every required element is visible and inside the root box.
+- every required element is visible and inside the root box once scrolled to.
 
 `e2e/no_scroll.spec.ts` and `e2e/landing_content.spec.ts` check this, with the helpers in
 `e2e/viewport.ts` (`rootBox`, `expectInsideRoot`). The helpers measure from
@@ -66,7 +72,7 @@ in `ReelSlider` and in `CallRequest`.
 - There are no previous/next buttons. The track moves by swiping or scrolling, and ArrowLeft and
   ArrowRight move it when focus is inside it. Smooth scrolling is off under
   `prefers-reduced-motion: reduce`.
-- Under the track, `LANDING.variations` says the reels are variations and the buyer's will match
+- Under the "Edited reels" heading, above the track, `LANDING.variations` says the reels are variations and the buyer's will match
   their project's ICP and UVP.
 - No autoplay. `ReelCard` videos are `playsInline`, `loop` and paused until clicked, and play with
   sound. Starting one pauses any other (a `reel-play` document event), so only one is heard at a
@@ -100,7 +106,8 @@ Deliberate differences from the shop card:
 
 ## Rules
 
-- Never let the page scroll at the listed viewports, with or without a dialog open.
+- Never let the page scroll on one-screen viewports, with or without a dialog open, and never let
+  it scroll sideways anywhere.
 - Never set `overflow: hidden` or `overflow: clip` on `html` or `body`.
 - Never hide or cut off a required element below a breakpoint to make it fit.
 - Never use a non-white page background, in any colour scheme.

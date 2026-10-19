@@ -4,6 +4,7 @@
  * Height steps for the one-screen layout. Width alone cannot tell 320x568 from
  * 390x844, so text and spacing also step down with the viewport height.
  */
+@custom-variant mid (@media (max-height: 820px));
 @custom-variant short (@media (max-height: 700px));
 @custom-variant tiny (@media (max-height: 600px));
 
@@ -42,23 +43,32 @@ body {
 }
 
 /*
- * The landing grid. The title is a header row across the top. Below it, one
- * column (slider, text, CTA) where only the slider row flexes; two columns
- * (slider on the left, text and CTA on the right) on wide screens and on
- * tablets in landscape. Every row is sized from the main's
- * h-dvh, so nothing on html or body is ever clipped.
+ * The landing grid. The title is a header row across the top. Narrow screens
+ * stack the slider, text and CTA and the page scrolls vertically: the slider
+ * area takes most of a screen so the reels stay a usable size. Wide screens
+ * and tablets in landscape are one screen with no scroll: two columns (slider
+ * on the left, text and CTA on the right), every row sized from the main's
+ * 100dvh, the slider row the only one that flexes.
  */
 .landing {
+  min-height: 100dvh;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto auto auto;
   grid-template-areas: "title" "slider" "text" "cta";
+}
+.landing .reel-area {
+  height: min(75svh, 40rem);
 }
 
 @media (min-width: 64rem), (min-width: 48rem) and (orientation: landscape) {
   .landing {
+    height: 100dvh;
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
     grid-template-rows: auto minmax(0, 1fr) auto;
     grid-template-areas: "title title" "slider text" "slider cta";
+  }
+  .landing .reel-area {
+    height: auto;
   }
 }
 

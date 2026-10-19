@@ -4,9 +4,9 @@
 export const OFFER = {
   amountCents: 99000,
   currency: "eur",
-  productName: "8 reels under 1 minute",
+  productName: "8 reels under 30 seconds",
   reelCount: 8,
-  maxSeconds: 60,
+  maxSeconds: 30,
 } as const;
 
 // "990 EUR + VAT", derived from the amount. No thousands separator, so the

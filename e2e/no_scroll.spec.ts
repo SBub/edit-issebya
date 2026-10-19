@@ -1,14 +1,19 @@
 import { expect, test, type Page } from "@playwright/test";
 import { LANDING } from "../src/content/landing";
-import { ctaButton, formDialog, rootBox, VIEWPORTS, waitForPageReady } from "./viewport";
+import { ctaButton, formDialog, oneScreen, rootBox, VIEWPORTS, waitForPageReady } from "./viewport";
 
-// The owner's hard requirement: no vertical or horizontal page scroll at any
-// listed viewport, with or without a dialog open, and never by clipping html
-// or body.
+// The owner's requirement: on one-screen viewports (wide screens, tablets in
+// landscape) no vertical or horizontal page scroll, with or without a dialog
+// open; on stacked viewports (phones, tablets in portrait) vertical scroll is
+// expected but never sideways. Never by clipping html or body.
+
+let vertical = true;
 
 async function expectNoScroll(page: Page) {
   const box = await rootBox(page);
-  expect(box.scrollHeight, "vertical page scroll").toBeLessThanOrEqual(box.clientHeight);
+  if (vertical) {
+    expect(box.scrollHeight, "vertical page scroll").toBeLessThanOrEqual(box.clientHeight);
+  }
   expect(box.scrollWidth, "horizontal page scroll").toBeLessThanOrEqual(box.clientWidth);
 }
 
@@ -23,8 +28,12 @@ async function expectNoClipping(page: Page) {
 }
 
 for (const viewport of VIEWPORTS) {
-  test.describe(`at ${viewport.width}x${viewport.height}`, () => {
+  const kind = oneScreen(viewport) ? "one screen" : "stacked";
+  test.describe(`at ${viewport.width}x${viewport.height} (${kind})`, () => {
     test.use({ viewport });
+    test.beforeEach(() => {
+      vertical = oneScreen(viewport);
+    });
 
     test("the page does not scroll", async ({ page }) => {
       await page.goto("/");
@@ -55,7 +64,7 @@ for (const viewport of VIEWPORTS) {
 
 // Proves the measurement above can fail.
 for (const viewport of [
-  { width: 375, height: 667 },
+  { width: 1024, height: 768 },
   { width: 1920, height: 1080 },
 ]) {
   test.describe(`negative check at ${viewport.width}x${viewport.height}`, () => {

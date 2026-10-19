@@ -12,11 +12,12 @@ function checkoutState(value: SearchParams[string]): CheckoutState {
 }
 
 /**
- * The whole site on one screen. The main is h-dvh and every grid row is sized
- * from it, so at every supported viewport nothing scrolls, nothing on html or
- * body is clipped and nothing is hidden: the slider's media is the only part
- * that flexes, and text steps down with the short and tiny height variants
- * (see app_docs/landing-page.md).
+ * Wide screens (and tablets in landscape): the whole site on one screen. The
+ * main is 100dvh and every grid row is sized from it, so nothing scrolls,
+ * nothing on html or body is clipped and nothing is hidden: the slider's
+ * media is the only part that flexes. Narrow screens stack the slider, text
+ * and CTA and scroll vertically (never sideways); the slider gets a fixed
+ * share of the screen there. See app_docs/landing-page.md.
  */
 export default async function HomePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
@@ -25,7 +26,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const utm = pickUtm(params);
 
   return (
-    <main className="landing grid h-dvh gap-x-10 gap-y-4 p-6 short:gap-y-2.5 short:p-4 tiny:gap-y-2 tiny:p-3 lg:p-10 lg:short:p-6">
+    <main className="landing grid gap-x-10 gap-y-4 p-6 short:gap-y-2.5 short:p-4 tiny:gap-y-2 tiny:p-3 lg:p-10 lg:short:p-6">
       <header className="[grid-area:title]">
         <h1
           aria-label={`${LANDING.brand.name} ${LANDING.brand.suffix}`}
@@ -38,31 +39,43 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         </h1>
       </header>
 
-      <div className="flex min-h-0 flex-col gap-4 [grid-area:text] short:gap-2.5 tiny:gap-2 lg:justify-center lg:gap-6 lg:short:gap-3">
-        <div
-          data-testid="description"
-          className="flex flex-col gap-3 text-sm leading-relaxed short:gap-1.5 short:text-xs short:leading-snug lg:text-base lg:short:text-sm"
-        >
+      <div className="flex min-h-0 flex-col gap-4 [grid-area:text] short:gap-2.5 tiny:gap-2 lg:justify-center lg:gap-6 lg:mid:gap-3 lg:short:gap-3">
+        <div className="flex flex-col gap-3 text-sm leading-relaxed short:gap-1.5 short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
           {LANDING.description.map((paragraph) => (
-            <p key={paragraph[0]}>
-              {paragraph.map((sentence) => (
-                <span key={sentence} className="block">
-                  {sentence}
-                </span>
-              ))}
-            </p>
+            <p key={paragraph}>{paragraph}</p>
           ))}
         </div>
-        <div className="flex flex-col gap-0.5">
-          <p className="text-sm short:text-xs lg:text-base lg:short:text-sm">{LANDING.offer}</p>
-          <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:short:text-lg">
-            {formatOfferPrice()}
-          </p>
-          <p className="text-xs text-neutral-500 short:text-[11px]">{LANDING.offerNote}</p>
-        </div>
+        <section
+          aria-label="How it works"
+          className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
+        >
+          <h2 className="font-medium">{LANDING.howItWorks.title}</h2>
+          <ol className="list-inside list-decimal">
+            {LANDING.howItWorks.steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </section>
+        <section
+          aria-label="What you get"
+          className="text-sm short:text-xs lg:text-base lg:mid:text-sm lg:short:text-sm"
+        >
+          <h2 className="font-medium">{LANDING.whatYouGet.title}</h2>
+          <ul className="list-inside list-disc">
+            {LANDING.whatYouGet.items.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+        <p className="text-sm leading-relaxed short:text-xs short:leading-snug lg:text-base lg:mid:text-sm lg:short:text-sm">
+          {LANDING.closing}
+        </p>
+        <p className="text-lg font-medium short:text-base tiny:text-sm lg:text-2xl lg:mid:text-xl lg:short:text-lg">
+          {formatOfferPrice()}
+        </p>
       </div>
 
-      <div className="min-h-0 [grid-area:slider]">
+      <div className="reel-area min-h-0 [grid-area:slider]">
         <ReelSlider reels={REELS} />
       </div>
 
