@@ -16,7 +16,7 @@ const SIZES = [
   { width: 320, height: 568 },
 ];
 
-async function boxOf(page: Page, locator: ReturnType<Page["getByRole"]>) {
+async function boxOf(locator: ReturnType<Page["getByRole"]>) {
   const box = await locator.boundingBox();
   expect(box, "element has a bounding box").not.toBeNull();
   return box!;
@@ -48,15 +48,12 @@ test.describe("brand position", () => {
         await page.setViewportSize(size);
         await page.goto("/");
         await waitForPageReady(page);
-        const landing = await boxOf(
-          page,
-          page.getByRole("heading", { level: 1, name: "edit issebya" }),
-        );
+        const landing = await boxOf(page.getByRole("heading", { level: 1, name: "edit issebya" }));
 
         await page.goto(legal.path);
         await page.evaluate(() => document.fonts.ready.then(() => undefined));
-        const brand = await boxOf(page, page.getByRole("link", { name: "edit issebya, home" }));
-        const title = await boxOf(page, page.getByRole("heading", { level: 1, name: legal.title }));
+        const brand = await boxOf(page.getByRole("link", { name: "edit issebya, home" }));
+        const title = await boxOf(page.getByRole("heading", { level: 1, name: legal.title }));
 
         expect(Math.abs(brand.x - landing.x)).toBeLessThanOrEqual(1);
         expect(Math.abs(brand.y - landing.y)).toBeLessThanOrEqual(1);

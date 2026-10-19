@@ -16,7 +16,7 @@ export function LegalPage({ title, children }: { title: string; children: ReactN
       <Link
         href="/"
         aria-label={`${LANDING.brand.name} ${LANDING.brand.suffix}, home`}
-        className={BRAND_CLASS}
+        className={`self-start ${BRAND_CLASS}`}
       >
         <BrandName />
       </Link>
