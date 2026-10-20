@@ -34,3 +34,9 @@ export const REELS: readonly Reel[] = [
     poster: "/reels/editorial-reel-02.jpg",
   },
 ];
+
+/** The reel's 1-based position in REELS (the `variant` property), or null. */
+export function reelVariant(id: string): number | null {
+  const index = REELS.findIndex((reel) => reel.id === id);
+  return index === -1 ? null : index + 1;
+}

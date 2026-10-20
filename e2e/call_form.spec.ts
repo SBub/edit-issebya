@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { CALL_REQUEST_MESSAGES } from "../src/lib/call-request";
+import type { CapturedEvent } from "../src/lib/track";
+import { eventNames, eventsNamed, recordEvents } from "./events";
 import {
   ctaButton,
   FIELD_LABELS,
@@ -13,8 +15,12 @@ import {
 // Inline validation runs before the server action, which is never called with
 // invalid answers; Escape closes the dialog and focus returns to the CTA.
 
+// Every analytics event of the current test (e2e/events.ts).
+let log: CapturedEvent[] = [];
+
 test.beforeEach(async ({ page, request }) => {
   expect((await request.delete(MOCK_ROUTE)).ok()).toBe(true);
+  log = await recordEvents(page);
   await page.goto("/");
   await ctaButton(page).click();
   await expect(formDialog(page)).toBeVisible();
@@ -67,6 +73,101 @@ test("an empty submit with terms ticked marks name and email invalid and calls n
   await expect(dialog.getByText(CALL_REQUEST_MESSAGES.url)).toHaveCount(0);
   const captured = await (await request.get(MOCK_ROUTE)).json();
   expect(captured.body).toBeNull();
+  await expect
+    .poll(() => eventsNamed(log, "call_form_invalid"))
+    .toEqual([
+      { event: "call_form_invalid", properties: { fields: ["name", "email"], stage: "client" } },
+    ]);
+  expect(eventNames(log)).not.toContain("call_form_submitted");
+});
+
+test("call_form_invalid lists the fields a bad email and a bad link fail", async ({ page }) => {
+  const dialog = formDialog(page);
+  await dialog.getByLabel(FIELD_LABELS.name, { exact: true }).fill(VALID_FORM.name);
+  await dialog.getByLabel(FIELD_LABELS.email, { exact: true }).fill("not-an-email");
+  await dialog.getByLabel("Social media links 1", { exact: true }).fill("not a link");
+  await termsCheckbox(dialog).check();
+  await dialog.getByRole("button", { name: "Continue to payment" }).click();
+  await expect
+    .poll(() => eventsNamed(log, "call_form_invalid"))
+    .toEqual([
+      { event: "call_form_invalid", properties: { fields: ["email", "socials"], stage: "client" } },
+    ]);
+});
+
+test("each field is completed once per open, by name only, and closing reports the progress", async ({
+  page,
+}) => {
+  const dialog = formDialog(page);
+  const name = dialog.getByLabel(FIELD_LABELS.name, { exact: true });
+  const email = dialog.getByLabel(FIELD_LABELS.email, { exact: true });
+  // Focus left empty: not completed.
+  await name.focus();
+  await email.focus();
+  await name.fill(VALID_FORM.name);
+  await email.focus();
+  // Back and away again: still once.
+  await name.focus();
+  await email.focus();
+  await newsletterCheckbox(dialog).check();
+  await termsCheckbox(dialog).check();
+  await email.fill(VALID_FORM.email);
+  // Escape with the email still focused: counted before the close.
+  await page.keyboard.press("Escape");
+  await expect(formDialog(page)).toBeHidden();
+
+  const expected = [
+    { event: "call_form_field_completed", properties: { field: "name" } },
+    { event: "call_form_field_completed", properties: { field: "newsletter" } },
+    { event: "call_form_field_completed", properties: { field: "terms" } },
+    { event: "call_form_field_completed", properties: { field: "email" } },
+    {
+      event: "call_form_closed",
+      properties: { fields_completed: 4, last_field: "email", started: true },
+    },
+  ];
+  await expect
+    .poll(() =>
+      log.filter((e) => e.event === "call_form_field_completed" || e.event === "call_form_closed"),
+    )
+    .toEqual(expected);
+  // Never an answer, only field names.
+  const sent = JSON.stringify(log);
+  expect(sent).not.toContain(VALID_FORM.name);
+  expect(sent).not.toContain(VALID_FORM.email);
+
+  // A new open starts the count again; a filled social row is "socials".
+  await ctaButton(page).click();
+  await dialog.getByLabel("Social media links 1", { exact: true }).fill(VALID_FORM.socials[0]);
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(formDialog(page)).toBeHidden();
+  await expect
+    .poll(() =>
+      log
+        .slice(eventNames(log).indexOf("call_form_closed") + 1)
+        .filter((e) => e.event === "call_form_field_completed" || e.event === "call_form_closed"),
+    )
+    .toEqual([
+      { event: "call_form_field_completed", properties: { field: "socials" } },
+      {
+        event: "call_form_closed",
+        properties: { fields_completed: 1, last_field: "socials", started: true },
+      },
+    ]);
+});
+
+test("closing an untouched form reports that it never started", async ({ page }) => {
+  await formDialog(page).getByRole("button", { name: "Close" }).click();
+  await expect(formDialog(page)).toBeHidden();
+  await expect
+    .poll(() => eventsNamed(log, "call_form_closed"))
+    .toEqual([
+      {
+        event: "call_form_closed",
+        properties: { fields_completed: 0, last_field: null, started: false },
+      },
+    ]);
+  expect(eventNames(log)).not.toContain("call_form_field_completed");
 });
 
 test("social rows are added with + and removed with x", async ({ page }) => {

@@ -2,7 +2,8 @@
 
 import { capture } from "@/lib/track";
 import { useEffect, useRef, useState } from "react";
-import type { Reel } from "@/content/reels";
+import { reelVariant, type Reel } from "@/content/reels";
+import { newThresholds, playedFraction, type ProgressPercent } from "@/lib/reel-progress";
 
 /**
  * One reel in the slider: the 9:16 video and its small uppercase label (from
@@ -57,11 +58,19 @@ export function ReelCard({ reel }: { reel: Reel }) {
 // at a time.
 const PLAY_EVENT = "reel-play";
 
+// Seconds: a play that starts this close to 0 counts as from the start.
+const START_TOLERANCE = 0.5;
+
 // Inline and paused until clicked, with sound; never autoplays. Playing one
 // reel pauses any other.
 function ReelVideo({ reel, src }: { reel: Reel; src: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playing, setPlaying] = useState(false);
+  // reel_progress bookkeeping, refs only (no render): the thresholds sent in
+  // this play-through and the last time seen, to spot the loop wrapping.
+  const progressSentRef = useRef(new Set<ProgressPercent>());
+  const lastTimeRef = useRef(0);
+  const variant = reelVariant(reel.id);
 
   // Another reel starting is an external event this one follows.
   useEffect(() => {
@@ -81,7 +90,7 @@ function ReelVideo({ reel, src }: { reel: Reel; src: string }) {
         .play()
         .then(() => {
           setPlaying(true);
-          capture("reel_played", { reel_id: reel.id });
+          capture("reel_played", { reel_id: reel.id, variant });
         })
         .catch(() => setPlaying(false));
     } else {
@@ -103,7 +112,36 @@ function ReelVideo({ reel, src }: { reel: Reel; src: string }) {
       video.webkitEnterFullscreen?.();
     }
     video.play().catch(() => undefined);
-    capture("reel_fullscreen", { reel_id: reel.id });
+    capture("reel_fullscreen", { reel_id: reel.id, variant });
+  }
+
+  // A play from the start (the first play, or after the time was reset)
+  // begins a new play-through, so every threshold can be sent again.
+  function onPlay() {
+    setPlaying(true);
+    const video = videoRef.current;
+    if (video && video.currentTime < START_TOLERANCE) {
+      progressSentRef.current.clear();
+      lastTimeRef.current = 0;
+    }
+  }
+
+  // Cheap on every timeupdate: nothing to do once all three are sent.
+  function trackProgress(fraction: number) {
+    const sent = progressSentRef.current;
+    if (sent.size === 3) return;
+    for (const percent of newThresholds(fraction, sent)) {
+      sent.add(percent);
+      capture("reel_progress", { reel_id: reel.id, variant, percent });
+    }
+  }
+
+  function onTimeUpdate() {
+    const video = videoRef.current;
+    if (!video) return;
+    const now = video.currentTime;
+    trackProgress(playedFraction(lastTimeRef.current, now, video.duration));
+    lastTimeRef.current = now;
   }
 
   return (
@@ -122,7 +160,9 @@ function ReelVideo({ reel, src }: { reel: Reel; src: string }) {
           loop
           preload="metadata"
           onPause={() => setPlaying(false)}
-          onPlay={() => setPlaying(true)}
+          onPlay={onPlay}
+          onTimeUpdate={onTimeUpdate}
+          onEnded={() => trackProgress(1)}
           className="h-full w-full object-cover"
         />
         {playing ? null : (

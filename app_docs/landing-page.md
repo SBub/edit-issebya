@@ -146,8 +146,9 @@ Every gap between consecutive blocks is the same, on every viewport.
    `poster: "/reels/<id>.jpg"`.
 3. The slider and its specs pick it up. Run `yarn test:e2e` to confirm nothing scrolls.
 
-The `id` is the `reel_id` sent with `reel_played` (see `app_docs/analytics.md`), so an existing id
-never changes.
+The `id` is the `reel_id` sent with `reel_played`, `reel_fullscreen` and `reel_progress` (see
+`app_docs/analytics.md`), so an existing id never changes. The reel's position in `REELS` is the
+`variant` those events carry, so a reorder changes what a variant means in PostHog.
 
 ## Link previews
 

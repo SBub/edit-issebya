@@ -10,6 +10,7 @@ import {
   newsletterCheckbox,
   termsCheckbox,
 } from "./viewport";
+import { eventNames, eventsNamed, recordEvents } from "./events";
 
 // A valid submit creates a Checkout Session through the in-process Stripe mock
 // (E2E_MOCK_STRIPE=true) and lands on the thank-you state; without a key the
@@ -20,6 +21,7 @@ test("a valid submit goes through Checkout and back to the thank-you dialog", as
   request,
 }) => {
   expect((await request.delete(MOCK_ROUTE)).ok()).toBe(true);
+  const log = await recordEvents(page);
   await page.goto("/?utm_source=test&utm_campaign=spring");
   await ctaButton(page).click();
   const dialog = formDialog(page);
@@ -69,6 +71,28 @@ test("a valid submit goes through Checkout and back to the thank-you dialog", as
   expect(body?.["metadata[utm_source]"]).toBe("test");
   expect(body?.["metadata[utm_campaign]"]).toBe("spring");
   expect(body).not.toHaveProperty("metadata[utm_medium]");
+
+  // Leaving for Stripe is not a close; the purchase lands on the way back.
+  await expect.poll(() => eventNames(log)).toContain("purchase_completed");
+  const names = eventNames(log);
+  expect(names.indexOf("checkout_started")).toBeGreaterThan(names.indexOf("call_form_submitted"));
+  expect(names).not.toContain("call_form_closed");
+  expect(names).not.toContain("checkout_failed");
+  expect(names).not.toContain("call_form_invalid");
+});
+
+test("a cancelled Checkout sends checkout_cancelled once per page load", async ({ page }) => {
+  const log = await recordEvents(page);
+  await page.goto("/?checkout=cancelled");
+  await expect(page.getByRole("status").filter({ hasText: LANDING.cancelled })).toBeVisible();
+  await expect
+    .poll(() => eventsNamed(log, "checkout_cancelled"))
+    .toEqual([{ event: "checkout_cancelled" }]);
+  // Moving around the page sends no second one.
+  await ctaButton(page).click();
+  await formDialog(page).getByRole("button", { name: "Close" }).click();
+  await expect.poll(() => eventNames(log)).toContain("call_form_closed");
+  expect(eventsNamed(log, "checkout_cancelled")).toHaveLength(1);
 });
 
 test("a ticked newsletter box travels as metadata newsletter true", async ({ page, request }) => {
@@ -95,6 +119,7 @@ test("without a Stripe key the dialog shows an alert and keeps the answers", asy
   expect((await request.post(MOCK_ROUTE, { data: { keyMissing: true } })).ok()).toBe(true);
   try {
     expect((await request.delete(MOCK_ROUTE)).ok()).toBe(true);
+    const log = await recordEvents(page);
     await page.goto("/");
     await ctaButton(page).click();
     const dialog = formDialog(page);
@@ -114,6 +139,10 @@ test("without a Stripe key the dialog shows an alert and keeps the answers", asy
       VALID_FORM.socials[1],
     );
     await expect(termsCheckbox(dialog)).toBeChecked();
+    await expect
+      .poll(() => eventsNamed(log, "checkout_failed"))
+      .toEqual([{ event: "checkout_failed", properties: { reason: "unavailable" } }]);
+    expect(eventNames(log)).not.toContain("checkout_started");
     const captured = await (await request.get(MOCK_ROUTE)).json();
     expect(captured.body).toBeNull();
   } finally {

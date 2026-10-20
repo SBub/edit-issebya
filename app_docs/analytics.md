@@ -45,20 +45,44 @@ unregisters it; any other value does nothing. The PostHog test-account filter ma
 
 ## Events
 
-| event                   | when                                                                                                                  | properties                                                       |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `$pageview`             | PostHog default capture                                                                                               | UTM properties captured by PostHog                               |
-| `reel_slider_navigated` | the track settles on a new card after a swipe or scroll, an arrow key moves it, or a dot is tapped (`ReelSlider.tsx`) | `direction` (`prev`/`next`), `method` (`swipe`/`keyboard`/`dot`) |
-| `reel_played`           | a reel starts playing on tap or click (`ReelCard.tsx`)                                                                | `reel_id`                                                        |
-| `reel_fullscreen`       | the full-screen button on a phone opens a reel full screen (`ReelCard.tsx`)                                           | `reel_id`                                                        |
-| `cta_clicked`           | the CTA opens the dialog                                                                                              | none                                                             |
-| `call_form_started`     | first input in the dialog, once per dialog open                                                                       | none                                                             |
-| `call_form_submitted`   | a submit that passes client validation                                                                                | none (never the answers)                                         |
-| `checkout_started`      | the action returned a Checkout URL, before navigating                                                                 | none                                                             |
-| `purchase_completed`    | thank-you state shown, once per `session_id` per page load (guarded in memory, never in storage)                      | `session_id`                                                     |
+| event                       | when                                                                                                                                                                                                                                                                       | properties                                                                                                          |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `$pageview`                 | PostHog default capture                                                                                                                                                                                                                                                    | UTM properties captured by PostHog                                                                                  |
+| `reel_slider_navigated`     | the track settles on a new card after a swipe or scroll, an arrow key moves it, or a dot is tapped (`ReelSlider.tsx`)                                                                                                                                                      | `direction` (`prev`/`next`), `method` (`swipe`/`keyboard`/`dot`)                                                    |
+| `reel_played`               | a reel starts playing on tap or click (`ReelCard.tsx`)                                                                                                                                                                                                                     | `reel_id`, `variant`                                                                                                |
+| `reel_fullscreen`           | the full-screen button on a phone opens a reel full screen (`ReelCard.tsx`)                                                                                                                                                                                                | `reel_id`, `variant`                                                                                                |
+| `reel_progress`             | playback crosses 25, 50 or 100 percent, each once per play-through; 100 is the end (`ended`, or the loop wrapping from the last tenth back to an earlier time); a play from the start (under 0.5 s) begins a new play-through (`ReelCard.tsx`, `src/lib/reel-progress.ts`) | `reel_id`, `variant`, `percent` (`25`/`50`/`100`)                                                                   |
+| `cta_clicked`               | the CTA opens the dialog                                                                                                                                                                                                                                                   | none                                                                                                                |
+| `call_form_started`         | first input in the dialog, once per dialog open                                                                                                                                                                                                                            | none                                                                                                                |
+| `call_form_field_completed` | a text field loses focus holding something, or a checkbox is ticked; once per field per dialog open                                                                                                                                                                        | `field` (`name`/`email`/`socials`/`terms`/`newsletter`)                                                             |
+| `call_form_invalid`         | a submit blocked by client validation, or a server action `invalid` result                                                                                                                                                                                                 | `fields` (names of the fields with an error, in form order), `stage` (`client`/`server`)                            |
+| `call_form_submitted`       | a submit that passes client validation                                                                                                                                                                                                                                     | none (never the answers)                                                                                            |
+| `call_form_closed`          | the form dialog closes (Escape or the close button, the only ways `DialogShell` closes) without leaving for Stripe                                                                                                                                                         | `fields_completed` (count this open), `last_field` (last field completed this open, or `null`), `started` (boolean) |
+| `checkout_started`          | the action returned a Checkout URL, before navigating                                                                                                                                                                                                                      | none                                                                                                                |
+| `checkout_failed`           | the action returned no URL                                                                                                                                                                                                                                                 | `reason` (`invalid`/`unavailable`)                                                                                  |
+| `checkout_cancelled`        | the page loaded with `?checkout=cancelled`, once per page load (guarded in memory, never in storage)                                                                                                                                                                       | none                                                                                                                |
+| `purchase_completed`        | thank-you state shown, once per `session_id` per page load (guarded in memory, never in storage)                                                                                                                                                                           | `session_id`                                                                                                        |
+| `message_clicked`           | the "Message me here" WhatsApp link is clicked (`QuestionsLink.tsx`)                                                                                                                                                                                                       | `location` (`offer` on `/`, `terms`, `privacy`)                                                                     |
 
-The last five are sent from `src/components/CallRequest.tsx`. All go through `capture`
-(`src/lib/track.ts`).
+`variant` is the reel's 1-based position in `REELS` (`reelVariant`, `src/content/reels.ts`):
+`poster-reel-04` = 1, `statement-reel-01` = 2, `editorial-reel-02` = 3. Reordering `REELS`
+changes which reel a variant means.
+
+The `cta_clicked` to `purchase_completed` rows (form, checkout outcomes) are sent from
+`src/components/CallRequest.tsx`. A server `invalid` result sends both `checkout_failed` and
+`call_form_invalid` (`stage: "server"`); the client and the server run the same validator, so it
+should not happen in practice. Field events carry names only (`src/lib/call-form-events.ts`).
+All go through `capture` (`src/lib/track.ts`).
+
+## Observing events in specs
+
+PostHog never initialises under Playwright, so `capture` has a test hook: when
+`navigator.webdriver` is `true` and a spec has put an array at `window.__capturedEvents`, each
+event (after the `?notrack` check) is also pushed there. `e2e/events.ts` sets it with
+`addInitScript` and hands each push to the spec through `exposeFunction`, so the log survives
+the round trip to Stripe. It lives in memory only and writes nothing to the device. Specs:
+`e2e/reel_slider.spec.ts`, `e2e/call_form.spec.ts`, `e2e/checkout.spec.ts`,
+`e2e/legal_pages.spec.ts`; unit: `src/lib/track.test.ts`.
 
 ## UTM values
 
@@ -101,6 +125,8 @@ To add a link: append an entry to `SHORT_LINKS` with a new slug and `posted: nul
 - Never import `posthog-js` in `src/lib/analytics.ts`; pass the client in as an adapter.
 - Never call `posthog.capture` from a component; use `capture` from `src/lib/track.ts`, which
   honours the `?notrack` opt-out.
+- Never send a form field's value: field events carry its name only.
+- Never let the test hook record outside `navigator.webdriver` or write to storage.
 - Never initialise PostHog under `navigator.webdriver` or outside production.
 - Never drop `cookieless_mode: "always"` or write anything to cookies, local or session storage
   for analytics: the site has no consent banner. `e2e/analytics.spec.ts` asserts no cookies and
