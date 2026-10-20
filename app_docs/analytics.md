@@ -65,6 +65,35 @@ The last five are sent from `src/components/CallRequest.tsx`. All go through `ca
 UTM values are kept twice: by PostHog's own capture on `$pageview`, and in the Checkout Session
 metadata (see `app_docs/checkout.md`).
 
+## Short links
+
+Clean links for posts in WhatsApp groups and elsewhere: `edit.issebya.com/<slug>` sends the
+visitor to `/?utm_source=...&utm_medium=...&utm_campaign=...`, so the post shows a short URL and
+PostHog still records where the visit came from.
+
+- The registry is `src/content/links.ts` (`SHORT_LINKS`): one entry per link with `slug`,
+  `source`, `medium`, `campaign`, `label` (the group's name, for people only) and `posted` (the
+  ISO date it went out, or null).
+- `next.config.ts` turns it into `redirects()` through `shortLinkRedirects`
+  (`src/lib/short-links.ts`); the query is built with `URLSearchParams`. Redirects run before the
+  filesystem and match case-insensitively, so `/CJO` works too; any query on the short link
+  (say `?notrack`) is passed on to `/` next to the UTM parameters.
+- The redirects are temporary (307), never permanent: browsers and link-preview crawlers cache a
+  308 for good, and a link's target must stay changeable.
+- Link previews: WhatsApp and iMessage follow the redirect and read the Open Graph tags on `/`
+  (`app_docs/landing-page.md`). There is no proxy, and the `?notrack` and `?internal` handling
+  runs in the browser only, so nothing stands between the crawler and the tags.
+- On `/` the UTM values reach PostHog's `$pageview` and, through `pickUtm`
+  (`src/lib/utm.ts`), the Checkout Session metadata, as any tagged URL does.
+- Specs: `src/lib/short-links.test.ts` (target URL; slugs lowercase `[a-z0-9-]`, unique, not an
+  existing route or `public/` file; UTM values lowercase `[a-z0-9-]`; `posted` a real date) and
+  `e2e/short-links.spec.ts` (each slug answers 307 and lands on `/` with its three parameters and
+  the heading visible).
+
+To add a link: append an entry to `SHORT_LINKS` with a new slug and `posted: null`, run
+`yarn test`, ship it, check the link opens the page with its preview, then post it and set
+`posted` to that day's date.
+
 ## Rules
 
 - Never rename an event or a property.
@@ -78,3 +107,7 @@ metadata (see `app_docs/checkout.md`).
   empty local and session storage after the whole purchase flow. A reload of the thank-you URL
   sends `purchase_completed` again, so count unique `session_id` values.
 - Never rename the `internal` super property.
+- Never rename, reuse or remove a short-link slug once it is posted (`posted` is set): old messages
+  still point at it, and a short link must never show a "not found" page. Change its target
+  values instead if needed, knowing PostHog then records the new ones.
+- Never make a short-link redirect permanent.
