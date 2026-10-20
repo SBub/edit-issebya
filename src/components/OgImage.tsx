@@ -1,15 +1,22 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
+import sharp from "sharp";
 import { LANDING } from "@/content/landing";
 import { REELS } from "@/content/reels";
 
 // The link preview shared by opengraph-image.tsx and twitter-image.tsx: the
 // wordmark, the first sentence of the introduction and the reel posters as
 // 9:16 thumbnails. White page, neutral-900 text, one fuchsia-700 rule.
+// Served as a JPEG under 300 KB: the PNG of the same render is about 490 KB,
+// and WhatsApp desktop and WhatsApp Web show an empty grey preview for images
+// over roughly 300 KB.
 export const OG_IMAGE_SIZE = { width: 1200, height: 630 };
 export const OG_IMAGE_ALT =
   "edit issebya: your ideas deserve reels that look like your brand. Three edited reel posters.";
+
+// Keep the bytes well under the 300 KB WhatsApp desktop limit (about 120 KB).
+const JPEG_QUALITY = 85;
 
 const POSTER = { width: 214, height: 380 };
 
@@ -30,7 +37,21 @@ async function posterDataUrls(): Promise<string[]> {
   );
 }
 
-export async function renderOgImage(): Promise<ImageResponse> {
+// The ImageResponse renders a PNG; sharp (Next's own image dependency)
+// re-encodes it as a JPEG. The route is still prerendered at build time and
+// keeps the ImageResponse's Cache-Control.
+export async function renderOgImage(): Promise<Response> {
+  const png = await renderPng();
+  const jpeg = await sharp(Buffer.from(await png.arrayBuffer()))
+    .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
+    .toBuffer();
+  const headers = new Headers({ "Content-Type": "image/jpeg" });
+  const cacheControl = png.headers.get("Cache-Control");
+  if (cacheControl) headers.set("Cache-Control", cacheControl);
+  return new Response(new Uint8Array(jpeg), { headers });
+}
+
+async function renderPng(): Promise<ImageResponse> {
   const posters = await posterDataUrls();
   return new ImageResponse(
     <div

@@ -2593,6 +2593,7 @@ __metadata:
     react: "npm:19.3.0"
     react-dom: "npm:19.3.0"
     resend: "npm:^6.34.1"
+    sharp: "npm:^0.35.4"
     stripe: "npm:^23.0.0"
     tailwindcss: "npm:^4"
     typescript: "npm:5.9.3"
