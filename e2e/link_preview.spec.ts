@@ -1,10 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
+import sharp from "sharp";
 import { LANDING } from "../src/content/landing";
 
 // Link previews (WhatsApp, iMessage, LinkedIn): the Open Graph and Twitter
 // tags on `/`, and the generated images they point to. The absolute URLs are
 // built on metadataBase, which may name another port than the test server,
 // so the images are fetched by path.
+
+// WhatsApp desktop and WhatsApp Web show an empty grey preview for images over
+// roughly 300 KB, so the preview is a JPEG below that.
+const MAX_PREVIEW_BYTES = 300_000;
 
 async function meta(page: Page, attr: "property" | "name", key: string): Promise<string> {
   const content = await page.locator(`meta[${attr}="${key}"]`).first().getAttribute("content");
@@ -25,6 +30,11 @@ test("/ has Open Graph and Twitter tags with absolute image URLs", async ({ page
   expect(await meta(page, "property", "og:image:width")).toBe("1200");
   expect(await meta(page, "property", "og:image:height")).toBe("630");
   expect(await meta(page, "property", "og:image:alt")).not.toBe("");
+  expect(await meta(page, "property", "og:image:type")).toBe("image/jpeg");
+  expect(await meta(page, "name", "twitter:image:type")).toBe("image/jpeg");
+  expect(await meta(page, "name", "twitter:image:width")).toBe("1200");
+  expect(await meta(page, "name", "twitter:image:height")).toBe("630");
+  expect(await meta(page, "name", "twitter:image:alt")).not.toBe("");
   expect(await meta(page, "name", "description")).toBe(LANDING.quote);
   expect(await meta(page, "name", "twitter:description")).toBe(LANDING.quote);
   expect(await meta(page, "name", "twitter:card")).toBe("summary_large_image");
@@ -36,16 +46,21 @@ test("/ has Open Graph and Twitter tags with absolute image URLs", async ({ page
     const { pathname, search } = new URL(url);
     const response = await request.get(`${pathname}${search}`);
     expect(response.status(), url).toBe(200);
-    expect(response.headers()["content-type"]).toBe("image/png");
+    expect(response.headers()["content-type"]).toBe("image/jpeg");
   }
   expect(new URL(ogImage).pathname).toBe("/opengraph-image");
+  expect(new URL(twitterImage).pathname).toBe("/twitter-image");
 });
 
-test("/opengraph-image and the favicon are PNGs", async ({ request }) => {
+test("/opengraph-image and /twitter-image are 1200x630 JPEGs under 300 KB", async ({ request }) => {
   for (const path of ["/opengraph-image", "/twitter-image"]) {
     const response = await request.get(path);
     expect(response.status(), path).toBe(200);
-    expect(response.headers()["content-type"]).toBe("image/png");
+    expect(response.headers()["content-type"], path).toBe("image/jpeg");
+    const body = await response.body();
+    expect(body.byteLength, path).toBeLessThan(MAX_PREVIEW_BYTES);
+    const { format, width, height } = await sharp(body).metadata();
+    expect({ format, width, height }, path).toEqual({ format: "jpeg", width: 1200, height: 630 });
   }
 });
 

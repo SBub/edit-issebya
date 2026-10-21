@@ -144,7 +144,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <p className="text-xs leading-relaxed text-neutral-600">{LANDING.afterPurchase}</p>
           <p className="text-xs text-neutral-600">
             {LANDING.questions.lead}{" "}
-            <QuestionsLink className="text-neutral-900 underline underline-offset-2 hover:text-fuchsia-700" />
+            <QuestionsLink
+              location="offer"
+              className="text-neutral-900 underline underline-offset-2 hover:text-fuchsia-700"
+            />
             .
           </p>
         </section>
