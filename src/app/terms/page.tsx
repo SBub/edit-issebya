@@ -203,7 +203,7 @@ export default function TermsPage() {
       <LegalSection id="complaints" title="Complaints and disputes">
         <p>
           If something is wrong, please email us first at <EmailLink />, or send a WhatsApp message:{" "}
-          <QuestionsLink className="underline underline-offset-2" />.
+          <QuestionsLink location="terms" className="underline underline-offset-2" />.
         </p>
         <p>
           You can also complain in the electronic complaints book (Livro de Reclamações Eletrónico):{" "}

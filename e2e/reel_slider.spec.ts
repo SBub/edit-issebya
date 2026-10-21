@@ -1,5 +1,7 @@
 import { expect, test, type Locator } from "@playwright/test";
 import { REELS } from "../src/content/reels";
+import type { CapturedEvent } from "../src/lib/track";
+import { eventsNamed, recordEvents } from "./events";
 import { waitForPageReady } from "./viewport";
 
 // One card per view at phone width with the next one peeking in; swiping and
@@ -15,7 +17,11 @@ async function inView(card: Locator, track: Locator): Promise<boolean> {
   return c.x >= t.x - 1 && c.x + c.width <= t.x + t.width + 1;
 }
 
+// Every analytics event of the current test (e2e/events.ts).
+let log: CapturedEvent[] = [];
+
 test.beforeEach(async ({ page }) => {
+  log = await recordEvents(page);
   await page.goto("/");
   await waitForPageReady(page);
 });
@@ -123,6 +129,14 @@ test("on a phone each reel has a full-screen button that plays it full screen", 
   ).toBe(1);
   const video = page.getByRole("article", { name: reel.title }).locator("video");
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
+  await expect
+    .poll(() => eventsNamed(log, "reel_fullscreen"))
+    .toEqual([
+      {
+        event: "reel_fullscreen",
+        properties: { reel_id: reel.id, variant: REELS.indexOf(reel) + 1 },
+      },
+    ]);
 });
 
 test("wide screens show no full-screen button", async ({ page }) => {
@@ -152,4 +166,81 @@ test("on a phone dots show which reel is in view and jump to another", async ({ 
 test("wide screens, where every reel fits, show no dots", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByRole("group", { name: "Choose a reel" })).toHaveCount(0);
+});
+
+test("reel_played carries the reel's 1-based place in REELS as variant", async ({ page }) => {
+  const playable = REELS.filter((r) => r.videoSrc !== null);
+  test.skip(playable.length < 2, "needs two real reels");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const slider = page.getByRole("region", { name: "Edited reels" });
+  for (const reel of playable.slice(0, 2)) {
+    await slider.getByRole("button", { name: `Play ${reel.title}` }).click();
+  }
+  await expect
+    .poll(() => eventsNamed(log, "reel_played"))
+    .toEqual(
+      playable.slice(0, 2).map((reel) => ({
+        event: "reel_played",
+        properties: { reel_id: reel.id, variant: REELS.indexOf(reel) + 1 },
+      })),
+    );
+});
+
+test("reel_progress sends 25, 50 and 100 once per play-through from the start", async ({
+  page,
+}) => {
+  const reel = REELS.find((r) => r.videoSrc !== null);
+  test.skip(reel === undefined, "all reels are placeholders");
+  if (!reel) return;
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const slider = page.getByRole("region", { name: "Edited reels" });
+  const video = slider.getByRole("article", { name: reel.title }).locator("video");
+  // A 40 second reel whose clock the spec moves: the real file plays, but
+  // duration and currentTime are this element's own stand-ins, and each move
+  // sends a timeupdate the way playback does.
+  await video.evaluate((v: HTMLVideoElement) => {
+    let time = 0;
+    Object.defineProperty(v, "duration", { configurable: true, get: () => 40 });
+    Object.defineProperty(v, "currentTime", {
+      configurable: true,
+      get: () => time,
+      set: (value: number) => {
+        time = value;
+      },
+    });
+  });
+  const moveTo = (seconds: number) =>
+    video.evaluate((v: HTMLVideoElement, value) => {
+      v.currentTime = value;
+      v.dispatchEvent(new Event("timeupdate"));
+    }, seconds);
+  const percents = () =>
+    eventsNamed(log, "reel_progress").map((entry) => entry.properties?.percent);
+  const variant = REELS.indexOf(reel) + 1;
+
+  await slider.getByRole("button", { name: `Play ${reel.title}` }).click();
+  await expect.poll(() => eventsNamed(log, "reel_played")).toHaveLength(1);
+  await moveTo(5);
+  await expect.poll(percents).toEqual([]);
+  await moveTo(11);
+  await moveTo(21);
+  // The loop wraps from near the end back to the start: the end.
+  await moveTo(39);
+  await moveTo(0.2);
+  await moveTo(15);
+  await expect.poll(percents).toEqual([25, 50, 100]);
+  expect(eventsNamed(log, "reel_progress")[0]).toEqual({
+    event: "reel_progress",
+    properties: { reel_id: reel.id, variant, percent: 25 },
+  });
+
+  // Paused, then played again from the start: a new play-through.
+  await slider.getByRole("button", { name: `Pause ${reel.title}` }).click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  await moveTo(0);
+  await slider.getByRole("button", { name: `Play ${reel.title}` }).click();
+  // The play event is queued: wait for the play to land (reel_played follows it).
+  await expect.poll(() => eventsNamed(log, "reel_played")).toHaveLength(2);
+  await moveTo(11);
+  await expect.poll(percents).toEqual([25, 50, 100, 25]);
 });

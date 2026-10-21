@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { LANDING } from "../src/content/landing";
 import { LEGAL } from "../src/content/legal";
+import { eventsNamed, recordEvents } from "./events";
 import { ctaButton, formDialog, termsCheckbox, waitForPageReady } from "./viewport";
 
 // Written out, not read from LANDING, so a wrong constant fails here.
@@ -36,6 +37,28 @@ test.describe("WhatsApp link", () => {
       expect(url.searchParams.get("text")).toBe(WHATSAPP_TEXT);
       await expect(link).toHaveAttribute("target", "_blank");
       await expect(link).toHaveAttribute("rel", /noopener/);
+    });
+  }
+
+  for (const [path, location] of [
+    ["/", "offer"],
+    ["/terms", "terms"],
+    ["/privacy", "privacy"],
+  ] as const) {
+    test(`a click on "Message me here" on ${path} sends message_clicked from ${location}`, async ({
+      page,
+      context,
+    }) => {
+      // The new tab never reaches WhatsApp.
+      await context.route("https://wa.me/**", (route) => route.fulfill({ body: "" }));
+      const log = await recordEvents(page);
+      await page.goto(path);
+      const popup = page.waitForEvent("popup");
+      await page.getByRole("link", { name: LANDING.questions.link }).click();
+      await (await popup).close();
+      await expect
+        .poll(() => eventsNamed(log, "message_clicked"))
+        .toEqual([{ event: "message_clicked", properties: { location } }]);
     });
   }
 });

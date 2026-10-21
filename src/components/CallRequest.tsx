@@ -6,12 +6,15 @@ import {
   useRef,
   useState,
   useTransition,
+  type ChangeEvent,
+  type FocusEvent,
   type FormEvent,
   type ReactNode,
   type RefObject,
 } from "react";
 import { startCheckout } from "@/app/actions";
 import { LANDING } from "@/content/landing";
+import { invalidFields, trackedField, type CallFormTrackedField } from "@/lib/call-form-events";
 import {
   CALL_REQUEST_FIELDS,
   parseCallRequest,
@@ -45,6 +48,8 @@ function formValues(form: HTMLFormElement): Record<string, unknown> {
 
 // Session ids purchase_completed was sent for in this page load.
 const PURCHASES_SENT = new Set<string>();
+// Whether checkout_cancelled was sent in this page load.
+let cancelledSent = false;
 
 /**
  * The page's one call to action and everything behind it: the form dialog, the
@@ -64,6 +69,11 @@ export function CallRequest({
   const formDialogRef = useRef<HTMLDialogElement | null>(null);
   const thanksDialogRef = useRef<HTMLDialogElement | null>(null);
   const startedRef = useRef(false);
+  // Per dialog open, refs only (no render): the fields completed, the last
+  // one, and whether the dialog is closing because the page leaves for Stripe.
+  const completedRef = useRef(new Set<CallFormTrackedField>());
+  const lastFieldRef = useRef<CallFormTrackedField | null>(null);
+  const leavingRef = useRef(false);
   const [errors, setErrors] = useState<CallRequestErrors>({});
   const [unavailable, setUnavailable] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -76,7 +86,12 @@ export function CallRequest({
   // guarded in memory against strict-mode double effects. Nothing is written
   // to the device (no consent banner, see app_docs/analytics.md), so a reload
   // of the thank-you URL sends it again: count unique session_id values.
+  // checkout_cancelled follows the same once-per-page-load memory guard.
   useEffect(() => {
+    if (checkout === "cancelled" && !cancelledSent) {
+      cancelledSent = true;
+      capture("checkout_cancelled");
+    }
     if (checkout !== "success") return;
     const dialog = thanksDialogRef.current;
     if (dialog && !dialog.open) dialog.showModal();
@@ -88,7 +103,54 @@ export function CallRequest({
   function openForm() {
     capture("cta_clicked");
     startedRef.current = false;
+    completedRef.current = new Set();
+    lastFieldRef.current = null;
+    leavingRef.current = false;
     formDialogRef.current?.showModal();
+  }
+
+  // call_form_field_completed: once per field per dialog open, the field's
+  // name only, never its value.
+  function completeField(name: string) {
+    const field = trackedField(name);
+    if (!field || completedRef.current.has(field)) return;
+    completedRef.current.add(field);
+    lastFieldRef.current = field;
+    capture("call_form_field_completed", { field });
+  }
+
+  // A text input completes when it loses focus holding something.
+  function textCompleted(target: EventTarget | null) {
+    if (!(target instanceof HTMLInputElement) || target.type === "checkbox") return;
+    if (target.value.trim() !== "") completeField(target.name);
+  }
+
+  function onBlur(event: FocusEvent<HTMLFormElement>) {
+    textCompleted(event.target);
+  }
+
+  // A checkbox completes when it is ticked.
+  function onChange(event: ChangeEvent<HTMLFormElement>) {
+    const target: EventTarget = event.target;
+    if (target instanceof HTMLInputElement && target.type === "checkbox" && target.checked) {
+      completeField(target.name);
+    }
+  }
+
+  // Escape or the close button. Escape leaves the focus in the form until the
+  // CTA takes it below, so the focused input is counted first.
+  function closeForm() {
+    if (!leavingRef.current) {
+      if (formDialogRef.current?.contains(document.activeElement)) {
+        textCompleted(document.activeElement);
+      }
+      capture("call_form_closed", {
+        fields_completed: completedRef.current.size,
+        last_field: lastFieldRef.current,
+        started: startedRef.current,
+      });
+    }
+    ctaRef.current?.focus();
   }
 
   function onInput(event: FormEvent<HTMLFormElement>) {
@@ -117,6 +179,7 @@ export function CallRequest({
     const parsed = parseCallRequest(fields);
     setUnavailable(false);
     if (!parsed.ok) {
+      capture("call_form_invalid", { fields: invalidFields(parsed.errors), stage: "client" });
       setErrors(parsed.errors);
       focusFirstInvalid(form, parsed.errors);
       return;
@@ -127,8 +190,16 @@ export function CallRequest({
       const result = await startCheckout({ fields: { ...parsed.value }, utm: { ...utm } });
       if (result.ok) {
         capture("checkout_started");
+        leavingRef.current = true;
         window.location.assign(result.url);
-      } else if (result.error === "invalid") {
+        return;
+      }
+      capture("checkout_failed", { reason: result.error });
+      if (result.error === "invalid") {
+        capture("call_form_invalid", {
+          fields: invalidFields(result.fieldErrors),
+          stage: "server",
+        });
         setErrors(result.fieldErrors);
         focusFirstInvalid(form, result.fieldErrors);
       } else {
@@ -156,7 +227,7 @@ export function CallRequest({
         dialogRef={formDialogRef}
         titleId="call-dialog-title"
         title={LANDING.cta}
-        onClose={() => ctaRef.current?.focus()}
+        onClose={closeForm}
       >
         {/* flex-auto, never flex-1: with a 0% basis, Safari sizes the dialog
             (only max-height, no height) from the basis and collapses it to
@@ -166,6 +237,8 @@ export function CallRequest({
           noValidate
           onSubmit={onSubmit}
           onInput={onInput}
+          onBlur={onBlur}
+          onChange={onChange}
           className="flex min-h-0 flex-auto flex-col"
         >
           <div className="min-h-0 flex-auto overflow-y-auto px-5 py-4">

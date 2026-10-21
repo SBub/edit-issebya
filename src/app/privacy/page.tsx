@@ -40,9 +40,11 @@ export default function PrivacyPage() {
             your reels
           </li>
           <li>
-            Usage analytics on the live site: the pages you view, clicks on the reels and the call
-            to action, your browser and device type, approximate location derived from your IP
-            address, and the campaign parameters in the link you came from. Never your form answers
+            Usage analytics on the live site: the pages you view, clicks on the reels and how far
+            you watch them, the call to action, which form fields you fill in (never what you type),
+            whether checkout starts, fails or is cancelled, clicks on the WhatsApp link, your
+            browser and device type, approximate location derived from your IP address, and the
+            campaign parameters in the link you came from. Never your form answers
           </li>
           <li>
             Technical logs: our host records IP addresses and requests to keep the site secure
@@ -148,8 +150,8 @@ export default function PrivacyPage() {
 
       <LegalSection id="contact" title="Contact">
         <p>
-          <EmailLink />. Questions first? <QuestionsLink className="underline underline-offset-2" />
-          . The{" "}
+          <EmailLink />. Questions first?{" "}
+          <QuestionsLink location="privacy" className="underline underline-offset-2" />. The{" "}
           <Link href="/terms" className="underline underline-offset-2">
             terms and conditions
           </Link>{" "}

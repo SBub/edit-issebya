@@ -146,8 +146,9 @@ Every gap between consecutive blocks is the same, on every viewport.
    `poster: "/reels/<id>.jpg"`.
 3. The slider and its specs pick it up. Run `yarn test:e2e` to confirm nothing scrolls.
 
-The `id` is the `reel_id` sent with `reel_played` (see `app_docs/analytics.md`), so an existing id
-never changes.
+The `id` is the `reel_id` sent with `reel_played`, `reel_fullscreen` and `reel_progress` (see
+`app_docs/analytics.md`), so an existing id never changes. The reel's position in `REELS` is the
+`variant` those events carry, so a reorder changes what a variant means in PostHog.
 
 ## Link previews
 
@@ -159,15 +160,24 @@ never changes.
   1200x630, white, the "edit" wordmark with "issebya" set small and low, a short fuchsia-700 rule,
   the first sentence of `LANDING.quote`, and the first three `REELS` posters as rounded 9:16
   thumbnails, read from `public/` with `fs/promises` and inlined as data URLs. The config exports
-  (`alt`, `size`, `contentType`) stay literal in each route file.
+  (`alt`, `size`, `contentType` `image/jpeg`) stay literal in each route file.
+- Format and size: the preview is a JPEG, about 60 KB. `ImageResponse` only renders PNG, and that
+  PNG is about 490 KB, so `renderOgImage` re-encodes it with `sharp` (quality 85, mozjpeg; the same
+  `sharp` Next uses for images, listed in `dependencies`) and returns a plain `Response` with
+  `Content-Type: image/jpeg` and the `ImageResponse`'s `Cache-Control`. WhatsApp desktop and
+  WhatsApp Web show an empty grey preview for images over about 300 KB (WhatsApp mobile still
+  shows them). Both routes are prerendered at build time, so a changed reel poster or quote shows
+  up on the next deploy with no file to regenerate; the `?<hash>` Next appends to the image URL
+  changes with it.
 - `src/app/icon.tsx` (32x32 favicon) and `src/app/apple-icon.tsx` (180x180 Apple touch icon)
   both render `renderBrandIcon` (`src/components/BrandIcon.tsx`): the header's wordmark ("edit"
   in semibold with "issebya" small and low on its right), black on white, centred, about 90% of
   the width. Fonts: Geist SemiBold and Regular in `assets/fonts` (SIL Open Font License,
   `Geist-OFL.txt`), because the image renderer only ships a regular weight. At 32px "issebya" is
   too small to read; it shows as a fine grey line.
-- Spec: `e2e/link_preview.spec.ts` (the `og:` and `twitter:` tags, absolute image URLs, both images,
-  the icon and the Apple touch icon answer 200 `image/png`).
+- Spec: `e2e/link_preview.spec.ts` (the `og:` and `twitter:` tags with `image/jpeg` type, size and
+  alt, absolute image URLs; both preview images answer 200 `image/jpeg`, 1200x630, under 300,000
+  bytes; the icon and the Apple touch icon answer 200 `image/png`).
 
 ## Card styling sources
 
@@ -198,5 +208,7 @@ Deliberate differences from the shop card:
 - Never measure from `window.innerWidth` or `window.innerHeight` in specs; measure from the root
   box.
 - Do not change the `id` of an existing reel.
+- Never ship a link preview image over 300 KB or as PNG: WhatsApp desktop and WhatsApp Web drop
+  the preview above about 300 KB.
 - Never give the terms and privacy pages a different container, padding or brand position from
   `/`.
