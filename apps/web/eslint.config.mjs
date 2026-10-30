@@ -1,6 +1,7 @@
-// One flat config for the single Next.js app. It is the reference monorepo's
+// Flat config of the web app (apps/web). It is the reference monorepo's
 // shared security-and-format building block and its per-app Next config
-// folded into one file, since there is only one package here.
+// folded into one file; the shared half moves to a package under packages/
+// once a second app needs it.
 import nextConfig from "eslint-config-next";
 import prettierConfig from "eslint-config-prettier";
 import noSecrets from "eslint-plugin-no-secrets";
@@ -30,8 +31,6 @@ const eslintConfig = [
     ignores: [
       ".next/**",
       "next-env.d.ts",
-      "trees/**",
-      "agents/**",
       "playwright-report/**",
       "test-results/**",
       "blob-report/**",

@@ -1,6 +1,9 @@
+import { join } from "node:path";
 import type { NextConfig } from "next";
 import { SHORT_LINKS } from "./src/content/links";
 import { shortLinkRedirects } from "./src/lib/short-links";
+
+const monorepoRoot = join(import.meta.dirname, "..", "..");
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -9,11 +12,16 @@ const nextConfig: NextConfig = {
   redirects() {
     return shortLinkRedirects(SHORT_LINKS);
   },
-  // Pin the Turbopack root to this directory so a stray lockfile higher up
-  // the filesystem is never mistaken for the project root.
+  // This app lives in apps/web of a Yarn workspace whose dependencies are
+  // hoisted to the repository root's node_modules. Pin the Turbopack root and
+  // the output file tracing root to that repository root (two levels up), so
+  // modules resolve and serverless traces include them, and a stray lockfile
+  // higher up the filesystem is never mistaken for it. Next wants both set to
+  // the same directory.
   turbopack: {
-    root: import.meta.dirname,
+    root: monorepoRoot,
   },
+  outputFileTracingRoot: monorepoRoot,
   // Next 16 otherwise writes its own AGENTS.md and CLAUDE.md on every `next
   // dev`. This repo keeps those files by hand; see AGENTS.md.
   agentRules: false,
