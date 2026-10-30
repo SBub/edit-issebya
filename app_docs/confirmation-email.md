@@ -9,7 +9,7 @@ This has not been run against real Stripe or Resend accounts.
 
 ## Flow
 
-`POST /api/stripe/webhook` (`src/app/api/stripe/webhook/route.ts`, Node runtime), in this order:
+`POST /api/stripe/webhook` (`apps/web/src/app/api/stripe/webhook/route.ts`, Node runtime), in this order:
 
 1. Read the raw body with `request.text()` and the `stripe-signature` header. Never `request.json()`:
    the signature is over the exact bytes.
@@ -32,7 +32,7 @@ This has not been run against real Stripe or Resend accounts.
 Any Stripe or Resend error in steps 4 to 9: 500, logged with the session id and the error's class
 or code (never its message), so Stripe retries.
 
-The status rules are the pure `decideWebhook` (`src/lib/webhook-config.ts`), unit-tested row by
+The status rules are the pure `decideWebhook` (`apps/web/src/lib/webhook-config.ts`), unit-tested row by
 row; the route only gathers the facts.
 
 ## Statuses
@@ -72,8 +72,8 @@ logged (`console.error`, names only, never values).
 
 ## The emails
 
-- Copy: `src/content/confirmation-email.ts`, the owner's literal wording, read by the builder
-  (`src/lib/confirmation-email.ts`), its unit test and the e2e spec.
+- Copy: `apps/web/src/content/confirmation-email.ts`, the owner's literal wording, read by the builder
+  (`apps/web/src/lib/confirmation-email.ts`), its unit test and the e2e spec.
 - Buyer: subject `You're in. Let's book your discovery call`, from `EMAIL_FROM`, to the buyer,
   reply-to `EMAIL_REPLY_TO`. Plain text is the copy with `[Name]` (the trimmed `metadata.name`)
   and `👉 Book your call: <BOOKING_URL>`, and, before the sign-off, "Work starts right away. See <site>/terms#withdrawal for
@@ -102,12 +102,12 @@ Server-only, all optional at build time (`yarn build` passes with none set):
 
 ## E2E mocks
 
-Both run in the msw network `src/instrumentation.ts` starts when either flag is exactly `"true"`;
-each flag adds only its own handlers. `playwright.config.ts` sets both in `webServer.env`; the ADW
+Both run in the msw network `apps/web/src/instrumentation.ts` starts when either flag is exactly `"true"`;
+each flag adds only its own handlers. `apps/web/playwright.config.ts` sets both in `webServer.env`; the ADW
 server starts as `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn dev`.
 
 - **Stripe** (`E2E_MOCK_STRIPE`): the create handler also stores the session by id
-  (`src/lib/e2e-stripe-mock.ts`: metadata from the body, `customer_email`,
+  (`apps/web/src/lib/e2e-stripe-mock.ts`: metadata from the body, `customer_email`,
   `customer_details.email`, `payment_status: "paid"`, `amount_total`, `currency`).
   `GET .../checkout/sessions/:id` returns it (Stripe's 404 shape when unknown);
   `POST .../checkout/sessions/:id` merges `metadata[...]` into it. Under the flag the webhook
@@ -115,13 +115,13 @@ server starts as `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn dev`.
   `/api/e2e-stripe-mock`: `GET` also returns the sessions, `DELETE` also clears them,
   `POST { sessionId, paymentStatus }` sets one session's `payment_status`.
 - **Resend** (`E2E_MOCK_RESEND`): `POST https://api.resend.com/emails` (the SDK uses the global
-  `fetch`) records the JSON body and the `Idempotency-Key` header (`src/lib/e2e-resend-mock.ts`).
+  `fetch`) records the JSON body and the `Idempotency-Key` header (`apps/web/src/lib/e2e-resend-mock.ts`).
   It does not emulate idempotency, so the replay spec proves the metadata flag. Under the flag the
   Resend key falls back to `re_e2e_mock`, and the sender, reply-to and booking link are always
   `E2E Sender <from@e2e.test>`, `owner@e2e.test` and `https://booking.e2e.test/call`.
   `/api/e2e-resend-mock`: `GET` the recorded list, `DELETE` clears it, `POST { configMissing }`
   makes the webhook treat `BOOKING_URL` as missing.
-- Specs: `e2e/confirmation_email.spec.ts` (happy path, replay, bad and missing signature, unpaid,
+- Specs: `apps/web/e2e/confirmation_email.spec.ts` (happy path, replay, bad and missing signature, unpaid,
   missing config then retry, unhandled type). Events are signed with
   `Stripe.webhooks.generateTestHeaderString`.
 

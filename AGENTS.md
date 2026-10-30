@@ -14,13 +14,25 @@ Rules for working in this repository. What each feature does is not described he
 - Conventional-commit messages (`feat:`, `fix:`, `chore:`, `docs:`). No
   trailers of any kind: no `Co-Authored-By`, no `Signed-off-by`.
 - Default branch is `develop`.
+- Turborepo monorepo on Yarn workspaces (`apps/*`, `packages/*`). Run every
+  command from the repository root; the root scripts go through `turbo.json`
+  (prettier and knip run once over the whole repository). Never `cd` into a
+  workspace to install. Add a dependency to the workspace that uses it
+  (`yarn workspace @edit-issebya/web add <pkg>`); the root `package.json` holds
+  shared tooling only. Create a package under `packages/` only when two or more
+  apps consume it.
+- Turbo runs tasks in strict env mode: a variable a task reads must be listed in
+  `turbo.json` (`env` for `build`, `passThroughEnv` for `dev`, `start` and
+  `test:e2e`), or the task never sees it.
 - `next dev` in Next 16 wants to write its own `AGENTS.md` and `CLAUDE.md`.
-  That is switched off in `next.config.ts` (`agentRules: false`); these two
+  That is switched off in `apps/web/next.config.ts` (`agentRules: false`); these two
   files are maintained by hand. Still read the relevant guide under
   `node_modules/next/dist/docs/` before Next.js work; the framework moves
   faster than training data.
 - No em-dashes in any file. Use commas, periods, colons or parentheses.
-- Never create, read or commit a real `.env*` file; `.env.example` holds placeholder names only.
+- Never create, read or commit a real `.env*` file. The `.env.example` files hold placeholder names
+  only: `apps/web/.env.example` for the app (Next reads env files from `apps/web/`), the root one
+  for the ADW toolkit's `.env.development`.
 - `.adw/project.md` is this repository's ADW profile; the toolkit's slash commands
   read it before anything else. When a change renames a script, moves a port,
   adds an env file or changes where docs live, update the profile in the same
@@ -28,8 +40,9 @@ Rules for working in this repository. What each feature does is not described he
 
 ## Testing
 
-- Unit tests are `src/**/*.test.ts` (Vitest). Browser tests are `e2e/*.spec.ts`
-  (`@playwright/test`, chromium). A user-visible change adds or extends a spec.
+- Unit tests are `apps/web/src/**/*.test.ts` (Vitest). Browser tests are
+  `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium). A user-visible change adds or extends
+  a spec.
 - Measure fixed or edge-aligned elements from the root box
   (`document.documentElement.getBoundingClientRect()` or `clientWidth`), never from
   `window.innerWidth`: `scrollbar-gutter: stable` reserves 15px on Linux Chromium (CI) and
