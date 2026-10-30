@@ -12,7 +12,20 @@ Rules for working in this repository. What each feature does is not described he
   on every push. Hooks install through `postinstall` on `yarn install`. Do not
   bypass them.
 - Conventional-commit messages (`feat:`, `fix:`, `chore:`, `docs:`). No
-  trailers of any kind: no `Co-Authored-By`, no `Signed-off-by`.
+  trailers of any kind: no `Co-Authored-By`, no `Signed-off-by`. The one
+  exception is `Deploy-Preview: yes`, which the ADW toolkit's document phase
+  appends to a run's final commit (see the Vercel rule below); never add or
+  strip it by hand except to force a preview.
+- Every Vercel project's `vercel.json` (`apps/<app>/vercel.json`) sets
+  `ignoreCommand` to `bash ../../scripts/vercel-ignore.sh`, and a new app's
+  `vercel.json` must carry the same line. On a branch whose name contains
+  `-adw-`, only a commit whose message has a line starting with
+  `Deploy-Preview: yes` builds a preview; every other commit on that branch is
+  skipped (Canceled). Production, `develop`, `master` and hand-made branches
+  build as before. The string is a shared contract with the toolkit's
+  `git_ops.PREVIEW_TRAILER`, so never change it on one side only. To force a
+  preview by hand: `git commit --allow-empty -m "chore: preview" -m "Deploy-Preview: yes"`.
+  Keep each project's dashboard Ignored Build Step on "Automatic".
 - Default branch is `develop`.
 - Turborepo monorepo on Yarn workspaces (`apps/*`, `packages/*`). Run every
   command from the repository root; the root scripts go through `turbo.json`
