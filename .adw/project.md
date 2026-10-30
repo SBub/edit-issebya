@@ -153,7 +153,11 @@ and E2E on every pull request and push to `develop` and `master`.
 - Commits: Conventional Commits with a bare type and no scope (`feat: ...`, `fix: ...`,
   `chore: ...`). No trailers of any kind: no `Co-Authored-By`, no `Signed-off-by`, no "Generated
   with". The `adw: <agent> <id>` body line is a body line, not a trailer.
-- Required trailer: none.
+- Required trailer: none. The engine's `Deploy-Preview: yes` preview marker
+  (`git_ops.PREVIEW_TRAILER`, appended by the document phase) is the only
+  trailer that may appear; no command adds or strips it. `scripts/vercel-ignore.sh`,
+  wired through each app's `vercel.json`, builds a Vercel preview on an ADW branch
+  only for the commit that carries it.
 
 ## Review
 
