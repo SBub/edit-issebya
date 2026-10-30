@@ -70,7 +70,9 @@ form dialog open and with the thank-you dialog open:
 - every required element is visible and inside the root box once scrolled to.
 
 `apps/web/e2e/no_scroll.spec.ts` and `apps/web/e2e/landing_content.spec.ts` check this, with the helpers in
-`apps/web/e2e/viewport.ts` (`rootBox`, `expectInsideRoot`). The helpers measure from
+`apps/web/e2e/viewport.ts` (`rootBox`, `expectInsideRoot`). `waitForPageReady` waits for fonts, the
+first reel card and React hydration of `<main>` (its `__reactFiber$` key), so a spec that changes the
+DOM after it is never undone by a hydration mismatch. The helpers measure from
 `document.documentElement`, never from `window.innerWidth`. At 320x568 the dialogs scroll inside
 themselves (the form body is `overflow-y-auto`, the dialog is capped at `100dvh - 2rem`), never the
 page.
