@@ -1,0 +1,86 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "ui": "stream",
+  "cacheDir": ".turbo/cache",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "env": [
+        "NEXT_PUBLIC_*",
+        "STRIPE_SECRET_KEY",
+        "STRIPE_AUTOMATIC_TAX",
+        "STRIPE_WEBHOOK_SECRET",
+        "RESEND_API_KEY",
+        "EMAIL_FROM",
+        "EMAIL_REPLY_TO",
+        "BOOKING_URL",
+        "VERCEL_PROJECT_PRODUCTION_URL"
+      ],
+      "passThroughEnv": ["VERCEL", "VERCEL_*", "CI"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env.production.local",
+        ".env.local",
+        ".env.production",
+        ".env"
+      ],
+      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "lint:fix": {
+      "cache": false
+    },
+    "test": {
+      "outputs": []
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "PORT",
+        "E2E_MOCK_*",
+        "STRIPE_*",
+        "RESEND_API_KEY",
+        "EMAIL_*",
+        "BOOKING_URL",
+        "VERCEL_PROJECT_PRODUCTION_URL"
+      ]
+    },
+    "start": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "PORT",
+        "E2E_MOCK_*",
+        "STRIPE_*",
+        "RESEND_API_KEY",
+        "EMAIL_*",
+        "BOOKING_URL",
+        "VERCEL_PROJECT_PRODUCTION_URL"
+      ]
+    },
+    "test:e2e": {
+      "cache": false,
+      "passThroughEnv": [
+        "CI",
+        "PORT",
+        "PW_*",
+        "PLAYWRIGHT_*",
+        "E2E_MOCK_*",
+        "STRIPE_*",
+        "RESEND_API_KEY",
+        "EMAIL_*",
+        "BOOKING_URL",
+        "VERCEL_PROJECT_PRODUCTION_URL"
+      ]
+    }
+  }
+}

@@ -3,56 +3,36 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "yarn@4.18.1+sha512.b2e1e7524f654f2749d32b4ebcb4622473cb5bcbc485df2007e12a154e50162a4d795526768bc5f5b8f81717bfd79deb2472813d86fb5ae2eb551fa9c872b08f",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "postinstall": "lefthook install",
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "typecheck": "next typegen && tsc --noEmit",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "start": "turbo run start",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "knip": "knip",
-    "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e"
   },
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   },
   "volta": {
     "node": "24.21.0",
     "yarn": "4.18.1"
   },
-  "dependencies": {
-    "next": "16.3.8",
-    "posthog-js": "^1.438.12",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "resend": "^6.34.1",
-    "sharp": "^0.35.4",
-    "stripe": "^23.0.0"
-  },
   "devDependencies": {
-    "@mswjs/interceptors": "^0.45.8",
     "@playwright/mcp": "0.0.81",
-    "@playwright/test": "1.64.0",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^24",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.3.8",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-no-secrets": "^2.3.3",
-    "eslint-plugin-security": "^4.2.0",
     "knip": "^6.39.0",
     "lefthook": "^2.1.16",
-    "msw": "^3.0.3",
     "prettier": "^3.9.9",
-    "tailwindcss": "^4",
-    "typescript": "5.9.3",
-    "vite": "^8.3.2",
-    "vitest": "^5.0.3"
+    "turbo": "2.11.8"
   }
 }

@@ -7,16 +7,16 @@ the Stripe Dashboard shows who paid and why.
 
 ## Data path
 
-1. The CTA in `src/components/CallRequest.tsx` opens the form dialog (fields in
-   `src/components/CallForm.tsx`).
+1. The CTA in `apps/web/src/components/CallRequest.tsx` opens the form dialog (fields in
+   `apps/web/src/components/CallForm.tsx`).
 2. The form is `noValidate`. On submit the browser runs `parseCallRequest`
-   (`src/lib/call-request.ts`) and shows field errors without calling the server.
-3. A valid submit calls the server action `startCheckout` (`src/app/actions.ts`) with the fields
-   and the UTM values the page picked from its `searchParams` (`pickUtm`, `src/lib/utm.ts`).
+   (`apps/web/src/lib/call-request.ts`) and shows field errors without calling the server.
+3. A valid submit calls the server action `startCheckout` (`apps/web/src/app/actions.ts`) with the fields
+   and the UTM values the page picked from its `searchParams` (`pickUtm`, `apps/web/src/lib/utm.ts`).
 4. The action validates again with the same `parseCallRequest`, picks the UTM values again,
-   resolves the key (`stripeSecretKey`, `src/lib/stripe-key.ts`), builds the params
-   (`buildCheckoutParams`, `src/lib/checkout-params.ts`) and creates a client for this call only
-   (`createStripeClient`, `src/lib/stripe.ts`, `apiVersion` `2026-09-30.endive`, the version
+   resolves the key (`stripeSecretKey`, `apps/web/src/lib/stripe-key.ts`), builds the params
+   (`buildCheckoutParams`, `apps/web/src/lib/checkout-params.ts`) and creates a client for this call only
+   (`createStripeClient`, `apps/web/src/lib/stripe.ts`, `apiVersion` `2026-09-30.endive`, the version
    `stripe` 23.0.0 is typed against).
 5. It returns the Checkout URL and the browser navigates there.
 
@@ -26,13 +26,13 @@ Return URLs:
 - `cancel_url`: `<origin>/?checkout=cancelled`
 
 The origin is the request's `Origin` header (so an ADW run on its own port lands back on itself),
-falling back to `siteUrl` (`src/lib/site-url.ts`: `NEXT_PUBLIC_SITE_URL`, then
+falling back to `siteUrl` (`apps/web/src/lib/site-url.ts`: `NEXT_PUBLIC_SITE_URL`, then
 `VERCEL_PROJECT_PRODUCTION_URL`, then `http://localhost:3000`).
 
 ## Fields and metadata keys
 
 The form asks as little as possible. `CALL_REQUEST_FIELDS`, in order: `name`, `email`, `socials`,
-`terms` (`src/lib/call-request.ts`, rendered by `src/components/CallForm.tsx`).
+`terms` (`apps/web/src/lib/call-request.ts`, rendered by `apps/web/src/components/CallForm.tsx`).
 
 - `name` and `email` are required, trimmed, at most 500 characters; `email` is pattern-checked.
 - `socials` is optional: one row to start, more with the + button (up to 10), each removable.
@@ -63,7 +63,7 @@ Stripe webhook sets once both confirmation emails are accepted (`app_docs/confir
 
 ## Price
 
-`OFFER` in `src/lib/offer.ts`: `amountCents: 99000`, `currency: "eur"`, product name
+`OFFER` in `apps/web/src/lib/offer.ts`: `amountCents: 99000`, `currency: "eur"`, product name
 "8 reels, each under 1 minute", description "Visual identity, recording guide and 30 days to send
 footage" (no trailing full stop, like `LANDING.afterPurchase` and `LANDING.thankYou`). `buildCheckoutParams` sends it as `price_data` with
 `tax_behavior: "exclusive"`. `formatOfferPrice()` renders "990 EUR" from the same constant,
@@ -77,14 +77,14 @@ left as is.
 ### Early-bird price
 
 - The first 4 buyers pay 590 EUR, everyone after 990 EUR: `EARLY_BIRD`
-  (`amountCents: 59000`, `spots: 4`) and `priceFor(soldCount)` in `src/lib/offer.ts`, which
+  (`amountCents: 59000`, `spots: 4`) and `priceFor(soldCount)` in `apps/web/src/lib/offer.ts`, which
   returns `amountCents`, `tier` (`"early"` or `"standard"`) and `spotsLeft`. `STANDARD_PRICE` is
   the full price and the fallback.
 - The sold count comes from Stripe, there is no database: every session carries metadata
-  `offer` (`OFFER.id`, `"reels-8"`), and `countSold` (`src/lib/sold-count.ts`) walks
+  `offer` (`OFFER.id`, `"reels-8"`), and `countSold` (`apps/web/src/lib/sold-count.ts`) walks
   `checkout.sessions.list({ status: "complete", limit: 100 })` with the SDK's auto-pagination and
   counts the sessions with `status` `complete`, `payment_status` `paid` and that `offer`.
-- `currentOfferPrice` (`src/lib/offer-price.ts`): the page uses it cached for 60 seconds with
+- `currentOfferPrice` (`apps/web/src/lib/offer-price.ts`): the page uses it cached for 60 seconds with
   `unstable_cache` (this app does not opt into Cache Components, and Next 16's guide for that
   setup names `unstable_cache` for non-fetch data). The server action calls it with
   `fresh: true` at checkout time, so the charged amount is always counted again on the server and
@@ -159,7 +159,7 @@ Unset, or any other value: no tax parameter is sent.
   showed only the header bar, while Chromium and Playwright's newer WebKit sized it from the
   content. Basis `auto` takes the content size everywhere; `min-h-0` lets the body shrink and
   scroll when the dialog reaches its max height.
-- Spec: `e2e/dialog_form.spec.ts`, in Chromium and WebKit (the `webkit` project runs only this
+- Spec: `apps/web/e2e/dialog_form.spec.ts`, in Chromium and WebKit (the `webkit` project runs only this
   spec; CI installs both browsers). It checks the Name field, the terms checkbox and the
   Continue button are visible inside the viewport at 390x844, 1440x830, 1800x830, 390x480 and
   1440x480, and that the form and its body have `flex-basis: auto`, which catches the collapse
@@ -182,17 +182,17 @@ Unset, or any other value: no tax parameter is sent.
 
 ## E2E Stripe mock
 
-- On only when `E2E_MOCK_STRIPE` is exactly `"true"`: set in `playwright.config.ts`
+- On only when `E2E_MOCK_STRIPE` is exactly `"true"`: set in `apps/web/playwright.config.ts`
   `webServer.env`, or by hand as `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn dev` for the ADW
   server.
-- `src/instrumentation.ts` then registers an in-process msw network that answers
+- `apps/web/src/instrumentation.ts` then registers an in-process msw network that answers
   `POST https://api.stripe.com/v1/checkout/sessions` with an id `cs_test_e2e_<uuid>` and the
   success URL as its `url`, and captures the raw request body.
 - Under the flag the Stripe client uses `Stripe.createFetchHttpClient()`, so the fetch interceptor
   sees the call. `sk_test_e2e_mock` (`E2E_MOCK_STRIPE_KEY`) stands in when no key is set.
 - `/api/e2e-stripe-mock`: `GET` returns the captured body (parsed), `POST { keyMissing }` sets the
   missing-key toggle, `DELETE` clears the capture. Every method answers 404 without the flag.
-- The shared state lives on `globalThis` under `Symbol.for` keys (`src/lib/e2e-stripe-mock.ts`), so
+- The shared state lives on `globalThis` under `Symbol.for` keys (`apps/web/src/lib/e2e-stripe-mock.ts`), so
   every bundle in the server process sees it. That is why specs run with `workers: 1`.
 - The create handler also stores each session for the webhook's retrieve and update calls, and
   `/api/e2e-stripe-mock` also lists, clears and sets the payment status of the stored sessions; see
@@ -202,8 +202,8 @@ Unset, or any other value: no tax parameter is sent.
   plus one unpaid and one of another offer, which the count must skip (`listedSessions`).
   `POST { soldCount }` on `/api/e2e-stripe-mock` sets it; `DELETE` resets it to 0, so by default
   the page is in the early-bird state.
-- Specs: `e2e/checkout.spec.ts`, `e2e/call_form.spec.ts`, `e2e/confirmation_email.spec.ts`,
-  `e2e/early_bird.spec.ts`.
+- Specs: `apps/web/e2e/checkout.spec.ts`, `apps/web/e2e/call_form.spec.ts`, `apps/web/e2e/confirmation_email.spec.ts`,
+  `apps/web/e2e/early_bird.spec.ts`.
 
 ### msw 3 deviation
 
@@ -213,7 +213,7 @@ the mock uses `defineNetwork` and `InterceptorSource` from `msw/experimental`, w
 every import a `webpackIgnore` dynamic import. Installing only the fetch interceptor keeps clear of
 the `ClientRequestInterceptor` passthrough socket bug
 (https://github.com/mswjs/interceptors/issues/753). If msw moves `defineNetwork` out of
-`experimental`, update the import in `src/instrumentation.ts` and this section.
+`experimental`, update the import in `apps/web/src/instrumentation.ts` and this section.
 
 ## What the owner configures in Stripe
 

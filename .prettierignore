@@ -5,3 +5,4 @@ node_modules
 *.tsbuildinfo
 yarn.lock
 next-env.d.ts
+.turbo

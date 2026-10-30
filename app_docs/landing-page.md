@@ -13,7 +13,7 @@ Nothing is clipped and nothing is hidden.
 
 ## Layout
 
-- `src/app/page.tsx` renders one `<main class="landing grid">` with four grid areas:
+- `apps/web/src/app/page.tsx` renders one `<main class="landing grid">` with four grid areas:
   - `title`: a `header` across the top with the brand as the `h1` ("edit" with "issebya" set small
     and low on its right, a `sub`, like a chemical index; its accessible name is "edit issebya").
   - `text`: the quote (`LANDING.quote`, "Your ideas deserve reels that look like your brand. And
@@ -23,27 +23,27 @@ Nothing is clipped and nothing is hidden.
     `blockquote`: the owner's own tagline, not a quotation from elsewhere. Then the introduction
     (`LANDING.intro`, "I'm a reel editor for founders and experts...") as body text, then "How we
     work together", "What you get" and the closing line.
-  - `slider`: `ReelSlider` (`src/components/ReelSlider.tsx`).
+  - `slider`: `ReelSlider` (`apps/web/src/components/ReelSlider.tsx`).
   - `cta`: a bordered `section` named "Offer" (`rounded-lg border-neutral-200`, the ADW
     dashboard's card style): the price (while early-bird spots remain, "590 EUR" with the
     full price struck through and "First 4 clients only, N of 4 spots left"; always the grey line "VAT exempt under art. 53
     CIVA" (`LANDING.vatExempt`) under the price, with no "+ VAT" anywhere; see
-    `app_docs/checkout.md`, "Early-bird price"), `CallRequest` (`src/components/CallRequest.tsx`, the "Start
+    `app_docs/checkout.md`, "Early-bird price"), `CallRequest` (`apps/web/src/components/CallRequest.tsx`, the "Start
     your 30 days" button in the dashboard's Work with me style: fuchsia 700, `rounded-md`), what
     happens after payment (`LANDING.afterPurchase`) and "Questions first? Message me here", a link
-    that opens a WhatsApp chat in a new tab (`src/components/QuestionsLink.tsx`; the number and
+    that opens a WhatsApp chat in a new tab (`apps/web/src/components/QuestionsLink.tsx`; the number and
     the prefilled text are defined once in `LANDING.questions`, the `href` is built by
-    `whatsAppUrl` in `src/lib/whatsapp.ts`). The same link is used on `/`, `/terms` and `/privacy`.
-- All copy lives in `src/content/landing.ts` (`LANDING`), read by the page and the specs alike.
+    `whatsAppUrl` in `apps/web/src/lib/whatsapp.ts`). The same link is used on `/`, `/terms` and `/privacy`.
+- All copy lives in `apps/web/src/content/landing.ts` (`LANDING`), read by the page and the specs alike.
 - `footer`: a `nav` named "Legal" with links to `/terms`, `/privacy` and the "Complaints book"
   (`LANDING.complaintsBook`, https://www.livroreclamacoes.pt, new tab), wrapping on narrow
   phones. The legal pages and their content are described in `app_docs/legal-pages.md`.
   `LegalPage` shares the landing page's padding (`PAGE_PADDING`) and brand placement and
-  typography (`BRAND_CLASS`, `BrandName`), all from `src/components/Brand.tsx`, left aligned, so
-  the brand sits at the same spot on all three pages. Specs: `e2e/legal_pages.spec.ts`.
+  typography (`BRAND_CLASS`, `BrandName`), all from `apps/web/src/components/Brand.tsx`, left aligned, so
+  the brand sits at the same spot on all three pages. Specs: `apps/web/e2e/legal_pages.spec.ts`.
 - The "8 reels, each under 1 min" item's note ("longer ones: terms of service apply") links to
   `/terms#reel-length`.
-- `src/app/globals.css` defines the `.landing` grid. Narrow screens: one column (title, the
+- `apps/web/src/app/globals.css` defines the `.landing` grid. Narrow screens: one column (title, the
   quote and the introduction, the reels, then "How we work together", "What you get" and the closing
   line, CTA, footer): `.landing-text` is `display: contents` there, so `.landing-intro` and
   `.landing-details` are placed around the slider. At `@media (min-width: 64rem), (min-width: 48rem) and (orientation:
@@ -60,7 +60,7 @@ text"`).
 
 ## No-scroll rule and its specs
 
-At the eleven viewports in `e2e/viewport.ts` (320x568 up to 1920x1080), with no dialog, with the
+At the eleven viewports in `apps/web/e2e/viewport.ts` (320x568 up to 1920x1080), with no dialog, with the
 form dialog open and with the thank-you dialog open:
 
 - one-screen viewports (`oneScreen()`, mirroring the two-column breakpoint):
@@ -69,8 +69,8 @@ form dialog open and with the thank-you dialog open:
 - `html` and `body` overflow is neither `hidden` nor `clip`;
 - every required element is visible and inside the root box once scrolled to.
 
-`e2e/no_scroll.spec.ts` and `e2e/landing_content.spec.ts` check this, with the helpers in
-`e2e/viewport.ts` (`rootBox`, `expectInsideRoot`). The helpers measure from
+`apps/web/e2e/no_scroll.spec.ts` and `apps/web/e2e/landing_content.spec.ts` check this, with the helpers in
+`apps/web/e2e/viewport.ts` (`rootBox`, `expectInsideRoot`). The helpers measure from
 `document.documentElement`, never from `window.innerWidth`. At 320x568 the dialogs scroll inside
 themselves (the form body is `overflow-y-auto`, the dialog is capped at `100dvh - 2rem`), never the
 page.
@@ -108,7 +108,7 @@ Every gap between consecutive blocks is the same, on every viewport.
   `max-height: 820px`, `max-height` 6rem), so they grow equally into the free height and the
   column can never overflow. The left column's rows (title, slider, footer) keep `row-gap` 1rem
   (0.625rem at `max-height: 700px`).
-- Spec: `e2e/equal_gaps.spec.ts` measures the gaps at 1440x900 and 1280x800 (equal within 1px)
+- Spec: `apps/web/e2e/equal_gaps.spec.ts` measures the gaps at 1440x900 and 1280x800 (equal within 1px)
   and on phones at 390x844, 375x667 and 320x568 (all 48px within 1px, reels and footer
   included), checks the section text keeps its size on a short phone, and checks the hanging
   indents and item spacing.
@@ -136,12 +136,12 @@ Every gap between consecutive blocks is the same, on every viewport.
 - No autoplay. `ReelCard` videos are `playsInline`, `loop` and paused until clicked, and play with
   sound. Starting one pauses any other (a `reel-play` document event), so only one is heard at a
   time. A reel without `videoSrc` renders "Reel coming soon".
-- Specs: `e2e/reel_slider.spec.ts`.
+- Specs: `apps/web/e2e/reel_slider.spec.ts`.
 
 ## How to add a reel
 
-1. Put `<id>.mp4` and `<id>.jpg` in `public/reels/`.
-2. Add an entry to `REELS` in `src/content/reels.ts` with `id`, `title` (names the card for screen
+1. Put `<id>.mp4` and `<id>.jpg` in `apps/web/public/reels/`.
+2. Add an entry to `REELS` in `apps/web/src/content/reels.ts` with `id`, `title` (names the card for screen
    readers), `label` (shown under the video), `videoSrc: "/reels/<id>.mp4"` and
    `poster: "/reels/<id>.jpg"`.
 3. The slider and its specs pick it up. Run `yarn test:e2e` to confirm nothing scrolls.
@@ -152,14 +152,14 @@ The `id` is the `reel_id` sent with `reel_played`, `reel_fullscreen` and `reel_p
 
 ## Link previews
 
-- `src/app/layout.tsx` sets `openGraph` (`type` website, `siteName` and `title` "edit issebya",
+- `apps/web/src/app/layout.tsx` sets `openGraph` (`type` website, `siteName` and `title` "edit issebya",
   `description` `LANDING.quote`, `locale` en) and `twitter` (`card`
   `summary_large_image`). `metadataBase` makes every image URL absolute.
-- `src/app/opengraph-image.tsx` and `src/app/twitter-image.tsx` are Next's file conventions and
-  both render `renderOgImage()` (`src/components/OgImage.tsx`, `ImageResponse` from `next/og`):
+- `apps/web/src/app/opengraph-image.tsx` and `apps/web/src/app/twitter-image.tsx` are Next's file conventions and
+  both render `renderOgImage()` (`apps/web/src/components/OgImage.tsx`, `ImageResponse` from `next/og`):
   1200x630, white, the "edit" wordmark with "issebya" set small and low, a short fuchsia-700 rule,
   the first sentence of `LANDING.quote`, and the first three `REELS` posters as rounded 9:16
-  thumbnails, read from `public/` with `fs/promises` and inlined as data URLs. The config exports
+  thumbnails, read from `apps/web/public/` with `fs/promises` and inlined as data URLs. The config exports
   (`alt`, `size`, `contentType` `image/jpeg`) stay literal in each route file.
 - Format and size: the preview is a JPEG, about 60 KB. `ImageResponse` only renders PNG, and that
   PNG is about 490 KB, so `renderOgImage` re-encodes it with `sharp` (quality 85, mozjpeg; the same
@@ -169,13 +169,13 @@ The `id` is the `reel_id` sent with `reel_played`, `reel_fullscreen` and `reel_p
   shows them). Both routes are prerendered at build time, so a changed reel poster or quote shows
   up on the next deploy with no file to regenerate; the `?<hash>` Next appends to the image URL
   changes with it.
-- `src/app/icon.tsx` (32x32 favicon) and `src/app/apple-icon.tsx` (180x180 Apple touch icon)
-  both render `renderBrandIcon` (`src/components/BrandIcon.tsx`): the header's wordmark ("edit"
+- `apps/web/src/app/icon.tsx` (32x32 favicon) and `apps/web/src/app/apple-icon.tsx` (180x180 Apple touch icon)
+  both render `renderBrandIcon` (`apps/web/src/components/BrandIcon.tsx`): the header's wordmark ("edit"
   in semibold with "issebya" small and low on its right), black on white, centred, about 90% of
-  the width. Fonts: Geist SemiBold and Regular in `assets/fonts` (SIL Open Font License,
+  the width. Fonts: Geist SemiBold and Regular in `apps/web/assets/fonts` (SIL Open Font License,
   `Geist-OFL.txt`), because the image renderer only ships a regular weight. At 32px "issebya" is
   too small to read; it shows as a fine grey line.
-- Spec: `e2e/link_preview.spec.ts` (the `og:` and `twitter:` tags with `image/jpeg` type, size and
+- Spec: `apps/web/e2e/link_preview.spec.ts` (the `og:` and `twitter:` tags with `image/jpeg` type, size and
   alt, absolute image URLs; both preview images answer 200 `image/jpeg`, 1200x630, under 300,000
   bytes; the icon and the Apple touch icon answer 200 `image/png`).
 
