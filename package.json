@@ -9,17 +9,17 @@
   ],
   "scripts": {
     "postinstall": "lefthook install",
-    "dev": "yarn workspace @edit-issebya/web dev",
-    "build": "yarn workspace @edit-issebya/web build",
-    "start": "yarn workspace @edit-issebya/web start",
-    "typecheck": "yarn workspace @edit-issebya/web typecheck",
-    "lint": "yarn workspace @edit-issebya/web lint",
-    "lint:fix": "yarn workspace @edit-issebya/web lint:fix",
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "start": "turbo run start",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "knip": "knip",
-    "test": "yarn workspace @edit-issebya/web test",
-    "test:e2e": "yarn workspace @edit-issebya/web test:e2e"
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e"
   },
   "engines": {
     "node": ">=24"
@@ -32,6 +32,7 @@
     "@playwright/mcp": "0.0.81",
     "knip": "^6.39.0",
     "lefthook": "^2.1.16",
-    "prettier": "^3.9.9"
+    "prettier": "^3.9.9",
+    "turbo": "^2.11.10"
   }
 }
