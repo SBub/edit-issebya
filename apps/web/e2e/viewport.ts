@@ -43,12 +43,23 @@ export function rootBox(page: Page): Promise<RootBox> {
   });
 }
 
-// Fonts loaded (they change line breaks) and the first reel card shown.
+// React attaches its fiber to a DOM node (a `__reactFiber$` key) when it
+// hydrates it, after matching the node's children against the server HTML, so
+// a node added to <main> once the key is there is never dropped as a mismatch.
+async function waitForHydration(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const main = document.querySelector("main");
+    return main !== null && Object.keys(main).some((key) => key.startsWith("__reactFiber$"));
+  });
+}
+
+// Fonts loaded (they change line breaks), the first reel card shown and React hydrated.
 export async function waitForPageReady(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await expect(
     page.getByRole("region", { name: "Edited reels" }).getByRole("article").first(),
   ).toBeVisible();
+  await waitForHydration(page);
 }
 
 // The element is visible and its bounding box lies inside the root box once

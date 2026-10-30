@@ -62,7 +62,8 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-// Proves the measurement above can fail.
+// Proves the measurement above can fail. waitForPageReady waits for hydration,
+// so React never drops the injected element.
 for (const viewport of [
   { width: 1024, height: 768 },
   { width: 1920, height: 1080 },
