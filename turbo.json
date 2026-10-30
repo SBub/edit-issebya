@@ -6,6 +6,7 @@
     "build": {
       "dependsOn": ["^build"],
       "env": [
+        "NEXT_PUBLIC_*",
         "STRIPE_SECRET_KEY",
         "STRIPE_AUTOMATIC_TAX",
         "STRIPE_WEBHOOK_SECRET",
