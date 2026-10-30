@@ -29,7 +29,7 @@ from the repository root.
 ```bash
 yarn lint && yarn typecheck && yarn knip && yarn format:check && yarn test
 yarn build
-yarn workspace @edit-issebya/web playwright install chromium   # once
+yarn workspace @edit-issebya/web playwright install chromium webkit   # once
 yarn test:e2e                       # Playwright specs in apps/web/e2e/
 ```
 
