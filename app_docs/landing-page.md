@@ -3,6 +3,7 @@
 **Specifications:**
 
 - specs/issue-1-adw-d5416729-sdlc_planner-one-page-landing-checkout.md
+- specs/issue-26-adw-9ffa7abc-sdlc_planner-no-scroll-hydration-race.md
 
 The whole site is one page at `/`: the brand, a description, how it works, what you get, the price,
 a slider of edited reels, one call to action that opens the checkout form, and a footer with the
@@ -70,7 +71,9 @@ form dialog open and with the thank-you dialog open:
 - every required element is visible and inside the root box once scrolled to.
 
 `apps/web/e2e/no_scroll.spec.ts` and `apps/web/e2e/landing_content.spec.ts` check this, with the helpers in
-`apps/web/e2e/viewport.ts` (`rootBox`, `expectInsideRoot`). The helpers measure from
+`apps/web/e2e/viewport.ts` (`rootBox`, `expectInsideRoot`). `waitForPageReady` waits for fonts, the
+first reel card and React hydration of `<main>` (its `__reactFiber$` key), so a spec that changes the
+DOM after it is never undone by a hydration mismatch. The helpers measure from
 `document.documentElement`, never from `window.innerWidth`. At 320x568 the dialogs scroll inside
 themselves (the form body is `overflow-y-auto`, the dialog is capped at `100dvh - 2rem`), never the
 page.
