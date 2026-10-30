@@ -3,6 +3,7 @@
 **Specifications:**
 
 - specs/issue-1-adw-d5416729-sdlc_planner-one-page-landing-checkout.md
+- specs/issue-26-adw-9ffa7abc-sdlc_planner-no-scroll-hydration-race.md
 
 The whole site is one page at `/`: the brand, a description, how it works, what you get, the price,
 a slider of edited reels, one call to action that opens the checkout form, and a footer with the
