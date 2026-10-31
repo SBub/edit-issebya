@@ -1,5 +1,9 @@
 # Checkout
 
+**Specifications:**
+
+- specs/issue-46-adw-905a266a-sdlc_planner-webkit-server-worktree-env.md
+
 The call to action ("Start your 30 days") opens the checkout form. A valid submit creates a Stripe Checkout Session
 through a server action and sends the browser to Stripe. After payment Stripe returns to `/`, which
 shows a thank-you dialog. The form answers and the UTM values travel in the session's metadata, so
