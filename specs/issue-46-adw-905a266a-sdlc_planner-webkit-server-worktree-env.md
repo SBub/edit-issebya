@@ -181,7 +181,7 @@ playwright@1.64.0 run-server --port \$SERVICES_PORT --host 0.0.0.0"`.
 ### 6. Check the invariants
 
 - `grep -rn 3999 .adw app_docs apps/web --exclude-dir=node_modules` prints nothing.
-- `grep -rn "—" .adw app_docs docs specs/issue-46-*` prints nothing (no em-dashes).
+- `grep -rn $'\xe2\x80\x94' .adw app_docs docs specs/issue-46-*` prints nothing (no em-dashes).
 - `bash -n .adw/worktree-env` exits 0.
 - `git diff --stat` touches only `.adw/worktree-env`, `.adw/project.md`, `app_docs/checkout.md`,
   `docs/conditional-docs.md` and this plan; nothing under `apps/` or the toolkit.
