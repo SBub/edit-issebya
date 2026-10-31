@@ -1,10 +1,18 @@
 // Flat config of the studio (apps/studio). It mirrors apps/web's config (same
-// security and format rules) and adds one guard: app code under src/ never
-// imports the test helpers, which hold the local secret key.
+// security and format rules) and adds two guards: app code under src/ never
+// imports the test helpers, which hold the local secret key, and never reads
+// the worker's secrets.
 import nextConfig from "eslint-config-next";
 import prettierConfig from "eslint-config-prettier";
 import noSecrets from "eslint-plugin-no-secrets";
 import security from "eslint-plugin-security";
+
+// The worker's secrets; app code under src/ never reads them.
+const WORKER_SECRETS = [
+  "SUPABASE_SECRET_KEY",
+  "R2_WORKER_ACCESS_KEY_ID",
+  "R2_WORKER_SECRET_ACCESS_KEY",
+];
 
 const eslintConfig = [
   ...nextConfig,
@@ -38,6 +46,13 @@ const eslintConfig = [
               message: "Test helpers hold the local secret key; app code never imports them.",
             },
           ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: `MemberExpression[property.name=/^(${WORKER_SECRETS.join("|")})$/]`,
+          message: "The worker's secrets never reach the studio's app code.",
         },
       ],
     },

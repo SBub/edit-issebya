@@ -16,8 +16,11 @@ be kept in step with them and with `README.md`.
   `pyproject.toml`. Two workspaces, both Next.js 16 (App Router): `apps/web`
   (`@edit-issebya/web`), the one-page landing site for edit.issebya.com, and `apps/studio`
   (`@edit-issebya/studio`), the reel studio served at `/studio` through Next.js multi-zones (the
-  landing page forwards `/studio` and `/studio-static` to it). `apps/worker` holds only its
-  `.env.example` until #43; `packages/` is empty. The landing page sells through Stripe Checkout (a
+  landing page forwards `/studio` and `/studio-static` to it). `apps/worker`
+  (`@edit-issebya/worker`) is the job worker, TypeScript run directly by Node 24 on the owner's
+  machine, never on Vercel. `packages/storage` (`@edit-issebya/storage`) is the storage interface,
+  its R2 implementation and its folder fake, shared by the studio and the worker (TypeScript
+  source, no build). The landing page sells through Stripe Checkout (a
   server action), sends a confirmation email after payment through a Stripe webhook and Resend
   (`/api/stripe/webhook`), and measures with PostHog (browser, production only); all are optional
   at build and run time. The studio signs in with a Supabase magic link and reads the `reels` table
@@ -31,13 +34,15 @@ be kept in step with them and with `README.md`.
 
 ## Workspaces
 
-| name   | path          | dev command                                                                                                                                                         | port variable | default port | health URL | ADW may start |
-| ------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------ | ---------- | ------------- |
-| web    | `apps/web`    | `set -a; . ./.ports.env; set +a; STUDIO_PORT=$BACKEND_PORT E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn turbo run dev --filter=./apps/web --filter=./apps/studio` | `PORT`        | 3000         | `/`        | yes           |
-| studio | `apps/studio` | started with web                                                                                                                                                    | `STUDIO_PORT` | 3001         | `/studio`  | no            |
+| name    | path               | dev command                                                                                                                                                                               | port variable | default port | health URL | ADW may start |
+| ------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------ | ---------- | ------------- |
+| web     | `apps/web`         | `set -a; . ./.ports.env; set +a; STUDIO_PORT=$BACKEND_PORT E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true E2E_MOCK_STORAGE=true yarn turbo run dev --filter=./apps/web --filter=./apps/studio` | `PORT`        | 3000         | `/`        | yes           |
+| studio  | `apps/studio`      | started with web                                                                                                                                                                          | `STUDIO_PORT` | 3001         | `/studio`  | no            |
+| worker  | `apps/worker`      | none (specs spawn `once`)                                                                                                                                                                 | none          | none         | none       | never         |
+| storage | `packages/storage` | none (library)                                                                                                                                                                            | none          | none         | none       | never         |
 
-- `name` is the directory under `apps/`; the package names are `@edit-issebya/web` and
-  `@edit-issebya/studio`. Resolve a `target_apps` name to its directory by matching either under
+- `name` is the directory under `apps/` or `packages/`; the package names are
+  `@edit-issebya/web`, `@edit-issebya/studio`, `@edit-issebya/worker` and `@edit-issebya/storage`. Resolve a `target_apps` name to its directory by matching either under
   `apps/*` and `packages/*`.
 - The web dev command sources `.ports.env` first (`PORT`, `BACKEND_PORT`), then starts both apps
   through turbo (which passes `PORT`, `STUDIO_PORT` and the mock flags through): the landing page
@@ -50,7 +55,9 @@ be kept in step with them and with `README.md`.
   (default 3001) unless `STUDIO_URL` is set.
 - The mock flags turn on the in-process Stripe and Resend mocks (`apps/web/src/instrumentation.ts`)
   and the `/api/e2e-stripe-mock` and `/api/e2e-resend-mock` routes the checkout and confirmation
-  email specs need.
+  email specs need. `E2E_MOCK_STORAGE=true` makes the studio sign uploads to its
+  `/studio/api/e2e-storage-mock` route, which writes into the gitignored `.e2e-storage/` folder at
+  the worktree root, where the worker's `once` reads them.
 - `/` answering 200 proves the landing server is up, `/studio` through it proves the studio is.
   The landing page reads no database; it calls Stripe when the form is submitted and Stripe and
   Resend when the webhook is called, and under the flags those calls never leave the process. The
@@ -58,7 +65,8 @@ be kept in step with them and with `README.md`.
   the studio shows a "not configured" notice.
 - `target_apps`: `/classify_app` answers `{"target_apps": ["web"]}` for a change under `apps/web`,
   `{"target_apps": ["studio"]}` for a change under `apps/studio`, `{"target_apps": ["web",
-"studio"]}` for a change spanning both, and `{"target_apps": []}` for a change to root files only
+"studio"]}` for a change spanning both, `worker` for a change under `apps/worker`, `storage` for one
+  under `packages/storage`, and `{"target_apps": []}` for a change to root files only
   (docs, `specs/`, `supabase/`, tooling). Commands then filter with `--filter=./apps/<name>`,
   repeated per target (see Build).
 
@@ -92,17 +100,21 @@ Do not start the dev server during install.
 ## Build
 
 - `yarn turbo run build --filter=./apps/web` for a change in the landing page,
-  `--filter=./apps/studio` for one in the studio (both filters for both); `yarn build` (the
+  `--filter=./apps/studio` for one in the studio (both filters for both), `--filter=./apps/worker`
+  and `--filter=./packages/storage` for those two; `yarn build` (the
   unfiltered `turbo run build`) for a root-only change or an unknown target. `--filter` takes the
   directory path, repeated per target workspace. Each app's build is `next build`; turbo caches
   `.next` in `.turbo/cache` (local to each worktree) and replays it when nothing it reads changed.
+  The worker and the storage package have no build script (Node runs the TypeScript; Next
+  transpiles the package), so their build check is typecheck; both typecheck with no variables.
 - Needs no environment variables. Optional:
   `STRIPE_SECRET_KEY`, `STRIPE_AUTOMATIC_TAX`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`,
   `EMAIL_FROM`, `EMAIL_REPLY_TO`, `BOOKING_URL` (server), `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`,
   `NEXT_PUBLIC_POSTHOG_HOST` and `NEXT_PUBLIC_VERCEL_ENV` (set by Vercel, never by hand);
   `STUDIO_URL` and `STUDIO_PORT` (the landing page's forwarding target, read at build); for the
   studio `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and
-  `NEXT_PUBLIC_SITE_URL` (inlined at build). The studio builds with none of them. Turbo
+  `NEXT_PUBLIC_SITE_URL` (inlined at build). The studio builds with none of them; its `R2_*` and
+  `E2E_MOCK_STORAGE` are read at run time, never needed to build. Turbo
   runs in strict env mode: a variable a task reads must be listed for that task in `turbo.json`.
 
 ## Tests
@@ -121,14 +133,16 @@ as in Build; and last the E2E suites `yarn test:e2e`.
 
 The unit layer is `apps/web/src/**/*.test.ts` for pure helpers in `apps/web/src/lib/`, and
 `apps/studio/src/**/*.test.ts` and `apps/studio/test-support/**/*.test.ts` for the studio's helpers
-and the local-URL guard. The DB layer is `apps/studio/db-tests/**/*.test.ts`
+and the local-URL guard, `apps/worker/src/**/*.test.ts` for the worker's modules and
+`packages/storage/src/**/*.test.ts` for the storage package. The DB layer is `apps/studio/db-tests/**/*.test.ts`
 (`apps/studio/vitest.db.config.ts`: RLS on every public table, owner isolation, Realtime follows
-RLS), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
+RLS, and `jobs.test.ts` for `claim_job`'s lease), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
 layer; the browser layer is the Playwright suites below.
 
 E2E code suites: `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium, plus webkit for the dialog
 spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium,
-`apps/studio/playwright.config.ts`, every spec through the landing page's address), run last by
+`apps/studio/playwright.config.ts`, every spec through the landing page's address;
+`upload.spec.ts` spawns the worker's `once`), run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
 arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by
@@ -172,7 +186,8 @@ on every pull request and push to `develop` and `master`.
 ## Protected
 
 - Never `npm`, `npx`, `pnpm` or `bun`. A new dependency goes to the workspace that uses it:
-  `yarn workspace @edit-issebya/web add <pkg>` or `yarn workspace @edit-issebya/studio add <pkg>`
+  `yarn workspace @edit-issebya/web add <pkg>` or `yarn workspace @edit-issebya/studio add <pkg>`,
+  `yarn workspace @edit-issebya/worker add <pkg>` or `yarn workspace @edit-issebya/storage add <pkg>`
   (or `add -D`); `yarn add -D <pkg>` at the root only for shared tooling. Never install from inside
   a workspace folder.
 - ADW runs exactly one database command on the shared local Supabase stack:
@@ -184,13 +199,16 @@ on every pull request and push to `develop` and `master`.
 - One shared local Supabase stack on fixed ports 54430 to 54439; the owner starts it and runs stay
   serial. No test ever points at the hosted project (the test helpers refuse any host but
   `127.0.0.1` and `localhost`).
-- `SUPABASE_SECRET_KEY` never appears in `apps/web` or in `apps/studio`'s app code (`src/`); only
-  the test helpers under `apps/studio/test-support/` read it.
+- `SUPABASE_SECRET_KEY` and the R2 worker keys (`R2_WORKER_ACCESS_KEY_ID`,
+  `R2_WORKER_SECRET_ACCESS_KEY`) never appear in `apps/web` or in `apps/studio`'s app code
+  (`src/`); only `apps/worker` and the test helpers under `apps/studio/test-support/` read them.
+- Never start the worker (`worker`, `worker:prod`) in a run; only a spec spawns its `once`.
+- Never touch `fixtures/footage/short-person.mp4`.
 - Never pass `--no-verify`; never weaken a rule, a type or a test to make a check pass.
 - Never kill a process this run did not start; never change a port through `package.json`,
   `.ports.env` or any committed file.
-- Never stage `next-env.d.ts`, `.ports.env`, `.env*` (except the two `.env.example` files),
-  `.turbo/`, `agents/` or `trees/`.
+- Never stage `next-env.d.ts`, `.ports.env`, `.env*` (except the `.env.example` files),
+  `.e2e-storage/`, `.turbo/`, `agents/` or `trees/`.
 - Never commit a real Stripe, Resend or PostHog key; the `.env.example` files hold placeholders
   only. Never create a real charge, send a real email or set up a deployment, domain or
   third-party account.
@@ -227,8 +245,8 @@ on every pull request and push to `develop` and `master`.
   (the thank-you dialog). Capture each at 1920x1080, 375x667 and 320x568, nine captures,
   viewport-sized, not full page (the page must never scroll), into
   `agents/<adw_id>/<agent_name>/review_img/` in the worktree.
-- Studio: `http://localhost:$PORT/studio` signed out (the login form), then signed in (the reel
-  list, then one reel's page), each at 1920x1080 and 375x667. Sign in by opening the URL printed by
+- Studio: `http://localhost:$PORT/studio` signed out (the login form), then signed in (the upload
+  control above the reel list, then the `received` sample reel's page with its jobs and step log), each at 1920x1080 and 375x667. Sign in by opening the URL printed by
   `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url` (local secret key, refuses a
   non-local URL; creates `studio-review@example.test` with two sample reels when missing). The
   studio pages may scroll; the no-scroll rule is the landing page's.

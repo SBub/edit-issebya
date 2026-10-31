@@ -29,10 +29,21 @@ afterAll(async () => {
   if (userB) await deleteTestUser(admin, userB.id);
 });
 
-async function subscribe(email: string, label: string, onUpdate: (payload: unknown) => void) {
+interface Listen {
+  table: "reels" | "steps";
+  event: "INSERT" | "UPDATE";
+  filter: string;
+}
+
+async function subscribe(
+  email: string,
+  label: string,
+  listen: Listen,
+  onChange: (payload: unknown) => void,
+) {
   const { client, session } = await signedInClient(admin, email);
   await client.realtime.setAuth(session.access_token);
-  const channel = client.channel(`reels-${label}-${crypto.randomUUID()}`);
+  const channel = client.channel(`${listen.table}-${label}-${crypto.randomUUID()}`);
   clients.push(client);
   channels.push(channel);
   // SUBSCRIBED arrives before the server has attached the postgres_changes
@@ -47,8 +58,8 @@ async function subscribe(email: string, label: string, onUpdate: (payload: unkno
       })
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "reels", filter: `id=eq.${reelA}` },
-        onUpdate,
+        { event: listen.event, schema: "public", table: listen.table, filter: listen.filter },
+        onChange,
       )
       .subscribe((status, err) => {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
@@ -64,11 +75,12 @@ it("delivers the owner's change to the owner and nothing to another user", async
   let arrived!: () => void;
   const arrival = new Promise<void>((resolve) => (arrived = resolve));
 
-  await subscribe(userA.email, "a", (payload) => {
+  const listen: Listen = { table: "reels", event: "UPDATE", filter: `id=eq.${reelA}` };
+  await subscribe(userA.email, "a", listen, (payload) => {
     seenByA.push(payload);
     arrived();
   });
-  await subscribe(userB.email, "b", (payload) => seenByB.push(payload));
+  await subscribe(userB.email, "b", listen, (payload) => seenByB.push(payload));
 
   const { error } = await admin.from("reels").update({ status: "uploaded" }).eq("id", reelA);
   expect(error).toBeNull();
@@ -83,6 +95,48 @@ it("delivers the owner's change to the owner and nothing to another user", async
   expect(seenByA).toHaveLength(1);
 
   // Negative half: wait the full window after A's arrival, so a late leak is caught.
+  await new Promise((resolve) => setTimeout(resolve, WINDOW_MS));
+  expect(seenByB).toEqual([]);
+}, 30_000);
+
+it("delivers the owner's new step to the owner and nothing to another user", async () => {
+  const seenByA: unknown[] = [];
+  const seenByB: unknown[] = [];
+  let arrived!: () => void;
+  const arrival = new Promise<void>((resolve) => (arrived = resolve));
+
+  const listen: Listen = { table: "steps", event: "INSERT", filter: `reel_id=eq.${reelA}` };
+  await subscribe(userA.email, "steps-a", listen, (payload) => {
+    seenByA.push(payload);
+    arrived();
+  });
+  await subscribe(userB.email, "steps-b", listen, (payload) => seenByB.push(payload));
+
+  // A finished job, so nothing is left claimable on the shared stack.
+  const job = await admin
+    .from("jobs")
+    .insert({ reel_id: reelA, owner_id: userA.id, status: "done" })
+    .select("id")
+    .single();
+  expect(job.error).toBeNull();
+  const { error } = await admin.from("steps").insert({
+    job_id: job.data!.id,
+    reel_id: reelA,
+    owner_id: userA.id,
+    name: "receive",
+    status: "done",
+    summary: "footage received, 1.0 MB",
+  });
+  expect(error).toBeNull();
+
+  await Promise.race([
+    arrival,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("A received nothing")), WINDOW_MS),
+    ),
+  ]);
+  expect(seenByA).toHaveLength(1);
+
   await new Promise((resolve) => setTimeout(resolve, WINDOW_MS));
   expect(seenByB).toEqual([]);
 }, 30_000);

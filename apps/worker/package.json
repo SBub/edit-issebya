@@ -1,0 +1,33 @@
+{
+  "name": "@edit-issebya/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "worker": "node --env-file-if-exists=.env.development src/main.ts",
+    "worker:prod": "node --env-file-if-exists=.env.production src/main.ts",
+    "once": "node --env-file-if-exists=.env.development src/once.ts",
+    "doctor": "node --env-file-if-exists=.env.development src/doctor.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": "24.x"
+  },
+  "dependencies": {
+    "@edit-issebya/storage": "workspace:*",
+    "@supabase/supabase-js": "^2.118.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-no-secrets": "^2.3.3",
+    "eslint-plugin-security": "^4.2.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.3"
+  }
+}

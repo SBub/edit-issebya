@@ -41,3 +41,7 @@ next-env.d.ts
 playwright-report/
 test-results/
 blob-report/
+
+# The storage double's folder (E2E_MOCK_STORAGE=true): written by the studio's
+# mock route and read by the worker; never commit it.
+.e2e-storage/
