@@ -7,6 +7,8 @@ The repository is a Turborepo monorepo on Yarn workspaces:
 
 ```
 apps/web/        the landing site (Next.js), workspace @edit-issebya/web
+apps/studio/     the reel studio at /studio (Next.js), workspace @edit-issebya/studio
+supabase/        local Supabase config and migrations
 packages/        shared libraries, added once two apps need one (none yet)
 turbo.json       the task pipeline the root scripts run through
 ```
@@ -24,11 +26,24 @@ Copy `apps/web/.env.example` to `apps/web/.env.local` and fill in the values you
 required to build or run the page. Next reads env files from the app's folder, `apps/web/`, not
 from the repository root.
 
+### Run the studio locally
+
+```bash
+supabase start                      # once, by the owner: the shared local Supabase stack
+# fill apps/studio/.env.development and apps/worker/.env.development (copy each folder's
+# .env.example) from the values `supabase status` prints
+supabase migration up --local       # apply the migrations
+STUDIO_PORT=3001 yarn turbo run dev --filter=./apps/web --filter=./apps/studio
+```
+
+Open `http://localhost:3000/studio`: the studio is reached through the landing page.
+
 ## Checks
 
 ```bash
 yarn lint && yarn typecheck && yarn knip && yarn format:check && yarn test
 yarn build
+yarn test:db                        # Supabase integration tests, needs the local stack
 yarn workspace @edit-issebya/web playwright install chromium webkit   # once
 yarn test:e2e                       # Playwright specs in apps/web/e2e/
 ```
