@@ -159,11 +159,18 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
         ) : (
           <ol className="flex flex-col gap-1 text-sm">
             {steps.map((step) => (
-              <li key={step.id} data-testid="step-line" className="break-words">
-                {step.name}:{" "}
-                {step.status === "failed"
-                  ? (step.error_tail ?? "failed")
-                  : (step.summary ?? step.status)}
+              <li key={step.id} className="flex flex-col gap-1">
+                <span data-testid="step-line" className="break-words">
+                  {step.name}: {step.summary ?? step.status}
+                </span>
+                {step.status === "failed" && step.error_tail && (
+                  <details data-testid="step-error-tail" className="text-xs">
+                    <summary className="cursor-pointer text-stone-600">Show error</summary>
+                    <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words text-red-700">
+                      {step.error_tail}
+                    </pre>
+                  </details>
+                )}
               </li>
             ))}
           </ol>

@@ -10,7 +10,3 @@ export function formatBytes(bytes: number): string {
   }
   return `${value.toFixed(1)} ${units[unit]}`;
 }
-
-export function receivedSummary(bytes: number): string {
-  return `footage received, ${formatBytes(bytes)}`;
-}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { LiveReel } from "@/components/LiveReel";
 import { NotConfigured } from "@/components/NotConfigured";
+import { StudioIdentify } from "@/components/StudioIdentify";
 import { JOB_COLUMNS, type JobRow, STEP_COLUMNS, type StepRow } from "@/lib/jobs";
 import type { ReelDetail } from "@/lib/reels";
 import { REEL_DETAIL_COLUMNS, isReelId, reelName } from "@/lib/reels";
@@ -50,6 +51,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
 
   return (
     <article className="flex flex-col gap-4">
+      <StudioIdentify userId={user.id} />
       <Link href="/" className="text-sm text-stone-600 underline">
         Back to your reels
       </Link>

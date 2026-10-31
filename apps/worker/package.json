@@ -18,6 +18,13 @@
   },
   "dependencies": {
     "@edit-issebya/storage": "workspace:*",
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/api-logs": "^0.223.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.300.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.300.0",
+    "@opentelemetry/resources": "^3.0.0",
+    "@opentelemetry/sdk-logs": "^3.0.0",
+    "@opentelemetry/sdk-trace": "^3.0.0",
     "@supabase/supabase-js": "^2.118.0"
   },
   "devDependencies": {
