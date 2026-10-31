@@ -6,11 +6,12 @@ Next.js 16 (App Router), TypeScript, Tailwind CSS 4.
 The repository is a Turborepo monorepo on Yarn workspaces:
 
 ```
-apps/web/        the landing site (Next.js), workspace @edit-issebya/web
-apps/studio/     the reel studio at /studio (Next.js), workspace @edit-issebya/studio
-supabase/        local Supabase config and migrations
-packages/        shared libraries, added once two apps need one (none yet)
-turbo.json       the task pipeline the root scripts run through
+apps/web/         the landing site (Next.js), workspace @edit-issebya/web
+apps/studio/      the reel studio at /studio (Next.js), workspace @edit-issebya/studio
+apps/worker/      the job worker (Node, runs on the owner's machine), workspace @edit-issebya/worker
+packages/storage/ the storage library the studio and the worker share, workspace @edit-issebya/storage
+supabase/         local Supabase config and migrations
+turbo.json        the task pipeline the root scripts run through
 ```
 
 ## Run it
@@ -37,6 +38,19 @@ STUDIO_PORT=3001 yarn turbo run dev --filter=./apps/web --filter=./apps/studio
 ```
 
 Open `http://localhost:3000/studio`: the studio is reached through the landing page.
+
+### Run the worker locally
+
+Copy `apps/worker/.env.example` to `apps/worker/.env.development` and fill it (the local Supabase
+values from `supabase status`, the R2 worker keys). Then, from the repository root:
+
+```bash
+yarn workspace @edit-issebya/worker doctor   # checks the configuration and connections
+yarn workspace @edit-issebya/worker worker   # long-running: keeps taking jobs until stopped
+yarn workspace @edit-issebya/worker once     # takes one job, then exits
+```
+
+`yarn dev` does not start the worker; run it in its own terminal.
 
 ## Checks
 
