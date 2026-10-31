@@ -164,11 +164,22 @@ Unset, or any other value: no tax parameter is sent.
   Continue button are visible inside the viewport at 390x844, 1440x830, 1800x830, 390x480 and
   1440x480, and that the form and its body have `flex-basis: auto`, which catches the collapse
   in every engine.
-- Locally on macOS 14, Playwright's own WebKit build is frozen and fails to open a page. Run
-  the WebKit project against `playwright run-server` in the official
-  `mcr.microsoft.com/playwright:v1.64.0-noble` image and set `PW_WEBKIT_WS` to its `ws://`
-  endpoint (the container must reach the dev server's port, for example through a small TCP
-  proxy to `host.docker.internal`).
+- On macOS 14 Playwright's own WebKit build is frozen and fails to open a page. In ADW runs
+  `.adw/worktree-env` (run by the engine) starts `playwright run-server` in
+  `mcr.microsoft.com/playwright:v1.64.0-noble` as `pw-webkit-<adw_id>` on the run's
+  `SERVICES_PORT`, forwards the container's `localhost:$PORT` to the host's dev server, and
+  exports `PW_WEBKIT_WS`, which `apps/web/playwright.config.ts` reads. Rule: agents never start,
+  stop or replace that container, and no port for it is ever fixed.
+- By hand, outside ADW, with the dev server running on `$PORT`:
+
+  ```sh
+  export PW_WEBKIT_WS="$(ADW_ID=local PORT=<dev port> SERVICES_PORT=<free port> .adw/worktree-env up | sed -n 's/^PW_WEBKIT_WS=//p')"
+  yarn workspace @edit-issebya/web test:e2e --project=webkit
+  ADW_ID=local .adw/worktree-env down
+  ```
+
+- Keep the image tag in step with `@playwright/test` in both apps' `package.json`; a Playwright
+  bump changes the tag in `.adw/worktree-env` in the same commit.
 
 ## Thank-you dialog
 
