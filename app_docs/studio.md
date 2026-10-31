@@ -1,15 +1,17 @@
-# Reel studio: /studio zone, magic-link login and reels list
+# Reel studio: /studio zone, login, reels list, upload, job queue and worker
 
 **Specifications:**
 
 - specs/issue-27-adw-c95d56bf-sdlc_planner-studio-zone-login-reels-list.md
+- specs/issue-43-adw-eff3346d-sdlc_planner-reel-upload-job-queue-worker.md
 
 ## Overview
 
 `apps/studio` (`@edit-issebya/studio`) is the reel studio, a second Next.js app served at
 `edit.issebya.com/studio` through Next.js multi-zones. The owner signs in with a Supabase magic
-link and sees only their own reels, read under row-level security. This slice is the skeleton:
-login, a reels list and one reel's page (read only).
+link and sees only their own reels, read under row-level security. The skeleton covers login, a
+reels list, an upload straight to Cloudflare R2, a job queue with a lease, a worker on the owner's
+machine (`apps/worker`) and a reel page that follows the job live through Realtime.
 
 ## How it works
 
@@ -51,13 +53,77 @@ login, a reels list and one reel's page (read only).
   `updated_at` trigger, RLS with one `select` policy for the owner, `anon` revoked, and
   `authenticated` limited to `select`. The table is in the `supabase_realtime` publication.
 - `apps/studio/src/app/page.tsx`: signed out shows `LoginForm`; signed in shows `ReelList`,
-  newest first. No owner filter in the query: RLS alone scopes the rows, so a missing policy is
-  never masked.
-- `apps/studio/src/app/reels/[id]/page.tsx`: one reel (status, size, created). A malformed id
+  newest first, with `UploadForm` above it. No owner filter in the query: RLS alone scopes the
+  rows, so a missing policy is never masked.
+- `apps/studio/src/app/reels/[id]/page.tsx`: one reel with its jobs and steps. A malformed id
   (`isReelId`) or a reel that is not the caller's is a 404; signed out redirects to `/studio`.
-  Read once on the server, no polling.
+  Read once on the server, then handed to `LiveReel`.
 - `apps/studio/src/lib/reels.ts`: named column lists (never `*`), status type, id check and
   formatters.
+
+### Upload
+
+- `apps/studio/src/app/upload-actions.ts`: `createUpload` validates the request
+  (`apps/studio/src/lib/upload.ts`: name, size up to 5 GiB (R2's single-PUT limit), `video/` type,
+  extension `mp4`, `mov`, `m4v` or `webm`), inserts the `reels` row (`uploading`) through the
+  user's own client and returns a presigned PUT URL. The browser PUTs the file straight to R2;
+  the studio's server never sees the body. `finishUpload` calls the `finish_upload` database
+  function.
+- `apps/studio/src/components/UploadForm.tsx`: the "Clip" input and "Upload" button; on success it
+  goes to `/reels/<id>`.
+- The key is `<R2_KEY_PREFIX>reels/<reel id>/source/original.<ext>`. The insert policy
+  `reels: owner inserts own uploading reel` only accepts a key ending with that reel's own path.
+- `finish_upload(p_reel_id, p_bytes)` (`security definer`, executable by `authenticated` only)
+  moves the owner's `uploading` reel to `uploaded`, records `source_bytes` and inserts one `process`
+  job. Any other caller, reel or state fails the same way.
+- `apps/studio/src/lib/storage.ts`: `studioStorage()` returns the fake under `E2E_MOCK_STORAGE`,
+  R2 with the studio keys, or `null` (the form then says uploads are unavailable).
+
+### Jobs, steps and the lease
+
+- `supabase/migrations/20261031174750_job_queue.sql`: tables `jobs` (kind `process`, status
+  `queued | running | done | failed`, lease holder and expiry, attempts, error tail) and `steps`
+  (name, status, summary, error tail), both with owner-only `select` RLS and in the
+  `supabase_realtime` publication. Only the worker (secret key) writes job and step state.
+- `claim_job(p_worker, p_lease_seconds)`: one statement picks the oldest `queued` job, or a
+  `running` one whose lease expired, with `for update skip locked`, then takes the lease and counts
+  an attempt. Only `service_role` may execute it. There is no retry limit yet.
+- The worker renews its lease while it works (`apps/worker/src/lease.ts`); a failed renewal aborts
+  the work and writes nothing more, since another worker may hold the job.
+
+### Live status
+
+- `apps/studio/src/components/LiveReel.tsx`: renders status, jobs (`job-status`) and the step log
+  (`step-line`). One Realtime channel listens to `reels`, `jobs` and `steps` for that reel. When the
+  subscription reports ready it does one catch-up read and sets `data-realtime="ready"`. No timer,
+  no polling.
+- `apps/studio/src/lib/jobs.ts`: named column lists (no lease columns), status lists and
+  `upsertById`. `apps/studio/src/lib/supabase-browser.ts`: the browser client, created inside the
+  component.
+
+### Worker
+
+- `apps/worker` (`@edit-issebya/worker`) is TypeScript run directly by Node 24 on the owner's
+  machine, never on Vercel. Scripts: `worker`, `worker:prod` (long-running), `once` (claim one job,
+  used by specs) and `doctor` (checks Supabase, R2, ffmpeg and one structured `claude -p` call).
+  Each loads `.env.development` or `.env.production` from `apps/worker/` when present.
+- `apps/worker/src/main.ts`: wakes on Realtime `INSERT` into `jobs`, also checks every
+  `WORKER_POLL_INTERVAL_SECONDS` reading only job ids, skips claiming when free disk is below
+  `WORKER_MIN_FREE_DISK_GB`, runs one job at a time (`loop.ts`).
+- `apps/worker/src/steps/receive.ts`: the one placeholder step. It HEADs the source in R2, writes a
+  step `footage received, 12.3 MB`, and `run-job.ts` then marks the job `done` and the reel
+  `received` (or `failed` with an error tail).
+
+### Storage and AI doubles
+
+- `packages/storage` (`@edit-issebya/storage`, TypeScript source, no build): the `Storage`
+  interface, the R2 implementation and a folder fake, shared by the studio and the worker. Each app
+  passes its own keys.
+- `E2E_MOCK_STORAGE=true` (exactly) makes both use the gitignored `.e2e-storage/` folder at the
+  repository root; the studio's `/studio/api/e2e-storage-mock/[...key]` route stands in for R2's
+  PUT and answers 404 otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
+- `fixtures/footage/short-speech.mp4` is the committed short vertical clip with speech, made by
+  `scripts/make-test-clip.sh` (macOS only, run by hand).
 
 ## How to Use
 
@@ -69,7 +135,10 @@ login, a reels list and one reel's page (read only).
    `http://localhost:3000/studio`.
 4. Enter an address that already has an account, open the emailed link (local mail: Mailpit), and
    the reels list appears.
-5. For a quick sign-in in tests or review, open the URL printed by
+5. Pick a clip under "Upload" and press Upload. The reel page opens and shows the job and step log.
+6. Run the worker on your machine (`yarn workspace @edit-issebya/worker worker`, see the root
+   `README.md`); the page updates without a reload when it finishes the job.
+7. For a quick sign-in in tests or review, open the URL printed by
    `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url`.
 
 ## Configuration
@@ -78,17 +147,27 @@ login, a reels list and one reel's page (read only).
   inlined at build; the studio builds and starts without them.
 - `STUDIO_URL` and `STUDIO_PORT`: where the landing page forwards `/studio` (`STUDIO_PORT`
   defaults to 3001; the studio's `dev` and `start` use it).
-- `SUPABASE_SECRET_KEY` is read only by the test helpers in `apps/studio/test-support/`, from
-  `apps/worker/.env.development`.
+- `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_JURISDICTION`, `R2_STUDIO_ACCESS_KEY_ID`,
+  `R2_STUDIO_SECRET_ACCESS_KEY`, `R2_KEY_PREFIX` (studio, read per request at run time), and
+  `E2E_MOCK_STORAGE` (tests only).
+- Worker (`apps/worker/.env.development`): `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `WORKER_ID`,
+  `R2_WORKER_ACCESS_KEY_ID`, `R2_WORKER_SECRET_ACCESS_KEY`, `WORKER_POLL_INTERVAL_SECONDS`
+  (default 120), `WORKER_MIN_FREE_DISK_GB` (default 10), `WORKER_SCRATCH_DIR`, `CLAUDE_CODE_PATH`,
+  `FFMPEG_PATH`, `E2E_MOCK_AI`, `E2E_MOCK_STORAGE`.
+- `SUPABASE_SECRET_KEY` is read only by the worker and by the test helpers in
+  `apps/studio/test-support/`, from `apps/worker/.env.development`.
 
 ## Testing
 
-- Unit: `apps/studio/src/lib/*.test.ts`, `apps/studio/test-support/local-supabase.test.ts` and
-  `apps/web/src/lib/studio-rewrites.test.ts` (`yarn test`).
+- Unit: `apps/studio/src/lib/*.test.ts`, the storage mock route test,
+  `apps/studio/test-support/local-supabase.test.ts`, `apps/web/src/lib/studio-rewrites.test.ts`,
+  `apps/worker/src/**/*.test.ts` and `packages/storage/src/**/*.test.ts` (`yarn test`).
 - DB integration: `apps/studio/db-tests/` (`yarn test:db`): RLS on every public table, owner
-  isolation, Realtime follows RLS. Needs the local stack; not in the pre-push hook.
-- E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding` specs, chromium, through the landing
-  address), run after the landing suite by `yarn test:e2e`.
+  isolation, the upload path and `finish_upload`, `claim_job`'s lease (`jobs.test.ts`), Realtime
+  follows RLS for `reels` and `steps`. Needs the local stack; not in the pre-push hook.
+- E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload` specs, chromium, through the
+  landing address), run after the landing suite by `yarn test:e2e`. `upload.spec.ts` uploads the
+  test clip, spawns the worker's `once` and expects the page to update without a reload.
 
 ## Rules
 
@@ -119,8 +198,8 @@ login, a reels list and one reel's page (read only).
 
 ## Notes
 
-- Spans `apps/studio`, `apps/web` (rewrites only), `supabase/`, CI and the ADW profile; most of
-  the change is in `apps/studio`.
-- Uploads, the worker and R2 are later slices; `apps/studio/.env.example` already lists their
-  variables.
+- Spans `apps/studio`, `apps/worker`, `packages/storage`, `apps/web` (rewrites only), `supabase/`,
+  CI and the ADW profile; most of the change is in `apps/studio`.
+- Processing, edits and render steps, resumable upload (single PUT only) and a retry limit are
+  later slices; the `receive` step is a placeholder.
 - The magic-link template takes effect after the local Supabase stack restarts.
