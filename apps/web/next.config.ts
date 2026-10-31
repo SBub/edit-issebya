@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { NextConfig } from "next";
 import { SHORT_LINKS } from "./src/content/links";
 import { shortLinkRedirects } from "./src/lib/short-links";
+import { studioOrigin, studioRewrites } from "./src/lib/studio-rewrites";
 
 const monorepoRoot = join(import.meta.dirname, "..", "..");
 
@@ -11,6 +12,12 @@ const nextConfig: NextConfig = {
   // src/content/links.ts and app_docs/analytics.md, "Short links".
   redirects() {
     return shortLinkRedirects(SHORT_LINKS);
+  },
+  // /studio and the studio's static files go to the studio's own deployment
+  // (STUDIO_URL, else the local studio on STUDIO_PORT); see app_docs/studio.md,
+  // "Zone and forwarding".
+  rewrites() {
+    return studioRewrites(studioOrigin(process.env));
   },
   // This app lives in apps/web of a Yarn workspace whose dependencies are
   // hoisted to the repository root's node_modules. Pin the Turbopack root and

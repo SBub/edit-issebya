@@ -7,6 +7,21 @@
     "apps/web": {
       "next": true,
       "project": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.css", "e2e/**/*.ts"]
+    },
+    "apps/studio": {
+      "next": true,
+      "vitest": {
+        "config": ["vitest.config.ts", "vitest.db.config.ts"]
+      },
+      "playwright": true,
+      "entry": ["scripts/*.ts"],
+      "project": [
+        "src/**/*.{ts,tsx,css}",
+        "e2e/**/*.ts",
+        "db-tests/**/*.ts",
+        "test-support/**/*.ts",
+        "scripts/**/*.ts"
+      ]
     }
   },
   "ignoreExportsUsedInFile": {
