@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# ADW worktree env hook: `up` starts this run's Playwright WebKit server on macOS 14 and prints
+# PW_WEBKIT_WS; `down` removes it. Run by the ADW engine only (adws/PROFILE.md, "The worktree
+# env hook"); agents never call it.
+set -u
+
+# Must match @playwright/test (1.64.0) in apps/web and apps/studio package.json.
+IMAGE=mcr.microsoft.com/playwright:v1.64.0-noble
+NAME="pw-webkit-${ADW_ID:-}"
+
+fail() {
+  printf 'worktree-env: %s\n' "$1" >&2
+  exit 1
+}
+
+# Inside the container, forwards localhost:$PORT (the specs' baseURL) to the host's dev server.
+FORWARD_JS='
+const net = require("net");
+const port = Number(process.env.PORT);
+for (const host of ["127.0.0.1", "::1"]) {
+  const server = net.createServer((client) => {
+    const upstream = net.connect(port, "host.docker.internal");
+    const close = () => { client.destroy(); upstream.destroy(); };
+    client.on("error", close);
+    upstream.on("error", close);
+    client.pipe(upstream);
+    upstream.pipe(client);
+  });
+  server.on("error", (e) => { if (host === "127.0.0.1") throw e; });
+  server.listen(port, host);
+}
+'
+
+case "${1:-}" in
+  up)
+    [ "$(uname -s)" = "Darwin" ] || exit 0
+    release="$(uname -r)"
+    [ "${release%%.*}" -ge 24 ] && exit 0
+
+    [ -n "${ADW_ID:-}" ] && [ -n "${PORT:-}" ] && [ -n "${SERVICES_PORT:-}" ] ||
+      fail "ADW_ID, PORT and SERVICES_PORT must be set"
+    command -v docker >/dev/null 2>&1 || fail "docker not found"
+    docker info >/dev/null 2>&1 || fail "Docker is not running"
+
+    state="$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)"
+    if [ "$state" != "true" ]; then
+      [ -n "$state" ] && docker rm -f "$NAME" >/dev/null 2>&1
+      if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+        docker pull "$IMAGE" >/dev/null 2>&1 || fail "cannot pull $IMAGE"
+      fi
+      # npx runs inside the container only (the documented way to start run-server there).
+      err="$(docker run -d --name "$NAME" --init \
+        --add-host=host.docker.internal:host-gateway \
+        -p "127.0.0.1:$SERVICES_PORT:$SERVICES_PORT" \
+        -e PORT="$PORT" -e SERVICES_PORT="$SERVICES_PORT" -e FORWARD_JS="$FORWARD_JS" \
+        --user pwuser --workdir /home/pwuser "$IMAGE" \
+        /bin/sh -c 'node -e "$FORWARD_JS" & exec npx -y playwright@1.64.0 run-server --port "$SERVICES_PORT" --host 0.0.0.0' \
+        2>&1 >/dev/null)" || fail "cannot start $NAME: ${err%%$'\n'*}"
+    fi
+
+    # Docker Desktop's port proxy accepts TCP before run-server listens: wait for the log line
+    # and a real HTTP answer.
+    ready=""
+    for _ in $(seq 1 240); do
+      if [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" != "true" ]; then
+        fail "$NAME exited: $(docker logs --tail 1 "$NAME" 2>&1)"
+      fi
+      if docker logs "$NAME" 2>&1 | grep -q 'Listening on'; then
+        code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SERVICES_PORT/")"
+        if [ "$code" != "000" ]; then
+          ready=1
+          break
+        fi
+      fi
+      sleep 1
+    done
+    [ -n "$ready" ] || fail "$NAME did not listen on 127.0.0.1:$SERVICES_PORT within 240s"
+
+    printf 'PW_WEBKIT_WS=ws://127.0.0.1:%s/\n' "$SERVICES_PORT"
+    ;;
+  down)
+    [ -n "${ADW_ID:-}" ] || exit 0
+    command -v docker >/dev/null 2>&1 || exit 0
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    ;;
+  *)
+    printf 'usage: .adw/worktree-env up|down\n' >&2
+    exit 2
+    ;;
+esac

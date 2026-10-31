@@ -78,9 +78,13 @@ From the worktree root, in order. The main checkout is two directories up from `
 3. `yarn workspace @edit-issebya/web playwright install chromium webkit`, the browsers
    `@playwright/test` needs (WebKit runs only `apps/web/e2e/dialog_form.spec.ts`); the studio pins
    the same version, so this one install covers its chromium suite too. Browsers live in
-   the user cache, so this is a no-op once present. On macOS 14 the local WebKit build is frozen
-   and cannot open a page: point `PW_WEBKIT_WS` at a `playwright run-server` in the official Linux
-   image instead (see `app_docs/checkout.md`, "Form dialog layout").
+   the user cache, so this is a no-op once present. On macOS 14 (Darwin below 24) the local WebKit
+   build cannot open a page, so the WebKit server (`playwright run-server` in
+   `mcr.microsoft.com/playwright:v1.64.0-noble`, container `pw-webkit-<adw_id>` on the run's
+   `SERVICES_PORT`) is provided by `.adw/worktree-env`, which the engine runs with `up` before each
+   phase and `down` when the worktree is reclaimed. Agents never start, stop, replace or probe that
+   container, and never pick a port for it. Elsewhere (CI's Linux, macOS 15+) the hook prints
+   nothing and local WebKit is used (see `app_docs/checkout.md`, "Form dialog layout").
 4. Verify with `yarn build` (see Build).
 
 Do not start the dev server during install.
@@ -127,7 +131,9 @@ spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium
 `apps/studio/playwright.config.ts`, every spec through the landing page's address), run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
-arguments go after `--`). turbo runs the studio suite after the landing suite, never both at once
+arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by
+`.adw/worktree-env`) and is passed through as is; never set, unset or override it. On other machines
+it is absent. turbo runs the studio suite after the landing suite, never both at once
 (`@edit-issebya/studio#test:e2e` depends on `@edit-issebya/web#test:e2e`), so a run filtered to
 `./apps/studio` also runs the landing suite first. The studio specs and `test:db` need the shared
 local stack running (the owner keeps it up) and read the local secret key from
@@ -160,6 +166,8 @@ on every pull request and push to `develop` and `master`.
   written by the engine. Source it; never write, edit or delete it; fall back to 3000 only when it
   is absent. A server on 3000 when `PORT` is not 3000 is the developer's or an older run's: never
   reuse, probe, `lsof` or kill it.
+- `SERVICES_PORT` in `.ports.env` (9300 + slot) belongs to this run's WebKit server from
+  `.adw/worktree-env`; the same never-write rule as the other `.ports.env` values applies.
 
 ## Protected
 
