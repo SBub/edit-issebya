@@ -76,9 +76,11 @@ describe("claim_job", () => {
     expect(claimed?.lease_holder).toBe("a");
     expect(claimed?.attempts).toBe(1);
     expect(claimed?.started_at).not.toBeNull();
-    const ahead = new Date(claimed!.lease_expires_at!).getTime() - Date.now();
-    expect(ahead).toBeGreaterThan(280_000);
-    expect(ahead).toBeLessThan(320_000);
+    // Both stamps come from the database clock, which can drift from the
+    // host's (the Docker VM after a sleep), so never compare with Date.now().
+    const lease =
+      new Date(claimed!.lease_expires_at!).getTime() - new Date(claimed!.started_at!).getTime();
+    expect(lease).toBe(300_000);
 
     const second = await claim("b");
     expect((second.data as JobRow[]).map((job) => job.id)).toEqual([newerJob]);
@@ -89,9 +91,13 @@ describe("claim_job", () => {
   });
 
   it("re-claims a job whose lease expired, counting the attempt", async () => {
+    // Expire the lease on the database clock: a minute before it was claimed.
+    const { started_at } = await readJob(olderJob);
     const { error } = await admin
       .from("jobs")
-      .update({ lease_expires_at: new Date(Date.now() - 60_000).toISOString() })
+      .update({
+        lease_expires_at: new Date(new Date(started_at!).getTime() - 60_000).toISOString(),
+      })
       .eq("id", olderJob);
     expect(error).toBeNull();
 
