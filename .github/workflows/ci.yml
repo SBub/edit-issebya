@@ -38,6 +38,35 @@ jobs:
       - run: yarn typecheck
       - run: yarn knip
       - run: yarn test
+      # Built with no studio variables: proves both apps build without them.
       - run: yarn build
+      # CI's own fresh local Supabase stack (never the hosted project): auth,
+      # realtime, kong, postgrest and the database. `supabase start` applies
+      # supabase/migrations/ to it.
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.75.0
+      - run: supabase start -x storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      # Only what the tests need, by allow-list and under new names, so the
+      # STUDIO_URL `supabase status` prints (Supabase's dashboard) never reaches
+      # the environment, where the landing page would forward /studio to it.
+      # NEXT_PUBLIC_SITE_URL stays unset: the confirmation link then follows
+      # the forwarded host.
+      - name: Export local Supabase values
+        run: |
+          eval "$(supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY|SECRET_KEY)=')"
+          echo "::add-mask::$SECRET_KEY"
+          {
+            echo "SUPABASE_URL=$API_URL"
+            echo "SUPABASE_SECRET_KEY=$SECRET_KEY"
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
+          } >> "$GITHUB_ENV"
+      # Again, so the studio inlines the stack's public values (turbo rehashes
+      # on NEXT_PUBLIC_*).
+      - run: yarn build
+      - run: yarn test:db
+      # One install covers both suites: the studio pins the same
+      # @playwright/test version, and browsers live in the shared cache.
       - run: yarn workspace @edit-issebya/web playwright install --with-deps chromium webkit
       - run: yarn test:e2e

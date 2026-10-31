@@ -227,6 +227,13 @@ otp_expiry = 3600
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
+# The studio's magic link: a token hash for /studio/auth/confirm. RedirectTo is
+# honoured only for addresses on additional_redirect_urls (else site_url), and
+# the template takes effect after the stack restarts. No spec depends on it.
+[auth.email.template.magic_link]
+subject = "Sign in to the studio"
+content_path = "./supabase/templates/magic-link.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true

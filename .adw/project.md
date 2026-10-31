@@ -13,11 +13,17 @@ be kept in step with them and with `README.md`.
 
 - name: `edit-issebya`
 - kind: `monorepo`. Yarn workspaces `apps/*` and `packages/*` under Turborepo (`turbo.json`), no
-  `pyproject.toml`. One workspace today: the Next.js 16 app (App Router) in `apps/web`
-  (`@edit-issebya/web`), the one-page landing site for edit.issebya.com; `packages/` is empty. It
-  sells through Stripe Checkout (a server action), sends a confirmation email after payment
-  through a Stripe webhook and Resend (`/api/stripe/webhook`), and measures with PostHog (browser,
-  production only); all are optional at build and run time.
+  `pyproject.toml`. Two workspaces, both Next.js 16 (App Router): `apps/web`
+  (`@edit-issebya/web`), the one-page landing site for edit.issebya.com, and `apps/studio`
+  (`@edit-issebya/studio`), the reel studio served at `/studio` through Next.js multi-zones (the
+  landing page forwards `/studio` and `/studio-static` to it). `apps/worker` holds only its
+  `.env.example` until #43; `packages/` is empty. The landing page sells through Stripe Checkout (a
+  server action), sends a confirmation email after payment through a Stripe webhook and Resend
+  (`/api/stripe/webhook`), and measures with PostHog (browser, production only); all are optional
+  at build and run time. The studio signs in with a Supabase magic link and reads the `reels` table
+  under row-level security.
+- database: one shared local Supabase stack (`supabase/config.toml`, project `edit-issebya`, ports
+  54430 to 54439), migrations in `supabase/migrations/`. The owner starts and keeps it running.
 - default branch: `develop`. `master` is production.
 - package manager: Yarn 4.18.1 (Berry, node-modules linker, pinned via `packageManager`, provided by
   corepack). Never `npm`, `npx`, `pnpm` or `bun`; `yarn dlx` only for an unavoidable one-off binary.
@@ -25,40 +31,53 @@ be kept in step with them and with `README.md`.
 
 ## Workspaces
 
-| name | path       | dev command                                                                      | port variable | default port | health URL | ADW may start |
-| ---- | ---------- | -------------------------------------------------------------------------------- | ------------- | ------------ | ---------- | ------------- |
-| web  | `apps/web` | `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn workspace @edit-issebya/web dev` | `PORT`        | 3000         | `/`        | yes           |
+| name   | path          | dev command                                                                                                                                                         | port variable | default port | health URL | ADW may start |
+| ------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------ | ---------- | ------------- |
+| web    | `apps/web`    | `set -a; . ./.ports.env; set +a; STUDIO_PORT=$BACKEND_PORT E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true yarn turbo run dev --filter=./apps/web --filter=./apps/studio` | `PORT`        | 3000         | `/`        | yes           |
+| studio | `apps/studio` | started with web                                                                                                                                                    | `STUDIO_PORT` | 3001         | `/studio`  | no            |
 
-- `name` is the directory under `apps/`; the package name is `@edit-issebya/web`. Resolve a
-  `target_apps` name to its directory by matching either under `apps/*` and `packages/*`.
-- The app's `dev` script is exactly `next dev`; it takes its port from `PORT`, so nothing passes
-  `--port`. The root `yarn dev` runs it through turbo (`turbo run dev`, which passes `PORT` and the
-  mock flags through); ADW uses the workspace command above so it starts this app alone once more
-  workspaces exist.
+- `name` is the directory under `apps/`; the package names are `@edit-issebya/web` and
+  `@edit-issebya/studio`. Resolve a `target_apps` name to its directory by matching either under
+  `apps/*` and `packages/*`.
+- The web dev command sources `.ports.env` first (`PORT`, `BACKEND_PORT`), then starts both apps
+  through turbo (which passes `PORT`, `STUDIO_PORT` and the mock flags through): the landing page
+  on `PORT`, the studio on `STUDIO_PORT`, set from the run's `BACKEND_PORT`. `FRONTEND_PORT` equals
+  `PORT` and is never used for the studio. The studio is never started alone: it is reached
+  through the landing page's address (`http://localhost:$PORT/studio`).
+- The web app's `dev` script is exactly `next dev`; it takes its port from `PORT`, so nothing
+  passes `--port`. The studio's is `next dev -p ${STUDIO_PORT:-3001}` (and `start` the same), since
+  `PORT` belongs to the landing page. The landing page forwards to `http://localhost:$STUDIO_PORT`
+  (default 3001) unless `STUDIO_URL` is set.
 - The mock flags turn on the in-process Stripe and Resend mocks (`apps/web/src/instrumentation.ts`)
   and the `/api/e2e-stripe-mock` and `/api/e2e-resend-mock` routes the checkout and confirmation
   email specs need.
-- `/` answering 200 proves the server is up. The app reads no database; it calls Stripe when the
-  form is submitted and Stripe and Resend when the webhook is called, and under the flags those
-  calls never leave the process.
-- `target_apps`: `/classify_app` answers `{"target_apps": ["web"]}` for a change under `apps/web`
-  and `{"target_apps": []}` for a change to root files only (docs, `specs/`, tooling). Commands then
-  filter with `--filter=./apps/web` (see Build); with `apps/web` the only workspace, a filtered and
-  an unfiltered run do the same work.
+- `/` answering 200 proves the landing server is up, `/studio` through it proves the studio is.
+  The landing page reads no database; it calls Stripe when the form is submitted and Stripe and
+  Resend when the webhook is called, and under the flags those calls never leave the process. The
+  studio reads the shared local Supabase stack through `apps/studio/.env.development`; without it
+  the studio shows a "not configured" notice.
+- `target_apps`: `/classify_app` answers `{"target_apps": ["web"]}` for a change under `apps/web`,
+  `{"target_apps": ["studio"]}` for a change under `apps/studio`, `{"target_apps": ["web",
+"studio"]}` for a change spanning both, and `{"target_apps": []}` for a change to root files only
+  (docs, `specs/`, `supabase/`, tooling). Commands then filter with `--filter=./apps/<name>`,
+  repeated per target (see Build).
 
 ## Install
 
 From the worktree root, in order. The main checkout is two directories up from `trees/<adw_id>/`.
 
 1. Copy from the main checkout, each only if it exists there, preserving its path:
-   `.env.development` at the root (ADW toolkit configuration), and `apps/web/.env.development`
-   (read by `next dev`) and `apps/web/.env.local` (read in every mode). Next reads env files from
-   the app's folder, never from the repository root. None is required: the page builds and runs
-   with no variables. Never copy an `.env.example`; never invent a value for a missing file.
+   `.env.development` at the root (ADW toolkit configuration), `apps/web/.env.development` (read
+   by `next dev`) and `apps/web/.env.local` (read in every mode), `apps/studio/.env.development`
+   (the studio's public Supabase URL and key) and `apps/worker/.env.development` (holds the local
+   secret key the studio's test helpers read). Next reads env files from the app's folder, never
+   from the repository root. None is required to build: both apps build and run with no variables.
+   Never copy an `.env.example`; never invent a value for a missing file.
 2. `yarn install --immutable` (every workspace; `postinstall` runs `lefthook install`). An install
    that would change `yarn.lock` is a finding, not something to paper over with a mutable install.
 3. `yarn workspace @edit-issebya/web playwright install chromium webkit`, the browsers
-   `@playwright/test` needs (WebKit runs only `apps/web/e2e/dialog_form.spec.ts`). Browsers live in
+   `@playwright/test` needs (WebKit runs only `apps/web/e2e/dialog_form.spec.ts`); the studio pins
+   the same version, so this one install covers its chromium suite too. Browsers live in
    the user cache, so this is a no-op once present. On macOS 14 the local WebKit build is frozen
    and cannot open a page: point `PW_WEBKIT_WS` at a `playwright run-server` in the official Linux
    image instead (see `app_docs/checkout.md`, "Form dialog layout").
@@ -68,35 +87,52 @@ Do not start the dev server during install.
 
 ## Build
 
-- `yarn turbo run build --filter=./apps/web` for a change in the app; `yarn build` (the unfiltered
-  `turbo run build`) for a root-only change or an unknown target. `--filter` takes the directory
-  path, repeated per target workspace. The app's build is `next build`; turbo caches `.next` in
-  `.turbo/cache` (local to each worktree) and replays it when nothing it reads changed.
+- `yarn turbo run build --filter=./apps/web` for a change in the landing page,
+  `--filter=./apps/studio` for one in the studio (both filters for both); `yarn build` (the
+  unfiltered `turbo run build`) for a root-only change or an unknown target. `--filter` takes the
+  directory path, repeated per target workspace. Each app's build is `next build`; turbo caches
+  `.next` in `.turbo/cache` (local to each worktree) and replays it when nothing it reads changed.
 - Needs no environment variables. Optional:
   `STRIPE_SECRET_KEY`, `STRIPE_AUTOMATIC_TAX`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`,
   `EMAIL_FROM`, `EMAIL_REPLY_TO`, `BOOKING_URL` (server), `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`,
-  `NEXT_PUBLIC_POSTHOG_HOST` and `NEXT_PUBLIC_VERCEL_ENV` (set by Vercel, never by hand). Turbo
+  `NEXT_PUBLIC_POSTHOG_HOST` and `NEXT_PUBLIC_VERCEL_ENV` (set by Vercel, never by hand);
+  `STUDIO_URL` and `STUDIO_PORT` (the landing page's forwarding target, read at build); for the
+  studio `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and
+  `NEXT_PUBLIC_SITE_URL` (inlined at build). The studio builds with none of them. Turbo
   runs in strict env mode: a variable a task reads must be listed for that task in `turbo.json`.
 
 ## Tests
 
-In the order the test phase runs them, all from the root (`<filter>` is `--filter=./apps/web`, or
-nothing for a root-only change; the plain root scripts `yarn lint`, `yarn typecheck`, `yarn test`,
-`yarn build` and `yarn test:e2e` are the unfiltered `turbo run` forms): lint
-`yarn turbo run lint <filter>` (autofix `lint:fix`; `apps/web/eslint.config.mjs`); typecheck
-`yarn turbo run typecheck <filter>` (`next typegen` then `tsc --noEmit` in `apps/web`; it rewrites
-the gitignored `apps/web/next-env.d.ts`, never stage it); dead code `yarn knip` (whole repository,
-one root `knip.json` with a workspace per package); format `yarn format:check` (whole repository;
-write `yarn format`); unit `yarn turbo run test <filter>` (vitest, `apps/web/src/**/*.test.ts` only,
-see `apps/web/vitest.config.ts`); build as in Build; and last the E2E suite `yarn test:e2e`.
+In the order the test phase runs them, all from the root (`<filter>` is `--filter=./apps/<name>`
+per target, or nothing for a root-only change; the plain root scripts `yarn lint`,
+`yarn typecheck`, `yarn test`, `yarn test:db`, `yarn build` and `yarn test:e2e` are the unfiltered
+`turbo run` forms): lint
+`yarn turbo run lint <filter>` (autofix `lint:fix`; each app's `eslint.config.mjs`); typecheck
+`yarn turbo run typecheck <filter>` (`next typegen` then `tsc --noEmit` in each app; it rewrites
+the gitignored `next-env.d.ts`, never stage it); dead code `yarn knip` (whole repository, one root
+`knip.json` with a workspace per package); format `yarn format:check` (whole repository; write
+`yarn format`); unit `yarn turbo run test <filter>` (vitest, database-free); DB integration
+`yarn turbo run test:db --filter=./apps/studio` (after unit; needs the shared local stack); build
+as in Build; and last the E2E suites `yarn test:e2e`.
 
-The unit layer is `apps/web/src/**/*.test.ts` for pure helpers in `apps/web/src/lib/`. There is no
-component test layer; the browser layer is the Playwright suite below.
+The unit layer is `apps/web/src/**/*.test.ts` for pure helpers in `apps/web/src/lib/`, and
+`apps/studio/src/**/*.test.ts` and `apps/studio/test-support/**/*.test.ts` for the studio's helpers
+and the local-URL guard. The DB layer is `apps/studio/db-tests/**/*.test.ts`
+(`apps/studio/vitest.db.config.ts`: RLS on every public table, owner isolation, Realtime follows
+RLS), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
+layer; the browser layer is the Playwright suites below.
 
-E2E code suite: `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium, plus webkit for the dialog
-spec, `apps/web/playwright.config.ts`), run last by the test phase as `PORT=<run port> yarn
-test:e2e` (turbo passes `PORT`, `CI`, `PW_*` and the mock flags through; extra Playwright arguments
-go after `--`). The `/prepare_app` server must already be up on this run's port, started with the
+E2E code suites: `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium, plus webkit for the dialog
+spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium,
+`apps/studio/playwright.config.ts`, every spec through the landing page's address), run last by
+the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
+`STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
+arguments go after `--`). turbo runs the studio suite after the landing suite, never both at once
+(`@edit-issebya/studio#test:e2e` depends on `@edit-issebya/web#test:e2e`), so a run filtered to
+`./apps/studio` also runs the landing suite first. The studio specs and `test:db` need the shared
+local stack running (the owner keeps it up) and read the local secret key from
+`apps/worker/.env.development`; a slice that adds a migration runs
+`supabase migration up --local` before its local E2E. The `/prepare_app` server must already be up on this run's port, started with the
 Workspaces dev command (an adopted server never sees `webServer.env`, and the checkout and
 confirmation email specs need the mocks), which `reuseExistingServer` adopts; never set `CI=1` in a
 run (it disables reuse and switches the server to `yarn start`). Specs run with `workers: 1`: they
@@ -107,14 +143,19 @@ Measure fixed or edge-aligned elements from the root box, never from `window.inn
 
 lefthook runs prettier, `yarn lint`, `yarn typecheck` and `yarn knip` on every commit and
 `yarn test` on every push, all from the root (lint, typecheck and test through turbo).
-`yarn test:e2e` is in neither hook. Never bypass it. CI
-(`.github/workflows/ci.yml`, job `check`) runs format check, lint, typecheck, knip, unit, build
-and E2E on every pull request and push to `develop` and `master`.
+`yarn test:e2e` and `yarn test:db` are in neither hook. Never bypass it. CI
+(`.github/workflows/ci.yml`, job `check`) runs format check, lint, typecheck, knip, unit and build,
+then starts its own fresh Supabase stack (which applies the migrations), exports its URL and keys
+under allow-listed names (never Supabase's `STUDIO_URL`), builds again, and runs `test:db` and E2E,
+on every pull request and push to `develop` and `master`.
 
 ## Ports
 
-- Nothing in this repository is pinned to a port and nothing external holds a URL against one.
-  `next dev` honours `PORT` (turbo passes it through) and defaults to 3000.
+- No app is pinned to a port and nothing external holds a URL against one. The landing page's
+  `next dev` honours `PORT` (turbo passes it through) and defaults to 3000; the studio's honours
+  `STUDIO_PORT` and defaults to 3001. In a run `STUDIO_PORT` comes from the run's `BACKEND_PORT`.
+- 54430 to 54439 belong to the one shared local Supabase stack (`supabase/config.toml`: API 54431,
+  DB 54432) and never move.
 - This run's port is in `.ports.env` at the worktree root (`PORT`, `BACKEND_PORT`, `FRONTEND_PORT`),
   written by the engine. Source it; never write, edit or delete it; fall back to 3000 only when it
   is absent. A server on 3000 when `PORT` is not 3000 is the developer's or an older run's: never
@@ -123,8 +164,20 @@ and E2E on every pull request and push to `develop` and `master`.
 ## Protected
 
 - Never `npm`, `npx`, `pnpm` or `bun`. A new dependency goes to the workspace that uses it:
-  `yarn workspace @edit-issebya/web add <pkg>` (or `add -D`); `yarn add -D <pkg>` at the root only
-  for shared tooling. Never install from inside a workspace folder.
+  `yarn workspace @edit-issebya/web add <pkg>` or `yarn workspace @edit-issebya/studio add <pkg>`
+  (or `add -D`); `yarn add -D <pkg>` at the root only for shared tooling. Never install from inside
+  a workspace folder.
+- ADW runs exactly one database command on the shared local Supabase stack:
+  `supabase migration up --local`, which applies only new migrations. It never runs
+  `supabase db reset`, `supabase start`, `supabase stop`, a seed, or `supabase db push` to the
+  hosted project. Every slice that adds a migration runs `supabase migration up --local` before its
+  local E2E; if it fails, report the error and stop (do not reset). CI applies the migrations to
+  its own fresh stack.
+- One shared local Supabase stack on fixed ports 54430 to 54439; the owner starts it and runs stay
+  serial. No test ever points at the hosted project (the test helpers refuse any host but
+  `127.0.0.1` and `localhost`).
+- `SUPABASE_SECRET_KEY` never appears in `apps/web` or in `apps/studio`'s app code (`src/`); only
+  the test helpers under `apps/studio/test-support/` read it.
 - Never pass `--no-verify`; never weaken a rule, a type or a test to make a check pass.
 - Never kill a process this run did not start; never change a port through `package.json`,
   `.ports.env` or any committed file.
@@ -166,7 +219,12 @@ and E2E on every pull request and push to `develop` and `master`.
   (the thank-you dialog). Capture each at 1920x1080, 375x667 and 320x568, nine captures,
   viewport-sized, not full page (the page must never scroll), into
   `agents/<adw_id>/<agent_name>/review_img/` in the worktree.
-- A helper in `apps/web/src/lib/` has no rendered surface: no visual review, evidence is the diff,
+- Studio: `http://localhost:$PORT/studio` signed out (the login form), then signed in (the reel
+  list, then one reel's page), each at 1920x1080 and 375x667. Sign in by opening the URL printed by
+  `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url` (local secret key, refuses a
+  non-local URL; creates `studio-review@example.test` with two sample reels when missing). The
+  studio pages may scroll; the no-scroll rule is the landing page's.
+- A helper in `apps/web/src/lib/` or `apps/studio/src/lib/` has no rendered surface: no visual review, evidence is the diff,
   the tests and the spec's commands.
 - Browser automation is the Playwright MCP server in `.mcp.json`: the devDependency
   `@playwright/mcp` of the root `package.json`, pinned to exactly `0.0.81`, run from `node_modules`

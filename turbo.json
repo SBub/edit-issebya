@@ -14,7 +14,9 @@
         "EMAIL_FROM",
         "EMAIL_REPLY_TO",
         "BOOKING_URL",
-        "VERCEL_PROJECT_PRODUCTION_URL"
+        "VERCEL_PROJECT_PRODUCTION_URL",
+        "STUDIO_URL",
+        "STUDIO_PORT"
       ],
       "passThroughEnv": ["VERCEL", "VERCEL_*", "CI"],
       "inputs": [
@@ -50,7 +52,9 @@
         "RESEND_API_KEY",
         "EMAIL_*",
         "BOOKING_URL",
-        "VERCEL_PROJECT_PRODUCTION_URL"
+        "VERCEL_PROJECT_PRODUCTION_URL",
+        "STUDIO_URL",
+        "STUDIO_PORT"
       ]
     },
     "start": {
@@ -64,7 +68,9 @@
         "RESEND_API_KEY",
         "EMAIL_*",
         "BOOKING_URL",
-        "VERCEL_PROJECT_PRODUCTION_URL"
+        "VERCEL_PROJECT_PRODUCTION_URL",
+        "STUDIO_URL",
+        "STUDIO_PORT"
       ]
     },
     "test:e2e": {
@@ -79,7 +85,40 @@
         "RESEND_API_KEY",
         "EMAIL_*",
         "BOOKING_URL",
-        "VERCEL_PROJECT_PRODUCTION_URL"
+        "VERCEL_PROJECT_PRODUCTION_URL",
+        "STUDIO_URL",
+        "STUDIO_PORT",
+        "SUPABASE_URL",
+        "SUPABASE_SECRET_KEY",
+        "NEXT_PUBLIC_SUPABASE_*",
+        "NEXT_PUBLIC_SITE_URL"
+      ]
+    },
+    "test:db": {
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "NEXT_PUBLIC_SUPABASE_*"]
+    },
+    "@edit-issebya/studio#test:e2e": {
+      "cache": false,
+      "dependsOn": ["@edit-issebya/web#test:e2e"],
+      "passThroughEnv": [
+        "CI",
+        "PORT",
+        "PW_*",
+        "PLAYWRIGHT_*",
+        "E2E_MOCK_*",
+        "STRIPE_*",
+        "RESEND_API_KEY",
+        "EMAIL_*",
+        "BOOKING_URL",
+        "VERCEL_PROJECT_PRODUCTION_URL",
+        "STUDIO_URL",
+        "STUDIO_PORT",
+        "SUPABASE_URL",
+        "SUPABASE_SECRET_KEY",
+        "NEXT_PUBLIC_SUPABASE_*",
+        "NEXT_PUBLIC_SITE_URL"
       ]
     }
   }

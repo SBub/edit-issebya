@@ -19,6 +19,7 @@
     "format:check": "prettier --check .",
     "knip": "knip",
     "test": "turbo run test",
+    "test:db": "turbo run test:db",
     "test:e2e": "turbo run test:e2e"
   },
   "engines": {
