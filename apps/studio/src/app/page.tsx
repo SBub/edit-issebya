@@ -2,6 +2,7 @@ import { LoginForm } from "@/components/LoginForm";
 import { NotConfigured } from "@/components/NotConfigured";
 import { ReelList } from "@/components/ReelList";
 import { SignOutButton } from "@/components/SignOutButton";
+import { UploadForm } from "@/components/UploadForm";
 import type { ReelSummary } from "@/lib/reels";
 import { REEL_COLUMNS } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -58,6 +59,9 @@ export default async function StudioHome({
         </div>
         <SignOutButton />
       </header>
+      <section aria-label="Upload" className="mb-8">
+        <UploadForm />
+      </section>
       <ReelList reels={data ?? []} />
     </>
   );

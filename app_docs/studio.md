@@ -93,12 +93,26 @@ login, a reels list and one reel's page (read only).
 ## Rules
 
 - Do not use `SUPABASE_SECRET_KEY` in `apps/web` or in `apps/studio/src/`; only
-  `apps/studio/test-support/` reads it.
+  `apps/studio/test-support/` and `apps/worker` read it. Never use the R2 worker keys
+  (`R2_WORKER_ACCESS_KEY_ID`, `R2_WORKER_SECRET_ACCESS_KEY`) in `apps/web` or `apps/studio/src/`.
 - Do not point a test at anything but `127.0.0.1` or `localhost` (the helpers refuse other hosts).
 - Do not create a user from the login form (`shouldCreateUser` stays `false`) and do not make its
   answer depend on whether the address has an account.
-- Do not let a client write to `reels` through the publishable key: no `insert`, `update` or
-  `delete` grant for `authenticated`, no `anon` access.
+- Do not grant `authenticated` `update` or `delete` on `reels`, nor `insert` beyond `id`,
+  `source_name` and `source_key` under the uploading-only policy; no `anon` access.
+- Never give the owner a general right to write `status`; finishing an upload goes only through
+  `finish_upload`.
+- Never let `authenticated` or `anon` execute `claim_job`, or `anon` execute `finish_upload`.
+- Never poll from the studio; the reel page reads on open and on each ready subscription only.
+- Never read more than `id` in the worker's periodic check.
+- Never put large content in rows (files in R2, logs in PostHog).
+- Never store video in Supabase Storage; footage goes from the browser straight to R2.
+- Never turn a double on unless its flag is exactly `"true"`; its route answers 404 otherwise.
+- Never name a worker script `dev` or `start`; never start the worker except through a spec's
+  `once` in a run.
+- Never create an R2 or Supabase client at module load.
+- Never stage `.e2e-storage/`; never touch `fixtures/footage/short-person.mp4`.
+- Never point a test at real R2, a real AI or the hosted project.
 - Do not select `*` from `reels`; name the columns.
 - Do not change `assetPrefix` on one side only: it must equal `STUDIO_ASSET_PREFIX`.
 - Do not return an absolute `Location` from the confirm route.

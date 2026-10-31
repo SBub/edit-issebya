@@ -44,4 +44,47 @@ if (!count) {
   });
 }
 
+// The received sample shows a finished job and its step log.
+const { data: received, error: receivedError } = await admin
+  .from("reels")
+  .select("id")
+  .eq("owner_id", ownerId)
+  .eq("status", "received")
+  .limit(1)
+  .maybeSingle();
+if (receivedError) throw new Error(`received reel not read: ${receivedError.message}`);
+if (received) {
+  const { count: jobs, error: jobsError } = await admin
+    .from("jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("reel_id", received.id);
+  if (jobsError) throw new Error(`jobs not counted: ${jobsError.message}`);
+  if (!jobs) {
+    const now = new Date().toISOString();
+    const { data: job, error: jobError } = await admin
+      .from("jobs")
+      .insert({
+        reel_id: received.id,
+        owner_id: ownerId,
+        status: "done",
+        attempts: 1,
+        started_at: now,
+        finished_at: now,
+      })
+      .select("id")
+      .single();
+    if (jobError || !job) throw new Error(`sample job not inserted: ${jobError?.message}`);
+    const { error: stepError } = await admin.from("steps").insert({
+      job_id: job.id,
+      reel_id: received.id,
+      owner_id: ownerId,
+      name: "receive",
+      status: "done",
+      summary: "footage received, 12.3 MB",
+      finished_at: now,
+    });
+    if (stepError) throw new Error(`sample step not inserted: ${stepError.message}`);
+  }
+}
+
 console.log(await signInLink(admin, EMAIL, `http://localhost:${PORT}`));

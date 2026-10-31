@@ -16,7 +16,9 @@
         "BOOKING_URL",
         "VERCEL_PROJECT_PRODUCTION_URL",
         "STUDIO_URL",
-        "STUDIO_PORT"
+        "STUDIO_PORT",
+        "R2_*",
+        "E2E_MOCK_STORAGE"
       ],
       "passThroughEnv": ["VERCEL", "VERCEL_*", "CI"],
       "inputs": [
@@ -54,7 +56,8 @@
         "BOOKING_URL",
         "VERCEL_PROJECT_PRODUCTION_URL",
         "STUDIO_URL",
-        "STUDIO_PORT"
+        "STUDIO_PORT",
+        "R2_*"
       ]
     },
     "start": {
@@ -70,7 +73,8 @@
         "BOOKING_URL",
         "VERCEL_PROJECT_PRODUCTION_URL",
         "STUDIO_URL",
-        "STUDIO_PORT"
+        "STUDIO_PORT",
+        "R2_*"
       ]
     },
     "test:e2e": {
@@ -91,7 +95,11 @@
         "SUPABASE_URL",
         "SUPABASE_SECRET_KEY",
         "NEXT_PUBLIC_SUPABASE_*",
-        "NEXT_PUBLIC_SITE_URL"
+        "NEXT_PUBLIC_SITE_URL",
+        "R2_*",
+        "WORKER_*",
+        "CLAUDE_CODE_PATH",
+        "FFMPEG_PATH"
       ]
     },
     "test:db": {
@@ -118,7 +126,11 @@
         "SUPABASE_URL",
         "SUPABASE_SECRET_KEY",
         "NEXT_PUBLIC_SUPABASE_*",
-        "NEXT_PUBLIC_SITE_URL"
+        "NEXT_PUBLIC_SITE_URL",
+        "R2_*",
+        "WORKER_*",
+        "CLAUDE_CODE_PATH",
+        "FFMPEG_PATH"
       ]
     }
   }

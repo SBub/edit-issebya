@@ -22,6 +22,14 @@
         "test-support/**/*.ts",
         "scripts/**/*.ts"
       ]
+    },
+    "apps/worker": {
+      "project": ["src/**/*.ts"],
+      "vitest": true
+    },
+    "packages/storage": {
+      "project": ["src/**/*.ts"],
+      "vitest": true
     }
   },
   "ignoreExportsUsedInFile": {

@@ -48,7 +48,9 @@ export default defineConfig({
         ? "yarn workspace @edit-issebya/studio start"
         : "yarn workspace @edit-issebya/studio dev",
       url: `http://localhost:${STUDIO_PORT}/studio`,
-      env: { STUDIO_PORT },
+      // The storage double (an adopted ADW server already has it from the
+      // profile's dev command).
+      env: { STUDIO_PORT, E2E_MOCK_STORAGE: "true" },
     },
     {
       ...server,

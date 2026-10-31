@@ -1,0 +1,29 @@
+// Checks this machine can run jobs: Supabase, R2, ffmpeg and one structured
+// Claude Code call. Prints one line per check; exits 1 when any failed.
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { aiRunner } from "./ai.ts";
+import { workerConfig } from "./config.ts";
+import { runDoctor } from "./doctor-checks.ts";
+import { workerStorage } from "./storage.ts";
+import { workerSupabase } from "./supabase.ts";
+
+const run = promisify(execFile);
+
+const { lines, exitCode } = await runDoctor({
+  async supabase() {
+    const { error } = await workerSupabase(workerConfig()).from("jobs").select("id").limit(1);
+    if (error) throw new Error(error.message);
+  },
+  async r2() {
+    await workerStorage().list(process.env.R2_KEY_PREFIX?.trim() ?? "");
+  },
+  async ffmpeg() {
+    const { stdout } = await run(process.env.FFMPEG_PATH?.trim() || "ffmpeg", ["-version"]);
+    return stdout.split("\n")[0]?.replace(/^ffmpeg\s+/, "") ?? "";
+  },
+  ai: () => aiRunner(process.env),
+});
+
+for (const line of lines) console.log(line);
+process.exit(exitCode);
