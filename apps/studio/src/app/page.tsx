@@ -2,6 +2,7 @@ import { LoginForm } from "@/components/LoginForm";
 import { NotConfigured } from "@/components/NotConfigured";
 import { ReelList } from "@/components/ReelList";
 import { SignOutButton } from "@/components/SignOutButton";
+import { StudioIdentify } from "@/components/StudioIdentify";
 import { UploadForm } from "@/components/UploadForm";
 import type { ReelSummary } from "@/lib/reels";
 import { REEL_COLUMNS } from "@/lib/reels";
@@ -52,6 +53,7 @@ export default async function StudioHome({
 
   return (
     <>
+      <StudioIdentify userId={user.id} />
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Your reels</h1>

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { createUpload, finishUpload } from "@/app/upload-actions";
+import { capture } from "@/lib/track";
 
 type UploadState = "idle" | "uploading" | "failed" | "unavailable" | "invalid";
 
@@ -54,6 +55,7 @@ export function UploadForm() {
         setState("failed");
         return;
       }
+      capture("studio_footage_uploaded", { reel_id: finished.reelId });
       router.push(`/reels/${finished.reelId}`);
     } catch {
       setState("failed");

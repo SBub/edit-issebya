@@ -1,30 +1,10 @@
 import type { Storage } from "@edit-issebya/storage";
 import { describe, expect, it } from "vitest";
-import type { ClaimedJob } from "../queue.ts";
-import { type StepStore, receive } from "./receive.ts";
+import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
+import { receive } from "./receive.ts";
 
-const JOB: ClaimedJob = { id: "j1", reel_id: "r1", owner_id: "o1", kind: "process", attempts: 1 };
-const KEY = "dev/reels/r1/source/original.mp4";
-
-function recordingSteps(sourceKey: string | null = KEY) {
-  const calls: unknown[][] = [];
-  const steps: StepStore = {
-    async start(job, name) {
-      calls.push(["start", job.id, name]);
-      return "s1";
-    },
-    async sourceKey() {
-      return sourceKey;
-    },
-    async done(id, summary) {
-      calls.push(["done", id, summary]);
-    },
-    async failed(id, tail) {
-      calls.push(["failed", id, tail.split("\n")[0]]);
-    },
-  };
-  return { steps, calls };
-}
+const KEY = `dev/reels/${TEST_JOB.reel_id}/source/original.mp4`;
+const IN_PROCESS = { cpu_ms: null, peak_rss_bytes: null, bytes_in: null, bytes_out: null };
 
 function storageWith(
   head: (key: string, signal?: AbortSignal) => Promise<{ bytes: number } | null>,
@@ -35,38 +15,49 @@ function storageWith(
 }
 
 describe("receive", () => {
-  it("records the size of the source object", async () => {
-    const { steps, calls } = recordingSteps();
+  it("records the size of the source object, measured by wall time only", async () => {
+    const { steps, calls } = recordingSteps(KEY);
     const storage = storageWith(async (key) => (key === KEY ? { bytes: 12_897_485 } : null));
-    await receive({ steps, storage, job: JOB, signal: new AbortController().signal });
+    await receive({ ...stepContext(steps), storage });
     expect(calls).toEqual([
-      ["start", "j1", "receive"],
-      ["done", "s1", "footage received, 12.3 MB"],
+      { call: "start", jobId: TEST_JOB.id, name: "receive" },
+      {
+        call: "done",
+        stepId: "s1",
+        summary: "footage received, under a second, 12.3 MB",
+        measurements: { wall_ms: expect.any(Number), ...IN_PROCESS },
+      },
     ]);
   });
 
   it("fails the step when the object is missing", async () => {
-    const { steps, calls } = recordingSteps();
+    const { steps, calls } = recordingSteps(KEY);
     const storage = storageWith(async () => null);
-    await expect(
-      receive({ steps, storage, job: JOB, signal: new AbortController().signal }),
-    ).rejects.toThrow("source object missing");
-    expect(calls).toEqual([
-      ["start", "j1", "receive"],
-      ["failed", "s1", "Error: source object missing"],
-    ]);
+    await expect(receive({ ...stepContext(steps), storage })).rejects.toThrow(
+      "source object missing",
+    );
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toMatchObject({
+      call: "failed",
+      stepId: "s1",
+      summary: "receive failed, under a second",
+      measurements: { wall_ms: expect.any(Number), ...IN_PROCESS },
+    });
+    expect(calls[1]?.call === "failed" && calls[1].tail.split("\n")[0]).toBe(
+      "Error: source object missing",
+    );
   });
 
   it("writes nothing more after an abort", async () => {
-    const { steps, calls } = recordingSteps();
+    const { steps, calls } = recordingSteps(KEY);
     const controller = new AbortController();
     const storage = storageWith(async () => {
       controller.abort(new Error("lease lost"));
       return { bytes: 10 };
     });
-    await expect(receive({ steps, storage, job: JOB, signal: controller.signal })).rejects.toThrow(
-      "lease lost",
-    );
-    expect(calls).toEqual([["start", "j1", "receive"]]);
+    await expect(
+      receive({ ...stepContext(steps, { signal: controller.signal }), storage }),
+    ).rejects.toThrow("lease lost");
+    expect(calls).toEqual([{ call: "start", jobId: TEST_JOB.id, name: "receive" }]);
   });
 });

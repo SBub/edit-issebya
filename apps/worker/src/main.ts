@@ -8,10 +8,12 @@ import { processJob } from "./process-job.ts";
 import { claimJob, claimableJobIds } from "./queue.ts";
 import { workerStorage } from "./storage.ts";
 import { workerSupabase } from "./supabase.ts";
+import { createTelemetry } from "./telemetry.ts";
 
 const config = workerConfig();
 const db = workerSupabase(config);
 const storage = workerStorage();
+const telemetry = createTelemetry();
 
 async function enoughDisk(): Promise<boolean> {
   const info = await statfs(config.scratchDir);
@@ -25,7 +27,7 @@ async function enoughDisk(): Promise<boolean> {
 
 const drainer = createDrainer({
   claim: async () => ((await enoughDisk()) ? claimJob(db, config) : null),
-  run: (job) => processJob(db, storage, config, job),
+  run: (job) => processJob(db, storage, config, telemetry, job),
 });
 
 const channel = db
@@ -59,6 +61,7 @@ async function stop(signal: string) {
   clearInterval(poll);
   await db.removeChannel(channel);
   await drainer.idle();
+  await telemetry.shutdown();
   process.exit(0);
 }
 

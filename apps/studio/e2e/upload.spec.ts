@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
+import { eventsNamed, recordEvents } from "./events.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
@@ -36,6 +37,16 @@ test("an uploaded clip is received by the worker and the page updates live", asy
 }) => {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture clip
   const clipBytes = (await stat(CLIP)).size;
+  const events = await recordEvents(page);
+  // PostHog never initialises under Playwright: no request may reach it.
+  const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim();
+  const posthogRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.host.includes("posthog") || (posthogHost && request.url().startsWith(posthogHost))) {
+      posthogRequests.push(request.url());
+    }
+  });
   await page.goto(await signInLink(admin, owner.email, baseURL!));
   await page.getByLabel("Clip").setInputFiles(CLIP);
   await page.getByRole("button", { name: "Upload" }).click();
@@ -44,6 +55,11 @@ test("an uploaded clip is received by the worker and the page updates live", asy
     /\/studio\/reels\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   );
   const reelId = new URL(page.url()).pathname.split("/").pop()!;
+  await expect
+    .poll(() => eventsNamed(events, "studio_footage_uploaded"))
+    .toEqual([
+      { event: "studio_footage_uploaded", properties: { app: "studio", reel_id: reelId } },
+    ]);
 
   const { data: reel } = await admin
     .from("reels")
@@ -70,11 +86,28 @@ test("an uploaded clip is received by the worker and the page updates live", asy
 
   await expect(page.getByTestId("job-status")).toHaveText("done", { timeout: 10_000 });
   await expect(page.getByTestId("step-line")).toContainText(
-    /receive: footage received, \d+(\.\d)? (B|KB|MB)/,
+    /receive: footage received, (under a second|\d+ seconds?), \d+(\.\d)? (B|KB|MB)/,
     { timeout: 10_000 },
   );
+  // An in-process step: wall time only, the other measurements null.
+  const { data: steps } = await admin
+    .from("steps")
+    .select("name, wall_ms, cpu_ms, peak_rss_bytes, bytes_in, bytes_out")
+    .eq("reel_id", reelId);
+  expect(steps).toEqual([
+    {
+      name: "receive",
+      wall_ms: expect.any(Number),
+      cpu_ms: null,
+      peak_rss_bytes: null,
+      bytes_in: null,
+      bytes_out: null,
+    },
+  ]);
+  expect(steps![0]!.wall_ms).toBeGreaterThanOrEqual(0);
   await expect(page.getByTestId("reel-status")).toHaveText("received", { timeout: 10_000 });
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
     "marker",
   );
+  expect(posthogRequests).toEqual([]);
 });
