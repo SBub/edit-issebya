@@ -7,7 +7,12 @@ export interface Storage {
     key: string,
     options: { contentType: string; expiresInSeconds: number },
   ): Promise<string>;
-  signDownload(key: string, options: { expiresInSeconds: number }): Promise<string>;
+  // With `fileName`, the object is served as an attachment under this name
+  // (see isDownloadName).
+  signDownload(
+    key: string,
+    options: { expiresInSeconds: number; fileName?: string },
+  ): Promise<string>;
   // null when the object does not exist. The ETag is unquoted (the MD5 hex of
   // the bytes for a single PUT); null only when the store gives none.
   head(
@@ -52,6 +57,21 @@ export function isStorageKey(key: string): boolean {
 export function assertStorageKey(key: string): string {
   if (!isStorageKey(key)) throw new Error(`invalid storage key: ${JSON.stringify(key)}`);
   return key;
+}
+
+const DOWNLOAD_NAME = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+
+// A download's file name: lower-case letters, digits, dots, underscores and
+// hyphens only, so it needs no quoting or escaping in a Content-Disposition.
+export function isDownloadName(name: string): boolean {
+  return DOWNLOAD_NAME.test(name);
+}
+
+// The Content-Disposition header that serves an object as an attachment named
+// `name`; throws on a name isDownloadName refuses.
+export function attachmentDisposition(name: string): string {
+  if (!isDownloadName(name)) throw new Error(`invalid download name: ${JSON.stringify(name)}`);
+  return `attachment; filename="${name}"`;
 }
 
 const SEGMENT = /^[a-z0-9_-]+$/;

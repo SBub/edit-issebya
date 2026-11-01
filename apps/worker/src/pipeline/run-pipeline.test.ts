@@ -142,7 +142,12 @@ async function outputKeys() {
 
 function run(
   steps: ReturnType<typeof recordingSteps>["steps"],
-  options: { spawnTool?: SpawnTool; pipeline?: typeof PIPELINE; signal?: AbortSignal } = {},
+  options: {
+    spawnTool?: SpawnTool;
+    pipeline?: typeof PIPELINE;
+    signal?: AbortSignal;
+    moveReelStatus?: boolean;
+  } = {},
 ) {
   return runPipeline({
     ctx: stepContext(steps, options.signal ? { signal: options.signal } : {}),
@@ -152,6 +157,7 @@ function run(
     tools: TOOLS,
     spawnTool: options.spawnTool ?? fakeTools(),
     pipeline: options.pipeline,
+    moveReelStatus: options.moveReelStatus,
   });
 }
 
@@ -178,6 +184,15 @@ function shape(calls: ReturnType<typeof recordingSteps>["calls"]) {
 }
 
 describe("runPipeline", () => {
+  it("never writes the reel's status with moveReelStatus false", async () => {
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    await run(steps, { moveReelStatus: false });
+    expect(calls.some((call) => call.call === "reelStatus")).toBe(false);
+    expect(shape(calls).filter((call) => call.startsWith("start "))).toEqual(
+      PIPELINE.map((step) => `start ${step.name}`),
+    );
+  });
+
   it("runs every step on a first run and stores every output under its key", async () => {
     const { steps, calls } = recordingSteps(SOURCE_KEY);
     const { fingerprints } = await run(steps);

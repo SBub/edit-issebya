@@ -1,7 +1,7 @@
 // Named columns, never "*", and no lease column: the page shows what a job
 // did, not which worker holds it.
 export const JOB_COLUMNS =
-  "id, reel_id, kind, status, attempts, error_tail, created_at, started_at, finished_at, request, restore_version_id";
+  "id, reel_id, kind, status, attempts, error_tail, created_at, started_at, finished_at, request, restore_version_id, version_id";
 export const STEP_COLUMNS =
   "id, job_id, reel_id, name, status, summary, error_tail, started_at, finished_at";
 
@@ -25,6 +25,8 @@ export interface JobRow {
   request: string | null;
   // The version a restore job copies; null for every other kind.
   restore_version_id: string | null;
+  // The version a render job exports; null for every other kind.
+  version_id: string | null;
 }
 
 export interface StepRow {

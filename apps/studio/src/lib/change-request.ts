@@ -17,14 +17,20 @@ export function parseChangeRequest(raw: unknown): ParsedChangeRequest {
 }
 
 // The interim ordering rule, as the insert policy enforces it: a change or a
-// restore only for a processed reel with no queued or running job. Null when
-// one may be sent, else the one-line reason the controls are disabled.
+// restore only for a processed reel with no queued or running job. A render is
+// pinned to its version and never moves the current one, so it does not count
+// (as in reel_has_active_job). Null when one may be sent, else the one-line
+// reason the controls are disabled.
 export function changeBlockedReason(
   status: ReelStatus,
-  jobs: Pick<JobRow, "status">[],
+  jobs: Pick<JobRow, "status" | "kind">[],
 ): string | null {
   if (status !== "processed") return "Changes open once processing has finished.";
-  if (jobs.some((job) => job.status === "queued" || job.status === "running")) {
+  if (
+    jobs.some(
+      (job) => job.kind !== "render" && (job.status === "queued" || job.status === "running"),
+    )
+  ) {
     return "Wait for the running job to finish.";
   }
   return null;

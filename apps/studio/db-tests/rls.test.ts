@@ -27,7 +27,7 @@ describe("every public table", () => {
         order by c.relname`);
       // Not vacuous: the list holds at least the studio's tables.
       expect(rows.map((r) => r.table)).toEqual(
-        expect.arrayContaining(["reels", "jobs", "steps", "versions"]),
+        expect.arrayContaining(["reels", "jobs", "steps", "versions", "exports"]),
       );
       for (const row of rows) {
         expect({ table: row.table, rls: row.rls }).toEqual({ table: row.table, rls: true });

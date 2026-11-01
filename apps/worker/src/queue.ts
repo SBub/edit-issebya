@@ -11,6 +11,8 @@ export interface ClaimedJob {
   request: string | null;
   // The version a restore job copies; null for every other kind.
   restore_version_id: string | null;
+  // The version a render job exports; null for every other kind.
+  version_id: string | null;
 }
 
 type QueueConfig = Pick<WorkerConfig, "workerId" | "leaseSeconds">;
@@ -94,8 +96,9 @@ async function endJob(
   return true;
 }
 
-// Only a process job moves the reel's status: a change or restore never does,
-// so a failed change leaves the reel processed on its current version.
+// Only a process job moves the reel's status: a change, restore or render
+// never does, so a failed change or export leaves the reel processed on its
+// current version.
 function reelStatusAfter(job: ClaimedJob, status: "processed" | "failed") {
   return job.kind === "process" ? status : null;
 }

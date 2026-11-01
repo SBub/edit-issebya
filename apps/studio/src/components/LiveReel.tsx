@@ -11,10 +11,12 @@ import {
   upsertById,
 } from "@/lib/jobs";
 import { changeBlockedReason } from "@/lib/change-request";
+import { EXPORT_COLUMNS, type ExportRow, exportBlockedReason, latestExport } from "@/lib/exports";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, formatBytes, formatCreatedAt } from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { type VersionListRow, readVersions } from "@/lib/versions";
 import { ChangeRequestForm } from "./ChangeRequestForm";
+import { ExportPanel } from "./ExportPanel";
 import { Preview } from "./Preview";
 import { VersionList } from "./VersionList";
 
@@ -24,6 +26,8 @@ interface Snapshot {
   steps: StepRow[];
   // Newest first; the newest is the current version.
   versions: VersionListRow[];
+  // Ordered by created_at; the newest is the one the panel offers.
+  exports: ExportRow[];
 }
 
 // Version numbers only grow (a restore is a new version too), so a late
@@ -33,7 +37,7 @@ function newerList(shown: VersionListRow[], read: VersionListRow[]): VersionList
 }
 
 async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snapshot | null> {
-  const [reel, jobs, steps] = await Promise.all([
+  const [reel, jobs, steps, exports] = await Promise.all([
     supabase.from("reels").select(REEL_DETAIL_COLUMNS).eq("id", id).maybeSingle<ReelDetail>(),
     supabase
       .from("jobs")
@@ -47,14 +51,26 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
       .eq("reel_id", id)
       .order("started_at")
       .returns<StepRow[]>(),
+    supabase
+      .from("exports")
+      .select(EXPORT_COLUMNS)
+      .eq("reel_id", id)
+      .order("created_at")
+      .returns<ExportRow[]>(),
   ]);
-  if (reel.error || jobs.error || steps.error || !reel.data) return null;
+  if (reel.error || jobs.error || steps.error || exports.error || !reel.data) return null;
   const versions = await readVersions(supabase, id).catch(() => null);
   if (!versions) return null;
-  return { reel: reel.data, jobs: jobs.data ?? [], steps: steps.data ?? [], versions };
+  return {
+    reel: reel.data,
+    jobs: jobs.data ?? [],
+    steps: steps.data ?? [],
+    versions,
+    exports: exports.data ?? [],
+  };
 }
 
-// The reel's status, jobs and step log. Read once on the server, then followed
+// The reel's status, jobs, step log and exports. Read once on the server, then followed
 // through Realtime filtered to this reel (RLS decides what arrives). One
 // catch-up read each time the subscription becomes ready covers changes made
 // between the server read and the subscription. No interval, no polling. The
@@ -65,11 +81,13 @@ export function LiveReel({
   jobs: initialJobs,
   steps: initialSteps,
   versions: initialVersions,
+  exports: initialExports,
 }: Snapshot) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
   const [steps, setSteps] = useState(initialSteps);
   const [versions, setVersions] = useState(initialVersions);
+  const [exports, setExports] = useState(initialExports);
   const [ready, setReady] = useState(false);
   const id = initialReel.id;
 
@@ -93,6 +111,7 @@ export function LiveReel({
             setReel(snapshot.reel);
             setJobs(snapshot.jobs);
             setSteps(snapshot.steps);
+            setExports(snapshot.exports);
             showVersions(snapshot.versions);
           }
           setReady(true);
@@ -129,6 +148,14 @@ export function LiveReel({
           const row = pickColumns<StepRow>(payload.new, STEP_COLUMNS);
           setSteps((current) => upsertById(current, row, "started_at"));
         },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "exports", filter: `reel_id=eq.${id}` },
+        (payload) => {
+          const row = pickColumns<ExportRow>(payload.new, EXPORT_COLUMNS);
+          setExports((current) => upsertById(current, row, "created_at"));
+        },
       );
 
     // setAuth hands the session's token to Realtime before joining, so RLS
@@ -145,6 +172,8 @@ export function LiveReel({
 
   const versionNumber = versions[0]?.number ?? null;
   const blockedReason = changeBlockedReason(reel.status, jobs);
+  const exportBlocked = exportBlockedReason(reel.status, jobs, reel.current_version_id);
+  const latest = latestExport(exports);
   const numberOf = (versionId: string | null) =>
     versions.find((version) => version.id === versionId)?.number;
 
@@ -153,6 +182,13 @@ export function LiveReel({
       {reel.current_version_id ? (
         <>
           <Preview reelId={reel.id} versionId={reel.current_version_id} />
+          <ExportPanel
+            reelId={reel.id}
+            blockedReason={exportBlocked}
+            jobCount={jobs.length}
+            latest={latest}
+            versionNumber={latest ? numberOf(latest.version_id) : undefined}
+          />
           <ChangeRequestForm
             reelId={reel.id}
             blockedReason={blockedReason}
@@ -204,6 +240,11 @@ export function LiveReel({
                 {job.kind === "restore" && (
                   <span data-testid="job-request" className="text-stone-700">
                     go back to version {numberOf(job.restore_version_id) ?? "?"}
+                  </span>
+                )}
+                {job.kind === "render" && (
+                  <span data-testid="job-request" className="text-stone-700">
+                    export of version {numberOf(job.version_id) ?? "?"}
                   </span>
                 )}
                 {job.status === "failed" && job.error_tail && (

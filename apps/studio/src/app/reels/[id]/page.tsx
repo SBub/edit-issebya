@@ -3,13 +3,14 @@ import { notFound, redirect } from "next/navigation";
 import { LiveReel } from "@/components/LiveReel";
 import { NotConfigured } from "@/components/NotConfigured";
 import { StudioIdentify } from "@/components/StudioIdentify";
+import { EXPORT_COLUMNS, type ExportRow } from "@/lib/exports";
 import { JOB_COLUMNS, type JobRow, STEP_COLUMNS, type StepRow } from "@/lib/jobs";
 import type { ReelDetail } from "@/lib/reels";
 import { REEL_DETAIL_COLUMNS, isReelId, reelName } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { readVersions } from "@/lib/versions";
 
-// Reads the reel, its jobs, steps and versions once on the server; LiveReel then
+// Reads the reel, its jobs, steps, versions and exports once on the server; LiveReel then
 // follows changes through Realtime. No polling, no interval.
 export default async function ReelPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -33,7 +34,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
   if (!reel) notFound();
 
   // The step log is loaded only here, for the open reel.
-  const [jobs, steps, versions] = await Promise.all([
+  const [jobs, steps, versions, exports] = await Promise.all([
     supabase
       .from("jobs")
       .select(JOB_COLUMNS)
@@ -47,9 +48,16 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
       .order("started_at")
       .returns<StepRow[]>(),
     readVersions(supabase, id),
+    supabase
+      .from("exports")
+      .select(EXPORT_COLUMNS)
+      .eq("reel_id", id)
+      .order("created_at")
+      .returns<ExportRow[]>(),
   ]);
   if (jobs.error) throw new Error(`studio: jobs not loaded: ${jobs.error.message}`);
   if (steps.error) throw new Error(`studio: steps not loaded: ${steps.error.message}`);
+  if (exports.error) throw new Error(`studio: exports not loaded: ${exports.error.message}`);
 
   return (
     <article className="flex flex-col gap-4">
@@ -58,7 +66,13 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
         Back to your reels
       </Link>
       <h1 className="text-2xl font-semibold break-all">{reelName(reel)}</h1>
-      <LiveReel reel={reel} jobs={jobs.data ?? []} steps={steps.data ?? []} versions={versions} />
+      <LiveReel
+        reel={reel}
+        jobs={jobs.data ?? []}
+        steps={steps.data ?? []}
+        versions={versions}
+        exports={exports.data ?? []}
+      />
     </article>
   );
 }

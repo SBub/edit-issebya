@@ -30,7 +30,7 @@ afterAll(async () => {
 });
 
 interface Listen {
-  table: "reels" | "steps";
+  table: "reels" | "steps" | "exports";
   event: "INSERT" | "UPDATE";
   filter: string;
 }
@@ -126,6 +126,77 @@ it("delivers the owner's new step to the owner and nothing to another user", asy
     name: "receive",
     status: "done",
     summary: "footage received, 1.0 MB",
+  });
+  expect(error).toBeNull();
+
+  await Promise.race([
+    arrival,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("A received nothing")), WINDOW_MS),
+    ),
+  ]);
+  expect(seenByA).toHaveLength(1);
+
+  await new Promise((resolve) => setTimeout(resolve, WINDOW_MS));
+  expect(seenByB).toEqual([]);
+}, 30_000);
+
+it("delivers the owner's new export to the owner and nothing to another user", async () => {
+  const seenByA: unknown[] = [];
+  const seenByB: unknown[] = [];
+  let arrived!: () => void;
+  const arrival = new Promise<void>((resolve) => (arrived = resolve));
+
+  const listen: Listen = { table: "exports", event: "INSERT", filter: `reel_id=eq.${reelA}` };
+  await subscribe(userA.email, "exports-a", listen, (payload) => {
+    seenByA.push(payload);
+    arrived();
+  });
+  await subscribe(userB.email, "exports-b", listen, (payload) => seenByB.push(payload));
+
+  const versionId = crypto.randomUUID();
+  const saved = await admin.rpc("save_version", {
+    p_id: versionId,
+    p_reel_id: reelA,
+    p_parent_id: null,
+    p_restored_from_id: null,
+    p_request: null,
+    p_model: null,
+    p_prompt_version: null,
+    p_change_summary: "test version",
+    p_checks: { ok: true, reasons: [] },
+    p_inputs: {
+      footage: "1".repeat(64),
+      transcript: "2".repeat(64),
+      cutout: "3".repeat(64),
+      headTrack: "4".repeat(64),
+    },
+    p_r2_key: `test/reels/${reelA}/versions/${versionId}.json`,
+    p_used_free_field: false,
+    p_free_field: [],
+    p_unexpressed: [],
+  });
+  expect(saved.error).toBeNull();
+  // A finished render job, so nothing is left claimable on the shared stack.
+  const job = await admin
+    .from("jobs")
+    .insert({
+      reel_id: reelA,
+      owner_id: userA.id,
+      kind: "render",
+      version_id: versionId,
+      status: "done",
+    })
+    .select("id")
+    .single();
+  expect(job.error).toBeNull();
+  const { error } = await admin.from("exports").insert({
+    reel_id: reelA,
+    owner_id: userA.id,
+    job_id: job.data!.id,
+    version_id: versionId,
+    r2_key: `test/exports/${reelA}/${crypto.randomUUID()}.mp4`,
+    bytes: 1000,
   });
   expect(error).toBeNull();
 

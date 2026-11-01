@@ -39,14 +39,30 @@ describe("changeBlockedReason", () => {
 
   it("blocks while a job is queued or running", () => {
     for (const status of ["queued", "running"] as const) {
-      expect(changeBlockedReason("processed", [{ status: "done" }, { status }])).toBe(
-        "Wait for the running job to finish.",
-      );
+      for (const kind of ["process", "change", "restore"]) {
+        expect(
+          changeBlockedReason("processed", [
+            { status: "done", kind: "process" },
+            { status, kind },
+          ]),
+        ).toBe("Wait for the running job to finish.");
+      }
     }
   });
 
   it("allows a processed reel whose jobs are done or failed", () => {
-    expect(changeBlockedReason("processed", [{ status: "done" }, { status: "failed" }])).toBeNull();
+    expect(
+      changeBlockedReason("processed", [
+        { status: "done", kind: "process" },
+        { status: "failed", kind: "change" },
+      ]),
+    ).toBeNull();
     expect(changeBlockedReason("processed", [])).toBeNull();
+  });
+
+  it("is not blocked by a queued or running render", () => {
+    for (const status of ["queued", "running"] as const) {
+      expect(changeBlockedReason("processed", [{ status, kind: "render" }])).toBeNull();
+    }
   });
 });

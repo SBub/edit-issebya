@@ -137,7 +137,12 @@ the gitignored `next-env.d.ts`, never stage it); dead code `yarn knip` (whole re
 the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (real ffmpeg and
 HyperFrames: convert, transcribe and retime on `fixtures/footage/short-speech.mp4`, background
 removal, head tracking and preview copies on `fixtures/footage/short-person.mp4`, which they only
-read; on the owner's Mac only, never in CI); DB integration
+read; on the owner's Mac only, never in CI); for a run targeting the studio's export, the studio's
+tool test `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn workspace @edit-issebya/studio test:tools`
+(`apps/studio/tools/*.spec.ts`, `apps/studio/playwright.tools.config.ts`: the export guardrail, the
+worker's `once` rendering with the real HyperFrames, the export compared with the live preview by
+SSIM, its loudness and click timing, and the render step's group memory; on the owner's Mac only,
+never in CI, needs the run's dev server like the E2E suites); DB integration
 `yarn turbo run test:db --filter=./apps/studio` (after unit; needs the shared local stack); build
 as in Build; and last the E2E suites `yarn test:e2e`.
 
@@ -170,7 +175,9 @@ until both videos can play (at start and after a seek into unbuffered footage), 
 version rebuilds the preview without a reload byte for byte the Node build with one
 `studio_preview_opened`, and the clicks are scheduled at their word's time; it needs network access
 to `cdn.jsdelivr.net` (GSAP `gsap@3.14.2`, named by the preset, and the player's runtime
-`@hyperframes/core@0.8.222/dist/hyperframe.runtime.iife.js`)), run last by
+`@hyperframes/core@0.8.222/dist/hyperframe.runtime.iife.js`); `export.spec.ts` spawns the worker's
+`once` with `E2E_MOCK_RENDER=true`, set by the spec, so the render copies
+`fixtures/export/render.mp4` and no Chrome renders), run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
 arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by

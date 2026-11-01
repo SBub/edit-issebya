@@ -11,6 +11,7 @@ const JOB: ClaimedJob = {
   attempts: 1,
   request: null,
   restore_version_id: null,
+  version_id: null,
 };
 
 // Records every update by table; the job update matches one row (the lease
@@ -51,10 +52,11 @@ describe("ending a job", () => {
     expect(failed.updates[1]!.values).toEqual({ status: "failed" });
   });
 
-  it("never touches the reel for a change or restore job", async () => {
+  it("never touches the reel for a change, restore or render job", async () => {
     for (const job of [
       { ...JOB, kind: "change", request: "lower title" },
       { ...JOB, kind: "restore", restore_version_id: "v1" },
+      { ...JOB, kind: "render", version_id: "v1" },
     ]) {
       const failed = stubDb();
       expect(await failJob(failed.db, CONFIG, job, "decide failed twice")).toBe(true);

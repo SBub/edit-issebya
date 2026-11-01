@@ -108,8 +108,10 @@ policy. Slice 16 replaces both with ordering enforced by the queue.
   (`studio_change_requested` carries `reel_id` and `app` only).
 - Never poll: versions are read on open, on subscription ready and on a new `current_version_id`.
 - A change job never runs a fixed step.
-- Do not read `public.jobs` inside a policy on `public.jobs`; go through `reel_has_active_job`.
-- Do not grant the owner insert on `jobs` beyond `(reel_id, kind, request, restore_version_id)`.
+- Do not read `public.jobs` inside a policy on `public.jobs`; go through `reel_has_active_job`
+  (which ignores `render` jobs: a render never moves the current version).
+- Do not grant the owner insert on `jobs` beyond
+  `(reel_id, kind, request, restore_version_id, version_id)`.
 
 ## Notes
 

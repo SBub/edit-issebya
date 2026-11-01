@@ -22,6 +22,7 @@ export async function claimableJobIds(admin: SupabaseClient): Promise<string[]> 
 // and resolves with its exit code and output.
 export function runWorkerOnce(
   env: Record<string, string> = {},
+  { timeoutMs = TIMEOUT_MS }: { timeoutMs?: number } = {},
 ): Promise<{ code: number | null; output: string }> {
   const childEnv = {
     ...process.env,
@@ -47,8 +48,8 @@ export function runWorkerOnce(
     child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
-      reject(new Error(`worker once timed out after ${TIMEOUT_MS} ms:\n${output}`));
-    }, TIMEOUT_MS);
+      reject(new Error(`worker once timed out after ${timeoutMs} ms:\n${output}`));
+    }, timeoutMs);
     child.on("error", (error) => {
       clearTimeout(timer);
       reject(error);

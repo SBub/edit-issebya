@@ -110,6 +110,18 @@ describe("fakeStorage", () => {
     expect(await storage.signDownload("a.mp4", { expiresInSeconds: 60 })).toBe(
       "/studio/api/e2e-storage-mock/a.mp4",
     );
+    expect(
+      await storage.signDownload("a.mp4", { expiresInSeconds: 60, fileName: "reel-1.mp4" }),
+    ).toBe("/studio/api/e2e-storage-mock/a.mp4?download=reel-1.mp4");
+  });
+
+  it("refuses a download name that would need quoting", async () => {
+    const storage = fakeStorage({ root, uploadUrlBase: "/up/" });
+    for (const fileName of ['a".mp4', "A.mp4", "a b.mp4", "", "../a.mp4"]) {
+      await expect(
+        storage.signDownload("a.mp4", { expiresInSeconds: 60, fileName }),
+      ).rejects.toThrow(/invalid download name/);
+    }
   });
 
   it("refuses keys that could leave its root", async () => {

@@ -13,7 +13,7 @@ import {
   S3ServiceException,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { type Storage, assertStorageKey } from "./storage.ts";
+import { type Storage, assertStorageKey, attachmentDisposition } from "./storage.ts";
 
 export interface R2Config {
   accountId: string;
@@ -83,8 +83,14 @@ export function r2Storage(config: R2Config): Storage {
       return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
     },
 
-    signDownload(key, { expiresInSeconds }) {
-      const command = new GetObjectCommand({ Bucket, Key: assertStorageKey(key) });
+    async signDownload(key, { expiresInSeconds, fileName }) {
+      const command = new GetObjectCommand({
+        Bucket,
+        Key: assertStorageKey(key),
+        ...(fileName === undefined
+          ? {}
+          : { ResponseContentDisposition: attachmentDisposition(fileName) }),
+      });
       return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
     },
 

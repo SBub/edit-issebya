@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { e2eStorageRoot, fakeStorage, isE2EMockStorage, isStorageKey } from "@edit-issebya/storage";
+import {
+  attachmentDisposition,
+  e2eStorageRoot,
+  fakeStorage,
+  isDownloadName,
+  isE2EMockStorage,
+  isStorageKey,
+} from "@edit-issebya/storage";
 import { MOCK_UPLOAD_URL_BASE } from "@/lib/storage";
 
 /**
@@ -8,7 +15,9 @@ import { MOCK_UPLOAD_URL_BASE } from "@/lib/storage";
  * place of R2, and the bytes land in the gitignored `.e2e-storage/` folder at
  * the repository root, where the worker reads them. GET returns the bytes
  * (one byte range on a `Range` header, as R2 does: without it the browser
- * cannot seek a video), HEAD their size.
+ * cannot seek a video), HEAD their size. A GET with a valid `download` query
+ * (what the fake signs for a named download) is served as an attachment under
+ * that name, as R2 does with a signed Content-Disposition.
  *
  * Every method 404s unless E2E_MOCK_STORAGE is exactly "true", so the route is
  * inert in `yarn dev` and production, and never receives a body there.
@@ -63,11 +72,20 @@ export async function GET(request: Request, context: Context) {
   if (!key) return NextResponse.json({ error: "Bad key" }, { status: 400 });
   const body = await storage().get(key);
   if (!body) return notFound();
+  const name = new URL(request.url).searchParams.get("download");
+  const disposition: Record<string, string> =
+    name !== null && isDownloadName(name)
+      ? { "Content-Disposition": attachmentDisposition(name) }
+      : {};
   const header = request.headers.get("range");
   if (header === null) {
     return new NextResponse(new Blob([body as Uint8Array<ArrayBuffer>]), {
       status: 200,
-      headers: { "Accept-Ranges": "bytes", "Content-Length": String(body.byteLength) },
+      headers: {
+        "Accept-Ranges": "bytes",
+        "Content-Length": String(body.byteLength),
+        ...disposition,
+      },
     });
   }
   const range = byteRange(header, body.byteLength);
@@ -84,6 +102,7 @@ export async function GET(request: Request, context: Context) {
       "Accept-Ranges": "bytes",
       "Content-Length": String(last - first + 1),
       "Content-Range": `bytes ${first}-${last}/${body.byteLength}`,
+      ...disposition,
     },
   });
 }

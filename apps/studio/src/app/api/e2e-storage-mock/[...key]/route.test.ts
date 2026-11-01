@@ -58,6 +58,19 @@ describe("with E2E_MOCK_STORAGE=true", () => {
     expect(head.headers.get("Content-Length")).toBe("3");
   });
 
+  it("serves a GET with a valid download name as an attachment", async () => {
+    await put(KEY, new Uint8Array([1, 2, 3]));
+    const named = await GET(new Request("http://x/?download=reel-1.mp4"), context(KEY));
+    expect(named.headers.get("Content-Disposition")).toBe('attachment; filename="reel-1.mp4"');
+    const plain = await GET(new Request("http://x/"), context(KEY));
+    expect(plain.headers.get("Content-Disposition")).toBeNull();
+    const refused = await GET(
+      new Request(`http://x/?download=${encodeURIComponent('a"; x=.mp4')}`),
+      context(KEY),
+    );
+    expect(refused.headers.get("Content-Disposition")).toBeNull();
+  });
+
   it("answers 400 to a key that could leave the folder", async () => {
     expect((await put(["..", "x"], new Uint8Array([1]))).status).toBe(400);
     expect((await put(["a", "..", "..", "x"], new Uint8Array([1]))).status).toBe(400);

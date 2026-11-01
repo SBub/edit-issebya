@@ -75,6 +75,37 @@ describe("r2Storage.signUpload", () => {
   });
 });
 
+describe("r2Storage.signDownload", () => {
+  const storage = r2Storage({
+    accountId: "abc",
+    bucket: "bucket",
+    accessKeyId: "dummy-id",
+    secretAccessKey: "dummy-secret",
+  });
+
+  it("presigns a GET for the given time, inline without a name", async () => {
+    const url = new URL(await storage.signDownload("dev/a.mp4", { expiresInSeconds: 120 }));
+    expect(url.pathname).toBe("/bucket/dev/a.mp4");
+    expect(url.searchParams.get("X-Amz-Expires")).toBe("120");
+    expect(url.searchParams.get("response-content-disposition")).toBeNull();
+  });
+
+  it("serves the object as an attachment under the given name", async () => {
+    const url = new URL(
+      await storage.signDownload("dev/a.mp4", { expiresInSeconds: 60, fileName: "reel-1.mp4" }),
+    );
+    expect(url.searchParams.get("response-content-disposition")).toBe(
+      'attachment; filename="reel-1.mp4"',
+    );
+  });
+
+  it("refuses a name that would need quoting", async () => {
+    await expect(
+      storage.signDownload("dev/a.mp4", { expiresInSeconds: 60, fileName: 'a"; x=.mp4' }),
+    ).rejects.toThrow(/invalid download name/);
+  });
+});
+
 describe("r2Storage.head", () => {
   it("returns the size and the unquoted ETag", async () => {
     const { storage } = answering(200, {

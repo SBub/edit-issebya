@@ -13,11 +13,14 @@
       "vitest": {
         "config": ["vitest.config.ts", "vitest.db.config.ts"]
       },
-      "playwright": true,
+      "playwright": {
+        "config": ["playwright.config.ts", "playwright.tools.config.ts"]
+      },
       "entry": ["scripts/*.ts", "src/lib/empty-module.ts"],
       "project": [
         "src/**/*.{ts,tsx,css}",
         "e2e/**/*.ts",
+        "tools/**/*.ts",
         "db-tests/**/*.ts",
         "test-support/**/*.ts",
         "scripts/**/*.ts"

@@ -4,10 +4,13 @@ import type { Storage } from "@edit-issebya/storage";
 import type { WorkerConfig } from "./config.ts";
 import { changeJob } from "./change-job.ts";
 import { decide } from "./decide/decide.ts";
+import { supabaseExportStore } from "./export-store.ts";
+import { renderSpawnTool } from "./fake-render.ts";
 import { type ClaimedJob, failJob, finishJob, renewLease } from "./queue.ts";
 import { recordPreviewCopies } from "./pipeline/record-preview-copies.ts";
 import { runPipeline } from "./pipeline/run-pipeline.ts";
 import { firstVersion } from "./steps/first-version.ts";
+import { render } from "./steps/render.ts";
 import { restore } from "./steps/restore.ts";
 import { toolPaths } from "./pipeline/tools.ts";
 import { type JobOutcome, runJob } from "./run-job.ts";
@@ -19,7 +22,8 @@ import { type Telemetry, endJobSpan, startJobSpan } from "./telemetry.ts";
 // A process job runs the fixed pipeline steps, the first version and the
 // decide step (the AI's edit, saved as the next version); a change job runs
 // only decide, with the owner's request; a restore job copies an earlier
-// version into a new one.
+// version into a new one; a render job exports its pinned version as an MP4
+// (rebuilding missing inputs first, never moving the reel's status).
 export async function processJob(
   db: SupabaseClient,
   storage: Storage,
@@ -82,6 +86,19 @@ export async function processJob(
               keyPrefix: config.keyPrefix,
               versions,
               fromId: job.restore_version_id,
+            });
+            return;
+          case "render":
+            await render({
+              ctx,
+              storage,
+              keyPrefix: config.keyPrefix,
+              scratchDir: config.scratchDir,
+              tools: toolPaths(),
+              versions,
+              exportsStore: supabaseExportStore(db),
+              versionId: job.version_id,
+              spawnTool: renderSpawnTool(process.env),
             });
             return;
           default:
