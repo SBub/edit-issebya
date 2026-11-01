@@ -4,15 +4,20 @@ import {
   fakeStorage,
   isDownloadName,
   isE2EMockStorage,
+  isPartNumber,
   isStorageKey,
+  isUploadId,
 } from "@edit-issebya/storage";
 import { MOCK_UPLOAD_URL_BASE } from "@/lib/storage";
 
 /**
  * E2E-only stand-in for R2. Under E2E_MOCK_STORAGE=true the fake storage signs
- * upload URLs that point here, so the browser PUTs the file to this route in
- * place of R2, and the bytes land in the gitignored `.e2e-storage/` folder at
- * the repository root, where the worker reads them. GET returns the bytes
+ * upload part URLs that point here (`<key>?uploadId=..&partNumber=n`), so the
+ * browser PUTs each part of a multipart upload to this route in place of R2.
+ * The part lands under the gitignored `.e2e-storage/.multipart/` folder at the
+ * repository root, and the answer carries its ETag (the quoted MD5 of the
+ * part, as R2's); completing the upload assembles the object there, where the
+ * worker reads it. There is no single-object PUT. GET returns the bytes
  * (honouring a single `Range`, as R2 does, so a video can seek), HEAD their
  * size. A `download=<name>` parameter (the fake's signDownload with a
  * downloadName) makes the GET an attachment with that name, as R2's
@@ -41,15 +46,28 @@ function storage() {
   return fakeStorage({ root: e2eStorageRoot(), uploadUrlBase: MOCK_UPLOAD_URL_BASE });
 }
 
+// R2's UploadPart: one part of a multipart upload the fake created.
 export async function PUT(request: Request, context: Context) {
   if (!isE2EMockStorage()) return notFound();
   const key = await storageKey(context);
   if (!key) return NextResponse.json({ error: "Bad key" }, { status: 400 });
+  const query = new URL(request.url).searchParams;
+  const uploadId = query.get("uploadId");
+  const partText = query.get("partNumber") ?? "";
+  const partNumber = /^\d{1,5}$/.test(partText) ? Number(partText) : NaN;
+  if (!isUploadId(uploadId) || !isPartNumber(partNumber)) {
+    return NextResponse.json({ error: "Bad part" }, { status: 400 });
+  }
   const body = new Uint8Array(await request.arrayBuffer());
-  await storage().put(key, body);
+  let etag: string;
+  try {
+    etag = await storage().putUploadPart(key, { uploadId, partNumber, body });
+  } catch {
+    return NextResponse.json({ error: "No such upload" }, { status: 404 });
+  }
   return new NextResponse(null, {
     status: 200,
-    headers: { ETag: `"${body.byteLength}-${Date.now()}"` },
+    headers: { ETag: `"${etag}"`, "Access-Control-Expose-Headers": "ETag" },
   });
 }
 

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { isStorageKey } from "@edit-issebya/storage";
-import { MAX_UPLOAD_BYTES, parseUploadRequest, sourceExtension, sourceKey } from "./upload";
+import {
+  MAX_UPLOAD_BYTES,
+  PART_SIZE_BYTES,
+  parseUploadRequest,
+  partCount,
+  reelIdOfKey,
+  sourceExtension,
+  sourceKey,
+} from "./upload";
 
 const REEL = "0b9f6c1e-3c1d-4c8e-9a51-2f4d7b6e8a10";
 
@@ -73,5 +81,41 @@ describe("parseUploadRequest", () => {
       ok: false,
       reason: "extension",
     });
+  });
+});
+
+describe("the size bound", () => {
+  const ok = { name: "clip.mp4", type: "video/mp4" };
+
+  it("accepts 1 GiB and 5 GiB, and refuses one byte more", () => {
+    expect(parseUploadRequest({ ...ok, bytes: 1024 ** 3 }).ok).toBe(true);
+    expect(parseUploadRequest({ ...ok, bytes: 5 * 1024 ** 3 }).ok).toBe(true);
+    expect(parseUploadRequest({ ...ok, bytes: 5 * 1024 ** 3 + 1 })).toEqual({
+      ok: false,
+      reason: "too-large",
+    });
+  });
+});
+
+describe("partCount", () => {
+  it("counts 10 MiB parts, the last one shorter", () => {
+    expect(PART_SIZE_BYTES).toBe(10 * 1024 * 1024);
+    expect(partCount(35 * 1024 * 1024)).toBe(4);
+    expect(partCount(10 * 1024 * 1024)).toBe(1);
+    expect(partCount(10 * 1024 * 1024 + 1)).toBe(2);
+    // 5 GiB stays far below S3's 10,000 parts.
+    expect(partCount(MAX_UPLOAD_BYTES)).toBe(512);
+  });
+});
+
+describe("reelIdOfKey", () => {
+  it("finds the reel id in a source key, with or without a prefix", () => {
+    expect(reelIdOfKey(sourceKey("dev/", REEL, "mp4"))).toBe(REEL);
+    expect(reelIdOfKey(sourceKey("", REEL, "mov"))).toBe(REEL);
+  });
+
+  it("is null for anything else", () => {
+    expect(reelIdOfKey(`dev/reels/${REEL}/versions/v.json`)).toBeNull();
+    expect(reelIdOfKey("dev/reels/not-a-uuid/source/original.mp4")).toBeNull();
   });
 });

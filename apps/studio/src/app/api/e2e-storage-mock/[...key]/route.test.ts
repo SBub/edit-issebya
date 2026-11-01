@@ -2,6 +2,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
+import { fakeStorage } from "@edit-issebya/storage";
 import { GET, HEAD, PUT } from "./route";
 
 const KEY = ["dev", "reels", "r1", "source", "original.mp4"];
@@ -11,8 +13,28 @@ function context(key: string[]) {
   return { params: Promise.resolve({ key }) };
 }
 
-function put(key: string[], body: Uint8Array<ArrayBuffer>) {
-  return PUT(new Request("http://x/", { method: "PUT", body }), context(key));
+function store() {
+  return fakeStorage({
+    root: join(root, ".e2e-storage"),
+    uploadUrlBase: "/studio/api/e2e-storage-mock/",
+  });
+}
+
+const part = (uploadId: string, partNumber: number | string) =>
+  `?uploadId=${uploadId}&partNumber=${partNumber}`;
+
+function putPart(key: string[], body: Uint8Array<ArrayBuffer>, query: string) {
+  return PUT(new Request(`http://x/${query}`, { method: "PUT", body }), context(key));
+}
+
+// An object stored through a one-part multipart upload, as the browser does.
+async function put(key: string[], body: Uint8Array<ArrayBuffer>) {
+  const joined = key.join("/");
+  const { uploadId } = await store().createMultipartUpload(joined, { contentType: "video/mp4" });
+  const answer = await putPart(key, body, part(uploadId, 1));
+  const etag = answer.headers.get("ETag")!.replaceAll('"', "");
+  await store().completeMultipartUpload(joined, { uploadId, parts: [{ partNumber: 1, etag }] });
+  return answer;
 }
 
 beforeEach(async () => {
@@ -32,7 +54,7 @@ describe("without the exact flag", () => {
   for (const flag of [undefined, "1", "TRUE"]) {
     it(`answers 404 to every method (${String(flag)})`, async () => {
       vi.stubEnv("E2E_MOCK_STORAGE", flag);
-      expect((await put(KEY, new Uint8Array([1]))).status).toBe(404);
+      expect((await putPart(KEY, new Uint8Array([1]), part("u", 1))).status).toBe(404);
       expect((await GET(new Request("http://x/"), context(KEY))).status).toBe(404);
       expect((await HEAD(new Request("http://x/"), context(KEY))).status).toBe(404);
     });
@@ -44,23 +66,44 @@ describe("with E2E_MOCK_STORAGE=true", () => {
     vi.stubEnv("E2E_MOCK_STORAGE", "true");
   });
 
-  it("round-trips a PUT through GET and HEAD", async () => {
+  it("stores a part PUT, answering its quoted MD5 as the ETag", async () => {
+    const key = KEY.join("/");
+    const { uploadId } = await store().createMultipartUpload(key, { contentType: "video/mp4" });
     const body = new Uint8Array([1, 2, 3]);
-    const answer = await put(KEY, body);
+    const answer = await putPart(KEY, body, part(uploadId, 2));
     expect(answer.status).toBe(200);
-    expect(answer.headers.get("ETag")).toBeTruthy();
+    const md5 = createHash("md5").update(body).digest("hex");
+    expect(answer.headers.get("ETag")).toBe(`"${md5}"`);
+    expect(answer.headers.get("Access-Control-Expose-Headers")).toBe("ETag");
+    expect(await store().listUploadParts(key, { uploadId })).toEqual([
+      { partNumber: 2, etag: md5, bytes: 3 },
+    ]);
+  });
 
+  it("round-trips a completed upload through GET and HEAD", async () => {
+    const body = new Uint8Array([1, 2, 3]);
+    expect((await put(KEY, body)).status).toBe(200);
     const read = await GET(new Request("http://x/"), context(KEY));
     expect(read.status).toBe(200);
     expect(new Uint8Array(await read.arrayBuffer())).toEqual(body);
-
     const head = await HEAD(new Request("http://x/"), context(KEY));
     expect(head.headers.get("Content-Length")).toBe("3");
   });
 
+  it("answers 400 without an upload id or part number, and 404 for an unknown upload", async () => {
+    const body = new Uint8Array([1]);
+    expect((await putPart(KEY, body, "")).status).toBe(400);
+    expect((await putPart(KEY, body, "?uploadId=u")).status).toBe(400);
+    expect((await putPart(KEY, body, part("u", 0))).status).toBe(400);
+    expect((await putPart(KEY, body, part("u", 10001))).status).toBe(400);
+    expect((await putPart(KEY, body, part("a%2Fb", 1))).status).toBe(400);
+    expect((await putPart(KEY, body, part("unknown", 1))).status).toBe(404);
+  });
+
   it("answers 400 to a key that could leave the folder", async () => {
-    expect((await put(["..", "x"], new Uint8Array([1]))).status).toBe(400);
-    expect((await put(["a", "..", "..", "x"], new Uint8Array([1]))).status).toBe(400);
+    const query = part("u", 1);
+    expect((await putPart(["..", "x"], new Uint8Array([1]), query)).status).toBe(400);
+    expect((await putPart(["a", "..", "..", "x"], new Uint8Array([1]), query)).status).toBe(400);
   });
 
   it("answers 404 for a missing object", async () => {

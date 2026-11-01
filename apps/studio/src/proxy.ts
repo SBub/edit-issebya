@@ -28,6 +28,11 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+// The storage mock route is left out: it needs no session, and proxy buffers
+// a request body only up to its client max body size (10 MB by default, see
+// the next.config proxy option), which a 10 MiB upload part would reach.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|api/e2e-storage-mock|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };
