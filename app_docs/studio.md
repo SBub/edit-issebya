@@ -4,6 +4,7 @@
 
 - specs/issue-27-adw-c95d56bf-sdlc_planner-studio-zone-login-reels-list.md
 - specs/issue-43-adw-eff3346d-sdlc_planner-reel-upload-job-queue-worker.md
+- specs/issue-36-adw-67f9b648-sdlc_planner-resumable-multipart-r2-upload.md
 
 ## Overview
 
@@ -64,18 +65,20 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 ### Upload
 
 - `apps/studio/src/app/upload-actions.ts`: `createUpload` validates the request
-  (`apps/studio/src/lib/upload.ts`: name, size up to 5 GiB (R2's single-PUT limit), `video/` type,
-  extension `mp4`, `mov`, `m4v` or `webm`), inserts the `reels` row (`uploading`) through the
-  user's own client and returns a presigned PUT URL. The browser PUTs the file straight to R2;
-  the studio's server never sees the body. `finishUpload` calls the `finish_upload` database
-  function.
-- `apps/studio/src/components/UploadForm.tsx`: the "Clip" input and "Upload" button; on success it
-  goes to `/reels/<id>`.
+  (`apps/studio/src/lib/upload.ts`: name, size up to 1 GiB, `video/` type, extension `mp4`, `mov`,
+  `m4v` or `webm`) and inserts the `reels` row (`uploading`) through the user's own client. The
+  browser then sends the file to R2 in multipart parts (`UploadForm.tsx`); the studio's server
+  never sees the bytes. See `app_docs/upload.md`.
 - The key is `<R2_KEY_PREFIX>reels/<reel id>/source/original.<ext>`. The insert policy
   `reels: owner inserts own uploading reel` only accepts a key ending with that reel's own path.
 - `finish_upload(p_reel_id, p_bytes)` (`security definer`, executable by `authenticated` only)
   moves the owner's `uploading` reel to `uploaded`, records `source_bytes` and inserts one `process`
-  job. Any other caller, reel or state fails the same way.
+  job. It is idempotent: it locks the row, and a repeat call returns the same `process` job id.
+  `p_bytes` is the stored object's size from a server HEAD. Any other caller, reel or state fails
+  the same way.
+- `abort_upload(p_reel_id)` (`security definer`, executable by `authenticated` only) moves the
+  owner's `uploading` reel to `failed`, returns quietly if the reel is already `failed`, and refuses
+  anything else. `abortUpload` aborts the multipart upload in storage before calling it.
 - `apps/studio/src/lib/storage.ts`: `studioStorage()` returns the fake under `E2E_MOCK_STORAGE`,
   R2 with the studio keys, or `null` (the form then says uploads are unavailable).
 
@@ -120,8 +123,9 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   interface, the R2 implementation and a folder fake, shared by the studio and the worker. Each app
   passes its own keys.
 - `E2E_MOCK_STORAGE=true` (exactly) makes both use the gitignored `.e2e-storage/` folder at the
-  repository root; the studio's `/studio/api/e2e-storage-mock/[...key]` route stands in for R2's
-  PUT and answers 404 otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
+  repository root; the studio's `/studio/api/e2e-storage-mock/[...key]` route stands in for R2's S3
+  multipart verbs (create, part, list, complete); a plain PUT is refused. `fakeMultipart` keeps the
+  multipart state under `.e2e-storage/.multipart/`. The route answers 404 otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
 - `fixtures/footage/short-speech.mp4` is the committed short vertical clip with speech, made by
   `scripts/make-test-clip.sh` (macOS only, run by hand).
 
@@ -163,11 +167,14 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   `apps/studio/test-support/local-supabase.test.ts`, `apps/web/src/lib/studio-rewrites.test.ts`,
   `apps/worker/src/**/*.test.ts` and `packages/storage/src/**/*.test.ts` (`yarn test`).
 - DB integration: `apps/studio/db-tests/` (`yarn test:db`): RLS on every public table, owner
-  isolation, the upload path and `finish_upload`, `claim_job`'s lease (`jobs.test.ts`), Realtime
-  follows RLS for `reels` and `steps`. Needs the local stack; not in the pre-push hook.
-- E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload` specs, chromium, through the
-  landing address), run after the landing suite by `yarn test:e2e`. `upload.spec.ts` uploads the
-  test clip, spawns the worker's `once` and expects the page to update without a reload.
+  isolation, the upload path and `finish_upload`, `upload.test.ts` (signing ownership, idempotent
+  `finish_upload` including concurrent calls, `abort_upload`), `claim_job`'s lease (`jobs.test.ts`),
+  Realtime follows RLS for `reels` and `steps`. Needs the local stack; not in the pre-push hook.
+- E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload`, `multipart-upload` specs,
+  chromium, through the landing address), run after the landing suite by `yarn test:e2e`.
+  `upload.spec.ts` uploads the test clip, spawns the worker's `once` and expects the page to update
+  without a reload. `multipart-upload.spec.ts` sends a 35 MiB clip in 10 MiB parts: a failed part,
+  a reload that resumes, Cancel, the 1 GiB limit.
 
 ## Rules
 
@@ -179,9 +186,10 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   answer depend on whether the address has an account.
 - Do not grant `authenticated` `update` or `delete` on `reels`, nor `insert` beyond `id`,
   `source_name` and `source_key` under the uploading-only policy; no `anon` access.
-- Never give the owner a general right to write `status`; finishing an upload goes only through
-  `finish_upload`.
-- Never let `authenticated` or `anon` execute `claim_job`, or `anon` execute `finish_upload`.
+- Never give the owner a general right to write `status`; status changes from the owner go only
+  through `finish_upload` and `abort_upload`.
+- Never let `authenticated` or `anon` execute `claim_job`, or `anon` execute `finish_upload` or
+  `abort_upload`.
 - Never poll from the studio; the reel page reads on open and on each ready subscription only.
 - Never read more than `id` in the worker's periodic check.
 - Never put large content in rows (files in R2, logs in PostHog).
@@ -200,6 +208,6 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 
 - Spans `apps/studio`, `apps/worker`, `packages/storage`, `apps/web` (rewrites only), `supabase/`,
   CI and the ADW profile; most of the change is in `apps/studio`.
-- Processing, edits and render steps, resumable upload (single PUT only) and a retry limit are
-  later slices; the `receive` step is a placeholder.
+- Processing, edits and render steps and a retry limit are later slices; the `receive` step is a
+  placeholder.
 - The magic-link template takes effect after the local Supabase stack restarts.

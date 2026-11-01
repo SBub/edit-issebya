@@ -57,10 +57,12 @@ async function signIn(page: Page, baseURL: string | undefined) {
   return owner;
 }
 
-// Requests to the mock route, counted per part number, and list requests.
+// Requests to the mock route: part requests sent, per part number; parts
+// completed (a 200 answer), per part number; and list requests.
 function countRequests(page: Page) {
   const parts: Record<number, number> = {};
-  const counts = { parts, lists: 0 };
+  const completed: Record<number, number> = {};
+  const counts = { parts, completed, lists: 0 };
   page.on("request", (request) => {
     if (!request.url().includes("/studio/api/e2e-storage-mock/")) return;
     const url = new URL(request.url());
@@ -69,6 +71,13 @@ function countRequests(page: Page) {
       parts[Number(partNumber)] = (parts[Number(partNumber)] ?? 0) + 1;
     }
     if (request.method() === "GET" && url.searchParams.has("uploadId")) counts.lists += 1;
+  });
+  page.on("response", (response) => {
+    if (!response.url().includes("/studio/api/e2e-storage-mock/")) return;
+    const partNumber = new URL(response.url()).searchParams.get("partNumber");
+    if (response.request().method() === "PUT" && partNumber && response.status() === 200) {
+      completed[Number(partNumber)] = (completed[Number(partNumber)] ?? 0) + 1;
+    }
   });
   return counts;
 }
@@ -228,8 +237,10 @@ test.describe("multipart upload", () => {
     await page.getByRole("button", { name: "Upload" }).click();
     await arrived;
     const before = await readResume(page);
-    await page.unrouteAll({ behavior: "ignoreErrors" });
+    // Reload while part 3 is still held: the reload drops it. Unrouting first
+    // would let it through, and the old page could send part 4 before it goes.
     await page.reload();
+    await page.unrouteAll({ behavior: "ignoreErrors" });
 
     await expect(page.getByTestId("upload-stopped")).toContainText(CLIP_NAME);
     const listsBefore = counts.lists;
@@ -239,10 +250,13 @@ test.describe("multipart upload", () => {
     const reelId = reelIdFrom(page);
 
     expect(reelId).toBe(before.reelId);
+    // Parts 1 and 2 counted as sent: the resume must never send them again.
+    // Parts 3 and 4 as completed: Uppy's request layer re-sends a request that
+    // drops or gets a 5xx without reporting an error.
     expect(counts.parts[1]).toBe(1);
     expect(counts.parts[2]).toBe(1);
-    expect(counts.parts[3]).toBeGreaterThanOrEqual(1);
-    expect(counts.parts[4]).toBe(1);
+    expect(counts.completed[3]).toBe(1);
+    expect(counts.completed[4]).toBe(1);
     expect(counts.lists - listsBefore).toBeGreaterThanOrEqual(1);
     await expectUploaded(reelId);
     await expectUploadedEventOnce(events, reelId);
