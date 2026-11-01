@@ -607,7 +607,7 @@ Execute every command to validate the feature works correctly with zero regressi
 - `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e`: the landing suite, then the studio
   suite with `upload.spec.ts` (version 2 and the decide line) and `preview.spec.ts` (golden still
   matches), against the server `/prepare_app` started.
-- `grep -rn $'—' app_docs docs apps/worker/src packages/edit/src specs/issue-33-adw-b632a861-sdlc_planner-ai-decide-step.md supabase/migrations`:
+- `grep -rn $'\u2014' app_docs docs apps/worker/src packages/edit/src specs/issue-33-adw-b632a861-sdlc_planner-ai-decide-step.md supabase/migrations`:
   must print nothing (no em-dashes).
 
 ## Notes

@@ -167,14 +167,19 @@ function scriptFrom(path: string): unknown[] {
   } catch (error) {
     throw new Error(`E2E_MOCK_AI_SCRIPT ${path} is not JSON: ${(error as Error).message}`);
   }
-  if (!Array.isArray(script) || script.length === 0) {
-    throw new Error(`E2E_MOCK_AI_SCRIPT ${path} must be a non-empty JSON array`);
+  const refusal = `E2E_MOCK_AI_SCRIPT ${path} must be a non-empty JSON array or one result envelope`;
+  if (Array.isArray(script)) {
+    if (script.length === 0) throw new Error(refusal);
+    return script;
   }
-  return script;
+  if (script !== null && typeof script === "object") return [script];
+  throw new Error(refusal);
 }
 
 // The double only when E2E_MOCK_AI is exactly "true" (its script from
-// E2E_MOCK_AI_SCRIPT, else the doctor's `{ ok: true }`); otherwise Claude Code.
+// E2E_MOCK_AI_SCRIPT, a JSON array of answers replayed in order with the last
+// repeating, or one envelope object used for every call; else the doctor's
+// `{ ok: true }`); otherwise Claude Code.
 export function aiRunner(env: Env = process.env): AiRunner {
   if (env.E2E_MOCK_AI === "true") {
     const path = env.E2E_MOCK_AI_SCRIPT?.trim();

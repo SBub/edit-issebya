@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { aiRunner, fakeAiRunner, parseClaudeResult, resultEnvelope } from "./ai.ts";
 import type { Tool } from "./step-runner.ts";
@@ -82,10 +83,49 @@ describe("aiRunner", () => {
     expect(results[2]).toMatchObject({ answer: { n: 2 } });
   });
 
-  it("throws on a missing or malformed script file", () => {
+  it("loads the committed decide answer, one envelope, as a one-entry script", async () => {
+    const path = fileURLToPath(
+      new URL("./decide/testdata/short-speech-answer.json", import.meta.url),
+    );
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed answer
+    const envelope = JSON.parse(readFileSync(path, "utf8")) as { structured_output: unknown };
+    const runner = aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: path });
+    for (let i = 0; i < 2; i += 1) {
+      expect(await runner.call(NEVER, REQUEST)).toMatchObject({
+        kind: "answer",
+        answer: envelope.structured_output,
+        usage: {
+          inputTokens: 1500,
+          outputTokens: 456,
+          costUsd: 0.0123,
+          model: "claude-opus-5-5",
+        },
+      });
+    }
+  });
+
+  it("throws on a missing or malformed script file", async () => {
     expect(() =>
       aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: join(dir, "missing.json") }),
     ).toThrow(/E2E_MOCK_AI_SCRIPT .* cannot be read/);
+    for (const [name, text, message] of [
+      [
+        "empty.json",
+        "[]",
+        /E2E_MOCK_AI_SCRIPT .* must be a non-empty JSON array or one result envelope/,
+      ],
+      [
+        "string.json",
+        '"text"',
+        /E2E_MOCK_AI_SCRIPT .* must be a non-empty JSON array or one result envelope/,
+      ],
+      ["broken.json", "not json", /E2E_MOCK_AI_SCRIPT .* is not JSON/],
+    ] as const) {
+      const path = join(dir, name);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
+      await writeFile(path, text);
+      expect(() => aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: path })).toThrow(message);
+    }
   });
 });
 
