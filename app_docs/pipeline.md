@@ -36,6 +36,8 @@ live status shows one line per step (`name: summary`).
   `<WORKER_SCRATCH_DIR>/job-<job id>/`, runs the step as one measured row, and uploads each missing
   output with put-if-absent, so a stored output is never replaced. The job folder is removed at the
   end; after a lost lease nothing more is written. A source with no ETag fails the job.
+  `PipelineRun.setReelStatus` (default `true`) set to `false` never calls `steps.reelStatus`: the
+  export's `runRender` uses it, so a render leaves the reel `processed` (`app_docs/export.md`).
 - `apps/worker/src/pipeline/convert.ts`, `probe.ts`: ffprobe, then one ffmpeg encode: H.264 (crf 18,
   medium), constant 30 fps, a keyframe every 1 s, AAC audio copied when it already is AAC (else
   encoded at 256k), `+faststart`. HDR footage (`smpte2084` or `arib-std-b67`) is tone-mapped to SDR

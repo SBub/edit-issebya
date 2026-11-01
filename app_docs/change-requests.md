@@ -26,7 +26,8 @@ restore job for own reel`: own reel, status `queued`, and for a restore a versio
   without the request text.
 - `apps/studio/src/lib/change-requests.ts`: `normalizeRequest` (trim, 1 to 1000 characters),
   `changeBlockedReason` (the interim ordering rule: the reel must be `processed` and no job `queued`
-  or `running`), `versionOrigin` and `jobRequestLabel` (the text shown beside a version or a job).
+  or `running`), `versionOrigin` and `jobRequestLabel` (the text shown beside a version or a job; a
+  render job reads `export of vN`, or `export` when the version is unknown).
 - `apps/studio/src/components/ChangeRequestForm.tsx`: the change box above the versions list. Disabled
   with the blocked reason beside it; after sending it shows `Pending: <request>` until the job ends.
 - `apps/studio/src/components/VersionList.tsx`: every version, newest first, the current one marked,
@@ -75,7 +76,8 @@ specs, see `app_docs/decide-step.md`).
 ## Notes
 
 - The one-job-at-a-time rule is interim and checked in the page and the server action only; jobs are
-  not yet ordered in the database.
+  not yet ordered in the database. It counts every job, so a queued or running render also holds a
+  change or going back, while the Export button follows only its own rule (`app_docs/export.md`).
 - A change that decides on no edit still saves nothing new; see `app_docs/decide-step.md`.
 - Touches `app_docs/studio.md` (jobs kinds, policies), `app_docs/decide-step.md` (the request path),
   `app_docs/measurement.md` (the `studio_change_requested` event) and `app_docs/edit-model.md`

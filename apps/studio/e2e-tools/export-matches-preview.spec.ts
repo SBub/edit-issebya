@@ -23,7 +23,10 @@ import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 // moments and compared with ffmpeg's SSIM; a caption moved by 60 px must fall
 // below the bound, so the comparison is proven sensitive. Real HyperFrames
 // through the worker's `once`: the owner's Mac only, never CI.
-const PREVIEW_EXPORT_SSIM_BOUND = 0.95;
+// The bound started at 0.95 and was raised with measured evidence (never below 0.9): the guardrail
+// scored 0.995673, 0.995609 and 0.997499 at 0.5, 1.5 and 2.5 s; the 60 px probe scored 0.995673,
+// 0.982028 and 0.994654. 0.99 sits between the probe minimum and the guardrail minimum.
+const PREVIEW_EXPORT_SSIM_BOUND = 0.99;
 const MOMENTS = [0.5, 1.5, 2.5];
 const PROBE_MOMENT = 1.5;
 const PROBE_SHIFT_PX = 60;
