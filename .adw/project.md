@@ -145,7 +145,8 @@ as in Build; and last the E2E suites `yarn test:e2e`.
 
 The unit layer is `apps/web/src/**/*.test.ts` for pure helpers in `apps/web/src/lib/`, and
 `apps/studio/src/**/*.test.ts` and `apps/studio/test-support/**/*.test.ts` for the studio's helpers
-and the local-URL guard, `apps/worker/src/**/*.test.ts` for the worker's modules (the step
+and the local-URL guard (plus `apps/studio/test-support/migration-versions.test.ts`, the migration version
+guard over `supabase/migrations/`), `apps/worker/src/**/*.test.ts` for the worker's modules (the step
 runner's tests spawn real child processes under `/usr/bin/time`, BSD on macOS, GNU on Linux) and
 `packages/storage/src/**/*.test.ts` for the storage package. The DB layer is `apps/studio/db-tests/**/*.test.ts`
 (`apps/studio/vitest.db.config.ts`: RLS on every public table, owner isolation, Realtime follows
@@ -221,7 +222,9 @@ on every pull request and push to `develop` and `master`.
   `127.0.0.1` and `localhost`).
 - A new migration is created with `supabase migration new <name>`, which stamps the current UTC
   time. Never hand-pick, copy or future-date a version, never reuse one, never edit an applied
-  migration.
+  migration. `apps/studio/test-support/migration-versions.test.ts` (the migration version guard, run by
+  `yarn test`, the pre-push hook and CI) fails on a version more than 10 minutes in the future or a
+  version two files share.
 - `SUPABASE_SECRET_KEY` and the R2 worker keys (`R2_WORKER_ACCESS_KEY_ID`,
   `R2_WORKER_SECRET_ACCESS_KEY`) never appear in `apps/web` or in `apps/studio`'s app code
   (`src/`); only `apps/worker` and the test helpers under `apps/studio/test-support/` read them.

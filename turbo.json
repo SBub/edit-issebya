@@ -115,6 +115,10 @@
         "NEXT_PUBLIC_SUPABASE_*"
       ]
     },
+    "@edit-issebya/studio#test": {
+      "outputs": [],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/supabase/migrations/**"]
+    },
     "@edit-issebya/studio#test:e2e": {
       "cache": false,
       "dependsOn": ["@edit-issebya/web#test:e2e"],

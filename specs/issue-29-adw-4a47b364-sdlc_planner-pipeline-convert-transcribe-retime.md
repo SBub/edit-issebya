@@ -151,7 +151,7 @@ Use these files to implement the feature:
 
 ### New Files
 
-- `supabase/migrations/20261102090000_pipeline_steps.sql`: `cache_hit`, `skipped`, new reel
+- `supabase/migrations/20261101100000_pipeline_steps.sql`: `cache_hit`, `skipped`, new reel
   statuses.
 - `apps/studio/db-tests/pipeline-statuses.test.ts`: the new statuses are accepted, an unknown one
   rejected, `cache_hit` defaults to false.
@@ -230,7 +230,7 @@ IMPORTANT: Execute every step in order, top to bottom.
 
 ### 2. Migration
 
-- Create `supabase/migrations/20261102090000_pipeline_steps.sql`:
+- Create `supabase/migrations/20261101100000_pipeline_steps.sql`:
   - `alter table public.steps add column cache_hit boolean not null default false;`
   - `alter table public.steps drop constraint steps_status_check, add constraint steps_status_check
 check (status in ('running', 'done', 'failed', 'skipped'));`

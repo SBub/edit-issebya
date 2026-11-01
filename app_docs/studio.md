@@ -4,6 +4,7 @@
 
 - specs/issue-27-adw-c95d56bf-sdlc_planner-studio-zone-login-reels-list.md
 - specs/issue-43-adw-eff3346d-sdlc_planner-reel-upload-job-queue-worker.md
+- specs/issue-65-adw-65eeae69-sdlc_planner-rename-future-dated-migration-guard.md
 
 ## Overview
 
@@ -164,7 +165,10 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 ## Testing
 
 - Unit: `apps/studio/src/lib/*.test.ts`, the storage mock route test,
-  `apps/studio/test-support/local-supabase.test.ts`, `apps/web/src/lib/studio-rewrites.test.ts`,
+  `apps/studio/test-support/local-supabase.test.ts`,
+  `apps/studio/test-support/migration-versions.test.ts` (the migration version guard: fails on a version
+  more than 10 minutes in the future, a version two files share or a malformed prefix; turbo
+  re-runs it when `supabase/migrations/` changes), `apps/web/src/lib/studio-rewrites.test.ts`,
   `apps/worker/src/**/*.test.ts` and `packages/storage/src/**/*.test.ts` (`yarn test`).
 - DB integration: `apps/studio/db-tests/` (`yarn test:db`): RLS on every public table, owner
   isolation, the upload path and `finish_upload`, `claim_job`'s lease (`jobs.test.ts`), Realtime
@@ -200,6 +204,7 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 - Do not select `*` from `reels`; name the columns.
 - Do not change `assetPrefix` on one side only: it must equal `STUDIO_ASSET_PREFIX`.
 - Do not return an absolute `Location` from the confirm route.
+- Never future-date or reuse a migration version; `migration-versions.test.ts` enforces it.
 
 ## Notes
 
