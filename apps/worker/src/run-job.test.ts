@@ -2,7 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import type { ClaimedJob } from "./queue.ts";
 import { runJob } from "./run-job.ts";
 
-const JOB: ClaimedJob = { id: "j1", reel_id: "r1", owner_id: "o1", kind: "process", attempts: 1 };
+const JOB: ClaimedJob = {
+  id: "j1",
+  reel_id: "r1",
+  owner_id: "o1",
+  kind: "process",
+  attempts: 1,
+  request: null,
+  restore_version_id: null,
+};
 
 function deps(work: (signal: AbortSignal) => Promise<void>) {
   return {

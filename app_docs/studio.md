@@ -82,10 +82,17 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 
 ### Jobs, steps and the lease
 
-- `supabase/migrations/20261031174750_job_queue.sql`: tables `jobs` (kind `process`, status
+- `supabase/migrations/20261031174750_job_queue.sql`: tables `jobs` (starting with kind `process`, status
   `queued | running | done | failed`, lease holder and expiry, attempts, error tail) and `steps`
   (name, status, summary, error tail), both with owner-only `select` RLS and in the
   `supabase_realtime` publication. Only the worker (secret key) writes job and step state.
+- `supabase/migrations/20261101184843_change_restore_jobs.sql`: `jobs` now has three kinds,
+  `process`, `change` (carries the owner's words in `request`, 1 to 1000 trimmed characters) and
+  `restore` (names an earlier version of the same reel in `restore_version_id`). Owners insert jobs
+  on two paths: the `process` policy (`jobs: owner inserts a process job for own reel`; an upload
+  queues its process job through `finish_upload`) and `jobs: owner inserts a change or restore job
+for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `restore_version_id`);
+  status, lease, attempt and error columns stay the worker's. See `app_docs/change-requests.md`.
 - `claim_job(p_worker, p_lease_seconds)`: one statement picks the oldest `queued` job, or a
   `running` one whose lease expired, with `for update skip locked`, then takes the lease and counts
   an attempt. Only `service_role` may execute it. There is no retry limit yet.

@@ -7,6 +7,10 @@ export interface ClaimedJob {
   owner_id: string;
   kind: string;
   attempts: number;
+  // A `change` job's request (null for every other kind).
+  request: string | null;
+  // The version a `restore` job goes back to (null for every other kind).
+  restore_version_id: string | null;
 }
 
 type QueueConfig = Pick<WorkerConfig, "workerId" | "leaseSeconds">;
@@ -62,7 +66,12 @@ async function endJob(
   db: SupabaseClient,
   config: QueueConfig,
   job: ClaimedJob,
-  outcome: { job: "done" | "failed"; reel: "processed" | "failed"; errorTail: string | null },
+  // null: the reel's status stays as it is (a change or restore job).
+  outcome: {
+    job: "done" | "failed";
+    reel: "processed" | "failed" | null;
+    errorTail: string | null;
+  },
 ): Promise<boolean> {
   const { data, error } = await db
     .from("jobs")
@@ -79,13 +88,25 @@ async function endJob(
   if (error) throw new Error(`job not ended: ${error.message}`);
   // Another worker holds the lease now: leave the reel to it.
   if ((data ?? []).length !== 1) return false;
+  if (outcome.reel === null) return true;
   const reel = await db.from("reels").update({ status: outcome.reel }).eq("id", job.reel_id);
   if (reel.error) throw new Error(`reel not updated: ${reel.error.message}`);
   return true;
 }
 
+// Only a `process` job moves the reel's status. A change or restore job runs
+// on a processed reel and leaves it processed whatever happens: a failed
+// change keeps the reel usable and its current version untouched.
+function reelStatusAfter(job: ClaimedJob, status: "processed" | "failed") {
+  return job.kind === "process" ? status : null;
+}
+
 export function finishJob(db: SupabaseClient, config: QueueConfig, job: ClaimedJob) {
-  return endJob(db, config, job, { job: "done", reel: "processed", errorTail: null });
+  return endJob(db, config, job, {
+    job: "done",
+    reel: reelStatusAfter(job, "processed"),
+    errorTail: null,
+  });
 }
 
 export function failJob(
@@ -94,5 +115,9 @@ export function failJob(
   job: ClaimedJob,
   errorTail: string,
 ) {
-  return endJob(db, config, job, { job: "failed", reel: "failed", errorTail });
+  return endJob(db, config, job, {
+    job: "failed",
+    reel: reelStatusAfter(job, "failed"),
+    errorTail,
+  });
 }
