@@ -1,4 +1,4 @@
-import { isPartNumber, isStorageKey, isUploadId } from "@edit-issebya/storage";
+import { isPartNumber, isStorageKey, isUploadId } from "@edit-issebya/storage/keys";
 
 // The studio's own limit (1 GiB): the browser refuses a larger file before
 // anything is created. R2's multipart limit is far above it.

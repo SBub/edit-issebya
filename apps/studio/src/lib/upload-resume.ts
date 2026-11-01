@@ -1,4 +1,4 @@
-import { isStorageKey, isUploadId } from "@edit-issebya/storage";
+import { isStorageKey, isUploadId } from "@edit-issebya/storage/keys";
 import { isReelId } from "./reels";
 
 /**

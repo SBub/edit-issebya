@@ -99,9 +99,11 @@ function progressValues(page: Page): Promise<string[]> {
   );
 }
 
-// Holds the first request for this part number (never answered) and resolves
-// once it arrives; every other request goes through.
-async function holdPart(page: Page, partNumber: number): Promise<Promise<void>> {
+// Holds the first request for this part number (never answered); `arrived`
+// resolves once it comes in, every other request goes through. Wrapped in an
+// object: an async function returning the bare promise would adopt it, and
+// awaiting holdPart would then wait for a part the test has not sent yet.
+async function holdPart(page: Page, partNumber: number): Promise<{ arrived: Promise<void> }> {
   let reached: () => void = () => undefined;
   const arrived = new Promise<void>((resolve) => {
     reached = resolve;
@@ -120,7 +122,7 @@ async function holdPart(page: Page, partNumber: number): Promise<Promise<void>> 
     }
     await route.continue();
   });
-  return arrived;
+  return { arrived };
 }
 
 async function readResume(page: Page): Promise<{ reelId: string; key: string; uploadId: string }> {
@@ -220,7 +222,7 @@ test.describe("multipart upload", () => {
     const events = await recordEvents(page);
     const counts = countRequests(page);
     const owner = await signIn(page, baseURL);
-    const arrived = await holdPart(page, 3);
+    const { arrived } = await holdPart(page, 3);
 
     await page.getByLabel("Clip").setInputFiles(clipPath);
     await page.getByRole("button", { name: "Upload" }).click();
@@ -253,7 +255,7 @@ test.describe("multipart upload", () => {
   test("Cancel marks the reel failed", async ({ page, baseURL }) => {
     const counts = countRequests(page);
     await signIn(page, baseURL);
-    const arrived = await holdPart(page, 2);
+    const { arrived } = await holdPart(page, 2);
 
     await page.getByLabel("Clip").setInputFiles(clipPath);
     await page.getByRole("button", { name: "Upload" }).click();
