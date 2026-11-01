@@ -93,6 +93,8 @@ async function pickAndUpload(page: Page) {
 }
 
 // The owner's newest reel that is still uploading, once its upload exists.
+// A reel an earlier spec already claimed (Ownership leaves one uploading) is
+// skipped, so a spec never picks it up before its own create lands.
 async function uploadingReel(ownerId: string) {
   let row: { id: string; source_key: string; source_upload_id: string } | null = null;
   await expect
@@ -102,9 +104,12 @@ async function uploadingReel(ownerId: string) {
         .select("id, source_key, source_upload_id")
         .eq("owner_id", ownerId)
         .eq("status", "uploading")
-        .order("created_at", { ascending: false })
-        .limit(1);
-      row = (data?.[0] as typeof row) ?? null;
+        .order("created_at", { ascending: false });
+      const claimed = new Set(uploads.map((upload) => upload.uploadId));
+      row =
+        (data as (typeof row)[] | null)?.find(
+          (candidate) => candidate && !claimed.has(candidate.source_upload_id),
+        ) ?? null;
       return row?.source_upload_id ?? null;
     })
     .not.toBeNull();
