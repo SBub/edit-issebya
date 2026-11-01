@@ -139,7 +139,8 @@ the gitignored `next-env.d.ts`, never stage it); dead code `yarn knip` (whole re
 `knip.json` with a workspace per package); format `yarn format:check` (whole repository; write
 `yarn format`); unit `yarn turbo run test <filter>` (vitest, database-free); for a run targeting
 the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (real ffmpeg and
-HyperFrames on the committed clip; on the owner's Mac only, never in CI); DB integration
+HyperFrames on the committed clips (`short-speech.mp4`, `short-person.mp4`); on the owner's Mac
+only, never in CI); DB integration
 `yarn turbo run test:db --filter=./apps/studio` (after unit; needs the ADW stack from the hook); build
 as in Build; and last the E2E suites `yarn test:e2e`.
 

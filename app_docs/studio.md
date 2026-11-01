@@ -51,7 +51,11 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 - `supabase/migrations/20261031105245_studio_skeleton.sql`: table `public.reels` (owner, status
   `uploading | uploaded | received | failed`, source key, bytes, name, timestamps), an
   `updated_at` trigger, RLS with one `select` policy for the owner, `anon` revoked, and
-  `authenticated` limited to `select`. The table is in the `supabase_realtime` publication.
+  `authenticated` limited to `select`. The table is in the `supabase_realtime` publication. Later
+  migrations widen the status check; the current set (`REEL_STATUSES` in
+  `apps/studio/src/lib/reels.ts`) is `uploading`, `uploaded`, `received`, `converting`,
+  `transcribing`, `retiming`, `removing_background`, `tracking_head`, `making_previews`,
+  `processed`, `failed`.
 - `apps/studio/src/app/page.tsx`: signed out shows `LoginForm`; signed in shows `ReelList`,
   newest first, with `UploadForm` above it. No owner filter in the query: RLS alone scopes the
   rows, so a missing policy is never masked.
