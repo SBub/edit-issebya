@@ -22,21 +22,40 @@ export interface StepContext {
   signal: AbortSignal;
 }
 
-export interface ChildStep {
-  name: string;
+// One tool call: a child process.
+export interface ToolCall {
   file: string;
   args: string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  // Also sample the memory of the whole process tree every second (render).
+  sampleGroupMemory?: boolean;
+}
+
+export interface ChildStep extends ToolCall {
+  name: string;
   // Files the tool reads and writes; their sizes are bytes_in and bytes_out.
   inputs?: string[];
   outputs?: string[];
-  // Also sample the memory of the whole process tree every second (render).
-  sampleGroupMemory?: boolean;
   // The summary's first part on success, e.g. `background removed`.
   describe: string;
   // Which size the summary names; "out" falls back to in when nothing is written.
   sizeOf?: "out" | "in";
+}
+
+// Runs one tool call and resolves with its stdout; a non-zero exit throws.
+export type Tool = (call: ToolCall) => Promise<string>;
+
+// A step made of several tool calls (ffprobe, then ffmpeg, say), measured as
+// one row: CPU summed over the calls, peak memory the largest of them.
+export interface ToolsStep {
+  name: string;
+  // Local files the step reads and writes, measured after `work` (inputs may
+  // be downloaded inside it).
+  inputs?: string[];
+  outputs?: string[];
+  sizeOf?: "out" | "in";
+  work: (tool: Tool) => Promise<{ what: string }>;
 }
 
 const OUTPUT_CAP = 64 * 1024;
@@ -115,6 +134,33 @@ async function withStep(
   }
 }
 
+// A step whose outputs are already stored (a cache hit): one `skipped` row
+// with cache_hit, and its span. Nothing is spawned, read or written.
+export async function recordHit(
+  ctx: StepContext,
+  { name, summary, wallMs }: { name: string; summary: string; wallMs: number },
+): Promise<void> {
+  ctx.signal.throwIfAborted();
+  const span = ctx.telemetry.tracer.startSpan(
+    `step ${name}`,
+    {
+      attributes: {
+        "reel.id": ctx.job.reel_id,
+        "job.id": ctx.job.id,
+        "step.name": name,
+        "step.cache_hit": true,
+        "step.wall_ms": wallMs,
+      },
+    },
+    ctx.jobContext,
+  );
+  try {
+    await ctx.steps.skipped(ctx.job, name, summary, wallMs);
+  } finally {
+    span.end();
+  }
+}
+
 // Work that stays in the worker's own process (an HTTP call, a row read):
 // wall time only, the other measurements null.
 export function runInProcessStep(
@@ -147,20 +193,31 @@ function eachLine(stream: Readable, onLine: (line: string) => void): void {
   createInterface({ input: stream, crlfDelay: Infinity }).on("line", onLine);
 }
 
-interface ChildRun {
+export interface ChildRun {
   code: number | null;
   exitSignal: NodeJS.Signals | null;
+  // `/usr/bin/time`'s report.
   report: string;
+  // stdout and stderr lines as they came, capped to the last 64 KB.
   output: string;
+  // stdout alone (a tool's JSON answer), capped the same way.
+  stdout: string;
   groupPeakBytes: number | null;
 }
 
-// Spawns the tool under `/usr/bin/time` in its own process group.
-function runChild(
-  spec: ChildStep,
+// How a tool call becomes a child process; tests pass a fake.
+export type SpawnTool = (
+  spec: ToolCall,
   signal: AbortSignal,
   log: (line: string, stream: StepStream) => void,
-): Promise<ChildRun> {
+) => Promise<ChildRun>;
+
+function capped(text: string): string {
+  return text.length > OUTPUT_CAP ? text.slice(-OUTPUT_CAP) : text;
+}
+
+// Spawns the tool under `/usr/bin/time` in its own process group.
+const runChild: SpawnTool = (spec, signal, log) => {
   const [timeBin, timeFlag] = timeCommand(process.platform);
   return new Promise((resolve, reject) => {
     const child = spawn(timeBin, [timeFlag, "/bin/sh", "-c", WRAPPER, spec.file, ...spec.args], {
@@ -170,6 +227,7 @@ function runChild(
       detached: true,
     });
     let output = "";
+    let stdout = "";
     let report = "";
     let groupPeakBytes: number | null = null;
     let sampling: Promise<void> = Promise.resolve();
@@ -178,10 +236,12 @@ function runChild(
 
     const keep = (line: string, stream: StepStream) => {
       log(line, stream);
-      output += `${line}\n`;
-      if (output.length > OUTPUT_CAP) output = output.slice(-OUTPUT_CAP);
+      output = capped(`${output}${line}\n`);
     };
-    eachLine(child.stdout!, (line) => keep(line, "stdout"));
+    eachLine(child.stdout!, (line) => {
+      stdout = capped(`${stdout}${line}\n`);
+      keep(line, "stdout");
+    });
     eachLine(child.stdio[3] as Readable, (line) => keep(line, "stderr"));
     child.stderr!.on("data", (chunk: Buffer) => (report += chunk.toString()));
 
@@ -226,47 +286,95 @@ function runChild(
     });
     child.on("close", (code, exitSignal) => {
       cleanUp();
-      void sampling.then(() => resolve({ code, exitSignal, report, output, groupPeakBytes }));
+      void sampling.then(() =>
+        resolve({ code, exitSignal, report, output, stdout, groupPeakBytes }),
+      );
     });
+  });
+};
+
+// Several tool calls as one step row. Each call runs as its own child process,
+// measured by the operating system; the row has the wall time of the whole
+// step, CPU (user + sys) summed over the calls (null when none reported), the
+// largest peak RSS, and the sizes of the declared files. Output lines go to the
+// OTel logger; a failed call's tail goes to the row and the thrown error, with
+// the measurements gathered so far.
+export function runToolsStep(
+  ctx: StepContext,
+  spec: ToolsStep,
+  spawnTool: SpawnTool = runChild,
+): Promise<void> {
+  return withStep(ctx, spec.name, async (stepContext, started) => {
+    const log = stepLogger(ctx.telemetry, stepContext, {
+      "reel.id": ctx.job.reel_id,
+      "job.id": ctx.job.id,
+      "step.name": spec.name,
+    });
+    let cpuMs: number | null = null;
+    let peakRssBytes: number | null = null;
+
+    const measure = async (): Promise<StepMeasurements> => ({
+      wall_ms: elapsedMs(started),
+      cpu_ms: cpuMs,
+      peak_rss_bytes: peakRssBytes,
+      bytes_in: await totalSize(spec.inputs),
+      bytes_out: await totalSize(spec.outputs),
+    });
+
+    const tool: Tool = async (call) => {
+      const run = await spawnTool(call, ctx.signal, log);
+      ctx.signal.throwIfAborted();
+      const toolStarted = run.code === null || !NOT_STARTED.has(run.code);
+      const report = toolStarted ? parseTimeReport(process.platform, run.report) : null;
+      if (report) cpuMs = (cpuMs ?? 0) + report.cpuMs;
+      for (const peak of [report?.peakRssBytes, toolStarted ? run.groupPeakBytes : null]) {
+        if (typeof peak === "number") peakRssBytes = Math.max(peakRssBytes ?? 0, peak);
+      }
+      if (run.code === 0) return run.stdout;
+      const tail = outputTail(run.output);
+      const how = run.code ?? run.exitSignal ?? "unknown";
+      // Measured here: the wall time ends at the failing call.
+      throw new StepFailure(`${spec.name} exited with ${how}\n${tail}`, tail, await measure());
+    };
+
+    let what: string;
+    try {
+      ({ what } = await spec.work(tool));
+    } catch (error) {
+      if (error instanceof StepFailure || ctx.signal.aborted) throw error;
+      // A failure between calls (a download, a parse) keeps what was measured.
+      const failure = new StepFailure(
+        error instanceof Error ? error.message : String(error),
+        outputTail(errorTail(error)),
+        await measure(),
+      );
+      failure.cause = error;
+      throw failure;
+    }
+    const wallMs = elapsedMs(started);
+    const measurements = { ...(await measure()), wall_ms: wallMs };
+    const sizeBytes =
+      spec.sizeOf === "in"
+        ? measurements.bytes_in
+        : (measurements.bytes_out ?? measurements.bytes_in);
+    return { summary: stepSummary({ what, wallMs, sizeBytes }), measurements };
   });
 }
 
 // A tool run as its own child process, measured by the operating system:
 // wall time, CPU (user + sys), peak RSS, and the sizes of the files it read
 // and wrote. Its output lines go to the OTel logger; on failure the tail goes
-// to the row and the thrown error.
+// to the row and the thrown error. One call of runToolsStep.
 export function runStep(ctx: StepContext, spec: ChildStep): Promise<void> {
-  return withStep(ctx, spec.name, async (stepContext, started) => {
-    const bytesIn = await totalSize(spec.inputs);
-    const log = stepLogger(ctx.telemetry, stepContext, {
-      "reel.id": ctx.job.reel_id,
-      "job.id": ctx.job.id,
-      "step.name": spec.name,
-    });
-    const run = await runChild(spec, ctx.signal, log);
-    const wallMs = elapsedMs(started);
-    ctx.signal.throwIfAborted();
-
-    const toolStarted = run.code === null || !NOT_STARTED.has(run.code);
-    const report = toolStarted ? parseTimeReport(process.platform, run.report) : null;
-    const peaks = [report?.peakRssBytes, toolStarted ? run.groupPeakBytes : null].filter(
-      (value): value is number => typeof value === "number",
-    );
-    const bytesOut = await totalSize(spec.outputs);
-    const measurements: StepMeasurements = {
-      wall_ms: wallMs,
-      cpu_ms: report?.cpuMs ?? null,
-      peak_rss_bytes: peaks.length > 0 ? Math.max(...peaks) : null,
-      bytes_in: bytesIn,
-      bytes_out: bytesOut,
-    };
-
-    if (run.code === 0) {
-      const sizeBytes = spec.sizeOf === "in" ? bytesIn : (bytesOut ?? bytesIn);
-      return { summary: stepSummary({ what: spec.describe, wallMs, sizeBytes }), measurements };
-    }
-    const tail = outputTail(run.output);
-    const how = run.code ?? run.exitSignal ?? "unknown";
-    throw new StepFailure(`${spec.name} exited with ${how}\n${tail}`, tail, measurements);
+  const { name, inputs, outputs, sizeOf, describe, ...call } = spec;
+  return runToolsStep(ctx, {
+    name,
+    inputs,
+    outputs,
+    sizeOf,
+    async work(tool) {
+      await tool(call);
+      return { what: describe };
+    },
   });
 }

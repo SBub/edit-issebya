@@ -3,7 +3,19 @@
 export const REEL_COLUMNS = "id, status, source_name, created_at";
 export const REEL_DETAIL_COLUMNS = "id, status, source_name, source_bytes, created_at, updated_at";
 
-export const REEL_STATUSES = ["uploading", "uploaded", "received", "failed"] as const;
+export const REEL_STATUSES = [
+  "uploading",
+  "uploaded",
+  "received",
+  "converting",
+  "transcribing",
+  "retiming",
+  "removing_background",
+  "tracking_head",
+  "making_previews",
+  "processed",
+  "failed",
+] as const;
 export type ReelStatus = (typeof REEL_STATUSES)[number];
 
 export interface ReelSummary {

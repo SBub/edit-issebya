@@ -8,7 +8,7 @@ export const STEP_COLUMNS =
 export const JOB_STATUSES = ["queued", "running", "done", "failed"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
-export const STEP_STATUSES = ["running", "done", "failed"] as const;
+export const STEP_STATUSES = ["running", "done", "failed", "skipped"] as const;
 export type StepStatus = (typeof STEP_STATUSES)[number];
 
 export interface JobRow {
