@@ -19,6 +19,7 @@ describe("workerConfig", () => {
       renewEveryMs: 60_000,
       minFreeDiskGb: 10,
       scratchDir: tmpdir(),
+      keyPrefix: "",
     });
   });
 
@@ -28,7 +29,9 @@ describe("workerConfig", () => {
       WORKER_POLL_INTERVAL_SECONDS: "30",
       WORKER_MIN_FREE_DISK_GB: "2.5",
       WORKER_SCRATCH_DIR: "/scratch",
+      R2_KEY_PREFIX: " dev/ ",
     });
+    expect(config.keyPrefix).toBe("dev/");
     expect(config.pollIntervalSeconds).toBe(30);
     expect(config.minFreeDiskGb).toBe(2.5);
     expect(config.scratchDir).toBe("/scratch");
@@ -37,6 +40,12 @@ describe("workerConfig", () => {
   it("names every missing variable in one message", () => {
     expect(() => workerConfig({})).toThrow(/SUPABASE_URL, SUPABASE_SECRET_KEY, WORKER_ID/);
     expect(() => workerConfig({ ...BASE, WORKER_ID: " " })).toThrow(/missing WORKER_ID/);
+  });
+
+  it("refuses a malformed key prefix, naming R2_KEY_PREFIX", () => {
+    for (const value of ["dev", "/dev/", "Dev/"]) {
+      expect(() => workerConfig({ ...BASE, R2_KEY_PREFIX: value })).toThrow(/R2_KEY_PREFIX/);
+    }
   });
 
   it("refuses a poll interval that is not a positive integer", () => {

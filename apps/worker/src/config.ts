@@ -1,4 +1,5 @@
 import { tmpdir } from "node:os";
+import { keyPrefix } from "@edit-issebya/storage";
 
 type Env = Record<string, string | undefined>;
 
@@ -11,6 +12,8 @@ export interface WorkerConfig {
   renewEveryMs: number;
   minFreeDiskGb: number;
   scratchDir: string;
+  // R2_KEY_PREFIX: the folder of this mode's objects (`dev/`), or empty.
+  keyPrefix: string;
 }
 
 function positiveNumber(env: Env, name: string, fallback: number, integer: boolean): number {
@@ -39,6 +42,12 @@ export function workerConfig(env: Env = process.env): WorkerConfig {
   if (missing.length > 0 || !supabaseUrl || !secretKey || !workerId) {
     throw new Error(`worker: missing ${missing.join(", ")} (fill apps/worker/.env.development)`);
   }
+  const prefix = keyPrefix(env);
+  if (prefix === null) {
+    throw new Error(
+      `R2_KEY_PREFIX must be empty or lower-case segments each ending with "/", got ${env.R2_KEY_PREFIX}`,
+    );
+  }
   return {
     supabaseUrl,
     secretKey,
@@ -48,5 +57,6 @@ export function workerConfig(env: Env = process.env): WorkerConfig {
     renewEveryMs: 60_000,
     minFreeDiskGb: positiveNumber(env, "WORKER_MIN_FREE_DISK_GB", 10, false),
     scratchDir: env.WORKER_SCRATCH_DIR?.trim() || tmpdir(),
+    keyPrefix: prefix,
   };
 }

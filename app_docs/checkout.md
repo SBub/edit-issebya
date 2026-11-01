@@ -205,6 +205,11 @@ Unset, or any other value: no tax parameter is sent.
   success URL as its `url`, and captures the raw request body.
 - Under the flag the Stripe client uses `Stripe.createFetchHttpClient()`, so the fetch interceptor
   sees the call. `sk_test_e2e_mock` (`E2E_MOCK_STRIPE_KEY`) stands in when no key is set.
+- Under `next dev`, Turbopack's `resetFetch()` restores the pre-instrumentation global fetch on
+  every server chunk rewrite, which would drop the interceptor mid-run and send mocked calls to
+  the real Stripe and Resend. `keepInterceptedFetch()` in `apps/web/src/instrumentation.ts` turns
+  `globalThis.fetch` into an accessor that puts the intercepted fetch back. Do not remove it while
+  the ADW server runs `yarn dev`.
 - `/api/e2e-stripe-mock`: `GET` returns the captured body (parsed), `POST { keyMissing }` sets the
   missing-key toggle, `DELETE` clears the capture. Every method answers 404 without the flag.
 - The shared state lives on `globalThis` under `Symbol.for` keys (`apps/web/src/lib/e2e-stripe-mock.ts`), so

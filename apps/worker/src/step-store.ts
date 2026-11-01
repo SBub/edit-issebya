@@ -11,10 +11,23 @@ export interface StepMeasurements {
   bytes_out: number | null;
 }
 
+// The reel statuses the pipeline writes (one per step); the job's end writes
+// processed or failed.
+export type PipelineReelStatus =
+  | "converting"
+  | "transcribing"
+  | "retiming"
+  | "removing_background"
+  | "tracking_head"
+  | "making_previews";
+
 // The writes a step makes, behind an interface so steps are tested without a
 // database.
 export interface StepStore {
   start(job: ClaimedJob, name: string): Promise<string>;
+  // A cache hit: one finished row, status skipped, cache_hit true, wall time only.
+  skipped(job: ClaimedJob, name: string, summary: string, wallMs: number): Promise<void>;
+  reelStatus(reelId: string, status: PipelineReelStatus): Promise<void>;
   sourceKey(reelId: string): Promise<string | null>;
   done(stepId: string, summary: string, measurements: StepMeasurements): Promise<void>;
   failed(
@@ -41,6 +54,28 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
         .single();
       if (error || !data) throw new Error(`step not started: ${error?.message}`);
       return (data as { id: string }).id;
+    },
+    async skipped(job, name, summary, wallMs) {
+      const { error } = await db.from("steps").insert({
+        job_id: job.id,
+        reel_id: job.reel_id,
+        owner_id: job.owner_id,
+        name,
+        status: "skipped",
+        cache_hit: true,
+        summary,
+        finished_at: new Date().toISOString(),
+        wall_ms: wallMs,
+        cpu_ms: null,
+        peak_rss_bytes: null,
+        bytes_in: null,
+        bytes_out: null,
+      });
+      if (error) throw new Error(`step not recorded: ${error.message}`);
+    },
+    async reelStatus(reelId, status) {
+      const { error } = await db.from("reels").update({ status }).eq("id", reelId);
+      if (error) throw new Error(`reel not updated: ${error.message}`);
     },
     async sourceKey(reelId) {
       const { data, error } = await db

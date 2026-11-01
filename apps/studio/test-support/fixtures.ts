@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ReelStatus } from "../src/lib/reels.ts";
 import { localSupabaseClient } from "./local-supabase.ts";
 
 // Every test address is on the reserved .test domain: no mail ever leaves.
@@ -18,7 +19,7 @@ export async function deleteTestUser(admin: SupabaseClient, id: string) {
 interface ReelInput {
   ownerId: string;
   name?: string | null;
-  status?: "uploading" | "uploaded" | "received" | "failed";
+  status?: ReelStatus;
   createdAt?: string;
 }
 
