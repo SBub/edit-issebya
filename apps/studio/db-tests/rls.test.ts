@@ -140,6 +140,34 @@ describe("reels RLS", () => {
     expect(await adminRead()).toEqual({ id: reelA, status: "uploaded", source_name: "a.mov" });
   });
 
+  it("lets the owner read preview_copies but never write it", async () => {
+    const refs = {
+      footage: { step: "preview_copies", fingerprint: "a".repeat(64), file: "footage-preview.mp4" },
+      cutout: { step: "preview_copies", fingerprint: "a".repeat(64), file: "subject-preview.webm" },
+    };
+    const set = await admin.from("reels").update({ preview_copies: refs }).eq("id", reelA);
+    expect(set.error).toBeNull();
+
+    const read = await clientA.from("reels").select("preview_copies").eq("id", reelA).single();
+    expect(read.error).toBeNull();
+    expect(read.data).toEqual({ preview_copies: refs });
+
+    const forged = { ...refs, footage: { ...refs.footage, fingerprint: "b".repeat(64) } };
+    await clientA.from("reels").update({ preview_copies: forged }).eq("id", reelA);
+    const after = await admin.from("reels").select("preview_copies").eq("id", reelA).single();
+    expect(after.data).toEqual({ preview_copies: refs });
+
+    const before = await countOwn(userA.id);
+    const id = crypto.randomUUID();
+    const { error } = await clientA
+      .from("reels")
+      .insert({ id, source_name: "x.mov", source_key: keyFor(id), preview_copies: forged });
+    expect(error).not.toBeNull();
+    expect(await countOwn(userA.id)).toBe(before);
+
+    await admin.from("reels").update({ preview_copies: null }).eq("id", reelA);
+  });
+
   it("gives anon nothing", async () => {
     const anon = localSupabaseClient();
     const { data, error } = await anon.from("reels").select("id").eq("id", reelA);

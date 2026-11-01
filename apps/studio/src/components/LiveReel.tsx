@@ -10,6 +10,7 @@ import {
   pickColumns,
   upsertById,
 } from "@/lib/jobs";
+import { ReelPreview } from "@/components/ReelPreview";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, formatBytes, formatCreatedAt } from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
@@ -113,6 +114,8 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
 
   return (
     <div data-realtime={ready ? "ready" : "pending"} className="flex flex-col gap-6">
+      <ReelPreview reelId={reel.id} currentVersionId={reel.current_version_id} />
+
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
         <dt className="text-stone-600">Status</dt>
         <dd data-testid="reel-status">{reel.status}</dd>
@@ -123,7 +126,6 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
           <time dateTime={reel.created_at}>{formatCreatedAt(reel.created_at)}</time>
         </dd>
       </dl>
-
       <section aria-labelledby="jobs-heading" className="flex flex-col gap-2">
         <h2 id="jobs-heading" className="text-lg font-semibold">
           Jobs

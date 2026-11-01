@@ -66,4 +66,43 @@ describe("with E2E_MOCK_STORAGE=true", () => {
   it("answers 404 for a missing object", async () => {
     expect((await GET(new Request("http://x/"), context(["missing.mp4"]))).status).toBe(404);
   });
+
+  describe("Range", () => {
+    const VIDEO = ["dev", "cache", "preview_copies", "f", "footage-preview.mp4"];
+    const bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    const ranged = (range: string) =>
+      GET(new Request("http://x/", { headers: { range } }), context(VIDEO));
+
+    beforeEach(async () => {
+      await put(VIDEO, bytes);
+    });
+
+    it("serves the whole object with Accept-Ranges and a guessed type", async () => {
+      const read = await GET(new Request("http://x/"), context(VIDEO));
+      expect(read.status).toBe(200);
+      expect(read.headers.get("Accept-Ranges")).toBe("bytes");
+      expect(read.headers.get("Content-Type")).toBe("video/mp4");
+    });
+
+    it("answers 206 with the inclusive slice", async () => {
+      const read = await ranged("bytes=2-5");
+      expect(read.status).toBe(206);
+      expect(read.headers.get("Content-Range")).toBe("bytes 2-5/10");
+      expect(read.headers.get("Content-Length")).toBe("4");
+      expect(new Uint8Array(await read.arrayBuffer())).toEqual(new Uint8Array([2, 3, 4, 5]));
+    });
+
+    it("answers an open-ended range to the end", async () => {
+      const read = await ranged("bytes=7-");
+      expect(read.status).toBe(206);
+      expect(read.headers.get("Content-Range")).toBe("bytes 7-9/10");
+      expect(new Uint8Array(await read.arrayBuffer())).toEqual(new Uint8Array([7, 8, 9]));
+    });
+
+    it("answers 416 to a range past the end", async () => {
+      const read = await ranged("bytes=10-");
+      expect(read.status).toBe(416);
+      expect(read.headers.get("Content-Range")).toBe("bytes */10");
+    });
+  });
 });
