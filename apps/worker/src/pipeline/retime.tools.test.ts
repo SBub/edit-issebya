@@ -38,7 +38,7 @@ describe("the whole pipeline with the real tools", () => {
       scratchDir: scratch,
       tools: REAL_TOOLS,
     });
-    expect(calls.filter((call) => call.call === "done")).toHaveLength(3);
+    expect(calls.filter((call) => call.call === "done")).toHaveLength(6);
 
     const head = await storage.head(SOURCE_KEY);
     const fp = fingerprintsFor({ etag: head!.etag!, bytes: head!.bytes });

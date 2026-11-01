@@ -111,7 +111,7 @@ export const convert: PipelineStep<ConvertSettings> = {
   version: CONVERT_VERSION,
   settings: CONVERT_SETTINGS,
   reelStatus: "converting",
-  outputs: [OUTPUT],
+  outputs: [{ file: OUTPUT, retention: "rebuildable" }],
   reusedWhat: "footage converted",
   inputs: (source) => [{ ref: { source }, as: "source" }],
   async run({ tool, tools, dir, files, settings }) {

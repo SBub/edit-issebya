@@ -1,7 +1,7 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeAtomic } from "./atomic.ts";
-import type { PipelineStep } from "./definition.ts";
+import type { PipelineStep, StepOutput } from "./definition.ts";
 import { envelopeArgs, parseEnvelope } from "./envelope.ts";
 import { parseProbe, probeArgs } from "./probe.ts";
 import { retimeEncodeArgs, retimeFilterGraph } from "./retime-encode.ts";
@@ -9,7 +9,14 @@ import { planRetime, remapTime } from "./retime-plan.ts";
 import { RETIME_PRESET, RETIME_VERSION, type RetimeSettings } from "./retime-preset.ts";
 import { parseTranscript, remapTranscript } from "./transcript.ts";
 
-const OUTPUTS = ["source.mp4", "transcript.json", "retime.json", "envelope.json"] as const;
+// The retimed footage is heavy and rebuilt from the kept upload; the small
+// JSON files stay.
+const OUTPUTS: readonly StepOutput[] = [
+  { file: "source.mp4", retention: "rebuildable" },
+  { file: "transcript.json", retention: "kept" },
+  { file: "retime.json", retention: "kept" },
+  { file: "envelope.json", retention: "kept" },
+];
 const ENVELOPE_PRINT = "envelope.txt";
 const GRAPH = "retime-graph.txt";
 const PARTIAL = "source.part.mp4";

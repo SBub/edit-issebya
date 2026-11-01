@@ -8,7 +8,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeStorage } from "@edit-issebya/storage";
-import { PIPELINE, fingerprintsFor } from "./pipeline/definition.ts";
+import { PIPELINE, fingerprintsFor, outputFiles } from "./pipeline/definition.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
 import { runPipeline } from "./pipeline/run-pipeline.ts";
 import { toolPaths } from "./pipeline/tools.ts";
@@ -49,13 +49,13 @@ try {
     const fingerprint = fingerprints[step.name]!;
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- under fixtures/pipeline
     await mkdir(join(OUT, step.name), { recursive: true });
-    for (const file of step.outputs) {
+    for (const file of outputFiles(step)) {
       await copyFile(
         join(root, cacheKey("", step.name, fingerprint, file)),
         join(OUT, step.name, file),
       );
     }
-    manifest.steps.push({ name: step.name, fingerprint, files: [...step.outputs] });
+    manifest.steps.push({ name: step.name, fingerprint, files: outputFiles(step) });
   }
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- under fixtures/pipeline
   await writeFile(join(OUT, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
