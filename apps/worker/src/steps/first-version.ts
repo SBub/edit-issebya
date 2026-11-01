@@ -9,8 +9,7 @@ import {
   createMeasurer,
   saveVersion,
 } from "@edit-issebya/edit";
-import type { Storage } from "@edit-issebya/storage";
-import { cacheKey } from "../pipeline/fingerprint.ts";
+import { type Storage, cacheKey } from "@edit-issebya/storage";
 import { type StepContext, runInProcessStep } from "../step-runner.ts";
 import { fingerprintOf, fontBytes, leaseGuarded, readJson } from "./version-io.ts";
 

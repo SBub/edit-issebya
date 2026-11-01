@@ -36,8 +36,19 @@ const nextConfig: NextConfig = {
   // to that root (two levels up). Next wants both set to the same directory.
   turbopack: {
     root: monorepoRoot,
+    // harfbuzzjs (the preview measures caption text in the browser) imports
+    // Node's `module` behind a Node-only check; the browser bundle gets an
+    // empty stand-in so the import resolves.
+    resolveAlias: {
+      module: { browser: "./src/lib/empty-module.ts" },
+    },
   },
   outputFileTracingRoot: monorepoRoot,
+  // The preview's asset route reads the preset's fonts and sounds from the
+  // edit package at run time.
+  outputFileTracingIncludes: {
+    "/api/edit-assets/*": ["../../packages/edit/assets/**/*"],
+  },
   // Next 16 otherwise writes its own AGENTS.md and CLAUDE.md on every `next
   // dev`. This repo keeps those files by hand; see AGENTS.md.
   agentRules: false,

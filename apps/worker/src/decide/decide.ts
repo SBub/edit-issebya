@@ -13,9 +13,8 @@ import {
   parseEdit,
   saveVersion,
 } from "@edit-issebya/edit";
-import type { Storage } from "@edit-issebya/storage";
+import { type Storage, cacheKey } from "@edit-issebya/storage";
 import { AiAnswerError, type AiRunner, aiRunner } from "../ai.ts";
-import { cacheKey } from "../pipeline/fingerprint.ts";
 import {
   type SpawnTool,
   type StepContext,

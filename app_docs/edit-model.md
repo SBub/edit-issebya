@@ -39,6 +39,10 @@ transpiles it and the worker runs it directly.
 - `packages/edit/src/layout.ts`, `build.ts`: `build({ edit, transcript, headTrack, preset, measurer })`
   resolves anchors, lays captions out around the head and returns the HTML, the measured layout and
   the check result.
+- `packages/edit/src/sounds.ts`: `soundHits(edit, transcript, preset)` returns every hit of the
+  `sounds` track (the edit is checked as `build` checks it). The studio's live preview is the second
+  consumer of the package (after the worker): it builds the page in the browser with the same
+  `build()` and schedules the clicks from `soundHits`.
 - `packages/edit/src/checks.ts`: `runChecks` covers what the schema cannot: every text box inside the
   safe box (`safe-box`), no caption over the face for its time (`face`), and sound hits at least the
   preset's gap apart (`sound-gap`). Reasons are sorted.
@@ -109,4 +113,5 @@ Chromium install from the ADW Install step.
 
 - Also touches `app_docs/studio.md` (tables, `reels.current_version_id`) and `app_docs/pipeline.md`
   (the step after `preview_copies`); the worker's step runner is described in `app_docs/measurement.md`.
-- The decide step (AI edits) and the live preview import this package in later slices.
+- The studio's live preview imports this package (see `app_docs/preview.md`); the decide step (AI
+  edits) does in a later slice.

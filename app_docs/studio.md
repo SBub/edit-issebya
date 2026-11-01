@@ -58,8 +58,11 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 - `apps/studio/src/app/reels/[id]/page.tsx`: one reel with its jobs and steps. A malformed id
   (`isReelId`) or a reel that is not the caller's is a 404; signed out redirects to `/studio`.
   Read once on the server, then handed to `LiveReel`.
-- `apps/studio/src/lib/reels.ts`: named column lists (never `*`), status type, id check and
-  formatters.
+- `supabase/migrations/20261105090000_preview_copies_fingerprint.sql`:
+  `reels.preview_copies_fingerprint` (64 hex characters or null), readable by the owner under the
+  existing select policy, written only by the worker.
+- `apps/studio/src/lib/reels.ts`: named column lists (never `*`; `REEL_DETAIL_COLUMNS` includes
+  `current_version_id`), status type, id check and formatters.
 
 ### Upload
 
@@ -97,6 +100,9 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   (`step-line`). One Realtime channel listens to `reels`, `jobs` and `steps` for that reel. When the
   subscription reports ready it does one catch-up read and sets `data-realtime="ready"`. No timer,
   no polling.
+- `LiveReel.tsx` mounts the live preview (`Preview`) on the reel page once the reel has a current
+  version, passes it the version id it follows through Realtime, and shows "The preview appears
+  once processing has finished." before that; see `app_docs/preview.md`.
 - `apps/studio/src/lib/jobs.ts`: named column lists (no lease columns), status lists and
   `upsertById`. `apps/studio/src/lib/supabase-browser.ts`: the browser client, created inside the
   component.
@@ -121,7 +127,8 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   passes its own keys.
 - `E2E_MOCK_STORAGE=true` (exactly) makes both use the gitignored `.e2e-storage/` folder at the
   repository root; the studio's `/studio/api/e2e-storage-mock/[...key]` route stands in for R2's
-  PUT and answers 404 otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
+  PUT and GET (one byte range on a `Range` header, so the browser can seek a video) and answers 404
+  otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
 - `fixtures/footage/short-speech.mp4` is the committed short vertical clip with speech, made by
   `scripts/make-test-clip.sh` (macOS only, run by hand).
 
@@ -139,7 +146,9 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 6. Run the worker on your machine (`yarn workspace @edit-issebya/worker worker`, see the root
    `README.md`); the page updates without a reload when it finishes the job.
 7. For a quick sign-in in tests or review, open the URL printed by
-   `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url`.
+   `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url`. It also gives the review user a
+   processed sample reel (`sample-processed-take.mp4`) whose page shows the live preview, seeded
+   from `fixtures/pipeline/` under `E2E_MOCK_STORAGE=true`.
 
 ## Configuration
 

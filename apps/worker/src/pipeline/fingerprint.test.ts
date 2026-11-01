@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type FileRef, cacheKey, fingerprint } from "./fingerprint.ts";
+import { type FileRef, fingerprint } from "./fingerprint.ts";
 
 const SOURCE: FileRef = { source: { etag: "9e107d9d372bb6826bd81d3542a419d6", bytes: 1234 } };
 const PRODUCED: FileRef = { step: "convert", fingerprint: "a".repeat(64), file: "converted.mp4" };
@@ -44,18 +44,5 @@ describe("fingerprint", () => {
   it("refuses an undefined or non-finite setting", () => {
     expect(() => fingerprint({ ...BASE, settings: { a: undefined } })).toThrow();
     expect(() => fingerprint({ ...BASE, settings: { a: NaN } })).toThrow();
-  });
-});
-
-describe("cacheKey", () => {
-  it("places the file under the step and the fingerprint", () => {
-    expect(cacheKey("dev/", "convert", "ab12", "converted.mp4")).toBe(
-      "dev/cache/convert/ab12/converted.mp4",
-    );
-    expect(cacheKey("", "retime", "ab12", "retime.json")).toBe("cache/retime/ab12/retime.json");
-  });
-
-  it("refuses a key that could leave the store", () => {
-    expect(() => cacheKey("", "convert", "..", "x")).toThrow("invalid storage key");
   });
 });

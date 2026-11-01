@@ -31,6 +31,7 @@ export interface ReelSummary {
 export interface ReelDetail extends ReelSummary {
   source_bytes: number | null;
   updated_at: string;
+  // The version the preview shows; null until version 1 is saved.
   current_version_id: string | null;
 }
 

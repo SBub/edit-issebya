@@ -1,9 +1,9 @@
 import { access, mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { Storage } from "@edit-issebya/storage";
+import { type Storage, cacheKey } from "@edit-issebya/storage";
 import { type SpawnTool, type StepContext, recordHit, runToolsStep } from "../step-runner.ts";
 import { PIPELINE, type PipelineStep, fingerprintsFor, outputFiles } from "./definition.ts";
-import { type FileRef, cacheKey } from "./fingerprint.ts";
+import type { FileRef } from "./fingerprint.ts";
 import type { ToolPaths } from "./tools.ts";
 
 export interface PipelineRun {

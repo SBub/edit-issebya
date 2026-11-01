@@ -270,3 +270,66 @@ describe("versions", () => {
     expect(await readRows([id])).toEqual([]);
   });
 });
+
+describe("reels.preview_copies_fingerprint", () => {
+  const admin = localSupabaseAdmin();
+  const FP = "f".repeat(64);
+  let owner: { id: string; email: string };
+  let other: { id: string; email: string };
+  let ownerClient: SupabaseClient;
+  let otherClient: SupabaseClient;
+  let reel: string;
+
+  beforeAll(async () => {
+    owner = await createTestUser(admin, "previews-owner");
+    other = await createTestUser(admin, "previews-other");
+    reel = await insertReel(admin, { ownerId: owner.id, name: "a.mov", status: "processed" });
+    ownerClient = (await signedInClient(admin, owner.email)).client;
+    otherClient = (await signedInClient(admin, other.email)).client;
+    // The admin client plays the worker (secret key).
+    const { error } = await admin
+      .from("reels")
+      .update({ preview_copies_fingerprint: FP })
+      .eq("id", reel);
+    expect(error).toBeNull();
+  });
+
+  afterAll(async () => {
+    if (owner) await deleteTestUser(admin, owner.id);
+    if (other) await deleteTestUser(admin, other.id);
+  });
+
+  it("lets the owner read it and nobody else", async () => {
+    const { data: own } = await ownerClient
+      .from("reels")
+      .select("preview_copies_fingerprint")
+      .eq("id", reel);
+    expect(own).toEqual([{ preview_copies_fingerprint: FP }]);
+    const { data: theirs } = await otherClient
+      .from("reels")
+      .select("preview_copies_fingerprint")
+      .eq("id", reel);
+    expect(theirs).toEqual([]);
+  });
+
+  it("never lets a signed-in user write it", async () => {
+    await ownerClient
+      .from("reels")
+      .update({ preview_copies_fingerprint: "0".repeat(64) })
+      .eq("id", reel);
+    const { data } = await admin
+      .from("reels")
+      .select("preview_copies_fingerprint")
+      .eq("id", reel)
+      .single();
+    expect(data).toEqual({ preview_copies_fingerprint: FP });
+  });
+
+  it("refuses anything but a SHA-256 hex", async () => {
+    const { error } = await admin
+      .from("reels")
+      .update({ preview_copies_fingerprint: "not-a-fingerprint" })
+      .eq("id", reel);
+    expect(error).not.toBeNull();
+  });
+});

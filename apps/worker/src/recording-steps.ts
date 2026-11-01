@@ -10,6 +10,7 @@ export type StepCall =
   | { call: "start"; jobId: string; name: string }
   | { call: "skipped"; jobId: string; name: string; summary: string; wallMs: number }
   | { call: "reelStatus"; reelId: string; status: PipelineReelStatus }
+  | { call: "previewCopies"; reelId: string; fingerprint: string }
   | {
       call: "done";
       stepId: string;
@@ -43,6 +44,9 @@ export function recordingSteps(sourceKey: string | null = null) {
     },
     async sourceKey() {
       return sourceKey;
+    },
+    async previewCopies(reelId, fingerprint) {
+      calls.push({ call: "previewCopies", reelId, fingerprint });
     },
     async done(stepId, summary, measurements, ai) {
       calls.push({ call: "done", stepId, summary, measurements, ...(ai ? { ai } : {}) });

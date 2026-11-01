@@ -1,14 +1,22 @@
 // Prints a confirmation URL that signs a reviewer in to the studio on the
 // local stack, without any email. Local only: the admin helper refuses a
-// non-local Supabase URL. Usage:
+// non-local Supabase URL. The review user gets three sample reels, one of them
+// processed with a live preview, seeded from `fixtures/pipeline/` into this
+// worktree's `.e2e-storage/` (the dev server needs `E2E_MOCK_STORAGE=true`);
+// its page is printed on stderr. Usage:
 //   PORT=<run port> yarn workspace @edit-issebya/studio e2e:sign-in-url
+import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { insertReel, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
+import { seedProcessedReel } from "../test-support/pipeline.ts";
 
 const EMAIL = "studio-review@example.test";
 const PORT = process.env.PORT ?? "3000";
+const PROCESSED_NAME = "sample-processed-take.mp4";
+const PREFIX = "review/";
 
 const admin = localSupabaseAdmin();
+const storage = fakeStorage({ root: e2eStorageRoot(), uploadUrlBase: "" });
 
 async function reviewUserId(): Promise<string> {
   for (let page = 1; ; page += 1) {
@@ -86,5 +94,41 @@ if (received) {
     if (stepError) throw new Error(`sample step not inserted: ${stepError.message}`);
   }
 }
+
+// The processed sample shows the live preview. Its rows are in the shared
+// stack but its objects only in the worktree that seeded it, so a reel whose
+// version object is missing here is replaced, never patched.
+const { data: processed, error: processedError } = await admin
+  .from("reels")
+  .select("id, current_version_id")
+  .eq("owner_id", ownerId)
+  .eq("source_name", PROCESSED_NAME)
+  .limit(1)
+  .maybeSingle();
+if (processedError) throw new Error(`processed reel not read: ${processedError.message}`);
+let processedId: string | null = null;
+if (processed?.current_version_id) {
+  const { data: version, error: versionError } = await admin
+    .from("versions")
+    .select("r2_key")
+    .eq("id", processed.current_version_id)
+    .single();
+  if (versionError) throw new Error(`processed version not read: ${versionError.message}`);
+  if (await storage.get(version.r2_key as string)) processedId = processed.id as string;
+}
+if (!processedId) {
+  if (processed) {
+    const { error: deleteError } = await admin.from("reels").delete().eq("id", processed.id);
+    if (deleteError) throw new Error(`stale processed reel not deleted: ${deleteError.message}`);
+  }
+  processedId = await insertReel(admin, {
+    ownerId,
+    name: PROCESSED_NAME,
+    status: "uploaded",
+    createdAt: "2026-03-01T09:00:00Z",
+  });
+  await seedProcessedReel(admin, storage, { prefix: PREFIX, reelId: processedId });
+}
+console.error(`processed sample reel: http://localhost:${PORT}/studio/reels/${processedId}`);
 
 console.log(await signInLink(admin, EMAIL, `http://localhost:${PORT}`));

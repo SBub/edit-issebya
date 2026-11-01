@@ -8,10 +8,9 @@ import {
   type VersionStore,
   parseEdit,
 } from "@edit-issebya/edit";
-import { type Storage, fakeStorage } from "@edit-issebya/storage";
+import { type Storage, cacheKey, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
-import { cacheKey } from "../pipeline/fingerprint.ts";
 import { firstVersion } from "./first-version.ts";
 
 const PREFIX = "dev/";

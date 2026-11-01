@@ -49,6 +49,8 @@ export interface StepStore {
   skipped(job: ClaimedJob, name: string, summary: string, wallMs: number): Promise<void>;
   reelStatus(reelId: string, status: PipelineReelStatus): Promise<void>;
   sourceKey(reelId: string): Promise<string | null>;
+  // Where the reel's preview copies are: the preview_copies step's fingerprint.
+  previewCopies(reelId: string, fingerprint: string): Promise<void>;
   // `ai` only for a step that called the AI.
   done(
     stepId: string,
@@ -112,6 +114,13 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
         .maybeSingle();
       if (error) throw new Error(`reel not read: ${error.message}`);
       return (data as { source_key: string | null } | null)?.source_key ?? null;
+    },
+    async previewCopies(reelId, fingerprint) {
+      const { error } = await db
+        .from("reels")
+        .update({ preview_copies_fingerprint: fingerprint })
+        .eq("id", reelId);
+      if (error) throw new Error(`reel not updated: ${error.message}`);
     },
     async done(stepId, summary, measurements, ai) {
       const { error } = await db

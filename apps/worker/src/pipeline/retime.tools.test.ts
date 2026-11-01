@@ -1,11 +1,10 @@
 import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fakeStorage } from "@edit-issebya/storage";
+import { cacheKey, fakeStorage } from "@edit-issebya/storage";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
 import { fingerprintsFor } from "./definition.ts";
-import { cacheKey } from "./fingerprint.ts";
 import { parseProbe, probeArgs } from "./probe.ts";
 import type { RetimePlan } from "./retime-plan.ts";
 import { runPipeline } from "./run-pipeline.ts";

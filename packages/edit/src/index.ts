@@ -22,6 +22,7 @@ export {
   editSchema,
   parseEdit,
 } from "./schema.ts";
+export { type SoundHit, soundHits } from "./sounds.ts";
 export { supabaseVersionStore } from "./supabase-versions.ts";
 export {
   type HeadSample,
