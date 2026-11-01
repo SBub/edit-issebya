@@ -208,10 +208,12 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 - Do not create a user from the login form (`shouldCreateUser` stays `false`) and do not make its
   answer depend on whether the address has an account.
 - Do not grant `authenticated` `update` or `delete` on `reels`, nor `insert` beyond `id`,
-  `source_name` and `source_key` under the uploading-only policy; no `anon` access.
+  `source_name`, `source_key` and `source_upload_id` under the uploading-only policy; no `anon`
+  access.
 - Never give the owner a general right to write `status`; finishing an upload goes only through
-  `finish_upload`.
-- Never let `authenticated` or `anon` execute `claim_job`, or `anon` execute `finish_upload`.
+  `finish_upload`, cancelling one only through `fail_upload`.
+- Never let `authenticated` or `anon` execute `claim_job`, or `anon` execute `finish_upload` or
+  `fail_upload`.
 - Never let `authenticated` or `anon` execute `save_version`; versions are written only through
   it, by the service role (the worker), and never updated.
 - Never poll from the studio; the reel page reads on open and on each ready subscription only.

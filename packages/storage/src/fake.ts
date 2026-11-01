@@ -12,7 +12,14 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
-import { type Storage, assertDownloadName, assertStorageKey } from "./storage.ts";
+import {
+  type Storage,
+  type UploadedPart,
+  assertDownloadName,
+  assertPartNumber,
+  assertStorageKey,
+  assertUploadId,
+} from "./storage.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -89,21 +96,145 @@ async function walk(dir: string): Promise<string[]> {
   return files;
 }
 
+// Where the fake keeps unfinished multipart uploads. A key starts with
+// [a-z0-9], so no object can be stored under it.
+const MULTIPART = ".multipart";
+
+function md5Hex(body: Uint8Array): string {
+  return createHash("md5").update(body).digest("hex");
+}
+
+export interface FakeStorage extends Storage {
+  // What the mock route does with a part PUT (R2's UploadPart): stores the
+  // part and returns its ETag, the MD5 hex of the bytes, as R2 does.
+  putUploadPart(
+    key: string,
+    options: { uploadId: string; partNumber: number; body: Uint8Array },
+  ): Promise<string>;
+}
+
 // A Storage backed by a folder, for specs: every key maps to `<root>/<key>`,
 // and a key that could leave the root is refused. Signed URLs are same-origin
-// paths to the studio's mock route (`uploadUrlBase` + key).
+// paths to the studio's mock route (`uploadUrlBase` + key). A multipart
+// upload lives in `<root>/.multipart/<uploadId>/` (`meta.json` with its key,
+// one `<n>.part` per part) until it is completed or aborted.
 export function fakeStorage({
   root,
   uploadUrlBase,
 }: {
   root: string;
   uploadUrlBase: string;
-}): Storage {
+}): FakeStorage {
   const pathOf = (key: string) => join(root, assertStorageKey(key));
+  const uploadDir = (uploadId: string) => join(root, MULTIPART, assertUploadId(uploadId));
+  const partPath = (uploadId: string, partNumber: number) =>
+    join(uploadDir(uploadId), `${assertPartNumber(partNumber)}.part`);
+
+  // The upload's folder when it exists and belongs to this key, else null.
+  async function ownUpload(key: string, uploadId: string): Promise<string | null> {
+    assertStorageKey(key);
+    const dir = uploadDir(uploadId);
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- upload id checked by assertUploadId
+      const meta = JSON.parse(await readFile(join(dir, "meta.json"), "utf8")) as { key?: unknown };
+      return meta.key === key ? dir : null;
+    } catch (error) {
+      if (isMissing(error)) return null;
+      throw error;
+    }
+  }
+
+  async function storedParts(dir: string): Promise<UploadedPart[]> {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the fake's own root
+    const names = await readdir(dir);
+    const parts: UploadedPart[] = [];
+    for (const name of names) {
+      const match = /^(\d+)\.part$/.exec(name);
+      if (!match) continue;
+      const path = join(dir, name);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the fake's own root
+      const info = await stat(path);
+      parts.push({ partNumber: Number(match[1]), etag: await md5Of(path), bytes: info.size });
+    }
+    return parts.sort((a, b) => a.partNumber - b.partNumber);
+  }
 
   return {
-    async signUpload(key) {
-      return `${uploadUrlBase}${assertStorageKey(key)}`;
+    async createMultipartUpload(key) {
+      const uploadId = randomUUID();
+      const dir = uploadDir(uploadId);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- a fresh uuid inside the fake's root
+      await mkdir(dir, { recursive: true });
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- a fresh uuid inside the fake's root
+      await writeFile(join(dir, "meta.json"), JSON.stringify({ key: assertStorageKey(key) }));
+      return { uploadId };
+    },
+
+    async signUploadPart(key, { uploadId, partNumber }) {
+      const query = new URLSearchParams({
+        uploadId: assertUploadId(uploadId),
+        partNumber: String(assertPartNumber(partNumber)),
+      });
+      return `${uploadUrlBase}${assertStorageKey(key)}?${query}`;
+    },
+
+    async putUploadPart(key, { uploadId, partNumber, body }) {
+      const target = partPath(uploadId, partNumber);
+      const dir = await ownUpload(key, uploadId);
+      if (!dir) throw new Error("no such upload");
+      const temp = tempPath(target);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- upload id and part number checked
+      await writeFile(temp, body);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- upload id and part number checked
+      await rename(temp, target);
+      return md5Hex(body);
+    },
+
+    async listUploadParts(key, { uploadId }) {
+      const dir = await ownUpload(key, uploadId);
+      return dir ? storedParts(dir) : null;
+    },
+
+    async completeMultipartUpload(key, { uploadId, parts }) {
+      const dir = await ownUpload(key, uploadId);
+      if (!dir) return "missing";
+      const stored = new Map((await storedParts(dir)).map((part) => [part.partNumber, part]));
+      const sorted = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+      if (sorted.length === 0) throw new Error("no parts to complete");
+      for (const [index, part] of sorted.entries()) {
+        assertPartNumber(part.partNumber);
+        if (index > 0 && sorted[index - 1]!.partNumber === part.partNumber) {
+          throw new Error(`part ${part.partNumber} listed twice`);
+        }
+        const etag = part.etag.replace(/^"(.*)"$/, "$1");
+        if (stored.get(part.partNumber)?.etag !== etag) {
+          throw new Error(`part ${part.partNumber} does not match its ETag`);
+        }
+      }
+      const target = pathOf(key);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- key checked by assertStorageKey
+      await mkdir(dirname(target), { recursive: true });
+      const temp = tempPath(target);
+      try {
+        for (const part of sorted) {
+          // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the fake's own root
+          await writeFile(temp, await readFile(partPath(uploadId, part.partNumber)), {
+            flag: "a",
+          });
+        }
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- key checked by assertStorageKey
+        await rename(temp, target);
+      } catch (error) {
+        await rm(temp, { force: true });
+        throw error;
+      }
+      await rm(dir, { recursive: true, force: true });
+      return "completed";
+    },
+
+    async abortMultipartUpload(key, { uploadId }) {
+      const dir = await ownUpload(key, uploadId);
+      if (dir) await rm(dir, { recursive: true, force: true });
     },
 
     async signDownload(key, options) {
@@ -200,7 +331,9 @@ export function fakeStorage({
       const files = await walk(root);
       return files
         .map((file) => relative(root, file).split(sep).join("/"))
-        .filter((key) => key.startsWith(prefix) && !TEMP.test(key))
+        .filter(
+          (key) => key.startsWith(prefix) && !TEMP.test(key) && !key.startsWith(`${MULTIPART}/`),
+        )
         .sort();
     },
   };

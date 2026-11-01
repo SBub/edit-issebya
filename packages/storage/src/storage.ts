@@ -2,11 +2,28 @@
 // folder-backed fake under E2E_MOCK_STORAGE=true. Keys are bucket-relative
 // paths such as `dev/reels/<id>/source/original.mp4`.
 export interface Storage {
-  // A URL the browser PUTs the object to, with the given Content-Type.
-  signUpload(
+  // Starts an S3 multipart upload of the object; the browser then PUTs each
+  // part to its own signed URL.
+  createMultipartUpload(
     key: string,
-    options: { contentType: string; expiresInSeconds: number },
+    options: { contentType: string },
+  ): Promise<{ uploadId: string }>;
+  // A URL the browser PUTs one part (1 to MAX_PART_NUMBER) to.
+  signUploadPart(
+    key: string,
+    options: { uploadId: string; partNumber: number; expiresInSeconds: number },
   ): Promise<string>;
+  // The parts stored so far, sorted by part number; null when the upload does
+  // not exist (never started, completed or aborted).
+  listUploadParts(key: string, options: { uploadId: string }): Promise<UploadedPart[] | null>;
+  // Assembles the parts into the object. "missing" when the upload id is
+  // unknown (already completed or aborted), so the caller can check `head`.
+  completeMultipartUpload(
+    key: string,
+    options: { uploadId: string; parts: { partNumber: number; etag: string }[] },
+  ): Promise<"completed" | "missing">;
+  // Drops the upload and its parts. No error when it is already gone.
+  abortMultipartUpload(key: string, options: { uploadId: string }): Promise<void>;
   // A URL the browser GETs the object from. With `downloadName` the response
   // is an attachment with that file name (the link downloads, never plays);
   // a name outside DOWNLOAD_NAME is refused.
@@ -43,6 +60,38 @@ export interface Storage {
   delete(key: string): Promise<void>;
   // Keys starting with the prefix, sorted.
   list(prefix: string): Promise<string[]>;
+}
+
+// One stored part of a multipart upload; the ETag is unquoted.
+export interface UploadedPart {
+  partNumber: number;
+  etag: string;
+  bytes: number;
+}
+
+// S3's (and R2's) part number range.
+export const MAX_PART_NUMBER = 10000;
+
+const UPLOAD_ID = /^[A-Za-z0-9._~-]{1,1024}$/;
+
+// Wide enough for R2's opaque upload ids; no slash, no query character, so an
+// id is safe in a path and a query string.
+export function isUploadId(value: unknown): value is string {
+  return typeof value === "string" && UPLOAD_ID.test(value);
+}
+
+export function assertUploadId(value: string): string {
+  if (!isUploadId(value)) throw new Error("invalid upload id");
+  return value;
+}
+
+export function isPartNumber(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 1 && (value as number) <= MAX_PART_NUMBER;
+}
+
+export function assertPartNumber(value: number): number {
+  if (!isPartNumber(value)) throw new Error(`invalid part number: ${String(value)}`);
+  return value;
 }
 
 const KEY = /^[a-z0-9][a-z0-9/._-]{0,511}$/;

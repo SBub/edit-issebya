@@ -60,9 +60,10 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   await page.getByLabel("Clip").setInputFiles(CLIP);
   await page.getByRole("button", { name: "Upload" }).click();
 
-  // One click runs two server actions, a PUT to the storage double and a
-  // navigation to the reel page. Under `next dev` each compiles on first hit,
-  // which can outlast the 5s default on a fresh server.
+  // One click creates the multipart upload, signs and PUTs its one part to
+  // the storage double, completes it and navigates to the reel page. Under
+  // `next dev` each route compiles on first hit, which can outlast the 5s
+  // default on a fresh server.
   await expect(page).toHaveURL(
     /\/studio\/reels\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     { timeout: 20_000 },

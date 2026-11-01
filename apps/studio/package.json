@@ -25,6 +25,8 @@
     "@hyperframes/player": "0.8.222",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
+    "@uppy/aws-s3": "6.3.0",
+    "@uppy/core": "6.3.0",
     "harfbuzzjs": "1.6.4",
     "next": "16.3.8",
     "posthog-js": "^1.438.12",

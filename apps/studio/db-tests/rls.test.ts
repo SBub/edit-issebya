@@ -326,13 +326,15 @@ describe("finish_upload", () => {
     });
   });
 
-  it("finishes the owner's upload once, queueing one job", async () => {
+  it("finishes the owner's upload once, queueing one job, and repeats idempotently", async () => {
     const id = await uploadingReel();
     const first = await clientA.rpc("finish_upload", { p_reel_id: id, p_bytes: 1234 });
     expect(first.error).toBeNull();
     expect(typeof first.data).toBe("string");
-    const second = await clientA.rpc("finish_upload", { p_reel_id: id, p_bytes: 1234 });
-    expect(second.error).not.toBeNull();
+    // A retried completion: the same job, nothing new, the size unchanged.
+    const second = await clientA.rpc("finish_upload", { p_reel_id: id, p_bytes: 9999 });
+    expect(second.error).toBeNull();
+    expect(second.data).toBe(first.data);
     expect(await state(id)).toEqual({
       reel: { status: "uploaded", source_bytes: 1234 },
       jobs: [{ owner_id: userA.id, kind: "process", status: "queued" }],
@@ -354,5 +356,107 @@ describe("finish_upload", () => {
       await clientA.from("reels").update({ status }).eq("id", id);
     }
     expect((await state(id)).reel).toEqual({ status: "uploading", source_bytes: null });
+  });
+  it("lets the owner insert source_upload_id, readable by the owner only", async () => {
+    const id = crypto.randomUUID();
+    const uploadId = `up-${crypto.randomUUID()}`;
+    const { error } = await clientA.from("reels").insert({
+      id,
+      source_name: "up.mp4",
+      source_key: `dev/reels/${id}/source/original.mp4`,
+      source_upload_id: uploadId,
+    });
+    expect(error).toBeNull();
+    expect(
+      (await clientA.from("reels").select("source_upload_id").eq("id", id).single()).data,
+    ).toEqual({ source_upload_id: uploadId });
+    expect(
+      (await clientB.from("reels").select("id").eq("source_upload_id", uploadId)).data,
+    ).toEqual([]);
+  });
+
+  it("refuses a malformed or reused source_upload_id", async () => {
+    const insert = (uploadId: string) => {
+      const id = crypto.randomUUID();
+      return clientA.from("reels").insert({
+        id,
+        source_name: "up.mp4",
+        source_key: `dev/reels/${id}/source/original.mp4`,
+        source_upload_id: uploadId,
+      });
+    };
+    expect((await insert("a/b")).error).not.toBeNull();
+    const uploadId = `up-${crypto.randomUUID()}`;
+    expect((await insert(uploadId)).error).toBeNull();
+    expect((await insert(uploadId)).error).not.toBeNull();
+  });
+});
+
+describe("fail_upload", () => {
+  const admin = localSupabaseAdmin();
+  let userA: { id: string; email: string };
+  let userB: { id: string; email: string };
+  let clientA: SupabaseClient;
+  let clientB: SupabaseClient;
+
+  beforeAll(async () => {
+    userA = await createTestUser(admin, "fail-a");
+    userB = await createTestUser(admin, "fail-b");
+    clientA = (await signedInClient(admin, userA.email)).client;
+    clientB = (await signedInClient(admin, userB.email)).client;
+  });
+
+  afterAll(async () => {
+    if (userA) await admin.from("jobs").delete().eq("owner_id", userA.id);
+    if (userA) await deleteTestUser(admin, userA.id);
+    if (userB) await deleteTestUser(admin, userB.id);
+  });
+
+  async function uploadingReel(): Promise<string> {
+    const id = crypto.randomUUID();
+    const { error } = await clientA
+      .from("reels")
+      .insert({ id, source_name: "up.mp4", source_key: `dev/reels/${id}/source/original.mp4` });
+    if (error) throw new Error(`reel not inserted: ${error.message}`);
+    return id;
+  }
+
+  async function status(id: string) {
+    return (await admin.from("reels").select("status").eq("id", id).single()).data?.status;
+  }
+
+  it("fails the owner's uploading reel, and a second call is fine", async () => {
+    const id = await uploadingReel();
+    expect((await clientA.rpc("fail_upload", { p_reel_id: id })).error).toBeNull();
+    expect(await status(id)).toBe("failed");
+    expect((await clientA.rpc("fail_upload", { p_reel_id: id })).error).toBeNull();
+    expect(await status(id)).toBe("failed");
+  });
+
+  it("refuses another user and anon, changing nothing", async () => {
+    const id = await uploadingReel();
+    expect((await clientB.rpc("fail_upload", { p_reel_id: id })).error).not.toBeNull();
+    expect(
+      (await localSupabaseClient().rpc("fail_upload", { p_reel_id: id })).error,
+    ).not.toBeNull();
+    expect(await status(id)).toBe("uploading");
+  });
+
+  it("refuses an uploaded reel", async () => {
+    const id = await uploadingReel();
+    expect((await clientA.rpc("finish_upload", { p_reel_id: id, p_bytes: 10 })).error).toBeNull();
+    expect((await clientA.rpc("fail_upload", { p_reel_id: id })).error).not.toBeNull();
+    expect(await status(id)).toBe("uploaded");
+    await admin.from("jobs").delete().eq("reel_id", id);
+  });
+
+  it("refuses finish_upload after fail_upload", async () => {
+    const id = await uploadingReel();
+    expect((await clientA.rpc("fail_upload", { p_reel_id: id })).error).toBeNull();
+    expect(
+      (await clientA.rpc("finish_upload", { p_reel_id: id, p_bytes: 10 })).error,
+    ).not.toBeNull();
+    expect(await status(id)).toBe("failed");
+    expect((await admin.from("jobs").select("id").eq("reel_id", id)).data).toEqual([]);
   });
 });

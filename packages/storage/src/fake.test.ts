@@ -102,11 +102,12 @@ describe("fakeStorage", () => {
   it("signs same-origin paths", async () => {
     const storage = fakeStorage({ root, uploadUrlBase: "/studio/api/e2e-storage-mock/" });
     expect(
-      await storage.signUpload("reels/x/source/original.mp4", {
-        contentType: "video/mp4",
+      await storage.signUploadPart("reels/x/source/original.mp4", {
+        uploadId: "u-1",
+        partNumber: 2,
         expiresInSeconds: 60,
       }),
-    ).toBe("/studio/api/e2e-storage-mock/reels/x/source/original.mp4");
+    ).toBe("/studio/api/e2e-storage-mock/reels/x/source/original.mp4?uploadId=u-1&partNumber=2");
     expect(await storage.signDownload("a.mp4", { expiresInSeconds: 60 })).toBe(
       "/studio/api/e2e-storage-mock/a.mp4",
     );
@@ -133,6 +134,93 @@ describe("fakeStorage", () => {
       await expect(storage.put(key, new Uint8Array([1]))).rejects.toThrow(/invalid storage key/);
       await expect(storage.head(key)).rejects.toThrow(/invalid storage key/);
     }
+  });
+});
+
+describe("fakeStorage multipart", () => {
+  const KEY = "dev/reels/r1/source/original.mp4";
+  const bytes = (n: number, fill: number) => new Uint8Array(n).fill(fill);
+  const md5 = (body: Uint8Array) => createHash("md5").update(body).digest("hex");
+
+  it("assembles parts written out of order, then answers missing", async () => {
+    const storage = fakeStorage({ root, uploadUrlBase: "/up/" });
+    const { uploadId } = await storage.createMultipartUpload(KEY, { contentType: "video/mp4" });
+    const one = bytes(4, 1);
+    const two = bytes(3, 2);
+    const three = bytes(2, 3);
+    const etags = [
+      await storage.putUploadPart(KEY, { uploadId, partNumber: 3, body: three }),
+      await storage.putUploadPart(KEY, { uploadId, partNumber: 1, body: one }),
+      await storage.putUploadPart(KEY, { uploadId, partNumber: 2, body: two }),
+    ];
+    expect(etags).toEqual([md5(three), md5(one), md5(two)]);
+    expect(await storage.listUploadParts(KEY, { uploadId })).toEqual([
+      { partNumber: 1, etag: md5(one), bytes: 4 },
+      { partNumber: 2, etag: md5(two), bytes: 3 },
+      { partNumber: 3, etag: md5(three), bytes: 2 },
+    ]);
+    // Parts never show as objects.
+    expect(await storage.list("")).toEqual([]);
+
+    const parts = [
+      { partNumber: 2, etag: md5(two) },
+      { partNumber: 3, etag: `"${md5(three)}"` },
+      { partNumber: 1, etag: md5(one) },
+    ];
+    expect(await storage.completeMultipartUpload(KEY, { uploadId, parts })).toBe("completed");
+    expect(await storage.get(KEY)).toEqual(new Uint8Array([1, 1, 1, 1, 2, 2, 2, 3, 3]));
+    expect(await storage.completeMultipartUpload(KEY, { uploadId, parts })).toBe("missing");
+    expect(await storage.listUploadParts(KEY, { uploadId })).toBeNull();
+    expect((await storage.head(KEY))?.bytes).toBe(9);
+    expect(await storage.list("")).toEqual([KEY]);
+  });
+
+  it("refuses a wrong ETag and another key's upload", async () => {
+    const storage = fakeStorage({ root, uploadUrlBase: "/up/" });
+    const { uploadId } = await storage.createMultipartUpload(KEY, { contentType: "video/mp4" });
+    const etag = await storage.putUploadPart(KEY, { uploadId, partNumber: 1, body: bytes(2, 9) });
+    await expect(
+      storage.completeMultipartUpload(KEY, {
+        uploadId,
+        parts: [{ partNumber: 1, etag: md5(bytes(2, 8)) }],
+      }),
+    ).rejects.toThrow(/does not match/);
+    const other = "dev/reels/r2/source/original.mp4";
+    expect(await storage.listUploadParts(other, { uploadId })).toBeNull();
+    await expect(
+      storage.putUploadPart(other, { uploadId, partNumber: 2, body: bytes(1, 1) }),
+    ).rejects.toThrow(/no such upload/);
+    expect(
+      await storage.completeMultipartUpload(other, {
+        uploadId,
+        parts: [{ partNumber: 1, etag }],
+      }),
+    ).toBe("missing");
+    expect(await storage.head(KEY)).toBeNull();
+  });
+
+  it("aborts, removing the parts, and aborts again quietly", async () => {
+    const storage = fakeStorage({ root, uploadUrlBase: "/up/" });
+    const { uploadId } = await storage.createMultipartUpload(KEY, { contentType: "video/mp4" });
+    await storage.putUploadPart(KEY, { uploadId, partNumber: 1, body: bytes(2, 1) });
+    await storage.abortMultipartUpload(KEY, { uploadId });
+    await storage.abortMultipartUpload(KEY, { uploadId });
+    expect(await storage.listUploadParts(KEY, { uploadId })).toBeNull();
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp dir
+    expect(await readdir(join(root, ".multipart"))).toEqual([]);
+  });
+
+  it("refuses a part number outside 1 to 10000 and a bad upload id", async () => {
+    const storage = fakeStorage({ root, uploadUrlBase: "/up/" });
+    const { uploadId } = await storage.createMultipartUpload(KEY, { contentType: "video/mp4" });
+    for (const partNumber of [0, 10001]) {
+      await expect(
+        storage.putUploadPart(KEY, { uploadId, partNumber, body: bytes(1, 1) }),
+      ).rejects.toThrow(/invalid part number/);
+    }
+    await expect(storage.listUploadParts(KEY, { uploadId: "../x" })).rejects.toThrow(
+      /invalid upload id/,
+    );
   });
 });
 

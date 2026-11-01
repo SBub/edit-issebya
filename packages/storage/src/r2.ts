@@ -3,17 +3,29 @@ import { rename, rm, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
+  ListPartsCommand,
   PutObjectCommand,
   S3Client,
   type S3ClientConfig,
   S3ServiceException,
+  UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { type Storage, assertDownloadName, assertStorageKey } from "./storage.ts";
+import {
+  type Storage,
+  type UploadedPart,
+  assertDownloadName,
+  assertPartNumber,
+  assertStorageKey,
+  assertUploadId,
+} from "./storage.ts";
 
 export interface R2Config {
   accountId: string;
@@ -41,6 +53,14 @@ function isNotFound(error: unknown): boolean {
     return error.$metadata.httpStatusCode === 404 || error.name === "NotFound";
   }
   return error instanceof Error && (error.name === "NotFound" || error.name === "NoSuchKey");
+}
+
+// The multipart upload id is unknown: completed, aborted or never started.
+function isNoSuchUpload(error: unknown): boolean {
+  if (error instanceof S3ServiceException) {
+    return error.name === "NoSuchUpload" || error.$metadata.httpStatusCode === 404;
+  }
+  return error instanceof Error && error.name === "NoSuchUpload";
 }
 
 // `If-None-Match: *` refused because the key is taken.
@@ -74,13 +94,90 @@ export function r2Storage(config: R2Config): Storage {
   const Bucket = config.bucket;
 
   return {
-    signUpload(key, { contentType, expiresInSeconds }) {
-      const command = new PutObjectCommand({
+    async createMultipartUpload(key, { contentType }) {
+      const answer = await client.send(
+        new CreateMultipartUploadCommand({
+          Bucket,
+          Key: assertStorageKey(key),
+          ContentType: contentType,
+        }),
+      );
+      if (!answer.UploadId) throw new Error("R2 returned no upload id");
+      return { uploadId: assertUploadId(answer.UploadId) };
+    },
+
+    // No checksum parameters: requestChecksumCalculation keeps them off, so a
+    // browser can PUT the part with nothing but its bytes.
+    async signUploadPart(key, { uploadId, partNumber, expiresInSeconds }) {
+      const command = new UploadPartCommand({
         Bucket,
         Key: assertStorageKey(key),
-        ContentType: contentType,
+        UploadId: assertUploadId(uploadId),
+        PartNumber: assertPartNumber(partNumber),
       });
       return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
+    },
+
+    async listUploadParts(key, { uploadId }) {
+      const Key = assertStorageKey(key);
+      const UploadId = assertUploadId(uploadId);
+      const parts: UploadedPart[] = [];
+      let marker: string | undefined;
+      try {
+        do {
+          const page = await client.send(
+            new ListPartsCommand({ Bucket, Key, UploadId, PartNumberMarker: marker }),
+          );
+          for (const part of page.Parts ?? []) {
+            const etag = unquote(part.ETag);
+            if (part.PartNumber === undefined || etag === null) continue;
+            parts.push({ partNumber: part.PartNumber, etag, bytes: part.Size ?? 0 });
+          }
+          marker = page.IsTruncated ? page.NextPartNumberMarker : undefined;
+        } while (marker);
+      } catch (error) {
+        if (isNoSuchUpload(error)) return null;
+        throw error;
+      }
+      return parts.sort((a, b) => a.partNumber - b.partNumber);
+    },
+
+    async completeMultipartUpload(key, { uploadId, parts }) {
+      const sorted = [...parts]
+        .map(({ partNumber, etag }) => ({
+          PartNumber: assertPartNumber(partNumber),
+          ETag: `"${unquote(etag) ?? ""}"`,
+        }))
+        .sort((a, b) => a.PartNumber - b.PartNumber);
+      try {
+        await client.send(
+          new CompleteMultipartUploadCommand({
+            Bucket,
+            Key: assertStorageKey(key),
+            UploadId: assertUploadId(uploadId),
+            MultipartUpload: { Parts: sorted },
+          }),
+        );
+        return "completed";
+      } catch (error) {
+        if (isNoSuchUpload(error)) return "missing";
+        throw error;
+      }
+    },
+
+    async abortMultipartUpload(key, { uploadId }) {
+      try {
+        await client.send(
+          new AbortMultipartUploadCommand({
+            Bucket,
+            Key: assertStorageKey(key),
+            UploadId: assertUploadId(uploadId),
+          }),
+        );
+      } catch (error) {
+        if (isNoSuchUpload(error)) return;
+        throw error;
+      }
     },
 
     async signDownload(key, { expiresInSeconds, downloadName }) {

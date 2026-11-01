@@ -50,28 +50,157 @@ describe("r2Endpoint", () => {
   });
 });
 
-describe("r2Storage.signUpload", () => {
-  it("presigns a PUT on the R2 host without checksum parameters", async () => {
-    const storage = r2Storage({
-      accountId: "abc",
-      bucket: "bucket",
-      jurisdiction: "eu",
-      accessKeyId: "dummy-id",
-      secretAccessKey: "dummy-secret",
-    });
+describe("r2Storage.signUploadPart", () => {
+  const storage = r2Storage({
+    accountId: "abc",
+    bucket: "bucket",
+    jurisdiction: "eu",
+    accessKeyId: "dummy-id",
+    secretAccessKey: "dummy-secret",
+  });
+
+  it("presigns a part PUT on the R2 host without checksum parameters", async () => {
     const url = new URL(
-      await storage.signUpload("dev/reels/r1/source/original.mp4", {
-        contentType: "video/mp4",
+      await storage.signUploadPart("dev/reels/r1/source/original.mp4", {
+        uploadId: "up.load-1",
+        partNumber: 3,
         expiresInSeconds: 900,
       }),
     );
     expect(url.host).toBe("abc.eu.r2.cloudflarestorage.com");
     expect(url.pathname).toBe("/bucket/dev/reels/r1/source/original.mp4");
+    expect(url.searchParams.get("partNumber")).toBe("3");
+    expect(url.searchParams.get("uploadId")).toBe("up.load-1");
     expect(url.searchParams.get("X-Amz-Signature")).toBeTruthy();
     expect(url.searchParams.get("X-Amz-Expires")).toBe("900");
     const names = [...url.searchParams.keys()].map((name) => name.toLowerCase());
     expect(names.some((name) => name.startsWith("x-amz-checksum"))).toBe(false);
     expect(names).not.toContain("x-amz-sdk-checksum-algorithm");
+  });
+
+  it("refuses a bad upload id or part number before signing", async () => {
+    const key = "dev/reels/r1/source/original.mp4";
+    for (const uploadId of ["", "a/b", "a?b", "a&b"]) {
+      await expect(
+        storage.signUploadPart(key, { uploadId, partNumber: 1, expiresInSeconds: 60 }),
+      ).rejects.toThrow(/invalid upload id/);
+    }
+    for (const partNumber of [0, 10001, 1.5]) {
+      await expect(
+        storage.signUploadPart(key, { uploadId: "u", partNumber, expiresInSeconds: 60 }),
+      ).rejects.toThrow(/invalid part number/);
+    }
+  });
+});
+
+// `<tag>inner</tag>`, so no test string is one long XML literal.
+const xml = (tag: string, inner: string) => `<${tag}>${inner}</${tag}>`;
+
+const NO_SUCH_UPLOAD = [
+  404,
+  { "content-type": "application/xml" },
+  "<Error><Code>NoSuchUpload</Code><Message>gone</Message></Error>",
+] as const;
+
+describe("r2Storage multipart", () => {
+  const KEY = "dev/reels/r1/source/original.mp4";
+
+  it("creates an upload and returns its id", async () => {
+    const { storage, sent } = answering(
+      200,
+      { "content-type": "application/xml" },
+      xml("InitiateMultipartUploadResult", xml("Key", "k") + xml("UploadId", "abc-123")),
+    );
+    expect(await storage.createMultipartUpload(KEY, { contentType: "video/mp4" })).toEqual({
+      uploadId: "abc-123",
+    });
+    expect(sent[0]).toMatchObject({ method: "POST", path: `/bucket/${KEY}` });
+    expect(sent[0]!.headers["content-type"]).toBe("video/mp4");
+  });
+
+  it("lists parts sorted with unquoted ETags", async () => {
+    const { storage, sent } = answering(
+      200,
+      { "content-type": "application/xml" },
+      "<ListPartsResult><IsTruncated>false</IsTruncated>" +
+        '<Part><PartNumber>2</PartNumber><ETag>"bbb"</ETag><Size>5</Size></Part>' +
+        '<Part><PartNumber>1</PartNumber><ETag>"aaa"</ETag><Size>10</Size></Part>' +
+        "</ListPartsResult>",
+    );
+    expect(await storage.listUploadParts(KEY, { uploadId: "u1" })).toEqual([
+      { partNumber: 1, etag: "aaa", bytes: 10 },
+      { partNumber: 2, etag: "bbb", bytes: 5 },
+    ]);
+    expect(sent[0]).toMatchObject({ method: "GET", path: `/bucket/${KEY}` });
+  });
+
+  it("maps NoSuchUpload to null, missing and a quiet abort", async () => {
+    const { storage } = answering(...NO_SUCH_UPLOAD);
+    expect(await storage.listUploadParts(KEY, { uploadId: "u1" })).toBeNull();
+    expect(
+      await storage.completeMultipartUpload(KEY, {
+        uploadId: "u1",
+        parts: [{ partNumber: 1, etag: "aaa" }],
+      }),
+    ).toBe("missing");
+    await expect(storage.abortMultipartUpload(KEY, { uploadId: "u1" })).resolves.toBeUndefined();
+  });
+
+  it("completes with the parts sorted and their ETags quoted", async () => {
+    const bodies: string[] = [];
+    const requestHandler = {
+      async handle(request: { body?: unknown }) {
+        bodies.push(typeof request.body === "string" ? request.body : String(request.body));
+        return {
+          response: {
+            statusCode: 200,
+            headers: { "content-type": "application/xml" },
+            body: Readable.from([
+              Buffer.from(xml("CompleteMultipartUploadResult", xml("Key", "k"))),
+            ]),
+          },
+        };
+      },
+    } as unknown as R2Config["requestHandler"];
+    const storage = r2Storage({
+      accountId: "abc",
+      bucket: "bucket",
+      accessKeyId: "dummy-id",
+      secretAccessKey: "dummy-secret",
+      requestHandler,
+    });
+    expect(
+      await storage.completeMultipartUpload(KEY, {
+        uploadId: "u1",
+        parts: [
+          { partNumber: 2, etag: "bbb" },
+          { partNumber: 1, etag: '"aaa"' },
+        ],
+      }),
+    ).toBe("completed");
+    const body = bodies[0]!;
+    expect(body.indexOf("<PartNumber>1</PartNumber>")).toBeLessThan(
+      body.indexOf("<PartNumber>2</PartNumber>"),
+    );
+    expect(body).toContain("<ETag>&quot;aaa&quot;</ETag>");
+    expect(body).toContain("<ETag>&quot;bbb&quot;</ETag>");
+  });
+
+  it("refuses a bad upload id or part number before any request", async () => {
+    const { storage, sent } = answering(200);
+    await expect(storage.listUploadParts(KEY, { uploadId: "a/b" })).rejects.toThrow(
+      /invalid upload id/,
+    );
+    await expect(
+      storage.completeMultipartUpload(KEY, {
+        uploadId: "u1",
+        parts: [{ partNumber: 10001, etag: "a" }],
+      }),
+    ).rejects.toThrow(/invalid part number/);
+    await expect(storage.abortMultipartUpload("../x", { uploadId: "u1" })).rejects.toThrow(
+      /invalid storage key/,
+    );
+    expect(sent).toHaveLength(0);
   });
 });
 
