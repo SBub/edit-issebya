@@ -3,6 +3,7 @@ import { supabaseVersionStore } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import type { WorkerConfig } from "./config.ts";
 import { type ClaimedJob, failJob, finishJob, renewLease } from "./queue.ts";
+import { recordPreviewCopies } from "./pipeline/record-preview-copies.ts";
 import { runPipeline } from "./pipeline/run-pipeline.ts";
 import { firstVersion } from "./steps/first-version.ts";
 import { toolPaths } from "./pipeline/tools.ts";
@@ -37,6 +38,7 @@ export async function processJob(
           scratchDir: config.scratchDir,
           tools: toolPaths(),
         });
+        await recordPreviewCopies(ctx, fingerprints);
         await firstVersion({
           ctx,
           storage,

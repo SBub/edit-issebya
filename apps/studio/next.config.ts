@@ -38,6 +38,11 @@ const nextConfig: NextConfig = {
     root: monorepoRoot,
   },
   outputFileTracingRoot: monorepoRoot,
+  // The preview's asset route reads the preset's fonts and sounds from the
+  // edit package at run time.
+  outputFileTracingIncludes: {
+    "/api/edit-assets/*": ["../../packages/edit/assets/**/*"],
+  },
   // Next 16 otherwise writes its own AGENTS.md and CLAUDE.md on every `next
   // dev`. This repo keeps those files by hand; see AGENTS.md.
   agentRules: false,

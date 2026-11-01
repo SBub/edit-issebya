@@ -7,9 +7,8 @@
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fakeStorage } from "@edit-issebya/storage";
+import { cacheKey, fakeStorage } from "@edit-issebya/storage";
 import { PIPELINE, fingerprintsFor, outputFiles } from "./pipeline/definition.ts";
-import { cacheKey } from "./pipeline/fingerprint.ts";
 import { runPipeline } from "./pipeline/run-pipeline.ts";
 import { toolPaths } from "./pipeline/tools.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";

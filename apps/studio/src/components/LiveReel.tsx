@@ -12,6 +12,7 @@ import {
 } from "@/lib/jobs";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, formatBytes, formatCreatedAt } from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { Preview } from "./Preview";
 
 interface Snapshot {
   reel: ReelDetail;
@@ -42,7 +43,8 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
 // The reel's status, jobs and step log. Read once on the server, then followed
 // through Realtime filtered to this reel (RLS decides what arrives). One
 // catch-up read each time the subscription becomes ready covers changes made
-// between the server read and the subscription. No interval, no polling.
+// between the server read and the subscription. No interval, no polling. A
+// new current version reaches the preview the same way and rebuilds it.
 export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialSteps }: Snapshot) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
@@ -113,6 +115,11 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
 
   return (
     <div data-realtime={ready ? "ready" : "pending"} className="flex flex-col gap-6">
+      {reel.current_version_id ? (
+        <Preview reelId={reel.id} versionId={reel.current_version_id} />
+      ) : (
+        <p className="text-sm text-stone-600">The preview appears once processing has finished.</p>
+      )}
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
         <dt className="text-stone-600">Status</dt>
         <dd data-testid="reel-status">{reel.status}</dd>

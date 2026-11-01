@@ -12,8 +12,7 @@ import {
   createMeasurer,
   saveVersion,
 } from "@edit-issebya/edit";
-import type { Storage } from "@edit-issebya/storage";
-import { cacheKey } from "../pipeline/fingerprint.ts";
+import { type Storage, cacheKey } from "@edit-issebya/storage";
 import { type StepContext, runInProcessStep } from "../step-runner.ts";
 
 export interface FirstVersionRun {

@@ -47,6 +47,10 @@ describe("formatBytes", () => {
 });
 
 describe("columns", () => {
+  it("follows the current version for the preview", () => {
+    expect(REEL_DETAIL_COLUMNS.split(", ")).toContain("current_version_id");
+  });
+
   it("never selects every column", () => {
     expect(REEL_COLUMNS).not.toContain("*");
     expect(REEL_DETAIL_COLUMNS).not.toContain("*");

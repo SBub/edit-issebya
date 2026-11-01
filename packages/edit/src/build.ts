@@ -1,10 +1,12 @@
-import { itemTimes, ms } from "./anchors.ts";
+import { ms } from "./anchors.ts";
 import { type CheckResult, runChecks } from "./checks.ts";
 import { type LayoutEntry, type ResolvedItem, hideAt, layoutText } from "./layout.ts";
 import type { Measurer } from "./measure.ts";
 import type { Preset } from "./preset.ts";
-import { type Edit, type Item, TRACKS, editSchema } from "./schema.ts";
-import { type HeadTrack, type Transcript, wordIndex } from "./transcript.ts";
+import { compareIds, resolveAll } from "./resolve.ts";
+import { type Item, editSchema } from "./schema.ts";
+import { hitsOf } from "./sounds.ts";
+import type { HeadTrack, Transcript } from "./transcript.ts";
 
 // A file the page references, by its path relative to the page. The caller
 // maps each to a URL (the studio) or a file (the worker); nothing is fetched
@@ -58,22 +60,6 @@ function escapeAttribute(text: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-function compareIds(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-// Every item with its times, sorted by start then id.
-function resolveAll(edit: Edit, transcript: Transcript): ResolvedItem[] {
-  const words = wordIndex(transcript);
-  const resolved: ResolvedItem[] = [];
-  for (const track of TRACKS) {
-    const items: Item[] = edit.tracks[track];
-    for (const item of items)
-      resolved.push({ id: item.id, track, item, ...itemTimes(item, words) });
-  }
-  return resolved.sort((a, b) => a.start - b.start || compareIds(a.id, b.id));
 }
 
 function duration(resolved: ResolvedItem[], transcript: Transcript, preset: Preset): number {
@@ -207,17 +193,13 @@ export function build({
 
   lane = TRACK_INDEX.sounds;
   const sounds = new Set<string>();
-  for (const entry of resolved) {
-    if (entry.track !== "sounds" || !("sound" in entry.item)) continue;
-    const sound = preset.sounds[entry.item.sound]!;
-    const path = `assets/${sound.file}`;
-    if (!sounds.has(path)) {
-      sounds.add(path);
-      assets.push({ role: "sound", path });
+  for (const hit of hitsOf(resolved, preset)) {
+    if (!sounds.has(hit.path)) {
+      sounds.add(hit.path);
+      assets.push({ role: "sound", path: hit.path });
     }
-    const volume = 10 ** ((entry.item.gainDb ?? sound.gainDb) / 20);
     body.push(
-      `<audio id="${entry.id}" class="clip" src="${path}" data-start="${s3(entry.start)}" data-duration="${s3(sound.duration)}" data-track-index="${lane}" data-volume="${volume.toFixed(3)}"></audio>`,
+      `<audio id="${hit.id}" class="clip" src="${hit.path}" data-start="${s3(hit.at)}" data-duration="${s3(hit.duration)}" data-track-index="${lane}" data-volume="${hit.gain.toFixed(3)}"></audio>`,
     );
     lane += 1;
   }

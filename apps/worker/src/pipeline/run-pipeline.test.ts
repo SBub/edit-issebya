@@ -1,12 +1,11 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { type Storage, fakeStorage } from "@edit-issebya/storage";
+import { type Storage, cacheKey, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
 import type { ChildRun, SpawnTool, ToolCall } from "../step-runner.ts";
 import { PIPELINE, fingerprintsFor, outputFiles } from "./definition.ts";
-import { cacheKey } from "./fingerprint.ts";
 import { HEAD_TRACK_SETTINGS, frameBytes } from "./head-sample.ts";
 import { runPipeline } from "./run-pipeline.ts";
 import type { ToolPaths } from "./tools.ts";
