@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
-import { recordHit, runStep, runToolsStep } from "./step-runner.ts";
+import { StepTailError, recordHit, runStep, runToolsStep } from "./step-runner.ts";
 import { createTelemetry } from "./telemetry.ts";
 
 // Real child processes under /usr/bin/time: Node itself is the tool.
@@ -231,6 +231,94 @@ describe("runToolsStep", () => {
     if (failed?.call !== "failed") throw new Error("no failed call");
     expect(failed.tail.split("\n")[0]).toBe("Error: unexpected answer");
     expect(failed.measurements.cpu_ms).toBeGreaterThanOrEqual(500);
+  });
+
+  it("writes input to the tool's stdin", TIMEOUT, async () => {
+    const { steps } = recordingSteps();
+    let echoed = "";
+    await runToolsStep(stepContext(steps), {
+      name: "echo",
+      async work(tool) {
+        echoed = await tool({ file: "/bin/cat", args: [], input: "line one\nline two" });
+        return { what: "echoed" };
+      },
+    });
+    expect(echoed).toBe("line one\nline two\n");
+  });
+
+  it("kills a call that runs past its timeout and fails the step", TIMEOUT, async () => {
+    const { steps, calls } = recordingSteps();
+    const started = Date.now();
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "slow",
+        async work(tool) {
+          await tool({ file: "/bin/sleep", args: ["30"], timeoutMs: 1000 });
+          return { what: "never" };
+        },
+      }),
+    ).rejects.toThrow(/^slow timed out after 1 s/);
+    expect(Date.now() - started).toBeLessThan(10_000);
+    const failed = calls.find((c) => c.call === "failed");
+    if (failed?.call !== "failed") throw new Error("no failed call");
+    expect(failed.tail).toBe("slow timed out after 1 s");
+  });
+
+  it("stores a StepTailError's own tail", async () => {
+    const { steps, calls } = recordingSteps();
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "decide",
+        async work() {
+          throw new StepTailError("decide failed twice\nround 1: a\nround 2: b");
+        },
+      }),
+    ).rejects.toThrow("decide failed twice");
+    const failed = calls.find((c) => c.call === "failed");
+    if (failed?.call !== "failed") throw new Error("no failed call");
+    expect(failed.tail).toBe("decide failed twice\nround 1: a\nround 2: b");
+  });
+
+  it("stores the summed AI usage on done", async () => {
+    const { steps, calls } = recordingSteps();
+    await runToolsStep(stepContext(steps), {
+      name: "decide",
+      async work(_tool, ai) {
+        ai({ inputTokens: 1234, outputTokens: 567, costUsd: 0.0123, model: "claude-a" });
+        ai({ inputTokens: 1, outputTokens: null, costUsd: 0.0001, model: "claude-b" });
+        return { what: "decided" };
+      },
+    });
+    expect(onlyDone(calls).ai).toEqual({
+      inputTokens: 1235,
+      outputTokens: 567,
+      costUsd: 0.0124,
+      model: "claude-b",
+    });
+  });
+
+  it("stores the AI usage on failed, and none for a step without AI", async () => {
+    const { steps, calls } = recordingSteps();
+    const usage = { inputTokens: 10, outputTokens: 2, costUsd: 0.5, model: "claude-a" };
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "decide",
+        async work(_tool, ai) {
+          ai(usage);
+          throw new Error("bad answer");
+        },
+      }),
+    ).rejects.toThrow("bad answer");
+    const failed = calls.find((c) => c.call === "failed");
+    if (failed?.call !== "failed") throw new Error("no failed call");
+    expect(failed.ai).toEqual(usage);
+
+    const plain = recordingSteps();
+    await runToolsStep(stepContext(plain.steps), {
+      name: "plain",
+      work: async () => ({ what: "ran" }),
+    });
+    expect(onlyDone(plain.calls).ai).toBeUndefined();
   });
 });
 

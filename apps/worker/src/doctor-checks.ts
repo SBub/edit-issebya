@@ -77,7 +77,9 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
       return version;
     }),
     await check("ai structured call", async () => {
-      const answer = await deps.ai().runJson("Reply with ok set to true.", AI_SCHEMA);
+      const { output: answer } = await deps
+        .ai()
+        .runJson({ prompt: "Reply with ok set to true.", schema: AI_SCHEMA });
       if ((answer as { ok?: unknown } | null)?.ok !== true) {
         throw new Error(`unexpected answer ${JSON.stringify(answer)}`);
       }

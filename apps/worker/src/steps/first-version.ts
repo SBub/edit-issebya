@@ -1,11 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import {
   type HeadTrack,
   ISSEBYA,
-  type Preset,
   type Transcript,
-  type VersionObjects,
   type VersionStore,
   baselineEdit,
   build,
@@ -15,6 +12,9 @@ import {
 import type { Storage } from "@edit-issebya/storage";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { type StepContext, runInProcessStep } from "../step-runner.ts";
+import { fingerprintOf, fontBytes, leaseGuarded, readJson } from "./version-io.ts";
+
+const STEP = "first_version";
 
 export interface FirstVersionRun {
   ctx: StepContext;
@@ -25,29 +25,6 @@ export interface FirstVersionRun {
   versions: VersionStore;
   // Tests pass a fixed id.
   newId?: () => string;
-}
-
-// The preset's font files, read from the edit package's assets.
-async function fontBytes(preset: Preset): Promise<Record<string, Uint8Array>> {
-  const fonts: Record<string, Uint8Array> = {};
-  for (const [key, font] of Object.entries(preset.fonts)) {
-    const url = new URL(import.meta.resolve(`@edit-issebya/edit/assets/${font.file}`));
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- a preset font inside the edit package
-    fonts[key] = new Uint8Array(await readFile(url));
-  }
-  return fonts;
-}
-
-async function readJson<T>(storage: Storage, key: string): Promise<T> {
-  const bytes = await storage.get(key);
-  if (!bytes) throw new Error(`first_version: input missing: ${key}`);
-  return JSON.parse(new TextDecoder().decode(bytes)) as T;
-}
-
-function fingerprintOf(fingerprints: Record<string, string>, step: string): string {
-  const fingerprint = fingerprints[step];
-  if (!fingerprint) throw new Error(`first_version: no fingerprint for ${step}`);
-  return fingerprint;
 }
 
 function plural(count: number, unit: string): string {
@@ -69,27 +46,29 @@ export function firstVersion({
 }: FirstVersionRun): Promise<void> {
   const { job, signal } = ctx;
   return runInProcessStep(ctx, {
-    name: "first_version",
+    name: STEP,
     async work() {
       const current = await versions.current(job.reel_id);
       if (current) return { what: `version ${current.number} already saved`, sizeBytes: null };
 
-      const retime = fingerprintOf(fingerprints, "retime");
-      const headTrackFp = fingerprintOf(fingerprints, "head_track");
+      const retime = fingerprintOf(fingerprints, "retime", STEP);
+      const headTrackFp = fingerprintOf(fingerprints, "head_track", STEP);
       const transcript = await readJson<Transcript>(
         storage,
         cacheKey(keyPrefix, "retime", retime, "transcript.json"),
+        STEP,
       );
       const headTrack = await readJson<HeadTrack>(
         storage,
         cacheKey(keyPrefix, "head_track", headTrackFp, "head-track.json"),
+        STEP,
       );
       const edit = baselineEdit(
         transcript,
         {
           footage: retime,
           transcript: retime,
-          cutout: fingerprintOf(fingerprints, "remove_background"),
+          cutout: fingerprintOf(fingerprints, "remove_background", STEP),
           headTrack: headTrackFp,
         },
         ISSEBYA,
@@ -102,21 +81,7 @@ export function firstVersion({
         measurer.close();
       }
 
-      // Each write first checks the lease.
-      const objects: VersionObjects = {
-        get: (key) => storage.get(key),
-        putIfAbsent(key, body, options) {
-          signal.throwIfAborted();
-          return storage.putIfAbsent(key, body, options);
-        },
-      };
-      const store: VersionStore = {
-        ...versions,
-        insert(row) {
-          signal.throwIfAborted();
-          return versions.insert(row);
-        },
-      };
+      const { objects, store } = leaseGuarded(storage, versions, signal);
       signal.throwIfAborted();
       const row = await saveVersion({
         objects,

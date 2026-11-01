@@ -10,13 +10,21 @@ import {
   pickColumns,
   upsertById,
 } from "@/lib/jobs";
-import { REEL_DETAIL_COLUMNS, type ReelDetail, formatBytes, formatCreatedAt } from "@/lib/reels";
+import {
+  REEL_DETAIL_COLUMNS,
+  type ReelDetail,
+  formatBytes,
+  formatCreatedAt,
+  versionNumberOf,
+} from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 interface Snapshot {
   reel: ReelDetail;
   jobs: JobRow[];
   steps: StepRow[];
+  // The current version's number; null before the first version.
+  versionNumber: number | null;
 }
 
 async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snapshot | null> {
@@ -36,17 +44,25 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
       .returns<StepRow[]>(),
   ]);
   if (reel.error || jobs.error || steps.error || !reel.data) return null;
-  return { reel: reel.data, jobs: jobs.data ?? [], steps: steps.data ?? [] };
+  const versionNumber = await versionNumberOf(supabase, reel.data.current_version_id);
+  return { reel: reel.data, jobs: jobs.data ?? [], steps: steps.data ?? [], versionNumber };
 }
 
 // The reel's status, jobs and step log. Read once on the server, then followed
 // through Realtime filtered to this reel (RLS decides what arrives). One
 // catch-up read each time the subscription becomes ready covers changes made
-// between the server read and the subscription. No interval, no polling.
-export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialSteps }: Snapshot) {
+// between the server read and the subscription. No interval, no polling. A
+// new current version's number is read when the reel update names it.
+export function LiveReel({
+  reel: initialReel,
+  jobs: initialJobs,
+  steps: initialSteps,
+  versionNumber: initialVersionNumber,
+}: Snapshot) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
   const [steps, setSteps] = useState(initialSteps);
+  const [versionNumber, setVersionNumber] = useState(initialVersionNumber);
   const [ready, setReady] = useState(false);
   const id = initialReel.id;
 
@@ -54,6 +70,14 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
     const supabase = createSupabaseBrowserClient();
     if (!supabase) return;
     let active = true;
+    // Version numbers only grow (a restore is a new version too), so a late
+    // answer never shows an older number.
+    const showVersion = (number: number | null) => {
+      if (active && number !== null) {
+        setVersionNumber((current) => Math.max(current ?? 0, number));
+      }
+    };
+    let followedVersionId: string | null = null;
     const channel = supabase.channel(`reel-${id}-${crypto.randomUUID()}`);
 
     channel
@@ -66,6 +90,7 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
             setReel(snapshot.reel);
             setJobs(snapshot.jobs);
             setSteps(snapshot.steps);
+            showVersion(snapshot.versionNumber);
           }
           setReady(true);
         });
@@ -74,10 +99,13 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "reels", filter: `id=eq.${id}` },
         (payload) => {
-          setReel((current) => ({
-            ...current,
-            ...pickColumns<Partial<ReelDetail>>(payload.new, REEL_DETAIL_COLUMNS),
-          }));
+          const changed = pickColumns<Partial<ReelDetail>>(payload.new, REEL_DETAIL_COLUMNS);
+          setReel((current) => ({ ...current, ...changed }));
+          const versionId = changed.current_version_id;
+          if (versionId && versionId !== followedVersionId) {
+            followedVersionId = versionId;
+            void versionNumberOf(supabase, versionId).then(showVersion);
+          }
         },
       )
       .on(
@@ -122,6 +150,12 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
         <dd>
           <time dateTime={reel.created_at}>{formatCreatedAt(reel.created_at)}</time>
         </dd>
+        {versionNumber !== null && (
+          <>
+            <dt className="text-stone-600">Edit</dt>
+            <dd data-testid="current-version">version {versionNumber}</dd>
+          </>
+        )}
       </dl>
 
       <section aria-labelledby="jobs-heading" className="flex flex-col gap-2">

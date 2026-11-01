@@ -6,7 +6,7 @@ import { type Context, type Span, SpanStatusCode, trace } from "@opentelemetry/a
 import { errorTail } from "./errors.ts";
 import { sampleTreeRss } from "./process-tree.ts";
 import type { ClaimedJob } from "./queue.ts";
-import type { StepMeasurements, StepStore } from "./step-store.ts";
+import type { AiUsage, StepMeasurements, StepStore } from "./step-store.ts";
 import { outputTail, stepSummary } from "./summary.ts";
 import { type StepStream, type Telemetry, stepLogger } from "./telemetry.ts";
 import { parseTimeReport, timeCommand } from "./time-report.ts";
@@ -30,6 +30,11 @@ export interface ToolCall {
   env?: NodeJS.ProcessEnv;
   // Also sample the memory of the whole process tree every second (render).
   sampleGroupMemory?: boolean;
+  // Written to the child's stdin, which is then closed; without it stdin is
+  // not connected.
+  input?: string;
+  // The call fails after this long: the group gets SIGTERM, then SIGKILL.
+  timeoutMs?: number;
 }
 
 export interface ChildStep extends ToolCall {
@@ -55,10 +60,24 @@ export interface ToolsStep {
   inputs?: string[];
   outputs?: string[];
   sizeOf?: "out" | "in";
-  work: (tool: Tool) => Promise<{ what: string }>;
+  // `ai` reports one AI call's usage; the row holds the sum, done or failed.
+  work: (tool: Tool, ai: (usage: AiUsage) => void) => Promise<{ what: string }>;
+}
+
+// Thrown by a step's work to set the failed row's error tail itself (the
+// stack's last lines are the default).
+export class StepTailError extends Error {
+  readonly tail: string;
+
+  constructor(message: string, tail: string = message) {
+    super(message);
+    this.tail = tail;
+  }
 }
 
 const OUTPUT_CAP = 64 * 1024;
+// A tool's answer on stdout (Claude Code's envelope holds the answer twice).
+const STDOUT_CAP = 16 * 1024 * 1024;
 const SAMPLE_EVERY_MS = 1000;
 const KILL_AFTER_MS = 5000;
 // Wraps the tool so its stderr goes to fd 3 and `/usr/bin/time`'s report alone
@@ -71,11 +90,13 @@ const NOT_STARTED = new Set([126, 127]);
 class StepFailure extends Error {
   readonly tail: string;
   readonly measurements: StepMeasurements;
+  readonly ai: AiUsage | undefined;
 
-  constructor(message: string, tail: string, measurements: StepMeasurements) {
+  constructor(message: string, tail: string, measurements: StepMeasurements, ai?: AiUsage) {
     super(message);
     this.tail = tail;
     this.measurements = measurements;
+    this.ai = ai;
   }
 }
 
@@ -100,7 +121,7 @@ async function withStep(
   body: (
     stepContext: Context,
     started: number,
-  ) => Promise<{ summary: string; measurements: StepMeasurements }>,
+  ) => Promise<{ summary: string; measurements: StepMeasurements; ai?: AiUsage }>,
 ): Promise<void> {
   ctx.signal.throwIfAborted();
   const stepId = await ctx.steps.start(ctx.job, name);
@@ -111,10 +132,10 @@ async function withStep(
   );
   const started = performance.now();
   try {
-    const { summary, measurements } = await body(trace.setSpan(ctx.jobContext, span), started);
+    const { summary, measurements, ai } = await body(trace.setSpan(ctx.jobContext, span), started);
     ctx.signal.throwIfAborted();
     setMeasurementAttributes(span, measurements);
-    await ctx.steps.done(stepId, summary, measurements);
+    await ctx.steps.done(stepId, summary, measurements, ai);
   } catch (error) {
     span.setStatus({ code: SpanStatusCode.ERROR });
     // A lost lease: another worker may hold the job now.
@@ -127,6 +148,7 @@ async function withStep(
       failure?.tail ?? outputTail(errorTail(error)),
       stepSummary({ what: `${name} failed`, wallMs: measurements.wall_ms, sizeBytes: null }),
       measurements,
+      failure?.ai,
     );
     throw error;
   } finally {
@@ -200,9 +222,11 @@ export interface ChildRun {
   report: string;
   // stdout and stderr lines as they came, capped to the last 64 KB.
   output: string;
-  // stdout alone (a tool's JSON answer), capped the same way.
+  // stdout alone (a tool's JSON answer), capped at 16 MB.
   stdout: string;
   groupPeakBytes: number | null;
+  // The call's timeoutMs ran out and the group was killed.
+  timedOut?: boolean;
 }
 
 // How a tool call becomes a child process; tests pass a fake.
@@ -212,8 +236,8 @@ export type SpawnTool = (
   log: (line: string, stream: StepStream) => void,
 ) => Promise<ChildRun>;
 
-function capped(text: string): string {
-  return text.length > OUTPUT_CAP ? text.slice(-OUTPUT_CAP) : text;
+function capped(text: string, cap = OUTPUT_CAP): string {
+  return text.length > cap ? text.slice(-cap) : text;
 }
 
 // Spawns the tool under `/usr/bin/time` in its own process group.
@@ -223,9 +247,14 @@ const runChild: SpawnTool = (spec, signal, log) => {
     const child = spawn(timeBin, [timeFlag, "/bin/sh", "-c", WRAPPER, spec.file, ...spec.args], {
       cwd: spec.cwd,
       env: spec.env ?? process.env,
-      stdio: ["ignore", "pipe", "pipe", "pipe"],
+      stdio: [spec.input === undefined ? "ignore" : "pipe", "pipe", "pipe", "pipe"],
       detached: true,
     });
+    if (spec.input !== undefined) {
+      // A child that exits without reading its input is reported by its exit.
+      child.stdin!.on("error", () => {});
+      child.stdin!.end(spec.input);
+    }
     let output = "";
     let stdout = "";
     let report = "";
@@ -233,13 +262,15 @@ const runChild: SpawnTool = (spec, signal, log) => {
     let sampling: Promise<void> = Promise.resolve();
     let sampler: NodeJS.Timeout | undefined;
     let killer: NodeJS.Timeout | undefined;
+    let timer: NodeJS.Timeout | undefined;
+    let timedOut = false;
 
     const keep = (line: string, stream: StepStream) => {
       log(line, stream);
       output = capped(`${output}${line}\n`);
     };
     eachLine(child.stdout!, (line) => {
-      stdout = capped(`${stdout}${line}\n`);
+      stdout = capped(`${stdout}${line}\n`, STDOUT_CAP);
       keep(line, "stdout");
     });
     eachLine(child.stdio[3] as Readable, (line) => keep(line, "stderr"));
@@ -269,16 +300,24 @@ const runChild: SpawnTool = (spec, signal, log) => {
         // The group is already gone.
       }
     };
-    const onAbort = () => {
+    const stop = () => {
+      if (killer) return;
       killGroup("SIGTERM");
       killer = setTimeout(() => killGroup("SIGKILL"), KILL_AFTER_MS);
     };
-    signal.addEventListener("abort", onAbort, { once: true });
+    signal.addEventListener("abort", stop, { once: true });
+    if (spec.timeoutMs !== undefined) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        stop();
+      }, spec.timeoutMs);
+    }
 
     const cleanUp = () => {
       clearInterval(sampler);
       clearTimeout(killer);
-      signal.removeEventListener("abort", onAbort);
+      clearTimeout(timer);
+      signal.removeEventListener("abort", stop);
     };
     child.on("error", (error) => {
       cleanUp();
@@ -287,7 +326,7 @@ const runChild: SpawnTool = (spec, signal, log) => {
     child.on("close", (code, exitSignal) => {
       cleanUp();
       void sampling.then(() =>
-        resolve({ code, exitSignal, report, output, stdout, groupPeakBytes }),
+        resolve({ code, exitSignal, report, output, stdout, groupPeakBytes, timedOut }),
       );
     });
   });
@@ -312,6 +351,19 @@ export function runToolsStep(
     });
     let cpuMs: number | null = null;
     let peakRssBytes: number | null = null;
+    let usage: AiUsage | undefined;
+    // Tokens and cost added up (null only while no call reported one), the
+    // model the last one named.
+    const reportAi = (reported: AiUsage) => {
+      const add = (a: number | null | undefined, b: number | null) =>
+        a === null || a === undefined ? b : b === null ? a : a + b;
+      usage = {
+        inputTokens: add(usage?.inputTokens, reported.inputTokens),
+        outputTokens: add(usage?.outputTokens, reported.outputTokens),
+        costUsd: add(usage?.costUsd, reported.costUsd),
+        model: reported.model ?? usage?.model ?? null,
+      };
+    };
 
     const measure = async (): Promise<StepMeasurements> => ({
       wall_ms: elapsedMs(started),
@@ -330,23 +382,35 @@ export function runToolsStep(
       for (const peak of [report?.peakRssBytes, toolStarted ? run.groupPeakBytes : null]) {
         if (typeof peak === "number") peakRssBytes = Math.max(peakRssBytes ?? 0, peak);
       }
-      if (run.code === 0) return run.stdout;
+      if (run.code === 0 && !run.timedOut) return run.stdout;
+      if (run.timedOut) {
+        const message = `${spec.name} timed out after ${Math.round((call.timeoutMs ?? 0) / 1000)} s`;
+        const tail = outputTail(`${run.output}${message}`);
+        throw new StepFailure(`${message}\n${tail}`, tail, await measure(), usage);
+      }
       const tail = outputTail(run.output);
       const how = run.code ?? run.exitSignal ?? "unknown";
       // Measured here: the wall time ends at the failing call.
-      throw new StepFailure(`${spec.name} exited with ${how}\n${tail}`, tail, await measure());
+      throw new StepFailure(
+        `${spec.name} exited with ${how}\n${tail}`,
+        tail,
+        await measure(),
+        usage,
+      );
     };
 
     let what: string;
     try {
-      ({ what } = await spec.work(tool));
+      ({ what } = await spec.work(tool, reportAi));
     } catch (error) {
       if (error instanceof StepFailure || ctx.signal.aborted) throw error;
-      // A failure between calls (a download, a parse) keeps what was measured.
+      // A failure between calls (a download, a parse) keeps what was measured;
+      // a StepTailError brings its own tail.
       const failure = new StepFailure(
         error instanceof Error ? error.message : String(error),
-        outputTail(errorTail(error)),
+        outputTail(error instanceof StepTailError ? error.tail : errorTail(error)),
         await measure(),
+        usage,
       );
       failure.cause = error;
       throw failure;
@@ -357,7 +421,7 @@ export function runToolsStep(
       spec.sizeOf === "in"
         ? measurements.bytes_in
         : (measurements.bytes_out ?? measurements.bytes_in);
-    return { summary: stepSummary({ what, wallMs, sizeBytes }), measurements };
+    return { summary: stepSummary({ what, wallMs, sizeBytes }), measurements, ai: usage };
   });
 }
 

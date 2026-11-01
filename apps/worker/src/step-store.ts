@@ -11,6 +11,26 @@ export interface StepMeasurements {
   bytes_out: number | null;
 }
 
+// What an AI call reported: raw numbers as Claude Code gave them, null where
+// it gave none.
+export interface AiUsage {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costUsd: number | null;
+  model: string | null;
+}
+
+// The steps row's AI columns, only for a step that reported usage.
+function aiColumns(ai: AiUsage | undefined) {
+  if (!ai) return {};
+  return {
+    ai_input_tokens: ai.inputTokens,
+    ai_output_tokens: ai.outputTokens,
+    ai_cost_usd: ai.costUsd,
+    ai_model: ai.model,
+  };
+}
+
 // The reel statuses the pipeline writes (one per step); the job's end writes
 // processed or failed.
 export type PipelineReelStatus =
@@ -29,12 +49,19 @@ export interface StepStore {
   skipped(job: ClaimedJob, name: string, summary: string, wallMs: number): Promise<void>;
   reelStatus(reelId: string, status: PipelineReelStatus): Promise<void>;
   sourceKey(reelId: string): Promise<string | null>;
-  done(stepId: string, summary: string, measurements: StepMeasurements): Promise<void>;
+  // `ai` only for a step that called the AI.
+  done(
+    stepId: string,
+    summary: string,
+    measurements: StepMeasurements,
+    ai?: AiUsage,
+  ): Promise<void>;
   failed(
     stepId: string,
     errorTail: string,
     summary: string,
     measurements: StepMeasurements,
+    ai?: AiUsage,
   ): Promise<void>;
 }
 
@@ -86,7 +113,7 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
       if (error) throw new Error(`reel not read: ${error.message}`);
       return (data as { source_key: string | null } | null)?.source_key ?? null;
     },
-    async done(stepId, summary, measurements) {
+    async done(stepId, summary, measurements, ai) {
       const { error } = await db
         .from("steps")
         .update({
@@ -94,11 +121,12 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
           summary,
           finished_at: new Date().toISOString(),
           ...measurements,
+          ...aiColumns(ai),
         })
         .eq("id", stepId);
       if (error) throw new Error(`step not finished: ${error.message}`);
     },
-    async failed(stepId, tail, summary, measurements) {
+    async failed(stepId, tail, summary, measurements, ai) {
       const { error } = await db
         .from("steps")
         .update({
@@ -107,6 +135,7 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
           summary,
           finished_at: new Date().toISOString(),
           ...measurements,
+          ...aiColumns(ai),
         })
         .eq("id", stepId);
       if (error) throw new Error(`step not failed: ${error.message}`);

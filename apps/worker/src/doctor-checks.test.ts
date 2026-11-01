@@ -18,7 +18,7 @@ const PASSING: DoctorDeps = {
   ffmpegEncoders: async () => " V....D libvpx-vp9           libvpx VP9 (codec vp9)",
   ffmpegDecoders: async () => " V..... libvpx-vp9           libvpx VP9 (codec vp9)",
   hyperframes: async () => "0.8.222\n",
-  ai: () => fakeAiRunner([{ ok: true }]),
+  ai: () => fakeAiRunner([{ output: { ok: true } }]),
 };
 
 describe("runDoctor", () => {
@@ -76,7 +76,7 @@ describe("runDoctor", () => {
       [{ ffmpegFilters: async () => " ... atempo  A->A  Adjust audio tempo." }, 3],
       [{ ffmpegEncoders: async () => "" }, 4],
       [{ hyperframes: async () => Promise.reject(new Error("ENOENT")) }, 5],
-      [{ ai: () => fakeAiRunner([{ ok: false }]) }, 6],
+      [{ ai: () => fakeAiRunner([{ output: { ok: false } }]) }, 6],
     ];
     for (const [override, failing] of cases) {
       const { lines, exitCode } = await runDoctor({ ...PASSING, ...override });

@@ -147,6 +147,49 @@ describe("saveVersion and restoreVersion", () => {
     for (const [key, value] of objectsBefore) expect(objects.get(key)).toEqual(value);
   });
 
+  it("records the free field and what could not be expressed", async () => {
+    const { objectStore, store } = memory();
+    const target = (id: string) => ({ objects: objectStore, store, prefix: "", reelId: "r1", id });
+    const plain = await saveVersion({ ...target("v1"), edit: editWith("one"), meta: meta("x") });
+    expect(plain).toMatchObject({ used_free_field: false, free_field: [], unexpressed: [] });
+
+    const styled = editWith("two");
+    styled.tracks.captions[0]!.custom = "letter-spacing: 2px";
+    const freeField = [{ item: "c1", why: "wider letters" }];
+    const v2 = await saveVersion({
+      ...target("v2"),
+      edit: styled,
+      meta: { ...meta("y"), freeField, unexpressed: ["a wobble"] },
+    });
+    expect(v2).toMatchObject({
+      used_free_field: true,
+      free_field: freeField,
+      unexpressed: ["a wobble"],
+    });
+
+    const v3 = await restoreVersion({ ...target("v3"), fromId: "v2" });
+    expect(v3).toMatchObject({
+      used_free_field: true,
+      free_field: freeField,
+      unexpressed: ["a wobble"],
+    });
+  });
+
+  it("derives used_free_field from the edit, never from the claim", async () => {
+    const { objectStore, store } = memory();
+    const row = await saveVersion({
+      objects: objectStore,
+      store,
+      prefix: "",
+      reelId: "r1",
+      id: "v1",
+      edit: editWith("one"),
+      meta: { ...meta("x"), freeField: [{ item: "c1", why: "claimed" }] },
+    });
+    expect(row.used_free_field).toBe(false);
+    expect(row.free_field).toEqual([{ item: "c1", why: "claimed" }]);
+  });
+
   it("refuses to restore a version of another reel", async () => {
     const { objectStore, store } = memory();
     await saveVersion({

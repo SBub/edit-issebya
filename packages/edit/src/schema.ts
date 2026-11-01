@@ -16,7 +16,7 @@ const anchor = z.union([wordAnchor, timeAnchor]);
 // What may follow the generated declarations in an inline style: no quote,
 // backslash, angle bracket or brace, so it cannot leave the attribute.
 const CUSTOM = /^[A-Za-z0-9 :;.,#%()_+*!'/-]*$/;
-const custom = z
+export const custom = z
   .string()
   .max(500)
   .regex(
@@ -34,9 +34,13 @@ const style = z.strictObject({
   font: z.string().min(1).optional(),
 });
 
+// Also the element id in the page and the timeline's selector.
+export const itemId = z
+  .string()
+  .regex(/^[a-z][a-z0-9_-]{0,63}$/, "id must be lower-case letters, digits, _ or -");
+
 const base = {
-  // Also the element id in the page and the timeline's selector.
-  id: z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/, "id must be lower-case letters, digits, _ or -"),
+  id: itemId,
   start: anchor,
   end: anchor,
   style: style.optional(),
@@ -102,7 +106,7 @@ export interface EditContext {
   preset: Preset;
 }
 
-const HEX = /^#[0-9A-Fa-f]{6}$/;
+export const HEX = /^#[0-9A-Fa-f]{6}$/;
 
 // The edit format alone, with no transcript or preset: what a JSON Schema for
 // the decide step starts from.

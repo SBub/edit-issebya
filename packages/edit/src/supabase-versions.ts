@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NewVersion, VersionRow, VersionStore } from "./versions.ts";
 
 const COLUMNS =
-  "id, reel_id, number, parent_id, restored_from_id, request, model, prompt_version, change_summary, checks, inputs, r2_key";
+  "id, reel_id, number, parent_id, restored_from_id, request, model, prompt_version, change_summary, checks, inputs, r2_key, used_free_field, free_field, unexpressed";
 
 // The version store over Supabase, for a client with the secret key (only
 // the worker writes versions): reads by named columns, and every insert
@@ -50,6 +50,9 @@ export function supabaseVersionStore(db: SupabaseClient): VersionStore {
           p_checks: row.checks,
           p_inputs: row.inputs,
           p_r2_key: row.r2_key,
+          p_used_free_field: row.used_free_field,
+          p_free_field: row.free_field,
+          p_unexpressed: row.unexpressed,
         })
         .select(COLUMNS)
         .single();

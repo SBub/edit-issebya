@@ -18,7 +18,8 @@ export async function claimableJobIds(admin: SupabaseClient): Promise<string[]> 
 }
 
 // Spawns the worker's `once` against the local stack with the storage and AI
-// doubles on and OTLP export off, and resolves with its exit code and output.
+// doubles on (the AI scripted for the short-speech reel) and OTLP export off,
+// and resolves with its exit code and output.
 export function runWorkerOnce(
   env: Record<string, string> = {},
 ): Promise<{ code: number | null; output: string }> {
@@ -31,6 +32,7 @@ export function runWorkerOnce(
     SUPABASE_URL: assertLocalUrl(process.env.SUPABASE_URL),
     E2E_MOCK_STORAGE: "true",
     E2E_MOCK_AI: "true",
+    E2E_MOCK_AI_SCRIPT: `${REPOSITORY_ROOT}fixtures/decide/short-speech.json`,
     WORKER_ID: `e2e-${crypto.randomUUID()}`,
     ...env,
   };

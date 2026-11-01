@@ -152,6 +152,9 @@ describe("versions", () => {
         checks: { ok: true, reasons: [] },
         inputs: INPUTS,
         r2_key: `test/reels/${reel}/versions/${id}.json`,
+        used_free_field: false,
+        free_field: [],
+        unexpressed: [],
       }),
     ).rejects.toThrow(/is not the current version/);
   });
@@ -206,6 +209,9 @@ describe("versions", () => {
       p_checks: {},
       p_inputs: {},
       p_r2_key: "test/x.json",
+      p_used_free_field: false,
+      p_free_field: [],
+      p_unexpressed: [],
     });
     expect(rpcError).not.toBeNull();
   });
@@ -216,5 +222,51 @@ describe("versions", () => {
       .update({ change_summary: "rewritten" })
       .eq("id", saved[1]!.id);
     expect(error?.message).toMatch(/versions are immutable/);
+  });
+
+  it("keeps the defaults for a version saved without free field or unexpressed", async () => {
+    const [row] = (await readRows([saved[0]!.id])) ?? [];
+    expect(row).toMatchObject({ used_free_field: false, free_field: [], unexpressed: [] });
+  });
+
+  it("stores used_free_field, free_field and unexpressed", async () => {
+    const edit = editWith("styled");
+    edit.tracks.captions[0]!.custom = "letter-spacing: 2px";
+    const freeField = [{ item: "c1", why: "a little more air" }];
+    const row = await saveVersion({
+      ...target(crypto.randomUUID()),
+      edit,
+      meta: { ...meta("styled"), freeField, unexpressed: ["a slow zoom"] },
+    });
+    const [stored] = (await readRows([row.id])) ?? [];
+    expect(stored).toMatchObject({
+      used_free_field: true,
+      free_field: freeField,
+      unexpressed: ["a slow zoom"],
+    });
+    expect(row).toMatchObject({ used_free_field: true, free_field: freeField });
+  });
+
+  it("refuses an unexpressed list that is not an array", async () => {
+    const current = await store.current(reel);
+    const id = crypto.randomUUID();
+    const { error } = await admin.rpc("save_version", {
+      p_id: id,
+      p_reel_id: reel,
+      p_parent_id: current!.id,
+      p_restored_from_id: null,
+      p_request: null,
+      p_model: null,
+      p_prompt_version: null,
+      p_change_summary: "not a list",
+      p_checks: { ok: true, reasons: [] },
+      p_inputs: INPUTS,
+      p_r2_key: `test/reels/${reel}/versions/${id}.json`,
+      p_used_free_field: false,
+      p_free_field: [],
+      p_unexpressed: { not: "a list" },
+    });
+    expect(error?.message).toMatch(/unexpressed/);
+    expect(await readRows([id])).toEqual([]);
   });
 });

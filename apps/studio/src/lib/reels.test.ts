@@ -51,6 +51,10 @@ describe("columns", () => {
     expect(REEL_COLUMNS).not.toContain("*");
     expect(REEL_DETAIL_COLUMNS).not.toContain("*");
   });
+
+  it("reads the current version on the reel page", () => {
+    expect(REEL_DETAIL_COLUMNS.split(", ")).toContain("current_version_id");
+  });
 });
 
 describe("REEL_STATUSES", () => {

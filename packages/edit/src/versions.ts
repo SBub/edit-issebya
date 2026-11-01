@@ -1,5 +1,5 @@
 import type { CheckResult } from "./checks.ts";
-import type { Edit } from "./schema.ts";
+import { type Edit, type Item, TRACKS } from "./schema.ts";
 
 // Where a version's edit lives: one object per version, never replaced.
 export function versionKey(prefix: string, reelId: string, versionId: string): string {
@@ -30,6 +30,16 @@ export interface VersionRow {
   checks: CheckResult;
   inputs: Edit["inputs"];
   r2_key: string;
+  // Any item of the edit sets `custom`: computed from the saved edit.
+  used_free_field: boolean;
+  // The AI's account of each `custom` it set, and what it could not express.
+  free_field: FreeFieldUse[];
+  unexpressed: string[];
+}
+
+export interface FreeFieldUse {
+  item: string;
+  why: string;
 }
 
 export type NewVersion = Omit<VersionRow, "number">;
@@ -69,6 +79,17 @@ export interface VersionMeta {
   promptVersion: string | null;
   changeSummary: string | null;
   checks: CheckResult;
+  // Both default to [].
+  freeField?: FreeFieldUse[];
+  unexpressed?: string[];
+}
+
+// Whether any item in any track sets the free `custom` field.
+function usesFreeField(edit: Edit): boolean {
+  return TRACKS.some((track) => {
+    const items: Item[] = edit.tracks[track];
+    return items.some((item) => item.custom !== undefined);
+  });
 }
 
 interface Target {
@@ -107,6 +128,9 @@ export function saveVersion(
     change_summary: meta.changeSummary,
     checks: meta.checks,
     inputs: edit.inputs,
+    used_free_field: usesFreeField(edit),
+    free_field: meta.freeField ?? [],
+    unexpressed: meta.unexpressed ?? [],
   });
 }
 
@@ -127,5 +151,9 @@ export async function restoreVersion(target: Target & { fromId: string }): Promi
     change_summary: `restored version ${from.number}`,
     checks: from.checks,
     inputs: from.inputs,
+    // They describe the edit's bytes, which are the same.
+    used_free_field: from.used_free_field,
+    free_field: from.free_field,
+    unexpressed: from.unexpressed,
   });
 }

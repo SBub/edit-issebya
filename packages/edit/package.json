@@ -24,6 +24,7 @@
     "@supabase/supabase-js": "^2.118.0",
     "@types/node": "^24",
     "@vitest/browser-playwright": "5.0.5",
+    "ajv": "8.20.0",
     "eslint": "^9",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-no-secrets": "^2.3.3",
