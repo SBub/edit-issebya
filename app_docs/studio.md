@@ -91,6 +91,12 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   an attempt. Only `service_role` may execute it. There is no retry limit yet.
 - The worker renews its lease while it works (`apps/worker/src/lease.ts`); a failed renewal aborts
   the work and writes nothing more, since another worker may hold the job.
+- `supabase/migrations/20261101153653_versions.sql`: table `versions` (per-reel `number`, parent,
+  restored-from, request, model, prompt version, change summary, checks, input fingerprints,
+  `r2_key`), owner-only `select` RLS for `authenticated`, no `anon` access, rows refused on update
+  by the `versions_refuse_update` trigger (immutable), in the `supabase_realtime` publication;
+  `reels.current_version_id` points at the current one. Written only through `save_version`, which
+  only `service_role` (the worker) may execute; details in `app_docs/edit-model.md`.
 
 ### Live status
 
@@ -171,7 +177,8 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   re-runs it when `supabase/migrations/` changes), `apps/web/src/lib/studio-rewrites.test.ts`,
   `apps/worker/src/**/*.test.ts` and `packages/storage/src/**/*.test.ts` (`yarn test`).
 - DB integration: `apps/studio/db-tests/` (`yarn test:db`): RLS on every public table, owner
-  isolation, the upload path and `finish_upload`, `claim_job`'s lease (`jobs.test.ts`), Realtime
+  isolation, the upload path and `finish_upload`, `claim_job`'s lease (`jobs.test.ts`), `save_version`, version immutability and its RLS
+  (`versions.test.ts`), Realtime
   follows RLS for `reels` and `steps`. Needs the local stack (in ADW runs, the ADW stack through
   `SUPABASE_DB_URL` and the other hook variables); not in the pre-push hook.
 - E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload` specs, chromium, through the
@@ -191,6 +198,8 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 - Never give the owner a general right to write `status`; finishing an upload goes only through
   `finish_upload`.
 - Never let `authenticated` or `anon` execute `claim_job`, or `anon` execute `finish_upload`.
+- Never let `authenticated` or `anon` execute `save_version`; versions are written only through
+  it, by the service role (the worker), and never updated.
 - Never poll from the studio; the reel page reads on open and on each ready subscription only.
 - Never read more than `id` in the worker's periodic check.
 - Never put large content in rows (files in R2, logs in PostHog).
