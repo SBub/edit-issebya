@@ -1,9 +1,24 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 // Named columns, never "*": a later column (a storage key, a worker field)
 // never reaches the page by accident.
 export const REEL_COLUMNS = "id, status, source_name, created_at";
-export const REEL_DETAIL_COLUMNS = "id, status, source_name, source_bytes, created_at, updated_at";
+export const REEL_DETAIL_COLUMNS =
+  "id, status, source_name, source_bytes, created_at, updated_at, current_version_id";
 
-export const REEL_STATUSES = ["uploading", "uploaded", "received", "failed"] as const;
+export const REEL_STATUSES = [
+  "uploading",
+  "uploaded",
+  "received",
+  "converting",
+  "transcribing",
+  "retiming",
+  "removing_background",
+  "tracking_head",
+  "making_previews",
+  "processed",
+  "failed",
+] as const;
 export type ReelStatus = (typeof REEL_STATUSES)[number];
 
 export interface ReelSummary {
@@ -16,6 +31,24 @@ export interface ReelSummary {
 export interface ReelDetail extends ReelSummary {
   source_bytes: number | null;
   updated_at: string;
+  current_version_id: string | null;
+}
+
+// The number of a version (shown as "version 2"), read under the owner's
+// row-level security; null before the first version or when it is not
+// readable.
+export async function versionNumberOf(
+  supabase: SupabaseClient,
+  versionId: string | null | undefined,
+): Promise<number | null> {
+  if (!versionId) return null;
+  const { data, error } = await supabase
+    .from("versions")
+    .select("number")
+    .eq("id", versionId)
+    .maybeSingle<{ number: number }>();
+  if (error || !data) return null;
+  return data.number;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

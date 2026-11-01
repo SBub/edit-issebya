@@ -135,4 +135,29 @@ async function registerE2EMocks(flags: { stripe: boolean; resend: boolean }): Pr
     context: { quiet: true },
   });
   await network.enable();
+  keepInterceptedFetch();
+}
+
+/**
+ * Keeps the intercepted fetch installed under `next dev`. Whenever Turbopack
+ * rewrites a server chunk (an edit, or a route compiled for the first time
+ * mid-run), Next's dev resetFetch() puts back the global fetch it saved before
+ * register() ran, which silently drops the FetchInterceptor: the mocked Stripe
+ * and Resend calls then go to the real APIs. globalThis.fetch becomes an
+ * accessor that swaps any plain fetch assigned to it for the intercepted one,
+ * and lets Next's own patched wrapper (marked `__nextPatched`) through, so
+ * Next re-wraps the intercepted fetch on the next request. `next start` never
+ * resets fetch; there this changes nothing.
+ */
+function keepInterceptedFetch(): void {
+  const intercepted = globalThis.fetch;
+  let current = intercepted;
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    enumerable: true,
+    get: () => current,
+    set: (value: typeof fetch & { __nextPatched?: boolean }) => {
+      current = value.__nextPatched ? value : intercepted;
+    },
+  });
 }

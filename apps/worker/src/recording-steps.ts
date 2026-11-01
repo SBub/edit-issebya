@@ -3,18 +3,27 @@
 import { ROOT_CONTEXT } from "@opentelemetry/api";
 import type { ClaimedJob } from "./queue.ts";
 import type { StepContext } from "./step-runner.ts";
-import type { StepMeasurements, StepStore } from "./step-store.ts";
+import type { AiUsage, PipelineReelStatus, StepMeasurements, StepStore } from "./step-store.ts";
 import { type Telemetry, createTelemetry } from "./telemetry.ts";
 
 export type StepCall =
   | { call: "start"; jobId: string; name: string }
-  | { call: "done"; stepId: string; summary: string; measurements: StepMeasurements }
+  | { call: "skipped"; jobId: string; name: string; summary: string; wallMs: number }
+  | { call: "reelStatus"; reelId: string; status: PipelineReelStatus }
+  | {
+      call: "done";
+      stepId: string;
+      summary: string;
+      measurements: StepMeasurements;
+      ai?: AiUsage;
+    }
   | {
       call: "failed";
       stepId: string;
       tail: string;
       summary: string;
       measurements: StepMeasurements;
+      ai?: AiUsage;
     };
 
 export function recordingSteps(sourceKey: string | null = null) {
@@ -26,14 +35,20 @@ export function recordingSteps(sourceKey: string | null = null) {
       next += 1;
       return `s${next}`;
     },
+    async skipped(job, name, summary, wallMs) {
+      calls.push({ call: "skipped", jobId: job.id, name, summary, wallMs });
+    },
+    async reelStatus(reelId, status) {
+      calls.push({ call: "reelStatus", reelId, status });
+    },
     async sourceKey() {
       return sourceKey;
     },
-    async done(stepId, summary, measurements) {
-      calls.push({ call: "done", stepId, summary, measurements });
+    async done(stepId, summary, measurements, ai) {
+      calls.push({ call: "done", stepId, summary, measurements, ...(ai ? { ai } : {}) });
     },
-    async failed(stepId, tail, summary, measurements) {
-      calls.push({ call: "failed", stepId, tail, summary, measurements });
+    async failed(stepId, tail, summary, measurements, ai) {
+      calls.push({ call: "failed", stepId, tail, summary, measurements, ...(ai ? { ai } : {}) });
     },
   };
   return { steps, calls };

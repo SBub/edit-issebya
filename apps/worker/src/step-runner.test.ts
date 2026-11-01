@@ -1,9 +1,11 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { recordingSteps, stepContext } from "./recording-steps.ts";
-import { runStep } from "./step-runner.ts";
+import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
+import { StepTailError, recordHit, runStep, runToolsStep } from "./step-runner.ts";
+import { createTelemetry } from "./telemetry.ts";
 
 // Real child processes under /usr/bin/time: Node itself is the tool.
 const NODE = process.execPath;
@@ -161,5 +163,207 @@ describe("runStep", () => {
     await expect(running).rejects.toThrow("lease lost");
     expect(calls.map((c) => c.call)).toEqual(["start"]);
     expect(() => process.kill(pid, 0)).toThrow();
+  });
+});
+
+describe("runToolsStep", () => {
+  const busy = (mb: number, ms: number) =>
+    `const b = Buffer.alloc(${mb} * 1024 * 1024, 1); const t = Date.now(); while (Date.now() - t < ${ms}) {} void b;`;
+
+  it("sums CPU over the calls and keeps the larger peak", TIMEOUT, async () => {
+    const { steps, calls } = recordingSteps();
+    const stdouts: string[] = [];
+    await runToolsStep(stepContext(steps), {
+      name: "two",
+      async work(tool) {
+        stdouts.push(await tool({ file: NODE, args: ["-e", `${busy(50, 600)} console.log("a")`] }));
+        stdouts.push(
+          await tool({ file: NODE, args: ["-e", `${busy(200, 600)} console.log("b")`] }),
+        );
+        return { what: "both ran" };
+      },
+    });
+    expect(stdouts).toEqual(["a\n", "b\n"]);
+    const { measurements, summary } = onlyDone(calls);
+    // Each call alone burns at least ~500 ms of CPU.
+    expect(measurements.cpu_ms).toBeGreaterThanOrEqual(1000);
+    expect(measurements.peak_rss_bytes).toBeGreaterThanOrEqual(200 * MB);
+    expect(measurements.peak_rss_bytes).toBeLessThan(250 * MB);
+    expect(measurements.wall_ms).toBeGreaterThanOrEqual(1200);
+    expect(summary).toMatch(/^both ran, \d+ seconds?$/);
+  });
+
+  it("stores the measurements so far and the failing call's tail", TIMEOUT, async () => {
+    const { steps, calls } = recordingSteps();
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "two",
+        async work(tool) {
+          await tool({ file: NODE, args: ["-e", busy(10, 600)] });
+          await tool({
+            file: NODE,
+            args: ["-e", `console.error("first"); console.error("second"); process.exit(3)`],
+          });
+          return { what: "never" };
+        },
+      }),
+    ).rejects.toThrow(/two exited with 3\nfirst\nsecond$/);
+    const failed = calls.find((c) => c.call === "failed");
+    if (failed?.call !== "failed") throw new Error("no failed call");
+    expect(failed.tail).toBe("first\nsecond");
+    expect(failed.measurements.cpu_ms).toBeGreaterThanOrEqual(500);
+    expect(failed.measurements.wall_ms).toBeGreaterThanOrEqual(600);
+    expect(failed.summary).toMatch(/^two failed, /);
+  });
+
+  it("keeps the measurements when the work fails between calls", TIMEOUT, async () => {
+    const { steps, calls } = recordingSteps();
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "parse",
+        async work(tool) {
+          await tool({ file: NODE, args: ["-e", busy(10, 600)] });
+          throw new Error("unexpected answer");
+        },
+      }),
+    ).rejects.toThrow("unexpected answer");
+    const failed = calls.find((c) => c.call === "failed");
+    if (failed?.call !== "failed") throw new Error("no failed call");
+    expect(failed.tail.split("\n")[0]).toBe("Error: unexpected answer");
+    expect(failed.measurements.cpu_ms).toBeGreaterThanOrEqual(500);
+  });
+
+  it("writes input to the tool's stdin", TIMEOUT, async () => {
+    const { steps } = recordingSteps();
+    let echoed = "";
+    await runToolsStep(stepContext(steps), {
+      name: "echo",
+      async work(tool) {
+        echoed = await tool({ file: "/bin/cat", args: [], input: "line one\nline two" });
+        return { what: "echoed" };
+      },
+    });
+    expect(echoed).toBe("line one\nline two\n");
+  });
+
+  it("kills a call that runs past its timeout and fails the step", TIMEOUT, async () => {
+    const { steps, calls } = recordingSteps();
+    const started = Date.now();
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "slow",
+        async work(tool) {
+          await tool({ file: "/bin/sleep", args: ["30"], timeoutMs: 1000 });
+          return { what: "never" };
+        },
+      }),
+    ).rejects.toThrow(/^slow timed out after 1 s/);
+    expect(Date.now() - started).toBeLessThan(10_000);
+    const failed = calls.find((c) => c.call === "failed");
+    if (failed?.call !== "failed") throw new Error("no failed call");
+    expect(failed.tail).toBe("slow timed out after 1 s");
+  });
+
+  it("stores a StepTailError's own tail", async () => {
+    const { steps, calls } = recordingSteps();
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "decide",
+        async work() {
+          throw new StepTailError("decide failed twice\nround 1: a\nround 2: b");
+        },
+      }),
+    ).rejects.toThrow("decide failed twice");
+    const failed = calls.find((c) => c.call === "failed");
+    if (failed?.call !== "failed") throw new Error("no failed call");
+    expect(failed.tail).toBe("decide failed twice\nround 1: a\nround 2: b");
+  });
+
+  it("stores the summed AI usage on done", async () => {
+    const { steps, calls } = recordingSteps();
+    await runToolsStep(stepContext(steps), {
+      name: "decide",
+      async work(_tool, ai) {
+        ai({ inputTokens: 1234, outputTokens: 567, costUsd: 0.0123, model: "claude-a" });
+        ai({ inputTokens: 1, outputTokens: null, costUsd: 0.0001, model: "claude-b" });
+        return { what: "decided" };
+      },
+    });
+    expect(onlyDone(calls).ai).toEqual({
+      inputTokens: 1235,
+      outputTokens: 567,
+      costUsd: 0.0124,
+      model: "claude-b",
+    });
+  });
+
+  it("stores the AI usage on failed, and none for a step without AI", async () => {
+    const { steps, calls } = recordingSteps();
+    const usage = { inputTokens: 10, outputTokens: 2, costUsd: 0.5, model: "claude-a" };
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "decide",
+        async work(_tool, ai) {
+          ai(usage);
+          throw new Error("bad answer");
+        },
+      }),
+    ).rejects.toThrow("bad answer");
+    const failed = calls.find((c) => c.call === "failed");
+    if (failed?.call !== "failed") throw new Error("no failed call");
+    expect(failed.ai).toEqual(usage);
+
+    const plain = recordingSteps();
+    await runToolsStep(stepContext(plain.steps), {
+      name: "plain",
+      work: async () => ({ what: "ran" }),
+    });
+    expect(onlyDone(plain.calls).ai).toBeUndefined();
+  });
+});
+
+describe("recordHit", () => {
+  it("writes one skipped call and a span with step.cache_hit", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const { steps, calls } = recordingSteps();
+    await recordHit(stepContext(steps, { telemetry }), {
+      name: "convert",
+      summary: "footage converted, reused",
+      wallMs: 12,
+    });
+    expect(calls).toEqual([
+      {
+        call: "skipped",
+        jobId: TEST_JOB.id,
+        name: "convert",
+        summary: "footage converted, reused",
+        wallMs: 12,
+      },
+    ]);
+    const spans = exporter.getFinishedSpans();
+    expect(spans.map((span) => span.name)).toEqual(["step convert"]);
+    expect(spans[0]?.attributes).toMatchObject({
+      "step.name": "convert",
+      "step.cache_hit": true,
+      "step.wall_ms": 12,
+    });
+  });
+
+  it("writes nothing after an abort", async () => {
+    const { steps, calls } = recordingSteps();
+    const controller = new AbortController();
+    controller.abort(new Error("lease lost"));
+    await expect(
+      recordHit(stepContext(steps, { signal: controller.signal }), {
+        name: "convert",
+        summary: "x",
+        wallMs: 0,
+      }),
+    ).rejects.toThrow("lease lost");
+    expect(calls).toEqual([]);
   });
 });
