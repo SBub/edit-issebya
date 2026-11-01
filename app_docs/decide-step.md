@@ -124,4 +124,5 @@ step row still carries the tokens and cost spent.
 - Touches `app_docs/edit-model.md` (new check rule, version columns, `save_version` signature),
   `app_docs/measurement.md` (the `ai_*` columns are now written by decide) and `app_docs/studio.md`
   (`E2E_MOCK_AI_SCRIPT`); those still describe the AI as only a doctor check in places.
-- `request` is null for the automatic run; the owner-request path reuses `runDecide` with a request.
+- `request` is null for the automatic run. The owner-request path now exists: a `change` job runs
+  `runDecide` with `job.request` (see `app_docs/change-requests.md`).

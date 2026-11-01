@@ -175,7 +175,9 @@ worker's `once`, every step a cache hit, then the `first_version` step saves ver
 error tail, `preview.spec.ts` seeds a processed reel the same way (`test-support/pipeline-cache.ts`,
 its AI answer keeping version 1 unchanged, so version 2 matches the version 1 golden)
 and plays its live preview: the HyperFrames runtime and GSAP routed from the pinned local
-packages, so no network), run last by
+packages, so no network), `change-requests.spec.ts` seeds a processed reel the same way, a change
+makes version 3 live, a change the AI refuses twice keeps version 3 and the reel `processed`, and
+going back makes versions 4 and 5, run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
 arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by
