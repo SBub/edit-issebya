@@ -332,8 +332,10 @@ IMPORTANT: Execute every step in order, top to bottom.
   - Pause: `player.pause()`; stop and disconnect every scheduled source; abort any pending wait.
   - Seek (scrubber input): stop scheduled sources; `player.seek(t)`; if it was playing, run the Play
     sequence from `t` (hold until ready again); if paused, just show the frame.
-  - Stall while playing (`waiting` or `stalled` on a playing element, or `canPlayFrom` false): pause
-    the player at its current time, cancel sounds, go `holding`, resume through the Play sequence.
+  - Stall while playing (`waiting` or `stalled` on a playing element, or `isStalled`: too little data
+    or seeking, with the buffer short of 0.5 s past the current point; a decoder dip or the player's
+    own drift-correcting seek inside the buffer is not a stall): pause the player at its current time, cancel sounds, go `holding`, resume through the
+    Play sequence.
   - `ended`: stop sources, state `paused`.
   - One `AudioContext` per mounted player, closed on unmount; a new `srcdoc` (rebuild) pauses, cancels
     sounds and resets to `loading`.
@@ -466,8 +468,8 @@ IMPORTANT: Execute every step in order, top to bottom.
 - Signed links expiring (one hour) on a long-open page: a load error line; a reload fixes it (no
   polling or timed refresh).
 - Non-Chromium browser: note shown, preview still mounted.
-- The mock storage GET has no Range support: fine for the small fixture copies (fully buffered); real
-  R2 serves ranges.
+- The mock storage GET serves one byte range, as R2 does: without `Accept-Ranges` and a 206 the
+  browser cannot seek a video and lands every seek at 0, even on a small, fully loaded copy.
 
 ## Acceptance Criteria
 

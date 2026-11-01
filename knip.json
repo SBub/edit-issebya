@@ -14,7 +14,7 @@
         "config": ["vitest.config.ts", "vitest.db.config.ts"]
       },
       "playwright": true,
-      "entry": ["scripts/*.ts"],
+      "entry": ["scripts/*.ts", "src/lib/empty-module.ts"],
       "project": [
         "src/**/*.{ts,tsx,css}",
         "e2e/**/*.ts",

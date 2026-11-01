@@ -1,10 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { canPlayFrom, whenReady } from "./media-ready";
+import { canPlayFrom, isStalled, whenReady } from "./media-ready";
 
 class FakeMedia extends EventTarget {
   readyState = 4;
   seeking = false;
   currentTime = 0;
+  duration = 10;
+  ranges: [number, number][] = [];
+  get buffered() {
+    const ranges = this.ranges;
+    return {
+      length: ranges.length,
+      start: (index: number) => ranges[index]![0],
+      end: (index: number) => ranges[index]![1],
+    };
+  }
   listeners = 0;
   override addEventListener(...args: Parameters<EventTarget["addEventListener"]>) {
     this.listeners += 1;
@@ -46,6 +56,41 @@ describe("canPlayFrom at a time", () => {
     el.currentTime = 12;
     expect(canPlayFrom(el, 12.1)).toBe(true);
     expect(canPlayFrom(el, 0)).toBe(false);
+  });
+});
+
+describe("isStalled", () => {
+  it("is short of data with nothing buffered ahead", () => {
+    const el = new FakeMedia();
+    expect(isStalled(el)).toBe(false);
+    el.readyState = 2;
+    expect(isStalled(el)).toBe(true);
+    el.seeking = true;
+    el.readyState = 4;
+    expect(isStalled(el)).toBe(true);
+  });
+
+  it("is not a dip or a seek with the next half second buffered", () => {
+    const el = new FakeMedia();
+    el.readyState = 2;
+    el.currentTime = 1.2;
+    el.ranges = [[0, 2]];
+    expect(isStalled(el)).toBe(false);
+    el.seeking = true;
+    expect(isStalled(el)).toBe(false);
+    el.currentTime = 1.8;
+    expect(isStalled(el)).toBe(true);
+    el.currentTime = 2.5;
+    expect(isStalled(el)).toBe(true);
+  });
+
+  it("needs the buffer only up to the end", () => {
+    const el = new FakeMedia();
+    el.readyState = 2;
+    el.duration = 2;
+    el.currentTime = 1.8;
+    el.ranges = [[0, 2]];
+    expect(isStalled(el)).toBe(false);
   });
 });
 

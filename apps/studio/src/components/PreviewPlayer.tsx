@@ -2,7 +2,7 @@
 
 import type { HyperframesPlayer } from "@hyperframes/player";
 import { useEffect, useRef, useState } from "react";
-import { whenReady } from "@/lib/media-ready";
+import { isStalled, whenReady } from "@/lib/media-ready";
 import { playingMedia } from "@/lib/player-media";
 import { scheduleFrom } from "@/lib/sound-schedule";
 
@@ -182,8 +182,7 @@ export function PreviewPlayer({
     // A stall while playing: hold, then resume from the held time.
     const onStall = (event: Event) => {
       if (stateRef.current !== "playing") return;
-      const el = event.target as HTMLMediaElement;
-      if (el.seeking || el.readyState < 3) void startFromHere(player);
+      if (isStalled(event.target as HTMLMediaElement)) void startFromHere(player);
     };
     const watch = () => {
       for (const el of media) {
@@ -199,8 +198,7 @@ export function PreviewPlayer({
     const onTime = () => {
       setTime(player.currentTime);
       if (stateRef.current !== "playing") return;
-      const stalled = playingMedia(player).find((el) => el.seeking || el.readyState < 3);
-      if (stalled) void startFromHere(player);
+      if (playingMedia(player).some(isStalled)) void startFromHere(player);
     };
     const onPlay = () => watch();
     const onEnded = () => {

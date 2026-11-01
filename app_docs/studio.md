@@ -121,7 +121,8 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   passes its own keys.
 - `E2E_MOCK_STORAGE=true` (exactly) makes both use the gitignored `.e2e-storage/` folder at the
   repository root; the studio's `/studio/api/e2e-storage-mock/[...key]` route stands in for R2's
-  PUT and answers 404 otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
+  PUT and GET (one byte range on a `Range` header, so the browser can seek a video) and answers 404
+  otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
 - `fixtures/footage/short-speech.mp4` is the committed short vertical clip with speech, made by
   `scripts/make-test-clip.sh` (macOS only, run by hand).
 
