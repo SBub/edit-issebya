@@ -1,14 +1,14 @@
 // Named columns, never "*", and no lease column: the page shows what a job
 // did, not which worker holds it.
 export const JOB_COLUMNS =
-  "id, reel_id, kind, status, attempts, error_tail, created_at, started_at, finished_at";
+  "id, reel_id, kind, status, attempts, error_tail, created_at, started_at, finished_at, request, restore_version_id";
 export const STEP_COLUMNS =
   "id, job_id, reel_id, name, status, summary, error_tail, started_at, finished_at";
 
 export const JOB_STATUSES = ["queued", "running", "done", "failed"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
-export const STEP_STATUSES = ["running", "done", "failed"] as const;
+export const STEP_STATUSES = ["running", "done", "failed", "skipped"] as const;
 export type StepStatus = (typeof STEP_STATUSES)[number];
 
 export interface JobRow {
@@ -21,6 +21,10 @@ export interface JobRow {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  // A change job's words; null for every other kind.
+  request: string | null;
+  // The version a restore job copies; null for every other kind.
+  restore_version_id: string | null;
 }
 
 export interface StepRow {

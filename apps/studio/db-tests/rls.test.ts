@@ -26,7 +26,9 @@ describe("every public table", () => {
         where n.nspname = 'public' and c.relkind = 'r'
         order by c.relname`);
       // Not vacuous: the list holds at least the studio's tables.
-      expect(rows.map((r) => r.table)).toEqual(expect.arrayContaining(["reels", "jobs", "steps"]));
+      expect(rows.map((r) => r.table)).toEqual(
+        expect.arrayContaining(["reels", "jobs", "steps", "versions"]),
+      );
       for (const row of rows) {
         expect({ table: row.table, rls: row.rls }).toEqual({ table: row.table, rls: true });
         expect(row.policies, `${row.table} has no policy`).toBeGreaterThan(0);

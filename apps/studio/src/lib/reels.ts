@@ -1,9 +1,22 @@
 // Named columns, never "*": a later column (a storage key, a worker field)
 // never reaches the page by accident.
 export const REEL_COLUMNS = "id, status, source_name, created_at";
-export const REEL_DETAIL_COLUMNS = "id, status, source_name, source_bytes, created_at, updated_at";
+export const REEL_DETAIL_COLUMNS =
+  "id, status, source_name, source_bytes, created_at, updated_at, current_version_id";
 
-export const REEL_STATUSES = ["uploading", "uploaded", "received", "failed"] as const;
+export const REEL_STATUSES = [
+  "uploading",
+  "uploaded",
+  "received",
+  "converting",
+  "transcribing",
+  "retiming",
+  "removing_background",
+  "tracking_head",
+  "making_previews",
+  "processed",
+  "failed",
+] as const;
 export type ReelStatus = (typeof REEL_STATUSES)[number];
 
 export interface ReelSummary {
@@ -16,6 +29,8 @@ export interface ReelSummary {
 export interface ReelDetail extends ReelSummary {
   source_bytes: number | null;
   updated_at: string;
+  // The version the preview shows; null until version 1 is saved.
+  current_version_id: string | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

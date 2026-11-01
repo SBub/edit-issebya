@@ -1,0 +1,212 @@
+[
+  {
+    "output": {
+      "tracks": {
+        "captions": [
+          {
+            "end": {
+              "word": "w0001"
+            },
+            "id": "c-w0001",
+            "start": {
+              "word": "w0001"
+            },
+            "text": "this",
+            "words": ["w0001"]
+          },
+          {
+            "end": {
+              "word": "w0002"
+            },
+            "id": "c-w0002",
+            "start": {
+              "word": "w0002"
+            },
+            "text": "is",
+            "words": ["w0002"]
+          },
+          {
+            "end": {
+              "word": "w0003"
+            },
+            "id": "c-w0003",
+            "start": {
+              "word": "w0003"
+            },
+            "text": "a",
+            "words": ["w0003"]
+          },
+          {
+            "end": {
+              "word": "w0004"
+            },
+            "id": "c-w0004",
+            "start": {
+              "word": "w0004"
+            },
+            "text": "short",
+            "words": ["w0004"]
+          },
+          {
+            "end": {
+              "word": "w0005"
+            },
+            "id": "c-w0005",
+            "start": {
+              "word": "w0005"
+            },
+            "text": "test",
+            "words": ["w0005"]
+          },
+          {
+            "end": {
+              "word": "w0006"
+            },
+            "id": "c-w0006",
+            "start": {
+              "word": "w0006"
+            },
+            "text": "clip",
+            "words": ["w0006"]
+          },
+          {
+            "end": {
+              "word": "w0007"
+            },
+            "id": "c-w0007",
+            "start": {
+              "word": "w0007"
+            },
+            "text": "for",
+            "words": ["w0007"]
+          },
+          {
+            "end": {
+              "word": "w0008"
+            },
+            "id": "c-w0008",
+            "start": {
+              "word": "w0008"
+            },
+            "text": "the",
+            "words": ["w0008"]
+          },
+          {
+            "end": {
+              "word": "w0009"
+            },
+            "id": "c-w0009",
+            "start": {
+              "word": "w0009"
+            },
+            "text": "reel",
+            "words": ["w0009"]
+          },
+          {
+            "end": {
+              "word": "w0010"
+            },
+            "id": "c-w0010",
+            "start": {
+              "word": "w0010"
+            },
+            "text": "studio",
+            "words": ["w0010"]
+          }
+        ],
+        "cutout": [
+          {
+            "end": {
+              "edge": "end",
+              "word": "w0010"
+            },
+            "id": "cutout",
+            "start": {
+              "at": 0
+            }
+          }
+        ],
+        "footage": [
+          {
+            "end": {
+              "edge": "end",
+              "word": "w0010"
+            },
+            "id": "footage",
+            "start": {
+              "at": 0
+            }
+          }
+        ],
+        "overlays": [
+          {
+            "id": "title",
+            "start": {
+              "at": 0
+            },
+            "end": {
+              "word": "w0004"
+            },
+            "text": "a reel studio"
+          },
+          {
+            "id": "a-w0010",
+            "start": {
+              "word": "w0010"
+            },
+            "end": {
+              "word": "w0010",
+              "edge": "end",
+              "offset": 0.08
+            },
+            "text": "studio"
+          }
+        ],
+        "sounds": [
+          {
+            "id": "s1",
+            "sound": "click",
+            "start": {
+              "word": "w0005",
+              "offset": -0.03
+            },
+            "end": {
+              "word": "w0005",
+              "offset": 0.2
+            }
+          }
+        ],
+        "transitions": [
+          {
+            "id": "t1",
+            "type": "dim",
+            "start": {
+              "word": "w0005",
+              "offset": -0.03
+            },
+            "end": {
+              "word": "w0008"
+            },
+            "text": "just a test"
+          }
+        ]
+      },
+      "change_summary": "Fixed \"real\" to \"reel\", added a short title, one accent on \"studio\" and one dimmed moment with a click.",
+      "fixed_words": [
+        {
+          "word": "w0009",
+          "heard": "real",
+          "text": "reel"
+        }
+      ],
+      "unexpressed": [],
+      "free_field": []
+    },
+    "usage": {
+      "inputTokens": 1200,
+      "outputTokens": 340,
+      "costUsd": 0.0215,
+      "model": "claude-fake"
+    }
+  }
+]

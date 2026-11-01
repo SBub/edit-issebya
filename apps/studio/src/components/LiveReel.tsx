@@ -10,13 +10,26 @@ import {
   pickColumns,
   upsertById,
 } from "@/lib/jobs";
+import { changeBlockedReason } from "@/lib/change-request";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, formatBytes, formatCreatedAt } from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { type VersionListRow, readVersions } from "@/lib/versions";
+import { ChangeRequestForm } from "./ChangeRequestForm";
+import { Preview } from "./Preview";
+import { VersionList } from "./VersionList";
 
 interface Snapshot {
   reel: ReelDetail;
   jobs: JobRow[];
   steps: StepRow[];
+  // Newest first; the newest is the current version.
+  versions: VersionListRow[];
+}
+
+// Version numbers only grow (a restore is a new version too), so a late
+// answer never replaces the list with an older one.
+function newerList(shown: VersionListRow[], read: VersionListRow[]): VersionListRow[] {
+  return (read[0]?.number ?? 0) >= (shown[0]?.number ?? 0) ? read : shown;
 }
 
 async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snapshot | null> {
@@ -36,17 +49,27 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
       .returns<StepRow[]>(),
   ]);
   if (reel.error || jobs.error || steps.error || !reel.data) return null;
-  return { reel: reel.data, jobs: jobs.data ?? [], steps: steps.data ?? [] };
+  const versions = await readVersions(supabase, id).catch(() => null);
+  if (!versions) return null;
+  return { reel: reel.data, jobs: jobs.data ?? [], steps: steps.data ?? [], versions };
 }
 
 // The reel's status, jobs and step log. Read once on the server, then followed
 // through Realtime filtered to this reel (RLS decides what arrives). One
 // catch-up read each time the subscription becomes ready covers changes made
-// between the server read and the subscription. No interval, no polling.
-export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialSteps }: Snapshot) {
+// between the server read and the subscription. No interval, no polling. The
+// versions are re-read once each time a reel update names a new current
+// version, which reaches the preview the same way and rebuilds it.
+export function LiveReel({
+  reel: initialReel,
+  jobs: initialJobs,
+  steps: initialSteps,
+  versions: initialVersions,
+}: Snapshot) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
   const [steps, setSteps] = useState(initialSteps);
+  const [versions, setVersions] = useState(initialVersions);
   const [ready, setReady] = useState(false);
   const id = initialReel.id;
 
@@ -54,6 +77,10 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
     const supabase = createSupabaseBrowserClient();
     if (!supabase) return;
     let active = true;
+    const showVersions = (read: VersionListRow[]) => {
+      if (active) setVersions((shown) => newerList(shown, read));
+    };
+    let followedVersionId: string | null = null;
     const channel = supabase.channel(`reel-${id}-${crypto.randomUUID()}`);
 
     channel
@@ -66,6 +93,7 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
             setReel(snapshot.reel);
             setJobs(snapshot.jobs);
             setSteps(snapshot.steps);
+            showVersions(snapshot.versions);
           }
           setReady(true);
         });
@@ -74,10 +102,14 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "reels", filter: `id=eq.${id}` },
         (payload) => {
-          setReel((current) => ({
-            ...current,
-            ...pickColumns<Partial<ReelDetail>>(payload.new, REEL_DETAIL_COLUMNS),
-          }));
+          const changed = pickColumns<Partial<ReelDetail>>(payload.new, REEL_DETAIL_COLUMNS);
+          setReel((current) => ({ ...current, ...changed }));
+          const versionId = changed.current_version_id;
+          if (versionId && versionId !== followedVersionId) {
+            followedVersionId = versionId;
+            // A failed read keeps the list shown; the next update or reload reads again.
+            void readVersions(supabase, id).then(showVersions, () => {});
+          }
         },
       )
       .on(
@@ -111,8 +143,25 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
     };
   }, [id]);
 
+  const versionNumber = versions[0]?.number ?? null;
+  const blockedReason = changeBlockedReason(reel.status, jobs);
+  const numberOf = (versionId: string | null) =>
+    versions.find((version) => version.id === versionId)?.number;
+
   return (
     <div data-realtime={ready ? "ready" : "pending"} className="flex flex-col gap-6">
+      {reel.current_version_id ? (
+        <>
+          <Preview reelId={reel.id} versionId={reel.current_version_id} />
+          <ChangeRequestForm
+            reelId={reel.id}
+            blockedReason={blockedReason}
+            jobCount={jobs.length}
+          />
+        </>
+      ) : (
+        <p className="text-sm text-stone-600">The preview appears once processing has finished.</p>
+      )}
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
         <dt className="text-stone-600">Status</dt>
         <dd data-testid="reel-status">{reel.status}</dd>
@@ -122,7 +171,15 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
         <dd>
           <time dateTime={reel.created_at}>{formatCreatedAt(reel.created_at)}</time>
         </dd>
+        {versionNumber !== null && (
+          <>
+            <dt className="text-stone-600">Edit</dt>
+            <dd data-testid="current-version">version {versionNumber}</dd>
+          </>
+        )}
       </dl>
+
+      <VersionList reelId={reel.id} versions={versions} blockedReason={blockedReason} />
 
       <section aria-labelledby="jobs-heading" className="flex flex-col gap-2">
         <h2 id="jobs-heading" className="text-lg font-semibold">
@@ -139,6 +196,16 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
                   <span data-testid="job-status">{job.status}</span>
                   <span className="text-stone-600">attempts: {job.attempts}</span>
                 </span>
+                {job.kind === "change" && job.request && (
+                  <span data-testid="job-request" className="break-words text-stone-700">
+                    &ldquo;{job.request}&rdquo;
+                  </span>
+                )}
+                {job.kind === "restore" && (
+                  <span data-testid="job-request" className="text-stone-700">
+                    go back to version {numberOf(job.restore_version_id) ?? "?"}
+                  </span>
+                )}
                 {job.status === "failed" && job.error_tail && (
                   <pre className="overflow-x-auto text-xs whitespace-pre-wrap text-red-700">
                     {job.error_tail}

@@ -27,17 +27,28 @@ const nextConfig: NextConfig = {
   // app_docs/studio.md, "Zone and forwarding".
   basePath: "/studio",
   assetPrefix: "/studio-static",
-  // A workspace package shipped as TypeScript source (no build step); Next
-  // transpiles it like the app's own code.
-  transpilePackages: ["@edit-issebya/storage"],
+  // Workspace packages shipped as TypeScript source (no build step); Next
+  // transpiles them like the app's own code.
+  transpilePackages: ["@edit-issebya/storage", "@edit-issebya/edit"],
   ...(host ? { experimental: { serverActions: { allowedOrigins: [host] } } } : {}),
   // Same reason as apps/web: dependencies are hoisted to the repository root's
   // node_modules, so pin the Turbopack root and the output file tracing root
   // to that root (two levels up). Next wants both set to the same directory.
   turbopack: {
     root: monorepoRoot,
+    // harfbuzzjs (the preview measures caption text in the browser) imports
+    // Node's `module` behind a Node-only check; the browser bundle gets an
+    // empty stand-in so the import resolves.
+    resolveAlias: {
+      module: { browser: "./src/lib/empty-module.ts" },
+    },
   },
   outputFileTracingRoot: monorepoRoot,
+  // The preview's asset route reads the preset's fonts and sounds from the
+  // edit package at run time.
+  outputFileTracingIncludes: {
+    "/api/edit-assets/*": ["../../packages/edit/assets/**/*"],
+  },
   // Next 16 otherwise writes its own AGENTS.md and CLAUDE.md on every `next
   // dev`. This repo keeps those files by hand; see AGENTS.md.
   agentRules: false,

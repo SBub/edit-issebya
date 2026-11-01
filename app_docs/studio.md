@@ -58,8 +58,11 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 - `apps/studio/src/app/reels/[id]/page.tsx`: one reel with its jobs and steps. A malformed id
   (`isReelId`) or a reel that is not the caller's is a 404; signed out redirects to `/studio`.
   Read once on the server, then handed to `LiveReel`.
-- `apps/studio/src/lib/reels.ts`: named column lists (never `*`), status type, id check and
-  formatters.
+- `supabase/migrations/20261105090000_preview_copies_fingerprint.sql`:
+  `reels.preview_copies_fingerprint` (64 hex characters or null), readable by the owner under the
+  existing select policy, written only by the worker.
+- `apps/studio/src/lib/reels.ts`: named column lists (never `*`; `REEL_DETAIL_COLUMNS` includes
+  `current_version_id`), status type, id check and formatters.
 
 ### Upload
 
@@ -81,7 +84,7 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 
 ### Jobs, steps and the lease
 
-- `supabase/migrations/20261031174750_job_queue.sql`: tables `jobs` (kind `process`, status
+- `supabase/migrations/20261031174750_job_queue.sql`: tables `jobs` (kind `process`, later also `change` and `restore`, status
   `queued | running | done | failed`, lease holder and expiry, attempts, error tail) and `steps`
   (name, status, summary, error tail), both with owner-only `select` RLS and in the
   `supabase_realtime` publication. Only the worker (secret key) writes job and step state.
@@ -90,6 +93,7 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   an attempt. Only `service_role` may execute it. There is no retry limit yet.
 - The worker renews its lease while it works (`apps/worker/src/lease.ts`); a failed renewal aborts
   the work and writes nothing more, since another worker may hold the job.
+- `supabase/migrations/20261107090000_change_requests.sql` (and its two follow-ups) adds the kinds `change` and `restore`, the columns `request` and `restore_version_id` with their checks, the insert grant `(reel_id, kind, request, restore_version_id)` and the owner insert policy for a change or restore on an own processed reel with no active job (through `reel_has_active_job`); see `app_docs/change-requests.md`.
 
 ### Live status
 
@@ -97,6 +101,9 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   (`step-line`). One Realtime channel listens to `reels`, `jobs` and `steps` for that reel. When the
   subscription reports ready it does one catch-up read and sets `data-realtime="ready"`. No timer,
   no polling.
+- `LiveReel.tsx` mounts the live preview (`Preview`) on the reel page once the reel has a current
+  version, passes it the version id it follows through Realtime, and shows "The preview appears
+  once processing has finished." before that; see `app_docs/preview.md`.
 - `apps/studio/src/lib/jobs.ts`: named column lists (no lease columns), status lists and
   `upsertById`. `apps/studio/src/lib/supabase-browser.ts`: the browser client, created inside the
   component.
@@ -121,7 +128,8 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   passes its own keys.
 - `E2E_MOCK_STORAGE=true` (exactly) makes both use the gitignored `.e2e-storage/` folder at the
   repository root; the studio's `/studio/api/e2e-storage-mock/[...key]` route stands in for R2's
-  PUT and answers 404 otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
+  PUT and GET (one byte range on a `Range` header, so the browser can seek a video) and answers 404
+  otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
 - `fixtures/footage/short-speech.mp4` is the committed short vertical clip with speech, made by
   `scripts/make-test-clip.sh` (macOS only, run by hand).
 
@@ -139,7 +147,9 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 6. Run the worker on your machine (`yarn workspace @edit-issebya/worker worker`, see the root
    `README.md`); the page updates without a reload when it finishes the job.
 7. For a quick sign-in in tests or review, open the URL printed by
-   `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url`.
+   `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url`. It also gives the review user a
+   processed sample reel (`sample-processed-take.mp4`) whose page shows the live preview, seeded
+   from `fixtures/pipeline/` under `E2E_MOCK_STORAGE=true`.
 
 ## Configuration
 
@@ -179,6 +189,7 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   answer depend on whether the address has an account.
 - Do not grant `authenticated` `update` or `delete` on `reels`, nor `insert` beyond `id`,
   `source_name` and `source_key` under the uploading-only policy; no `anon` access.
+- Do not grant `authenticated` insert on `jobs` beyond `reel_id`, `kind`, `request` and `restore_version_id`, nor `update` or `delete`; job status, lease and attempts stay the worker's.
 - Never give the owner a general right to write `status`; finishing an upload goes only through
   `finish_upload`.
 - Never let `authenticated` or `anon` execute `claim_job`, or `anon` execute `finish_upload`.

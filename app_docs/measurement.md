@@ -86,10 +86,12 @@ client, identifies the signed-in user and sends `studio_*` events.
   summary exists), and a failed step's `error_tail` sits in a collapsed `<details data-testid="step-error-tail">`
   ("Show error"). Still one read on open plus Realtime, no polling. The measurement columns are not shown.
 
-| Event                                                                                                     | Sent when                             | Properties       |
-| --------------------------------------------------------------------------------------------------------- | ------------------------------------- | ---------------- |
-| `studio_footage_uploaded`                                                                                 | an upload finishes (`UploadForm.tsx`) | `reel_id`, `app` |
-| `studio_preview_opened`, `studio_change_requested`, `studio_export_requested`, `studio_export_downloaded` | reserved, not sent yet                | `reel_id`, `app` |
+| Event                                                 | Sent when                                                                     | Properties       |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------- |
+| `studio_footage_uploaded`                             | an upload finishes (`UploadForm.tsx`)                                         | `reel_id`, `app` |
+| `studio_preview_opened`                               | the live preview opens on a reel page (`Preview.tsx`, once per open)          | `reel_id`, `app` |
+| `studio_change_requested`                             | a change request is queued (`ChangeRequestForm.tsx`, after a `queued` answer) | `reel_id`, `app` |
+| `studio_export_requested`, `studio_export_downloaded` | reserved, not sent yet                                                        | `reel_id`, `app` |
 
 ## How to Use
 

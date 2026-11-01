@@ -7,6 +7,10 @@ export interface ClaimedJob {
   owner_id: string;
   kind: string;
   attempts: number;
+  // A change job's words; null for every other kind.
+  request: string | null;
+  // The version a restore job copies; null for every other kind.
+  restore_version_id: string | null;
 }
 
 type QueueConfig = Pick<WorkerConfig, "workerId" | "leaseSeconds">;
@@ -62,7 +66,12 @@ async function endJob(
   db: SupabaseClient,
   config: QueueConfig,
   job: ClaimedJob,
-  outcome: { job: "done" | "failed"; reel: "received" | "failed"; errorTail: string | null },
+  outcome: {
+    job: "done" | "failed";
+    // null leaves the reel's status as it is.
+    reel: "processed" | "failed" | null;
+    errorTail: string | null;
+  },
 ): Promise<boolean> {
   const { data, error } = await db
     .from("jobs")
@@ -79,13 +88,24 @@ async function endJob(
   if (error) throw new Error(`job not ended: ${error.message}`);
   // Another worker holds the lease now: leave the reel to it.
   if ((data ?? []).length !== 1) return false;
+  if (outcome.reel === null) return true;
   const reel = await db.from("reels").update({ status: outcome.reel }).eq("id", job.reel_id);
   if (reel.error) throw new Error(`reel not updated: ${reel.error.message}`);
   return true;
 }
 
+// Only a process job moves the reel's status: a change or restore never does,
+// so a failed change leaves the reel processed on its current version.
+function reelStatusAfter(job: ClaimedJob, status: "processed" | "failed") {
+  return job.kind === "process" ? status : null;
+}
+
 export function finishJob(db: SupabaseClient, config: QueueConfig, job: ClaimedJob) {
-  return endJob(db, config, job, { job: "done", reel: "received", errorTail: null });
+  return endJob(db, config, job, {
+    job: "done",
+    reel: reelStatusAfter(job, "processed"),
+    errorTail: null,
+  });
 }
 
 export function failJob(
@@ -94,5 +114,9 @@ export function failJob(
   job: ClaimedJob,
   errorTail: string,
 ) {
-  return endJob(db, config, job, { job: "failed", reel: "failed", errorTail });
+  return endJob(db, config, job, {
+    job: "failed",
+    reel: reelStatusAfter(job, "failed"),
+    errorTail,
+  });
 }

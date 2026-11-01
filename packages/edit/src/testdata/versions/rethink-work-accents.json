@@ -1,0 +1,1756 @@
+{
+  "format": 1,
+  "inputs": {
+    "cutout": "3333333333333333333333333333333333333333333333333333333333333333",
+    "footage": "1111111111111111111111111111111111111111111111111111111111111111",
+    "headTrack": "4444444444444444444444444444444444444444444444444444444444444444",
+    "transcript": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "tracks": {
+    "captions": [
+      {
+        "end": {
+          "word": "w0001"
+        },
+        "id": "c-w0001",
+        "start": {
+          "word": "w0001"
+        },
+        "text": "the",
+        "words": ["w0001"]
+      },
+      {
+        "end": {
+          "word": "w0002"
+        },
+        "id": "c-w0002",
+        "start": {
+          "word": "w0002"
+        },
+        "text": "time",
+        "words": ["w0002"]
+      },
+      {
+        "end": {
+          "word": "w0003"
+        },
+        "id": "c-w0003",
+        "start": {
+          "word": "w0003"
+        },
+        "text": "we're",
+        "words": ["w0003"]
+      },
+      {
+        "end": {
+          "word": "w0004"
+        },
+        "id": "c-w0004",
+        "start": {
+          "word": "w0004"
+        },
+        "text": "living",
+        "words": ["w0004"]
+      },
+      {
+        "custom": "letter-spacing: 2px; text-transform: uppercase",
+        "end": {
+          "word": "w0005"
+        },
+        "id": "c-w0005",
+        "start": {
+          "word": "w0005"
+        },
+        "text": "right",
+        "words": ["w0005"]
+      },
+      {
+        "end": {
+          "word": "w0006"
+        },
+        "id": "c-w0006",
+        "start": {
+          "word": "w0006"
+        },
+        "text": "now",
+        "words": ["w0006"]
+      },
+      {
+        "end": {
+          "word": "w0007"
+        },
+        "id": "c-w0007",
+        "start": {
+          "word": "w0007"
+        },
+        "text": "push",
+        "words": ["w0007"]
+      },
+      {
+        "end": {
+          "word": "w0008"
+        },
+        "id": "c-w0008",
+        "start": {
+          "word": "w0008"
+        },
+        "text": "us",
+        "words": ["w0008"]
+      },
+      {
+        "end": {
+          "word": "w0009"
+        },
+        "id": "c-w0009",
+        "start": {
+          "word": "w0009"
+        },
+        "text": "to",
+        "words": ["w0009"]
+      },
+      {
+        "end": {
+          "word": "w0010"
+        },
+        "id": "c-w0010",
+        "start": {
+          "word": "w0010"
+        },
+        "text": "rethink",
+        "words": ["w0010"]
+      },
+      {
+        "end": {
+          "word": "w0011"
+        },
+        "id": "c-w0011",
+        "start": {
+          "word": "w0011"
+        },
+        "text": "how",
+        "words": ["w0011"]
+      },
+      {
+        "end": {
+          "word": "w0012"
+        },
+        "id": "c-w0012",
+        "start": {
+          "word": "w0012"
+        },
+        "text": "we",
+        "words": ["w0012"]
+      },
+      {
+        "end": {
+          "word": "w0013"
+        },
+        "id": "c-w0013",
+        "start": {
+          "word": "w0013"
+        },
+        "text": "earn",
+        "words": ["w0013"]
+      },
+      {
+        "end": {
+          "word": "w0014"
+        },
+        "id": "c-w0014",
+        "start": {
+          "word": "w0014"
+        },
+        "text": "how",
+        "words": ["w0014"]
+      },
+      {
+        "end": {
+          "word": "w0015"
+        },
+        "id": "c-w0015",
+        "start": {
+          "word": "w0015"
+        },
+        "text": "we",
+        "words": ["w0015"]
+      },
+      {
+        "end": {
+          "word": "w0016"
+        },
+        "id": "c-w0016",
+        "start": {
+          "word": "w0016"
+        },
+        "text": "spend",
+        "words": ["w0016"]
+      },
+      {
+        "end": {
+          "word": "w0017"
+        },
+        "id": "c-w0017",
+        "start": {
+          "word": "w0017"
+        },
+        "text": "our",
+        "words": ["w0017"]
+      },
+      {
+        "end": {
+          "word": "w0018"
+        },
+        "id": "c-w0018",
+        "start": {
+          "word": "w0018"
+        },
+        "text": "time",
+        "words": ["w0018"]
+      },
+      {
+        "end": {
+          "word": "w0019"
+        },
+        "id": "c-w0019",
+        "start": {
+          "word": "w0019"
+        },
+        "text": "how",
+        "words": ["w0019"]
+      },
+      {
+        "end": {
+          "word": "w0020"
+        },
+        "id": "c-w0020",
+        "start": {
+          "word": "w0020"
+        },
+        "text": "we",
+        "words": ["w0020"]
+      },
+      {
+        "end": {
+          "word": "w0021"
+        },
+        "id": "c-w0021",
+        "start": {
+          "word": "w0021"
+        },
+        "text": "allocate",
+        "words": ["w0021"]
+      },
+      {
+        "end": {
+          "word": "w0022"
+        },
+        "id": "c-w0022",
+        "start": {
+          "word": "w0022"
+        },
+        "text": "our",
+        "words": ["w0022"]
+      },
+      {
+        "end": {
+          "word": "w0023"
+        },
+        "id": "c-w0023",
+        "start": {
+          "word": "w0023"
+        },
+        "text": "resources",
+        "words": ["w0023"]
+      },
+      {
+        "end": {
+          "word": "w0024"
+        },
+        "id": "c-w0024",
+        "start": {
+          "word": "w0024"
+        },
+        "text": "what",
+        "words": ["w0024"]
+      },
+      {
+        "end": {
+          "word": "w0025"
+        },
+        "id": "c-w0025",
+        "start": {
+          "word": "w0025"
+        },
+        "text": "we",
+        "words": ["w0025"]
+      },
+      {
+        "end": {
+          "word": "w0026"
+        },
+        "id": "c-w0026",
+        "start": {
+          "word": "w0026"
+        },
+        "text": "do",
+        "words": ["w0026"]
+      },
+      {
+        "end": {
+          "word": "w0027"
+        },
+        "id": "c-w0027",
+        "start": {
+          "word": "w0027"
+        },
+        "text": "AI",
+        "words": ["w0027"]
+      },
+      {
+        "end": {
+          "word": "w0028"
+        },
+        "id": "c-w0028",
+        "start": {
+          "word": "w0028"
+        },
+        "text": "has",
+        "words": ["w0028"]
+      },
+      {
+        "end": {
+          "word": "w0029"
+        },
+        "id": "c-w0029",
+        "start": {
+          "word": "w0029"
+        },
+        "text": "completely",
+        "words": ["w0029"]
+      },
+      {
+        "end": {
+          "word": "w0031"
+        },
+        "id": "c-w0031",
+        "start": {
+          "word": "w0031"
+        },
+        "text": "the",
+        "words": ["w0031"]
+      },
+      {
+        "end": {
+          "word": "w0032"
+        },
+        "id": "c-w0032",
+        "start": {
+          "word": "w0032"
+        },
+        "text": "way",
+        "words": ["w0032"]
+      },
+      {
+        "end": {
+          "word": "w0033"
+        },
+        "id": "c-w0033",
+        "start": {
+          "word": "w0033"
+        },
+        "text": "we",
+        "words": ["w0033"]
+      },
+      {
+        "end": {
+          "word": "w0034"
+        },
+        "id": "c-w0034",
+        "start": {
+          "word": "w0034"
+        },
+        "text": "work",
+        "words": ["w0034"]
+      },
+      {
+        "end": {
+          "word": "w0035"
+        },
+        "id": "c-w0035",
+        "start": {
+          "word": "w0035"
+        },
+        "text": "but",
+        "words": ["w0035"]
+      },
+      {
+        "end": {
+          "word": "w0036"
+        },
+        "id": "c-w0036",
+        "start": {
+          "word": "w0036"
+        },
+        "text": "at",
+        "words": ["w0036"]
+      },
+      {
+        "end": {
+          "word": "w0037"
+        },
+        "id": "c-w0037",
+        "start": {
+          "word": "w0037"
+        },
+        "text": "the",
+        "words": ["w0037"]
+      },
+      {
+        "end": {
+          "word": "w0038"
+        },
+        "id": "c-w0038",
+        "start": {
+          "word": "w0038"
+        },
+        "text": "same",
+        "words": ["w0038"]
+      },
+      {
+        "end": {
+          "word": "w0039"
+        },
+        "id": "c-w0039",
+        "start": {
+          "word": "w0039"
+        },
+        "text": "time",
+        "words": ["w0039"]
+      },
+      {
+        "end": {
+          "word": "w0040"
+        },
+        "id": "c-w0040",
+        "start": {
+          "word": "w0040"
+        },
+        "text": "it",
+        "words": ["w0040"]
+      },
+      {
+        "end": {
+          "word": "w0041"
+        },
+        "id": "c-w0041",
+        "start": {
+          "word": "w0041"
+        },
+        "text": "has",
+        "words": ["w0041"]
+      },
+      {
+        "end": {
+          "word": "w0042"
+        },
+        "id": "c-w0042",
+        "start": {
+          "word": "w0042"
+        },
+        "text": "given",
+        "words": ["w0042"]
+      },
+      {
+        "end": {
+          "word": "w0043"
+        },
+        "id": "c-w0043",
+        "start": {
+          "word": "w0043"
+        },
+        "text": "us",
+        "words": ["w0043"]
+      },
+      {
+        "end": {
+          "word": "w0044"
+        },
+        "id": "c-w0044",
+        "start": {
+          "word": "w0044"
+        },
+        "text": "a",
+        "words": ["w0044"]
+      },
+      {
+        "end": {
+          "word": "w0045"
+        },
+        "id": "c-w0045",
+        "start": {
+          "word": "w0045"
+        },
+        "text": "chance",
+        "words": ["w0045"]
+      },
+      {
+        "end": {
+          "word": "w0046"
+        },
+        "id": "c-w0046",
+        "start": {
+          "word": "w0046"
+        },
+        "text": "to",
+        "words": ["w0046"]
+      },
+      {
+        "end": {
+          "word": "w0047"
+        },
+        "id": "c-w0047",
+        "start": {
+          "word": "w0047"
+        },
+        "text": "start",
+        "words": ["w0047"]
+      },
+      {
+        "end": {
+          "word": "w0048"
+        },
+        "id": "c-w0048",
+        "start": {
+          "word": "w0048"
+        },
+        "text": "a",
+        "words": ["w0048"]
+      },
+      {
+        "end": {
+          "word": "w0049"
+        },
+        "id": "c-w0049",
+        "start": {
+          "word": "w0049"
+        },
+        "text": "business",
+        "words": ["w0049"]
+      },
+      {
+        "end": {
+          "word": "w0050"
+        },
+        "id": "c-w0050",
+        "start": {
+          "word": "w0050"
+        },
+        "text": "a",
+        "words": ["w0050"]
+      },
+      {
+        "end": {
+          "word": "w0051"
+        },
+        "id": "c-w0051",
+        "start": {
+          "word": "w0051"
+        },
+        "text": "project",
+        "words": ["w0051"]
+      },
+      {
+        "end": {
+          "word": "w0052"
+        },
+        "id": "c-w0052",
+        "start": {
+          "word": "w0052"
+        },
+        "text": "put",
+        "words": ["w0052"]
+      },
+      {
+        "end": {
+          "word": "w0053"
+        },
+        "id": "c-w0053",
+        "start": {
+          "word": "w0053"
+        },
+        "text": "those",
+        "words": ["w0053"]
+      },
+      {
+        "end": {
+          "word": "w0054"
+        },
+        "id": "c-w0054",
+        "start": {
+          "word": "w0054"
+        },
+        "text": "things",
+        "words": ["w0054"]
+      },
+      {
+        "end": {
+          "word": "w0055"
+        },
+        "id": "c-w0055",
+        "start": {
+          "word": "w0055"
+        },
+        "text": "out",
+        "words": ["w0055"]
+      },
+      {
+        "end": {
+          "word": "w0056"
+        },
+        "id": "c-w0056",
+        "start": {
+          "word": "w0056"
+        },
+        "text": "of",
+        "words": ["w0056"]
+      },
+      {
+        "end": {
+          "word": "w0057"
+        },
+        "id": "c-w0057",
+        "start": {
+          "word": "w0057"
+        },
+        "text": "my",
+        "words": ["w0057"]
+      },
+      {
+        "end": {
+          "word": "w0058"
+        },
+        "id": "c-w0058",
+        "start": {
+          "word": "w0058"
+        },
+        "text": "head",
+        "words": ["w0058"]
+      },
+      {
+        "end": {
+          "word": "w0059"
+        },
+        "id": "c-w0059",
+        "start": {
+          "word": "w0059"
+        },
+        "text": "give",
+        "words": ["w0059"]
+      },
+      {
+        "end": {
+          "word": "w0060"
+        },
+        "id": "c-w0060",
+        "start": {
+          "word": "w0060"
+        },
+        "text": "it",
+        "words": ["w0060"]
+      },
+      {
+        "end": {
+          "word": "w0061"
+        },
+        "id": "c-w0061",
+        "start": {
+          "word": "w0061"
+        },
+        "text": "to",
+        "words": ["w0061"]
+      },
+      {
+        "end": {
+          "word": "w0062"
+        },
+        "id": "c-w0062",
+        "start": {
+          "word": "w0062"
+        },
+        "text": "the",
+        "words": ["w0062"]
+      },
+      {
+        "end": {
+          "word": "w0063"
+        },
+        "id": "c-w0063",
+        "start": {
+          "word": "w0063"
+        },
+        "text": "world",
+        "words": ["w0063"]
+      },
+      {
+        "end": {
+          "word": "w0064"
+        },
+        "id": "c-w0064",
+        "start": {
+          "word": "w0064"
+        },
+        "text": "social",
+        "words": ["w0064"]
+      },
+      {
+        "end": {
+          "word": "w0065"
+        },
+        "id": "c-w0065",
+        "start": {
+          "word": "w0065"
+        },
+        "text": "media",
+        "words": ["w0065"]
+      },
+      {
+        "end": {
+          "word": "w0066"
+        },
+        "id": "c-w0066",
+        "start": {
+          "word": "w0066"
+        },
+        "text": "has",
+        "words": ["w0066"]
+      },
+      {
+        "end": {
+          "word": "w0067"
+        },
+        "id": "c-w0067",
+        "start": {
+          "word": "w0067"
+        },
+        "text": "given",
+        "words": ["w0067"]
+      },
+      {
+        "end": {
+          "word": "w0068"
+        },
+        "id": "c-w0068",
+        "start": {
+          "word": "w0068"
+        },
+        "text": "us",
+        "words": ["w0068"]
+      },
+      {
+        "end": {
+          "word": "w0069"
+        },
+        "id": "c-w0069",
+        "start": {
+          "word": "w0069"
+        },
+        "text": "alternative",
+        "words": ["w0069"]
+      },
+      {
+        "end": {
+          "word": "w0070"
+        },
+        "id": "c-w0070",
+        "start": {
+          "word": "w0070"
+        },
+        "text": "ways",
+        "words": ["w0070"]
+      },
+      {
+        "end": {
+          "word": "w0071"
+        },
+        "id": "c-w0071",
+        "start": {
+          "word": "w0071"
+        },
+        "text": "to",
+        "words": ["w0071"]
+      },
+      {
+        "end": {
+          "word": "w0072"
+        },
+        "id": "c-w0072",
+        "start": {
+          "word": "w0072"
+        },
+        "text": "earn",
+        "words": ["w0072"]
+      },
+      {
+        "end": {
+          "word": "w0073"
+        },
+        "id": "c-w0073",
+        "start": {
+          "word": "w0073"
+        },
+        "text": "and",
+        "words": ["w0073"]
+      },
+      {
+        "end": {
+          "word": "w0074"
+        },
+        "id": "c-w0074",
+        "start": {
+          "word": "w0074"
+        },
+        "text": "is",
+        "words": ["w0074"]
+      },
+      {
+        "end": {
+          "word": "w0075"
+        },
+        "id": "c-w0075",
+        "start": {
+          "word": "w0075"
+        },
+        "text": "an",
+        "words": ["w0075"]
+      },
+      {
+        "end": {
+          "word": "w0076"
+        },
+        "id": "c-w0076",
+        "start": {
+          "word": "w0076"
+        },
+        "text": "excellent",
+        "words": ["w0076"]
+      },
+      {
+        "end": {
+          "word": "w0077"
+        },
+        "id": "c-w0077",
+        "start": {
+          "word": "w0077"
+        },
+        "text": "distribution",
+        "words": ["w0077"]
+      },
+      {
+        "end": {
+          "word": "w0078"
+        },
+        "id": "c-w0078",
+        "start": {
+          "word": "w0078"
+        },
+        "text": "channel",
+        "words": ["w0078"]
+      },
+      {
+        "end": {
+          "word": "w0079"
+        },
+        "id": "c-w0079",
+        "start": {
+          "word": "w0079"
+        },
+        "text": "for",
+        "words": ["w0079"]
+      },
+      {
+        "end": {
+          "word": "w0080"
+        },
+        "id": "c-w0080",
+        "start": {
+          "word": "w0080"
+        },
+        "text": "your",
+        "words": ["w0080"]
+      },
+      {
+        "end": {
+          "word": "w0081"
+        },
+        "id": "c-w0081",
+        "start": {
+          "word": "w0081"
+        },
+        "text": "project",
+        "words": ["w0081"]
+      },
+      {
+        "end": {
+          "word": "w0082"
+        },
+        "id": "c-w0082",
+        "start": {
+          "word": "w0082"
+        },
+        "text": "for",
+        "words": ["w0082"]
+      },
+      {
+        "end": {
+          "word": "w0083"
+        },
+        "id": "c-w0083",
+        "start": {
+          "word": "w0083"
+        },
+        "text": "your",
+        "words": ["w0083"]
+      },
+      {
+        "end": {
+          "word": "w0084"
+        },
+        "id": "c-w0084",
+        "start": {
+          "word": "w0084"
+        },
+        "text": "idea",
+        "words": ["w0084"]
+      },
+      {
+        "end": {
+          "word": "w0085"
+        },
+        "id": "c-w0085",
+        "start": {
+          "word": "w0085"
+        },
+        "text": "and",
+        "words": ["w0085"]
+      },
+      {
+        "end": {
+          "word": "w0086"
+        },
+        "id": "c-w0086",
+        "start": {
+          "word": "w0086"
+        },
+        "text": "if",
+        "words": ["w0086"]
+      },
+      {
+        "end": {
+          "word": "w0087"
+        },
+        "id": "c-w0087",
+        "start": {
+          "word": "w0087"
+        },
+        "text": "you",
+        "words": ["w0087"]
+      },
+      {
+        "end": {
+          "word": "w0088"
+        },
+        "id": "c-w0088",
+        "start": {
+          "word": "w0088"
+        },
+        "text": "look",
+        "words": ["w0088"]
+      },
+      {
+        "end": {
+          "word": "w0089"
+        },
+        "id": "c-w0089",
+        "start": {
+          "word": "w0089"
+        },
+        "text": "at",
+        "words": ["w0089"]
+      },
+      {
+        "end": {
+          "word": "w0090"
+        },
+        "id": "c-w0090",
+        "start": {
+          "word": "w0090"
+        },
+        "text": "Gen",
+        "words": ["w0090"]
+      },
+      {
+        "end": {
+          "word": "w0091"
+        },
+        "id": "c-w0091",
+        "start": {
+          "word": "w0091"
+        },
+        "text": "Z",
+        "words": ["w0091"]
+      },
+      {
+        "end": {
+          "word": "w0101"
+        },
+        "id": "c-w0101",
+        "start": {
+          "word": "w0101"
+        },
+        "text": "they",
+        "words": ["w0101"]
+      },
+      {
+        "end": {
+          "word": "w0102"
+        },
+        "id": "c-w0102",
+        "start": {
+          "word": "w0102"
+        },
+        "text": "want",
+        "words": ["w0102"]
+      },
+      {
+        "end": {
+          "word": "w0103"
+        },
+        "id": "c-w0103",
+        "start": {
+          "word": "w0103"
+        },
+        "text": "fair",
+        "words": ["w0103"]
+      },
+      {
+        "end": {
+          "word": "w0104"
+        },
+        "id": "c-w0104",
+        "start": {
+          "word": "w0104"
+        },
+        "text": "pay",
+        "words": ["w0104"]
+      },
+      {
+        "end": {
+          "word": "w0105"
+        },
+        "id": "c-w0105",
+        "start": {
+          "word": "w0105"
+        },
+        "text": "flexible",
+        "words": ["w0105"]
+      },
+      {
+        "end": {
+          "word": "w0106"
+        },
+        "id": "c-w0106",
+        "start": {
+          "word": "w0106"
+        },
+        "text": "time",
+        "words": ["w0106"]
+      },
+      {
+        "end": {
+          "word": "w0107"
+        },
+        "id": "c-w0107",
+        "start": {
+          "word": "w0107"
+        },
+        "text": "protected",
+        "words": ["w0107"]
+      },
+      {
+        "end": {
+          "word": "w0108"
+        },
+        "id": "c-w0108",
+        "start": {
+          "word": "w0108"
+        },
+        "text": "mental",
+        "words": ["w0108"]
+      },
+      {
+        "end": {
+          "word": "w0109"
+        },
+        "id": "c-w0109",
+        "start": {
+          "word": "w0109"
+        },
+        "text": "health",
+        "words": ["w0109"]
+      },
+      {
+        "end": {
+          "word": "w0110"
+        },
+        "id": "c-w0110",
+        "start": {
+          "word": "w0110"
+        },
+        "text": "and",
+        "words": ["w0110"]
+      },
+      {
+        "end": {
+          "word": "w0111"
+        },
+        "id": "c-w0111",
+        "start": {
+          "word": "w0111"
+        },
+        "text": "sense",
+        "words": ["w0111"]
+      },
+      {
+        "end": {
+          "word": "w0112"
+        },
+        "id": "c-w0112",
+        "start": {
+          "word": "w0112"
+        },
+        "text": "of",
+        "words": ["w0112"]
+      },
+      {
+        "end": {
+          "word": "w0114"
+        },
+        "id": "c-w0114",
+        "start": {
+          "word": "w0114"
+        },
+        "text": "we",
+        "words": ["w0114"]
+      },
+      {
+        "end": {
+          "word": "w0115"
+        },
+        "id": "c-w0115",
+        "start": {
+          "word": "w0115"
+        },
+        "text": "have",
+        "words": ["w0115"]
+      },
+      {
+        "end": {
+          "word": "w0116"
+        },
+        "id": "c-w0116",
+        "start": {
+          "word": "w0116"
+        },
+        "text": "it",
+        "words": ["w0116"]
+      },
+      {
+        "end": {
+          "word": "w0117"
+        },
+        "id": "c-w0117",
+        "start": {
+          "word": "w0117"
+        },
+        "text": "all",
+        "words": ["w0117"]
+      },
+      {
+        "end": {
+          "word": "w0118"
+        },
+        "id": "c-w0118",
+        "start": {
+          "word": "w0118"
+        },
+        "text": "new",
+        "words": ["w0118"]
+      },
+      {
+        "end": {
+          "word": "w0119"
+        },
+        "id": "c-w0119",
+        "start": {
+          "word": "w0119"
+        },
+        "text": "tools",
+        "words": ["w0119"]
+      },
+      {
+        "end": {
+          "word": "w0120"
+        },
+        "id": "c-w0120",
+        "start": {
+          "word": "w0120"
+        },
+        "text": "new",
+        "words": ["w0120"]
+      },
+      {
+        "end": {
+          "word": "w0121"
+        },
+        "id": "c-w0121",
+        "start": {
+          "word": "w0121"
+        },
+        "text": "ways",
+        "words": ["w0121"]
+      },
+      {
+        "end": {
+          "word": "w0122"
+        },
+        "id": "c-w0122",
+        "start": {
+          "word": "w0122"
+        },
+        "text": "to",
+        "words": ["w0122"]
+      },
+      {
+        "end": {
+          "word": "w0123"
+        },
+        "id": "c-w0123",
+        "start": {
+          "word": "w0123"
+        },
+        "text": "earn",
+        "words": ["w0123"]
+      },
+      {
+        "end": {
+          "word": "w0124"
+        },
+        "id": "c-w0124",
+        "start": {
+          "word": "w0124"
+        },
+        "text": "whole",
+        "words": ["w0124"]
+      },
+      {
+        "end": {
+          "word": "w0125"
+        },
+        "id": "c-w0125",
+        "start": {
+          "word": "w0125"
+        },
+        "text": "generation",
+        "words": ["w0125"]
+      },
+      {
+        "end": {
+          "word": "w0126"
+        },
+        "id": "c-w0126",
+        "start": {
+          "word": "w0126"
+        },
+        "text": "saying",
+        "words": ["w0126"]
+      },
+      {
+        "end": {
+          "word": "w0127"
+        },
+        "id": "c-w0127",
+        "start": {
+          "word": "w0127"
+        },
+        "text": "work",
+        "words": ["w0127"]
+      },
+      {
+        "end": {
+          "word": "w0128"
+        },
+        "id": "c-w0128",
+        "start": {
+          "word": "w0128"
+        },
+        "text": "should",
+        "words": ["w0128"]
+      },
+      {
+        "end": {
+          "word": "w0129"
+        },
+        "id": "c-w0129",
+        "start": {
+          "word": "w0129"
+        },
+        "text": "fund",
+        "words": ["w0129"]
+      },
+      {
+        "end": {
+          "word": "w0130"
+        },
+        "id": "c-w0130",
+        "start": {
+          "word": "w0130"
+        },
+        "text": "life",
+        "words": ["w0130"]
+      },
+      {
+        "end": {
+          "word": "w0131"
+        },
+        "id": "c-w0131",
+        "start": {
+          "word": "w0131"
+        },
+        "text": "not",
+        "words": ["w0131"]
+      },
+      {
+        "end": {
+          "word": "w0132"
+        },
+        "id": "c-w0132",
+        "start": {
+          "word": "w0132"
+        },
+        "text": "take",
+        "words": ["w0132"]
+      },
+      {
+        "end": {
+          "word": "w0133"
+        },
+        "id": "c-w0133",
+        "start": {
+          "word": "w0133"
+        },
+        "text": "it",
+        "words": ["w0133"]
+      },
+      {
+        "end": {
+          "word": "w0134"
+        },
+        "id": "c-w0134",
+        "start": {
+          "word": "w0134"
+        },
+        "text": "over",
+        "words": ["w0134"]
+      },
+      {
+        "end": {
+          "word": "w0135"
+        },
+        "id": "c-w0135",
+        "start": {
+          "word": "w0135"
+        },
+        "text": "and",
+        "words": ["w0135"]
+      },
+      {
+        "end": {
+          "word": "w0136"
+        },
+        "id": "c-w0136",
+        "start": {
+          "word": "w0136"
+        },
+        "text": "still",
+        "words": ["w0136"]
+      },
+      {
+        "end": {
+          "word": "w0137"
+        },
+        "id": "c-w0137",
+        "start": {
+          "word": "w0137"
+        },
+        "text": "for",
+        "words": ["w0137"]
+      },
+      {
+        "end": {
+          "word": "w0138"
+        },
+        "id": "c-w0138",
+        "start": {
+          "word": "w0138"
+        },
+        "text": "most",
+        "words": ["w0138"]
+      },
+      {
+        "end": {
+          "word": "w0139"
+        },
+        "id": "c-w0139",
+        "start": {
+          "word": "w0139"
+        },
+        "text": "of",
+        "words": ["w0139"]
+      },
+      {
+        "end": {
+          "word": "w0140"
+        },
+        "id": "c-w0140",
+        "start": {
+          "word": "w0140"
+        },
+        "text": "us",
+        "words": ["w0140"]
+      },
+      {
+        "end": {
+          "word": "w0141"
+        },
+        "id": "c-w0141",
+        "start": {
+          "word": "w0141"
+        },
+        "text": "life",
+        "words": ["w0141"]
+      },
+      {
+        "end": {
+          "word": "w0142"
+        },
+        "id": "c-w0142",
+        "start": {
+          "word": "w0142"
+        },
+        "text": "doesn't",
+        "words": ["w0142"]
+      },
+      {
+        "end": {
+          "word": "w0143"
+        },
+        "id": "c-w0143",
+        "start": {
+          "word": "w0143"
+        },
+        "text": "feel",
+        "words": ["w0143"]
+      },
+      {
+        "end": {
+          "word": "w0144"
+        },
+        "id": "c-w0144",
+        "start": {
+          "word": "w0144"
+        },
+        "text": "more",
+        "words": ["w0144"]
+      },
+      {
+        "end": {
+          "word": "w0145"
+        },
+        "id": "c-w0145",
+        "start": {
+          "word": "w0145"
+        },
+        "text": "ours",
+        "words": ["w0145"]
+      },
+      {
+        "end": {
+          "word": "w0146"
+        },
+        "id": "c-w0146",
+        "start": {
+          "word": "w0146"
+        },
+        "text": "maybe",
+        "words": ["w0146"]
+      },
+      {
+        "end": {
+          "word": "w0147"
+        },
+        "id": "c-w0147",
+        "start": {
+          "word": "w0147"
+        },
+        "text": "because",
+        "words": ["w0147"]
+      },
+      {
+        "end": {
+          "word": "w0148"
+        },
+        "id": "c-w0148",
+        "start": {
+          "word": "w0148"
+        },
+        "text": "we",
+        "words": ["w0148"]
+      },
+      {
+        "end": {
+          "word": "w0149"
+        },
+        "id": "c-w0149",
+        "start": {
+          "word": "w0149"
+        },
+        "text": "never",
+        "words": ["w0149"]
+      },
+      {
+        "end": {
+          "word": "w0150"
+        },
+        "id": "c-w0150",
+        "start": {
+          "word": "w0150"
+        },
+        "text": "stepped",
+        "words": ["w0150"]
+      },
+      {
+        "end": {
+          "word": "w0151"
+        },
+        "id": "c-w0151",
+        "start": {
+          "word": "w0151"
+        },
+        "text": "far",
+        "words": ["w0151"]
+      },
+      {
+        "end": {
+          "word": "w0152"
+        },
+        "id": "c-w0152",
+        "start": {
+          "word": "w0152"
+        },
+        "text": "away",
+        "words": ["w0152"]
+      },
+      {
+        "end": {
+          "word": "w0153"
+        },
+        "id": "c-w0153",
+        "start": {
+          "word": "w0153"
+        },
+        "text": "from",
+        "words": ["w0153"]
+      },
+      {
+        "end": {
+          "word": "w0154"
+        },
+        "id": "c-w0154",
+        "start": {
+          "word": "w0154"
+        },
+        "text": "our",
+        "words": ["w0154"]
+      },
+      {
+        "end": {
+          "word": "w0155"
+        },
+        "id": "c-w0155",
+        "start": {
+          "word": "w0155"
+        },
+        "text": "routine",
+        "words": ["w0155"]
+      },
+      {
+        "end": {
+          "word": "w0156"
+        },
+        "id": "c-w0156",
+        "start": {
+          "word": "w0156"
+        },
+        "text": "to",
+        "words": ["w0156"]
+      },
+      {
+        "end": {
+          "word": "w0157"
+        },
+        "id": "c-w0157",
+        "start": {
+          "word": "w0157"
+        },
+        "text": "actually",
+        "words": ["w0157"]
+      },
+      {
+        "end": {
+          "word": "w0158"
+        },
+        "id": "c-w0158",
+        "start": {
+          "word": "w0158"
+        },
+        "text": "hear",
+        "words": ["w0158"]
+      },
+      {
+        "end": {
+          "word": "w0159"
+        },
+        "id": "c-w0159",
+        "start": {
+          "word": "w0159"
+        },
+        "text": "what",
+        "words": ["w0159"]
+      },
+      {
+        "end": {
+          "word": "w0160"
+        },
+        "id": "c-w0160",
+        "start": {
+          "word": "w0160"
+        },
+        "text": "we",
+        "words": ["w0160"]
+      },
+      {
+        "end": {
+          "word": "w0161"
+        },
+        "id": "c-w0161",
+        "start": {
+          "word": "w0161"
+        },
+        "text": "really",
+        "words": ["w0161"]
+      },
+      {
+        "end": {
+          "word": "w0162"
+        },
+        "id": "c-w0162",
+        "start": {
+          "word": "w0162"
+        },
+        "text": "want",
+        "words": ["w0162"]
+      }
+    ],
+    "cutout": [
+      {
+        "end": {
+          "edge": "end",
+          "word": "w0162"
+        },
+        "id": "cutout",
+        "start": {
+          "at": 0
+        }
+      }
+    ],
+    "footage": [
+      {
+        "end": {
+          "edge": "end",
+          "word": "w0162"
+        },
+        "id": "footage",
+        "start": {
+          "at": 0
+        }
+      }
+    ],
+    "overlays": [
+      {
+        "end": {
+          "edge": "end",
+          "offset": 0.5,
+          "word": "w0030"
+        },
+        "id": "a-w0030",
+        "start": {
+          "word": "w0030"
+        },
+        "text": "disrupted"
+      },
+      {
+        "end": {
+          "word": "w0113"
+        },
+        "id": "a-w0113",
+        "start": {
+          "word": "w0113"
+        },
+        "style": {
+          "color": "accent",
+          "font": "primary"
+        },
+        "text": "purpose"
+      }
+    ],
+    "sounds": [
+      {
+        "end": {
+          "offset": 0.2,
+          "word": "w0092"
+        },
+        "id": "s1",
+        "sound": "click",
+        "start": {
+          "offset": -0.03,
+          "word": "w0092"
+        }
+      }
+    ],
+    "transitions": [
+      {
+        "end": {
+          "offset": 0.2,
+          "word": "w0100"
+        },
+        "id": "t1",
+        "start": {
+          "offset": -0.03,
+          "word": "w0092"
+        },
+        "text": "they work to live",
+        "type": "dim"
+      }
+    ]
+  }
+}

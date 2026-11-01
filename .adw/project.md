@@ -20,7 +20,9 @@ be kept in step with them and with `README.md`.
   (`@edit-issebya/worker`) is the job worker, TypeScript run directly by Node 24 on the owner's
   machine, never on Vercel. `packages/storage` (`@edit-issebya/storage`) is the storage interface,
   its R2 implementation and its folder fake, shared by the studio and the worker (TypeScript
-  source, no build). The landing page sells through Stripe Checkout (a
+  source, no build). `packages/edit` (`@edit-issebya/edit`) is the edit format, the issebya style
+  preset and the builder that turns an edit into a HyperFrames page, shared by the studio and the
+  worker (TypeScript source, no build; the same bytes in Node and Chromium). The landing page sells through Stripe Checkout (a
   server action), sends a confirmation email after payment through a Stripe webhook and Resend
   (`/api/stripe/webhook`), and measures with PostHog (browser, production only); all are optional
   at build and run time. The studio signs in with a Supabase magic link and reads the `reels` table
@@ -40,9 +42,11 @@ be kept in step with them and with `README.md`.
 | studio  | `apps/studio`      | started with web                                                                                                                                                                          | `STUDIO_PORT` | 3001         | `/studio`  | no            |
 | worker  | `apps/worker`      | none (specs spawn `once`)                                                                                                                                                                 | none          | none         | none       | never         |
 | storage | `packages/storage` | none (library)                                                                                                                                                                            | none          | none         | none       | never         |
+| edit    | `packages/edit`    | none (library)                                                                                                                                                                            | none          | none         | none       | never         |
 
 - `name` is the directory under `apps/` or `packages/`; the package names are
-  `@edit-issebya/web`, `@edit-issebya/studio`, `@edit-issebya/worker` and `@edit-issebya/storage`. Resolve a `target_apps` name to its directory by matching either under
+  `@edit-issebya/web`, `@edit-issebya/studio`, `@edit-issebya/worker`, `@edit-issebya/storage` and
+  `@edit-issebya/edit`. Resolve a `target_apps` name to its directory by matching either under
   `apps/*` and `packages/*`.
 - The web dev command sources `.ports.env` first (`PORT`, `BACKEND_PORT`), then starts both apps
   through turbo (which passes `PORT`, `STUDIO_PORT` and the mock flags through): the landing page
@@ -66,7 +70,7 @@ be kept in step with them and with `README.md`.
 - `target_apps`: `/classify_app` answers `{"target_apps": ["web"]}` for a change under `apps/web`,
   `{"target_apps": ["studio"]}` for a change under `apps/studio`, `{"target_apps": ["web",
 "studio"]}` for a change spanning both, `worker` for a change under `apps/worker`, `storage` for one
-  under `packages/storage`, and `{"target_apps": []}` for a change to root files only
+  under `packages/storage`, `edit` for one under `packages/edit`, and `{"target_apps": []}` for a change to root files only
   (docs, `specs/`, `supabase/`, tooling). Commands then filter with `--filter=./apps/<name>`,
   repeated per target (see Build).
 
@@ -85,7 +89,8 @@ From the worktree root, in order. The main checkout is two directories up from `
    that would change `yarn.lock` is a finding, not something to paper over with a mutable install.
 3. `yarn workspace @edit-issebya/web playwright install chromium webkit`, the browsers
    `@playwright/test` needs (WebKit runs only `apps/web/e2e/dialog_form.spec.ts`); the studio pins
-   the same version, so this one install covers its chromium suite too. Browsers live in
+   the same version, so this one install covers its chromium suite too, and `packages/edit` pins the
+   same `playwright` for its browser unit project (run by `yarn test`, so this install comes first). Browsers live in
    the user cache, so this is a no-op once present. On macOS 14 (Darwin below 24) the local WebKit
    build cannot open a page, so the WebKit server (`playwright run-server` in
    `mcr.microsoft.com/playwright:v1.64.0-noble`, container `pw-webkit-<adw_id>` on the run's
@@ -100,13 +105,14 @@ Do not start the dev server during install.
 ## Build
 
 - `yarn turbo run build --filter=./apps/web` for a change in the landing page,
-  `--filter=./apps/studio` for one in the studio (both filters for both), `--filter=./apps/worker`
-  and `--filter=./packages/storage` for those two; `yarn build` (the
+  `--filter=./apps/studio` for one in the studio (both filters for both), `--filter=./apps/worker`,
+  `--filter=./packages/storage` and `--filter=./packages/edit` for those three; `yarn build` (the
   unfiltered `turbo run build`) for a root-only change or an unknown target. `--filter` takes the
   directory path, repeated per target workspace. Each app's build is `next build`; turbo caches
   `.next` in `.turbo/cache` (local to each worktree) and replays it when nothing it reads changed.
-  The worker and the storage package have no build script (Node runs the TypeScript; Next
-  transpiles the package), so their build check is typecheck; both typecheck with no variables.
+  The worker and the storage and edit packages have no build script (Node runs the TypeScript;
+  Next transpiles the packages), so their build check is typecheck; all typecheck with no
+  variables.
 - Needs no environment variables. Optional:
   `STRIPE_SECRET_KEY`, `STRIPE_AUTOMATIC_TAX`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`,
   `EMAIL_FROM`, `EMAIL_REPLY_TO`, `BOOKING_URL` (server), `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`,
@@ -127,25 +133,44 @@ per target, or nothing for a root-only change; the plain root scripts `yarn lint
 `yarn turbo run typecheck <filter>` (`next typegen` then `tsc --noEmit` in each app; it rewrites
 the gitignored `next-env.d.ts`, never stage it); dead code `yarn knip` (whole repository, one root
 `knip.json` with a workspace per package); format `yarn format:check` (whole repository; write
-`yarn format`); unit `yarn turbo run test <filter>` (vitest, database-free); DB integration
+`yarn format`); unit `yarn turbo run test <filter>` (vitest, database-free); for a run targeting
+the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (real ffmpeg and
+HyperFrames: convert, transcribe and retime on `fixtures/footage/short-speech.mp4`, background
+removal, head tracking and preview copies on `fixtures/footage/short-person.mp4`, which they only
+read; on the owner's Mac only, never in CI); DB integration
 `yarn turbo run test:db --filter=./apps/studio` (after unit; needs the shared local stack); build
 as in Build; and last the E2E suites `yarn test:e2e`.
 
 The unit layer is `apps/web/src/**/*.test.ts` for pure helpers in `apps/web/src/lib/`, and
 `apps/studio/src/**/*.test.ts` and `apps/studio/test-support/**/*.test.ts` for the studio's helpers
 and the local-URL guard, `apps/worker/src/**/*.test.ts` for the worker's modules (the step
-runner's tests spawn real child processes under `/usr/bin/time`, BSD on macOS, GNU on Linux) and
-`packages/storage/src/**/*.test.ts` for the storage package. The DB layer is `apps/studio/db-tests/**/*.test.ts`
+runner's tests spawn real child processes under `/usr/bin/time`, BSD on macOS, GNU on Linux),
+`packages/storage/src/**/*.test.ts` for the storage package and `packages/edit/src/**/*.test.ts`
+for the edit package (Node). `packages/edit/src/**/*.browser.test.ts` is a browser unit layer
+(Vitest browser mode, Playwright provider, Chromium) run by the same `yarn test`, so it needs the
+Chromium install from Install step 3; both edit projects compare against the golden outputs in
+`packages/edit/src/testdata/built/`, rewritten only by `UPDATE_GOLDEN=1` in the Node run. The DB layer is `apps/studio/db-tests/**/*.test.ts`
 (`apps/studio/vitest.db.config.ts`: RLS on every public table, owner isolation, Realtime follows
-RLS, `jobs.test.ts` for `claim_job`'s lease and `steps-measurements.test.ts` for the exact
-`steps` column set), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
+RLS, `jobs.test.ts` for `claim_job`'s lease, `steps-measurements.test.ts` for the exact
+`steps` column set, `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit`,
+and `versions.test.ts` for `save_version`, restore, immutability and the `versions` RLS), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
 layer; the browser layer is the Playwright suites below.
 
 E2E code suites: `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium, plus webkit for the dialog
 spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium,
 `apps/studio/playwright.config.ts`, every spec through the landing page's address;
-`upload.spec.ts` spawns the worker's `once`, `step-log.spec.ts` shows a failed step's collapsed
-error tail), run last by
+`upload.spec.ts` seeds the committed step outputs of `fixtures/pipeline/` (made by
+`yarn workspace @edit-issebya/worker fixtures:pipeline`) under their fingerprints and spawns the
+worker's `once` and expects six cache hits (every step of the pipeline) then
+`first_version: version 1 saved` and the reel's current version, `step-log.spec.ts` shows
+a failed step's collapsed error tail, `preview.spec.ts` seeds a processed reel (its version,
+transcript, head track and the two preview copies, through `apps/studio/test-support/pipeline.ts`)
+and checks the player shows the current version with its first caption at its time, the clock holds
+until both videos can play (at start and after a seek into unbuffered footage), a new current
+version rebuilds the preview without a reload byte for byte the Node build with one
+`studio_preview_opened`, and the clicks are scheduled at their word's time; it needs network access
+to `cdn.jsdelivr.net` (GSAP `gsap@3.14.2`, named by the preset, and the player's runtime
+`@hyperframes/core@0.8.222/dist/hyperframe.runtime.iife.js`)), run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
 arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by
@@ -190,7 +215,8 @@ on every pull request and push to `develop` and `master`.
 
 - Never `npm`, `npx`, `pnpm` or `bun`. A new dependency goes to the workspace that uses it:
   `yarn workspace @edit-issebya/web add <pkg>` or `yarn workspace @edit-issebya/studio add <pkg>`,
-  `yarn workspace @edit-issebya/worker add <pkg>` or `yarn workspace @edit-issebya/storage add <pkg>`
+  `yarn workspace @edit-issebya/worker add <pkg>`, `yarn workspace @edit-issebya/storage add <pkg>`
+  or `yarn workspace @edit-issebya/edit add <pkg>`
   (or `add -D`); `yarn add -D <pkg>` at the root only for shared tooling. Never install from inside
   a workspace folder.
 - ADW runs exactly one database command on the shared local Supabase stack:
@@ -207,6 +233,7 @@ on every pull request and push to `develop` and `master`.
   (`src/`); only `apps/worker` and the test helpers under `apps/studio/test-support/` read them.
 - Never start the worker (`worker`, `worker:prod`) in a run; only a spec spawns its `once`.
 - Never touch `fixtures/footage/short-person.mp4`.
+- Never store a built page, and never rewrite a saved version's object or row (`versions`).
 - Never pass `--no-verify`; never weaken a rule, a type or a test to make a check pass.
 - Never kill a process this run did not start; never change a port through `package.json`,
   `.ports.env` or any committed file.
@@ -249,9 +276,9 @@ on every pull request and push to `develop` and `master`.
   viewport-sized, not full page (the page must never scroll), into
   `agents/<adw_id>/<agent_name>/review_img/` in the worktree.
 - Studio: `http://localhost:$PORT/studio` signed out (the login form), then signed in (the upload
-  control above the reel list, then the `received` sample reel's page with its jobs and step log), each at 1920x1080 and 375x667. Sign in by opening the URL printed by
+  control above the reel list, then the `received` sample reel's page with its jobs and step log, and the `sample-processed-take.mp4` reel's page (its URL is printed on stderr by the sign-in command) with the live preview player, playing and after a seek showing the "Loading" hold, then the same page's change box under the preview and its versions list), each at 1920x1080 and 375x667. Sign in by opening the URL printed by
   `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url` (local secret key, refuses a
-  non-local URL; creates `studio-review@example.test` with two sample reels when missing). The
+  non-local URL; creates `studio-review@example.test` with an `uploaded` and a `received` sample reel when missing, and a processed one (version 1 and preview copies from `fixtures/pipeline/`, in this worktree's `.e2e-storage/`, no worker run) whenever this worktree's storage lacks it). The
   studio pages may scroll; the no-scroll rule is the landing page's.
 - A helper in `apps/web/src/lib/` or `apps/studio/src/lib/` has no rendered surface: no visual review, evidence is the diff,
   the tests and the spec's commands.

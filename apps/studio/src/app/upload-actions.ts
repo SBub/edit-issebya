@@ -1,7 +1,8 @@
 "use server";
 
 import { isReelId } from "@/lib/reels";
-import { keyPrefix, studioStorage } from "@/lib/storage";
+import { keyPrefix } from "@edit-issebya/storage";
+import { studioStorage } from "@/lib/storage";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { parseUploadRequest, sourceKey } from "@/lib/upload";
 

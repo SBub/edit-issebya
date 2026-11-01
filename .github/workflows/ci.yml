@@ -40,6 +40,11 @@ jobs:
       # The worker's step runner measures each tool through GNU time
       # (/usr/bin/time -v); its unit tests spawn real processes under it.
       - run: test -x /usr/bin/time || (sudo apt-get update && sudo apt-get install -y time)
+      # Before the unit tests: packages/edit's browser project launches
+      # Chromium. One install covers every suite: web, the studio and
+      # packages/edit pin the same Playwright version, and browsers live in the
+      # shared cache.
+      - run: yarn workspace @edit-issebya/web playwright install --with-deps chromium webkit
       - run: yarn test
       # Built with no studio variables: proves both apps build without them.
       - run: yarn build
@@ -69,7 +74,4 @@ jobs:
       # on NEXT_PUBLIC_*).
       - run: yarn build
       - run: yarn test:db
-      # One install covers both suites: the studio pins the same
-      # @playwright/test version, and browsers live in the shared cache.
-      - run: yarn workspace @edit-issebya/web playwright install --with-deps chromium webkit
       - run: yarn test:e2e

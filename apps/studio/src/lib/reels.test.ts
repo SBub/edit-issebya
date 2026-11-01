@@ -47,14 +47,34 @@ describe("formatBytes", () => {
 });
 
 describe("columns", () => {
+  it("follows the current version for the preview", () => {
+    expect(REEL_DETAIL_COLUMNS.split(", ")).toContain("current_version_id");
+  });
+
   it("never selects every column", () => {
     expect(REEL_COLUMNS).not.toContain("*");
     expect(REEL_DETAIL_COLUMNS).not.toContain("*");
+  });
+
+  it("reads the current version on the reel page", () => {
+    expect(REEL_DETAIL_COLUMNS.split(", ")).toContain("current_version_id");
   });
 });
 
 describe("REEL_STATUSES", () => {
   it("matches the check constraint of public.reels", () => {
-    expect(REEL_STATUSES).toEqual(["uploading", "uploaded", "received", "failed"]);
+    expect(REEL_STATUSES).toEqual([
+      "uploading",
+      "uploaded",
+      "received",
+      "converting",
+      "transcribing",
+      "retiming",
+      "removing_background",
+      "tracking_head",
+      "making_previews",
+      "processed",
+      "failed",
+    ]);
   });
 });

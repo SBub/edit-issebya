@@ -14,7 +14,7 @@
         "config": ["vitest.config.ts", "vitest.db.config.ts"]
       },
       "playwright": true,
-      "entry": ["scripts/*.ts"],
+      "entry": ["scripts/*.ts", "src/lib/empty-module.ts"],
       "project": [
         "src/**/*.{ts,tsx,css}",
         "e2e/**/*.ts",
@@ -25,9 +25,15 @@
     },
     "apps/worker": {
       "project": ["src/**/*.ts"],
-      "vitest": true
+      "vitest": {
+        "config": ["vitest.config.ts", "vitest.tools.config.ts"]
+      }
     },
     "packages/storage": {
+      "project": ["src/**/*.ts"],
+      "vitest": true
+    },
+    "packages/edit": {
       "project": ["src/**/*.ts"],
       "vitest": true
     }
