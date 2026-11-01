@@ -62,7 +62,7 @@ async function endJob(
   db: SupabaseClient,
   config: QueueConfig,
   job: ClaimedJob,
-  outcome: { job: "done" | "failed"; reel: "received" | "failed"; errorTail: string | null },
+  outcome: { job: "done" | "failed"; reel: "processed" | "failed"; errorTail: string | null },
 ): Promise<boolean> {
   const { data, error } = await db
     .from("jobs")
@@ -85,7 +85,7 @@ async function endJob(
 }
 
 export function finishJob(db: SupabaseClient, config: QueueConfig, job: ClaimedJob) {
-  return endJob(db, config, job, { job: "done", reel: "received", errorTail: null });
+  return endJob(db, config, job, { job: "done", reel: "processed", errorTail: null });
 }
 
 export function failJob(

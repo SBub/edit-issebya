@@ -6,16 +6,36 @@ const PASSING: DoctorDeps = {
   supabase: async () => {},
   r2: async () => {},
   ffmpeg: async () => "version 7.1",
+  ffmpegFilters: async () =>
+    [
+      "Filters:",
+      " ... atempo            A->A       Adjust audio tempo.",
+      " ... astats            A->A       Show time domain statistics about audio frames.",
+      " ... ametadata         A->A       Manipulate audio frame metadata.",
+      " ... tonemap           V->V       Conversion to/from different dynamic ranges.",
+      " ... zscale            V->V       Apply resizing, colorspace and bit depth conversion.",
+    ].join("\n"),
+  hyperframes: async () => "0.8.222\n",
   ai: () => fakeAiRunner([{ ok: true }]),
 };
 
 describe("runDoctor", () => {
+  it("names the filters a build lacks", async () => {
+    const { lines } = await runDoctor({
+      ...PASSING,
+      ffmpegFilters: async () => " ... atempo  A->A  Adjust audio tempo.",
+    });
+    expect(lines[3]).toBe("FAIL ffmpeg filters: missing zscale, tonemap, astats, ametadata");
+  });
+
   it("passes every line with working dependencies", async () => {
     expect(await runDoctor(PASSING)).toEqual({
       lines: [
         "ok   supabase reachable",
         "ok   r2 bucket reachable",
         "ok   ffmpeg version 7.1",
+        "ok   ffmpeg filters zscale, tonemap, atempo, astats, ametadata",
+        "ok   hyperframes 0.8.222",
         "ok   ai structured call",
       ],
       exitCode: 0,
@@ -34,7 +54,9 @@ describe("runDoctor", () => {
         1,
       ],
       [{ ffmpeg: async () => Promise.reject(new Error("ENOENT")) }, 2],
-      [{ ai: () => fakeAiRunner([{ ok: false }]) }, 3],
+      [{ ffmpegFilters: async () => " ... atempo  A->A  Adjust audio tempo." }, 3],
+      [{ hyperframes: async () => Promise.reject(new Error("ENOENT")) }, 4],
+      [{ ai: () => fakeAiRunner([{ ok: false }]) }, 5],
     ];
     for (const [override, failing] of cases) {
       const { lines, exitCode } = await runDoctor({ ...PASSING, ...override });

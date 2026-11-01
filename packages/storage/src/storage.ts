@@ -8,10 +8,24 @@ export interface Storage {
     options: { contentType: string; expiresInSeconds: number },
   ): Promise<string>;
   signDownload(key: string, options: { expiresInSeconds: number }): Promise<string>;
-  // null when the object does not exist.
-  head(key: string, options?: { signal?: AbortSignal }): Promise<{ bytes: number } | null>;
+  // null when the object does not exist. The ETag is unquoted (the MD5 hex of
+  // the bytes for a single PUT); null only when the store gives none.
+  head(
+    key: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<{ bytes: number; etag: string | null } | null>;
   get(key: string): Promise<Uint8Array | null>;
+  // Streams the object to `<path>.part`, renamed to `path` once complete, so a
+  // half-written download never has the final name. false when it does not exist.
+  getFile(key: string, path: string, options?: { signal?: AbortSignal }): Promise<boolean>;
   put(key: string, body: Uint8Array, options?: { contentType?: string }): Promise<void>;
+  // Uploads a local file only when no object has the key: an existing object
+  // is never replaced.
+  putFileIfAbsent(
+    key: string,
+    path: string,
+    options?: { contentType?: string },
+  ): Promise<"written" | "exists">;
   // No error when the object is already gone.
   delete(key: string): Promise<void>;
   // Keys starting with the prefix, sorted.
@@ -31,4 +45,22 @@ export function isStorageKey(key: string): boolean {
 export function assertStorageKey(key: string): string {
   if (!isStorageKey(key)) throw new Error(`invalid storage key: ${JSON.stringify(key)}`);
   return key;
+}
+
+const SEGMENT = /^[a-z0-9_-]+$/;
+
+type Env = Record<string, string | undefined>;
+
+// R2_KEY_PREFIX, trimmed: empty, or lower-case segments each ending with "/";
+// null when malformed.
+export function keyPrefix(env: Env = process.env): string | null {
+  const prefix = (env.R2_KEY_PREFIX ?? "").trim();
+  if (prefix === "") return prefix;
+  if (!prefix.endsWith("/")) return null;
+  return prefix
+    .slice(0, -1)
+    .split("/")
+    .every((segment) => SEGMENT.test(segment))
+    ? prefix
+    : null;
 }

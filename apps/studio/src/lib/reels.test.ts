@@ -55,6 +55,15 @@ describe("columns", () => {
 
 describe("REEL_STATUSES", () => {
   it("matches the check constraint of public.reels", () => {
-    expect(REEL_STATUSES).toEqual(["uploading", "uploaded", "received", "failed"]);
+    expect(REEL_STATUSES).toEqual([
+      "uploading",
+      "uploaded",
+      "received",
+      "converting",
+      "transcribing",
+      "retiming",
+      "processed",
+      "failed",
+    ]);
   });
 });
