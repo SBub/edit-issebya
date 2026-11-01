@@ -1,5 +1,9 @@
 # Export
 
+**Specifications:**
+
+- specs/issue-35-adw-1abe562e-sdlc_planner-export-render-job.md
+
 ## Overview
 
 The Export button on a reel's page renders the current version to an MP4 through a `render` job.
