@@ -374,9 +374,17 @@ IMPORTANT: Execute every step in order, top to bottom.
   2. **Clock waits for media**: before `goto`, `page.route("**/cache/preview_copies/**/subject.webm", ...)`
      delays the response by 2 s (routing also disables the HTTP cache). Press Play; sampled over
      1.5 s, `player.currentTime` stays at 0 (within 0.05 s) and the "Loading" status is visible; once
-     the file has arrived, `currentTime` passes 0.3 s within 5 s. Then a second page load with
-     `footage.mp4` delayed 2 s: seek to the middle, press Play; the time holds at the middle (within
-     0.05 s) for 1.5 s, then advances.
+     the file has arrived, `currentTime` passes 0.3 s within 5 s. On a fresh load the player's own
+     first-frame wait holds the clock here too. Then a second page load with an init script that
+     records, at each of the player's `play` events, both videos' `readyState`, `seeking` and
+     `currentTime` against the player's time, and with `footage.mp4` served as a `206` partial
+     response (its first 80%: Chromium reports no metadata for the 43 KB copy before it has read its
+     first 32 KiB) and every later request held: wait for `player.assetsReady` (the player's own
+     wait is over and cannot hold the clock again on this load), read the footage's buffered end,
+     seek 0.15 s past it, press Play; "Loading" is visible and the time holds there (within 0.05 s)
+     for 1.5 s; release the rest, the time passes the seek plus 0.2 s within 5 s, and every recorded
+     snapshot shows both videos playable at the clock's time (`readyState >= 3`, not `seeking`,
+     within 0.25 s).
   3. **Sounds scheduled exactly**: with `window.__scheduledSounds = []` set by an init script, press
      Play from 0: two entries `click-a`, `click-b`, each with `when - contextTime + playerTime` equal
      to its word's start (read from the fixture transcript in Node) within 10 ms. Pause records both
@@ -389,10 +397,15 @@ IMPORTANT: Execute every step in order, top to bottom.
      byte for byte, `build()` run in the spec's Node process on version 2's edit with the fixture
      transcript and head track and a measurer from the font files read with `readFile` (the worker's
      build path).
-- **Negative proof** (not committed): temporarily make `whenReady` resolve at once inside
-  `PreviewPlayer`, run `PORT=$PORT STUDIO_PORT=$BACKEND_PORT yarn test:e2e -- preview.spec.ts`
-  (source `.ports.env` first), confirm test 2 fails on the held time, restore the code, rerun, and
-  state in the PR that the probe was run and removed.
+- **Negative proof** (not committed): source `.ports.env`, then in `PreviewPlayer` replace
+  `await whenReady(playingMedia(player), controller.signal, at);` with
+  `await Promise.resolve(); console.log("gate-bypass-probe");` and confirm the dev server serves it
+  (`grep -l gate-bypass-probe apps/studio/.next/dev/static/chunks/apps_studio_src_*.js`). Run the
+  studio's own Playwright command (`yarn test:e2e -- <file>` also passes the file to the landing
+  suite): `PORT=$PORT STUDIO_PORT=$BACKEND_PORT yarn workspace @edit-issebya/studio playwright test preview.spec.ts -g "the clock waits" --repeat-each=3`.
+  All 3 must fail. Restore with `git checkout -- apps/studio/src/components/PreviewPlayer.tsx`,
+  confirm the probe string is gone from the served chunk, rerun the same command: all 3 must pass.
+  State the result in the PR (see Notes).
 
 ### 12. Documentation and profile
 
@@ -441,8 +454,9 @@ IMPORTANT: Execute every step in order, top to bottom.
   (at start and after a seek), that clicks are scheduled at anchor plus playback start within 10 ms,
   one `studio_preview_opened`, rebuild on a new version without reload, and Node/Chromium builder
   parity on the page the studio actually built. Nothing covers any of this today; every test fails
-  without the feature (no player on the page), and test 2 fails without the readiness gate (the
-  negative proof).
+  without the feature (no player on the page). The player's own first-frame wait (8 s, once per
+  load) also holds the clock at start, so the gate is proven by test 2's seek into unbuffered
+  footage after that wait has settled, which fails without the gate (the negative proof).
 - `media-ready.test.ts`, `sound-schedule.test.ts` (Vitest unit): catch a gate that resolves early or
   a click started mid-hit or at the wrong offset, without a browser.
 - `preview-page.test.ts` (unit): catches a double click (an `<audio>` line left for the player) or an
@@ -542,5 +556,18 @@ Execute every command to validate the feature works correctly with zero regressi
   compare by eye and ear with
   `/Users/sveta/Dev/issebya/issebya-homes-reels/editing/videos/rethink-work/renders/rethink-work-02.mp4`
   (read only). The pipeline does not verify smoothness on real 50-second footage or audible sync.
+- **Negative proof, run 2026-11-01**: the first version of test 2 passed with the gate bypassed
+  because `@hyperframes/player` 0.8.222 runs its own first-frame wait on every load
+  (`_waitForAssetsReady`: every video visible at time 0 must reach `readyState >= 3`, or 8 s pass);
+  until it settles `play()` only sets `_pendingPlay`, and both halves held a whole file from the
+  first byte. A seek does not reset `_assetsReady`, so test 2's second half now seeks past the
+  buffered end of a partly served footage once that wait is over. Bypass: `whenReady(...)` replaced
+  by `await Promise.resolve(); console.log("gate-bypass-probe");`, confirmed in the served chunk.
+  Command: `PORT=$PORT STUDIO_PORT=$BACKEND_PORT yarn workspace @edit-issebya/studio playwright test preview.spec.ts -g "the clock waits" --repeat-each=3`.
+  Gate bypassed: 3 of 3 failed on `expect(page.getByText("Loading", { exact: true })).toBeVisible()`
+  after the seek (the clock started at once). With that line and the drift check commented out, 3 of
+  3 still failed on `playableAtClock`: at the player's `play` the footage reported
+  `readyState: 1, seeking: true` at the clock's 2.3 s. Gate restored (`git status --short
+apps/studio/src` empty, probe string gone from the served chunk): 3 of 3 passed.
 - Out of scope: the change-request box (slice 11), export (slice 12), Safari and iPhone, a timeline
   editor, the browser notification (slice 15).

@@ -74,6 +74,11 @@ live status shows one line per step (`name: summary`).
   retimed `source.mp4`, and `subject.webm` (VP9 `yuva420p`, `alpha_mode=1`, `-auto-alt-ref 0`, which
   Chrome needs) from the cut-out. About 18 MB together for a 50 second reel. Both outputs are
   `kept`: they hang off the seven-minute cut-out, so they are not cheap to make again.
+- `apps/worker/src/pipeline/record-preview-copies.ts`: after the fixed steps (`preview_copies` run
+  or a cache hit) `process-job.ts` writes the `preview_copies` fingerprint to
+  `reels.preview_copies_fingerprint` (`step-store.ts`, secret key), so the studio's live preview
+  finds the copies under `cache/preview_copies/<fingerprint>/`; after a lost lease nothing is
+  written.
 - `apps/worker/src/pipeline/tools.ts`: `hyperframesEnv(env, tools)` also passes the worker's ffmpeg
   and ffprobe to HyperFrames (`HYPERFRAMES_FFMPEG_PATH`, `HYPERFRAMES_FFPROBE_PATH`) when
   `FFMPEG_PATH` is absolute.

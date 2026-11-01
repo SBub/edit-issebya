@@ -163,7 +163,14 @@ spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium
 `yarn workspace @edit-issebya/worker fixtures:pipeline`) under their fingerprints and spawns the
 worker's `once` and expects six cache hits (every step of the pipeline) then
 `first_version: version 1 saved` and the reel's current version, `step-log.spec.ts` shows
-a failed step's collapsed error tail), run last by
+a failed step's collapsed error tail, `preview.spec.ts` seeds a processed reel (its version,
+transcript, head track and the two preview copies, through `apps/studio/test-support/pipeline.ts`)
+and checks the player shows the current version with its first caption at its time, the clock holds
+until both videos can play (at start and after a seek into unbuffered footage), a new current
+version rebuilds the preview without a reload byte for byte the Node build with one
+`studio_preview_opened`, and the clicks are scheduled at their word's time; it needs network access
+to `cdn.jsdelivr.net` (GSAP `gsap@3.14.2`, named by the preset, and the player's runtime
+`@hyperframes/core@0.8.222/dist/hyperframe.runtime.iife.js`)), run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
 arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by
@@ -269,9 +276,9 @@ on every pull request and push to `develop` and `master`.
   viewport-sized, not full page (the page must never scroll), into
   `agents/<adw_id>/<agent_name>/review_img/` in the worktree.
 - Studio: `http://localhost:$PORT/studio` signed out (the login form), then signed in (the upload
-  control above the reel list, then the `received` sample reel's page with its jobs and step log), each at 1920x1080 and 375x667. Sign in by opening the URL printed by
+  control above the reel list, then the `received` sample reel's page with its jobs and step log, and the `sample-processed-take.mp4` reel's page (its URL is printed on stderr by the sign-in command) with the live preview player, playing and after a seek showing the "Loading" hold), each at 1920x1080 and 375x667. Sign in by opening the URL printed by
   `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url` (local secret key, refuses a
-  non-local URL; creates `studio-review@example.test` with two sample reels when missing). The
+  non-local URL; creates `studio-review@example.test` with an `uploaded` and a `received` sample reel when missing, and a processed one (version 1 and preview copies from `fixtures/pipeline/`, in this worktree's `.e2e-storage/`, no worker run) whenever this worktree's storage lacks it). The
   studio pages may scroll; the no-scroll rule is the landing page's.
 - A helper in `apps/web/src/lib/` or `apps/studio/src/lib/` has no rendered surface: no visual review, evidence is the diff,
   the tests and the spec's commands.

@@ -1,5 +1,13 @@
 import { readFile } from "node:fs/promises";
-import { type Edit, type VersionRow, saveVersion, supabaseVersionStore } from "@edit-issebya/edit";
+import {
+  type Edit,
+  ISSEBYA,
+  type Transcript,
+  type VersionRow,
+  baselineEdit,
+  saveVersion,
+  supabaseVersionStore,
+} from "@edit-issebya/edit";
 import { type Storage, cacheKey } from "@edit-issebya/storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -59,4 +67,53 @@ export function saveNextVersion(
       checks: { ok: true, reasons: [] },
     },
   });
+}
+
+// Leaves a reel the way the worker's pipeline and `first_version` would
+// (version 1, preview copies recorded) from the committed fixtures, with no
+// worker run, for review (secret key, test helpers only).
+export async function seedProcessedReel(
+  admin: SupabaseClient,
+  storage: Storage,
+  { prefix, reelId }: { prefix: string; reelId: string },
+): Promise<VersionRow> {
+  await seedPipelineCache(storage, prefix);
+  const manifest = await readManifest();
+  const fingerprints: Record<string, string | undefined> = Object.fromEntries(
+    manifest.steps.map((step) => [step.name, step.fingerprint]),
+  );
+  const { retime, remove_background, head_track, preview_copies } = fingerprints;
+  if (!retime || !remove_background || !head_track || !preview_copies) {
+    throw new Error("pipeline manifest lacks a step the preview needs");
+  }
+  const transcript = JSON.parse(
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixtures
+    await readFile(new URL("retime/transcript.json", PIPELINE_FIXTURES), "utf8"),
+  ) as Transcript;
+  const edit = baselineEdit(
+    transcript,
+    { footage: retime, transcript: retime, cutout: remove_background, headTrack: head_track },
+    ISSEBYA,
+  );
+  const row = await saveVersion({
+    objects: storage,
+    store: supabaseVersionStore(admin),
+    prefix,
+    reelId,
+    id: crypto.randomUUID(),
+    edit,
+    meta: {
+      request: null,
+      model: null,
+      promptVersion: null,
+      changeSummary: "review: sample first version",
+      checks: { ok: true, reasons: [] },
+    },
+  });
+  const { error } = await admin
+    .from("reels")
+    .update({ status: "processed", preview_copies_fingerprint: preview_copies })
+    .eq("id", reelId);
+  if (error) throw new Error(`reel not updated: ${error.message}`);
+  return row;
 }
