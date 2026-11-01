@@ -129,7 +129,9 @@ the gitignored `next-env.d.ts`, never stage it); dead code `yarn knip` (whole re
 `knip.json` with a workspace per package); format `yarn format:check` (whole repository; write
 `yarn format`); unit `yarn turbo run test <filter>` (vitest, database-free); for a run targeting
 the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (real ffmpeg and
-HyperFrames on the committed clip; on the owner's Mac only, never in CI); DB integration
+HyperFrames: convert, transcribe and retime on `fixtures/footage/short-speech.mp4`, background
+removal, head tracking and preview copies on `fixtures/footage/short-person.mp4`, which they only
+read; on the owner's Mac only, never in CI); DB integration
 `yarn turbo run test:db --filter=./apps/studio` (after unit; needs the shared local stack); build
 as in Build; and last the E2E suites `yarn test:e2e`.
 
@@ -148,8 +150,8 @@ spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium
 `apps/studio/playwright.config.ts`, every spec through the landing page's address;
 `upload.spec.ts` seeds the committed step outputs of `fixtures/pipeline/` (made by
 `yarn workspace @edit-issebya/worker fixtures:pipeline`) under their fingerprints and spawns the
-worker's `once`, every step a cache hit, `step-log.spec.ts` shows a failed step's collapsed
-error tail), run last by
+worker's `once` and expects six cache hits (every step of the pipeline), `step-log.spec.ts` shows
+a failed step's collapsed error tail), run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
 arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by
