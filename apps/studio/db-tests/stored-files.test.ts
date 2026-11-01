@@ -175,6 +175,7 @@ describe("worker_status", () => {
     const { client, session } = await signedInClient(admin, userA.email);
     clientA = client;
     await client.realtime.setAuth(session.access_token);
+    const reason = "waiting: 7.2 GB free on the worker's disk, needs 10 GB";
     const seen: { waiting_reason: string | null }[] = [];
     let arrived!: () => void;
     const arrival = new Promise<void>((resolve) => (arrived = resolve));
@@ -195,7 +196,10 @@ describe("worker_status", () => {
             filter: `worker_id=eq.${workerId}`,
           },
           (payload) => {
-            seen.push(payload.new as { waiting_reason: string | null });
+            // The previous test's upsert of this row can still arrive after the channel attaches.
+            const row = payload.new as { waiting_reason: string | null };
+            if (row.waiting_reason !== reason) return;
+            seen.push(row);
             arrived();
           },
         )
@@ -206,7 +210,6 @@ describe("worker_status", () => {
         });
     });
 
-    const reason = "waiting: 7.2 GB free on the worker's disk, needs 10 GB";
     const { error } = await admin
       .from("worker_status")
       .upsert({ worker_id: workerId, free_disk_bytes: 1, waiting_reason: reason });
