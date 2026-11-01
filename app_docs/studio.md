@@ -84,7 +84,7 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 
 ### Jobs, steps and the lease
 
-- `supabase/migrations/20261031174750_job_queue.sql`: tables `jobs` (kind `process`, status
+- `supabase/migrations/20261031174750_job_queue.sql`: tables `jobs` (kind `process`, later also `change` and `restore`, status
   `queued | running | done | failed`, lease holder and expiry, attempts, error tail) and `steps`
   (name, status, summary, error tail), both with owner-only `select` RLS and in the
   `supabase_realtime` publication. Only the worker (secret key) writes job and step state.
@@ -93,6 +93,7 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   an attempt. Only `service_role` may execute it. There is no retry limit yet.
 - The worker renews its lease while it works (`apps/worker/src/lease.ts`); a failed renewal aborts
   the work and writes nothing more, since another worker may hold the job.
+- `supabase/migrations/20261107090000_change_requests.sql` (and its two follow-ups) adds the kinds `change` and `restore`, the columns `request` and `restore_version_id` with their checks, the insert grant `(reel_id, kind, request, restore_version_id)` and the owner insert policy for a change or restore on an own processed reel with no active job (through `reel_has_active_job`); see `app_docs/change-requests.md`.
 
 ### Live status
 
@@ -188,6 +189,7 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   answer depend on whether the address has an account.
 - Do not grant `authenticated` `update` or `delete` on `reels`, nor `insert` beyond `id`,
   `source_name` and `source_key` under the uploading-only policy; no `anon` access.
+- Do not grant `authenticated` insert on `jobs` beyond `reel_id`, `kind`, `request` and `restore_version_id`, nor `update` or `delete`; job status, lease and attempts stay the worker's.
 - Never give the owner a general right to write `status`; finishing an upload goes only through
   `finish_upload`.
 - Never let `authenticated` or `anon` execute `claim_job`, or `anon` execute `finish_upload`.

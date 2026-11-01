@@ -129,7 +129,8 @@ The reel page shows the current version: `LiveReel` renders `version N`
    when the AI's answer passed.
 3. On a failed `decide`, open the step's collapsed error tail: it names both rounds' reasons. The
    reel stays on version 1.
-4. A change request (a later slice) passes `request` to `decide`; nothing reads one yet.
+4. A change request passes the owner's words to `decide` as `request`, from the current version; see
+   `app_docs/change-requests.md`.
 
 ## Configuration
 

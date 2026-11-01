@@ -276,7 +276,7 @@ on every pull request and push to `develop` and `master`.
   viewport-sized, not full page (the page must never scroll), into
   `agents/<adw_id>/<agent_name>/review_img/` in the worktree.
 - Studio: `http://localhost:$PORT/studio` signed out (the login form), then signed in (the upload
-  control above the reel list, then the `received` sample reel's page with its jobs and step log, and the `sample-processed-take.mp4` reel's page (its URL is printed on stderr by the sign-in command) with the live preview player, playing and after a seek showing the "Loading" hold), each at 1920x1080 and 375x667. Sign in by opening the URL printed by
+  control above the reel list, then the `received` sample reel's page with its jobs and step log, and the `sample-processed-take.mp4` reel's page (its URL is printed on stderr by the sign-in command) with the live preview player, playing and after a seek showing the "Loading" hold, then the same page's change box under the preview and its versions list), each at 1920x1080 and 375x667. Sign in by opening the URL printed by
   `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url` (local secret key, refuses a
   non-local URL; creates `studio-review@example.test` with an `uploaded` and a `received` sample reel when missing, and a processed one (version 1 and preview copies from `fixtures/pipeline/`, in this worktree's `.e2e-storage/`, no worker run) whenever this worktree's storage lacks it). The
   studio pages may scroll; the no-scroll rule is the landing page's.
