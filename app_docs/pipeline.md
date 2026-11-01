@@ -24,7 +24,8 @@ live status shows one line per step (`name: summary`).
 - `apps/worker/src/pipeline/definition.ts`: `PIPELINE = [convert, transcribe, retime, removeBackground, headTrack, previewCopies]` and
   `fingerprintsFor(source)`. A `PipelineStep` declares `name`, `version`, `settings`, `reelStatus`,
   `outputs` (a list of `{ file, keep }`, `keep` being `kept` or `rebuildable`: slice 14 may delete
-  only the heavy rebuildable files, never a kept one), `reusedWhat`, `inputs(source, fingerprints)` and `run`. A step reads only the local
+  only the heavy rebuildable files, never a kept one; the render is the first reader of the tag,
+  see the `run-pipeline.ts` bullet), `reusedWhat`, `inputs(source, fingerprints)` and `run`. A step reads only the local
   paths of its declared inputs.
 - `apps/worker/src/pipeline/fingerprint.ts`, `canonical-json.ts`: the fingerprint is the SHA-256
   of the canonical JSON (sorted keys, no whitespace, refuses `undefined` and non-finite numbers) of
@@ -37,6 +38,10 @@ live status shows one line per step (`name: summary`).
   `<WORKER_SCRATCH_DIR>/job-<job id>/`, runs the step as one measured row, and uploads each missing
   output with put-if-absent, so a stored output is never replaced. The job folder is removed at the
   end; after a lost lease nothing more is written. A source with no ETag fails the job.
+- `runPipeline` takes `moveReelStatus` (default `true`). A `render` job passes `false` when its
+  `rebuildable` inputs (`source.mp4`, `subject.webm`) are missing, so the fixed steps up to
+  `remove_background` rebuild them (cache hits for every stored output) without writing
+  `reels.status`; see `app_docs/export.md`.
 - `apps/worker/src/pipeline/convert.ts`, `probe.ts`: ffprobe, then one ffmpeg encode: H.264 (crf 18,
   medium), constant 30 fps, a keyframe every 1 s, AAC audio copied when it already is AAC (else
   encoded at 256k), `+faststart`. HDR footage (`smpte2084` or `arib-std-b67`) is tone-mapped to SDR

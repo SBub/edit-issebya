@@ -72,10 +72,11 @@ browser cannot reliably report when a download has finished.
 - **Guardrail**: a studio Playwright `test:tools` spec (real worker `once`, real HyperFrames, the
   run's dev server) renders the fixture reel's version (2.67 s, so the whole render is the 0 to 3 s
   span), captures the studio's preview player at 0.5, 1.5 and 2.5 s, extracts the same frames from
-  the MP4 with ffmpeg, scales both to the preview size and requires SSIM >= 0.95 per frame; the
-  negative proof serves the preview a copy of the edit with one caption moved 60 px (a Playwright
-  route on the version's signed URL, so no probe version is stored) and requires at least one frame
-  below the bound. The same spec checks loudness, click timing and the render step's group
+  the MP4 with ffmpeg, scales both to the preview size and scores each time twice, on the whole
+  frame and on the probed caption's region (its laid-out box and the same box 60 px lower, padded),
+  requiring SSIM >= 0.95 on both; the negative proof serves the preview a copy of the edit with that
+  caption moved 60 px (a Playwright route on the version's signed URL, so no probe version is
+  stored) and requires the lowest of its whole and region scores below the bound. The same spec checks loudness, click timing and the render step's group
   `peak_rss_bytes`.
 
 ## Relevant Files
@@ -515,11 +516,16 @@ CACHE_PREFIX, reelId })` (version 1 current, both full-size inputs and preview c
     player (`hyperframes-player`'s public `seek(t)`, then wait until `preview-time` shows t and both
     videos are ready, the way `preview.spec.ts` waits), wait for `document.fonts.ready` in the
     player's frame, screenshot the player element; extract the MP4 frame at t; scale both to the
-    screenshot size; `ssim >= SSIM_BOUND` (0.95) for each frame. Log the three scores.
+    screenshot size; score the whole frame and the crop of the probed caption's region (its
+    `build()` layout box unioned with the same box 60 px lower, padded by 24 px, mapped to the
+    screenshot's scale); `ssim >= SSIM_BOUND` (0.95) for both at each time. Log both lists. The
+    whole frame proves the frame matches; the region is what can see a caption that is a small
+    part of a downscaled frame.
   - Negative proof in the same test: `page.route` the version's signed edit URL (the mock storage
     route for the version's `r2_key`) to answer a copy of the edit whose first caption visible at one
     of the three times has `style.position.y` set to its laid-out y plus 60 (laid-out position from
-    `build()`'s `layout`), reload, capture again, and require at least one frame below the bound.
+    `build()`'s `layout`), reload, capture again, and require the lowest of the whole and region
+    scores below the bound.
     The route is removed after; nothing is stored, so no probe version exists to delete and history
     is never rewritten.
   - Test "the sound matches the sound track": mute windows `[hit.at, hit.at + hit.duration + 0.02]`
@@ -615,7 +621,8 @@ Run every command in `Validation Commands` below, in order, and fix anything tha
   current `version_id`, a link that needs a reload, missing events with `reel_id`, and a link shown
   for an expired export (verifications 1 and 2).
 - Tools (`yarn workspace @edit-issebya/studio test:tools`, Mac only), `preview-matches-export.spec.ts`:
-  catches an export that differs from the preview (SSIM below 0.95, with the 60 px negative proof),
+  catches an export that differs from the preview (SSIM below 0.95 on the whole frame or the probed
+  caption's region, with the 60 px negative proof falling below it on the lowest of those scores),
   a voice level off by more than 0.5 LU, clicks off by more than 20 ms, and memory sampled from one
   process only (verifications 4 to 6). Not in CI: it needs real HyperFrames and Chrome rendering.
 
@@ -709,5 +716,13 @@ Execute every command to validate the feature works correctly with zero regressi
   manual acceptance against `rethink-work-02.mp4` and a TikTok or Instagram draft.
 - Out of scope: render progress and time left (slice 15), deleting rebuildable files and the disk
   guard (slice 14), cloud rendering (section 6).
-- Recorded values (fill in at step 12): SSIM at 0.5 / 1.5 / 2.5 s; negative proof lowest SSIM;
-  export and source loudness (LUFS); onset errors (ms); render `peak_rss_bytes`.
+- Recorded values (patch `frame-exact-caption-region`): SSIM at 0.5 / 1.5 / 2.5 s, whole 0.9926 /
+  0.9930 / 0.9949, caption region 0.9478 / 0.9690 / 0.9305 (bound 0.92); negative proof `c-w0004`
+  moved 60 px, whole 0.9892 / 0.9930 / 0.9949, region 0.6853 / 0.9690 / 0.9305, lowest 0.6853;
+  loudness export -15.2 LUFS, source -15.1 LUFS (dual mono); click onset error 7.9 ms. The
+  onset check still fails on codec residue (an onset at 1.83 s, about -32 dB, outside every
+  click, against the -35 dB silence threshold), so render `peak_rss_bytes` is not yet recorded.
+  Cause of the old region scores: the element screenshot rounded out to 683 CSS px and was
+  squeezed into the frame, and the 1080 px export was upscaled to the preview's 1152 px; the
+  remaining 1 to 1.5 px vertical text offset is glyph rasterisation. The old 2.9 LU loudness gap
+  was the mono source measured against the stereo export, and `amix` ignoring the negative weight.

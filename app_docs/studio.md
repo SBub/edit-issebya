@@ -84,7 +84,7 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 
 ### Jobs, steps and the lease
 
-- `supabase/migrations/20261031174750_job_queue.sql`: tables `jobs` (kind `process`, later also `change` and `restore`, status
+- `supabase/migrations/20261031174750_job_queue.sql`: tables `jobs` (kind `process`, later also `change`, `restore` and `render`, status
   `queued | running | done | failed`, lease holder and expiry, attempts, error tail) and `steps`
   (name, status, summary, error tail), both with owner-only `select` RLS and in the
   `supabase_realtime` publication. Only the worker (secret key) writes job and step state.
@@ -94,6 +94,7 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 - The worker renews its lease while it works (`apps/worker/src/lease.ts`); a failed renewal aborts
   the work and writes nothing more, since another worker may hold the job.
 - `supabase/migrations/20261107090000_change_requests.sql` (and its two follow-ups) adds the kinds `change` and `restore`, the columns `request` and `restore_version_id` with their checks, the insert grant `(reel_id, kind, request, restore_version_id)` and the owner insert policy for a change or restore on an own processed reel with no active job (through `reel_has_active_job`); see `app_docs/change-requests.md`.
+- `supabase/migrations/20261108090000_exports.sql` adds the `render` kind, `jobs.version_id` with its check, the insert grant `(reel_id, kind, request, restore_version_id, version_id)`, the owner render policy (one active render per version through `reel_has_active_render`) and the `exports` table (owner `select` only, in Realtime, `expires_at` set by trigger); see `app_docs/export.md`.
 
 ### Live status
 
@@ -174,10 +175,15 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   `apps/worker/src/**/*.test.ts` and `packages/storage/src/**/*.test.ts` (`yarn test`).
 - DB integration: `apps/studio/db-tests/` (`yarn test:db`): RLS on every public table, owner
   isolation, the upload path and `finish_upload`, `claim_job`'s lease (`jobs.test.ts`), Realtime
-  follows RLS for `reels` and `steps`. Needs the local stack; not in the pre-push hook.
-- E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload` specs, chromium, through the
+  follows RLS for `reels`, `steps` and `exports`, the render policy and the `exports` expiry
+  (`exports.test.ts`). Needs the local stack; not in the pre-push hook.
+- E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload`, `export` specs, chromium, through the
   landing address), run after the landing suite by `yarn test:e2e`. `upload.spec.ts` uploads the
   test clip, spawns the worker's `once` and expects the page to update without a reload.
+  `export.spec.ts` spawns `once` with `E2E_MOCK_RENDER=true`.
+- Tools: `apps/studio/tools/preview-matches-export.spec.ts`
+  (`yarn workspace @edit-issebya/studio test:tools`, the owner's Mac only, never in CI); see
+  `app_docs/export.md`.
 
 ## Rules
 
@@ -189,7 +195,8 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   answer depend on whether the address has an account.
 - Do not grant `authenticated` `update` or `delete` on `reels`, nor `insert` beyond `id`,
   `source_name` and `source_key` under the uploading-only policy; no `anon` access.
-- Do not grant `authenticated` insert on `jobs` beyond `reel_id`, `kind`, `request` and `restore_version_id`, nor `update` or `delete`; job status, lease and attempts stay the worker's.
+- Do not grant `authenticated` insert on `jobs` beyond `reel_id`, `kind`, `request`, `restore_version_id` and `version_id`, nor `update` or `delete`; job status, lease and attempts stay the worker's.
+- Do not grant `authenticated` or `anon` any write on `exports`; only the worker inserts it.
 - Never give the owner a general right to write `status`; finishing an upload goes only through
   `finish_upload`.
 - Never let `authenticated` or `anon` execute `claim_job`, or `anon` execute `finish_upload`.

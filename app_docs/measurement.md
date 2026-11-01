@@ -33,7 +33,8 @@ client, identifies the signed-in user and sends `studio_*` events.
 - `src/process-tree.ts`: with `sampleGroupMemory: true` the runner runs `ps -A -o pid=,ppid=,rss=`
   every second (and once after the spawn), sums the RSS of the tool and all its descendants and keeps
   the peak. `peak_rss_bytes` is the larger of that peak and the report's max RSS. Without the option
-  it is the largest single process. Meant for the render's long-lived browser processes.
+  it is the largest single process. Meant for the render's long-lived browser processes: the
+  `render` step uses it (HyperFrames spawns Chrome processes), see `app_docs/export.md`.
 - `src/summary.ts`: `stepSummary` gives `<what>, <duration in words>, <size>`, for example
   `background removed, 6 minutes 47 seconds, 51.0 MB` (`formatBytes`, one decimal, 1024 convention;
   durations under a second read `under a second`, hours drop the seconds, zero parts are omitted).
@@ -86,18 +87,20 @@ client, identifies the signed-in user and sends `studio_*` events.
   summary exists), and a failed step's `error_tail` sits in a collapsed `<details data-testid="step-error-tail">`
   ("Show error"). Still one read on open plus Realtime, no polling. The measurement columns are not shown.
 
-| Event                                                 | Sent when                                                                     | Properties       |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------- |
-| `studio_footage_uploaded`                             | an upload finishes (`UploadForm.tsx`)                                         | `reel_id`, `app` |
-| `studio_preview_opened`                               | the live preview opens on a reel page (`Preview.tsx`, once per open)          | `reel_id`, `app` |
-| `studio_change_requested`                             | a change request is queued (`ChangeRequestForm.tsx`, after a `queued` answer) | `reel_id`, `app` |
-| `studio_export_requested`, `studio_export_downloaded` | reserved, not sent yet                                                        | `reel_id`, `app` |
+| Event                      | Sent when                                                                     | Properties       |
+| -------------------------- | ----------------------------------------------------------------------------- | ---------------- |
+| `studio_footage_uploaded`  | an upload finishes (`UploadForm.tsx`)                                         | `reel_id`, `app` |
+| `studio_preview_opened`    | the live preview opens on a reel page (`Preview.tsx`, once per open)          | `reel_id`, `app` |
+| `studio_change_requested`  | a change request is queued (`ChangeRequestForm.tsx`, after a `queued` answer) | `reel_id`, `app` |
+| `studio_export_requested`  | an export is queued (`ExportPanel.tsx`, after a `queued` answer)              | `reel_id`, `app` |
+| `studio_export_downloaded` | the download link is clicked (`ExportPanel.tsx`)                              | `reel_id`, `app` |
 
 ## How to Use
 
 1. Run steps through `runStep` (a tool) or `runInProcessStep` (in-worker work), passing the job's
    `StepContext` (`steps`, `telemetry`, `jobContext`, `job`, `signal`). Declare `inputs` and `outputs`
-   to get byte counts, and `sampleGroupMemory: true` for a step that spawns a process tree.
+   to get byte counts, and `sampleGroupMemory: true` for a step that spawns a process tree (the
+   `render` step does, see `app_docs/export.md`).
 2. To export, fill `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` in
    `apps/worker/.env.production` and check one reel as one trace in PostHog.
 3. In the studio, send an event with `capture("studio_...", { reel_id })` from a client component.
