@@ -7,8 +7,11 @@ import {
   type JobRow,
   STEP_COLUMNS,
   type StepRow,
+  WORKER_STATUS_COLUMNS,
+  type WorkerStatusRow,
   pickColumns,
   upsertById,
+  waitingReason,
 } from "@/lib/jobs";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, formatBytes, formatCreatedAt } from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
@@ -17,10 +20,11 @@ interface Snapshot {
   reel: ReelDetail;
   jobs: JobRow[];
   steps: StepRow[];
+  workerStatuses: WorkerStatusRow[];
 }
 
 async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snapshot | null> {
-  const [reel, jobs, steps] = await Promise.all([
+  const [reel, jobs, steps, workerStatuses] = await Promise.all([
     supabase.from("reels").select(REEL_DETAIL_COLUMNS).eq("id", id).maybeSingle<ReelDetail>(),
     supabase
       .from("jobs")
@@ -34,19 +38,31 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
       .eq("reel_id", id)
       .order("started_at")
       .returns<StepRow[]>(),
+    supabase.from("worker_status").select(WORKER_STATUS_COLUMNS).returns<WorkerStatusRow[]>(),
   ]);
-  if (reel.error || jobs.error || steps.error || !reel.data) return null;
-  return { reel: reel.data, jobs: jobs.data ?? [], steps: steps.data ?? [] };
+  if (reel.error || jobs.error || steps.error || workerStatuses.error || !reel.data) return null;
+  return {
+    reel: reel.data,
+    jobs: jobs.data ?? [],
+    steps: steps.data ?? [],
+    workerStatuses: workerStatuses.data ?? [],
+  };
 }
 
-// The reel's status, jobs and step log. Read once on the server, then followed
+// The reel's status, jobs and step log, and why a queued job waits. Read once on the server, then followed
 // through Realtime filtered to this reel (RLS decides what arrives). One
 // catch-up read each time the subscription becomes ready covers changes made
 // between the server read and the subscription. No interval, no polling.
-export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialSteps }: Snapshot) {
+export function LiveReel({
+  reel: initialReel,
+  jobs: initialJobs,
+  steps: initialSteps,
+  workerStatuses: initialWorkerStatuses,
+}: Snapshot) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
   const [steps, setSteps] = useState(initialSteps);
+  const [workerStatuses, setWorkerStatuses] = useState(initialWorkerStatuses);
   const [ready, setReady] = useState(false);
   const id = initialReel.id;
 
@@ -66,6 +82,7 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
             setReel(snapshot.reel);
             setJobs(snapshot.jobs);
             setSteps(snapshot.steps);
+            setWorkerStatuses(snapshot.workerStatuses);
           }
           setReady(true);
         });
@@ -97,6 +114,22 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
           const row = pickColumns<StepRow>(payload.new, STEP_COLUMNS);
           setSteps((current) => upsertById(current, row, "started_at"));
         },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "worker_status" },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const gone = (payload.old as { worker_id?: string }).worker_id;
+            setWorkerStatuses((current) => current.filter((s) => s.worker_id !== gone));
+            return;
+          }
+          const row = pickColumns<WorkerStatusRow>(payload.new, WORKER_STATUS_COLUMNS);
+          setWorkerStatuses((current) => [
+            ...current.filter((s) => s.worker_id !== row.worker_id),
+            row,
+          ]);
+        },
       );
 
     // setAuth hands the session's token to Realtime before joining, so RLS
@@ -110,6 +143,8 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
       void supabase.removeChannel(channel);
     };
   }, [id]);
+
+  const waiting = waitingReason(workerStatuses);
 
   return (
     <div data-realtime={ready ? "ready" : "pending"} className="flex flex-col gap-6">
@@ -139,6 +174,11 @@ export function LiveReel({ reel: initialReel, jobs: initialJobs, steps: initialS
                   <span data-testid="job-status">{job.status}</span>
                   <span className="text-stone-600">attempts: {job.attempts}</span>
                 </span>
+                {job.status === "queued" && waiting && (
+                  <p data-testid="job-waiting" className="text-sm text-amber-800">
+                    {waiting}
+                  </p>
+                )}
                 {job.status === "failed" && job.error_tail && (
                   <pre className="overflow-x-auto text-xs whitespace-pre-wrap text-red-700">
                     {job.error_tail}

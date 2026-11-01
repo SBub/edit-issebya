@@ -15,6 +15,7 @@ const storage = fakeStorage({
 });
 let owner: { id: string; email: string };
 let sourceKey: string | null = null;
+const workerId = `e2e-${crypto.randomUUID()}`;
 
 test.beforeAll(async () => {
   const leftover = await claimableJobIds(admin);
@@ -28,6 +29,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (sourceKey) await storage.delete(sourceKey);
+  await admin.from("worker_status").delete().eq("worker_id", workerId);
   if (owner) await deleteTestUser(admin, owner.id);
 });
 
@@ -81,7 +83,7 @@ test("an uploaded clip is received by the worker and the page updates live", asy
     (window as unknown as { __noReload: string }).__noReload = "marker";
   });
 
-  const worker = await runWorkerOnce();
+  const worker = await runWorkerOnce({ WORKER_ID: workerId });
   expect(worker.code, worker.output).toBe(0);
 
   await expect(page.getByTestId("job-status")).toHaveText("done", { timeout: 10_000 });
@@ -105,6 +107,21 @@ test("an uploaded clip is received by the worker and the page updates live", asy
     },
   ]);
   expect(steps![0]!.wall_ms).toBeGreaterThanOrEqual(0);
+  // The upload recorded its source, and every object of the reel has exactly one live row.
+  const { data: files } = await admin
+    .from("stored_files")
+    .select("kind, step, r2_key, bytes, deleted_at")
+    .eq("reel_id", reelId);
+  expect(files).toEqual([
+    { kind: "source", step: "upload", r2_key: sourceKey, bytes: clipBytes, deleted_at: null },
+  ]);
+  const reelPrefix = sourceKey.slice(0, sourceKey.indexOf("/source/") + 1);
+  expect(await storage.list(reelPrefix)).toEqual(
+    files!
+      .filter((file) => file.deleted_at === null)
+      .map((file) => file.r2_key)
+      .sort(),
+  );
   await expect(page.getByTestId("reel-status")).toHaveText("received", { timeout: 10_000 });
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
     "marker",

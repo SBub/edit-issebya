@@ -1,10 +1,12 @@
-import type { Storage } from "@edit-issebya/storage";
 import { type StepContext, runInProcessStep } from "../step-runner.ts";
+import type { RecordedStorage } from "../stored-files.ts";
 
 // The placeholder step: confirms the source object is in storage and records
 // its size. An R2 HEAD reads and writes no file, so it runs in-process and is
 // measured by wall time only. After an abort (lost lease) it writes nothing more.
-export function receive(ctx: StepContext & { storage: Storage }): Promise<void> {
+export function receive(
+  ctx: StepContext & { storage: Pick<RecordedStorage, "head"> },
+): Promise<void> {
   const { steps, storage, job, signal } = ctx;
   return runInProcessStep(ctx, {
     name: "receive",

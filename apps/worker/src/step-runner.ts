@@ -20,6 +20,8 @@ export interface StepContext {
   job: ClaimedJob;
   // Aborted when the lease is lost: the step stops and writes nothing more.
   signal: AbortSignal;
+  // The job's own scratch directory, removed when the job ends.
+  scratch: string;
 }
 
 export interface ChildStep {

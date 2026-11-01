@@ -1,6 +1,13 @@
 // Claims and runs at most one job, then exits: 0 when it ended `done` (or there
-// was none), 1 otherwise. No subscription, no timer. Specs spawn this.
+// was none), 1 otherwise. No subscription, no timer, no housekeeping. The disk
+// guard applies as in the long-running worker. Specs spawn this.
 import { workerConfig } from "./config.ts";
+import {
+  claimIfRoom,
+  createDiskGuard,
+  freeDiskBytes,
+  supabaseWorkerStatusStore,
+} from "./disk-guard.ts";
 import { processJob } from "./process-job.ts";
 import { claimJob } from "./queue.ts";
 import { workerStorage } from "./storage.ts";
@@ -10,9 +17,16 @@ import { createTelemetry } from "./telemetry.ts";
 const config = workerConfig();
 const db = workerSupabase(config);
 const telemetry = createTelemetry();
-const job = await claimJob(db, config);
+let waiting: string | null = null;
+const guard = createDiskGuard({
+  freeBytes: () => freeDiskBytes(config.scratchDir),
+  minFreeDiskGb: config.minFreeDiskGb,
+  status: supabaseWorkerStatusStore(db, config.workerId),
+  log: (reason) => (waiting = reason),
+});
+const job = await claimIfRoom(guard, () => claimJob(db, config))();
 if (!job) {
-  console.log("no job");
+  console.log(waiting ? `no job: ${waiting}` : "no job");
   await telemetry.shutdown();
   process.exit(0);
 }

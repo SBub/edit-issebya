@@ -1,4 +1,5 @@
 import { type Server, createServer } from "node:http";
+import { tmpdir } from "node:os";
 import type { AddressInfo } from "node:net";
 import { trace } from "@opentelemetry/api";
 import { InMemoryLogRecordExporter, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
@@ -22,7 +23,7 @@ async function runJobWithSteps(telemetry: Telemetry, job = TEST_JOB, names = ["o
   const signal = new AbortController().signal;
   for (const name of names) {
     await runInProcessStep(
-      { steps, telemetry, jobContext, job, signal },
+      { steps, telemetry, jobContext, job, signal, scratch: tmpdir() },
       { name, work: async () => ({ what: `${name} done`, sizeBytes: null }) },
     );
   }
@@ -97,7 +98,14 @@ describe("log records", () => {
       const { steps } = recordingSteps();
       const { span, context: jobContext } = startJobSpan(telemetry, TEST_JOB);
       await runStep(
-        { steps, telemetry, jobContext, job: TEST_JOB, signal: new AbortController().signal },
+        {
+          steps,
+          telemetry,
+          jobContext,
+          job: TEST_JOB,
+          signal: new AbortController().signal,
+          scratch: tmpdir(),
+        },
         {
           name: "echo",
           file: process.execPath,

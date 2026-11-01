@@ -137,15 +137,16 @@ and the local-URL guard, `apps/worker/src/**/*.test.ts` for the worker's modules
 runner's tests spawn real child processes under `/usr/bin/time`, BSD on macOS, GNU on Linux) and
 `packages/storage/src/**/*.test.ts` for the storage package. The DB layer is `apps/studio/db-tests/**/*.test.ts`
 (`apps/studio/vitest.db.config.ts`: RLS on every public table, owner isolation, Realtime follows
-RLS, `jobs.test.ts` for `claim_job`'s lease and `steps-measurements.test.ts` for the exact
-`steps` column set), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
+RLS, `jobs.test.ts` for `claim_job`'s lease, `steps-measurements.test.ts` for the exact
+`steps` column set and `stored-files.test.ts` for `stored_files`, `record_stored_file`,
+`finish_upload`'s source row and `worker_status`), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
 layer; the browser layer is the Playwright suites below.
 
 E2E code suites: `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium, plus webkit for the dialog
 spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium,
 `apps/studio/playwright.config.ts`, every spec through the landing page's address;
 `upload.spec.ts` spawns the worker's `once`, `step-log.spec.ts` shows a failed step's collapsed
-error tail), run last by
+error tail, `disk-guard.spec.ts` spawns `once` with the free space forced low), run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
 arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by

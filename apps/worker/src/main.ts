@@ -1,12 +1,21 @@
 // The long-running worker on the owner's machine (never on Vercel). It wakes
 // on Realtime inserts into public.jobs, checks the table every
 // WORKER_POLL_INTERVAL_SECONDS reading only ids, and runs one job at a time.
-import { statfs } from "node:fs/promises";
+// Between jobs it housekeeps storage at most hourly, and it claims nothing
+// while the scratch volume is below WORKER_MIN_FREE_DISK_GB.
 import { workerConfig } from "./config.ts";
+import {
+  claimIfRoom,
+  createDiskGuard,
+  freeDiskBytes,
+  supabaseWorkerStatusStore,
+} from "./disk-guard.ts";
 import { createDrainer } from "./loop.ts";
 import { processJob } from "./process-job.ts";
 import { claimJob, claimableJobIds } from "./queue.ts";
+import { HOUSEKEEPING_EVERY_MS, createHousekeeping, housekeep } from "./slimming.ts";
 import { workerStorage } from "./storage.ts";
+import { supabaseStoredFileStore } from "./stored-files.ts";
 import { workerSupabase } from "./supabase.ts";
 import { createTelemetry } from "./telemetry.ts";
 
@@ -15,18 +24,25 @@ const db = workerSupabase(config);
 const storage = workerStorage();
 const telemetry = createTelemetry();
 
-async function enoughDisk(): Promise<boolean> {
-  const info = await statfs(config.scratchDir);
-  const freeGb = (info.bavail * info.bsize) / 1024 ** 3;
-  if (freeGb >= config.minFreeDiskGb) return true;
-  console.warn(
-    `worker: ${freeGb.toFixed(1)} GB free in ${config.scratchDir}, below ${config.minFreeDiskGb} GB: not claiming`,
-  );
-  return false;
-}
+const guard = createDiskGuard({
+  freeBytes: () => freeDiskBytes(config.scratchDir),
+  minFreeDiskGb: config.minFreeDiskGb,
+  status: supabaseWorkerStatusStore(db, config.workerId),
+});
+const files = supabaseStoredFileStore(db);
+const housekeeping = createHousekeeping({
+  everyMs: HOUSEKEEPING_EVERY_MS,
+  now: () => new Date(),
+  run: () => housekeep({ files, storage, now: new Date(), log: console.log }),
+});
+const claimWithRoom = claimIfRoom(guard, () => claimJob(db, config));
 
+// Housekeeping runs inside the drain loop, between jobs, never during one.
 const drainer = createDrainer({
-  claim: async () => ((await enoughDisk()) ? claimJob(db, config) : null),
+  claim: async () => {
+    await housekeeping.maybeRun();
+    return claimWithRoom();
+  },
   run: (job) => processJob(db, storage, config, telemetry, job),
 });
 
@@ -50,6 +66,9 @@ const poll = setInterval(() => {
     .catch((error: unknown) => console.error("worker: check failed:", error));
 }, config.pollIntervalSeconds * 1000);
 
+// An idle worker still housekeeps hourly.
+const hourly = setInterval(() => drainer.signal(), HOUSEKEEPING_EVERY_MS);
+
 drainer.signal();
 console.log(`worker ${config.workerId}: started`);
 
@@ -59,6 +78,7 @@ async function stop(signal: string) {
   stopping = true;
   console.log(`worker: ${signal}, finishing the current job`);
   clearInterval(poll);
+  clearInterval(hourly);
   await db.removeChannel(channel);
   await drainer.idle();
   await telemetry.shutdown();

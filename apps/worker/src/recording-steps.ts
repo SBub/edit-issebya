@@ -1,5 +1,6 @@
 // Test helper: a StepStore that records its calls, and a step context around
 // it with telemetry that exports nothing unless processors are passed.
+import { tmpdir } from "node:os";
 import { ROOT_CONTEXT } from "@opentelemetry/api";
 import type { ClaimedJob } from "./queue.ts";
 import type { StepContext } from "./step-runner.ts";
@@ -53,7 +54,8 @@ export function stepContext(
     signal = new AbortController().signal,
     telemetry = createTelemetry({}),
     job = TEST_JOB,
-  }: { signal?: AbortSignal; telemetry?: Telemetry; job?: ClaimedJob } = {},
+    scratch = tmpdir(),
+  }: { signal?: AbortSignal; telemetry?: Telemetry; job?: ClaimedJob; scratch?: string } = {},
 ): StepContext {
-  return { steps, telemetry, jobContext: ROOT_CONTEXT, job, signal };
+  return { steps, telemetry, jobContext: ROOT_CONTEXT, job, signal, scratch };
 }

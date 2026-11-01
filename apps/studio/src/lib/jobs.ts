@@ -4,6 +4,7 @@ export const JOB_COLUMNS =
   "id, reel_id, kind, status, attempts, error_tail, created_at, started_at, finished_at";
 export const STEP_COLUMNS =
   "id, job_id, reel_id, name, status, summary, error_tail, started_at, finished_at";
+export const WORKER_STATUS_COLUMNS = "worker_id, waiting_reason, updated_at";
 
 export const JOB_STATUSES = ["queued", "running", "done", "failed"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
@@ -33,6 +34,23 @@ export interface StepRow {
   error_tail: string | null;
   started_at: string;
   finished_at: string | null;
+}
+
+// Why a worker is not claiming jobs (a nearly full disk); holds no reel data.
+export interface WorkerStatusRow {
+  worker_id: string;
+  waiting_reason: string | null;
+  updated_at: string;
+}
+
+// The newest reason any worker gives for waiting, else null.
+export function waitingReason(statuses: WorkerStatusRow[]): string | null {
+  let newest: WorkerStatusRow | null = null;
+  for (const status of statuses) {
+    if (status.waiting_reason === null) continue;
+    if (!newest || status.updated_at > newest.updated_at) newest = status;
+  }
+  return newest?.waiting_reason ?? null;
 }
 
 // Replaces the row with the same id or adds it, then orders by `order`
