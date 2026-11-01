@@ -4,6 +4,7 @@
 
 - specs/issue-27-adw-c95d56bf-sdlc_planner-studio-zone-login-reels-list.md
 - specs/issue-43-adw-eff3346d-sdlc_planner-reel-upload-job-queue-worker.md
+- specs/issue-65-adw-65eeae69-sdlc_planner-rename-future-dated-migration-guard.md
 
 ## Overview
 
