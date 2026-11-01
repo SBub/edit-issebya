@@ -1,5 +1,9 @@
 # ADW Supabase stack: each run's own local database, reset to the worktree's migrations
 
+**Specifications:**
+
+- specs/issue-62-adw-518dc931-sdlc_planner-adw-own-supabase-stack.md
+
 ## Overview
 
 ADW runs no longer use the developer's local Supabase stack (`edit-issebya`, ports 54430 to 54439).
