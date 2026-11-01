@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ToolCall } from "../step-runner.ts";
 import { type ToolPaths, hyperframesEnv } from "../pipeline/tools.ts";
@@ -61,18 +62,34 @@ export function renderEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessE
   );
 }
 
+// Where a render's HyperFrames keeps what it leaves behind, all inside the
+// render's own folder (so inside the job's scratch folder, which is removed
+// after the job): the extract (frame) cache, its history and its temporary
+// work folders. `hyperframes clean` is never run: on 0.8.222 it also sweeps
+// the default history root and the shared caches of other projects.
+export function renderScratchEnv(dir: string): Record<string, string> {
+  return {
+    HYPERFRAMES_EXTRACT_CACHE_DIR: join(dir, "frames-cache"),
+    HYPERFRAMES_HISTORY_ROOT: join(dir, "hyperframes-history"),
+    TMPDIR: join(dir, "tmp"),
+  };
+}
+
 // The render as one tool call, with the whole process tree's memory sampled
-// (HyperFrames runs Chrome workers and an encoder). Under E2E_MOCK_RENDER set
+// (HyperFrames runs Chrome workers and an encoder), its caches, history and
+// temporary files under `dir`, the render's own folder. Under E2E_MOCK_RENDER set
 // to exactly "true" it is a copy of the stub MP4 through the same step runner,
 // so specs need no Chrome render.
 export function renderCall({
   tools,
+  dir,
   projectDir,
   output,
   range,
   env = process.env,
 }: {
   tools: ToolPaths;
+  dir: string;
   projectDir: string;
   output: string;
   range?: RenderRange;
@@ -84,7 +101,7 @@ export function renderCall({
   return {
     file: tools.hyperframes[0],
     args: [tools.hyperframes[1], ...renderArgs({ projectDir, output, range })],
-    env: renderEnv(env),
+    env: { ...renderEnv(env), ...renderScratchEnv(dir) },
     sampleGroupMemory: true,
   };
 }

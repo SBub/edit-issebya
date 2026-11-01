@@ -27,7 +27,7 @@ import {
 } from "../step-runner.ts";
 import { exportKey } from "./export-key.ts";
 import type { ExportStore } from "./export-store.ts";
-import { type RenderRange, renderCall } from "./render-call.ts";
+import { type RenderRange, renderCall, renderScratchEnv } from "./render-call.ts";
 import { writeRenderProject } from "./render-project.ts";
 
 const STEP = "render";
@@ -36,7 +36,8 @@ export interface RenderExport {
   tool: Tool;
   tools: ToolPaths;
   // The render's own folder: the project goes to `<dir>/project`, the MP4 to
-  // `<dir>/export.mp4`.
+  // `<dir>/export.mp4`, HyperFrames' caches, history and temporary files to
+  // the folders renderScratchEnv names.
   dir: string;
   edit: Edit;
   transcript: Transcript;
@@ -65,7 +66,11 @@ export async function renderExport({
   const projectDir = join(dir, "project");
   const projectFiles = await writeRenderProject({ dir: projectDir, html, assets, files });
   const output = join(dir, "export.mp4");
-  await tool(renderCall({ tools, projectDir, output, range, env }));
+  for (const folder of Object.values(renderScratchEnv(dir))) {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
+    await mkdir(folder, { recursive: true });
+  }
+  await tool(renderCall({ tools, dir, projectDir, output, range, env }));
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
   const info = await stat(output).catch(() => null);
   if (!info || info.size === 0) throw new Error(`${STEP}: the render wrote no MP4`);
@@ -86,6 +91,8 @@ export interface RenderRun {
   // every step a hit unless a rebuildable output was deleted, the reel's
   // status untouched.
   ensureInputs?: () => Promise<unknown>;
+  // Passed to the default pipeline: records the stored outputs it reuses.
+  recordStored?: (key: string, bytes: number) => Promise<void>;
   newId?: () => string;
   spawnTool?: SpawnTool;
   env?: NodeJS.ProcessEnv;
@@ -109,6 +116,7 @@ export async function runRender({
   tools,
   versionId,
   ensureInputs,
+  recordStored,
   newId = randomUUID,
   spawnTool,
   env = process.env,
@@ -134,6 +142,7 @@ export async function runRender({
         tools,
         spawnTool,
         setReelStatus: false,
+        recordStored,
       }))
   )();
   signal.throwIfAborted();

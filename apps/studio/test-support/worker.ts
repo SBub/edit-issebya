@@ -17,7 +17,9 @@ export async function claimableJobIds(admin: SupabaseClient): Promise<string[]> 
 }
 
 // Spawns the worker's `once` against the local stack with the storage, AI and
-// render doubles on and OTLP export off, and resolves with its exit code and
+// render doubles on, OTLP export off and the disk guard seeing 1000 GB free
+// against a 10 GB minimum (so no spec depends on the runner's real disk; a
+// spec overrides both), and resolves with its exit code and
 // output. No spec ever starts a real render: only the tools spec passes
 // `E2E_MOCK_RENDER: ""` (with a longer timeout).
 export function runWorkerOnce(
@@ -34,6 +36,8 @@ export function runWorkerOnce(
     E2E_MOCK_STORAGE: "true",
     E2E_MOCK_AI: "true",
     E2E_MOCK_RENDER: "true",
+    E2E_MOCK_FREE_DISK_GB: "1000",
+    WORKER_MIN_FREE_DISK_GB: "10",
     WORKER_ID: `e2e-${crypto.randomUUID()}`,
     ...env,
   };

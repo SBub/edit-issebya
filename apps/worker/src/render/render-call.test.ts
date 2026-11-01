@@ -1,7 +1,14 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ToolPaths } from "../pipeline/tools.ts";
-import { RENDER_SETTINGS, STUB_EXPORT, renderArgs, renderCall, renderEnv } from "./render-call.ts";
+import {
+  RENDER_SETTINGS,
+  STUB_EXPORT,
+  renderArgs,
+  renderCall,
+  renderEnv,
+  renderScratchEnv,
+} from "./render-call.ts";
 
 const TOOLS: ToolPaths = {
   ffmpeg: "ffmpeg",
@@ -65,6 +72,7 @@ describe("renderCall", () => {
   it("runs the installed HyperFrames with group memory sampling", () => {
     const call = renderCall({
       tools: TOOLS,
+      dir: "/s",
       projectDir: "/p",
       output: "/o.mp4",
       env: { PRODUCER_AUDIO_GAIN: "2" },
@@ -79,10 +87,36 @@ describe("renderCall", () => {
     expect(call.sampleGroupMemory).toBe(true);
   });
 
+  it("keeps HyperFrames' frame cache, history and temporary files inside the render folder", () => {
+    const call = renderCall({
+      tools: TOOLS,
+      dir: "/scratch/job/render-x",
+      projectDir: "/scratch/job/render-x/project",
+      output: "/scratch/job/render-x/export.mp4",
+      env: { TMPDIR: "/var/tmp", HYPERFRAMES_HISTORY_ROOT: "/home/h" },
+    });
+    expect(call.env).toMatchObject({
+      HYPERFRAMES_EXTRACT_CACHE_DIR: "/scratch/job/render-x/frames-cache",
+      HYPERFRAMES_HISTORY_ROOT: "/scratch/job/render-x/hyperframes-history",
+      TMPDIR: "/scratch/job/render-x/tmp",
+    });
+    for (const path of Object.values(renderScratchEnv("/scratch/job/render-x"))) {
+      expect(path.startsWith("/scratch/job/render-x/")).toBe(true);
+    }
+    expect(call.args).toEqual([
+      "/hf/bin/hyperframes.mjs",
+      ...renderArgs({
+        projectDir: "/scratch/job/render-x/project",
+        output: "/scratch/job/render-x/export.mp4",
+      }),
+    ]);
+  });
+
   it("turns the double on only for exactly 'true'", () => {
     for (const flag of [undefined, "", "1", "TRUE", "yes"]) {
       const call = renderCall({
         tools: TOOLS,
+        dir: "/s",
         projectDir: "/p",
         output: "/o.mp4",
         env: { E2E_MOCK_RENDER: flag },
@@ -91,6 +125,7 @@ describe("renderCall", () => {
     }
     const fake = renderCall({
       tools: TOOLS,
+      dir: "/s",
       projectDir: "/p",
       output: "/o.mp4",
       env: { E2E_MOCK_RENDER: "true" },

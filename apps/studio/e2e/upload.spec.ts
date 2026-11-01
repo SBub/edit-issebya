@@ -22,6 +22,22 @@ let owner: { id: string; email: string };
 let sourceKey: string | null = null;
 const versionKeys: string[] = [];
 const seededKeys: string[] = [];
+const exportKeys: string[] = [];
+// The pipeline outputs tagged rebuildable (apps/worker's step definitions);
+// every other output is kept.
+const REBUILDABLE = new Set([
+  "convert/converted.mp4",
+  "retime/source.mp4",
+  "remove_background/subject.webm",
+]);
+
+interface StoredFileRecord {
+  r2_key: string;
+  bytes: number;
+  kind: string;
+  step: string;
+  deleted_at: string | null;
+}
 
 test.beforeAll(async () => {
   const leftover = await claimableJobIds(admin);
@@ -37,6 +53,7 @@ test.afterAll(async () => {
   if (sourceKey) await storage.delete(sourceKey);
   for (const key of versionKeys) await storage.delete(key);
   for (const key of seededKeys) await storage.delete(key);
+  for (const key of exportKeys) await storage.delete(key);
   if (owner) await deleteTestUser(admin, owner.id);
 });
 
@@ -262,4 +279,48 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     "marker",
   );
   expect(posthogRequests).toEqual([]);
+
+  // An export of the current version, so every kind of stored file exists.
+  const render = await admin
+    .from("jobs")
+    .insert({ reel_id: reelId, owner_id: owner.id, kind: "render", version_id: currentId });
+  expect(render.error).toBeNull();
+  const exporter = await runWorkerOnce({
+    R2_KEY_PREFIX: CACHE_PREFIX,
+    E2E_MOCK_AI_SCRIPT: SHORT_SPEECH_ANSWER,
+  });
+  expect(exporter.code, exporter.output).toBe(0);
+  const { data: exportRows } = await admin.from("exports").select("r2_key").eq("reel_id", reelId);
+  expect(exportRows).toHaveLength(1);
+  const exportKey = exportRows![0]!.r2_key as string;
+  exportKeys.push(exportKey);
+
+  // Every object in this run's storage, and the source, has exactly one
+  // stored_files row of this reel with its size, kind and step.
+  const { data: storedRows, error: storedError } = await admin
+    .from("stored_files")
+    .select("r2_key, bytes, kind, step, deleted_at")
+    .eq("reel_id", reelId);
+  expect(storedError).toBeNull();
+  const live = (storedRows as StoredFileRecord[]).filter((row) => row.deleted_at === null);
+  const expectedOf = (objectKey: string) => {
+    if (objectKey === sourceKey!) return { kind: "source", step: "upload" };
+    if (objectKey === exportKey) return { kind: "export", step: "render" };
+    if (versionKeys.includes(objectKey)) return { kind: "version", step: "version" };
+    const [, step, , file] = objectKey.slice(CACHE_PREFIX.length).split("/");
+    return { kind: REBUILDABLE.has(`${step}/${file}`) ? "rebuildable" : "kept", step: step! };
+  };
+  const objectKeys = [...(await storage.list(CACHE_PREFIX)), sourceKey!];
+  expect(objectKeys).toContain(exportKey);
+  for (const versionKey of versionKeys) expect(objectKeys).toContain(versionKey);
+  for (const objectKey of objectKeys) {
+    const rows = live.filter((row) => row.r2_key === objectKey);
+    expect(rows, objectKey).toHaveLength(1);
+    expect(rows[0], objectKey).toMatchObject({
+      bytes: (await storage.head(objectKey))!.bytes,
+      ...expectedOf(objectKey),
+    });
+  }
+  // And no live row names an object that is not there.
+  expect(live.map((row) => row.r2_key).sort()).toEqual([...objectKeys].sort());
 });

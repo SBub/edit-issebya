@@ -17,6 +17,10 @@ export interface PipelineRun {
   pipeline?: readonly PipelineStep[];
   // false: the reel's status never moves (a render runs on a processed reel).
   setReelStatus?: boolean;
+  // Records that the job's reel needs an output it found already stored, with
+  // the size its HEAD gave. Outputs this run writes are recorded by the
+  // storage the job is given.
+  recordStored?: (key: string, bytes: number) => Promise<void>;
 }
 
 function elapsedMs(started: number): number {
@@ -52,6 +56,7 @@ export async function runPipeline({
   spawnTool,
   pipeline = PIPELINE,
   setReelStatus = true,
+  recordStored,
 }: PipelineRun): Promise<{ fingerprints: Record<string, string> }> {
   const { steps, job, signal } = ctx;
   const sourceKey = await steps.sourceKey(job.reel_id);
@@ -84,6 +89,11 @@ export async function runPipeline({
       );
       const stored = await Promise.all(outputKeys.map((key) => storage.head(key, { signal })));
       signal.throwIfAborted();
+      if (recordStored) {
+        for (const [index, object] of stored.entries()) {
+          if (object) await recordStored(outputKeys[index]!, object.bytes);
+        }
+      }
       if (setReelStatus) await steps.reelStatus(job.reel_id, step.reelStatus);
       if (stored.every((object) => object !== null)) {
         await recordHit(ctx, {

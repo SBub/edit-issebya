@@ -8,9 +8,10 @@ import type { ReelDetail } from "@/lib/reels";
 import { REEL_DETAIL_COLUMNS, isReelId, reelName } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
+import { WORKER_STATUS_COLUMNS, type WorkerStatusRow } from "@/lib/worker-status";
 
-// Reads the reel, its jobs, its steps, its versions and its newest export's id
-// once on the server; LiveReel then
+// Reads the reel, its jobs, its steps, its versions, its newest export's id
+// and the workers' waiting reasons once on the server; LiveReel then
 // follows changes through Realtime. No polling, no interval.
 export default async function ReelPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -34,7 +35,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
   if (!reel) notFound();
 
   // The step log is loaded only here, for the open reel.
-  const [jobs, steps, versions, latestExport] = await Promise.all([
+  const [jobs, steps, versions, latestExport, workerStatus] = await Promise.all([
     supabase
       .from("jobs")
       .select(JOB_COLUMNS)
@@ -60,12 +61,20 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle<{ id: string }>(),
+    supabase
+      .from("worker_status")
+      .select(WORKER_STATUS_COLUMNS)
+      .not("waiting_reason", "is", null)
+      .returns<WorkerStatusRow[]>(),
   ]);
   if (jobs.error) throw new Error(`studio: jobs not loaded: ${jobs.error.message}`);
   if (steps.error) throw new Error(`studio: steps not loaded: ${steps.error.message}`);
   if (versions.error) throw new Error(`studio: versions not loaded: ${versions.error.message}`);
   if (latestExport.error) {
     throw new Error(`studio: exports not loaded: ${latestExport.error.message}`);
+  }
+  if (workerStatus.error) {
+    throw new Error(`studio: worker status not loaded: ${workerStatus.error.message}`);
   }
 
   return (
@@ -81,6 +90,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
         steps={steps.data ?? []}
         versions={versions.data ?? []}
         latestExportId={latestExport.data?.id ?? null}
+        workerStatus={workerStatus.data ?? []}
       />
     </article>
   );
