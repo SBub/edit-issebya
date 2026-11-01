@@ -242,7 +242,7 @@ function capped(text: string, cap = OUTPUT_CAP): string {
 }
 
 // Spawns the tool under `/usr/bin/time` in its own process group.
-const runChild: SpawnTool = (spec, signal, log) => {
+export const spawnChild: SpawnTool = (spec, signal, log) => {
   const [timeBin, timeFlag] = timeCommand(process.platform);
   return new Promise((resolve, reject) => {
     const child = spawn(timeBin, [timeFlag, "/bin/sh", "-c", WRAPPER, spec.file, ...spec.args], {
@@ -334,7 +334,7 @@ const runChild: SpawnTool = (spec, signal, log) => {
 export function runToolsStep(
   ctx: StepContext,
   spec: ToolsStep,
-  spawnTool: SpawnTool = runChild,
+  spawnTool: SpawnTool = spawnChild,
 ): Promise<void> {
   return withStep(ctx, spec.name, async (stepContext, started) => {
     const log = stepLogger(ctx.telemetry, stepContext, {

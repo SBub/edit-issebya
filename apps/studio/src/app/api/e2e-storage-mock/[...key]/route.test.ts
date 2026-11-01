@@ -105,4 +105,33 @@ describe("with E2E_MOCK_STORAGE=true", () => {
       expect(read.headers.get("Content-Range")).toBe("bytes */10");
     });
   });
+
+  describe("download", () => {
+    const EXPORT = ["dev", "exports", "r1", "e1.mp4"];
+    const read = (query: string, headers: Record<string, string> = {}) =>
+      GET(new Request(`http://x/${query}`, { headers }), context(EXPORT));
+
+    beforeEach(async () => {
+      await put(EXPORT, new Uint8Array([1, 2, 3, 4]));
+    });
+
+    it("answers an attachment for a good download name, whole and ranged", async () => {
+      const whole = await read("?download=reel-v2-20261101-1200.mp4");
+      expect(whole.headers.get("Content-Disposition")).toBe(
+        'attachment; filename="reel-v2-20261101-1200.mp4"',
+      );
+      const ranged = await read("?download=reel.mp4", { range: "bytes=0-1" });
+      expect(ranged.status).toBe(206);
+      expect(ranged.headers.get("Content-Disposition")).toBe('attachment; filename="reel.mp4"');
+    });
+
+    it("adds no disposition without a name or with a bad one", async () => {
+      expect((await read("")).headers.get("Content-Disposition")).toBeNull();
+      expect(
+        (await read(`?download=${encodeURIComponent('a"; b.mp4')}`)).headers.get(
+          "Content-Disposition",
+        ),
+      ).toBeNull();
+    });
+  });
 });

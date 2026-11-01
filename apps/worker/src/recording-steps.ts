@@ -55,6 +55,7 @@ export const TEST_JOB: ClaimedJob = {
   attempts: 1,
   request: null,
   restore_version_id: null,
+  version_id: null,
 };
 
 export function stepContext(

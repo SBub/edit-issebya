@@ -11,6 +11,8 @@ export interface ClaimedJob {
   request: string | null;
   // The version a `restore` job goes back to (null for every other kind).
   restore_version_id: string | null;
+  // The version a `render` job exports (null for every other kind).
+  version_id: string | null;
 }
 
 type QueueConfig = Pick<WorkerConfig, "workerId" | "leaseSeconds">;
@@ -66,7 +68,7 @@ async function endJob(
   db: SupabaseClient,
   config: QueueConfig,
   job: ClaimedJob,
-  // null: the reel's status stays as it is (a change or restore job).
+  // null: the reel's status stays as it is (a change, restore or render job).
   outcome: {
     job: "done" | "failed";
     reel: "processed" | "failed" | null;
@@ -94,9 +96,10 @@ async function endJob(
   return true;
 }
 
-// Only a `process` job moves the reel's status. A change or restore job runs
-// on a processed reel and leaves it processed whatever happens: a failed
-// change keeps the reel usable and its current version untouched.
+// Only a `process` job moves the reel's status. A change, restore or render
+// job runs on a processed reel and leaves it processed whatever happens: a
+// failed change keeps the reel usable and its current version untouched, a
+// failed render leaves the reel as it was.
 function reelStatusAfter(job: ClaimedJob, status: "processed" | "failed") {
   return job.kind === "process" ? status : null;
 }

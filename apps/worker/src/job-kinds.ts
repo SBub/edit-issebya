@@ -9,12 +9,14 @@ export interface KindRunners {
   change: (request: string) => Promise<void>;
   // Only the restore step, going back to this version.
   restore: (versionId: string) => Promise<void>;
+  // The pipeline's hits and the render step, exporting this version.
+  render: (versionId: string) => Promise<void>;
 }
 
 // Runs the work of one claimed job by its kind. A change without a request,
-// a restore without a version and any other kind fail the job.
+// a restore or a render without a version and any other kind fail the job.
 export function runJobKind(
-  job: Pick<ClaimedJob, "kind" | "request" | "restore_version_id">,
+  job: Pick<ClaimedJob, "kind" | "request" | "restore_version_id" | "version_id">,
   runners: KindRunners,
 ): Promise<void> {
   switch (job.kind) {
@@ -26,6 +28,9 @@ export function runJobKind(
     case "restore":
       if (!job.restore_version_id) throw new Error("restore job has no version to go back to");
       return runners.restore(job.restore_version_id);
+    case "render":
+      if (!job.version_id) throw new Error("render job has no version to export");
+      return runners.render(job.version_id);
     default:
       throw new Error(`unknown job kind: ${job.kind}`);
   }

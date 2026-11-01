@@ -75,6 +75,37 @@ describe("r2Storage.signUpload", () => {
   });
 });
 
+describe("r2Storage.signDownload", () => {
+  const storage = r2Storage({
+    accountId: "abc",
+    bucket: "bucket",
+    accessKeyId: "dummy-id",
+    secretAccessKey: "dummy-secret",
+  });
+
+  it("presigns a GET that downloads as an attachment with the given name", async () => {
+    const url = new URL(
+      await storage.signDownload("dev/exports/r1/e1.mp4", {
+        expiresInSeconds: 120,
+        downloadName: "reel-v3-20261101-1200.mp4",
+      }),
+    );
+    expect(url.pathname).toBe("/bucket/dev/exports/r1/e1.mp4");
+    expect(url.searchParams.get("X-Amz-Expires")).toBe("120");
+    expect(url.searchParams.get("response-content-disposition")).toBe(
+      'attachment; filename="reel-v3-20261101-1200.mp4"',
+    );
+  });
+
+  it("adds no disposition without a name and refuses a bad name", async () => {
+    const url = new URL(await storage.signDownload("dev/a.mp4", { expiresInSeconds: 60 }));
+    expect(url.searchParams.has("response-content-disposition")).toBe(false);
+    await expect(
+      storage.signDownload("dev/a.mp4", { expiresInSeconds: 60, downloadName: 'x"; y=.mp4' }),
+    ).rejects.toThrow(/invalid download name/);
+  });
+});
+
 describe("r2Storage.head", () => {
   it("returns the size and the unquoted ETag", async () => {
     const { storage } = answering(200, {

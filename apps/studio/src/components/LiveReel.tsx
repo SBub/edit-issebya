@@ -11,6 +11,7 @@ import {
   upsertById,
 } from "@/lib/jobs";
 import { ChangeRequestForm } from "@/components/ChangeRequestForm";
+import { ExportPanel } from "@/components/ExportPanel";
 import { ReelPreview } from "@/components/ReelPreview";
 import { VersionList } from "@/components/VersionList";
 import { changeBlockedReason, jobRequestLabel } from "@/lib/change-requests";
@@ -23,10 +24,12 @@ interface Snapshot {
   jobs: JobRow[];
   steps: StepRow[];
   versions: VersionListRow[];
+  // The newest export's id (the panel reads and signs it itself).
+  latestExportId: string | null;
 }
 
 async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snapshot | null> {
-  const [reel, jobs, steps, versions] = await Promise.all([
+  const [reel, jobs, steps, versions, latestExport] = await Promise.all([
     supabase.from("reels").select(REEL_DETAIL_COLUMNS).eq("id", id).maybeSingle<ReelDetail>(),
     supabase
       .from("jobs")
@@ -46,17 +49,27 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
       .eq("reel_id", id)
       .order("number")
       .returns<VersionListRow[]>(),
+    supabase
+      .from("exports")
+      .select("id")
+      .eq("reel_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string }>(),
   ]);
-  if (reel.error || jobs.error || steps.error || versions.error || !reel.data) return null;
+  if (reel.error || jobs.error || steps.error || versions.error || latestExport.error) return null;
+  if (!reel.data) return null;
   return {
     reel: reel.data,
     jobs: jobs.data ?? [],
     steps: steps.data ?? [],
     versions: versions.data ?? [],
+    latestExportId: latestExport.data?.id ?? null,
   };
 }
 
-// The reel's preview, change box, versions, status, jobs and step log. Read once on the server, then followed
+// The reel's preview, export, change box, versions, status, jobs and step
+// log. Read once on the server, then followed
 // through Realtime filtered to this reel (RLS decides what arrives). One
 // catch-up read each time the subscription becomes ready covers changes made
 // between the server read and the subscription. No interval, no polling.
@@ -65,11 +78,13 @@ export function LiveReel({
   jobs: initialJobs,
   steps: initialSteps,
   versions: initialVersions,
+  latestExportId: initialLatestExportId,
 }: Snapshot) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
   const [steps, setSteps] = useState(initialSteps);
   const [versions, setVersions] = useState(initialVersions);
+  const [latestExportId, setLatestExportId] = useState(initialLatestExportId);
   const [ready, setReady] = useState(false);
   const id = initialReel.id;
 
@@ -90,6 +105,7 @@ export function LiveReel({
             setJobs(snapshot.jobs);
             setSteps(snapshot.steps);
             setVersions(snapshot.versions);
+            setLatestExportId(snapshot.latestExportId);
           }
           setReady(true);
         });
@@ -130,6 +146,15 @@ export function LiveReel({
           const row = pickColumns<VersionListRow>(payload.new, VERSION_LIST_COLUMNS);
           setVersions((current) => upsertById(current, row, "created_at"));
         },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "exports", filter: `reel_id=eq.${id}` },
+        (payload) => {
+          // Exports are never updated; a new one is the newest.
+          const row = pickColumns<{ id: string }>(payload.new, "id");
+          setLatestExportId(row.id);
+        },
       );
 
     // setAuth hands the session's token to Realtime before joining, so RLS
@@ -150,6 +175,7 @@ export function LiveReel({
   return (
     <div data-realtime={ready ? "ready" : "pending"} className="flex flex-col gap-6">
       <ReelPreview reelId={reel.id} currentVersionId={reel.current_version_id} />
+      <ExportPanel reel={reel} jobs={jobs} latestExportId={latestExportId} />
       <ChangeRequestForm reelId={reel.id} blockedReason={blockedReason} jobs={jobs} />
       <VersionList
         reelId={reel.id}

@@ -12,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
-import { type Storage, assertStorageKey } from "./storage.ts";
+import { type Storage, assertDownloadName, assertStorageKey } from "./storage.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -106,8 +106,11 @@ export function fakeStorage({
       return `${uploadUrlBase}${assertStorageKey(key)}`;
     },
 
-    async signDownload(key) {
-      return `${uploadUrlBase}${assertStorageKey(key)}`;
+    async signDownload(key, options) {
+      const url = `${uploadUrlBase}${assertStorageKey(key)}`;
+      const name = options?.downloadName;
+      if (name === undefined) return url;
+      return `${url}?download=${encodeURIComponent(assertDownloadName(name))}`;
     },
 
     async head(key) {

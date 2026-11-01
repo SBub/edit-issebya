@@ -72,12 +72,16 @@ describe("labels", () => {
   });
 
   it("names what each job kind was asked to do", () => {
-    expect(JOB_KINDS).toEqual(["process", "change", "restore"]);
-    const none = { request: null, restore_version_id: null };
+    expect(JOB_KINDS).toEqual(["process", "change", "restore", "render"]);
+    const none = { request: null, restore_version_id: null, version_id: null };
     expect(jobRequestLabel({ kind: "process", ...none }, byId)).toBeNull();
     expect(jobRequestLabel({ kind: "change", ...none, request: "lower" }, byId)).toBe('"lower"');
     expect(jobRequestLabel({ kind: "restore", ...none, restore_version_id: "v1" }, byId)).toBe(
       "go back to v1",
     );
+    expect(jobRequestLabel({ kind: "render", ...none, version_id: "v3" }, byId)).toBe(
+      "export of v3",
+    );
+    expect(jobRequestLabel({ kind: "render", ...none, version_id: "v9" }, byId)).toBe("export");
   });
 });

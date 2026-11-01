@@ -112,6 +112,21 @@ describe("fakeStorage", () => {
     );
   });
 
+  it("appends the download name to a download link, and refuses a bad one", async () => {
+    const storage = fakeStorage({ root, uploadUrlBase: "/up/" });
+    expect(
+      await storage.signDownload("exports/r/e.mp4", {
+        expiresInSeconds: 60,
+        downloadName: "reel-v2-20261101-1200.mp4",
+      }),
+    ).toBe("/up/exports/r/e.mp4?download=reel-v2-20261101-1200.mp4");
+    for (const downloadName of ['a"b.mp4', "a b.mp4", "", "x/y.mp4"]) {
+      await expect(
+        storage.signDownload("exports/r/e.mp4", { expiresInSeconds: 60, downloadName }),
+      ).rejects.toThrow(/invalid download name/);
+    }
+  });
+
   it("refuses keys that could leave its root", async () => {
     const storage = fakeStorage({ root, uploadUrlBase: "/up/" });
     for (const key of ["../x", "a/../../x", "/abs", "a//b", "Upper.mp4", ""]) {
