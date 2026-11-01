@@ -63,8 +63,8 @@ be kept in step with them and with `README.md`.
   (default 3001) unless `STUDIO_URL` is set.
 - The mock flags turn on the in-process Stripe and Resend mocks (`apps/web/src/instrumentation.ts`)
   and the `/api/e2e-stripe-mock` and `/api/e2e-resend-mock` routes the checkout and confirmation
-  email specs need. `E2E_MOCK_STORAGE=true` makes the studio sign uploads to its
-  `/studio/api/e2e-storage-mock` route, which writes into the gitignored `.e2e-storage/` folder at
+  email specs need. `E2E_MOCK_STORAGE=true` makes the studio sign upload parts to its
+  `/studio/api/e2e-storage-mock` route (part `PUT` only), which writes into the gitignored `.e2e-storage/` folder at
   the worktree root, where the worker's `once` reads them.
 - `/` answering 200 proves the landing server is up, `/studio` through it proves the studio is.
   The landing page reads no database; it calls Stripe when the form is submitted and Stripe and
@@ -176,7 +176,7 @@ spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium
 `yarn workspace @edit-issebya/worker fixtures:pipeline`) under their fingerprints and spawns the
 worker's `once`, every step a cache hit, then the `first_version` step saves version 1 and the
 `decide` step (AI fake, `E2E_MOCK_AI_SCRIPT` set to the worker's committed answer) saves version 2
-(their rows, the decide step's AI columns and both R2 keys checked), `step-log.spec.ts` shows a failed step's collapsed
+(their rows, the decide step's AI columns and both R2 keys checked), `multipart-upload.spec.ts` uploads a 35 MiB clip in four 10 MiB parts through the mock route, re-sends only a failed part, resumes after a reload sending only the missing parts, refuses another user's and a signed-out caller's sign, list, complete and abort, and on cancel leaves the reel `failed` with no parts and no job, `step-log.spec.ts` shows a failed step's collapsed
 error tail, `preview.spec.ts` seeds a processed reel the same way (`test-support/pipeline-cache.ts`,
 its AI answer keeping version 1 unchanged, so version 2 matches the version 1 golden)
 and plays its live preview: the HyperFrames runtime and GSAP routed from the pinned local

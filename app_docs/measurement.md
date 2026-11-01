@@ -90,7 +90,7 @@ client, identifies the signed-in user and sends `studio_*` events.
 
 | Event                      | Sent when                                                                    | Properties                                |
 | -------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------- |
-| `studio_footage_uploaded`  | an upload finishes (`UploadForm.tsx`)                                        | `reel_id`, `app`                          |
+| `studio_footage_uploaded`  | after the multipart upload completes, once (`UploadForm.tsx`)                | `reel_id`, `app`                          |
 | `studio_preview_opened`    | the live preview first reaches the player on a page open (`ReelPreview.tsx`) | `reel_id`, `app`                          |
 | `studio_change_requested`  | the owner sends a change request (`ChangeRequestForm.tsx`)                   | `reel_id`, `app` (never the request text) |
 | `studio_export_requested`  | the Export button queues a render job (`ExportPanel.tsx`)                    | `reel_id`, `app`                          |
@@ -124,7 +124,9 @@ client, identifies the signed-in user and sends `studio_*` events.
 - DB test: `db-tests/steps-measurements.test.ts` pins the exact column set of `steps`, so a money column
   fails it.
 - Studio E2E: `e2e/upload.spec.ts` (step line format, `studio_footage_uploaded` with the reel id and
-  `app`, no PostHog request) and `e2e/step-log.spec.ts` (a failed step's summary and collapsed tail).
+  `app`, no PostHog request), `e2e/multipart-upload.spec.ts` (`studio_footage_uploaded` once with the
+  reel id and `app` after completion, also after a retried part and after a resume, and never after
+  cancel) and `e2e/step-log.spec.ts` (a failed step's summary and collapsed tail).
 
 ## Rules
 

@@ -64,21 +64,13 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 
 ### Upload
 
-- `apps/studio/src/app/upload-actions.ts`: `createUpload` validates the request
-  (`apps/studio/src/lib/upload.ts`: name, size up to 5 GiB (R2's single-PUT limit), `video/` type,
-  extension `mp4`, `mov`, `m4v` or `webm`), inserts the `reels` row (`uploading`) through the
-  user's own client and returns a presigned PUT URL. The browser PUTs the file straight to R2;
-  the studio's server never sees the body. `finishUpload` calls the `finish_upload` database
-  function.
-- `apps/studio/src/components/UploadForm.tsx`: the "Clip" input and "Upload" button; on success it
-  goes to `/reels/<id>`.
 - The key is `<R2_KEY_PREFIX>reels/<reel id>/source/original.<ext>`. The insert policy
   `reels: owner inserts own uploading reel` only accepts a key ending with that reel's own path.
-- `finish_upload(p_reel_id, p_bytes)` (`security definer`, executable by `authenticated` only)
-  moves the owner's `uploading` reel to `uploaded`, records `source_bytes` and inserts one `process`
-  job. Any other caller, reel or state fails the same way.
 - `apps/studio/src/lib/storage.ts`: `studioStorage()` returns the fake under `E2E_MOCK_STORAGE`,
-  R2 with the studio keys, or `null` (the form then says uploads are unavailable).
+  R2 with the studio keys, or `null` (uploads then answer unavailable).
+- The resumable multipart upload (`UploadForm`, the uploader, the routes under
+  `apps/studio/src/app/api/uploads/s3/multipart/`, `finish_upload`, `fail_upload`,
+  `source_upload_id`, resume) is described in `app_docs/upload.md`.
 
 ### Jobs, steps and the lease
 
@@ -140,7 +132,7 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   passes its own keys.
 - `E2E_MOCK_STORAGE=true` (exactly) makes both use the gitignored `.e2e-storage/` folder at the
   repository root; the studio's `/studio/api/e2e-storage-mock/[...key]` route stands in for R2's
-  PUT and answers 404 otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
+  upload part `PUT` (part requests only, see `app_docs/upload.md`) and answers 404 otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
   `E2E_MOCK_RENDER=true` (exactly) replaces the HyperFrames render with a copy of
   `fixtures/render/stub-export.mp4`.
 - `fixtures/footage/short-speech.mp4` is the committed short vertical clip with speech, made by
@@ -195,9 +187,10 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   (`versions.test.ts`), Realtime
   follows RLS for `reels` and `steps`. Needs the local stack (in ADW runs, the ADW stack through
   `SUPABASE_DB_URL` and the other hook variables); not in the pre-push hook.
-- E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload` specs, chromium, through the
+- E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload`, `multipart-upload` specs, chromium, through the
   landing address), run after the landing suite by `yarn test:e2e`. `upload.spec.ts` uploads the
-  test clip, spawns the worker's `once` and expects the page to update without a reload.
+  test clip, spawns the worker's `once` and expects the page to update without a reload. `multipart-upload.spec.ts` covers parts, a
+  retried part, resume, ownership and cancel (details in `app_docs/upload.md`).
 
 ## Rules
 
@@ -235,6 +228,5 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 
 - Spans `apps/studio`, `apps/worker`, `packages/storage`, `apps/web` (rewrites only), `supabase/`,
   CI and the ADW profile; most of the change is in `apps/studio`.
-- Processing, edits and render steps, resumable upload (single PUT only) and a retry limit are
-  later slices; the `receive` step is a placeholder.
+- Processing, edits and render steps and a retry limit are later slices; the `receive` step is a placeholder.
 - The magic-link template takes effect after the local Supabase stack restarts.
