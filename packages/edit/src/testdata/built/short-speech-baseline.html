@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" data-resolution="portrait">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Raleway Light"; src: url("assets/fonts/Raleway-Light.ttf") format("truetype"); font-weight: 300; }
+      @font-face { font-family: "Golos Text"; src: url("assets/fonts/GolosText-Bold.ttf") format("truetype"); font-weight: 700; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; overflow: hidden; background: #000; }
+      .full { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      #words { position: absolute; inset: 0; }
+      .tx { position: absolute; line-height: 1; white-space: nowrap; }
+      #words .tx { opacity: 0; }
+      .t-dim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.62); opacity: 0; }
+      .t-panel { position: absolute; left: 0; top: 1150px; width: 1080px; height: 770px; background: #121212; }
+      .t-card { position: absolute; inset: 0; background: rgba(8, 8, 8, 0.9); opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="2.605" data-width="1080" data-height="1920">
+      <video id="footage" class="clip full" src="footage.mp4" playsinline data-start="0" data-duration="2.605" data-track-index="1" data-has-audio="true"></video>
+      <video id="cutout" class="clip full" src="subject.webm" muted playsinline data-start="0" data-duration="2.605" data-track-index="30"></video>
+      <div id="words" class="clip" data-start="0" data-duration="2.605" data-track-index="40"><span id="c-w0001" class="tx" style="left:449.03px;top:1290.00px;font-size:50.00px;font-family:'Golos Text';font-weight:700;color:#FFFFFF;">this</span><span id="c-w0002" class="tx" style="left:474.15px;top:1205.00px;font-size:50.00px;font-family:'Golos Text';font-weight:700;color:#FFFFFF;">is</span><span id="c-w0003" class="tx" style="left:480.50px;top:1120.00px;font-size:50.00px;font-family:'Golos Text';font-weight:700;color:#FFFFFF;">a</span><span id="c-w0004" class="tx" style="left:430.63px;top:1290.00px;font-size:50.00px;font-family:'Golos Text';font-weight:700;color:#FFFFFF;">short</span><span id="c-w0005" class="tx" style="left:446.38px;top:1290.00px;font-size:50.00px;font-family:'Golos Text';font-weight:700;color:#FFFFFF;">test</span><span id="c-w0006" class="tx" style="left:450.03px;top:1205.00px;font-size:50.00px;font-family:'Golos Text';font-weight:700;color:#FFFFFF;">clip</span><span id="c-w0007" class="tx" style="left:461.25px;top:1290.00px;font-size:50.00px;font-family:'Golos Text';font-weight:700;color:#FFFFFF;">for</span><span id="c-w0008" class="tx" style="left:455.13px;top:1120.00px;font-size:50.00px;font-family:'Golos Text';font-weight:700;color:#FFFFFF;">the</span><span id="c-w0009" class="tx" style="left:448.00px;top:1290.00px;font-size:50.00px;font-family:'Golos Text';font-weight:700;color:#FFFFFF;">real</span><span id="c-w0010" class="tx" style="left:419.03px;top:1205.00px;font-size:50.00px;font-family:'Golos Text';font-weight:700;color:#FFFFFF;">studio</span></div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#c-w0001", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.180, ease: "power2.out"}, 0.038);
+      tl.to("#c-w0001", {opacity: 0, duration: 0.150}, 0.288);
+      tl.fromTo("#c-w0002", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.180, ease: "power2.out"}, 0.267);
+      tl.to("#c-w0002", {opacity: 0, duration: 0.150}, 0.517);
+      tl.fromTo("#c-w0003", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.180, ease: "power2.out"}, 0.400);
+      tl.to("#c-w0003", {opacity: 0, duration: 0.150}, 0.650);
+      tl.fromTo("#c-w0004", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.180, ease: "power2.out"}, 0.467);
+      tl.to("#c-w0004", {opacity: 0, duration: 0.150}, 0.717);
+      tl.fromTo("#c-w0005", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.180, ease: "power2.out"}, 0.881);
+      tl.to("#c-w0005", {opacity: 0, duration: 0.150}, 1.131);
+      tl.fromTo("#c-w0006", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.180, ease: "power2.out"}, 1.252);
+      tl.to("#c-w0006", {opacity: 0, duration: 0.150}, 1.502);
+      tl.fromTo("#c-w0007", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.180, ease: "power2.out"}, 1.357);
+      tl.to("#c-w0007", {opacity: 0, duration: 0.150}, 1.607);
+      tl.fromTo("#c-w0008", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.180, ease: "power2.out"}, 1.557);
+      tl.to("#c-w0008", {opacity: 0, duration: 0.150}, 1.807);
+      tl.fromTo("#c-w0009", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.180, ease: "power2.out"}, 1.757);
+      tl.to("#c-w0009", {opacity: 0, duration: 0.150}, 2.007);
+      tl.fromTo("#c-w0010", {opacity: 0, y: 12}, {opacity: 1, y: 0, duration: 0.180, ease: "power2.out"}, 2.052);
+      tl.to("#c-w0010", {opacity: 0, duration: 0.150}, 2.455);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

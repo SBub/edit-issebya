@@ -32,6 +32,7 @@ const STEP_COLUMNS = [
   ["ai_output_tokens", "bigint"],
   ["ai_cost_usd", "numeric"],
   ["ai_model", "text"],
+  ["cache_hit", "boolean"],
 ];
 
 describe("steps columns", () => {

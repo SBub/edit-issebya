@@ -8,15 +8,18 @@
     "worker:prod": "node --env-file-if-exists=.env.production src/main.ts",
     "once": "node --env-file-if-exists=.env.development src/once.ts",
     "doctor": "node --env-file-if-exists=.env.development src/doctor.ts",
+    "fixtures:pipeline": "node --env-file-if-exists=.env.development src/make-pipeline-fixtures.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:tools": "vitest run --config vitest.tools.config.ts"
   },
   "engines": {
     "node": "24.x"
   },
   "dependencies": {
+    "@edit-issebya/edit": "workspace:*",
     "@edit-issebya/storage": "workspace:*",
     "@opentelemetry/api": "^1.10.0",
     "@opentelemetry/api-logs": "^0.223.0",
@@ -25,7 +28,8 @@
     "@opentelemetry/resources": "^3.0.0",
     "@opentelemetry/sdk-logs": "^3.0.0",
     "@opentelemetry/sdk-trace": "^3.0.0",
-    "@supabase/supabase-js": "^2.118.0"
+    "@supabase/supabase-js": "^2.118.0",
+    "hyperframes": "0.8.222"
   },
   "devDependencies": {
     "@types/node": "^24",

@@ -6,3 +6,6 @@ node_modules
 yarn.lock
 next-env.d.ts
 .turbo
+apps/worker/src/pipeline/testdata/rethink-work
+fixtures/pipeline
+packages/edit/src/testdata/built

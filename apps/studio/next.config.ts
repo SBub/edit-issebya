@@ -27,9 +27,9 @@ const nextConfig: NextConfig = {
   // app_docs/studio.md, "Zone and forwarding".
   basePath: "/studio",
   assetPrefix: "/studio-static",
-  // A workspace package shipped as TypeScript source (no build step); Next
-  // transpiles it like the app's own code.
-  transpilePackages: ["@edit-issebya/storage"],
+  // Workspace packages shipped as TypeScript source (no build step); Next
+  // transpiles them like the app's own code.
+  transpilePackages: ["@edit-issebya/storage", "@edit-issebya/edit"],
   ...(host ? { experimental: { serverActions: { allowedOrigins: [host] } } } : {}),
   // Same reason as apps/web: dependencies are hoisted to the repository root's
   // node_modules, so pin the Turbopack root and the output file tracing root
