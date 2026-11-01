@@ -8,14 +8,14 @@ import {
   signedInClient,
 } from "../test-support/fixtures.ts";
 import {
-  LOCAL_DB_URL,
+  localDbUrl,
   localSupabaseAdmin,
   localSupabaseClient,
 } from "../test-support/local-supabase.ts";
 
 describe("every public table", () => {
   it("has RLS on and at least one policy", async () => {
-    const db = new pg.Client({ connectionString: LOCAL_DB_URL });
+    const db = new pg.Client({ connectionString: localDbUrl() });
     await db.connect();
     try {
       const { rows } = await db.query<{ table: string; rls: boolean; policies: number }>(`

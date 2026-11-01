@@ -57,7 +57,8 @@
         "VERCEL_PROJECT_PRODUCTION_URL",
         "STUDIO_URL",
         "STUDIO_PORT",
-        "R2_*"
+        "R2_*",
+        "NEXT_PUBLIC_SUPABASE_*"
       ]
     },
     "start": {
@@ -74,7 +75,8 @@
         "VERCEL_PROJECT_PRODUCTION_URL",
         "STUDIO_URL",
         "STUDIO_PORT",
-        "R2_*"
+        "R2_*",
+        "NEXT_PUBLIC_SUPABASE_*"
       ]
     },
     "test:e2e": {
@@ -94,6 +96,7 @@
         "STUDIO_PORT",
         "SUPABASE_URL",
         "SUPABASE_SECRET_KEY",
+        "SUPABASE_DB_URL",
         "NEXT_PUBLIC_SUPABASE_*",
         "NEXT_PUBLIC_SITE_URL",
         "R2_*",
@@ -105,7 +108,12 @@
     "test:db": {
       "cache": false,
       "outputs": [],
-      "passThroughEnv": ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "NEXT_PUBLIC_SUPABASE_*"]
+      "passThroughEnv": [
+        "SUPABASE_URL",
+        "SUPABASE_SECRET_KEY",
+        "SUPABASE_DB_URL",
+        "NEXT_PUBLIC_SUPABASE_*"
+      ]
     },
     "@edit-issebya/studio#test:e2e": {
       "cache": false,
@@ -125,6 +133,7 @@
         "STUDIO_PORT",
         "SUPABASE_URL",
         "SUPABASE_SECRET_KEY",
+        "SUPABASE_DB_URL",
         "NEXT_PUBLIC_SUPABASE_*",
         "NEXT_PUBLIC_SITE_URL",
         "R2_*",

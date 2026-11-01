@@ -37,7 +37,9 @@ supabase migration up --local       # apply the migrations
 STUDIO_PORT=3001 yarn turbo run dev --filter=./apps/web --filter=./apps/studio
 ```
 
-Open `http://localhost:3000/studio`: the studio is reached through the landing page.
+Open `http://localhost:3000/studio`: the studio is reached through the landing page. ADW runs use
+their own local stack (`edit-issebya-adw`, ports 54450 to 54459, see
+`app_docs/adw-supabase-stack.md`), which you do not need to start or stop.
 
 ### Run the worker locally
 

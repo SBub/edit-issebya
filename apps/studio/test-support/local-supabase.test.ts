@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { assertLocalUrl, localSupabaseAdmin, localSupabaseClient } from "./local-supabase";
+import {
+  assertLocalUrl,
+  localDbUrl,
+  localSupabaseAdmin,
+  localSupabaseClient,
+} from "./local-supabase";
 
 describe("localSupabaseAdmin", () => {
   it("refuses the hosted project", () => {
@@ -50,5 +55,26 @@ describe("assertLocalUrl", () => {
     expect(() => assertLocalUrl("")).toThrow(/Refusing/);
     expect(() => assertLocalUrl(undefined)).toThrow(/Refusing/);
     expect(() => assertLocalUrl("not a url")).toThrow(/Refusing/);
+  });
+});
+
+describe("localDbUrl", () => {
+  it("defaults to the shared stack's database", () => {
+    expect(localDbUrl({})).toBe("postgresql://postgres:postgres@127.0.0.1:54432/postgres");
+  });
+
+  it("returns a local SUPABASE_DB_URL", () => {
+    for (const url of [
+      "postgresql://postgres:postgres@127.0.0.1:54452/postgres",
+      "postgresql://postgres:postgres@localhost:54452/postgres",
+    ]) {
+      expect(localDbUrl({ SUPABASE_DB_URL: url })).toBe(url);
+    }
+  });
+
+  it("refuses a hosted SUPABASE_DB_URL", () => {
+    expect(() =>
+      localDbUrl({ SUPABASE_DB_URL: "postgresql://postgres:x@db.abc.supabase.co:5432/postgres" }),
+    ).toThrow(/Refusing non-local Supabase URL/);
   });
 });
