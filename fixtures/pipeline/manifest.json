@@ -1,0 +1,32 @@
+{
+  "source": {
+    "etag": "20faa3fb92e9d28d5ec15d9c4bedc831",
+    "bytes": 24713
+  },
+  "steps": [
+    {
+      "name": "convert",
+      "fingerprint": "0246e86e95b7cae269dc7d982572e15148488fe7e446e61a7489e4d876cfbba5",
+      "files": [
+        "converted.mp4"
+      ]
+    },
+    {
+      "name": "transcribe",
+      "fingerprint": "7c63fdd96f1332d67c700d180cf4e8cc1315db7b6edbf9c1ff7ffce4f8d3544d",
+      "files": [
+        "transcript.json"
+      ]
+    },
+    {
+      "name": "retime",
+      "fingerprint": "f3f3e150e0dac6e8b85f7de8c20e42dc8b76baba83e13b4ea49dc2d897e1f7e8",
+      "files": [
+        "source.mp4",
+        "transcript.json",
+        "retime.json",
+        "envelope.json"
+      ]
+    }
+  ]
+}

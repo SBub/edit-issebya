@@ -6,7 +6,24 @@ export interface DoctorDeps {
   supabase: () => Promise<void>;
   r2: () => Promise<void>;
   ffmpeg: () => Promise<string>;
+  // `ffmpeg -hide_banner -filters` output.
+  ffmpegFilters: () => Promise<string>;
+  // `hyperframes --version` output.
+  hyperframes: () => Promise<string>;
   ai: () => AiRunner;
+}
+
+// The filters the fixed steps use: HDR tone-mapping, retime tempo, the envelope.
+const PIPELINE_FILTERS = ["zscale", "tonemap", "atempo", "astats", "ametadata"];
+
+// Filter names from `ffmpeg -filters` (lines like ` ... zscale  V->V  Apply ...`).
+function filterNames(listing: string): Set<string> {
+  const names = new Set<string>();
+  for (const line of listing.split("\n")) {
+    const name = line.trim().split(/\s+/)[1];
+    if (name) names.add(name);
+  }
+  return names;
 }
 
 const AI_SCHEMA = {
@@ -32,6 +49,17 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
     await check("supabase reachable", deps.supabase),
     await check("r2 bucket reachable", deps.r2),
     await check("ffmpeg", deps.ffmpeg),
+    await check("ffmpeg filters", async () => {
+      const names = filterNames(await deps.ffmpegFilters());
+      const missing = PIPELINE_FILTERS.filter((name) => !names.has(name));
+      if (missing.length > 0) throw new Error(`missing ${missing.join(", ")}`);
+      return PIPELINE_FILTERS.join(", ");
+    }),
+    await check("hyperframes", async () => {
+      const version = (await deps.hyperframes()).trim().split("\n").at(-1)?.trim();
+      if (!version) throw new Error("no version printed");
+      return version;
+    }),
     await check("ai structured call", async () => {
       const answer = await deps.ai().runJson("Reply with ok set to true.", AI_SCHEMA);
       if ((answer as { ok?: unknown } | null)?.ok !== true) {

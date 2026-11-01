@@ -3,11 +3,13 @@
 import { ROOT_CONTEXT } from "@opentelemetry/api";
 import type { ClaimedJob } from "./queue.ts";
 import type { StepContext } from "./step-runner.ts";
-import type { StepMeasurements, StepStore } from "./step-store.ts";
+import type { PipelineReelStatus, StepMeasurements, StepStore } from "./step-store.ts";
 import { type Telemetry, createTelemetry } from "./telemetry.ts";
 
 export type StepCall =
   | { call: "start"; jobId: string; name: string }
+  | { call: "skipped"; jobId: string; name: string; summary: string; wallMs: number }
+  | { call: "reelStatus"; reelId: string; status: PipelineReelStatus }
   | { call: "done"; stepId: string; summary: string; measurements: StepMeasurements }
   | {
       call: "failed";
@@ -25,6 +27,12 @@ export function recordingSteps(sourceKey: string | null = null) {
       calls.push({ call: "start", jobId: job.id, name });
       next += 1;
       return `s${next}`;
+    },
+    async skipped(job, name, summary, wallMs) {
+      calls.push({ call: "skipped", jobId: job.id, name, summary, wallMs });
+    },
+    async reelStatus(reelId, status) {
+      calls.push({ call: "reelStatus", reelId, status });
     },
     async sourceKey() {
       return sourceKey;
