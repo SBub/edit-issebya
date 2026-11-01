@@ -44,7 +44,7 @@ export const transcribe: PipelineStep<TranscribeSettings> = {
   version: TRANSCRIBE_VERSION,
   settings: TRANSCRIBE_SETTINGS,
   reelStatus: "transcribing",
-  outputs: [OUTPUT],
+  outputs: [{ file: OUTPUT, keep: "kept" }],
   reusedWhat: "transcribed",
   inputs: (_source, fingerprints) => [
     {
@@ -61,7 +61,7 @@ export const transcribe: PipelineStep<TranscribeSettings> = {
     await tool({
       file: node,
       args: [entry, ...transcribeArgs(files["converted.mp4"]!, work, settings)],
-      env: hyperframesEnv(),
+      env: hyperframesEnv(process.env, tools),
     });
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     const raw = JSON.parse(await readFile(join(work, "transcript.json"), "utf8")) as unknown;

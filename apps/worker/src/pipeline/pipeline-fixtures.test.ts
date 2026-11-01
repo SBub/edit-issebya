@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PIPELINE, fingerprintsFor } from "./definition.ts";
+import { PIPELINE, fingerprintsFor, outputFiles } from "./definition.ts";
 
 // fixtures/pipeline/ is what the E2E upload spec seeds so every step is a hit.
 // A step version or setting change fails here until `fixtures:pipeline` runs.
@@ -29,7 +29,7 @@ describe("fixtures/pipeline", () => {
       PIPELINE.map((step) => ({
         name: step.name,
         fingerprint: fingerprints[step.name],
-        files: [...step.outputs],
+        files: outputFiles(step),
       })),
     );
   });

@@ -9,7 +9,6 @@ import { planRetime, remapTime } from "./retime-plan.ts";
 import { RETIME_PRESET, RETIME_VERSION, type RetimeSettings } from "./retime-preset.ts";
 import { parseTranscript, remapTranscript } from "./transcript.ts";
 
-const OUTPUTS = ["source.mp4", "transcript.json", "retime.json", "envelope.json"] as const;
 const ENVELOPE_PRINT = "envelope.txt";
 const GRAPH = "retime-graph.txt";
 const PARTIAL = "source.part.mp4";
@@ -25,7 +24,12 @@ export const retime: PipelineStep<RetimeSettings> = {
   version: RETIME_VERSION,
   settings: RETIME_PRESET,
   reelStatus: "retiming",
-  outputs: OUTPUTS,
+  outputs: [
+    { file: "source.mp4", keep: "rebuildable" },
+    { file: "transcript.json", keep: "kept" },
+    { file: "retime.json", keep: "kept" },
+    { file: "envelope.json", keep: "kept" },
+  ],
   reusedWhat: "retimed",
   inputs: (_source, fingerprints) => [
     {

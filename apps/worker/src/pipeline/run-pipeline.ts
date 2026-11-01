@@ -2,7 +2,7 @@ import { access, mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Storage } from "@edit-issebya/storage";
 import { type SpawnTool, type StepContext, recordHit, runToolsStep } from "../step-runner.ts";
-import { PIPELINE, type PipelineStep, fingerprintsFor } from "./definition.ts";
+import { PIPELINE, type PipelineStep, fingerprintsFor, outputFiles } from "./definition.ts";
 import { type FileRef, cacheKey } from "./fingerprint.ts";
 import type { ToolPaths } from "./tools.ts";
 
@@ -23,6 +23,7 @@ function elapsedMs(started: number): number {
 
 function contentType(file: string): string {
   if (file.endsWith(".mp4")) return "video/mp4";
+  if (file.endsWith(".webm")) return "video/webm";
   if (file.endsWith(".json")) return "application/json";
   return "application/octet-stream";
 }
@@ -74,7 +75,8 @@ export async function runPipeline({
     for (const step of pipeline) {
       const started = performance.now();
       const fingerprint = fingerprints[step.name]!;
-      const outputKeys = step.outputs.map((file) =>
+      const outputNames = outputFiles(step);
+      const outputKeys = outputNames.map((file) =>
         cacheKey(keyPrefix, step.name, fingerprint, file),
       );
       const stored = await Promise.all(outputKeys.map((key) => storage.head(key, { signal })));
@@ -94,7 +96,7 @@ export async function runPipeline({
       const files = Object.fromEntries(
         inputs.map((input) => [input.as, local.get(keyOf(input.ref)) ?? downloadPath(input.ref)]),
       );
-      const outputPaths = step.outputs.map((file) => join(stepDir, file));
+      const outputPaths = outputNames.map((file) => join(stepDir, file));
       await runToolsStep(
         ctx,
         {
@@ -123,12 +125,12 @@ export async function runPipeline({
               settings: step.settings,
               signal,
             });
-            for (const [index, file] of step.outputs.entries()) {
+            for (const [index, file] of outputNames.entries()) {
               if (!(await exists(outputPaths[index]!))) {
                 throw new Error(`${step.name} did not write ${file}`);
               }
             }
-            for (const [index, file] of step.outputs.entries()) {
+            for (const [index, file] of outputNames.entries()) {
               const key = outputKeys[index]!;
               local.set(key, outputPaths[index]!);
               // Stored already: that object stays.

@@ -35,7 +35,16 @@ export function toolPaths(env: Env = process.env): ToolPaths {
 }
 
 // The environment HyperFrames always runs with: telemetry off, whatever the
-// file or the shell says.
-export function hyperframesEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return { ...env, HYPERFRAMES_NO_TELEMETRY: "1" };
+// file or the shell says, and the worker's own ffmpeg when it is configured by
+// path (HyperFrames requires a configured path to exist; a bare name is left
+// to PATH).
+export function hyperframesEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  tools?: ToolPaths,
+): NodeJS.ProcessEnv {
+  const ffmpeg =
+    tools && isAbsolute(tools.ffmpeg)
+      ? { HYPERFRAMES_FFMPEG_PATH: tools.ffmpeg, HYPERFRAMES_FFPROBE_PATH: tools.ffprobe }
+      : {};
+  return { ...env, ...ffmpeg, HYPERFRAMES_NO_TELEMETRY: "1" };
 }

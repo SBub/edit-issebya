@@ -13,7 +13,13 @@ export interface StepMeasurements {
 
 // The reel statuses the pipeline writes (one per step); the job's end writes
 // processed or failed.
-export type PipelineReelStatus = "converting" | "transcribing" | "retiming";
+export type PipelineReelStatus =
+  | "converting"
+  | "transcribing"
+  | "retiming"
+  | "removing_background"
+  | "tracking_head"
+  | "making_previews";
 
 // The writes a step makes, behind an interface so steps are tested without a
 // database.

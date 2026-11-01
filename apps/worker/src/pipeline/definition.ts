@@ -2,11 +2,22 @@ import type { PipelineReelStatus } from "../step-store.ts";
 import type { Tool } from "../step-runner.ts";
 import { convert } from "./convert.ts";
 import { type FileRef, fingerprint } from "./fingerprint.ts";
+import { headTrack } from "./head-track.ts";
+import { previewCopies } from "./preview-copies.ts";
+import { removeBackground } from "./remove-background.ts";
 import { retime } from "./retime.ts";
 import type { ToolPaths } from "./tools.ts";
 import { transcribe } from "./transcribe.ts";
 
 export type SourceRef = { etag: string; bytes: number };
+
+// Slice 14 deletes `rebuildable` outputs (heavy, cheap to make again from a
+// kept input); `kept` outputs are never deleted.
+export type OutputKeep = "kept" | "rebuildable";
+export interface StepOutput {
+  file: string;
+  keep: OutputKeep;
+}
 
 // A file a step reads, and the name its `run` finds it under in `files`.
 export interface StepInput {
@@ -33,14 +44,26 @@ export interface PipelineStep<S extends object = object> {
   version: number;
   settings: S;
   reelStatus: PipelineReelStatus;
-  outputs: readonly string[];
+  outputs: readonly StepOutput[];
   // The summary of a cache hit: `<reusedWhat>, reused`.
   reusedWhat: string;
   inputs(source: SourceRef, fingerprints: Record<string, string>): StepInput[];
   run(args: StepRunArgs<S>): Promise<{ what: string }>;
 }
 
-export const PIPELINE: readonly PipelineStep[] = [convert, transcribe, retime];
+export const PIPELINE: readonly PipelineStep[] = [
+  convert,
+  transcribe,
+  retime,
+  removeBackground,
+  headTrack,
+  previewCopies,
+];
+
+// The step's output file names, in order.
+export function outputFiles(step: PipelineStep): string[] {
+  return step.outputs.map((output) => output.file);
+}
 
 // Every step's fingerprint, in order, from the source and the definition
 // alone: no file is read, so a hit is decided before any download.

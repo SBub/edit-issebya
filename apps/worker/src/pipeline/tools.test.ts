@@ -31,4 +31,17 @@ describe("hyperframesEnv", () => {
       A: "b",
     });
   });
+
+  it("points HyperFrames at the worker's ffmpeg when it is configured by path", () => {
+    const tools = toolPaths({ FFMPEG_PATH: "/opt/ffmpeg/bin/ffmpeg" });
+    expect(hyperframesEnv({ HYPERFRAMES_NO_TELEMETRY: "0" }, tools)).toEqual({
+      HYPERFRAMES_NO_TELEMETRY: "1",
+      HYPERFRAMES_FFMPEG_PATH: "/opt/ffmpeg/bin/ffmpeg",
+      HYPERFRAMES_FFPROBE_PATH: "/opt/ffmpeg/bin/ffprobe",
+    });
+  });
+
+  it("leaves a bare ffmpeg to PATH", () => {
+    expect(hyperframesEnv({}, toolPaths({}))).toEqual({ HYPERFRAMES_NO_TELEMETRY: "1" });
+  });
 });

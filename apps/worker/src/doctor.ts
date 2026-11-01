@@ -1,5 +1,5 @@
 // Checks this machine can run jobs: Supabase, R2, ffmpeg and the filters the
-// pipeline needs, HyperFrames, and one structured Claude Code call. Prints one line per check; exits 1 when any failed.
+// pipeline needs, its libvpx-vp9 encoder and decoder, HyperFrames, and one structured Claude Code call. Prints one line per check; exits 1 when any failed.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { aiRunner } from "./ai.ts";
@@ -25,6 +25,14 @@ const { lines, exitCode } = await runDoctor({
   },
   async ffmpegFilters() {
     const { stdout } = await run(toolPaths().ffmpeg, ["-hide_banner", "-filters"]);
+    return stdout;
+  },
+  async ffmpegEncoders() {
+    const { stdout } = await run(toolPaths().ffmpeg, ["-hide_banner", "-encoders"]);
+    return stdout;
+  },
+  async ffmpegDecoders() {
+    const { stdout } = await run(toolPaths().ffmpeg, ["-hide_banner", "-decoders"]);
     return stdout;
   },
   async hyperframes() {
