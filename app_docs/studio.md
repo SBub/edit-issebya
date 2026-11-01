@@ -128,7 +128,8 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
 ## How to Use
 
 1. Start the shared local Supabase stack (the owner does this) and apply migrations with
-   `supabase migration up --local`.
+   `supabase migration up --local`. ADW runs use their own local stack (`edit-issebya-adw`, ports
+   54450 to 54459, see `app_docs/adw-supabase-stack.md`), which you do not need to start or stop.
 2. Fill `apps/studio/.env.development` and `apps/worker/.env.development` from the matching
    `.env.example` files.
 3. Run the web and studio dev servers together (see the root `README.md`) and open
@@ -156,6 +157,9 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   `FFMPEG_PATH`, `E2E_MOCK_AI`, `E2E_MOCK_STORAGE`.
 - `SUPABASE_SECRET_KEY` is read only by the worker and by the test helpers in
   `apps/studio/test-support/`, from `apps/worker/.env.development`.
+- `SUPABASE_DB_URL`: test helpers only (`localDbUrl` in `apps/studio/test-support/local-supabase.ts`),
+  the direct database URL the DB tests query; defaults to the shared stack's 54432 database. In ADW
+  runs `.adw/worktree-env` sets it to the ADW stack's.
 
 ## Testing
 
@@ -164,7 +168,8 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   `apps/worker/src/**/*.test.ts` and `packages/storage/src/**/*.test.ts` (`yarn test`).
 - DB integration: `apps/studio/db-tests/` (`yarn test:db`): RLS on every public table, owner
   isolation, the upload path and `finish_upload`, `claim_job`'s lease (`jobs.test.ts`), Realtime
-  follows RLS for `reels` and `steps`. Needs the local stack; not in the pre-push hook.
+  follows RLS for `reels` and `steps`. Needs the local stack (in ADW runs, the ADW stack through
+  `SUPABASE_DB_URL` and the other hook variables); not in the pre-push hook.
 - E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload` specs, chromium, through the
   landing address), run after the landing suite by `yarn test:e2e`. `upload.spec.ts` uploads the
   test clip, spawns the worker's `once` and expects the page to update without a reload.

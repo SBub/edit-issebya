@@ -46,6 +46,8 @@ Rules for working in this repository. What each feature does is not described he
 - Never create, read or commit a real `.env*` file. The `.env.example` files hold placeholder names
   only: `apps/web/.env.example` for the app (Next reads env files from `apps/web/`), the root one
   for the ADW toolkit's `.env.development`.
+- Create a migration with `supabase migration new <name>` (it stamps the current UTC time). Never
+  hand-pick, copy, future-date or reuse a migration version, and never edit an applied migration.
 - `.adw/project.md` is this repository's ADW profile; the toolkit's slash commands
   read it before anything else. When a change renames a script, moves a port,
   adds an env file or changes where docs live, update the profile in the same

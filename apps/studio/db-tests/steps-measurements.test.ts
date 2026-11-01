@@ -7,7 +7,7 @@ import {
   insertReel,
   signedInClient,
 } from "../test-support/fixtures.ts";
-import { LOCAL_DB_URL, localSupabaseAdmin } from "../test-support/local-supabase.ts";
+import { localDbUrl, localSupabaseAdmin } from "../test-support/local-supabase.ts";
 
 // The exact column set: a column added later (a price derived from machine
 // measurements, say) fails here until this list and app_docs/measurement.md
@@ -37,7 +37,7 @@ const STEP_COLUMNS = [
 
 describe("steps columns", () => {
   it("are exactly the step log's plus the measurements", async () => {
-    const db = new pg.Client({ connectionString: LOCAL_DB_URL });
+    const db = new pg.Client({ connectionString: localDbUrl() });
     await db.connect();
     try {
       const { rows } = await db.query<{ column_name: string; data_type: string }>(`

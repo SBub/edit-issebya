@@ -6,8 +6,11 @@ import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost"]);
 
 // The shared local stack's database, default credentials of `supabase start`
-// (supabase/config.toml, db port 54432). Local by construction.
-export const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54432/postgres";
+// (supabase/config.toml, db port 54432, the developer's and CI's).
+const DEFAULT_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54432/postgres";
+
+// process.env, or a literal in the unit test.
+type Env = Record<string, string | undefined>;
 
 // Throws unless the URL's host is the local stack. No test ever reaches the
 // hosted project.
@@ -26,8 +29,12 @@ export function assertLocalUrl(url: string | undefined): string {
   return url as string;
 }
 
-// process.env, or a literal in the unit test.
-type Env = Record<string, string | undefined>;
+// The local stack's database: SUPABASE_DB_URL when set (an ADW run's own
+// stack, from .adw/worktree-env), else the shared stack's default. Local by
+// construction or by assertLocalUrl.
+export function localDbUrl(env: Env = process.env): string {
+  return env.SUPABASE_DB_URL ? assertLocalUrl(env.SUPABASE_DB_URL) : DEFAULT_DB_URL;
+}
 
 // An admin client (secret key, bypasses RLS) for the local stack only.
 export function localSupabaseAdmin(env: Env = process.env): SupabaseClient {

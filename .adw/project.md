@@ -25,8 +25,12 @@ be kept in step with them and with `README.md`.
   (`/api/stripe/webhook`), and measures with PostHog (browser, production only); all are optional
   at build and run time. The studio signs in with a Supabase magic link and reads the `reels` table
   under row-level security.
-- database: one shared local Supabase stack (`supabase/config.toml`, project `edit-issebya`, ports
-  54430 to 54439), migrations in `supabase/migrations/`. The owner starts and keeps it running.
+- database: two local Supabase stacks, migrations in `supabase/migrations/`. The developer's
+  (`supabase/config.toml`, project `edit-issebya`, ports 54430 to 54439) is the owner's, started and
+  kept by them, never touched by ADW. ADW's (`edit-issebya-adw`, ports 54450 to 54459, workdir
+  `agents/supabase-adw/` in the main checkout) is provided by `.adw/worktree-env` through
+  `.adw/supabase-stack` and reset to the worktree's migrations at the start of a run
+  (`app_docs/adw-supabase-stack.md`).
 - default branch: `develop`. `master` is production.
 - package manager: Yarn 4.18.1 (Berry, node-modules linker, pinned via `packageManager`, provided by
   corepack). Never `npm`, `npx`, `pnpm` or `bun`; `yarn dlx` only for an unavoidable one-off binary.
@@ -61,8 +65,9 @@ be kept in step with them and with `README.md`.
 - `/` answering 200 proves the landing server is up, `/studio` through it proves the studio is.
   The landing page reads no database; it calls Stripe when the form is submitted and Stripe and
   Resend when the webhook is called, and under the flags those calls never leave the process. The
-  studio reads the shared local Supabase stack through `apps/studio/.env.development`; without it
-  the studio shows a "not configured" notice.
+  studio reads the local Supabase stack through `apps/studio/.env.development`; in a run it reads
+  the ADW stack through the hook's `NEXT_PUBLIC_SUPABASE_*`, which override that file. Without
+  either the studio shows a "not configured" notice.
 - `target_apps`: `/classify_app` answers `{"target_apps": ["web"]}` for a change under `apps/web`,
   `{"target_apps": ["studio"]}` for a change under `apps/studio`, `{"target_apps": ["web",
 "studio"]}` for a change spanning both, `worker` for a change under `apps/worker`, `storage` for one
@@ -93,7 +98,12 @@ From the worktree root, in order. The main checkout is two directories up from `
    phase and `down` when the worktree is reclaimed. Agents never start, stop, replace or probe that
    container, and never pick a port for it. Elsewhere (CI's Linux, macOS 15+) the hook prints
    nothing and local WebKit is used (see `app_docs/checkout.md`, "Form dialog layout").
-4. Verify with `yarn build` (see Build).
+4. On every platform the same hook's `up` also provides this run's ADW Supabase stack (through
+   `.adw/supabase-stack up`) and prints five variables, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`,
+   `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_DB_URL`, which
+   override the copied `.env.development` values; `down` releases its ownership. Agents never set,
+   unset or override them, and never start or stop that stack.
+5. Verify with `yarn build` (see Build).
 
 Do not start the dev server during install.
 
@@ -130,7 +140,7 @@ the gitignored `next-env.d.ts`, never stage it); dead code `yarn knip` (whole re
 `yarn format`); unit `yarn turbo run test <filter>` (vitest, database-free); for a run targeting
 the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (real ffmpeg and
 HyperFrames on the committed clip; on the owner's Mac only, never in CI); DB integration
-`yarn turbo run test:db --filter=./apps/studio` (after unit; needs the shared local stack); build
+`yarn turbo run test:db --filter=./apps/studio` (after unit; needs the ADW stack from the hook); build
 as in Build; and last the E2E suites `yarn test:e2e`.
 
 The unit layer is `apps/web/src/**/*.test.ts` for pure helpers in `apps/web/src/lib/`, and
@@ -156,10 +166,11 @@ arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environme
 `.adw/worktree-env`) and is passed through as is; never set, unset or override it. On other machines
 it is absent. turbo runs the studio suite after the landing suite, never both at once
 (`@edit-issebya/studio#test:e2e` depends on `@edit-issebya/web#test:e2e`), so a run filtered to
-`./apps/studio` also runs the landing suite first. The studio specs and `test:db` need the shared
-local stack running (the owner keeps it up) and read the local secret key from
-`apps/worker/.env.development`; a slice that adds a migration runs
-`supabase migration up --local` before its local E2E. The `/prepare_app` server must already be up on this run's port, started with the
+`./apps/studio` also runs the landing suite first. In a run the studio specs and `test:db` run
+against the ADW stack through the hook's five variables (`SUPABASE_DB_URL` for the direct
+database queries); outside a run they read the developer's stack and the local secret key from
+`apps/worker/.env.development`. After adding or editing a migration in a run, run
+`.adw/supabase-stack reset` before `test:db` and E2E. The `/prepare_app` server must already be up on this run's port, started with the
 Workspaces dev command (an adopted server never sees `webServer.env`, and the checkout and
 confirmation email specs need the mocks), which `reuseExistingServer` adopts; never set `CI=1` in a
 run (it disables reuse and switches the server to `yarn start`). Specs run with `workers: 1`: they
@@ -181,8 +192,10 @@ on every pull request and push to `develop` and `master`.
 - No app is pinned to a port and nothing external holds a URL against one. The landing page's
   `next dev` honours `PORT` (turbo passes it through) and defaults to 3000; the studio's honours
   `STUDIO_PORT` and defaults to 3001. In a run `STUDIO_PORT` comes from the run's `BACKEND_PORT`.
-- 54430 to 54439 belong to the one shared local Supabase stack (`supabase/config.toml`: API 54431,
-  DB 54432) and never move.
+- 54430 to 54439 belong to the developer's local Supabase stack (`supabase/config.toml`: API 54431,
+  DB 54432), never move and are never touched by ADW.
+- 54450 to 54459 belong to the ADW stack (`edit-issebya-adw`: API 54451, DB 54452), fixed, never
+  moved.
 - This run's port is in `.ports.env` at the worktree root (`PORT`, `BACKEND_PORT`, `FRONTEND_PORT`),
   written by the engine. Source it; never write, edit or delete it; fall back to 3000 only when it
   is absent. A server on 3000 when `PORT` is not 3000 is the developer's or an older run's: never
@@ -197,15 +210,18 @@ on every pull request and push to `develop` and `master`.
   `yarn workspace @edit-issebya/worker add <pkg>` or `yarn workspace @edit-issebya/storage add <pkg>`
   (or `add -D`); `yarn add -D <pkg>` at the root only for shared tooling. Never install from inside
   a workspace folder.
-- ADW runs exactly one database command on the shared local Supabase stack:
-  `supabase migration up --local`, which applies only new migrations. It never runs
-  `supabase db reset`, `supabase start`, `supabase stop`, a seed, or `supabase db push` to the
-  hosted project. Every slice that adds a migration runs `supabase migration up --local` before its
-  local E2E; if it fails, report the error and stop (do not reset). CI applies the migrations to
+- ADW never runs a `supabase` command against the developer's stack. Any `supabase` command run
+  in a worktree without `--workdir` reaches it (the worktree's `config.toml` is the dev stack's),
+  so agents run no `supabase` command except `supabase migration new <name>` and
+  `.adw/supabase-stack reset`. Never `supabase db reset`, `start`, `stop`, `migration up`, a seed,
+  `--linked` or `db push` by hand. Never reset the developer's stack. CI applies the migrations to
   its own fresh stack.
-- One shared local Supabase stack on fixed ports 54430 to 54439; the owner starts it and runs stay
-  serial. No test ever points at the hosted project (the test helpers refuse any host but
+- The ADW stack may be reset freely, and only through `.adw/supabase-stack`; if it fails, report
+  its error and stop. No test points at the hosted project (the helpers refuse any host but
   `127.0.0.1` and `localhost`).
+- A new migration is created with `supabase migration new <name>`, which stamps the current UTC
+  time. Never hand-pick, copy or future-date a version, never reuse one, never edit an applied
+  migration.
 - `SUPABASE_SECRET_KEY` and the R2 worker keys (`R2_WORKER_ACCESS_KEY_ID`,
   `R2_WORKER_SECRET_ACCESS_KEY`) never appear in `apps/web` or in `apps/studio`'s app code
   (`src/`); only `apps/worker` and the test helpers under `apps/studio/test-support/` read them.
