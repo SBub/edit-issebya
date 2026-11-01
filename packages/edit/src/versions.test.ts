@@ -75,6 +75,27 @@ describe("versions", () => {
       r2_key: saved.key,
       parent_id: null,
       inputs: edit.inputs,
+      used_free_field: false,
+      unexpressed: [],
+      free_field: [],
+      rejected_reasons: [],
+    });
+  });
+
+  it("stores the decide records it is given", async () => {
+    const saved = await saveVersion(deps, {
+      ...meta(null),
+      usedFreeField: true,
+      unexpressed: ["a slow zoom"],
+      freeField: [{ item: "title", reason: "letter spacing" }],
+      rejectedReasons: ["safe-box title: runs past the safe box"],
+      edit,
+    });
+    expect(rows.get(saved.id)).toMatchObject({
+      used_free_field: true,
+      unexpressed: ["a slow zoom"],
+      free_field: [{ item: "title", reason: "letter spacing" }],
+      rejected_reasons: ["safe-box title: runs past the safe box"],
     });
   });
 
@@ -104,6 +125,10 @@ describe("versions", () => {
       change_summary: "restored version 1",
       inputs: edit.inputs,
       checks: [],
+      used_free_field: false,
+      unexpressed: [],
+      free_field: [],
+      rejected_reasons: [],
     });
     expect(blobs.get(v4.key)).toEqual(blobs.get(v1.key));
     expect([...rows.entries()].filter(([id]) => id !== v4.id)).toEqual(snapshot.rows);

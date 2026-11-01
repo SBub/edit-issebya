@@ -1,4 +1,5 @@
-import type { AiRunner } from "./ai.ts";
+import { tmpdir } from "node:os";
+import { type AiRunner, plainTool } from "./ai.ts";
 
 // Each dependency is built inside its own check, so a missing variable fails
 // that line only.
@@ -53,6 +54,7 @@ const AI_SCHEMA = {
   type: "object",
   properties: { ok: { type: "boolean" } },
   required: ["ok"],
+  additionalProperties: false,
 };
 
 async function check(name: string, run: () => Promise<string | void>): Promise<string> {
@@ -93,9 +95,14 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
       return version;
     }),
     await check("ai structured call", async () => {
-      const answer = await deps.ai().runJson("Reply with ok set to true.", AI_SCHEMA);
-      if ((answer as { ok?: unknown } | null)?.ok !== true) {
-        throw new Error(`unexpected answer ${JSON.stringify(answer)}`);
+      const result = await deps.ai().call(plainTool, {
+        prompt: "Reply with ok set to true.",
+        schema: AI_SCHEMA,
+        cwd: tmpdir(),
+      });
+      if (result.kind !== "answer") throw new Error(result.reason);
+      if ((result.answer as { ok?: unknown } | null)?.ok !== true) {
+        throw new Error(`unexpected answer ${JSON.stringify(result.answer)}`);
       }
     }),
   ];

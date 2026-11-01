@@ -4,7 +4,15 @@ import { join } from "node:path";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
-import { type ChildRun, type SpawnTool, recordHit, runStep, runToolsStep } from "./step-runner.ts";
+import {
+  type ChildRun,
+  type SpawnTool,
+  type ToolCall,
+  StepError,
+  recordHit,
+  runStep,
+  runToolsStep,
+} from "./step-runner.ts";
 import { createTelemetry } from "./telemetry.ts";
 
 // Real child processes under /usr/bin/time: Node itself is the tool.
@@ -270,6 +278,104 @@ describe("runToolsStep", () => {
     if (failed?.call !== "failed") throw new Error("no failed call");
     expect(failed.tail.split("\n")[0]).toBe("Error: unexpected answer");
     expect(failed.measurements.cpu_ms).toBeGreaterThanOrEqual(500);
+  });
+});
+
+describe("runToolsStep stdin", () => {
+  it("writes stdin to a real child and returns it as stdout", TIMEOUT, async () => {
+    const { steps, calls } = recordingSteps();
+    let echoed = "";
+    await runToolsStep(stepContext(steps), {
+      name: "echo",
+      async work(tool) {
+        echoed = await tool({ file: "/bin/cat", args: [], stdin: "the prompt\nsecond line" });
+        return { what: "echoed" };
+      },
+    });
+    expect(echoed).toBe("the prompt\nsecond line\n");
+    expect(onlyDone(calls).summary).toMatch(/^echoed, /);
+  });
+
+  it("caps stdout at maxStdoutBytes when given", TIMEOUT, async () => {
+    const { steps } = recordingSteps();
+    let big = "";
+    await runToolsStep(stepContext(steps), {
+      name: "big",
+      async work(tool) {
+        big = await tool({
+          file: NODE,
+          args: ["-e", 'process.stdout.write("x".repeat(200 * 1024) + "\\n")'],
+          maxStdoutBytes: 1024 * 1024,
+        });
+        return { what: "printed" };
+      },
+    });
+    expect(big.length).toBe(200 * 1024 + 1);
+  });
+});
+
+describe("runToolsStep AI usage and StepError", () => {
+  const usage = { inputTokens: 1500, outputTokens: 456, costUsd: 0.0123, model: "claude-x" };
+  const ok: ChildRun = {
+    code: 0,
+    exitSignal: null,
+    report: "",
+    output: "",
+    stdout: "{}",
+    groupPeakBytes: null,
+  };
+
+  it("passes stdin and maxStdoutBytes to the spawn", async () => {
+    const seen: ToolCall[] = [];
+    const spawnTool: SpawnTool = (call) => {
+      seen.push(call);
+      return Promise.resolve(ok);
+    };
+    const { steps } = recordingSteps();
+    await runToolsStep(
+      stepContext(steps),
+      {
+        name: "ai",
+        async work(tool) {
+          await tool({ file: "claude", args: ["-p"], stdin: "hello", maxStdoutBytes: 99 });
+          return { what: "asked" };
+        },
+      },
+      spawnTool,
+    );
+    expect(seen).toMatchObject([{ file: "claude", stdin: "hello", maxStdoutBytes: 99 }]);
+  });
+
+  it("writes the work's AI usage as the ai_* measurements", async () => {
+    const { steps, calls } = recordingSteps();
+    await runToolsStep(stepContext(steps), {
+      name: "decide",
+      async work() {
+        return { what: "decided", ai: usage };
+      },
+    });
+    expect(onlyDone(calls).measurements).toMatchObject({
+      ai_input_tokens: 1500,
+      ai_output_tokens: 456,
+      ai_cost_usd: 0.0123,
+      ai_model: "claude-x",
+    });
+  });
+
+  it("puts a StepError's own tail and AI usage into the failed row", async () => {
+    const { steps, calls } = recordingSteps();
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "decide",
+        async work() {
+          throw new StepError("decide failed twice", "round 1:\n- a\nround 2:\n- b", usage);
+        },
+      }),
+    ).rejects.toThrow("decide failed twice");
+    const failed = calls.find((c) => c.call === "failed");
+    if (failed?.call !== "failed") throw new Error("no failed call");
+    expect(failed.tail).toBe("round 1:\n- a\nround 2:\n- b");
+    expect(failed.measurements).toMatchObject({ ai_input_tokens: 1500, ai_model: "claude-x" });
   });
 });
 

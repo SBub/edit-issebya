@@ -5,7 +5,8 @@ import type { Anchor, Edit } from "./schema.ts";
 import type { ResolvedItem } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
-export type CheckRule = "safe-box" | "face" | "sound-gap" | "time-in-speech" | "out-of-reel";
+export type CheckRule =
+  "safe-box" | "face" | "sound-gap" | "time-in-speech" | "out-of-reel" | "glossary";
 
 // One failed layout rule; an empty list means every rule passes.
 export interface Check {

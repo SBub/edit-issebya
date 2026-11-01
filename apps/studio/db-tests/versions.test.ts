@@ -104,6 +104,41 @@ describe("save_version", () => {
     expect(error).not.toBeNull();
   });
 
+  it("stores the decide records it is given, and defaults them when not", async () => {
+    const own = await insertReel(admin, {
+      ownerId: owner.id,
+      name: "records.mov",
+      status: "received",
+    });
+    const withRecords = randomUUID();
+    const { error } = await admin.rpc("save_version", {
+      ...args(own, withRecords, null),
+      p_used_free_field: true,
+      p_unexpressed: ["a slow zoom"],
+      p_free_field: [{ item: "title", reason: "letter spacing" }],
+      p_rejected_reasons: ["safe-box title: runs past the safe box"],
+    });
+    expect(error).toBeNull();
+    const plain = randomUUID();
+    const second = await admin.rpc("save_version", args(own, plain, withRecords));
+    expect(second.error).toBeNull();
+    const { data } = await admin
+      .from("versions")
+      .select("id, used_free_field, unexpressed, free_field, rejected_reasons")
+      .eq("reel_id", own)
+      .order("number");
+    expect(data).toEqual([
+      {
+        id: withRecords,
+        used_free_field: true,
+        unexpressed: ["a slow zoom"],
+        free_field: [{ item: "title", reason: "letter spacing" }],
+        rejected_reasons: ["safe-box title: runs past the safe box"],
+      },
+      { id: plain, used_free_field: false, unexpressed: [], free_field: [], rejected_reasons: [] },
+    ]);
+  });
+
   it("cannot be executed by anon or an authenticated user", async () => {
     for (const client of [localSupabaseClient(), ownerClient]) {
       const { error } = await client.rpc("save_version", args(reel, randomUUID(), saved[2]!));

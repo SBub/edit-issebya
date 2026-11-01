@@ -9,6 +9,28 @@ export interface StepMeasurements {
   peak_rss_bytes: number | null;
   bytes_in: number | null;
   bytes_out: number | null;
+  // An AI step's usage as Claude Code reported it; absent on every other step.
+  ai_input_tokens?: number | null;
+  ai_output_tokens?: number | null;
+  ai_cost_usd?: number | null;
+  ai_model?: string | null;
+}
+
+// What one or more AI calls used, raw as reported (null where not reported).
+export interface AiUsage {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costUsd: number | null;
+  model: string | null;
+}
+
+export function aiMeasurements(usage: AiUsage): Partial<StepMeasurements> {
+  return {
+    ai_input_tokens: usage.inputTokens,
+    ai_output_tokens: usage.outputTokens,
+    ai_cost_usd: usage.costUsd,
+    ai_model: usage.model,
+  };
 }
 
 // The reel statuses the pipeline writes (one per step); the job's end writes
