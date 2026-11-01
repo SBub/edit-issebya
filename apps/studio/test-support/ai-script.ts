@@ -37,3 +37,21 @@ export async function unchangedAnswerScript(dir: string): Promise<string> {
   await writeFile(path, JSON.stringify([envelope]));
   return path;
 }
+
+// Writes, into `dir`, a script whose one envelope carries a result that is
+// not JSON, replayed for both calls, so the decide step refuses twice. Returns
+// its path.
+export async function brokenAnswerScript(dir: string): Promise<string> {
+  const envelope = {
+    type: "result",
+    subtype: "success",
+    is_error: false,
+    result: "not json",
+    total_cost_usd: 0,
+    usage: { input_tokens: 0, output_tokens: 0 },
+  };
+  const path = join(dir, "broken-answer.json");
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
+  await writeFile(path, JSON.stringify(envelope));
+  return path;
+}

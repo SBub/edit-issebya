@@ -20,3 +20,20 @@ export interface VersionRow {
   r2_key: string;
   created_at: string;
 }
+
+// What the reel page's versions list reads: no edit metadata (checks, inputs,
+// key), only what the owner sees.
+export const VERSION_LIST_COLUMNS =
+  "id, reel_id, number, parent_id, restored_from_id, request, change_summary, created_at";
+
+export type VersionListRow = Pick<
+  VersionRow,
+  | "id"
+  | "reel_id"
+  | "number"
+  | "parent_id"
+  | "restored_from_id"
+  | "request"
+  | "change_summary"
+  | "created_at"
+>;
