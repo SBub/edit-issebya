@@ -1,10 +1,11 @@
-// Checks this machine can run jobs: Supabase, R2, ffmpeg and one structured
-// Claude Code call. Prints one line per check; exits 1 when any failed.
+// Checks this machine can run jobs: Supabase, R2, ffmpeg and the filters the
+// pipeline needs, HyperFrames, and one structured Claude Code call. Prints one line per check; exits 1 when any failed.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { aiRunner } from "./ai.ts";
 import { workerConfig } from "./config.ts";
 import { runDoctor } from "./doctor-checks.ts";
+import { hyperframesEnv, toolPaths } from "./pipeline/tools.ts";
 import { workerStorage } from "./storage.ts";
 import { workerSupabase } from "./supabase.ts";
 
@@ -19,8 +20,17 @@ const { lines, exitCode } = await runDoctor({
     await workerStorage().list(process.env.R2_KEY_PREFIX?.trim() ?? "");
   },
   async ffmpeg() {
-    const { stdout } = await run(process.env.FFMPEG_PATH?.trim() || "ffmpeg", ["-version"]);
+    const { stdout } = await run(toolPaths().ffmpeg, ["-version"]);
     return stdout.split("\n")[0]?.replace(/^ffmpeg\s+/, "") ?? "";
+  },
+  async ffmpegFilters() {
+    const { stdout } = await run(toolPaths().ffmpeg, ["-hide_banner", "-filters"]);
+    return stdout;
+  },
+  async hyperframes() {
+    const [node, entry] = toolPaths().hyperframes;
+    const { stdout } = await run(node, [entry, "--version"], { env: hyperframesEnv() });
+    return stdout;
   },
   ai: () => aiRunner(process.env),
 });
