@@ -129,7 +129,7 @@ function anchored(
 
 // The caption text the words show by default: each word cleaned, a glossary
 // term when the words are one of its heard forms.
-function wordsText(ids: readonly string[], transcript: Transcript, preset: Preset): string {
+export function wordsText(ids: readonly string[], transcript: Transcript, preset: Preset): string {
   const byId = new Map(transcript.words.map((word) => [word.id, word]));
   const cleaned = ids.map((id) => cleanWord(byId.get(id)?.text ?? "", preset));
   const lower = cleaned.map((text) => text.toLowerCase());

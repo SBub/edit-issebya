@@ -1,6 +1,9 @@
-import { readFile, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Storage } from "@edit-issebya/storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { unchangedAnswerScript } from "./ai-script.ts";
 import { runWorkerOnce } from "./worker.ts";
 
 const CLIP = new URL("../../../fixtures/footage/short-speech.mp4", import.meta.url);
@@ -39,8 +42,11 @@ export async function seedPipelineCache(storage: Storage, prefix: string): Promi
 
 export interface ProcessedReel {
   reelId: string;
+  // The current version: the decide step's version 2.
   versionId: string;
   versionKey: string;
+  // The automatic version 1 below it.
+  firstVersionKey: string;
   sourceKey: string;
   // Every key written, the version's included.
   keys: string[];
@@ -48,17 +54,21 @@ export interface ProcessedReel {
 
 // A reel as the pipeline leaves it: the fixture clip uploaded under the
 // prefix, the reel and its queued job inserted as the service role, the cache
-// seeded and the worker's `once` run (every step a hit, then version 1).
+// seeded and the worker's `once` run (every step a hit, then version 1, then
+// the decide step's version 2 from the AI double). `aiScript` is the double's
+// script file; by default an answer that keeps version 1 unchanged.
 export async function seedProcessedReel({
   admin,
   storage,
   ownerId,
   prefix,
+  aiScript,
 }: {
   admin: SupabaseClient;
   storage: Storage;
   ownerId: string;
   prefix: string;
+  aiScript?: string;
 }): Promise<ProcessedReel> {
   const reelId = crypto.randomUUID();
   const sourceKey = `${prefix}reels/${reelId}/source/original.mp4`;
@@ -84,8 +94,16 @@ export async function seedProcessedReel({
   if (job.error) throw new Error(`job not inserted: ${job.error.message}`);
 
   keys.push(...(await seedPipelineCache(storage, prefix)));
-  const worker = await runWorkerOnce({ R2_KEY_PREFIX: prefix });
-  if (worker.code !== 0) throw new Error(`worker once failed (${worker.code}):\n${worker.output}`);
+  const scriptDir = await mkdtemp(join(tmpdir(), "ai-script-"));
+  try {
+    const script = aiScript ?? (await unchangedAnswerScript(scriptDir));
+    const worker = await runWorkerOnce({ R2_KEY_PREFIX: prefix, E2E_MOCK_AI_SCRIPT: script });
+    if (worker.code !== 0) {
+      throw new Error(`worker once failed (${worker.code}):\n${worker.output}`);
+    }
+  } finally {
+    await rm(scriptDir, { recursive: true, force: true });
+  }
 
   const { data, error } = await admin
     .from("reels")
@@ -98,6 +116,14 @@ export async function seedProcessedReel({
     throw new Error(`reel ${reelId} has no version or no preview copies after the worker`);
   }
   const versionKey = `${prefix}reels/${reelId}/versions/${versionId}.json`;
-  keys.push(versionKey);
-  return { reelId, versionId, versionKey, sourceKey, keys };
+  const first = await admin
+    .from("versions")
+    .select("id")
+    .eq("reel_id", reelId)
+    .eq("number", 1)
+    .single();
+  if (first.error || !first.data) throw new Error(`version 1 not read: ${first.error?.message}`);
+  const firstVersionKey = `${prefix}reels/${reelId}/versions/${(first.data as { id: string }).id}.json`;
+  keys.push(versionKey, firstVersionKey);
+  return { reelId, versionId, versionKey, firstVersionKey, sourceKey, keys };
 }

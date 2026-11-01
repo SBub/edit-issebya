@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fakeAiRunner } from "./ai.ts";
+import { fakeAiRunner, resultEnvelope } from "./ai.ts";
 import { type DoctorDeps, runDoctor } from "./doctor-checks.ts";
 
 const PASSING: DoctorDeps = {
@@ -29,7 +29,7 @@ const PASSING: DoctorDeps = {
       " V..... libvpx-vp9           libvpx VP9 (codec vp9)",
     ].join("\n"),
   hyperframes: async () => "0.8.222\n",
-  ai: () => fakeAiRunner([{ ok: true }]),
+  ai: () => fakeAiRunner([resultEnvelope({ ok: true })]),
 };
 
 describe("runDoctor", () => {
@@ -85,7 +85,8 @@ describe("runDoctor", () => {
       [{ ffmpegFilters: async () => " ... atempo  A->A  Adjust audio tempo." }, 3],
       [{ ffmpegCodecs: async () => "Encoders:\nDecoders:\n" }, 4],
       [{ hyperframes: async () => Promise.reject(new Error("ENOENT")) }, 5],
-      [{ ai: () => fakeAiRunner([{ ok: false }]) }, 6],
+      [{ ai: () => fakeAiRunner([resultEnvelope({ ok: false })]) }, 6],
+      [{ ai: () => fakeAiRunner(["not json"]) }, 6],
     ];
     for (const [override, failing] of cases) {
       const { lines, exitCode } = await runDoctor({ ...PASSING, ...override });

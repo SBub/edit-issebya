@@ -64,6 +64,15 @@ describe("parseEdit", () => {
     );
   });
 
+  it("accepts a frame-wide position without limits, refuses it with the safe box", () => {
+    const json = withCaption((caption) => (caption.position = { x: 900, y: 700, align: "left" }));
+    expect(parseEdit(json, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });
+    const bounded = parseEdit(json, ISSEBYA_PRESET, hand.transcript, {
+      bounds: ISSEBYA_PRESET.safe,
+    });
+    expect(bounded.ok).toBe(false);
+  });
+
   it("converts to JSON Schema, listing the reel's word ids", () => {
     const schema = z.toJSONSchema(editSchemaFor(ISSEBYA_PRESET, hand.transcript)) as object;
     expect(JSON.stringify(schema)).toContain('"w161"');

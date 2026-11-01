@@ -6,7 +6,12 @@ import { type Context, type Span, SpanStatusCode, trace } from "@opentelemetry/a
 import { errorTail } from "./errors.ts";
 import { sampleTreeRss } from "./process-tree.ts";
 import type { ClaimedJob } from "./queue.ts";
-import type { StepMeasurements, StepStore } from "./step-store.ts";
+import {
+  type AiUsage,
+  type StepMeasurements,
+  type StepStore,
+  aiMeasurements,
+} from "./step-store.ts";
 import { outputTail, stepSummary } from "./summary.ts";
 import { type StepStream, type Telemetry, stepLogger } from "./telemetry.ts";
 import { parseTimeReport, timeCommand } from "./time-report.ts";
@@ -30,6 +35,11 @@ export interface ToolCall {
   env?: NodeJS.ProcessEnv;
   // Also sample the memory of the whole process tree every second (render).
   sampleGroupMemory?: boolean;
+  // Written to the tool's stdin, then closed; without it stdin is ignored.
+  stdin?: string;
+  // The cap on the returned stdout (default 64 KB); the logged output keeps
+  // the default.
+  maxStdoutBytes?: number;
 }
 
 export interface ChildStep extends ToolCall {
@@ -55,7 +65,22 @@ export interface ToolsStep {
   inputs?: string[];
   outputs?: string[];
   sizeOf?: "out" | "in";
-  work: (tool: Tool) => Promise<{ what: string }>;
+  // `ai`: what the step's AI calls used, written as the ai_* measurements.
+  work: (tool: Tool) => Promise<{ what: string; ai?: AiUsage }>;
+}
+
+// A step that fails with a tail of its own (the reasons, not a stack), and
+// the AI usage it spent getting there.
+export class StepError extends Error {
+  readonly tail: string;
+  readonly ai: AiUsage | undefined;
+
+  constructor(message: string, tail: string, ai?: AiUsage) {
+    super(message);
+    this.name = "StepError";
+    this.tail = tail;
+    this.ai = ai;
+  }
 }
 
 const OUTPUT_CAP = 64 * 1024;
@@ -212,8 +237,8 @@ export type SpawnTool = (
   log: (line: string, stream: StepStream) => void,
 ) => Promise<ChildRun>;
 
-function capped(text: string): string {
-  return text.length > OUTPUT_CAP ? text.slice(-OUTPUT_CAP) : text;
+function capped(text: string, cap = OUTPUT_CAP): string {
+  return text.length > cap ? text.slice(-cap) : text;
 }
 
 // Spawns the tool under `/usr/bin/time` in its own process group.
@@ -223,9 +248,16 @@ const runChild: SpawnTool = (spec, signal, log) => {
     const child = spawn(timeBin, [timeFlag, "/bin/sh", "-c", WRAPPER, spec.file, ...spec.args], {
       cwd: spec.cwd,
       env: spec.env ?? process.env,
-      stdio: ["ignore", "pipe", "pipe", "pipe"],
+      stdio: [spec.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe", "pipe"],
       detached: true,
     });
+    if (spec.stdin !== undefined && child.stdin) {
+      // A tool that exits without reading its input closes the pipe: EPIPE is
+      // its exit code's business, never a crash of the worker.
+      child.stdin.on("error", () => {});
+      child.stdin.end(spec.stdin);
+    }
+    const stdoutCap = spec.maxStdoutBytes ?? OUTPUT_CAP;
     let output = "";
     let stdout = "";
     let report = "";
@@ -239,7 +271,7 @@ const runChild: SpawnTool = (spec, signal, log) => {
       output = capped(`${output}${line}\n`);
     };
     eachLine(child.stdout!, (line) => {
-      stdout = capped(`${stdout}${line}\n`);
+      stdout = capped(`${stdout}${line}\n`, stdoutCap);
       keep(line, "stdout");
     });
     eachLine(child.stdio[3] as Readable, (line) => keep(line, "stderr"));
@@ -338,21 +370,28 @@ export function runToolsStep(
     };
 
     let what: string;
+    let ai: AiUsage | undefined;
     try {
-      ({ what } = await spec.work(tool));
+      ({ what, ai } = await spec.work(tool));
     } catch (error) {
       if (error instanceof StepFailure || ctx.signal.aborted) throw error;
-      // A failure between calls (a download, a parse) keeps what was measured.
+      // A failure between calls (a download, a parse) keeps what was measured;
+      // a StepError brings its own tail (its reasons) and AI usage.
+      const own = error instanceof StepError ? error : null;
       const failure = new StepFailure(
         error instanceof Error ? error.message : String(error),
-        outputTail(errorTail(error)),
-        await measure(),
+        own ? outputTail(own.tail) : outputTail(errorTail(error)),
+        { ...(await measure()), ...(own?.ai ? aiMeasurements(own.ai) : {}) },
       );
       failure.cause = error;
       throw failure;
     }
     const wallMs = elapsedMs(started);
-    const measurements = { ...(await measure()), wall_ms: wallMs };
+    const measurements = {
+      ...(await measure()),
+      wall_ms: wallMs,
+      ...(ai ? aiMeasurements(ai) : {}),
+    };
     const sizeBytes =
       spec.sizeOf === "in"
         ? measurements.bytes_in

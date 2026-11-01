@@ -26,16 +26,29 @@ export {
   type OverlayItem,
   type SoundItem,
   type TransitionItem,
+  type EditLimits,
   editSchemaFor,
   parseEdit,
 } from "./schema.ts";
+export {
+  type DecideAnswer,
+  type DecideCounts,
+  decideAnswerSchemaFor,
+  decideCounts,
+  decideJsonSchema,
+  editFromAnswer,
+  parseDecideAnswer,
+  usedFreeField,
+} from "./decide.ts";
+export { glossaryChecks } from "./glossary.ts";
 export { type HarfBuzz, type Measurer, createMeasurer } from "./measure.ts";
 export { type ResolvedItem, resolveTimeline } from "./timeline.ts";
-export { type TextBox, layoutText } from "./layout.ts";
+export { type TextBox, layoutText, wordsText } from "./layout.ts";
 export { type Check, type CheckRule, runChecks } from "./checks.ts";
 export { type AssetRole, type BuildAsset, type BuildResult, build } from "./build.ts";
 export { baselineEdit } from "./baseline.ts";
 export {
+  type FreeFieldUse,
   type NewVersion,
   type SavedVersion,
   type StoredVersion,

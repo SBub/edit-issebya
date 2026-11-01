@@ -18,7 +18,9 @@ import { eventsNamed, recordEvents } from "./events.ts";
 
 // This run's own cache folder: the worker reads it through R2_KEY_PREFIX.
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
-// The worker's Node build of version 1 over fixtures/pipeline/.
+// The worker's Node build of version 1 over fixtures/pipeline/. The current
+// version is the AI's unchanged version 2 (seedProcessedReel's default
+// script), byte for byte version 1, so the golden still applies.
 const GOLDEN = new URL(
   "../../../packages/edit/src/testdata/golden/baseline-short-speech.html",
   import.meta.url,
@@ -138,7 +140,8 @@ test("the reel opens with the player, the first caption, one open event and the 
       { event: "studio_preview_opened", properties: { app: "studio", reel_id: reel!.reelId } },
     ]);
 
-  // The browser build of version 1 is the worker's Node build, byte for byte.
+  // The browser build of the current version (the AI's unchanged version 2)
+  // is the worker's Node build of version 1, byte for byte.
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed golden
   const golden = await readFile(GOLDEN, "utf8");
   expect(await page.evaluate(() => window.__previewBuild)).toBe(golden);
@@ -233,7 +236,8 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
     (window as unknown as { __noReload: string }).__noReload = "marker";
   });
 
-  // Version 2: version 1 plus two clicks on w0002 and w0005.
+  // Version 3: the current version plus two clicks on w0002 and w0005, its
+  // parent the current version.
   const transcript = await fixtureTranscript();
   const stored = await storage.get(reel!.versionKey);
   const json = JSON.parse(new TextDecoder().decode(stored!)) as {
@@ -256,7 +260,7 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
   const parsed = parseEdit(json, ISSEBYA_PRESET, transcript);
   expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
   const edit = (parsed as { ok: true; edit: Edit }).edit;
-  const v2 = await saveTestVersion({
+  const v3 = await saveTestVersion({
     admin,
     storage,
     prefix: CACHE_PREFIX,
@@ -264,9 +268,9 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
     edit,
     changeSummary: "two clicks",
   });
-  extraKeys.push(v2.key);
+  extraKeys.push(v3.key);
 
-  await expect(page.locator(`[data-preview-version="${v2.id}"][data-preview="ready"]`)).toBeVisible(
+  await expect(page.locator(`[data-preview-version="${v3.id}"][data-preview="ready"]`)).toBeVisible(
     { timeout: 30_000 },
   );
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(

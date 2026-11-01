@@ -34,6 +34,18 @@ export interface NewVersion {
   checks: Check[];
   inputs: EditInputs;
   r2_key: string;
+  // The decide records: whether the free style field was used, the items
+  // that needed it and why, what the format could not express, and why a
+  // first answer was refused (empty when it passed).
+  used_free_field: boolean;
+  unexpressed: string[];
+  free_field: FreeFieldUse[];
+  rejected_reasons: string[];
+}
+
+export interface FreeFieldUse {
+  item: string;
+  reason: string;
 }
 
 export interface VersionRows {
@@ -76,6 +88,11 @@ export interface VersionMeta {
   promptVersion: string | null;
   changeSummary: string | null;
   checks: Check[];
+  // The decide records; false and empty when not given.
+  usedFreeField?: boolean;
+  unexpressed?: string[];
+  freeField?: FreeFieldUse[];
+  rejectedReasons?: string[];
 }
 
 // The canonical bytes of an edit: what a version's blob holds.
@@ -106,6 +123,10 @@ async function saveBytes(
     checks: meta.checks,
     inputs,
     r2_key: key,
+    used_free_field: meta.usedFreeField ?? false,
+    unexpressed: meta.unexpressed ?? [],
+    free_field: meta.freeField ?? [],
+    rejected_reasons: meta.rejectedReasons ?? [],
   });
   return { id, number, key, bytes: bytes.byteLength };
 }
