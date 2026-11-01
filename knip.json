@@ -32,6 +32,10 @@
     "packages/storage": {
       "project": ["src/**/*.ts"],
       "vitest": true
+    },
+    "packages/edit": {
+      "project": ["src/**/*.ts"],
+      "vitest": true
     }
   },
   "ignoreExportsUsedInFile": {

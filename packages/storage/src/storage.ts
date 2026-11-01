@@ -19,6 +19,13 @@ export interface Storage {
   // half-written download never has the final name. false when it does not exist.
   getFile(key: string, path: string, options?: { signal?: AbortSignal }): Promise<boolean>;
   put(key: string, body: Uint8Array, options?: { contentType?: string }): Promise<void>;
+  // Writes the bytes only when no object has the key: an existing object is
+  // never replaced.
+  putIfAbsent(
+    key: string,
+    body: Uint8Array,
+    options?: { contentType?: string },
+  ): Promise<"written" | "exists">;
   // Uploads a local file only when no object has the key: an existing object
   // is never replaced.
   putFileIfAbsent(

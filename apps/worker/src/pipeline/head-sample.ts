@@ -1,5 +1,10 @@
 // Where the speaker's head is in one cut-out frame: a port of the old
 // `head_track.py`. Pure: frames come in as RGBA bytes at the analysis size.
+import type { HeadSample, HeadTrack } from "@edit-issebya/edit";
+
+// One sample in 1080x1920 pixels (the head's top row, its centre column and
+// its width): one definition, in @edit-issebya/edit, shared with the builder.
+export type { HeadSample };
 
 export const HEAD_TRACK_SETTINGS = {
   analysisWidth: 270,
@@ -21,15 +26,6 @@ export const HEAD_TRACK_SETTINGS = {
 };
 
 export type HeadTrackSettings = typeof HEAD_TRACK_SETTINGS;
-
-// One sample in 1080x1920 pixels: the head's top row, its centre column and
-// its width.
-export interface HeadSample {
-  t: number;
-  head_top: number;
-  cx: number;
-  head_w: number;
-}
 
 export function frameBytes(settings: HeadTrackSettings): number {
   return settings.analysisWidth * settings.analysisHeight * 4;
@@ -107,11 +103,8 @@ export function headSample(
   return outOfBounds(sample, settings.bounds) ? null : sample;
 }
 
-export function trackHead(
-  frames: Iterable<Uint8Array>,
-  settings: HeadTrackSettings,
-): (HeadSample | null)[] {
-  const track: (HeadSample | null)[] = [];
+export function trackHead(frames: Iterable<Uint8Array>, settings: HeadTrackSettings): HeadTrack {
+  const track: HeadTrack = [];
   let index = 0;
   for (const frame of frames) {
     track.push(headSample(frame, index, settings));

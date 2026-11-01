@@ -77,6 +77,18 @@ async function walk(dir: string): Promise<string[]> {
   return files;
 }
 
+// link fails with EEXIST when the target is taken: the stored file stays.
+async function linkIfAbsent(temp: string, target: string): Promise<"written" | "exists"> {
+  try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the key's path, checked by the caller
+    await link(temp, target);
+    return "written";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code === "EEXIST") return "exists";
+    throw error;
+  }
+}
+
 // A Storage backed by a folder, for specs: every key maps to `<root>/<key>`,
 // and a key that could leave the root is refused. Signed URLs are same-origin
 // paths to the studio's mock route (`uploadUrlBase` + key).
@@ -156,14 +168,22 @@ export function fakeStorage({
       const temp = tempPath(target);
       try {
         await copyFile(path, temp);
-        try {
-          // eslint-disable-next-line security/detect-non-literal-fs-filename -- key checked by assertStorageKey
-          await link(temp, target);
-          return "written";
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException | null)?.code === "EEXIST") return "exists";
-          throw error;
-        }
+        return await linkIfAbsent(temp, target);
+      } finally {
+        await rm(temp, { force: true });
+      }
+    },
+
+    // The bytes written to a temporary file and hard-linked like putFileIfAbsent.
+    async putIfAbsent(key, body) {
+      const target = pathOf(key);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- key checked by assertStorageKey
+      await mkdir(dirname(target), { recursive: true });
+      const temp = tempPath(target);
+      try {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- key checked by assertStorageKey
+        await writeFile(temp, body);
+        return await linkIfAbsent(temp, target);
       } finally {
         await rm(temp, { force: true });
       }

@@ -161,6 +161,25 @@ export function r2Storage(config: R2Config): Storage {
       }
     },
 
+    // The same conditional PUT as putFileIfAbsent, with the bytes as the body.
+    async putIfAbsent(key, body, options) {
+      try {
+        await client.send(
+          new PutObjectCommand({
+            Bucket,
+            Key: assertStorageKey(key),
+            Body: body,
+            ContentType: options?.contentType,
+            IfNoneMatch: "*",
+          }),
+        );
+        return "written";
+      } catch (error) {
+        if (isPreconditionFailed(error)) return "exists";
+        throw error;
+      }
+    },
+
     async put(key, body, options) {
       await client.send(
         new PutObjectCommand({

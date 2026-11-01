@@ -181,7 +181,9 @@ function shape(calls: ReturnType<typeof recordingSteps>["calls"]) {
 describe("runPipeline", () => {
   it("runs every step on a first run and stores every output under its key", async () => {
     const { steps, calls } = recordingSteps(SOURCE_KEY);
-    await run(steps);
+    const { fingerprints } = await run(steps);
+    const head = (await storage.head(SOURCE_KEY))!;
+    expect(fingerprints).toEqual(fingerprintsFor({ etag: head.etag!, bytes: head.bytes }));
     expect(shape(calls)).toEqual([
       "status converting",
       "start convert",

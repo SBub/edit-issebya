@@ -83,6 +83,22 @@ describe("fakeStorage", () => {
     expect(await storage.list("")).toEqual(["cache/s/fp/out.bin"]);
   });
 
+  it("puts bytes only when the key is free, keeping the first content", async () => {
+    const storage = fakeStorage({ root: join(root, "store"), uploadUrlBase: "/up/" });
+    const key = "reels/r1/versions/v1.json";
+    const first = new TextEncoder().encode("first");
+    expect(await storage.putIfAbsent(key, first)).toBe("written");
+    expect(
+      await storage.putIfAbsent(key, new TextEncoder().encode("second, longer"), {
+        contentType: "application/json",
+      }),
+    ).toBe("exists");
+    expect(await storage.get(key)).toEqual(first);
+    // No temporary file is left beside it.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp dir
+    expect(await readdir(join(root, "store", "reels/r1/versions"))).toEqual(["v1.json"]);
+  });
+
   it("signs same-origin paths", async () => {
     const storage = fakeStorage({ root, uploadUrlBase: "/studio/api/e2e-storage-mock/" });
     expect(

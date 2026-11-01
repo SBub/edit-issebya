@@ -19,6 +19,7 @@
     "node": "24.x"
   },
   "dependencies": {
+    "@edit-issebya/edit": "workspace:*",
     "@edit-issebya/storage": "workspace:*",
     "@opentelemetry/api": "^1.10.0",
     "@opentelemetry/api-logs": "^0.223.0",
