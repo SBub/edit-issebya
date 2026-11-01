@@ -40,7 +40,7 @@ async function exists(path: string): Promise<boolean> {
 // inputs it declares, runs in its own folder and uploads each missing output
 // with put-if-absent, so a stored output is never replaced. A failed job's
 // retry therefore resumes at the step that failed. After a lost lease nothing
-// more is written.
+// more is written. Returns every step's fingerprint, for the steps after it.
 export async function runPipeline({
   ctx,
   storage,
@@ -49,7 +49,7 @@ export async function runPipeline({
   tools,
   spawnTool,
   pipeline = PIPELINE,
-}: PipelineRun): Promise<void> {
+}: PipelineRun): Promise<{ fingerprints: Record<string, string> }> {
   const { steps, job, signal } = ctx;
   const sourceKey = await steps.sourceKey(job.reel_id);
   if (!sourceKey) throw new Error("reel has no source key");
@@ -149,4 +149,5 @@ export async function runPipeline({
   } finally {
     await rm(jobDir, { recursive: true, force: true });
   }
+  return { fingerprints };
 }

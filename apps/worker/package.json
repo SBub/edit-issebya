@@ -19,6 +19,7 @@
     "node": "24.x"
   },
   "dependencies": {
+    "@edit-issebya/edit": "workspace:*",
     "@edit-issebya/storage": "workspace:*",
     "@opentelemetry/api": "^1.10.0",
     "@opentelemetry/api-logs": "^0.223.0",
@@ -28,6 +29,7 @@
     "@opentelemetry/sdk-logs": "^3.0.0",
     "@opentelemetry/sdk-trace": "^3.0.0",
     "@supabase/supabase-js": "^2.118.0",
+    "harfbuzzjs": "1.6.4",
     "hyperframes": "0.8.222"
   },
   "devDependencies": {

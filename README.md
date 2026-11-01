@@ -10,6 +10,7 @@ apps/web/         the landing site (Next.js), workspace @edit-issebya/web
 apps/studio/      the reel studio at /studio (Next.js), workspace @edit-issebya/studio
 apps/worker/      the job worker (Node, runs on the owner's machine), workspace @edit-issebya/worker
 packages/storage/ the storage library the studio and the worker share, workspace @edit-issebya/storage
+packages/edit/    the edit model (format, preset, HarfBuzz builder, versions) the studio and the worker share, workspace @edit-issebya/edit
 supabase/         local Supabase config and migrations
 turbo.json        the task pipeline the root scripts run through
 ```

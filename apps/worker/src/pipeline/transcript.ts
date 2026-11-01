@@ -1,16 +1,10 @@
-// The studio's transcript: every word with a stable id (`w0001`), given once
+import type { Transcript, Word } from "@edit-issebya/edit";
+
+// The studio's transcript (the type is packages/edit's, so the writer here and
+// the builder cannot drift): every word with a stable id (`w0001`), given once
 // by transcribe and never changed by a later step. Times in seconds, to the
 // millisecond.
-export interface Word {
-  id: string;
-  text: string;
-  start: number;
-  end: number;
-}
-
-export interface Transcript {
-  words: Word[];
-}
+export type { Transcript, Word };
 
 function ms(seconds: number): number {
   return Math.round(seconds * 1000) / 1000;

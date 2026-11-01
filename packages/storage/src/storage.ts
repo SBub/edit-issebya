@@ -26,6 +26,13 @@ export interface Storage {
     path: string,
     options?: { contentType?: string },
   ): Promise<"written" | "exists">;
+  // Writes the bytes only when no object has the key: an existing object is
+  // never replaced.
+  putIfAbsent(
+    key: string,
+    body: Uint8Array,
+    options?: { contentType?: string },
+  ): Promise<"written" | "exists">;
   // No error when the object is already gone.
   delete(key: string): Promise<void>;
   // Keys starting with the prefix, sorted.

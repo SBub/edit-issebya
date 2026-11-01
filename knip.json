@@ -32,6 +32,11 @@
     "packages/storage": {
       "project": ["src/**/*.ts"],
       "vitest": true
+    },
+    "packages/edit": {
+      "entry": ["scripts/*.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts"],
+      "vitest": true
     }
   },
   "ignoreExportsUsedInFile": {

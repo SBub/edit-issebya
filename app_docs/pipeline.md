@@ -82,6 +82,12 @@ live status shows one line per step (`name: summary`).
   `removing_background`, `tracking_head`, `making_previews`. They are mirrored in
   `PipelineReelStatus` (`apps/worker/src/step-store.ts`) and `REEL_STATUSES`
   (`apps/studio/src/lib/reels.ts`).
+- `apps/worker/src/first-version.ts`: after the six steps the worker saves the automatic first
+  version, the `first_version` step: version 1 built from the preset alone (no AI) from the retimed
+  transcript, `retime.json`'s duration and the head track, saved through `save_version`. Its step
+  line is `version 1 saved, <time>, <size>`, or `first version kept, reused` (a cache hit, nothing
+  written) when the reel already has a current version. Failed layout checks are stored on the
+  version, never fatal. See `app_docs/edit-model.md`.
 
 ### Head-track format
 
