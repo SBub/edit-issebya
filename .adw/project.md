@@ -20,7 +20,9 @@ be kept in step with them and with `README.md`.
   (`@edit-issebya/worker`) is the job worker, TypeScript run directly by Node 24 on the owner's
   machine, never on Vercel. `packages/storage` (`@edit-issebya/storage`) is the storage interface,
   its R2 implementation and its folder fake, shared by the studio and the worker (TypeScript
-  source, no build). The landing page sells through Stripe Checkout (a
+  source, no build). `packages/edit` (`@edit-issebya/edit`) is the edit model the same two
+  consume: the edit format, the style preset, the HarfBuzz builder and the version operations
+  (TypeScript source, no build, no platform API). The landing page sells through Stripe Checkout (a
   server action), sends a confirmation email after payment through a Stripe webhook and Resend
   (`/api/stripe/webhook`), and measures with PostHog (browser, production only); all are optional
   at build and run time. The studio signs in with a Supabase magic link and reads the `reels` table
@@ -44,9 +46,11 @@ be kept in step with them and with `README.md`.
 | studio  | `apps/studio`      | started with web                                                                                                                                                                          | `STUDIO_PORT` | 3001         | `/studio`  | no            |
 | worker  | `apps/worker`      | none (specs spawn `once`)                                                                                                                                                                 | none          | none         | none       | never         |
 | storage | `packages/storage` | none (library)                                                                                                                                                                            | none          | none         | none       | never         |
+| edit    | `packages/edit`    | none (library)                                                                                                                                                                            | none          | none         | none       | never         |
 
 - `name` is the directory under `apps/` or `packages/`; the package names are
-  `@edit-issebya/web`, `@edit-issebya/studio`, `@edit-issebya/worker` and `@edit-issebya/storage`. Resolve a `target_apps` name to its directory by matching either under
+  `@edit-issebya/web`, `@edit-issebya/studio`, `@edit-issebya/worker`, `@edit-issebya/storage` and
+  `@edit-issebya/edit`. Resolve a `target_apps` name to its directory by matching either under
   `apps/*` and `packages/*`.
 - The web dev command sources `.ports.env` first (`PORT`, `BACKEND_PORT`), then starts both apps
   through turbo (which passes `PORT`, `STUDIO_PORT` and the mock flags through): the landing page
@@ -71,7 +75,7 @@ be kept in step with them and with `README.md`.
 - `target_apps`: `/classify_app` answers `{"target_apps": ["web"]}` for a change under `apps/web`,
   `{"target_apps": ["studio"]}` for a change under `apps/studio`, `{"target_apps": ["web",
 "studio"]}` for a change spanning both, `worker` for a change under `apps/worker`, `storage` for one
-  under `packages/storage`, and `{"target_apps": []}` for a change to root files only
+  under `packages/storage`, `edit` for one under `packages/edit`, and `{"target_apps": []}` for a change to root files only
   (docs, `specs/`, `supabase/`, tooling). Commands then filter with `--filter=./apps/<name>`,
   repeated per target (see Build).
 
@@ -90,7 +94,8 @@ From the worktree root, in order. The main checkout is two directories up from `
    that would change `yarn.lock` is a finding, not something to paper over with a mutable install.
 3. `yarn workspace @edit-issebya/web playwright install chromium webkit`, the browsers
    `@playwright/test` needs (WebKit runs only `apps/web/e2e/dialog_form.spec.ts`); the studio pins
-   the same version, so this one install covers its chromium suite too. Browsers live in
+   the same version, so this one install covers its chromium suite too, and `packages/edit`'s
+   browser test project (it pins `playwright` to the same version). Browsers live in
    the user cache, so this is a no-op once present. On macOS 14 (Darwin below 24) the local WebKit
    build cannot open a page, so the WebKit server (`playwright run-server` in
    `mcr.microsoft.com/playwright:v1.64.0-noble`, container `pw-webkit-<adw_id>` on the run's
@@ -110,13 +115,13 @@ Do not start the dev server during install.
 ## Build
 
 - `yarn turbo run build --filter=./apps/web` for a change in the landing page,
-  `--filter=./apps/studio` for one in the studio (both filters for both), `--filter=./apps/worker`
-  and `--filter=./packages/storage` for those two; `yarn build` (the
+  `--filter=./apps/studio` for one in the studio (both filters for both), `--filter=./apps/worker`,
+  `--filter=./packages/storage` and `--filter=./packages/edit` for those three; `yarn build` (the
   unfiltered `turbo run build`) for a root-only change or an unknown target. `--filter` takes the
   directory path, repeated per target workspace. Each app's build is `next build`; turbo caches
   `.next` in `.turbo/cache` (local to each worktree) and replays it when nothing it reads changed.
-  The worker and the storage package have no build script (Node runs the TypeScript; Next
-  transpiles the package), so their build check is typecheck; both typecheck with no variables.
+  The worker and the two packages have no build script (Node runs the TypeScript; Next
+  transpiles the packages), so their build check is typecheck; all typecheck with no variables.
 - Needs no environment variables. Optional:
   `STRIPE_SECRET_KEY`, `STRIPE_AUTOMATIC_TAX`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`,
   `EMAIL_FROM`, `EMAIL_REPLY_TO`, `BOOKING_URL` (server), `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`,
@@ -148,9 +153,14 @@ The unit layer is `apps/web/src/**/*.test.ts` for pure helpers in `apps/web/src/
 and the local-URL guard (plus `apps/studio/test-support/migration-versions.test.ts`, the migration version
 guard over `supabase/migrations/`), `apps/worker/src/**/*.test.ts` for the worker's modules (the step
 runner's tests spawn real child processes under `/usr/bin/time`, BSD on macOS, GNU on Linux) and
-`packages/storage/src/**/*.test.ts` for the storage package. The DB layer is `apps/studio/db-tests/**/*.test.ts`
+`packages/storage/src/**/*.test.ts` for the storage package, `packages/edit/src/**/*.test.ts` for the
+edit package (its `node` Vitest project). `packages/edit/src/**/*.browser.test.ts` is a browser
+layer inside the same `yarn test`: Vitest browser mode, Playwright provider, chromium (Install
+step 3's), building the stored fixture versions and comparing them with the committed goldens
+byte for byte, like the Node project does. The DB layer is `apps/studio/db-tests/**/*.test.ts`
 (`apps/studio/vitest.db.config.ts`: RLS on every public table, owner isolation, Realtime follows
-RLS, `jobs.test.ts` for `claim_job`'s lease, `steps-measurements.test.ts` for the exact
+RLS, `jobs.test.ts` for `claim_job`'s lease, `versions.test.ts` for `save_version`, version
+immutability and its RLS, `steps-measurements.test.ts` for the exact
 `steps` column set and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit`), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
 layer; the browser layer is the Playwright suites below.
 
@@ -159,7 +169,8 @@ spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium
 `apps/studio/playwright.config.ts`, every spec through the landing page's address;
 `upload.spec.ts` seeds the committed step outputs of `fixtures/pipeline/` (made by
 `yarn workspace @edit-issebya/worker fixtures:pipeline`) under their fingerprints and spawns the
-worker's `once`, every step a cache hit, `step-log.spec.ts` shows a failed step's collapsed
+worker's `once`, every step a cache hit, then the `first_version` step saves version 1 (its row
+and R2 key checked), `step-log.spec.ts` shows a failed step's collapsed
 error tail), run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
@@ -208,7 +219,8 @@ on every pull request and push to `develop` and `master`.
 
 - Never `npm`, `npx`, `pnpm` or `bun`. A new dependency goes to the workspace that uses it:
   `yarn workspace @edit-issebya/web add <pkg>` or `yarn workspace @edit-issebya/studio add <pkg>`,
-  `yarn workspace @edit-issebya/worker add <pkg>` or `yarn workspace @edit-issebya/storage add <pkg>`
+  `yarn workspace @edit-issebya/worker add <pkg>`, `yarn workspace @edit-issebya/storage add <pkg>`
+  or `yarn workspace @edit-issebya/edit add <pkg>`
   (or `add -D`); `yarn add -D <pkg>` at the root only for shared tooling. Never install from inside
   a workspace folder.
 - ADW never runs a `supabase` command against the developer's stack. Any `supabase` command run

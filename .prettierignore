@@ -8,3 +8,5 @@ next-env.d.ts
 .turbo
 apps/worker/src/pipeline/testdata/rethink-work
 fixtures/pipeline
+# Written by `yarn workspace @edit-issebya/edit golden` and compared byte for byte.
+packages/edit/src/testdata

@@ -1,4 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
+import { ISSEBYA_PRESET, parseEdit, transcriptSchema } from "@edit-issebya/edit";
 import { expect, test } from "@playwright/test";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
@@ -20,6 +21,7 @@ const storage = fakeStorage({
 });
 let owner: { id: string; email: string };
 let sourceKey: string | null = null;
+let versionKey: string | null = null;
 const seededKeys: string[] = [];
 
 interface PipelineManifest {
@@ -56,11 +58,12 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (sourceKey) await storage.delete(sourceKey);
+  if (versionKey) await storage.delete(versionKey);
   for (const key of seededKeys) await storage.delete(key);
   if (owner) await deleteTestUser(admin, owner.id);
 });
 
-test("an uploaded clip goes through every pipeline step and the page updates live", async ({
+test("an uploaded clip goes through every pipeline step, gets version 1, and the page updates live", async ({
   page,
   baseURL,
 }) => {
@@ -124,6 +127,7 @@ test("an uploaded clip goes through every pipeline step and the page updates liv
       "remove_background: background removed, reused",
       "head_track: head tracked, reused",
       "preview_copies: preview copies made, reused",
+      /^first_version: version 1 saved, /,
     ],
     { timeout: 10_000 },
   );
@@ -150,8 +154,64 @@ test("an uploaded clip goes through every pipeline step and the page updates liv
     hit("remove_background"),
     hit("head_track"),
     hit("preview_copies"),
+    // In-process: wall time only.
+    {
+      name: "first_version",
+      status: "done",
+      cache_hit: false,
+      wall_ms: expect.any(Number),
+      cpu_ms: null,
+      peak_rss_bytes: null,
+      bytes_in: null,
+      bytes_out: null,
+    },
   ]);
   for (const step of steps!) expect(step.wall_ms).toBeGreaterThanOrEqual(0);
+
+  // Version 1: built from the preset alone, its edit in storage, the reel
+  // pointing at it.
+  const { data: withVersion } = await admin
+    .from("reels")
+    .select("current_version_id")
+    .eq("id", reelId)
+    .single();
+  const versionId = withVersion!.current_version_id as string | null;
+  expect(versionId).not.toBeNull();
+  const { data: version } = await admin
+    .from("versions")
+    .select("id, number, model, request, parent_id, checks, r2_key")
+    .eq("reel_id", reelId)
+    .single();
+  expect(version).toEqual({
+    id: versionId,
+    number: 1,
+    model: null,
+    request: null,
+    parent_id: null,
+    checks: [],
+    r2_key: `${CACHE_PREFIX}reels/${reelId}/versions/${versionId}.json`,
+  });
+  versionKey = version!.r2_key as string;
+  const manifest = JSON.parse(
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixtures
+    await readFile(new URL("manifest.json", PIPELINE_FIXTURES), "utf8"),
+  ) as PipelineManifest;
+  const retime = manifest.steps.find((step) => step.name === "retime")!;
+  const transcript = transcriptSchema.parse(
+    JSON.parse(
+      new TextDecoder().decode(
+        (await storage.get(`${CACHE_PREFIX}cache/retime/${retime.fingerprint}/transcript.json`))!,
+      ),
+    ),
+  );
+  const stored = await storage.get(versionKey);
+  expect(stored).not.toBeNull();
+  const parsed = parseEdit(
+    JSON.parse(new TextDecoder().decode(stored!)),
+    ISSEBYA_PRESET,
+    transcript,
+  );
+  expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
   await expect(page.getByTestId("reel-status")).toHaveText("processed", { timeout: 10_000 });
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
     "marker",

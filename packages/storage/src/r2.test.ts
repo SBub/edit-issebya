@@ -119,6 +119,32 @@ describe("r2Storage.putFileIfAbsent", () => {
   });
 });
 
+describe("r2Storage.putIfAbsent", () => {
+  it("sends the bytes with If-None-Match: *", async () => {
+    const { storage, sent } = answering(200, { etag: '"x"' });
+    expect(
+      await storage.putIfAbsent("dev/reels/r/versions/v.json", new TextEncoder().encode("{}"), {
+        contentType: "application/json",
+      }),
+    ).toBe("written");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ method: "PUT", path: "/bucket/dev/reels/r/versions/v.json" });
+    expect(sent[0]!.headers["if-none-match"]).toBe("*");
+    expect(sent[0]!.headers["content-type"]).toBe("application/json");
+  });
+
+  it("maps 412 to exists", async () => {
+    const { storage } = answering(
+      412,
+      { "content-type": "application/xml" },
+      "<Error><Code>PreconditionFailed</Code><Message>taken</Message></Error>",
+    );
+    expect(
+      await storage.putIfAbsent("dev/reels/r/versions/v.json", new TextEncoder().encode("{}")),
+    ).toBe("exists");
+  });
+});
+
 describe("r2Storage.getFile", () => {
   it("writes the body under the final name only", async () => {
     const { storage } = answering(200, { "content-length": "3" }, "abc");

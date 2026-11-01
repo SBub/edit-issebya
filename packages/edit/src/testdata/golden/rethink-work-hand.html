@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en" data-resolution="portrait">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Raleway Light"; src: url("assets/fonts/Raleway-Light.ttf") format("truetype"); font-weight: 300; }
+      @font-face { font-family: "Golos Text"; src: url("assets/fonts/GolosText-Bold.ttf") format("truetype"); font-weight: 700; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; overflow: hidden; background: #000; }
+      .full { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      .layer { position: absolute; }
+      #text { position: absolute; inset: 0; }
+      .text { position: absolute; line-height: 1; white-space: nowrap; opacity: 0; }
+      .f-primary { font-family: "Raleway Light", sans-serif; font-weight: 300; }
+      .f-secondary { font-family: "Golos Text", sans-serif; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="47.526" data-width="1080" data-height="1920">
+      <video id="footage" class="clip full" src="source.mp4" playsinline data-start="0.000" data-duration="47.526" data-track-index="1" data-has-audio="true"></video>
+      <video id="cutout" class="clip full" src="subject.webm" muted playsinline data-start="0.000" data-duration="47.526" data-track-index="30"></video>
+      <div id="t-fund-life" class="clip layer" data-start="35.811" data-duration="2.607" data-track-index="40" style="left: 0px; top: 1150px; width: 1080px; height: 770px; background: #121212; transform: translateY(770px)"></div>
+      <div id="text" class="clip" data-start="0.000" data-duration="47.526" data-track-index="50">
+        <span id="cw0" class="text f-secondary" style="left: 233px; top: 610px; font-size: 50px; color: #FFFFFF">the</span>
+        <span id="cw1" class="text f-secondary" style="left: 206px; top: 695px; font-size: 50px; color: #FFFFFF">time</span>
+        <span id="cw2" class="text f-secondary" style="left: 182px; top: 780px; font-size: 50px; color: #FFFFFF">we&#39;re</span>
+        <span id="cw3" class="text f-secondary" style="left: 178px; top: 865px; font-size: 50px; color: #FFFFFF">living</span>
+        <span id="cw4" class="text f-secondary" style="left: 175px; top: 610px; font-size: 50px; color: #FFFFFF">right</span>
+        <span id="cw5" class="text f-secondary" style="left: 754px; top: 652px; font-size: 50px; color: #FFFFFF">now</span>
+        <span id="cw6" class="text f-secondary" style="left: 170px; top: 695px; font-size: 50px; color: #FFFFFF">push</span>
+        <span id="cw7" class="text f-secondary" style="left: 754px; top: 737px; font-size: 50px; color: #FFFFFF">us</span>
+        <span id="cw8" class="text f-secondary" style="left: 239px; top: 780px; font-size: 50px; color: #FFFFFF">to</span>
+        <span id="cw9" class="text f-secondary" style="left: 409px; top: 1290px; font-size: 50px; color: #FFFFFF">rethink</span>
+        <span id="cw10" class="text f-secondary" style="left: 226px; top: 610px; font-size: 50px; color: #FFFFFF">how</span>
+        <span id="cw11" class="text f-secondary" style="left: 256px; top: 695px; font-size: 50px; color: #FFFFFF">we</span>
+        <span id="cw12" class="text f-secondary" style="left: 219px; top: 780px; font-size: 50px; color: #FFFFFF">earn</span>
+        <span id="cw13" class="text f-secondary" style="left: 218px; top: 610px; font-size: 50px; color: #FFFFFF">how</span>
+        <span id="cw14" class="text f-secondary" style="left: 248px; top: 695px; font-size: 50px; color: #FFFFFF">we</span>
+        <span id="cw15" class="text f-secondary" style="left: 170px; top: 780px; font-size: 50px; color: #FFFFFF">spend</span>
+        <span id="cw16" class="text f-secondary" style="left: 240px; top: 865px; font-size: 50px; color: #FFFFFF">our</span>
+        <span id="cw17" class="text f-secondary" style="left: 212px; top: 950px; font-size: 50px; color: #FFFFFF">time</span>
+        <span id="cw18" class="text f-secondary" style="left: 258px; top: 610px; font-size: 50px; color: #FFFFFF">how</span>
+        <span id="cw19" class="text f-secondary" style="left: 288px; top: 695px; font-size: 50px; color: #FFFFFF">we</span>
+        <span id="cw20" class="text f-secondary" style="left: 160px; top: 780px; font-size: 50px; color: #FFFFFF">allocate</span>
+        <span id="cw21" class="text f-secondary" style="left: 298px; top: 610px; font-size: 50px; color: #FFFFFF">our</span>
+        <span id="cw22" class="text f-secondary" style="left: 136px; top: 695px; font-size: 50px; color: #FFFFFF">resources</span>
+        <span id="cw23" class="text f-secondary" style="left: 272px; top: 610px; font-size: 50px; color: #FFFFFF">what</span>
+        <span id="cw24" class="text f-secondary" style="left: 322px; top: 695px; font-size: 50px; color: #FFFFFF">we</span>
+        <span id="cw25" class="text f-secondary" style="left: 332px; top: 780px; font-size: 50px; color: #FFFFFF">do</span>
+        <span id="cw26" class="text f-secondary" style="left: 299px; top: 610px; font-size: 50px; color: #FFFFFF">AI</span>
+        <span id="cw27" class="text f-secondary" style="left: 264px; top: 695px; font-size: 50px; color: #FFFFFF">has</span>
+        <span id="cw28" class="text f-secondary" style="left: 358px; top: 1290px; font-size: 50px; color: #FFFFFF">completely</span>
+        <span id="cw30" class="text f-secondary" style="left: 267px; top: 610px; font-size: 50px; color: #FFFFFF">the</span>
+        <span id="cw31" class="text f-secondary" style="left: 249px; top: 695px; font-size: 50px; color: #FFFFFF">way</span>
+        <span id="cw32" class="text f-secondary" style="left: 276px; top: 780px; font-size: 50px; color: #FFFFFF">we</span>
+        <span id="cw33" class="text f-secondary" style="left: 227px; top: 865px; font-size: 50px; color: #FFFFFF">work</span>
+        <span id="cw34" class="text f-secondary" style="left: 249px; top: 610px; font-size: 50px; color: #FFFFFF">but</span>
+        <span id="cw35" class="text f-secondary" style="left: 742px; top: 652px; font-size: 50px; color: #FFFFFF">at</span>
+        <span id="cw36" class="text f-secondary" style="left: 249px; top: 695px; font-size: 50px; color: #FFFFFF">the</span>
+        <span id="cw37" class="text f-secondary" style="left: 199px; top: 780px; font-size: 50px; color: #FFFFFF">same</span>
+        <span id="cw38" class="text f-secondary" style="left: 742px; top: 737px; font-size: 50px; color: #FFFFFF">time</span>
+        <span id="cw39" class="text f-secondary" style="left: 335px; top: 610px; font-size: 50px; color: #FFFFFF">it</span>
+        <span id="cw40" class="text f-secondary" style="left: 282px; top: 695px; font-size: 50px; color: #FFFFFF">has</span>
+        <span id="cw41" class="text f-secondary" style="left: 236px; top: 780px; font-size: 50px; color: #FFFFFF">given</span>
+        <span id="cw42" class="text f-secondary" style="left: 311px; top: 865px; font-size: 50px; color: #FFFFFF">us</span>
+        <span id="cw43" class="text f-secondary" style="left: 340px; top: 950px; font-size: 50px; color: #FFFFFF">a</span>
+        <span id="cw44" class="text f-secondary" style="left: 193px; top: 1035px; font-size: 50px; color: #FFFFFF">chance</span>
+        <span id="cw45" class="text f-secondary" style="left: 339px; top: 610px; font-size: 50px; color: #FFFFFF">to</span>
+        <span id="cw46" class="text f-secondary" style="left: 272px; top: 695px; font-size: 50px; color: #FFFFFF">start</span>
+        <span id="cw47" class="text f-secondary" style="left: 360px; top: 780px; font-size: 50px; color: #FFFFFF">a</span>
+        <span id="cw48" class="text f-secondary" style="left: 171px; top: 865px; font-size: 50px; color: #FFFFFF">business</span>
+        <span id="cw49" class="text f-secondary" style="left: 352px; top: 610px; font-size: 50px; color: #FFFFFF">a</span>
+        <span id="cw50" class="text f-secondary" style="left: 210px; top: 695px; font-size: 50px; color: #FFFFFF">project</span>
+        <span id="cw51" class="text f-secondary" style="left: 319px; top: 610px; font-size: 50px; color: #FFFFFF">put</span>
+        <span id="cw52" class="text f-secondary" style="left: 261px; top: 695px; font-size: 50px; color: #FFFFFF">those</span>
+        <span id="cw53" class="text f-secondary" style="left: 246px; top: 780px; font-size: 50px; color: #FFFFFF">things</span>
+        <span id="cw54" class="text f-secondary" style="left: 267px; top: 610px; font-size: 50px; color: #FFFFFF">out</span>
+        <span id="cw55" class="text f-secondary" style="left: 299px; top: 695px; font-size: 50px; color: #FFFFFF">of</span>
+        <span id="cw56" class="text f-secondary" style="left: 274px; top: 780px; font-size: 50px; color: #FFFFFF">my</span>
+        <span id="cw57" class="text f-secondary" style="left: 228px; top: 865px; font-size: 50px; color: #FFFFFF">head</span>
+        <span id="cw58" class="text f-secondary" style="left: 190px; top: 610px; font-size: 50px; color: #FFFFFF">give</span>
+        <span id="cw59" class="text f-secondary" style="left: 758px; top: 652px; font-size: 50px; color: #FFFFFF">it</span>
+        <span id="cw60" class="text f-secondary" style="left: 243px; top: 695px; font-size: 50px; color: #FFFFFF">to</span>
+        <span id="cw61" class="text f-secondary" style="left: 758px; top: 737px; font-size: 50px; color: #FFFFFF">the</span>
+        <span id="cw62" class="text f-secondary" style="left: 155px; top: 780px; font-size: 50px; color: #FFFFFF">world</span>
+        <span id="cw63" class="text f-secondary" style="left: 273px; top: 610px; font-size: 50px; color: #FFFFFF">social</span>
+        <span id="cw64" class="text f-secondary" style="left: 272px; top: 695px; font-size: 50px; color: #FFFFFF">media</span>
+        <span id="cw65" class="text f-secondary" style="left: 332px; top: 780px; font-size: 50px; color: #FFFFFF">has</span>
+        <span id="cw66" class="text f-secondary" style="left: 286px; top: 865px; font-size: 50px; color: #FFFFFF">given</span>
+        <span id="cw67" class="text f-secondary" style="left: 361px; top: 950px; font-size: 50px; color: #FFFFFF">us</span>
+        <span id="cw68" class="text f-secondary" style="left: 362px; top: 1290px; font-size: 50px; color: #FFFFFF">alternative</span>
+        <span id="cw69" class="text f-secondary" style="left: 195px; top: 610px; font-size: 50px; color: #FFFFFF">ways</span>
+        <span id="cw70" class="text f-secondary" style="left: 271px; top: 695px; font-size: 50px; color: #FFFFFF">to</span>
+        <span id="cw71" class="text f-secondary" style="left: 213px; top: 780px; font-size: 50px; color: #FFFFFF">earn</span>
+        <span id="cw72" class="text f-secondary" style="left: 241px; top: 610px; font-size: 50px; color: #FFFFFF">and</span>
+        <span id="cw73" class="text f-secondary" style="left: 752px; top: 652px; font-size: 50px; color: #FFFFFF">is</span>
+        <span id="cw74" class="text f-secondary" style="left: 272px; top: 695px; font-size: 50px; color: #FFFFFF">an</span>
+        <span id="cw75" class="text f-secondary" style="left: 381px; top: 1290px; font-size: 50px; color: #FFFFFF">excellent</span>
+        <span id="cw76" class="text f-secondary" style="left: 355px; top: 1290px; font-size: 50px; color: #FFFFFF">distribution</span>
+        <span id="cw77" class="text f-secondary" style="left: 190px; top: 610px; font-size: 50px; color: #FFFFFF">channel</span>
+        <span id="cw78" class="text f-secondary" style="left: 330px; top: 610px; font-size: 50px; color: #FFFFFF">for</span>
+        <span id="cw79" class="text f-secondary" style="left: 289px; top: 695px; font-size: 50px; color: #FFFFFF">your</span>
+        <span id="cw80" class="text f-secondary" style="left: 226px; top: 780px; font-size: 50px; color: #FFFFFF">project</span>
+        <span id="cw81" class="text f-secondary" style="left: 320px; top: 610px; font-size: 50px; color: #FFFFFF">for</span>
+        <span id="cw82" class="text f-secondary" style="left: 279px; top: 695px; font-size: 50px; color: #FFFFFF">your</span>
+        <span id="cw83" class="text f-secondary" style="left: 284px; top: 780px; font-size: 50px; color: #FFFFFF">idea</span>
+        <span id="cw84" class="text f-secondary" style="left: 253px; top: 610px; font-size: 50px; color: #FFFFFF">and</span>
+        <span id="cw85" class="text f-secondary" style="left: 311px; top: 695px; font-size: 50px; color: #FFFFFF">if</span>
+        <span id="cw86" class="text f-secondary" style="left: 254px; top: 780px; font-size: 50px; color: #FFFFFF">you</span>
+        <span id="cw87" class="text f-secondary" style="left: 238px; top: 865px; font-size: 50px; color: #FFFFFF">look</span>
+        <span id="cw88" class="text f-secondary" style="left: 294px; top: 950px; font-size: 50px; color: #FFFFFF">at</span>
+        <span id="cw89" class="text f-secondary" style="left: 203px; top: 1035px; font-size: 50px; color: #FFFFFF">Gen Z</span>
+        <span id="cw91" class="text f-secondary" style="left: 214px; top: 610px; font-size: 50px; color: #FFFFFF">they</span>
+        <span id="cw92" class="text f-secondary" style="left: 199px; top: 695px; font-size: 50px; color: #FFFFFF">don&#39;t</span>
+        <span id="cw93" class="text f-secondary" style="left: 760px; top: 652px; font-size: 50px; color: #FFFFFF">live</span>
+        <span id="cw94" class="text f-secondary" style="left: 760px; top: 737px; font-size: 50px; color: #FFFFFF">to</span>
+        <span id="cw95" class="text f-secondary" style="left: 249px; top: 610px; font-size: 50px; color: #FFFFFF">work</span>
+        <span id="cw96" class="text f-secondary" style="left: 260px; top: 695px; font-size: 50px; color: #FFFFFF">they</span>
+        <span id="cw97" class="text f-secondary" style="left: 249px; top: 780px; font-size: 50px; color: #FFFFFF">work</span>
+        <span id="cw98" class="text f-secondary" style="left: 319px; top: 865px; font-size: 50px; color: #FFFFFF">to</span>
+        <span id="cw99" class="text f-secondary" style="left: 280px; top: 950px; font-size: 50px; color: #FFFFFF">live</span>
+        <span id="cw100" class="text f-secondary" style="left: 236px; top: 610px; font-size: 50px; color: #FFFFFF">they</span>
+        <span id="cw101" class="text f-secondary" style="left: 226px; top: 695px; font-size: 50px; color: #FFFFFF">want</span>
+        <span id="cw102" class="text f-secondary" style="left: 770px; top: 652px; font-size: 50px; color: #FFFFFF">fair</span>
+        <span id="cw103" class="text f-secondary" style="left: 770px; top: 737px; font-size: 50px; color: #FFFFFF">pay</span>
+        <span id="cw104" class="text f-secondary" style="left: 176px; top: 610px; font-size: 50px; color: #FFFFFF">flexible</span>
+        <span id="cw105" class="text f-secondary" style="left: 252px; top: 695px; font-size: 50px; color: #FFFFFF">time</span>
+        <span id="cw106" class="text f-secondary" style="left: 376px; top: 1290px; font-size: 50px; color: #FFFFFF">protected</span>
+        <span id="cw107" class="text f-secondary" style="left: 132px; top: 610px; font-size: 50px; color: #FFFFFF">mental</span>
+        <span id="cw108" class="text f-secondary" style="left: 146px; top: 695px; font-size: 50px; color: #FFFFFF">health</span>
+        <span id="cw109" class="text f-secondary" style="left: 227px; top: 610px; font-size: 50px; color: #FFFFFF">and</span>
+        <span id="cw110" class="text f-secondary" style="left: 172px; top: 695px; font-size: 50px; color: #FFFFFF">sense</span>
+        <span id="cw111" class="text f-secondary" style="left: 269px; top: 780px; font-size: 50px; color: #FFFFFF">of</span>
+        <span id="cw113" class="text f-secondary" style="left: 316px; top: 628px; font-size: 50px; color: #FFFFFF">we</span>
+        <span id="cw114" class="text f-secondary" style="left: 270px; top: 713px; font-size: 50px; color: #FFFFFF">have</span>
+        <span id="cw115" class="text f-secondary" style="left: 353px; top: 798px; font-size: 50px; color: #FFFFFF">it</span>
+        <span id="cw116" class="text f-secondary" style="left: 325px; top: 883px; font-size: 50px; color: #FFFFFF">all</span>
+        <span id="cw117" class="text f-secondary" style="left: 290px; top: 620px; font-size: 50px; color: #FFFFFF">new</span>
+        <span id="cw118" class="text f-secondary" style="left: 266px; top: 705px; font-size: 50px; color: #FFFFFF">tools</span>
+        <span id="cw119" class="text f-secondary" style="left: 304px; top: 624px; font-size: 50px; color: #FFFFFF">new</span>
+        <span id="cw120" class="text f-secondary" style="left: 279px; top: 709px; font-size: 50px; color: #FFFFFF">ways</span>
+        <span id="cw121" class="text f-secondary" style="left: 355px; top: 794px; font-size: 50px; color: #FFFFFF">to</span>
+        <span id="cw122" class="text f-secondary" style="left: 297px; top: 879px; font-size: 50px; color: #FFFFFF">earn</span>
+        <span id="cw123" class="text f-secondary" style="left: 275px; top: 610px; font-size: 50px; color: #FFFFFF">whole</span>
+        <span id="cw124" class="text f-secondary" style="left: 161px; top: 695px; font-size: 50px; color: #FFFFFF">generation</span>
+        <span id="cw125" class="text f-secondary" style="left: 262px; top: 780px; font-size: 50px; color: #FFFFFF">saying</span>
+        <span id="cw126" class="text f-secondary" style="left: 135px; top: 1200px; font-size: 50px; color: #FFFFFF">work</span>
+        <span id="cw127" class="text f-secondary" style="left: 267px; top: 1200px; font-size: 50px; color: #FFFFFF">should</span>
+        <span id="cw128" class="text f-secondary" style="left: 445px; top: 1200px; font-size: 50px; color: #FFFFFF">fund</span>
+        <span id="cw129" class="text f-secondary" style="left: 566px; top: 1200px; font-size: 50px; color: #FFFFFF">life</span>
+        <span id="cw130" class="text f-secondary" style="left: 656px; top: 1200px; font-size: 50px; color: #FFFFFF">not</span>
+        <span id="cw131" class="text f-secondary" style="left: 749px; top: 1200px; font-size: 50px; color: #FFFFFF">take</span>
+        <span id="cw132" class="text f-secondary" style="left: 418px; top: 1264px; font-size: 50px; color: #FFFFFF">it</span>
+        <span id="cw133" class="text f-secondary" style="left: 465px; top: 1264px; font-size: 50px; color: #FFFFFF">over</span>
+        <span id="cw134" class="text f-secondary" style="left: 301px; top: 610px; font-size: 50px; color: #FFFFFF">and</span>
+        <span id="cw135" class="text f-secondary" style="left: 296px; top: 695px; font-size: 50px; color: #FFFFFF">still</span>
+        <span id="cw136" class="text f-secondary" style="left: 324px; top: 780px; font-size: 50px; color: #FFFFFF">for</span>
+        <span id="cw137" class="text f-secondary" style="left: 270px; top: 865px; font-size: 50px; color: #FFFFFF">most</span>
+        <span id="cw138" class="text f-secondary" style="left: 343px; top: 950px; font-size: 50px; color: #FFFFFF">of</span>
+        <span id="cw139" class="text f-secondary" style="left: 333px; top: 1035px; font-size: 50px; color: #FFFFFF">us</span>
+        <span id="cw140" class="text f-secondary" style="left: 287px; top: 610px; font-size: 50px; color: #FFFFFF">life</span>
+        <span id="cw141" class="text f-secondary" style="left: 184px; top: 695px; font-size: 50px; color: #FFFFFF">doesn&#39;t</span>
+        <span id="cw142" class="text f-secondary" style="left: 271px; top: 780px; font-size: 50px; color: #FFFFFF">feel</span>
+        <span id="cw143" class="text f-secondary" style="left: 243px; top: 865px; font-size: 50px; color: #FFFFFF">more</span>
+        <span id="cw144" class="text f-secondary" style="left: 258px; top: 950px; font-size: 50px; color: #FFFFFF">ours</span>
+        <span id="cw145" class="text f-secondary" style="left: 217px; top: 610px; font-size: 50px; color: #FFFFFF">maybe</span>
+        <span id="cw146" class="text f-secondary" style="left: 174px; top: 695px; font-size: 50px; color: #FFFFFF">because</span>
+        <span id="cw147" class="text f-secondary" style="left: 308px; top: 780px; font-size: 50px; color: #FFFFFF">we</span>
+        <span id="cw148" class="text f-secondary" style="left: 242px; top: 865px; font-size: 50px; color: #FFFFFF">never</span>
+        <span id="cw149" class="text f-secondary" style="left: 194px; top: 610px; font-size: 50px; color: #FFFFFF">stepped</span>
+        <span id="cw150" class="text f-secondary" style="left: 327px; top: 695px; font-size: 50px; color: #FFFFFF">far</span>
+        <span id="cw151" class="text f-secondary" style="left: 266px; top: 780px; font-size: 50px; color: #FFFFFF">away</span>
+        <span id="cw152" class="text f-secondary" style="left: 282px; top: 865px; font-size: 50px; color: #FFFFFF">from</span>
+        <span id="cw153" class="text f-secondary" style="left: 328px; top: 610px; font-size: 50px; color: #FFFFFF">our</span>
+        <span id="cw154" class="text f-secondary" style="left: 235px; top: 695px; font-size: 50px; color: #FFFFFF">routine</span>
+        <span id="cw155" class="text f-secondary" style="left: 357px; top: 780px; font-size: 50px; color: #FFFFFF">to</span>
+        <span id="cw156" class="text f-secondary" style="left: 208px; top: 865px; font-size: 50px; color: #FFFFFF">actually</span>
+        <span id="cw157" class="text f-secondary" style="left: 281px; top: 610px; font-size: 50px; color: #FFFFFF">hear</span>
+        <span id="cw158" class="text f-secondary" style="left: 268px; top: 695px; font-size: 50px; color: #FFFFFF">what</span>
+        <span id="cw159" class="text f-secondary" style="left: 318px; top: 780px; font-size: 50px; color: #FFFFFF">we</span>
+        <span id="cw160" class="text f-secondary" style="left: 249px; top: 865px; font-size: 50px; color: #FFFFFF">really</span>
+        <span id="cw161" class="text f-secondary" style="left: 243px; top: 950px; font-size: 50px; color: #FFFFFF">want?</span>
+        <span id="aw29" class="text f-primary" style="left: 256px; top: 285px; font-size: 110px; color: #B3E6FF">disrupted</span>
+        <span id="aw112" class="text f-primary" style="left: 286px; top: 386px; font-size: 110px; color: #B3E6FF">purpose</span>
+      </div>
+      <audio id="s-fund-life" class="clip" src="assets/sounds/mouse-click-trimmed.wav" data-start="35.811" data-duration="0.230" data-track-index="60" data-volume="0.2239"></audio>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#t-fund-life", { y: 770 }, { y: 0, duration: 0.5, ease: "power3.inOut" }, 35.811);
+      tl.to("#t-fund-life", { y: 770, duration: 0.5, ease: "power3.inOut" }, 37.918);
+      tl.to("#cutout", { opacity: 0, duration: 0.5 }, 35.811);
+      tl.to("#cutout", { opacity: 1, duration: 0.5 }, 37.918);
+      tl.fromTo("#cw0", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.282);
+      tl.to("#cw0", { opacity: 0, duration: 0.15 }, 1.068);
+      tl.fromTo("#cw1", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.355);
+      tl.to("#cw1", { opacity: 0, duration: 0.15 }, 1.068);
+      tl.fromTo("#cw2", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.482);
+      tl.to("#cw2", { opacity: 0, duration: 0.15 }, 1.068);
+      tl.fromTo("#cw3", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.827);
+      tl.to("#cw3", { opacity: 0, duration: 0.15 }, 1.077);
+      tl.fromTo("#cw4", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.273);
+      tl.to("#cw4", { opacity: 0, duration: 0.15 }, 2.681);
+      tl.fromTo("#cw5", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.591);
+      tl.to("#cw5", { opacity: 0, duration: 0.15 }, 2.681);
+      tl.fromTo("#cw6", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.818);
+      tl.to("#cw6", { opacity: 0, duration: 0.15 }, 2.681);
+      tl.fromTo("#cw7", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.973);
+      tl.to("#cw7", { opacity: 0, duration: 0.15 }, 2.681);
+      tl.fromTo("#cw8", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 2.082);
+      tl.to("#cw8", { opacity: 0, duration: 0.15 }, 2.681);
+      tl.fromTo("#cw9", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 2.275);
+      tl.to("#cw9", { opacity: 0, duration: 0.15 }, 2.681);
+      tl.fromTo("#cw10", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 3.181);
+      tl.to("#cw10", { opacity: 0, duration: 0.15 }, 3.703);
+      tl.fromTo("#cw11", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 3.208);
+      tl.to("#cw11", { opacity: 0, duration: 0.15 }, 3.703);
+      tl.fromTo("#cw12", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 3.399);
+      tl.to("#cw12", { opacity: 0, duration: 0.15 }, 3.703);
+      tl.fromTo("#cw13", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 3.926);
+      tl.to("#cw13", { opacity: 0, duration: 0.15 }, 5.056);
+      tl.fromTo("#cw14", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 4.062);
+      tl.to("#cw14", { opacity: 0, duration: 0.15 }, 5.056);
+      tl.fromTo("#cw15", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 4.172);
+      tl.to("#cw15", { opacity: 0, duration: 0.15 }, 5.056);
+      tl.fromTo("#cw16", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 4.453);
+      tl.to("#cw16", { opacity: 0, duration: 0.15 }, 5.056);
+      tl.fromTo("#cw17", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 4.672);
+      tl.to("#cw17", { opacity: 0, duration: 0.15 }, 5.056);
+      tl.fromTo("#cw18", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 5.206);
+      tl.to("#cw18", { opacity: 0, duration: 0.15 }, 5.864);
+      tl.fromTo("#cw19", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 5.493);
+      tl.to("#cw19", { opacity: 0, duration: 0.15 }, 5.864);
+      tl.fromTo("#cw20", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 5.527);
+      tl.to("#cw20", { opacity: 0, duration: 0.15 }, 5.864);
+      tl.fromTo("#cw21", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 6.014);
+      tl.to("#cw21", { opacity: 0, duration: 0.15 }, 6.716);
+      tl.fromTo("#cw22", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 6.197);
+      tl.to("#cw22", { opacity: 0, duration: 0.15 }, 6.716);
+      tl.fromTo("#cw23", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 6.866);
+      tl.to("#cw23", { opacity: 0, duration: 0.15 }, 7.343);
+      tl.fromTo("#cw24", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 7.138);
+      tl.to("#cw24", { opacity: 0, duration: 0.15 }, 7.388);
+      tl.fromTo("#cw25", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 7.265);
+      tl.to("#cw25", { opacity: 0, duration: 0.15 }, 7.515);
+      tl.fromTo("#cw26", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 7.565);
+      tl.to("#cw26", { opacity: 0, duration: 0.15 }, 8.457);
+      tl.fromTo("#cw27", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 7.774);
+      tl.to("#cw27", { opacity: 0, duration: 0.15 }, 8.457);
+      tl.fromTo("#cw28", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 7.883);
+      tl.to("#cw28", { opacity: 0, duration: 0.15 }, 8.457);
+      tl.fromTo("#cw30", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 9.224);
+      tl.to("#cw30", { opacity: 0, duration: 0.15 }, 9.831);
+      tl.fromTo("#cw31", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 9.442);
+      tl.to("#cw31", { opacity: 0, duration: 0.15 }, 9.831);
+      tl.fromTo("#cw32", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 9.659);
+      tl.to("#cw32", { opacity: 0, duration: 0.15 }, 9.909);
+      tl.fromTo("#cw33", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 9.789);
+      tl.to("#cw33", { opacity: 0, duration: 0.15 }, 10.039);
+      tl.fromTo("#cw34", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 10.18);
+      tl.to("#cw34", { opacity: 0, duration: 0.15 }, 10.73);
+      tl.fromTo("#cw35", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 10.307);
+      tl.to("#cw35", { opacity: 0, duration: 0.15 }, 10.73);
+      tl.fromTo("#cw36", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 10.389);
+      tl.to("#cw36", { opacity: 0, duration: 0.15 }, 10.73);
+      tl.fromTo("#cw37", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 10.607);
+      tl.to("#cw37", { opacity: 0, duration: 0.15 }, 10.857);
+      tl.fromTo("#cw38", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 10.689);
+      tl.to("#cw38", { opacity: 0, duration: 0.15 }, 10.939);
+      tl.fromTo("#cw39", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 10.88);
+      tl.to("#cw39", { opacity: 0, duration: 0.15 }, 11.857);
+      tl.fromTo("#cw40", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 10.998);
+      tl.to("#cw40", { opacity: 0, duration: 0.15 }, 11.857);
+      tl.fromTo("#cw41", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 11.171);
+      tl.to("#cw41", { opacity: 0, duration: 0.15 }, 11.857);
+      tl.fromTo("#cw42", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 11.461);
+      tl.to("#cw42", { opacity: 0, duration: 0.15 }, 11.857);
+      tl.fromTo("#cw43", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 11.589);
+      tl.to("#cw43", { opacity: 0, duration: 0.15 }, 11.857);
+      tl.fromTo("#cw44", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 11.634);
+      tl.to("#cw44", { opacity: 0, duration: 0.15 }, 11.884);
+      tl.fromTo("#cw45", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 12.08);
+      tl.to("#cw45", { opacity: 0, duration: 0.15 }, 13.011);
+      tl.fromTo("#cw46", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 12.289);
+      tl.to("#cw46", { opacity: 0, duration: 0.15 }, 13.011);
+      tl.fromTo("#cw47", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 12.452);
+      tl.to("#cw47", { opacity: 0, duration: 0.15 }, 13.011);
+      tl.fromTo("#cw48", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 12.516);
+      tl.to("#cw48", { opacity: 0, duration: 0.15 }, 13.011);
+      tl.fromTo("#cw49", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 13.161);
+      tl.to("#cw49", { opacity: 0, duration: 0.15 }, 13.502);
+      tl.fromTo("#cw50", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 13.225);
+      tl.to("#cw50", { opacity: 0, duration: 0.15 }, 13.502);
+      tl.fromTo("#cw51", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 13.925);
+      tl.to("#cw51", { opacity: 0, duration: 0.15 }, 14.548);
+      tl.fromTo("#cw52", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 13.998);
+      tl.to("#cw52", { opacity: 0, duration: 0.15 }, 14.548);
+      tl.fromTo("#cw53", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 14.316);
+      tl.to("#cw53", { opacity: 0, duration: 0.15 }, 14.566);
+      tl.fromTo("#cw54", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 14.698);
+      tl.to("#cw54", { opacity: 0, duration: 0.15 }, 15.348);
+      tl.fromTo("#cw55", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 14.871);
+      tl.to("#cw55", { opacity: 0, duration: 0.15 }, 15.348);
+      tl.fromTo("#cw56", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 15.016);
+      tl.to("#cw56", { opacity: 0, duration: 0.15 }, 15.348);
+      tl.fromTo("#cw57", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 15.18);
+      tl.to("#cw57", { opacity: 0, duration: 0.15 }, 15.43);
+      tl.fromTo("#cw58", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 15.663);
+      tl.to("#cw58", { opacity: 0, duration: 0.15 }, 16.276);
+      tl.fromTo("#cw59", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 15.817);
+      tl.to("#cw59", { opacity: 0, duration: 0.15 }, 16.276);
+      tl.fromTo("#cw60", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 15.917);
+      tl.to("#cw60", { opacity: 0, duration: 0.15 }, 16.276);
+      tl.fromTo("#cw61", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 16.035);
+      tl.to("#cw61", { opacity: 0, duration: 0.15 }, 16.285);
+      tl.fromTo("#cw62", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 16.19);
+      tl.to("#cw62", { opacity: 0, duration: 0.15 }, 16.44);
+      tl.fromTo("#cw63", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 16.572);
+      tl.to("#cw63", { opacity: 0, duration: 0.15 }, 17.713);
+      tl.fromTo("#cw64", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 16.881);
+      tl.to("#cw64", { opacity: 0, duration: 0.15 }, 17.713);
+      tl.fromTo("#cw65", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 17.199);
+      tl.to("#cw65", { opacity: 0, duration: 0.15 }, 17.713);
+      tl.fromTo("#cw66", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 17.49);
+      tl.to("#cw66", { opacity: 0, duration: 0.15 }, 17.74);
+      tl.fromTo("#cw67", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 17.708);
+      tl.to("#cw67", { opacity: 0, duration: 0.15 }, 17.958);
+      tl.fromTo("#cw68", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 17.863);
+      tl.to("#cw68", { opacity: 0, duration: 0.15 }, 19.004);
+      tl.fromTo("#cw69", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 18.481);
+      tl.to("#cw69", { opacity: 0, duration: 0.15 }, 19.004);
+      tl.fromTo("#cw70", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 18.717);
+      tl.to("#cw70", { opacity: 0, duration: 0.15 }, 19.004);
+      tl.fromTo("#cw71", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 18.981);
+      tl.to("#cw71", { opacity: 0, duration: 0.15 }, 19.231);
+      tl.fromTo("#cw72", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 19.381);
+      tl.to("#cw72", { opacity: 0, duration: 0.15 }, 19.918);
+      tl.fromTo("#cw73", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 19.426);
+      tl.to("#cw73", { opacity: 0, duration: 0.15 }, 19.918);
+      tl.fromTo("#cw74", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 19.472);
+      tl.to("#cw74", { opacity: 0, duration: 0.15 }, 19.918);
+      tl.fromTo("#cw75", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 19.544);
+      tl.to("#cw75", { opacity: 0, duration: 0.15 }, 19.918);
+      tl.fromTo("#cw76", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 20.068);
+      tl.to("#cw76", { opacity: 0, duration: 0.15 }, 20.945);
+      tl.fromTo("#cw77", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 20.795);
+      tl.to("#cw77", { opacity: 0, duration: 0.15 }, 21.045);
+      tl.fromTo("#cw78", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 21.268);
+      tl.to("#cw78", { opacity: 0, duration: 0.15 }, 21.854);
+      tl.fromTo("#cw79", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 21.395);
+      tl.to("#cw79", { opacity: 0, duration: 0.15 }, 21.854);
+      tl.fromTo("#cw80", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 21.513);
+      tl.to("#cw80", { opacity: 0, duration: 0.15 }, 21.854);
+      tl.fromTo("#cw81", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 22.077);
+      tl.to("#cw81", { opacity: 0, duration: 0.15 }, 22.463);
+      tl.fromTo("#cw82", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 22.195);
+      tl.to("#cw82", { opacity: 0, duration: 0.15 }, 22.463);
+      tl.fromTo("#cw83", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 22.422);
+      tl.to("#cw83", { opacity: 0, duration: 0.15 }, 22.672);
+      tl.fromTo("#cw84", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 22.804);
+      tl.to("#cw84", { opacity: 0, duration: 0.15 }, 23.8);
+      tl.fromTo("#cw85", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 22.841);
+      tl.to("#cw85", { opacity: 0, duration: 0.15 }, 23.8);
+      tl.fromTo("#cw86", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 22.986);
+      tl.to("#cw86", { opacity: 0, duration: 0.15 }, 23.8);
+      tl.fromTo("#cw87", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 23.204);
+      tl.to("#cw87", { opacity: 0, duration: 0.15 }, 23.8);
+      tl.fromTo("#cw88", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 23.486);
+      tl.to("#cw88", { opacity: 0, duration: 0.15 }, 23.8);
+      tl.fromTo("#cw89", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 23.622);
+      tl.to("#cw89", { opacity: 0, duration: 0.15 }, 23.872);
+      tl.fromTo("#cw91", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 24.095);
+      tl.to("#cw91", { opacity: 0, duration: 0.15 }, 24.737);
+      tl.fromTo("#cw92", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 24.286);
+      tl.to("#cw92", { opacity: 0, duration: 0.15 }, 24.737);
+      tl.fromTo("#cw93", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 24.45);
+      tl.to("#cw93", { opacity: 0, duration: 0.15 }, 24.737);
+      tl.fromTo("#cw94", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 24.797);
+      tl.to("#cw94", { opacity: 0, duration: 0.15 }, 25.047);
+      tl.fromTo("#cw95", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 24.887);
+      tl.to("#cw95", { opacity: 0, duration: 0.15 }, 25.883);
+      tl.fromTo("#cw96", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 25.224);
+      tl.to("#cw96", { opacity: 0, duration: 0.15 }, 25.883);
+      tl.fromTo("#cw97", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 25.342);
+      tl.to("#cw97", { opacity: 0, duration: 0.15 }, 25.883);
+      tl.fromTo("#cw98", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 25.651);
+      tl.to("#cw98", { opacity: 0, duration: 0.15 }, 25.901);
+      tl.fromTo("#cw99", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 25.697);
+      tl.to("#cw99", { opacity: 0, duration: 0.15 }, 25.947);
+      tl.fromTo("#cw100", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 26.124);
+      tl.to("#cw100", { opacity: 0, duration: 0.15 }, 27.265);
+      tl.fromTo("#cw101", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 26.506);
+      tl.to("#cw101", { opacity: 0, duration: 0.15 }, 27.265);
+      tl.fromTo("#cw102", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 26.787);
+      tl.to("#cw102", { opacity: 0, duration: 0.15 }, 27.265);
+      tl.fromTo("#cw103", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 27.069);
+      tl.to("#cw103", { opacity: 0, duration: 0.15 }, 27.319);
+      tl.fromTo("#cw104", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 27.586);
+      tl.to("#cw104", { opacity: 0, duration: 0.15 }, 28.192);
+      tl.fromTo("#cw105", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 28.107);
+      tl.to("#cw105", { opacity: 0, duration: 0.15 }, 28.357);
+      tl.fromTo("#cw106", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 28.351);
+      tl.to("#cw106", { opacity: 0, duration: 0.15 }, 29.727);
+      tl.fromTo("#cw107", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 29.251);
+      tl.to("#cw107", { opacity: 0, duration: 0.15 }, 29.727);
+      tl.fromTo("#cw108", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 29.451);
+      tl.to("#cw108", { opacity: 0, duration: 0.15 }, 29.727);
+      tl.fromTo("#cw109", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 29.877);
+      tl.to("#cw109", { opacity: 0, duration: 0.15 }, 31.364);
+      tl.fromTo("#cw110", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 30.086);
+      tl.to("#cw110", { opacity: 0, duration: 0.15 }, 31.364);
+      tl.fromTo("#cw111", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 30.496);
+      tl.to("#cw111", { opacity: 0, duration: 0.15 }, 31.364);
+      tl.fromTo("#cw113", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 31.586);
+      tl.to("#cw113", { opacity: 0, duration: 0.15 }, 32.255);
+      tl.fromTo("#cw114", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 31.795);
+      tl.to("#cw114", { opacity: 0, duration: 0.15 }, 32.255);
+      tl.fromTo("#cw115", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 31.905);
+      tl.to("#cw115", { opacity: 0, duration: 0.15 }, 32.255);
+      tl.fromTo("#cw116", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 32.023);
+      tl.to("#cw116", { opacity: 0, duration: 0.15 }, 32.273);
+      tl.fromTo("#cw117", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 32.405);
+      tl.to("#cw117", { opacity: 0, duration: 0.15 }, 32.909);
+      tl.fromTo("#cw118", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 32.586);
+      tl.to("#cw118", { opacity: 0, duration: 0.15 }, 32.909);
+      tl.fromTo("#cw119", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 33.086);
+      tl.to("#cw119", { opacity: 0, duration: 0.15 }, 33.964);
+      tl.fromTo("#cw120", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 33.314);
+      tl.to("#cw120", { opacity: 0, duration: 0.15 }, 33.964);
+      tl.fromTo("#cw121", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 33.605);
+      tl.to("#cw121", { opacity: 0, duration: 0.15 }, 33.964);
+      tl.fromTo("#cw122", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 33.786);
+      tl.to("#cw122", { opacity: 0, duration: 0.15 }, 34.036);
+      tl.fromTo("#cw123", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 34.516);
+      tl.to("#cw123", { opacity: 0, duration: 0.15 }, 35.575);
+      tl.fromTo("#cw124", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 34.734);
+      tl.to("#cw124", { opacity: 0, duration: 0.15 }, 35.575);
+      tl.fromTo("#cw125", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 35.212);
+      tl.to("#cw125", { opacity: 0, duration: 0.15 }, 35.575);
+      tl.fromTo("#cw126", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 35.841);
+      tl.to("#cw126", { opacity: 0, duration: 0.15 }, 38.268);
+      tl.fromTo("#cw127", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 36.087);
+      tl.to("#cw127", { opacity: 0, duration: 0.15 }, 38.268);
+      tl.fromTo("#cw128", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 36.459);
+      tl.to("#cw128", { opacity: 0, duration: 0.15 }, 38.268);
+      tl.fromTo("#cw129", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 36.614);
+      tl.to("#cw129", { opacity: 0, duration: 0.15 }, 38.268);
+      tl.fromTo("#cw130", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 37.336);
+      tl.to("#cw130", { opacity: 0, duration: 0.15 }, 38.268);
+      tl.fromTo("#cw131", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 37.591);
+      tl.to("#cw131", { opacity: 0, duration: 0.15 }, 38.268);
+      tl.fromTo("#cw132", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 37.763);
+      tl.to("#cw132", { opacity: 0, duration: 0.15 }, 38.268);
+      tl.fromTo("#cw133", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 37.854);
+      tl.to("#cw133", { opacity: 0, duration: 0.15 }, 38.268);
+      tl.fromTo("#cw134", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 38.554);
+      tl.to("#cw134", { opacity: 0, duration: 0.15 }, 40.041);
+      tl.fromTo("#cw135", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 38.691);
+      tl.to("#cw135", { opacity: 0, duration: 0.15 }, 40.041);
+      tl.fromTo("#cw136", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 39.291);
+      tl.to("#cw136", { opacity: 0, duration: 0.15 }, 40.041);
+      tl.fromTo("#cw137", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 39.472);
+      tl.to("#cw137", { opacity: 0, duration: 0.15 }, 40.041);
+      tl.fromTo("#cw138", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 39.8);
+      tl.to("#cw138", { opacity: 0, duration: 0.15 }, 40.05);
+      tl.fromTo("#cw139", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 39.936);
+      tl.to("#cw139", { opacity: 0, duration: 0.15 }, 40.186);
+      tl.fromTo("#cw140", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 40.334);
+      tl.to("#cw140", { opacity: 0, duration: 0.15 }, 42.243);
+      tl.fromTo("#cw141", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 40.704);
+      tl.to("#cw141", { opacity: 0, duration: 0.15 }, 42.243);
+      tl.fromTo("#cw142", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 41.25);
+      tl.to("#cw142", { opacity: 0, duration: 0.15 }, 42.243);
+      tl.fromTo("#cw143", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 41.586);
+      tl.to("#cw143", { opacity: 0, duration: 0.15 }, 42.243);
+      tl.fromTo("#cw144", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 41.948);
+      tl.to("#cw144", { opacity: 0, duration: 0.15 }, 42.243);
+      tl.fromTo("#cw145", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 42.535);
+      tl.to("#cw145", { opacity: 0, duration: 0.15 }, 43.616);
+      tl.fromTo("#cw146", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 42.761);
+      tl.to("#cw146", { opacity: 0, duration: 0.15 }, 43.616);
+      tl.fromTo("#cw147", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 43.239);
+      tl.to("#cw147", { opacity: 0, duration: 0.15 }, 43.616);
+      tl.fromTo("#cw148", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 43.378);
+      tl.to("#cw148", { opacity: 0, duration: 0.15 }, 43.628);
+      tl.fromTo("#cw149", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 44.067);
+      tl.to("#cw149", { opacity: 0, duration: 0.15 }, 44.9);
+      tl.fromTo("#cw150", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 44.468);
+      tl.to("#cw150", { opacity: 0, duration: 0.15 }, 44.9);
+      tl.fromTo("#cw151", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 44.641);
+      tl.to("#cw151", { opacity: 0, duration: 0.15 }, 44.9);
+      tl.fromTo("#cw152", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 44.859);
+      tl.to("#cw152", { opacity: 0, duration: 0.15 }, 45.109);
+      tl.fromTo("#cw153", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 45.095);
+      tl.to("#cw153", { opacity: 0, duration: 0.15 }, 46.118);
+      tl.fromTo("#cw154", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 45.25);
+      tl.to("#cw154", { opacity: 0, duration: 0.15 }, 46.118);
+      tl.fromTo("#cw155", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 45.659);
+      tl.to("#cw155", { opacity: 0, duration: 0.15 }, 46.118);
+      tl.fromTo("#cw156", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 45.777);
+      tl.to("#cw156", { opacity: 0, duration: 0.15 }, 46.118);
+      tl.fromTo("#cw157", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 46.268);
+      tl.to("#cw157", { opacity: 0, duration: 0.15 }, 47.254);
+      tl.fromTo("#cw158", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 46.532);
+      tl.to("#cw158", { opacity: 0, duration: 0.15 }, 47.254);
+      tl.fromTo("#cw159", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 46.759);
+      tl.to("#cw159", { opacity: 0, duration: 0.15 }, 47.254);
+      tl.fromTo("#cw160", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 46.895);
+      tl.to("#cw160", { opacity: 0, duration: 0.15 }, 47.254);
+      tl.fromTo("#cw161", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 47.204);
+      tl.to("#cw161", { opacity: 0, duration: 0.15 }, 47.454);
+      tl.fromTo("#aw29", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 8.607);
+      tl.to("#aw29", { opacity: 0, duration: 0.15 }, 9.831);
+      tl.fromTo("#aw112", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 30.705);
+      tl.to("#aw112", { opacity: 0, duration: 0.15 }, 31.364);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

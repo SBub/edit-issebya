@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en" data-resolution="portrait">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Raleway Light"; src: url("assets/fonts/Raleway-Light.ttf") format("truetype"); font-weight: 300; }
+      @font-face { font-family: "Golos Text"; src: url("assets/fonts/GolosText-Bold.ttf") format("truetype"); font-weight: 700; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; overflow: hidden; background: #000; }
+      .full { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      .layer { position: absolute; }
+      #text { position: absolute; inset: 0; }
+      .text { position: absolute; line-height: 1; white-space: nowrap; opacity: 0; }
+      .f-primary { font-family: "Raleway Light", sans-serif; font-weight: 300; }
+      .f-secondary { font-family: "Golos Text", sans-serif; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="2.690" data-width="1080" data-height="1920">
+      <video id="footage" class="clip full" src="source.mp4" playsinline data-start="0.000" data-duration="2.690" data-track-index="1" data-has-audio="true"></video>
+      <video id="cutout" class="clip full" src="subject.webm" muted playsinline data-start="0.000" data-duration="2.690" data-track-index="30"></video>
+      <div id="text" class="clip" data-start="0.000" data-duration="2.690" data-track-index="50">
+        <span id="cw0001" class="text f-secondary" style="left: 331px; top: 1290px; font-size: 50px; color: #FFFFFF">this</span>
+        <span id="cw0002" class="text f-secondary" style="left: 435px; top: 1290px; font-size: 50px; color: #FFFFFF">is</span>
+        <span id="cw0003" class="text f-secondary" style="left: 489px; top: 1290px; font-size: 50px; color: #FFFFFF">a</span>
+        <span id="cw0004" class="text f-secondary" style="left: 531px; top: 1290px; font-size: 50px; color: #FFFFFF">short</span>
+        <span id="cw0005" class="text f-secondary" style="left: 309px; top: 1290px; font-size: 50px; color: #FFFFFF">test</span>
+        <span id="cw0006" class="text f-secondary" style="left: 419px; top: 1290px; font-size: 50px; color: #FFFFFF">clip</span>
+        <span id="cw0007" class="text f-secondary" style="left: 521px; top: 1290px; font-size: 50px; color: #FFFFFF">for</span>
+        <span id="cw0008" class="text f-secondary" style="left: 601px; top: 1290px; font-size: 50px; color: #FFFFFF">the</span>
+        <span id="cw0009" class="text f-secondary" style="left: 366px; top: 1290px; font-size: 50px; color: #FFFFFF">real</span>
+        <span id="cw0010" class="text f-secondary" style="left: 472px; top: 1290px; font-size: 50px; color: #FFFFFF">studio</span>
+      </div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#cw0001", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.038);
+      tl.to("#cw0001", { opacity: 0, duration: 0.15 }, 0.602);
+      tl.fromTo("#cw0002", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.267);
+      tl.to("#cw0002", { opacity: 0, duration: 0.15 }, 0.602);
+      tl.fromTo("#cw0003", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.4);
+      tl.to("#cw0003", { opacity: 0, duration: 0.15 }, 0.65);
+      tl.fromTo("#cw0004", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.467);
+      tl.to("#cw0004", { opacity: 0, duration: 0.15 }, 0.717);
+      tl.fromTo("#cw0005", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.881);
+      tl.to("#cw0005", { opacity: 0, duration: 0.15 }, 1.598);
+      tl.fromTo("#cw0006", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.252);
+      tl.to("#cw0006", { opacity: 0, duration: 0.15 }, 1.598);
+      tl.fromTo("#cw0007", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.357);
+      tl.to("#cw0007", { opacity: 0, duration: 0.15 }, 1.607);
+      tl.fromTo("#cw0008", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.557);
+      tl.to("#cw0008", { opacity: 0, duration: 0.15 }, 1.807);
+      tl.fromTo("#cw0009", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.757);
+      tl.to("#cw0009", { opacity: 0, duration: 0.15 }, 2.455);
+      tl.fromTo("#cw0010", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 2.052);
+      tl.to("#cw0010", { opacity: 0, duration: 0.15 }, 2.455);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

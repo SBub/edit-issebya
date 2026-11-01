@@ -59,6 +59,18 @@ function md5Of(path: string): Promise<string> {
   });
 }
 
+// link fails with EEXIST when the target is taken: the existing file stays.
+async function linkOnce(temp: string, target: string): Promise<"written" | "exists"> {
+  try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- a path inside the fake's root
+    await link(temp, target);
+    return "written";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code === "EEXIST") return "exists";
+    throw error;
+  }
+}
+
 async function walk(dir: string): Promise<string[]> {
   let entries;
   try {
@@ -156,14 +168,22 @@ export function fakeStorage({
       const temp = tempPath(target);
       try {
         await copyFile(path, temp);
-        try {
-          // eslint-disable-next-line security/detect-non-literal-fs-filename -- key checked by assertStorageKey
-          await link(temp, target);
-          return "written";
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException | null)?.code === "EEXIST") return "exists";
-          throw error;
-        }
+        return await linkOnce(temp, target);
+      } finally {
+        await rm(temp, { force: true });
+      }
+    },
+
+    // The bytes written to a temporary file, then hard-linked like putFileIfAbsent.
+    async putIfAbsent(key, body) {
+      const target = pathOf(key);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- key checked by assertStorageKey
+      await mkdir(dirname(target), { recursive: true });
+      const temp = tempPath(target);
+      try {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- key checked by assertStorageKey
+        await writeFile(temp, body);
+        return await linkOnce(temp, target);
       } finally {
         await rm(temp, { force: true });
       }

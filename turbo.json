@@ -115,6 +115,11 @@
         "NEXT_PUBLIC_SUPABASE_*"
       ]
     },
+    "@edit-issebya/edit#test": {
+      "outputs": [],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/fixtures/pipeline/**"],
+      "passThroughEnv": ["PLAYWRIGHT_*", "CI"]
+    },
     "@edit-issebya/studio#test": {
       "outputs": [],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/supabase/migrations/**"]
