@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { fakeMultipart } from "./fake-multipart.ts";
 import { e2eStorageRoot, fakeStorage, isE2EMockStorage } from "./fake.ts";
 
 let root: string;
@@ -41,17 +42,49 @@ describe("fakeStorage", () => {
     expect(await storage.list("")).toEqual([]);
   });
 
-  it("signs same-origin paths", async () => {
+  it("signs same-origin paths with S3's multipart query strings", async () => {
     const storage = fakeStorage({ root, uploadUrlBase: "/studio/api/e2e-storage-mock/" });
+    const base = "/studio/api/e2e-storage-mock/reels/x/source/original.mp4";
+    const key = "reels/x/source/original.mp4";
+    const uploadId = "a".repeat(32);
     expect(
-      await storage.signUpload("reels/x/source/original.mp4", {
-        contentType: "video/mp4",
-        expiresInSeconds: 60,
-      }),
-    ).toBe("/studio/api/e2e-storage-mock/reels/x/source/original.mp4");
+      await storage.signCreateMultipart(key, { contentType: "video/mp4", expiresInSeconds: 60 }),
+    ).toEqual({ url: `${base}?uploads`, headers: { "Content-Type": "video/mp4" } });
+    expect(
+      await storage.signUploadPart(key, { uploadId, partNumber: 2, expiresInSeconds: 60 }),
+    ).toBe(`${base}?partNumber=2&uploadId=${uploadId}`);
+    expect(await storage.signListParts(key, { uploadId, expiresInSeconds: 60 })).toBe(
+      `${base}?uploadId=${uploadId}`,
+    );
+    expect(await storage.signCompleteMultipart(key, { uploadId, expiresInSeconds: 60 })).toBe(
+      `${base}?uploadId=${uploadId}`,
+    );
     expect(await storage.signDownload("a.mp4", { expiresInSeconds: 60 })).toBe(
       "/studio/api/e2e-storage-mock/a.mp4",
     );
+    await expect(
+      storage.signUploadPart(key, { uploadId: "a&b", partNumber: 1, expiresInSeconds: 60 }),
+    ).rejects.toThrow(/invalid upload id/);
+    await expect(
+      storage.signUploadPart(key, { uploadId, partNumber: 0, expiresInSeconds: 60 }),
+    ).rejects.toThrow(/part number/);
+  });
+
+  it("never lists the unfinished uploads folder", async () => {
+    const storage = fakeStorage({ root, uploadUrlBase: "/up/" });
+    const uploadId = await fakeMultipart({ root }).create("dev/a.mp4");
+    await fakeMultipart({ root }).putPart("dev/a.mp4", uploadId, 1, new Uint8Array([1]));
+    await storage.put("dev/b.mp4", new Uint8Array([2]));
+    expect(await storage.list("")).toEqual(["dev/b.mp4"]);
+  });
+
+  it("aborts a multipart upload through the folder state", async () => {
+    const storage = fakeStorage({ root, uploadUrlBase: "/up/" });
+    const multipart = fakeMultipart({ root });
+    const uploadId = await multipart.create("dev/a.mp4");
+    await storage.abortMultipart("dev/a.mp4", uploadId);
+    await storage.abortMultipart("dev/a.mp4", uploadId);
+    await expect(multipart.listParts("dev/a.mp4", uploadId)).rejects.toThrow(/no such upload/);
   });
 
   it("refuses keys that could leave its root", async () => {

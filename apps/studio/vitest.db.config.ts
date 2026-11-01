@@ -11,6 +11,10 @@ for (const file of ["../worker/.env.development", ".env.development"]) {
 }
 
 export default defineConfig({
+  resolve: {
+    // Mirror tsconfig's "@/*" path, as vitest.config.ts does, for src/lib imports.
+    alias: { "@": new URL("./src", import.meta.url).pathname },
+  },
   test: {
     include: ["db-tests/**/*.test.ts"],
     // Every file talks to the one shared local stack.

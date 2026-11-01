@@ -55,8 +55,8 @@ be kept in step with them and with `README.md`.
   (default 3001) unless `STUDIO_URL` is set.
 - The mock flags turn on the in-process Stripe and Resend mocks (`apps/web/src/instrumentation.ts`)
   and the `/api/e2e-stripe-mock` and `/api/e2e-resend-mock` routes the checkout and confirmation
-  email specs need. `E2E_MOCK_STORAGE=true` makes the studio sign uploads to its
-  `/studio/api/e2e-storage-mock` route, which writes into the gitignored `.e2e-storage/` folder at
+  email specs need. `E2E_MOCK_STORAGE=true` makes the studio sign multipart uploads to its
+  `/studio/api/e2e-storage-mock` route (R2's S3 API stand-in), which writes into the gitignored `.e2e-storage/` folder at
   the worktree root, where the worker's `once` reads them.
 - `/` answering 200 proves the landing server is up, `/studio` through it proves the studio is.
   The landing page reads no database; it calls Stripe when the form is submitted and Stripe and
@@ -137,14 +137,16 @@ and the local-URL guard, `apps/worker/src/**/*.test.ts` for the worker's modules
 runner's tests spawn real child processes under `/usr/bin/time`, BSD on macOS, GNU on Linux) and
 `packages/storage/src/**/*.test.ts` for the storage package. The DB layer is `apps/studio/db-tests/**/*.test.ts`
 (`apps/studio/vitest.db.config.ts`: RLS on every public table, owner isolation, Realtime follows
-RLS, `jobs.test.ts` for `claim_job`'s lease and `steps-measurements.test.ts` for the exact
+RLS, `jobs.test.ts` for `claim_job`'s lease, `upload.test.ts` for signing ownership, idempotent
+`finish_upload` and `abort_upload`, and `steps-measurements.test.ts` for the exact
 `steps` column set), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
 layer; the browser layer is the Playwright suites below.
 
 E2E code suites: `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium, plus webkit for the dialog
 spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium,
 `apps/studio/playwright.config.ts`, every spec through the landing page's address;
-`upload.spec.ts` spawns the worker's `once`, `step-log.spec.ts` shows a failed step's collapsed
+`upload.spec.ts` spawns the worker's `once`, `multipart-upload.spec.ts` sends a 35 MiB clip in
+10 MiB parts (a failed part, a reload that resumes, Cancel, the 1 GiB limit), `step-log.spec.ts` shows a failed step's collapsed
 error tail), run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright

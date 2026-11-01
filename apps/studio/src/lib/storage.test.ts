@@ -9,20 +9,20 @@ const R2 = {
   R2_STUDIO_SECRET_ACCESS_KEY: "secret",
   R2_KEY_PREFIX: "dev/",
 };
-const OPTIONS = { contentType: "video/mp4", expiresInSeconds: 60 };
+const OPTIONS = { uploadId: "a".repeat(32), partNumber: 1, expiresInSeconds: 60 };
 
 describe("studioStorage", () => {
   it("gives the fake under the exact flag", async () => {
     const storage = studioStorage({ ...R2, E2E_MOCK_STORAGE: "true" });
-    expect(await storage?.signUpload("dev/a.mp4", OPTIONS)).toBe(
-      "/studio/api/e2e-storage-mock/dev/a.mp4",
+    expect(await storage?.signUploadPart("dev/a.mp4", OPTIONS)).toBe(
+      `/studio/api/e2e-storage-mock/dev/a.mp4?partNumber=1&uploadId=${"a".repeat(32)}`,
     );
   });
 
   it("gives R2 with the studio's keys otherwise", async () => {
     for (const flag of [undefined, "1", "TRUE"]) {
       const storage = studioStorage({ ...R2, E2E_MOCK_STORAGE: flag });
-      const url = new URL((await storage?.signUpload("dev/a.mp4", OPTIONS)) ?? "");
+      const url = new URL((await storage?.signUploadPart("dev/a.mp4", OPTIONS)) ?? "");
       expect(url.host).toBe("abc.eu.r2.cloudflarestorage.com");
     }
   });

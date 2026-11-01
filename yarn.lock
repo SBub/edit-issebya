@@ -486,6 +486,8 @@ __metadata:
     "@types/pg": "npm:^8.23.1"
     "@types/react": "npm:^19"
     "@types/react-dom": "npm:^19"
+    "@uppy/aws-s3": "npm:6.3.0"
+    "@uppy/core": "npm:6.3.0"
     eslint: "npm:^9"
     eslint-config-next: "npm:16.3.8"
     eslint-config-prettier: "npm:^10.1.8"
@@ -2202,6 +2204,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@transloadit/prettier-bytes@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "@transloadit/prettier-bytes@npm:2.0.0"
+  checksum: 10c0/34aaf05cb4c85de549ef5e894460275471d5b4c7568270a262634642f056919d7b4dc44ba49f2e63400a2f4e0e1434e264eb1c03de3927b523ef0c648b51f9b9
+  languageName: node
+  linkType: hard
+
 "@turbo/darwin-64@npm:2.11.8":
   version: 2.11.8
   resolution: "@turbo/darwin-64@npm:2.11.8"
@@ -2798,6 +2807,32 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@uppy/aws-s3@npm:6.3.0":
+  version: 6.3.0
+  resolution: "@uppy/aws-s3@npm:6.3.0"
+  peerDependencies:
+    "@uppy/core": ^6.3.0
+  checksum: 10c0/732bf61cc4b17444f14c9ae6b8cc12ec2187931f575066b9bd09e1c4fcccefeca805037ac67efde29f1a667139aadfd9022d72cbc12001aa070f11c92f1f7248
+  languageName: node
+  linkType: hard
+
+"@uppy/core@npm:6.3.0":
+  version: 6.3.0
+  resolution: "@uppy/core@npm:6.3.0"
+  dependencies:
+    "@transloadit/prettier-bytes": "npm:^2.0.0"
+    classnames: "npm:^2.5.1"
+    lodash: "npm:^4.18.1"
+    mime-match: "npm:^1.0.2"
+    namespace-emitter: "npm:^2.0.1"
+    nanoid: "npm:^6.0.1"
+    p-queue: "npm:^9.3.3"
+    p-retry: "npm:^8.0.0"
+    preact: "npm:^10.29.2"
+  checksum: 10c0/c82dd86cb1c1db3360239e777c88843fe061b08d11e52c88e08da66493d73ccb75046043211c9810a5daa32a8c561f7bef86127e747f785cb9ea0ede2e39034c
+  languageName: node
+  linkType: hard
+
 "@vitest/mocker@npm:5.0.5":
   version: 5.0.5
   resolution: "@vitest/mocker@npm:5.0.5"
@@ -3197,6 +3232,13 @@ __metadata:
   version: 3.0.0
   resolution: "chownr@npm:3.0.0"
   checksum: 10c0/43925b87700f7e3893296c8e9c56cc58f926411cce3a6e5898136daaf08f08b9a8eb76d37d3267e707d0dcc17aed2e2ebdf5848c0c3ce95cf910a919935c1b10
+  languageName: node
+  linkType: hard
+
+"classnames@npm:^2.5.1":
+  version: 2.5.1
+  resolution: "classnames@npm:2.5.1"
+  checksum: 10c0/afff4f77e62cea2d79c39962980bf316bacb0d7c49e13a21adaadb9221e1c6b9d3cdb829d8bb1b23c406f4e740507f37e1dcf506f7e3b7113d17c5bab787aa69
   languageName: node
   linkType: hard
 
@@ -3978,6 +4020,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"eventemitter3@npm:^5.0.4":
+  version: 5.0.4
+  resolution: "eventemitter3@npm:5.0.4"
+  checksum: 10c0/575b8cac8d709e1473da46f8f15ef311b57ff7609445a7c71af5cd42598583eee6f098fa7a593e30f27e94b8865642baa0689e8fa97c016f742abdb3b1bf6d9a
+  languageName: node
+  linkType: hard
+
 "expect-type@npm:^1.4.0":
   version: 1.4.0
   resolution: "expect-type@npm:1.4.0"
@@ -4625,6 +4674,13 @@ __metadata:
   version: 2.0.3
   resolution: "is-negative-zero@npm:2.0.3"
   checksum: 10c0/bcdcf6b8b9714063ffcfa9929c575ac69bfdabb8f4574ff557dfc086df2836cf07e3906f5bbc4f2a5c12f8f3ba56af640c843cdfc74da8caed86c7c7d66fd08e
+  languageName: node
+  linkType: hard
+
+"is-network-error@npm:^1.3.0":
+  version: 1.3.2
+  resolution: "is-network-error@npm:1.3.2"
+  checksum: 10c0/37edc576497b21d022754b49203358ee80fdac4a11a71a09687f38ad789ec437dd930c223301df39f1c920566692b31345e0108ae720996e592cab3879eca74f
   languageName: node
   linkType: hard
 
@@ -5295,6 +5351,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"lodash@npm:^4.18.1":
+  version: 4.18.1
+  resolution: "lodash@npm:4.18.1"
+  checksum: 10c0/757228fc68805c59789e82185135cf85f05d0b2d3d54631d680ca79ec21944ec8314d4533639a14b8bcfbd97a517e78960933041a5af17ecb693ec6eecb99a27
+  languageName: node
+  linkType: hard
+
 "loose-envify@npm:^1.4.0":
   version: 1.4.0
   resolution: "loose-envify@npm:1.4.0"
@@ -5354,6 +5417,15 @@ __metadata:
     braces: "npm:^3.0.3"
     picomatch: "npm:^2.3.1"
   checksum: 10c0/166fa6eb926b9553f32ef81f5f531d27b4ce7da60e5baf8c021d043b27a388fb95e46a8038d5045877881e673f8134122b59624d5cecbd16eb50a42e7a6b5ca8
+  languageName: node
+  linkType: hard
+
+"mime-match@npm:^1.0.2":
+  version: 1.0.2
+  resolution: "mime-match@npm:1.0.2"
+  dependencies:
+    wildcard: "npm:^1.1.0"
+  checksum: 10c0/f7f465246abe7798ed4b2072d9474fe86c8bbee6ea6169abb22eceab4a9752b0393272be3efd8620d3214d421a55420663416a1b4e728daba0f431da55030309
   languageName: node
   linkType: hard
 
@@ -5445,12 +5517,28 @@ __metadata:
   languageName: node
   linkType: hard
 
+"namespace-emitter@npm:^2.0.1":
+  version: 2.0.1
+  resolution: "namespace-emitter@npm:2.0.1"
+  checksum: 10c0/847fdc3cc68fc9ba0f8959f240bf530f5c0b33c679079aa7756a39954cfef13f397bb4e4209387032a73f10a73684c75df7c6f60794e03c2b5786eda57bea756
+  languageName: node
+  linkType: hard
+
 "nanoid@npm:^3.3.16, nanoid@npm:^3.3.20":
   version: 3.3.20
   resolution: "nanoid@npm:3.3.20"
   bin:
     nanoid: bin/nanoid.cjs
   checksum: 10c0/856e8bf3bddb959d65997bd94908be030dbc5e6ed88fb3af2a638e51d1938f4d4f454c7c7231aba340775224f88b8cfd3ce1693c70471bfd05f5b6a2227c0c1e
+  languageName: node
+  linkType: hard
+
+"nanoid@npm:^6.0.1":
+  version: 6.0.2
+  resolution: "nanoid@npm:6.0.2"
+  bin:
+    nanoid: bin/nanoid.js
+  checksum: 10c0/3c0223d2e658e6bab838af37112731df28eb5146b982e1b89bc1889b7a1476e0a36b4aa37ac6a567e7ebaf22a690d7916a80143a84cef77bd77416d0f1d20b9c
   languageName: node
   linkType: hard
 
@@ -5853,6 +5941,32 @@ __metadata:
   languageName: node
   linkType: hard
 
+"p-queue@npm:^9.3.3":
+  version: 9.3.5
+  resolution: "p-queue@npm:9.3.5"
+  dependencies:
+    eventemitter3: "npm:^5.0.4"
+    p-timeout: "npm:^7.0.0"
+  checksum: 10c0/44652095edcf36e44bafda8fd6bb6be2d96e1fc05982f0f26afd768e0b07e228dc206b07b3c303771494cecfd28e5797f8e8771c9d5db280561e031fbfcb57a5
+  languageName: node
+  linkType: hard
+
+"p-retry@npm:^8.0.0":
+  version: 8.0.1
+  resolution: "p-retry@npm:8.0.1"
+  dependencies:
+    is-network-error: "npm:^1.3.0"
+  checksum: 10c0/3ce078a179ba2303d29d516db57abed71abd940c29aff292f97f64e2682777b0cb2b03321f4e3badb8185137a3a85cc003ba8060a769b179a5ba8059e7ecdd2c
+  languageName: node
+  linkType: hard
+
+"p-timeout@npm:^7.0.0":
+  version: 7.0.2
+  resolution: "p-timeout@npm:7.0.2"
+  checksum: 10c0/26595bbda27361a15231a82d8d3ef4f277bb3e9647aaa4a554b90012d03d22aaf28165b60afffe9425fb1326bd40b93f145d76eb23adb6b76d07d5f5d4c7964a
+  languageName: node
+  linkType: hard
+
 "package-manager-detector@npm:^1.8.0":
   version: 1.9.0
   resolution: "package-manager-detector@npm:1.9.0"
@@ -6124,7 +6238,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"preact@npm:^10.29.3":
+"preact@npm:^10.29.2, preact@npm:^10.29.3":
   version: 10.29.8
   resolution: "preact@npm:10.29.8"
   peerDependencies:
@@ -7546,6 +7660,13 @@ __metadata:
   bin:
     why-is-node-running: cli.js
   checksum: 10c0/e3f82673aac2c0a330fdbcf4b282ecdf7e9c773fa82fb4217db5b8b3d374cbb51e708d928f5b17999bc65bc1a5a90fad0f6bd794641bd15fdd525949ccee5e39
+  languageName: node
+  linkType: hard
+
+"wildcard@npm:^1.1.0":
+  version: 1.1.2
+  resolution: "wildcard@npm:1.1.2"
+  checksum: 10c0/4051a90884f60c2e7eed81811cbb21b2de37986c0f2f82f081b2a43b9693d5d240e80a98ede68a6fa3fb0779bcdf26720e954a890de26ae4e73ee5f04e233649
   languageName: node
   linkType: hard
 

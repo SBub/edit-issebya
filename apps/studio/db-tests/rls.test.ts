@@ -298,13 +298,14 @@ describe("finish_upload", () => {
     });
   });
 
-  it("finishes the owner's upload once, queueing one job", async () => {
+  it("finishes the owner's upload once, queueing one job however often it is called", async () => {
     const id = await uploadingReel();
     const first = await clientA.rpc("finish_upload", { p_reel_id: id, p_bytes: 1234 });
     expect(first.error).toBeNull();
     expect(typeof first.data).toBe("string");
     const second = await clientA.rpc("finish_upload", { p_reel_id: id, p_bytes: 1234 });
-    expect(second.error).not.toBeNull();
+    expect(second.error).toBeNull();
+    expect(second.data).toBe(first.data);
     expect(await state(id)).toEqual({
       reel: { status: "uploaded", source_bytes: 1234 },
       jobs: [{ owner_id: userA.id, kind: "process", status: "queued" }],

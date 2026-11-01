@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
-import { type Storage, assertStorageKey } from "./storage.ts";
+import { fakeMultipart } from "./fake-multipart.ts";
+import { type Storage, assertStorageKey, assertUploadId, isPartNumber } from "./storage.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -39,6 +40,8 @@ async function walk(dir: string): Promise<string[]> {
   }
   const files: string[] = [];
   for (const entry of entries) {
+    // `.multipart` holds the fake's unfinished uploads, never an object.
+    if (entry.name.startsWith(".")) continue;
     const path = join(dir, entry.name);
     if (entry.isDirectory()) files.push(...(await walk(path)));
     else if (entry.isFile()) files.push(path);
@@ -48,7 +51,8 @@ async function walk(dir: string): Promise<string[]> {
 
 // A Storage backed by a folder, for specs: every key maps to `<root>/<key>`,
 // and a key that could leave the root is refused. Signed URLs are same-origin
-// paths to the studio's mock route (`uploadUrlBase` + key).
+// paths to the studio's mock route (`uploadUrlBase` + key), with S3's query
+// strings for the multipart requests.
 export function fakeStorage({
   root,
   uploadUrlBase,
@@ -57,14 +61,33 @@ export function fakeStorage({
   uploadUrlBase: string;
 }): Storage {
   const pathOf = (key: string) => join(root, assertStorageKey(key));
+  const urlOf = (key: string) => `${uploadUrlBase}${assertStorageKey(key)}`;
 
   return {
-    async signUpload(key) {
-      return `${uploadUrlBase}${assertStorageKey(key)}`;
+    async signCreateMultipart(key, { contentType }) {
+      return { url: `${urlOf(key)}?uploads`, headers: { "Content-Type": contentType } };
+    },
+
+    async signUploadPart(key, { uploadId, partNumber }) {
+      if (!isPartNumber(partNumber)) throw new Error("invalid part number");
+      return `${urlOf(key)}?partNumber=${partNumber}&uploadId=${encodeURIComponent(assertUploadId(uploadId))}`;
+    },
+
+    // List (GET) and complete (POST) share the URL, as on S3.
+    async signListParts(key, { uploadId }) {
+      return `${urlOf(key)}?uploadId=${encodeURIComponent(assertUploadId(uploadId))}`;
+    },
+
+    async signCompleteMultipart(key, { uploadId }) {
+      return `${urlOf(key)}?uploadId=${encodeURIComponent(assertUploadId(uploadId))}`;
+    },
+
+    abortMultipart(key, uploadId) {
+      return fakeMultipart({ root }).abort(key, uploadId);
     },
 
     async signDownload(key) {
-      return `${uploadUrlBase}${assertStorageKey(key)}`;
+      return urlOf(key);
     },
 
     async head(key) {

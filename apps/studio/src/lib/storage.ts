@@ -8,8 +8,8 @@ import {
 
 type Env = Record<string, string | undefined>;
 
-// The mock route the fake's signed URLs point at (the browser PUTs there under
-// E2E_MOCK_STORAGE=true, in place of R2).
+// The mock route the fake's signed URLs point at (the browser sends its
+// multipart requests there under E2E_MOCK_STORAGE=true, in place of R2).
 export const MOCK_UPLOAD_URL_BASE = "/studio/api/e2e-storage-mock/";
 
 const SEGMENT = /^[a-z0-9_-]+$/;
