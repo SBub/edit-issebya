@@ -86,13 +86,18 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   `queued | running | done | failed`, lease holder and expiry, attempts, error tail) and `steps`
   (name, status, summary, error tail), both with owner-only `select` RLS and in the
   `supabase_realtime` publication. Only the worker (secret key) writes job and step state.
-- `supabase/migrations/20261101184843_change_restore_jobs.sql`: `jobs` now has three kinds,
+- `supabase/migrations/20261101184843_change_restore_jobs.sql`: `jobs` then had three kinds,
   `process`, `change` (carries the owner's words in `request`, 1 to 1000 trimmed characters) and
   `restore` (names an earlier version of the same reel in `restore_version_id`). Owners insert jobs
   on two paths: the `process` policy (`jobs: owner inserts a process job for own reel`; an upload
   queues its process job through `finish_upload`) and `jobs: owner inserts a change or restore job
 for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `restore_version_id`);
   status, lease, attempt and error columns stay the worker's. See `app_docs/change-requests.md`.
+- `supabase/migrations/20261101194557_export_render_jobs.sql`: the fourth kind, `render` (kinds
+  `process`, `change`, `restore`, `render`), names the version to export in `version_id` (required
+  exactly for a render). A third owner insert path, `jobs: owner inserts a render job for own reel`
+  (grant on `version_id`). The `exports` table holds each finished render: owner-only `select`,
+  written only by the worker, in `supabase_realtime`. See `app_docs/export.md`.
 - `claim_job(p_worker, p_lease_seconds)`: one statement picks the oldest `queued` job, or a
   `running` one whose lease expired, with `for update skip locked`, then takes the lease and counts
   an attempt. Only `service_role` may execute it. There is no retry limit yet.
@@ -136,6 +141,8 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 - `E2E_MOCK_STORAGE=true` (exactly) makes both use the gitignored `.e2e-storage/` folder at the
   repository root; the studio's `/studio/api/e2e-storage-mock/[...key]` route stands in for R2's
   PUT and answers 404 otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
+  `E2E_MOCK_RENDER=true` (exactly) replaces the HyperFrames render with a copy of
+  `fixtures/render/stub-export.mp4`.
 - `fixtures/footage/short-speech.mp4` is the committed short vertical clip with speech, made by
   `scripts/make-test-clip.sh` (macOS only, run by hand).
 
@@ -168,7 +175,7 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 - Worker (`apps/worker/.env.development`): `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `WORKER_ID`,
   `R2_WORKER_ACCESS_KEY_ID`, `R2_WORKER_SECRET_ACCESS_KEY`, `WORKER_POLL_INTERVAL_SECONDS`
   (default 120), `WORKER_MIN_FREE_DISK_GB` (default 10), `WORKER_SCRATCH_DIR`, `CLAUDE_CODE_PATH`,
-  `FFMPEG_PATH`, `E2E_MOCK_AI`, `E2E_MOCK_STORAGE`.
+  `FFMPEG_PATH`, `E2E_MOCK_AI`, `E2E_MOCK_STORAGE`, `E2E_MOCK_RENDER` (the last three tests only).
 - `SUPABASE_SECRET_KEY` is read only by the worker and by the test helpers in
   `apps/studio/test-support/`, from `apps/worker/.env.development`.
 - `SUPABASE_DB_URL`: test helpers only (`localDbUrl` in `apps/studio/test-support/local-supabase.ts`),

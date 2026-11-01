@@ -13,6 +13,7 @@ function job(kind: string): ClaimedJob {
     attempts: 1,
     request: kind === "change" ? "move the title lower" : null,
     restore_version_id: kind === "restore" ? "v1" : null,
+    version_id: kind === "render" ? "v2" : null,
   };
 }
 
@@ -50,7 +51,7 @@ describe("ending a job", () => {
     expect(failed.updates[1]?.values).toEqual({ status: "failed" });
   });
 
-  for (const kind of ["change", "restore"]) {
+  for (const kind of ["change", "restore", "render"]) {
     it(`never writes the reel's status for a ${kind} job, finished or failed`, async () => {
       const done = stubClient();
       expect(await finishJob(done.db, CONFIG, job(kind))).toBe(true);

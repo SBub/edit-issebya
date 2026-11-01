@@ -3,7 +3,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertLocalUrl } from "./local-supabase.ts";
 
 const REPOSITORY_ROOT = new URL("../../../", import.meta.url).pathname;
-const TIMEOUT_MS = 60_000;
 
 // Ids of jobs a worker could claim now: queued, or running with an expired
 // lease. claim_job takes the oldest one globally, so a test asserts this is
@@ -17,10 +16,13 @@ export async function claimableJobIds(admin: SupabaseClient): Promise<string[]> 
   return (data ?? []).map((row: { id: string }) => row.id);
 }
 
-// Spawns the worker's `once` against the local stack with the storage and AI
-// doubles on and OTLP export off, and resolves with its exit code and output.
+// Spawns the worker's `once` against the local stack with the storage, AI and
+// render doubles on and OTLP export off, and resolves with its exit code and
+// output. No spec ever starts a real render: only the tools spec passes
+// `E2E_MOCK_RENDER: ""` (with a longer timeout).
 export function runWorkerOnce(
   env: Record<string, string> = {},
+  { timeoutMs = 60_000 }: { timeoutMs?: number } = {},
 ): Promise<{ code: number | null; output: string }> {
   const childEnv = {
     ...process.env,
@@ -31,6 +33,7 @@ export function runWorkerOnce(
     SUPABASE_URL: assertLocalUrl(process.env.SUPABASE_URL),
     E2E_MOCK_STORAGE: "true",
     E2E_MOCK_AI: "true",
+    E2E_MOCK_RENDER: "true",
     WORKER_ID: `e2e-${crypto.randomUUID()}`,
     ...env,
   };
@@ -45,8 +48,8 @@ export function runWorkerOnce(
     child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
-      reject(new Error(`worker once timed out after ${TIMEOUT_MS} ms:\n${output}`));
-    }, TIMEOUT_MS);
+      reject(new Error(`worker once timed out after ${timeoutMs} ms:\n${output}`));
+    }, timeoutMs);
     child.on("error", (error) => {
       clearTimeout(timer);
       reject(error);

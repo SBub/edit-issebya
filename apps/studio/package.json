@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:db": "vitest run --config vitest.db.config.ts",
     "test:e2e": "playwright test",
+    "test:tools": "playwright test -c playwright.tools.config.ts",
     "e2e:sign-in-url": "node --env-file-if-exists=../worker/.env.development --env-file-if-exists=.env.development scripts/e2e-sign-in-url.ts"
   },
   "engines": {

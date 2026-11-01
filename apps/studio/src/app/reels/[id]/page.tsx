@@ -9,7 +9,8 @@ import { REEL_DETAIL_COLUMNS, isReelId, reelName } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
 
-// Reads the reel, its jobs, its steps and its versions once on the server; LiveReel then
+// Reads the reel, its jobs, its steps, its versions and its newest export's id
+// once on the server; LiveReel then
 // follows changes through Realtime. No polling, no interval.
 export default async function ReelPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -33,7 +34,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
   if (!reel) notFound();
 
   // The step log is loaded only here, for the open reel.
-  const [jobs, steps, versions] = await Promise.all([
+  const [jobs, steps, versions, latestExport] = await Promise.all([
     supabase
       .from("jobs")
       .select(JOB_COLUMNS)
@@ -52,10 +53,20 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
       .eq("reel_id", id)
       .order("number")
       .returns<VersionListRow[]>(),
+    supabase
+      .from("exports")
+      .select("id")
+      .eq("reel_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string }>(),
   ]);
   if (jobs.error) throw new Error(`studio: jobs not loaded: ${jobs.error.message}`);
   if (steps.error) throw new Error(`studio: steps not loaded: ${steps.error.message}`);
   if (versions.error) throw new Error(`studio: versions not loaded: ${versions.error.message}`);
+  if (latestExport.error) {
+    throw new Error(`studio: exports not loaded: ${latestExport.error.message}`);
+  }
 
   return (
     <article className="flex flex-col gap-4">
@@ -69,6 +80,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
         jobs={jobs.data ?? []}
         steps={steps.data ?? []}
         versions={versions.data ?? []}
+        latestExportId={latestExport.data?.id ?? null}
       />
     </article>
   );

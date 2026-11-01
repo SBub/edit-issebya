@@ -63,6 +63,8 @@ yarn build
 yarn test:db                        # Supabase integration tests, needs the local stack
 yarn workspace @edit-issebya/web playwright install chromium webkit   # once
 yarn test:e2e                       # Playwright specs in apps/web/e2e/
+yarn workspace @edit-issebya/worker test:tools   # real ffmpeg and HyperFrames, Mac only
+PORT=3000 STUDIO_PORT=3001 yarn workspace @edit-issebya/studio test:tools   # preview matches export, Mac only, needs the dev servers
 ```
 
 `yarn test:e2e` starts its own server with the Stripe and Resend mocks on. Against a server that is

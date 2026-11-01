@@ -9,6 +9,8 @@ import { type ClaimedJob, failJob, finishJob, renewLease } from "./queue.ts";
 import { runPipeline } from "./pipeline/run-pipeline.ts";
 import { previewCopiesRefs, recordPreviewCopies } from "./preview-copies-record.ts";
 import { toolPaths } from "./pipeline/tools.ts";
+import { supabaseExportStore } from "./render/export-store.ts";
+import { runRender } from "./render/render-step.ts";
 import { runRestore } from "./restore-step.ts";
 import { type JobOutcome, runJob } from "./run-job.ts";
 import { supabaseStepStore } from "./step-store.ts";
@@ -19,8 +21,10 @@ import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 // the job's work by kind under a kept lease, then the job's final write. A
 // `process` job runs the fixed pipeline steps, the preview copies' location,
 // the first version and the decide step; a `change` job only the decide step
-// with the owner's request; a `restore` job only the restore step. Only a
-// `process` job moves the reel's status (queue.ts).
+// with the owner's request; a `restore` job only the restore step; a `render`
+// job the pipeline's hits (or a rebuilt output) and the render step, leaving
+// the reel's status alone. Only a `process` job moves the reel's status
+// (queue.ts).
 export async function processJob(
   db: SupabaseClient,
   storage: Storage,
@@ -80,6 +84,17 @@ export async function processJob(
           change: (request) => decide(request),
           restore: (versionId) =>
             runRestore({ ctx, rows, blobs, keyPrefix: config.keyPrefix, versionId }),
+          render: (versionId) =>
+            runRender({
+              ctx,
+              storage,
+              rows,
+              exports: supabaseExportStore(db),
+              keyPrefix: config.keyPrefix,
+              scratchDir: config.scratchDir,
+              tools: toolPaths(),
+              versionId,
+            }),
         });
       },
       finish: () => finishJob(db, config, job),

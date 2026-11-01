@@ -20,7 +20,8 @@ export function normalizeRequest(text: unknown): NormalizedRequest {
 }
 
 // Interim rule, until jobs are ordered in the database: a change or a going
-// back opens only on a processed reel with no job queued or running. Null
+// back opens only on a processed reel with no job queued or running (a
+// render counts too). Null
 // when open, otherwise the one-line reason shown beside the disabled control.
 export function changeBlockedReason(
   reel: Pick<ReelDetail, "status">,
@@ -50,7 +51,7 @@ export function versionOrigin(
 // What a job was asked to do, for its line in the jobs list; null for a
 // process job.
 export function jobRequestLabel(
-  job: Pick<JobRow, "kind" | "request" | "restore_version_id">,
+  job: Pick<JobRow, "kind" | "request" | "restore_version_id" | "version_id">,
   versionsById: ReadonlyMap<string, Pick<VersionListRow, "number">>,
 ): string | null {
   const kind = job.kind as JobKind;
@@ -58,6 +59,10 @@ export function jobRequestLabel(
   if (kind === "restore" && job.restore_version_id) {
     const to = versionsById.get(job.restore_version_id);
     return to ? `go back to v${to.number}` : "go back to an earlier version";
+  }
+  if (kind === "render") {
+    const of = job.version_id ? versionsById.get(job.version_id) : undefined;
+    return of ? `export of v${of.number}` : "export";
   }
   return null;
 }

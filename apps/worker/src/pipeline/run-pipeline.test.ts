@@ -141,7 +141,12 @@ async function outputKeys() {
 
 function run(
   steps: ReturnType<typeof recordingSteps>["steps"],
-  options: { spawnTool?: SpawnTool; pipeline?: typeof PIPELINE; signal?: AbortSignal } = {},
+  options: {
+    spawnTool?: SpawnTool;
+    pipeline?: typeof PIPELINE;
+    signal?: AbortSignal;
+    setReelStatus?: boolean;
+  } = {},
 ) {
   return runPipeline({
     ctx: stepContext(steps, options.signal ? { signal: options.signal } : {}),
@@ -151,6 +156,7 @@ function run(
     tools: TOOLS,
     spawnTool: options.spawnTool ?? fakeTools(),
     pipeline: options.pipeline,
+    setReelStatus: options.setReelStatus,
   });
 }
 
@@ -251,6 +257,29 @@ describe("runPipeline", () => {
     ]);
     expect(spawned).toEqual([]);
     expect(counts).toEqual({ getFile: 0, putFileIfAbsent: 0 });
+  });
+
+  it("never moves the reel's status with setReelStatus false, even rebuilding a lost output", async () => {
+    await run(recordingSteps(SOURCE_KEY).steps);
+    const hits = recordingSteps(SOURCE_KEY);
+    await run(hits.steps, { setReelStatus: false });
+    expect(shape(hits.calls)).toEqual(PIPELINE.map((step) => `skipped ${step.name}`));
+
+    const cutout = (await outputKeys()).find((key) => key.endsWith("/subject.webm"))!;
+    await storage.delete(cutout);
+    spawned = [];
+    const rebuilt = recordingSteps(SOURCE_KEY);
+    await run(rebuilt.steps, { setReelStatus: false });
+    expect(shape(rebuilt.calls)).toEqual([
+      "skipped convert",
+      "skipped transcribe",
+      "skipped retime",
+      "start remove_background",
+      "done",
+      "skipped head_track",
+      "skipped preview_copies",
+    ]);
+    expect(await storage.head(cutout)).not.toBeNull();
   });
 
   it("re-runs only the step that lost an output, keeping its stored ones", async () => {

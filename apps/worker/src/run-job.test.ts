@@ -10,6 +10,7 @@ const JOB: ClaimedJob = {
   attempts: 1,
   request: null,
   restore_version_id: null,
+  version_id: null,
 };
 
 function deps(work: (signal: AbortSignal) => Promise<void>) {

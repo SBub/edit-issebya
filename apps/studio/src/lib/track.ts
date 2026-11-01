@@ -1,9 +1,10 @@
 import posthog from "posthog-js";
 import { STUDIO_SUPER_PROPERTIES } from "./analytics";
 
-// Every studio event; names are never renamed once shipped. Sent today:
-// studio_footage_uploaded, studio_preview_opened and studio_change_requested
-// (reel_id only, never the request text); the export events are reserved.
+// Every studio event; names are never renamed once shipped. All are sent:
+// studio_footage_uploaded, studio_preview_opened, studio_change_requested
+// (reel_id only, never the request text), studio_export_requested and
+// studio_export_downloaded (ExportPanel, reel_id only).
 export const STUDIO_EVENTS = [
   "studio_footage_uploaded",
   "studio_preview_opened",

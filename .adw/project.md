@@ -144,7 +144,10 @@ the gitignored `next-env.d.ts`, never stage it); dead code `yarn knip` (whole re
 `knip.json` with a workspace per package); format `yarn format:check` (whole repository; write
 `yarn format`); unit `yarn turbo run test <filter>` (vitest, database-free); for a run targeting
 the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (real ffmpeg and
-HyperFrames on the committed clip; on the owner's Mac only, never in CI); DB integration
+HyperFrames on the committed clip; on the owner's Mac only, never in CI), and the studio's
+`yarn workspace @edit-issebya/studio test:tools` (`apps/studio/e2e-tools/export-matches-preview.spec.ts`,
+the preview-matches-export guardrail, real HyperFrames, on the owner's Mac only, never in CI, run as
+`PORT=<run port> STUDIO_PORT=<BACKEND_PORT>` against the run's servers from `/prepare_app`); DB integration
 `yarn turbo run test:db --filter=./apps/studio` (after unit; needs the ADW stack from the hook); build
 as in Build; and last the E2E suites `yarn test:e2e`.
 
@@ -161,7 +164,9 @@ byte for byte, like the Node project does. The DB layer is `apps/studio/db-tests
 (`apps/studio/vitest.db.config.ts`: RLS on every public table, owner isolation, Realtime follows
 RLS, `jobs.test.ts` for `claim_job`'s lease, `versions.test.ts` for `save_version`, version
 immutability and its RLS, `steps-measurements.test.ts` for the exact
-`steps` column set and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit`), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
+`steps` column set and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit`, `exports.test.ts` for
+the render job policy and the `exports` table: 24-hour expiry, owner from the reel, never updated,
+owner-only select), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
 layer; the browser layer is the Playwright suites below.
 
 E2E code suites: `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium, plus webkit for the dialog
@@ -177,7 +182,10 @@ its AI answer keeping version 1 unchanged, so version 2 matches the version 1 go
 and plays its live preview: the HyperFrames runtime and GSAP routed from the pinned local
 packages, so no network), `change-requests.spec.ts` seeds a processed reel the same way, a change
 makes version 3 live, a change the AI refuses twice keeps version 3 and the reel `processed`, and
-going back makes versions 4 and 5, run last by
+going back makes versions 4 and 5, `export.spec.ts` seeds a processed reel the same way, Export
+queues a `render` job the worker's `once` runs with the stubbed render (`E2E_MOCK_RENDER=true`, set
+by `test-support/worker.ts` for every spec, so no spec renders for real), the link downloads the
+stub, and a 25-hour-old export shows `expired, export again`, run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
 arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by

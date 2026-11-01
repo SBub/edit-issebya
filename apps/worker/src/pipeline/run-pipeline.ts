@@ -15,6 +15,8 @@ export interface PipelineRun {
   tools: ToolPaths;
   spawnTool?: SpawnTool;
   pipeline?: readonly PipelineStep[];
+  // false: the reel's status never moves (a render runs on a processed reel).
+  setReelStatus?: boolean;
 }
 
 function elapsedMs(started: number): number {
@@ -49,6 +51,7 @@ export async function runPipeline({
   tools,
   spawnTool,
   pipeline = PIPELINE,
+  setReelStatus = true,
 }: PipelineRun): Promise<{ fingerprints: Record<string, string> }> {
   const { steps, job, signal } = ctx;
   const sourceKey = await steps.sourceKey(job.reel_id);
@@ -81,7 +84,7 @@ export async function runPipeline({
       );
       const stored = await Promise.all(outputKeys.map((key) => storage.head(key, { signal })));
       signal.throwIfAborted();
-      await steps.reelStatus(job.reel_id, step.reelStatus);
+      if (setReelStatus) await steps.reelStatus(job.reel_id, step.reelStatus);
       if (stored.every((object) => object !== null)) {
         await recordHit(ctx, {
           name: step.name,

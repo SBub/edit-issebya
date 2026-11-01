@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { e2eStorageRoot, fakeStorage, isE2EMockStorage, isStorageKey } from "@edit-issebya/storage";
+import {
+  e2eStorageRoot,
+  fakeStorage,
+  isDownloadName,
+  isE2EMockStorage,
+  isStorageKey,
+} from "@edit-issebya/storage";
 import { MOCK_UPLOAD_URL_BASE } from "@/lib/storage";
 
 /**
@@ -8,7 +14,9 @@ import { MOCK_UPLOAD_URL_BASE } from "@/lib/storage";
  * place of R2, and the bytes land in the gitignored `.e2e-storage/` folder at
  * the repository root, where the worker reads them. GET returns the bytes
  * (honouring a single `Range`, as R2 does, so a video can seek), HEAD their
- * size.
+ * size. A `download=<name>` parameter (the fake's signDownload with a
+ * downloadName) makes the GET an attachment with that name, as R2's
+ * response-content-disposition does.
  *
  * Every method 404s unless E2E_MOCK_STORAGE is exactly "true", so the route is
  * inert in `yarn dev` and production, and never receives a body there.
@@ -77,6 +85,13 @@ function byteRange(
   return { start, end };
 }
 
+// `Content-Disposition` for a well-formed `download` parameter, else nothing.
+function disposition(request: Request): Record<string, string> {
+  const name = new URL(request.url).searchParams.get("download");
+  if (name === null || !isDownloadName(name)) return {};
+  return { "Content-Disposition": `attachment; filename="${name}"` };
+}
+
 export async function GET(request: Request, context: Context) {
   if (!isE2EMockStorage()) return notFound();
   const key = await storageKey(context);
@@ -100,6 +115,7 @@ export async function GET(request: Request, context: Context) {
         "Content-Type": type,
         "Content-Length": String(slice.byteLength),
         "Content-Range": `bytes ${range.start}-${range.end}/${body.byteLength}`,
+        ...disposition(request),
       },
     });
   }
@@ -109,6 +125,7 @@ export async function GET(request: Request, context: Context) {
       "Accept-Ranges": "bytes",
       "Content-Type": type,
       "Content-Length": String(body.byteLength),
+      ...disposition(request),
     },
   });
 }

@@ -33,7 +33,9 @@ client, identifies the signed-in user and sends `studio_*` events.
 - `src/process-tree.ts`: with `sampleGroupMemory: true` the runner runs `ps -A -o pid=,ppid=,rss=`
   every second (and once after the spawn), sums the RSS of the tool and all its descendants and keeps
   the peak. `peak_rss_bytes` is the larger of that peak and the report's max RSS. Without the option
-  it is the largest single process. Meant for the render's long-lived browser processes.
+  it is the largest single process. Meant for the render's long-lived browser processes: the
+  export's `render` step is the step that uses it (HyperFrames runs Chrome workers and an encoder);
+  see `app_docs/export.md`.
 - `src/summary.ts`: `stepSummary` gives `<what>, <duration in words>, <size>`, for example
   `background removed, 6 minutes 47 seconds, 51.0 MB` (`formatBytes`, one decimal, 1024 convention;
   durations under a second read `under a second`, hours drop the seconds, zero parts are omitted).
@@ -86,12 +88,13 @@ client, identifies the signed-in user and sends `studio_*` events.
   summary exists), and a failed step's `error_tail` sits in a collapsed `<details data-testid="step-error-tail">`
   ("Show error"). Still one read on open plus Realtime, no polling. The measurement columns are not shown.
 
-| Event                                                 | Sent when                                                                    | Properties                                |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------- |
-| `studio_footage_uploaded`                             | an upload finishes (`UploadForm.tsx`)                                        | `reel_id`, `app`                          |
-| `studio_preview_opened`                               | the live preview first reaches the player on a page open (`ReelPreview.tsx`) | `reel_id`, `app`                          |
-| `studio_change_requested`                             | the owner sends a change request (`ChangeRequestForm.tsx`)                   | `reel_id`, `app` (never the request text) |
-| `studio_export_requested`, `studio_export_downloaded` | reserved, not sent yet                                                       | `reel_id`, `app`                          |
+| Event                      | Sent when                                                                    | Properties                                |
+| -------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------- |
+| `studio_footage_uploaded`  | an upload finishes (`UploadForm.tsx`)                                        | `reel_id`, `app`                          |
+| `studio_preview_opened`    | the live preview first reaches the player on a page open (`ReelPreview.tsx`) | `reel_id`, `app`                          |
+| `studio_change_requested`  | the owner sends a change request (`ChangeRequestForm.tsx`)                   | `reel_id`, `app` (never the request text) |
+| `studio_export_requested`  | the Export button queues a render job (`ExportPanel.tsx`)                    | `reel_id`, `app`                          |
+| `studio_export_downloaded` | the owner clicks the download link (`ExportPanel.tsx`)                       | `reel_id`, `app`                          |
 
 ## How to Use
 
