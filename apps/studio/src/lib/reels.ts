@@ -1,7 +1,8 @@
 // Named columns, never "*": a later column (a storage key, a worker field)
 // never reaches the page by accident.
 export const REEL_COLUMNS = "id, status, source_name, created_at";
-export const REEL_DETAIL_COLUMNS = "id, status, source_name, source_bytes, created_at, updated_at";
+export const REEL_DETAIL_COLUMNS =
+  "id, status, source_name, source_bytes, created_at, updated_at, current_version_id, preview_copies";
 
 export const REEL_STATUSES = [
   "uploading",
@@ -28,6 +29,9 @@ export interface ReelSummary {
 export interface ReelDetail extends ReelSummary {
   source_bytes: number | null;
   updated_at: string;
+  current_version_id: string | null;
+  // Where the preview copies are (worker-written; see lib/preview-sources).
+  preview_copies: unknown;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

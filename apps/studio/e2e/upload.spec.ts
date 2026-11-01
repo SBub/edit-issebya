@@ -1,16 +1,14 @@
-import { readFile, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { ISSEBYA_PRESET, parseEdit, transcriptSchema } from "@edit-issebya/edit";
 import { expect, test } from "@playwright/test";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
+import { pipelineManifest, seedPipelineCache } from "../test-support/pipeline-cache.ts";
 import { eventsNamed, recordEvents } from "./events.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
 const CLIP = new URL("../../../fixtures/footage/short-speech.mp4", import.meta.url).pathname;
-// Every step's outputs for the clip, under their fingerprints
-// (`yarn workspace @edit-issebya/worker fixtures:pipeline`).
-const PIPELINE_FIXTURES = new URL("../../../fixtures/pipeline/", import.meta.url);
 // This run's own cache folder: the worker reads it through R2_KEY_PREFIX.
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
 
@@ -23,28 +21,6 @@ let owner: { id: string; email: string };
 let sourceKey: string | null = null;
 let versionKey: string | null = null;
 const seededKeys: string[] = [];
-
-interface PipelineManifest {
-  steps: { name: string; fingerprint: string; files: string[] }[];
-}
-
-// Stores every committed step output at `<prefix>cache/<step>/<fingerprint>/<file>`,
-// so the worker finds each step's outputs and spawns no tool.
-async function seedPipelineCache() {
-  const manifest = JSON.parse(
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixtures
-    await readFile(new URL("manifest.json", PIPELINE_FIXTURES), "utf8"),
-  ) as PipelineManifest;
-  for (const step of manifest.steps) {
-    for (const file of step.files) {
-      const key = `${CACHE_PREFIX}cache/${step.name}/${step.fingerprint}/${file}`;
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixtures
-      const body = await readFile(new URL(`${step.name}/${file}`, PIPELINE_FIXTURES));
-      await storage.put(key, new Uint8Array(body));
-      seededKeys.push(key);
-    }
-  }
-}
 
 test.beforeAll(async () => {
   const leftover = await claimableJobIds(admin);
@@ -117,7 +93,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1, and the
     (window as unknown as { __noReload: string }).__noReload = "marker";
   });
 
-  await seedPipelineCache();
+  seededKeys.push(...(await seedPipelineCache(storage, CACHE_PREFIX)));
   const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX });
   expect(worker.code, worker.output).toBe(0);
 
@@ -196,10 +172,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1, and the
     r2_key: `${CACHE_PREFIX}reels/${reelId}/versions/${versionId}.json`,
   });
   versionKey = version!.r2_key as string;
-  const manifest = JSON.parse(
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixtures
-    await readFile(new URL("manifest.json", PIPELINE_FIXTURES), "utf8"),
-  ) as PipelineManifest;
+  const manifest = await pipelineManifest();
   const retime = manifest.steps.find((step) => step.name === "retime")!;
   const transcript = transcriptSchema.parse(
     JSON.parse(

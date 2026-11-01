@@ -4,6 +4,7 @@ import type { WorkerConfig } from "./config.ts";
 import { saveFirstVersion } from "./first-version.ts";
 import { type ClaimedJob, failJob, finishJob, renewLease } from "./queue.ts";
 import { runPipeline } from "./pipeline/run-pipeline.ts";
+import { previewCopiesRefs, recordPreviewCopies } from "./preview-copies-record.ts";
 import { toolPaths } from "./pipeline/tools.ts";
 import { type JobOutcome, runJob } from "./run-job.ts";
 import { supabaseStepStore } from "./step-store.ts";
@@ -11,7 +12,7 @@ import { type Telemetry, endJobSpan, startJobSpan } from "./telemetry.ts";
 import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 
 // Wires one claimed job to the database, storage and telemetry: the job span,
-// the fixed pipeline steps and the first version under a kept lease, then the
+// the fixed pipeline steps, the preview copies' location and the first version under a kept lease, then the
 // job's final write.
 export async function processJob(
   db: SupabaseClient,
@@ -37,6 +38,9 @@ export async function processJob(
           scratchDir: config.scratchDir,
           tools: toolPaths(),
         });
+        // Before the first version, so a reel with a current version already
+        // says where its preview copies are.
+        await recordPreviewCopies(db, job.reel_id, previewCopiesRefs(fingerprints));
         await saveFirstVersion({
           ctx,
           storage,

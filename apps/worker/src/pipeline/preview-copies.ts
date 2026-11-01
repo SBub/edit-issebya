@@ -34,8 +34,11 @@ export const PREVIEW_SETTINGS = {
 
 export type PreviewSettings = typeof PREVIEW_SETTINGS;
 
-const FOOTAGE = "footage-preview.mp4";
-const SUBJECT = "subject-preview.webm";
+// The kept outputs; the worker records them on the reel for the studio.
+export const FOOTAGE_PREVIEW_FILE = "footage-preview.mp4";
+export const SUBJECT_PREVIEW_FILE = "subject-preview.webm";
+const FOOTAGE = FOOTAGE_PREVIEW_FILE;
+const SUBJECT = SUBJECT_PREVIEW_FILE;
 const FOOTAGE_PARTIAL = "footage-preview.part.mp4";
 const SUBJECT_PARTIAL = "subject-preview.part.webm";
 

@@ -6,8 +6,9 @@ import { MOCK_UPLOAD_URL_BASE } from "@/lib/storage";
  * E2E-only stand-in for R2. Under E2E_MOCK_STORAGE=true the fake storage signs
  * upload URLs that point here, so the browser PUTs the file to this route in
  * place of R2, and the bytes land in the gitignored `.e2e-storage/` folder at
- * the repository root, where the worker reads them. GET returns the bytes,
- * HEAD their size.
+ * the repository root, where the worker reads them. GET returns the bytes
+ * (honouring a single `Range`, as R2 does, so a video can seek), HEAD their
+ * size.
  *
  * Every method 404s unless E2E_MOCK_STORAGE is exactly "true", so the route is
  * inert in `yarn dev` and production, and never receives a body there.
@@ -44,15 +45,71 @@ export async function PUT(request: Request, context: Context) {
   });
 }
 
-export async function GET(_request: Request, context: Context) {
+const CONTENT_TYPES: Record<string, string> = {
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".json": "application/json",
+};
+
+function contentType(key: string): string {
+  const dot = key.lastIndexOf(".");
+  return (dot >= 0 && CONTENT_TYPES[key.slice(dot)]) || "application/octet-stream";
+}
+
+// One `bytes=a-b`, `bytes=a-` or `bytes=-n` range over `size` bytes, as R2
+// answers it: the inclusive slice, "unsatisfiable", or null for no (or an
+// unparsed) range, which serves the whole object.
+function byteRange(
+  header: string | null,
+  size: number,
+): { start: number; end: number } | "unsatisfiable" | null {
+  if (!header) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match || (match[1] === "" && match[2] === "")) return null;
+  if (match[1] === "") {
+    const suffix = Number(match[2]);
+    if (suffix === 0 || size === 0) return "unsatisfiable";
+    return { start: Math.max(size - suffix, 0), end: size - 1 };
+  }
+  const start = Number(match[1]);
+  const end = match[2] === "" ? size - 1 : Math.min(Number(match[2]), size - 1);
+  if (start >= size || end < start) return "unsatisfiable";
+  return { start, end };
+}
+
+export async function GET(request: Request, context: Context) {
   if (!isE2EMockStorage()) return notFound();
   const key = await storageKey(context);
   if (!key) return NextResponse.json({ error: "Bad key" }, { status: 400 });
   const body = await storage().get(key);
   if (!body) return notFound();
+  const type = contentType(key);
+  const range = byteRange(request.headers.get("range"), body.byteLength);
+  if (range === "unsatisfiable") {
+    return new NextResponse(null, {
+      status: 416,
+      headers: { "Content-Range": `bytes */${body.byteLength}`, "Accept-Ranges": "bytes" },
+    });
+  }
+  if (range) {
+    const slice = body.slice(range.start, range.end + 1);
+    return new NextResponse(new Blob([slice as Uint8Array<ArrayBuffer>]), {
+      status: 206,
+      headers: {
+        "Accept-Ranges": "bytes",
+        "Content-Type": type,
+        "Content-Length": String(slice.byteLength),
+        "Content-Range": `bytes ${range.start}-${range.end}/${body.byteLength}`,
+      },
+    });
+  }
   return new NextResponse(new Blob([body as Uint8Array<ArrayBuffer>]), {
     status: 200,
-    headers: { "Content-Length": String(body.byteLength) },
+    headers: {
+      "Accept-Ranges": "bytes",
+      "Content-Type": type,
+      "Content-Length": String(body.byteLength),
+    },
   });
 }
 
