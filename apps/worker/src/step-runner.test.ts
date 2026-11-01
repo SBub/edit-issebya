@@ -59,9 +59,12 @@ describe("runStep", () => {
   describe("a tool with three grandchildren holding 100 MB each for 4 seconds", () => {
     // Each grandchild prints its own peak RSS when it lets go; the parent writes
     // the largest of theirs and its own to `out`, the most `/usr/bin/time` can
-    // report for one process.
+    // report for one process. Group sampling reads the tree's current RSS, so the
+    // buffer is random (macOS compresses a constant-filled one under memory
+    // pressure, which once read 150 MB for 300 MB held) and every page is
+    // touched again every 100 ms so none goes idle.
     const hold =
-      "const b = Buffer.alloc(100 * 1024 * 1024, 1); setTimeout(() => { void b; console.log(process.resourceUsage().maxRSS * 1024); }, 4000);";
+      'const b = require("node:crypto").randomFillSync(Buffer.allocUnsafe(100 * 1024 * 1024)); const k = setInterval(() => { for (let i = 0; i < b.length; i += 4096) b[i] ^= 1; }, 100); setTimeout(() => { clearInterval(k); console.log(process.resourceUsage().maxRSS * 1024); }, 4000);';
     const parent = (out: string) => `
       const { spawn } = require("node:child_process");
       const { writeFileSync } = require("node:fs");
