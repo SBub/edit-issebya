@@ -49,13 +49,17 @@ try {
     const fingerprint = fingerprints[step.name]!;
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- under fixtures/pipeline
     await mkdir(join(OUT, step.name), { recursive: true });
-    for (const file of step.outputs) {
+    for (const { file } of step.outputs) {
       await copyFile(
         join(root, cacheKey("", step.name, fingerprint, file)),
         join(OUT, step.name, file),
       );
     }
-    manifest.steps.push({ name: step.name, fingerprint, files: [...step.outputs] });
+    manifest.steps.push({
+      name: step.name,
+      fingerprint,
+      files: step.outputs.map((output) => output.file),
+    });
   }
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- under fixtures/pipeline
   await writeFile(join(OUT, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);

@@ -121,6 +121,9 @@ test("an uploaded clip goes through every pipeline step and the page updates liv
       "convert: footage converted, reused",
       "transcribe: transcribed, reused",
       "retime: retimed, reused",
+      "remove_background: background removed, reused",
+      "head_track: head tracked, reused",
+      "preview_copies: preview copies made, reused",
     ],
     { timeout: 10_000 },
   );
@@ -140,7 +143,14 @@ test("an uploaded clip goes through every pipeline step and the page updates liv
     bytes_in: null,
     bytes_out: null,
   });
-  expect(steps).toEqual([hit("convert"), hit("transcribe"), hit("retime")]);
+  expect(steps).toEqual([
+    hit("convert"),
+    hit("transcribe"),
+    hit("retime"),
+    hit("remove_background"),
+    hit("head_track"),
+    hit("preview_copies"),
+  ]);
   for (const step of steps!) expect(step.wall_ms).toBeGreaterThanOrEqual(0);
   await expect(page.getByTestId("reel-status")).toHaveText("processed", { timeout: 10_000 });
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(

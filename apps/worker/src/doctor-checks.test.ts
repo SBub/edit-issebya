@@ -15,6 +15,12 @@ const PASSING: DoctorDeps = {
       " ... tonemap           V->V       Conversion to/from different dynamic ranges.",
       " ... zscale            V->V       Apply resizing, colorspace and bit depth conversion.",
     ].join("\n"),
+  ffmpegCodecs: async () =>
+    [
+      "Codecs:",
+      " DEV.L. vp8                  On2 VP8 (decoders: vp8 libvpx) (encoders: libvpx)",
+      " DEV.L. vp9                  Google VP9 (decoders: vp9 libvpx-vp9) (encoders: libvpx-vp9)",
+    ].join("\n"),
   hyperframes: async () => "0.8.222\n",
   ai: () => fakeAiRunner([{ ok: true }]),
 };
@@ -28,6 +34,20 @@ describe("runDoctor", () => {
     expect(lines[3]).toBe("FAIL ffmpeg filters: missing zscale, tonemap, astats, ametadata");
   });
 
+  it("names the VP9 decoder or encoder a build lacks", async () => {
+    const vp9 = async (line: string) =>
+      (await runDoctor({ ...PASSING, ffmpegCodecs: async () => line })).lines[4];
+    expect(await vp9(" D.V.L. vp9  Google VP9 (decoders: vp9 libvpx-vp9)")).toBe(
+      "FAIL ffmpeg vp9: missing libvpx-vp9 encoder",
+    );
+    expect(await vp9(" DEV.L. vp9  Google VP9 (decoders: vp9) (encoders: libvpx-vp9)")).toBe(
+      "FAIL ffmpeg vp9: missing libvpx-vp9 decoder",
+    );
+    expect(
+      await vp9(" DEV.L. vp8  On2 VP8 (decoders: vp8 libvpx-vp9) (encoders: libvpx-vp9)"),
+    ).toBe("FAIL ffmpeg vp9: missing libvpx-vp9 decoder, libvpx-vp9 encoder");
+  });
+
   it("passes every line with working dependencies", async () => {
     expect(await runDoctor(PASSING)).toEqual({
       lines: [
@@ -35,6 +55,7 @@ describe("runDoctor", () => {
         "ok   r2 bucket reachable",
         "ok   ffmpeg version 7.1",
         "ok   ffmpeg filters zscale, tonemap, atempo, astats, ametadata",
+        "ok   ffmpeg vp9 libvpx-vp9 decoder and encoder",
         "ok   hyperframes 0.8.222",
         "ok   ai structured call",
       ],
@@ -55,8 +76,9 @@ describe("runDoctor", () => {
       ],
       [{ ffmpeg: async () => Promise.reject(new Error("ENOENT")) }, 2],
       [{ ffmpegFilters: async () => " ... atempo  A->A  Adjust audio tempo." }, 3],
-      [{ hyperframes: async () => Promise.reject(new Error("ENOENT")) }, 4],
-      [{ ai: () => fakeAiRunner([{ ok: false }]) }, 5],
+      [{ ffmpegCodecs: async () => "" }, 4],
+      [{ hyperframes: async () => Promise.reject(new Error("ENOENT")) }, 5],
+      [{ ai: () => fakeAiRunner([{ ok: false }]) }, 6],
     ];
     for (const [override, failing] of cases) {
       const { lines, exitCode } = await runDoctor({ ...PASSING, ...override });

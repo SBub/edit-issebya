@@ -44,7 +44,7 @@ export const transcribe: PipelineStep<TranscribeSettings> = {
   version: TRANSCRIBE_VERSION,
   settings: TRANSCRIBE_SETTINGS,
   reelStatus: "transcribing",
-  outputs: [OUTPUT],
+  outputs: [{ file: OUTPUT, keep: "kept" }],
   reusedWhat: "transcribed",
   inputs: (_source, fingerprints) => [
     {

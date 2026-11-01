@@ -1,7 +1,7 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeAtomic } from "./atomic.ts";
-import type { PipelineStep } from "./definition.ts";
+import type { PipelineStep, StepOutput } from "./definition.ts";
 import { envelopeArgs, parseEnvelope } from "./envelope.ts";
 import { parseProbe, probeArgs } from "./probe.ts";
 import { retimeEncodeArgs, retimeFilterGraph } from "./retime-encode.ts";
@@ -9,7 +9,12 @@ import { planRetime, remapTime } from "./retime-plan.ts";
 import { RETIME_PRESET, RETIME_VERSION, type RetimeSettings } from "./retime-preset.ts";
 import { parseTranscript, remapTranscript } from "./transcript.ts";
 
-const OUTPUTS = ["source.mp4", "transcript.json", "retime.json", "envelope.json"] as const;
+const OUTPUTS: readonly StepOutput[] = [
+  { file: "source.mp4", keep: "kept" },
+  { file: "transcript.json", keep: "kept" },
+  { file: "retime.json", keep: "kept" },
+  { file: "envelope.json", keep: "kept" },
+];
 const ENVELOPE_PRINT = "envelope.txt";
 const GRAPH = "retime-graph.txt";
 const PARTIAL = "source.part.mp4";

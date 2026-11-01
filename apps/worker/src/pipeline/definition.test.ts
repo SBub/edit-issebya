@@ -34,32 +34,61 @@ function replaced(index: number, step: PipelineStep): PipelineStep[] {
   return PIPELINE.map((original, at) => (at === index ? step : original));
 }
 
+// The changed step and every step that reads, directly or not, one of its
+// outputs change; every other step keeps its fingerprint.
 function expectOnlyFromChanged(index: number, pipeline: PipelineStep[], label: string) {
   const before = fingerprintsFor(SOURCE);
   const after = fingerprintsFor(SOURCE, pipeline);
-  PIPELINE.forEach((step, at) => {
-    if (at < index) expect(after[step.name], `${label}: ${step.name}`).toBe(before[step.name]);
-    else expect(after[step.name], `${label}: ${step.name}`).not.toBe(before[step.name]);
-  });
+  const changed = new Set([PIPELINE[index]!.name]);
+  for (const step of PIPELINE.slice(index + 1)) {
+    const reads = step.inputs(SOURCE, before).map(({ ref }) => ("step" in ref ? ref.step : null));
+    if (reads.some((name) => name !== null && changed.has(name))) changed.add(step.name);
+  }
+  for (const step of PIPELINE) {
+    if (changed.has(step.name)) {
+      expect(after[step.name], `${label}: ${step.name}`).not.toBe(before[step.name]);
+    } else {
+      expect(after[step.name], `${label}: ${step.name}`).toBe(before[step.name]);
+    }
+  }
 }
 
 describe("PIPELINE", () => {
-  it("runs convert, transcribe and retime in that order", () => {
+  it("runs the six fixed steps in order", () => {
     expect(PIPELINE.map((step) => [step.name, step.reelStatus])).toEqual([
       ["convert", "converting"],
       ["transcribe", "transcribing"],
       ["retime", "retiming"],
+      ["remove_background", "removing_background"],
+      ["head_track", "tracking_head"],
+      ["preview_copies", "making_previews"],
     ]);
   });
 
   it("gives every output a distinct name within its step", () => {
-    for (const step of PIPELINE) expect(new Set(step.outputs).size).toBe(step.outputs.length);
-    expect(PIPELINE.find((s) => s.name === "retime")?.outputs).toEqual([
+    for (const step of PIPELINE) {
+      expect(new Set(step.outputs.map((o) => o.file)).size).toBe(step.outputs.length);
+    }
+    expect(PIPELINE.find((s) => s.name === "retime")?.outputs.map((o) => o.file)).toEqual([
       "source.mp4",
       "transcript.json",
       "retime.json",
       "envelope.json",
     ]);
+  });
+
+  it("tags every output kept or rebuildable (B6)", () => {
+    const keep = Object.fromEntries(
+      PIPELINE.flatMap((step) => step.outputs.map((o) => [`${step.name}/${o.file}`, o.keep])),
+    );
+    for (const value of Object.values(keep)) expect(["kept", "rebuildable"]).toContain(value);
+    expect(keep).toMatchObject({
+      "convert/converted.mp4": "rebuildable",
+      "remove_background/subject.webm": "rebuildable",
+      "preview_copies/preview.mp4": "kept",
+      "preview_copies/preview-subject.webm": "kept",
+      "head_track/head-track.json": "kept",
+    });
   });
 
   it("reads only outputs of earlier steps that exist", () => {
@@ -70,7 +99,7 @@ describe("PIPELINE", () => {
         const producer = PIPELINE.findIndex((other) => other.name === ref.step);
         expect(producer).toBeGreaterThanOrEqual(0);
         expect(producer).toBeLessThan(index);
-        expect(PIPELINE[producer]!.outputs).toContain(ref.file);
+        expect(PIPELINE[producer]!.outputs.map((o) => o.file)).toContain(ref.file);
         expect(ref.fingerprint).toBe(fingerprints[ref.step]);
       }
     });
@@ -78,7 +107,7 @@ describe("PIPELINE", () => {
 });
 
 describe("fingerprintsFor", () => {
-  it("changes a step and every later one when any single setting changes", () => {
+  it("changes a step and every step reading from it when any single setting changes", () => {
     PIPELINE.forEach((step, index) => {
       const all = leaves(step.settings);
       expect(all.length).toBeGreaterThan(0);
@@ -93,7 +122,7 @@ describe("fingerprintsFor", () => {
     });
   });
 
-  it("changes a step and every later one when its version changes", () => {
+  it("changes a step and every step reading from it when its version changes", () => {
     PIPELINE.forEach((step, index) => {
       expectOnlyFromChanged(
         index,
@@ -101,6 +130,27 @@ describe("fingerprintsFor", () => {
         step.name,
       );
     });
+  });
+
+  it("keeps the preview copies when only the head track changes", () => {
+    const index = PIPELINE.findIndex((step) => step.name === "head_track");
+    const step = PIPELINE[index]!;
+    const before = fingerprintsFor(SOURCE);
+    const after = fingerprintsFor(SOURCE, replaced(index, { ...step, version: step.version + 1 }));
+    expect(after.head_track).not.toBe(before.head_track);
+    expect(after.preview_copies).toBe(before.preview_copies);
+  });
+
+  it("re-runs background removal and every later step after a HyperFrames upgrade there", () => {
+    const index = PIPELINE.findIndex((step) => step.name === "remove_background");
+    const step = PIPELINE[index]!;
+    const settings = { ...(step.settings as { hyperframes: string }), hyperframes: "9.9.9" };
+    expectOnlyFromChanged(index, replaced(index, { ...step, settings }), "hyperframes");
+    expect(PIPELINE.slice(index).map((s) => s.name)).toEqual([
+      "remove_background",
+      "head_track",
+      "preview_copies",
+    ]);
   });
 
   it("changes every step when the source changes", () => {

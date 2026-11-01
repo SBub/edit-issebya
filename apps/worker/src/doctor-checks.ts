@@ -8,6 +8,8 @@ export interface DoctorDeps {
   ffmpeg: () => Promise<string>;
   // `ffmpeg -hide_banner -filters` output.
   ffmpegFilters: () => Promise<string>;
+  // `ffmpeg -hide_banner -codecs` output.
+  ffmpegCodecs: () => Promise<string>;
   // `hyperframes --version` output.
   hyperframes: () => Promise<string>;
   ai: () => AiRunner;
@@ -24,6 +26,16 @@ function filterNames(listing: string): Set<string> {
     if (name) names.add(name);
   }
   return names;
+}
+
+// The cut-out is VP9 with alpha: only libvpx-vp9 decodes and encodes alpha.
+// Checks the `vp9` line's `(decoders: ...)` and `(encoders: ...)` parts.
+function vp9Missing(listing: string): string[] {
+  const line = listing.split("\n").find((text) => text.trim().split(/\s+/)[1] === "vp9") ?? "";
+  const missing: string[] = [];
+  if (!/\(decoders:[^)]*\blibvpx-vp9\b/.test(line)) missing.push("libvpx-vp9 decoder");
+  if (!/\(encoders:[^)]*\blibvpx-vp9\b/.test(line)) missing.push("libvpx-vp9 encoder");
+  return missing;
 }
 
 const AI_SCHEMA = {
@@ -54,6 +66,11 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
       const missing = PIPELINE_FILTERS.filter((name) => !names.has(name));
       if (missing.length > 0) throw new Error(`missing ${missing.join(", ")}`);
       return PIPELINE_FILTERS.join(", ");
+    }),
+    await check("ffmpeg vp9", async () => {
+      const missing = vp9Missing(await deps.ffmpegCodecs());
+      if (missing.length > 0) throw new Error(`missing ${missing.join(", ")}`);
+      return "libvpx-vp9 decoder and encoder";
     }),
     await check("hyperframes", async () => {
       const version = (await deps.hyperframes()).trim().split("\n").at(-1)?.trim();

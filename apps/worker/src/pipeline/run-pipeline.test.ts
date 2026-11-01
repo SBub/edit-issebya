@@ -50,13 +50,19 @@ function option(args: string[], name: string): string {
 }
 
 // Plays each tool: ffprobe answers fixture JSON, ffmpeg writes the file its
-// arguments name, HyperFrames writes its transcript into --dir.
+// arguments name (two transparent frames for a raw decode), HyperFrames writes
+// its transcript into --dir or its cut-out at -o.
 function fakeTools({ failTranscribe = 0 } = {}): SpawnTool {
   let transcribeFailures = failTranscribe;
   return async (call) => {
     spawned.push(call);
     const at = (file: string) => (call.cwd ? resolve(call.cwd, file) : file);
     if (call.file === TOOLS.ffprobe) return ok(PROBE);
+    if (call.file === TOOLS.hyperframes[0] && call.args.includes("remove-background")) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+      await writeFile(option(call.args, "-o"), "cut-out");
+      return ok('{"ok":true}');
+    }
     if (call.file === TOOLS.hyperframes[0]) {
       if (transcribeFailures > 0) {
         transcribeFailures -= 1;
@@ -70,6 +76,15 @@ function fakeTools({ failTranscribe = 0 } = {}): SpawnTool {
       const filter = option(call.args, "-af");
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
       await writeFile(at(/file=([^,]+)$/.exec(filter)![1]!), ENVELOPE_PRINT);
+      return ok();
+    }
+    if (call.args.includes("rawvideo")) {
+      const [, width, height] = /scale=(\d+):(\d+)/.exec(option(call.args, "-vf"))!;
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+      await writeFile(
+        at(call.args.at(-1)!),
+        new Uint8Array(2 * Number(width) * Number(height) * 4),
+      );
       return ok();
     }
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
@@ -119,7 +134,7 @@ async function fingerprints() {
 async function outputKeys() {
   const fps = await fingerprints();
   return PIPELINE.flatMap((step) =>
-    step.outputs.map((file) => cacheKey(PREFIX, step.name, fps[step.name]!, file)),
+    step.outputs.map(({ file }) => cacheKey(PREFIX, step.name, fps[step.name]!, file)),
   );
 }
 
@@ -160,6 +175,15 @@ describe("runPipeline", () => {
       "status retiming",
       "start retime",
       "done",
+      "status removing_background",
+      "start remove_background",
+      "done",
+      "status tracking_head",
+      "start head_track",
+      "done",
+      "status making_previews",
+      "start preview_copies",
+      "done",
     ]);
     expect(await storage.list(`${PREFIX}cache/`)).toEqual([...(await outputKeys())].sort());
     const transcript = JSON.parse(
@@ -177,7 +201,22 @@ describe("runPipeline", () => {
       "footage converted",
       "transcribed",
       "retimed to 1.9 seconds",
+      "background removed",
+      "head tracked",
+      "preview copies made",
     ]);
+    const fps = await fingerprints();
+    const track = JSON.parse(
+      new TextDecoder().decode(
+        (await storage.get(cacheKey(PREFIX, "head_track", fps.head_track!, "head-track.json")))!,
+      ),
+    );
+    // Two transparent frames: no head in either.
+    expect(track).toEqual([null, null]);
+    const headTracked = done[4]!;
+    expect(headTracked.call === "done" && headTracked.summary).toMatch(
+      /^head tracked, 2 samples, 2 without a head, /,
+    );
   });
 
   it("reuses every output on a second run: no process, download or upload", async () => {
@@ -193,12 +232,25 @@ describe("runPipeline", () => {
       "skipped transcribe",
       "status retiming",
       "skipped retime",
+      "status removing_background",
+      "skipped remove_background",
+      "status tracking_head",
+      "skipped head_track",
+      "status making_previews",
+      "skipped preview_copies",
     ]);
     expect(
       calls
         .filter((call) => call.call === "skipped")
         .map((call) => call.call === "skipped" && call.summary),
-    ).toEqual(["footage converted, reused", "transcribed, reused", "retimed, reused"]);
+    ).toEqual([
+      "footage converted, reused",
+      "transcribed, reused",
+      "retimed, reused",
+      "background removed, reused",
+      "head tracked, reused",
+      "preview copies made, reused",
+    ]);
     expect(spawned).toEqual([]);
     expect(counts).toEqual({ getFile: 0, putFileIfAbsent: 0 });
   });
@@ -224,6 +276,12 @@ describe("runPipeline", () => {
       "status retiming",
       "start retime",
       "done",
+      "status removing_background",
+      "skipped remove_background",
+      "status tracking_head",
+      "skipped head_track",
+      "status making_previews",
+      "skipped preview_copies",
     ]);
     expect(await storage.head(lost)).not.toBeNull();
     // Its two inputs downloaded; only the lost output uploaded.
@@ -250,6 +308,12 @@ describe("runPipeline", () => {
       "skipped transcribe",
       "status retiming",
       "skipped retime",
+      "status removing_background",
+      "skipped remove_background",
+      "status tracking_head",
+      "skipped head_track",
+      "status making_previews",
+      "skipped preview_copies",
     ]);
   });
 
@@ -268,6 +332,15 @@ describe("runPipeline", () => {
       "done",
       "status retiming",
       "start retime",
+      "done",
+      "status removing_background",
+      "start remove_background",
+      "done",
+      "status tracking_head",
+      "start head_track",
+      "done",
+      "status making_previews",
+      "start preview_copies",
       "done",
     ]);
   });
@@ -298,6 +371,15 @@ describe("runPipeline", () => {
       "done",
       "status retiming",
       "start retime",
+      "done",
+      "status removing_background",
+      "start remove_background",
+      "done",
+      "status tracking_head",
+      "start head_track",
+      "done",
+      "status making_previews",
+      "start preview_copies",
       "done",
     ]);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
@@ -330,7 +412,7 @@ describe("runPipeline", () => {
     const bumped = PIPELINE.map((step) =>
       step.name === "transcribe" ? { ...step, version: step.version + 1 } : step,
     );
-    const withoutConvert = [{ ...PIPELINE[0]!, outputs: [] as string[] }, ...bumped.slice(1)];
+    const withoutConvert = [{ ...PIPELINE[0]!, outputs: [] }, ...bumped.slice(1)];
     const { steps, calls } = recordingSteps(SOURCE_KEY);
     await expect(run(steps, { pipeline: withoutConvert })).rejects.toThrow(
       `transcribe: input missing: ${converted}`,
