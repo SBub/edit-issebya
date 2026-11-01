@@ -71,6 +71,11 @@ plays is built by `build()` from `packages/edit` in the browser, on open and on 
   at its time, the clock waiting for both videos (at start and after a seek into unbuffered
   footage), a new current version rebuilt without a reload byte for byte the Node build with one
   event, and the clicks scheduled at their word's time.
+- Seeding: `apps/studio/test-support/pipeline.ts` seeds a processed reel (version, transcript, head
+  track and the two preview copies from `fixtures/pipeline/`) into the worktree's `.e2e-storage/`
+  with no worker run. `yarn workspace @edit-issebya/studio e2e:sign-in-url` (see
+  `apps/studio/scripts/e2e-sign-in-url.ts`) creates the `sample-processed-take.mp4` reel the same
+  way when the storage lacks it, so the preview can be opened by hand or in review.
 - Test hooks: `window.__preview` (`versionId` and `html`); `window.__scheduledSounds`, recorded only
   under `navigator.webdriver` when a spec put an array there; `data-testid="preview-time"`.
 
