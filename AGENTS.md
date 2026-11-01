@@ -48,6 +48,8 @@ Rules for working in this repository. What each feature does is not described he
   for the ADW toolkit's `.env.development`.
 - Create a migration with `supabase migration new <name>` (it stamps the current UTC time). Never
   hand-pick, copy, future-date or reuse a migration version, and never edit an applied migration.
+  The studio unit test `apps/studio/test-support/migration-versions.test.ts` (run by `yarn test`, the pre-push
+  hook and CI) fails on a version more than 10 minutes in the future or a version two files share.
 - `.adw/project.md` is this repository's ADW profile; the toolkit's slash commands
   read it before anything else. When a change renames a script, moves a port,
   adds an env file or changes where docs live, update the profile in the same

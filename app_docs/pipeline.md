@@ -55,7 +55,7 @@ live status shows one line per step (`name: summary`).
 - `packages/storage`: `head` returns the ETag, `getFile` streams to `<path>.part` then renames,
   `putFileIfAbsent` never replaces an object (R2 `If-None-Match: *`, 412 means exists; the folder
   fake hard-links a finished temp file), and `keyPrefix` lives here.
-- `supabase/migrations/20261102090000_pipeline_steps.sql`: `steps.cache_hit`, step status
+- `supabase/migrations/20261101100000_pipeline_steps.sql`: `steps.cache_hit`, step status
   `skipped`, reel statuses `converting`, `transcribing`, `retiming`, `processed` (`received` stays
   allowed for old rows; nothing writes it).
 

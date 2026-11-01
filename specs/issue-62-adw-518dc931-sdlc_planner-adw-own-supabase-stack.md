@@ -413,7 +413,7 @@ Execute every command to validate the chore is complete with zero regressions.
   different ADW ID, so the current run's own engine process never blocks it.
 - Never run `supabase stop` on either stack in this run; the ADW stack stays up afterwards by
   design (the owner frees it by hand if wanted).
-- This worktree already contains `20261102090000_pipeline_steps.sql` (merged from #29 via PR #52),
+- This worktree already contains `20261101100000_pipeline_steps.sql` (merged from #29 via PR #52),
   so the ADW stack is reset to four migrations; renumbering the future-dated versions on other
   branches is out of scope, as are cleaning the developer's stack, a CI or lefthook version check,
   leftover `pw-webkit-*` containers, and anything under `adws/`.

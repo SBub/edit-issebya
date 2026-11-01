@@ -115,7 +115,8 @@ one ADW stack, runs are serialised by the queue, and ownership guards the rest.
 - Never edit the committed `supabase/config.toml` for the ADW stack.
 - Never move 54450 to 54459.
 - Never hand-pick, copy, future-date or reuse a migration version; create one with
-  `supabase migration new <name>`.
+  `supabase migration new <name>` (enforced by
+  `apps/studio/test-support/migration-versions.test.ts`).
 
 ## Notes
 
