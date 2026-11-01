@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
-import { recordHit, runStep, runToolsStep } from "./step-runner.ts";
+import { type ChildRun, type SpawnTool, recordHit, runStep, runToolsStep } from "./step-runner.ts";
 import { createTelemetry } from "./telemetry.ts";
 
 // Real child processes under /usr/bin/time: Node itself is the tool.
@@ -24,6 +24,14 @@ function node(script: string, extra: Partial<Parameters<typeof runStep>[1]> = {}
   return { name: "probe", file: NODE, args: ["-e", script], describe: "probed", ...extra };
 }
 
+// Burns at least `ms` of CPU (user + sys) and lasts at least `ms` of wall time,
+// holding `mb` MiB, then prints its own peak RSS in bytes as the last stdout line.
+function spin(mb: number, ms: number): string {
+  return `const b = Buffer.alloc(${mb} * 1024 * 1024, 1); const t = Date.now();
+    for (;;) { const c = process.cpuUsage(); if (c.user + c.system >= ${ms} * 1000 && Date.now() - t >= ${ms}) break; }
+    void b; console.log(process.resourceUsage().maxRSS * 1024);`;
+}
+
 function onlyDone(calls: ReturnType<typeof recordingSteps>["calls"]) {
   const done = calls.find((c) => c.call === "done");
   if (!done || done.call !== "done") throw new Error(`no done call: ${JSON.stringify(calls)}`);
@@ -33,12 +41,7 @@ function onlyDone(calls: ReturnType<typeof recordingSteps>["calls"]) {
 describe("runStep", () => {
   it("measures CPU and peak memory of the tool, not the worker", TIMEOUT, async () => {
     const { steps, calls } = recordingSteps();
-    await runStep(
-      stepContext(steps),
-      node(
-        "const b = Buffer.alloc(200 * 1024 * 1024, 1); const t = Date.now(); while (Date.now() - t < 1100) {} void b;",
-      ),
-    );
+    await runStep(stepContext(steps), node(spin(200, 1100)));
     const { measurements } = onlyDone(calls);
     expect(measurements.peak_rss_bytes).toBeGreaterThanOrEqual(200 * MB);
     expect(measurements.cpu_ms).toBeGreaterThanOrEqual(500);
@@ -54,27 +57,50 @@ describe("runStep", () => {
   });
 
   describe("a tool with three grandchildren holding 100 MB each for 4 seconds", () => {
-    const hold = "const b = Buffer.alloc(100 * 1024 * 1024, 1); setTimeout(() => void b, 4000);";
-    const parent = `
+    // Each grandchild prints its own peak RSS when it lets go; the parent writes
+    // the largest of theirs and its own to `out`, the most `/usr/bin/time` can
+    // report for one process.
+    const hold =
+      "const b = Buffer.alloc(100 * 1024 * 1024, 1); setTimeout(() => { void b; console.log(process.resourceUsage().maxRSS * 1024); }, 4000);";
+    const parent = (out: string) => `
       const { spawn } = require("node:child_process");
+      const { writeFileSync } = require("node:fs");
+      const grandchildren = [];
       let left = 3;
       for (let i = 0; i < 3; i++) {
-        spawn(process.execPath, ["-e", ${JSON.stringify(hold)}], { stdio: "ignore" })
-          .on("exit", () => { left -= 1; });
+        let text = "";
+        const child = spawn(process.execPath, ["-e", ${JSON.stringify(hold)}], {
+          stdio: ["ignore", "pipe", "ignore"],
+        });
+        child.stdout.on("data", (chunk) => { text += chunk; });
+        child.on("close", () => {
+          grandchildren.push(Number(text.trim()));
+          left -= 1;
+          if (left === 0) {
+            writeFileSync(${JSON.stringify(out)}, JSON.stringify(Math.max(...grandchildren, process.resourceUsage().maxRSS * 1024)));
+          }
+        });
       }
-      const wait = setInterval(() => { if (left === 0) clearInterval(wait); }, 50);
     `;
 
     it("stores the whole tree's peak with group sampling", TIMEOUT, async () => {
       const { steps, calls } = recordingSteps();
-      await runStep(stepContext(steps), node(parent, { sampleGroupMemory: true }));
+      const out = join(dir, "tree-sampled.json");
+      await runStep(stepContext(steps), node(parent(out), { sampleGroupMemory: true }));
       expect(onlyDone(calls).measurements.peak_rss_bytes).toBeGreaterThanOrEqual(300 * MB);
     });
 
     it("stores the largest single process without it", TIMEOUT, async () => {
       const { steps, calls } = recordingSteps();
-      await runStep(stepContext(steps), node(parent));
-      expect(onlyDone(calls).measurements.peak_rss_bytes).toBeLessThan(200 * MB);
+      const out = join(dir, "tree-single.json");
+      await runStep(stepContext(steps), node(parent(out)));
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
+      const largest = Number(JSON.parse(await readFile(out, "utf8")));
+      const peak = onlyDone(calls).measurements.peak_rss_bytes ?? 0;
+      expect(peak).toBeGreaterThanOrEqual(100 * MB);
+      expect(peak).toBeGreaterThanOrEqual(largest);
+      // See "keeps the larger peak": the report reads a little above the self-report.
+      expect(peak - largest).toBeLessThan(16 * MB);
     });
   });
 
@@ -167,28 +193,38 @@ describe("runStep", () => {
 });
 
 describe("runToolsStep", () => {
-  const busy = (mb: number, ms: number) =>
-    `const b = Buffer.alloc(${mb} * 1024 * 1024, 1); const t = Date.now(); while (Date.now() - t < ${ms}) {} void b;`;
-
   it("sums CPU over the calls and keeps the larger peak", TIMEOUT, async () => {
     const { steps, calls } = recordingSteps();
     const stdouts: string[] = [];
     await runToolsStep(stepContext(steps), {
       name: "two",
       async work(tool) {
-        stdouts.push(await tool({ file: NODE, args: ["-e", `${busy(50, 600)} console.log("a")`] }));
         stdouts.push(
-          await tool({ file: NODE, args: ["-e", `${busy(200, 600)} console.log("b")`] }),
+          await tool({ file: NODE, args: ["-e", `console.log("a"); ${spin(50, 600)}`] }),
+        );
+        stdouts.push(
+          await tool({ file: NODE, args: ["-e", `console.log("b"); ${spin(200, 600)}`] }),
         );
         return { what: "both ran" };
       },
     });
-    expect(stdouts).toEqual(["a\n", "b\n"]);
+    const [selfA, selfB] = stdouts.map((stdout, i) => {
+      const lines = stdout.split("\n").slice(0, -1);
+      expect(lines[0]).toBe(["a", "b"][i]);
+      return Number(lines.at(-1));
+    }) as [number, number];
     const { measurements, summary } = onlyDone(calls);
-    // Each call alone burns at least ~500 ms of CPU.
+    // Each call burns at least 600 ms of CPU by construction.
     expect(measurements.cpu_ms).toBeGreaterThanOrEqual(1000);
-    expect(measurements.peak_rss_bytes).toBeGreaterThanOrEqual(200 * MB);
-    expect(measurements.peak_rss_bytes).toBeLessThan(250 * MB);
+    const peak = measurements.peak_rss_bytes ?? 0;
+    expect(peak).toBeGreaterThanOrEqual(200 * MB);
+    expect(peak).toBeGreaterThanOrEqual(Math.max(selfA, selfB));
+    // The report is taken at exit and reads 0 to 2.3 MiB above the child's own
+    // maxRSS (macOS 0 to 1.7, Linux Docker 1.8 to 2.3). 16 MiB is about 7 times
+    // that and well below the smaller call's own resident memory (at least
+    // 46 MiB), so a sum cannot pass.
+    expect(peak - Math.max(selfA, selfB)).toBeLessThan(16 * MB);
+    expect(peak, "peak memory summed over the calls").toBeLessThan(selfA + selfB);
     expect(measurements.wall_ms).toBeGreaterThanOrEqual(1200);
     expect(summary).toMatch(/^both ran, \d+ seconds?$/);
   });
@@ -199,7 +235,7 @@ describe("runToolsStep", () => {
       runToolsStep(stepContext(steps), {
         name: "two",
         async work(tool) {
-          await tool({ file: NODE, args: ["-e", busy(10, 600)] });
+          await tool({ file: NODE, args: ["-e", spin(10, 600)] });
           await tool({
             file: NODE,
             args: ["-e", `console.error("first"); console.error("second"); process.exit(3)`],
@@ -222,7 +258,7 @@ describe("runToolsStep", () => {
       runToolsStep(stepContext(steps), {
         name: "parse",
         async work(tool) {
-          await tool({ file: NODE, args: ["-e", busy(10, 600)] });
+          await tool({ file: NODE, args: ["-e", spin(10, 600)] });
           throw new Error("unexpected answer");
         },
       }),
@@ -231,6 +267,75 @@ describe("runToolsStep", () => {
     if (failed?.call !== "failed") throw new Error("no failed call");
     expect(failed.tail.split("\n")[0]).toBe("Error: unexpected answer");
     expect(failed.measurements.cpu_ms).toBeGreaterThanOrEqual(500);
+  });
+});
+
+describe("runToolsStep arithmetic", () => {
+  // A `/usr/bin/time` report in this platform's format, with exact values.
+  function timeReport(user: string, sys: string, bytes: number): string {
+    return process.platform === "darwin"
+      ? `        1.00 real         ${user} user         ${sys} sys\n${bytes}  maximum resident set size\n`
+      : `\tUser time (seconds): ${user}\n\tSystem time (seconds): ${sys}\n\tMaximum resident set size (kbytes): ${bytes / 1024}\n`;
+  }
+
+  function run(code: number, report: string, groupPeakBytes: number): ChildRun {
+    const output = code === 0 ? "ok\n" : "not found\n";
+    return { code, exitSignal: null, report, output, stdout: output, groupPeakBytes };
+  }
+
+  function fakeSpawn(runs: ChildRun[]): SpawnTool {
+    return () => {
+      const next = runs.shift();
+      if (!next) throw new Error("no more runs");
+      return Promise.resolve(next);
+    };
+  }
+
+  const a = run(0, timeReport("0.40", "0.12", 300 * MB), 200 * MB);
+  const b = run(0, timeReport("1.00", "0.25", 100 * MB), 450 * MB);
+  const neverStarted = () => run(127, timeReport("9.00", "0.99", 900 * MB), 999 * MB);
+
+  it("sums CPU exactly and keeps the max of every report and group peak, skipping a tool that never started", async () => {
+    const { steps, calls } = recordingSteps();
+    await runToolsStep(
+      stepContext(steps),
+      {
+        name: "two",
+        async work(tool) {
+          await tool({ file: "a", args: [] });
+          await tool({ file: "b", args: [] });
+          await expect(tool({ file: "c", args: [] })).rejects.toThrow(/two exited with 127/);
+          return { what: "done" };
+        },
+      },
+      fakeSpawn([a, b, neverStarted()]),
+    );
+    const { measurements } = onlyDone(calls);
+    expect(measurements.cpu_ms).toBe(1770);
+    // The sum of the peaks would be 600 MiB or more.
+    expect(measurements.peak_rss_bytes).toBe(450 * MB);
+  });
+
+  it("a tool that never started leaves CPU and memory null", async () => {
+    const { steps, calls } = recordingSteps();
+    await expect(
+      runToolsStep(
+        stepContext(steps),
+        {
+          name: "one",
+          async work(tool) {
+            await tool({ file: "c", args: [] });
+            return { what: "never" };
+          },
+        },
+        fakeSpawn([neverStarted()]),
+      ),
+    ).rejects.toThrow(/exited with 127/);
+    const failed = calls.find((c) => c.call === "failed");
+    expect(failed).toMatchObject({
+      call: "failed",
+      measurements: { cpu_ms: null, peak_rss_bytes: null },
+    });
   });
 });
 
