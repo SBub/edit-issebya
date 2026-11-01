@@ -36,6 +36,13 @@ const nextConfig: NextConfig = {
   // to that root (two levels up). Next wants both set to the same directory.
   turbopack: {
     root: monorepoRoot,
+    // harfbuzzjs (the live preview's text shaper) awaits import("module")
+    // behind a Node check. Turbopack cannot resolve that built-in for client
+    // components, so the browser gets a stub and server rendering the real
+    // node:module.
+    resolveAlias: {
+      module: { browser: "./src/lib/node-module-stub.ts", default: "node:module" },
+    },
   },
   outputFileTracingRoot: monorepoRoot,
   // The edit-assets route reads the preset's fonts and sound from

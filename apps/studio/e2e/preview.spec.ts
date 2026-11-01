@@ -143,12 +143,12 @@ test("the reel opens with the player, the first caption, one open event and the 
   const golden = await readFile(GOLDEN, "utf8");
   expect(await page.evaluate(() => window.__previewBuild)).toBe(golden);
 
-  // The first caption is anchored on w0001 (0.038 s).
+  // The first caption is anchored on w0001 (0.038 s); captions are lower-cased.
   const transcript = await fixtureTranscript();
   const first = transcript.words.find((word) => word.id === "w0001")!;
   await setPosition(page, first.start + 0.25);
   const caption = composition(page).locator("#cw0001");
-  await expect(caption).toHaveText("This");
+  await expect(caption).toHaveText("this");
   await expect
     .poll(() => caption.evaluate((el) => Number(getComputedStyle(el).opacity)))
     .toBeGreaterThan(0.5);
@@ -178,22 +178,25 @@ test("the clock waits until both videos can play, on play and after a seek", asy
       await route.continue();
       return;
     }
-    // The first quarter of the file only: the rest of the reel cannot play.
+    // The first three quarters of the file only (about 2.0 s of the 2.69 s
+    // copy): the end of the reel cannot play. Chromium's media reader waits
+    // for whole 32 KiB blocks, so a smaller slice of this 44 KB fixture never
+    // reaches metadata and the clock could never start.
     const headers = Object.fromEntries(
       Object.entries(route.request().headers()).filter(([name]) => name.toLowerCase() !== "range"),
     );
     const full = await route.fetch({ headers });
     const body = await full.body();
-    const quarter = body.subarray(0, Math.floor(body.byteLength / 4));
+    const slice = body.subarray(0, Math.floor((body.byteLength * 3) / 4));
     await route.fulfill({
       status: 206,
       headers: {
         "Accept-Ranges": "bytes",
         "Content-Type": "video/mp4",
-        "Content-Length": String(quarter.byteLength),
-        "Content-Range": `bytes 0-${quarter.byteLength - 1}/${body.byteLength}`,
+        "Content-Length": String(slice.byteLength),
+        "Content-Range": `bytes 0-${slice.byteLength - 1}/${body.byteLength}`,
       },
-      body: quarter,
+      body: slice,
     });
   });
 

@@ -433,13 +433,13 @@ cleanup of every seeded key, version key, source key and the user in `afterAll`)
   Parity: `window.__previewBuild` equals `packages/edit/src/testdata/golden/baseline-short-speech.html`
   read in Node, byte for byte (the worker's Node build of the same version). Seek with the
   `Position` slider to the first caption's anchored time plus 0.25 s (from the fixture transcript,
-  `w0001` at 0.038 s); in the composition frame `#cw0001` has text `This` and computed opacity
+  `w0001` at 0.038 s); in the composition frame `#cw0001` has text `this` (captions are lower-cased) and computed opacity
   above 0.5.
 - **Test 2, the clock waits for media.** Before `goto`:
   - Route `**/cache/preview_copies/*/subject-preview.webm`: hold every request until the test calls
     `releaseCutout()`.
   - Route `**/cache/preview_copies/*/footage-preview.mp4`: answer the first request with the first
-    quarter of the bytes as a 206 (`route.fetch()` the full object, slice, set `Content-Range` with
+    three quarters of the bytes (at least 32 KiB, the block Chromium's media reader waits for) as a 206 (`route.fetch()` the full object, slice, set `Content-Range` with
     the true total); hold every later request until `releaseFootage()`.
   - Press `Play`. For 2 s, sampling every 100 ms through `page.evaluate`, the player element's
     `currentTime` stays at 0 (within 1 ms) and `Loading` is visible. Call `releaseCutout()`; expect
