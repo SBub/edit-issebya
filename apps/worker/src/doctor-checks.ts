@@ -8,6 +8,8 @@ export interface DoctorDeps {
   ffmpeg: () => Promise<string>;
   // `ffmpeg -hide_banner -filters` output.
   ffmpegFilters: () => Promise<string>;
+  // `ffmpeg -hide_banner -encoders` and `-decoders` output.
+  ffmpegCodecs: () => Promise<{ encoders: string; decoders: string }>;
   // `hyperframes --version` output.
   hyperframes: () => Promise<string>;
   ai: () => AiRunner;
@@ -16,8 +18,9 @@ export interface DoctorDeps {
 // The filters the fixed steps use: HDR tone-mapping, retime tempo, the envelope.
 const PIPELINE_FILTERS = ["zscale", "tonemap", "atempo", "astats", "ametadata"];
 
-// Filter names from `ffmpeg -filters` (lines like ` ... zscale  V->V  Apply ...`).
-function filterNames(listing: string): Set<string> {
+// Names from `ffmpeg -filters`, `-encoders` or `-decoders` (lines like
+// ` ... zscale  V->V  Apply ...` or ` V....D libvpx-vp9  libvpx VP9`).
+function listedNames(listing: string): Set<string> {
   const names = new Set<string>();
   for (const line of listing.split("\n")) {
     const name = line.trim().split(/\s+/)[1];
@@ -25,6 +28,10 @@ function filterNames(listing: string): Set<string> {
   }
   return names;
 }
+
+// The codec the cut-out needs both ways: VP9 with alpha is only read and
+// written with alpha by libvpx.
+const PIPELINE_CODEC = "libvpx-vp9";
 
 const AI_SCHEMA = {
   type: "object",
@@ -50,10 +57,19 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
     await check("r2 bucket reachable", deps.r2),
     await check("ffmpeg", deps.ffmpeg),
     await check("ffmpeg filters", async () => {
-      const names = filterNames(await deps.ffmpegFilters());
+      const names = listedNames(await deps.ffmpegFilters());
       const missing = PIPELINE_FILTERS.filter((name) => !names.has(name));
       if (missing.length > 0) throw new Error(`missing ${missing.join(", ")}`);
       return PIPELINE_FILTERS.join(", ");
+    }),
+    await check("ffmpeg codecs", async () => {
+      const { encoders, decoders } = await deps.ffmpegCodecs();
+      const missing = [
+        ...(listedNames(encoders).has(PIPELINE_CODEC) ? [] : [`${PIPELINE_CODEC} encoder`]),
+        ...(listedNames(decoders).has(PIPELINE_CODEC) ? [] : [`${PIPELINE_CODEC} decoder`]),
+      ];
+      if (missing.length > 0) throw new Error(`missing ${missing.join(", ")}`);
+      return `${PIPELINE_CODEC} encoder and decoder`;
     }),
     await check("hyperframes", async () => {
       const version = (await deps.hyperframes()).trim().split("\n").at(-1)?.trim();

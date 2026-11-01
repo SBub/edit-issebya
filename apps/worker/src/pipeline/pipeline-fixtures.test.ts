@@ -29,7 +29,7 @@ describe("fixtures/pipeline", () => {
       PIPELINE.map((step) => ({
         name: step.name,
         fingerprint: fingerprints[step.name],
-        files: [...step.outputs],
+        files: step.outputs.map((o) => o.file),
       })),
     );
   });

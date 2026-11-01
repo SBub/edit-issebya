@@ -27,6 +27,28 @@
         "retime.json",
         "envelope.json"
       ]
+    },
+    {
+      "name": "remove_background",
+      "fingerprint": "5ecb5235234182f8cb7eea773ada7d52b12bbf931f33407bd7910555988d2316",
+      "files": [
+        "subject.webm"
+      ]
+    },
+    {
+      "name": "head_track",
+      "fingerprint": "5edcd1b2e5463a5b93967eb48767d3d6a92cff8f98b41183ce66f397afa4a9d4",
+      "files": [
+        "head-track.json"
+      ]
+    },
+    {
+      "name": "preview_copies",
+      "fingerprint": "ebd43a1de181ce24e6bd655596f2a79a8a60a34ead5165f23b0d1becff5ca199",
+      "files": [
+        "preview-source.mp4",
+        "preview-subject.webm"
+      ]
     }
   ]
 }
