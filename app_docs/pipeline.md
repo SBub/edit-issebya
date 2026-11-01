@@ -1,25 +1,29 @@
-# Fixed Pipeline Steps: Convert, Transcribe, Retime
+# Fixed Pipeline Steps: Convert, Transcribe, Retime, Background Removal, Head Tracking, Previews
 
 **Specifications:**
 
 - specs/issue-29-adw-4a47b364-sdlc_planner-pipeline-convert-transcribe-retime.md
+- specs/issue-30-adw-47d9d58e-sdlc_planner-background-removal-head-tracking-previews.md
 
 ## Overview
 
-After an upload the worker's `process` job runs three fixed steps as plain TypeScript, with no AI:
-`convert` (phone footage to steady H.264), `transcribe` (word timings from HyperFrames) and
-`retime` (a light speed-up planned from the transcript and the audio). Each step is cached in R2
+After an upload the worker's `process` job runs six fixed steps as plain TypeScript, with no AI:
+`convert` (phone footage to steady H.264), `transcribe` (word timings from HyperFrames), `retime`
+(a light speed-up planned from the transcript and the audio), `remove_background` (the speaker cut
+out with alpha), `head_track` (the head position every 0.25 s) and `preview_copies` (small copies
+for the studio's live preview). Each step is cached in R2
 by a fingerprint of everything it reads, so an input is processed exactly once and a failed job
 resumes at the step that failed.
 
 ## How it works
 
-The reel goes `converting`, `transcribing`, `retiming`, then `processed` (or `failed`). The studio's
+The reel goes `converting`, `transcribing`, `retiming`, `removing_background`, `tracking_head`,
+`making_previews`, then `processed` (or `failed`). The studio's
 live status shows one line per step (`name: summary`).
 
-- `apps/worker/src/pipeline/definition.ts`: `PIPELINE = [convert, transcribe, retime]` and
+- `apps/worker/src/pipeline/definition.ts`: `PIPELINE = [convert, transcribe, retime, removeBackground, headTrack, previewCopies]` and
   `fingerprintsFor(source)`. A `PipelineStep` declares `name`, `version`, `settings`, `reelStatus`,
-  `outputs`, `reusedWhat`, `inputs(source, fingerprints)` and `run`. A step reads only the local
+  `outputs` (each `{ file, retention }`, see Kept and rebuildable), `reusedWhat`, `inputs(source, fingerprints)` and `run`. A step reads only the local
   paths of its declared inputs.
 - `apps/worker/src/pipeline/fingerprint.ts`, `canonical-json.ts`: the fingerprint is the SHA-256
   of the canonical JSON (sorted keys, no whitespace, refuses `undefined` and non-finite numbers) of
@@ -50,6 +54,22 @@ live status shows one line per step (`name: summary`).
   `envelope.json`.
 - `apps/worker/src/pipeline/retime-preset.ts`: `RETIME_PRESET`, every retime setting; each value is
   part of the fingerprint.
+- `apps/worker/src/pipeline/remove-background.ts`: runs the installed HyperFrames
+  `remove-background <source.mp4> -o subject.part.webm --device auto --quality balanced --json`
+  (the format follows the `.webm` extension), parses the last stdout line (`ok` true and a positive
+  `framesProcessed`, else the step fails), then renames. Output `subject.webm`, the full-size cut-out
+  (VP9 with alpha). Settings: `device`, `quality` and the HyperFrames version (the model,
+  `u2net_human_seg`, is HyperFrames' default and is pinned by that version). Slowest step (about
+  seven minutes for a 50 s reel).
+- `apps/worker/src/pipeline/head-track.ts`: the pure tracker, `HEAD_TRACK_SETTINGS`, `headSample`,
+  `withinBounds`, `headTrackWhat`; tested on synthetic frames without ffmpeg.
+- `apps/worker/src/pipeline/head-track-step.ts`: ffmpeg decodes `subject.webm` (`-c:v libvpx-vp9`
+  before `-i`, so alpha survives) at 4 fps to raw RGBA 270x480 in a scratch file (stdout through the
+  step runner is capped at 64 KB, so it cannot carry frames), read back one frame at a time and
+  deleted. Output `head-track.json`. Zero frames or a trailing partial frame fails the step.
+- `apps/worker/src/pipeline/preview-copies.ts`: two encodes, `footage-preview.mp4` (H.264, 540x960)
+  from the retimed `source.mp4` and `subject-preview.webm` (VP9 with alpha, 540x960) from
+  `subject.webm`; `PREVIEW_SETTINGS` holds every value.
 - `apps/worker/src/step-runner.ts`: `runToolsStep` (one row over several tool calls, CPU summed,
   peak memory the maximum) and `recordHit`; see `app_docs/measurement.md`.
 - `packages/storage`: `head` returns the ETag, `getFile` streams to `<path>.part` then renames,
@@ -58,6 +78,39 @@ live status shows one line per step (`name: summary`).
 - `supabase/migrations/20261101100000_pipeline_steps.sql`: `steps.cache_hit`, step status
   `skipped`, reel statuses `converting`, `transcribing`, `retiming`, `processed` (`received` stays
   allowed for old rows; nothing writes it).
+- `supabase/migrations/20261101135426_pipeline_steps_part_two.sql`: adds the reel statuses
+  `removing_background`, `tracking_head`, `making_previews`. They are mirrored in
+  `PipelineReelStatus` (`apps/worker/src/step-store.ts`) and `REEL_STATUSES`
+  (`apps/studio/src/lib/reels.ts`).
+
+### Head-track format
+
+`head-track.json` is an array with one entry per 0.25 s (entry `i` is `t = i * 0.25`), each either
+`null` (no head found) or `{ t, head_top, cx, head_w }` in 1080x1920 coordinates (the same format as
+the old `head_track.py`). A frame is analysed at 270x480 and the numbers are scaled by 4. A pixel is
+opaque when alpha is above 128. The top is the first row with at least 4 opaque pixels; for the rows
+20 to 49 below it, each row with an opaque pixel gives a span (first to last opaque x); the spans
+are sorted by width and the median one gives `cx` and `head_w`. Coordinates stay in 1080x1920 space
+for a source of another size. The optional bounds (`minHeadTop`, `minHeadWidth`, `maxHeadWidth`)
+default to none: the old values (380, 220, 420) fitted one room and are not a default. A clip with no
+person gives all `null` (summary `head tracked, 12 samples, 12 without a head`).
+
+### Preview copies
+
+Both previews are 540x960 with the source's frame timing (`-fps_mode passthrough`) and a keyframe
+every 1 s. Footage: H.264 medium, 1200k (max 1500k), AAC 128k, `+faststart`. Subject: VP9 `yuva420p`,
+1400k, `-auto-alt-ref 0` (required for VP9 alpha), `alpha_mode=1`. About 18 MB together for a 50 s
+reel; made for Chrome.
+
+### Kept and rebuildable
+
+Every output carries a tag, so the cleanup (slice 14) can act on it. `kept` cannot be regenerated
+cheaply and stays; `rebuildable` is heavy and may be deleted, since its step re-runs from the
+fingerprint. Tags are not part of a fingerprint.
+
+- `rebuildable`: `converted.mp4`, retime's `source.mp4`, `subject.webm`.
+- `kept`: `transcript.json` (transcribe and retime), `retime.json`, `envelope.json`,
+  `head-track.json`, `footage-preview.mp4`, `subject-preview.webm`.
 
 ### Retime rules
 
@@ -95,7 +148,8 @@ live status shows one line per step (`name: summary`).
 - `HYPERFRAMES_NO_TELEMETRY` is forced to `1` for HyperFrames; the `hyperframes` dependency in
   `apps/worker/package.json` is pinned exactly.
 - `yarn doctor` in the worker also checks the ffmpeg filters `zscale`, `tonemap`, `atempo`, `astats`,
-  `ametadata` and that `hyperframes --version` answers.
+  `ametadata`, the codecs `libx264` and `libvpx-vp9` (encoders) and the `libvpx-vp9` decoder, and
+  that `hyperframes --version` answers.
 
 ## Testing
 
@@ -105,11 +159,14 @@ live status shows one line per step (`name: summary`).
   synthetic and `testdata/rethink-work/` data, and `pipeline-fixtures.test.ts`, which fails when a
   version or setting change leaves `fixtures/pipeline/` stale.
 - `yarn workspace @edit-issebya/worker test:tools` (`*.tools.test.ts`): real ffmpeg and HyperFrames
-  on `fixtures/footage/short-speech.mp4`. The owner's Mac only, never CI.
+  on `fixtures/footage/short-speech.mp4`; `cutout.tools.test.ts` runs the three new steps on
+  `fixtures/footage/short-person.mp4` (alpha present, the `u2net_human_seg` default model, at
+  least 80 percent of head samples found, 540x960 previews of the source's duration). The owner's
+  Mac only, never CI.
 - `yarn turbo run test:db --filter=./apps/studio`: `pipeline-statuses.test.ts` and the pinned
   `steps` columns (`cache_hit`).
 - `apps/studio/e2e/upload.spec.ts` seeds `fixtures/pipeline/` under a per-run key prefix, so every
-  step is a hit: three `skipped` rows, reel `processed`, no tool needed in CI.
+  step is a hit: six `skipped` rows, reel `processed`, no tool needed in CI.
 - Manual: run the original `rethink-work` phone file and compare with the old scripts' output
   (format, fps, keyframes, duration, words, segments). The committed reference `retime.json` is
   Draft 02 (1.10 / 1.15); the defaults match Draft 01 (1.05 / 1.1).
@@ -124,12 +181,21 @@ live status shows one line per step (`name: summary`).
 - Never run HyperFrames through `npx` or `yarn dlx`, and always with `HYPERFRAMES_NO_TELEMETRY=1`.
 - Never write to the reference repository (`issebya-homes-reels`).
 - Never fingerprint a source without its ETag.
+- Background removal stays on HyperFrames' current u2net model (`u2net_human_seg`) until issue #20
+  is taken up: no other model, mask format, frame-reader patch or decode size.
+- Every output carries a `kept` or `rebuildable` tag.
+- Never touch `fixtures/footage/short-person.mp4`.
 
 ## Notes
 
 - Deleting an earlier step's output re-runs that step only; later steps stay hits because their
   fingerprints are unchanged (re-running would overwrite their outputs). A changed version or
-  setting re-runs every later step.
+  setting re-runs every step that reads its outputs, directly or through another step (a
+  `head_track` change does not re-run `preview_copies`).
+- `device: auto` is fingerprinted as a value, not as the provider chosen (CoreML on the Mac, CPU
+  elsewhere); outputs from different providers may differ slightly but share a key.
+- The fixtures stay on `short-speech.mp4` (no person): its cut-out is transparent and its head
+  track all `null`, enough for cache hits.
 - The ffmpeg build is in no fingerprint: after an ffmpeg upgrade that changes output, bump the
   affected versions by hand.
 - Single PUT only: an output above 5 GiB fails. Multipart comes with storage records (slice 14).

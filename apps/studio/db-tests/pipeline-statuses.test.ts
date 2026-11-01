@@ -33,7 +33,15 @@ describe("pipeline statuses", () => {
   });
 
   it("accepts each step's reel status", async () => {
-    for (const status of ["converting", "transcribing", "retiming", "processed"]) {
+    for (const status of [
+      "converting",
+      "transcribing",
+      "retiming",
+      "removing_background",
+      "tracking_head",
+      "making_previews",
+      "processed",
+    ]) {
       const { error } = await admin.from("reels").update({ status }).eq("id", reelId);
       expect(error, status).toBeNull();
     }

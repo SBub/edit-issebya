@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { PIPELINE, type PipelineStep, type SourceRef, fingerprintsFor } from "./definition.ts";
+import {
+  PIPELINE,
+  type PipelineStep,
+  type SourceRef,
+  fingerprintsFor,
+  outputFiles,
+} from "./definition.ts";
 
 const SOURCE: SourceRef = { etag: "9e107d9d372bb6826bd81d3542a419d6", bytes: 12_345 };
 
@@ -34,32 +40,72 @@ function replaced(index: number, step: PipelineStep): PipelineStep[] {
   return PIPELINE.map((original, at) => (at === index ? step : original));
 }
 
+// The changed step and every step reading its outputs, directly or through
+// another step.
+function dependents(index: number): Set<string> {
+  const fingerprints = fingerprintsFor(SOURCE);
+  const changed = new Set([PIPELINE[index]!.name]);
+  for (const step of PIPELINE) {
+    const reads = step.inputs(SOURCE, fingerprints).map((input) => input.ref);
+    if (reads.some((ref) => "step" in ref && changed.has(ref.step))) changed.add(step.name);
+  }
+  return changed;
+}
+
 function expectOnlyFromChanged(index: number, pipeline: PipelineStep[], label: string) {
   const before = fingerprintsFor(SOURCE);
   const after = fingerprintsFor(SOURCE, pipeline);
-  PIPELINE.forEach((step, at) => {
-    if (at < index) expect(after[step.name], `${label}: ${step.name}`).toBe(before[step.name]);
-    else expect(after[step.name], `${label}: ${step.name}`).not.toBe(before[step.name]);
-  });
+  const changed = dependents(index);
+  for (const step of PIPELINE) {
+    if (changed.has(step.name)) {
+      expect(after[step.name], `${label}: ${step.name}`).not.toBe(before[step.name]);
+    } else {
+      expect(after[step.name], `${label}: ${step.name}`).toBe(before[step.name]);
+    }
+  }
 }
 
 describe("PIPELINE", () => {
-  it("runs convert, transcribe and retime in that order", () => {
+  it("runs the six fixed steps in order, each with its reel status", () => {
     expect(PIPELINE.map((step) => [step.name, step.reelStatus])).toEqual([
       ["convert", "converting"],
       ["transcribe", "transcribing"],
       ["retime", "retiming"],
+      ["remove_background", "removing_background"],
+      ["head_track", "tracking_head"],
+      ["preview_copies", "making_previews"],
     ]);
   });
 
   it("gives every output a distinct name within its step", () => {
-    for (const step of PIPELINE) expect(new Set(step.outputs).size).toBe(step.outputs.length);
-    expect(PIPELINE.find((s) => s.name === "retime")?.outputs).toEqual([
+    for (const step of PIPELINE) expect(new Set(outputFiles(step)).size).toBe(step.outputs.length);
+    expect(outputFiles(PIPELINE.find((s) => s.name === "retime")!)).toEqual([
       "source.mp4",
       "transcript.json",
       "retime.json",
       "envelope.json",
     ]);
+  });
+
+  it("tags every output kept or rebuildable", () => {
+    const tags = Object.fromEntries(
+      PIPELINE.flatMap((step) =>
+        step.outputs.map((output) => [`${step.name}/${output.file}`, output.retention]),
+      ),
+    );
+    expect(tags).toEqual({
+      "convert/converted.mp4": "rebuildable",
+      "transcribe/transcript.json": "kept",
+      "retime/source.mp4": "rebuildable",
+      "retime/transcript.json": "kept",
+      "retime/retime.json": "kept",
+      "retime/envelope.json": "kept",
+      "remove_background/subject.webm": "rebuildable",
+      "head_track/head-track.json": "kept",
+      "preview_copies/footage-preview.mp4": "kept",
+      "preview_copies/subject-preview.webm": "kept",
+    });
+    for (const tag of Object.values(tags)) expect(["kept", "rebuildable"]).toContain(tag);
   });
 
   it("reads only outputs of earlier steps that exist", () => {
@@ -70,7 +116,7 @@ describe("PIPELINE", () => {
         const producer = PIPELINE.findIndex((other) => other.name === ref.step);
         expect(producer).toBeGreaterThanOrEqual(0);
         expect(producer).toBeLessThan(index);
-        expect(PIPELINE[producer]!.outputs).toContain(ref.file);
+        expect(outputFiles(PIPELINE[producer]!)).toContain(ref.file);
         expect(ref.fingerprint).toBe(fingerprints[ref.step]);
       }
     });
@@ -78,7 +124,7 @@ describe("PIPELINE", () => {
 });
 
 describe("fingerprintsFor", () => {
-  it("changes a step and every later one when any single setting changes", () => {
+  it("changes a step and every step reading it when any single setting changes", () => {
     PIPELINE.forEach((step, index) => {
       const all = leaves(step.settings);
       expect(all.length).toBeGreaterThan(0);
@@ -93,7 +139,7 @@ describe("fingerprintsFor", () => {
     });
   });
 
-  it("changes a step and every later one when its version changes", () => {
+  it("changes a step and every step reading it when its version changes", () => {
     PIPELINE.forEach((step, index) => {
       expectOnlyFromChanged(
         index,
@@ -101,6 +147,33 @@ describe("fingerprintsFor", () => {
         step.name,
       );
     });
+  });
+
+  it("re-runs background removal, head tracking and previews on a HyperFrames upgrade", () => {
+    const index = PIPELINE.findIndex((step) => step.name === "remove_background");
+    const step = PIPELINE[index]!;
+    const before = fingerprintsFor(SOURCE);
+    const after = fingerprintsFor(
+      SOURCE,
+      replaced(index, { ...step, settings: { ...step.settings, hyperframes: "0.0.0-changed" } }),
+    );
+    for (const name of ["remove_background", "head_track", "preview_copies"]) {
+      expect(after[name], name).not.toBe(before[name]);
+    }
+    for (const name of ["convert", "transcribe", "retime"]) {
+      expect(after[name], name).toBe(before[name]);
+    }
+  });
+
+  it("does not re-run the previews when only head tracking changes", () => {
+    const index = PIPELINE.findIndex((step) => step.name === "head_track");
+    const before = fingerprintsFor(SOURCE);
+    const after = fingerprintsFor(
+      SOURCE,
+      replaced(index, { ...PIPELINE[index]!, version: PIPELINE[index]!.version + 1 }),
+    );
+    expect(after.head_track).not.toBe(before.head_track);
+    expect(after.preview_copies).toBe(before.preview_copies);
   });
 
   it("changes every step when the source changes", () => {

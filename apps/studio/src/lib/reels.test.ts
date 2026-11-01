@@ -62,6 +62,9 @@ describe("REEL_STATUSES", () => {
       "converting",
       "transcribing",
       "retiming",
+      "removing_background",
+      "tracking_head",
+      "making_previews",
       "processed",
       "failed",
     ]);

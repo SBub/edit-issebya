@@ -2,6 +2,9 @@ import type { PipelineReelStatus } from "../step-store.ts";
 import type { Tool } from "../step-runner.ts";
 import { convert } from "./convert.ts";
 import { type FileRef, fingerprint } from "./fingerprint.ts";
+import { headTrack } from "./head-track-step.ts";
+import { previewCopies } from "./preview-copies.ts";
+import { removeBackground } from "./remove-background.ts";
 import { retime } from "./retime.ts";
 import type { ToolPaths } from "./tools.ts";
 import { transcribe } from "./transcribe.ts";
@@ -25,6 +28,16 @@ export interface StepRunArgs<S> {
   signal: AbortSignal;
 }
 
+// `kept`: cannot be regenerated cheaply, so it stays. `rebuildable`: heavy,
+// and may be deleted by the cleanup (slice 14), since its step re-runs from
+// the fingerprint whenever a later job needs it.
+export type OutputRetention = "kept" | "rebuildable";
+
+export interface StepOutput {
+  file: string;
+  retention: OutputRetention;
+}
+
 // One fixed step: everything its outputs depend on (inputs, settings,
 // version) is declared, and its fingerprint is made of nothing else.
 export interface PipelineStep<S extends object = object> {
@@ -33,14 +46,26 @@ export interface PipelineStep<S extends object = object> {
   version: number;
   settings: S;
   reelStatus: PipelineReelStatus;
-  outputs: readonly string[];
+  outputs: readonly StepOutput[];
   // The summary of a cache hit: `<reusedWhat>, reused`.
   reusedWhat: string;
   inputs(source: SourceRef, fingerprints: Record<string, string>): StepInput[];
   run(args: StepRunArgs<S>): Promise<{ what: string }>;
 }
 
-export const PIPELINE: readonly PipelineStep[] = [convert, transcribe, retime];
+export const PIPELINE: readonly PipelineStep[] = [
+  convert,
+  transcribe,
+  retime,
+  removeBackground,
+  headTrack,
+  previewCopies,
+];
+
+// The names of a step's outputs, in order.
+export function outputFiles(step: PipelineStep): string[] {
+  return step.outputs.map((output) => output.file);
+}
 
 // Every step's fingerprint, in order, from the source and the definition
 // alone: no file is read, so a hit is decided before any download.
