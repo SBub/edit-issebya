@@ -2,7 +2,7 @@
 // preset's font bytes, cached step outputs read by fingerprint, and version
 // writes that first check the lease.
 import { readFile } from "node:fs/promises";
-import type { Preset, VersionObjects, VersionStore } from "@edit-issebya/edit";
+import type { Edit, Preset, VersionObjects, VersionStore } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 
 // The preset's font files, read from the edit package's assets.
@@ -31,6 +31,18 @@ export function fingerprintOf(
   const fingerprint = fingerprints[of];
   if (!fingerprint) throw new Error(`${step}: no fingerprint for ${of}`);
   return fingerprint;
+}
+
+// The step fingerprints a version was made from, by step name: the inverse of
+// the mapping first_version uses to build an edit's inputs (footage and
+// transcript both come from retime). A change job decides from these, so it
+// runs no fixed step.
+export function fingerprintsFromInputs(inputs: Edit["inputs"]): Record<string, string> {
+  return {
+    retime: inputs.transcript,
+    head_track: inputs.headTrack,
+    remove_background: inputs.cutout,
+  };
 }
 
 // The version object and row writes, each refused once the lease is lost.

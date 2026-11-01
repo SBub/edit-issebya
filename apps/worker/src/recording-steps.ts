@@ -64,6 +64,8 @@ export const TEST_JOB: ClaimedJob = {
   owner_id: "o1",
   kind: "process",
   attempts: 1,
+  request: null,
+  restore_version_id: null,
 };
 
 export function stepContext(
