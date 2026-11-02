@@ -11,12 +11,15 @@ export interface KindRunners {
   restore: (versionId: string) => Promise<void>;
   // The pipeline's hits and the render step, exporting this version.
   render: (versionId: string) => Promise<void>;
+  // A library photo's images and its description.
+  describe_photo: (photoId: string) => Promise<void>;
 }
 
 // Runs the work of one claimed job by its kind. A change without a request,
-// a restore or a render without a version and any other kind fail the job.
+// a restore or a render without a version, a describe_photo without a photo
+// and any other kind fail the job.
 export function runJobKind(
-  job: Pick<ClaimedJob, "kind" | "request" | "restore_version_id" | "version_id">,
+  job: Pick<ClaimedJob, "kind" | "request" | "restore_version_id" | "version_id" | "photo_id">,
   runners: KindRunners,
 ): Promise<void> {
   switch (job.kind) {
@@ -31,6 +34,9 @@ export function runJobKind(
     case "render":
       if (!job.version_id) throw new Error("render job has no version to export");
       return runners.render(job.version_id);
+    case "describe_photo":
+      if (!job.photo_id) throw new Error("describe_photo job has no photo");
+      return runners.describe_photo(job.photo_id);
     default:
       throw new Error(`unknown job kind: ${job.kind}`);
   }

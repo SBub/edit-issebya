@@ -15,6 +15,7 @@ import { localDbUrl, localSupabaseAdmin } from "../test-support/local-supabase.t
 const STEP_COLUMNS = [
   ["id", "uuid"],
   ["job_id", "uuid"],
+  ["photo_id", "uuid"],
   ["reel_id", "uuid"],
   ["owner_id", "uuid"],
   ["name", "text"],

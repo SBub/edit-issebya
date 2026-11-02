@@ -13,6 +13,7 @@ import {
 import type { Storage } from "@edit-issebya/storage";
 import { editMeasurer } from "./edit-measurer.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
+import { reelOf } from "./queue.ts";
 import { type StepContext, recordHit, runInProcessStep } from "./step-runner.ts";
 
 const STEP = "first_version";
@@ -56,7 +57,7 @@ export async function saveFirstVersion({
   newId = randomUUID,
 }: FirstVersionRun): Promise<void> {
   const started = performance.now();
-  const reelId = ctx.job.reel_id;
+  const reelId = reelOf(ctx.job);
   if ((await rows.current(reelId)) !== null) {
     await recordHit(ctx, {
       name: STEP,

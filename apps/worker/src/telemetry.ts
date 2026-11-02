@@ -39,6 +39,18 @@ export function traceIdForReel(reelId: string): string {
   return reelId.replaceAll("-", "").toLowerCase();
 }
 
+// A job's trace: its reel's, or its photo's for a `describe_photo` job.
+export function traceIdForJob(job: Pick<ClaimedJob, "reel_id" | "photo_id">): string {
+  const target = job.reel_id ?? job.photo_id;
+  if (!target) throw new Error("job has neither a reel nor a photo");
+  return traceIdForReel(target);
+}
+
+// `reel.id` or `photo.id`, whichever the job has.
+export function targetAttributes(job: Pick<ClaimedJob, "reel_id" | "photo_id">): Attributes {
+  return job.reel_id ? { "reel.id": job.reel_id } : { "photo.id": job.photo_id ?? "" };
+}
+
 // `k=v,k2=v2`, values URL-decoded (the OTLP exporter spec's header format).
 function parseHeaders(raw: string): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -100,12 +112,13 @@ export function createTelemetry(
 
 // The job span, under a remote parent carrying the reel's trace id (span id
 // from the reel id's last 16 hex digits, never exported), so every job of the
-// reel, at any time, lands in the same trace.
+// reel, at any time, lands in the same trace. A photo's job does the same
+// with the photo's id.
 export function startJobSpan(
   telemetry: Telemetry,
   job: ClaimedJob,
 ): { span: Span; context: Context } {
-  const traceId = traceIdForReel(job.reel_id);
+  const traceId = traceIdForJob(job);
   const parent = trace.setSpanContext(ROOT_CONTEXT, {
     traceId,
     spanId: traceId.slice(-16),
@@ -114,7 +127,7 @@ export function startJobSpan(
   });
   const span = telemetry.tracer.startSpan(
     `job ${job.kind}`,
-    { attributes: { "reel.id": job.reel_id, "job.id": job.id, "job.attempt": job.attempts } },
+    { attributes: { ...targetAttributes(job), "job.id": job.id, "job.attempt": job.attempts } },
     parent,
   );
   return { span, context: trace.setSpan(parent, span) };

@@ -14,6 +14,12 @@ export const USAGE_LIMIT_SCRIPT = fileURLToPath(
   new URL("../../worker/src/decide/testdata/claude-usage-limit.json", import.meta.url),
 );
 
+// The worker's scripted describe_photo answer for fixtures/photos/sample.jpg:
+// one sentence and three tags.
+export const DESCRIBE_ANSWER = fileURLToPath(
+  new URL("../../worker/src/photos/testdata/describe-answer.json", import.meta.url),
+);
+
 // The worker's version 1 over fixtures/pipeline/.
 const BASELINE = new URL(
   "../../../packages/edit/src/testdata/versions/baseline-short-speech.edit.json",

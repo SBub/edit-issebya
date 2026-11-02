@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Storage } from "@edit-issebya/storage";
 import {
   ISSEBYA_PRESET,
@@ -8,6 +10,31 @@ import {
   parseDecideAnswer,
 } from "@edit-issebya/edit";
 import { type AiRunner, plainTool } from "./ai.ts";
+import { describePrompt } from "./photos/describe-prompt.ts";
+import { describeJsonSchema, parseDescribeAnswer } from "./photos/describe-schema.ts";
+
+// The committed sample photo the image check sends (scripts/make-test-photos.sh).
+const SAMPLE_PHOTO = new URL("../../../fixtures/photos/sample.jpg", import.meta.url).pathname;
+
+// The describe_photo call on the sample photo: Claude Code allowed to read
+// only `photo.jpg`, alone in a fresh folder, answering the describe schema.
+async function aiImageCall(ai: AiRunner): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), "doctor-photo-"));
+  try {
+    await copyFile(SAMPLE_PHOTO, join(dir, "photo.jpg"));
+    const result = await ai.call(plainTool, {
+      prompt: describePrompt(),
+      schema: describeJsonSchema,
+      cwd: dir,
+      readFile: "photo.jpg",
+    });
+    if (result.kind !== "answer") throw new Error(result.reason);
+    const parsed = parseDescribeAnswer(result.answer);
+    if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
 
 // Each dependency is built inside its own check, so a missing variable fails
 // that line only.
@@ -171,6 +198,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
       );
       if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
     }),
+    await check("ai image call", () => aiImageCall(deps.ai())),
     // Last, so the earlier lines keep their places.
     await check("scratch dir", async () => {
       const { dir, state } = await deps.scratchDir();

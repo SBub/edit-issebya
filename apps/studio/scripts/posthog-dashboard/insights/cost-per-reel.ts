@@ -8,11 +8,12 @@ export const costPerReel: SqlInsight = {
   description:
     "Per reel, over every step of every job: wall and CPU seconds, peak memory, bytes in and " +
     "out, AI tokens and the AI cost Claude Code reports. No money is derived from machine time. " +
-    "Source: synced steps table.",
+    "Photo steps (no reel) are left out. Source: synced steps table.",
   display: "ActionsTable",
   build: (_d, t) => `select steps.reel_id as reel_id,
 ${costColumns()}
 from ${t("steps")} as steps
+where steps.reel_id is not null
 group by steps.reel_id
 order by min(steps.started_at)`,
 };

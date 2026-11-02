@@ -78,9 +78,11 @@ export function recordingSteps(
   return { steps, calls };
 }
 
-export const TEST_JOB: ClaimedJob = {
+// A reel's process job, so its reel id is a string.
+export const TEST_JOB: ClaimedJob & { reel_id: string } = {
   id: "0b6f2a52-7d0e-4c55-9d4a-3c1f0e8a1b01",
   reel_id: "5f1c9e2a-0d3b-4a7e-8c6f-2b9d4e1a7c30",
+  photo_id: null,
   owner_id: "o1",
   kind: "process",
   attempts: 1,

@@ -15,7 +15,8 @@ const CONFIG = { workerId: "w1", leaseSeconds: 60 };
 function job(kind: string): ClaimedJob {
   return {
     id: "j1",
-    reel_id: "r1",
+    reel_id: kind === "describe_photo" ? null : "r1",
+    photo_id: kind === "describe_photo" ? "p1" : null,
     owner_id: "o1",
     kind,
     attempts: 1,
@@ -66,6 +67,27 @@ describe("ending a job", () => {
     const failed = stubClient();
     expect(await failJob(failed.db, CONFIG, job("process"), "boom")).toBe(true);
     expect(failed.updates[1]?.values).toEqual({ status: "failed" });
+  });
+
+  it("sets a describing photo failed when its describe_photo job fails, never a reel", async () => {
+    const failed = stubClient();
+    expect(await failJob(failed.db, CONFIG, job("describe_photo"), "describe_photo: twice")).toBe(
+      true,
+    );
+    expect(failed.updates.map((u) => u.table)).toEqual(["jobs", "photos"]);
+    expect(failed.updates[1]?.values).toEqual({ status: "failed" });
+    expect(failed.filters).toContain("photos.id=p1");
+    expect(failed.filters).toContain("photos.status=describing");
+  });
+
+  it("leaves the photo to its step when a describe_photo job finishes or waits", async () => {
+    const done = stubClient();
+    expect(await finishJob(done.db, CONFIG, job("describe_photo"))).toBe(true);
+    expect(done.updates.map((u) => u.table)).toEqual(["jobs"]);
+
+    const waiting = stubClient();
+    expect(await waitJob(waiting.db, CONFIG, job("describe_photo"), "the usage limit")).toBe(true);
+    expect(waiting.updates.map((u) => u.table)).toEqual(["jobs"]);
   });
 
   for (const kind of ["change", "restore", "render"]) {

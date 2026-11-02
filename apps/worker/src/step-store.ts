@@ -24,6 +24,18 @@ export interface AiUsage {
   model: string | null;
 }
 
+// Two calls' usage summed (null only where neither reported it); the model is
+// the later call's when it names one.
+export function addUsage(total: AiUsage, usage: AiUsage): AiUsage {
+  const sum = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : a + b);
+  return {
+    inputTokens: sum(total.inputTokens, usage.inputTokens),
+    outputTokens: sum(total.outputTokens, usage.outputTokens),
+    costUsd: sum(total.costUsd, usage.costUsd),
+    model: usage.model ?? total.model,
+  };
+}
+
 export function aiMeasurements(usage: AiUsage): Partial<StepMeasurements> {
   return {
     ai_input_tokens: usage.inputTokens,
@@ -86,6 +98,7 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
         .insert({
           job_id: job.id,
           reel_id: job.reel_id,
+          photo_id: job.photo_id,
           owner_id: job.owner_id,
           name,
           status: "running",
@@ -99,6 +112,7 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
       const { error } = await db.from("steps").insert({
         job_id: job.id,
         reel_id: job.reel_id,
+        photo_id: job.photo_id,
         owner_id: job.owner_id,
         name,
         status: "skipped",

@@ -6,6 +6,7 @@ import { runJob } from "./run-job.ts";
 const JOB: ClaimedJob = {
   id: "j1",
   reel_id: "r1",
+  photo_id: null,
   owner_id: "o1",
   kind: "process",
   attempts: 1,

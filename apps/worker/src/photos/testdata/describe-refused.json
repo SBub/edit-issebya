@@ -1,0 +1,28 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "duration_ms": 4200,
+  "num_turns": 2,
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "structured_output": {
+    "description": "A colourful test pattern with bars and a moving circle.",
+    "tags": ["test pattern"]
+  },
+  "total_cost_usd": 0.004,
+  "usage": {
+    "input_tokens": 1200,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 80
+  },
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 1200,
+      "outputTokens": 80,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "costUSD": 0.004
+    }
+  }
+}

@@ -3,7 +3,9 @@ import type { WorkerConfig } from "./config.ts";
 
 export interface ClaimedJob {
   id: string;
-  reel_id: string;
+  // Exactly one of the two is set: a reel's job or a photo's (`describe_photo`).
+  reel_id: string | null;
+  photo_id: string | null;
   owner_id: string;
   kind: string;
   attempts: number;
@@ -15,6 +17,13 @@ export interface ClaimedJob {
   version_id: string | null;
   // The failed job this one retries (the owner's Retry), or null.
   retry_of_job_id?: string | null;
+}
+
+// The reel a reel's job works on; a job without one (a photo's) is refused,
+// never run against no reel.
+export function reelOf(job: Pick<ClaimedJob, "kind" | "reel_id">): string {
+  if (!job.reel_id) throw new Error(`${job.kind} job has no reel`);
+  return job.reel_id;
 }
 
 // How long a job whose AI is not available waits before it is taken again.
@@ -98,7 +107,17 @@ async function endJob(
   if (error) throw new Error(`job not ended: ${error.message}`);
   // Another worker holds the lease now: leave the reel to it.
   if ((data ?? []).length !== 1) return false;
-  if (outcome.reel === null) return true;
+  if (job.kind === "describe_photo" && outcome.job === "failed" && job.photo_id) {
+    // Guarded: a photo deleted or already ready meanwhile is left alone.
+    const photo = await db
+      .from("photos")
+      .update({ status: "failed" })
+      .eq("id", job.photo_id)
+      .eq("status", "describing");
+    if (photo.error) throw new Error(`photo not updated: ${photo.error.message}`);
+    return true;
+  }
+  if (outcome.reel === null || !job.reel_id) return true;
   const reel = await db.from("reels").update({ status: outcome.reel }).eq("id", job.reel_id);
   if (reel.error) throw new Error(`reel not updated: ${reel.error.message}`);
   return true;
@@ -107,7 +126,9 @@ async function endJob(
 // Only a `process` job moves the reel's status. A change, restore or render
 // job runs on a processed reel and leaves it processed whatever happens: a
 // failed change keeps the reel usable and its current version untouched, a
-// failed render leaves the reel as it was.
+// failed render leaves the reel as it was. A `describe_photo` job has no reel:
+// its failure sets the photo `failed`, its success leaves the photo to the
+// step that wrote it `ready`.
 function reelStatusAfter(job: ClaimedJob, status: "processed" | "failed") {
   return job.kind === "process" ? status : null;
 }
@@ -155,6 +176,7 @@ export async function refuseJob(
     .select("id");
   if (error) throw new Error(`job not refused: ${error.message}`);
   if ((data ?? []).length !== 1) return false;
+  if (!job.reel_id) return true;
   const reel = await db
     .from("reels")
     .update({ status: "refused", refusal_message: message })

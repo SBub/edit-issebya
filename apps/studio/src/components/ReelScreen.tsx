@@ -6,6 +6,7 @@ const TABS = [
   { key: "edit", label: "Edit" },
   { key: "versions", label: "Versions" },
   { key: "status", label: "Status" },
+  { key: "library", label: "Library" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -16,9 +17,12 @@ interface Props {
   main: ReactNode;
   // Pinned under the middle on every size: the correction field.
   footer: ReactNode;
-  // The side panel's two areas (desktop), the phone's other two tabs.
+  // The side panel's two areas (desktop), the phone's Versions and Status tabs.
   versions: ReactNode;
   status: ReactNode;
+  // The owner's photo library: a third column on desktop, the phone's
+  // Library tab.
+  library: ReactNode;
 }
 
 // The reel page on one screen, with no JavaScript measuring the window: the
@@ -27,14 +31,16 @@ interface Props {
 //
 // Desktop (`lg:`): the header; a main column (preview, controls, timeline)
 // with the correction field pinned under it; a side panel with Versions and
-// Status stacked, both visible. Phone: the same header and pinned footer,
-// the middle split into three tabs (Edit, Versions, Status), one shown.
-export function ReelScreen({ header, main, footer, versions, status }: Props) {
+// Status stacked, both visible; the photo library as a third column over the
+// full height. Phone: the same header and pinned footer, the middle split
+// into four tabs (Edit, Versions, Status, Library), one shown.
+export function ReelScreen({ header, main, footer, versions, status, library }: Props) {
   const [tab, setTab] = useState<TabKey>("edit");
   const tabRefs = useRef<Record<TabKey, HTMLButtonElement | null>>({
     edit: null,
     versions: null,
     status: null,
+    library: null,
   });
 
   // WAI-ARIA tabs: arrows, Home and End move the selection and the focus.
@@ -94,7 +100,7 @@ export function ReelScreen({ header, main, footer, versions, status }: Props) {
           </button>
         ))}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_26rem]">
+      <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_20rem_18rem] lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_24rem_22rem]">
         <div
           {...panel("edit")}
           data-testid="edit-area"
@@ -118,6 +124,13 @@ export function ReelScreen({ header, main, footer, versions, status }: Props) {
           className={`${shown("status")} min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-3 lg:col-start-2 lg:row-span-2 lg:row-start-2 lg:border-l lg:border-line`}
         >
           {status}
+        </div>
+        <div
+          {...panel("library")}
+          data-testid="library-area"
+          className={`${shown("library")} min-h-0 flex-1 flex-col overflow-hidden lg:col-start-3 lg:row-span-3 lg:row-start-1 lg:border-l lg:border-line`}
+        >
+          {library}
         </div>
       </div>
     </div>

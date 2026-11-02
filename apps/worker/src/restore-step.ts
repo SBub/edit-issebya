@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { type VersionBlobs, type VersionRows, restoreVersion } from "@edit-issebya/edit";
+import { reelOf } from "./queue.ts";
 import { type StepContext, runInProcessStep } from "./step-runner.ts";
 
 const STEP = "restore";
@@ -29,7 +30,7 @@ export function runRestore({
   return runInProcessStep(ctx, {
     name: STEP,
     async work() {
-      const reelId = ctx.job.reel_id;
+      const reelId = reelOf(ctx.job);
       const old = await rows.get(versionId);
       ctx.signal.throwIfAborted();
       const saved = await restoreVersion({ rows, blobs, keyPrefix, newId }, { reelId, versionId });

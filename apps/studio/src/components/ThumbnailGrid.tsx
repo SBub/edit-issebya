@@ -3,8 +3,10 @@ import type { ReactNode } from "react";
 
 export interface ThumbnailGridItem {
   id: string;
-  // Same zone, so next/link (basePath applies).
-  href: string;
+  // Same zone, so next/link (basePath applies). A tile with `href` is a link;
+  // one with `onSelect` (and no `href`) is a button.
+  href?: string;
+  onSelect?: () => void;
   title: string;
   // A short-lived signed storage URL, or null for a neutral tile.
   imageUrl: string | null;
@@ -22,11 +24,30 @@ interface Props {
   items: readonly ThumbnailGridItem[];
   // Shown in place of the list when there is no item.
   empty: ReactNode;
+  // Vertical 9:16 tiles (reels) or square ones.
+  aspect?: "portrait" | "square";
+  // "page": 3 columns on a phone, more as the width allows. "panel": 3 at
+  // every width, for a narrow side column.
+  columns?: "page" | "panel";
 }
 
-// A grid of vertical (9:16) thumbnails: 3 columns on a phone, more as the
-// width allows. Nothing reel-specific: the photo library reuses it.
-export function ThumbnailGrid({ label, items, empty }: Props) {
+const ASPECTS = { portrait: "aspect-[9/16]", square: "aspect-square" } as const;
+const COLUMNS = {
+  page: "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 2xl:grid-cols-8",
+  panel: "grid-cols-3",
+} as const;
+
+const TILE = "group flex flex-col gap-1 rounded-lg text-left focus-visible:outline-offset-4";
+
+// A grid of thumbnails, each a link or a button. Nothing reel- or
+// photo-specific: the reels list and the photo library both use it.
+export function ThumbnailGrid({
+  label,
+  items,
+  empty,
+  aspect = "portrait",
+  columns = "page",
+}: Props) {
   if (items.length === 0) {
     return (
       <section aria-label={label} className="text-muted">
@@ -36,17 +57,13 @@ export function ThumbnailGrid({ label, items, empty }: Props) {
   }
 
   return (
-    <ul
-      aria-label={label}
-      className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 2xl:grid-cols-8"
-    >
-      {items.map((item) => (
-        <li key={item.id} className="min-w-0">
-          <Link
-            href={item.href}
-            className="group flex flex-col gap-1 rounded-lg focus-visible:outline-offset-4"
-          >
-            <span className="relative block aspect-[9/16] overflow-hidden rounded-lg border border-line bg-raised">
+    <ul aria-label={label} className={`grid gap-2 ${COLUMNS[columns]}`}>
+      {items.map((item) => {
+        const body = (
+          <>
+            <span
+              className={`relative block ${ASPECTS[aspect]} w-full overflow-hidden rounded-lg border border-line bg-raised`}
+            >
               {item.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- a short-lived signed storage URL, never a Next image
                 <img
@@ -71,9 +88,22 @@ export function ThumbnailGrid({ label, items, empty }: Props) {
             <span data-testid="tile-meta" className="truncate text-[11px] text-muted">
               {item.meta}
             </span>
-          </Link>
-        </li>
-      ))}
+          </>
+        );
+        return (
+          <li key={item.id} className="min-w-0">
+            {item.href !== undefined ? (
+              <Link href={item.href} className={TILE}>
+                {body}
+              </Link>
+            ) : (
+              <button type="button" onClick={item.onSelect} className={`${TILE} w-full`}>
+                {body}
+              </button>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

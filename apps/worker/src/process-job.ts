@@ -6,7 +6,17 @@ import { runDecide } from "./decide/run-decide.ts";
 import type { ErrorTracker } from "./error-tracking.ts";
 import { saveFirstVersion } from "./first-version.ts";
 import { runJobKind } from "./job-kinds.ts";
-import { type ClaimedJob, failJob, finishJob, refuseJob, renewLease, waitJob } from "./queue.ts";
+import { runDescribePhotoJob } from "./photos/describe-photo.ts";
+import { supabasePhotoStore } from "./photos/photo-store.ts";
+import {
+  type ClaimedJob,
+  failJob,
+  finishJob,
+  reelOf,
+  refuseJob,
+  renewLease,
+  waitJob,
+} from "./queue.ts";
 import { runPipeline } from "./pipeline/run-pipeline.ts";
 import { previewCopiesRefs, recordPreviewCopies } from "./preview-copies-record.ts";
 import { stepDouble } from "./pipeline/step-double.ts";
@@ -18,7 +28,7 @@ import { withKeepAwake } from "./keep-awake.ts";
 import { type JobOutcome, runJob } from "./run-job.ts";
 import { withJobScratch } from "./scratch.ts";
 import { supabaseStepStore } from "./step-store.ts";
-import { classifyKey, recordingStorage, supabaseStoredFiles } from "./stored-files.ts";
+import { classifyKey, jobTarget, recordingStorage, supabaseStoredFiles } from "./stored-files.ts";
 import { type Telemetry, endJobSpan, startJobSpan } from "./telemetry.ts";
 import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 
@@ -29,7 +39,8 @@ import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 // the first version and the decide step; a `change` job only the decide step
 // with the owner's request; a `restore` job only the restore step; a `render`
 // job the pipeline's hits (or a rebuilt output) and the render step, leaving
-// the reel's status alone. Only a `process` job moves the reel's status
+// the reel's status alone; a `describe_photo` job a library photo's two copies
+// and its description, recorded against the photo. Only a `process` job moves the reel's status
 // (queue.ts). The job runs in its own scratch folder, removed afterwards
 // whatever happened, and writes storage only through the recording storage,
 // so every object it stores has a `stored_files` row for its reel. On macOS
@@ -44,13 +55,10 @@ export async function processJob(
 ): Promise<JobOutcome> {
   const steps = supabaseStepStore(db);
   const records = supabaseStoredFiles(db);
-  const storage = recordingStorage(rawStorage, {
-    records,
-    reelId: job.reel_id,
-    keyPrefix: config.keyPrefix,
-  });
+  const target = jobTarget(job);
+  const storage = recordingStorage(rawStorage, { records, target, keyPrefix: config.keyPrefix });
   const recordStored = (key: string, bytes: number) =>
-    records.record({ reelId: job.reel_id, key, bytes, ...classifyKey(config.keyPrefix, key) });
+    records.record({ ...target, key, bytes, ...classifyKey(config.keyPrefix, key) });
   const { span, context: jobContext } = startJobSpan(telemetry, job);
   let outcome: JobOutcome = "failed";
   try {
@@ -92,7 +100,7 @@ export async function processJob(
                 });
                 // Before the first version, so a reel with a current version
                 // already says where its preview copies are.
-                await recordPreviewCopies(db, job.reel_id, previewCopiesRefs(fingerprints));
+                await recordPreviewCopies(db, reelOf(job), previewCopiesRefs(fingerprints));
                 await saveFirstVersion({
                   ctx,
                   storage,
@@ -121,6 +129,19 @@ export async function processJob(
                   tools: toolPaths(),
                   recordStored,
                   versionId,
+                }),
+              // A library photo: its two copies, then Claude Code's
+              // description and tags; no reel is touched.
+              describe_photo: (photoId) =>
+                runDescribePhotoJob({
+                  ctx,
+                  storage,
+                  store: supabasePhotoStore(db),
+                  ai: aiRunner(process.env),
+                  tools: toolPaths(),
+                  keyPrefix: config.keyPrefix,
+                  scratchDir,
+                  photoId,
                 }),
             });
           },

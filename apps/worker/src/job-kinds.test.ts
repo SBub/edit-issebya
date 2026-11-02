@@ -7,10 +7,11 @@ function runners() {
     change: vi.fn<(request: string) => Promise<void>>(async () => {}),
     restore: vi.fn<(versionId: string) => Promise<void>>(async () => {}),
     render: vi.fn<(versionId: string) => Promise<void>>(async () => {}),
+    describe_photo: vi.fn<(photoId: string) => Promise<void>>(async () => {}),
   };
 }
 
-const NONE = { request: null, restore_version_id: null, version_id: null };
+const NONE = { request: null, restore_version_id: null, version_id: null, photo_id: null };
 
 function expectOnly(r: ReturnType<typeof runners>, kind: keyof ReturnType<typeof runners> | null) {
   for (const [name, fn] of Object.entries(r)) {
@@ -45,6 +46,21 @@ describe("runJobKind", () => {
     await runJobKind({ kind: "render", ...NONE, version_id: "v3" }, r);
     expect(r.render).toHaveBeenCalledExactlyOnceWith("v3");
     expectOnly(r, "render");
+  });
+
+  it("describes only the photo for a describe_photo job", async () => {
+    const r = runners();
+    await runJobKind({ kind: "describe_photo", ...NONE, photo_id: "p1" }, r);
+    expect(r.describe_photo).toHaveBeenCalledExactlyOnceWith("p1");
+    expectOnly(r, "describe_photo");
+  });
+
+  it("fails a describe_photo job without a photo", () => {
+    const r = runners();
+    expect(() => runJobKind({ kind: "describe_photo", ...NONE }, r)).toThrow(
+      /describe_photo job has no photo/,
+    );
+    expectOnly(r, null);
   });
 
   it("fails a change without a request, a restore or render without a version and an unknown kind", () => {

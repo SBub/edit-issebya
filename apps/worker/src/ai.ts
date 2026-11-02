@@ -11,6 +11,22 @@ export interface AiRequest {
   prompt: string;
   schema: object;
   cwd: string;
+  // The one file inside `cwd` Claude Code may read (a plain file name, the
+  // describe_photo step's image); without it Claude Code has no tools at all.
+  readFile?: string;
+}
+
+// A plain file name: no folder, no `..`, nothing a shell or a permission rule
+// could read as more than one file.
+const READ_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+
+// The tool flags of one call: none at all, or only Read on the one file.
+function toolArgs(readFile: string | undefined): string[] {
+  if (readFile === undefined) return ["--tools", ""];
+  if (!READ_FILE.test(readFile) || readFile.includes("..")) {
+    throw new Error(`ai: readFile must be a plain file name inside cwd: ${readFile}`);
+  }
+  return ["--tools", "Read", "--allowedTools", `Read(${readFile})`, "--permission-prompts", "none"];
 }
 
 export type AiResult =
@@ -112,13 +128,14 @@ export function parseClaudeResult(stdout: string): AiResult {
   return { kind: "broken", reason: "no structured_output and no result", usage };
 }
 
-// Claude Code without tools or a saved session, the prompt on stdin, nothing
-// shell-interpreted. A non-zero exit throws from the tool, unless its output
+// Claude Code without tools (or only Read on the request's one file) and
+// without a saved session, the prompt on stdin, nothing shell-interpreted. A non-zero exit throws from the tool, unless its output
 // (the thrown message carries its tail) says Claude Code is not available:
 // that is an `unavailable` result.
 function claudeRunner(path: string): AiRunner {
   return {
-    async call(tool, { prompt, schema, cwd }) {
+    async call(tool, { prompt, schema, cwd, readFile }) {
+      const tools = toolArgs(readFile);
       let stdout: string;
       try {
         stdout = await tool({
@@ -129,8 +146,7 @@ function claudeRunner(path: string): AiRunner {
             "json",
             "--json-schema",
             JSON.stringify(schema),
-            "--tools",
-            "",
+            ...tools,
             "--no-session-persistence",
           ],
           stdin: prompt,
@@ -161,6 +177,8 @@ export function fakeAiRunner(script: unknown[]): FakeAiRunner {
     calls,
     async call(_tool, request) {
       if (script.length === 0) throw new Error("fake AI runner has no scripted answer");
+      // The same refusal as the real runner, so a bad file name fails in tests too.
+      toolArgs(request.readFile);
       const entry = script[Math.min(calls.length, script.length - 1)];
       calls.push(request);
       return parseClaudeResult(typeof entry === "string" ? entry : JSON.stringify(entry));

@@ -200,13 +200,19 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
   await expect(page.getByTestId("version-item").first()).toBeVisible();
   await expect(page.getByTestId("step-line").first()).toBeVisible();
   await expect(page.getByRole("tablist", { name: "Reel" })).toBeHidden();
+  // The photo library is a third column, beside the side panel.
+  await expect(page.getByTestId("library-area")).toBeVisible();
+  await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
 
   await expectOwnScroll(page, page.getByTestId("versions-area"));
   await expectOwnScroll(page, page.getByTestId("status-area"));
   await expectNoPageScroll(page);
 });
 
-test("one screen at 390x844 with tabs Edit, Versions and Status", async ({ page, baseURL }) => {
+test("one screen at 390x844 with tabs Edit, Versions, Status and Library", async ({
+  page,
+  baseURL,
+}) => {
   await openReel(page, baseURL!, PHONE);
   await expectNoPageScroll(page);
   await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
@@ -215,6 +221,7 @@ test("one screen at 390x844 with tabs Edit, Versions and Status", async ({ page,
   const tabs = page.getByRole("tablist", { name: "Reel" });
   await expect(tabs).toBeVisible();
   const tab = (name: string) => tabs.getByRole("tab", { name });
+  await expect(tabs.getByRole("tab")).toHaveText(["Edit", "Versions", "Status", "Library"]);
   const field = page.getByLabel("Ask for a change");
 
   await expect(tab("Edit")).toHaveAttribute("aria-selected", "true");
@@ -239,8 +246,13 @@ test("one screen at 390x844 with tabs Edit, Versions and Status", async ({ page,
   await expectOwnScroll(page, page.getByTestId("status-area"));
   await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
 
-  // Arrow keys move between the tabs (WAI-ARIA tabs).
-  await tab("Status").focus();
+  await tab("Library").click();
+  await expect(page.getByTestId("library-area")).toBeVisible();
+  await expect(page.getByTestId("step-line").first()).toBeHidden();
+  await expectNoPageScroll(page);
+
+  // Arrow keys move between the tabs (WAI-ARIA tabs), wrapping at the end.
+  await tab("Library").focus();
   await page.keyboard.press("ArrowRight");
   await expect(tab("Edit")).toHaveAttribute("aria-selected", "true");
   await expect(tab("Edit")).toBeFocused();

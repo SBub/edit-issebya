@@ -6,6 +6,7 @@ import {
   TransientError,
   findCause,
   isTransient,
+  permanentAfterAiCall,
   supabaseFailure,
 } from "./failure.ts";
 import { StepError } from "./step-runner.ts";
@@ -114,5 +115,24 @@ describe("supabaseFailure", () => {
     expect(error).not.toBeInstanceOf(TransientError);
     expect(error.message).toBe("version not saved: violates check");
     expect(isTransient(error)).toBe(false);
+  });
+});
+
+describe("permanentAfterAiCall", () => {
+  it("keeps an unavailable AI and a permanent error, and makes anything else permanent", () => {
+    const unavailable = new AiUnavailable("the usage limit is reached");
+    expect(() => permanentAfterAiCall(unavailable)).toThrow(unavailable);
+    const permanent = new PermanentError("gone");
+    expect(() => permanentAfterAiCall(permanent)).toThrow(permanent);
+    const network = withCode("ECONNRESET");
+    let thrown: unknown = null;
+    try {
+      permanentAfterAiCall(network);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(PermanentError);
+    expect((thrown as Error).cause).toBe(network);
+    expect(isTransient(thrown)).toBe(false);
   });
 });

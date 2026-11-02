@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   JOB_COLUMNS,
   type JobRow,
@@ -52,6 +52,9 @@ interface LiveReelProps extends Snapshot {
   // Per long step, the owner's earlier done rows as ms per footage second,
   // newest first: read once per page open, the time-left estimate's history.
   estimateRates: Record<string, number[]>;
+  // The owner's photo library (it follows its own table), shown beside the
+  // reel on desktop and as the phone's Library tab.
+  library: ReactNode;
 }
 
 async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snapshot | null> {
@@ -122,6 +125,7 @@ export function LiveReel({
   latestExportId: initialLatestExportId,
   workerStatus: initialWorkerStatus,
   estimateRates,
+  library,
 }: LiveReelProps) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
@@ -350,6 +354,7 @@ export function LiveReel({
             estimateRates={estimateRates}
           />
         }
+        library={library}
       />
     </div>
   );
