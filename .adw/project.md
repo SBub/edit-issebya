@@ -164,7 +164,7 @@ byte for byte, like the Node project does. The DB layer is `apps/studio/db-tests
 (`apps/studio/vitest.db.config.ts`: RLS on every public table, owner isolation, Realtime follows
 RLS, `jobs.test.ts` for `claim_job`'s lease, `versions.test.ts` for `save_version`, version
 immutability and its RLS, `steps-measurements.test.ts` for the exact
-`steps` column set (`progress_percent` and `progress_updated_at` included) and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit`, `exports.test.ts` for
+`steps` column set (`progress_percent` and `progress_updated_at` included) and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit` (the reel's `footage_seconds` column comes from the progress migration and is written once by the worker after `retime`, unit-tested in `apps/worker/src/pipeline/run-pipeline.test.ts`, no DB test), `exports.test.ts` for
 the render job policy and the `exports` table: 24-hour expiry, owner from the reel, never updated,
 owner-only select, `stored-files.test.ts` for the `stored_files` and `worker_status` tables (`heartbeat_at` included, and a heartbeat upsert leaving `waiting_reason`), their RLS,
 `record_stored_file`, the seven-day slimming and export expiry with a fixed clock and `finish_upload`'s source row), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
