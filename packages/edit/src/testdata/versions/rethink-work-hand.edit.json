@@ -1,0 +1,1862 @@
+{
+  "format": 1,
+  "preset": "issebya",
+  "duration": 47.526,
+  "inputs": {
+    "footage": {
+      "step": "retime",
+      "fingerprint": "rethink-work",
+      "file": "source.mp4"
+    },
+    "transcript": {
+      "step": "retime",
+      "fingerprint": "rethink-work",
+      "file": "transcript.json"
+    },
+    "cutout": {
+      "step": "remove_background",
+      "fingerprint": "rethink-work",
+      "file": "subject.webm"
+    },
+    "head_track": {
+      "step": "head_track",
+      "fingerprint": "rethink-work",
+      "file": "head-track.json"
+    }
+  },
+  "tracks": {
+    "footage": [
+      {
+        "id": "footage",
+        "start": {
+          "reel": "start"
+        },
+        "end": {
+          "reel": "end"
+        }
+      }
+    ],
+    "cutout": [
+      {
+        "id": "cutout",
+        "start": {
+          "reel": "start"
+        },
+        "end": {
+          "reel": "end"
+        }
+      }
+    ],
+    "captions": [
+      {
+        "id": "cw0",
+        "start": {
+          "word": "w0"
+        },
+        "end": {
+          "word": "w3",
+          "edge": "end"
+        },
+        "words": ["w0"]
+      },
+      {
+        "id": "cw1",
+        "start": {
+          "word": "w1"
+        },
+        "end": {
+          "word": "w3",
+          "edge": "end"
+        },
+        "words": ["w1"]
+      },
+      {
+        "id": "cw2",
+        "start": {
+          "word": "w2"
+        },
+        "end": {
+          "word": "w3",
+          "edge": "end"
+        },
+        "words": ["w2"]
+      },
+      {
+        "id": "cw3",
+        "start": {
+          "word": "w3"
+        },
+        "end": {
+          "word": "w3",
+          "edge": "end"
+        },
+        "words": ["w3"]
+      },
+      {
+        "id": "cw4",
+        "start": {
+          "word": "w4"
+        },
+        "end": {
+          "word": "w9",
+          "edge": "end"
+        },
+        "words": ["w4"]
+      },
+      {
+        "id": "cw5",
+        "start": {
+          "word": "w5"
+        },
+        "end": {
+          "word": "w9",
+          "edge": "end"
+        },
+        "words": ["w5"]
+      },
+      {
+        "id": "cw6",
+        "start": {
+          "word": "w6"
+        },
+        "end": {
+          "word": "w9",
+          "edge": "end"
+        },
+        "words": ["w6"]
+      },
+      {
+        "id": "cw7",
+        "start": {
+          "word": "w7"
+        },
+        "end": {
+          "word": "w9",
+          "edge": "end"
+        },
+        "words": ["w7"]
+      },
+      {
+        "id": "cw8",
+        "start": {
+          "word": "w8"
+        },
+        "end": {
+          "word": "w9",
+          "edge": "end"
+        },
+        "words": ["w8"]
+      },
+      {
+        "id": "cw9",
+        "start": {
+          "word": "w9"
+        },
+        "end": {
+          "word": "w9",
+          "edge": "end"
+        },
+        "words": ["w9"]
+      },
+      {
+        "id": "cw10",
+        "start": {
+          "word": "w10"
+        },
+        "end": {
+          "word": "w12",
+          "edge": "end"
+        },
+        "words": ["w10"]
+      },
+      {
+        "id": "cw11",
+        "start": {
+          "word": "w11"
+        },
+        "end": {
+          "word": "w12",
+          "edge": "end"
+        },
+        "words": ["w11"]
+      },
+      {
+        "id": "cw12",
+        "start": {
+          "word": "w12"
+        },
+        "end": {
+          "word": "w12",
+          "edge": "end"
+        },
+        "words": ["w12"]
+      },
+      {
+        "id": "cw13",
+        "start": {
+          "word": "w13"
+        },
+        "end": {
+          "word": "w17",
+          "edge": "end"
+        },
+        "words": ["w13"]
+      },
+      {
+        "id": "cw14",
+        "start": {
+          "word": "w14"
+        },
+        "end": {
+          "word": "w17",
+          "edge": "end"
+        },
+        "words": ["w14"]
+      },
+      {
+        "id": "cw15",
+        "start": {
+          "word": "w15"
+        },
+        "end": {
+          "word": "w17",
+          "edge": "end"
+        },
+        "words": ["w15"]
+      },
+      {
+        "id": "cw16",
+        "start": {
+          "word": "w16"
+        },
+        "end": {
+          "word": "w17",
+          "edge": "end"
+        },
+        "words": ["w16"]
+      },
+      {
+        "id": "cw17",
+        "start": {
+          "word": "w17"
+        },
+        "end": {
+          "word": "w17",
+          "edge": "end"
+        },
+        "words": ["w17"]
+      },
+      {
+        "id": "cw18",
+        "start": {
+          "word": "w18"
+        },
+        "end": {
+          "word": "w20",
+          "edge": "end"
+        },
+        "words": ["w18"]
+      },
+      {
+        "id": "cw19",
+        "start": {
+          "word": "w19"
+        },
+        "end": {
+          "word": "w20",
+          "edge": "end"
+        },
+        "words": ["w19"]
+      },
+      {
+        "id": "cw20",
+        "start": {
+          "word": "w20"
+        },
+        "end": {
+          "word": "w20",
+          "edge": "end"
+        },
+        "words": ["w20"]
+      },
+      {
+        "id": "cw21",
+        "start": {
+          "word": "w21"
+        },
+        "end": {
+          "word": "w22",
+          "edge": "end"
+        },
+        "words": ["w21"]
+      },
+      {
+        "id": "cw22",
+        "start": {
+          "word": "w22"
+        },
+        "end": {
+          "word": "w22",
+          "edge": "end"
+        },
+        "words": ["w22"]
+      },
+      {
+        "id": "cw23",
+        "start": {
+          "word": "w23"
+        },
+        "end": {
+          "word": "w25",
+          "edge": "end"
+        },
+        "words": ["w23"]
+      },
+      {
+        "id": "cw24",
+        "start": {
+          "word": "w24"
+        },
+        "end": {
+          "word": "w25",
+          "edge": "end"
+        },
+        "words": ["w24"]
+      },
+      {
+        "id": "cw25",
+        "start": {
+          "word": "w25"
+        },
+        "end": {
+          "word": "w25",
+          "edge": "end"
+        },
+        "words": ["w25"]
+      },
+      {
+        "id": "cw26",
+        "start": {
+          "word": "w26"
+        },
+        "end": {
+          "word": "w28",
+          "edge": "end"
+        },
+        "words": ["w26"]
+      },
+      {
+        "id": "cw27",
+        "start": {
+          "word": "w27"
+        },
+        "end": {
+          "word": "w28",
+          "edge": "end"
+        },
+        "words": ["w27"]
+      },
+      {
+        "id": "cw28",
+        "start": {
+          "word": "w28"
+        },
+        "end": {
+          "word": "w28",
+          "edge": "end"
+        },
+        "words": ["w28"]
+      },
+      {
+        "id": "cw30",
+        "start": {
+          "word": "w30"
+        },
+        "end": {
+          "word": "w33",
+          "edge": "end"
+        },
+        "words": ["w30"]
+      },
+      {
+        "id": "cw31",
+        "start": {
+          "word": "w31"
+        },
+        "end": {
+          "word": "w33",
+          "edge": "end"
+        },
+        "words": ["w31"]
+      },
+      {
+        "id": "cw32",
+        "start": {
+          "word": "w32"
+        },
+        "end": {
+          "word": "w33",
+          "edge": "end"
+        },
+        "words": ["w32"]
+      },
+      {
+        "id": "cw33",
+        "start": {
+          "word": "w33"
+        },
+        "end": {
+          "word": "w33",
+          "edge": "end"
+        },
+        "words": ["w33"]
+      },
+      {
+        "id": "cw34",
+        "start": {
+          "word": "w34"
+        },
+        "end": {
+          "word": "w38",
+          "edge": "end"
+        },
+        "words": ["w34"]
+      },
+      {
+        "id": "cw35",
+        "start": {
+          "word": "w35"
+        },
+        "end": {
+          "word": "w38",
+          "edge": "end"
+        },
+        "words": ["w35"]
+      },
+      {
+        "id": "cw36",
+        "start": {
+          "word": "w36"
+        },
+        "end": {
+          "word": "w38",
+          "edge": "end"
+        },
+        "words": ["w36"]
+      },
+      {
+        "id": "cw37",
+        "start": {
+          "word": "w37"
+        },
+        "end": {
+          "word": "w38",
+          "edge": "end"
+        },
+        "words": ["w37"]
+      },
+      {
+        "id": "cw38",
+        "start": {
+          "word": "w38"
+        },
+        "end": {
+          "word": "w38",
+          "edge": "end"
+        },
+        "words": ["w38"]
+      },
+      {
+        "id": "cw39",
+        "start": {
+          "word": "w39"
+        },
+        "end": {
+          "word": "w44",
+          "edge": "end"
+        },
+        "words": ["w39"]
+      },
+      {
+        "id": "cw40",
+        "start": {
+          "word": "w40"
+        },
+        "end": {
+          "word": "w44",
+          "edge": "end"
+        },
+        "words": ["w40"]
+      },
+      {
+        "id": "cw41",
+        "start": {
+          "word": "w41"
+        },
+        "end": {
+          "word": "w44",
+          "edge": "end"
+        },
+        "words": ["w41"]
+      },
+      {
+        "id": "cw42",
+        "start": {
+          "word": "w42"
+        },
+        "end": {
+          "word": "w44",
+          "edge": "end"
+        },
+        "words": ["w42"]
+      },
+      {
+        "id": "cw43",
+        "start": {
+          "word": "w43"
+        },
+        "end": {
+          "word": "w44",
+          "edge": "end"
+        },
+        "words": ["w43"]
+      },
+      {
+        "id": "cw44",
+        "start": {
+          "word": "w44"
+        },
+        "end": {
+          "word": "w44",
+          "edge": "end"
+        },
+        "words": ["w44"]
+      },
+      {
+        "id": "cw45",
+        "start": {
+          "word": "w45"
+        },
+        "end": {
+          "word": "w48",
+          "edge": "end"
+        },
+        "words": ["w45"]
+      },
+      {
+        "id": "cw46",
+        "start": {
+          "word": "w46"
+        },
+        "end": {
+          "word": "w48",
+          "edge": "end"
+        },
+        "words": ["w46"]
+      },
+      {
+        "id": "cw47",
+        "start": {
+          "word": "w47"
+        },
+        "end": {
+          "word": "w48",
+          "edge": "end"
+        },
+        "words": ["w47"]
+      },
+      {
+        "id": "cw48",
+        "start": {
+          "word": "w48"
+        },
+        "end": {
+          "word": "w48",
+          "edge": "end"
+        },
+        "words": ["w48"]
+      },
+      {
+        "id": "cw49",
+        "start": {
+          "word": "w49"
+        },
+        "end": {
+          "word": "w50",
+          "edge": "end"
+        },
+        "words": ["w49"]
+      },
+      {
+        "id": "cw50",
+        "start": {
+          "word": "w50"
+        },
+        "end": {
+          "word": "w50",
+          "edge": "end"
+        },
+        "words": ["w50"]
+      },
+      {
+        "id": "cw51",
+        "start": {
+          "word": "w51"
+        },
+        "end": {
+          "word": "w53",
+          "edge": "end"
+        },
+        "words": ["w51"]
+      },
+      {
+        "id": "cw52",
+        "start": {
+          "word": "w52"
+        },
+        "end": {
+          "word": "w53",
+          "edge": "end"
+        },
+        "words": ["w52"]
+      },
+      {
+        "id": "cw53",
+        "start": {
+          "word": "w53"
+        },
+        "end": {
+          "word": "w53",
+          "edge": "end"
+        },
+        "words": ["w53"]
+      },
+      {
+        "id": "cw54",
+        "start": {
+          "word": "w54"
+        },
+        "end": {
+          "word": "w57",
+          "edge": "end"
+        },
+        "words": ["w54"]
+      },
+      {
+        "id": "cw55",
+        "start": {
+          "word": "w55"
+        },
+        "end": {
+          "word": "w57",
+          "edge": "end"
+        },
+        "words": ["w55"]
+      },
+      {
+        "id": "cw56",
+        "start": {
+          "word": "w56"
+        },
+        "end": {
+          "word": "w57",
+          "edge": "end"
+        },
+        "words": ["w56"]
+      },
+      {
+        "id": "cw57",
+        "start": {
+          "word": "w57"
+        },
+        "end": {
+          "word": "w57",
+          "edge": "end"
+        },
+        "words": ["w57"]
+      },
+      {
+        "id": "cw58",
+        "start": {
+          "word": "w58"
+        },
+        "end": {
+          "word": "w62",
+          "edge": "end"
+        },
+        "words": ["w58"]
+      },
+      {
+        "id": "cw59",
+        "start": {
+          "word": "w59"
+        },
+        "end": {
+          "word": "w62",
+          "edge": "end"
+        },
+        "words": ["w59"]
+      },
+      {
+        "id": "cw60",
+        "start": {
+          "word": "w60"
+        },
+        "end": {
+          "word": "w62",
+          "edge": "end"
+        },
+        "words": ["w60"]
+      },
+      {
+        "id": "cw61",
+        "start": {
+          "word": "w61"
+        },
+        "end": {
+          "word": "w62",
+          "edge": "end"
+        },
+        "words": ["w61"]
+      },
+      {
+        "id": "cw62",
+        "start": {
+          "word": "w62"
+        },
+        "end": {
+          "word": "w62",
+          "edge": "end"
+        },
+        "words": ["w62"]
+      },
+      {
+        "id": "cw63",
+        "start": {
+          "word": "w63"
+        },
+        "end": {
+          "word": "w67",
+          "edge": "end"
+        },
+        "words": ["w63"]
+      },
+      {
+        "id": "cw64",
+        "start": {
+          "word": "w64"
+        },
+        "end": {
+          "word": "w67",
+          "edge": "end"
+        },
+        "words": ["w64"]
+      },
+      {
+        "id": "cw65",
+        "start": {
+          "word": "w65"
+        },
+        "end": {
+          "word": "w67",
+          "edge": "end"
+        },
+        "words": ["w65"]
+      },
+      {
+        "id": "cw66",
+        "start": {
+          "word": "w66"
+        },
+        "end": {
+          "word": "w67",
+          "edge": "end"
+        },
+        "words": ["w66"]
+      },
+      {
+        "id": "cw67",
+        "start": {
+          "word": "w67"
+        },
+        "end": {
+          "word": "w67",
+          "edge": "end"
+        },
+        "words": ["w67"]
+      },
+      {
+        "id": "cw68",
+        "start": {
+          "word": "w68"
+        },
+        "end": {
+          "word": "w71",
+          "edge": "end"
+        },
+        "words": ["w68"]
+      },
+      {
+        "id": "cw69",
+        "start": {
+          "word": "w69"
+        },
+        "end": {
+          "word": "w71",
+          "edge": "end"
+        },
+        "words": ["w69"]
+      },
+      {
+        "id": "cw70",
+        "start": {
+          "word": "w70"
+        },
+        "end": {
+          "word": "w71",
+          "edge": "end"
+        },
+        "words": ["w70"]
+      },
+      {
+        "id": "cw71",
+        "start": {
+          "word": "w71"
+        },
+        "end": {
+          "word": "w71",
+          "edge": "end"
+        },
+        "words": ["w71"]
+      },
+      {
+        "id": "cw72",
+        "start": {
+          "word": "w72"
+        },
+        "end": {
+          "word": "w75",
+          "edge": "end"
+        },
+        "words": ["w72"]
+      },
+      {
+        "id": "cw73",
+        "start": {
+          "word": "w73"
+        },
+        "end": {
+          "word": "w75",
+          "edge": "end"
+        },
+        "words": ["w73"]
+      },
+      {
+        "id": "cw74",
+        "start": {
+          "word": "w74"
+        },
+        "end": {
+          "word": "w75",
+          "edge": "end"
+        },
+        "words": ["w74"]
+      },
+      {
+        "id": "cw75",
+        "start": {
+          "word": "w75"
+        },
+        "end": {
+          "word": "w75",
+          "edge": "end"
+        },
+        "words": ["w75"]
+      },
+      {
+        "id": "cw76",
+        "start": {
+          "word": "w76"
+        },
+        "end": {
+          "word": "w77",
+          "edge": "end"
+        },
+        "words": ["w76"]
+      },
+      {
+        "id": "cw77",
+        "start": {
+          "word": "w77"
+        },
+        "end": {
+          "word": "w77",
+          "edge": "end"
+        },
+        "words": ["w77"]
+      },
+      {
+        "id": "cw78",
+        "start": {
+          "word": "w78"
+        },
+        "end": {
+          "word": "w80",
+          "edge": "end"
+        },
+        "words": ["w78"]
+      },
+      {
+        "id": "cw79",
+        "start": {
+          "word": "w79"
+        },
+        "end": {
+          "word": "w80",
+          "edge": "end"
+        },
+        "words": ["w79"]
+      },
+      {
+        "id": "cw80",
+        "start": {
+          "word": "w80"
+        },
+        "end": {
+          "word": "w80",
+          "edge": "end"
+        },
+        "words": ["w80"]
+      },
+      {
+        "id": "cw81",
+        "start": {
+          "word": "w81"
+        },
+        "end": {
+          "word": "w83",
+          "edge": "end"
+        },
+        "words": ["w81"]
+      },
+      {
+        "id": "cw82",
+        "start": {
+          "word": "w82"
+        },
+        "end": {
+          "word": "w83",
+          "edge": "end"
+        },
+        "words": ["w82"]
+      },
+      {
+        "id": "cw83",
+        "start": {
+          "word": "w83"
+        },
+        "end": {
+          "word": "w83",
+          "edge": "end"
+        },
+        "words": ["w83"]
+      },
+      {
+        "id": "cw84",
+        "start": {
+          "word": "w84"
+        },
+        "end": {
+          "word": "w90",
+          "edge": "end"
+        },
+        "words": ["w84"]
+      },
+      {
+        "id": "cw85",
+        "start": {
+          "word": "w85"
+        },
+        "end": {
+          "word": "w90",
+          "edge": "end"
+        },
+        "words": ["w85"]
+      },
+      {
+        "id": "cw86",
+        "start": {
+          "word": "w86"
+        },
+        "end": {
+          "word": "w90",
+          "edge": "end"
+        },
+        "words": ["w86"]
+      },
+      {
+        "id": "cw87",
+        "start": {
+          "word": "w87"
+        },
+        "end": {
+          "word": "w90",
+          "edge": "end"
+        },
+        "words": ["w87"]
+      },
+      {
+        "id": "cw88",
+        "start": {
+          "word": "w88"
+        },
+        "end": {
+          "word": "w90",
+          "edge": "end"
+        },
+        "words": ["w88"]
+      },
+      {
+        "id": "cw89",
+        "start": {
+          "word": "w89"
+        },
+        "end": {
+          "word": "w90",
+          "edge": "end"
+        },
+        "words": ["w89", "w90"],
+        "text": "Gen Z"
+      },
+      {
+        "id": "cw91",
+        "start": {
+          "word": "w91"
+        },
+        "end": {
+          "word": "w94",
+          "edge": "end"
+        },
+        "words": ["w91"]
+      },
+      {
+        "id": "cw92",
+        "start": {
+          "word": "w92"
+        },
+        "end": {
+          "word": "w94",
+          "edge": "end"
+        },
+        "words": ["w92"]
+      },
+      {
+        "id": "cw93",
+        "start": {
+          "word": "w93"
+        },
+        "end": {
+          "word": "w94",
+          "edge": "end"
+        },
+        "words": ["w93"]
+      },
+      {
+        "id": "cw94",
+        "start": {
+          "word": "w94"
+        },
+        "end": {
+          "word": "w94",
+          "edge": "end"
+        },
+        "words": ["w94"]
+      },
+      {
+        "id": "cw95",
+        "start": {
+          "word": "w95"
+        },
+        "end": {
+          "word": "w99",
+          "edge": "end"
+        },
+        "words": ["w95"]
+      },
+      {
+        "id": "cw96",
+        "start": {
+          "word": "w96"
+        },
+        "end": {
+          "word": "w99",
+          "edge": "end"
+        },
+        "words": ["w96"]
+      },
+      {
+        "id": "cw97",
+        "start": {
+          "word": "w97"
+        },
+        "end": {
+          "word": "w99",
+          "edge": "end"
+        },
+        "words": ["w97"]
+      },
+      {
+        "id": "cw98",
+        "start": {
+          "word": "w98"
+        },
+        "end": {
+          "word": "w99",
+          "edge": "end"
+        },
+        "words": ["w98"]
+      },
+      {
+        "id": "cw99",
+        "start": {
+          "word": "w99"
+        },
+        "end": {
+          "word": "w99",
+          "edge": "end"
+        },
+        "words": ["w99"]
+      },
+      {
+        "id": "cw100",
+        "start": {
+          "word": "w100"
+        },
+        "end": {
+          "word": "w103",
+          "edge": "end"
+        },
+        "words": ["w100"]
+      },
+      {
+        "id": "cw101",
+        "start": {
+          "word": "w101"
+        },
+        "end": {
+          "word": "w103",
+          "edge": "end"
+        },
+        "words": ["w101"]
+      },
+      {
+        "id": "cw102",
+        "start": {
+          "word": "w102"
+        },
+        "end": {
+          "word": "w103",
+          "edge": "end"
+        },
+        "words": ["w102"]
+      },
+      {
+        "id": "cw103",
+        "start": {
+          "word": "w103"
+        },
+        "end": {
+          "word": "w103",
+          "edge": "end"
+        },
+        "words": ["w103"]
+      },
+      {
+        "id": "cw104",
+        "start": {
+          "word": "w104"
+        },
+        "end": {
+          "word": "w105",
+          "edge": "end"
+        },
+        "words": ["w104"]
+      },
+      {
+        "id": "cw105",
+        "start": {
+          "word": "w105"
+        },
+        "end": {
+          "word": "w105",
+          "edge": "end"
+        },
+        "words": ["w105"]
+      },
+      {
+        "id": "cw106",
+        "start": {
+          "word": "w106"
+        },
+        "end": {
+          "word": "w108",
+          "edge": "end"
+        },
+        "words": ["w106"]
+      },
+      {
+        "id": "cw107",
+        "start": {
+          "word": "w107"
+        },
+        "end": {
+          "word": "w108",
+          "edge": "end"
+        },
+        "words": ["w107"]
+      },
+      {
+        "id": "cw108",
+        "start": {
+          "word": "w108"
+        },
+        "end": {
+          "word": "w108",
+          "edge": "end"
+        },
+        "words": ["w108"]
+      },
+      {
+        "id": "cw109",
+        "start": {
+          "word": "w109"
+        },
+        "end": {
+          "word": "w112",
+          "edge": "end"
+        },
+        "words": ["w109"]
+      },
+      {
+        "id": "cw110",
+        "start": {
+          "word": "w110"
+        },
+        "end": {
+          "word": "w112",
+          "edge": "end"
+        },
+        "words": ["w110"]
+      },
+      {
+        "id": "cw111",
+        "start": {
+          "word": "w111"
+        },
+        "end": {
+          "word": "w112",
+          "edge": "end"
+        },
+        "words": ["w111"]
+      },
+      {
+        "id": "cw113",
+        "start": {
+          "word": "w113"
+        },
+        "end": {
+          "word": "w116",
+          "edge": "end"
+        },
+        "words": ["w113"]
+      },
+      {
+        "id": "cw114",
+        "start": {
+          "word": "w114"
+        },
+        "end": {
+          "word": "w116",
+          "edge": "end"
+        },
+        "words": ["w114"]
+      },
+      {
+        "id": "cw115",
+        "start": {
+          "word": "w115"
+        },
+        "end": {
+          "word": "w116",
+          "edge": "end"
+        },
+        "words": ["w115"]
+      },
+      {
+        "id": "cw116",
+        "start": {
+          "word": "w116"
+        },
+        "end": {
+          "word": "w116",
+          "edge": "end"
+        },
+        "words": ["w116"]
+      },
+      {
+        "id": "cw117",
+        "start": {
+          "word": "w117"
+        },
+        "end": {
+          "word": "w118",
+          "edge": "end"
+        },
+        "words": ["w117"]
+      },
+      {
+        "id": "cw118",
+        "start": {
+          "word": "w118"
+        },
+        "end": {
+          "word": "w118",
+          "edge": "end"
+        },
+        "words": ["w118"]
+      },
+      {
+        "id": "cw119",
+        "start": {
+          "word": "w119"
+        },
+        "end": {
+          "word": "w122",
+          "edge": "end"
+        },
+        "words": ["w119"]
+      },
+      {
+        "id": "cw120",
+        "start": {
+          "word": "w120"
+        },
+        "end": {
+          "word": "w122",
+          "edge": "end"
+        },
+        "words": ["w120"]
+      },
+      {
+        "id": "cw121",
+        "start": {
+          "word": "w121"
+        },
+        "end": {
+          "word": "w122",
+          "edge": "end"
+        },
+        "words": ["w121"]
+      },
+      {
+        "id": "cw122",
+        "start": {
+          "word": "w122"
+        },
+        "end": {
+          "word": "w122",
+          "edge": "end"
+        },
+        "words": ["w122"]
+      },
+      {
+        "id": "cw123",
+        "start": {
+          "word": "w123"
+        },
+        "end": {
+          "word": "w125",
+          "edge": "end"
+        },
+        "words": ["w123"]
+      },
+      {
+        "id": "cw124",
+        "start": {
+          "word": "w124"
+        },
+        "end": {
+          "word": "w125",
+          "edge": "end"
+        },
+        "words": ["w124"]
+      },
+      {
+        "id": "cw125",
+        "start": {
+          "word": "w125"
+        },
+        "end": {
+          "word": "w125",
+          "edge": "end"
+        },
+        "words": ["w125"]
+      },
+      {
+        "id": "cw126",
+        "start": {
+          "word": "w126"
+        },
+        "end": {
+          "word": "w133",
+          "edge": "end"
+        },
+        "words": ["w126"]
+      },
+      {
+        "id": "cw127",
+        "start": {
+          "word": "w127"
+        },
+        "end": {
+          "word": "w133",
+          "edge": "end"
+        },
+        "words": ["w127"]
+      },
+      {
+        "id": "cw128",
+        "start": {
+          "word": "w128"
+        },
+        "end": {
+          "word": "w133",
+          "edge": "end"
+        },
+        "words": ["w128"]
+      },
+      {
+        "id": "cw129",
+        "start": {
+          "word": "w129"
+        },
+        "end": {
+          "word": "w133",
+          "edge": "end"
+        },
+        "words": ["w129"]
+      },
+      {
+        "id": "cw130",
+        "start": {
+          "word": "w130"
+        },
+        "end": {
+          "word": "w133",
+          "edge": "end"
+        },
+        "words": ["w130"]
+      },
+      {
+        "id": "cw131",
+        "start": {
+          "word": "w131"
+        },
+        "end": {
+          "word": "w133",
+          "edge": "end"
+        },
+        "words": ["w131"]
+      },
+      {
+        "id": "cw132",
+        "start": {
+          "word": "w132"
+        },
+        "end": {
+          "word": "w133",
+          "edge": "end"
+        },
+        "words": ["w132"]
+      },
+      {
+        "id": "cw133",
+        "start": {
+          "word": "w133"
+        },
+        "end": {
+          "word": "w133",
+          "edge": "end"
+        },
+        "words": ["w133"]
+      },
+      {
+        "id": "cw134",
+        "start": {
+          "word": "w134"
+        },
+        "end": {
+          "word": "w139",
+          "edge": "end"
+        },
+        "words": ["w134"]
+      },
+      {
+        "id": "cw135",
+        "start": {
+          "word": "w135"
+        },
+        "end": {
+          "word": "w139",
+          "edge": "end"
+        },
+        "words": ["w135"]
+      },
+      {
+        "id": "cw136",
+        "start": {
+          "word": "w136"
+        },
+        "end": {
+          "word": "w139",
+          "edge": "end"
+        },
+        "words": ["w136"]
+      },
+      {
+        "id": "cw137",
+        "start": {
+          "word": "w137"
+        },
+        "end": {
+          "word": "w139",
+          "edge": "end"
+        },
+        "words": ["w137"]
+      },
+      {
+        "id": "cw138",
+        "start": {
+          "word": "w138"
+        },
+        "end": {
+          "word": "w139",
+          "edge": "end"
+        },
+        "words": ["w138"]
+      },
+      {
+        "id": "cw139",
+        "start": {
+          "word": "w139"
+        },
+        "end": {
+          "word": "w139",
+          "edge": "end"
+        },
+        "words": ["w139"]
+      },
+      {
+        "id": "cw140",
+        "start": {
+          "word": "w140"
+        },
+        "end": {
+          "word": "w144",
+          "edge": "end"
+        },
+        "words": ["w140"]
+      },
+      {
+        "id": "cw141",
+        "start": {
+          "word": "w141"
+        },
+        "end": {
+          "word": "w144",
+          "edge": "end"
+        },
+        "words": ["w141"]
+      },
+      {
+        "id": "cw142",
+        "start": {
+          "word": "w142"
+        },
+        "end": {
+          "word": "w144",
+          "edge": "end"
+        },
+        "words": ["w142"]
+      },
+      {
+        "id": "cw143",
+        "start": {
+          "word": "w143"
+        },
+        "end": {
+          "word": "w144",
+          "edge": "end"
+        },
+        "words": ["w143"]
+      },
+      {
+        "id": "cw144",
+        "start": {
+          "word": "w144"
+        },
+        "end": {
+          "word": "w144",
+          "edge": "end"
+        },
+        "words": ["w144"]
+      },
+      {
+        "id": "cw145",
+        "start": {
+          "word": "w145"
+        },
+        "end": {
+          "word": "w148",
+          "edge": "end"
+        },
+        "words": ["w145"]
+      },
+      {
+        "id": "cw146",
+        "start": {
+          "word": "w146"
+        },
+        "end": {
+          "word": "w148",
+          "edge": "end"
+        },
+        "words": ["w146"]
+      },
+      {
+        "id": "cw147",
+        "start": {
+          "word": "w147"
+        },
+        "end": {
+          "word": "w148",
+          "edge": "end"
+        },
+        "words": ["w147"]
+      },
+      {
+        "id": "cw148",
+        "start": {
+          "word": "w148"
+        },
+        "end": {
+          "word": "w148",
+          "edge": "end"
+        },
+        "words": ["w148"]
+      },
+      {
+        "id": "cw149",
+        "start": {
+          "word": "w149"
+        },
+        "end": {
+          "word": "w152",
+          "edge": "end"
+        },
+        "words": ["w149"]
+      },
+      {
+        "id": "cw150",
+        "start": {
+          "word": "w150"
+        },
+        "end": {
+          "word": "w152",
+          "edge": "end"
+        },
+        "words": ["w150"]
+      },
+      {
+        "id": "cw151",
+        "start": {
+          "word": "w151"
+        },
+        "end": {
+          "word": "w152",
+          "edge": "end"
+        },
+        "words": ["w151"]
+      },
+      {
+        "id": "cw152",
+        "start": {
+          "word": "w152"
+        },
+        "end": {
+          "word": "w152",
+          "edge": "end"
+        },
+        "words": ["w152"]
+      },
+      {
+        "id": "cw153",
+        "start": {
+          "word": "w153"
+        },
+        "end": {
+          "word": "w156",
+          "edge": "end"
+        },
+        "words": ["w153"]
+      },
+      {
+        "id": "cw154",
+        "start": {
+          "word": "w154"
+        },
+        "end": {
+          "word": "w156",
+          "edge": "end"
+        },
+        "words": ["w154"]
+      },
+      {
+        "id": "cw155",
+        "start": {
+          "word": "w155"
+        },
+        "end": {
+          "word": "w156",
+          "edge": "end"
+        },
+        "words": ["w155"]
+      },
+      {
+        "id": "cw156",
+        "start": {
+          "word": "w156"
+        },
+        "end": {
+          "word": "w156",
+          "edge": "end"
+        },
+        "words": ["w156"]
+      },
+      {
+        "id": "cw157",
+        "start": {
+          "word": "w157"
+        },
+        "end": {
+          "word": "w161",
+          "edge": "end"
+        },
+        "words": ["w157"]
+      },
+      {
+        "id": "cw158",
+        "start": {
+          "word": "w158"
+        },
+        "end": {
+          "word": "w161",
+          "edge": "end"
+        },
+        "words": ["w158"]
+      },
+      {
+        "id": "cw159",
+        "start": {
+          "word": "w159"
+        },
+        "end": {
+          "word": "w161",
+          "edge": "end"
+        },
+        "words": ["w159"]
+      },
+      {
+        "id": "cw160",
+        "start": {
+          "word": "w160"
+        },
+        "end": {
+          "word": "w161",
+          "edge": "end"
+        },
+        "words": ["w160"]
+      },
+      {
+        "id": "cw161",
+        "start": {
+          "word": "w161"
+        },
+        "end": {
+          "word": "w161",
+          "edge": "end"
+        },
+        "words": ["w161"],
+        "text": "want?"
+      }
+    ],
+    "overlays": [
+      {
+        "id": "aw29",
+        "kind": "accent",
+        "start": {
+          "word": "w29"
+        },
+        "end": {
+          "word": "w33",
+          "edge": "end"
+        },
+        "words": ["w29"],
+        "font": "primary",
+        "color": "#B3E6FF"
+      },
+      {
+        "id": "aw112",
+        "kind": "accent",
+        "start": {
+          "word": "w112"
+        },
+        "end": {
+          "word": "w112",
+          "edge": "end"
+        },
+        "words": ["w112"],
+        "font": "primary",
+        "color": "#B3E6FF"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t-fund-life",
+        "type": "panel",
+        "start": {
+          "word": "w126",
+          "offset": -0.03
+        },
+        "end": {
+          "word": "w133",
+          "edge": "end"
+        }
+      }
+    ],
+    "sounds": [
+      {
+        "id": "s-fund-life",
+        "sound": "click",
+        "start": {
+          "word": "w126",
+          "offset": -0.03
+        },
+        "end": {
+          "word": "w126",
+          "offset": 0.2
+        }
+      }
+    ]
+  }
+}

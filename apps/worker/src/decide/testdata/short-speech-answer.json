@@ -1,0 +1,209 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "structured_output": {
+    "tracks": {
+      "footage": [
+        {
+          "id": "footage",
+          "start": {
+            "reel": "start"
+          },
+          "end": {
+            "reel": "end"
+          }
+        }
+      ],
+      "cutout": [
+        {
+          "id": "cutout",
+          "start": {
+            "reel": "start"
+          },
+          "end": {
+            "reel": "end"
+          }
+        }
+      ],
+      "captions": [
+        {
+          "id": "cw0001",
+          "start": {
+            "word": "w0001"
+          },
+          "end": {
+            "word": "w0004",
+            "edge": "end"
+          },
+          "words": ["w0001"]
+        },
+        {
+          "id": "cw0002",
+          "start": {
+            "word": "w0002"
+          },
+          "end": {
+            "word": "w0004",
+            "edge": "end"
+          },
+          "words": ["w0002"]
+        },
+        {
+          "id": "cw0003",
+          "start": {
+            "word": "w0003"
+          },
+          "end": {
+            "word": "w0004",
+            "edge": "end"
+          },
+          "words": ["w0003"]
+        },
+        {
+          "id": "cw0004",
+          "start": {
+            "word": "w0004"
+          },
+          "end": {
+            "word": "w0004",
+            "edge": "end"
+          },
+          "words": ["w0004"]
+        },
+        {
+          "id": "cw0005",
+          "start": {
+            "word": "w0005"
+          },
+          "end": {
+            "word": "w0008",
+            "edge": "end"
+          },
+          "words": ["w0005"]
+        },
+        {
+          "id": "cw0006",
+          "start": {
+            "word": "w0006"
+          },
+          "end": {
+            "word": "w0008",
+            "edge": "end"
+          },
+          "words": ["w0006"]
+        },
+        {
+          "id": "cw0007",
+          "start": {
+            "word": "w0007"
+          },
+          "end": {
+            "word": "w0008",
+            "edge": "end"
+          },
+          "words": ["w0007"]
+        },
+        {
+          "id": "cw0008",
+          "start": {
+            "word": "w0008"
+          },
+          "end": {
+            "word": "w0008",
+            "edge": "end"
+          },
+          "words": ["w0008"]
+        },
+        {
+          "id": "cw0009",
+          "start": {
+            "word": "w0009"
+          },
+          "end": {
+            "word": "w0010",
+            "edge": "end"
+          },
+          "words": ["w0009"]
+        },
+        {
+          "id": "cw0010",
+          "start": {
+            "word": "w0010"
+          },
+          "end": {
+            "word": "w0010",
+            "edge": "end"
+          },
+          "words": ["w0010"],
+          "text": "Studio"
+        }
+      ],
+      "overlays": [
+        {
+          "id": "title",
+          "kind": "accent",
+          "start": {
+            "reel": "start"
+          },
+          "end": {
+            "word": "w0004",
+            "edge": "end"
+          },
+          "text": "A short test",
+          "font": "primary",
+          "position": {
+            "x": 495,
+            "y": 420,
+            "align": "center"
+          }
+        },
+        {
+          "id": "accent-test",
+          "kind": "accent",
+          "start": {
+            "word": "w0005"
+          },
+          "end": {
+            "word": "w0005",
+            "edge": "end"
+          },
+          "words": ["w0005"]
+        }
+      ],
+      "transitions": [
+        {
+          "id": "dim-clip",
+          "type": "dim",
+          "start": {
+            "word": "w0006"
+          },
+          "end": {
+            "word": "w0008",
+            "edge": "end"
+          }
+        }
+      ],
+      "sounds": []
+    },
+    "change_summary": "Title, one accent on \"test\", a dim over \"clip for the\", \"Studio\" capitalised.",
+    "unexpressed": [],
+    "free_field": []
+  },
+  "total_cost_usd": 0.0123,
+  "usage": {
+    "input_tokens": 1200,
+    "cache_creation_input_tokens": 300,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 456
+  },
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 1200,
+      "outputTokens": 456,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 300,
+      "costUSD": 0.0123
+    }
+  }
+}

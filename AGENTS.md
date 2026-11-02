@@ -12,15 +12,46 @@ Rules for working in this repository. What each feature does is not described he
   on every push. Hooks install through `postinstall` on `yarn install`. Do not
   bypass them.
 - Conventional-commit messages (`feat:`, `fix:`, `chore:`, `docs:`). No
-  trailers of any kind: no `Co-Authored-By`, no `Signed-off-by`.
+  trailers of any kind: no `Co-Authored-By`, no `Signed-off-by`. The one
+  exception is `Deploy-Preview: yes`, which the ADW toolkit's document phase
+  appends to a run's final commit (see the Vercel rule below); never add or
+  strip it by hand except to force a preview.
+- Every Vercel project's `vercel.json` (`apps/<app>/vercel.json`) sets
+  `ignoreCommand` to `bash ../../scripts/vercel-ignore.sh`, and a new app's
+  `vercel.json` must carry the same line. On a branch whose name contains
+  `-adw-`, only a commit whose message has a line starting with
+  `Deploy-Preview: yes` builds a preview; every other commit on that branch is
+  skipped (Canceled). Production, `develop`, `master` and hand-made branches
+  build as before. The string is a shared contract with the toolkit's
+  `git_ops.PREVIEW_TRAILER`, so never change it on one side only. To force a
+  preview by hand: `git commit --allow-empty -m "chore: preview" -m "Deploy-Preview: yes"`.
+  Keep each project's dashboard Ignored Build Step on "Automatic".
 - Default branch is `develop`.
+- Turborepo monorepo on Yarn workspaces (`apps/*`, `packages/*`). Run every
+  command from the repository root; the root scripts go through `turbo.json`
+  (prettier and knip run once over the whole repository). Never `cd` into a
+  workspace to install. Add a dependency to the workspace that uses it
+  (`yarn workspace @edit-issebya/web add <pkg>`); the root `package.json` holds
+  shared tooling only. Create a package under `packages/` only when two or more
+  apps consume it.
+- Turbo runs tasks in strict env mode: a variable a task reads must be listed in
+  `turbo.json` (`env` for `build`, `passThroughEnv` for `dev`, `start` and
+  `test:e2e`), or the task never sees it.
 - `next dev` in Next 16 wants to write its own `AGENTS.md` and `CLAUDE.md`.
-  That is switched off in `next.config.ts` (`agentRules: false`); these two
+  That is switched off in `apps/web/next.config.ts` (`agentRules: false`); these two
   files are maintained by hand. Still read the relevant guide under
   `node_modules/next/dist/docs/` before Next.js work; the framework moves
   faster than training data.
 - No em-dashes in any file. Use commas, periods, colons or parentheses.
-- Never create, read or commit a real `.env*` file; `.env.example` holds placeholder names only.
+- Never create, read or commit a real `.env*` file. The `.env.example` files hold placeholder names
+  only: `apps/web/.env.example` for the app (Next reads env files from `apps/web/`), the root one
+  for the ADW toolkit's `.env.development`.
+- Create a migration with `supabase migration new <name>` (it stamps the current UTC time). Never
+  hand-pick, copy, future-date or reuse a migration version, and never edit an applied migration.
+  The studio unit test `apps/studio/test-support/migration-versions.test.ts` (run by `yarn test`, the pre-push
+  hook and CI) fails on a version more than 10 minutes in the future or a version two files share.
+  A migration that creates a public table grants each role explicitly (hosted default privileges
+  grant no data access, and the local stack matches them).
 - `.adw/project.md` is this repository's ADW profile; the toolkit's slash commands
   read it before anything else. When a change renames a script, moves a port,
   adds an env file or changes where docs live, update the profile in the same
@@ -28,8 +59,9 @@ Rules for working in this repository. What each feature does is not described he
 
 ## Testing
 
-- Unit tests are `src/**/*.test.ts` (Vitest). Browser tests are `e2e/*.spec.ts`
-  (`@playwright/test`, chromium). A user-visible change adds or extends a spec.
+- Unit tests are `apps/web/src/**/*.test.ts` (Vitest). Browser tests are
+  `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium). A user-visible change adds or extends
+  a spec.
 - Measure fixed or edge-aligned elements from the root box
   (`document.documentElement.getBoundingClientRect()` or `clientWidth`), never from
   `window.innerWidth`: `scrollbar-gutter: stable` reserves 15px on Linux Chromium (CI) and

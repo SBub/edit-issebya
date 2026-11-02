@@ -1,0 +1,116 @@
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { LiveReel } from "@/components/LiveReel";
+import { NotConfigured } from "@/components/NotConfigured";
+import { StudioIdentify } from "@/components/StudioIdentify";
+import { JOB_COLUMNS, type JobRow, STEP_COLUMNS, type StepRow } from "@/lib/jobs";
+import { ESTIMATE_LAST_ROWS, type HistoryRow, PROGRESS_STEPS, historyRates } from "@/lib/progress";
+import type { ReelDetail } from "@/lib/reels";
+import { REEL_DETAIL_COLUMNS, isReelId, reelName } from "@/lib/reels";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
+import { WORKER_STATUS_COLUMNS, type WorkerStatusRow } from "@/lib/worker-status";
+
+// Reads the reel, its jobs, its steps, its versions, its newest export's id,
+// every worker's status row and, per long step, the owner's newest earlier
+// done rows (the time-left history) once on the server; LiveReel then
+// follows changes through Realtime. No polling, no interval.
+export default async function ReelPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!isReelId(id)) notFound();
+
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return <NotConfigured />;
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const { data: reel, error } = await supabase
+    .from("reels")
+    .select(REEL_DETAIL_COLUMNS)
+    .eq("id", id)
+    .returns<ReelDetail[]>()
+    .maybeSingle();
+  if (error) throw new Error(`studio: reel not loaded: ${error.message}`);
+  if (!reel) notFound();
+
+  // The step log is loaded only here, for the open reel.
+  // The owner's earlier done rows of one long step whose reel knows its
+  // footage length (RLS: only the owner's steps), newest first.
+  const history = (name: string) =>
+    supabase
+      .from("steps")
+      .select("wall_ms, reels!inner(footage_seconds)")
+      .eq("name", name)
+      .eq("status", "done")
+      .not("reels.footage_seconds", "is", null)
+      .order("finished_at", { ascending: false })
+      .limit(ESTIMATE_LAST_ROWS)
+      .returns<HistoryRow[]>();
+
+  const [jobs, steps, versions, latestExport, workerStatus, ...histories] = await Promise.all([
+    supabase
+      .from("jobs")
+      .select(JOB_COLUMNS)
+      .eq("reel_id", id)
+      .order("created_at")
+      .returns<JobRow[]>(),
+    supabase
+      .from("steps")
+      .select(STEP_COLUMNS)
+      .eq("reel_id", id)
+      .order("started_at")
+      .returns<StepRow[]>(),
+    supabase
+      .from("versions")
+      .select(VERSION_LIST_COLUMNS)
+      .eq("reel_id", id)
+      .order("number")
+      .returns<VersionListRow[]>(),
+    supabase
+      .from("exports")
+      .select("id")
+      .eq("reel_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string }>(),
+    supabase.from("worker_status").select(WORKER_STATUS_COLUMNS).returns<WorkerStatusRow[]>(),
+    ...PROGRESS_STEPS.map(history),
+  ]);
+  if (jobs.error) throw new Error(`studio: jobs not loaded: ${jobs.error.message}`);
+  if (steps.error) throw new Error(`studio: steps not loaded: ${steps.error.message}`);
+  if (versions.error) throw new Error(`studio: versions not loaded: ${versions.error.message}`);
+  if (latestExport.error) {
+    throw new Error(`studio: exports not loaded: ${latestExport.error.message}`);
+  }
+  if (workerStatus.error) {
+    throw new Error(`studio: worker status not loaded: ${workerStatus.error.message}`);
+  }
+  const estimateRates: Record<string, number[]> = {};
+  for (const [index, name] of PROGRESS_STEPS.entries()) {
+    const result = histories[index]!;
+    if (result.error) throw new Error(`studio: step history not loaded: ${result.error.message}`);
+    estimateRates[name] = historyRates(result.data ?? []);
+  }
+
+  return (
+    <article className="flex flex-col gap-4">
+      <StudioIdentify userId={user.id} />
+      <Link href="/" className="text-sm text-stone-600 underline">
+        Back to your reels
+      </Link>
+      <h1 className="text-2xl font-semibold break-all">{reelName(reel)}</h1>
+      <LiveReel
+        reel={reel}
+        jobs={jobs.data ?? []}
+        steps={steps.data ?? []}
+        versions={versions.data ?? []}
+        latestExportId={latestExport.data?.id ?? null}
+        workerStatus={workerStatus.data ?? []}
+        estimateRates={estimateRates}
+      />
+    </article>
+  );
+}

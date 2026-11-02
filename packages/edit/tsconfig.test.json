@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM"],
+    "types": ["node", "@vitest/browser-playwright"]
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "vitest.config.ts", "eslint.config.mjs"],
+  "exclude": ["node_modules", "src/platform.d.ts"]
+}

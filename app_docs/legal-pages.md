@@ -3,11 +3,11 @@
 `/terms` and `/privacy` are complete plain-English texts for a sole trader in Portugal
 (trabalhador independente, VAT exempt under article 53 CIVA) selling the reel editing service
 online to businesses and consumers, paid upfront through Stripe. Both render through `LegalPage`
-(`src/components/LegalPage.tsx`) with `h2` sections (`LegalSection`, each with an anchor `id`).
+(`apps/web/src/components/LegalPage.tsx`) with `h2` sections (`LegalSection`, each with an anchor `id`).
 
 ## One place for the facts
 
-- `src/content/legal.ts` (`LEGAL`): trading name, owner (Sviatlana Buben), NIF (330791745),
+- `apps/web/src/content/legal.ts` (`LEGAL`): trading name, owner (Sviatlana Buben), NIF (330791745),
   address (Lagarto 5, 2705-044 Almoçageme, Portugal), email (`edit@issebya.com`), last-updated
   date, the complaints book, the consumer portal, the CNPD and the alternative dispute
   resolution entity (CNIACC, chosen by the owner).
@@ -16,14 +16,14 @@ online to businesses and consumers, paid upfront through Stripe. Both render thr
   None is left, so the pages show only "Last updated".
 - Every number in the terms comes from `OFFER` and `EARLY_BIRD` (`reelCount`, `maxSeconds`,
   `footageDays`, `deliveryHours`, the prices) and `reelSlotsFor` (the reel-length rule).
-  `src/lib/offer.test.ts` checks that the landing copy says the same numbers.
+  `apps/web/src/lib/offer.test.ts` checks that the landing copy says the same numbers.
 
 ## Terms
 
 Sections: who we are (DL 7/2004 and DL 24/2014 identity; the service is sold to businesses and
 professionals, including sole traders with an open activity, buying for their business), the
 service, reel length (anchor `#reel-length`: no extra price, a longer reel counts as one of the
-reels per started minute, `reelSlotsFor` in `src/lib/offer.ts`), price and payment (early-bird
+reels per started minute, `reelSlotsFor` in `apps/web/src/lib/offer.ts`), price and payment (early-bird
 and standard from `OFFER`, no VAT, paid upfront via Stripe, fatura-recibo), the footage window
 (reels not sent within the window expire, no refund), revisions (one round per reel), your
 content (rights warranty, licence to edit, portfolio use unless the client opts out by email),

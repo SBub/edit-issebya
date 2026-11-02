@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# The ADW runs' own local Supabase stack (project edit-issebya-adw, ports 54450 to 54459), kept
+# apart from the developer's stack (edit-issebya, 54430 to 54439). This script is the only code
+# that touches it. Its working directory is agents/supabase-adw/ in the main checkout (gitignored),
+# a copy of this worktree's supabase/ with the project id and ports rewritten.
+#
+#   up       lock, claim, sync, start if needed, reset if needed, verify, print five variables
+#   reset    the same with a forced reset, nothing on stdout (agents, after editing a migration)
+#   release  give up this run's ownership (the hook's `down`)
+#
+# Called by .adw/worktree-env (`up`, `release`) and by agents (`reset` only). It never stops the
+# stack, never touches the developer's stack, never uses --linked or db push. Every supabase,
+# rsync and docker call logs to agents/supabase-adw/stack.log; no value is ever logged.
+set -u
+
+PROJECT_ID=edit-issebya-adw
+# Developer's port to ADW port, one to one (shadow, API, db, studio, inbucket, analytics, pooler).
+# 54435 and 54436 only appear in the committed config's commented smtp_port and pop3_port
+# examples; mapping them too keeps those comments inert and lets check_config refuse any 5443x.
+PORT_MAP="54430:54450 54431:54451 54432:54452 54433:54453 54434:54454 54435:54455 54436:54456 54437:54457 54439:54459"
+# The services CI excludes too (.github/workflows/ci.yml).
+EXCLUDE=storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+LOCK_WAIT=120
+
+fail() {
+  printf 'supabase-stack: %s\n' "$1" >&2
+  exit 1
+}
+
+usage() {
+  printf 'usage: .adw/supabase-stack up|reset|release\n' >&2
+  exit 2
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  up | reset | release) ;;
+  *) usage ;;
+esac
+
+[ -n "${ADW_ID:-}" ] || fail "ADW_ID must be set"
+
+WORKTREE="$(cd "$(dirname "$0")/.." && pwd -P)" || fail "cannot resolve the worktree"
+if [ -n "${ADW_PROJECT_ROOT:-}" ] && [ -d "${ADW_PROJECT_ROOT}" ]; then
+  MAIN="$(cd "$ADW_PROJECT_ROOT" && pwd -P)"
+else
+  common="$(git -C "$WORKTREE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ||
+    fail "cannot find the main checkout (git rev-parse failed)"
+  MAIN="$(dirname "$common")"
+fi
+STACK="$MAIN/agents/supabase-adw"
+LOCK="$MAIN/agents/supabase-adw.lock"
+LOG="$STACK/stack.log"
+mkdir -p "$STACK" || fail "cannot create $STACK"
+
+log() {
+  printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >>"$LOG"
+}
+
+take_lock() {
+  local start pid
+  start="$(date +%s)"
+  while :; do
+    if mkdir "$LOCK" 2>/dev/null; then
+      printf '%s\n' "$$" >"$LOCK/pid"
+      trap 'rm -rf "$LOCK"' EXIT
+      return 0
+    fi
+    pid="$(cat "$LOCK/pid" 2>/dev/null)"
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+      # A lock whose holder is gone (or never wrote its pid) is stale.
+      rm -rf "$LOCK"
+      continue
+    fi
+    [ $(($(date +%s) - start)) -lt "$LOCK_WAIT" ] || fail "ADW Supabase stack lock held by pid $pid"
+    sleep 1
+  done
+}
+
+check_tools() {
+  local tool
+  for tool in supabase docker rsync; do
+    command -v "$tool" >/dev/null 2>&1 || fail "$tool not found"
+  done
+  docker info >/dev/null 2>&1 || fail "Docker is not running"
+}
+
+owner_changed=""
+claim() {
+  local owner
+  owner="$(cat "$STACK/owner" 2>/dev/null)"
+  if [ "$owner" = "$ADW_ID" ]; then
+    return 0
+  fi
+  # A live phase of another run (the same test as the toolkit's queue_ops.ADW_PHASE_RE: a phase
+  # script plus that run's ID as a whole word) keeps the stack. ps rather than pgrep: the
+  # whole-word test runs on the full command line, the same on macOS and Linux procps.
+  # shellcheck disable=SC2009
+  if [ -n "$owner" ] && ps -axo command= | grep -E 'adw_[a-z_]*_iso\.py' | grep -qw -- "$owner"; then
+    fail "ADW Supabase stack is in use by run $owner"
+  fi
+  owner_changed=1
+  printf '%s\n' "$ADW_ID" >"$STACK/owner" || fail "cannot write $STACK/owner"
+}
+
+sync_config() {
+  local config="$STACK/supabase/config.toml" expr="" pair
+  mkdir -p "$STACK/supabase" || fail "cannot create $STACK/supabase"
+  log "rsync $WORKTREE/supabase/ $STACK/supabase/"
+  # Excluded paths are also protected from --delete, so the CLI's own .temp/ survives.
+  rsync -a --delete --exclude .temp/ --exclude .branches/ \
+    "$WORKTREE/supabase/" "$STACK/supabase/" >>"$LOG" 2>&1 || fail "rsync failed, see $LOG"
+  for pair in $PORT_MAP; do
+    expr="$expr -e s/${pair%%:*}/${pair##*:}/g"
+  done
+  # A temp file and mv rather than sed -i, which differs between GNU and BSD.
+  # shellcheck disable=SC2086
+  if ! sed -e 's/^project_id = "edit-issebya"$/project_id = "'"$PROJECT_ID"'"/' $expr \
+    "$config" >"$config.tmp"; then
+    fail "cannot rewrite $config"
+  fi
+  mv "$config.tmp" "$config" || fail "cannot rewrite $config"
+}
+
+section_port() {
+  awk -v section="$1" '
+    /^\[/ { inside = ($0 == "[" section "]") ; next }
+    inside && /^port = / { print $3; exit }
+  ' "$STACK/supabase/config.toml"
+}
+
+check_config() {
+  local config="$STACK/supabase/config.toml"
+  if ! grep -q "^project_id = \"$PROJECT_ID\"\$" "$config" ||
+    [ "$(section_port api)" != "54451" ] ||
+    [ "$(section_port db)" != "54452" ] ||
+    grep -q 5443 "$config"; then
+    fail "refusing: the ADW config copy still targets the developer's stack"
+  fi
+}
+
+sha256() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | cut -d' ' -f1
+  else
+    sha256sum | cut -d' ' -f1
+  fi
+}
+
+# The versions of the migration files in the copy, sorted.
+migration_versions() {
+  local f
+  for f in "$STACK"/supabase/migrations/[0-9]*_*.sql; do
+    [ -e "$f" ] || continue
+    f="${f##*/}"
+    printf '%s\n' "${f%%_*}"
+  done | sort
+}
+
+fingerprint() {
+  local f
+  {
+    # Glob expansion is sorted, so the list is stable.
+    for f in "$STACK"/supabase/migrations/*; do
+      [ -f "$f" ] || continue
+      printf '%s %s\n' "${f##*/}" "$(sha256 <"$f")"
+    done
+    printf 'config.toml %s\n' "$(sha256 <"$STACK/supabase/config.toml")"
+  } | sha256
+}
+
+started=""
+start_if_needed() {
+  # status and start print the stack's keys on stdout: only their stderr reaches the log.
+  log "supabase status --workdir $STACK"
+  if supabase status --workdir "$STACK" >/dev/null 2>>"$LOG"; then
+    return 0
+  fi
+  log "supabase start --workdir $STACK -x $EXCLUDE"
+  supabase start --workdir "$STACK" -x "$EXCLUDE" >/dev/null 2>>"$LOG" ||
+    fail "supabase start failed, see $LOG"
+  started=1
+}
+
+verify_migrations() {
+  local expected applied unapplied listing missing extra
+  expected="$(migration_versions)"
+  log "supabase migration list --local --workdir $STACK"
+  listing="$(supabase migration list --local --workdir "$STACK" 2>>"$LOG")" ||
+    fail "supabase migration list failed, see $LOG"
+  # Rows are "local | remote | time"; the CLI calls the database column "Remote".
+  applied="$(printf '%s\n' "$listing" | awk -F'|' 'NF >= 3 { gsub(/ /, "", $2); if ($2 ~ /^[0-9]+$/) print $2 }' | sort)"
+  unapplied="$(printf '%s\n' "$listing" | awk -F'|' 'NF >= 3 { l = $1; r = $2; gsub(/ /, "", l); gsub(/ /, "", r); if (l ~ /^[0-9]+$/ && r == "") print l }')"
+  missing="$(comm -23 <(printf '%s\n' "$expected") <(printf '%s\n' "$applied") | tr '\n' ' ')"
+  extra="$(comm -13 <(printf '%s\n' "$expected") <(printf '%s\n' "$applied") | tr '\n' ' ')"
+  [ -z "${missing// /}" ] || fail "migrations not applied after reset, missing: ${missing% }"
+  [ -z "${extra// /}" ] || fail "unexpected migrations after reset, extra: ${extra% }"
+  [ -z "$unapplied" ] || fail "migrations not applied after reset, missing: $(printf '%s' "$unapplied" | tr '\n' ' ')"
+}
+
+reset_if_needed() {
+  local force="$1" current
+  current="$(fingerprint)"
+  if [ -z "$force" ] && [ -z "$owner_changed" ] && [ -z "$started" ] &&
+    [ "$current" = "$(cat "$STACK/applied.sha256" 2>/dev/null)" ]; then
+    return 0
+  fi
+  rm -f "$STACK/applied.sha256"
+  log "supabase db reset --local --workdir $STACK"
+  supabase db reset --local --workdir "$STACK" >>"$LOG" 2>&1 || fail "supabase db reset failed, see $LOG"
+  verify_migrations
+  printf '%s\n' "$current" >"$STACK/applied.sha256"
+}
+
+env_value() {
+  printf '%s\n' "$env_out" | sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p"
+}
+
+print_env() {
+  local api secret publishable db
+  log "supabase status -o env --workdir $STACK"
+  env_out="$(supabase status -o env --workdir "$STACK" 2>>"$LOG")" ||
+    fail "supabase status failed, see $LOG"
+  api="$(env_value API_URL)"
+  secret="$(env_value SECRET_KEY)"
+  publishable="$(env_value PUBLISHABLE_KEY)"
+  db="$(env_value DB_URL)"
+  [ -n "$api" ] && [ -n "$secret" ] && [ -n "$publishable" ] && [ -n "$db" ] ||
+    fail "supabase status is missing API_URL, SECRET_KEY, PUBLISHABLE_KEY or DB_URL"
+  printf 'SUPABASE_URL=%s\n' "$api"
+  printf 'SUPABASE_SECRET_KEY=%s\n' "$secret"
+  printf 'NEXT_PUBLIC_SUPABASE_URL=%s\n' "$api"
+  printf 'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=%s\n' "$publishable"
+  printf 'SUPABASE_DB_URL=%s\n' "$db"
+}
+
+case "$cmd" in
+  up | reset)
+    check_tools
+    take_lock
+    claim
+    sync_config
+    check_config
+    start_if_needed
+    if [ "$cmd" = up ]; then
+      reset_if_needed ""
+      print_env
+    else
+      reset_if_needed 1
+    fi
+    ;;
+  release)
+    take_lock
+    if [ "$(cat "$STACK/owner" 2>/dev/null)" = "$ADW_ID" ]; then
+      rm -f "$STACK/owner"
+    fi
+    ;;
+esac

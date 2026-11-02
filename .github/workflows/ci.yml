@@ -23,6 +23,13 @@ jobs:
           path: ${{ steps.yarn-cache.outputs.dir }}
           key: yarn-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
           restore-keys: yarn-${{ runner.os }}-
+      # Turbo's local task cache (turbo.json sets cacheDir); lint, typecheck,
+      # test and build replay from it when nothing they read has changed.
+      - uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
       - run: yarn install --immutable
         env:
           LEFTHOOK: 0
@@ -30,7 +37,44 @@ jobs:
       - run: yarn lint
       - run: yarn typecheck
       - run: yarn knip
+      # The worker's step runner measures each tool through GNU time
+      # (/usr/bin/time -v); its unit tests spawn real processes under it.
+      - run: test -x /usr/bin/time || (sudo apt-get update && sudo apt-get install -y time)
+      # Before `yarn test`: packages/edit's browser project (Vitest browser
+      # mode) runs the builder in Chromium. One install still covers both E2E
+      # suites later: the studio and the edit package pin the same Playwright
+      # version, and browsers live in the shared cache.
+      - run: yarn workspace @edit-issebya/web playwright install --with-deps chromium webkit
       - run: yarn test
+      # Built with no studio variables: proves both apps build without them.
       - run: yarn build
-      - run: yarn playwright install --with-deps chromium webkit
+      # CI's own fresh local Supabase stack (never the hosted project): auth,
+      # realtime, kong, postgrest and the database. `supabase start` applies
+      # supabase/migrations/ to it.
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.75.0
+      - run: supabase start -x storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      # Only what the tests need, by allow-list and under new names, so the
+      # STUDIO_URL `supabase status` prints (Supabase's dashboard) never reaches
+      # the environment, where the landing page would forward /studio to it.
+      # NEXT_PUBLIC_SITE_URL stays unset: the confirmation link then follows
+      # the forwarded host.
+      - name: Export local Supabase values
+        run: |
+          eval "$(supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY|SECRET_KEY)=')"
+          echo "::add-mask::$SECRET_KEY"
+          {
+            echo "SUPABASE_URL=$API_URL"
+            echo "SUPABASE_SECRET_KEY=$SECRET_KEY"
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
+          } >> "$GITHUB_ENV"
+      # Again, so the studio inlines the stack's public values (turbo rehashes
+      # on NEXT_PUBLIC_*).
+      - run: yarn build
+      - run: yarn test:db
+      # check_footage runs ffprobe in every process job the specs run.
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # The browsers were installed before `yarn test`.
       - run: yarn test:e2e

@@ -1,0 +1,64 @@
+{
+  "words": [
+    {
+      "id": "w0001",
+      "text": "This",
+      "start": 0.04,
+      "end": 0.28
+    },
+    {
+      "id": "w0002",
+      "text": "is",
+      "start": 0.28,
+      "end": 0.42
+    },
+    {
+      "id": "w0003",
+      "text": "a",
+      "start": 0.42,
+      "end": 0.49
+    },
+    {
+      "id": "w0004",
+      "text": "short",
+      "start": 0.49,
+      "end": 0.79
+    },
+    {
+      "id": "w0005",
+      "text": "test",
+      "start": 0.9,
+      "end": 1.11
+    },
+    {
+      "id": "w0006",
+      "text": "clip",
+      "start": 1.29,
+      "end": 1.4
+    },
+    {
+      "id": "w0007",
+      "text": "for",
+      "start": 1.4,
+      "end": 1.61
+    },
+    {
+      "id": "w0008",
+      "text": "the",
+      "start": 1.61,
+      "end": 1.81
+    },
+    {
+      "id": "w0009",
+      "text": "real",
+      "start": 1.82,
+      "end": 2.06
+    },
+    {
+      "id": "w0010",
+      "text": "studio.",
+      "start": 2.13,
+      "end": 2.71
+    }
+  ]
+}

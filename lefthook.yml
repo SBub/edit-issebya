@@ -2,6 +2,10 @@
 # through the `postinstall` script. No manual step.
 #
 # pre-commit keeps the fast checks; pre-push runs the unit tests once per push.
+# Every command runs from the repository root: prettier and knip cover the
+# whole repository, and lint, typecheck and test go through turbo
+# (turbo.json) to each workspace's script, from the local turbo cache when
+# nothing they read has changed.
 pre-commit:
   parallel: true
   commands:

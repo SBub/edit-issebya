@@ -1,0 +1,186 @@
+{
+  "format": 1,
+  "preset": "issebya",
+  "duration": 2.69,
+  "inputs": {
+    "footage": {
+      "step": "retime",
+      "fingerprint": "f3f3e150e0dac6e8b85f7de8c20e42dc8b76baba83e13b4ea49dc2d897e1f7e8",
+      "file": "source.mp4"
+    },
+    "transcript": {
+      "step": "retime",
+      "fingerprint": "f3f3e150e0dac6e8b85f7de8c20e42dc8b76baba83e13b4ea49dc2d897e1f7e8",
+      "file": "transcript.json"
+    },
+    "cutout": {
+      "step": "remove_background",
+      "fingerprint": "5ecb5235234182f8cb7eea773ada7d52b12bbf931f33407bd7910555988d2316",
+      "file": "subject.webm"
+    },
+    "head_track": {
+      "step": "head_track",
+      "fingerprint": "d5f58034da7573bbd956304b19a4d4061f8f4a41b19644ac323de224b691bf04",
+      "file": "head-track.json"
+    }
+  },
+  "tracks": {
+    "footage": [
+      {
+        "id": "footage",
+        "start": {
+          "reel": "start"
+        },
+        "end": {
+          "reel": "end"
+        }
+      }
+    ],
+    "cutout": [
+      {
+        "id": "cutout",
+        "start": {
+          "reel": "start"
+        },
+        "end": {
+          "reel": "end"
+        }
+      }
+    ],
+    "captions": [
+      {
+        "id": "cw0001",
+        "start": {
+          "word": "w0001"
+        },
+        "end": {
+          "word": "w0004",
+          "edge": "end"
+        },
+        "words": [
+          "w0001"
+        ]
+      },
+      {
+        "id": "cw0002",
+        "start": {
+          "word": "w0002"
+        },
+        "end": {
+          "word": "w0004",
+          "edge": "end"
+        },
+        "words": [
+          "w0002"
+        ]
+      },
+      {
+        "id": "cw0003",
+        "start": {
+          "word": "w0003"
+        },
+        "end": {
+          "word": "w0004",
+          "edge": "end"
+        },
+        "words": [
+          "w0003"
+        ]
+      },
+      {
+        "id": "cw0004",
+        "start": {
+          "word": "w0004"
+        },
+        "end": {
+          "word": "w0004",
+          "edge": "end"
+        },
+        "words": [
+          "w0004"
+        ]
+      },
+      {
+        "id": "cw0005",
+        "start": {
+          "word": "w0005"
+        },
+        "end": {
+          "word": "w0008",
+          "edge": "end"
+        },
+        "words": [
+          "w0005"
+        ]
+      },
+      {
+        "id": "cw0006",
+        "start": {
+          "word": "w0006"
+        },
+        "end": {
+          "word": "w0008",
+          "edge": "end"
+        },
+        "words": [
+          "w0006"
+        ]
+      },
+      {
+        "id": "cw0007",
+        "start": {
+          "word": "w0007"
+        },
+        "end": {
+          "word": "w0008",
+          "edge": "end"
+        },
+        "words": [
+          "w0007"
+        ]
+      },
+      {
+        "id": "cw0008",
+        "start": {
+          "word": "w0008"
+        },
+        "end": {
+          "word": "w0008",
+          "edge": "end"
+        },
+        "words": [
+          "w0008"
+        ]
+      },
+      {
+        "id": "cw0009",
+        "start": {
+          "word": "w0009"
+        },
+        "end": {
+          "word": "w0010",
+          "edge": "end"
+        },
+        "words": [
+          "w0009"
+        ]
+      },
+      {
+        "id": "cw0010",
+        "start": {
+          "word": "w0010"
+        },
+        "end": {
+          "word": "w0010",
+          "edge": "end"
+        },
+        "words": [
+          "w0010"
+        ]
+      }
+    ],
+    "overlays": [],
+    "transitions": [],
+    "sounds": []
+  }
+}

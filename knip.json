@@ -1,10 +1,49 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "next": true,
-  "project": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.css", "e2e/**/*.ts"],
+  "workspaces": {
+    ".": {
+      "ignoreDependencies": ["@playwright/mcp"]
+    },
+    "apps/web": {
+      "next": true,
+      "project": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.css", "e2e/**/*.ts"]
+    },
+    "apps/studio": {
+      "next": true,
+      "vitest": {
+        "config": ["vitest.config.ts", "vitest.db.config.ts"]
+      },
+      "playwright": {
+        "config": ["playwright.config.ts", "playwright.tools.config.ts"]
+      },
+      "entry": ["scripts/*.ts", "src/lib/node-module-stub.ts"],
+      "project": [
+        "src/**/*.{ts,tsx,css}",
+        "e2e/**/*.ts",
+        "e2e-tools/**/*.ts",
+        "db-tests/**/*.ts",
+        "test-support/**/*.ts",
+        "scripts/**/*.ts"
+      ]
+    },
+    "apps/worker": {
+      "project": ["src/**/*.ts"],
+      "vitest": {
+        "config": ["vitest.config.ts", "vitest.tools.config.ts"]
+      }
+    },
+    "packages/storage": {
+      "project": ["src/**/*.ts"],
+      "vitest": true
+    },
+    "packages/edit": {
+      "entry": ["scripts/*.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.ts"],
+      "vitest": true
+    }
+  },
   "ignoreExportsUsedInFile": {
     "interface": true,
     "type": true
-  },
-  "ignoreDependencies": ["@playwright/mcp"]
+  }
 }
