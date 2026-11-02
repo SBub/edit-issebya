@@ -50,6 +50,8 @@ Rules for working in this repository. What each feature does is not described he
   hand-pick, copy, future-date or reuse a migration version, and never edit an applied migration.
   The studio unit test `apps/studio/test-support/migration-versions.test.ts` (run by `yarn test`, the pre-push
   hook and CI) fails on a version more than 10 minutes in the future or a version two files share.
+  A migration that creates a public table grants each role explicitly (hosted default privileges
+  grant no data access, and the local stack matches them).
 - `.adw/project.md` is this repository's ADW profile; the toolkit's slash commands
   read it before anything else. When a change renames a script, moves a port,
   adds an env file or changes where docs live, update the profile in the same

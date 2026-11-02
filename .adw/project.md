@@ -175,7 +175,7 @@ owner-only select, `sync-columns.test.ts` for the `updated_at` column and `<tabl
 every table PostHog syncs (`reels`, `jobs`, `steps`, `versions`, `exports`, `stored_files`),
 `dashboard-queries.test.ts` for the dashboard queries' columns and events against the real schema and
 their Postgres rendering's numbers on seeded rows (one rolled-back transaction), `stored-files.test.ts` for the `stored_files` and `worker_status` tables (`heartbeat_at` included, and a heartbeat upsert leaving `waiting_reason`), their RLS,
-`record_stored_file`, the seven-day slimming and export expiry with a fixed clock and `finish_upload`'s source row), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
+`record_stored_file`, the seven-day slimming and export expiry with a fixed clock and `finish_upload`'s source row; `grants.test.ts` for per-role table grants and default privileges matching hosted), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
 layer; the browser layer is the Playwright suites below.
 
 E2E code suites: `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium, plus webkit for the dialog
