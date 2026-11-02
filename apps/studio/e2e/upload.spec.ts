@@ -70,8 +70,9 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     }
   });
   await page.goto(await signInLink(admin, owner.email, baseURL!));
+  await page.getByRole("button", { name: "Upload a reel" }).click();
   await page.getByLabel("Clip").setInputFiles(CLIP);
-  await page.getByRole("button", { name: "Upload" }).click();
+  await page.getByRole("button", { name: "Upload", exact: true }).click();
 
   // One click creates the multipart upload, signs and PUTs its one part to
   // the storage double, completes it and navigates to the reel page. Under
@@ -202,11 +203,27 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   // version 1, now current. Both edits are in storage.
   const { data: withVersion } = await admin
     .from("reels")
-    .select("current_version_id")
+    .select("current_version_id, preview_copies")
     .eq("id", reelId)
     .single();
   const currentId = withVersion!.current_version_id as string | null;
   expect(currentId).not.toBeNull();
+  // The preview copies recorded on the reel: the footage copy, the grid's
+  // thumbnail and the timeline's frames sprite with its layout.
+  const previewFingerprint = (await pipelineManifest()).steps.find(
+    (step) => step.name === "preview_copies",
+  )!.fingerprint;
+  const previewRef = (file: string) => ({
+    step: "preview_copies",
+    fingerprint: previewFingerprint,
+    file,
+  });
+  expect(withVersion!.preview_copies).toEqual({
+    footage: previewRef("footage-preview.mp4"),
+    thumbnail: previewRef("thumbnail.jpg"),
+    frames: previewRef("frames.jpg"),
+    frames_layout: { everySeconds: 2, columns: 32, width: 90, height: 160 },
+  });
   const { data: versions } = await admin
     .from("versions")
     .select(
@@ -317,6 +334,16 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     expect(objectKey).not.toMatch(/remove_background|subject-preview/);
   }
   for (const versionKey of versionKeys) expect(objectKeys).toContain(versionKey);
+  // The preview_copies step's three kept outputs are stored and tracked.
+  for (const file of ["footage-preview.mp4", "thumbnail.jpg", "frames.jpg"]) {
+    const previewKey = objectKeys.find((objectKey) =>
+      objectKey.endsWith(`/cache/preview_copies/${previewFingerprint}/${file}`),
+    );
+    expect(previewKey, file).toBeDefined();
+    expect(live.filter((row) => row.r2_key === previewKey)).toEqual([
+      expect.objectContaining({ kind: "kept", step: "preview_copies" }),
+    ]);
+  }
   for (const objectKey of objectKeys) {
     const rows = live.filter((row) => row.r2_key === objectKey);
     expect(rows, objectKey).toHaveLength(1);

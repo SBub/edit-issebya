@@ -98,6 +98,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".json": "application/json",
+  ".jpg": "image/jpeg",
 };
 
 function contentType(key: string): string {

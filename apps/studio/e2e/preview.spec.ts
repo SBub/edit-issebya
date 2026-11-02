@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import {
   type Edit,
   ISSEBYA_PRESET,
@@ -12,6 +11,7 @@ import { type Page, expect, test } from "@playwright/test";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
+import { routePreviewCdn } from "../test-support/preview-routes.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds } from "../test-support/worker.ts";
 import { eventsNamed, recordEvents } from "./events.ts";
@@ -26,24 +26,6 @@ const GOLDEN = new URL(
   import.meta.url,
 );
 const TRANSCRIPT = new URL("../../../fixtures/pipeline/retime/transcript.json", import.meta.url);
-// The two scripts the composition loads from jsdelivr, served from the pinned
-// local packages so the spec needs no network.
-const CDN = [
-  {
-    url: "https://cdn.jsdelivr.net/npm/@hyperframes/core@0.8.222/dist/hyperframe.runtime.iife.js",
-    path: fileURLToPath(
-      new URL(
-        "dist/hyperframe.runtime.iife.js",
-        import.meta.resolve("@hyperframes/core/package.json"),
-      ),
-    ),
-  },
-  {
-    url: "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js",
-    path: fileURLToPath(import.meta.resolve("gsap/dist/gsap.min.js")),
-  },
-];
-
 const admin = localSupabaseAdmin();
 const storage = fakeStorage({
   root: e2eStorageRoot(new URL(".", import.meta.url).pathname),
@@ -71,14 +53,6 @@ test.afterAll(async () => {
   for (const key of [...(reel?.keys ?? []), ...extraKeys]) await storage.delete(key);
   if (owner) await deleteTestUser(admin, owner.id);
 });
-
-async function routeCdn(page: Page) {
-  for (const { url, path } of CDN) {
-    await page.route(url, (route) =>
-      route.fulfill({ path, contentType: "application/javascript" }),
-    );
-  }
-}
 
 async function openReel(page: Page, baseURL: string) {
   await page.goto(await signInLink(admin, owner.email, baseURL));
@@ -129,7 +103,7 @@ test("the reel opens with the player, the first caption, one open event and the 
   page,
   baseURL,
 }) => {
-  await routeCdn(page);
+  await routePreviewCdn(page);
   const events = await recordEvents(page);
   const cutoutRequests: string[] = [];
   page.on("request", (request) => {
@@ -174,7 +148,7 @@ test("the clock waits until the footage can play, on play and after a seek", asy
   page,
   baseURL,
 }) => {
-  await routeCdn(page);
+  await routePreviewCdn(page);
   let releaseFirst!: () => void;
   const firstGate = new Promise<void>((resolve) => (releaseFirst = resolve));
   let releaseFootage!: () => void;
@@ -239,7 +213,7 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
   page,
   baseURL,
 }) => {
-  await routeCdn(page);
+  await routePreviewCdn(page);
   await openReel(page, baseURL!);
   await page.evaluate(() => {
     (window as unknown as { __noReload: string }).__noReload = "marker";

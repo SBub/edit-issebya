@@ -27,9 +27,12 @@ function stubDb(error: { message: string } | null = null) {
 }
 
 describe("previewCopiesRefs", () => {
-  it("names both preview files under the preview_copies fingerprint", () => {
+  it("names the footage copy, thumbnail and frames sprite under the preview_copies fingerprint", () => {
     expect(previewCopiesRefs({ retime: "x", preview_copies: FP })).toEqual({
       footage: { step: "preview_copies", fingerprint: FP, file: "footage-preview.mp4" },
+      thumbnail: { step: "preview_copies", fingerprint: FP, file: "thumbnail.jpg" },
+      frames: { step: "preview_copies", fingerprint: FP, file: "frames.jpg" },
+      frames_layout: { everySeconds: 2, columns: 32, width: 90, height: 160 },
     });
   });
 

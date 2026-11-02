@@ -21,6 +21,7 @@ interface ReelInput {
   name?: string | null;
   status?: ReelStatus;
   createdAt?: string;
+  sourceBytes?: number;
 }
 
 // The admin bypasses RLS; createdAt fixes the list order deterministically.
@@ -32,6 +33,7 @@ export async function insertReel(admin: SupabaseClient, input: ReelInput): Promi
       source_name: input.name ?? null,
       status: input.status ?? "uploading",
       ...(input.createdAt ? { created_at: input.createdAt } : {}),
+      ...(input.sourceBytes !== undefined ? { source_bytes: input.sourceBytes } : {}),
     })
     .select("id")
     .single();

@@ -18,7 +18,7 @@ import { hyperframesEnv } from "./tools.ts";
 // head_track and preview_copies on the person clip (read only, given to each
 // step as its retimed footage), with the real HyperFrames and ffmpeg, run
 // directly: head_track makes its own sampled person mask with HyperFrames'
-// u2net, preview_copies the footage copy alone.
+// u2net, preview_copies the footage copy, its thumbnail and its frames sprite.
 let dir: string;
 let headTrackDir: string;
 let footagePreview: string;
@@ -87,7 +87,11 @@ describe("head_track", () => {
 describe("preview_copies", () => {
   it("makes one 540x960 H.264 footage copy as long as the source", async () => {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
-    expect(await readdir(previewsDir)).toEqual(["footage-preview.mp4"]);
+    expect((await readdir(previewsDir)).sort()).toEqual([
+      "footage-preview.mp4",
+      "frames.jpg",
+      "thumbnail.jpg",
+    ]);
     const source = await formatDuration(PERSON_CLIP);
     expect(await streamInfo(footagePreview)).toMatchObject({
       width: 540,
@@ -95,5 +99,18 @@ describe("preview_copies", () => {
       codec_name: "h264",
     });
     expect(Math.abs((await formatDuration(footagePreview)) - source)).toBeLessThanOrEqual(1 / 30);
+  });
+
+  it("makes a 270x480 thumbnail and a one-row 32-frame sprite of 90x160 frames", async () => {
+    expect(await streamInfo(join(previewsDir, "thumbnail.jpg"))).toMatchObject({
+      width: 270,
+      height: 480,
+      codec_name: "mjpeg",
+    });
+    expect(await streamInfo(join(previewsDir, "frames.jpg"))).toMatchObject({
+      width: 90 * 32,
+      height: 160,
+      codec_name: "mjpeg",
+    });
   });
 });

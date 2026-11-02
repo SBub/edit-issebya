@@ -71,34 +71,36 @@ export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs }: Pr
   }
 
   return (
-    <form onSubmit={send} className="flex flex-col gap-2" noValidate>
-      <label htmlFor="change-request" className="text-sm font-medium">
+    <form onSubmit={send} className="flex flex-col gap-1" noValidate>
+      <label htmlFor="change-request" className="text-xs font-medium text-muted">
         Ask for a change
       </label>
-      <textarea
-        id="change-request"
-        name="request"
-        rows={3}
-        maxLength={MAX_REQUEST_LENGTH}
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        disabled={disabled}
-        aria-describedby="change-reason change-status"
-        placeholder="move the title lower"
-        className="w-full max-w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-base disabled:bg-stone-100"
-      />
-      <p id="change-reason" data-testid="change-blocked-reason" className="text-sm text-stone-600">
+      <div className="flex items-end gap-2">
+        <textarea
+          id="change-request"
+          name="request"
+          rows={2}
+          maxLength={MAX_REQUEST_LENGTH}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          disabled={disabled}
+          aria-describedby="change-reason change-status"
+          placeholder="move the title lower"
+          className="min-w-0 flex-1 resize-none rounded-xl border border-line bg-raised px-3 py-2 text-base placeholder:text-muted disabled:bg-panel"
+        />
+        <button
+          type="submit"
+          disabled={disabled}
+          className="rounded-full bg-accent px-5 py-2 text-base font-semibold text-surface disabled:opacity-50"
+        >
+          Send
+        </button>
+      </div>
+      <p id="change-reason" data-testid="change-blocked-reason" className="text-xs text-muted">
         {blockedReason ??
           (queueNote ? <span data-testid="change-queue-note">{queueNote}</span> : "")}
       </p>
-      <button
-        type="submit"
-        disabled={disabled}
-        className="self-start rounded-md bg-stone-900 px-4 py-2 text-base font-medium text-white disabled:opacity-60"
-      >
-        Send
-      </button>
-      <p id="change-status" aria-live="polite" className="min-h-6 text-sm break-words">
+      <p id="change-status" aria-live="polite" className="text-xs break-words">
         {pending && sent ? (
           <span data-testid="change-pending">Pending: {sent.request}</span>
         ) : (

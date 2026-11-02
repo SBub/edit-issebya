@@ -37,7 +37,7 @@ export function NotifyToggle() {
   if (current === "unknown" || current === "unsupported") return null;
   if (current === "blocked") {
     return (
-      <p data-testid="notify-blocked" className="text-sm text-stone-600">
+      <p data-testid="notify-blocked" className="text-sm text-muted">
         Notifications blocked in this browser
       </p>
     );
@@ -61,7 +61,7 @@ export function NotifyToggle() {
       data-testid="notify-toggle"
       aria-pressed={current === "on"}
       onClick={onClick}
-      className="self-start rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-800 hover:bg-stone-50"
+      className="self-start rounded-md border border-line bg-raised px-3 py-1.5 text-sm text-ink hover:bg-line"
     >
       {current === "on" ? "Notifications on" : "Notify me when ready"}
     </button>

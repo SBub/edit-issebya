@@ -37,9 +37,11 @@
     },
     {
       "name": "preview_copies",
-      "fingerprint": "6b4acde030c248d4d2259bfca40ee25d9c64c941a5326a7f2f6ce02f8392c787",
+      "fingerprint": "0815b34a49943f14cf74ccc10a76a8600b254b428be814d4217830eee88a80ac",
       "files": [
-        "footage-preview.mp4"
+        "footage-preview.mp4",
+        "thumbnail.jpg",
+        "frames.jpg"
       ]
     }
   ]

@@ -23,12 +23,12 @@ export function LoginForm() {
         defaultValue={invalid ? state.email : undefined}
         aria-invalid={invalid || undefined}
         aria-describedby="login-status"
-        className="rounded-md border border-stone-300 bg-white px-3 py-2 text-base"
+        className="rounded-md border border-line bg-raised px-3 py-2 text-base"
       />
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md bg-stone-900 px-4 py-2 text-base font-medium text-white disabled:opacity-60"
+        className="rounded-md bg-accent px-4 py-2 text-base font-medium text-surface disabled:opacity-60"
       >
         Send sign-in link
       </button>

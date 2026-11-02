@@ -1,14 +1,25 @@
 "use server";
 
 import type { EditInputs } from "@edit-issebya/edit";
-import { type PreviewKeys, parsePreviewCopies, previewKeys } from "@/lib/preview-sources";
+import {
+  type FramesLayout,
+  type PreviewKeys,
+  parsePreviewCopies,
+  previewKeys,
+} from "@/lib/preview-sources";
 import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
 import { isReelId } from "@/lib/reels";
 import { studioStorage } from "@/lib/storage";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type PreviewSourcesResult =
-  | { status: "ready"; versionId: string; urls: PreviewKeys }
+  | {
+      status: "ready";
+      versionId: string;
+      urls: PreviewKeys;
+      // How the frames sprite is laid out; null without one.
+      framesLayout: FramesLayout | null;
+    }
   | { status: "no-version" }
   | { status: "no-previews" }
   | { status: "unconfigured" }
@@ -18,13 +29,21 @@ export type PreviewSourcesResult =
 // Long enough to watch the preview many times over.
 const DOWNLOAD_URL_SECONDS = 3600;
 
-// Signed download URLs for the live preview of the reel's current version:
-// its edit, transcript and head track, and the reel's two preview copies.
-// Every row is read under RLS as the signed-in owner, so a reel that is not
-// theirs reads as nothing; the keys come only from columns owners cannot
-// write (the version row, reels.preview_copies).
-export async function loadPreviewSources(reelId: string): Promise<PreviewSourcesResult> {
+// Signed download URLs for the live preview of one version of the reel (the
+// shown one, by default the current one): its edit, transcript and head
+// track, and the reel's footage preview copy and frames sprite. Every row is
+// read under RLS as the signed-in owner, so a reel that is not theirs reads
+// as nothing, and a version id is read only within this reel (another reel's
+// reads as nothing too); the keys come only from columns owners cannot write
+// (the version row, reels.preview_copies).
+export async function loadPreviewSources(
+  reelId: string,
+  versionId?: string | null,
+): Promise<PreviewSourcesResult> {
   if (typeof reelId !== "string" || !isReelId(reelId)) return { status: "failed" };
+  if (versionId !== undefined && versionId !== null) {
+    if (typeof versionId !== "string" || !isReelId(versionId)) return { status: "failed" };
+  }
 
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { status: "unconfigured" };
@@ -39,22 +58,23 @@ export async function loadPreviewSources(reelId: string): Promise<PreviewSources
     .eq("id", reelId)
     .maybeSingle<{ id: string; current_version_id: string | null; preview_copies: unknown }>();
   if (reel.error || !reel.data) return { status: "failed" };
-  const versionId = reel.data.current_version_id;
-  if (!versionId) return { status: "no-version" };
+  const shownId = versionId ?? reel.data.current_version_id;
+  if (!shownId) return { status: "no-version" };
   const previewCopies = parsePreviewCopies(reel.data.preview_copies);
   if (!previewCopies) return { status: "no-previews" };
 
   const version = await supabase
     .from("versions")
     .select("id, r2_key, inputs")
-    .eq("id", versionId)
+    .eq("id", shownId)
+    .eq("reel_id", reelId)
     .maybeSingle<{ id: string; r2_key: string; inputs: EditInputs }>();
   if (version.error || !version.data) return { status: "failed" };
 
   const keys = previewKeys({
     r2Key: version.data.r2_key,
     reelId,
-    versionId,
+    versionId: shownId,
     inputs: version.data.inputs,
     previewCopies,
   });
@@ -65,13 +85,28 @@ export async function loadPreviewSources(reelId: string): Promise<PreviewSources
   try {
     const sign = (key: string) =>
       storage.signDownload(key, { expiresInSeconds: DOWNLOAD_URL_SECONDS });
-    const [edit, transcript, headTrack, footage] = await Promise.all([
+    const [edit, transcript, headTrack, footage, frames] = await Promise.all([
       sign(keys.edit),
       sign(keys.transcript),
       sign(keys.headTrack),
       sign(keys.footage),
+      keys.frames ? sign(keys.frames) : null,
     ]);
-    return { status: "ready", versionId, urls: { edit, transcript, headTrack, footage } };
+    const { frames: sprite } = previewCopies;
+    return {
+      status: "ready",
+      versionId: shownId,
+      urls: { edit, transcript, headTrack, footage, frames },
+      framesLayout:
+        frames && sprite
+          ? {
+              everySeconds: sprite.everySeconds,
+              columns: sprite.columns,
+              width: sprite.width,
+              height: sprite.height,
+            }
+          : null,
+    };
   } catch (error) {
     await reportFailure(serverErrorCapture(), {
       message: "studio: preview not signed",

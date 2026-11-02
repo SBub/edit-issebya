@@ -107,12 +107,13 @@ async function recordProgress(page: Page) {
 
 async function signIn(page: Page, email: string, baseURL: string) {
   await page.goto(await signInLink(admin, email, baseURL));
+  await page.getByRole("button", { name: "Upload a reel" }).click();
   await expect(page.getByLabel("Clip")).toBeVisible();
 }
 
 async function pickAndUpload(page: Page) {
   await page.getByLabel("Clip").setInputFiles(footage.path);
-  await page.getByRole("button", { name: "Upload" }).click();
+  await page.getByRole("button", { name: "Upload", exact: true }).click();
 }
 
 // The owner's newest reel that is still uploading, once its upload exists.
@@ -264,6 +265,8 @@ test("Reload resumes: after a reload the same file sends only the missing parts"
   await page.reload();
   await page.unrouteAll({ behavior: "ignoreErrors" });
   for (const part of Object.keys(counts)) delete counts[Number(part)];
+  // The reload closed the upload dialog.
+  await page.getByRole("button", { name: "Upload a reel" }).click();
 
   await expect(page.getByTestId("upload-resume")).toHaveText(
     "An upload of footage-35mb.mp4 was interrupted. Pick the same file to resume.",

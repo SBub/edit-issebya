@@ -10,24 +10,34 @@ import {
   parseEdit,
   transcriptSchema,
 } from "@edit-issebya/edit";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type PreviewSourcesResult, loadPreviewSources } from "@/app/preview-actions";
 import { PreviewPlayer } from "@/components/PreviewPlayer";
+import { type TimelineFrames, TracksTimeline } from "@/components/TracksTimeline";
 import { isChromium } from "@/lib/browser";
 import { editAssetUrl } from "@/lib/edit-assets";
 import { previewPage } from "@/lib/preview-page";
 import { recordPreviewBuild } from "@/lib/preview-test-hooks";
 import { type SoundHit, soundHits } from "@/lib/sound-schedule";
 import { capture } from "@/lib/track";
+import { type Timeline, timelineRows } from "@/lib/tracks-timeline";
 
 interface Built {
   versionId: string;
   html: string;
   hits: SoundHit[];
   soundBytes: Record<string, ArrayBuffer>;
+  // The same parsed edit's rows on the reel's clock (no second fetch, no
+  // second builder).
+  timeline: Timeline;
+  frames: TimelineFrames | null;
 }
 
-type Outcome = { status: "built"; built: Built } | { status: "message"; message: string };
+// Each outcome remembers the version it was loaded for, so a newer selection
+// shows Loading until its own outcome arrives.
+type Outcome = { forVersion: string } & (
+  { status: "built"; built: Built } | { status: "message"; message: string }
+);
 
 const MESSAGES: Record<Exclude<PreviewSourcesResult["status"], "ready">, string> = {
   "no-version": "The preview appears once the first version is saved.",
@@ -63,9 +73,11 @@ function loadFonts(): Promise<Record<FontKey, Uint8Array>> {
 
 // Signed sources, then the page built here by packages/edit's one builder
 // (never stored), then the preview transform and the sounds the edit uses.
-async function loadPreview(reelId: string): Promise<Outcome> {
-  const sources = await loadPreviewSources(reelId);
-  if (sources.status !== "ready") return { status: "message", message: MESSAGES[sources.status] };
+async function loadPreview(reelId: string, versionId: string): Promise<Outcome> {
+  const sources = await loadPreviewSources(reelId, versionId);
+  if (sources.status !== "ready") {
+    return { forVersion: versionId, status: "message", message: MESSAGES[sources.status] };
+  }
   const { urls } = sources;
   const [editJson, transcriptJson, headTrackJson, fontBytes, hb] = await Promise.all([
     fetchOk(urls.edit).then((r) => r.json() as Promise<unknown>),
@@ -96,22 +108,60 @@ async function loadPreview(reelId: string): Promise<Outcome> {
       ),
     ),
   );
-  return { status: "built", built: { versionId: sources.versionId, html, hits, soundBytes } };
+  return {
+    forVersion: versionId,
+    status: "built",
+    built: {
+      versionId: sources.versionId,
+      html,
+      hits,
+      soundBytes,
+      timeline: timelineRows(edit, transcript),
+      frames:
+        urls.frames && sources.framesLayout
+          ? { url: urls.frames, layout: sources.framesLayout }
+          : null,
+    },
+  };
+}
+
+// One built version: the player and its tracks timeline, the playhead
+// following the player's clock (set only from the player's callback). Keyed
+// by version, so a new version starts at 0.
+function BuiltPreview({ built, controls }: { built: Built; controls: ReactNode }) {
+  const [position, setPosition] = useState(0);
+  return (
+    <>
+      <PreviewPlayer
+        html={built.html}
+        versionId={built.versionId}
+        hits={built.hits}
+        soundBytes={built.soundBytes}
+        onPosition={setPosition}
+        controls={controls}
+      />
+      <TracksTimeline timeline={built.timeline} position={position} frames={built.frames} />
+    </>
+  );
 }
 
 function subscribeNever(): () => void {
   return () => {};
 }
 
-// The live preview of the reel's current version. It loads when the version
+// The live preview of the shown version (the current one unless Undo or Redo
+// picked another) with its tracks timeline. It loads when the shown version
 // changes (LiveReel follows the reel through Realtime): no reload, no
 // polling. A load overtaken by a newer version is dropped.
 export function ReelPreview({
   reelId,
-  currentVersionId,
+  versionId,
+  controls,
 }: {
   reelId: string;
-  currentVersionId: string | null;
+  versionId: string | null;
+  // Undo and Redo, shown in the player's control row.
+  controls: ReactNode;
 }) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const opened = useRef(false);
@@ -123,22 +173,25 @@ export function ReelPreview({
   );
 
   useEffect(() => {
-    if (!currentVersionId) return;
+    if (!versionId) return;
     let stale = false;
-    loadPreview(reelId)
+    loadPreview(reelId, versionId)
       .then((next) => {
         if (!stale) setOutcome(next);
       })
       .catch((error: unknown) => {
         console.error("studio: preview not built:", (error as Error).message);
-        if (!stale) setOutcome({ status: "message", message: MESSAGES.failed });
+        if (!stale) {
+          setOutcome({ forVersion: versionId, status: "message", message: MESSAGES.failed });
+        }
       });
     return () => {
       stale = true;
     };
-  }, [reelId, currentVersionId]);
+  }, [reelId, versionId]);
 
-  const built = outcome?.status === "built" ? outcome.built : null;
+  const current = outcome && outcome.forVersion === versionId ? outcome : null;
+  const built = current?.status === "built" ? current.built : null;
 
   // Once per preview open, the first time a page reaches the player.
   useEffect(() => {
@@ -147,28 +200,29 @@ export function ReelPreview({
     capture("studio_preview_opened", { reel_id: reelId });
   }, [built, reelId]);
 
+  const note = (text: string, status = false) => (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3">
+      <p role={status ? "status" : undefined} className="text-sm text-muted">
+        {text}
+      </p>
+      {versionId && <div className="flex items-center gap-2">{controls}</div>}
+    </div>
+  );
+
   return (
-    <section aria-labelledby="preview-heading" className="flex flex-col gap-2">
-      <h2 id="preview-heading" className="text-lg font-semibold">
+    <section aria-labelledby="preview-heading" className="flex min-h-0 flex-1 flex-col gap-2">
+      <h2 id="preview-heading" className="sr-only">
         Preview
       </h2>
-      {!chromium && <p className="text-sm text-stone-600">The preview is built for Chrome.</p>}
-      {!currentVersionId ? (
-        <p className="text-sm text-stone-600">{MESSAGES["no-version"]}</p>
+      {!chromium && <p className="text-sm text-muted">The preview is built for Chrome.</p>}
+      {!versionId ? (
+        note(MESSAGES["no-version"])
       ) : built ? (
-        <PreviewPlayer
-          key={built.versionId}
-          html={built.html}
-          versionId={built.versionId}
-          hits={built.hits}
-          soundBytes={built.soundBytes}
-        />
-      ) : outcome?.status === "message" ? (
-        <p className="text-sm text-stone-600">{outcome.message}</p>
+        <BuiltPreview key={built.versionId} built={built} controls={controls} />
+      ) : current?.status === "message" ? (
+        note(current.message)
       ) : (
-        <p role="status" className="text-sm text-stone-600">
-          Loading the preview
-        </p>
+        note("Loading the preview", true)
       )}
     </section>
   );
