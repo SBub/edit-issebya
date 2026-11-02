@@ -18,7 +18,9 @@ it only creates, signs, lists, completes and aborts.
 
 - `apps/studio/src/lib/uploader.ts`: `createUploader` builds a headless `@uppy/core` 6.3.0 with
   `@uppy/aws-s3` 6.3.0 (no Uppy UI; `UploadForm.tsx` draws its own progress bar). It is created per
-  upload inside the component, never at module load, and closed when the form goes away.
+  upload inside the component, never at module load, and closed when the form goes away. A
+  finished upload reports 100 before the page goes to the reel, because Uppy's total progress is
+  throttled (500 ms, trailing) and its own 100 can arrive after `upload()` resolves.
 - The plugin runs in `companionEndpoint` mode pointed at `UPLOAD_ENDPOINT` (`/studio/api/uploads`,
   `apps/studio/src/lib/upload.ts`), with `shouldUseMultipart: true`, a fixed `getChunkSize`
   (`PART_SIZE_BYTES`: R2 requires every part but the last to be the same size), `allowedMetaFields:
@@ -150,6 +152,7 @@ Not done by the pipeline and not verified by it, any more than real network drop
 - Never use `@uppy/golden-retriever`'s file store for footage; resume keeps only the record.
 - Keep a fixed part size: every part but the last the same size.
 - Do not add Uppy UI packages; the uploader stays headless.
+- Never go to the reel after a finished upload before the bar shows 100.
 
 ## Notes
 

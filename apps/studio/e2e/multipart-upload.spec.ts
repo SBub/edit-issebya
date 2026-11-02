@@ -69,16 +69,39 @@ function countParts(page: Page) {
   return counts;
 }
 
-// The highest value the progress bar showed, kept across the client-side
-// navigation to the reel page.
-async function watchProgress(page: Page) {
+// Every value the progress bar is given, in order, recorded synchronously by a
+// MutationObserver (so none is lost to sampling) and kept across the
+// client-side navigation to the reel page (same document).
+async function recordProgress(page: Page) {
   await page.addInitScript(() => {
-    const w = window as unknown as { __maxProgress: number };
-    w.__maxProgress = 0;
-    setInterval(() => {
-      const bar = document.querySelector<HTMLProgressElement>('[data-testid="upload-progress"]');
-      if (bar) w.__maxProgress = Math.max(w.__maxProgress, bar.value);
-    }, 10);
+    const w = window as unknown as { __progressValues: number[] };
+    w.__progressValues = [];
+    const SELECTOR = '[data-testid="upload-progress"]';
+    const record = (el: Element) => w.__progressValues.push(Number(el.getAttribute("value")));
+    const observe = () => {
+      new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type === "attributes") {
+            if (mutation.target instanceof Element && mutation.target.matches(SELECTOR)) {
+              record(mutation.target);
+            }
+            continue;
+          }
+          for (const node of mutation.addedNodes) {
+            if (!(node instanceof Element)) continue;
+            if (node.matches(SELECTOR)) record(node);
+            node.querySelectorAll(SELECTOR).forEach(record);
+          }
+        }
+      }).observe(document, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ["value"],
+      });
+    };
+    if (document.documentElement) observe();
+    else document.addEventListener("DOMContentLoaded", observe);
   });
 }
 
@@ -146,7 +169,7 @@ test("Parts: a 35 MiB clip goes up in four 10 MiB parts with a progress bar", as
   baseURL,
 }) => {
   const events = await recordEvents(page);
-  await watchProgress(page);
+  await recordProgress(page);
   const counts = countParts(page);
   await signIn(page, owner.email, baseURL!);
   await pickAndUpload(page);
@@ -154,9 +177,16 @@ test("Parts: a 35 MiB clip goes up in four 10 MiB parts with a progress bar", as
   await expect(page).toHaveURL(REEL_URL, { timeout: 60_000 });
   const reelId = new URL(page.url()).pathname.split("/").pop()!;
   expect(counts).toEqual({ 1: 1, 2: 1, 3: 1, 4: 1 });
+  // The app reports 100 before it goes to the reel, and the bar never goes back.
+  const values = await page.evaluate(
+    () => (window as unknown as { __progressValues: number[] }).__progressValues,
+  );
+  expect(values.length, JSON.stringify(values)).toBeGreaterThan(0);
   expect(
-    await page.evaluate(() => (window as unknown as { __maxProgress: number }).__maxProgress),
-  ).toBe(100);
+    values.every((value, i) => i === 0 || value >= values[i - 1]!),
+    JSON.stringify(values),
+  ).toBe(true);
+  expect(values.at(-1), JSON.stringify(values)).toBe(100);
   expect(await finished(reelId)).toEqual({
     reel: { status: "uploaded", source_bytes: 36700160 },
     jobs: ONE_JOB,

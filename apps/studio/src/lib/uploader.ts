@@ -72,7 +72,12 @@ export function createUploader(handlers: {
         const done = result?.successful?.[0];
         const key = done?.response?.body?.key;
         const reelId = typeof key === "string" ? reelIdOfKey(key) : null;
-        return reelId ? { status: "finished", reelId } : { status: "failed" };
+        if (!reelId) return { status: "failed" };
+        // Uppy throttles total progress at 500 ms (trailing), so its own 100
+        // can arrive after upload() resolves, when this handler is already
+        // gone and the page has gone to the reel. Report it here instead.
+        handlers.onProgress(100);
+        return { status: "finished", reelId };
       } catch {
         return cancelled ? { status: "cancelled" } : { status: "failed" };
       } finally {

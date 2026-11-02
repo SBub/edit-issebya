@@ -166,7 +166,13 @@ test("a reel processed while the tab is hidden changes the title and notifies", 
   await expect(page.locator('[data-realtime="ready"]')).toBeVisible({ timeout: 30_000 });
   const originalTitle = await page.title();
 
+  // The toggle is replaced by notify-blocked when the page's permission is
+  // "denied" (the b5cfbf15 failure: the spy delegated to headless Chromium's
+  // real permission). Check that state first so a regression names its cause.
+  expect(await page.evaluate(() => Notification.permission)).toBe("default");
+  await expect(page.getByTestId("notify-blocked")).toHaveCount(0);
   const toggle = page.getByTestId("notify-toggle");
+  await expect(toggle).toBeVisible();
   await expect(toggle).toHaveText("Notify me when ready");
   await toggle.click();
   await expect(toggle).toHaveText("Notifications on");
