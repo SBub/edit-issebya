@@ -133,8 +133,12 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 
 - `apps/worker` (`@edit-issebya/worker`) is TypeScript run directly by Node 24 on the owner's
   machine, never on Vercel. Scripts: `worker`, `worker:prod` (long-running), `once` (claim one job,
-  used by specs) and `doctor` (checks Supabase, R2, ffmpeg and one structured `claude -p` call).
-  Each loads `.env.development` or `.env.production` from `apps/worker/` when present.
+  used by specs) and `doctor` (checks Supabase, R2 read and write access through a probe it puts,
+  reads back and deletes under `<R2_KEY_PREFIX>doctor/`, the scratch folder, which must exist or be
+  creatable and which it never creates, ffmpeg and one structured `claude -p` call). Each loads
+  `.env.development` or `.env.production` from `apps/worker/` when present. `worker`,
+  `worker:prod` and `once` create the scratch folder (`WORKER_SCRATCH_DIR`) at start-up and exit 1
+  when they cannot (see `app_docs/storage.md`).
 - `apps/worker/src/main.ts`: wakes on Realtime `INSERT` into `jobs`, also checks every
   `WORKER_POLL_INTERVAL_SECONDS` reading only job ids, skips claiming below
   `WORKER_MIN_FREE_DISK_GB` and records the reason in `worker_status`, which the reel page shows
