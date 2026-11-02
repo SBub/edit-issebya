@@ -94,7 +94,10 @@ test.beforeAll(async ({ browser }, testInfo) => {
   });
   await context.addInitScript(() => {
     const spy = window as unknown as SpyWindow & { Notification: typeof Notification };
-    const Original = window.Notification;
+    // Headless Chromium reports Notification.permission as "denied" even with
+    // the permission granted, so the spy keeps its own: "default" until the
+    // click asks, then "granted".
+    let permission: NotificationPermission = "default";
     spy.__notifications = [];
     spy.__hidden = false;
     class NotificationSpy {
@@ -103,10 +106,11 @@ test.beforeAll(async ({ browser }, testInfo) => {
         spy.__notifications.push({ title, body: options?.body });
       }
       static get permission() {
-        return Original.permission;
+        return permission;
       }
       static requestPermission() {
-        return Original.requestPermission();
+        permission = "granted";
+        return Promise.resolve(permission);
       }
     }
     spy.Notification = NotificationSpy as unknown as typeof Notification;
