@@ -1,4 +1,6 @@
+import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
+import type { Storage } from "@edit-issebya/storage";
 import {
   ISSEBYA_PRESET,
   type Transcript,
@@ -11,7 +13,9 @@ import { type AiRunner, plainTool } from "./ai.ts";
 // that line only.
 export interface DoctorDeps {
   supabase: () => Promise<void>;
-  r2: () => Promise<void>;
+  // The storage and its key prefix; the check lists, then puts, reads back and
+  // deletes a probe object under `<prefix>doctor/`.
+  r2: () => { storage: Pick<Storage, "list" | "put" | "get" | "delete">; prefix: string };
   ffmpeg: () => Promise<string>;
   // `ffmpeg -hide_banner -filters` output.
   ffmpegFilters: () => Promise<string>;
@@ -20,6 +24,8 @@ export interface DoctorDeps {
   // `hyperframes --version` output.
   hyperframes: () => Promise<string>;
   ai: () => AiRunner;
+  // The scratch folder and whether it exists or can be created (never created).
+  scratchDir: () => Promise<{ dir: string; state: "exists" | "can be created" }>;
 }
 
 // The filters the fixed steps use: HDR tone-mapping, retime tempo, the envelope.
@@ -72,13 +78,53 @@ function doctorAiSchema(): Record<string, unknown> {
   return decideJsonSchema(ISSEBYA_PRESET, AI_SAMPLE_TRANSCRIPT, AI_SAMPLE_DURATION);
 }
 
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+// Runs one probe stage, its error prefixed with the stage and the key.
+async function stage<T>(name: string, key: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    throw new Error(`${name} ${key}: ${reasonOf(error)}`);
+  }
+}
+
+const PROBE_BODY = "edit-issebya doctor probe";
+
+// Proves the key may read and write: lists the prefix, then puts a probe
+// object, reads it back and deletes it (the delete runs whenever the put
+// succeeded, so a half-run probe is not left behind).
+async function probeR2(deps: DoctorDeps["r2"]): Promise<void> {
+  const { storage, prefix } = deps();
+  await storage.list(prefix);
+  const key = `${prefix}doctor/probe-${randomBytes(6).toString("hex")}.txt`;
+  const body = new TextEncoder().encode(PROBE_BODY);
+  await stage("put", key, () => storage.put(key, body, { contentType: "text/plain" }));
+  let failure: unknown = null;
+  try {
+    const read = await stage("get", key, () => storage.get(key));
+    if (read === null) throw new Error(`get ${key}: probe missing`);
+    if (new TextDecoder().decode(read) !== PROBE_BODY) throw new Error(`get ${key}: probe differs`);
+  } catch (error) {
+    failure = error;
+  } finally {
+    try {
+      await stage("delete", key, () => storage.delete(key));
+    } catch (error) {
+      failure ??= error;
+    }
+  }
+  if (failure !== null) throw failure;
+}
+
 async function check(name: string, run: () => Promise<string | void>): Promise<string> {
   try {
     const detail = await run();
     return `ok   ${detail ? `${name} ${detail}` : name}`;
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    return `FAIL ${name}: ${reason.split("\n")[0]}`;
+    return `FAIL ${name}: ${reasonOf(error).split("\n")[0]}`;
   }
 }
 
@@ -87,7 +133,7 @@ async function check(name: string, run: () => Promise<string | void>): Promise<s
 export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; exitCode: number }> {
   const lines = [
     await check("supabase reachable", deps.supabase),
-    await check("r2 bucket reachable", deps.r2),
+    await check("r2 bucket readable and writable", () => probeR2(deps.r2)),
     await check("ffmpeg", deps.ffmpeg),
     await check("ffmpeg filters", async () => {
       const names = filterNames(await deps.ffmpegFilters());
@@ -124,6 +170,11 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
         AI_SAMPLE_DURATION,
       );
       if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
+    }),
+    // Last, so the earlier lines keep their places.
+    await check("scratch dir", async () => {
+      const { dir, state } = await deps.scratchDir();
+      return `${dir} ${state}`;
     }),
   ];
   return { lines, exitCode: lines.some((line) => line.startsWith("FAIL")) ? 1 : 0 };

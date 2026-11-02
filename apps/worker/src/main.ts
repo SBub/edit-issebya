@@ -3,7 +3,8 @@
 // WORKER_POLL_INTERVAL_SECONDS reading only ids, and runs one job at a time.
 // Between jobs it slims storage at most once an hour, and it claims nothing
 // while the scratch volume is below WORKER_MIN_FREE_DISK_GB. It writes a
-// heartbeat at start and every five minutes.
+// heartbeat at start and every five minutes. Before anything reads the scratch
+// volume it creates the scratch folder, and exits 1 naming it when it cannot.
 import { workerConfig } from "./config.ts";
 import { createErrorTracker, installCrashCapture } from "./error-tracking.ts";
 import { freeBytesFn, guardedClaim, supabaseWorkerStatus } from "./disk-guard.ts";
@@ -11,7 +12,7 @@ import { startHeartbeat } from "./heartbeat.ts";
 import { createDrainer } from "./loop.ts";
 import { processJob } from "./process-job.ts";
 import { claimJob, claimableJobIds } from "./queue.ts";
-import { sweepStaleScratch } from "./scratch.ts";
+import { prepareScratchDir, sweepStaleScratch } from "./scratch.ts";
 import { createSlimmer, runSlimming } from "./slimming.ts";
 import { workerStorage } from "./storage.ts";
 import { supabaseStoredFiles } from "./stored-files.ts";
@@ -22,6 +23,7 @@ import { createTelemetry } from "./telemetry.ts";
 const errors = createErrorTracker();
 installCrashCapture(errors);
 const config = workerConfig();
+await prepareScratchDir(config.scratchDir);
 const db = workerSupabase(config);
 const storage = workerStorage();
 const telemetry = createTelemetry();
