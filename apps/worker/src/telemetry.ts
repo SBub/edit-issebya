@@ -123,7 +123,8 @@ export function startJobSpan(
 // Ends the job span with its outcome.
 export function endJobSpan(span: Span, outcome: string): void {
   span.setAttribute("job.outcome", outcome);
-  if (outcome === "failed") span.setStatus({ code: SpanStatusCode.ERROR });
+  // A wait is not an error: the job is taken again later.
+  if (outcome === "failed" || outcome === "refused") span.setStatus({ code: SpanStatusCode.ERROR });
   span.end();
 }
 

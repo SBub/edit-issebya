@@ -2,7 +2,6 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { changeBlockedReason, normalizeRequest } from "@/lib/change-requests";
-import type { JobRow } from "@/lib/jobs";
 import { type ReelDetail, isReelId } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -17,9 +16,10 @@ type Open =
   | { ok: true; supabase: SupabaseClient; currentVersionId: string | null }
   | { ok: false; result: ChangeActionResult };
 
-// The user's own client, then the reel and its jobs under RLS: another
-// owner's reel reads as missing. The interim ordering rule is checked here as
-// well as in the page, so a stale tab cannot queue a second job.
+// The user's own client, then the reel under RLS: another owner's reel reads
+// as missing. The blocked rule is checked here as well as in the page, so a
+// stale tab cannot queue a job on a refused or unusable reel. The order of
+// jobs is the database's (claim_job runs one job per reel at a time).
 async function openReel(reelId: string): Promise<Open> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { ok: false, result: { status: "failed" } };
@@ -28,24 +28,17 @@ async function openReel(reelId: string): Promise<Open> {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, result: { status: "signed-out" } };
 
-  const [reel, jobs] = await Promise.all([
-    supabase
-      .from("reels")
-      .select("id, status, current_version_id")
-      .eq("id", reelId)
-      .maybeSingle<Pick<ReelDetail, "id" | "status" | "current_version_id">>(),
-    supabase
-      .from("jobs")
-      .select("id, status")
-      .eq("reel_id", reelId)
-      .returns<Pick<JobRow, "id" | "status">[]>(),
-  ]);
-  if (reel.error || jobs.error) {
-    console.error("studio: reel not read for a change:", reel.error?.code ?? jobs.error?.code);
+  const reel = await supabase
+    .from("reels")
+    .select("id, status, current_version_id")
+    .eq("id", reelId)
+    .maybeSingle<Pick<ReelDetail, "id" | "status" | "current_version_id">>();
+  if (reel.error) {
+    console.error("studio: reel not read for a change:", reel.error.code);
     return { ok: false, result: { status: "failed" } };
   }
   if (!reel.data) return { ok: false, result: { status: "failed" } };
-  const reason = changeBlockedReason(reel.data, jobs.data ?? []);
+  const reason = changeBlockedReason(reel.data);
   if (reason) return { ok: false, result: { status: "blocked", reason } };
   return { ok: true, supabase, currentVersionId: reel.data.current_version_id };
 }

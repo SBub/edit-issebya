@@ -11,13 +11,17 @@ interface Props {
   reelId: string;
   // Null when a change may be sent; otherwise why not, in one line.
   blockedReason: string | null;
+  // What a change sent now waits for (processing, earlier jobs); null when
+  // nothing is ahead. Shown only when not blocked.
+  queueNote: string | null;
   // The reel's live jobs, so the pending line ends when its job does.
   jobs: readonly Pick<JobRow, "id" | "status">[];
 }
 
 // The text box under the preview. Sending queues a `change` job with the
-// owner's words; the new version reaches the preview through Realtime.
-export function ChangeRequestForm({ reelId, blockedReason, jobs }: Props) {
+// owner's words; it runs after the reel's earlier jobs (the database's order),
+// and the new version reaches the preview through Realtime.
+export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs }: Props) {
   const router = useRouter();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -25,10 +29,14 @@ export function ChangeRequestForm({ reelId, blockedReason, jobs }: Props) {
   const [sent, setSent] = useState<{ jobId: string; request: string } | null>(null);
 
   // Derived from the live jobs: pending until the sent job is done or failed
-  // (or while it has not arrived yet). No timer.
+  // (or while it has not arrived yet, or waits for the AI). No timer.
   const sentJob = sent ? jobs.find((job) => job.id === sent.jobId) : undefined;
   const pending =
-    sent !== null && (!sentJob || sentJob.status === "queued" || sentJob.status === "running");
+    sent !== null &&
+    (!sentJob ||
+      sentJob.status === "queued" ||
+      sentJob.status === "running" ||
+      sentJob.status === "waiting_ai");
   const disabled = busy || pending || blockedReason !== null;
 
   async function send(event: FormEvent<HTMLFormElement>) {
@@ -80,7 +88,8 @@ export function ChangeRequestForm({ reelId, blockedReason, jobs }: Props) {
         className="w-full max-w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-base disabled:bg-stone-100"
       />
       <p id="change-reason" data-testid="change-blocked-reason" className="text-sm text-stone-600">
-        {blockedReason ?? ""}
+        {blockedReason ??
+          (queueNote ? <span data-testid="change-queue-note">{queueNote}</span> : "")}
       </p>
       <button
         type="submit"

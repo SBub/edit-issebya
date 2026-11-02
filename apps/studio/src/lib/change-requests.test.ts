@@ -6,7 +6,7 @@ import {
   normalizeRequest,
   versionOrigin,
 } from "./change-requests";
-import { JOB_KINDS, type JobStatus } from "./jobs";
+import { JOB_KINDS } from "./jobs";
 
 describe("normalizeRequest", () => {
   it("trims the owner's words", () => {
@@ -35,25 +35,36 @@ describe("normalizeRequest", () => {
 });
 
 describe("changeBlockedReason", () => {
-  const job = (status: JobStatus) => ({ status });
-
-  it("is open on a processed reel with no queued or running job", () => {
-    expect(changeBlockedReason({ status: "processed" }, [])).toBeNull();
-    expect(changeBlockedReason({ status: "processed" }, [job("done"), job("failed")])).toBeNull();
+  it("is open on a processed reel and while the reel is processing", () => {
+    for (const status of [
+      "processed",
+      "uploaded",
+      "checking_footage",
+      "converting",
+      "making_previews",
+    ] as const) {
+      expect(changeBlockedReason({ status, current_version_id: null })).toBeNull();
+    }
+    // A failed reel with a version keeps its version usable.
+    expect(changeBlockedReason({ status: "failed", current_version_id: "v1" })).toBeNull();
   });
 
-  it("blocks while a job is queued or running", () => {
-    for (const status of ["queued", "running"] as const) {
-      expect(changeBlockedReason({ status: "processed" }, [job("done"), job(status)])).toBe(
-        "A job is running on this reel; wait for it to finish.",
-      );
-    }
+  it("blocks a refused reel", () => {
+    expect(changeBlockedReason({ status: "refused", current_version_id: null })).toBe(
+      "This clip was refused; upload another clip.",
+    );
   });
 
-  it("blocks until the reel is processed", () => {
-    for (const status of ["uploaded", "converting", "failed"] as const) {
-      expect(changeBlockedReason({ status }, [])).toBe("Changes open once the reel is processed.");
-    }
+  it("blocks while uploading", () => {
+    expect(changeBlockedReason({ status: "uploading", current_version_id: null })).toBe(
+      "Changes open once the upload finishes.",
+    );
+  });
+
+  it("blocks a failed reel without a version", () => {
+    expect(changeBlockedReason({ status: "failed", current_version_id: null })).toBe(
+      "Processing failed; press Retry on the failed job first.",
+    );
   });
 });
 

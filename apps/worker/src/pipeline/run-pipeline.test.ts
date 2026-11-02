@@ -9,7 +9,9 @@ import { PIPELINE, type StepOutput, fingerprintsFor, outputFiles } from "./defin
 import { cacheKey } from "./fingerprint.ts";
 import { HEAD_TRACK_SETTINGS, frameBytes } from "./head-track.ts";
 import { REMOVE_BACKGROUND_ENTRY } from "./remove-background.ts";
+import { FootageRefused } from "../failure.ts";
 import { runPipeline } from "./run-pipeline.ts";
+import type { RunStep } from "./step-double.ts";
 import type { ToolPaths } from "./tools.ts";
 
 const PREFIX = "dev/";
@@ -148,6 +150,8 @@ function run(
     signal?: AbortSignal;
     setReelStatus?: boolean;
     recordStored?: (key: string, bytes: number) => Promise<void>;
+    checkFootage?: boolean;
+    runStep?: RunStep;
   } = {},
 ) {
   return runPipeline({
@@ -160,6 +164,8 @@ function run(
     pipeline: options.pipeline,
     setReelStatus: options.setReelStatus,
     recordStored: options.recordStored,
+    checkFootage: options.checkFootage,
+    runStep: options.runStep,
   });
 }
 
@@ -560,5 +566,92 @@ describe("runPipeline", () => {
     expect(await storage.list(`${PREFIX}cache/`)).toEqual([]);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
     expect(await readdir(scratch)).toEqual([]);
+  });
+});
+
+describe("runPipeline automatic retry", () => {
+  it("runs a step again after a 503 from storage, then finishes", async () => {
+    const inner = storage;
+    let failed = false;
+    storage = {
+      ...inner,
+      async getFile(key, path, options) {
+        if (!failed) {
+          failed = true;
+          throw Object.assign(new Error("Service Unavailable"), {
+            $metadata: { httpStatusCode: 503 },
+          });
+        }
+        return inner.getFile(key, path, options);
+      },
+    };
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    await run(steps);
+    expect(calls.filter((c) => c.call === "start" && c.name === "convert")).toHaveLength(2);
+    expect(calls.filter((c) => c.call === "failed")).toHaveLength(1);
+    expect(calls.filter((c) => c.call === "done")).toHaveLength(PIPELINE.length);
+  });
+
+  it("never runs a step again after a tool's exit 1", async () => {
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    await expect(run(steps, { spawnTool: fakeTools({ failTranscribe: 2 }) })).rejects.toThrow(
+      /transcribe exited with 1/,
+    );
+    expect(calls.filter((c) => c.call === "start" && c.name === "transcribe")).toHaveLength(1);
+  });
+});
+
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- a committed fixture
+const LANDSCAPE = await readFile(new URL("testdata/probe-landscape.json", import.meta.url), "utf8");
+
+describe("runPipeline check_footage", () => {
+  it("refuses landscape footage before any fixed step, storing nothing", async () => {
+    const tools = fakeTools();
+    const landscape: SpawnTool = (call, signal, log) =>
+      call.file === TOOLS.ffprobe ? Promise.resolve(ok(LANDSCAPE)) : tools(call, signal, log);
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    const refused = run(steps, { spawnTool: landscape, checkFootage: true });
+    await expect(refused).rejects.toThrow();
+    await refused.catch((error: unknown) => {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).cause).toBeInstanceOf(FootageRefused);
+    });
+    expect(shape(calls)).toEqual(["status checking_footage", "start check_footage", "failed"]);
+    const failed = calls.find((c) => c.call === "failed");
+    expect(failed).toMatchObject({
+      tail: "This clip is 320 x 180, not vertical. The studio takes vertical clips only.",
+    });
+    expect(counts.putFileIfAbsent).toBe(0);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+    expect(await readdir(scratch)).toEqual([]);
+  });
+
+  it("checks accepted footage, then convert reads the same download", async () => {
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    await run(steps, { checkFootage: true });
+    expect(shape(calls).slice(0, 5)).toEqual([
+      "status checking_footage",
+      "start check_footage",
+      "done",
+      "status converting",
+      "start convert",
+    ]);
+    const checked = calls.find((c) => c.call === "done");
+    expect(checked).toMatchObject({
+      summary: expect.stringMatching(/^footage checked, 0:02, 320 x 568/),
+    });
+    // The source once; every later input is a local output.
+    expect(counts.getFile).toBe(1);
+  });
+
+  it("runs a step that must run through runStep when given", async () => {
+    const seen: string[] = [];
+    const runStep: RunStep = async (step, args, fingerprint) => {
+      seen.push(`${step.name}:${fingerprint.length}`);
+      return step.run(args);
+    };
+    const { steps } = recordingSteps(SOURCE_KEY);
+    await run(steps, { runStep });
+    expect(seen).toEqual(PIPELINE.map((step) => `${step.name}:64`));
   });
 });

@@ -122,9 +122,11 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   expect(worker.code, worker.output).toBe(0);
 
   await expect(page.getByTestId("job-status")).toHaveText("done", { timeout: 10_000 });
-  // Every step's outputs were already stored: each is a hit, nothing ran.
+  // The footage check runs first (ffprobe on the downloaded source); every
+  // fixed step's outputs were already stored: each is a hit, nothing ran.
   await expect(page.getByTestId("step-line")).toHaveText(
     [
+      /^check_footage: footage checked, /,
       "convert: footage converted, reused",
       "transcribe: transcribed, reused",
       "retime: retimed, reused",
@@ -153,6 +155,8 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     bytes_out: null,
   });
   expect(steps).toEqual([
+    // A tool step: ffprobe ran, so its measurements are the runner's.
+    expect.objectContaining({ name: "check_footage", status: "done", cache_hit: false }),
     hit("convert"),
     hit("transcribe"),
     hit("retime"),
