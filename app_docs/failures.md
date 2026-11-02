@@ -221,7 +221,10 @@ Both are E2E only (`apps/worker/.env.example`), never set on the worker machine:
 - `E2E_MOCK_STEP_FAULT`: read only when `E2E_MOCK_STEPS` is exactly `true`; one step that fails on
   purpose, as `<step>:<signal|exit|half>`. Any other form throws.
 
-The worker needs `ffprobe` beside `ffmpeg` (or on the `PATH`), and so does the E2E suite.
+The worker needs `ffprobe` beside `ffmpeg` (or on the `PATH`), 7.0 or newer, and so does the E2E
+suite. A failed tool's error is `<step> exited with <code>` followed by the tail of its output; the
+worker's `job <id>: failed:` log line and the job's `error_tail` keep that first line and the last
+20 output lines (at most 2000 characters), never stack frames in their place.
 
 ## Testing
 

@@ -212,8 +212,9 @@ confirmation email specs need the mocks), which `reuseExistingServer` adopts; ne
 run (it disables reuse and switches the server to `yarn start`). Specs run with `workers: 1`: they
 share one server's mock state (Stripe capture and sessions, Resend recording) and its missing-key
 and missing-config toggles. A user-visible change adds or extends a spec there.
-The E2E suite needs `ffprobe` on the `PATH` (beside `ffmpeg`): every `process` job a spec runs
-starts with `check_footage`, which probes the source (CI installs ffmpeg before the E2E step).
+The E2E suite needs `ffprobe` on the `PATH` (beside `ffmpeg`), ffmpeg 7.0 or newer: every
+`process` job a spec runs starts with `check_footage`, which probes the source, and `photo_images`
+uses ffprobe's `-show_stream_groups` (CI installs a pinned static ffmpeg 8.0.1 before the E2E step).
 Measure fixed or edge-aligned elements from the root box, never from `window.innerWidth`
 (`scrollbar-gutter: stable` reserves 15px on Linux Chromium and none on macOS).
 

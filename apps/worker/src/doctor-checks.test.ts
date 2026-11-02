@@ -10,7 +10,7 @@ import {
   fakeAiRunner,
   resultEnvelope,
 } from "./ai.ts";
-import { type DoctorDeps, runDoctor } from "./doctor-checks.ts";
+import { type DoctorDeps, ffmpegMajor, runDoctor } from "./doctor-checks.ts";
 
 let root: string;
 let storage: FakeStorage;
@@ -53,6 +53,7 @@ const PASSING: DoctorDeps = {
   supabase: async () => {},
   r2: () => ({ storage, prefix: "dev/" }),
   ffmpeg: async () => "version 7.1",
+  ffprobe: async () => "version 7.1",
   ffmpegFilters: async () =>
     [
       "Filters:",
@@ -81,6 +82,21 @@ const PASSING: DoctorDeps = {
 };
 
 describe("runDoctor", () => {
+  it("fails the ffmpeg line on ffmpeg or ffprobe older than 7", async () => {
+    const old = await runDoctor({
+      ...PASSING,
+      ffmpeg: async () => "version 6.1.1-3ubuntu5 Copyright",
+    });
+    expect(old.lines[2]).toBe(
+      "FAIL ffmpeg: ffmpeg 6.1 found, 7 or newer is needed for HEIC photos (-show_stream_groups)",
+    );
+    expect(old.exitCode).toBe(1);
+    const probe = await runDoctor({ ...PASSING, ffprobe: async () => "version n6.0 Copyright" });
+    expect(probe.lines[2]).toBe(
+      "FAIL ffmpeg: ffprobe 6.0 found, 7 or newer is needed for HEIC photos (-show_stream_groups)",
+    );
+  });
+
   it("names the filters a build lacks", async () => {
     const { lines } = await runDoctor({
       ...PASSING,
@@ -243,5 +259,15 @@ describe("runDoctor", () => {
         expect(line.startsWith("FAIL"), line).toBe(failingLines.includes(index));
       });
     }
+  });
+});
+
+describe("ffmpegMajor", () => {
+  it("reads the major version of release, distro, static and git builds", () => {
+    expect(ffmpegMajor("version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers")).toBe(8);
+    expect(ffmpegMajor("version 6.1.1-3ubuntu5 Copyright")).toBe(6);
+    expect(ffmpegMajor("version n7.0.2 Copyright")).toBe(7);
+    expect(ffmpegMajor("version 7.0.2-static https://johnvansickle.com/ffmpeg/")).toBe(7);
+    expect(ffmpegMajor("version N-117000-g1234abcd Copyright")).toBeNull();
   });
 });

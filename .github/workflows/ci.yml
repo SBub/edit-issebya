@@ -74,7 +74,23 @@ jobs:
       # on NEXT_PUBLIC_*).
       - run: yarn build
       - run: yarn test:db
-      # check_footage runs ffprobe in every process job the specs run.
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # check_footage runs ffprobe in every process job the specs run, and
+      # photo_images needs ffprobe's -show_stream_groups (HEIC tile grids),
+      # new in ffmpeg 7.0; Ubuntu 24.04's apt ffmpeg is 6.1. The static
+      # ffmpeg/ffprobe 8.0.1 (the owner's version) come from an image pinned
+      # by digest, copied onto PATH; the last line fails the step on a build
+      # without -show_stream_groups.
+      - name: Install ffmpeg 8.0.1
+        env:
+          FFMPEG_IMAGE: mwader/static-ffmpeg:8.0.1@sha256:252705ff88532fa338e7065c21792756552f8fe7c212f84bc503d3c340689594
+        run: |
+          mkdir -p "$RUNNER_TEMP/ffmpeg"
+          id=$(docker create --platform linux/amd64 "$FFMPEG_IMAGE")
+          docker cp "$id:/ffmpeg" "$RUNNER_TEMP/ffmpeg/ffmpeg"
+          docker cp "$id:/ffprobe" "$RUNNER_TEMP/ffmpeg/ffprobe"
+          docker rm "$id"
+          echo "$RUNNER_TEMP/ffmpeg" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/ffmpeg/ffmpeg" -version | head -1
+          "$RUNNER_TEMP/ffmpeg/ffprobe" -v error -show_stream_groups -print_format json fixtures/photos/sample.heic > /dev/null
       # The browsers were installed before `yarn test`.
       - run: yarn test:e2e

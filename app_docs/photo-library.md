@@ -68,7 +68,11 @@ desktop and is a fourth tab, `Library`, on a phone.
 ## Configuration
 
 None of its own. It needs the same R2 variables as footage (`app_docs/storage.md`) and the worker's
-Claude Code (`claude -p`). `E2E_MOCK_AI_SCRIPT` scripts the AI answer in specs.
+Claude Code (`claude -p`). ffmpeg and ffprobe must be 7.0 or newer: `photo_images` probes with
+`-show_stream_groups` (a HEIC tile grid), which older ffprobe rejects (`Option not found`). The
+worker's `yarn doctor` fails its ffmpeg line on an older ffmpeg or ffprobe, and CI installs the
+static ffmpeg 8.0.1 build (`mwader/static-ffmpeg`, pinned by digest in `.github/workflows/ci.yml`)
+instead of Ubuntu's 6.1. `E2E_MOCK_AI_SCRIPT` scripts the AI answer in specs.
 `fixtures/photos/sample.jpg` and `sample.heic` are made by `scripts/make-test-photos.sh` (macOS
 only, run by hand; CI uses the committed files).
 

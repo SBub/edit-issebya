@@ -1,6 +1,6 @@
 // Checks this machine can run jobs, in eight lines: Supabase, R2 read and write
 // (a probe object put, read back and deleted under `<R2_KEY_PREFIX>doctor/`),
-// ffmpeg and the filters and codecs the pipeline needs, HyperFrames, one
+// ffmpeg and ffprobe 7 or newer with the filters and codecs the pipeline needs, HyperFrames, one
 // structured Claude Code call, and the scratch folder (exists or can be
 // created, never created here). Prints one line per check; exits 1 when any
 // failed.
@@ -34,6 +34,10 @@ const { lines, exitCode } = await runDoctor({
   async ffmpeg() {
     const { stdout } = await run(toolPaths().ffmpeg, ["-version"]);
     return stdout.split("\n")[0]?.replace(/^ffmpeg\s+/, "") ?? "";
+  },
+  async ffprobe() {
+    const { stdout } = await run(toolPaths().ffprobe, ["-version"]);
+    return stdout.split("\n")[0]?.replace(/^ffprobe\s+/, "") ?? "";
   },
   async ffmpegFilters() {
     const { stdout } = await run(toolPaths().ffmpeg, ["-hide_banner", "-filters"]);

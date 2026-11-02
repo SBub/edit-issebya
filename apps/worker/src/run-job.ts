@@ -1,4 +1,4 @@
-import { errorTail } from "./errors.ts";
+import { errorTail, failureReason } from "./errors.ts";
 import { AiUnavailable, FootageRefused, findCause } from "./failure.ts";
 import { keepLease } from "./lease.ts";
 import type { ClaimedJob } from "./queue.ts";
@@ -21,7 +21,8 @@ export interface RunJobDeps {
 
 // Runs one claimed job while keeping its lease. Success finishes the job,
 // refused footage refuses the reel, an unavailable AI makes the job wait, any
-// other failure fails it with the error's tail, and a lost lease writes
+// other failure fails it with the error's tail (a failed tool's output, else the
+// stack's end), and a lost lease writes
 // nothing more (another worker may hold the job now). Each write is guarded
 // by the lease: one that matched no row is `lost`.
 export async function runJob({
@@ -63,8 +64,12 @@ export async function runJob({
       log(`job ${job.id}: waiting for the AI: ${unavailable.reason}`);
       return (await wait(unavailable.reason)) ? "waiting" : "lost";
     }
-    const tail = errorTail(error);
-    log(`job ${job.id}: failed: ${tail.split("\n")[0]}`);
+    // A failed tool's message carries its output after the first line: that
+    // is the reason, never crowded out by stack frames.
+    const reason = failureReason(error);
+    const carriesOutput = error instanceof Error && error.message.trimEnd().includes("\n");
+    const tail = carriesOutput ? reason : errorTail(error);
+    log(`job ${job.id}: failed: ${reason}`);
     return (await fail(tail)) ? "failed" : "lost";
   } finally {
     lease.stop();
