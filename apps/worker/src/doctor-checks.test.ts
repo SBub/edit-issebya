@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fakeAiRunner, resultEnvelope } from "./ai.ts";
+import { EMPTY_DECIDE_ANSWER, fakeAiRunner, resultEnvelope } from "./ai.ts";
 import { type DoctorDeps, runDoctor } from "./doctor-checks.ts";
 
 const PASSING: DoctorDeps = {
@@ -29,7 +29,7 @@ const PASSING: DoctorDeps = {
       " V..... libvpx-vp9           libvpx VP9 (codec vp9)",
     ].join("\n"),
   hyperframes: async () => "0.8.222\n",
-  ai: () => fakeAiRunner([resultEnvelope({ ok: true })]),
+  ai: () => fakeAiRunner([resultEnvelope(EMPTY_DECIDE_ANSWER)]),
 };
 
 describe("runDoctor", () => {
@@ -68,6 +68,21 @@ describe("runDoctor", () => {
       ],
       exitCode: 0,
     });
+  });
+
+  it("sends the real decide schema, the draft the Claude Code CLI validates", async () => {
+    const ai = fakeAiRunner([resultEnvelope(EMPTY_DECIDE_ANSWER)]);
+    await runDoctor({ ...PASSING, ai: () => ai });
+    expect(ai.calls).toHaveLength(1);
+    const schema = ai.calls[0]!.schema as { $schema?: unknown; properties?: object };
+    expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(Object.keys(schema.properties ?? {})).toEqual([
+      "tracks",
+      "change_summary",
+      "unexpressed",
+      "free_field",
+    ]);
+    expect(JSON.stringify(schema)).toContain('"enum":["w0001","w0002"]');
   });
 
   it("fails only the line of the failing dependency", async () => {

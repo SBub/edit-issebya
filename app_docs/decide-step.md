@@ -25,7 +25,8 @@ and the AI cannot touch the input fingerprints. By convention the title is the o
 - `packages/edit/src/decide.ts`: `decideAnswerSchemaFor(preset, transcript, duration)` (word-id
   enums from the reel's transcript, `{ time }` anchors capped at the clip's end, positions inside
   the preset's safe box, fonts and transition types from the preset), `decideJsonSchema` (Zod 4
-  `z.toJSONSchema`, draft 2020-12, real `enum` lists, every object closed, refs inlined),
+  `z.toJSONSchema`, draft-07 because the Claude Code CLI's `--json-schema` validator rejects a
+  draft 2020-12 `$schema`, real `enum` lists, every object closed, refs inlined),
   `parseDecideAnswer`, `editFromAnswer` (the answer's tracks over the current version, parsed with
   the decide limits), `decideCounts` (the step line) and `usedFreeField`.
 - `packages/edit/src/schema.ts`: `editSchemaFor` and the new `tracksSchemaFor` take optional
@@ -46,7 +47,8 @@ and the AI cannot touch the input fingerprints. By convention the title is the o
 - The AI double: `E2E_MOCK_AI=true` never spawns; it replays the Claude result envelopes in the
   JSON file named by `E2E_MOCK_AI_SCRIPT` through the same parser. The file is an array (replayed
   in order, the last repeating) or one envelope object (used for every call); an empty array, a
-  non-object value or non-JSON throws.
+  non-object value or non-JSON throws. Without a script it gives `EMPTY_DECIDE_ANSWER` (no items),
+  which the doctor's check accepts.
 - `apps/worker/src/decide/prompt.md`, `prompt.ts`: the committed prompt and `PROMPT_VERSION`
   (`decide-1`, bumped with every prompt change; each version row records it). `decidePrompt` fills
   the inputs as fenced JSON and, on the retry, appends the previous reasons.
@@ -66,7 +68,8 @@ and the AI cannot touch the input fingerprints. By convention the title is the o
   reasons) and the AI usage spent. `apps/worker/src/step-store.ts` writes the `ai_*` columns
   (`aiMeasurements`).
 - `apps/worker/src/doctor-checks.ts`: the `ai structured call` check uses the new runner
-  (`plainTool`).
+  (`plainTool`) and sends the real `decideJsonSchema` for a two-word sample reel, so `doctor`
+  fails on a schema the installed CLI rejects; the answer must pass `parseDecideAnswer`.
 - `supabase/migrations/20261101175625_version_decide_records.sql`: `versions` gains
   `used_free_field`, `unexpressed` (requests the format could not express), `free_field` (items
   that needed the `style` field and why) and `rejected_reasons` (why the first answer was refused

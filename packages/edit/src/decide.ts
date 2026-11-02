@@ -26,13 +26,18 @@ export type DecideAnswer = z.infer<ReturnType<typeof decideAnswerSchemaFor>>;
 
 // The answer's JSON Schema, for Claude Code's `--json-schema`: real `enum`
 // lists, every object closed (`additionalProperties: false`), refs inlined.
+// Draft-07, because the Claude Code CLI's validator rejects a schema whose
+// `$schema` is draft 2020-12 ("no schema with key or ref"). Every keyword this
+// schema uses (`enum`, `const`, `anyOf`, `propertyNames`, closed objects) is
+// draft-07 too, so only the `$schema` line differs from the 2020-12 output.
+// The worker doctor's `ai structured call` sends this schema to the real CLI.
 export function decideJsonSchema(
   preset: Preset,
   transcript: Transcript,
   duration: number,
 ): Record<string, unknown> {
   return z.toJSONSchema(decideAnswerSchemaFor(preset, transcript, duration), {
-    target: "draft-2020-12",
+    target: "draft-07",
     io: "output",
     reused: "inline",
   }) as Record<string, unknown>;

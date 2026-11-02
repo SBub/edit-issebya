@@ -208,14 +208,22 @@ function scriptFrom(path: string): unknown[] {
   throw new Error(refusal);
 }
 
+// A decide answer with no items: what the double gives without a script.
+export const EMPTY_DECIDE_ANSWER = {
+  tracks: { footage: [], cutout: [], captions: [], overlays: [], transitions: [], sounds: [] },
+  change_summary: "ok",
+  unexpressed: [],
+  free_field: [],
+};
+
 // The double only when E2E_MOCK_AI is exactly "true" (its script from
 // E2E_MOCK_AI_SCRIPT, a JSON array of answers replayed in order with the last
-// repeating, or one envelope object used for every call; else the doctor's
-// `{ ok: true }`); otherwise Claude Code.
+// repeating, or one envelope object used for every call; else the empty
+// decide answer the doctor accepts); otherwise Claude Code.
 export function aiRunner(env: Env = process.env): AiRunner {
   if (env.E2E_MOCK_AI === "true") {
     const path = env.E2E_MOCK_AI_SCRIPT?.trim();
-    return fakeAiRunner(path ? scriptFrom(path) : [resultEnvelope({ ok: true })]);
+    return fakeAiRunner(path ? scriptFrom(path) : [resultEnvelope(EMPTY_DECIDE_ANSWER)]);
   }
   return claudeRunner(env.CLAUDE_CODE_PATH?.trim() || "claude");
 }
