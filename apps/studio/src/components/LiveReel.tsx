@@ -18,6 +18,12 @@ import { changeBlockedReason, jobRequestLabel } from "@/lib/change-requests";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, formatBytes, formatCreatedAt } from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
+import {
+  WORKER_STATUS_COLUMNS,
+  type WorkerStatusRow,
+  upsertWorkerStatus,
+  waitingReasonOf,
+} from "@/lib/worker-status";
 
 interface Snapshot {
   reel: ReelDetail;
@@ -26,10 +32,12 @@ interface Snapshot {
   versions: VersionListRow[];
   // The newest export's id (the panel reads and signs it itself).
   latestExportId: string | null;
+  // Workers' rows with a reason they are not claiming (free disk).
+  workerStatus: WorkerStatusRow[];
 }
 
 async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snapshot | null> {
-  const [reel, jobs, steps, versions, latestExport] = await Promise.all([
+  const [reel, jobs, steps, versions, latestExport, workerStatus] = await Promise.all([
     supabase.from("reels").select(REEL_DETAIL_COLUMNS).eq("id", id).maybeSingle<ReelDetail>(),
     supabase
       .from("jobs")
@@ -56,8 +64,22 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle<{ id: string }>(),
+    supabase
+      .from("worker_status")
+      .select(WORKER_STATUS_COLUMNS)
+      .not("waiting_reason", "is", null)
+      .returns<WorkerStatusRow[]>(),
   ]);
-  if (reel.error || jobs.error || steps.error || versions.error || latestExport.error) return null;
+  if (
+    reel.error ||
+    jobs.error ||
+    steps.error ||
+    versions.error ||
+    latestExport.error ||
+    workerStatus.error
+  ) {
+    return null;
+  }
   if (!reel.data) return null;
   return {
     reel: reel.data,
@@ -65,11 +87,12 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
     steps: steps.data ?? [],
     versions: versions.data ?? [],
     latestExportId: latestExport.data?.id ?? null,
+    workerStatus: workerStatus.data ?? [],
   };
 }
 
-// The reel's preview, export, change box, versions, status, jobs and step
-// log. Read once on the server, then followed
+// The reel's preview, export, change box, versions, status, jobs (a queued
+// one with the reason no worker is claiming, if any) and step log. Read once on the server, then followed
 // through Realtime filtered to this reel (RLS decides what arrives). One
 // catch-up read each time the subscription becomes ready covers changes made
 // between the server read and the subscription. No interval, no polling.
@@ -79,12 +102,14 @@ export function LiveReel({
   steps: initialSteps,
   versions: initialVersions,
   latestExportId: initialLatestExportId,
+  workerStatus: initialWorkerStatus,
 }: Snapshot) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
   const [steps, setSteps] = useState(initialSteps);
   const [versions, setVersions] = useState(initialVersions);
   const [latestExportId, setLatestExportId] = useState(initialLatestExportId);
+  const [workerStatus, setWorkerStatus] = useState(initialWorkerStatus);
   const [ready, setReady] = useState(false);
   const id = initialReel.id;
 
@@ -106,6 +131,7 @@ export function LiveReel({
             setSteps(snapshot.steps);
             setVersions(snapshot.versions);
             setLatestExportId(snapshot.latestExportId);
+            setWorkerStatus(snapshot.workerStatus);
           }
           setReady(true);
         });
@@ -155,6 +181,15 @@ export function LiveReel({
           const row = pickColumns<{ id: string }>(payload.new, "id");
           setLatestExportId(row.id);
         },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "worker_status" },
+        (payload) => {
+          if (payload.eventType === "DELETE") return;
+          const row = pickColumns<WorkerStatusRow>(payload.new, WORKER_STATUS_COLUMNS);
+          setWorkerStatus((current) => upsertWorkerStatus(current, row));
+        },
       );
 
     // setAuth hands the session's token to Realtime before joining, so RLS
@@ -171,6 +206,7 @@ export function LiveReel({
 
   const blockedReason = changeBlockedReason(reel, jobs);
   const versionsById = new Map(versions.map((version) => [version.id, version]));
+  const waitingReason = waitingReasonOf(workerStatus);
 
   return (
     <div data-realtime={ready ? "ready" : "pending"} className="flex flex-col gap-6">
@@ -216,6 +252,11 @@ export function LiveReel({
                     <span data-testid="job-status">{job.status}</span>
                     <span className="text-stone-600">attempts: {job.attempts}</span>
                   </span>
+                  {job.status === "queued" && waitingReason && (
+                    <span data-testid="job-waiting" className="text-amber-800">
+                      {waitingReason}
+                    </span>
+                  )}
                   {label && (
                     <span data-testid="job-request" className="break-words text-stone-700">
                       {label}

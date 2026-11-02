@@ -146,6 +146,7 @@ function run(
     pipeline?: typeof PIPELINE;
     signal?: AbortSignal;
     setReelStatus?: boolean;
+    recordStored?: (key: string, bytes: number) => Promise<void>;
   } = {},
 ) {
   return runPipeline({
@@ -157,6 +158,7 @@ function run(
     spawnTool: options.spawnTool ?? fakeTools(),
     pipeline: options.pipeline,
     setReelStatus: options.setReelStatus,
+    recordStored: options.recordStored,
   });
 }
 
@@ -221,6 +223,51 @@ describe("runPipeline", () => {
     expect(typeOf("subject-preview.webm")).toBe("video/webm");
     expect(typeOf("footage-preview.mp4")).toBe("video/mp4");
     expect(typeOf("head-track.json")).toBe("application/json");
+  });
+
+  it("records every output of an all-hit run once, with its stored size", async () => {
+    await run(recordingSteps(SOURCE_KEY).steps);
+    const recorded: [string, number][] = [];
+    await run(recordingSteps(SOURCE_KEY).steps, {
+      recordStored: async (key, bytes) => {
+        recorded.push([key, bytes]);
+      },
+    });
+    const keys = await outputKeys();
+    expect(recorded.map(([key]) => key)).toEqual(keys);
+    for (const [key, bytes] of recorded) expect(bytes).toBe((await storage.head(key))!.bytes);
+  });
+
+  it("rebuilds the three deleted rebuildable outputs and reuses the kept ones", async () => {
+    await run(recordingSteps(SOURCE_KEY).steps);
+    const fps = await fingerprints();
+    const rebuildable = [
+      cacheKey(PREFIX, "convert", fps.convert!, "converted.mp4"),
+      cacheKey(PREFIX, "retime", fps.retime!, "source.mp4"),
+      cacheKey(PREFIX, "remove_background", fps.remove_background!, "subject.webm"),
+    ];
+    for (const key of rebuildable) await storage.delete(key);
+    const kept = (await outputKeys()).filter((key) => !rebuildable.includes(key));
+    const before = await Promise.all(kept.map((key) => storage.head(key)));
+    counts = { getFile: 0, putFileIfAbsent: 0 };
+    contentTypes = new Map();
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    await run(steps, { setReelStatus: false });
+    expect(shape(calls)).toEqual([
+      "start convert",
+      "done",
+      "skipped transcribe",
+      "start retime",
+      "done",
+      "start remove_background",
+      "done",
+      "skipped head_track",
+      "skipped preview_copies",
+    ]);
+    // Only the three deleted objects were uploaded; the kept ones stay as they were.
+    expect([...contentTypes.keys()].sort()).toEqual([...rebuildable].sort());
+    for (const key of rebuildable) expect(await storage.head(key)).not.toBeNull();
+    expect(await Promise.all(kept.map((key) => storage.head(key)))).toEqual(before);
   });
 
   it("reuses every output on a second run: no process, download or upload", async () => {

@@ -166,7 +166,8 @@ RLS, `jobs.test.ts` for `claim_job`'s lease, `versions.test.ts` for `save_versio
 immutability and its RLS, `steps-measurements.test.ts` for the exact
 `steps` column set and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit`, `exports.test.ts` for
 the render job policy and the `exports` table: 24-hour expiry, owner from the reel, never updated,
-owner-only select), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
+owner-only select, `stored-files.test.ts` for the `stored_files` and `worker_status` tables, their RLS,
+`record_stored_file`, the seven-day slimming and export expiry with a fixed clock and `finish_upload`'s source row), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
 layer; the browser layer is the Playwright suites below.
 
 E2E code suites: `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium, plus webkit for the dialog
@@ -176,7 +177,7 @@ spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium
 `yarn workspace @edit-issebya/worker fixtures:pipeline`) under their fingerprints and spawns the
 worker's `once`, every step a cache hit, then the `first_version` step saves version 1 and the
 `decide` step (AI fake, `E2E_MOCK_AI_SCRIPT` set to the worker's committed answer) saves version 2
-(their rows, the decide step's AI columns and both R2 keys checked), `multipart-upload.spec.ts` uploads a 35 MiB clip in four 10 MiB parts through the mock route, re-sends only a failed part, resumes after a reload sending only the missing parts, refuses another user's and a signed-out caller's sign, list, complete and abort, and on cancel leaves the reel `failed` with no parts and no job, `step-log.spec.ts` shows a failed step's collapsed
+(their rows, the decide step's AI columns and both R2 keys checked), then a render job's export, after which every object under the run's prefix and the source has exactly one `stored_files` row with its size, kind and step, `disk-guard.spec.ts` runs `once` with `E2E_MOCK_FREE_DISK_GB` below `WORKER_MIN_FREE_DISK_GB` (no claim, the waiting reason shown live under the queued job) and again above it (claimed, the reason gone), `multipart-upload.spec.ts` uploads a 35 MiB clip in four 10 MiB parts through the mock route, re-sends only a failed part, resumes after a reload sending only the missing parts, refuses another user's and a signed-out caller's sign, list, complete and abort, and on cancel leaves the reel `failed` with no parts and no job, `step-log.spec.ts` shows a failed step's collapsed
 error tail, `preview.spec.ts` seeds a processed reel the same way (`test-support/pipeline-cache.ts`,
 its AI answer keeping version 1 unchanged, so version 2 matches the version 1 golden)
 and plays its live preview: the HyperFrames runtime and GSAP routed from the pinned local

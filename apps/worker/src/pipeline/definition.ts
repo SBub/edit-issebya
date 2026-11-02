@@ -67,6 +67,18 @@ export function outputFiles(step: PipelineStep): string[] {
   return step.outputs.map((output) => output.file);
 }
 
+// The retention tag of one step's output; null when no step declares it.
+export function retentionOf(
+  step: string,
+  file: string,
+  pipeline: readonly PipelineStep[] = PIPELINE,
+): OutputRetention | null {
+  const output = pipeline
+    .find((candidate) => candidate.name === step)
+    ?.outputs.find((candidate) => candidate.file === file);
+  return output?.retention ?? null;
+}
+
 // Every step's fingerprint, in order, from the source and the definition
 // alone: no file is read, so a hit is decided before any download.
 export function fingerprintsFor(

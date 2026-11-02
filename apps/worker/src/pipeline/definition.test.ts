@@ -5,6 +5,7 @@ import {
   type SourceRef,
   fingerprintsFor,
   outputFiles,
+  retentionOf,
 } from "./definition.ts";
 
 const SOURCE: SourceRef = { etag: "9e107d9d372bb6826bd81d3542a419d6", bytes: 12_345 };
@@ -185,5 +186,27 @@ describe("fingerprintsFor", () => {
       const after = fingerprintsFor(source);
       for (const step of PIPELINE) expect(after[step.name]).not.toBe(before[step.name]);
     }
+  });
+});
+
+describe("retentionOf", () => {
+  it("tags the three heavy outputs rebuildable and every other kept", () => {
+    const rebuildable = [
+      ["convert", "converted.mp4"],
+      ["retime", "source.mp4"],
+      ["remove_background", "subject.webm"],
+    ];
+    for (const [step, file] of rebuildable) expect(retentionOf(step!, file!)).toBe("rebuildable");
+    for (const step of PIPELINE) {
+      for (const file of outputFiles(step)) {
+        if (rebuildable.some(([s, f]) => s === step.name && f === file)) continue;
+        expect(retentionOf(step.name, file)).toBe("kept");
+      }
+    }
+  });
+
+  it("gives null for an unknown step or file", () => {
+    expect(retentionOf("convert", "other.mp4")).toBeNull();
+    expect(retentionOf("render", "export.mp4")).toBeNull();
   });
 });

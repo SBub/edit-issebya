@@ -1,12 +1,13 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { type Edit, ISSEBYA_PRESET, resolveTimeline } from "@edit-issebya/edit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { REAL_TOOLS, formatDuration, streamInfo } from "../pipeline/tools-test-support.ts";
-import { recordingSteps, stepContext } from "../recording-steps.ts";
+import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
+import { withJobScratch } from "../scratch.ts";
 import { type ChildRun, type SpawnTool, runToolsStep, spawnChild } from "../step-runner.ts";
 import { parseTimeReport } from "../time-report.ts";
 import { renderExport } from "./render-step.ts";
@@ -32,9 +33,9 @@ interface Rendered {
   peakRssBytes: number | null;
 }
 
-async function render(name: string, edit: Edit): Promise<Rendered> {
+async function render(name: string, edit: Edit, parent = dir): Promise<Rendered> {
   const { transcript, headTrack } = await fixtureEdit();
-  const renderDir = join(dir, name);
+  const renderDir = join(parent, name);
   const { steps, calls } = recordingSteps();
   let child: ChildRun | null = null;
   // The real spawner, keeping its raw run for the single-process report.
@@ -249,6 +250,21 @@ describe("the real render", () => {
     for (const onset of onsets) {
       expect(expected.some((start) => Math.abs(onset - start) <= ONSET_TOLERANCE_S)).toBe(true);
     }
+  });
+
+  it("leaves no job folder and nothing in HyperFrames' default history", async () => {
+    // HyperFrames' default history root (a constant in its history code).
+    const history = join(homedir(), ".cache", "hyperframes", "history");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- HyperFrames' fixed default history folder
+    const entries = () => readdir(history).catch(() => [] as string[]);
+    const before = new Set(await entries());
+    const scratch = join(dir, "scratch");
+    await withJobScratch(scratch, TEST_JOB.id, async (jobDir) => {
+      await render("render-scoped", clickEdit, jobDir);
+    });
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+    expect(await readdir(scratch)).toEqual([]);
+    expect((await entries()).filter((entry) => !before.has(entry))).toEqual([]);
   });
 
   it("records the whole process tree's peak memory, above the largest single process", () => {
