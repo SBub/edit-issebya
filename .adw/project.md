@@ -64,7 +64,7 @@ be kept in step with them and with `README.md`.
 - The mock flags turn on the in-process Stripe and Resend mocks (`apps/web/src/instrumentation.ts`)
   and the `/api/e2e-stripe-mock` and `/api/e2e-resend-mock` routes the checkout and confirmation
   email specs need. `E2E_MOCK_STORAGE=true` makes the studio sign upload parts to its
-  `/studio/api/e2e-storage-mock` route (part `PUT` only), which writes into the gitignored `.e2e-storage/` folder at
+  `/studio/api/e2e-storage-mock` route on its own origin (`STUDIO_PORT`, part `PUT` only), which writes into the gitignored `.e2e-storage/` folder at
   the worktree root, where the worker's `once` reads them.
 - `/` answering 200 proves the landing server is up, `/studio` through it proves the studio is.
   The landing page reads no database; it calls Stripe when the form is submitted and Stripe and

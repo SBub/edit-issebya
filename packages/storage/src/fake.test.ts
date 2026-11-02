@@ -113,6 +113,26 @@ describe("fakeStorage", () => {
     );
   });
 
+  it("signs upload parts to their own base when one is given, downloads to the upload base", async () => {
+    const storage = fakeStorage({
+      root,
+      uploadUrlBase: "/studio/api/e2e-storage-mock/",
+      partUrlBase: "http://localhost:3001/studio/api/e2e-storage-mock/",
+    });
+    expect(
+      await storage.signUploadPart("reels/x/source/original.mp4", {
+        uploadId: "u-1",
+        partNumber: 2,
+        expiresInSeconds: 60,
+      }),
+    ).toBe(
+      "http://localhost:3001/studio/api/e2e-storage-mock/reels/x/source/original.mp4?uploadId=u-1&partNumber=2",
+    );
+    expect(await storage.signDownload("a.mp4", { expiresInSeconds: 60 })).toBe(
+      "/studio/api/e2e-storage-mock/a.mp4",
+    );
+  });
+
   it("appends the download name to a download link, and refuses a bad one", async () => {
     const storage = fakeStorage({ root, uploadUrlBase: "/up/" });
     expect(

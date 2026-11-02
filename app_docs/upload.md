@@ -106,9 +106,17 @@ over"). The bytes are never kept: a browser cannot read a picked file after a re
 ### Mock route
 
 Under `E2E_MOCK_STORAGE=true` (exactly) the studio's fake signs part URLs to
-`/studio/api/e2e-storage-mock/<key>?uploadId=..&partNumber=n`. That route's `PUT` accepts upload
-parts only (answering the part's quoted MD5 as its `ETag`, exposed to the browser, as R2 does) and
-there is no single-object `PUT`. Every method answers 404 unless the flag is exactly `"true"`. The
+`http://localhost:$STUDIO_PORT/studio/api/e2e-storage-mock/<key>?uploadId=..&partNumber=n`
+(`mockPartUrlBase` in `apps/studio/src/lib/storage.ts`, port 3001 without `STUDIO_PORT`): the
+studio's own origin, so a part goes cross-origin and never through the landing page's forwarding,
+as a part goes to R2 in production. Do not sign part URLs to the landing page's origin: the dev
+forwarding proxy now and then leaves its reused connection to the studio unusable after a 10 MiB
+body, and the next upload request on it (a sign or the complete) is answered 400, which Uppy does
+not retry. Download links (`signDownload`) stay same-origin paths. That route's `PUT` accepts
+upload parts only (answering the part's quoted MD5 as its `ETag`, exposed to the browser, as R2
+does) and there is no single-object `PUT`; the `PUT` and its `OPTIONS` preflight answer CORS for
+any origin (Uppy sends no credentials), as the bucket's CORS policy does. Every method answers 404
+unless the flag is exactly `"true"`. The
 route is left out of the `apps/studio/src/proxy.ts` matcher because proxy buffers a body only up to
 10 MB and a part is 10 MiB.
 

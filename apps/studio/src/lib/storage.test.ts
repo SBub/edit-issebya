@@ -13,9 +13,19 @@ const OPTIONS = { uploadId: "u-1", partNumber: 1, expiresInSeconds: 60 };
 
 describe("studioStorage", () => {
   it("gives the fake under the exact flag", async () => {
+    const storage = studioStorage({ ...R2, E2E_MOCK_STORAGE: "true", STUDIO_PORT: "9110" });
+    expect(await storage?.signUploadPart("dev/a.mp4", OPTIONS)).toBe(
+      "http://localhost:9110/studio/api/e2e-storage-mock/dev/a.mp4?uploadId=u-1&partNumber=1",
+    );
+    expect(await storage?.signDownload("dev/a.mp4", { expiresInSeconds: 60 })).toBe(
+      "/studio/api/e2e-storage-mock/dev/a.mp4",
+    );
+  });
+
+  it("signs mock parts to the studio's default port without STUDIO_PORT", async () => {
     const storage = studioStorage({ ...R2, E2E_MOCK_STORAGE: "true" });
     expect(await storage?.signUploadPart("dev/a.mp4", OPTIONS)).toBe(
-      "/studio/api/e2e-storage-mock/dev/a.mp4?uploadId=u-1&partNumber=1",
+      "http://localhost:3001/studio/api/e2e-storage-mock/dev/a.mp4?uploadId=u-1&partNumber=1",
     );
   });
 
