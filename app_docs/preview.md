@@ -8,15 +8,15 @@
 
 When the owner opens a reel that has a current version, the reel page plays a live preview of it: the
 HyperFrames player (`@hyperframes/player`) shows the page that the one shared builder
-(`packages/edit`, `build`) makes in the browser from the current version, using the two small preview
-copies of the footage and of the background removal instead of the full-size files. A studio-owned
+(`packages/edit`, `build`) makes in the browser from the current version, using the small preview
+copy of the footage instead of the full-size file. A studio-owned
 wrapper fixes the bare player's clock (it starts before the videos can play) and plays the transition
 clicks through Web Audio. It is built and tested for Chrome.
 
 ## How it works
 
 - `supabase/migrations/20261101165643_reel_preview_copies.sql`: nullable `reels.preview_copies jsonb`
-  (`{ footage, cutout }`, each `{ step: "preview_copies", fingerprint, file }`), a check that it is null
+  (`{ footage }`, `{ step: "preview_copies", fingerprint, file }`; old rows with `cutout` still parse), a check that it is null
   or an object. Owners get no `insert` or `update` grant on it; they only read it.
 - `apps/worker/src/preview-copies-record.ts`: `previewCopiesRefs(fingerprints)` and
   `recordPreviewCopies`. `apps/worker/src/process-job.ts` calls them right after the pipeline and before
@@ -24,7 +24,7 @@ clicks through Web Audio. It is built and tested for Chrome.
   writes the same value.
 - `apps/studio/src/app/preview-actions.ts`: server action `loadPreviewSources(reelId)`. Reads the reel's
   `current_version_id` and `preview_copies` and the version's `r2_key` and `inputs` under RLS, and signs
-  one download URL (one hour) for the edit, transcript, head track, footage preview and cut-out preview.
+  one download URL (one hour) for the edit, transcript, head track and footage preview.
   Returns `ready`, `no-version`, `no-previews`, `unconfigured`, `signed-out` or `failed`.
 - `apps/studio/src/lib/preview-sources.ts`: pure. The cache prefix is derived from the version's own
   `r2_key` (`<prefix>reels/<reel_id>/versions/<version_id>.json`), so the studio never needs the
@@ -41,7 +41,7 @@ clicks through Web Audio. It is built and tested for Chrome.
   waiting, error and "The preview is built for Chrome." lines, and reloads when `current_version_id`
   changes in `LiveReel`'s Realtime state (no page reload, no polling).
 - `apps/studio/src/lib/preview-page.ts`: `previewPage(html, assets, urls, soundIds)` swaps the
-  footage and cut-out paths for their signed URLs (adding `preload="auto"`), points fonts at the
+  footage path for its signed URL (adding `preload="auto"`), points fonts at the
   edit-assets route and drops the sound items' `<audio>` clips. Throws if the page is not shaped the way
   the builder writes it. Nothing else changes.
 - `apps/studio/src/components/PreviewPlayer.tsx`: renders `<hyperframes-player>` (no `controls`,
@@ -93,8 +93,9 @@ jsdelivr.
 - DB: `apps/studio/db-tests/rls.test.ts` checks owners cannot insert or update `preview_copies`.
 - E2E: `apps/studio/e2e/preview.spec.ts` (chromium, CDN scripts routed to local packages). Test 1: the
   player, the first caption, one `studio_preview_opened`, and the browser build equal to the worker's
-  Node golden byte for byte. Test 2: the clock stays at 0 while the cut-out is held, and stays at a seek
-  target while the footage past the served bytes is held. Test 3: a new version rebuilds the preview
+  Node golden byte for byte. Test 1 also asserts one `<video>` in the frame and no
+  `subject-preview.webm` request. Test 2: the clock stays at 0 while the footage is held, and stays
+  at a seek target while the footage past the served bytes is held. Test 3: a new version rebuilds the preview
   without a reload and the clicks are scheduled within 10 ms of their anchors, with no sound `<audio>`
   left in the frame.
 

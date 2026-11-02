@@ -53,8 +53,8 @@ exportFileName(...) })`. The name is `reel-v<N>-<YYYYMMDD-HHMM>.mp4` in UTC and 
   hit (`export kept, reused`). Otherwise it runs the pipeline with `setReelStatus: false`, so every
   step is a hit or the missing rebuildable output is rebuilt, and the reel stays `processed`.
 - Then one measured `render` step through the step runner: it reads the version (it must belong to
-  the job's reel), its edit, transcript and head track, and downloads the full-size footage and
-  cut-out. It builds the page with `packages/edit`'s `build`, the same builder as the preview, never
+  the job's reel), its edit, transcript and head track, and downloads the full-size footage only
+  (a stored version naming a cut-out builds without it). It builds the page with `packages/edit`'s `build`, the same builder as the preview, never
   a worker copy and never stored, and `render-project.ts` writes `index.html` plus every asset the
   page names into a temporary project.
 - The call (`render-call.ts`), with `sampleGroupMemory: true`:
@@ -65,7 +65,7 @@ exportFileName(...) })`. The name is `reel-v<N>-<YYYYMMDD-HHMM>.mp4` in UTC and 
 
   with `HYPERFRAMES_NO_TELEMETRY=1` and every `PRODUCER_*` variable removed. Why
   (`RENDER_SETTINGS`): the platforms recompress every upload, so a `delivery` source keeps text
-  edges and the cut-out's outline sharper; software mode with three workers is faster on the
+  edges sharper; software mode with three workers is faster on the
   worker's machine than the GPU mode with one, and runs without a graphics chip; `--sdr` because
   the platforms show SDR.
 

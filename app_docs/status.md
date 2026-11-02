@@ -6,7 +6,7 @@
 
 ## Overview
 
-The two long steps, `remove_background` and `render`, write their tool's progress into their own
+The two long steps, `head_track` (its person mask's per-frame progress) and `render`, write their tool's progress into their own
 step row, and the studio's reel page shows the percentage with an estimate of the time left. When
 the open reel becomes ready while its tab is hidden, the tab title says so and, if the owner turned
 it on, the browser shows a notification. The long-running worker writes a heartbeat every five
@@ -32,20 +32,20 @@ machine from idle-sleeping while a job runs.
 - `apps/worker/src/progress-parsers.ts` reads one output line at a time. A line
   `@hf-progress {...,"pct":N}` gives `N`, clamped to 0 to 100 and rounded; every other line, and a
   line whose JSON does not parse or has no finite `pct`, gives null. `parseRenderProgress` and
-  `parseRemoveBackgroundProgress` are the same parser today, named per step so either can follow
+  `parsePersonMaskProgress` are the same parser today, named per step so either can follow
   its tool later.
 - `render`: HyperFrames 0.8.222's `hyperframes render`, with stdout not a terminal, prints one
   `@hf-progress` line per progress report. `renderEnv` drops `HYPERFRAMES_STDOUT_IS_TTY`, which
   set to 1 silences those lines (`apps/worker/src/render/render-call.ts`).
-- `remove_background`: the pinned CLI prints no progress when nobody watches (with `--json` its
+- `head_track`: the pinned CLI prints no progress when nobody watches (with `--json` its
   spinner is off, and without it the unattended spinner drops every message); the per-frame events
-  exist only through `onProgress` of the package's `hyperframes/api` export. So the step runs
+  exist only through `onProgress` of the package's `hyperframes/api` export. So the person mask
+  (`apps/worker/src/pipeline/person-mask.ts`) runs
   `apps/worker/src/pipeline/remove-background-entry.ts` with HyperFrames' own Node: it calls the
   same `removeBackground` with exactly the options the CLI passes (input, output, device, quality),
-  prints one `@hf-progress {"index","total","pct"}` line per frame and, at the end, the same JSON
-  result document the CLI prints under `--json`. Same function, options and model, so the step's
-  version, settings and fingerprints are unchanged (`app_docs/pipeline.md`).
-- `apps/worker/src/progress-testdata/render.txt` and `remove-background.txt` are committed samples
+  prints one `@hf-progress {"index","total","pct"}` line per sampled frame and, at the end, the
+  same JSON result document the CLI prints under `--json` (`app_docs/pipeline.md`).
+- `apps/worker/src/progress-testdata/render.txt` and `person-mask.txt` are committed samples
   of the real output; `apps/worker/src/progress-parsers.test.ts` replays both and expects rising
   values ending at 100.
 - A tool call carries its parser as `ToolCall.progress`; `runToolsStep`
@@ -135,7 +135,7 @@ machine from idle-sleeping while a job runs.
 
 ## How to Use
 
-- On a reel's page, a running `remove_background` or `render` step shows its percentage and the
+- On a reel's page, a running `head_track` or `render` step shows its percentage and the
   time left. The first reels show `no estimate yet` until three earlier runs of that step exist.
 - Click "Notify me when ready" once and allow notifications; then switch to another tab while a
   reel processes or exports.
@@ -156,7 +156,7 @@ machine from idle-sleeping while a job runs.
 - Unit (`yarn test`): `apps/worker/src/progress.test.ts` (the throttle with a fake clock, rising
   values only, `stop`, a failed write), `progress-parsers.test.ts` (both committed samples rise to
   100, other lines give null), `step-runner.test.ts` (throttled progress then 100 before `done`, no
-  writes without a parser, no 100 on failure), `pipeline/remove-background.test.ts` and
+  writes without a parser, no 100 on failure), `pipeline/head-track-step.test.ts` and
   `render/render-call.test.ts` (the calls carry their parser, the render env drops
   `HYPERFRAMES_STDOUT_IS_TTY`, the double is the fake-render process),
   `pipeline/run-pipeline.test.ts` (footage seconds after retime: ran, hit without a value, hit with
@@ -177,7 +177,7 @@ machine from idle-sleeping while a job runs.
 ## Rules
 
 - Never more than one progress write per 10 s per step (plus the final 100).
-- Progress only for `remove_background` and `render`.
+- Progress only for `head_track` and `render`.
 - Never poll the database from the studio for progress, the heartbeat or the offline line: Realtime
   and local timers only.
 - Never ask for notification permission except from a click.
