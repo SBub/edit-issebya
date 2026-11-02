@@ -1,6 +1,7 @@
 import type { StoredVersion, VersionBlobs, VersionRows } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { dbFailure } from "./failures.ts";
 
 // Named columns, never `*`.
 const COLUMNS = "id, reel_id, number, parent_id, restored_from_id, checks, inputs, r2_key";
@@ -11,22 +12,26 @@ const COLUMNS = "id, reel_id, number, parent_id, restored_from_id, checks, input
 export function supabaseVersionRows(db: SupabaseClient): VersionRows {
   return {
     async current(reelId) {
-      const { data, error } = await db
+      const { data, error, status } = await db
         .from("reels")
         .select("current_version_id")
         .eq("id", reelId)
         .maybeSingle();
-      if (error) throw new Error(`current version not read: ${error.message}`);
+      if (error) throw dbFailure("current version not read", { error, status });
       if (!data) throw new Error(`reel ${reelId} does not exist`);
       return (data as { current_version_id: string | null }).current_version_id;
     },
     async get(id) {
-      const { data, error } = await db.from("versions").select(COLUMNS).eq("id", id).maybeSingle();
-      if (error) throw new Error(`version not read: ${error.message}`);
+      const { data, error, status } = await db
+        .from("versions")
+        .select(COLUMNS)
+        .eq("id", id)
+        .maybeSingle();
+      if (error) throw dbFailure("version not read", { error, status });
       return (data as StoredVersion | null) ?? null;
     },
     async save(row) {
-      const { data, error } = await db.rpc("save_version", {
+      const { data, error, status } = await db.rpc("save_version", {
         p_id: row.id,
         p_reel_id: row.reel_id,
         p_parent_id: row.parent_id,
@@ -43,7 +48,7 @@ export function supabaseVersionRows(db: SupabaseClient): VersionRows {
         p_free_field: row.free_field,
         p_rejected_reasons: row.rejected_reasons,
       });
-      if (error) throw new Error(`version not saved: ${error.message}`);
+      if (error) throw dbFailure("version not saved", { error, status });
       return data as number;
     },
   };

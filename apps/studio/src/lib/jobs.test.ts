@@ -4,6 +4,7 @@ import {
   JOB_STATUSES,
   STEP_COLUMNS,
   STEP_STATUSES,
+  isUnfinished,
   pickColumns,
   upsertById,
 } from "./jobs";
@@ -19,8 +20,18 @@ describe("columns", () => {
 
 describe("status lists", () => {
   it("match the check constraints of public.jobs and public.steps", () => {
-    expect(JOB_STATUSES).toEqual(["queued", "running", "done", "failed"]);
-    expect(STEP_STATUSES).toEqual(["running", "done", "failed", "skipped"]);
+    expect(JOB_STATUSES).toEqual(["queued", "running", "waiting_ai", "done", "failed"]);
+    expect(STEP_STATUSES).toEqual(["running", "done", "failed", "skipped", "waiting_ai"]);
+  });
+});
+
+describe("isUnfinished", () => {
+  it("is queued, running or waiting for the AI", () => {
+    expect(JOB_STATUSES.filter((status) => isUnfinished({ status }))).toEqual([
+      "queued",
+      "running",
+      "waiting_ai",
+    ]);
   });
 });
 

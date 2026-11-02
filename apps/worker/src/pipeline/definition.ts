@@ -1,5 +1,6 @@
 import type { PipelineReelStatus } from "../step-store.ts";
 import type { Tool } from "../step-runner.ts";
+import { checkFootage } from "./check-footage.ts";
 import { convert } from "./convert.ts";
 import { type FileRef, fingerprint } from "./fingerprint.ts";
 import { headTrack } from "./head-track-step.ts";
@@ -51,9 +52,13 @@ export interface PipelineStep<S extends object = object> {
   reusedWhat: string;
   inputs(source: SourceRef, fingerprints: Record<string, string>): StepInput[];
   run(args: StepRunArgs<S>): Promise<{ what: string }>;
+  // A step that may stop the pipeline (the footage check): judges the step's
+  // outputs, on a run and on a hit, and returns the owner's message or null.
+  gate?(outputs: Record<string, Uint8Array>): string | null;
 }
 
 export const PIPELINE: readonly PipelineStep[] = [
+  checkFootage,
   convert,
   transcribe,
   retime,

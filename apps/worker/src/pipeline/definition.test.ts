@@ -67,8 +67,9 @@ function expectOnlyFromChanged(index: number, pipeline: PipelineStep[], label: s
 }
 
 describe("PIPELINE", () => {
-  it("runs the six fixed steps in order, each with its reel status", () => {
+  it("runs the footage check, then the six fixed steps in order, each with its reel status", () => {
     expect(PIPELINE.map((step) => [step.name, step.reelStatus])).toEqual([
+      ["check_footage", "checking_footage"],
       ["convert", "converting"],
       ["transcribe", "transcribing"],
       ["retime", "retiming"],
@@ -95,6 +96,7 @@ describe("PIPELINE", () => {
       ),
     );
     expect(tags).toEqual({
+      "check_footage/footage.json": "kept",
       "convert/converted.mp4": "rebuildable",
       "transcribe/transcript.json": "kept",
       "retime/source.mp4": "rebuildable",

@@ -13,6 +13,7 @@ import {
   runStep,
   runToolsStep,
 } from "./step-runner.ts";
+import { AiUnavailableError } from "./failures.ts";
 import { createTelemetry } from "./telemetry.ts";
 
 // Real child processes under /usr/bin/time: Node itself is the tool.
@@ -445,6 +446,120 @@ describe("runToolsStep arithmetic", () => {
       call: "failed",
       measurements: { cpu_ms: null, peak_rss_bytes: null },
     });
+  });
+});
+
+describe("one automatic retry", () => {
+  const exited = (code: number | null, exitSignal: NodeJS.Signals | null = null): ChildRun => ({
+    code,
+    exitSignal,
+    report: "",
+    output: code === 0 ? "ok\n" : "killed\n",
+    stdout: code === 0 ? "ok\n" : "",
+    groupPeakBytes: null,
+  });
+
+  function fakeSpawn(runs: ChildRun[]): SpawnTool {
+    return () => {
+      const next = runs.shift();
+      if (!next) throw new Error("no more runs");
+      return Promise.resolve(next);
+    };
+  }
+
+  const oneCall = {
+    name: "tool",
+    async work(tool: (call: ToolCall) => Promise<string>) {
+      await tool({ file: "t", args: [] });
+      return { what: "done" };
+    },
+  };
+
+  const names = (calls: ReturnType<typeof recordingSteps>["calls"]) => calls.map((c) => c.call);
+
+  it("re-runs a tool killed by a signal once, each attempt its own row", async () => {
+    const { steps, calls } = recordingSteps();
+    await runToolsStep(
+      stepContext(steps),
+      oneCall,
+      fakeSpawn([exited(null, "SIGKILL"), exited(0)]),
+    );
+    expect(names(calls)).toEqual(["start", "failed", "start", "done"]);
+    expect(calls[1]).toMatchObject({ call: "failed", stepId: "s1" });
+    expect(calls[1]?.call === "failed" && calls[1].summary).toMatch(/^tool failed, retried, /);
+    expect(calls[3]).toMatchObject({ call: "done", stepId: "s2" });
+  });
+
+  it("fails after a second transient failure", async () => {
+    const { steps, calls } = recordingSteps();
+    await expect(
+      runToolsStep(
+        stepContext(steps),
+        oneCall,
+        fakeSpawn([exited(null, "SIGKILL"), exited(null, "SIGKILL")]),
+      ),
+    ).rejects.toThrow(/tool exited with SIGKILL/);
+    expect(names(calls)).toEqual(["start", "failed", "start", "failed"]);
+    expect(calls[3]?.call === "failed" && calls[3].summary).toMatch(/^tool failed, /);
+    expect(calls[3]?.call === "failed" && calls[3].summary).not.toMatch(/retried/);
+  });
+
+  it("never re-runs a non-zero exit", async () => {
+    const { steps, calls } = recordingSteps();
+    await expect(
+      runToolsStep(stepContext(steps), oneCall, fakeSpawn([exited(1), exited(0)])),
+    ).rejects.toThrow(/tool exited with 1/);
+    expect(names(calls)).toEqual(["start", "failed"]);
+  });
+
+  it("never re-runs a StepError", async () => {
+    const { steps, calls } = recordingSteps();
+    let runs = 0;
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "decide",
+        async work() {
+          runs += 1;
+          throw new StepError("refused twice", "refused twice");
+        },
+      }),
+    ).rejects.toThrow("refused twice");
+    expect(runs).toBe(1);
+    expect(names(calls)).toEqual(["start", "failed"]);
+  });
+
+  it("never re-runs after the lease is lost", async () => {
+    const { steps, calls } = recordingSteps();
+    const controller = new AbortController();
+    await expect(
+      runToolsStep(stepContext(steps, { signal: controller.signal }), oneCall, async () => {
+        controller.abort(new Error("lease lost"));
+        return exited(null, "SIGKILL");
+      }),
+    ).rejects.toThrow("lease lost");
+    expect(names(calls)).toEqual(["start"]);
+  });
+
+  it("writes a waiting row for an unavailable AI and does not re-run it", async () => {
+    const { steps, calls } = recordingSteps();
+    let runs = 0;
+    const usage = { inputTokens: 3, outputTokens: 1, costUsd: 0, model: "m" };
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "decide",
+        async work() {
+          runs += 1;
+          throw new AiUnavailableError("usage limit reached", usage);
+        },
+      }),
+    ).rejects.toMatchObject({ cause: expect.any(AiUnavailableError) });
+    expect(runs).toBe(1);
+    expect(names(calls)).toEqual(["start", "waiting"]);
+    const waiting = calls[1];
+    expect(waiting?.call === "waiting" && waiting.summary).toMatch(
+      /^decide: waiting for the AI \(usage limit reached\), /,
+    );
+    expect(waiting).toMatchObject({ measurements: { ai_input_tokens: 3, ai_model: "m" } });
   });
 });
 

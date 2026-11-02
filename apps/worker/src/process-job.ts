@@ -5,8 +5,10 @@ import type { WorkerConfig } from "./config.ts";
 import { runDecide } from "./decide/run-decide.ts";
 import { saveFirstVersion } from "./first-version.ts";
 import { runJobKind } from "./job-kinds.ts";
-import { type ClaimedJob, failJob, finishJob, renewLease } from "./queue.ts";
+import { type ClaimedJob, failJob, finishJob, refuseJob, renewLease, waitForAi } from "./queue.ts";
+import { PIPELINE } from "./pipeline/definition.ts";
 import { runPipeline } from "./pipeline/run-pipeline.ts";
+import { stepDoubles } from "./pipeline/step-double.ts";
 import { previewCopiesRefs, recordPreviewCopies } from "./preview-copies-record.ts";
 import { toolPaths } from "./pipeline/tools.ts";
 import { supabaseExportStore } from "./render/export-store.ts";
@@ -46,6 +48,8 @@ export async function processJob(
   const recordStored = (key: string, bytes: number) =>
     records.record({ reelId: job.reel_id, key, bytes, ...classifyKey(config.keyPrefix, key) });
   const { span, context: jobContext } = startJobSpan(telemetry, job);
+  // The fixed steps; a spec may double one (E2E_MOCK_STEP_RUN, test only).
+  const pipeline = stepDoubles(process.env)(PIPELINE);
   let outcome: JobOutcome = "failed";
   try {
     outcome = await withJobScratch(config.scratchDir, job.id, (scratchDir) =>
@@ -76,6 +80,7 @@ export async function processJob(
                 keyPrefix: config.keyPrefix,
                 scratchDir,
                 tools: toolPaths(),
+                pipeline,
                 recordStored,
               });
               // Before the first version, so a reel with a current version
@@ -107,6 +112,7 @@ export async function processJob(
                 keyPrefix: config.keyPrefix,
                 scratchDir,
                 tools: toolPaths(),
+                pipeline,
                 recordStored,
                 versionId,
               }),
@@ -114,6 +120,8 @@ export async function processJob(
         },
         finish: () => finishJob(db, config, job),
         fail: (tail) => failJob(db, config, job, tail),
+        refuse: (message) => refuseJob(db, config, job, message),
+        wait: (reason) => waitForAi(db, config, job, reason),
       }),
     );
     return outcome;

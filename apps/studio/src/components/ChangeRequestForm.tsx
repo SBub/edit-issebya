@@ -4,20 +4,22 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { requestChange } from "@/app/change-actions";
 import { MAX_REQUEST_LENGTH, normalizeRequest } from "@/lib/change-requests";
-import type { JobRow } from "@/lib/jobs";
+import { type JobRow, isUnfinished } from "@/lib/jobs";
 import { capture } from "@/lib/track";
 
 interface Props {
   reelId: string;
   // Null when a change may be sent; otherwise why not, in one line.
   blockedReason: string | null;
+  // When it may be sent: what happens to it (it waits its turn), or null.
+  notice: string | null;
   // The reel's live jobs, so the pending line ends when its job does.
   jobs: readonly Pick<JobRow, "id" | "status">[];
 }
 
 // The text box under the preview. Sending queues a `change` job with the
 // owner's words; the new version reaches the preview through Realtime.
-export function ChangeRequestForm({ reelId, blockedReason, jobs }: Props) {
+export function ChangeRequestForm({ reelId, blockedReason, notice, jobs }: Props) {
   const router = useRouter();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -25,10 +27,9 @@ export function ChangeRequestForm({ reelId, blockedReason, jobs }: Props) {
   const [sent, setSent] = useState<{ jobId: string; request: string } | null>(null);
 
   // Derived from the live jobs: pending until the sent job is done or failed
-  // (or while it has not arrived yet). No timer.
+  // (or while it has not arrived yet, or waits for the AI). No timer.
   const sentJob = sent ? jobs.find((job) => job.id === sent.jobId) : undefined;
-  const pending =
-    sent !== null && (!sentJob || sentJob.status === "queued" || sentJob.status === "running");
+  const pending = sent !== null && (!sentJob || isUnfinished(sentJob));
   const disabled = busy || pending || blockedReason !== null;
 
   async function send(event: FormEvent<HTMLFormElement>) {
@@ -75,13 +76,18 @@ export function ChangeRequestForm({ reelId, blockedReason, jobs }: Props) {
         value={text}
         onChange={(event) => setText(event.target.value)}
         disabled={disabled}
-        aria-describedby="change-reason change-status"
+        aria-describedby="change-reason change-notice change-status"
         placeholder="move the title lower"
         className="w-full max-w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-base disabled:bg-stone-100"
       />
       <p id="change-reason" data-testid="change-blocked-reason" className="text-sm text-stone-600">
         {blockedReason ?? ""}
       </p>
+      {blockedReason === null && notice && (
+        <p id="change-notice" data-testid="change-notice" className="text-sm text-stone-600">
+          {notice}
+        </p>
+      )}
       <button
         type="submit"
         disabled={disabled}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_REQUEST_LENGTH,
-  changeBlockedReason,
+  changeRule,
   jobRequestLabel,
   normalizeRequest,
   versionOrigin,
@@ -34,26 +34,59 @@ describe("normalizeRequest", () => {
   });
 });
 
-describe("changeBlockedReason", () => {
-  const job = (status: JobStatus) => ({ status });
+describe("changeRule", () => {
+  const job = (kind: string, status: JobStatus) => ({ kind, status });
+  const processed = { status: "processed" as const, current_version_id: "v1" };
 
-  it("is open on a processed reel with no queued or running job", () => {
-    expect(changeBlockedReason({ status: "processed" }, [])).toBeNull();
-    expect(changeBlockedReason({ status: "processed" }, [job("done"), job("failed")])).toBeNull();
+  it("is open with no notice on a processed reel with every job ended", () => {
+    expect(changeRule(processed, [])).toEqual({ blocked: null, notice: null });
+    expect(changeRule(processed, [job("process", "done"), job("change", "failed")])).toEqual({
+      blocked: null,
+      notice: null,
+    });
   });
 
-  it("blocks while a job is queued or running", () => {
-    for (const status of ["queued", "running"] as const) {
-      expect(changeBlockedReason({ status: "processed" }, [job("done"), job(status)])).toBe(
-        "A job is running on this reel; wait for it to finish.",
-      );
+  it("is open during processing, saying the change runs after it", () => {
+    for (const status of ["queued", "running", "waiting_ai"] as const) {
+      expect(
+        changeRule({ status: "converting", current_version_id: null }, [job("process", status)]),
+      ).toEqual({ blocked: null, notice: "Your change will run after processing finishes." });
     }
   });
 
-  it("blocks until the reel is processed", () => {
-    for (const status of ["uploaded", "converting", "failed"] as const) {
-      expect(changeBlockedReason({ status }, [])).toBe("Changes open once the reel is processed.");
+  it("is open behind another unfinished job, saying it runs after it", () => {
+    for (const status of ["queued", "running", "waiting_ai"] as const) {
+      expect(changeRule(processed, [job("process", "done"), job("change", status)])).toEqual({
+        blocked: null,
+        notice: "Your change will run after the current job finishes.",
+      });
     }
+  });
+
+  it("blocks a refused reel", () => {
+    expect(
+      changeRule({ status: "refused", current_version_id: null }, [job("process", "failed")]),
+    ).toEqual({ blocked: "This clip was refused; upload another.", notice: null });
+  });
+
+  it("blocks until the reel can have a version", () => {
+    const noVersion = "Changes open once the reel has a version.";
+    expect(changeRule({ status: "uploading", current_version_id: null }, []).blocked).toBe(
+      noVersion,
+    );
+    expect(
+      changeRule({ status: "failed", current_version_id: null }, [job("process", "failed")])
+        .blocked,
+    ).toBe(noVersion);
+    expect(changeRule({ status: "uploaded", current_version_id: null }, []).blocked).toBe(
+      noVersion,
+    );
+  });
+
+  it("stays open on a reel with a version whose later process job failed", () => {
+    expect(
+      changeRule({ status: "failed", current_version_id: "v1" }, [job("process", "failed")]),
+    ).toEqual({ blocked: null, notice: null });
   });
 });
 

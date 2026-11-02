@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ClaimedJob } from "./queue.ts";
+import { dbFailure } from "./failures.ts";
 
 // What the step runner measured; null where a step has no such measurement
 // (an in-process step has wall time only).
@@ -36,6 +37,7 @@ export function aiMeasurements(usage: AiUsage): Partial<StepMeasurements> {
 // The reel statuses the pipeline writes (one per step); the job's end writes
 // processed or failed.
 export type PipelineReelStatus =
+  | "checking_footage"
   | "converting"
   | "transcribing"
   | "retiming"
@@ -58,12 +60,14 @@ export interface StepStore {
     summary: string,
     measurements: StepMeasurements,
   ): Promise<void>;
+  // The step needs the AI and the AI cannot answer now: the row waits with the job.
+  waiting(stepId: string, summary: string, measurements: StepMeasurements): Promise<void>;
 }
 
 export function supabaseStepStore(db: SupabaseClient): StepStore {
   return {
     async start(job, name) {
-      const { data, error } = await db
+      const { data, error, status } = await db
         .from("steps")
         .insert({
           job_id: job.id,
@@ -74,11 +78,11 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
         })
         .select("id")
         .single();
-      if (error || !data) throw new Error(`step not started: ${error?.message}`);
+      if (error || !data) throw dbFailure("step not started", { error, status });
       return (data as { id: string }).id;
     },
     async skipped(job, name, summary, wallMs) {
-      const { error } = await db.from("steps").insert({
+      const { error, status } = await db.from("steps").insert({
         job_id: job.id,
         reel_id: job.reel_id,
         owner_id: job.owner_id,
@@ -93,23 +97,23 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
         bytes_in: null,
         bytes_out: null,
       });
-      if (error) throw new Error(`step not recorded: ${error.message}`);
+      if (error) throw dbFailure("step not recorded", { error, status });
     },
     async reelStatus(reelId, status) {
-      const { error } = await db.from("reels").update({ status }).eq("id", reelId);
-      if (error) throw new Error(`reel not updated: ${error.message}`);
+      const result = await db.from("reels").update({ status }).eq("id", reelId);
+      if (result.error) throw dbFailure("reel not updated", result);
     },
     async sourceKey(reelId) {
-      const { data, error } = await db
+      const { data, error, status } = await db
         .from("reels")
         .select("source_key")
         .eq("id", reelId)
         .maybeSingle();
-      if (error) throw new Error(`reel not read: ${error.message}`);
+      if (error) throw dbFailure("reel not read", { error, status });
       return (data as { source_key: string | null } | null)?.source_key ?? null;
     },
     async done(stepId, summary, measurements) {
-      const { error } = await db
+      const { error, status } = await db
         .from("steps")
         .update({
           status: "done",
@@ -118,10 +122,10 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
           ...measurements,
         })
         .eq("id", stepId);
-      if (error) throw new Error(`step not finished: ${error.message}`);
+      if (error) throw dbFailure("step not finished", { error, status });
     },
     async failed(stepId, tail, summary, measurements) {
-      const { error } = await db
+      const { error, status } = await db
         .from("steps")
         .update({
           status: "failed",
@@ -131,7 +135,19 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
           ...measurements,
         })
         .eq("id", stepId);
-      if (error) throw new Error(`step not failed: ${error.message}`);
+      if (error) throw dbFailure("step not failed", { error, status });
+    },
+    async waiting(stepId, summary, measurements) {
+      const { error, status } = await db
+        .from("steps")
+        .update({
+          status: "waiting_ai",
+          summary,
+          finished_at: new Date().toISOString(),
+          ...measurements,
+        })
+        .eq("id", stepId);
+      if (error) throw dbFailure("step not marked waiting", { error, status });
     },
   };
 }

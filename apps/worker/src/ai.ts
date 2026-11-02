@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { unavailableReason } from "./ai-unavailable.ts";
+import { toolExitOf } from "./failures.ts";
 import type { Tool } from "./step-runner.ts";
 import type { AiUsage } from "./step-store.ts";
 
@@ -15,7 +17,9 @@ export interface AiRequest {
 
 export type AiResult =
   | { kind: "answer"; answer: unknown; usage: AiUsage }
-  | { kind: "broken"; reason: string; usage: AiUsage };
+  | { kind: "broken"; reason: string; usage: AiUsage }
+  // Claude Code cannot answer now (a usage limit, signed out): the job waits.
+  | { kind: "unavailable"; reason: string; usage: AiUsage };
 
 export interface AiRunner {
   // Runs through `tool`, so a step measures the call like any other tool.
@@ -74,6 +78,8 @@ export function parseClaudeResult(stdout: string): AiResult {
   const usage = usageOf(result);
   if (result.is_error === true) {
     const detail = typeof result.result === "string" ? result.result : String(result.subtype);
+    const unavailable = unavailableReason(detail);
+    if (unavailable !== null) return { kind: "unavailable", reason: unavailable, usage };
     return { kind: "broken", reason: `claude reported an error: ${detail}`, usage };
   }
   if (result.structured_output !== undefined && result.structured_output !== null) {
@@ -89,8 +95,20 @@ export function parseClaudeResult(stdout: string): AiResult {
   return { kind: "broken", reason: "no structured_output and no result", usage };
 }
 
+// A non-zero exit whose output says the AI cannot answer now; null otherwise.
+export function unavailableFromExit(error: unknown): AiResult | null {
+  const exit = toolExitOf(error);
+  if (exit === null || typeof exit.code !== "number") return null;
+  const fromStdout = exit.stdout.trim() === "" ? null : parseClaudeResult(exit.stdout);
+  if (fromStdout?.kind === "unavailable") return fromStdout;
+  const message = error instanceof Error ? error.message : String(error);
+  const reason = unavailableReason(`${exit.stdout}\n${message}`);
+  return reason === null ? null : { kind: "unavailable", reason, usage: NO_USAGE };
+}
+
 // Claude Code without tools or a saved session, the prompt on stdin, nothing
-// shell-interpreted. A non-zero exit throws from the tool.
+// shell-interpreted. A non-zero exit throws from the tool, unless its output
+// says the AI cannot answer now.
 function claudeRunner(path: string): AiRunner {
   return {
     async call(tool, { prompt, schema, cwd }) {
@@ -109,8 +127,12 @@ function claudeRunner(path: string): AiRunner {
         stdin: prompt,
         cwd,
         maxStdoutBytes: MAX_STDOUT_BYTES,
+      }).catch((error: unknown) => {
+        const unavailable = unavailableFromExit(error);
+        if (unavailable) return unavailable;
+        throw error;
       });
-      return parseClaudeResult(stdout);
+      return typeof stdout === "string" ? parseClaudeResult(stdout) : stdout;
     },
   };
 }

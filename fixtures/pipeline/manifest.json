@@ -5,6 +5,13 @@
   },
   "steps": [
     {
+      "name": "check_footage",
+      "fingerprint": "586f331ac4c2d7e8ca288445cda76af8fd2595d6d97e0a28d5fd125e95cfc0f5",
+      "files": [
+        "footage.json"
+      ]
+    },
+    {
       "name": "convert",
       "fingerprint": "0246e86e95b7cae269dc7d982572e15148488fe7e446e61a7489e4d876cfbba5",
       "files": [

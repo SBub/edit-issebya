@@ -14,7 +14,9 @@ import { ChangeRequestForm } from "@/components/ChangeRequestForm";
 import { ExportPanel } from "@/components/ExportPanel";
 import { ReelPreview } from "@/components/ReelPreview";
 import { VersionList } from "@/components/VersionList";
-import { changeBlockedReason, jobRequestLabel } from "@/lib/change-requests";
+import { RetryJobButton } from "@/components/RetryJobButton";
+import { changeRule, jobRequestLabel } from "@/lib/change-requests";
+import { canRetry, isRetried, waitingForAiLine } from "@/lib/job-failures";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, formatBytes, formatCreatedAt } from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
@@ -204,7 +206,7 @@ export function LiveReel({
     };
   }, [id]);
 
-  const blockedReason = changeBlockedReason(reel, jobs);
+  const rule = changeRule(reel, jobs);
   const versionsById = new Map(versions.map((version) => [version.id, version]));
   const waitingReason = waitingReasonOf(workerStatus);
 
@@ -212,14 +214,28 @@ export function LiveReel({
     <div data-realtime={ready ? "ready" : "pending"} className="flex flex-col gap-6">
       <ReelPreview reelId={reel.id} currentVersionId={reel.current_version_id} />
       <ExportPanel reel={reel} jobs={jobs} latestExportId={latestExportId} />
-      <ChangeRequestForm reelId={reel.id} blockedReason={blockedReason} jobs={jobs} />
+      <ChangeRequestForm
+        reelId={reel.id}
+        blockedReason={rule.blocked}
+        notice={rule.notice}
+        jobs={jobs}
+      />
       <VersionList
         reelId={reel.id}
         versions={versions}
         currentVersionId={reel.current_version_id}
-        blockedReason={blockedReason}
+        blockedReason={rule.blocked}
       />
 
+      {reel.status === "refused" && reel.refusal_message && (
+        <p
+          data-testid="reel-refusal"
+          role="status"
+          className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          {reel.refusal_message}
+        </p>
+      )}
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
         <dt className="text-stone-600">Status</dt>
         <dd data-testid="reel-status">{reel.status}</dd>
@@ -257,6 +273,14 @@ export function LiveReel({
                       {waitingReason}
                     </span>
                   )}
+                  {job.status === "waiting_ai" && job.not_before && (
+                    <span data-testid="job-waiting-ai" className="text-amber-800">
+                      {/* The clock part is the browser's zone; the server's render may differ. */}
+                      <time dateTime={job.not_before} suppressHydrationWarning>
+                        {waitingForAiLine(job)}
+                      </time>
+                    </span>
+                  )}
                   {label && (
                     <span data-testid="job-request" className="break-words text-stone-700">
                       {label}
@@ -266,6 +290,12 @@ export function LiveReel({
                     <pre className="overflow-x-auto text-xs whitespace-pre-wrap text-red-700">
                       {job.error_tail}
                     </pre>
+                  )}
+                  {canRetry(job, jobs, reel) && <RetryJobButton reelId={reel.id} jobId={job.id} />}
+                  {isRetried(job, jobs) && (
+                    <span data-testid="job-retried" className="text-stone-600">
+                      retried
+                    </span>
                   )}
                 </li>
               );

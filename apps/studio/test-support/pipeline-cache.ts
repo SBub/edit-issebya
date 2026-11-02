@@ -23,12 +23,18 @@ export async function pipelineManifest(): Promise<PipelineManifest> {
 }
 
 // Stores every committed step output at `<prefix>cache/<step>/<fingerprint>/<file>`,
-// so the worker finds each step's outputs and spawns no tool. Returns the keys
-// written, for the spec's cleanup.
-export async function seedPipelineCache(storage: Storage, prefix: string): Promise<string[]> {
+// so the worker finds each step's outputs and spawns no tool; the steps in
+// `skip` are left out, so they run (a spec's step double plays them). Returns
+// the keys written, for the spec's cleanup.
+export async function seedPipelineCache(
+  storage: Storage,
+  prefix: string,
+  { skip = [] }: { skip?: readonly string[] } = {},
+): Promise<string[]> {
   const manifest = await pipelineManifest();
   const keys: string[] = [];
   for (const step of manifest.steps) {
+    if (skip.includes(step.name)) continue;
     for (const file of step.files) {
       const key = `${prefix}cache/${step.name}/${step.fingerprint}/${file}`;
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixtures
@@ -52,11 +58,68 @@ export interface ProcessedReel {
   keys: string[];
 }
 
-// A reel as the pipeline leaves it: the fixture clip uploaded under the
-// prefix, the reel and its queued job inserted as the service role, the cache
-// seeded and the worker's `once` run (every step a hit, then version 1, then
-// the decide step's version 2 from the AI double). `aiScript` is the double's
-// script file; by default an answer that keeps version 1 unchanged.
+export interface QueuedReel {
+  reelId: string;
+  jobId: string;
+  sourceKey: string;
+  // Every key written: the source and the seeded cache.
+  keys: string[];
+}
+
+// A reel waiting for the worker: the clip (by default the fixture clip)
+// uploaded under the prefix, the reel and its queued `process` job inserted as
+// the service role, and the cache seeded but for the steps in `skip`.
+export async function seedQueuedReel({
+  admin,
+  storage,
+  ownerId,
+  prefix,
+  clip = CLIP,
+  skip,
+  seedCache = true,
+}: {
+  admin: SupabaseClient;
+  storage: Storage;
+  ownerId: string;
+  prefix: string;
+  clip?: URL;
+  skip?: readonly string[];
+  // false: the spec seeds what the worker finds itself.
+  seedCache?: boolean;
+}): Promise<QueuedReel> {
+  const reelId = crypto.randomUUID();
+  const sourceKey = `${prefix}reels/${reelId}/source/original.mp4`;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a committed fixture clip
+  const body = await readFile(clip);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a committed fixture clip
+  const bytes = (await stat(clip)).size;
+  await storage.put(sourceKey, new Uint8Array(body));
+  const keys = [sourceKey];
+
+  const reel = await admin.from("reels").insert({
+    id: reelId,
+    owner_id: ownerId,
+    status: "uploaded",
+    source_key: sourceKey,
+    source_bytes: bytes,
+    source_name: clip.pathname.split("/").at(-1),
+  });
+  if (reel.error) throw new Error(`reel not inserted: ${reel.error.message}`);
+  const job = await admin
+    .from("jobs")
+    .insert({ reel_id: reelId, owner_id: ownerId, kind: "process", status: "queued" })
+    .select("id")
+    .single();
+  if (job.error || !job.data) throw new Error(`job not inserted: ${job.error?.message}`);
+
+  if (seedCache) keys.push(...(await seedPipelineCache(storage, prefix, { skip })));
+  return { reelId, jobId: (job.data as { id: string }).id, sourceKey, keys };
+}
+
+// A reel as the pipeline leaves it: a queued reel (seedQueuedReel) and the
+// worker's `once` run (every step a hit, then version 1, then the decide
+// step's version 2 from the AI double). `aiScript` is the double's script
+// file; by default an answer that keeps version 1 unchanged.
 export async function seedProcessedReel({
   admin,
   storage,
@@ -70,30 +133,7 @@ export async function seedProcessedReel({
   prefix: string;
   aiScript?: string;
 }): Promise<ProcessedReel> {
-  const reelId = crypto.randomUUID();
-  const sourceKey = `${prefix}reels/${reelId}/source/original.mp4`;
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture clip
-  const clip = await readFile(CLIP);
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture clip
-  const bytes = (await stat(CLIP)).size;
-  await storage.put(sourceKey, new Uint8Array(clip));
-  const keys = [sourceKey];
-
-  const reel = await admin.from("reels").insert({
-    id: reelId,
-    owner_id: ownerId,
-    status: "uploaded",
-    source_key: sourceKey,
-    source_bytes: bytes,
-    source_name: "short-speech.mp4",
-  });
-  if (reel.error) throw new Error(`reel not inserted: ${reel.error.message}`);
-  const job = await admin
-    .from("jobs")
-    .insert({ reel_id: reelId, owner_id: ownerId, kind: "process", status: "queued" });
-  if (job.error) throw new Error(`job not inserted: ${job.error.message}`);
-
-  keys.push(...(await seedPipelineCache(storage, prefix)));
+  const { reelId, sourceKey, keys } = await seedQueuedReel({ admin, storage, ownerId, prefix });
   const scriptDir = await mkdtemp(join(tmpdir(), "ai-script-"));
   try {
     const script = aiScript ?? (await unchangedAnswerScript(scriptDir));

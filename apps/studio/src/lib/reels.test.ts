@@ -59,6 +59,7 @@ describe("REEL_STATUSES", () => {
       "uploading",
       "uploaded",
       "received",
+      "checking_footage",
       "converting",
       "transcribing",
       "retiming",
@@ -67,6 +68,7 @@ describe("REEL_STATUSES", () => {
       "making_previews",
       "processed",
       "failed",
+      "refused",
     ]);
   });
 });

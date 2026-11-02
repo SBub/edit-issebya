@@ -1,7 +1,14 @@
-import { access, mkdir, rm } from "node:fs/promises";
+import { access, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Storage } from "@edit-issebya/storage";
-import { type SpawnTool, type StepContext, recordHit, runToolsStep } from "../step-runner.ts";
+import { FootageRefusedError } from "../failures.ts";
+import {
+  type SpawnTool,
+  type StepContext,
+  recordHit,
+  runInProcessStep,
+  runToolsStep,
+} from "../step-runner.ts";
 import { PIPELINE, type PipelineStep, fingerprintsFor, outputFiles } from "./definition.ts";
 import { type FileRef, cacheKey } from "./fingerprint.ts";
 import type { ToolPaths } from "./tools.ts";
@@ -45,7 +52,8 @@ async function exists(path: string): Promise<boolean> {
 // fingerprint is a hit (no download, no process); any other step downloads the
 // inputs it declares, runs in its own folder and uploads each missing output
 // with put-if-absent, so a stored output is never replaced. A failed job's
-// retry therefore resumes at the step that failed. After a lost lease nothing
+// retry therefore resumes at the step that failed. A gated step (the footage
+// check) that refuses its outputs stops the pipeline: nothing after it runs. After a lost lease nothing
 // more is written. Returns every step's fingerprint, for the steps after it.
 export async function runPipeline({
   ctx,
@@ -96,6 +104,23 @@ export async function runPipeline({
       }
       if (setReelStatus) await steps.reelStatus(job.reel_id, step.reelStatus);
       if (stored.every((object) => object !== null)) {
+        // A gated step judges its stored outputs again: a refused clip stays
+        // refused, with a failed row of its own and nothing after it.
+        if (step.gate) {
+          const outputs: Record<string, Uint8Array> = {};
+          for (const [index, file] of outputNames.entries()) {
+            const bytes = await storage.get(outputKeys[index]!);
+            if (!bytes) throw new Error(`${step.name}: stored output vanished: ${file}`);
+            outputs[file] = bytes;
+          }
+          const refusal = step.gate(outputs);
+          if (refusal !== null) {
+            await runInProcessStep(ctx, {
+              name: step.name,
+              work: () => Promise.reject(new FootageRefusedError(refusal)),
+            });
+          }
+        }
         await recordHit(ctx, {
           name: step.name,
           summary: `${step.reusedWhat}, reused`,
@@ -152,6 +177,17 @@ export async function runPipeline({
               await storage.putFileIfAbsent(key, outputPaths[index]!, {
                 contentType: contentType(file),
               });
+            }
+            // After the uploads, so a refused clip's outputs are stored and its
+            // retry is a hit that refuses again without running the tool.
+            if (step.gate) {
+              const outputs: Record<string, Uint8Array> = {};
+              for (const [index, file] of outputNames.entries()) {
+                // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
+                outputs[file] = await readFile(outputPaths[index]!);
+              }
+              const refusal = step.gate(outputs);
+              if (refusal !== null) throw new FootageRefusedError(refusal);
             }
             return result;
           },

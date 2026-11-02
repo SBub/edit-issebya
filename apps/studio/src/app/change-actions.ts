@@ -1,7 +1,7 @@
 "use server";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { changeBlockedReason, normalizeRequest } from "@/lib/change-requests";
+import { changeRule, normalizeRequest } from "@/lib/change-requests";
 import type { JobRow } from "@/lib/jobs";
 import { type ReelDetail, isReelId } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -18,8 +18,9 @@ type Open =
   | { ok: false; result: ChangeActionResult };
 
 // The user's own client, then the reel and its jobs under RLS: another
-// owner's reel reads as missing. The interim ordering rule is checked here as
-// well as in the page, so a stale tab cannot queue a second job.
+// owner's reel reads as missing. The change rule is checked here as well as in
+// the page, so a stale tab cannot queue a change on a refused reel or one with
+// no version to come; the order of jobs is the database's (claim_job).
 async function openReel(reelId: string): Promise<Open> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { ok: false, result: { status: "failed" } };
@@ -36,16 +37,16 @@ async function openReel(reelId: string): Promise<Open> {
       .maybeSingle<Pick<ReelDetail, "id" | "status" | "current_version_id">>(),
     supabase
       .from("jobs")
-      .select("id, status")
+      .select("id, kind, status")
       .eq("reel_id", reelId)
-      .returns<Pick<JobRow, "id" | "status">[]>(),
+      .returns<Pick<JobRow, "id" | "kind" | "status">[]>(),
   ]);
   if (reel.error || jobs.error) {
     console.error("studio: reel not read for a change:", reel.error?.code ?? jobs.error?.code);
     return { ok: false, result: { status: "failed" } };
   }
   if (!reel.data) return { ok: false, result: { status: "failed" } };
-  const reason = changeBlockedReason(reel.data, jobs.data ?? []);
+  const reason = changeRule(reel.data, jobs.data ?? []).blocked;
   if (reason) return { ok: false, result: { status: "blocked", reason } };
   return { ok: true, supabase, currentVersionId: reel.data.current_version_id };
 }

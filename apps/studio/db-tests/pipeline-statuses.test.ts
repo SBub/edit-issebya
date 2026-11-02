@@ -34,6 +34,7 @@ describe("pipeline statuses", () => {
 
   it("accepts each step's reel status", async () => {
     for (const status of [
+      "checking_footage",
       "converting",
       "transcribing",
       "retiming",
@@ -45,6 +46,24 @@ describe("pipeline statuses", () => {
       const { error } = await admin.from("reels").update({ status }).eq("id", reelId);
       expect(error, status).toBeNull();
     }
+  });
+
+  it("accepts a refused reel with its message, never one without", async () => {
+    const without = await admin.from("reels").update({ status: "refused" }).eq("id", reelId);
+    expect(without.error?.code).toBe("23514");
+    const refused = await admin
+      .from("reels")
+      .update({ status: "refused", refusal_message: "This clip has no sound." })
+      .eq("id", reelId);
+    expect(refused.error).toBeNull();
+    // A message belongs to a refused reel only.
+    const stray = await admin.from("reels").update({ status: "processed" }).eq("id", reelId);
+    expect(stray.error?.code).toBe("23514");
+    const back = await admin
+      .from("reels")
+      .update({ status: "processed", refusal_message: null })
+      .eq("id", reelId);
+    expect(back.error).toBeNull();
   });
 
   it("rejects an unknown reel status", async () => {

@@ -1,4 +1,4 @@
-import type { JobKind, JobRow } from "./jobs";
+import { type JobKind, type JobRow, isUnfinished } from "./jobs";
 import type { ReelDetail } from "./reels";
 import type { VersionListRow } from "./versions";
 
@@ -19,19 +19,34 @@ export function normalizeRequest(text: unknown): NormalizedRequest {
   return { ok: true, request };
 }
 
-// Interim rule, until jobs are ordered in the database: a change or a going
-// back opens only on a processed reel with no job queued or running (a
-// render counts too). Null
-// when open, otherwise the one-line reason shown beside the disabled control.
-export function changeBlockedReason(
-  reel: Pick<ReelDetail, "status">,
-  jobs: readonly Pick<JobRow, "status">[],
-): string | null {
-  if (jobs.some((job) => job.status === "queued" || job.status === "running")) {
-    return "A job is running on this reel; wait for it to finish.";
+export interface ChangeRule {
+  // Why a change or a going back cannot be sent now; null when it can.
+  blocked: string | null;
+  // When it can: what happens to it (it waits its turn in claim_job).
+  notice: string | null;
+}
+
+// A change or a going back is refused on a refused reel and before the reel
+// can have a version; otherwise it is open and waits its turn, since the
+// database runs one job per reel at a time, in order (app_docs/failures.md).
+export function changeRule(
+  reel: Pick<ReelDetail, "status" | "current_version_id">,
+  jobs: readonly Pick<JobRow, "kind" | "status">[],
+): ChangeRule {
+  if (reel.status === "refused") {
+    return { blocked: "This clip was refused; upload another.", notice: null };
   }
-  if (reel.status !== "processed") return "Changes open once the reel is processed.";
-  return null;
+  const processing = jobs.some((job) => job.kind === "process" && isUnfinished(job));
+  if (reel.status === "uploading" || (!reel.current_version_id && !processing)) {
+    return { blocked: "Changes open once the reel has a version.", notice: null };
+  }
+  if (processing) {
+    return { blocked: null, notice: "Your change will run after processing finishes." };
+  }
+  if (jobs.some(isUnfinished)) {
+    return { blocked: null, notice: "Your change will run after the current job finishes." };
+  }
+  return { blocked: null, notice: null };
 }
 
 // What produced a version: a going back, the owner's words, or the worker on

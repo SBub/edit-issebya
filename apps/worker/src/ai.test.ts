@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { aiRunner, fakeAiRunner, parseClaudeResult, resultEnvelope } from "./ai.ts";
+import {
+  aiRunner,
+  fakeAiRunner,
+  parseClaudeResult,
+  resultEnvelope,
+  unavailableFromExit,
+} from "./ai.ts";
 import type { Tool } from "./step-runner.ts";
 
 // One real `claude -p --output-format json --json-schema` result, ids
@@ -179,5 +185,54 @@ describe("parseClaudeResult", () => {
     expect(parseClaudeResult(JSON.stringify({ is_error: false, result: "hi" }))).toMatchObject({
       kind: "broken",
     });
+  });
+});
+
+describe("an unavailable AI", () => {
+  const fixture = (name: string) =>
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixtures
+    readFileSync(new URL(`./testdata/ai-unavailable/${name}`, import.meta.url), "utf8");
+  const exitError = (code: number, stdout: string, message = "decide exited with 1") =>
+    Object.assign(new Error(message), { exit: { code, signal: null, stdout } });
+
+  it("reads the usage-limit and signed-out envelopes as unavailable", () => {
+    expect(parseClaudeResult(fixture("usage-limit.json"))).toMatchObject({
+      kind: "unavailable",
+      reason: "usage limit reached",
+    });
+    expect(parseClaudeResult(fixture("not-logged-in.json"))).toMatchObject({
+      kind: "unavailable",
+      reason: "Claude Code is not logged in",
+    });
+  });
+
+  it("keeps an ordinary error envelope broken", () => {
+    const envelope = { type: "result", subtype: "error_max_turns", is_error: true };
+    expect(parseClaudeResult(JSON.stringify(envelope))).toMatchObject({ kind: "broken" });
+  });
+
+  it("reads a non-zero exit with a matching stdout as unavailable", () => {
+    expect(unavailableFromExit(exitError(1, fixture("not-logged-in-exit.txt")))).toMatchObject({
+      kind: "unavailable",
+      reason: "Claude Code is not logged in",
+    });
+    expect(
+      unavailableFromExit(exitError(1, "", "decide exited with 1\nNot logged in")),
+    ).toMatchObject({ kind: "unavailable", reason: "Claude Code is not logged in" });
+    expect(unavailableFromExit(exitError(1, "", "decide exited with 1\nsegfault"))).toBeNull();
+    expect(unavailableFromExit(new Error("no exit"))).toBeNull();
+  });
+
+  it("returns unavailable from the runner on such an exit, and rethrows an unrelated one", async () => {
+    const runner = aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" });
+    const signedOut: Tool = () => Promise.reject(exitError(1, fixture("not-logged-in-exit.txt")));
+    expect(await runner.call(signedOut, REQUEST)).toMatchObject({ kind: "unavailable" });
+    const crashed: Tool = () => Promise.reject(exitError(2, "", "decide exited with 2\npanic"));
+    await expect(runner.call(crashed, REQUEST)).rejects.toThrow(/panic/);
+  });
+
+  it("is reproduced by the double from a script entry carrying the envelope", async () => {
+    const runner = fakeAiRunner([JSON.parse(fixture("usage-limit.json"))]);
+    expect(await runner.call(NEVER, REQUEST)).toMatchObject({ kind: "unavailable" });
   });
 });

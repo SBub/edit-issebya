@@ -16,6 +16,7 @@ import { saveFirstVersion } from "../first-version.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
 import { storageVersionBlobs } from "../version-store.ts";
+import { AiUnavailableError } from "../failures.ts";
 import { runDecide } from "./run-decide.ts";
 
 const PREFIX = "dev/";
@@ -210,6 +211,43 @@ describe("runDecide", () => {
     expect(current).toBe(firstId);
     expect(rows.size).toBe(1);
     expect(await storage.list(`${PREFIX}reels/${TEST_JOB.reel_id}/versions/`)).toHaveLength(1);
+  });
+
+  it("waits for the AI after one unavailable answer: one call, nothing written", async () => {
+    const usageLimit = JSON.parse(
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
+      await readFile(
+        new URL("../testdata/ai-unavailable/usage-limit.json", import.meta.url),
+        "utf8",
+      ),
+    ) as Json;
+    const ai = fakeAiRunner([usageLimit, scripted]);
+    const { run, calls } = await decide(ai);
+    await expect(run).rejects.toMatchObject({
+      cause: expect.any(AiUnavailableError),
+    });
+    expect(ai.calls).toHaveLength(1);
+    expect(lastCall(calls)).toMatchObject({ call: "waiting" });
+    expect(current).toBe(firstId);
+    expect(rows.size).toBe(1);
+  });
+
+  it("still waits when the AI becomes unavailable on the second call", async () => {
+    const notLoggedIn = JSON.parse(
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
+      await readFile(
+        new URL("../testdata/ai-unavailable/not-logged-in.json", import.meta.url),
+        "utf8",
+      ),
+    ) as Json;
+    const ai = fakeAiRunner([offSafeBox(), notLoggedIn]);
+    const { run, calls } = await decide(ai);
+    await expect(run).rejects.toMatchObject({
+      cause: expect.objectContaining({ reason: "Claude Code is not logged in" }),
+    });
+    expect(ai.calls).toHaveLength(2);
+    expect(lastCall(calls)).toMatchObject({ call: "waiting" });
+    expect(rows.size).toBe(1);
   });
 
   it("retries a broken JSON answer (verification 4)", async () => {

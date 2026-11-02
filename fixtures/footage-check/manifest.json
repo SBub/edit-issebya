@@ -1,0 +1,16 @@
+{
+  "clips": [
+    {
+      "file": "landscape.mp4",
+      "source": {
+        "etag": "89f701ed5e7bca36185dd13c4fdabaf0",
+        "bytes": 14406
+      },
+      "fingerprint": "7f6ddf8d8404d7c2b660a06ffe8d4460c69a74a8f8241c44b8fee272bafd5b86",
+      "files": [
+        "footage.json"
+      ],
+      "refusal": "This clip is landscape (160 x 90); the studio takes vertical footage only."
+    }
+  ]
+}

@@ -8,6 +8,12 @@ export const SHORT_SPEECH_ANSWER = fileURLToPath(
   new URL("../../worker/src/decide/testdata/short-speech-answer.json", import.meta.url),
 );
 
+// A Claude Code result saying its usage limit is reached (the worker's
+// captured fixture): the decide step waits for the AI.
+export const USAGE_LIMIT_SCRIPT = fileURLToPath(
+  new URL("../../worker/src/testdata/ai-unavailable/usage-limit.json", import.meta.url),
+);
+
 // The worker's version 1 over fixtures/pipeline/.
 const BASELINE = new URL(
   "../../../packages/edit/src/testdata/versions/baseline-short-speech.edit.json",

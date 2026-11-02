@@ -1,5 +1,6 @@
-// Claims and runs at most one job, then exits: 0 when it ended `done` (or there
-// was none, or the disk guard kept it from claiming), 1 otherwise. No
+// Claims and runs at most one job, then exits: 0 when it ended `done`,
+// `waiting` (for the AI) or `refused` (the footage), or there was none, or the
+// disk guard kept it from claiming; 1 otherwise. No
 // subscription, no timer, no slimming. Specs spawn this.
 import { workerConfig } from "./config.ts";
 import { freeBytesFn, guardedClaim, supabaseWorkerStatus } from "./disk-guard.ts";
@@ -29,4 +30,5 @@ console.log(`job ${job.id}: claimed (attempt ${job.attempts})`);
 const outcome = await processJob(db, workerStorage(), config, telemetry, job);
 // Flushes the job's spans and log records before exiting.
 await telemetry.shutdown();
-process.exit(outcome === "done" ? 0 : 1);
+console.log(`job ${job.id}: outcome ${outcome}`);
+process.exit(outcome === "done" || outcome === "waiting" || outcome === "refused" ? 0 : 1);

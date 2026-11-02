@@ -157,7 +157,9 @@ async function runWorker(script: string) {
   return runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_AI_SCRIPT: script });
 }
 
-test("the box and going back wait while a job is running, then open live", async ({ baseURL }) => {
+test("the box is open during processing, and the change waits its turn in claim_job", async ({
+  baseURL,
+}) => {
   // A running process job whose lease is an hour ahead: never claimable.
   const { data: running, error } = await admin
     .from("jobs")
@@ -181,31 +183,43 @@ test("the box and going back wait while a job is running, then open live", async
     (window as unknown as { __noReload: string }).__noReload = "marker";
   });
 
-  const reason = "A job is running on this reel; wait for it to finish.";
-  await expect(box()).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
-  await expect(page.getByTestId("change-blocked-reason")).toHaveText(reason);
-  await expect(versionItem(1).getByRole("button", { name: "Go back to this" })).toBeDisabled();
+  await expect(box()).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+  await expect(page.getByTestId("change-blocked-reason")).toHaveText("");
+  await expect(page.getByTestId("change-notice")).toHaveText(
+    "Your change will run after processing finishes.",
+  );
+  await expect(versionItem(1).getByRole("button", { name: "Go back to this" })).toBeEnabled();
   // The current version (2) offers no going back.
   await expect(versionItem(2).getByRole("button", { name: "Go back to this" })).toHaveCount(0);
+
+  await box().fill(`  ${REQUEST}  `);
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByTestId("change-pending")).toHaveText(`Pending: ${REQUEST}`);
+  await expect(box()).toHaveValue("");
+  expect(await jobsOf("change")).toEqual([
+    expect.objectContaining({ status: "queued", request: REQUEST, restore_version_id: null }),
+  ]);
+
+  // The process job holds its reel: the worker claims nothing.
+  const held = await runWorker(SHORT_SPEECH_ANSWER);
+  expect(held.code, held.output).toBe(0);
+  expect(held.output).toContain("no job");
+  expect(await jobsOf("change")).toEqual([expect.objectContaining({ status: "queued" })]);
 
   await admin
     .from("jobs")
     .update({ status: "done", finished_at: new Date().toISOString(), lease_expires_at: null })
     .eq("id", running!.id);
-  await expect(box()).toBeEnabled({ timeout: 10_000 });
-  await expect(page.getByTestId("change-blocked-reason")).toHaveText("");
-  await expect(versionItem(1).getByRole("button", { name: "Go back to this" })).toBeEnabled();
+  await expect(page.getByTestId("change-notice")).toHaveText(
+    "Your change will run after the current job finishes.",
+    { timeout: 10_000 },
+  );
   expect(await noReloadMarker()).toBe("marker");
 });
 
-test("a change becomes version 3 and the preview shows it without a reload", async () => {
+test("the waiting change runs once the process job is done: version 3, live", async () => {
   const before = await reelRow();
-  await box().fill(`  ${REQUEST}  `);
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByTestId("change-pending")).toHaveText(`Pending: ${REQUEST}`);
-  await expect(box()).toHaveValue("");
-
   const changes = await jobsOf("change");
   expect(changes).toEqual([
     expect.objectContaining({ status: "queued", request: REQUEST, restore_version_id: null }),

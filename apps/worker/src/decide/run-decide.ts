@@ -23,6 +23,7 @@ import {
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import type { AiRunner } from "../ai.ts";
+import { AiUnavailableError } from "../failures.ts";
 import { editMeasurer } from "../edit-measurer.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { type StepContext, StepError, type Tool, runToolsStep } from "../step-runner.ts";
@@ -132,6 +133,8 @@ export function runDecide({
             cwd,
           });
           usage = addUsage(usage, result.usage);
+          // No second call and nothing written: the job waits for the AI.
+          if (result.kind === "unavailable") throw new AiUnavailableError(result.reason, usage);
           if (result.kind === "broken") {
             return { ok: false, reasons: [`the answer was not valid JSON: ${result.reason}`] };
           }

@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import type { Storage } from "@edit-issebya/storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { retentionOf } from "./pipeline/definition.ts";
+import { dbFailure } from "./failures.ts";
 
 export type StoredFileKind = "source" | "kept" | "rebuildable" | "version" | "export";
 
@@ -65,29 +66,29 @@ function storedFiles(data: unknown): StoredFile[] {
 export function supabaseStoredFiles(db: SupabaseClient): StoredFileRecords {
   return {
     async record(row) {
-      const { error } = await db.rpc("record_stored_file", {
+      const { error, status } = await db.rpc("record_stored_file", {
         p_reel_id: row.reelId,
         p_r2_key: row.key,
         p_step: row.step,
         p_kind: row.kind,
         p_bytes: row.bytes,
       });
-      if (error) throw new Error(`stored file not recorded: ${error.message}`);
+      if (error) throw dbFailure("stored file not recorded", { error, status });
     },
     async slimRebuildable(now, prefix) {
-      const { data, error } = await db.rpc("slim_rebuildable_files", {
+      const { data, error, status } = await db.rpc("slim_rebuildable_files", {
         p_now: now.toISOString(),
         p_prefix: prefix,
       });
-      if (error) throw new Error(`rebuildable files not slimmed: ${error.message}`);
+      if (error) throw dbFailure("rebuildable files not slimmed", { error, status });
       return storedFiles(data);
     },
     async expireExports(now, prefix) {
-      const { data, error } = await db.rpc("expire_export_files", {
+      const { data, error, status } = await db.rpc("expire_export_files", {
         p_now: now.toISOString(),
         p_prefix: prefix,
       });
-      if (error) throw new Error(`expired exports not marked: ${error.message}`);
+      if (error) throw dbFailure("expired exports not marked", { error, status });
       return storedFiles(data);
     },
   };

@@ -8,6 +8,7 @@ import type { ChildRun, SpawnTool, ToolCall } from "../step-runner.ts";
 import { PIPELINE, type StepOutput, fingerprintsFor, outputFiles } from "./definition.ts";
 import { cacheKey } from "./fingerprint.ts";
 import { HEAD_TRACK_SETTINGS, frameBytes } from "./head-track.ts";
+import { FootageRefusedError } from "../failures.ts";
 import { runPipeline } from "./run-pipeline.ts";
 import type { ToolPaths } from "./tools.ts";
 
@@ -20,6 +21,13 @@ const TOOLS: ToolPaths = {
 };
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
 const PROBE = await readFile(new URL("testdata/sdr-cfr.json", import.meta.url), "utf8");
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+const LANDSCAPE = await readFile(
+  new URL("testdata/footage/landscape.json", import.meta.url),
+  "utf8",
+);
+const LANDSCAPE_REFUSAL =
+  "This clip is landscape (1920 x 1080); the studio takes vertical footage only.";
 // Two seconds of speech with a 0.2 s gap: what the fake HyperFrames hears.
 const WORDS = [
   { text: "This", start: 0.1, end: 0.4 },
@@ -55,12 +63,15 @@ function option(args: string[], name: string): string {
 // Plays each tool: ffprobe answers fixture JSON, ffmpeg writes the file its
 // arguments name (two transparent raw frames for the head tracker),
 // HyperFrames writes its transcript into --dir or its cut-out to -o.
-function fakeTools({ failTranscribe = 0 } = {}): SpawnTool {
+function fakeTools({ failTranscribe = 0, probe = PROBE, failFfmpeg = false } = {}): SpawnTool {
   let transcribeFailures = failTranscribe;
   return async (call) => {
     spawned.push(call);
     const at = (file: string) => (call.cwd ? resolve(call.cwd, file) : file);
-    if (call.file === TOOLS.ffprobe) return ok(PROBE);
+    if (call.file === TOOLS.ffprobe) return ok(probe);
+    if (failFfmpeg && call.file === TOOLS.ffmpeg) {
+      return { ...ok(), code: 1, output: "ffmpeg: invalid data\n" };
+    }
     if (call.file === TOOLS.hyperframes[0] && call.args[1] === "remove-background") {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
       await writeFile(option(call.args, "-o"), "cut-out");
@@ -176,6 +187,9 @@ describe("runPipeline", () => {
     const { fingerprints } = await run(steps);
     expect(Object.keys(fingerprints)).toEqual(PIPELINE.map((step) => step.name));
     expect(shape(calls)).toEqual([
+      "status checking_footage",
+      "start check_footage",
+      "done",
       "status converting",
       "start convert",
       "done",
@@ -197,7 +211,7 @@ describe("runPipeline", () => {
     ]);
     expect(await storage.list(`${PREFIX}cache/`)).toEqual([...(await outputKeys())].sort());
     const transcript = JSON.parse(
-      new TextDecoder().decode((await storage.get((await outputKeys())[1]!))!),
+      new TextDecoder().decode((await storage.get((await outputKeys())[2]!))!),
     );
     expect(transcript.words.map((word: { id: string }) => word.id)).toEqual([
       "w0001",
@@ -208,6 +222,7 @@ describe("runPipeline", () => {
     expect(counts.getFile).toBe(1);
     const done = calls.filter((call) => call.call === "done");
     expect(done.map((call) => call.call === "done" && call.summary.split(",")[0])).toEqual([
+      "footage checked: 320 x 568",
       "footage converted",
       "transcribed",
       "retimed to 1.9 seconds",
@@ -216,7 +231,7 @@ describe("runPipeline", () => {
       "preview copies made",
     ]);
     const summaries = done.map((call) => call.call === "done" && call.summary);
-    expect(summaries[4]).toMatch(/^head tracked, 2 samples, 2 without a head, /);
+    expect(summaries[5]).toMatch(/^head tracked, 2 samples, 2 without a head, /);
     const typeOf = (file: string) =>
       [...contentTypes].find(([key]) => key.endsWith(`/${file}`))?.[1];
     expect(typeOf("subject.webm")).toBe("video/webm");
@@ -254,6 +269,7 @@ describe("runPipeline", () => {
     const { steps, calls } = recordingSteps(SOURCE_KEY);
     await run(steps, { setReelStatus: false });
     expect(shape(calls)).toEqual([
+      "skipped check_footage",
       "start convert",
       "done",
       "skipped transcribe",
@@ -277,6 +293,8 @@ describe("runPipeline", () => {
     const { steps, calls } = recordingSteps(SOURCE_KEY);
     await run(steps);
     expect(shape(calls)).toEqual([
+      "status checking_footage",
+      "skipped check_footage",
       "status converting",
       "skipped convert",
       "status transcribing",
@@ -295,6 +313,7 @@ describe("runPipeline", () => {
         .filter((call) => call.call === "skipped")
         .map((call) => call.call === "skipped" && call.summary),
     ).toEqual([
+      "footage checked, reused",
       "footage converted, reused",
       "transcribed, reused",
       "retimed, reused",
@@ -318,6 +337,7 @@ describe("runPipeline", () => {
     const rebuilt = recordingSteps(SOURCE_KEY);
     await run(rebuilt.steps, { setReelStatus: false });
     expect(shape(rebuilt.calls)).toEqual([
+      "skipped check_footage",
       "skipped convert",
       "skipped transcribe",
       "skipped retime",
@@ -343,6 +363,8 @@ describe("runPipeline", () => {
     const { steps, calls } = recordingSteps(SOURCE_KEY);
     await run(steps);
     expect(shape(calls)).toEqual([
+      "status checking_footage",
+      "skipped check_footage",
       "status converting",
       "skipped convert",
       "status transcribing",
@@ -375,6 +397,8 @@ describe("runPipeline", () => {
     const { steps, calls } = recordingSteps(SOURCE_KEY);
     await run(steps);
     expect(shape(calls)).toEqual([
+      "status checking_footage",
+      "skipped check_footage",
       "status converting",
       "start convert",
       "done",
@@ -399,6 +423,8 @@ describe("runPipeline", () => {
     const { steps, calls } = recordingSteps(SOURCE_KEY);
     await run(steps, { pipeline: bumped });
     expect(shape(calls)).toEqual([
+      "status checking_footage",
+      "skipped check_footage",
       "status converting",
       "skipped convert",
       "status transcribing",
@@ -425,6 +451,9 @@ describe("runPipeline", () => {
       /transcribe exited with 1\nwhisper: model not found/,
     );
     expect(shape(first.calls)).toEqual([
+      "status checking_footage",
+      "start check_footage",
+      "done",
       "status converting",
       "start convert",
       "done",
@@ -438,6 +467,8 @@ describe("runPipeline", () => {
     const retry = recordingSteps(SOURCE_KEY);
     await run(retry.steps);
     expect(shape(retry.calls)).toEqual([
+      "status checking_footage",
+      "skipped check_footage",
       "status converting",
       "skipped convert",
       "status transcribing",
@@ -486,7 +517,11 @@ describe("runPipeline", () => {
     const bumped = PIPELINE.map((step) =>
       step.name === "transcribe" ? { ...step, version: step.version + 1 } : step,
     );
-    const withoutConvert = [{ ...PIPELINE[0]!, outputs: [] as StepOutput[] }, ...bumped.slice(1)];
+    const withoutConvert = [
+      bumped[0]!,
+      { ...bumped[1]!, outputs: [] as StepOutput[] },
+      ...bumped.slice(2),
+    ];
     const { steps, calls } = recordingSteps(SOURCE_KEY);
     await expect(run(steps, { pipeline: withoutConvert })).rejects.toThrow(
       `transcribe: input missing: ${converted}`,
@@ -508,9 +543,93 @@ describe("runPipeline", () => {
         },
       }),
     ).rejects.toThrow("lease lost");
-    expect(shape(calls)).toEqual(["status converting", "start convert"]);
-    expect(await storage.list(`${PREFIX}cache/`)).toEqual([]);
+    expect(shape(calls)).toEqual([
+      "status checking_footage",
+      "start check_footage",
+      "done",
+      "status converting",
+      "start convert",
+    ]);
+    // Only the footage check's facts, stored before the lease was lost.
+    expect(await storage.list(`${PREFIX}cache/`)).toEqual([
+      (await outputKeys()).find((key) => key.endsWith("/footage.json")),
+    ]);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
     expect(await readdir(scratch)).toEqual([]);
+  });
+
+  it("stops after check_footage refuses a landscape clip: no other step, no other download", async () => {
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    const failure = run(steps, { spawnTool: fakeTools({ probe: LANDSCAPE }) });
+    await expect(failure).rejects.toMatchObject({ cause: expect.any(FootageRefusedError) });
+    await expect(failure).rejects.toThrow(LANDSCAPE_REFUSAL);
+    expect(shape(calls)).toEqual(["status checking_footage", "start check_footage", "failed"]);
+    expect(calls.at(-1)).toMatchObject({ call: "failed", tail: LANDSCAPE_REFUSAL });
+    // The source alone was downloaded, and ffprobe alone ran.
+    expect(counts.getFile).toBe(1);
+    expect(spawned.map((call) => call.file)).toEqual([TOOLS.ffprobe]);
+    // The facts are stored, so the next try is a hit.
+    expect(await storage.list(`${PREFIX}cache/`)).toEqual([
+      (await outputKeys()).find((key) => key.endsWith("/footage.json")),
+    ]);
+  });
+
+  it("refuses again on a hit of stored refused facts, without probing", async () => {
+    await run(recordingSteps(SOURCE_KEY).steps, {
+      spawnTool: fakeTools({ probe: LANDSCAPE }),
+    }).catch(() => {});
+    spawned = [];
+    counts = { getFile: 0, putFileIfAbsent: 0 };
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    await expect(run(steps)).rejects.toThrow(LANDSCAPE_REFUSAL);
+    expect(shape(calls)).toEqual(["status checking_footage", "start check_footage", "failed"]);
+    expect(spawned).toEqual([]);
+    expect(counts).toEqual({ getFile: 0, putFileIfAbsent: 0 });
+  });
+
+  it("re-runs a step once after an R2 503, then goes on (verification 3)", async () => {
+    const inner = storage;
+    let failures = 1;
+    storage = {
+      ...inner,
+      async getFile(key, path, options) {
+        if (failures > 0) {
+          failures -= 1;
+          throw Object.assign(new Error("Service Unavailable"), {
+            name: "ServiceUnavailable",
+            $metadata: { httpStatusCode: 503 },
+          });
+        }
+        return inner.getFile(key, path, options);
+      },
+    };
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    await run(steps);
+    expect(shape(calls).slice(0, 6)).toEqual([
+      "status checking_footage",
+      "start check_footage",
+      "failed",
+      "start check_footage",
+      "done",
+      "status converting",
+    ]);
+    expect(calls[2]?.call === "failed" && calls[2].summary).toMatch(
+      /^check_footage failed, retried/,
+    );
+  });
+
+  it("runs a step that exits non-zero once and fails the pipeline", async () => {
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    await expect(run(steps, { spawnTool: fakeTools({ failFfmpeg: true }) })).rejects.toThrow(
+      /convert exited with 1/,
+    );
+    expect(shape(calls)).toEqual([
+      "status checking_footage",
+      "start check_footage",
+      "done",
+      "status converting",
+      "start convert",
+      "failed",
+    ]);
   });
 });

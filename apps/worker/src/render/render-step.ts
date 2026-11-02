@@ -16,6 +16,7 @@ import {
 import type { Storage } from "@edit-issebya/storage";
 import { editMeasurer } from "../edit-measurer.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
+import type { PipelineStep } from "../pipeline/definition.ts";
 import { runPipeline } from "../pipeline/run-pipeline.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
 import {
@@ -93,6 +94,8 @@ export interface RenderRun {
   ensureInputs?: () => Promise<unknown>;
   // Passed to the default pipeline: records the stored outputs it reuses.
   recordStored?: (key: string, bytes: number) => Promise<void>;
+  // The default pipeline's steps (a spec's step double); default: PIPELINE.
+  pipeline?: readonly PipelineStep[];
   newId?: () => string;
   spawnTool?: SpawnTool;
   env?: NodeJS.ProcessEnv;
@@ -117,6 +120,7 @@ export async function runRender({
   versionId,
   ensureInputs,
   recordStored,
+  pipeline,
   newId = randomUUID,
   spawnTool,
   env = process.env,
@@ -142,6 +146,7 @@ export async function runRender({
         tools,
         spawnTool,
         setReelStatus: false,
+        pipeline,
         recordStored,
       }))
   )();

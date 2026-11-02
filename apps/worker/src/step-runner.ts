@@ -4,6 +4,13 @@ import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import { type Context, type Span, SpanStatusCode, trace } from "@opentelemetry/api";
 import { errorTail } from "./errors.ts";
+import {
+  AiUnavailableError,
+  FootageRefusedError,
+  type ToolExit,
+  causeOf,
+  classifyFailure,
+} from "./failures.ts";
 import { sampleTreeRss } from "./process-tree.ts";
 import type { ClaimedJob } from "./queue.ts";
 import {
@@ -92,15 +99,21 @@ const WRAPPER = 'exec "$0" "$@" 2>&3';
 // sh's codes for a tool it could not find or execute: the report is sh's own.
 const NOT_STARTED = new Set([126, 127]);
 
-// A failed step's measurements and tail, carried to the row write.
+// Exactly one automatic retry, for transient failures only.
+const MAX_ATTEMPTS = 2;
+
+// A failed step's measurements and tail, carried to the row write; a failed
+// tool call's exit (code or signal) and stdout too, for classifyFailure.
 class StepFailure extends Error {
   readonly tail: string;
   readonly measurements: StepMeasurements;
+  readonly exit: ToolExit | undefined;
 
-  constructor(message: string, tail: string, measurements: StepMeasurements) {
+  constructor(message: string, tail: string, measurements: StepMeasurements, exit?: ToolExit) {
     super(message);
     this.tail = tail;
     this.measurements = measurements;
+    this.exit = exit;
   }
 }
 
@@ -118,20 +131,28 @@ function setMeasurementAttributes(span: Span, measurements: StepMeasurements): v
   }
 }
 
-// The row, the span, the summary and the tail, shared by both entry points.
-async function withStep(
+// One attempt of a step: its row, its span, its summary and its tail.
+async function attemptStep(
   ctx: StepContext,
   name: string,
+  attempt: number,
   body: (
     stepContext: Context,
     started: number,
   ) => Promise<{ summary: string; measurements: StepMeasurements }>,
-): Promise<void> {
+): Promise<"done" | "retry"> {
   ctx.signal.throwIfAborted();
   const stepId = await ctx.steps.start(ctx.job, name);
   const span = ctx.telemetry.tracer.startSpan(
     `step ${name}`,
-    { attributes: { "reel.id": ctx.job.reel_id, "job.id": ctx.job.id, "step.name": name } },
+    {
+      attributes: {
+        "reel.id": ctx.job.reel_id,
+        "job.id": ctx.job.id,
+        "step.name": name,
+        "step.attempt": attempt,
+      },
+    },
     ctx.jobContext,
   );
   const started = performance.now();
@@ -140,6 +161,7 @@ async function withStep(
     ctx.signal.throwIfAborted();
     setMeasurementAttributes(span, measurements);
     await ctx.steps.done(stepId, summary, measurements);
+    return "done";
   } catch (error) {
     span.setStatus({ code: SpanStatusCode.ERROR });
     // A lost lease: another worker may hold the job now.
@@ -147,16 +169,59 @@ async function withStep(
     const failure = error instanceof StepFailure ? error : null;
     const measurements = failure?.measurements ?? emptyMeasurements(elapsedMs(started));
     setMeasurementAttributes(span, measurements);
+    const kind = classifyFailure(error);
+    if (kind === "ai_unavailable") {
+      const reason = causeOf(error, AiUnavailableError)?.reason ?? "unavailable";
+      await ctx.steps.waiting(
+        stepId,
+        stepSummary({
+          what: `${name}: waiting for the AI (${reason})`,
+          wallMs: measurements.wall_ms,
+          sizeBytes: null,
+        }),
+        measurements,
+      );
+      throw error;
+    }
+    const retry = kind === "transient" && attempt < MAX_ATTEMPTS;
     await ctx.steps.failed(
       stepId,
-      failure?.tail ?? outputTail(errorTail(error)),
-      stepSummary({ what: `${name} failed`, wallMs: measurements.wall_ms, sizeBytes: null }),
+      failure?.tail ?? ownTail(error),
+      stepSummary({
+        what: retry ? `${name} failed, retried` : `${name} failed`,
+        wallMs: measurements.wall_ms,
+        sizeBytes: null,
+      }),
       measurements,
     );
-    throw error;
+    if (!retry) throw error;
+    const first = (error instanceof Error ? error.message : String(error)).split("\n")[0];
+    console.log(`step ${name}: transient failure, retrying once: ${first}`);
+    return "retry";
   } finally {
     span.end();
   }
+}
+
+// Shared by both entry points. A transient failure (failures.ts) re-runs the
+// step exactly once, each attempt its own row; an unavailable AI leaves a
+// waiting row; anything else, or a second failure, fails the step.
+async function withStep(
+  ctx: StepContext,
+  name: string,
+  body: (
+    stepContext: Context,
+    started: number,
+  ) => Promise<{ summary: string; measurements: StepMeasurements }>,
+): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    if ((await attemptStep(ctx, name, attempt, body)) === "done") return;
+  }
+}
+
+// A refusal's tail is the owner's message alone; anything else its stack's end.
+function ownTail(error: unknown): string {
+  return outputTail(error instanceof FootageRefusedError ? error.message : errorTail(error));
 }
 
 // A step whose outputs are already stored (a cache hit): one `skipped` row
@@ -366,7 +431,11 @@ export function runToolsStep(
       const tail = outputTail(run.output);
       const how = run.code ?? run.exitSignal ?? "unknown";
       // Measured here: the wall time ends at the failing call.
-      throw new StepFailure(`${spec.name} exited with ${how}\n${tail}`, tail, await measure());
+      throw new StepFailure(`${spec.name} exited with ${how}\n${tail}`, tail, await measure(), {
+        code: run.code,
+        signal: run.exitSignal,
+        stdout: run.stdout,
+      });
     };
 
     let what: string;
@@ -377,10 +446,10 @@ export function runToolsStep(
       if (error instanceof StepFailure || ctx.signal.aborted) throw error;
       // A failure between calls (a download, a parse) keeps what was measured;
       // a StepError brings its own tail (its reasons) and AI usage.
-      const own = error instanceof StepError ? error : null;
+      const own = error instanceof StepError || error instanceof AiUnavailableError ? error : null;
       const failure = new StepFailure(
         error instanceof Error ? error.message : String(error),
-        own ? outputTail(own.tail) : outputTail(errorTail(error)),
+        own instanceof StepError ? outputTail(own.tail) : ownTail(error),
         { ...(await measure()), ...(own?.ai ? aiMeasurements(own.ai) : {}) },
       );
       failure.cause = error;

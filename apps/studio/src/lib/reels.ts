@@ -2,12 +2,13 @@
 // never reaches the page by accident.
 export const REEL_COLUMNS = "id, status, source_name, created_at";
 export const REEL_DETAIL_COLUMNS =
-  "id, status, source_name, source_bytes, created_at, updated_at, current_version_id, preview_copies";
+  "id, status, source_name, source_bytes, created_at, updated_at, current_version_id, preview_copies, refusal_message";
 
 export const REEL_STATUSES = [
   "uploading",
   "uploaded",
   "received",
+  "checking_footage",
   "converting",
   "transcribing",
   "retiming",
@@ -16,6 +17,7 @@ export const REEL_STATUSES = [
   "making_previews",
   "processed",
   "failed",
+  "refused",
 ] as const;
 export type ReelStatus = (typeof REEL_STATUSES)[number];
 
@@ -32,6 +34,8 @@ export interface ReelDetail extends ReelSummary {
   current_version_id: string | null;
   // Where the preview copies are (worker-written; see lib/preview-sources).
   preview_copies: unknown;
+  // Why the footage check refused the clip; set only on a `refused` reel.
+  refusal_message: string | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

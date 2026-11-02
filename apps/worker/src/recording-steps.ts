@@ -17,7 +17,8 @@ export type StepCall =
       tail: string;
       summary: string;
       measurements: StepMeasurements;
-    };
+    }
+  | { call: "waiting"; stepId: string; summary: string; measurements: StepMeasurements };
 
 export function recordingSteps(sourceKey: string | null = null) {
   const calls: StepCall[] = [];
@@ -43,6 +44,9 @@ export function recordingSteps(sourceKey: string | null = null) {
     async failed(stepId, tail, summary, measurements) {
       calls.push({ call: "failed", stepId, tail, summary, measurements });
     },
+    async waiting(stepId, summary, measurements) {
+      calls.push({ call: "waiting", stepId, summary, measurements });
+    },
   };
   return { steps, calls };
 }
@@ -56,6 +60,9 @@ export const TEST_JOB: ClaimedJob = {
   request: null,
   restore_version_id: null,
   version_id: null,
+  retry_of_job_id: null,
+  waiting_reason: null,
+  not_before: null,
 };
 
 export function stepContext(

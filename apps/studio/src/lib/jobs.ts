@@ -1,7 +1,7 @@
 // Named columns, never "*", and no lease column: the page shows what a job
 // did, not which worker holds it.
 export const JOB_COLUMNS =
-  "id, reel_id, kind, request, restore_version_id, version_id, status, attempts, error_tail, created_at, started_at, finished_at";
+  "id, reel_id, kind, request, restore_version_id, version_id, retry_of_job_id, status, waiting_reason, not_before, attempts, error_tail, created_at, started_at, finished_at";
 export const STEP_COLUMNS =
   "id, job_id, reel_id, name, status, summary, error_tail, started_at, finished_at";
 
@@ -10,10 +10,10 @@ export const STEP_COLUMNS =
 export const JOB_KINDS = ["process", "change", "restore", "render"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
-export const JOB_STATUSES = ["queued", "running", "done", "failed"] as const;
+export const JOB_STATUSES = ["queued", "running", "waiting_ai", "done", "failed"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
-export const STEP_STATUSES = ["running", "done", "failed", "skipped"] as const;
+export const STEP_STATUSES = ["running", "done", "failed", "skipped", "waiting_ai"] as const;
 export type StepStatus = (typeof STEP_STATUSES)[number];
 
 export interface JobRow {
@@ -26,7 +26,12 @@ export interface JobRow {
   restore_version_id: string | null;
   // The version a render job exports; null for the other kinds.
   version_id: string | null;
+  // The failed job this one retries (the Retry button); null otherwise.
+  retry_of_job_id: string | null;
   status: JobStatus;
+  // Set only while the job waits for the AI: why, and the time of its next try.
+  waiting_reason: string | null;
+  not_before: string | null;
   attempts: number;
   error_tail: string | null;
   created_at: string;
@@ -44,6 +49,11 @@ export interface StepRow {
   error_tail: string | null;
   started_at: string;
   finished_at: string | null;
+}
+
+// Queued, running or waiting for the AI: the job has not ended yet.
+export function isUnfinished(job: Pick<JobRow, "status">): boolean {
+  return job.status === "queued" || job.status === "running" || job.status === "waiting_ai";
 }
 
 // Replaces the row with the same id or adds it, then orders by `order`

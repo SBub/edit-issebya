@@ -125,6 +125,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   // Every step's outputs were already stored: each is a hit, nothing ran.
   await expect(page.getByTestId("step-line")).toHaveText(
     [
+      "check_footage: footage checked, reused",
       "convert: footage converted, reused",
       "transcribe: transcribed, reused",
       "retime: retimed, reused",
@@ -153,6 +154,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     bytes_out: null,
   });
   expect(steps).toEqual([
+    hit("check_footage"),
     hit("convert"),
     hit("transcribe"),
     hit("retime"),

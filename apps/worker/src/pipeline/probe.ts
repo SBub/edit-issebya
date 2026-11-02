@@ -18,7 +18,7 @@ export function probeArgs(path: string): string[] {
   return ["-v", "error", "-print_format", "json", "-show_streams", "-show_format", path];
 }
 
-interface RawStream {
+export interface RawStream {
   codec_type?: string;
   codec_name?: string;
   width?: number;
@@ -29,6 +29,11 @@ interface RawStream {
   color_primaries?: string;
   color_space?: string;
   sample_rate?: string;
+  // Rotation metadata: the legacy tag and the display matrix side data.
+  tags?: { rotate?: string };
+  side_data_list?: { side_data_type?: string; rotation?: number }[];
+  // A cover image inside an audio or video file is a video stream too.
+  disposition?: { attached_pic?: number };
 }
 
 // The first video and audio streams of ffprobe's JSON. A file without video or

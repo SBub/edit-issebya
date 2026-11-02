@@ -57,9 +57,15 @@ beforeAll(async () => {
   }
   owner = await createTestUser(admin, "jobs");
   ownerClient = (await signedInClient(admin, owner.email)).client;
+  // Two reels: one reel's jobs run one at a time, in order (job-order.test.ts).
   const reel = await insertReel(admin, { ownerId: owner.id, name: "jobs.mov", status: "uploaded" });
+  const other = await insertReel(admin, {
+    ownerId: owner.id,
+    name: "jobs-2.mov",
+    status: "uploaded",
+  });
   olderJob = await insertJob(reel, new Date(Date.now() - 120_000).toISOString());
-  newerJob = await insertJob(reel, new Date(Date.now() - 60_000).toISOString());
+  newerJob = await insertJob(other, new Date(Date.now() - 60_000).toISOString());
 });
 
 afterAll(async () => {

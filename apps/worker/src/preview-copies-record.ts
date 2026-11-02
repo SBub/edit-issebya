@@ -1,6 +1,7 @@
 import type { EditRef } from "@edit-issebya/edit";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { FOOTAGE_PREVIEW_FILE, SUBJECT_PREVIEW_FILE } from "./pipeline/preview-copies.ts";
+import { dbFailure } from "./failures.ts";
 
 const STEP = "preview_copies";
 
@@ -30,6 +31,9 @@ export async function recordPreviewCopies(
   reelId: string,
   refs: PreviewCopiesRefs,
 ): Promise<void> {
-  const { error } = await db.from("reels").update({ preview_copies: refs }).eq("id", reelId);
-  if (error) throw new Error(`preview copies not recorded: ${error.message}`);
+  const { error, status } = await db
+    .from("reels")
+    .update({ preview_copies: refs })
+    .eq("id", reelId);
+  if (error) throw dbFailure("preview copies not recorded", { error, status });
 }
