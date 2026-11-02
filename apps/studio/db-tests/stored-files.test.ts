@@ -31,6 +31,7 @@ const STORED_FILE_COLUMNS = [
   ["r2_key", "text"],
   ["reel_id", "uuid"],
   ["step", "text"],
+  ["updated_at", "timestamp with time zone"],
 ];
 
 const WORKER_STATUS_COLUMNS = [

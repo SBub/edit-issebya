@@ -8,6 +8,6 @@ export default defineConfig({
   test: {
     // Database-free: the pre-push `yarn test` never needs the local stack.
     // The DB integration tests have their own config (vitest.db.config.ts).
-    include: ["src/**/*.test.ts", "test-support/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "test-support/**/*.test.ts", "scripts/**/*.test.ts"],
   },
 });

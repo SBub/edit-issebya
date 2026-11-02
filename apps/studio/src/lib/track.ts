@@ -1,18 +1,8 @@
 import posthog from "posthog-js";
 import { STUDIO_SUPER_PROPERTIES } from "./analytics";
+import type { StudioEvent } from "./studio-events";
 
-// Every studio event; names are never renamed once shipped. All are sent:
-// studio_footage_uploaded, studio_preview_opened, studio_change_requested
-// (reel_id only, never the request text), studio_export_requested and
-// studio_export_downloaded (ExportPanel, reel_id only).
-export const STUDIO_EVENTS = [
-  "studio_footage_uploaded",
-  "studio_preview_opened",
-  "studio_change_requested",
-  "studio_export_requested",
-  "studio_export_downloaded",
-] as const;
-export type StudioEvent = (typeof STUDIO_EVENTS)[number];
+// The event names live in ./studio-events (dependency-free); never renamed.
 
 export interface CapturedEvent {
   event: string;

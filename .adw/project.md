@@ -155,7 +155,9 @@ as in Build; and last the E2E suites `yarn test:e2e`.
 The unit layer is `apps/web/src/**/*.test.ts` for pure helpers in `apps/web/src/lib/`, and
 `apps/studio/src/**/*.test.ts` and `apps/studio/test-support/**/*.test.ts` for the studio's helpers
 and the local-URL guard (plus `apps/studio/test-support/migration-versions.test.ts`, the migration version
-guard over `supabase/migrations/`), `apps/worker/src/**/*.test.ts` for the worker's modules (the step
+guard over `supabase/migrations/`), `apps/studio/scripts/**/*.test.ts` for the PostHog dashboard script
+(`scripts/posthog-dashboard/`: the dry-run payload snapshot and `--apply`'s idempotency against a fake
+HTTP client, no network), `apps/worker/src/**/*.test.ts` for the worker's modules (the step
 runner's tests spawn real child processes under `/usr/bin/time`, BSD on macOS, GNU on Linux) and
 `packages/storage/src/**/*.test.ts` for the storage package, `packages/edit/src/**/*.test.ts` for the
 edit package (its `node` Vitest project). `packages/edit/src/**/*.browser.test.ts` is a browser
@@ -169,7 +171,10 @@ immutability and its RLS, `steps-measurements.test.ts` for the exact
 `claim_job`'s order (one job per reel at a time, oldest first, `not_before` skipped until due),
 `retry-jobs.test.ts` for the Retry insert policy through `is_retry_of_failed_job`, and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit` (the reel's `footage_seconds` column comes from the progress migration and is written once by the worker after `retime`, unit-tested in `apps/worker/src/pipeline/run-pipeline.test.ts`, no DB test), `exports.test.ts` for
 the render job policy and the `exports` table: 24-hour expiry, owner from the reel, never updated,
-owner-only select, `stored-files.test.ts` for the `stored_files` and `worker_status` tables (`heartbeat_at` included, and a heartbeat upsert leaving `waiting_reason`), their RLS,
+owner-only select, `sync-columns.test.ts` for the `updated_at` column and `<table>_set_updated_at` trigger on
+every table PostHog syncs (`reels`, `jobs`, `steps`, `versions`, `exports`, `stored_files`),
+`dashboard-queries.test.ts` for the dashboard queries' columns and events against the real schema and
+their Postgres rendering's numbers on seeded rows (one rolled-back transaction), `stored-files.test.ts` for the `stored_files` and `worker_status` tables (`heartbeat_at` included, and a heartbeat upsert leaving `waiting_reason`), their RLS,
 `record_stored_file`, the seven-day slimming and export expiry with a fixed clock and `finish_upload`'s source row), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
 layer; the browser layer is the Playwright suites below.
 
@@ -261,6 +266,9 @@ on every pull request and push to `develop` and `master`.
   `R2_WORKER_SECRET_ACCESS_KEY`) never appear in `apps/web` or in `apps/studio`'s app code
   (`src/`); only `apps/worker` and the test helpers under `apps/studio/test-support/` read them.
 - Never start the worker (`worker`, `worker:prod`) in a run; only a spec spawns its `once`.
+- Never run `yarn workspace @edit-issebya/studio posthog:dashboard --apply` (it writes to the real
+  PostHog project); only the owner runs it from their shell. The dry run (no argument or `--dry-run`)
+  needs no variable and may run anywhere.
 - Never touch `fixtures/footage/short-person.mp4`.
 - Never pass `--no-verify`; never weaken a rule, a type or a test to make a check pass.
 - Never kill a process this run did not start; never change a port through `package.json`,

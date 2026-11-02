@@ -1,0 +1,20 @@
+import { type SqlInsight } from "./common.ts";
+
+export const failedSteps: SqlInsight = {
+  kind: "sql",
+  key: "failed-steps",
+  name: "Studio: failed steps, by step and week",
+  description:
+    "By week of the step's start and step name: failed steps over finished ones (done or " +
+    "failed). Running and waiting steps are not finished; skipped ones are cache hits that ran " +
+    "nothing. Source: synced steps table.",
+  display: "ActionsTable",
+  build: (d, t) => `select ${d.weekOf("steps.started_at")} as week, steps.name as step_name,
+  sum(case when steps.status = 'failed' then 1 else 0 end) as failed_steps,
+  count(*) as finished_steps,
+  sum(case when steps.status = 'failed' then 1 else 0 end) * 1.0 / count(*) as failed_share
+from ${t("steps")} as steps
+where steps.status in ('done', 'failed')
+group by ${d.weekOf("steps.started_at")}, steps.name
+order by week, step_name`,
+};
