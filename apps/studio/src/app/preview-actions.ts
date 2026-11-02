@@ -65,14 +65,13 @@ export async function loadPreviewSources(reelId: string): Promise<PreviewSources
   try {
     const sign = (key: string) =>
       storage.signDownload(key, { expiresInSeconds: DOWNLOAD_URL_SECONDS });
-    const [edit, transcript, headTrack, footage, cutout] = await Promise.all([
+    const [edit, transcript, headTrack, footage] = await Promise.all([
       sign(keys.edit),
       sign(keys.transcript),
       sign(keys.headTrack),
       sign(keys.footage),
-      sign(keys.cutout),
     ]);
-    return { status: "ready", versionId, urls: { edit, transcript, headTrack, footage, cutout } };
+    return { status: "ready", versionId, urls: { edit, transcript, headTrack, footage } };
   } catch (error) {
     await reportFailure(serverErrorCapture(), {
       message: "studio: preview not signed",

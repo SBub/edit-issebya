@@ -16,22 +16,22 @@ function escapeAttr(text: string): string {
 }
 
 // The page the player is handed, from the page packages/edit built: each
-// video's file becomes its preview copy's signed URL (and buffers ahead), each
+// footage video's file becomes its preview copy's signed URL (and buffers ahead), each
 // font comes from the edit-assets route, and the sound items' `<audio>` clips
 // are dropped (the studio plays them through Web Audio). Nothing else
 // changes. Throws when the page is not shaped the way the builder writes it.
 export function previewPage(
   html: string,
   assets: readonly BuildAsset[],
-  urls: { footage: string; cutout: string },
+  urls: { footage: string },
   soundIds: readonly string[],
 ): string {
   let lines = html.split("\n");
 
   for (const asset of assets) {
-    if (asset.role === "footage" || asset.role === "cutout") {
+    if (asset.role === "footage") {
       const from = ` src="${escapeAttr(asset.path)}"`;
-      const to = ` src="${escapeAttr(urls[asset.role])}" preload="auto"`;
+      const to = ` src="${escapeAttr(urls.footage)}" preload="auto"`;
       let found = false;
       lines = lines.map((line) => {
         if (!line.trimStart().startsWith("<video ") || !line.includes(from)) return line;

@@ -131,8 +131,18 @@ test("the reel opens with the player, the first caption, one open event and the 
 }) => {
   await routeCdn(page);
   const events = await recordEvents(page);
+  const cutoutRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("subject-preview.webm")) cutoutRequests.push(request.url());
+  });
   await openReel(page, baseURL!);
   await expect(player(page)).toBeVisible();
+  // The footage is the composition's only video: no cut-out over it.
+  await expect(composition(page).locator("video")).toHaveCount(1);
+  await expect(composition(page).locator("video")).toHaveAttribute(
+    "src",
+    /\/cache\/preview_copies\/[0-9a-f]{64}\/footage-preview\.mp4/,
+  );
 
   await expect
     .poll(() => eventsNamed(events, "studio_preview_opened"))
@@ -157,22 +167,19 @@ test("the reel opens with the player, the first caption, one open event and the 
     .toBeGreaterThan(0.5);
   // A second look at the page sends no second open event.
   expect(eventsNamed(events, "studio_preview_opened")).toHaveLength(1);
+  expect(cutoutRequests).toEqual([]);
 });
 
-test("the clock waits until both videos can play, on play and after a seek", async ({
+test("the clock waits until the footage can play, on play and after a seek", async ({
   page,
   baseURL,
 }) => {
   await routeCdn(page);
-  let releaseCutout!: () => void;
-  const cutoutGate = new Promise<void>((resolve) => (releaseCutout = resolve));
+  let releaseFirst!: () => void;
+  const firstGate = new Promise<void>((resolve) => (releaseFirst = resolve));
   let releaseFootage!: () => void;
   const footageGate = new Promise<void>((resolve) => (releaseFootage = resolve));
 
-  await page.route("**/cache/preview_copies/*/subject-preview.webm", async (route) => {
-    await cutoutGate;
-    await route.continue();
-  });
   let footageRequests = 0;
   await page.route("**/cache/preview_copies/*/footage-preview.mp4", async (route) => {
     footageRequests += 1;
@@ -181,7 +188,9 @@ test("the clock waits until both videos can play, on play and after a seek", asy
       await route.continue();
       return;
     }
-    // The first three quarters of the file only (about 2.0 s of the 2.69 s
+    // Held until released: nothing of the footage can play before.
+    await firstGate;
+    // Then the first three quarters of the file only (about 2.0 s of the 2.69 s
     // copy): the end of the reel cannot play. Chromium's media reader waits
     // for whole 32 KiB blocks, so a smaller slice of this 44 KB fixture never
     // reaches metadata and the clock could never start.
@@ -209,7 +218,7 @@ test("the clock waits until both videos can play, on play and after a seek", asy
   for (const t of held) expect(Math.abs(t)).toBeLessThanOrEqual(0.001);
   await expect(page.getByRole("status").filter({ hasText: /^Loading$/ })).toBeVisible();
 
-  releaseCutout();
+  releaseFirst();
   await expect.poll(() => playerTime(page), { timeout: 10_000 }).toBeGreaterThan(0.2);
 
   // A seek while playing, to a point past the bytes served.

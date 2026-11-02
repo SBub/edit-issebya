@@ -10,7 +10,7 @@ export interface RenderProject {
   html: string;
   assets: BuildAsset[];
   // The full-size pipeline outputs, already on disk.
-  files: { footage: string; cutout: string };
+  files: { footage: string };
 }
 
 // A relative path with no `..` segment: it stays inside the project.
@@ -36,8 +36,7 @@ function editAsset(path: string): string {
 }
 
 // The temporary HyperFrames project a render reads: `index.html` and every
-// asset the page names at its own path (footage and cut-out from the given
-// files, fonts and sounds from packages/edit). Returns every file written, the
+// asset the page names at its own path (the footage from the given file, fonts and sounds from packages/edit). Returns every file written, the
 // render step's inputs.
 export async function writeRenderProject({
   dir,
@@ -53,12 +52,7 @@ export async function writeRenderProject({
   const written = [page];
   for (const asset of assets) {
     const to = join(dir, assertProjectPath(asset.path));
-    const from =
-      asset.role === "footage"
-        ? files.footage
-        : asset.role === "cutout"
-          ? files.cutout
-          : editAsset(asset.path);
+    const from = asset.role === "footage" ? files.footage : editAsset(asset.path);
     await place(from, to);
     written.push(to);
   }

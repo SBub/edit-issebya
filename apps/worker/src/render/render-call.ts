@@ -5,8 +5,8 @@ import type { ToolCall } from "../step-runner.ts";
 import { type ToolPaths, hyperframesEnv } from "../pipeline/tools.ts";
 
 // The export's render settings. The platforms recompress every upload, so a
-// cleaner source (`delivery` quality) keeps text edges and the cut-out's
-// outline sharper after their pass. Software mode with three workers is faster
+// cleaner source (`delivery` quality) keeps text edges sharper after their
+// pass. Software mode with three workers is faster
 // on the worker's machine than the GPU mode with one, and runs the same on a
 // machine without a graphics chip: never `--gpu`, never `--browser-gpu`.
 // `--sdr`: always SDR output, what the platforms show (convert already made

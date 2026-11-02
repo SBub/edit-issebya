@@ -20,12 +20,10 @@ function edit(tracks: Partial<Edit["tracks"]>): Edit {
     inputs: {
       footage: { step: "retime", fingerprint: "f", file: "source.mp4" },
       transcript: { step: "retime", fingerprint: "f", file: "transcript.json" },
-      cutout: { step: "remove_background", fingerprint: "r", file: "subject.webm" },
       head_track: { step: "head_track", fingerprint: "h", file: "head-track.json" },
     },
     tracks: {
       footage: [],
-      cutout: [],
       captions: [],
       overlays: [],
       transitions: [],

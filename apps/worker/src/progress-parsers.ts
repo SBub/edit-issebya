@@ -1,8 +1,8 @@
 // Reads a long step's progress from its tool's own output, one line at a time.
 // HyperFrames 0.8.222's `hyperframes render`, with stdout not a terminal,
 // prints one `@hf-progress {...,"pct":N}` line per progress report; the
-// worker's own remove-background entry prints the same line shape for each
-// frame. Every other line, and a line whose JSON does not parse, gives null.
+// worker's own person mask entry (head_track) prints the same line shape for
+// each frame. Every other line, and a line whose JSON does not parse, gives null.
 export type ProgressParser = (line: string) => number | null;
 
 const PREFIX = "@hf-progress ";
@@ -23,4 +23,4 @@ const hfProgress: ProgressParser = (line) => {
 
 // Each step names its own parser, so either can follow its tool later.
 export const parseRenderProgress: ProgressParser = hfProgress;
-export const parseRemoveBackgroundProgress: ProgressParser = hfProgress;
+export const parsePersonMaskProgress: ProgressParser = hfProgress;

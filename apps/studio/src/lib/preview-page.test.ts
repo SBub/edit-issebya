@@ -8,10 +8,7 @@ const FONTS: BuildAsset[] = [
   { path: "assets/fonts/GolosText-Bold.ttf", role: "font", ref: null },
   { path: "assets/fonts/Raleway-Light.ttf", role: "font", ref: null },
 ];
-const CLIPS: BuildAsset[] = [
-  { path: "source.mp4", role: "footage", ref: null },
-  { path: "subject.webm", role: "cutout", ref: null },
-];
+const CLIPS: BuildAsset[] = [{ path: "source.mp4", role: "footage", ref: null }];
 const SOUND: BuildAsset = {
   path: "assets/sounds/mouse-click-trimmed.wav",
   role: "sound",
@@ -19,7 +16,6 @@ const SOUND: BuildAsset = {
 };
 const URLS = {
   footage: "https://r2.example/dev/cache/preview_copies/f/footage-preview.mp4?X-Amz-A=1&X-Amz-B=2",
-  cutout: "/studio/api/e2e-storage-mock/dev/cache/preview_copies/f/subject-preview.webm",
 };
 
 let baseline: string;
@@ -43,15 +39,19 @@ function untouched(lines: string[]): string[] {
 }
 
 describe("previewPage", () => {
-  it("swaps the clips for the preview URLs and buffers them ahead", () => {
+  it("swaps the footage for its preview URL and buffers it ahead", () => {
     const page = previewPage(baseline, [...CLIPS, ...FONTS], URLS, []);
     expect(page).not.toContain('"source.mp4"');
-    expect(page).not.toContain('"subject.webm"');
     expect(page).toContain(
       ' src="https://r2.example/dev/cache/preview_copies/f/footage-preview.mp4?X-Amz-A=1&amp;X-Amz-B=2" preload="auto"',
     );
-    expect(page).toContain(` src="${URLS.cutout}" preload="auto"`);
-    expect(page.match(/preload="auto"/g)).toHaveLength(2);
+    expect(page.match(/preload="auto"/g)).toHaveLength(1);
+  });
+
+  it("plays one video for a page built from a stored version naming a cut-out", () => {
+    const page = previewPage(hand, [...CLIPS, ...FONTS, SOUND], URLS, ["s-fund-life"]);
+    expect(page.match(/<video /g)).toHaveLength(1);
+    expect(page).not.toContain("subject");
   });
 
   it("loads the fonts from the edit-assets route", () => {

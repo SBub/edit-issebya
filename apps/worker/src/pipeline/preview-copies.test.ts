@@ -1,10 +1,9 @@
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { PREVIEW_SETTINGS, footagePreviewArgs, subjectPreviewArgs } from "./preview-copies.ts";
-
-function option(args: string[], name: string): string | undefined {
-  const at = args.indexOf(name);
-  return at < 0 ? undefined : args[at + 1];
-}
+import type { ToolCall } from "../step-runner.ts";
+import { PREVIEW_SETTINGS, footagePreviewArgs, previewCopies } from "./preview-copies.ts";
 
 describe("footagePreviewArgs", () => {
   it("encodes a 540x960 H.264 copy with the source's frame timing", () => {
@@ -52,24 +51,37 @@ describe("footagePreviewArgs", () => {
   });
 });
 
-describe("subjectPreviewArgs", () => {
-  const args = subjectPreviewArgs("/in/subject.webm", "/out/s.part.webm", PREVIEW_SETTINGS);
+describe("previewCopies", () => {
+  it("reads the retimed footage only and makes the footage copy only", async () => {
+    expect(previewCopies.version).toBe(2);
+    expect(previewCopies.outputs).toEqual([{ file: "footage-preview.mp4", retention: "kept" }]);
+    expect(
+      previewCopies.inputs({ etag: "e", bytes: 1 }, { retime: "fp" }).map((input) => input.ref),
+    ).toEqual([{ step: "retime", fingerprint: "fp", file: "source.mp4" }]);
+    expect(PREVIEW_SETTINGS).not.toHaveProperty("subject");
 
-  it("keeps the alpha: libvpx-vp9 decoder before -i, yuva420p, no alt-ref, alpha_mode", () => {
-    expect(args.slice(4, 8)).toEqual(["-c:v", "libvpx-vp9", "-i", "/in/subject.webm"]);
-    expect(option(args, "-pix_fmt")).toBe("yuva420p");
-    expect(option(args, "-auto-alt-ref")).toBe("0");
-    expect(option(args, "-metadata:s:v:0")).toBe("alpha_mode=1");
-    expect(args.at(-1)).toBe("/out/s.part.webm");
-  });
-
-  it("is the same size as the footage copy, with the GOP from the settings", () => {
-    expect(option(args, "-vf")).toBe(["scale=540:960", "format=yuva420p"].join(","));
-    expect(option(args, "-g")).toBe(
-      String(PREVIEW_SETTINGS.fps * PREVIEW_SETTINGS.keyframeSeconds),
-    );
-    expect(option(args, "-fps_mode")).toBe("passthrough");
-    expect(args.lastIndexOf("-c:v")).toBeGreaterThan(args.indexOf("-i"));
-    expect(args[args.lastIndexOf("-c:v") + 1]).toBe("libvpx-vp9");
+    const dir = await mkdtemp(join(tmpdir(), "preview-copies-"));
+    try {
+      const calls: ToolCall[] = [];
+      await previewCopies.run({
+        tool: async (call) => {
+          calls.push(call);
+          // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+          await writeFile(call.args.at(-1)!, "copy");
+          return "";
+        },
+        tools: { ffmpeg: "ffmpeg", ffprobe: "ffprobe", hyperframes: ["/node", "/hf.mjs"] },
+        dir,
+        files: { "source.mp4": "/in/source.mp4" },
+        settings: PREVIEW_SETTINGS,
+        signal: new AbortController().signal,
+      });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.file).toBe("ffmpeg");
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+      expect((await readdir(dir)).sort()).toEqual(["footage-preview.mp4"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

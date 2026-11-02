@@ -8,10 +8,11 @@ import type { Edit, EditRef } from "./schema.ts";
 import { resolveSpans, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
-export type AssetRole = "footage" | "cutout" | "font" | "sound";
+export type AssetRole = "footage" | "font" | "sound";
 
-// A file the page references: footage and cut-out are pipeline outputs (by
-// producer), fonts and sounds are packages/edit's assets.
+// A file the page references: the footage is a pipeline output (by producer),
+// fonts and sounds are packages/edit's assets. A stored version naming a
+// cut-out builds without it: no cut-out video, no cut-out asset.
 export interface BuildAsset {
   path: string;
   role: AssetRole;
@@ -69,24 +70,19 @@ export function build(
   ];
 
   const body: string[] = [];
-  const clip = (
-    kind: "footage" | "cutout",
-    item: Edit["tracks"]["footage"][number],
-    track: number,
-  ) => {
+  const clip = (item: Edit["tracks"]["footage"][number], track: number) => {
     const { start, end } = span(item.id);
-    const src = edit.inputs[kind].file;
+    const src = edit.inputs.footage.file;
     body.push(
       `      <video${attrs([
         ["id", item.id],
         ["class", "clip full"],
         ["src", src],
-        ...(kind === "cutout" ? ([["muted", null]] as const) : []),
         ["playsinline", null],
         ["data-start", sec(start)],
         ["data-duration", sec(end - start)],
         ["data-track-index", String(track)],
-        ...(kind === "footage" ? ([["data-has-audio", "true"]] as const) : []),
+        ["data-has-audio", "true"],
         ...(item.style ? ([["style", inlineStyle(item.style)]] as const) : []),
       ])}></video>`,
     );
@@ -95,8 +91,7 @@ export function build(
       js.push(`tl.set(${selector(item.id)}, { opacity: 1 }, ${num(hidden.end)});`);
     }
   };
-  for (const item of tracks.footage) clip("footage", item, 1);
-  for (const item of tracks.cutout) clip("cutout", item, 30);
+  for (const item of tracks.footage) clip(item, 1);
 
   for (const [index, item] of tracks.transitions.entries()) {
     const kind = preset.transitions[item.type];
@@ -134,14 +129,6 @@ export function build(
         `tl.fromTo(${id}, { y: ${height} }, { y: 0, duration: ${num(kind.seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
         `tl.to(${id}, { y: ${height}, duration: ${num(kind.seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
       );
-    }
-    if (kind.hidesCutout) {
-      for (const cutout of tracks.cutout) {
-        js.push(
-          `tl.to(${selector(cutout.id)}, { opacity: 0, duration: ${num(kind.seconds)} }, ${num(start)});`,
-          `tl.to(${selector(cutout.id)}, { opacity: 1, duration: ${num(kind.seconds)} }, ${num(out)});`,
-        );
-      }
     }
   }
 
@@ -246,9 +233,6 @@ function assetsOf(edit: Edit, preset: Preset): BuildAsset[] {
   const assets: BuildAsset[] = [];
   if (edit.tracks.footage.length > 0) {
     assets.push({ path: edit.inputs.footage.file, role: "footage", ref: edit.inputs.footage });
-  }
-  if (edit.tracks.cutout.length > 0) {
-    assets.push({ path: edit.inputs.cutout.file, role: "cutout", ref: edit.inputs.cutout });
   }
   for (const key of FONT_KEYS)
     assets.push({ path: preset.fonts[key].file, role: "font", ref: null });

@@ -40,7 +40,6 @@ export type PipelineReelStatus =
   | "converting"
   | "transcribing"
   | "retiming"
-  | "removing_background"
   | "tracking_head"
   | "making_previews";
 

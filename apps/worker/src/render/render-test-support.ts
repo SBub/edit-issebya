@@ -44,11 +44,6 @@ export async function fixtureEdit(): Promise<{
   const inputs: EditInputs = {
     footage: { step: "retime", fingerprint: fp("retime"), file: "source.mp4" },
     transcript: { step: "retime", fingerprint: fp("retime"), file: "transcript.json" },
-    cutout: {
-      step: "remove_background",
-      fingerprint: fp("remove_background"),
-      file: "subject.webm",
-    },
     head_track: { step: "head_track", fingerprint: fp("head_track"), file: "head-track.json" },
   };
   const transcript = transcriptSchema.parse(await json("retime", "transcript.json"));

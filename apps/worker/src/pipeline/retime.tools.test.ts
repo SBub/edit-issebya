@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fakeStorage } from "@edit-issebya/storage";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
-import { fingerprintsFor } from "./definition.ts";
+import { PIPELINE, fingerprintsFor } from "./definition.ts";
 import { cacheKey } from "./fingerprint.ts";
 import { parseProbe, probeArgs } from "./probe.ts";
 import type { RetimePlan } from "./retime-plan.ts";
@@ -38,7 +38,7 @@ describe("the whole pipeline with the real tools", () => {
       scratchDir: scratch,
       tools: REAL_TOOLS,
     });
-    expect(calls.filter((call) => call.call === "done")).toHaveLength(6);
+    expect(calls.filter((call) => call.call === "done")).toHaveLength(PIPELINE.length);
 
     const head = await storage.head(SOURCE_KEY);
     const fp = fingerprintsFor({ etag: head!.etag!, bytes: head!.bytes });

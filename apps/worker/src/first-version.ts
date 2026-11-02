@@ -38,11 +38,6 @@ function firstVersionInputs(fingerprints: Record<string, string>): EditInputs {
   return {
     footage: { step: "retime", fingerprint: fp("retime"), file: "source.mp4" },
     transcript: { step: "retime", fingerprint: fp("retime"), file: "transcript.json" },
-    cutout: {
-      step: "remove_background",
-      fingerprint: fp("remove_background"),
-      file: "subject.webm",
-    },
     head_track: { step: "head_track", fingerprint: fp("head_track"), file: "head-track.json" },
   };
 }
@@ -74,7 +69,7 @@ export async function saveFirstVersion({
     name: STEP,
     async work() {
       const inputs = firstVersionInputs(fingerprints);
-      const read = async (ref: EditInputs[keyof EditInputs]) => {
+      const read = async (ref: EditInputs["footage"]) => {
         const key = cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file);
         const bytes = await storage.get(key);
         if (!bytes) throw new Error(`${STEP}: input missing: ${key}`);

@@ -4,8 +4,9 @@
 // Fewer than three earlier rows: no estimate yet.
 const ESTIMATE_MIN_ROWS = 3;
 export const ESTIMATE_LAST_ROWS = 10;
-// The only steps that write progress.
-export const PROGRESS_STEPS = ["remove_background", "render"] as const;
+// The only steps that write progress: head tracking (its person mask, frame
+// by frame) and the render. An old reel's remove_background rows show none.
+export const PROGRESS_STEPS = ["head_track", "render"] as const;
 
 export function isProgressStep(name: string): boolean {
   return (PROGRESS_STEPS as readonly string[]).includes(name);

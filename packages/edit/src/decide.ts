@@ -13,7 +13,10 @@ import type { Transcript } from "./transcript.ts";
 // `{ reel: "start" }`.
 export function decideAnswerSchemaFor(preset: Preset, transcript: Transcript, duration: number) {
   return z.object({
-    tracks: tracksSchemaFor(preset, transcript, { duration, bounds: preset.safe }),
+    // No cut-out track: the pipeline makes no cut-out until #20 brings it back.
+    tracks: tracksSchemaFor(preset, transcript, { duration, bounds: preset.safe }).omit({
+      cutout: true,
+    }),
     change_summary: z.string().min(1).max(300),
     unexpressed: z.array(z.string().min(1).max(300)).max(20),
     free_field: z
@@ -64,12 +67,15 @@ export function editFromAnswer(
   preset: Preset,
   transcript: Transcript,
 ): { ok: true; edit: Edit } | { ok: false; reasons: string[] } {
+  // Only the answer's own tracks: a cut-out track it carries anyway is dropped.
+  const { footage, captions, overlays, transitions, sounds } = answer.tracks;
+  const tracks = { footage, captions, overlays, transitions, sounds };
   const json = {
     format: 1,
     preset: preset.id,
     duration: current.duration,
     inputs: current.inputs,
-    tracks: answer.tracks,
+    tracks,
   };
   return parseEdit(json, preset, transcript, { duration: current.duration, bounds: preset.safe });
 }
@@ -100,7 +106,7 @@ export function usedFreeField(edit: Edit): boolean {
   const { tracks } = edit;
   return [
     ...tracks.footage,
-    ...tracks.cutout,
+    ...(tracks.cutout ?? []),
     ...tracks.captions,
     ...tracks.overlays,
     ...tracks.transitions,

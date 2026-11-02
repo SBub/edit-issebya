@@ -15,7 +15,6 @@ function fp(name: string): string {
 const INPUTS: EditInputs = {
   footage: { step: "retime", fingerprint: fp("retime"), file: "source.mp4" },
   transcript: { step: "retime", fingerprint: fp("retime"), file: "transcript.json" },
-  cutout: { step: "remove_background", fingerprint: fp("remove_background"), file: "subject.webm" },
   head_track: { step: "head_track", fingerprint: fp("head_track"), file: "head-track.json" },
 };
 
@@ -25,11 +24,12 @@ const COPIES = {
     fingerprint: fp("preview_copies"),
     file: "footage-preview.mp4",
   },
-  cutout: {
-    step: "preview_copies",
-    fingerprint: fp("preview_copies"),
-    file: "subject-preview.webm",
-  },
+};
+
+// An old reel's column, written while the pipeline still made a cut-out.
+const OLD_COPIES = {
+  ...COPIES,
+  cutout: { step: "preview_copies", fingerprint: "a".repeat(64), file: "subject-preview.webm" },
 };
 
 function key(prefix: string): string {
@@ -55,15 +55,20 @@ describe("cachePrefixOf", () => {
 });
 
 describe("parsePreviewCopies", () => {
-  it("keeps two refs and nothing else", () => {
+  it("keeps the footage ref and nothing else", () => {
     expect(parsePreviewCopies({ ...COPIES, extra: 1 })).toEqual(COPIES);
+  });
+
+  it("reads an old reel's column naming a cut-out copy as the footage alone", () => {
+    expect(parsePreviewCopies(OLD_COPIES)).toEqual(COPIES);
+    expect(parsePreviewCopies({ ...COPIES, cutout: { step: "x" } })).toEqual(COPIES);
   });
 
   it("refuses anything else", () => {
     expect(parsePreviewCopies(null)).toBeNull();
     expect(parsePreviewCopies("x")).toBeNull();
-    expect(parsePreviewCopies({ footage: COPIES.footage })).toBeNull();
-    expect(parsePreviewCopies({ ...COPIES, cutout: { step: "x" } })).toBeNull();
+    expect(parsePreviewCopies({ cutout: OLD_COPIES.cutout })).toBeNull();
+    expect(parsePreviewCopies({ footage: { step: "x" } })).toBeNull();
   });
 });
 
@@ -82,7 +87,6 @@ describe("previewKeys", () => {
       transcript: `dev/cache/retime/${fp("retime")}/transcript.json`,
       headTrack: `dev/cache/head_track/${fp("head_track")}/head-track.json`,
       footage: `dev/cache/preview_copies/${fp("preview_copies")}/footage-preview.mp4`,
-      cutout: `dev/cache/preview_copies/${fp("preview_copies")}/subject-preview.webm`,
     });
   });
 
@@ -98,7 +102,7 @@ describe("previewKeys", () => {
   });
 
   it("refuses an unexpected step or a file that leaves its folder", () => {
-    const step = { ...COPIES, cutout: { ...COPIES.cutout, step: "retime" } };
+    const step = { footage: { ...COPIES.footage, step: "retime" } };
     expect(previewKeys({ ...args("dev/"), previewCopies: step })).toBeNull();
     const head = { ...INPUTS, head_track: { ...INPUTS.head_track, step: "retime" } };
     expect(previewKeys({ ...args("dev/"), inputs: head })).toBeNull();

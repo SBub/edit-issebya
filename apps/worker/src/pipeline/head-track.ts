@@ -1,4 +1,4 @@
-// The head tracker, pure: one RGBA frame of the cut-out in, one head sample
+// The head tracker, pure: one RGBA frame of the person mask in, one head sample
 // out. A port of the old `head_track.py`: the topmost opaque rows are the
 // head; its width is the median opaque span in a band below the top.
 

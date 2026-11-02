@@ -85,7 +85,7 @@ async function loadPreview(reelId: string): Promise<Outcome> {
   const html = previewPage(
     result.html,
     result.assets,
-    { footage: urls.footage, cutout: urls.cutout },
+    { footage: urls.footage },
     hits.map((hit) => hit.id),
   );
   const files = [...new Set(hits.map((hit) => hit.file))];

@@ -25,7 +25,9 @@ const refSchema = z.object({
 const editInputsSchema = z.object({
   footage: refSchema,
   transcript: refSchema,
-  cutout: refSchema,
+  // Never written since the cut-out left the pipeline (#20 brings it back on
+  // demand); a stored version naming one still parses.
+  cutout: refSchema.optional(),
   head_track: refSchema,
 });
 
@@ -113,7 +115,8 @@ export function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: 
   });
   return z.object({
     footage: z.array(clip),
-    cutout: z.array(clip),
+    // Stored versions may carry it; new ones omit it and the builder ignores it.
+    cutout: z.array(clip).optional(),
     captions: z.array(caption),
     overlays: z.array(overlay),
     transitions: z.array(transition),
@@ -134,7 +137,7 @@ function refineEdit(
   const seen = new Set<string>();
   const items = [
     ...edit.tracks.footage.map((item) => ["footage", item] as const),
-    ...edit.tracks.cutout.map((item) => ["cutout", item] as const),
+    ...(edit.tracks.cutout ?? []).map((item) => ["cutout", item] as const),
     ...edit.tracks.captions.map((item) => ["caption", item] as const),
     ...edit.tracks.overlays.map((item) => ["overlay", item] as const),
     ...edit.tracks.transitions.map((item) => ["transition", item] as const),

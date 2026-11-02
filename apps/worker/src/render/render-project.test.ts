@@ -15,10 +15,7 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const FILES = {
-  footage: fixturePath("retime", "source.mp4"),
-  cutout: fixturePath("remove_background", "subject.webm"),
-};
+const FILES = { footage: fixturePath("retime", "source.mp4") };
 
 describe("writeRenderProject", () => {
   it("writes the page and every asset at the path the page names", async () => {
@@ -35,9 +32,8 @@ describe("writeRenderProject", () => {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder and the committed fixtures
     expect(await readFile(join(dir, "index.html"), "utf8")).toBe(html);
     expect(written).toEqual([join(dir, "index.html"), ...assets.map((a) => join(dir, a.path))]);
-    expect(assets.map((a) => a.role)).toEqual(
-      expect.arrayContaining(["footage", "cutout", "font"]),
-    );
+    expect(assets.map((a) => a.role)).toEqual(expect.arrayContaining(["footage", "font"]));
+    expect(assets.map((a) => a.role)).not.toContain("cutout");
     for (const asset of assets) {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder and the committed fixtures
       const placed = await stat(join(dir, asset.path));

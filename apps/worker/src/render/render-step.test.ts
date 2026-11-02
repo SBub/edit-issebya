@@ -209,8 +209,31 @@ describe("runRender", () => {
     expect(await storage.list(`${PREFIX}exports/`)).toEqual([]);
   });
 
-  it("fails the step naming a missing cut-out and records nothing", async () => {
-    const key = cacheKey(PREFIX, inputs.cutout.step, inputs.cutout.fingerprint, inputs.cutout.file);
+  it("renders a stored version naming a cut-out whose file is not in storage", async () => {
+    const { edit } = await fixtureEdit();
+    const cutout = { step: "remove_background", fingerprint: "gone", file: "subject.webm" };
+    const whole = { start: { reel: "start" as const }, end: { reel: "end" as const } };
+    const old = {
+      ...edit,
+      inputs: { ...edit.inputs, cutout },
+      tracks: { ...edit.tracks, cutout: [{ id: "cutout", ...whole }] },
+    };
+    await storage.put(version.r2_key, editBytes(old));
+    version = { ...version, inputs: { ...inputs, cutout } };
+    const { steps, calls } = recordingSteps();
+    await run(steps);
+    expect(calls.map((call) => call.call)).toEqual(["start", "progress", "done"]);
+    expect(projectHtml).not.toContain("subject.webm");
+    expect(inserted).toHaveLength(1);
+  });
+
+  it("fails the step naming a missing footage file and records nothing", async () => {
+    const key = cacheKey(
+      PREFIX,
+      inputs.footage.step,
+      inputs.footage.fingerprint,
+      inputs.footage.file,
+    );
     await storage.delete(key);
     const { steps, calls } = recordingSteps();
     await expect(run(steps)).rejects.toThrow(/input missing/);
