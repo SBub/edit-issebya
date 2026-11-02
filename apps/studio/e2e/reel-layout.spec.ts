@@ -44,7 +44,7 @@ async function fixtureTranscript() {
 async function currentEdit(): Promise<Edit> {
   const { data, error } = await admin
     .from("reels")
-    .select("current_version:versions!current_version_id(r2_key)")
+    .select("current_version:versions!reels_current_version_fkey(r2_key)")
     .eq("id", reel!.reelId)
     .single<{ current_version: { r2_key: string } }>();
   if (error || !data) throw new Error(`current version not read: ${error?.message}`);
@@ -331,7 +331,19 @@ test("the playhead follows the player's clock", async ({ page, baseURL }) => {
   expect(await playhead.evaluate((el) => (el as HTMLElement).style.transform)).not.toBe(
     startTransform,
   );
-  const paused = await playhead.getAttribute("data-seconds");
+  // The pause reaches the player's frame by message, so a clock tick already
+  // in flight can still land: wait for the playhead to settle, then it stays.
+  let paused: string | null = null;
+  await expect
+    .poll(
+      async () => {
+        const previous = paused;
+        paused = await playhead.getAttribute("data-seconds");
+        return paused === previous;
+      },
+      { intervals: [250], timeout: 5_000 },
+    )
+    .toBe(true);
   await page.waitForTimeout(500);
   expect(await playhead.getAttribute("data-seconds")).toBe(paused);
 });
