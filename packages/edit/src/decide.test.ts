@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
+  decideAnswerSchemaFor,
   decideCounts,
   decideJsonSchema,
   editFromAnswer,
@@ -76,6 +78,24 @@ describe("decideJsonSchema", () => {
       });
       expect(timeMaxima.length).toBeGreaterThan(0);
       for (const max of timeMaxima) expect(max).toBe(fixture.edit.duration);
+    });
+
+    it(`targets draft-07 for ${fixture.name}, with the same constraints as the 2020-12 output`, () => {
+      const duration = fixture.edit.duration;
+      const schema = decideJsonSchema(ISSEBYA_PRESET, fixture.transcript, duration);
+      expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+      expect(JSON.stringify(schema)).not.toContain("2020-12");
+      const draft2020: Json = z.toJSONSchema(
+        decideAnswerSchemaFor(ISSEBYA_PRESET, fixture.transcript, duration),
+        { target: "draft-2020-12", io: "output", reused: "inline" },
+      );
+      expect({ ...schema, $schema: null }).toEqual({ ...draft2020, $schema: null });
+      expect(Object.keys(schema.properties as Json)).toEqual([
+        "tracks",
+        "change_summary",
+        "unexpressed",
+        "free_field",
+      ]);
     });
   }
 });

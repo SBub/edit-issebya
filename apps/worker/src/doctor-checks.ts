@@ -1,4 +1,10 @@
 import { tmpdir } from "node:os";
+import {
+  ISSEBYA_PRESET,
+  type Transcript,
+  decideJsonSchema,
+  parseDecideAnswer,
+} from "@edit-issebya/edit";
 import { type AiRunner, plainTool } from "./ai.ts";
 
 // Each dependency is built inside its own check, so a missing variable fails
@@ -50,12 +56,21 @@ function filterNames(listing: string): Set<string> {
   return names;
 }
 
-const AI_SCHEMA = {
-  type: "object",
-  properties: { ok: { type: "boolean" } },
-  required: ["ok"],
-  additionalProperties: false,
+// A tiny reel for the AI check: the real decide schema is built from it, so
+// the doctor fails on a schema the Claude Code CLI rejects, as the decide step
+// would.
+const AI_SAMPLE_TRANSCRIPT: Transcript = {
+  words: [
+    { id: "w0001", text: "Hello", start: 0, end: 0.4 },
+    { id: "w0002", text: "there", start: 0.4, end: 0.8 },
+  ],
 };
+const AI_SAMPLE_DURATION = 1;
+
+// The decide schema the AI check sends, for the sample reel.
+function doctorAiSchema(): Record<string, unknown> {
+  return decideJsonSchema(ISSEBYA_PRESET, AI_SAMPLE_TRANSCRIPT, AI_SAMPLE_DURATION);
+}
 
 async function check(name: string, run: () => Promise<string | void>): Promise<string> {
   try {
@@ -96,14 +111,19 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
     }),
     await check("ai structured call", async () => {
       const result = await deps.ai().call(plainTool, {
-        prompt: "Reply with ok set to true.",
-        schema: AI_SCHEMA,
+        prompt:
+          'Reply with every track an empty list, change_summary "ok", and unexpressed and free_field empty lists.',
+        schema: doctorAiSchema(),
         cwd: tmpdir(),
       });
       if (result.kind !== "answer") throw new Error(result.reason);
-      if ((result.answer as { ok?: unknown } | null)?.ok !== true) {
-        throw new Error(`unexpected answer ${JSON.stringify(result.answer)}`);
-      }
+      const parsed = parseDecideAnswer(
+        result.answer,
+        ISSEBYA_PRESET,
+        AI_SAMPLE_TRANSCRIPT,
+        AI_SAMPLE_DURATION,
+      );
+      if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
     }),
   ];
   return { lines, exitCode: lines.some((line) => line.startsWith("FAIL")) ? 1 : 0 };

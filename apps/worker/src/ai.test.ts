@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  EMPTY_DECIDE_ANSWER,
   aiRunner,
   aiUnavailableReason,
   fakeAiRunner,
@@ -33,10 +34,10 @@ afterEach(async () => {
 });
 
 describe("aiRunner", () => {
-  it("is the double only for exactly 'true', answering ok without a script", async () => {
+  it("is the double only for exactly 'true', answering an empty decide answer without a script", async () => {
     expect(await aiRunner({ E2E_MOCK_AI: "true" }).call(NEVER, REQUEST)).toMatchObject({
       kind: "answer",
-      answer: { ok: true },
+      answer: EMPTY_DECIDE_ANSWER,
     });
   });
 
