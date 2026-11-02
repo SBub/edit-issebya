@@ -10,6 +10,8 @@ The studio has a dark, editor-like look with the same layout on desktop and phon
 one screen and never scrolls as a page: a large 9:16 preview with its controls and a read-only tracks
 timeline, the correction field pinned under it, and Versions and Status in their own scrolling areas.
 The reels list is a grid of thumbnails with a round **+** button that opens the upload in a dialog.
+The reel page also carries the owner's photo library: a third column on desktop and a fourth tab on a
+phone.
 
 ## How it works
 
@@ -19,13 +21,18 @@ The reels list is a grid of thumbnails with a round **+** button that opens the 
   breakpoint, 1024 px) plus a small tab state. The root is exactly the height it is given; every child
   that can grow is `min-h-0`, and only the list areas scroll inside their own box (no JavaScript
   measures the window). Desktop: header, main column (preview, controls, timeline) with the correction
-  field pinned under it, and a side panel with Versions above Status. Phone: the same header and pinned
-  footer, the middle split into Edit, Versions and Status tabs (WAI-ARIA tabs: arrows, Home and End).
-  The three areas carry `data-testid` `edit-area`, `versions-area` and `status-area`.
+  field pinned under it, a side panel with Versions above Status, and a third column, the photo library
+  (`id="reel-panel-library"`), spanning every row (`lg:grid-cols-[minmax(0,1fr)_20rem_18rem]`, wider
+  at `xl:`), with `min-h-0` on its growing children. Phone: the same header and pinned footer, the
+  middle split into Edit, Versions, Status and Library tabs (WAI-ARIA tabs: arrows, Home and End wrap
+  over the four). The four areas carry `data-testid` `edit-area`, `versions-area`, `status-area` and
+  `library-area`. `ReelScreen` takes the library as its `library` prop.
 - `apps/studio/src/components/LiveReel.tsx`: keeps the Realtime state as before and hands pieces to
   `ReelScreen`: header (back link, reel name, Export), `ReelPreview`, `ChangeRequestForm`,
   `VersionList` and `StatusPanel`. Also holds the shown version (the owner's pick, remembered with the
-  current version it was made for).
+  current version it was made for). It passes the `library` node through to `ReelScreen`;
+  `apps/studio/src/app/reels/[id]/page.tsx` loads the library on the server and renders `PhotoLibrary`
+  into it (details in `app_docs/photo-library.md`).
 - `apps/studio/src/components/StatusPanel.tsx`: the status, jobs and step log that used to sit in
   `LiveReel` (percent and time left, waiting and offline lines, error disclosure, Retry, "Notify me
   when ready", the refusal message). Behaviour is unchanged.
@@ -68,10 +75,13 @@ The reels list is a grid of thumbnails with a round **+** button that opens the 
   only: the key never reaches a client component.
 - `apps/studio/src/app/page.tsx`: signed in, reads the grid columns, signs each thumbnail on the
   server and renders `ThumbnailGrid` (replaces `ReelList`) plus `UploadDialog`.
-- `apps/studio/src/components/ThumbnailGrid.tsx`: generic 9:16 tile grid (3 columns on a phone, up
-  to 8 on wide screens), each tile with a thumbnail or neutral block, title, a meta line (age and
-  size, `1w · 62.2 MB`) and a status badge (`reel-list-status` kept). Nothing reel-specific, so the
-  photo library can reuse it.
+- `apps/studio/src/components/ThumbnailGrid.tsx`: generic tile grid, each tile with a thumbnail or
+  neutral block, title, a meta line (age and size, `1w · 62.2 MB`) and a status badge
+  (`reel-list-status` kept). An item has `href` (a link tile) or `onSelect` (a `<button>` tile). Prop
+  `aspect`: `"portrait"` (default, 9:16) or `"square"`. Prop `columns`: `"page"` (default, 3 columns
+  on a phone, up to 8 on wide screens) or `"panel"` (3 at every width). Nothing reel-specific: the
+  reels use the defaults, and the photo library uses it with `onSelect`, `aspect="square"` and
+  `columns="panel"`.
 - `apps/studio/src/components/UploadDialog.tsx`: the round **+** button and a native `<dialog>` with
   `UploadForm`. The dialog stays in the DOM when closed so an upload in progress is never unmounted.
   The button is disabled (`data-ready="false"`) until the client has hydrated.
@@ -83,8 +93,9 @@ The reels list is a grid of thumbnails with a round **+** button that opens the 
 3. On the reel page, press Play, drag Position, and read the timeline rows against the playhead.
 4. Use Undo and Redo to look at the previous or next saved version; use "Go back to this" in the
    Versions area to make it current.
-5. On a phone, switch between the Edit, Versions and Status tabs. Type a correction in the field
-   pinned at the bottom and press Send; use Export in the header.
+5. On a phone, switch between the Edit, Versions, Status and Library tabs; on desktop the library is
+   the right-hand column. Type a correction in the field pinned at the bottom and press Send; use
+   Export in the header.
 
 ## Configuration
 
@@ -97,11 +108,13 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   `apps/studio/src/lib/`; the worker's `preview-copies.test.ts` and `preview-copies-record.test.ts`.
 - E2E: `apps/studio/e2e/reel-layout.spec.ts` seeds a processed reel with 14 versions and 48 steps and
   checks at 1440x900 and 390x844 that the page never scrolls (Send and Export inside the root box,
-  versions and steps scrolling in their own areas, the phone's three tabs), the timeline items at
+  versions and steps scrolling in their own areas, the phone's four tabs), the timeline items at
   `resolveTimeline`'s times with footage frames from the sprite and nothing focusable, the playhead
   following the clock, and Undo and Redo changing only the shown version. `reels.spec.ts` checks the
   grid (age and size, status, thumbnail, three columns at 390 px, **+** opening the dialog). `preview`,
   `upload`, `multipart-upload` and `footage-refusal` specs were adjusted to the new markup.
+  `photo-library.spec.ts` checks the library column right of `edit-area` at 1440x900 and the Library
+  tab at 390x844, with no page scroll.
 - Measure edge-aligned elements from the root box, not `window.innerWidth` (see `AGENTS.md`).
 
 ## Rules
@@ -125,5 +138,6 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   is in `apps/studio`.
 - Other docs to read with it: `app_docs/studio.md` (its reels-list and `LiveReel` lines predate this
   layout: `ReelList` is replaced by `ThumbnailGrid`, and `LiveReel` delegates the status to
-  `StatusPanel`), `app_docs/preview.md`, `app_docs/change-requests.md`, `app_docs/status.md`.
-- Out of scope: editing from the timeline, the photo library (it will reuse `ThumbnailGrid`).
+  `StatusPanel`), `app_docs/preview.md`, `app_docs/change-requests.md`, `app_docs/status.md`,
+  `app_docs/photo-library.md`.
+- Out of scope: editing from the timeline.

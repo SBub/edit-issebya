@@ -136,6 +136,8 @@ request, restore_version_id, version_id)`.
   failing the job.
 - `waitJob` sets the job `waiting_ai` with `waiting_reason` and `not_before` 15 minutes later
   (`AI_RETRY_MINUTES`), and gives up its lease. The reel's status stays as it is.
+- A `describe_photo` job waits the same way (`waiting_ai`, `not_before` 15 minutes on); its photo
+  stays `describing` until the job is claimed again.
 - `claim_job` skips a `waiting_ai` job until its `not_before`; the claim clears both columns. The
   worker's periodic check also lists `waiting_ai` jobs past their `not_before`.
 - The studio shows `Waiting for the AI: <reason>. Next try at HH:MM.` under the job

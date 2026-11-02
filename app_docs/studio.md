@@ -12,7 +12,9 @@
 `edit.issebya.com/studio` through Next.js multi-zones. The owner signs in with a Supabase magic
 link and sees only their own reels, read under row-level security. The skeleton covers login, a
 reels list, an upload straight to Cloudflare R2, a job queue with a lease, a worker on the owner's
-machine (`apps/worker`) and a reel page that follows the job live through Realtime.
+machine (`apps/worker`) and a reel page that follows the job live through Realtime. Beside the
+reels the studio holds the owner's photo library, each photo described by Claude on upload
+(`app_docs/photo-library.md`).
 
 ## How it works
 
@@ -93,6 +95,15 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   exactly for a render). A third owner insert path, `jobs: owner inserts a render job for own reel`
   (grant on `version_id`). The `exports` table holds each finished render: owner-only `select`,
   written only by the worker, in `supabase_realtime`. See `app_docs/export.md`.
+- `supabase/migrations/20261102191719_photo_library.sql`: table `public.photos` (owner, `r2_key`,
+  `upload_id`, file name, content type, size and dimensions, status `uploading`, `describing`,
+  `ready` or `failed`, description, tags, model, prompt version, `thumbnail_key`, `large_key`;
+  owner-only `select` and a column-limited `insert` of an `uploading` row; in `supabase_realtime`).
+  The sixth job kind, `describe_photo`. `reel_id` is now nullable on `jobs`, `steps` and
+  `stored_files`, each with a `photo_id` beside it (`on delete cascade`) and a check that exactly one
+  is set (`jobs_target_check` also ties `describe_photo` to `photo_id`). Owners never insert a
+  `describe_photo` job directly: `finish_photo_upload` queues it. `claim_job` keeps one job per reel
+  or per photo at a time. See `app_docs/photo-library.md`.
 - `claim_job(p_worker, p_lease_seconds)`: one statement picks the oldest `queued` job, or a
   `running` one whose lease expired, with `for update skip locked`, then takes the lease and counts
   an attempt. Only `service_role` may execute it. It takes one job per reel at a time, in order,
@@ -125,6 +136,8 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   (`step-line`). One Realtime channel listens to `reels`, `jobs` and `steps` for that reel. When the
   subscription reports ready it does one catch-up read and sets `data-realtime="ready"`. No timer,
   no polling.
+- The reel page also carries the photo library (`PhotoLibrary`, its own Realtime channel on
+  `photos`): the third desktop column and the phone's Library tab (`app_docs/studio-reel-layout.md`).
 - `apps/studio/src/lib/jobs.ts`: named column lists (no lease columns), status lists and
   `upsertById`. `apps/studio/src/lib/supabase-browser.ts`: the browser client, created inside the
   component.
@@ -214,7 +227,9 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   (`versions.test.ts`), `stored_files`, `worker_status`, the slimming, export expiry and
   `finish_upload`'s source row (`stored-files.test.ts`), Realtime follows RLS for `reels` and `steps`, and the grants
   (`grants.test.ts`: `service_role`'s four data privileges on every public table, no `anon`
-  privilege on any, no table-wide write for `authenticated`, and default privileges as on hosted).
+  privilege on any, no table-wide write for `authenticated`, and default privileges as on hosted),
+  and the `photos` table (`photos.test.ts`: RLS, insert policy, status and ready checks,
+  `finish_photo_upload`, `delete_photo`, `record_photo_file` and `jobs_target_check`).
   Needs the local stack (in ADW runs, the ADW stack through
   `SUPABASE_DB_URL` and the other hook variables); not in the pre-push hook.
 - E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload`, `multipart-upload`, `disk-guard` specs, chromium, through the
