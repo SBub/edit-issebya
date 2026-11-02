@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { type Storage, isPartNumber, isUploadId } from "@edit-issebya/storage";
+import { type ErrorCapture, reportFailure } from "./error-tracking";
 import { parseUploadRequest, sourceKey } from "./upload";
 
 // The server side of the resumable upload. The browser (Uppy's AwsS3 plugin)
@@ -19,6 +20,13 @@ export type UploadAnswer<T> =
 interface Deps {
   supabase: SupabaseClient | null;
   storage: Storage | null;
+  // Every handled failure is captured here (a fake in tests).
+  errors: ErrorCapture;
+}
+
+interface Session {
+  supabase: SupabaseClient;
+  userId: string;
 }
 
 export interface UploadRow {
@@ -31,19 +39,20 @@ export interface UploadRow {
 const fail = (status: 400 | 401 | 404 | 409 | 500 | 503, error: string) =>
   ({ ok: false, status, error }) as const;
 
-async function signedIn(supabase: SupabaseClient | null): Promise<UploadAnswer<SupabaseClient>> {
+async function signedIn(supabase: SupabaseClient | null): Promise<UploadAnswer<Session>> {
   if (!supabase) return fail(503, "unavailable");
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return fail(401, "signed-out");
-  return { ok: true, value: supabase };
+  return { ok: true, value: { supabase, userId: user.id } };
 }
 
 // The caller's reel for this upload id, whatever its status; null for a
 // malformed id, a missing reel or another owner's (RLS hides it).
 async function ownUploadReel(
-  supabase: SupabaseClient,
+  { supabase, userId }: Session,
+  errors: ErrorCapture,
   uploadId: unknown,
 ): Promise<UploadRow | null> {
   if (!isUploadId(uploadId)) return null;
@@ -53,7 +62,7 @@ async function ownUploadReel(
     .eq("source_upload_id", uploadId)
     .maybeSingle();
   if (error) {
-    console.error("studio: upload reel not read:", error.code, error.message);
+    await reportFailure(errors, { message: "studio: upload reel not read", error, userId });
     return null;
   }
   if (!data || typeof data.source_key !== "string" || typeof data.source_upload_id !== "string") {
@@ -71,14 +80,22 @@ async function ownUploadReel(
 async function uploadingReel(
   deps: Deps,
   uploadId: unknown,
-): Promise<UploadAnswer<{ supabase: SupabaseClient; storage: Storage; row: UploadRow }>> {
+): Promise<UploadAnswer<Session & { storage: Storage; row: UploadRow }>> {
   if (!isUploadId(uploadId)) return fail(400, "bad-upload-id");
   const session = await signedIn(deps.supabase);
   if (!session.ok) return session;
-  const row = await ownUploadReel(session.value, uploadId);
+  const row = await ownUploadReel(session.value, deps.errors, uploadId);
   if (!row || row.status !== "uploading") return fail(404, "not-found");
   if (!deps.storage) return fail(503, "unavailable");
-  return { ok: true, value: { supabase: session.value, storage: deps.storage, row } };
+  return {
+    ok: true,
+    value: {
+      supabase: session.value.supabase,
+      userId: session.value.userId,
+      storage: deps.storage,
+      row,
+    },
+  };
 }
 
 // Creates the owner's `uploading` reel and its multipart upload. Only the
@@ -93,7 +110,7 @@ export async function createUpload(
   if (!parsed.ok) return fail(400, parsed.reason);
   const session = await signedIn(deps.supabase);
   if (!session.ok) return session;
-  const supabase = session.value;
+  const { supabase, userId } = session.value;
   if (!deps.storage || deps.prefix === null) return fail(503, "unavailable");
 
   const reelId = crypto.randomUUID();
@@ -104,7 +121,13 @@ export async function createUpload(
       contentType: parsed.value.type || "application/octet-stream",
     }));
   } catch (error) {
-    console.error("studio: multipart upload not created:", (error as Error).message);
+    // The provider's code and message only, never the key or the file name.
+    await reportFailure(deps.errors, {
+      message: "studio: multipart upload not created",
+      error,
+      userId,
+      log: [(error as Error).message],
+    });
     return fail(500, "failed");
   }
 
@@ -116,7 +139,12 @@ export async function createUpload(
   });
   if (error) {
     // Logged without the file name.
-    console.error("studio: reel not created:", error.code, error.message);
+    await reportFailure(deps.errors, {
+      message: "studio: reel not created",
+      error,
+      userId,
+      properties: { reel_id: reelId },
+    });
     await deps.storage.abortMultipartUpload(key, { uploadId }).catch(() => undefined);
     return fail(500, "failed");
   }
@@ -193,8 +221,8 @@ export async function completeUpload(
   if (!parts) return fail(400, "bad-parts");
   const session = await signedIn(deps.supabase);
   if (!session.ok) return session;
-  const supabase = session.value;
-  const row = await ownUploadReel(supabase, input.uploadId);
+  const { supabase, userId } = session.value;
+  const row = await ownUploadReel(session.value, deps.errors, input.uploadId);
   if (!row || row.status === "failed") return fail(404, "not-found");
   if (!deps.storage) return fail(503, "unavailable");
 
@@ -216,7 +244,12 @@ export async function completeUpload(
     p_bytes: info.bytes,
   });
   if (error) {
-    console.error("studio: upload not finished:", error.code, error.message);
+    await reportFailure(deps.errors, {
+      message: "studio: upload not finished",
+      error,
+      userId,
+      properties: { reel_id: row.id },
+    });
     return fail(500, "failed");
   }
   return { ok: true, value: { reelId: row.id, key: row.sourceKey } };
@@ -229,11 +262,16 @@ export async function abortUpload(
 ): Promise<UploadAnswer<{ reelId: string }>> {
   const found = await uploadingReel(deps, input.uploadId);
   if (!found.ok) return found;
-  const { supabase, storage, row } = found.value;
+  const { supabase, userId, storage, row } = found.value;
   await storage.abortMultipartUpload(row.sourceKey, { uploadId: row.uploadId });
   const { error } = await supabase.rpc("fail_upload", { p_reel_id: row.id });
   if (error) {
-    console.error("studio: upload not failed:", error.code, error.message);
+    await reportFailure(deps.errors, {
+      message: "studio: upload not failed",
+      error,
+      userId,
+      properties: { reel_id: row.id },
+    });
     return fail(500, "failed");
   }
   return { ok: true, value: { reelId: row.id } };

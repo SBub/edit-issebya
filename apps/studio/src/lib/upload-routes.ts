@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { keyPrefix } from "@edit-issebya/storage";
+import { serverErrorCapture } from "./error-tracking";
 import { studioStorage } from "./storage";
 import { createSupabaseServerClient } from "./supabase-server";
 import type { UploadAnswer } from "./upload-server";
@@ -10,7 +11,11 @@ import type { UploadAnswer } from "./upload-server";
 
 // Per request, never at module load.
 export async function uploadDeps() {
-  return { supabase: await createSupabaseServerClient(), storage: studioStorage() };
+  return {
+    supabase: await createSupabaseServerClient(),
+    storage: studioStorage(),
+    errors: serverErrorCapture(),
+  };
 }
 
 export function uploadPrefix(): string | null {

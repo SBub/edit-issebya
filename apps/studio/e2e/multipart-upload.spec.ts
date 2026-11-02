@@ -361,6 +361,57 @@ test("Cancel: the reel becomes failed, its parts are gone and no job is queued",
   ).toBeNull();
   expect((await admin.from("jobs").select("id").eq("reel_id", row.id)).data).toEqual([]);
   expect(eventsNamed(events, "studio_footage_uploaded")).toEqual([]);
+  // A cancel is not a failure: no exception.
+  expect(eventsNamed(events, "$exception")).toEqual([]);
   expect(await page.evaluate(() => localStorage.getItem("studio_upload_resume"))).toBeNull();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Create fails: the form shows Upload failed and one exception is captured", async ({
+  page,
+  baseURL,
+}) => {
+  const events = await recordEvents(page);
+  const reelsBefore = await admin.from("reels").select("id").eq("owner_id", owner.id);
+  // Only the create request (exact path, POST), never a part, list or complete.
+  await page.route(
+    (url) => url.pathname === "/studio/api/uploads/s3/multipart",
+    async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "failed" }),
+      });
+    },
+  );
+  await signIn(page, owner.email, baseURL!);
+  await pickAndUpload(page);
+
+  // The create never answered, so no resume record was written.
+  await expect(page.locator("#upload-status")).toHaveText(
+    "Upload failed. Pick the file again to start over.",
+    { timeout: 60_000 },
+  );
+  const reelsAfter = await admin.from("reels").select("id").eq("owner_id", owner.id);
+  expect(reelsAfter.data?.length).toBe(reelsBefore.data?.length);
+  await expect
+    .poll(() => eventsNamed(events, "$exception"))
+    .toEqual([
+      {
+        event: "$exception",
+        properties: {
+          app: "studio",
+          $exception_message: "studio: upload failed",
+          status: 500,
+          error_code: "failed",
+          resumed: false,
+        },
+      },
+    ]);
+  expect(eventsNamed(events, "studio_footage_uploaded")).toEqual([]);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });

@@ -1,5 +1,6 @@
 "use server";
 
+import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
 import {
   EXPORT_COLUMNS,
   type ExportRow,
@@ -46,7 +47,13 @@ export async function requestExport(reelId: string): Promise<ExportRequestResult
       .returns<Pick<JobRow, "id" | "kind" | "status" | "version_id">[]>(),
   ]);
   if (reel.error || jobs.error) {
-    console.error("studio: reel not read for an export:", reel.error?.code ?? jobs.error?.code);
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: reel not read for an export",
+      error: reel.error ?? jobs.error,
+      userId: user.id,
+      properties: { reel_id: reelId },
+      log: [reel.error?.code ?? jobs.error?.code],
+    });
     return { status: "failed" };
   }
   if (!reel.data) return { status: "failed" };
@@ -62,7 +69,13 @@ export async function requestExport(reelId: string): Promise<ExportRequestResult
     .select("id")
     .single<{ id: string }>();
   if (error || !data) {
-    console.error("studio: render job not queued:", error?.code, error?.message);
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: render job not queued",
+      error: error ?? undefined,
+      userId: user.id,
+      properties: { reel_id: reelId },
+      log: [error?.code, error?.message],
+    });
     return { status: "failed" };
   }
   return { status: "queued", jobId: data.id, versionId };
@@ -106,7 +119,13 @@ export async function loadLatestExport(reelId: string): Promise<LatestExportResu
     .limit(1)
     .maybeSingle<ExportRow>();
   if (latest.error) {
-    console.error("studio: export not read:", latest.error.code);
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: export not read",
+      error: latest.error,
+      userId: user.id,
+      properties: { reel_id: reelId },
+      log: [latest.error.code],
+    });
     return { status: "failed" };
   }
   const row = latest.data;
@@ -114,7 +133,12 @@ export async function loadLatestExport(reelId: string): Promise<LatestExportResu
   if (!row || view.kind === "none") return { status: "none" };
   if (view.kind === "expired") return { status: "expired", exportId: row.id };
   if (!isExportKey(row.r2_key, reelId)) {
-    console.error("studio: export key refused for reel", reelId);
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: export key refused",
+      userId: user.id,
+      properties: { reel_id: reelId },
+      log: [reelId],
+    });
     return { status: "failed" };
   }
 
@@ -146,7 +170,13 @@ export async function loadLatestExport(reelId: string): Promise<LatestExportResu
       expiresAt: row.expires_at,
     };
   } catch (error) {
-    console.error("studio: export link not signed:", (error as Error).name);
+    // The error's name only: a signing error's message may hold the key.
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: export link not signed",
+      userId: user.id,
+      properties: { reel_id: reelId, error_code: (error as Error).name },
+      log: [(error as Error).name],
+    });
     return { status: "failed" };
   }
 }

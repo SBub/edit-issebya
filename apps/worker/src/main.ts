@@ -5,6 +5,7 @@
 // while the scratch volume is below WORKER_MIN_FREE_DISK_GB. It writes a
 // heartbeat at start and every five minutes.
 import { workerConfig } from "./config.ts";
+import { createErrorTracker, installCrashCapture } from "./error-tracking.ts";
 import { freeBytesFn, guardedClaim, supabaseWorkerStatus } from "./disk-guard.ts";
 import { startHeartbeat } from "./heartbeat.ts";
 import { createDrainer } from "./loop.ts";
@@ -17,6 +18,9 @@ import { supabaseStoredFiles } from "./stored-files.ts";
 import { workerSupabase } from "./supabase.ts";
 import { createTelemetry } from "./telemetry.ts";
 
+// First, so an error anywhere after it is captured.
+const errors = createErrorTracker();
+installCrashCapture(errors);
 const config = workerConfig();
 const db = workerSupabase(config);
 const storage = workerStorage();
@@ -50,7 +54,11 @@ const drainer = createDrainer({
       claim: () => claimJob(db, config),
     });
   },
-  run: (job) => processJob(db, storage, config, telemetry, job),
+  run: (job) => processJob(db, storage, config, telemetry, errors, job),
+  onError: (error) => {
+    console.error("worker: drain failed:", error);
+    errors.crashed(error);
+  },
 });
 
 const channel = db
@@ -86,6 +94,7 @@ async function stop(signal: string) {
   await db.removeChannel(channel);
   await drainer.idle();
   await telemetry.shutdown();
+  await errors.shutdown();
   process.exit(0);
 }
 

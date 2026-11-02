@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { capture } from "@/lib/track";
+import { capture, captureException } from "@/lib/track";
 import { parseUploadRequest } from "@/lib/upload";
 import {
   RESUME_KEY,
@@ -132,6 +132,13 @@ export function UploadForm() {
       setState("cancelled");
       return;
     }
+    // One exception per failed upload, never on cancel: the routes' answer,
+    // never the file's name, size, key or upload id.
+    captureException("studio: upload failed", {
+      status: outcome.answer?.status ?? null,
+      error_code: outcome.answer?.error ?? null,
+      resumed: Boolean(resumed),
+    });
     if (resumed) {
       // The interrupted upload can no longer continue (finished elsewhere,
       // cancelled, or gone): the next attempt starts fresh.

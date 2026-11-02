@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Storage } from "@edit-issebya/storage";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ErrorCapture, ErrorProperties } from "./error-tracking";
 import {
   PART_URL_SECONDS,
   abortUpload,
@@ -66,6 +67,25 @@ function storage(overrides: Partial<Storage> = {}) {
   } as unknown as Storage & Record<string, ReturnType<typeof vi.fn>>;
 }
 
+// Records every captured exception and flush; reset before each test.
+const captured: { error: Error; distinctId: string | undefined; properties: ErrorProperties }[] =
+  [];
+let flushes = 0;
+const errors: ErrorCapture = {
+  capture(error, distinctId, properties) {
+    captured.push({ error, distinctId, properties });
+  },
+  async flush() {
+    flushes += 1;
+  },
+};
+
+beforeEach(() => {
+  captured.length = 0;
+  flushes = 0;
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+});
+
 const uploading: Row = { id: REEL, status: "uploading", source_key: KEY, source_upload_id: UPLOAD };
 
 describe("createUpload", () => {
@@ -74,7 +94,7 @@ describe("createUpload", () => {
   it("creates the multipart upload, then the reel with its upload id", async () => {
     const { supabase, inserts } = client();
     const store = storage();
-    const answer = await createUpload({ supabase, storage: store, prefix: "dev/" }, input);
+    const answer = await createUpload({ supabase, storage: store, errors, prefix: "dev/" }, input);
     expect(answer.ok).toBe(true);
     if (!answer.ok) return;
     expect(answer.value.uploadId).toBe(UPLOAD);
@@ -93,17 +113,20 @@ describe("createUpload", () => {
     const store = storage();
     const { supabase } = client();
     expect(
-      await createUpload({ supabase, storage: store, prefix: "dev/" }, { ...input, bytes: 0 }),
+      await createUpload(
+        { supabase, storage: store, errors, prefix: "dev/" },
+        { ...input, bytes: 0 },
+      ),
     ).toMatchObject({ ok: false, status: 400 });
     expect(
       await createUpload(
-        { supabase, storage: store, prefix: "dev/" },
+        { supabase, storage: store, errors, prefix: "dev/" },
         { ...input, bytes: 5 * 1024 ** 3 + 1 },
       ),
     ).toMatchObject({ ok: false, status: 400, error: "too-large" });
     expect(
       await createUpload(
-        { supabase: client({ user: false }).supabase, storage: store, prefix: "" },
+        { supabase: client({ user: false }).supabase, storage: store, errors, prefix: "" },
         input,
       ),
     ).toMatchObject({ ok: false, status: 401 });
@@ -116,7 +139,9 @@ describe("createUpload", () => {
       ...client().supabase,
       from: () => ({ insert: async () => ({ error: { code: "42501", message: "rls" } }) }),
     } as unknown as SupabaseClient;
-    expect(await createUpload({ supabase, storage: store, prefix: "dev/" }, input)).toMatchObject({
+    expect(
+      await createUpload({ supabase, storage: store, errors, prefix: "dev/" }, input),
+    ).toMatchObject({
       ok: false,
       status: 500,
     });
@@ -129,7 +154,7 @@ describe("signPart", () => {
     const { supabase } = client({ rows: [uploading] });
     const store = storage();
     expect(
-      await signPart({ supabase, storage: store }, { uploadId: UPLOAD, partNumber: "3" }),
+      await signPart({ supabase, storage: store, errors }, { uploadId: UPLOAD, partNumber: "3" }),
     ).toEqual({
       ok: true,
       value: { url: `https://r2/${KEY}?u=${UPLOAD}&p=3` },
@@ -146,22 +171,25 @@ describe("signPart", () => {
     const own = client({ rows: [uploading] }).supabase;
     for (const partNumber of ["0", "10001", "1.5", "-1", "x"]) {
       expect(
-        await signPart({ supabase: own, storage: store }, { uploadId: UPLOAD, partNumber }),
+        await signPart({ supabase: own, storage: store, errors }, { uploadId: UPLOAD, partNumber }),
       ).toMatchObject({ ok: false, status: 400 });
     }
     expect(
-      await signPart({ supabase: own, storage: store }, { uploadId: "a/b", partNumber: "1" }),
+      await signPart(
+        { supabase: own, storage: store, errors },
+        { uploadId: "a/b", partNumber: "1" },
+      ),
     ).toMatchObject({ ok: false, status: 400 });
     expect(
       await signPart(
-        { supabase: client({ user: false }).supabase, storage: store },
+        { supabase: client({ user: false }).supabase, storage: store, errors },
         { uploadId: UPLOAD, partNumber: "1" },
       ),
     ).toMatchObject({ ok: false, status: 401 });
     // Another owner's reel is invisible through RLS: the same 404 as a missing one.
     expect(
       await signPart(
-        { supabase: client({ rows: [] }).supabase, storage: store },
+        { supabase: client({ rows: [] }).supabase, storage: store, errors },
         { uploadId: UPLOAD, partNumber: "1" },
       ),
     ).toMatchObject({ ok: false, status: 404 });
@@ -170,6 +198,7 @@ describe("signPart", () => {
         {
           supabase: client({ rows: [{ ...uploading, status: "uploaded" }] }).supabase,
           storage: store,
+          errors,
         },
         { uploadId: UPLOAD, partNumber: "1" },
       ),
@@ -181,16 +210,18 @@ describe("signPart", () => {
 describe("listParts", () => {
   it("answers the stored parts in the uploader's shape", async () => {
     const { supabase } = client({ rows: [uploading] });
-    expect(await listParts({ supabase, storage: storage() }, { uploadId: UPLOAD })).toEqual({
-      ok: true,
-      value: [{ PartNumber: 1, ETag: "aa", Size: 10 }],
-    });
+    expect(await listParts({ supabase, storage: storage(), errors }, { uploadId: UPLOAD })).toEqual(
+      {
+        ok: true,
+        value: [{ PartNumber: 1, ETag: "aa", Size: 10 }],
+      },
+    );
   });
 
   it("answers no parts for an upload storage no longer has", async () => {
     const { supabase } = client({ rows: [uploading] });
     const store = storage({ listUploadParts: vi.fn(async () => null) });
-    expect(await listParts({ supabase, storage: store }, { uploadId: UPLOAD })).toEqual({
+    expect(await listParts({ supabase, storage: store, errors }, { uploadId: UPLOAD })).toEqual({
       ok: true,
       value: [],
     });
@@ -226,12 +257,12 @@ describe("completeUpload", () => {
   it("completes, then finishes with the size storage reports", async () => {
     const { supabase, rpcs } = client({ rows: [uploading] });
     const store = storage();
-    expect(await completeUpload({ supabase, storage: store }, { uploadId: UPLOAD, parts })).toEqual(
-      {
-        ok: true,
-        value: { reelId: REEL, key: KEY },
-      },
-    );
+    expect(
+      await completeUpload({ supabase, storage: store, errors }, { uploadId: UPLOAD, parts }),
+    ).toEqual({
+      ok: true,
+      value: { reelId: REEL, key: KEY },
+    });
     expect(store.completeMultipartUpload).toHaveBeenCalledWith(KEY, {
       uploadId: UPLOAD,
       parts: [{ partNumber: 1, etag: "aa" }],
@@ -243,7 +274,7 @@ describe("completeUpload", () => {
     const { supabase, rpcs } = client({ rows: [uploading] });
     const store = storage({ completeMultipartUpload: vi.fn(async () => "missing" as const) });
     expect(
-      (await completeUpload({ supabase, storage: store }, { uploadId: UPLOAD, parts })).ok,
+      (await completeUpload({ supabase, storage: store, errors }, { uploadId: UPLOAD, parts })).ok,
     ).toBe(true);
     expect(rpcs).toHaveLength(1);
   });
@@ -255,7 +286,7 @@ describe("completeUpload", () => {
       head: vi.fn(async () => null),
     });
     expect(
-      await completeUpload({ supabase, storage: store }, { uploadId: UPLOAD, parts }),
+      await completeUpload({ supabase, storage: store, errors }, { uploadId: UPLOAD, parts }),
     ).toMatchObject({
       ok: false,
       status: 409,
@@ -267,7 +298,7 @@ describe("completeUpload", () => {
     const { supabase, rpcs } = client({ rows: [{ ...uploading, status: "uploaded" }] });
     const store = storage();
     expect(
-      (await completeUpload({ supabase, storage: store }, { uploadId: UPLOAD, parts })).ok,
+      (await completeUpload({ supabase, storage: store, errors }, { uploadId: UPLOAD, parts })).ok,
     ).toBe(true);
     expect(store.completeMultipartUpload).not.toHaveBeenCalled();
     expect(rpcs.map((rpc) => rpc.name)).toEqual(["finish_upload"]);
@@ -278,14 +309,14 @@ describe("completeUpload", () => {
     for (const rows of [[], [{ ...uploading, status: "failed" }]]) {
       expect(
         await completeUpload(
-          { supabase: client({ rows }).supabase, storage: store },
+          { supabase: client({ rows }).supabase, storage: store, errors },
           { uploadId: UPLOAD, parts },
         ),
       ).toMatchObject({ ok: false, status: 404 });
     }
     expect(
       await completeUpload(
-        { supabase: client({ user: false }).supabase, storage: store },
+        { supabase: client({ user: false }).supabase, storage: store, errors },
         { uploadId: UPLOAD, parts },
       ),
     ).toMatchObject({ ok: false, status: 401 });
@@ -297,7 +328,7 @@ describe("abortUpload", () => {
   it("aborts in storage, then fails the reel", async () => {
     const { supabase, rpcs } = client({ rows: [uploading] });
     const store = storage();
-    expect(await abortUpload({ supabase, storage: store }, { uploadId: UPLOAD })).toEqual({
+    expect(await abortUpload({ supabase, storage: store, errors }, { uploadId: UPLOAD })).toEqual({
       ok: true,
       value: { reelId: REEL },
     });
@@ -308,8 +339,96 @@ describe("abortUpload", () => {
   it("answers 404 for another owner's upload and touches nothing", async () => {
     const store = storage();
     expect(
-      await abortUpload({ supabase: client().supabase, storage: store }, { uploadId: UPLOAD }),
+      await abortUpload(
+        { supabase: client().supabase, storage: store, errors },
+        { uploadId: UPLOAD },
+      ),
     ).toMatchObject({ ok: false, status: 404 });
     expect(store.abortMultipartUpload).not.toHaveBeenCalled();
+  });
+});
+
+describe("failure capture", () => {
+  const input = { name: "secret-holiday.mp4", bytes: 1000, type: "video/mp4" };
+  const parts = [{ PartNumber: 1, ETag: '"aa"' }];
+  const leaks = (value: unknown) =>
+    typeof value === "string" &&
+    (value.includes("https://") ||
+      value.includes("secret-holiday") ||
+      value.includes("/source/") ||
+      value.includes(UPLOAD));
+
+  it("captures storage refusing the create once, with its code and the user", async () => {
+    const { supabase, inserts } = client();
+    const refused = Object.assign(new Error("Access Denied"), { name: "AccessDenied" });
+    const store = storage({
+      createMultipartUpload: vi.fn(async () => {
+        throw refused;
+      }),
+    });
+    expect(await createUpload({ supabase, storage: store, errors, prefix: "dev/" }, input)).toEqual(
+      { ok: false, status: 500, error: "failed" },
+    );
+    expect(inserts).toEqual([]);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.error.message).toBe("studio: multipart upload not created");
+    expect(captured[0]!.distinctId).toBe("u");
+    expect(captured[0]!.properties).toEqual({
+      app: "studio",
+      error_code: "AccessDenied",
+      error_message: "Access Denied",
+    });
+    expect(Object.values(captured[0]!.properties).some(leaks)).toBe(false);
+    expect(flushes).toBe(1);
+  });
+
+  it("captures the reel insert error with the Supabase code", async () => {
+    const store = storage();
+    const supabase = {
+      ...client().supabase,
+      from: () => ({ insert: async () => ({ error: { code: "42501", message: "rls" } }) }),
+    } as unknown as SupabaseClient;
+    await createUpload({ supabase, storage: store, errors, prefix: "dev/" }, input);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.error.message).toBe("studio: reel not created");
+    expect(captured[0]!.properties).toMatchObject({ error_code: "42501", error_message: "rls" });
+    expect(Object.values(captured[0]!.properties).some(leaks)).toBe(false);
+  });
+
+  it("captures finish_upload and fail_upload errors with their code", async () => {
+    const rpcError = { code: "P0001", message: "no" };
+    await completeUpload(
+      { supabase: client({ rows: [uploading], rpcError }).supabase, storage: storage(), errors },
+      { uploadId: UPLOAD, parts },
+    );
+    await abortUpload(
+      { supabase: client({ rows: [uploading], rpcError }).supabase, storage: storage(), errors },
+      { uploadId: UPLOAD },
+    );
+    expect(captured.map((call) => call.error.message)).toEqual([
+      "studio: upload not finished",
+      "studio: upload not failed",
+    ]);
+    for (const call of captured) {
+      expect(call.properties).toMatchObject({ error_code: "P0001", reel_id: REEL });
+      expect(call.distinctId).toBe("u");
+    }
+  });
+
+  it("captures nothing when create, sign, list, complete and abort succeed", async () => {
+    await createUpload(
+      { supabase: client().supabase, storage: storage(), errors, prefix: "dev/" },
+      input,
+    );
+    const deps = () => ({
+      supabase: client({ rows: [uploading] }).supabase,
+      storage: storage(),
+      errors,
+    });
+    await signPart(deps(), { uploadId: UPLOAD, partNumber: "1" });
+    await listParts(deps(), { uploadId: UPLOAD });
+    await completeUpload(deps(), { uploadId: UPLOAD, parts });
+    await abortUpload(deps(), { uploadId: UPLOAD });
+    expect(captured).toEqual([]);
   });
 });

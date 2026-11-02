@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { buildBuyerEmail, buildOwnerNotice } from "@/lib/confirmation-email";
 import { getConfigMissingToggle, isE2EMockResend } from "@/lib/e2e-resend-mock";
 import { getKeyMissingToggle, isE2EMockStripe } from "@/lib/e2e-stripe-mock";
+import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
 import { createStripeClient } from "@/lib/stripe";
 import {
   decideWebhook,
@@ -130,9 +131,17 @@ export async function POST(request: Request): Promise<Response> {
   const first = decideWebhook(facts);
   if (first.action === "respond") {
     if (first.status === 500) {
-      console.error("stripe webhook:", first.reason, facts.missingConfig.join(", "));
+      // Variable names only, never values.
+      await reportFailure(serverErrorCapture(), {
+        message: `stripe webhook: ${first.reason}`,
+        properties: { missing_config: facts.missingConfig.join(", ") },
+        log: [facts.missingConfig.join(", ")],
+      });
     } else if (first.status === 400) {
-      console.error("stripe webhook: signature verification failed");
+      await reportFailure(serverErrorCapture(), {
+        message: "stripe webhook: signature verification failed",
+        log: [],
+      });
     }
     return respond(first.status, first.reason);
   }
@@ -158,12 +167,11 @@ export async function POST(request: Request): Promise<Response> {
       if (decision.reason === "already sent") {
         console.info("stripe webhook: already sent", sessionId);
       } else if (decision.status === 500) {
-        console.error(
-          "stripe webhook:",
-          decision.reason,
-          sessionId,
-          facts.missingConfig.join(", "),
-        );
+        await reportFailure(serverErrorCapture(), {
+          message: `stripe webhook: ${decision.reason}`,
+          properties: { missing_config: facts.missingConfig.join(", ") },
+          log: [sessionId, facts.missingConfig.join(", ")],
+        });
       }
       return respond(decision.status, decision.reason);
     }
@@ -177,16 +185,20 @@ export async function POST(request: Request): Promise<Response> {
     } catch (error) {
       // Both emails are out; a retry within 24 hours is absorbed by the
       // Resend idempotency keys, a later one sends a duplicate once.
-      console.error(
-        "stripe webhook: emails sent but the sent flag was not written",
-        sessionId,
-        errorName(error),
-      );
+      await reportFailure(serverErrorCapture(), {
+        message: "stripe webhook: emails sent but the sent flag was not written",
+        error,
+        log: [sessionId, errorName(error)],
+      });
       return respond(500, "flag not written");
     }
     return respond(200, "sent");
   } catch (error) {
-    console.error("stripe webhook: sending failed", sessionId, errorName(error));
+    await reportFailure(serverErrorCapture(), {
+      message: "stripe webhook: sending failed",
+      error,
+      log: [sessionId, errorName(error)],
+    });
     return respond(500, "send failed");
   }
 }

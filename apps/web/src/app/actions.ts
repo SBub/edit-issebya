@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { parseCallRequest, type CallRequestErrors } from "@/lib/call-request";
 import { automaticTaxEnabled, buildCheckoutParams } from "@/lib/checkout-params";
+import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
 import { currentOfferPrice } from "@/lib/offer-price";
 import { getKeyMissingToggle, isE2EMockStripe } from "@/lib/e2e-stripe-mock";
 import { siteUrl } from "@/lib/site-url";
@@ -52,7 +53,10 @@ export async function startCheckout(input: {
     getKeyMissingToggle(),
   );
   if (!key) {
-    console.error("startCheckout: no Stripe secret key is configured");
+    await reportFailure(serverErrorCapture(), {
+      message: "startCheckout: no Stripe secret key is configured",
+      log: [],
+    });
     return { ok: false, error: "unavailable" };
   }
 
@@ -67,12 +71,20 @@ export async function startCheckout(input: {
     });
     const session = await createStripeClient(key, mock).checkout.sessions.create(params);
     if (!session.url) {
-      console.error("startCheckout: Stripe returned a session without a url", session.id);
+      await reportFailure(serverErrorCapture(), {
+        message: "startCheckout: session without a url",
+        log: ["Stripe returned a session without a url", session.id],
+      });
       return { ok: false, error: "unavailable" };
     }
     return { ok: true, url: session.url };
   } catch (error) {
-    console.error("startCheckout: creating the Checkout Session failed", error);
+    // The Stripe code or name only: never the buyer's details.
+    await reportFailure(serverErrorCapture(), {
+      message: "startCheckout: creating the Checkout Session failed",
+      error,
+      log: [error],
+    });
     return { ok: false, error: "unavailable" };
   }
 }

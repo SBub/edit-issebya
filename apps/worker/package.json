@@ -30,7 +30,8 @@
     "@opentelemetry/sdk-trace": "^3.0.0",
     "@supabase/supabase-js": "^2.118.0",
     "harfbuzzjs": "1.6.4",
-    "hyperframes": "0.8.222"
+    "hyperframes": "0.8.222",
+    "posthog-node": "^5.61.1"
   },
   "devDependencies": {
     "@types/node": "^24",

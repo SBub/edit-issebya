@@ -1,5 +1,6 @@
 "use server";
 
+import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
 import type { JobRow } from "@/lib/jobs";
 import { type ReelDetail, isReelId } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -48,7 +49,13 @@ export async function requestRetry(input: {
       .maybeSingle<FailedJob>(),
   ]);
   if (reel.error || job.error) {
-    console.error("studio: job not read for a retry:", reel.error?.code ?? job.error?.code);
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: job not read for a retry",
+      error: reel.error ?? job.error,
+      userId: user.id,
+      properties: { reel_id: input.reelId, job_id: input.jobId },
+      log: [reel.error?.code ?? job.error?.code],
+    });
     return { status: "failed" };
   }
   if (!reel.data || !job.data || job.data.reel_id !== reel.data.id) return { status: "failed" };
@@ -76,7 +83,13 @@ export async function requestRetry(input: {
     .single<{ id: string }>();
   if (error?.code === "23505") return { status: "already" };
   if (error || !data) {
-    console.error("studio: retry not queued:", error?.code);
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: retry not queued",
+      error: error ?? undefined,
+      userId: user.id,
+      properties: { reel_id: input.reelId, job_id: input.jobId },
+      log: [error?.code],
+    });
     return { status: "failed" };
   }
   return { status: "queued", jobId: data.id };
