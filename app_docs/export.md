@@ -159,7 +159,8 @@ The render step's `peak_rss_bytes` in the same run was 1583153152 (above 256 MB)
 
 ## Notes
 
-- Out of scope: render progress and time left, cloud rendering.
+- Render progress and time left: see `app_docs/status.md`.
+- Out of scope: cloud rendering.
 - The pipeline does not verify a full-length render on the worker machine, the platforms'
   recompression or the R2 lifecycle rule.
 - The page loads GSAP from jsdelivr, so a real render needs network.

@@ -163,9 +163,10 @@ Nothing to do for the owner. What they see:
 - Three rebuildable files, not two: the pipeline also tags `retime`'s `source.mp4` `rebuildable`,
   and the tags are authoritative.
 - Slimming runs only between one worker's jobs. A cross-worker rule (a second worker racing a
-  render against a slimming) belongs to the heartbeat slice (15).
-- Stale `worker_status` rows (a worker that went away) stay until that worker writes again; the
-  heartbeat and offline display are slice 15. Specs delete their own row.
+  render against a slimming) is future work.
+- The heartbeat (`heartbeat_at`, every 5 minutes from `main`) and the offline display now exist
+  (`app_docs/status.md`). Stale `worker_status` rows (a worker that went away) still stay until
+  that worker writes again. Specs delete their own row.
 - `apps/worker/src/make-pipeline-fixtures.ts` and the test seeding helpers write storage directly
   on purpose: they are a dev tool and fixtures, not jobs.
 - `transcribe` and `remove_background` also run HyperFrames; scoping their environment the same way
