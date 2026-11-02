@@ -42,8 +42,8 @@ export interface RenderExport {
   edit: Edit;
   transcript: Transcript;
   headTrack: HeadTrack;
-  // The full-size retimed footage and cut-out, on disk.
-  files: { footage: string; cutout: string };
+  // The full-size retimed footage, on disk.
+  files: { footage: string };
   range?: RenderRange;
   env?: NodeJS.ProcessEnv;
 }
@@ -166,7 +166,7 @@ export async function runRender({
           if (!version || version.reel_id !== job.reel_id) {
             throw new Error(`${STEP}: version ${versionId} is not a version of this reel`);
           }
-          const read = async (ref: EditInputs[keyof EditInputs]) => {
+          const read = async (ref: EditInputs["footage"]) => {
             const key = cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file);
             const bytes = await storage.get(key);
             if (!bytes) throw new Error(`${STEP}: input missing: ${key}`);
@@ -195,10 +195,9 @@ export async function runRender({
             }
             return path;
           };
-          const files = {
-            footage: await download(version.inputs.footage),
-            cutout: await download(version.inputs.cutout),
-          };
+          // An old version may name a cut-out: the page never uses it, so it
+          // is never downloaded.
+          const files = { footage: await download(version.inputs.footage) };
           const { projectFiles } = await renderExport({
             tool,
             tools,

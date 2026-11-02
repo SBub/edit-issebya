@@ -8,7 +8,7 @@ import type { ChildRun, SpawnTool, ToolCall } from "../step-runner.ts";
 import { PIPELINE, type StepOutput, fingerprintsFor, outputFiles } from "./definition.ts";
 import { cacheKey } from "./fingerprint.ts";
 import { HEAD_TRACK_SETTINGS, frameBytes } from "./head-track.ts";
-import { REMOVE_BACKGROUND_ENTRY } from "./remove-background.ts";
+import { PERSON_MASK_ENTRY } from "./person-mask.ts";
 import { FootageRefused } from "../failure.ts";
 import { runPipeline } from "./run-pipeline.ts";
 import type { RunStep } from "./step-double.ts";
@@ -57,16 +57,16 @@ function option(args: string[], name: string): string {
 
 // Plays each tool: ffprobe answers fixture JSON, ffmpeg writes the file its
 // arguments name (two transparent raw frames for the head tracker),
-// HyperFrames writes its transcript into --dir or its cut-out to -o.
+// HyperFrames writes its transcript into --dir or head_track's person mask to -o.
 function fakeTools({ failTranscribe = 0 } = {}): SpawnTool {
   let transcribeFailures = failTranscribe;
   return async (call) => {
     spawned.push(call);
     const at = (file: string) => (call.cwd ? resolve(call.cwd, file) : file);
     if (call.file === TOOLS.ffprobe) return ok(PROBE);
-    if (call.file === TOOLS.hyperframes[0] && call.args[0] === REMOVE_BACKGROUND_ENTRY) {
+    if (call.file === TOOLS.hyperframes[0] && call.args[0] === PERSON_MASK_ENTRY) {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
-      await writeFile(option(call.args, "-o"), "cut-out");
+      await writeFile(option(call.args, "-o"), "person mask");
       return ok(`${JSON.stringify({ ok: true, framesProcessed: 57, provider: "cpu" })}\n`);
     }
     if (call.args.includes("rawvideo")) {
@@ -186,7 +186,7 @@ function footageCalls(calls: ReturnType<typeof recordingSteps>["calls"]) {
 }
 
 describe("runPipeline footage seconds", () => {
-  it("records the retimed length after a retime that ran, before remove_background", async () => {
+  it("records the retimed length after a retime that ran, before head_track", async () => {
     const { steps, calls } = recordingSteps(SOURCE_KEY);
     await run(steps);
     const recorded = footageCalls(calls);
@@ -194,10 +194,8 @@ describe("runPipeline footage seconds", () => {
     expect(recorded[0]!.reelId).toBe(TEST_JOB.reel_id);
     expect(recorded[0]!.seconds).toBeGreaterThan(0);
     const at = calls.findIndex((call) => call.call === "recordFootageSeconds");
-    const removing = calls.findIndex(
-      (call) => call.call === "start" && call.name === "remove_background",
-    );
-    expect(at).toBeLessThan(removing);
+    const tracking = calls.findIndex((call) => call.call === "start" && call.name === "head_track");
+    expect(at).toBeLessThan(tracking);
   });
 
   it("downloads the kept retime.json on a hit when the reel has no length", async () => {
@@ -238,9 +236,6 @@ describe("runPipeline", () => {
       "status retiming",
       "start retime",
       "done",
-      "status removing_background",
-      "start remove_background",
-      "done",
       "status tracking_head",
       "start head_track",
       "done",
@@ -264,16 +259,22 @@ describe("runPipeline", () => {
       "footage converted",
       "transcribed",
       "retimed to 1.9 seconds",
-      "background removed",
       "head tracked",
       "preview copies made",
     ]);
     const summaries = done.map((call) => call.call === "done" && call.summary);
-    expect(summaries[4]).toMatch(/^head tracked, 2 samples, 2 without a head, /);
+    expect(summaries[3]).toMatch(/^head tracked, 2 samples, 2 without a head, /);
     const typeOf = (file: string) =>
       [...contentTypes].find(([key]) => key.endsWith(`/${file}`))?.[1];
-    expect(typeOf("subject.webm")).toBe("video/webm");
-    expect(typeOf("subject-preview.webm")).toBe("video/webm");
+    expect(typeOf("subject.webm")).toBeUndefined();
+    expect(typeOf("subject-preview.webm")).toBeUndefined();
+    // No step named remove_background starts on a new reel, and no cut-out is stored.
+    expect(calls.some((call) => call.call === "start" && call.name === "remove_background")).toBe(
+      false,
+    );
+    for (const key of await storage.list(`${PREFIX}cache/`)) {
+      expect(key).not.toMatch(/remove_background|subject/);
+    }
     expect(typeOf("footage-preview.mp4")).toBe("video/mp4");
     expect(typeOf("head-track.json")).toBe("application/json");
   });
@@ -291,13 +292,12 @@ describe("runPipeline", () => {
     for (const [key, bytes] of recorded) expect(bytes).toBe((await storage.head(key))!.bytes);
   });
 
-  it("rebuilds the three deleted rebuildable outputs and reuses the kept ones", async () => {
+  it("rebuilds the two deleted rebuildable outputs and reuses the kept ones", async () => {
     await run(recordingSteps(SOURCE_KEY).steps);
     const fps = await fingerprints();
     const rebuildable = [
       cacheKey(PREFIX, "convert", fps.convert!, "converted.mp4"),
       cacheKey(PREFIX, "retime", fps.retime!, "source.mp4"),
-      cacheKey(PREFIX, "remove_background", fps.remove_background!, "subject.webm"),
     ];
     for (const key of rebuildable) await storage.delete(key);
     const kept = (await outputKeys()).filter((key) => !rebuildable.includes(key));
@@ -312,12 +312,10 @@ describe("runPipeline", () => {
       "skipped transcribe",
       "start retime",
       "done",
-      "start remove_background",
-      "done",
       "skipped head_track",
       "skipped preview_copies",
     ]);
-    // Only the three deleted objects were uploaded; the kept ones stay as they were.
+    // Only the two deleted objects were uploaded; the kept ones stay as they were.
     expect([...contentTypes.keys()].sort()).toEqual([...rebuildable].sort());
     for (const key of rebuildable) expect(await storage.head(key)).not.toBeNull();
     expect(await Promise.all(kept.map((key) => storage.head(key)))).toEqual(before);
@@ -337,8 +335,6 @@ describe("runPipeline", () => {
       "skipped transcribe",
       "status retiming",
       "skipped retime",
-      "status removing_background",
-      "skipped remove_background",
       "status tracking_head",
       "skipped head_track",
       "status making_previews",
@@ -352,7 +348,6 @@ describe("runPipeline", () => {
       "footage converted, reused",
       "transcribed, reused",
       "retimed, reused",
-      "background removed, reused",
       "head tracked, reused",
       "preview copies made, reused",
     ]);
@@ -366,21 +361,22 @@ describe("runPipeline", () => {
     await run(hits.steps, { setReelStatus: false });
     expect(shape(hits.calls)).toEqual(PIPELINE.map((step) => `skipped ${step.name}`));
 
-    const cutout = (await outputKeys()).find((key) => key.endsWith("/subject.webm"))!;
-    await storage.delete(cutout);
+    const footage = (await outputKeys()).find(
+      (key) => key.includes("/cache/retime/") && key.endsWith("/source.mp4"),
+    )!;
+    await storage.delete(footage);
     spawned = [];
     const rebuilt = recordingSteps(SOURCE_KEY);
     await run(rebuilt.steps, { setReelStatus: false });
     expect(shape(rebuilt.calls)).toEqual([
       "skipped convert",
       "skipped transcribe",
-      "skipped retime",
-      "start remove_background",
+      "start retime",
       "done",
       "skipped head_track",
       "skipped preview_copies",
     ]);
-    expect(await storage.head(cutout)).not.toBeNull();
+    expect(await storage.head(footage)).not.toBeNull();
   });
 
   it("re-runs only the step that lost an output, keeping its stored ones", async () => {
@@ -404,8 +400,6 @@ describe("runPipeline", () => {
       "status retiming",
       "start retime",
       "done",
-      "status removing_background",
-      "skipped remove_background",
       "status tracking_head",
       "skipped head_track",
       "status making_previews",
@@ -436,8 +430,6 @@ describe("runPipeline", () => {
       "skipped transcribe",
       "status retiming",
       "skipped retime",
-      "status removing_background",
-      "skipped remove_background",
       "status tracking_head",
       "skipped head_track",
       "status making_previews",
@@ -460,9 +452,6 @@ describe("runPipeline", () => {
       "done",
       "status retiming",
       "start retime",
-      "done",
-      "status removing_background",
-      "start remove_background",
       "done",
       "status tracking_head",
       "start head_track",
@@ -499,9 +488,6 @@ describe("runPipeline", () => {
       "done",
       "status retiming",
       "start retime",
-      "done",
-      "status removing_background",
-      "start remove_background",
       "done",
       "status tracking_head",
       "start head_track",

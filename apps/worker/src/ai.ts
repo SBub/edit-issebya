@@ -210,7 +210,7 @@ function scriptFrom(path: string): unknown[] {
 
 // A decide answer with no items: what the double gives without a script.
 export const EMPTY_DECIDE_ANSWER = {
-  tracks: { footage: [], cutout: [], captions: [], overlays: [], transitions: [], sounds: [] },
+  tracks: { footage: [], captions: [], overlays: [], transitions: [], sounds: [] },
   change_summary: "ok",
   unexpressed: [],
   free_field: [],

@@ -13,14 +13,9 @@
       "fingerprint": "f3f3e150e0dac6e8b85f7de8c20e42dc8b76baba83e13b4ea49dc2d897e1f7e8",
       "file": "transcript.json"
     },
-    "cutout": {
-      "step": "remove_background",
-      "fingerprint": "5ecb5235234182f8cb7eea773ada7d52b12bbf931f33407bd7910555988d2316",
-      "file": "subject.webm"
-    },
     "head_track": {
       "step": "head_track",
-      "fingerprint": "d5f58034da7573bbd956304b19a4d4061f8f4a41b19644ac323de224b691bf04",
+      "fingerprint": "a76a7c82132dd8a7717a7f461b5ae94a023e20be150dff57cf8f540175aa04df",
       "file": "head-track.json"
     }
   },
@@ -28,17 +23,6 @@
     "footage": [
       {
         "id": "footage",
-        "start": {
-          "reel": "start"
-        },
-        "end": {
-          "reel": "end"
-        }
-      }
-    ],
-    "cutout": [
-      {
-        "id": "cutout",
         "start": {
           "reel": "start"
         },

@@ -60,10 +60,14 @@ describe("classifyKey", () => {
       kind: "kept",
       step: "retime",
     });
+    // Retired outputs old reels still have stored.
     expect(classifyKey(PREFIX, `${PREFIX}cache/remove_background/${FP}/subject.webm`)).toEqual({
       kind: "rebuildable",
       step: "remove_background",
     });
+    expect(classifyKey(PREFIX, `${PREFIX}cache/preview_copies/${FP}/subject-preview.webm`)).toEqual(
+      { kind: "kept", step: "preview_copies" },
+    );
     expect(classifyKey(PREFIX, `${PREFIX}cache/head_track/${FP}/head-track.json`)).toEqual({
       kind: "kept",
       step: "head_track",

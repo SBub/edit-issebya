@@ -2,12 +2,12 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import {
   type ProgressParser,
-  parseRemoveBackgroundProgress,
+  parsePersonMaskProgress,
   parseRenderProgress,
 } from "./progress-parsers.ts";
 
 // Real HyperFrames 0.8.222 stdout, captured on the committed clips: the
-// worker's remove-background entry and a full `hyperframes render`.
+// worker's person mask entry (HyperFrames' removeBackground) and a full `hyperframes render`.
 async function sample(name: string): Promise<string[]> {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed samples
   const text = await readFile(new URL(`progress-testdata/${name}`, import.meta.url), "utf8");
@@ -19,7 +19,7 @@ function values(lines: string[], parse: ProgressParser): number[] {
 }
 
 describe.each([
-  ["remove-background.txt", parseRemoveBackgroundProgress],
+  ["person-mask.txt", parsePersonMaskProgress],
   ["render.txt", parseRenderProgress],
 ])("%s", (name, parse) => {
   it("gives rising values from the tool's own progress lines", async () => {

@@ -23,8 +23,10 @@ types until slice 9 brings the live preview.
 
 - `src/schema.ts`: `edit.json`, format 1: `format`, `preset` (`"issebya"`), `duration`, `inputs`
   (the pipeline outputs it was made from, each `{ step, fingerprint, file }`: `footage`,
-  `transcript`, `cutout`, `head_track`) and `tracks`: `footage`, `cutout`, `captions`, `overlays`
+  `transcript`, `head_track`) and `tracks`: `footage`, `captions`, `overlays`
   (`kind: "accent"`), `transitions` (`dim`, `panel`, `card`) and `sounds` (`click`).
+  `inputs.cutout` and `tracks.cutout` are optional and never written now (old versions may hold
+  them); the builder ignores them.
 - Every item has an `id` (`^[a-z][a-z0-9-]{0,63}$`, unique across tracks), a `start` and an `end`
   anchor. An anchor is a word (`{ word, edge?: "start" | "end", offset? }`, offset within plus or
   minus 1 s), a time in seconds (`{ time }`, only where nobody speaks) or the reel's edge
@@ -33,7 +35,7 @@ types until slice 9 brings the live preview.
   re-time.
 - Per-item properties: captions and overlays take `words`, `text`, `font` (`primary` or
   `secondary`), `size`, `color` (`#RRGGBB`) and `position` (`{ x, y, align }` inside the frame);
-  footage and cut-out clips take `hidden` spans; transitions a replacement `color`; sounds
+  footage clips take `hidden` spans; transitions a replacement `color`; sounds
   `gain_db` (-60 to 12). Unset properties come from the preset.
 - `style` is the free custom-style field: CSS property to value, added to the element. Values
   cannot leave the style attribute (no `;`, `{`, `}`, `<`, `>`, backslash or `url(`).
@@ -56,7 +58,7 @@ types until slice 9 brings the live preview.
 - Accents: `#B3E6FF`, 190 px above the head, y 1130 with no head. Slots beside the head: first row
   610, row gap 85, right drop 42, minimum left 110, minimum right 90.
 - Transitions: `dim` (full frame, `rgba(0, 0, 0, 0.62)`, fade 0.3 s), `panel` (y 1150 to 1920,
-  `#121212`, slide 0.5 s `power3.inOut`, hides the cut-out), `card` (full frame,
+  `#121212`, slide 0.5 s `power3.inOut`), `card` (full frame,
   `rgba(8, 8, 8, 0.9)`, fade 0.25 s).
 - Click sound: `assets/sounds/mouse-click-trimmed.wav`, 0.23 s, -13 dB, at least 0.25 s apart.
 - Caption units: kept capitals (`I`, `I'm`, `I've`, `I'll`, `I'd`, `AI`), a number joined with the
@@ -68,7 +70,7 @@ types until slice 9 brings the live preview.
 - `src/build.ts`: `build(edit, transcript, headTrack, preset, measurer) -> { html, assets, checks }`.
   `html` is a HyperFrames composition (`data-composition-id="main"`, a paused GSAP 3.14.2 timeline
   registered on `window.__timelines`); `assets` lists every referenced file with its role
-  (`footage`, `cutout`, `font`, `sound`), sorted; `checks` is the layout check list.
+  (`footage`, `font`, `sound`), sorted; `checks` is the layout check list.
 - Deterministic: no clock, no randomness, no I/O. The same inputs give the same bytes in Node and in
   the browser. One builder serves the preview and the export.
 - `src/measure.ts`: `createMeasurer(hb, fonts)` over the initialised `harfbuzzjs` module and the
@@ -118,11 +120,11 @@ readable reason string (an empty list means every rule passes):
 ### First version
 
 `src/baseline.ts`, `baselineEdit(transcript, { inputs, duration }, preset)`: the automatic first
-version from the preset alone (no AI): footage and cut-out over the whole reel, one caption per
+version from the preset alone (no AI): footage over the whole reel plus captions, one caption per
 word or unit, starting on its own word and ending on the last word of its group; no positions
 (the builder fills them), no accents, transitions or sounds.
 
-`apps/worker/src/first-version.ts`, the `first_version` step after the six pipeline steps: reads
+`apps/worker/src/first-version.ts`, the `first_version` step after the five pipeline steps: reads
 the retimed `transcript.json` and `retime.json` and the `head-track.json` by their fingerprints,
 builds the baseline, runs `build` for its checks and saves version 1 (`request`, `model` and
 `prompt_version` null, change summary `automatic first version from the issebya style`). Its step

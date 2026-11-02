@@ -25,11 +25,7 @@ const seededKeys: string[] = [];
 const exportKeys: string[] = [];
 // The pipeline outputs tagged rebuildable (apps/worker's step definitions);
 // every other output is kept.
-const REBUILDABLE = new Set([
-  "convert/converted.mp4",
-  "retime/source.mp4",
-  "remove_background/subject.webm",
-]);
+const REBUILDABLE = new Set(["convert/converted.mp4", "retime/source.mp4"]);
 
 interface StoredFileRecord {
   r2_key: string;
@@ -130,7 +126,6 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
       "convert: footage converted, reused",
       "transcribe: transcribed, reused",
       "retime: retimed, reused",
-      "remove_background: background removed, reused",
       "head_track: head tracked, reused",
       "preview_copies: preview copies made, reused",
       /^first_version: version 1 saved, /,
@@ -160,7 +155,6 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     hit("convert"),
     hit("transcribe"),
     hit("retime"),
-    hit("remove_background"),
     hit("head_track"),
     hit("preview_copies"),
     // In-process: wall time only.
@@ -187,6 +181,8 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     },
   ]);
   for (const step of steps!) expect(step.wall_ms).toBeGreaterThanOrEqual(0);
+  // No background removal: no step row names it.
+  expect(steps!.map((step) => step.name)).not.toContain("remove_background");
   // The usage the scripted result reports, exactly: every input token
   // (1200 + 300 + 0), the output tokens, the cost and the model.
   const { data: decideRow } = await admin
@@ -316,6 +312,10 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   };
   const objectKeys = [...(await storage.list(CACHE_PREFIX)), sourceKey!];
   expect(objectKeys).toContain(exportKey);
+  // No cut-out and no cut-out preview copy is stored.
+  for (const objectKey of objectKeys) {
+    expect(objectKey).not.toMatch(/remove_background|subject-preview/);
+  }
   for (const versionKey of versionKeys) expect(objectKeys).toContain(versionKey);
   for (const objectKey of objectKeys) {
     const rows = live.filter((row) => row.r2_key === objectKey);

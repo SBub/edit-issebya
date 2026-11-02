@@ -26,8 +26,6 @@ export interface PresetTransition {
   motion: "fade" | "slide";
   seconds: number;
   ease: string;
-  // The cut-out is hidden while the transition shows.
-  hidesCutout: boolean;
   // Where captions inside the transition's span are set.
   text: Box;
 }
@@ -130,7 +128,6 @@ export const ISSEBYA_PRESET: Preset = {
       motion: "fade",
       seconds: 0.3,
       ease: "power2.out",
-      hidesCutout: false,
       text: { left: 130, right: 860, top: 1180, bottom: 1400 },
     },
     panel: {
@@ -139,7 +136,6 @@ export const ISSEBYA_PRESET: Preset = {
       motion: "slide",
       seconds: 0.5,
       ease: "power3.inOut",
-      hidesCutout: true,
       text: { left: 130, right: 860, top: 1200, bottom: 1400 },
     },
     card: {
@@ -148,7 +144,6 @@ export const ISSEBYA_PRESET: Preset = {
       motion: "fade",
       seconds: 0.25,
       ease: "power2.out",
-      hidesCutout: false,
       text: { left: 130, right: 860, top: 640, bottom: 1400 },
     },
   },

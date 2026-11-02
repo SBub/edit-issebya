@@ -32,11 +32,6 @@ export function baselineInputs(): { inputs: EditInputs; duration: number } {
     inputs: {
       footage: { step: "retime", fingerprint: fp("retime"), file: "source.mp4" },
       transcript: { step: "retime", fingerprint: fp("retime"), file: "transcript.json" },
-      cutout: {
-        step: "remove_background",
-        fingerprint: fp("remove_background"),
-        file: "subject.webm",
-      },
       head_track: { step: "head_track", fingerprint: fp("head_track"), file: "head-track.json" },
     },
     duration: retime.durationSeconds,

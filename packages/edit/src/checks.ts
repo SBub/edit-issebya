@@ -93,7 +93,7 @@ export function runChecks(
   const { tracks } = edit;
   const items = [
     ...tracks.footage,
-    ...tracks.cutout,
+    ...(tracks.cutout ?? []),
     ...tracks.transitions,
     ...tracks.captions,
     ...tracks.overlays,

@@ -1,20 +1,19 @@
 import type { EditInputs, EditRef } from "@edit-issebya/edit";
 import { isStorageKey, keyPrefix } from "@edit-issebya/storage";
 
-// Where the reel's preview copies are (reels.preview_copies, written by the
-// worker after the pipeline).
+// Where the reel's preview copy is (reels.preview_copies, written by the
+// worker after the pipeline): the footage only. An old reel's column may also
+// name a cut-out copy, which the preview never reads.
 export interface PreviewCopies {
   footage: EditRef;
-  cutout: EditRef;
 }
 
-// The five objects the live preview reads, as storage keys.
+// The four objects the live preview reads, as storage keys.
 export interface PreviewKeys {
   edit: string;
   transcript: string;
   headTrack: string;
   footage: string;
-  cutout: string;
 }
 
 const FINGERPRINT = /^[0-9a-f]{64}$/;
@@ -41,14 +40,14 @@ function isRef(value: unknown): value is EditRef {
   );
 }
 
-// Narrows the jsonb column; null for anything but two refs.
+// Narrows the jsonb column; null without a footage ref. A stored `cutout`
+// (an old reel's) is ignored.
 export function parsePreviewCopies(value: unknown): PreviewCopies | null {
   if (typeof value !== "object" || value === null) return null;
-  const { footage, cutout } = value as Record<string, unknown>;
-  if (!isRef(footage) || !isRef(cutout)) return null;
+  const { footage } = value as Record<string, unknown>;
+  if (!isRef(footage)) return null;
   return {
     footage: { step: footage.step, fingerprint: footage.fingerprint, file: footage.file },
-    cutout: { step: cutout.step, fingerprint: cutout.fingerprint, file: cutout.file },
   };
 }
 
@@ -65,7 +64,7 @@ function cacheKeyOf(prefix: string, ref: unknown, step: string | null): string |
 }
 
 // The keys of the current version's edit, transcript and head track and of
-// the reel's two preview copies; null when any part is malformed.
+// the reel's footage preview copy; null when any part is malformed.
 export function previewKeys({
   r2Key,
   reelId,
@@ -85,7 +84,6 @@ export function previewKeys({
   const transcript = cacheKeyOf(prefix, inputs.transcript, null);
   const headTrack = cacheKeyOf(prefix, inputs.head_track, "head_track");
   const footage = cacheKeyOf(prefix, previewCopies.footage, "preview_copies");
-  const cutout = cacheKeyOf(prefix, previewCopies.cutout, "preview_copies");
-  if (!transcript || !headTrack || !footage || !cutout) return null;
-  return { edit: r2Key, transcript, headTrack, footage, cutout };
+  if (!transcript || !headTrack || !footage) return null;
+  return { edit: r2Key, transcript, headTrack, footage };
 }

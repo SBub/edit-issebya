@@ -67,12 +67,11 @@ function expectOnlyFromChanged(index: number, pipeline: PipelineStep[], label: s
 }
 
 describe("PIPELINE", () => {
-  it("runs the six fixed steps in order, each with its reel status", () => {
+  it("runs the five fixed steps in order, each with its reel status", () => {
     expect(PIPELINE.map((step) => [step.name, step.reelStatus])).toEqual([
       ["convert", "converting"],
       ["transcribe", "transcribing"],
       ["retime", "retiming"],
-      ["remove_background", "removing_background"],
       ["head_track", "tracking_head"],
       ["preview_copies", "making_previews"],
     ]);
@@ -101,10 +100,8 @@ describe("PIPELINE", () => {
       "retime/transcript.json": "kept",
       "retime/retime.json": "kept",
       "retime/envelope.json": "kept",
-      "remove_background/subject.webm": "rebuildable",
       "head_track/head-track.json": "kept",
       "preview_copies/footage-preview.mp4": "kept",
-      "preview_copies/subject-preview.webm": "kept",
     });
     for (const tag of Object.values(tags)) expect(["kept", "rebuildable"]).toContain(tag);
   });
@@ -150,18 +147,31 @@ describe("fingerprintsFor", () => {
     });
   });
 
-  it("re-runs background removal, head tracking and previews on a HyperFrames upgrade", () => {
-    const index = PIPELINE.findIndex((step) => step.name === "remove_background");
-    const step = PIPELINE[index]!;
+  it("has no background removal step: head tracking reads the retimed footage", () => {
+    expect(PIPELINE.map((step) => step.name)).not.toContain("remove_background");
+    const fingerprints = fingerprintsFor(SOURCE);
+    const headTrack = PIPELINE.find((step) => step.name === "head_track")!;
+    expect(headTrack.inputs(SOURCE, fingerprints).map((input) => input.ref)).toEqual([
+      { step: "retime", fingerprint: fingerprints.retime, file: "source.mp4" },
+    ]);
+  });
+
+  it("re-runs head tracking alone when its person mask's HyperFrames changes", () => {
+    const index = PIPELINE.findIndex((step) => step.name === "head_track");
+    const step = PIPELINE[index]! as PipelineStep<{ mask: object }>;
     const before = fingerprintsFor(SOURCE);
     const after = fingerprintsFor(
       SOURCE,
-      replaced(index, { ...step, settings: { ...step.settings, hyperframes: "0.0.0-changed" } }),
+      replaced(index, {
+        ...step,
+        settings: {
+          ...step.settings,
+          mask: { ...step.settings.mask, hyperframes: "0.0.0-changed" },
+        },
+      } as PipelineStep),
     );
-    for (const name of ["remove_background", "head_track", "preview_copies"]) {
-      expect(after[name], name).not.toBe(before[name]);
-    }
-    for (const name of ["convert", "transcribe", "retime"]) {
+    expect(after.head_track).not.toBe(before.head_track);
+    for (const name of ["convert", "transcribe", "retime", "preview_copies"]) {
       expect(after[name], name).toBe(before[name]);
     }
   });
@@ -190,11 +200,10 @@ describe("fingerprintsFor", () => {
 });
 
 describe("retentionOf", () => {
-  it("tags the three heavy outputs rebuildable and every other kept", () => {
+  it("tags the two heavy outputs rebuildable and every other kept", () => {
     const rebuildable = [
       ["convert", "converted.mp4"],
       ["retime", "source.mp4"],
-      ["remove_background", "subject.webm"],
     ];
     for (const [step, file] of rebuildable) expect(retentionOf(step!, file!)).toBe("rebuildable");
     for (const step of PIPELINE) {
@@ -203,6 +212,11 @@ describe("retentionOf", () => {
         expect(retentionOf(step.name, file)).toBe("kept");
       }
     }
+  });
+
+  it("still tags the retired cut-out outputs old reels have stored", () => {
+    expect(retentionOf("remove_background", "subject.webm")).toBe("rebuildable");
+    expect(retentionOf("preview_copies", "subject-preview.webm")).toBe("kept");
   });
 
   it("gives null for an unknown step or file", () => {

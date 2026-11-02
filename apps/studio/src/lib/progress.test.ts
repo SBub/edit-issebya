@@ -64,8 +64,9 @@ describe("formatTimeLeft", () => {
 
 describe("isProgressStep", () => {
   it("is true for the two long steps only", () => {
-    expect(isProgressStep("remove_background")).toBe(true);
+    expect(isProgressStep("head_track")).toBe(true);
     expect(isProgressStep("render")).toBe(true);
+    expect(isProgressStep("remove_background")).toBe(false);
     expect(isProgressStep("retime")).toBe(false);
   });
 });

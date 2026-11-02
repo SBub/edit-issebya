@@ -6,7 +6,7 @@
 
 ## Overview
 
-`decide` is the pipeline's one AI step. After the six fixed steps and the automatic version 1, the
+`decide` is the pipeline's one AI step. After the five fixed steps and the automatic version 1, the
 worker asks Claude Code (`claude -p`, no tools, on the owner's machine) to start from the current
 version, fix misheard words, choose accent words and transitions, and set a title. The answer must
 match a JSON Schema made for this reel, is checked again with Zod, built, run through the layout

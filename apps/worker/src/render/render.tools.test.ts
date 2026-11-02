@@ -19,7 +19,7 @@ import { fixtureEdit, fixturePath } from "./render-test-support.ts";
 // memory comes from sampling the whole process tree.
 const run = promisify(execFile);
 const SOURCE = fixturePath("retime", "source.mp4");
-const FILES = { footage: SOURCE, cutout: fixturePath("remove_background", "subject.webm") };
+const FILES = { footage: SOURCE };
 const RANGE = { start: 0, end: 3 };
 const REEL_SECONDS = 2.69;
 const CLICK_WORDS = ["w0005", "w0009"];

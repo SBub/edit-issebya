@@ -54,7 +54,7 @@ function groups(list: Word[][], preset: Preset): Word[][][] {
 }
 
 // The automatic first version, from the preset alone (no AI): the footage
-// and the cut-out over the whole reel, one caption per word or unit, starting
+// over the whole reel (no cut-out), one caption per word or unit, starting
 // on its own word and ending on the last word of its group. No positions
 // (the builder fills them), no accents, transitions or sounds.
 export function baselineEdit(
@@ -82,7 +82,6 @@ export function baselineEdit(
     inputs,
     tracks: {
       footage: [{ id: "footage", ...whole }],
-      cutout: [{ id: "cutout", ...whole }],
       captions,
       overlays: [],
       transitions: [],

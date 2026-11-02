@@ -29,25 +29,17 @@
       ]
     },
     {
-      "name": "remove_background",
-      "fingerprint": "5ecb5235234182f8cb7eea773ada7d52b12bbf931f33407bd7910555988d2316",
-      "files": [
-        "subject.webm"
-      ]
-    },
-    {
       "name": "head_track",
-      "fingerprint": "d5f58034da7573bbd956304b19a4d4061f8f4a41b19644ac323de224b691bf04",
+      "fingerprint": "a76a7c82132dd8a7717a7f461b5ae94a023e20be150dff57cf8f540175aa04df",
       "files": [
         "head-track.json"
       ]
     },
     {
       "name": "preview_copies",
-      "fingerprint": "663cba62bed2a62bac39ab4999cbb73fc546176fe1884f068c0962e208b98bfc",
+      "fingerprint": "6b4acde030c248d4d2259bfca40ee25d9c64c941a5326a7f2f6ce02f8392c787",
       "files": [
-        "footage-preview.mp4",
-        "subject-preview.webm"
+        "footage-preview.mp4"
       ]
     }
   ]

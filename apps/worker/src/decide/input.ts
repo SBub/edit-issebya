@@ -67,7 +67,6 @@ export function presetSummary(preset: Preset) {
     transitions: Object.entries(preset.transitions).map(([type, kind]) => ({
       type,
       text_region: kind.text,
-      hides_cutout: kind.hidesCutout,
     })),
     sounds: Object.entries(preset.sounds).map(([key, sound]) => ({
       key,

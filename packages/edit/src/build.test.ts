@@ -59,8 +59,24 @@ describe("build", () => {
       ["assets/fonts/Raleway-Light.ttf", "font"],
       ["assets/sounds/mouse-click-trimmed.wav", "sound"],
       ["source.mp4", "footage"],
-      ["subject.webm", "cutout"],
     ]);
+  });
+
+  it("builds a stored version naming a cut-out without it", async () => {
+    expect(hand.edit.inputs.cutout).toBeDefined();
+    expect(hand.edit.tracks.cutout?.length).toBeGreaterThan(0);
+    const { html, assets } = build(
+      hand.edit,
+      hand.transcript,
+      hand.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(html).not.toContain('<video id="cutout"');
+    expect(html).not.toContain("subject.webm");
+    expect(html).not.toContain('data-track-index="30"');
+    expect(html.match(/<video /g)).toHaveLength(1);
+    expect(assets.map((asset) => asset.role)).not.toContain("cutout");
   });
 
   it("escapes text and style values", async () => {

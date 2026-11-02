@@ -30,7 +30,6 @@ describe("previewCopiesRefs", () => {
   it("names both preview files under the preview_copies fingerprint", () => {
     expect(previewCopiesRefs({ retime: "x", preview_copies: FP })).toEqual({
       footage: { step: "preview_copies", fingerprint: FP, file: "footage-preview.mp4" },
-      cutout: { step: "preview_copies", fingerprint: FP, file: "subject-preview.webm" },
     });
   });
 

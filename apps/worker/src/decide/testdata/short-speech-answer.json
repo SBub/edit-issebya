@@ -15,17 +15,6 @@
           }
         }
       ],
-      "cutout": [
-        {
-          "id": "cutout",
-          "start": {
-            "reel": "start"
-          },
-          "end": {
-            "reel": "end"
-          }
-        }
-      ],
       "captions": [
         {
           "id": "cw0001",

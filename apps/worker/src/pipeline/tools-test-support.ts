@@ -6,15 +6,6 @@ import { toolPaths } from "./tools.ts";
 
 const run = promisify(execFile);
 
-// stdout as bytes, for raw frames.
-function runBuffer(file: string, args: string[]): Promise<{ stdout: Buffer }> {
-  return new Promise((resolve, reject) => {
-    execFile(file, args, { encoding: "buffer", maxBuffer: 64 * 1024 * 1024 }, (error, stdout) =>
-      error ? reject(error) : resolve({ stdout }),
-    );
-  });
-}
-
 export const REAL_TOOLS = toolPaths(process.env);
 
 export const CLIP = new URL("../../../../fixtures/footage/short-speech.mp4", import.meta.url)
@@ -72,7 +63,7 @@ export async function keyframeTimes(path: string): Promise<number[]> {
   return probe.frames.map((frame) => Number(frame.pts_time));
 }
 
-// The person clip, for the cut-out tool tests only. Read only: never written.
+// The person clip, for the head tracking tool tests only. Read only: never written.
 export const PERSON_CLIP = new URL("../../../../fixtures/footage/short-person.mp4", import.meta.url)
   .pathname;
 
@@ -96,35 +87,4 @@ export async function formatDuration(path: string): Promise<number> {
     format: { duration: string };
   };
   return Number(probe.format.duration);
-}
-
-// One frame at `seconds`, as raw RGBA at w x h; WebM is decoded with libvpx-vp9
-// so the alpha survives.
-export async function decodeFrameRgba(
-  path: string,
-  seconds: number,
-  w: number,
-  h: number,
-): Promise<Uint8Array> {
-  const decoder = path.endsWith(".webm") ? ["-c:v", "libvpx-vp9"] : [];
-  const { stdout } = await runBuffer(REAL_TOOLS.ffmpeg, [
-    "-hide_banner",
-    "-v",
-    "error",
-    "-ss",
-    String(seconds),
-    ...decoder,
-    "-i",
-    path,
-    "-frames:v",
-    "1",
-    "-vf",
-    `scale=${w}:${h}`,
-    "-pix_fmt",
-    "rgba",
-    "-f",
-    "rawvideo",
-    "-",
-  ]);
-  return new Uint8Array(stdout);
 }

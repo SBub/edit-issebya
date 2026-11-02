@@ -29,6 +29,17 @@ describe("parseEdit", () => {
     }
   });
 
+  it("accepts an edit with a cut-out (stored) and one without (new)", () => {
+    expect(hand.edit.inputs.cutout).toBeDefined();
+    expect(parseEdit(hand.edit, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });
+    const edit = structuredClone(hand.edit);
+    delete edit.inputs.cutout;
+    delete edit.tracks.cutout;
+    const result = parseEdit(edit, ISSEBYA_PRESET, hand.transcript);
+    expect(result).toMatchObject({ ok: true });
+    expect(result.ok && result.edit.tracks).not.toHaveProperty("cutout");
+  });
+
   it("refuses an unknown word id, naming the item", () => {
     const [reason] = reasons(withCaption((caption) => (caption.start = { word: "w999" })));
     expect(reason).toMatch(/^item cw3 \(captions\[3\]\.start/);

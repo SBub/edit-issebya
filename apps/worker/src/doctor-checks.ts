@@ -32,7 +32,7 @@ export interface DoctorDeps {
 const PIPELINE_FILTERS = ["zscale", "tonemap", "atempo", "astats", "ametadata"];
 
 // The codecs the fixed steps use: H.264 encodes, VP9 with alpha encoded and
-// decoded (the cut-out, the head tracker, the subject preview).
+// decoded (the head tracker's person mask).
 const PIPELINE_ENCODERS = ["libx264", "libvpx-vp9"];
 const PIPELINE_DECODERS = ["libvpx-vp9"];
 

@@ -65,9 +65,12 @@ describe("baselineEdit", () => {
     ).toEqual([["w1"], ["w2", "w3"], ["w4"], ["w5", "w6"]]);
   });
 
-  it("makes a valid version of an empty transcript: footage and cut-out only", () => {
+  it("makes a valid version of an empty transcript: footage only", () => {
     const edit = baselineEdit({ words: [] }, baselineInputs(), ISSEBYA_PRESET);
     expect(edit.tracks.captions).toEqual([]);
+    expect(edit.tracks.footage).toHaveLength(1);
+    expect(edit.tracks).not.toHaveProperty("cutout");
+    expect(edit.inputs).not.toHaveProperty("cutout");
     expect(parseEdit(edit, ISSEBYA_PRESET, { words: [] })).toMatchObject({ ok: true });
   });
 });

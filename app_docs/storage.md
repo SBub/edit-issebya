@@ -61,12 +61,15 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
 ### What is kept and what is deleted
 
 - Kept forever: the source, the preview copies and every other `kept` output, and the versions.
-- Deleted: the three `rebuildable` outputs (`convert`'s `converted.mp4`, `retime`'s `source.mp4`,
-  `remove_background`'s `subject.webm`) once every reel holding the key was last exported more than
-  seven days ago. A reel never exported, or exported within seven days, keeps the file for everyone.
+- Deleted: the two live `rebuildable` outputs (`convert`'s `converted.mp4`, `retime`'s
+  `source.mp4`) once every reel holding the key was last exported more than seven days ago. A reel never exported, or exported within seven days, keeps the file for everyone.
+- Old reels' `remove_background/subject.webm` and `preview_copies/subject-preview.webm` objects
+  stay where they are, still classified as retired outputs (`app_docs/pipeline.md`) and slimmed like
+  any file of their tag: `subject.webm` is rebuildable and deleted under the same seven-day rule;
+  nothing re-runs to rebuild it, since no version built since needs it.
 - Deleted: export files once their export's `expires_at` has passed.
-- The next export rebuilds whatever rebuildable output is missing: `convert`, `retime` and
-  `remove_background` re-run from their fingerprints, and the kept outputs stay cache hits.
+- The next export rebuilds whatever rebuildable output is missing: only `convert` and `retime`
+  re-run from their fingerprints, and the kept outputs stay cache hits.
 
 ### Slimming
 
@@ -181,7 +184,7 @@ Nothing to do for the owner. What they see:
   that worker writes again. Specs delete their own row.
 - `apps/worker/src/make-pipeline-fixtures.ts` and the test seeding helpers write storage directly
   on purpose: they are a dev tool and fixtures, not jobs.
-- `transcribe` and `remove_background` also run HyperFrames; scoping their environment the same way
+- `transcribe` and `head_track` also run HyperFrames; scoping their environment the same way
   is a follow-up if the owner's `df` check shows leftovers.
 - Owner steps: apply the migration to the hosted project after merge; the manual `df` check and the
   re-export of a reel last exported eight days ago; decide whether never-exported reels are ever

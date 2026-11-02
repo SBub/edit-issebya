@@ -100,6 +100,23 @@ describe("decideJsonSchema", () => {
   }
 });
 
+describe("decideJsonSchema tracks", () => {
+  it("has no cut-out track", () => {
+    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, hand.edit.duration) as {
+      properties: { tracks: { properties: Record<string, unknown>; required: string[] } };
+    };
+    const tracks = schema.properties.tracks;
+    expect(Object.keys(tracks.properties)).toEqual([
+      "footage",
+      "captions",
+      "overlays",
+      "transitions",
+      "sounds",
+    ]);
+    expect(tracks.required).not.toContain("cutout");
+  });
+});
+
 describe("parseDecideAnswer", () => {
   const parse = (answer: unknown) =>
     parseDecideAnswer(answer, ISSEBYA_PRESET, hand.transcript, hand.edit.duration);
@@ -165,6 +182,16 @@ describe("editFromAnswer", () => {
     expect(result.edit.inputs).toEqual(short.edit.inputs);
     expect(result.edit.duration).toBe(short.edit.duration);
     expect(result.edit).toEqual(short.edit);
+  });
+
+  it("drops a cut-out track the answer carries anyway", () => {
+    const tracks = {
+      ...structuredClone(short.edit.tracks),
+      cutout: [{ id: "cutout", start: { reel: "start" }, end: { reel: "end" } }],
+    } as Edit["tracks"];
+    const result = editFromAnswer(short.edit, { tracks }, ISSEBYA_PRESET, short.transcript);
+    if (!result.ok) throw new Error(result.reasons.join("; "));
+    expect(result.edit.tracks).not.toHaveProperty("cutout");
   });
 
   it("refuses an id used twice", () => {

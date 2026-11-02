@@ -20,7 +20,6 @@
   <body>
     <div id="root" data-composition-id="main" data-start="0" data-duration="47.526" data-width="1080" data-height="1920">
       <video id="footage" class="clip full" src="source.mp4" playsinline data-start="0.000" data-duration="47.526" data-track-index="1" data-has-audio="true"></video>
-      <video id="cutout" class="clip full" src="subject.webm" muted playsinline data-start="0.000" data-duration="47.526" data-track-index="30"></video>
       <div id="t-fund-life" class="clip layer" data-start="35.811" data-duration="2.607" data-track-index="40" style="left: 0px; top: 1150px; width: 1080px; height: 770px; background: #121212; transform: translateY(770px)"></div>
       <div id="text" class="clip" data-start="0.000" data-duration="47.526" data-track-index="50">
         <span id="cw0" class="text f-secondary" style="left: 233px; top: 610px; font-size: 50px; color: #FFFFFF">the</span>
@@ -191,8 +190,6 @@
       const tl = gsap.timeline({ paused: true });
       tl.fromTo("#t-fund-life", { y: 770 }, { y: 0, duration: 0.5, ease: "power3.inOut" }, 35.811);
       tl.to("#t-fund-life", { y: 770, duration: 0.5, ease: "power3.inOut" }, 37.918);
-      tl.to("#cutout", { opacity: 0, duration: 0.5 }, 35.811);
-      tl.to("#cutout", { opacity: 1, duration: 0.5 }, 37.918);
       tl.fromTo("#cw0", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.282);
       tl.to("#cw0", { opacity: 0, duration: 0.15 }, 1.068);
       tl.fromTo("#cw1", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.355);
