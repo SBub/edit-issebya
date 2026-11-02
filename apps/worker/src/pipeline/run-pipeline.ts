@@ -7,6 +7,7 @@ import { checkFootage as probeFootage } from "./footage-check.ts";
 import { type FileRef, cacheKey } from "./fingerprint.ts";
 import type { RunStep } from "./step-double.ts";
 import type { ToolPaths } from "./tools.ts";
+import { reelOf } from "../queue.ts";
 
 export interface PipelineRun {
   ctx: StepContext;
@@ -71,7 +72,8 @@ export async function runPipeline({
   runStep,
 }: PipelineRun): Promise<{ fingerprints: Record<string, string> }> {
   const { steps, job, signal } = ctx;
-  const sourceKey = await steps.sourceKey(job.reel_id);
+  const reelId = reelOf(ctx.job);
+  const sourceKey = await steps.sourceKey(reelId);
   if (!sourceKey) throw new Error("reel has no source key");
   const head = await storage.head(sourceKey, { signal });
   signal.throwIfAborted();
@@ -95,7 +97,7 @@ export async function runPipeline({
   // downloaded. Before the long steps, so the studio has it while they run.
   const recordFootage = async (step: PipelineStep, fingerprint: string) => {
     if (!step.footage) return;
-    if ((await steps.footageSeconds(job.reel_id)) !== null) return;
+    if ((await steps.footageSeconds(reelId)) !== null) return;
     const ref = { step: step.name, fingerprint, file: step.footage.file };
     const key = keyOf(ref);
     let path = local.get(key);
@@ -111,13 +113,13 @@ export async function runPipeline({
     signal.throwIfAborted();
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     const seconds = step.footage.seconds(await readFile(path, "utf8"));
-    await steps.recordFootageSeconds(job.reel_id, seconds);
+    await steps.recordFootageSeconds(reelId, seconds);
   };
 
   await rm(jobDir, { recursive: true, force: true });
   try {
     if (checkFootage) {
-      if (setReelStatus) await steps.reelStatus(job.reel_id, "checking_footage");
+      if (setReelStatus) await steps.reelStatus(reelId, "checking_footage");
       // Where convert reads the source: a convert that runs downloads nothing more.
       const sourcePath = downloadPath({ source });
       await runToolsStep(
@@ -155,7 +157,7 @@ export async function runPipeline({
           if (object) await recordStored(outputKeys[index]!, object.bytes);
         }
       }
-      if (setReelStatus) await steps.reelStatus(job.reel_id, step.reelStatus);
+      if (setReelStatus) await steps.reelStatus(reelId, step.reelStatus);
       if (stored.every((object) => object !== null)) {
         await recordHit(ctx, {
           name: step.name,

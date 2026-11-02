@@ -6,12 +6,24 @@ import { supabaseFailure } from "./failure.ts";
 
 export type StoredFileKind = "source" | "kept" | "rebuildable" | "version" | "export";
 
-export interface StoredFileRow {
-  reelId: string;
+// What a stored file belongs to: a reel, or a library photo.
+export type StoredFileTarget = { reelId: string } | { photoId: string };
+
+export type StoredFileRow = StoredFileTarget & {
   key: string;
   step: string;
   kind: StoredFileKind;
   bytes: number;
+};
+
+// A claimed job's target: its reel, or its photo for a `describe_photo` job.
+export function jobTarget(job: {
+  reel_id: string | null;
+  photo_id: string | null;
+}): StoredFileTarget {
+  if (job.reel_id) return { reelId: job.reel_id };
+  if (job.photo_id) return { photoId: job.photo_id };
+  throw new Error("stored-files: the job has neither a reel nor a photo");
 }
 
 export interface StoredFile {
@@ -33,11 +45,14 @@ const CACHE = /^cache\/([a-z_]{1,40})\/[a-z0-9]+\/([a-z0-9._-]+)$/;
 const VERSION = new RegExp(`^reels/${UUID}/versions/${UUID}\\.json$`);
 const EXPORT = new RegExp(`^exports/${UUID}/${UUID}\\.mp4$`);
 const SOURCE = new RegExp(`^reels/${UUID}/source/original\\.[a-z0-9]{1,10}$`);
+const PHOTO_ORIGINAL = new RegExp(`^library/${UUID}/original\\.(jpg|png|heic|heif|webp)$`);
+const PHOTO_DERIVED = new RegExp(`^library/${UUID}/(thumbnail|large)\\.jpg$`);
 
 // The kind and step of a key, from its layout alone: a pipeline output
 // (`<prefix>cache/<step>/<fp>/<file>`, kept or rebuildable by the step's
-// tag), a version, an export or the raw footage. Anything else throws, so
-// nothing is ever written unrecorded.
+// tag), a version, an export, the raw footage, or a library photo (its
+// original kept, its thumbnail and large copy rebuildable). Anything else
+// throws, so nothing is ever written unrecorded.
 export function classifyKey(prefix: string, key: string): { kind: StoredFileKind; step: string } {
   const unknown = () => new Error(`stored-files: unknown key layout: ${key}`);
   if (!key.startsWith(prefix)) throw unknown();
@@ -52,6 +67,8 @@ export function classifyKey(prefix: string, key: string): { kind: StoredFileKind
   if (VERSION.test(rest)) return { kind: "version", step: "version" };
   if (EXPORT.test(rest)) return { kind: "export", step: "render" };
   if (SOURCE.test(rest)) return { kind: "source", step: "upload" };
+  if (PHOTO_ORIGINAL.test(rest)) return { kind: "kept", step: "upload" };
+  if (PHOTO_DERIVED.test(rest)) return { kind: "rebuildable", step: "photo_images" };
   throw unknown();
 }
 
@@ -66,13 +83,11 @@ function storedFiles(data: unknown): StoredFile[] {
 export function supabaseStoredFiles(db: SupabaseClient): StoredFileRecords {
   return {
     async record(row) {
-      const { error, status } = await db.rpc("record_stored_file", {
-        p_reel_id: row.reelId,
-        p_r2_key: row.key,
-        p_step: row.step,
-        p_kind: row.kind,
-        p_bytes: row.bytes,
-      });
+      const fields = { p_r2_key: row.key, p_step: row.step, p_kind: row.kind, p_bytes: row.bytes };
+      const { error, status } =
+        "photoId" in row
+          ? await db.rpc("record_photo_file", { p_photo_id: row.photoId, ...fields })
+          : await db.rpc("record_stored_file", { p_reel_id: row.reelId, ...fields });
       if (error) throw supabaseFailure("stored file not recorded", { error, status });
     },
     async slimRebuildable(now, prefix) {
@@ -115,17 +130,21 @@ export const STORAGE_METHODS: Record<keyof Storage, "read" | "write" | "refused"
 };
 
 // A job's storage: reads pass through, every write records a `stored_files`
-// row for the job's reel after it succeeds (also when the object was already
-// there: this reel needs it now too), and delete is refused (only the
+// row for the job's reel or photo after it succeeds (also when the object was
+// already there: this reel needs it now too), and delete is refused (only the
 // slimming task deletes). A failed record fails the job; the row is
 // idempotent, so the retry records it.
 export function recordingStorage(
   storage: Storage,
-  { records, reelId, keyPrefix }: { records: StoredFileRecords; reelId: string; keyPrefix: string },
+  {
+    records,
+    target,
+    keyPrefix,
+  }: { records: StoredFileRecords; target: StoredFileTarget; keyPrefix: string },
 ): Storage {
   async function recordKey(key: string, bytes: number | null) {
     if (bytes === null) throw new Error(`stored-files: no object after writing ${key}`);
-    await records.record({ reelId, key, bytes, ...classifyKey(keyPrefix, key) });
+    await records.record({ ...target, key, bytes, ...classifyKey(keyPrefix, key) });
   }
   const headBytes = async (key: string) => (await storage.head(key))?.bytes ?? null;
 

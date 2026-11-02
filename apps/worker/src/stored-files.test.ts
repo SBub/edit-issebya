@@ -2,13 +2,16 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type FakeStorage, type Storage, fakeStorage } from "@edit-issebya/storage";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   STORAGE_METHODS,
   type StoredFileRecords,
   type StoredFileRow,
   classifyKey,
+  jobTarget,
   recordingStorage,
+  supabaseStoredFiles,
 } from "./stored-files.ts";
 
 const PREFIX = "dev/";
@@ -39,7 +42,11 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "stored-files-"));
   raw = fakeStorage({ root: join(root, "store"), uploadUrlBase: "" });
   rows = [];
-  wrapped = recordingStorage(raw, { records: memoryRecords(), reelId: REEL, keyPrefix: PREFIX });
+  wrapped = recordingStorage(raw, {
+    records: memoryRecords(),
+    target: { reelId: REEL },
+    keyPrefix: PREFIX,
+  });
 });
 
 afterEach(async () => {
@@ -88,6 +95,29 @@ describe("classifyKey", () => {
       kind: "kept",
       step: "transcribe",
     });
+  });
+
+  it("tells a library photo's original from its rebuildable copies", () => {
+    for (const ext of ["jpg", "png", "heic", "heif", "webp"]) {
+      expect(classifyKey(PREFIX, `${PREFIX}library/${OTHER}/original.${ext}`)).toEqual({
+        kind: "kept",
+        step: "upload",
+      });
+    }
+    for (const file of ["thumbnail.jpg", "large.jpg"]) {
+      expect(classifyKey(PREFIX, `${PREFIX}library/${OTHER}/${file}`)).toEqual({
+        kind: "rebuildable",
+        step: "photo_images",
+      });
+    }
+    for (const key of [
+      `${PREFIX}library/${OTHER}/original.gif`,
+      `${PREFIX}library/${OTHER}/thumbnail.png`,
+      `${PREFIX}library/not-a-uuid/large.jpg`,
+      `${PREFIX}library/${OTHER}/other.jpg`,
+    ]) {
+      expect(() => classifyKey(PREFIX, key)).toThrow(/unknown key layout/);
+    }
   });
 
   it("throws on any other key", () => {
@@ -219,6 +249,25 @@ describe("recordingStorage", () => {
     expect(rows).toEqual([]);
   });
 
+  it("records a photo's writes against the photo", async () => {
+    const photoRows: StoredFileRow[] = [];
+    const photoStorage = recordingStorage(raw, {
+      records: {
+        ...memoryRecords(),
+        async record(row) {
+          photoRows.push(row);
+        },
+      },
+      target: { photoId: OTHER },
+      keyPrefix: PREFIX,
+    });
+    const key = `${PREFIX}library/${OTHER}/thumbnail.jpg`;
+    await photoStorage.put(key, new Uint8Array([1, 2, 3]));
+    expect(photoRows).toEqual([
+      { photoId: OTHER, key, kind: "rebuildable", step: "photo_images", bytes: 3 },
+    ]);
+  });
+
   it("fails the write when recording fails", async () => {
     const failing = recordingStorage(raw, {
       records: {
@@ -227,9 +276,36 @@ describe("recordingStorage", () => {
           throw new Error("database down");
         },
       },
-      reelId: REEL,
+      target: { reelId: REEL },
       keyPrefix: PREFIX,
     });
     await expect(failing.put(keys.put, new Uint8Array(1))).rejects.toThrow(/database down/);
+  });
+});
+
+describe("jobTarget and supabaseStoredFiles.record", () => {
+  it("names the reel or the photo a job writes for", () => {
+    expect(jobTarget({ reel_id: REEL, photo_id: null })).toEqual({ reelId: REEL });
+    expect(jobTarget({ reel_id: null, photo_id: OTHER })).toEqual({ photoId: OTHER });
+    expect(() => jobTarget({ reel_id: null, photo_id: null })).toThrow(/neither/);
+  });
+
+  it("records a reel's file through record_stored_file and a photo's through record_photo_file", async () => {
+    const calls: { name: string; args: Record<string, unknown> }[] = [];
+    const db = {
+      async rpc(name: string, args: Record<string, unknown>) {
+        calls.push({ name, args });
+        return { error: null, status: 200 };
+      },
+    } as unknown as SupabaseClient;
+    const records = supabaseStoredFiles(db);
+    const fields = { key: "k", step: "upload", kind: "kept" as const, bytes: 5 };
+    await records.record({ reelId: REEL, ...fields });
+    await records.record({ photoId: OTHER, ...fields });
+    const rest = { p_r2_key: "k", p_step: "upload", p_kind: "kept", p_bytes: 5 };
+    expect(calls).toEqual([
+      { name: "record_stored_file", args: { p_reel_id: REEL, ...rest } },
+      { name: "record_photo_file", args: { p_photo_id: OTHER, ...rest } },
+    ]);
   });
 });

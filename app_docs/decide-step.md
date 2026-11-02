@@ -122,7 +122,9 @@ two AI calls. A failure before the first AI call may still be retried once.
 ## Rules
 
 - At most two AI calls per decide: one retry, never a loop.
-- Never give Claude Code tools or a saved session (`--tools ""`, `--no-session-persistence`).
+- Never give Claude Code tools or a saved session (`--tools ""`, `--no-session-persistence`),
+  except the `describe_photo` call's `Read` limited to its one image file
+  (`app_docs/photo-library.md`).
 - Never let the answer carry `format`, `preset`, `duration` or `inputs`.
 - Never write a version or R2 key for a refused answer; the current version stays.
 - Never cache the decide step.

@@ -12,10 +12,12 @@ import {
   createTelemetry,
   endJobSpan,
   startJobSpan,
+  targetAttributes,
+  traceIdForJob,
   traceIdForReel,
 } from "./telemetry.ts";
 
-const REEL = TEST_JOB.reel_id;
+const REEL = TEST_JOB.reel_id as string;
 
 async function runJobWithSteps(telemetry: Telemetry, job = TEST_JOB, names = ["one", "two"]) {
   const { steps } = recordingSteps();
@@ -40,6 +42,21 @@ describe("traceIdForReel", () => {
 
   it("refuses anything but a uuid", () => {
     expect(() => traceIdForReel("not-a-uuid")).toThrow("not a reel id");
+  });
+});
+
+describe("traceIdForJob and targetAttributes", () => {
+  const PHOTO = "7a2d0c1e-4b5f-4c3a-9e8d-1f2a3b4c5d6e";
+
+  it("follow the reel for a reel's job and the photo for a photo's job", () => {
+    expect(traceIdForJob(TEST_JOB)).toBe(traceIdForReel(REEL));
+    expect(traceIdForJob({ reel_id: null, photo_id: PHOTO })).toBe(traceIdForReel(PHOTO));
+    expect(targetAttributes(TEST_JOB)).toEqual({ "reel.id": REEL });
+    expect(targetAttributes({ reel_id: null, photo_id: PHOTO })).toEqual({ "photo.id": PHOTO });
+  });
+
+  it("refuse a job with neither", () => {
+    expect(() => traceIdForJob({ reel_id: null, photo_id: null })).toThrow("neither");
   });
 });
 

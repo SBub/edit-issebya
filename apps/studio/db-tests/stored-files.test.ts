@@ -28,6 +28,7 @@ const STORED_FILE_COLUMNS = [
   ["id", "uuid"],
   ["kind", "text"],
   ["owner_id", "uuid"],
+  ["photo_id", "uuid"],
   ["r2_key", "text"],
   ["reel_id", "uuid"],
   ["step", "text"],
@@ -409,6 +410,38 @@ describe("slim_rebuildable_files", () => {
   it("never touches a key outside the prefix it is given", async () => {
     expect(await slim(now, `${PREFIX}cache/transcribe/`)).toEqual([]);
     expect((await rowsOf(reelA)).find((r) => r.r2_key === outside)!.deleted_at).toBeNull();
+  });
+
+  it("never selects a photo's rebuildable file, even with no exports", async () => {
+    const photoId = randomUUID();
+    const photoKey = `${PREFIX}library/${photoId}/thumbnail.jpg`;
+    const db = new pg.Client({ connectionString: localDbUrl() });
+    await db.connect();
+    try {
+      await db.query(
+        `insert into public.photos (id, owner_id, r2_key, file_name, content_type, status, bytes)
+         values ($1, $2, $3, 'p.jpg', 'image/jpeg', 'describing', 10)`,
+        [photoId, userA.id, `${PREFIX}library/${photoId}/original.jpg`],
+      );
+      const { error } = await admin.rpc("record_photo_file", {
+        p_photo_id: photoId,
+        p_r2_key: photoKey,
+        p_step: "photo_images",
+        p_kind: "rebuildable",
+        p_bytes: 20,
+      });
+      expect(error).toBeNull();
+      const far = new Date(now.getTime() + 30 * DAY_MS);
+      expect(await slim(far, `${PREFIX}library/`)).toEqual([]);
+      const { rows } = await db.query<{ deleted_at: string | null }>(
+        "select deleted_at from public.stored_files where photo_id = $1",
+        [photoId],
+      );
+      expect(rows).toEqual([{ deleted_at: null }]);
+    } finally {
+      await db.query("delete from public.photos where id = $1", [photoId]);
+      await db.end();
+    }
   });
 
   it("is not executable by a signed-in user", async () => {

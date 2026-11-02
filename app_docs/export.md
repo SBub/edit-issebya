@@ -128,21 +128,33 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
 - Command: `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn workspace @edit-issebya/studio test:tools`
   (`apps/studio/e2e-tools/export-matches-preview.spec.ts`), on the owner's Mac only, against the
   run's servers, never in CI.
-- Acceptance: every guardrail frame scores at or above `PREVIEW_EXPORT_SSIM_BOUND` (0.99), and the
+- Acceptance: every guardrail frame scores at or above `PREVIEW_EXPORT_SSIM_BOUND` (0.982), and the
   probe (a caption moved by 60 px) scores at least one frame below it.
 - The bound started at 0.95 and was raised to 0.99 because the probe's minimum (0.982028) was above
-  0.95, so the comparison was not proven sensitive. 0.99 sits between the probe minimum and the
-  guardrail minimum (0.995609). The bound must never go below 0.9.
+  0.95, so the comparison was not proven sensitive. 0.99 sat between the probe minimum and the
+  guardrail minimum (0.995609).
+- The one-screen reel layout shrank the captured preview to 398x706 at the 1920x1080 viewport, and
+  both score sets dropped (the guardrail minimum to 0.988583, below 0.99). The bound was lowered to
+  0.982, near the middle of the new gap between the probe minimum (0.975669) and the guardrail
+  minimum (0.988583). The bound must never go below 0.9.
 
-Measured scores (SSIM, live preview against the exported MP4):
+Measured scores (SSIM, live preview against the exported MP4), current layout (398x706 preview):
+
+| Moment | Guardrail | 60 px probe |
+| ------ | --------- | ----------- |
+| 0.5 s  | 0.988583  | 0.988583    |
+| 1.5 s  | 0.989767  | 0.975669    |
+| 2.5 s  | 0.988849  | 0.985728    |
+
+The render step's `peak_rss_bytes` in the same run was 1617096704 (above 256 MB).
+
+Before the one-screen layout (the 0.99 bound):
 
 | Moment | Guardrail | 60 px probe |
 | ------ | --------- | ----------- |
 | 0.5 s  | 0.995673  | 0.995673    |
 | 1.5 s  | 0.995609  | 0.982028    |
 | 2.5 s  | 0.997499  | 0.994654    |
-
-The render step's `peak_rss_bytes` in the same run was 1583153152 (above 256 MB).
 
 ## Rules
 

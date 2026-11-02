@@ -357,7 +357,7 @@ order by week",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Per reel, over every step of every job: wall and CPU seconds, peak memory, bytes in and out, AI tokens and the AI cost Claude Code reports. No money is derived from machine time. Source: synced steps table.
+      "description": "Per reel, over every step of every job: wall and CPU seconds, peak memory, bytes in and out, AI tokens and the AI cost Claude Code reports. No money is derived from machine time. Photo steps (no reel) are left out. Source: synced steps table.
 
 [studio-metrics:cost-per-reel]",
       "name": "Studio: cost per reel",
@@ -378,6 +378,7 @@ order by week",
   coalesce(sum(steps.ai_cost_usd), 0) as ai_reported_cost_usd,
   count(*) as step_runs
 from supabase_steps as steps
+where steps.reel_id is not null
 group by steps.reel_id
 order by min(steps.started_at)",
         },
@@ -499,7 +500,7 @@ from live_objects",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Per reel, bytes of its live stored files (deleted_at null). An object two reels share counts for each. Source: synced stored_files table.
+      "description": "Per reel, bytes of its live stored files (deleted_at null). An object two reels share counts for each. Photo files (no reel) are left out. Source: synced stored_files table.
 
 [studio-metrics:storage-per-reel]",
       "name": "Studio: live storage per reel",
@@ -513,7 +514,7 @@ from live_objects",
   sum(stored_files.bytes) as live_bytes,
   count(*) as live_files
 from supabase_stored_files as stored_files
-where stored_files.deleted_at is null
+where stored_files.deleted_at is null and stored_files.reel_id is not null
 group by stored_files.reel_id
 order by live_bytes desc, reel_id",
         },

@@ -25,8 +25,11 @@ import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 // through the worker's `once`: the owner's Mac only, never CI.
 // The bound started at 0.95 and was raised with measured evidence (never below 0.9): the guardrail
 // scored 0.995673, 0.995609 and 0.997499 at 0.5, 1.5 and 2.5 s; the 60 px probe scored 0.995673,
-// 0.982028 and 0.994654. 0.99 sits between the probe minimum and the guardrail minimum.
-const PREVIEW_EXPORT_SSIM_BOUND = 0.99;
+// 0.982028 and 0.994654. 0.99 sat between the probe minimum and the guardrail minimum.
+// The one-screen reel layout shrank the preview to 398x706, and both sets dropped: the guardrail
+// scored 0.988583, 0.989767 and 0.988849; the probe 0.988583, 0.975669 and 0.985728. 0.982 sits
+// near the middle of the new gap (probe minimum 0.975669, guardrail minimum 0.988583).
+const PREVIEW_EXPORT_SSIM_BOUND = 0.982;
 const MOMENTS = [0.5, 1.5, 2.5];
 const PROBE_MOMENT = 1.5;
 const PROBE_SHIFT_PX = 60;

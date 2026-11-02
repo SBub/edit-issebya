@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Storage } from "@edit-issebya/storage";
 import {
   ISSEBYA_PRESET,
@@ -8,6 +10,31 @@ import {
   parseDecideAnswer,
 } from "@edit-issebya/edit";
 import { type AiRunner, plainTool } from "./ai.ts";
+import { describePrompt } from "./photos/describe-prompt.ts";
+import { describeJsonSchema, parseDescribeAnswer } from "./photos/describe-schema.ts";
+
+// The committed sample photo the image check sends (scripts/make-test-photos.sh).
+const SAMPLE_PHOTO = new URL("../../../fixtures/photos/sample.jpg", import.meta.url).pathname;
+
+// The describe_photo call on the sample photo: Claude Code allowed to read
+// only `photo.jpg`, alone in a fresh folder, answering the describe schema.
+async function aiImageCall(ai: AiRunner): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), "doctor-photo-"));
+  try {
+    await copyFile(SAMPLE_PHOTO, join(dir, "photo.jpg"));
+    const result = await ai.call(plainTool, {
+      prompt: describePrompt(),
+      schema: describeJsonSchema,
+      cwd: dir,
+      readFile: "photo.jpg",
+    });
+    if (result.kind !== "answer") throw new Error(result.reason);
+    const parsed = parseDescribeAnswer(result.answer);
+    if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
 
 // Each dependency is built inside its own check, so a missing variable fails
 // that line only.
@@ -16,7 +43,10 @@ export interface DoctorDeps {
   // The storage and its key prefix; the check lists, then puts, reads back and
   // deletes a probe object under `<prefix>doctor/`.
   r2: () => { storage: Pick<Storage, "list" | "put" | "get" | "delete">; prefix: string };
+  // The first line of `ffmpeg -version` / `ffprobe -version`, the tool's name
+  // dropped (`version 8.0.1 Copyright ...`).
   ffmpeg: () => Promise<string>;
+  ffprobe: () => Promise<string>;
   // `ffmpeg -hide_banner -filters` output.
   ffmpegFilters: () => Promise<string>;
   // `ffmpeg -hide_banner -encoders` and `-decoders` output, joined.
@@ -50,6 +80,27 @@ function codecNames(listing: string): { encoders: Set<string>; decoders: Set<str
     if (name) section.add(name);
   }
   return { encoders, decoders };
+}
+
+// ffprobe's `-show_stream_groups` (HEIC tile grids) is new in ffmpeg 7.0.
+const FFMPEG_MIN_MAJOR = 7;
+
+// The major version from a `-version` line: `version 6.1.1-3ubuntu5`,
+// `version n7.0.2`, `version 7.0.2-static https://...`. A git build
+// (`version N-117000-g...`) has none: null, taken as new enough.
+export function ffmpegMajor(versionLine: string): number | null {
+  const match = /version\s+n?(\d+)\.\d+/.exec(versionLine);
+  return match ? Number(match[1]) : null;
+}
+
+// Throws the one-line reason when the tool is older than 7.
+function requireMinVersion(tool: string, versionLine: string): void {
+  const major = ffmpegMajor(versionLine);
+  if (major === null || major >= FFMPEG_MIN_MAJOR) return;
+  const version = /version\s+n?(\d+\.\d+)/.exec(versionLine)?.[1] ?? String(major);
+  throw new Error(
+    `${tool} ${version} found, ${FFMPEG_MIN_MAJOR} or newer is needed for HEIC photos (-show_stream_groups)`,
+  );
 }
 
 // Filter names from `ffmpeg -filters` (lines like ` ... zscale  V->V  Apply ...`).
@@ -134,7 +185,12 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
   const lines = [
     await check("supabase reachable", deps.supabase),
     await check("r2 bucket readable and writable", () => probeR2(deps.r2)),
-    await check("ffmpeg", deps.ffmpeg),
+    await check("ffmpeg", async () => {
+      const ffmpeg = await deps.ffmpeg();
+      requireMinVersion("ffmpeg", ffmpeg);
+      requireMinVersion("ffprobe", await deps.ffprobe());
+      return ffmpeg;
+    }),
     await check("ffmpeg filters", async () => {
       const names = filterNames(await deps.ffmpegFilters());
       const missing = PIPELINE_FILTERS.filter((name) => !names.has(name));
@@ -171,6 +227,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
       );
       if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
     }),
+    await check("ai image call", () => aiImageCall(deps.ai())),
     // Last, so the earlier lines keep their places.
     await check("scratch dir", async () => {
       const { dir, state } = await deps.scratchDir();

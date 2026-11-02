@@ -165,7 +165,9 @@ fingerprint. Tags are not part of a fingerprint.
   `R2_KEY_PREFIX` (a malformed value fails the config, naming the variable). No new variable.
 - `HYPERFRAMES_NO_TELEMETRY` is forced to `1` for HyperFrames; the `hyperframes` dependency in
   `apps/worker/package.json` is pinned exactly.
-- `yarn doctor` in the worker also checks the ffmpeg filters `zscale`, `tonemap`, `atempo`, `astats`,
+- `yarn doctor` in the worker checks that ffmpeg and ffprobe are 7.0 or newer (one line, for
+  example `ffmpeg 6.1 found, 7 or newer is needed for HEIC photos (-show_stream_groups)`; a git
+  build without a version number passes), and the ffmpeg filters `zscale`, `tonemap`, `atempo`, `astats`,
   `ametadata`, the codecs `libx264` and `libvpx-vp9` (encoders) and the `libvpx-vp9` decoder, and
   that `hyperframes --version` answers.
 

@@ -76,6 +76,54 @@ describe("aiRunner", () => {
     ]);
   });
 
+  it("lets Claude Code read only the request's one file, with no permission prompts", async () => {
+    const seen: Parameters<Tool>[0][] = [];
+    const tool: Tool = async (call) => {
+      seen.push(call);
+      return JSON.stringify(captured);
+    };
+    await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(tool, {
+      prompt: "describe",
+      schema: { type: "object" },
+      cwd: "/scratch/describe",
+      readFile: "photo.jpg",
+    });
+    expect(seen[0]?.args).toEqual([
+      "-p",
+      "--output-format",
+      "json",
+      "--json-schema",
+      '{"type":"object"}',
+      "--tools",
+      "Read",
+      "--allowedTools",
+      "Read(photo.jpg)",
+      "--permission-prompts",
+      "none",
+      "--no-session-persistence",
+    ]);
+    expect(seen[0]?.cwd).toBe("/scratch/describe");
+  });
+
+  it("refuses a readFile that is not a plain file name, before spawning", async () => {
+    for (const readFile of [
+      "../photo.jpg",
+      "a/photo.jpg",
+      "/etc/passwd",
+      "..",
+      "",
+      "*.jpg",
+      "a..b",
+    ]) {
+      await expect(
+        aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(NEVER, { ...REQUEST, readFile }),
+      ).rejects.toThrow(/plain file name/);
+      await expect(
+        fakeAiRunner([resultEnvelope({})]).call(NEVER, { ...REQUEST, readFile }),
+      ).rejects.toThrow(/plain file name/);
+    }
+  });
+
   it("replays E2E_MOCK_AI_SCRIPT, raw strings included, then the last entry", async () => {
     const path = join(dir, "script.json");
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder

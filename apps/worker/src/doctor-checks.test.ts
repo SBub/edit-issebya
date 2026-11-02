@@ -1,10 +1,16 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type FakeStorage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EMPTY_DECIDE_ANSWER, fakeAiRunner, resultEnvelope } from "./ai.ts";
-import { type DoctorDeps, runDoctor } from "./doctor-checks.ts";
+import {
+  type AiRequest,
+  type AiRunner,
+  EMPTY_DECIDE_ANSWER,
+  fakeAiRunner,
+  resultEnvelope,
+} from "./ai.ts";
+import { type DoctorDeps, ffmpegMajor, runDoctor } from "./doctor-checks.ts";
 
 let root: string;
 let storage: FakeStorage;
@@ -18,10 +24,36 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+const DESCRIBED = {
+  description: "A colourful test pattern.",
+  tags: ["test pattern", "colour bars", "abstract"],
+};
+
+// Answers the image call (the one with `readFile`) with a description and
+// every other call with the empty decide answer, noting each request and the
+// files its folder held.
+function answeringAi(): AiRunner & { calls: AiRequest[]; folders: string[][] } {
+  const decide = fakeAiRunner([resultEnvelope(EMPTY_DECIDE_ANSWER)]);
+  const image = fakeAiRunner([resultEnvelope(DESCRIBED)]);
+  const calls: AiRequest[] = [];
+  const folders: string[][] = [];
+  return {
+    calls,
+    folders,
+    async call(tool, request) {
+      calls.push(request);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- the check's temp folder
+      folders.push(await readdir(request.cwd));
+      return (request.readFile ? image : decide).call(tool, request);
+    },
+  };
+}
+
 const PASSING: DoctorDeps = {
   supabase: async () => {},
   r2: () => ({ storage, prefix: "dev/" }),
   ffmpeg: async () => "version 7.1",
+  ffprobe: async () => "version 7.1",
   ffmpegFilters: async () =>
     [
       "Filters:",
@@ -45,11 +77,26 @@ const PASSING: DoctorDeps = {
       " V..... libvpx-vp9           libvpx VP9 (codec vp9)",
     ].join("\n"),
   hyperframes: async () => "0.8.222\n",
-  ai: () => fakeAiRunner([resultEnvelope(EMPTY_DECIDE_ANSWER)]),
+  ai: () => answeringAi(),
   scratchDir: async () => ({ dir: "/scratch", state: "exists" }),
 };
 
 describe("runDoctor", () => {
+  it("fails the ffmpeg line on ffmpeg or ffprobe older than 7", async () => {
+    const old = await runDoctor({
+      ...PASSING,
+      ffmpeg: async () => "version 6.1.1-3ubuntu5 Copyright",
+    });
+    expect(old.lines[2]).toBe(
+      "FAIL ffmpeg: ffmpeg 6.1 found, 7 or newer is needed for HEIC photos (-show_stream_groups)",
+    );
+    expect(old.exitCode).toBe(1);
+    const probe = await runDoctor({ ...PASSING, ffprobe: async () => "version n6.0 Copyright" });
+    expect(probe.lines[2]).toBe(
+      "FAIL ffmpeg: ffprobe 6.0 found, 7 or newer is needed for HEIC photos (-show_stream_groups)",
+    );
+  });
+
   it("names the filters a build lacks", async () => {
     const { lines } = await runDoctor({
       ...PASSING,
@@ -82,6 +129,7 @@ describe("runDoctor", () => {
         "ok   ffmpeg codecs libx264, libvpx-vp9, libvpx-vp9 decoder",
         "ok   hyperframes 0.8.222",
         "ok   ai structured call",
+        "ok   ai image call",
         "ok   scratch dir /scratch exists",
       ],
       exitCode: 0,
@@ -145,20 +193,33 @@ describe("runDoctor", () => {
       ...PASSING,
       scratchDir: async () => ({ dir: "/scratch/prod", state: "can be created" }),
     });
-    expect(creatable.lines[7]).toBe("ok   scratch dir /scratch/prod can be created");
+    expect(creatable.lines[8]).toBe("ok   scratch dir /scratch/prod can be created");
     expect(creatable.exitCode).toBe(0);
     const failing = await runDoctor({
       ...PASSING,
       scratchDir: async () => Promise.reject(new Error("/scratch is not a folder")),
     });
-    expect(failing.lines[7]).toBe("FAIL scratch dir: /scratch is not a folder");
+    expect(failing.lines[8]).toBe("FAIL scratch dir: /scratch is not a folder");
     expect(failing.exitCode).toBe(1);
   });
 
-  it("sends the real decide schema, the draft the Claude Code CLI validates", async () => {
-    const ai = fakeAiRunner([resultEnvelope(EMPTY_DECIDE_ANSWER)]);
+  it("sends the sample photo alone as photo.jpg, readable only by name, with the describe schema", async () => {
+    const ai = answeringAi();
     await runDoctor({ ...PASSING, ai: () => ai });
-    expect(ai.calls).toHaveLength(1);
+    const image = ai.calls.findIndex((call) => call.readFile !== undefined);
+    expect(ai.calls[image]).toMatchObject({ readFile: "photo.jpg" });
+    expect(ai.folders[image]).toEqual(["photo.jpg"]);
+    const schema = ai.calls[image]!.schema as { $schema?: unknown; properties?: object };
+    expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(Object.keys(schema.properties ?? {})).toEqual(["description", "tags"]);
+    // Every other call has no tools.
+    expect(ai.calls.filter((call) => call.readFile !== undefined)).toHaveLength(1);
+  });
+
+  it("sends the real decide schema, the draft the Claude Code CLI validates", async () => {
+    const ai = answeringAi();
+    await runDoctor({ ...PASSING, ai: () => ai });
+    expect(ai.calls).toHaveLength(2);
     const schema = ai.calls[0]!.schema as { $schema?: unknown; properties?: object };
     expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
     expect(Object.keys(schema.properties ?? {})).toEqual([
@@ -171,7 +232,7 @@ describe("runDoctor", () => {
   });
 
   it("fails only the line of the failing dependency", async () => {
-    const cases: [Partial<DoctorDeps>, number][] = [
+    const cases: [Partial<DoctorDeps>, number | number[]][] = [
       [{ supabase: async () => Promise.reject(new Error("refused")) }, 0],
       [
         {
@@ -185,16 +246,28 @@ describe("runDoctor", () => {
       [{ ffmpegFilters: async () => " ... atempo  A->A  Adjust audio tempo." }, 3],
       [{ ffmpegCodecs: async () => "Encoders:\nDecoders:\n" }, 4],
       [{ hyperframes: async () => Promise.reject(new Error("ENOENT")) }, 5],
-      [{ ai: () => fakeAiRunner([resultEnvelope({ ok: false })]) }, 6],
-      [{ ai: () => fakeAiRunner(["not json"]) }, 6],
-      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 7],
+      [{ ai: () => fakeAiRunner([resultEnvelope({ ok: false })]) }, [6, 7]],
+      [{ ai: () => fakeAiRunner(["not json"]) }, [6, 7]],
+      [{ ai: () => fakeAiRunner([resultEnvelope(EMPTY_DECIDE_ANSWER)]) }, 7],
+      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 8],
     ];
     for (const [override, failing] of cases) {
       const { lines, exitCode } = await runDoctor({ ...PASSING, ...override });
       expect(exitCode).toBe(1);
+      const failingLines = Array.isArray(failing) ? failing : [failing];
       lines.forEach((line, index) => {
-        expect(line.startsWith("FAIL"), line).toBe(index === failing);
+        expect(line.startsWith("FAIL"), line).toBe(failingLines.includes(index));
       });
     }
+  });
+});
+
+describe("ffmpegMajor", () => {
+  it("reads the major version of release, distro, static and git builds", () => {
+    expect(ffmpegMajor("version 8.0.1 Copyright (c) 2000-2025 the FFmpeg developers")).toBe(8);
+    expect(ffmpegMajor("version 6.1.1-3ubuntu5 Copyright")).toBe(6);
+    expect(ffmpegMajor("version n7.0.2 Copyright")).toBe(7);
+    expect(ffmpegMajor("version 7.0.2-static https://johnvansickle.com/ffmpeg/")).toBe(7);
+    expect(ffmpegMajor("version N-117000-g1234abcd Copyright")).toBeNull();
   });
 });

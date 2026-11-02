@@ -24,10 +24,11 @@ import {
 import type { Storage } from "@edit-issebya/storage";
 import type { AiRunner } from "../ai.ts";
 import { editMeasurer } from "../edit-measurer.ts";
-import { AiUnavailable, PermanentError } from "../failure.ts";
+import { AiUnavailable, permanentAfterAiCall } from "../failure.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
+import { reelOf } from "../queue.ts";
 import { type StepContext, StepError, type Tool, runToolsStep } from "../step-runner.ts";
-import type { AiUsage } from "../step-store.ts";
+import { type AiUsage, addUsage } from "../step-store.ts";
 import { decideInput } from "./input.ts";
 import { PROMPT_VERSION, decidePrompt } from "./prompt.ts";
 
@@ -52,26 +53,6 @@ export interface DecideRun {
 
 type Attempt =
   { ok: true; edit: Edit; answer: DecideAnswer; reasons: [] } | { ok: false; reasons: string[] };
-
-function addUsage(total: AiUsage, usage: AiUsage): AiUsage {
-  const sum = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : a + b);
-  return {
-    inputTokens: sum(total.inputTokens, usage.inputTokens),
-    outputTokens: sum(total.outputTokens, usage.outputTokens),
-    costUsd: sum(total.costUsd, usage.costUsd),
-    model: usage.model ?? total.model,
-  };
-}
-
-// From the first AI call on, a failure is never retried automatically: a
-// retry would call the AI again, and the step makes at most two calls. An
-// unavailable AI keeps its own class (the job waits).
-function permanentAfterAiCall(error: unknown): never {
-  if (error instanceof AiUnavailable || error instanceof PermanentError) throw error;
-  throw new PermanentError(error instanceof Error ? error.message : String(error), {
-    cause: error,
-  });
-}
 
 function plural(count: number, unit: string): string {
   return `${count} ${unit}${count === 1 ? "" : "s"}`;
@@ -108,7 +89,7 @@ export function runDecide({
   return runToolsStep(ctx, {
     name: STEP,
     async work(tool: Tool) {
-      const reelId = ctx.job.reel_id;
+      const reelId = reelOf(ctx.job);
       const currentId = await rows.current(reelId);
       if (currentId === null) throw new Error(`${STEP}: no current version`);
       const row = await rows.get(currentId);

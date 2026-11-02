@@ -60,6 +60,7 @@ describe("createErrorTracker", () => {
       step: "transcribe",
       job_kind: "process",
       reel_id: TEST_JOB.reel_id,
+      photo_id: null,
       job_id: TEST_JOB.id,
       attempt: 1,
       retrying: false,

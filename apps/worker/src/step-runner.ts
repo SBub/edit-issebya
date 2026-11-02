@@ -18,7 +18,7 @@ import {
   aiMeasurements,
 } from "./step-store.ts";
 import { outputTail, stepSummary } from "./summary.ts";
-import { type StepStream, type Telemetry, stepLogger } from "./telemetry.ts";
+import { type StepStream, type Telemetry, stepLogger, targetAttributes } from "./telemetry.ts";
 import { parseTimeReport, reportedSignal, timeCommand } from "./time-report.ts";
 
 // What every step of a job shares.
@@ -170,7 +170,7 @@ async function withStep(
       `step ${name}`,
       {
         attributes: {
-          "reel.id": ctx.job.reel_id,
+          ...targetAttributes(ctx.job),
           "job.id": ctx.job.id,
           "step.name": name,
           "step.attempt": attempt,
@@ -238,7 +238,7 @@ export async function recordHit(
     `step ${name}`,
     {
       attributes: {
-        "reel.id": ctx.job.reel_id,
+        ...targetAttributes(ctx.job),
         "job.id": ctx.job.id,
         "step.name": name,
         "step.cache_hit": true,
@@ -406,7 +406,7 @@ export function runToolsStep(
 ): Promise<void> {
   return withStep(ctx, spec.name, async (stepContext, started, stepId) => {
     const log = stepLogger(ctx.telemetry, stepContext, {
-      "reel.id": ctx.job.reel_id,
+      ...targetAttributes(ctx.job),
       "job.id": ctx.job.id,
       "step.name": spec.name,
     });

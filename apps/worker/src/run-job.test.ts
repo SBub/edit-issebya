@@ -6,6 +6,7 @@ import { runJob } from "./run-job.ts";
 const JOB: ClaimedJob = {
   id: "j1",
   reel_id: "r1",
+  photo_id: null,
   owner_id: "o1",
   kind: "process",
   attempts: 1,
@@ -43,6 +44,25 @@ describe("runJob", () => {
     expect(await runJob(d)).toBe("failed");
     expect(d.finish).not.toHaveBeenCalled();
     expect(d.fail.mock.calls[0]?.[0]).toContain("source object missing");
+  });
+
+  it("logs and stores a failed tool's stderr, not only its first line", async () => {
+    const lines: string[] = [];
+    const d = {
+      ...deps(async () => {
+        const error = new Error(
+          "photo_images exited with 1\nFailed to set value '/p/a.jpg' for option 'show_stream_groups': Option not found",
+        );
+        throw error;
+      }),
+      log: (line: string) => lines.push(line),
+    };
+    expect(await runJob(d)).toBe("failed");
+    expect(lines.join("\n")).toContain(
+      "failed: Error: photo_images exited with 1\nFailed to set value",
+    );
+    expect(d.fail.mock.calls[0]?.[0]).toContain("Option not found");
+    expect(d.fail.mock.calls[0]?.[0]).not.toContain("    at ");
   });
 
   it("refuses the reel when the footage is refused, deep in the cause chain", async () => {

@@ -29,6 +29,7 @@ import { exportKey } from "./export-key.ts";
 import type { ExportStore } from "./export-store.ts";
 import { type RenderRange, renderCall, renderScratchEnv } from "./render-call.ts";
 import { writeRenderProject } from "./render-project.ts";
+import { reelOf } from "../queue.ts";
 
 const STEP = "render";
 
@@ -163,7 +164,7 @@ export async function runRender({
         sizeOf: "out",
         async work(tool) {
           const version = await rows.get(versionId);
-          if (!version || version.reel_id !== job.reel_id) {
+          if (!version || version.reel_id !== reelOf(job)) {
             throw new Error(`${STEP}: version ${versionId} is not a version of this reel`);
           }
           const read = async (ref: EditInputs["footage"]) => {
@@ -212,14 +213,14 @@ export async function runRender({
 
           signal.throwIfAborted();
           const id = newId();
-          const key = exportKey(keyPrefix, job.reel_id, id);
+          const key = exportKey(keyPrefix, reelOf(job), id);
           await storage.putFileIfAbsent(key, output, { contentType: "video/mp4" });
           // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
           const { size } = await stat(output);
           signal.throwIfAborted();
           await exports.insert({
             id,
-            reel_id: job.reel_id,
+            reel_id: reelOf(job),
             owner_id: job.owner_id,
             job_id: job.id,
             version_id: version.id,

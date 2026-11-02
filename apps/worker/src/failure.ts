@@ -39,6 +39,16 @@ export class AiUnavailable extends Error {
   }
 }
 
+// From the first AI call on, a failure is never retried automatically: a
+// retry would call the AI again, and an AI step makes at most two calls. An
+// unavailable AI keeps its own class (the job waits).
+export function permanentAfterAiCall(error: unknown): never {
+  if (error instanceof AiUnavailable || error instanceof PermanentError) throw error;
+  throw new PermanentError(error instanceof Error ? error.message : String(error), {
+    cause: error,
+  });
+}
+
 const MAX_DEPTH = 10;
 
 // The error and its causes, outer to inner (at most ten links).

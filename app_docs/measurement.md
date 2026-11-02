@@ -64,6 +64,8 @@ client, identifies the signed-in user and sends `studio_*` events.
   span `step <name>` with `reel.id`, `job.id`, `step.name` and `step.wall_ms`, `step.cpu_ms`,
   `step.peak_rss_bytes`, `step.bytes_in`, `step.bytes_out`. Output lines are log records emitted in the
   step span's context (INFO for stdout, ERROR for stderr, attribute `stream`).
+- A `describe_photo` job's trace uses the photo's id in place of the reel's (`traceIdForJob`), and its
+  spans carry `photo.id` in place of `reel.id` (`targetAttributes`).
 - Step measurements are never sent to PostHog as events: PostHog reads the tables as a data source.
 - Exceptions: `app_docs/error-tracking.md`.
 

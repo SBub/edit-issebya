@@ -160,7 +160,9 @@ Nothing to do for the owner. What they see:
 
 ## Rules
 
-- Never delete a `source`, `kept` or `version` file.
+- Never delete a `source`, `kept` or `version` file, except a photo's files when its owner deletes
+  the photo (`app_docs/photo-library.md`).
+- Never slim a photo's file.
 - Never delete a rebuildable file within seven days of the last export of any reel that holds it.
 - Always record a deletion in the same statement that selects it.
 - Remove the job folder on failure too.

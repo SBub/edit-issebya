@@ -136,6 +136,8 @@ request, restore_version_id, version_id)`.
   failing the job.
 - `waitJob` sets the job `waiting_ai` with `waiting_reason` and `not_before` 15 minutes later
   (`AI_RETRY_MINUTES`), and gives up its lease. The reel's status stays as it is.
+- A `describe_photo` job waits the same way (`waiting_ai`, `not_before` 15 minutes on); its photo
+  stays `describing` until the job is claimed again.
 - `claim_job` skips a `waiting_ai` job until its `not_before`; the claim clears both columns. The
   worker's periodic check also lists `waiting_ai` jobs past their `not_before`.
 - The studio shows `Waiting for the AI: <reason>. Next try at HH:MM.` under the job
@@ -219,7 +221,10 @@ Both are E2E only (`apps/worker/.env.example`), never set on the worker machine:
 - `E2E_MOCK_STEP_FAULT`: read only when `E2E_MOCK_STEPS` is exactly `true`; one step that fails on
   purpose, as `<step>:<signal|exit|half>`. Any other form throws.
 
-The worker needs `ffprobe` beside `ffmpeg` (or on the `PATH`), and so does the E2E suite.
+The worker needs `ffprobe` beside `ffmpeg` (or on the `PATH`), 7.0 or newer, and so does the E2E
+suite. A failed tool's error is `<step> exited with <code>` followed by the tail of its output; the
+worker's `job <id>: failed:` log line and the job's `error_tail` keep that first line and the last
+20 output lines (at most 2000 characters), never stack frames in their place.
 
 ## Testing
 

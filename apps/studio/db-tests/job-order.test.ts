@@ -166,6 +166,47 @@ describe("claim_job order", () => {
   });
 });
 
+describe("claim_job order with photo jobs", () => {
+  async function newPhoto(): Promise<string> {
+    const id = crypto.randomUUID();
+    await db.query(
+      `insert into public.photos (id, owner_id, r2_key, file_name, content_type, status, bytes)
+       values ($1, $2, $3, 'p.jpg', 'image/jpeg', 'describing', 10)`,
+      [id, owner.id, `job-order/library/${id}/original.jpg`],
+    );
+    return id;
+  }
+
+  async function insertPhotoJob(photoId: string, secondsAgo: number): Promise<string> {
+    const { rows } = await db.query<{ id: string }>(
+      `insert into public.jobs (photo_id, owner_id, kind, created_at)
+       values ($1, $2, 'describe_photo', now() - make_interval(secs => $3::int))
+       returning id`,
+      [photoId, owner.id, secondsAgo],
+    );
+    return rows[0]!.id;
+  }
+
+  it("claims a photo's job while a reel's job runs, and one job per photo at a time", async () => {
+    const reel = await newReel("f.mov");
+    const photo = await newPhoto();
+    const process = await insertJob(reel, 300);
+    const reelChange = await insertJob(reel, 250, { kind: "change" });
+    const firstDescribe = await insertPhotoJob(photo, 200);
+    const secondDescribe = await insertPhotoJob(photo, 100);
+
+    expect((await claim()).map((job) => job.id)).toEqual([process]);
+    // The reel's change waits behind its process; the photo's job does not.
+    expect((await claim()).map((job) => job.id)).toEqual([firstDescribe]);
+    // The photo's second job waits behind its first.
+    expect(await claim()).toEqual([]);
+
+    await setDone([firstDescribe]);
+    expect((await claim()).map((job) => job.id)).toEqual([secondDescribe]);
+    await setDone([process, reelChange, secondDescribe]);
+  });
+});
+
 interface ClaimEvent {
   jobId: string;
   reel: string;

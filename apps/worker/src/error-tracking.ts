@@ -140,6 +140,7 @@ export function createErrorTracker(
         step,
         job_kind: job.kind,
         reel_id: job.reel_id,
+        photo_id: job.photo_id,
         job_id: job.id,
         attempt,
         retrying,
