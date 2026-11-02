@@ -9,8 +9,15 @@ export interface RenderProject {
   // The page exactly as `build` returned it.
   html: string;
   assets: BuildAsset[];
-  // The full-size pipeline outputs, already on disk.
-  files: { footage: string };
+  // The full-size footage, the masks and the photos, already on disk; masks
+  // and photos by the path the page names them at.
+  files: RenderFiles;
+}
+
+export interface RenderFiles {
+  footage: string;
+  masks?: Record<string, string>;
+  photos?: Record<string, string>;
 }
 
 // A relative path with no `..` segment: it stays inside the project.
@@ -35,8 +42,29 @@ function editAsset(path: string): string {
   return fileURLToPath(import.meta.resolve(`@edit-issebya/edit/${path}`));
 }
 
+// Where an asset comes from: the footage, a mask or a photo from the given
+// files (one missing throws), a font or a sound from packages/edit.
+function sourceOf(asset: BuildAsset, files: RenderFiles): string {
+  const given = (from: Record<string, string> | undefined) => {
+    const path = from?.[asset.path];
+    if (!path) throw new Error(`render: no file for ${asset.role} ${asset.path}`);
+    return path;
+  };
+  switch (asset.role) {
+    case "footage":
+      return files.footage;
+    case "mask":
+      return given(files.masks);
+    case "photo":
+      return given(files.photos);
+    default:
+      return editAsset(asset.path);
+  }
+}
+
 // The temporary HyperFrames project a render reads: `index.html` and every
-// asset the page names at its own path (the footage from the given file, fonts and sounds from packages/edit). Returns every file written, the
+// asset the page names at its own path (the footage, masks and photos from the
+// given files, fonts and sounds from packages/edit). Returns every file written, the
 // render step's inputs.
 export async function writeRenderProject({
   dir,
@@ -52,8 +80,7 @@ export async function writeRenderProject({
   const written = [page];
   for (const asset of assets) {
     const to = join(dir, assertProjectPath(asset.path));
-    const from = asset.role === "footage" ? files.footage : editAsset(asset.path);
-    await place(from, to);
+    await place(sourceOf(asset, files), to);
     written.push(to);
   }
   return written;

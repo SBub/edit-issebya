@@ -80,4 +80,47 @@ describe("previewPage", () => {
     expect(() => previewPage(baseline, [missing], URLS, [])).toThrow(/no <video> plays other.mp4/);
     expect(() => previewPage(baseline, FONTS, URLS, ["click-a"])).toThrow(/no single <audio>/);
   });
+
+  it("swaps every footage copy, each mask and each photo of a behind page", async () => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed goldens
+    const behind = await readFile(new URL("rethink-work-behind.html", GOLDEN), "utf8");
+    const photo = "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14";
+    const maskA = `masks/${"1".repeat(64)}.mp4`;
+    const maskB = `masks/${"2".repeat(64)}.mp4`;
+    const assets: BuildAsset[] = [
+      ...CLIPS,
+      ...FONTS,
+      { path: maskA, role: "mask", ref: null },
+      { path: maskB, role: "mask", ref: null },
+      { path: `photos/${photo}.jpg`, role: "photo", ref: null, photoId: photo },
+    ];
+    const urls = {
+      ...URLS,
+      masks: [
+        { path: maskA, url: "https://r2.example/a.mp4?s=1&t=2" },
+        { path: maskB, url: "https://r2.example/b.mp4" },
+      ],
+      photos: [{ path: `photos/${photo}.jpg`, url: "https://r2.example/large.jpg?s=1" }],
+    };
+    const page = previewPage(behind, assets, urls, ["s-fund-life"]);
+    expect(page).not.toMatch(/src="(masks|photos)\//);
+    expect(page).not.toContain('"source.mp4"');
+    // The footage clip and the four footage copies, then the four mask videos.
+    expect(page.match(/footage-preview\.mp4[^"]*" preload="auto"/g)).toHaveLength(5);
+    expect(
+      page.match(/src="https:\/\/r2\.example\/a\.mp4\?s=1&amp;t=2" preload="auto"/g),
+    ).toHaveLength(2);
+    expect(page).toContain(' src="https://r2.example/large.jpg?s=1" alt=""');
+  });
+
+  it("throws for a mask or a photo without a URL, or one the page does not show", async () => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed goldens
+    const behind = await readFile(new URL("rethink-work-behind.html", GOLDEN), "utf8");
+    const mask: BuildAsset = { path: `masks/${"1".repeat(64)}.mp4`, role: "mask", ref: null };
+    expect(() => previewPage(behind, [mask], URLS, [])).toThrow(`preview: no URL for ${mask.path}`);
+    const absent: BuildAsset = { path: "photos/none.jpg", role: "photo", ref: null };
+    expect(() =>
+      previewPage(behind, [absent], { ...URLS, photos: [{ path: absent.path, url: "u" }] }, []),
+    ).toThrow("preview: no <img> plays photos/none.jpg");
+  });
 });

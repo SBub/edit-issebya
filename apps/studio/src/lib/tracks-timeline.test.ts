@@ -6,6 +6,7 @@ import {
   transcriptSchema,
 } from "@edit-issebya/edit";
 import { describe, expect, it } from "vitest";
+import behindEdit from "../../../../packages/edit/src/testdata/versions/rethink-work-behind.edit.json" with { type: "json" };
 import handEdit from "../../../../packages/edit/src/testdata/versions/rethink-work-hand.edit.json" with { type: "json" };
 import baselineEdit from "../../../../packages/edit/src/testdata/versions/baseline-short-speech.edit.json" with { type: "json" };
 import handTranscript from "../../../../packages/edit/src/testdata/rethink-work/transcript.json" with { type: "json" };
@@ -22,13 +23,14 @@ function parsed(json: unknown, transcriptJson: unknown) {
 const LAYOUT = { everySeconds: 2, columns: 32, width: 90, height: 160 };
 
 describe("timelineRows", () => {
-  it("lays every item of a full edit at resolveTimeline's span, in the five rows", () => {
+  it("lays every item of a full edit at resolveTimeline's span, in the six rows", () => {
     const { edit, transcript } = parsed(handEdit, handTranscript);
     const timeline = timelineRows(edit, transcript);
     const resolved = resolveTimeline(edit, transcript);
     expect(timeline.duration).toBe(edit.duration);
     expect(timeline.rows.map((row) => [row.key, row.label])).toEqual([
       ["footage", "Footage"],
+      ["behind", "Behind"],
       ["captions", "Captions"],
       ["overlays", "Accents"],
       ["transitions", "Transitions"],
@@ -42,11 +44,22 @@ describe("timelineRows", () => {
     const counts = Object.fromEntries(timeline.rows.map((row) => [row.key, row.items.length]));
     expect(counts).toEqual({
       footage: edit.tracks.footage.length,
+      behind: 0,
       captions: edit.tracks.captions.length,
       overlays: edit.tracks.overlays.length,
       transitions: edit.tracks.transitions.length,
       sounds: edit.tracks.sounds.length,
     });
+  });
+
+  it("shows the behind items in their row: a photo by its spot, a word by itself", () => {
+    const { edit, transcript } = parsed(behindEdit, handTranscript);
+    const row = timelineRows(edit, transcript).rows.find((entry) => entry.key === "behind")!;
+    expect(row.items.map((item) => [item.id, item.label])).toEqual([
+      ["behind-photo", "photo top"],
+      ["behind-word", "WORK"],
+    ]);
+    expect(row.items[0]).toMatchObject({ start: 5.206, end: 7.838 });
   });
 
   it("never shows the legacy cut-out track", () => {
@@ -77,11 +90,12 @@ describe("timelineRows", () => {
   it("keeps the empty rows of the baseline version", () => {
     const { edit, transcript } = parsed(baselineEdit, speechTranscript);
     const rows = timelineRows(edit, transcript).rows;
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
     expect(rows.find((row) => row.key === "captions")!.items.length).toBeGreaterThan(0);
     expect(rows.find((row) => row.key === "overlays")!.items).toEqual([]);
     expect(rows.find((row) => row.key === "transitions")!.items).toEqual([]);
     expect(rows.find((row) => row.key === "sounds")!.items).toEqual([]);
+    expect(rows.find((row) => row.key === "behind")!.items).toEqual([]);
   });
 });
 

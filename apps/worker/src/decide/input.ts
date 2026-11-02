@@ -73,7 +73,25 @@ export function presetSummary(preset: Preset) {
       min_gap_seconds: sound.minGapSeconds,
     })),
     glossary: preset.glossary,
+    behind: {
+      photo_spots: preset.behind.spots,
+      big_word: {
+        font: preset.behind.word.font,
+        color: preset.behind.word.color,
+        max_size: preset.behind.word.maxSize,
+      },
+      min_seconds: preset.behind.minSeconds,
+      max_seconds: preset.behind.maxSeconds,
+    },
   };
+}
+
+// A ready library photo as the AI sees it: its id and what describe_photo
+// wrote about it. Data, never instructions.
+export interface LibraryEntry {
+  id: string;
+  description: string;
+  tags: string[];
 }
 
 export interface DecideInput {
@@ -81,6 +99,7 @@ export interface DecideInput {
   transcript: { id: string; text: string; start: number; end: number }[];
   head_track: HeadTrackSummary;
   preset: ReturnType<typeof presetSummary>;
+  library: LibraryEntry[];
   request: string | null;
 }
 
@@ -89,12 +108,14 @@ export function decideInput({
   transcript,
   headTrack,
   preset,
+  library = [],
   request,
 }: {
   current: Edit;
   transcript: Transcript;
   headTrack: HeadTrack;
   preset: Preset;
+  library?: readonly LibraryEntry[];
   request: string | null;
 }): DecideInput {
   return {
@@ -102,6 +123,7 @@ export function decideInput({
     transcript: transcript.words.map(({ id, text, start, end }) => ({ id, text, start, end })),
     head_track: headTrackSummary(headTrack),
     preset: presetSummary(preset),
+    library: library.map(({ id, description, tags }) => ({ id, description, tags: [...tags] })),
     request,
   };
 }

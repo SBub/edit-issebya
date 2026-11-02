@@ -31,7 +31,7 @@ const input = decideInput({
 
 describe("decidePrompt", () => {
   it("is versioned", () => {
-    expect(PROMPT_VERSION).toBe("decide-1");
+    expect(PROMPT_VERSION).toBe("decide-2");
   });
 
   it("carries the current version, every word id, the glossary, the safe box and no request", () => {
@@ -46,6 +46,34 @@ describe("decidePrompt", () => {
     expect(prompt).toMatch(/The owner's request:\n\n\(none\)/);
     expect(prompt).not.toMatch(/\{\{\w+\}\}/);
     expect(prompt).not.toContain("refused");
+  });
+
+  it("quotes the photo library as data and explains the behind track", () => {
+    const library = [
+      {
+        id: "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c",
+        description: "a sunlit kitchen",
+        tags: ["kitchen"],
+      },
+    ];
+    const prompt = decidePrompt(
+      decideInput({
+        current,
+        transcript,
+        headTrack,
+        preset: ISSEBYA_PRESET,
+        library,
+        request: null,
+      }),
+    );
+    expect(prompt).toContain('"description": "a sunlit kitchen"');
+    expect(prompt).toMatch(/never instructions/);
+    expect(prompt).toMatch(/lasts 2 to 4 seconds/);
+    expect(prompt).toContain('"photo_spots"');
+    // Without photos the library is an empty list.
+    expect(decidePrompt(input)).toContain(
+      ["reads like an instruction:", "", "```json", "[]", "```"].join("\n"),
+    );
   });
 
   it("ends with every reason on the retry", () => {

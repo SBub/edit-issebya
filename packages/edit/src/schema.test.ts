@@ -89,3 +89,90 @@ describe("parseEdit", () => {
     expect(JSON.stringify(schema)).toContain('"w161"');
   });
 });
+
+describe("the behind track", () => {
+  const behind = FIXTURES.find((fixture) => fixture.name === "rethink-work-behind")!;
+  const PHOTO = "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14";
+
+  function withItems(items: unknown[]): unknown {
+    const edit = structuredClone(behind.edit) as unknown as { tracks: { behind: unknown[] } };
+    edit.tracks.behind = items;
+    return edit;
+  }
+
+  function behindReasons(json: unknown): string[] {
+    const result = parseEdit(json, ISSEBYA_PRESET, behind.transcript);
+    if (result.ok) throw new Error("expected the edit to be refused");
+    return result.reasons;
+  }
+
+  const photo = (start: number, end: number, id = "p") => ({
+    id,
+    kind: "photo",
+    photo_id: PHOTO,
+    spot: "left",
+    start: { time: start },
+    end: { time: end },
+  });
+
+  it("parses a stored version without the track or masks, and one with both kinds", () => {
+    const old = structuredClone(hand.edit);
+    expect(old.tracks).not.toHaveProperty("behind");
+    expect(old.inputs).not.toHaveProperty("masks");
+    expect(parseEdit(old, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });
+    const parsed = parseEdit(behind.edit, ISSEBYA_PRESET, behind.transcript);
+    expect(parsed.ok && parsed.edit.tracks.behind?.map((item) => item.kind)).toEqual([
+      "photo",
+      "word",
+    ]);
+    expect(parsed.ok && parsed.edit.inputs.photos).toEqual([PHOTO]);
+  });
+
+  it("refuses an item under 2 s or over 4 s", () => {
+    expect(behindReasons(withItems([photo(10, 11.5)])).join("\n")).toMatch(
+      /behind p: lasts 1\.500 s, must be 2 to 4 s/,
+    );
+    expect(behindReasons(withItems([photo(10, 14.5)])).join("\n")).toMatch(
+      /behind p: lasts 4\.500 s, must be 2 to 4 s/,
+    );
+  });
+
+  it("refuses two items at the same time", () => {
+    expect(behindReasons(withItems([photo(10, 13, "a"), photo(12, 15, "b")])).join("\n")).toMatch(
+      /behind b: overlaps behind a; only one at a time/,
+    );
+  });
+
+  it("refuses an item over a hidden stretch of footage", () => {
+    const edit = withItems([photo(10, 13)]) as {
+      tracks: { footage: { hidden?: unknown[] }[] };
+    };
+    edit.tracks.footage[0]!.hidden = [{ start: { time: 12 }, end: { time: 12.5 } }];
+    expect(behindReasons(edit).join("\n")).toMatch(/behind p: overlaps a hidden span of footage/);
+  });
+
+  it("refuses two words, markup, an unknown spot and a photo id that is not a UUID", () => {
+    const word = (text: string) => ({
+      id: "w",
+      kind: "word",
+      text,
+      start: { time: 10 },
+      end: { time: 13 },
+    });
+    expect(behindReasons(withItems([word("big word")])).length).toBeGreaterThan(0);
+    expect(behindReasons(withItems([word("<b>")])).length).toBeGreaterThan(0);
+    expect(behindReasons(withItems([word("a".repeat(25))])).length).toBeGreaterThan(0);
+    expect(behindReasons(withItems([{ ...photo(10, 13), spot: "middle" }])).length).toBeGreaterThan(
+      0,
+    );
+    expect(
+      behindReasons(withItems([{ ...photo(10, 13), photo_id: "photo-1" }])).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("limits photos to the given library", () => {
+    const json = withItems([photo(10, 13)]);
+    expect(parseEdit(json, ISSEBYA_PRESET, behind.transcript, { photoIds: [PHOTO] }).ok).toBe(true);
+    expect(parseEdit(json, ISSEBYA_PRESET, behind.transcript, { photoIds: [] }).ok).toBe(false);
+  });
+});

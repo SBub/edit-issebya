@@ -1,0 +1,53 @@
+import { describe, expect, it } from "vitest";
+import { MASK_TOOL_VERSION } from "./mask-tool.ts";
+import { cutoutKey, maskFingerprint, plannedMasks, withMasks } from "./spans.ts";
+import { BEHIND_PHOTO, BEHIND_TRANSCRIPT, behindEdit } from "./test-support.ts";
+
+const FOOTAGE = { step: "retime", fingerprint: "a".repeat(64), file: "source.mp4" };
+
+describe("maskFingerprint", () => {
+  it("is the same for the same footage and span, and changes with either", () => {
+    const span = { start: 5.1, end: 7.967 };
+    const fp = maskFingerprint(FOOTAGE, span);
+    expect(fp).toMatch(/^[0-9a-f]{64}$/);
+    expect(maskFingerprint({ ...FOOTAGE }, { ...span })).toBe(fp);
+    expect(maskFingerprint(FOOTAGE, { ...span, end: 8 })).not.toBe(fp);
+    expect(maskFingerprint(FOOTAGE, { ...span, start: 5.133 })).not.toBe(fp);
+    expect(maskFingerprint({ ...FOOTAGE, fingerprint: "b".repeat(64) }, span)).not.toBe(fp);
+  });
+
+  it("names the tool version", () => {
+    expect(MASK_TOOL_VERSION).toBe(1);
+  });
+});
+
+describe("cutoutKey", () => {
+  it("is the cache layout of the cutout step's mask", () => {
+    expect(cutoutKey("dev/", "f".repeat(64))).toBe(`dev/cache/cutout/${"f".repeat(64)}/mask.mp4`);
+  });
+});
+
+describe("withMasks", () => {
+  it("names one planned mask per padded span and the photos", () => {
+    const edit = behindEdit();
+    const named = withMasks(edit, BEHIND_TRANSCRIPT);
+    expect(named.inputs.masks).toEqual(plannedMasks(edit, BEHIND_TRANSCRIPT));
+    expect(named.inputs.masks?.map(({ start, end }) => [start, end])).toEqual([
+      [5.1, 7.967],
+      [19.967, 22.733],
+    ]);
+    expect(named.inputs.masks?.[0]).toMatchObject({ step: "cutout", file: "mask.mp4" });
+    expect(named.inputs.masks?.[0]?.fingerprint).toBe(
+      maskFingerprint(edit.inputs.footage, { start: 5.1, end: 7.967 }),
+    );
+    expect(named.inputs.photos).toEqual([BEHIND_PHOTO]);
+  });
+
+  it("drops masks and photos from an edit without behind items", () => {
+    const edit = withMasks(behindEdit(), BEHIND_TRANSCRIPT);
+    delete edit.tracks.behind;
+    const named = withMasks(edit, BEHIND_TRANSCRIPT);
+    expect(named.inputs).not.toHaveProperty("masks");
+    expect(named.inputs).not.toHaveProperty("photos");
+  });
+});

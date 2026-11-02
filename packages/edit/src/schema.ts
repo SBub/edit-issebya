@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Box } from "./head-track.ts";
-import { FONT_KEYS, type Preset, SOUND_KEYS, TRANSITION_TYPES } from "./preset.ts";
+import { BEHIND_SPOTS, FONT_KEYS, type Preset, SOUND_KEYS, TRANSITION_TYPES } from "./preset.ts";
 import { resolveAnchor } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
@@ -22,14 +22,29 @@ const refSchema = z.object({
   file: z.string().min(1),
 });
 
+// One stored person mask (the `cutout` step's `mask.mp4`) and the span of the
+// reel it covers, in seconds.
+const maskRefSchema = refSchema.extend({
+  step: z.literal("cutout"),
+  start: z.number().min(0),
+  end: z.number().positive(),
+});
+
 const editInputsSchema = z.object({
   footage: refSchema,
   transcript: refSchema,
-  // Never written since the cut-out left the pipeline (#20 brings it back on
-  // demand); a stored version naming one still parses.
+  // The whole-clip cut-out is never written since it left the pipeline; a
+  // stored version naming one still parses.
   cutout: refSchema.optional(),
   head_track: refSchema,
+  // The masks of the behind items' padded spans and the library photos the
+  // behind track names, filled by the worker before the version is saved.
+  masks: z.array(maskRefSchema).optional(),
+  photos: z.array(z.uuid()).optional(),
 });
+
+// A big word behind the speaker: one word, nothing that could leave its tag.
+const BEHIND_WORD = /^[^\s<>&]{1,24}$/;
 
 // The free custom-style field: CSS property to value, added to the element.
 const styleSchema = z.record(
@@ -44,9 +59,12 @@ const styleSchema = z.record(
 // anchors, `bounds` keeps every set position inside a box. Stored versions
 // parse without them (frame-wide positions, any time); the decide answer
 // carries them.
+// `photoIds` limits the behind track's photos to these library photos (the
+// owner's ready ones); without it any photo id parses.
 export interface EditLimits {
   duration?: number;
   bounds?: Box;
+  photoIds?: readonly string[];
 }
 
 // The six tracks, built per reel: the word ids are the transcript's, the
@@ -113,6 +131,16 @@ export function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: 
     sound: z.enum(SOUND_KEYS),
     gain_db: z.number().min(-60).max(12).optional(),
   });
+  const photoId =
+    limits.photoIds === undefined
+      ? z.uuid()
+      : limits.photoIds.length > 0
+        ? z.enum(limits.photoIds as [string, ...string[]])
+        : z.never();
+  const behind = z.discriminatedUnion("kind", [
+    z.object({ ...base, kind: z.literal("photo"), photo_id: photoId, spot: z.enum(BEHIND_SPOTS) }),
+    z.object({ ...base, kind: z.literal("word"), text: z.string().regex(BEHIND_WORD) }),
+  ]);
   return z.object({
     footage: z.array(clip),
     // Stored versions may carry it; new ones omit it and the builder ignores it.
@@ -121,16 +149,24 @@ export function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: 
     overlays: z.array(overlay),
     transitions: z.array(transition),
     sounds: z.array(sound),
+    // A library photo or one big word behind the speaker; stored versions
+    // without it parse, and the builder reads it as empty.
+    behind: z.array(behind).optional(),
   });
 }
 
 type Tracks = z.infer<ReturnType<typeof tracksSchemaFor>>;
 
+const SLACK = 1e-6;
+
 // What the JSON Schema cannot say: every id once, no item ending before it
-// starts, an overlay showing words or text.
+// starts, an overlay showing words or text, and a behind item lasting the
+// preset's 2 to 4 seconds, never at the same time as another one or as a
+// hidden stretch of footage.
 function refineEdit(
   edit: { duration: number; tracks: Tracks },
   transcript: Transcript,
+  preset: Preset,
   ctx: z.RefinementCtx,
 ): void {
   const words = new Map(transcript.words.map((word) => [word.id, word]));
@@ -142,6 +178,7 @@ function refineEdit(
     ...edit.tracks.overlays.map((item) => ["overlay", item] as const),
     ...edit.tracks.transitions.map((item) => ["transition", item] as const),
     ...edit.tracks.sounds.map((item) => ["sound", item] as const),
+    ...(edit.tracks.behind ?? []).map((item) => ["behind", item] as const),
   ];
   for (const [kind, item] of items) {
     if (seen.has(item.id)) {
@@ -160,6 +197,62 @@ function refineEdit(
       ctx.addIssue({ code: "custom", message: `overlay ${item.id}: needs words or text` });
     }
   }
+  refineBehind(edit, transcript, preset, ctx);
+}
+
+function refineBehind(
+  edit: { duration: number; tracks: Tracks },
+  transcript: Transcript,
+  preset: Preset,
+  ctx: z.RefinementCtx,
+): void {
+  const words = new Map(transcript.words.map((word) => [word.id, word]));
+  const { minSeconds, maxSeconds } = preset.behind;
+  const spans = (edit.tracks.behind ?? []).map((item) => ({
+    id: item.id,
+    start: resolveAnchor(item.start, words, edit.duration),
+    end: resolveAnchor(item.end, words, edit.duration),
+  }));
+  for (const span of spans) {
+    const length = span.end - span.start;
+    if (length < minSeconds - SLACK || length > maxSeconds + SLACK) {
+      ctx.addIssue({
+        code: "custom",
+        message: `behind ${span.id}: lasts ${length.toFixed(3)} s, must be ${minSeconds} to ${maxSeconds} s`,
+      });
+    }
+  }
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  for (let index = 1; index < sorted.length; index += 1) {
+    const before = sorted[index - 1]!;
+    const span = sorted[index]!;
+    if (span.start < before.end - SLACK) {
+      ctx.addIssue({
+        code: "custom",
+        message: `behind ${span.id}: overlaps behind ${before.id}; only one at a time`,
+      });
+    }
+  }
+  const hidden = edit.tracks.footage.flatMap((clip) =>
+    (clip.hidden ?? []).map((range) => ({
+      clip: clip.id,
+      range: {
+        start: resolveAnchor(range.start, words, edit.duration),
+        end: resolveAnchor(range.end, words, edit.duration),
+      },
+    })),
+  );
+  for (const span of spans) {
+    const crossing = hidden.find(
+      ({ range }) => span.start < range.end - SLACK && range.start < span.end - SLACK,
+    );
+    if (crossing) {
+      ctx.addIssue({
+        code: "custom",
+        message: `behind ${span.id}: overlaps a hidden span of footage ${crossing.clip}`,
+      });
+    }
+  }
 }
 
 // The whole edit, built per reel (see tracksSchemaFor). It stays
@@ -173,7 +266,7 @@ export function editSchemaFor(preset: Preset, transcript: Transcript, limits: Ed
       inputs: editInputsSchema,
       tracks: tracksSchemaFor(preset, transcript, limits),
     })
-    .superRefine((edit, ctx) => refineEdit(edit, transcript, ctx));
+    .superRefine((edit, ctx) => refineEdit(edit, transcript, preset, ctx));
 }
 
 export type Edit = z.infer<ReturnType<typeof editSchemaFor>>;
@@ -185,6 +278,10 @@ export type CaptionItem = Edit["tracks"]["captions"][number];
 export type OverlayItem = Edit["tracks"]["overlays"][number];
 export type TransitionItem = Edit["tracks"]["transitions"][number];
 export type SoundItem = Edit["tracks"]["sounds"][number];
+export type BehindItem = NonNullable<Edit["tracks"]["behind"]>[number];
+export type BehindPhotoItem = Extract<BehindItem, { kind: "photo" }>;
+export type BehindWordItem = Extract<BehindItem, { kind: "word" }>;
+export type EditMask = NonNullable<EditInputs["masks"]>[number];
 
 // The path of an issue, as the item it names: `tracks.captions.3` becomes
 // `captions[3]`.

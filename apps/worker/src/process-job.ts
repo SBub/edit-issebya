@@ -7,7 +7,7 @@ import type { ErrorTracker } from "./error-tracking.ts";
 import { saveFirstVersion } from "./first-version.ts";
 import { runJobKind } from "./job-kinds.ts";
 import { runDescribePhotoJob } from "./photos/describe-photo.ts";
-import { supabasePhotoStore } from "./photos/photo-store.ts";
+import { supabasePhotoLibrary, supabasePhotoStore } from "./photos/photo-store.ts";
 import {
   type ClaimedJob,
   failJob,
@@ -75,6 +75,15 @@ export async function processJob(
             if (job.attempts > 1) await steps.abandonRunning(job.id);
             const rows = supabaseVersionRows(db);
             const blobs = storageVersionBlobs(storage);
+            const photos = supabasePhotoLibrary(db);
+            // The masks behind items need (E2E_MOCK_MASK makes black ones).
+            const cutouts = {
+              storage,
+              keyPrefix: config.keyPrefix,
+              scratchDir,
+              tools: toolPaths(),
+              recordStored,
+            };
             const decide = (request: string | null) =>
               runDecide({
                 ctx,
@@ -85,6 +94,9 @@ export async function processJob(
                 ai: aiRunner(process.env),
                 scratchDir,
                 request,
+                photos,
+                tools: cutouts.tools,
+                recordStored,
               });
             await runJobKind(job, {
               async process() {
@@ -117,7 +129,7 @@ export async function processJob(
               // second refusal fails the job and the current version stays.
               change: (request) => decide(request),
               restore: (versionId) =>
-                runRestore({ ctx, rows, blobs, keyPrefix: config.keyPrefix, versionId }),
+                runRestore({ ctx, rows, blobs, keyPrefix: config.keyPrefix, versionId, cutouts }),
               render: (versionId) =>
                 runRender({
                   ctx,
@@ -129,6 +141,8 @@ export async function processJob(
                   tools: toolPaths(),
                   recordStored,
                   versionId,
+                  photos,
+                  cutouts,
                 }),
               // A library photo: its two copies, then Claude Code's
               // description and tags; no reel is touched.

@@ -13,7 +13,9 @@ import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { type Page, expect, test } from "@playwright/test";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { extractFrame, pngSize, ssim } from "../test-support/frames.ts";
+import { behindPhotoAnswerScript } from "../test-support/ai-script.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
+import { type SeededPhoto, seedReadyPhoto } from "../test-support/photos.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
@@ -184,13 +186,22 @@ async function seekTo(seconds: number) {
         composition()
           .locator("body")
           .evaluate((body, t) => {
-            const videos = [...body.ownerDocument.querySelectorAll("video")];
+            // Every video playing at t, at its own media time (a cut-out's
+            // footage copies and masks included).
+            const videos = [
+              ...body.ownerDocument.querySelectorAll<HTMLVideoElement>("video[data-start]"),
+            ].filter((video) => {
+              const start = Number(video.dataset.start);
+              return t >= start && t < start + Number(video.dataset.duration);
+            });
             return (
               videos.length > 0 &&
-              videos.every(
-                (video) =>
-                  !video.seeking && video.readyState >= 2 && Math.abs(video.currentTime - t) < 0.05,
-              )
+              videos.every((video) => {
+                const at = t - Number(video.dataset.start) + Number(video.dataset.mediaStart ?? 0);
+                return (
+                  !video.seeking && video.readyState >= 2 && Math.abs(video.currentTime - at) < 0.05
+                );
+              })
             );
           }, seconds),
       { timeout: 30_000 },
@@ -226,7 +237,7 @@ async function exportNow(name: string): Promise<{ mp4: string; jobId: string }> 
   await button.click();
   await expect(page.getByTestId("export-blocked-reason")).toHaveText("Exporting this version...");
   const worker = await runWorkerOnce(
-    { R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_RENDER: "" },
+    { R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_RENDER: "", E2E_MOCK_MASK: "" },
     { timeoutMs: RENDER_TIMEOUT_MS },
   );
   expect(worker.code, worker.output).toBe(0);
@@ -318,4 +329,73 @@ test("a caption moved by 60 px falls below the bound", async () => {
   const { mp4 } = await exportNow("probe");
   const probeScores = await scores("probe", mp4, previews);
   expect(Math.min(...probeScores)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
+});
+
+// A library photo in the top spot behind the speaker over the whole speech:
+// a change job (the scripted answer) makes the cut-out with the real mask
+// tool and saves the version, then the composite in the live preview and in
+// the real export are compared at the same moments, and the photo moved by
+// 60 px must fall below the bound. (The fixture clip is 2.69 s, too short for
+// a second 2 to 4 s behind item, so the big word is covered by the worker's
+// render tools test.)
+async function changeTo(script: string, request: string): Promise<string> {
+  const { error } = await admin
+    .from("jobs")
+    .insert({ reel_id: reel!.reelId, owner_id: owner.id, kind: "change", request });
+  if (error) throw new Error(`change job not queued: ${error.message}`);
+  const worker = await runWorkerOnce(
+    { R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_AI_SCRIPT: script, E2E_MOCK_MASK: "" },
+    { timeoutMs: RENDER_TIMEOUT_MS },
+  );
+  expect(worker.code, worker.output).toBe(0);
+  const { data } = await admin
+    .from("reels")
+    .select("current_version_id")
+    .eq("id", reel!.reelId)
+    .single<{ current_version_id: string }>();
+  return data!.current_version_id;
+}
+
+test("a photo behind the speaker matches between preview and export", async () => {
+  test.setTimeout(20 * 60_000);
+  const photo: SeededPhoto = await seedReadyPhoto({
+    admin,
+    storage,
+    ownerId: owner.id,
+    prefix: CACHE_PREFIX,
+  });
+  for (const key of photo.keys) written.add(key);
+  const dir = await mkdtemp(join(tmpdir(), "export-guardrail-behind-"));
+  try {
+    const behindId = await changeTo(
+      await behindPhotoAnswerScript(dir, photo.id, "top"),
+      "the test pattern behind me, top",
+    );
+    await openPreview(behindId);
+    const behindPreviews = await capturePreview("behind");
+    const { mp4 } = await exportNow("behind");
+    for (const score of await scores("behind", mp4, behindPreviews)) {
+      expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+    }
+
+    // The probe: the same photo 60 px lower, exported only.
+    const probeId = await changeTo(
+      await behindPhotoAnswerScript(dir, photo.id, "top", {
+        top: `${ISSEBYA_PRESET.behind.spots.top.top + PROBE_SHIFT_PX}px`,
+      }),
+      "the photo 60 px lower",
+    );
+    await openPreview(probeId);
+    const { mp4: probeMp4 } = await exportNow("behind-probe");
+    const probeScores = await scores("behind-probe", probeMp4, behindPreviews);
+    expect(Math.min(...probeScores)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    const { data: masks } = await admin
+      .from("stored_files")
+      .select("r2_key")
+      .eq("reel_id", reel!.reelId)
+      .eq("step", "cutout");
+    for (const row of (masks ?? []) as { r2_key: string }[]) written.add(row.r2_key);
+  }
 });

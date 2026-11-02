@@ -11,6 +11,7 @@ import type { FramesLayout } from "./preview-sources";
 // track is never shown. A future title kind adds one entry here.
 export const TRACK_ROWS = [
   { key: "footage", label: "Footage" },
+  { key: "behind", label: "Behind" },
   { key: "captions", label: "Captions" },
   { key: "overlays", label: "Accents" },
   { key: "transitions", label: "Transitions" },
@@ -60,6 +61,10 @@ export function timelineRows(edit: Edit, transcript: Transcript): Timeline {
   const { tracks } = edit;
   const items: Record<TrackKey, TimelineItem[]> = {
     footage: tracks.footage.map((clip) => item(clip.id, (start, end) => formatClock(end - start))),
+    // A photo by its spot, a big word by itself.
+    behind: (tracks.behind ?? []).map((entry) =>
+      item(entry.id, () => (entry.kind === "photo" ? `photo ${entry.spot}` : entry.text)),
+    ),
     captions: tracks.captions.map((caption) =>
       item(caption.id, () => caption.text ?? words(caption.words)),
     ),

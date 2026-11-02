@@ -82,3 +82,35 @@ describe("runChecks", () => {
     expect(checks[0]!.reason).toContain(`inside the word ${word.id}`);
   });
 });
+
+describe("runChecks on big words behind the speaker", () => {
+  const behind = FIXTURES.find((fixture) => fixture.name === "rethink-work-behind")!;
+
+  it("skips the safe box for a big word (it crosses the frame by design)", async () => {
+    const { checks, html } = build(
+      behind.edit,
+      behind.transcript,
+      behind.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(html).toContain('id="behind-word"');
+    expect(checks).toEqual([]);
+  });
+
+  it("fails frame for a big word pushed above the frame by a head at its top edge", async () => {
+    const atTop = behind.headTrack.map((sample) => sample && { ...sample, head_top: 0 });
+    const { checks } = build(
+      behind.edit,
+      behind.transcript,
+      atTop,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    const frame = checks.filter((check) => check.rule === "frame");
+    expect(frame.map((check) => check.item)).toEqual(["behind-word"]);
+    expect(frame[0]!.reason).toMatch(
+      /^big word behind-word \("WORK"\) leaves the frame: top edge -\d+ < 0$/,
+    );
+  });
+});

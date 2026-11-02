@@ -12,6 +12,8 @@ export {
   type PresetFont,
   type TransitionType,
   type SoundKey,
+  type BehindSpot,
+  BEHIND_SPOTS,
   FONT_KEYS,
   ISSEBYA_PRESET,
   cleanWord,
@@ -27,6 +29,10 @@ export {
   type SoundItem,
   type TransitionItem,
   type EditLimits,
+  type BehindItem,
+  type BehindPhotoItem,
+  type BehindWordItem,
+  type EditMask,
   editSchemaFor,
   parseEdit,
 } from "./schema.ts";
@@ -45,7 +51,15 @@ export { type HarfBuzz, type Measurer, createMeasurer } from "./measure.ts";
 export { type ResolvedItem, resolveTimeline } from "./timeline.ts";
 export { type TextBox, layoutText, wordsText } from "./layout.ts";
 export { type Check, type CheckRule, runChecks } from "./checks.ts";
-export { type AssetRole, type BuildAsset, type BuildResult, build } from "./build.ts";
+export {
+  type AssetRole,
+  type BuildAsset,
+  type BuildResult,
+  build,
+  maskPath,
+  photoPath,
+} from "./build.ts";
+export { type BigWordBox, type MaskSpan, bigWordLayout, maskSpans, spotBox } from "./behind.ts";
 export { baselineEdit } from "./baseline.ts";
 export {
   type FreeFieldUse,

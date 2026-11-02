@@ -619,3 +619,64 @@ Execute every command to validate the feature works correctly with zero regressi
 - Never patch, fork or copy the HyperFrames player or renderer; the spike only reads their source to
   understand the frame injector.
 - Commit messages: conventional commits, no trailers.
+
+## Spike record
+
+Run on the owner's Mac (macOS 14.6, Apple M3, Swift 5.10, HyperFrames 0.8.222, ffmpeg 8), in a
+throwaway folder outside the repository (never committed). No prototype `vseg.swift` was attached
+to issue #20, so the tool was written from the contract in task 2.
+
+**Mask.** `vseg --input fixtures/footage/short-person.mp4 --start 0.500 --end 3.500 --output
+mask.mp4` (read only on the fixture): 90 frames, H.264 1080x1920, 30 fps, `yuv420p` video range,
+3.000 s, in 6.3 s wall. Two bugs found on the way and fixed in the tool: the reader stamps the
+frame showing at the range start with the range start itself, so a range opened half a frame early
+gave two frames at time 0 (VideoToolbox then fails with `-16364`); the tool now snaps each span edge
+within a quarter frame onto the frame grid and drops any frame not after the last one written.
+
+**Candidate A (CSS blend composite), built.** `index.html` by hand: the footage clip, then one
+untimed group (`position: absolute; inset: 0; isolation: isolate`) holding a footage copy
+(`muted`, `data-media-start` equal to its `data-start`), the photo `<img>` (900x600 at 90,160,
+`object-fit: cover`, 0.6 to 2.0 s), a big word `<div>` (2.0 to 3.4 s), the mask with
+`filter: invert(1); mix-blend-mode: multiply`, and a sub-group (`isolation: isolate;
+mix-blend-mode: plus-lighter`) of a second footage copy and the mask with
+`mix-blend-mode: multiply`. Every layer is a plain timed element, no script.
+
+- `hyperframes lint`: 0 errors, one warning, `duplicate_media_discovery_risk` (the two footage
+  copies, and the two mask copies, share source, start and duration). The render below discovered
+  and drew all four correctly.
+- `hyperframes render ... --quality delivery --workers 3 --no-browser-gpu --sdr`: 4 s in 35.6 s.
+- Export against an ffmpeg reference composite (`maskedmerge` of footage-with-photo and footage by
+  the mask), SSIM in the head area, mask shifted by -2..+2 frames: peaks at 0 at both 1.0 s
+  (0.890, 0.906, **0.924**, 0.905, 0.875) and 1.5 s (0.867, 0.884, **0.897**, 0.892, 0.893), so the
+  export's mask is frame-aligned with the footage (the absolute values include the re-encode and
+  the two decoders' colour conversion).
+- Preview: the same `index.html` as `srcdoc` of a bare `<hyperframes-player>` (Chromium through
+  Playwright, 1080x1920, runtime and GSAP from the local packages), `seek(t)`, then every active
+  video settled. The player honours `data-media-start` on the nested copies (at 1.5 s: footage
+  copies 1.500, masks 1.000).
+- Preview against export, SSIM in `yuv444p` (the export frame matched to the frame the preview
+  shows; the preview shows the footage frame before the export's at the same `t`, outside the
+  span too, so that offset is the existing player behaviour and not the composite's):
+
+| Moment                | Full frame | Photo rectangle | Probe (photo 60 px lower) full | Probe rectangle |
+| --------------------- | ---------- | --------------- | ------------------------------ | --------------- |
+| 0.2 s (before span)   | 0.992555   | 0.992096        |                                |                 |
+| 0.65 s (photo)        | 0.991984   | 0.991942        | 0.941383                       | 0.849199        |
+| 1.5 s (photo)         | 0.992553   | 0.992569        | 0.952845                       | 0.870148        |
+| 1.95 s (photo)        | 0.992360   | 0.992345        | 0.951201                       | 0.864001        |
+| 2.5 s (word)          | 0.992459   | 0.990974        | 0.992459 (no photo)            | 0.990974        |
+| 3.2 s (span, no item) | 0.992716   | 0.990998        |                                |                 |
+| 3.8 s (after span)    | 0.993077   | 0.992436        |                                |                 |
+
+Inside the span the composite scores the same as plain footage outside it, and the probe falls
+well below, so the comparison is sensitive. Measured in RGB the photo rectangle scored lower
+(0.94) on both sides of the comparison alike: the synthetic test photo's saturated colour bars
+lose chroma in the export's 4:2:0 encode; in `yuv444p` the rectangle's luma SSIM is 0.9965.
+
+**Candidate B (canvas from `hf-seek`)**: not built, A passed. **Candidate C** (CSS `mask-image` or
+SVG `<mask>` with a video): recorded as unsupported, not built.
+
+**Decision:** Candidate A ships. One finding for the studio: the preview wrapper
+(`PreviewPlayer.tsx`, `preview-clock.ts`) placed every video at `t - data-start`, ignoring
+`data-media-start`, so it would have held the footage copies at the wrong point; it now reads
+`data-media-start` (a wrapper change, the player itself untouched).

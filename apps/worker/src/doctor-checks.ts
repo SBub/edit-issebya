@@ -54,8 +54,57 @@ export interface DoctorDeps {
   // `hyperframes --version` output.
   hyperframes: () => Promise<string>;
   ai: () => AiRunner;
+  // The cut-out's mask tool (vseg): the platform, its build, one run on a
+  // 1-second sample (written to `output`), and ffprobe of a file.
+  maskTool: () => MaskToolDeps;
   // The scratch folder and whether it exists or can be created (never created).
   scratchDir: () => Promise<{ dir: string; state: "exists" | "can be created" }>;
+}
+
+export interface MaskToolDeps {
+  platform: NodeJS.Platform;
+  build: () => Promise<void>;
+  // The sample's first second masked into `output`.
+  run: (output: string) => Promise<void>;
+  probe: (file: string) => Promise<VideoProbe>;
+  // The sample footage the run masks.
+  sample: string;
+}
+
+export interface VideoProbe {
+  codec: string;
+  width: number;
+  height: number;
+  frames: number;
+}
+
+// vseg built, run on one second of the sample, its mask checked: H.264 at the
+// sample's size, 30 frames give or take one. On another OS, one line.
+async function maskToolCheck(deps: MaskToolDeps): Promise<string> {
+  if (deps.platform !== "darwin") {
+    throw new Error(
+      `the mask tool runs on macOS only (Apple Vision); this worker runs on ${deps.platform}`,
+    );
+  }
+  await deps.build();
+  const dir = await mkdtemp(join(tmpdir(), "doctor-mask-"));
+  try {
+    const output = join(dir, "mask.mp4");
+    const started = performance.now();
+    await deps.run(output);
+    const seconds = (performance.now() - started) / 1000;
+    const [mask, sample] = [await deps.probe(output), await deps.probe(deps.sample)];
+    if (mask.codec !== "h264") throw new Error(`mask is ${mask.codec}, not h264`);
+    if (mask.width !== sample.width || mask.height !== sample.height) {
+      throw new Error(
+        `mask is ${mask.width}x${mask.height}, the footage ${sample.width}x${sample.height}`,
+      );
+    }
+    if (Math.abs(mask.frames - 30) > 1) throw new Error(`mask has ${mask.frames} frames, not 30`);
+    return `vseg built, 1 s masked in ${seconds.toFixed(1)} s`;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 // The filters the fixed steps use: HDR tone-mapping, retime tempo, the envelope.
@@ -228,6 +277,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
       if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
     }),
     await check("ai image call", () => aiImageCall(deps.ai())),
+    await check("mask tool", () => maskToolCheck(deps.maskTool())),
     // Last, so the earlier lines keep their places.
     await check("scratch dir", async () => {
       const { dir, state } = await deps.scratchDir();
