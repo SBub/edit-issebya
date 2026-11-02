@@ -19,18 +19,19 @@ export function normalizeRequest(text: unknown): NormalizedRequest {
   return { ok: true, request };
 }
 
-// Interim rule, until jobs are ordered in the database: a change or a going
-// back opens only on a processed reel with no job queued or running (a
-// render counts too). Null
-// when open, otherwise the one-line reason shown beside the disabled control.
+// A change or a going back may be sent while the reel is processing or other
+// jobs run: the database runs one job per reel at a time, in order
+// (lib/failures changeQueueNote says what it waits for). Blocked only when no
+// job could ever use it. Null when open, otherwise the one-line reason shown
+// beside the disabled control.
 export function changeBlockedReason(
-  reel: Pick<ReelDetail, "status">,
-  jobs: readonly Pick<JobRow, "status">[],
+  reel: Pick<ReelDetail, "status" | "current_version_id">,
 ): string | null {
-  if (jobs.some((job) => job.status === "queued" || job.status === "running")) {
-    return "A job is running on this reel; wait for it to finish.";
+  if (reel.status === "refused") return "This clip was refused; upload another clip.";
+  if (reel.status === "uploading") return "Changes open once the upload finishes.";
+  if (reel.status === "failed" && reel.current_version_id === null) {
+    return "Processing failed; press Retry on the failed job first.";
   }
-  if (reel.status !== "processed") return "Changes open once the reel is processed.";
   return null;
 }
 

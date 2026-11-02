@@ -12,8 +12,9 @@ import { MOCK_UPLOAD_URL_BASE } from "@/lib/storage";
 
 /**
  * E2E-only stand-in for R2. Under E2E_MOCK_STORAGE=true the fake storage signs
- * upload part URLs that point here (`<key>?uploadId=..&partNumber=n`), so the
- * browser PUTs each part of a multipart upload to this route in place of R2.
+ * upload part URLs that point here on the studio's own origin
+ * (`<key>?uploadId=..&partNumber=n`), so the browser PUTs each part of a
+ * multipart upload to this route in place of R2, cross-origin as to R2.
  * The part lands under the gitignored `.e2e-storage/.multipart/` folder at the
  * repository root, and the answer carries its ETag (the quoted MD5 of the
  * part, as R2's); completing the upload assembles the object there, where the
@@ -46,28 +47,50 @@ function storage() {
   return fakeStorage({ root: e2eStorageRoot(), uploadUrlBase: MOCK_UPLOAD_URL_BASE });
 }
 
+// The browser PUTs parts here from the landing page's origin, straight to the
+// studio's (see mockPartUrlBase), so the part PUT answers CORS as the R2
+// bucket's policy does. Uppy sends no credentials, so any origin will do.
+const CORS = { "Access-Control-Allow-Origin": "*" };
+
+// The preflight of a cross-origin part PUT.
+export function OPTIONS(request: Request) {
+  if (!isE2EMockStorage()) return new NextResponse(null, { status: 404 });
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      ...CORS,
+      "Access-Control-Allow-Methods": "PUT",
+      "Access-Control-Allow-Headers":
+        request.headers.get("Access-Control-Request-Headers") ?? "Content-Type",
+      "Access-Control-Max-Age": "600",
+    },
+  });
+}
+
+function partError(error: string, status: number) {
+  return NextResponse.json({ error }, { status, headers: CORS });
+}
+
 // R2's UploadPart: one part of a multipart upload the fake created.
 export async function PUT(request: Request, context: Context) {
   if (!isE2EMockStorage()) return notFound();
   const key = await storageKey(context);
-  if (!key) return NextResponse.json({ error: "Bad key" }, { status: 400 });
+  if (!key) return partError("Bad key", 400);
   const query = new URL(request.url).searchParams;
   const uploadId = query.get("uploadId");
   const partText = query.get("partNumber") ?? "";
   const partNumber = /^\d{1,5}$/.test(partText) ? Number(partText) : NaN;
-  if (!isUploadId(uploadId) || !isPartNumber(partNumber)) {
-    return NextResponse.json({ error: "Bad part" }, { status: 400 });
-  }
+  if (!isUploadId(uploadId) || !isPartNumber(partNumber)) return partError("Bad part", 400);
   const body = new Uint8Array(await request.arrayBuffer());
   let etag: string;
   try {
     etag = await storage().putUploadPart(key, { uploadId, partNumber, body });
   } catch {
-    return NextResponse.json({ error: "No such upload" }, { status: 404 });
+    return partError("No such upload", 404);
   }
   return new NextResponse(null, {
     status: 200,
-    headers: { ETag: `"${etag}"`, "Access-Control-Expose-Headers": "ETag" },
+    headers: { ...CORS, ETag: `"${etag}"`, "Access-Control-Expose-Headers": "ETag" },
   });
 }
 

@@ -114,16 +114,19 @@ export interface FakeStorage extends Storage {
 }
 
 // A Storage backed by a folder, for specs: every key maps to `<root>/<key>`,
-// and a key that could leave the root is refused. Signed URLs are same-origin
-// paths to the studio's mock route (`uploadUrlBase` + key). A multipart
-// upload lives in `<root>/.multipart/<uploadId>/` (`meta.json` with its key,
-// one `<n>.part` per part) until it is completed or aborted.
+// and a key that could leave the root is refused. Signed URLs point at the
+// studio's mock route: a download at `uploadUrlBase` + key, an upload part at
+// `partUrlBase` (default `uploadUrlBase`) + key. A multipart upload lives in
+// `<root>/.multipart/<uploadId>/` (`meta.json` with its key, one `<n>.part`
+// per part) until it is completed or aborted.
 export function fakeStorage({
   root,
   uploadUrlBase,
+  partUrlBase = uploadUrlBase,
 }: {
   root: string;
   uploadUrlBase: string;
+  partUrlBase?: string;
 }): FakeStorage {
   const pathOf = (key: string) => join(root, assertStorageKey(key));
   const uploadDir = (uploadId: string) => join(root, MULTIPART, assertUploadId(uploadId));
@@ -175,7 +178,7 @@ export function fakeStorage({
         uploadId: assertUploadId(uploadId),
         partNumber: String(assertPartNumber(partNumber)),
       });
-      return `${uploadUrlBase}${assertStorageKey(key)}?${query}`;
+      return `${partUrlBase}${assertStorageKey(key)}?${query}`;
     },
 
     async putUploadPart(key, { uploadId, partNumber, body }) {

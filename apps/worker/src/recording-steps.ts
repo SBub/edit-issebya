@@ -19,7 +19,15 @@ export type StepCall =
       tail: string;
       summary: string;
       measurements: StepMeasurements;
-    };
+    }
+  | {
+      call: "waiting";
+      stepId: string;
+      reason: string;
+      summary: string;
+      measurements: StepMeasurements;
+    }
+  | { call: "abandonRunning"; jobId: string };
 
 export function recordingSteps(
   sourceKey: string | null = null,
@@ -59,6 +67,12 @@ export function recordingSteps(
     async failed(stepId, tail, summary, measurements) {
       calls.push({ call: "failed", stepId, tail, summary, measurements });
     },
+    async waiting(stepId, reason, summary, measurements) {
+      calls.push({ call: "waiting", stepId, reason, summary, measurements });
+    },
+    async abandonRunning(jobId) {
+      calls.push({ call: "abandonRunning", jobId });
+    },
   };
   return { steps, calls };
 }
@@ -80,7 +94,8 @@ export function stepContext(
     signal = new AbortController().signal,
     telemetry = createTelemetry({}),
     job = TEST_JOB,
-  }: { signal?: AbortSignal; telemetry?: Telemetry; job?: ClaimedJob } = {},
+    retryDelayMs = 0,
+  }: { signal?: AbortSignal; telemetry?: Telemetry; job?: ClaimedJob; retryDelayMs?: number } = {},
 ): StepContext {
-  return { steps, telemetry, jobContext: ROOT_CONTEXT, job, signal };
+  return { steps, telemetry, jobContext: ROOT_CONTEXT, job, signal, retryDelayMs };
 }

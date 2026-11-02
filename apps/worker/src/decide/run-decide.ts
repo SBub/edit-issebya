@@ -24,6 +24,7 @@ import {
 import type { Storage } from "@edit-issebya/storage";
 import type { AiRunner } from "../ai.ts";
 import { editMeasurer } from "../edit-measurer.ts";
+import { AiUnavailable, PermanentError } from "../failure.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { type StepContext, StepError, type Tool, runToolsStep } from "../step-runner.ts";
 import type { AiUsage } from "../step-store.ts";
@@ -60,6 +61,16 @@ function addUsage(total: AiUsage, usage: AiUsage): AiUsage {
     costUsd: sum(total.costUsd, usage.costUsd),
     model: usage.model ?? total.model,
   };
+}
+
+// From the first AI call on, a failure is never retried automatically: a
+// retry would call the AI again, and the step makes at most two calls. An
+// unavailable AI keeps its own class (the job waits).
+function permanentAfterAiCall(error: unknown): never {
+  if (error instanceof AiUnavailable || error instanceof PermanentError) throw error;
+  throw new PermanentError(error instanceof Error ? error.message : String(error), {
+    cause: error,
+  });
 }
 
 function plural(count: number, unit: string): string {
@@ -132,6 +143,8 @@ export function runDecide({
             cwd,
           });
           usage = addUsage(usage, result.usage);
+          // Not available now: the job waits, nothing is written.
+          if (result.kind === "unavailable") throw new AiUnavailable(result.reason);
           if (result.kind === "broken") {
             return { ok: false, reasons: [`the answer was not valid JSON: ${result.reason}`] };
           }
@@ -153,8 +166,8 @@ export function runDecide({
         };
 
         // Exactly one retry, never a loop.
-        const first = await attempt();
-        const passed = first.ok ? first : await attempt(first.reasons);
+        const first = await attempt().catch(permanentAfterAiCall);
+        const passed = first.ok ? first : await attempt(first.reasons).catch(permanentAfterAiCall);
         if (!passed.ok) {
           const tail = [
             `${STEP}: the answer failed twice, version ${row.number} stays current`,
@@ -184,7 +197,7 @@ export function runDecide({
             rejectedReasons: first.ok ? [] : first.reasons,
             edit,
           },
-        );
+        ).catch(permanentAfterAiCall);
         const counts = decideCounts(edit, transcript, preset);
         const what = [
           `version ${saved.number}: ${plural(counts.accents, "accent")}`,

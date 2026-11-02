@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { fakeStorage } from "@edit-issebya/storage";
-import { GET, HEAD, PUT } from "./route";
+import { GET, HEAD, OPTIONS, PUT } from "./route";
 
 const KEY = ["dev", "reels", "r1", "source", "original.mp4"];
 let root: string;
@@ -57,6 +57,7 @@ describe("without the exact flag", () => {
       expect((await putPart(KEY, new Uint8Array([1]), part("u", 1))).status).toBe(404);
       expect((await GET(new Request("http://x/"), context(KEY))).status).toBe(404);
       expect((await HEAD(new Request("http://x/"), context(KEY))).status).toBe(404);
+      expect(OPTIONS(new Request("http://x/", { method: "OPTIONS" })).status).toBe(404);
     });
   }
 });
@@ -75,9 +76,26 @@ describe("with E2E_MOCK_STORAGE=true", () => {
     const md5 = createHash("md5").update(body).digest("hex");
     expect(answer.headers.get("ETag")).toBe(`"${md5}"`);
     expect(answer.headers.get("Access-Control-Expose-Headers")).toBe("ETag");
+    expect(answer.headers.get("Access-Control-Allow-Origin")).toBe("*");
     expect(await store().listUploadParts(key, { uploadId })).toEqual([
       { partNumber: 2, etag: md5, bytes: 3 },
     ]);
+  });
+
+  it("answers a cross-origin part PUT's preflight, and its errors carry CORS", async () => {
+    const preflight = OPTIONS(
+      new Request("http://x/", {
+        method: "OPTIONS",
+        headers: { "Access-Control-Request-Headers": "content-type" },
+      }),
+    );
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(preflight.headers.get("Access-Control-Allow-Methods")).toBe("PUT");
+    expect(preflight.headers.get("Access-Control-Allow-Headers")).toBe("content-type");
+    const refused = await putPart(KEY, new Uint8Array([1]), part("unknown", 1));
+    expect(refused.status).toBe(404);
+    expect(refused.headers.get("Access-Control-Allow-Origin")).toBe("*");
   });
 
   it("round-trips a completed upload through GET and HEAD", async () => {

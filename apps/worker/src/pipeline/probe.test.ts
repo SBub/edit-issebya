@@ -7,6 +7,11 @@ function fixture(name: string): Probe {
   return parseProbe(readFileSync(new URL(`testdata/${name}.json`, import.meta.url), "utf8"));
 }
 
+function readJson(name: string): unknown {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a committed test fixture
+  return JSON.parse(readFileSync(new URL(`testdata/${name}.json`, import.meta.url), "utf8"));
+}
+
 describe("parseProbe", () => {
   it("reads the video, the audio and the duration", () => {
     expect(fixture("sdr-cfr")).toEqual({
@@ -19,9 +24,11 @@ describe("parseProbe", () => {
         colorTransfer: null,
         colorPrimaries: null,
         colorSpace: null,
+        rotation: 0,
       },
       audio: { codec: "aac", sampleRate: 48000 },
       durationSeconds: 2,
+      formatName: "mov,mp4,m4a,3gp,3g2,mj2",
     });
     expect(fixture("vfr").audio).toBeNull();
   });
@@ -31,6 +38,28 @@ describe("parseProbe", () => {
     expect(() => parseProbe('{"streams":[{"codec_type":"video"}],"format":{}}')).toThrow(
       "no duration",
     );
+  });
+
+  it("reads the rotation from the Display Matrix, then the rotate tag", () => {
+    expect(fixture("probe-rotated-portrait").video.rotation).toBe(270);
+    expect(fixture("probe-rotate-tag").video.rotation).toBe(90);
+    const both = {
+      streams: [
+        {
+          codec_type: "video",
+          width: 1920,
+          height: 1080,
+          tags: { rotate: "180" },
+          side_data_list: [{ side_data_type: "Display Matrix", rotation: 90 }],
+        },
+      ],
+      format: { duration: "2" },
+    };
+    expect(parseProbe(JSON.stringify(both)).video.rotation).toBe(90);
+  });
+
+  it("skips an attached picture (cover art) as the video stream", () => {
+    expect(() => parseProbe(JSON.stringify(readJson("probe-cover-art-audio")))).toThrow("no video");
   });
 
   it("asks ffprobe for JSON streams and format", () => {

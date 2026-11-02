@@ -39,7 +39,10 @@ and the AI cannot touch the input fingerprints. By convention the title is the o
   the prompt on stdin, the job's scratch folder as cwd, stdout cap 16 MB. `parseClaudeResult`
   reads `structured_output` (else `result` as JSON) and the usage: input tokens (fresh, cache
   writes and reads summed), output tokens, `total_cost_usd` as reported, and the model with the
-  most output. Raw numbers, null where missing. A result that is not an answer is `broken`.
+  most output. Raw numbers, null where missing. A result that is not an answer is `broken`. A
+  signed-out Claude Code or one at its usage limit is `unavailable` with a reason, recognised from
+  Claude's output by `aiUnavailableReason`; `runDecide` throws `AiUnavailable` for it, and the job
+  waits (`waiting_ai`, see `app_docs/failures.md`) instead of failing.
 - The AI double: `E2E_MOCK_AI=true` never spawns; it replays the Claude result envelopes in the
   JSON file named by `E2E_MOCK_AI_SCRIPT` through the same parser. The file is an array (replayed
   in order, the last repeating) or one envelope object (used for every call); an empty array, a
@@ -77,6 +80,11 @@ Two refused rounds throw `StepError` with the tail `decide: the answer failed tw
 stays current` and each round's reasons (at most 8 lines per round, `and k more` closing a longer
 one). Nothing is written to R2 or `versions`, the reel's current version is unchanged, and the
 step row still carries the tokens and cost spent.
+
+A transient retry (`app_docs/failures.md`) is the step runner's and never adds AI calls: from the
+first AI call on, `runDecide` wraps every failure but `AiUnavailable` in `PermanentError`
+(`permanentAfterAiCall`), so the step runner never runs the step again and the step makes at most
+two AI calls. A failure before the first AI call may still be retried once.
 
 ## How to Use
 

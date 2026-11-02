@@ -2,11 +2,12 @@
 // never reaches the page by accident.
 export const REEL_COLUMNS = "id, status, source_name, created_at";
 export const REEL_DETAIL_COLUMNS =
-  "id, status, source_name, source_bytes, created_at, updated_at, current_version_id, preview_copies, footage_seconds";
+  "id, status, source_name, source_bytes, created_at, updated_at, current_version_id, preview_copies, footage_seconds, refusal_message";
 
 export const REEL_STATUSES = [
   "uploading",
   "uploaded",
+  "checking_footage",
   "received",
   "converting",
   "transcribing",
@@ -16,6 +17,7 @@ export const REEL_STATUSES = [
   "making_previews",
   "processed",
   "failed",
+  "refused",
 ] as const;
 export type ReelStatus = (typeof REEL_STATUSES)[number];
 
@@ -35,6 +37,8 @@ export interface ReelDetail extends ReelSummary {
   // The retimed footage's length (numeric, a string from PostgREST), the
   // divisor of the time-left estimate; null until the worker's retime.
   footage_seconds: number | string | null;
+  // Why the footage was refused, in the owner's words; null unless refused.
+  refusal_message: string | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

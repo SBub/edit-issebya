@@ -3,7 +3,9 @@ import { dirname, join } from "node:path";
 import type { Storage } from "@edit-issebya/storage";
 import { type SpawnTool, type StepContext, recordHit, runToolsStep } from "../step-runner.ts";
 import { PIPELINE, type PipelineStep, fingerprintsFor, outputFiles } from "./definition.ts";
+import { checkFootage as probeFootage } from "./footage-check.ts";
 import { type FileRef, cacheKey } from "./fingerprint.ts";
+import type { RunStep } from "./step-double.ts";
 import type { ToolPaths } from "./tools.ts";
 
 export interface PipelineRun {
@@ -21,6 +23,13 @@ export interface PipelineRun {
   // the size its HEAD gave. Outputs this run writes are recorded by the
   // storage the job is given.
   recordStored?: (key: string, bytes: number) => Promise<void>;
+  // true (a `process` job): the `check_footage` step first, which downloads
+  // the source and refuses footage the studio cannot take before any heavy
+  // step runs. A render never checks.
+  checkFootage?: boolean;
+  // How a step that must run is run (the specs' step double); default the
+  // step's own `run`.
+  runStep?: RunStep;
 }
 
 function elapsedMs(started: number): number {
@@ -57,6 +66,8 @@ export async function runPipeline({
   pipeline = PIPELINE,
   setReelStatus = true,
   recordStored,
+  checkFootage = false,
+  runStep,
 }: PipelineRun): Promise<{ fingerprints: Record<string, string> }> {
   const { steps, job, signal } = ctx;
   const sourceKey = await steps.sourceKey(job.reel_id);
@@ -104,6 +115,31 @@ export async function runPipeline({
 
   await rm(jobDir, { recursive: true, force: true });
   try {
+    if (checkFootage) {
+      if (setReelStatus) await steps.reelStatus(job.reel_id, "checking_footage");
+      // Where convert reads the source: a convert that runs downloads nothing more.
+      const sourcePath = downloadPath({ source });
+      await runToolsStep(
+        ctx,
+        {
+          name: "check_footage",
+          inputs: [sourcePath],
+          sizeOf: "in",
+          async work(tool) {
+            if (!local.has(sourceKey)) {
+              // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
+              await mkdir(dirname(sourcePath), { recursive: true });
+              if (!(await storage.getFile(sourceKey, sourcePath, { signal }))) {
+                throw new Error(`check_footage: source missing: ${sourceKey}`);
+              }
+              local.set(sourceKey, sourcePath);
+            }
+            return probeFootage({ tool, tools, path: sourcePath });
+          },
+        },
+        spawnTool,
+      );
+    }
     for (const step of pipeline) {
       const started = performance.now();
       const fingerprint = fingerprints[step.name]!;
@@ -155,14 +191,8 @@ export async function runPipeline({
               }
               local.set(key, path);
             }
-            const result = await step.run({
-              tool,
-              tools,
-              dir: stepDir,
-              files,
-              settings: step.settings,
-              signal,
-            });
+            const args = { tool, tools, dir: stepDir, files, settings: step.settings, signal };
+            const result = runStep ? await runStep(step, args, fingerprint) : await step.run(args);
             for (const [index, file] of outputNames.entries()) {
               if (!(await exists(outputPaths[index]!))) {
                 throw new Error(`${step.name} did not write ${file}`);

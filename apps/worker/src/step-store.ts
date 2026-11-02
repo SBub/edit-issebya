@@ -36,6 +36,7 @@ export function aiMeasurements(usage: AiUsage): Partial<StepMeasurements> {
 // The reel statuses the pipeline writes (one per step); the job's end writes
 // processed or failed.
 export type PipelineReelStatus =
+  | "checking_footage"
   | "converting"
   | "transcribing"
   | "retiming"
@@ -64,7 +65,19 @@ export interface StepStore {
     summary: string,
     measurements: StepMeasurements,
   ): Promise<void>;
+  // The AI is not available: the row is `waiting`, its tail the reason.
+  waiting(
+    stepId: string,
+    reason: string,
+    summary: string,
+    measurements: StepMeasurements,
+  ): Promise<void>;
+  // A job taken again after its worker stopped: every row it left `running`
+  // ends `failed`.
+  abandonRunning(jobId: string): Promise<void>;
 }
+
+const ABANDONED_TAIL = "the worker stopped during this step; the job was taken again";
 
 export function supabaseStepStore(db: SupabaseClient): StepStore {
   return {
@@ -163,6 +176,31 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
         })
         .eq("id", stepId);
       if (error) throw new Error(`step not failed: ${error.message}`);
+    },
+    async waiting(stepId, reason, summary, measurements) {
+      const { error } = await db
+        .from("steps")
+        .update({
+          status: "waiting",
+          error_tail: reason,
+          summary,
+          finished_at: new Date().toISOString(),
+          ...measurements,
+        })
+        .eq("id", stepId);
+      if (error) throw new Error(`step not marked waiting: ${error.message}`);
+    },
+    async abandonRunning(jobId) {
+      const { error } = await db
+        .from("steps")
+        .update({
+          status: "failed",
+          error_tail: ABANDONED_TAIL,
+          finished_at: new Date().toISOString(),
+        })
+        .eq("job_id", jobId)
+        .eq("status", "running");
+      if (error) throw new Error(`abandoned steps not closed: ${error.message}`);
     },
   };
 }

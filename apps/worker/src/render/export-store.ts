@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { supabaseFailure } from "../failure.ts";
 
 export interface NewExport {
   id: string;
@@ -22,16 +23,16 @@ export interface ExportStore {
 export function supabaseExportStore(db: SupabaseClient): ExportStore {
   return {
     async forJob(jobId) {
-      const { data, error } = await db
+      const { data, error, status } = await db
         .from("exports")
         .select("id")
         .eq("job_id", jobId)
         .maybeSingle();
-      if (error) throw new Error(`export not read: ${error.message}`);
+      if (error) throw supabaseFailure("export not read", { error, status });
       return (data as { id: string } | null)?.id ?? null;
     },
     async insert(row) {
-      const { error } = await db.from("exports").insert({
+      const { error, status } = await db.from("exports").insert({
         id: row.id,
         reel_id: row.reel_id,
         owner_id: row.owner_id,
@@ -40,7 +41,7 @@ export function supabaseExportStore(db: SupabaseClient): ExportStore {
         r2_key: row.r2_key,
         bytes: row.bytes,
       });
-      if (error) throw new Error(`export not recorded: ${error.message}`);
+      if (error) throw supabaseFailure("export not recorded", { error, status });
     },
   };
 }

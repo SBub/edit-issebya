@@ -1,3 +1,5 @@
+import { constants } from "node:os";
+
 // What `/usr/bin/time` reports about the process it ran: the kernel's wait4
 // accounting (RUSAGE_CHILDREN), so CPU summed over every reaped descendant and
 // the max RSS of the largest single process. Never the whole machine.
@@ -45,4 +47,20 @@ export function parseGnuTimeReport(text: string): TimeReport | null {
 
 export function parseTimeReport(platform: NodeJS.Platform, text: string): TimeReport | null {
   return platform === "darwin" ? parseBsdTimeReport(text) : parseGnuTimeReport(text);
+}
+
+// The signal that killed the tool, as the report says it: `/usr/bin/time`
+// outlives its tool, so the step sees time's own exit (GNU: 128 + N, macOS: 1)
+// and only the report tells a kill from an exit. GNU names the number
+// (`SIGKILL`); macOS says only `command terminated abnormally` (`signal`).
+// Null when the tool exited on its own.
+export function reportedSignal(platform: NodeJS.Platform, report: string): string | null {
+  if (platform === "darwin") {
+    return /command terminated abnormally/i.test(report) ? "signal" : null;
+  }
+  const match = /Command terminated by signal (\d+)/.exec(report);
+  if (!match) return null;
+  const number = Number(match[1]);
+  const name = Object.entries(constants.signals).find(([, value]) => value === number)?.[0];
+  return name ?? `signal ${number}`;
 }

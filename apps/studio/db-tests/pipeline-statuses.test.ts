@@ -34,6 +34,7 @@ describe("pipeline statuses", () => {
 
   it("accepts each step's reel status", async () => {
     for (const status of [
+      "checking_footage",
       "converting",
       "transcribing",
       "retiming",
