@@ -3,6 +3,7 @@
 **Specifications:**
 
 - specs/issue-37-adw-203f77eb-sdlc_planner-storage-records-slimming-disk-guard.md
+- specs/issue-91-adw-fb57dacf-sdlc_planner-worker-scratch-dir-and-r2-write-probe.md
 
 ## Overview
 
@@ -81,7 +82,11 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
 
 ### Scratch cleanup
 
-- `apps/worker/src/scratch.ts`: `withJobScratch` (used by `process-job.ts`) creates
+- `prepareScratchDir` (`apps/worker/src/scratch.ts`) creates `WORKER_SCRATCH_DIR` with its parents
+  at `worker`, `worker:prod` and `once` start-up, before the first heartbeat or claim, so the disk
+  guard can read its volume. When it cannot, the worker prints
+  `worker: scratch folder <dir> cannot be created: <reason>` and exits 1.
+- `withJobScratch` (used by `process-job.ts`) creates
   `WORKER_SCRATCH_DIR/<job id>`, runs the job in it and removes it in a `finally` (success, failure
   or a lost lease), logging `job <id>: scratch removed, <size> freed`. The pipeline's
   `job-<job id>/` folder lives inside it.
@@ -125,7 +130,7 @@ Nothing to do for the owner. What they see:
 
 - `WORKER_MIN_FREE_DISK_GB` (default 10): the free disk below which the worker claims nothing.
 - `WORKER_SCRATCH_DIR` (default the OS temp folder): where job folders live and whose volume the
-  guard reads.
+  guard reads; created with its parents at start-up when missing.
 - `R2_KEY_PREFIX`: the slimming's scope; a worker only slims under its own prefix.
 - `E2E_MOCK_FREE_DISK_GB`: tests only, under `E2E_MOCK_STORAGE=true`.
 - The owner's R2 lifecycle rule on `<prefix>exports/` stays as a backstop.
@@ -135,7 +140,13 @@ Nothing to do for the owner. What they see:
 - Unit (`yarn test`): `apps/worker/src/stored-files.test.ts`, `scratch.test.ts`,
   `disk-guard.test.ts`, `slimming.test.ts`, `pipeline/definition.test.ts`,
   `pipeline/run-pipeline.test.ts` (hits recorded, the rebuild case), `render/render-call.test.ts`
-  and `apps/studio/src/lib/worker-status.test.ts`.
+  and `apps/studio/src/lib/worker-status.test.ts`. `scratch.test.ts` covers `prepareScratchDir`
+  creating a missing nested folder and leaving an existing one, and `scratchDirState` reporting an
+  existing folder, a missing one under a writable parent without creating it, and refusing a
+  regular file at the path or as a parent; `doctor-checks.test.ts` covers the
+  `r2 bucket readable and writable` probe (all lines pass and no probe is left, failures naming the
+  put for a read-only key, the get for a missing or different read-back, still deleting it, and the
+  delete) and the `scratch dir` line.
 - DB (`yarn test:db`): `apps/studio/db-tests/stored-files.test.ts` (`stored_files` and
   `worker_status` RLS, `record_stored_file`, the seven-day slimming and export expiry with a fixed
   clock, `finish_upload`'s source row).
@@ -153,6 +164,7 @@ Nothing to do for the owner. What they see:
 - Never claim a job below `WORKER_MIN_FREE_DISK_GB`.
 - Never run `hyperframes clean` from the worker.
 - Never write storage from a job except through `recordingStorage`.
+- Never read the scratch volume before creating the scratch folder.
 
 ## Notes
 

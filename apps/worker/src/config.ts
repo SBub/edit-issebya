@@ -26,6 +26,12 @@ function positiveNumber(env: Env, name: string, fallback: number, integer: boole
   return value;
 }
 
+// The worker's scratch folder: WORKER_SCRATCH_DIR, else the OS temp folder.
+// Needs no other variable, so the doctor resolves the same path.
+export function scratchDirOf(env: Env = process.env): string {
+  return env.WORKER_SCRATCH_DIR?.trim() || tmpdir();
+}
+
 // Read when the worker starts, never at module load, so typecheck and import
 // need no variables. One message names every missing variable.
 export function workerConfig(env: Env = process.env): WorkerConfig {
@@ -56,7 +62,7 @@ export function workerConfig(env: Env = process.env): WorkerConfig {
     leaseSeconds: 300,
     renewEveryMs: 60_000,
     minFreeDiskGb: positiveNumber(env, "WORKER_MIN_FREE_DISK_GB", 10, false),
-    scratchDir: env.WORKER_SCRATCH_DIR?.trim() || tmpdir(),
+    scratchDir: scratchDirOf(env),
     keyPrefix: prefix,
   };
 }

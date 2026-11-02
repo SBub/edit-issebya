@@ -8,6 +8,7 @@ import { createErrorTracker, installCrashCapture } from "./error-tracking.ts";
 import { freeBytesFn, guardedClaim, supabaseWorkerStatus } from "./disk-guard.ts";
 import { processJob } from "./process-job.ts";
 import { claimJob } from "./queue.ts";
+import { prepareScratchDir } from "./scratch.ts";
 import { workerStorage } from "./storage.ts";
 import { workerSupabase } from "./supabase.ts";
 import { createTelemetry } from "./telemetry.ts";
@@ -16,6 +17,8 @@ import { createTelemetry } from "./telemetry.ts";
 const errors = createErrorTracker();
 installCrashCapture(errors);
 const config = workerConfig();
+// Before the disk guard reads the scratch volume; exits 1 when it cannot.
+await prepareScratchDir(config.scratchDir);
 const db = workerSupabase(config);
 const telemetry = createTelemetry();
 const job = await guardedClaim({

@@ -1,11 +1,17 @@
-// Checks this machine can run jobs: Supabase, R2, ffmpeg and the filters and
-// codecs the pipeline needs, HyperFrames, and one structured Claude Code call. Prints one line per check; exits 1 when any failed.
+// Checks this machine can run jobs, in eight lines: Supabase, R2 read and write
+// (a probe object put, read back and deleted under `<R2_KEY_PREFIX>doctor/`),
+// ffmpeg and the filters and codecs the pipeline needs, HyperFrames, one
+// structured Claude Code call, and the scratch folder (exists or can be
+// created, never created here). Prints one line per check; exits 1 when any
+// failed.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { keyPrefix } from "@edit-issebya/storage";
 import { aiRunner } from "./ai.ts";
-import { workerConfig } from "./config.ts";
+import { scratchDirOf, workerConfig } from "./config.ts";
 import { runDoctor } from "./doctor-checks.ts";
 import { hyperframesEnv, toolPaths } from "./pipeline/tools.ts";
+import { scratchDirState } from "./scratch.ts";
 import { workerStorage } from "./storage.ts";
 import { workerSupabase } from "./supabase.ts";
 
@@ -16,8 +22,14 @@ const { lines, exitCode } = await runDoctor({
     const { error } = await workerSupabase(workerConfig()).from("jobs").select("id").limit(1);
     if (error) throw new Error(error.message);
   },
-  async r2() {
-    await workerStorage().list(process.env.R2_KEY_PREFIX?.trim() ?? "");
+  r2() {
+    const prefix = keyPrefix(process.env);
+    if (prefix === null) {
+      throw new Error(
+        `R2_KEY_PREFIX must be empty or lower-case segments each ending with "/", got ${process.env.R2_KEY_PREFIX}`,
+      );
+    }
+    return { storage: workerStorage(), prefix };
   },
   async ffmpeg() {
     const { stdout } = await run(toolPaths().ffmpeg, ["-version"]);
@@ -39,6 +51,10 @@ const { lines, exitCode } = await runDoctor({
     return stdout;
   },
   ai: () => aiRunner(process.env),
+  async scratchDir() {
+    const dir = scratchDirOf(process.env);
+    return { dir, state: await scratchDirState(dir) };
+  },
 });
 
 for (const line of lines) console.log(line);
