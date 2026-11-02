@@ -5,9 +5,10 @@ import type { WorkerConfig } from "./config.ts";
 import { runDecide } from "./decide/run-decide.ts";
 import { saveFirstVersion } from "./first-version.ts";
 import { runJobKind } from "./job-kinds.ts";
-import { type ClaimedJob, failJob, finishJob, renewLease } from "./queue.ts";
+import { type ClaimedJob, failJob, finishJob, refuseJob, renewLease, waitJob } from "./queue.ts";
 import { runPipeline } from "./pipeline/run-pipeline.ts";
 import { previewCopiesRefs, recordPreviewCopies } from "./preview-copies-record.ts";
+import { stepDouble } from "./pipeline/step-double.ts";
 import { toolPaths } from "./pipeline/tools.ts";
 import { supabaseExportStore } from "./render/export-store.ts";
 import { runRender } from "./render/render-step.ts";
@@ -22,7 +23,8 @@ import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 
 // Wires one claimed job to the database, storage and telemetry: the job span,
 // the job's work by kind under a kept lease, then the job's final write. A
-// `process` job runs the fixed pipeline steps, the preview copies' location,
+// `process` job checks the footage (a refusal refuses the reel), then runs the
+// fixed pipeline steps (the step double under E2E_MOCK_STEPS), the preview copies' location,
 // the first version and the decide step; a `change` job only the decide step
 // with the owner's request; a `restore` job only the restore step; a `render`
 // job the pipeline's hits (or a rebuilt output) and the render step, leaving
@@ -58,6 +60,9 @@ export async function processJob(
           renew: () => renewLease(db, config, job.id),
           async work(signal) {
             const ctx = { steps, telemetry, jobContext, job, signal };
+            // Taken again after its worker stopped: the rows it left running
+            // end failed, so the step log never shows a step running forever.
+            if (job.attempts > 1) await steps.abandonRunning(job.id);
             const rows = supabaseVersionRows(db);
             const blobs = storageVersionBlobs(storage);
             const decide = (request: string | null) =>
@@ -80,6 +85,8 @@ export async function processJob(
                   scratchDir,
                   tools: toolPaths(),
                   recordStored,
+                  checkFootage: true,
+                  runStep: stepDouble(process.env) ?? undefined,
                 });
                 // Before the first version, so a reel with a current version
                 // already says where its preview copies are.
@@ -117,6 +124,8 @@ export async function processJob(
           },
           finish: () => finishJob(db, config, job),
           fail: (tail) => failJob(db, config, job, tail),
+          refuse: (message) => refuseJob(db, config, job, message),
+          wait: (reason) => waitJob(db, config, job, reason),
         }),
       ),
     );

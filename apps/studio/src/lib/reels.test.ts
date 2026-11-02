@@ -58,6 +58,7 @@ describe("REEL_STATUSES", () => {
     expect(REEL_STATUSES).toEqual([
       "uploading",
       "uploaded",
+      "checking_footage",
       "received",
       "converting",
       "transcribing",
@@ -67,6 +68,7 @@ describe("REEL_STATUSES", () => {
       "making_previews",
       "processed",
       "failed",
+      "refused",
     ]);
   });
 });

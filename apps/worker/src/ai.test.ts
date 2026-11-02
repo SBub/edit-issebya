@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { aiRunner, fakeAiRunner, parseClaudeResult, resultEnvelope } from "./ai.ts";
+import {
+  aiRunner,
+  aiUnavailableReason,
+  fakeAiRunner,
+  parseClaudeResult,
+  resultEnvelope,
+} from "./ai.ts";
 import type { Tool } from "./step-runner.ts";
 
 // One real `claude -p --output-format json --json-schema` result, ids
@@ -179,5 +185,62 @@ describe("parseClaudeResult", () => {
     expect(parseClaudeResult(JSON.stringify({ is_error: false, result: "hi" }))).toMatchObject({
       kind: "broken",
     });
+  });
+});
+
+function testdata(name: string): string {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a committed fixture
+  return readFileSync(new URL(`./decide/testdata/${name}`, import.meta.url), "utf8");
+}
+
+describe("an AI that is not available", () => {
+  it("parses the usage-limit and signed-out envelopes as unavailable", () => {
+    expect(parseClaudeResult(testdata("claude-usage-limit.json"))).toMatchObject({
+      kind: "unavailable",
+      reason: "the usage limit is reached",
+    });
+    expect(parseClaudeResult(testdata("claude-signed-out.json"))).toMatchObject({
+      kind: "unavailable",
+      reason: "Claude Code is signed out",
+    });
+  });
+
+  it("keeps an unrelated error envelope broken", () => {
+    expect(
+      parseClaudeResult(JSON.stringify({ is_error: true, result: "the model overloaded" })),
+    ).toMatchObject({ kind: "broken" });
+  });
+
+  it("maps the known texts to a reason", () => {
+    expect(aiUnavailableReason("You've hit your limit, resets 5pm")).toBe(
+      "the usage limit is reached",
+    );
+    expect(aiUnavailableReason("Not logged in")).toBe("Claude Code is signed out");
+    expect(aiUnavailableReason("OAuth token has expired")).toBe("Claude Code is signed out");
+    expect(aiUnavailableReason("authentication_error")).toBe("Claude Code is signed out");
+    expect(aiUnavailableReason("Error: ECONNRESET")).toBeNull();
+  });
+
+  it("turns Claude Code's non-zero exit with the signed-out output into unavailable", async () => {
+    const stdout = testdata("claude-signed-out-stdout.txt");
+    const failing: Tool = (call) =>
+      Promise.reject(new Error(`decide exited with 1\n${stdout}`, { cause: call.file }));
+    expect(await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(failing, REQUEST)).toEqual({
+      kind: "unavailable",
+      reason: "Claude Code is signed out",
+      usage: { inputTokens: null, outputTokens: null, costUsd: null, model: null },
+    });
+  });
+
+  it("rethrows any other non-zero exit", async () => {
+    const failing: Tool = () => Promise.reject(new Error("decide exited with 1\nsegfault"));
+    await expect(
+      aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(failing, REQUEST),
+    ).rejects.toThrow("segfault");
+  });
+
+  it("is replayed by the double from the usage-limit fixture", async () => {
+    const runner = fakeAiRunner([JSON.parse(testdata("claude-usage-limit.json"))]);
+    expect(await runner.call(NEVER, REQUEST)).toMatchObject({ kind: "unavailable" });
   });
 });

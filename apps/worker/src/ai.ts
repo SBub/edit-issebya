@@ -15,7 +15,9 @@ export interface AiRequest {
 
 export type AiResult =
   | { kind: "answer"; answer: unknown; usage: AiUsage }
-  | { kind: "broken"; reason: string; usage: AiUsage };
+  | { kind: "broken"; reason: string; usage: AiUsage }
+  // Claude Code cannot answer now (a usage limit, signed out): the job waits.
+  | { kind: "unavailable"; reason: string; usage: AiUsage };
 
 export interface AiRunner {
   // Runs through `tool`, so a step measures the call like any other tool.
@@ -55,6 +57,25 @@ function usageOf(envelope: Record<string, unknown>): AiUsage {
   };
 }
 
+// Claude Code's words for "not available now", and the reason the studio shows.
+// The texts are the best known ones, not yet captured on the worker machine:
+// the owner replaces the fixtures under decide/testdata/ (and these patterns
+// if needed) with the real output during manual acceptance.
+const UNAVAILABLE: readonly { pattern: RegExp; reason: string }[] = [
+  { pattern: /usage limit|limit reached|hit your limit/i, reason: "the usage limit is reached" },
+  {
+    pattern:
+      /please run \/login|not logged in|invalid api key|oauth token has expired|authentication_error/i,
+    reason: "Claude Code is signed out",
+  },
+];
+
+// The reason Claude Code is not available, from its result or output; null
+// when the text says nothing of the kind.
+export function aiUnavailableReason(text: string): string | null {
+  return UNAVAILABLE.find(({ pattern }) => pattern.test(text))?.reason ?? null;
+}
+
 // Claude Code's `--output-format json` result: `structured_output` holds the
 // answer `--json-schema` asked for, `result` the text answer (JSON as a
 // fallback). Anything else is a broken answer, with whatever usage could be
@@ -74,6 +95,8 @@ export function parseClaudeResult(stdout: string): AiResult {
   const usage = usageOf(result);
   if (result.is_error === true) {
     const detail = typeof result.result === "string" ? result.result : String(result.subtype);
+    const unavailable = aiUnavailableReason(detail);
+    if (unavailable) return { kind: "unavailable", reason: unavailable, usage };
     return { kind: "broken", reason: `claude reported an error: ${detail}`, usage };
   }
   if (result.structured_output !== undefined && result.structured_output !== null) {
@@ -90,26 +113,35 @@ export function parseClaudeResult(stdout: string): AiResult {
 }
 
 // Claude Code without tools or a saved session, the prompt on stdin, nothing
-// shell-interpreted. A non-zero exit throws from the tool.
+// shell-interpreted. A non-zero exit throws from the tool, unless its output
+// (the thrown message carries its tail) says Claude Code is not available:
+// that is an `unavailable` result.
 function claudeRunner(path: string): AiRunner {
   return {
     async call(tool, { prompt, schema, cwd }) {
-      const stdout = await tool({
-        file: path,
-        args: [
-          "-p",
-          "--output-format",
-          "json",
-          "--json-schema",
-          JSON.stringify(schema),
-          "--tools",
-          "",
-          "--no-session-persistence",
-        ],
-        stdin: prompt,
-        cwd,
-        maxStdoutBytes: MAX_STDOUT_BYTES,
-      });
+      let stdout: string;
+      try {
+        stdout = await tool({
+          file: path,
+          args: [
+            "-p",
+            "--output-format",
+            "json",
+            "--json-schema",
+            JSON.stringify(schema),
+            "--tools",
+            "",
+            "--no-session-persistence",
+          ],
+          stdin: prompt,
+          cwd,
+          maxStdoutBytes: MAX_STDOUT_BYTES,
+        });
+      } catch (error) {
+        const reason = aiUnavailableReason(error instanceof Error ? error.message : String(error));
+        if (reason) return { kind: "unavailable", reason, usage: NO_USAGE };
+        throw error;
+      }
       return parseClaudeResult(stdout);
     },
   };

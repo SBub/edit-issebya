@@ -14,9 +14,11 @@ import { ChangeRequestForm } from "@/components/ChangeRequestForm";
 import { ExportPanel } from "@/components/ExportPanel";
 import { NotifyToggle } from "@/components/NotifyToggle";
 import { ReelPreview } from "@/components/ReelPreview";
+import { RetryButton } from "@/components/RetryButton";
 import { VersionList } from "@/components/VersionList";
 import { useReadyNotice } from "@/components/useReadyNotice";
 import { changeBlockedReason, jobRequestLabel } from "@/lib/change-requests";
+import { changeQueueNote, formatWaitingForAi, retryableJobIds } from "@/lib/failures";
 import { formatTimeLeft, isProgressStep, timeLeftSeconds } from "@/lib/progress";
 import {
   REEL_DETAIL_COLUMNS,
@@ -266,7 +268,9 @@ export function LiveReel({
     };
   }, [id]);
 
-  const blockedReason = changeBlockedReason(reel, jobs);
+  const blockedReason = changeBlockedReason(reel);
+  const queueNote = changeQueueNote(jobs);
+  const retryable = new Set(retryableJobIds(reel, jobs));
   const versionsById = new Map(versions.map((version) => [version.id, version]));
   const waitingReason = waitingReasonOf(workerStatus);
   const offline = now === null ? null : offlineSince(workerStatus, new Date(now));
@@ -274,8 +278,22 @@ export function LiveReel({
   return (
     <div data-realtime={ready ? "ready" : "pending"} className="flex flex-col gap-6">
       <ReelPreview reelId={reel.id} currentVersionId={reel.current_version_id} />
+      {reel.status === "refused" && reel.refusal_message && (
+        <p
+          role="alert"
+          data-testid="reel-refusal"
+          className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        >
+          {reel.refusal_message}
+        </p>
+      )}
       <ExportPanel reel={reel} jobs={jobs} latestExportId={latestExportId} />
-      <ChangeRequestForm reelId={reel.id} blockedReason={blockedReason} jobs={jobs} />
+      <ChangeRequestForm
+        reelId={reel.id}
+        blockedReason={blockedReason}
+        queueNote={queueNote}
+        jobs={jobs}
+      />
       <VersionList
         reelId={reel.id}
         versions={versions}
@@ -315,7 +333,17 @@ export function LiveReel({
                     <span className="font-medium">{job.kind}</span>
                     <span data-testid="job-status">{job.status}</span>
                     <span className="text-stone-600">attempts: {job.attempts}</span>
+                    {job.retry_of_job_id && (
+                      <span data-testid="job-retry-of" className="text-stone-600">
+                        retry
+                      </span>
+                    )}
                   </span>
+                  {job.status === "waiting_ai" && job.waiting_reason && job.not_before && (
+                    <span data-testid="job-waiting-ai" className="text-amber-800">
+                      {formatWaitingForAi(job.waiting_reason, job.not_before)}
+                    </span>
+                  )}
                   {job.status === "queued" && waitingReason && (
                     <span data-testid="job-waiting" className="text-amber-800">
                       {waitingReason}
@@ -336,6 +364,7 @@ export function LiveReel({
                       {job.error_tail}
                     </pre>
                   )}
+                  {retryable.has(job.id) && <RetryButton reelId={reel.id} jobId={job.id} />}
                 </li>
               );
             })}
@@ -361,7 +390,7 @@ export function LiveReel({
                   rates={estimateRates[step.name]}
                   footageSeconds={reel.footage_seconds}
                 />
-                {step.status === "failed" && step.error_tail && (
+                {(step.status === "failed" || step.status === "waiting") && step.error_tail && (
                   <details data-testid="step-error-tail" className="text-xs">
                     <summary className="cursor-pointer text-stone-600">Show error</summary>
                     <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words text-red-700">

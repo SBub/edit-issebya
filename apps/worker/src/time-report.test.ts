@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseBsdTimeReport, parseGnuTimeReport, timeCommand } from "./time-report.ts";
+import {
+  parseBsdTimeReport,
+  parseGnuTimeReport,
+  reportedSignal,
+  timeCommand,
+} from "./time-report.ts";
 
 // Captured with `/usr/bin/time -l sh -c '...; exit 3'` on macOS 14.
 const BSD_REPORT = `        1.27 real         0.84 user         0.31 sys
@@ -87,5 +92,21 @@ describe("parseGnuTimeReport", () => {
   it("is null without a report", () => {
     expect(parseGnuTimeReport("")).toBeNull();
     expect(parseGnuTimeReport(BSD_REPORT)).toBeNull();
+  });
+});
+
+describe("reportedSignal", () => {
+  it("names GNU time's signal", () => {
+    expect(
+      reportedSignal("linux", "\tCommand terminated by signal 9\n\tUser time (seconds): 0.01"),
+    ).toBe("SIGKILL");
+    expect(reportedSignal("linux", "\tCommand exited with non-zero status 1\n")).toBeNull();
+  });
+
+  it("says only `signal` for macOS time's abnormal end", () => {
+    expect(reportedSignal("darwin", "time: command terminated abnormally\n 0.02 real")).toBe(
+      "signal",
+    );
+    expect(reportedSignal("darwin", "        0.02 real         0.01 user")).toBeNull();
   });
 });

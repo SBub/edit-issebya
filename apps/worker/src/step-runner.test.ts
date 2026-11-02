@@ -14,6 +14,7 @@ import {
   runToolsStep,
 } from "./step-runner.ts";
 import { createTelemetry } from "./telemetry.ts";
+import { AiUnavailable, TransientError } from "./failure.ts";
 
 // Real child processes under /usr/bin/time: Node itself is the tool.
 const NODE = process.execPath;
@@ -573,5 +574,160 @@ describe("runToolsStep progress", () => {
       "progress 5",
       "failed",
     ]);
+  });
+});
+
+describe("the one automatic retry", () => {
+  const exited = (code: number | null, exitSignal: NodeJS.Signals | null = null): ChildRun => ({
+    code,
+    exitSignal,
+    report: "",
+    output: code === 0 ? "ok\n" : "boom\n",
+    stdout: code === 0 ? "ok\n" : "",
+    groupPeakBytes: null,
+  });
+
+  function sequence(runs: ChildRun[]): { spawnTool: SpawnTool; count: () => number } {
+    let calls = 0;
+    return {
+      spawnTool: () => {
+        calls += 1;
+        const next = runs.shift();
+        if (!next) throw new Error("no more runs");
+        return Promise.resolve(next);
+      },
+      count: () => calls,
+    };
+  }
+
+  const toolStep = (name = "flaky") => ({
+    name,
+    async work(tool: (call: ToolCall) => Promise<string>) {
+      await tool({ file: "t", args: [] });
+      return { what: "made" };
+    },
+  });
+
+  function rows(calls: ReturnType<typeof recordingSteps>["calls"]): string[] {
+    return calls.map((c) => {
+      if (c.call === "failed") return `failed: ${c.summary.replace(/, under a second$/, "")}`;
+      if (c.call === "waiting") return `waiting: ${c.reason}`;
+      return c.call;
+    });
+  }
+
+  it("runs a step again after a transient error, in a second row", async () => {
+    const { steps, calls } = recordingSteps();
+    let attempts = 0;
+    await runToolsStep(stepContext(steps), {
+      name: "upload",
+      async work() {
+        attempts += 1;
+        if (attempts === 1) throw new TransientError("R2 503");
+        return { what: "uploaded" };
+      },
+    });
+    expect(attempts).toBe(2);
+    expect(rows(calls)).toEqual(["start", "failed: upload failed, retrying once", "start", "done"]);
+  });
+
+  it("runs a tool killed by a signal again", async () => {
+    const { steps, calls } = recordingSteps();
+    const { spawnTool, count } = sequence([exited(null, "SIGKILL"), exited(0)]);
+    await runToolsStep(stepContext(steps), toolStep(), spawnTool);
+    expect(count()).toBe(2);
+    expect(rows(calls)).toEqual(["start", "failed: flaky failed, retrying once", "start", "done"]);
+  });
+
+  it("runs a real tool killed by a signal under /usr/bin/time again", TIMEOUT, async () => {
+    const { steps, calls } = recordingSteps();
+    const marker = join(dir, "killed-once");
+    const script = `const fs = require("node:fs");
+      if (!fs.existsSync(${JSON.stringify(marker)})) {
+        fs.writeFileSync(${JSON.stringify(marker)}, "1");
+        process.kill(process.pid, "SIGKILL");
+      }`;
+    await runStep(stepContext(steps), node(script, { name: "killed" }));
+    expect(rows(calls)).toEqual(["start", "failed: killed failed, retrying once", "start", "done"]);
+  });
+
+  it("never retries a tool's exit 1", async () => {
+    const { steps, calls } = recordingSteps();
+    const { spawnTool, count } = sequence([exited(1), exited(0)]);
+    await expect(runToolsStep(stepContext(steps), toolStep(), spawnTool)).rejects.toThrow(
+      /flaky exited with 1/,
+    );
+    expect(count()).toBe(1);
+    expect(rows(calls)).toEqual(["start", "failed: flaky failed"]);
+  });
+
+  it("fails after a second transient failure, never a third run", async () => {
+    const { steps, calls } = recordingSteps();
+    const { spawnTool, count } = sequence([
+      exited(null, "SIGKILL"),
+      exited(null, "SIGKILL"),
+      exited(0),
+    ]);
+    await expect(runToolsStep(stepContext(steps), toolStep(), spawnTool)).rejects.toThrow(
+      /SIGKILL/,
+    );
+    expect(count()).toBe(2);
+    expect(rows(calls)).toEqual([
+      "start",
+      "failed: flaky failed, retrying once",
+      "start",
+      "failed: flaky failed",
+    ]);
+  });
+
+  it("never retries a StepError", async () => {
+    const { steps, calls } = recordingSteps();
+    let attempts = 0;
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "decide",
+        async work() {
+          attempts += 1;
+          throw new StepError("checks failed", "reasons");
+        },
+      }),
+    ).rejects.toThrow("checks failed");
+    expect(attempts).toBe(1);
+    expect(rows(calls)).toEqual(["start", "failed: decide failed"]);
+  });
+
+  it("never retries after a lost lease, and writes nothing more", async () => {
+    const { steps, calls } = recordingSteps();
+    const lease = new AbortController();
+    let attempts = 0;
+    await expect(
+      runToolsStep(stepContext(steps, { signal: lease.signal }), {
+        name: "upload",
+        async work() {
+          attempts += 1;
+          lease.abort();
+          throw new TransientError("R2 503");
+        },
+      }),
+    ).rejects.toThrow();
+    expect(attempts).toBe(1);
+    expect(rows(calls)).toEqual(["start"]);
+  });
+
+  it("writes the row waiting when the AI is not available, never retrying", async () => {
+    const { steps, calls } = recordingSteps();
+    let attempts = 0;
+    await expect(
+      runToolsStep(stepContext(steps), {
+        name: "decide",
+        async work() {
+          attempts += 1;
+          throw new AiUnavailable("the usage limit is reached");
+        },
+      }),
+    ).rejects.toThrow("AI not available");
+    expect(attempts).toBe(1);
+    expect(rows(calls)).toEqual(["start", "waiting: the usage limit is reached"]);
+    expect(calls[1]).toMatchObject({ summary: "decide waiting for the AI" });
   });
 });

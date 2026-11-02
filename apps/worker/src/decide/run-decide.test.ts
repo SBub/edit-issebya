@@ -11,7 +11,8 @@ import {
 } from "@edit-issebya/edit";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type FakeAiRunner, fakeAiRunner, resultEnvelope } from "../ai.ts";
+import { type AiRunner, fakeAiRunner, resultEnvelope } from "../ai.ts";
+import { AiUnavailable, PermanentError, isTransient } from "../failure.ts";
 import { saveFirstVersion } from "../first-version.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
@@ -115,7 +116,7 @@ const offSafeBox = () =>
     }),
   );
 
-async function decide(ai: FakeAiRunner) {
+async function decide(ai: AiRunner) {
   const { steps, calls } = recordingSteps();
   const run = runDecide({
     ctx: stepContext(steps),
@@ -329,5 +330,49 @@ describe("runDecide", () => {
     expect(lines.length).toBeLessThanOrEqual(20);
     expect(lines[0]).toMatch(/^decide: the answer failed twice/);
     expect(failed.tail).toMatch(/- and 3 more\nround 2:/);
+  });
+});
+
+describe("runDecide when the AI is not available", () => {
+  const USAGE_LIMIT = new URL("./testdata/claude-usage-limit.json", import.meta.url);
+
+  it("throws AiUnavailable on the first call, writes the row waiting and saves nothing", async () => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
+    const limit = JSON.parse(await readFile(USAGE_LIMIT, "utf8")) as Json;
+    const ai = fakeAiRunner([limit, scripted]);
+    const { run, calls } = await decide(ai);
+    const error = await run.catch((caught: unknown) => caught);
+    expect((error as Error).cause).toBeInstanceOf(AiUnavailable);
+    expect(ai.calls).toHaveLength(1);
+    expect(current).toBe(firstId);
+    expect(rows.size).toBe(1);
+    expect(calls.map((c) => c.call)).toEqual(["start", "waiting"]);
+    expect(lastCall(calls)).toMatchObject({ reason: "the usage limit is reached" });
+  });
+
+  it("throws AiUnavailable on the second call too", async () => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
+    const limit = JSON.parse(await readFile(USAGE_LIMIT, "utf8")) as Json;
+    const ai = fakeAiRunner([offSafeBox(), limit]);
+    const { run, calls } = await decide(ai);
+    await expect(run).rejects.toThrow();
+    expect(ai.calls).toHaveLength(2);
+    expect(lastCall(calls).call).toBe("waiting");
+  });
+
+  it("never retries a network error from the AI call: at most two AI calls", async () => {
+    let made = 0;
+    const ai: AiRunner = {
+      async call() {
+        made += 1;
+        throw Object.assign(new Error("socket hang up"), { code: "ECONNRESET" });
+      },
+    };
+    const { run, calls } = await decide(ai);
+    const error = (await run.catch((caught: unknown) => caught)) as Error;
+    expect(made).toBe(1);
+    expect(error.cause).toBeInstanceOf(PermanentError);
+    expect(isTransient(error)).toBe(false);
+    expect(calls.map((c) => c.call)).toEqual(["start", "failed"]);
   });
 });

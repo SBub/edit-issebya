@@ -13,7 +13,12 @@ export interface ClaimedJob {
   restore_version_id: string | null;
   // The version a `render` job exports (null for every other kind).
   version_id: string | null;
+  // The failed job this one retries (the owner's Retry), or null.
+  retry_of_job_id?: string | null;
 }
+
+// How long a job whose AI is not available waits before it is taken again.
+export const AI_RETRY_MINUTES = 15;
 
 type QueueConfig = Pick<WorkerConfig, "workerId" | "leaseSeconds">;
 
@@ -31,13 +36,16 @@ export async function claimJob(
   return rows[0] ?? null;
 }
 
-// The periodic check reads only ids: queued jobs, or running ones whose lease
-// has expired.
+// The periodic check reads only ids: queued jobs, jobs waiting for the AI
+// past their `not_before`, or running ones whose lease has expired.
 export async function claimableJobIds(db: SupabaseClient): Promise<string[]> {
+  const now = new Date().toISOString();
   const { data, error } = await db
     .from("jobs")
     .select("id")
-    .or(`status.eq.queued,and(status.eq.running,lease_expires_at.lt.${new Date().toISOString()})`)
+    .or(
+      `status.eq.queued,and(status.eq.waiting_ai,not_before.lt.${now}),and(status.eq.running,lease_expires_at.lt.${now})`,
+    )
     .limit(1);
   if (error) throw new Error(`jobs not checked: ${error.message}`);
   return (data ?? []).map((row: { id: string }) => row.id);
@@ -123,4 +131,60 @@ export function failJob(
     reel: reelStatusAfter(job, "failed"),
     errorTail,
   });
+}
+
+// The footage cannot be used: the job fails with the message as its tail and
+// the reel is `refused` with it, guarded by the lease like endJob.
+export async function refuseJob(
+  db: SupabaseClient,
+  config: QueueConfig,
+  job: ClaimedJob,
+  message: string,
+): Promise<boolean> {
+  const { data, error } = await db
+    .from("jobs")
+    .update({
+      status: "failed",
+      finished_at: new Date().toISOString(),
+      error_tail: message,
+      lease_expires_at: null,
+    })
+    .eq("id", job.id)
+    .eq("lease_holder", config.workerId)
+    .eq("status", "running")
+    .select("id");
+  if (error) throw new Error(`job not refused: ${error.message}`);
+  if ((data ?? []).length !== 1) return false;
+  const reel = await db
+    .from("reels")
+    .update({ status: "refused", refusal_message: message })
+    .eq("id", job.reel_id);
+  if (reel.error) throw new Error(`reel not refused: ${reel.error.message}`);
+  return true;
+}
+
+// The AI is not available: the job waits with its reason, its lease given up,
+// and claim_job skips it until `not_before`. The reel's status stays as it is.
+export async function waitJob(
+  db: SupabaseClient,
+  config: QueueConfig,
+  job: ClaimedJob,
+  reason: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const { data, error } = await db
+    .from("jobs")
+    .update({
+      status: "waiting_ai",
+      waiting_reason: reason,
+      not_before: new Date(now.getTime() + AI_RETRY_MINUTES * 60_000).toISOString(),
+      lease_expires_at: null,
+      lease_holder: null,
+    })
+    .eq("id", job.id)
+    .eq("lease_holder", config.workerId)
+    .eq("status", "running")
+    .select("id");
+  if (error) throw new Error(`job not set waiting: ${error.message}`);
+  return (data ?? []).length === 1;
 }

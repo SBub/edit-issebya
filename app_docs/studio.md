@@ -95,7 +95,8 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   written only by the worker, in `supabase_realtime`. See `app_docs/export.md`.
 - `claim_job(p_worker, p_lease_seconds)`: one statement picks the oldest `queued` job, or a
   `running` one whose lease expired, with `for update skip locked`, then takes the lease and counts
-  an attempt. Only `service_role` may execute it. There is no retry limit yet.
+  an attempt. Only `service_role` may execute it. It takes one job per reel at a time, in order,
+  and skips a `waiting_ai` job until its `not_before` (see `app_docs/failures.md`).
 - The worker renews its lease while it works (`apps/worker/src/lease.ts`); a failed renewal aborts
   the work and writes nothing more, since another worker may hold the job.
 - `supabase/migrations/20261101153653_versions.sql`: table `versions` (per-reel `number`, parent,
@@ -138,6 +139,9 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 - `E2E_MOCK_STORAGE=true` (exactly) makes both use the gitignored `.e2e-storage/` folder at the
   repository root; the studio's `/studio/api/e2e-storage-mock/[...key]` route stands in for R2's
   upload part `PUT` (part requests only, see `app_docs/upload.md`) and answers 404 otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
+- `E2E_MOCK_STEPS=true` (exactly) is the pipeline step double: a fixed step that must run copies
+  its committed output from `fixtures/pipeline/` instead of running its tool, and
+  `E2E_MOCK_STEP_FAULT` makes one step fail on purpose. See `app_docs/failures.md`.
   `E2E_MOCK_RENDER=true` (exactly) replaces the HyperFrames render with a copy of
   `fixtures/render/stub-export.mp4`.
 - `fixtures/footage/short-speech.mp4` is the committed short vertical clip with speech, made by
@@ -235,5 +239,5 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 
 - Spans `apps/studio`, `apps/worker`, `packages/storage`, `apps/web` (rewrites only), `supabase/`,
   CI and the ADW profile; most of the change is in `apps/studio`.
-- Processing, edits and render steps and a retry limit are later slices; the `receive` step is a placeholder.
+- Processing, edits and render steps are later slices; the `receive` step is a placeholder.
 - The magic-link template takes effect after the local Supabase stack restarts.

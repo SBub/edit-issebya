@@ -144,7 +144,8 @@ the gitignored `next-env.d.ts`, never stage it); dead code `yarn knip` (whole re
 `knip.json` with a workspace per package); format `yarn format:check` (whole repository; write
 `yarn format`); unit `yarn turbo run test <filter>` (vitest, database-free); for a run targeting
 the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (real ffmpeg and
-HyperFrames on the committed clip; on the owner's Mac only, never in CI), and the studio's
+HyperFrames on the committed clip, and `footage-check.tools.test.ts` with real ffprobe; on the
+owner's Mac only, never in CI), and the studio's
 `yarn workspace @edit-issebya/studio test:tools` (`apps/studio/e2e-tools/export-matches-preview.spec.ts`,
 the preview-matches-export guardrail, real HyperFrames, on the owner's Mac only, never in CI, run as
 `PORT=<run port> STUDIO_PORT=<BACKEND_PORT>` against the run's servers from `/prepare_app`); DB integration
@@ -164,7 +165,9 @@ byte for byte, like the Node project does. The DB layer is `apps/studio/db-tests
 (`apps/studio/vitest.db.config.ts`: RLS on every public table, owner isolation, Realtime follows
 RLS, `jobs.test.ts` for `claim_job`'s lease, `versions.test.ts` for `save_version`, version
 immutability and its RLS, `steps-measurements.test.ts` for the exact
-`steps` column set (`progress_percent` and `progress_updated_at` included) and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit` (the reel's `footage_seconds` column comes from the progress migration and is written once by the worker after `retime`, unit-tested in `apps/worker/src/pipeline/run-pipeline.test.ts`, no DB test), `exports.test.ts` for
+`steps` column set (`progress_percent` and `progress_updated_at` included), `job-order.test.ts` for
+`claim_job`'s order (one job per reel at a time, oldest first, `not_before` skipped until due),
+`retry-jobs.test.ts` for the Retry insert policy through `is_retry_of_failed_job`, and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit` (the reel's `footage_seconds` column comes from the progress migration and is written once by the worker after `retime`, unit-tested in `apps/worker/src/pipeline/run-pipeline.test.ts`, no DB test), `exports.test.ts` for
 the render job policy and the `exports` table: 24-hour expiry, owner from the reel, never updated,
 owner-only select, `stored-files.test.ts` for the `stored_files` and `worker_status` tables (`heartbeat_at` included, and a heartbeat upsert leaving `waiting_reason`), their RLS,
 `record_stored_file`, the seven-day slimming and export expiry with a fixed clock and `finish_upload`'s source row), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
@@ -178,7 +181,7 @@ spec, `apps/web/playwright.config.ts`) and `apps/studio/e2e/*.spec.ts` (chromium
 worker's `once`, every step a cache hit, then the `first_version` step saves version 1 and the
 `decide` step (AI fake, `E2E_MOCK_AI_SCRIPT` set to the worker's committed answer) saves version 2
 (their rows, the decide step's AI columns and both R2 keys checked), then a render job's export, after which every object under the run's prefix and the source has exactly one `stored_files` row with its size, kind and step, `disk-guard.spec.ts` runs `once` with `E2E_MOCK_FREE_DISK_GB` below `WORKER_MIN_FREE_DISK_GB` (no claim, the waiting reason shown live under the queued job) and again above it (claimed, the reason gone), `progress.spec.ts` runs a render job with `E2E_MOCK_RENDER_SECONDS` (the render double replays the committed render progress) and shows its percentage rising live with `no estimate yet`, ending `done` at 100, `notification.spec.ts` turns notifications on from the toggle, and with the tab hidden a reel turning `processed` gives the notification spy call and the `Ready: <reel>` title, restored once visible (none while visible), `worker-offline.spec.ts` writes a 20-minute-old `heartbeat_at` and a queued job shows `Worker offline since HH:MM` live, a fresh one clears it, `multipart-upload.spec.ts` uploads a 35 MiB clip in four 10 MiB parts through the mock route, re-sends only a failed part, resumes after a reload sending only the missing parts, refuses another user's and a signed-out caller's sign, list, complete and abort, and on cancel leaves the reel `failed` with no parts and no job, `step-log.spec.ts` shows a failed step's collapsed
-error tail, `preview.spec.ts` seeds a processed reel the same way (`test-support/pipeline-cache.ts`,
+error tail, `footage-refusal.spec.ts` uploads `fixtures/footage/landscape.mp4` and the reel turns `refused` live with the not-vertical message, one `check_footage` step row, no Retry and the change box disabled, `retry.spec.ts` runs `once` with the step double (`E2E_MOCK_STEPS=true`, `E2E_MOCK_STEP_FAULT=transcribe:signal`): two failed `transcribe` rows, the job `failed`, then Retry queues a job with `retry_of_job_id` that resumes at `transcribe` (`convert` a cache hit) and ends `done`, `waiting-ai.spec.ts` replays the usage-limit fixture: the job `waiting_ai` with its reason and `not_before` 15 minutes on, `Waiting for the AI: ... Next try at HH:MM.` live, then with `not_before` in the past it is claimed again and ends `done`, `crash-resume.spec.ts` kills the worker mid-`transcribe` (`E2E_MOCK_STEP_FAULT=transcribe:half`), nothing of it stored, then after the lease expires the job is taken again, the abandoned row `failed` and the transcript stored once, `preview.spec.ts` seeds a processed reel the same way (`test-support/pipeline-cache.ts`,
 its AI answer keeping version 1 unchanged, so version 2 matches the version 1 golden)
 and plays its live preview: the HyperFrames runtime and GSAP routed from the pinned local
 packages, so no network), `change-requests.spec.ts` seeds a processed reel the same way, a change
@@ -203,6 +206,8 @@ confirmation email specs need the mocks), which `reuseExistingServer` adopts; ne
 run (it disables reuse and switches the server to `yarn start`). Specs run with `workers: 1`: they
 share one server's mock state (Stripe capture and sessions, Resend recording) and its missing-key
 and missing-config toggles. A user-visible change adds or extends a spec there.
+The E2E suite needs `ffprobe` on the `PATH` (beside `ffmpeg`): every `process` job a spec runs
+starts with `check_footage`, which probes the source (CI installs ffmpeg before the E2E step).
 Measure fixed or edge-aligned elements from the root box, never from `window.innerWidth`
 (`scrollbar-gutter: stable` reserves 15px on Linux Chromium and none on macOS).
 

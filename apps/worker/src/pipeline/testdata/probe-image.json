@@ -1,0 +1,22 @@
+{
+  "streams": [
+    {
+      "index": 0,
+      "codec_type": "video",
+      "codec_name": "png",
+      "width": 1080,
+      "height": 1920,
+      "pix_fmt": "rgba",
+      "r_frame_rate": "25/1",
+      "avg_frame_rate": "0/0",
+      "disposition": {
+        "default": 0,
+        "attached_pic": 0
+      }
+    }
+  ],
+  "format": {
+    "format_name": "png_pipe",
+    "duration": "N/A"
+  }
+}

@@ -74,5 +74,7 @@ jobs:
       # on NEXT_PUBLIC_*).
       - run: yarn build
       - run: yarn test:db
+      # check_footage runs ffprobe in every process job the specs run.
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       # The browsers were installed before `yarn test`.
       - run: yarn test:e2e

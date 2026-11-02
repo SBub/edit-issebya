@@ -9,9 +9,14 @@ export interface Probe {
     colorTransfer: string | null;
     colorPrimaries: string | null;
     colorSpace: string | null;
+    // Degrees the player turns the picture (0, 90, 180 or 270): a phone's
+    // portrait clip is often stored landscape with 90 or 270.
+    rotation: number;
   };
   audio: { codec: string; sampleRate: number } | null;
   durationSeconds: number;
+  // The container, as ffprobe names it (`mov,mp4,m4a,3gp,3g2,mj2`, `image2`).
+  formatName: string | null;
 }
 
 export function probeArgs(path: string): string[] {
@@ -29,14 +34,34 @@ interface RawStream {
   color_primaries?: string;
   color_space?: string;
   sample_rate?: string;
+  tags?: { rotate?: string };
+  side_data_list?: { rotation?: number }[];
+  disposition?: { attached_pic?: number };
+}
+
+// 0, 90, 180 or 270: the Display Matrix side data wins over the older `rotate`
+// tag; anything unreadable is 0.
+function rotationOf(stream: RawStream): number {
+  const fromSideData = stream.side_data_list?.find(
+    (data) => typeof data.rotation === "number",
+  )?.rotation;
+  const raw = fromSideData ?? Number(stream.tags?.rotate ?? 0);
+  if (!Number.isFinite(raw)) return 0;
+  return (((Math.round(raw / 90) * 90) % 360) + 360) % 360;
 }
 
 // The first video and audio streams of ffprobe's JSON. A file without video or
-// without a duration is refused.
+// without a duration is refused. An attached picture (an audio file's cover
+// art) is not video.
 export function parseProbe(json: string): Probe {
-  const raw = JSON.parse(json) as { streams?: RawStream[]; format?: { duration?: string } };
+  const raw = JSON.parse(json) as {
+    streams?: RawStream[];
+    format?: { duration?: string; format_name?: string };
+  };
   const streams = raw.streams ?? [];
-  const video = streams.find((stream) => stream.codec_type === "video");
+  const video = streams.find(
+    (stream) => stream.codec_type === "video" && stream.disposition?.attached_pic !== 1,
+  );
   if (!video) throw new Error("probe: no video stream");
   const audio = streams.find((stream) => stream.codec_type === "audio");
   const durationSeconds = Number(raw.format?.duration);
@@ -53,11 +78,13 @@ export function parseProbe(json: string): Probe {
       colorTransfer: video.color_transfer ?? null,
       colorPrimaries: video.color_primaries ?? null,
       colorSpace: video.color_space ?? null,
+      rotation: rotationOf(video),
     },
     audio: audio
       ? { codec: audio.codec_name ?? "unknown", sampleRate: Number(audio.sample_rate) }
       : null,
     durationSeconds,
+    formatName: raw.format?.format_name ?? null,
   };
 }
 

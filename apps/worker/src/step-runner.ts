@@ -2,8 +2,10 @@ import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
+import { setTimeout as sleep } from "node:timers/promises";
 import { type Context, type Span, SpanStatusCode, trace } from "@opentelemetry/api";
 import { errorTail } from "./errors.ts";
+import { AiUnavailable, FootageRefused, findCause, isTransient } from "./failure.ts";
 import { type ProgressThrottle, createProgressThrottle } from "./progress.ts";
 import type { ProgressParser } from "./progress-parsers.ts";
 import { sampleTreeRss } from "./process-tree.ts";
@@ -16,7 +18,7 @@ import {
 } from "./step-store.ts";
 import { outputTail, stepSummary } from "./summary.ts";
 import { type StepStream, type Telemetry, stepLogger } from "./telemetry.ts";
-import { parseTimeReport, timeCommand } from "./time-report.ts";
+import { parseTimeReport, reportedSignal, timeCommand } from "./time-report.ts";
 
 // What every step of a job shares.
 export interface StepContext {
@@ -27,7 +29,12 @@ export interface StepContext {
   job: ClaimedJob;
   // Aborted when the lease is lost: the step stops and writes nothing more.
   signal: AbortSignal;
+  // The pause before a step's one automatic retry (default
+  // TRANSIENT_RETRY_DELAY_MS; unit tests pass 0).
+  retryDelayMs?: number;
 }
+
+const TRANSIENT_RETRY_DELAY_MS = 2000;
 
 // One tool call: a child process.
 export interface ToolCall {
@@ -97,15 +104,30 @@ const WRAPPER = 'exec "$0" "$@" 2>&3';
 // sh's codes for a tool it could not find or execute: the report is sh's own.
 const NOT_STARTED = new Set([126, 127]);
 
-// A failed step's measurements and tail, carried to the row write.
+// A failed step's measurements and tail, carried to the row write. A failed
+// tool call also carries how it ended: its exit code, or the signal that
+// killed it (transient, see failure.ts); the original error is the `cause`.
 class StepFailure extends Error {
   readonly tail: string;
   readonly measurements: StepMeasurements;
+  readonly exitCode: number | null;
+  // A signal's name, or `signal` when the report does not name it.
+  readonly exitSignal: string | null;
 
-  constructor(message: string, tail: string, measurements: StepMeasurements) {
+  constructor(
+    message: string,
+    tail: string,
+    measurements: StepMeasurements,
+    {
+      exitCode = null,
+      exitSignal = null,
+    }: { exitCode?: number | null; exitSignal?: string | null } = {},
+  ) {
     super(message);
     this.tail = tail;
     this.measurements = measurements;
+    this.exitCode = exitCode;
+    this.exitSignal = exitSignal;
   }
 }
 
@@ -124,6 +146,11 @@ function setMeasurementAttributes(span: Span, measurements: StepMeasurements): v
 }
 
 // The row, the span, the summary and the tail, shared by both entry points.
+// The body runs at most twice: a transient failure (failure.ts) on the first
+// attempt marks that row failed (`<name> failed, retrying once`) and runs the
+// body again in a new row; a second failure, or any other failure, fails the
+// step. An unavailable AI writes the row `waiting` and is never retried here
+// (the job waits). A lost lease is never retried and writes nothing more.
 async function withStep(
   ctx: StepContext,
   name: string,
@@ -133,39 +160,65 @@ async function withStep(
     stepId: string,
   ) => Promise<{ summary: string; measurements: StepMeasurements }>,
 ): Promise<void> {
-  ctx.signal.throwIfAborted();
-  const stepId = await ctx.steps.start(ctx.job, name);
-  const span = ctx.telemetry.tracer.startSpan(
-    `step ${name}`,
-    { attributes: { "reel.id": ctx.job.reel_id, "job.id": ctx.job.id, "step.name": name } },
-    ctx.jobContext,
-  );
-  const started = performance.now();
-  try {
-    const { summary, measurements } = await body(
-      trace.setSpan(ctx.jobContext, span),
-      started,
-      stepId,
-    );
+  for (let attempt = 1; ; attempt += 1) {
     ctx.signal.throwIfAborted();
-    setMeasurementAttributes(span, measurements);
-    await ctx.steps.done(stepId, summary, measurements);
-  } catch (error) {
-    span.setStatus({ code: SpanStatusCode.ERROR });
-    // A lost lease: another worker may hold the job now.
-    if (ctx.signal.aborted) throw error;
-    const failure = error instanceof StepFailure ? error : null;
-    const measurements = failure?.measurements ?? emptyMeasurements(elapsedMs(started));
-    setMeasurementAttributes(span, measurements);
-    await ctx.steps.failed(
-      stepId,
-      failure?.tail ?? outputTail(errorTail(error)),
-      stepSummary({ what: `${name} failed`, wallMs: measurements.wall_ms, sizeBytes: null }),
-      measurements,
+    const stepId = await ctx.steps.start(ctx.job, name);
+    const span = ctx.telemetry.tracer.startSpan(
+      `step ${name}`,
+      {
+        attributes: {
+          "reel.id": ctx.job.reel_id,
+          "job.id": ctx.job.id,
+          "step.name": name,
+          "step.attempt": attempt,
+        },
+      },
+      ctx.jobContext,
     );
-    throw error;
-  } finally {
-    span.end();
+    const started = performance.now();
+    try {
+      const { summary, measurements } = await body(
+        trace.setSpan(ctx.jobContext, span),
+        started,
+        stepId,
+      );
+      ctx.signal.throwIfAborted();
+      setMeasurementAttributes(span, measurements);
+      await ctx.steps.done(stepId, summary, measurements);
+      return;
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      // A lost lease: another worker may hold the job now.
+      if (ctx.signal.aborted) throw error;
+      const failure = error instanceof StepFailure ? error : null;
+      const measurements = failure?.measurements ?? emptyMeasurements(elapsedMs(started));
+      setMeasurementAttributes(span, measurements);
+      const unavailable = findCause(error, AiUnavailable);
+      if (unavailable) {
+        await ctx.steps.waiting(
+          stepId,
+          unavailable.reason,
+          `${name} waiting for the AI`,
+          measurements,
+        );
+        throw error;
+      }
+      const retry = attempt === 1 && isTransient(error);
+      await ctx.steps.failed(
+        stepId,
+        failure?.tail ?? outputTail(errorTail(error)),
+        stepSummary({
+          what: retry ? `${name} failed, retrying once` : `${name} failed`,
+          wallMs: measurements.wall_ms,
+          sizeBytes: null,
+        }),
+        measurements,
+      );
+      if (!retry) throw error;
+    } finally {
+      span.end();
+    }
+    await sleep(ctx.retryDelayMs ?? TRANSIENT_RETRY_DELAY_MS, undefined, { signal: ctx.signal });
   }
 }
 
@@ -403,9 +456,20 @@ export function runToolsStep(
       }
       if (run.code === 0) return run.stdout;
       const tail = outputTail(run.output);
-      const how = run.code ?? run.exitSignal ?? "unknown";
+      // Killed by a signal is never our abort (checked above): the child
+      // itself (code null), or the tool under `/usr/bin/time` (its report).
+      const exitSignal =
+        run.code === null
+          ? (run.exitSignal ?? "signal")
+          : toolStarted
+            ? reportedSignal(process.platform, run.report)
+            : null;
+      const how = exitSignal ? `signal ${exitSignal}` : (run.code ?? "unknown");
       // Measured here: the wall time ends at the failing call.
-      throw new StepFailure(`${spec.name} exited with ${how}\n${tail}`, tail, await measure());
+      throw new StepFailure(`${spec.name} exited with ${how}\n${tail}`, tail, await measure(), {
+        exitCode: exitSignal ? null : run.code,
+        exitSignal,
+      });
     };
 
     let what: string;
@@ -421,12 +485,26 @@ export function runToolsStep(
       pending?.stop();
       await pending?.settled();
       if (error instanceof StepFailure || ctx.signal.aborted) throw error;
+      // A failed call wrapped on its way out (decide marks it permanent):
+      // its tail and measurements stay, the wrapper is the cause.
+      const call = findCause(error, StepFailure);
+      if (call) {
+        const failure = new StepFailure(call.message, call.tail, call.measurements);
+        failure.cause = error;
+        throw failure;
+      }
       // A failure between calls (a download, a parse) keeps what was measured;
-      // a StepError brings its own tail (its reasons) and AI usage.
+      // a StepError brings its own tail (its reasons) and AI usage; a refusal
+      // its human message. The original error is the cause, so the retry
+      // classifier sees it.
       const own = error instanceof StepError ? error : null;
+      const refused = error instanceof FootageRefused ? error : null;
+      let tail = outputTail(errorTail(error));
+      if (own) tail = outputTail(own.tail);
+      else if (refused) tail = outputTail(refused.message);
       const failure = new StepFailure(
         error instanceof Error ? error.message : String(error),
-        own ? outputTail(own.tail) : outputTail(errorTail(error)),
+        tail,
         { ...(await measure()), ...(own?.ai ? aiMeasurements(own.ai) : {}) },
       );
       failure.cause = error;

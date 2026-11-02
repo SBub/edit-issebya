@@ -1,0 +1,36 @@
+{
+  "streams": [
+    {
+      "index": 0,
+      "codec_type": "audio",
+      "codec_name": "mp3",
+      "sample_rate": "44100",
+      "channels": 2,
+      "r_frame_rate": "0/0",
+      "avg_frame_rate": "0/0",
+      "duration": "180.000000",
+      "disposition": {
+        "default": 0,
+        "attached_pic": 0
+      }
+    },
+    {
+      "index": 1,
+      "codec_type": "video",
+      "codec_name": "mjpeg",
+      "width": 600,
+      "height": 600,
+      "r_frame_rate": "90000/1",
+      "avg_frame_rate": "0/0",
+      "duration": "180.000000",
+      "disposition": {
+        "default": 0,
+        "attached_pic": 1
+      }
+    }
+  ],
+  "format": {
+    "format_name": "mp3",
+    "duration": "180.000000"
+  }
+}
