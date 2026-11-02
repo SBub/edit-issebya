@@ -65,6 +65,7 @@ client, identifies the signed-in user and sends `studio_*` events.
   `step.peak_rss_bytes`, `step.bytes_in`, `step.bytes_out`. Output lines are log records emitted in the
   step span's context (INFO for stdout, ERROR for stderr, attribute `stream`).
 - Step measurements are never sent to PostHog as events: PostHog reads the tables as a data source.
+- Exceptions: `app_docs/error-tracking.md`.
 
 ### Studio analytics (`apps/studio`)
 
@@ -82,8 +83,11 @@ client, identifies the signed-in user and sends `studio_*` events.
   the home page and the reel page. Memory persistence means a new anonymous id per page load before the
   call, and PostHog merges an early `$pageview` on identify.
 - `src/lib/track.ts`: `capture(event, { reel_id, ... })` is the one way to send a `studio_*` event, and
-  `identify`. Under `navigator.webdriver` and when a spec put an array on `window.__capturedEvents`, it
-  also records the event with the super property (the test hook).
+  `identify`. It also holds `captureException(message, properties)`. Under `navigator.webdriver` and
+  when a spec put an array on `window.__capturedEvents`, it also records the event with the super
+  property (the test hook); the hook also records `{ event: "$exception", properties }` (with `app` and
+  `$exception_message`) from the upload form's failed upload, via `captureException`.
+- Exceptions: `app_docs/error-tracking.md`.
 - `src/components/LiveReel.tsx`: each step line reads `name: <summary>` (or `name: <status>` while no
   summary exists), and a failed step's `error_tail` sits in a collapsed `<details data-testid="step-error-tail">`
   ("Show error"). Still one read on open plus Realtime, no polling. The measurement columns are not shown.
