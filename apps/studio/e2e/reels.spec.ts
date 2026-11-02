@@ -150,6 +150,11 @@ test("on a phone the grid has three columns, and + opens and closes the upload",
   expect(Math.abs(boxes[3]!.x - boxes[0]!.x)).toBeLessThanOrEqual(1);
 
   await expect(page.getByLabel("Clip")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Upload a reel" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Upload a reel" })).toHaveAttribute(
+    "data-ready",
+    "true",
+  );
   await page.getByRole("button", { name: "Upload a reel" }).click();
   await expect(page.getByRole("dialog", { name: "Upload a reel" })).toBeVisible();
   await expect(page.getByLabel("Clip")).toBeVisible();
