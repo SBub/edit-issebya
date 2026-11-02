@@ -3,6 +3,7 @@
 **Specifications:**
 
 - specs/issue-37-adw-203f77eb-sdlc_planner-storage-records-slimming-disk-guard.md
+- specs/issue-91-adw-fb57dacf-sdlc_planner-worker-scratch-dir-and-r2-write-probe.md
 
 ## Overview
 
