@@ -1,6 +1,7 @@
 "use server";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
 import { changeBlockedReason, normalizeRequest } from "@/lib/change-requests";
 import { type ReelDetail, isReelId } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -13,7 +14,7 @@ export type ChangeActionResult =
   | { status: "failed" };
 
 type Open =
-  | { ok: true; supabase: SupabaseClient; currentVersionId: string | null }
+  | { ok: true; supabase: SupabaseClient; userId: string; currentVersionId: string | null }
   | { ok: false; result: ChangeActionResult };
 
 // The user's own client, then the reel under RLS: another owner's reel reads
@@ -34,17 +35,23 @@ async function openReel(reelId: string): Promise<Open> {
     .eq("id", reelId)
     .maybeSingle<Pick<ReelDetail, "id" | "status" | "current_version_id">>();
   if (reel.error) {
-    console.error("studio: reel not read for a change:", reel.error.code);
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: reel not read for a change",
+      error: reel.error,
+      userId: user.id,
+      properties: { reel_id: reelId },
+      log: [reel.error.code],
+    });
     return { ok: false, result: { status: "failed" } };
   }
   if (!reel.data) return { ok: false, result: { status: "failed" } };
   const reason = changeBlockedReason(reel.data);
   if (reason) return { ok: false, result: { status: "blocked", reason } };
-  return { ok: true, supabase, currentVersionId: reel.data.current_version_id };
+  return { ok: true, supabase, userId: user.id, currentVersionId: reel.data.current_version_id };
 }
 
 async function insertJob(
-  supabase: SupabaseClient,
+  { supabase, userId }: { supabase: SupabaseClient; userId: string },
   row: {
     reel_id: string;
     kind: "change" | "restore";
@@ -58,8 +65,14 @@ async function insertJob(
     id: string;
   }>();
   if (error || !data) {
-    // Logged without the request text.
-    console.error(`studio: ${row.kind} job not queued:`, error?.code, error?.message);
+    // Logged and captured without the request text.
+    await reportFailure(serverErrorCapture(), {
+      message: `studio: ${row.kind} job not queued`,
+      error: error ?? undefined,
+      userId,
+      properties: { reel_id: row.reel_id },
+      log: [error?.code, error?.message],
+    });
     return { status: "failed" };
   }
   return { status: "queued", jobId: data.id };
@@ -77,7 +90,7 @@ export async function requestChange(input: {
 
   const open = await openReel(input.reelId);
   if (!open.ok) return open.result;
-  return insertJob(open.supabase, {
+  return insertJob(open, {
     reel_id: input.reelId,
     kind: "change",
     request: normalized.request,
@@ -100,7 +113,7 @@ export async function requestRestore(input: {
   if (open.currentVersionId === input.versionId) {
     return { status: "invalid", reason: "This is already the current version." };
   }
-  return insertJob(open.supabase, {
+  return insertJob(open, {
     reel_id: input.reelId,
     kind: "restore",
     restore_version_id: input.versionId,

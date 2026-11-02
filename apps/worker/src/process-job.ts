@@ -3,6 +3,7 @@ import type { Storage } from "@edit-issebya/storage";
 import { aiRunner } from "./ai.ts";
 import type { WorkerConfig } from "./config.ts";
 import { runDecide } from "./decide/run-decide.ts";
+import type { ErrorTracker } from "./error-tracking.ts";
 import { saveFirstVersion } from "./first-version.ts";
 import { runJobKind } from "./job-kinds.ts";
 import { type ClaimedJob, failJob, finishJob, refuseJob, renewLease, waitJob } from "./queue.ts";
@@ -38,6 +39,7 @@ export async function processJob(
   rawStorage: Storage,
   config: WorkerConfig,
   telemetry: Telemetry,
+  errors: ErrorTracker,
   job: ClaimedJob,
 ): Promise<JobOutcome> {
   const steps = supabaseStepStore(db);
@@ -59,7 +61,7 @@ export async function processJob(
           renewEveryMs: config.renewEveryMs,
           renew: () => renewLease(db, config, job.id),
           async work(signal) {
-            const ctx = { steps, telemetry, jobContext, job, signal };
+            const ctx = { steps, telemetry, errors, jobContext, job, signal };
             // Taken again after its worker stopped: the rows it left running
             // end failed, so the step log never shows a step running forever.
             if (job.attempts > 1) await steps.abandonRunning(job.id);

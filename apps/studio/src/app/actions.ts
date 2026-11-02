@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { confirmUrl } from "@/lib/confirm-url";
+import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type LoginState =
@@ -37,9 +38,15 @@ export async function sendMagicLink(_prev: LoginState, formData: FormData): Prom
       }),
     },
   });
-  // Logged without the address.
-  if (error)
-    console.error("studio: magic link not sent:", error.code ?? error.status, error.message);
+  // Logged without the address; captured with the code only (an auth
+  // error's message may name the address).
+  if (error) {
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: magic link not sent",
+      properties: { error_code: error.code ?? error.status ?? null },
+      log: [error.code ?? error.status, error.message],
+    });
+  }
   return { status: "sent" };
 }
 

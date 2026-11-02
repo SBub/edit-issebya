@@ -22,7 +22,10 @@ declare global {
  * event is also pushed there with the super property PostHog would add. In
  * memory only, never written to storage.
  */
-function recordForTests(event: StudioEvent, properties: Record<string, unknown>): void {
+function recordForTests(
+  event: StudioEvent | "$exception",
+  properties: Record<string, unknown>,
+): void {
   if (typeof navigator === "undefined" || navigator.webdriver !== true) return;
   if (typeof window === "undefined" || !Array.isArray(window.__capturedEvents)) return;
   window.__capturedEvents.push({
@@ -47,4 +50,19 @@ export function capture(
 export function identify(userId: string): void {
   if (!posthog.__loaded) return;
   posthog.identify(userId);
+}
+
+/**
+ * A handled browser failure, sent to PostHog error tracking with a stable
+ * message (so every occurrence groups into one issue) and small properties:
+ * never a file name, a key, a signed URL or an email. Under automation it is
+ * only recorded by the test hook; PostHog never initialises there.
+ */
+export function captureException(
+  message: string,
+  properties: Record<string, string | number | boolean | null>,
+): void {
+  recordForTests("$exception", { $exception_message: message, ...properties });
+  if (!posthog.__loaded) return;
+  posthog.captureException(new Error(message), properties);
 }

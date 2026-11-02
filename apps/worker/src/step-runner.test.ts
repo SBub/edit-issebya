@@ -14,6 +14,7 @@ import {
   runToolsStep,
 } from "./step-runner.ts";
 import { createTelemetry } from "./telemetry.ts";
+import type { ErrorTracker, StepFailedInput } from "./error-tracking.ts";
 import { AiUnavailable, TransientError } from "./failure.ts";
 
 // Real child processes under /usr/bin/time: Node itself is the tool.
@@ -712,6 +713,74 @@ describe("the one automatic retry", () => {
     ).rejects.toThrow();
     expect(attempts).toBe(1);
     expect(rows(calls)).toEqual(["start"]);
+  });
+
+  describe("error tracking", () => {
+    function recordingTracker() {
+      const failures: StepFailedInput[] = [];
+      const errors: ErrorTracker = {
+        enabled: true,
+        stepFailed: (input) => void failures.push(input),
+        crashed: () => undefined,
+        shutdown: async () => undefined,
+      };
+      return { errors, failures };
+    }
+
+    it("captures a failed step once with its row's tail", async () => {
+      const { steps, calls } = recordingSteps();
+      const { errors, failures } = recordingTracker();
+      const { spawnTool } = sequence([exited(1)]);
+      await expect(
+        runToolsStep(stepContext(steps, { errors }), toolStep(), spawnTool),
+      ).rejects.toThrow();
+      const failed = calls.find((c) => c.call === "failed");
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toMatchObject({
+        step: "flaky",
+        attempt: 1,
+        retrying: false,
+        job: TEST_JOB,
+      });
+      expect(failed && failed.call === "failed" && failed.tail).toBe(failures[0]!.tail);
+    });
+
+    it("captures a transient failure and its retry's failure", async () => {
+      const { steps } = recordingSteps();
+      const { errors, failures } = recordingTracker();
+      const { spawnTool } = sequence([exited(null, "SIGKILL"), exited(null, "SIGKILL")]);
+      await expect(
+        runToolsStep(stepContext(steps, { errors }), toolStep(), spawnTool),
+      ).rejects.toThrow();
+      expect(failures.map((f) => [f.attempt, f.retrying])).toEqual([
+        [1, true],
+        [2, false],
+      ]);
+    });
+
+    it("captures nothing on a lost lease or an unavailable AI", async () => {
+      const { steps } = recordingSteps();
+      const { errors, failures } = recordingTracker();
+      const lease = new AbortController();
+      await expect(
+        runToolsStep(stepContext(steps, { errors, signal: lease.signal }), {
+          name: "upload",
+          async work() {
+            lease.abort();
+            throw new TransientError("R2 503");
+          },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        runToolsStep(stepContext(steps, { errors }), {
+          name: "decide",
+          async work() {
+            throw new AiUnavailable("the usage limit is reached");
+          },
+        }),
+      ).rejects.toThrow();
+      expect(failures).toEqual([]);
+    });
   });
 
   it("writes the row waiting when the AI is not available, never retrying", async () => {

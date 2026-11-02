@@ -1,3 +1,4 @@
+import type { Instrumentation } from "next";
 import { isE2EMockResend, recordEmail } from "@/lib/e2e-resend-mock";
 import { OFFER } from "@/lib/offer";
 import {
@@ -16,6 +17,31 @@ export async function register() {
     await registerE2EMocks({ stripe: isE2EMockStripe(), resend: isE2EMockResend() });
   }
 }
+
+/**
+ * Every uncaught server error of the landing page (route handlers, server
+ * actions, server components) goes to PostHog error tracking, Node runtime
+ * only, and only in production with both public PostHog variables set (see
+ * app_docs/error-tracking.md). Imported dynamically so the Edge bundle never
+ * pulls in posthog-node. Never throws; awaits the flush, so a serverless
+ * function sends before it ends.
+ */
+export const onRequestError: Instrumentation.onRequestError = async (error, request, context) => {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  try {
+    const tracking = await import("@/lib/error-tracking");
+    const config = tracking.errorTrackingConfig();
+    if (!config) return;
+    await tracking.captureRequestError(
+      tracking.serverErrorCapture(config),
+      error,
+      request,
+      context,
+    );
+  } catch {
+    // Error tracking never breaks the error page.
+  }
+};
 
 /**
  * Starts an in-process MSW network so the Playwright suite can mock the

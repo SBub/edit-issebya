@@ -1,6 +1,7 @@
 // Test helper: a StepStore that records its calls, and a step context around
 // it with telemetry that exports nothing unless processors are passed.
 import { ROOT_CONTEXT } from "@opentelemetry/api";
+import { DISABLED_TRACKER, type ErrorTracker } from "./error-tracking.ts";
 import type { ClaimedJob } from "./queue.ts";
 import type { StepContext } from "./step-runner.ts";
 import type { PipelineReelStatus, StepMeasurements, StepStore } from "./step-store.ts";
@@ -95,7 +96,14 @@ export function stepContext(
     telemetry = createTelemetry({}),
     job = TEST_JOB,
     retryDelayMs = 0,
-  }: { signal?: AbortSignal; telemetry?: Telemetry; job?: ClaimedJob; retryDelayMs?: number } = {},
+    errors = DISABLED_TRACKER,
+  }: {
+    signal?: AbortSignal;
+    telemetry?: Telemetry;
+    job?: ClaimedJob;
+    retryDelayMs?: number;
+    errors?: ErrorTracker;
+  } = {},
 ): StepContext {
-  return { steps, telemetry, jobContext: ROOT_CONTEXT, job, signal, retryDelayMs };
+  return { steps, telemetry, errors, jobContext: ROOT_CONTEXT, job, signal, retryDelayMs };
 }

@@ -4,6 +4,7 @@ import { trace } from "@opentelemetry/api";
 import { InMemoryLogRecordExporter, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { DISABLED_TRACKER } from "./error-tracking.ts";
 import { TEST_JOB, recordingSteps } from "./recording-steps.ts";
 import { runInProcessStep, runStep } from "./step-runner.ts";
 import {
@@ -22,7 +23,7 @@ async function runJobWithSteps(telemetry: Telemetry, job = TEST_JOB, names = ["o
   const signal = new AbortController().signal;
   for (const name of names) {
     await runInProcessStep(
-      { steps, telemetry, jobContext, job, signal },
+      { steps, telemetry, errors: DISABLED_TRACKER, jobContext, job, signal },
       { name, work: async () => ({ what: `${name} done`, sizeBytes: null }) },
     );
   }
@@ -97,7 +98,14 @@ describe("log records", () => {
       const { steps } = recordingSteps();
       const { span, context: jobContext } = startJobSpan(telemetry, TEST_JOB);
       await runStep(
-        { steps, telemetry, jobContext, job: TEST_JOB, signal: new AbortController().signal },
+        {
+          steps,
+          telemetry,
+          errors: DISABLED_TRACKER,
+          jobContext,
+          job: TEST_JOB,
+          signal: new AbortController().signal,
+        },
         {
           name: "echo",
           file: process.execPath,

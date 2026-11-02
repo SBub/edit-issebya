@@ -4,6 +4,7 @@ import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import { setTimeout as sleep } from "node:timers/promises";
 import { type Context, type Span, SpanStatusCode, trace } from "@opentelemetry/api";
+import type { ErrorTracker } from "./error-tracking.ts";
 import { errorTail } from "./errors.ts";
 import { AiUnavailable, FootageRefused, findCause, isTransient } from "./failure.ts";
 import { type ProgressThrottle, createProgressThrottle } from "./progress.ts";
@@ -24,6 +25,8 @@ import { parseTimeReport, reportedSignal, timeCommand } from "./time-report.ts";
 export interface StepContext {
   steps: StepStore;
   telemetry: Telemetry;
+  // Every failed step row is also captured here (DISABLED_TRACKER in tests).
+  errors: ErrorTracker;
   // The job span's context; each step span is its child.
   jobContext: Context;
   job: ClaimedJob;
@@ -204,9 +207,10 @@ async function withStep(
         throw error;
       }
       const retry = attempt === 1 && isTransient(error);
+      const tail = failure?.tail ?? outputTail(errorTail(error));
       await ctx.steps.failed(
         stepId,
-        failure?.tail ?? outputTail(errorTail(error)),
+        tail,
         stepSummary({
           what: retry ? `${name} failed, retrying once` : `${name} failed`,
           wallMs: measurements.wall_ms,
@@ -214,6 +218,7 @@ async function withStep(
         }),
         measurements,
       );
+      ctx.errors.stepFailed({ job: ctx.job, step: name, attempt, retrying: retry, error, tail });
       if (!retry) throw error;
     } finally {
       span.end();

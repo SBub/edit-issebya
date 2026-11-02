@@ -2,6 +2,7 @@
 
 import type { EditInputs } from "@edit-issebya/edit";
 import { type PreviewKeys, parsePreviewCopies, previewKeys } from "@/lib/preview-sources";
+import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
 import { isReelId } from "@/lib/reels";
 import { studioStorage } from "@/lib/storage";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -73,7 +74,13 @@ export async function loadPreviewSources(reelId: string): Promise<PreviewSources
     ]);
     return { status: "ready", versionId, urls: { edit, transcript, headTrack, footage, cutout } };
   } catch (error) {
-    console.error("studio: preview not signed:", (error as Error).message);
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: preview not signed",
+      error,
+      userId: user.id,
+      properties: { reel_id: reelId },
+      log: [(error as Error).message],
+    });
     return { status: "failed" };
   }
 }

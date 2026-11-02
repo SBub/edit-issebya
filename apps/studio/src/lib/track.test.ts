@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const posthog = vi.hoisted(() => ({
   capture: vi.fn(),
   identify: vi.fn(),
+  captureException: vi.fn(),
   __loaded: false,
 }));
 vi.mock("posthog-js", () => ({ default: posthog }));
@@ -18,12 +19,13 @@ const win = {
 } as unknown as Window;
 vi.stubGlobal("window", win);
 
-const { capture, identify } = await import("./track");
+const { capture, captureException, identify } = await import("./track");
 
 afterEach(() => {
   delete win.__capturedEvents;
   posthog.capture.mockClear();
   posthog.identify.mockClear();
+  posthog.captureException.mockClear();
   posthog.__loaded = false;
 });
 
@@ -57,5 +59,42 @@ describe("identify", () => {
     posthog.__loaded = true;
     identify("user-1");
     expect(posthog.identify).toHaveBeenCalledWith("user-1");
+  });
+});
+
+describe("captureException", () => {
+  const properties = { status: 500, error_code: "failed", resumed: false };
+
+  it("records one $exception with app: studio under automation, and never calls PostHog", () => {
+    vi.stubGlobal("navigator", { webdriver: true });
+    win.__capturedEvents = [];
+    captureException("studio: upload failed", properties);
+    expect(win.__capturedEvents).toEqual([
+      {
+        event: "$exception",
+        properties: { app: "studio", $exception_message: "studio: upload failed", ...properties },
+      },
+    ]);
+    expect(posthog.captureException).not.toHaveBeenCalled();
+  });
+
+  it("records nothing without navigator.webdriver or without the array", () => {
+    vi.stubGlobal("navigator", { webdriver: false });
+    win.__capturedEvents = [];
+    captureException("studio: upload failed", properties);
+    expect(win.__capturedEvents).toEqual([]);
+    vi.stubGlobal("navigator", { webdriver: true });
+    delete win.__capturedEvents;
+    expect(() => captureException("studio: upload failed", properties)).not.toThrow();
+  });
+
+  it("sends to PostHog once loaded", () => {
+    vi.stubGlobal("navigator", { webdriver: false });
+    posthog.__loaded = true;
+    captureException("studio: upload failed", properties);
+    expect(posthog.captureException).toHaveBeenCalledOnce();
+    const [error, sent] = posthog.captureException.mock.calls[0]!;
+    expect((error as Error).message).toBe("studio: upload failed");
+    expect(sent).toEqual(properties);
   });
 });

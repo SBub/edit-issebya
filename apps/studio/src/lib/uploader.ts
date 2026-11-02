@@ -1,6 +1,7 @@
 import AwsS3, { type AwsBody } from "@uppy/aws-s3";
 import Uppy from "@uppy/core";
 import { MAX_UPLOAD_BYTES, PART_SIZE_BYTES, UPLOAD_ENDPOINT, reelIdOfKey } from "./upload";
+import { type UploadErrorAnswer, observeUploadAnswers } from "./upload-answers";
 
 // The browser side of the resumable upload: a headless Uppy (no Uppy UI) with
 // the AwsS3 plugin in Companion mode, pointed at the studio's own routes
@@ -11,8 +12,12 @@ import { MAX_UPLOAD_BYTES, PART_SIZE_BYTES, UPLOAD_ENDPOINT, reelIdOfKey } from 
 
 type UploadMeta = { bytes: number };
 
+// A failed outcome carries the last error answer of the upload routes (null
+// when none answered with an error, for example a network failure).
 export type UploadOutcome =
-  { status: "finished"; reelId: string } | { status: "cancelled" } | { status: "failed" };
+  | { status: "finished"; reelId: string }
+  | { status: "cancelled" }
+  | { status: "failed"; answer: UploadErrorAnswer | null };
 
 export interface Uploader {
   // Resolves when the upload finishes, fails or is cancelled.
@@ -66,21 +71,23 @@ export function createUploader(handlers: {
       };
       uppy.on("state-update", onState);
       uppy.on("progress", handlers.onProgress);
+      const answers = observeUploadAnswers(window, UPLOAD_ENDPOINT);
       try {
         const result = await uppy.upload();
         if (cancelled) return { status: "cancelled" };
         const done = result?.successful?.[0];
         const key = done?.response?.body?.key;
         const reelId = typeof key === "string" ? reelIdOfKey(key) : null;
-        if (!reelId) return { status: "failed" };
+        if (!reelId) return { status: "failed", answer: answers.last() };
         // Uppy throttles total progress at 500 ms (trailing), so its own 100
         // can arrive after upload() resolves, when this handler is already
         // gone and the page has gone to the reel. Report it here instead.
         handlers.onProgress(100);
         return { status: "finished", reelId };
       } catch {
-        return cancelled ? { status: "cancelled" } : { status: "failed" };
+        return cancelled ? { status: "cancelled" } : { status: "failed", answer: answers.last() };
       } finally {
+        answers.stop();
         uppy.off("state-update", onState);
         uppy.off("progress", handlers.onProgress);
         if (uppy.getFile(id)) uppy.removeFile(id);

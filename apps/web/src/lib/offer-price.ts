@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { getKeyMissingToggle, isE2EMockStripe } from "./e2e-stripe-mock";
 import { priceFor, STANDARD_PRICE, type OfferPrice } from "./offer";
+import { reportFailure, serverErrorCapture } from "./error-tracking";
 import { countSold } from "./sold-count";
 import { createStripeClient } from "./stripe";
 import { stripeSecretKey } from "./stripe-key";
@@ -46,7 +47,11 @@ export async function currentOfferPrice({ fresh }: { fresh: boolean }): Promise<
     const sold = fresh || isE2EMockStripe() ? await fetchSoldCount() : await cachedSoldCount();
     return priceFor(sold);
   } catch (error) {
-    console.error("currentOfferPrice: counting sold spots failed, using the full price", error);
+    await reportFailure(serverErrorCapture(), {
+      message: "currentOfferPrice: counting sold spots failed",
+      error,
+      log: ["using the full price", error],
+    });
     return STANDARD_PRICE;
   }
 }

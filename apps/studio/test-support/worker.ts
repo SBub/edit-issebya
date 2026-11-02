@@ -32,6 +32,8 @@ function workerEnv(env: Record<string, string>): NodeJS.ProcessEnv {
     // so a filled file can never make a spec export to PostHog.
     OTEL_EXPORTER_OTLP_ENDPOINT: "",
     OTEL_EXPORTER_OTLP_HEADERS: "",
+    // The same for the worker's error tracking: no token, no client.
+    POSTHOG_PROJECT_TOKEN: "",
     SUPABASE_URL: assertLocalUrl(process.env.SUPABASE_URL),
     E2E_MOCK_STORAGE: "true",
     E2E_MOCK_AI: "true",
