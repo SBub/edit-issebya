@@ -35,6 +35,8 @@ export function waitingReason(freeBytes: number, minFreeDiskGb: number): string 
 
 export interface WorkerStatusStore {
   set(row: { freeDiskBytes: number; waitingReason: string | null }): Promise<void>;
+  // The long-running worker's heartbeat: never touches the waiting reason.
+  heartbeat(row: { freeDiskBytes: number }): Promise<void>;
 }
 
 // This worker's `worker_status` row, through the service role client.
@@ -51,6 +53,20 @@ export function supabaseWorkerStatus(db: SupabaseClient, workerId: string): Work
         { onConflict: "worker_id" },
       );
       if (error) throw new Error(`worker status not written: ${error.message}`);
+    },
+    async heartbeat({ freeDiskBytes }) {
+      const now = new Date().toISOString();
+      // free_disk_bytes too: a first upsert inserts the row, which needs it.
+      const { error } = await db.from("worker_status").upsert(
+        {
+          worker_id: workerId,
+          free_disk_bytes: freeDiskBytes,
+          heartbeat_at: now,
+          updated_at: now,
+        },
+        { onConflict: "worker_id" },
+      );
+      if (error) throw new Error(`worker heartbeat not written: ${error.message}`);
     },
   };
 }

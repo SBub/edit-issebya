@@ -12,6 +12,7 @@ import { toolPaths } from "./pipeline/tools.ts";
 import { supabaseExportStore } from "./render/export-store.ts";
 import { runRender } from "./render/render-step.ts";
 import { runRestore } from "./restore-step.ts";
+import { withKeepAwake } from "./keep-awake.ts";
 import { type JobOutcome, runJob } from "./run-job.ts";
 import { withJobScratch } from "./scratch.ts";
 import { supabaseStepStore } from "./step-store.ts";
@@ -28,7 +29,8 @@ import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 // the reel's status alone. Only a `process` job moves the reel's status
 // (queue.ts). The job runs in its own scratch folder, removed afterwards
 // whatever happened, and writes storage only through the recording storage,
-// so every object it stores has a `stored_files` row for its reel.
+// so every object it stores has a `stored_files` row for its reel. On macOS
+// the whole job runs under caffeinate, so the Mac does not sleep in it.
 export async function processJob(
   db: SupabaseClient,
   rawStorage: Storage,
@@ -48,73 +50,75 @@ export async function processJob(
   const { span, context: jobContext } = startJobSpan(telemetry, job);
   let outcome: JobOutcome = "failed";
   try {
-    outcome = await withJobScratch(config.scratchDir, job.id, (scratchDir) =>
-      runJob({
-        job,
-        renewEveryMs: config.renewEveryMs,
-        renew: () => renewLease(db, config, job.id),
-        async work(signal) {
-          const ctx = { steps, telemetry, jobContext, job, signal };
-          const rows = supabaseVersionRows(db);
-          const blobs = storageVersionBlobs(storage);
-          const decide = (request: string | null) =>
-            runDecide({
-              ctx,
-              storage,
-              rows,
-              blobs,
-              keyPrefix: config.keyPrefix,
-              ai: aiRunner(process.env),
-              scratchDir,
-              request,
-            });
-          await runJobKind(job, {
-            async process() {
-              const { fingerprints } = await runPipeline({
-                ctx,
-                storage,
-                keyPrefix: config.keyPrefix,
-                scratchDir,
-                tools: toolPaths(),
-                recordStored,
-              });
-              // Before the first version, so a reel with a current version
-              // already says where its preview copies are.
-              await recordPreviewCopies(db, job.reel_id, previewCopiesRefs(fingerprints));
-              await saveFirstVersion({
+    outcome = await withKeepAwake(() =>
+      withJobScratch(config.scratchDir, job.id, (scratchDir) =>
+        runJob({
+          job,
+          renewEveryMs: config.renewEveryMs,
+          renew: () => renewLease(db, config, job.id),
+          async work(signal) {
+            const ctx = { steps, telemetry, jobContext, job, signal };
+            const rows = supabaseVersionRows(db);
+            const blobs = storageVersionBlobs(storage);
+            const decide = (request: string | null) =>
+              runDecide({
                 ctx,
                 storage,
                 rows,
                 blobs,
                 keyPrefix: config.keyPrefix,
-                fingerprints,
-              });
-              // Never cached: a failed decide fails the job and version 1 stays
-              // current; a retried job decides again from the current version.
-              await decide(null);
-            },
-            // The owner's words: decide alone, from the current version. A
-            // second refusal fails the job and the current version stays.
-            change: (request) => decide(request),
-            restore: (versionId) =>
-              runRestore({ ctx, rows, blobs, keyPrefix: config.keyPrefix, versionId }),
-            render: (versionId) =>
-              runRender({
-                ctx,
-                storage,
-                rows,
-                exports: supabaseExportStore(db),
-                keyPrefix: config.keyPrefix,
+                ai: aiRunner(process.env),
                 scratchDir,
-                tools: toolPaths(),
-                recordStored,
-                versionId,
-              }),
-          });
-        },
-        finish: () => finishJob(db, config, job),
-        fail: (tail) => failJob(db, config, job, tail),
-      }),
+                request,
+              });
+            await runJobKind(job, {
+              async process() {
+                const { fingerprints } = await runPipeline({
+                  ctx,
+                  storage,
+                  keyPrefix: config.keyPrefix,
+                  scratchDir,
+                  tools: toolPaths(),
+                  recordStored,
+                });
+                // Before the first version, so a reel with a current version
+                // already says where its preview copies are.
+                await recordPreviewCopies(db, job.reel_id, previewCopiesRefs(fingerprints));
+                await saveFirstVersion({
+                  ctx,
+                  storage,
+                  rows,
+                  blobs,
+                  keyPrefix: config.keyPrefix,
+                  fingerprints,
+                });
+                // Never cached: a failed decide fails the job and version 1 stays
+                // current; a retried job decides again from the current version.
+                await decide(null);
+              },
+              // The owner's words: decide alone, from the current version. A
+              // second refusal fails the job and the current version stays.
+              change: (request) => decide(request),
+              restore: (versionId) =>
+                runRestore({ ctx, rows, blobs, keyPrefix: config.keyPrefix, versionId }),
+              render: (versionId) =>
+                runRender({
+                  ctx,
+                  storage,
+                  rows,
+                  exports: supabaseExportStore(db),
+                  keyPrefix: config.keyPrefix,
+                  scratchDir,
+                  tools: toolPaths(),
+                  recordStored,
+                  versionId,
+                }),
+            });
+          },
+          finish: () => finishJob(db, config, job),
+          fail: (tail) => failJob(db, config, job, tail),
+        }),
+      ),
     );
     return outcome;
   } finally {

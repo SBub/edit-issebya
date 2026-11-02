@@ -4,6 +4,8 @@ import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import { type Context, type Span, SpanStatusCode, trace } from "@opentelemetry/api";
 import { errorTail } from "./errors.ts";
+import { type ProgressThrottle, createProgressThrottle } from "./progress.ts";
+import type { ProgressParser } from "./progress-parsers.ts";
 import { sampleTreeRss } from "./process-tree.ts";
 import type { ClaimedJob } from "./queue.ts";
 import {
@@ -40,6 +42,9 @@ export interface ToolCall {
   // The cap on the returned stdout (default 64 KB); the logged output keeps
   // the default.
   maxStdoutBytes?: number;
+  // Reads the tool's progress from its output lines (the two long steps
+  // only); the step writes it to its row, throttled, and 100 before `done`.
+  progress?: ProgressParser;
 }
 
 export interface ChildStep extends ToolCall {
@@ -125,6 +130,7 @@ async function withStep(
   body: (
     stepContext: Context,
     started: number,
+    stepId: string,
   ) => Promise<{ summary: string; measurements: StepMeasurements }>,
 ): Promise<void> {
   ctx.signal.throwIfAborted();
@@ -136,7 +142,11 @@ async function withStep(
   );
   const started = performance.now();
   try {
-    const { summary, measurements } = await body(trace.setSpan(ctx.jobContext, span), started);
+    const { summary, measurements } = await body(
+      trace.setSpan(ctx.jobContext, span),
+      started,
+      stepId,
+    );
     ctx.signal.throwIfAborted();
     setMeasurementAttributes(span, measurements);
     await ctx.steps.done(stepId, summary, measurements);
@@ -336,7 +346,7 @@ export function runToolsStep(
   spec: ToolsStep,
   spawnTool: SpawnTool = spawnChild,
 ): Promise<void> {
-  return withStep(ctx, spec.name, async (stepContext, started) => {
+  return withStep(ctx, spec.name, async (stepContext, started, stepId) => {
     const log = stepLogger(ctx.telemetry, stepContext, {
       "reel.id": ctx.job.reel_id,
       "job.id": ctx.job.id,
@@ -353,8 +363,37 @@ export function runToolsStep(
       bytes_out: await totalSize(spec.outputs),
     });
 
+    // Made by the first call that reads progress; a step without one writes
+    // none. A lost lease stops it at once.
+    let throttle: ProgressThrottle | null = null;
+    const progressThrottle = (): ProgressThrottle => {
+      if (throttle) return throttle;
+      const made = createProgressThrottle({
+        write: (percent) => ctx.steps.progress(stepId, percent),
+        onError: (error) =>
+          log(
+            `progress not written: ${error instanceof Error ? error.message : String(error)}`,
+            "stderr",
+          ),
+      });
+      if (ctx.signal.aborted) made.stop();
+      ctx.signal.addEventListener("abort", () => made.stop(), { once: true });
+      throttle = made;
+      return made;
+    };
+
     const tool: Tool = async (call) => {
-      const run = await spawnTool(call, ctx.signal, log);
+      const parser = call.progress;
+      let callLog = log;
+      if (parser) {
+        const progress = progressThrottle();
+        callLog = (line, stream) => {
+          log(line, stream);
+          const percent = parser(line);
+          if (percent !== null) progress.push(percent);
+        };
+      }
+      const run = await spawnTool(call, ctx.signal, callLog);
       ctx.signal.throwIfAborted();
       const toolStarted = run.code === null || !NOT_STARTED.has(run.code);
       const report = toolStarted ? parseTimeReport(process.platform, run.report) : null;
@@ -373,7 +412,14 @@ export function runToolsStep(
     let ai: AiUsage | undefined;
     try {
       ({ what, ai } = await spec.work(tool));
+      ctx.signal.throwIfAborted();
+      // 100 lands before the `done` write.
+      await (throttle as ProgressThrottle | null)?.finish();
     } catch (error) {
+      // No progress write after a failure or a lost lease.
+      const pending = throttle as ProgressThrottle | null;
+      pending?.stop();
+      await pending?.settled();
       if (error instanceof StepFailure || ctx.signal.aborted) throw error;
       // A failure between calls (a download, a parse) keeps what was measured;
       // a StepError brings its own tail (its reasons) and AI usage.

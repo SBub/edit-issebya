@@ -2,9 +2,11 @@
 // on Realtime inserts into public.jobs, checks the table every
 // WORKER_POLL_INTERVAL_SECONDS reading only ids, and runs one job at a time.
 // Between jobs it slims storage at most once an hour, and it claims nothing
-// while the scratch volume is below WORKER_MIN_FREE_DISK_GB.
+// while the scratch volume is below WORKER_MIN_FREE_DISK_GB. It writes a
+// heartbeat at start and every five minutes.
 import { workerConfig } from "./config.ts";
 import { freeBytesFn, guardedClaim, supabaseWorkerStatus } from "./disk-guard.ts";
+import { startHeartbeat } from "./heartbeat.ts";
 import { createDrainer } from "./loop.ts";
 import { processJob } from "./process-job.ts";
 import { claimJob, claimableJobIds } from "./queue.ts";
@@ -25,6 +27,12 @@ const records = supabaseStoredFiles(db);
 
 // Job folders a crashed run left behind, before the first job.
 await sweepStaleScratch(config.scratchDir);
+
+// Tells the studio this worker is alive; it shows it offline after eleven
+// minutes without a beat.
+const heartbeat = startHeartbeat({
+  beat: async () => status.heartbeat({ freeDiskBytes: await freeBytes(config.scratchDir) }),
+});
 
 // Only between this worker's jobs: never while it runs one.
 const slimmer = createSlimmer({
@@ -74,6 +82,7 @@ async function stop(signal: string) {
   stopping = true;
   console.log(`worker: ${signal}, finishing the current job`);
   clearInterval(poll);
+  heartbeat.stop();
   await db.removeChannel(channel);
   await drainer.idle();
   await telemetry.shutdown();

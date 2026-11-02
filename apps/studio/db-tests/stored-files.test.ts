@@ -35,6 +35,7 @@ const STORED_FILE_COLUMNS = [
 
 const WORKER_STATUS_COLUMNS = [
   ["free_disk_bytes", "bigint"],
+  ["heartbeat_at", "timestamp with time zone"],
   ["updated_at", "timestamp with time zone"],
   ["waiting_reason", "text"],
   ["worker_id", "text"],
@@ -511,6 +512,28 @@ describe("worker_status", () => {
       .select("worker_id, waiting_reason")
       .like("worker_id", `${workerId}%`);
     expect(data).toEqual([{ worker_id: workerId, waiting_reason: "waiting: test" }]);
+  });
+
+  it("keeps the disk guard's reason through a heartbeat upsert", async () => {
+    const heartbeatAt = new Date().toISOString();
+    const { error } = await admin.from("worker_status").upsert(
+      {
+        worker_id: workerId,
+        free_disk_bytes: 9,
+        heartbeat_at: heartbeatAt,
+        updated_at: heartbeatAt,
+      },
+      { onConflict: "worker_id" },
+    );
+    expect(error).toBeNull();
+    const { data } = await admin
+      .from("worker_status")
+      .select("free_disk_bytes, waiting_reason, heartbeat_at")
+      .eq("worker_id", workerId)
+      .single();
+    expect(data?.free_disk_bytes).toBe(9);
+    expect(data?.waiting_reason).toBe("waiting: test");
+    expect(Date.parse(data?.heartbeat_at as string)).toBe(Date.parse(heartbeatAt));
   });
 
   it("is in the Realtime publication", async () => {

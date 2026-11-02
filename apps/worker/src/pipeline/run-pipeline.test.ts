@@ -8,6 +8,7 @@ import type { ChildRun, SpawnTool, ToolCall } from "../step-runner.ts";
 import { PIPELINE, type StepOutput, fingerprintsFor, outputFiles } from "./definition.ts";
 import { cacheKey } from "./fingerprint.ts";
 import { HEAD_TRACK_SETTINGS, frameBytes } from "./head-track.ts";
+import { REMOVE_BACKGROUND_ENTRY } from "./remove-background.ts";
 import { runPipeline } from "./run-pipeline.ts";
 import type { ToolPaths } from "./tools.ts";
 
@@ -61,7 +62,7 @@ function fakeTools({ failTranscribe = 0 } = {}): SpawnTool {
     spawned.push(call);
     const at = (file: string) => (call.cwd ? resolve(call.cwd, file) : file);
     if (call.file === TOOLS.ffprobe) return ok(PROBE);
-    if (call.file === TOOLS.hyperframes[0] && call.args[1] === "remove-background") {
+    if (call.file === TOOLS.hyperframes[0] && call.args[0] === REMOVE_BACKGROUND_ENTRY) {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
       await writeFile(option(call.args, "-o"), "cut-out");
       return ok(`${JSON.stringify({ ok: true, framesProcessed: 57, provider: "cpu" })}\n`);
@@ -162,13 +163,59 @@ function run(
   });
 }
 
+// The step rows and statuses; progress and the footage length have their own tests.
 function shape(calls: ReturnType<typeof recordingSteps>["calls"]) {
-  return calls.map((call) => {
+  const rows = calls.filter(
+    (call) => call.call !== "progress" && call.call !== "recordFootageSeconds",
+  );
+  return rows.map((call) => {
     if (call.call === "reelStatus") return `status ${call.status}`;
     if (call.call === "start" || call.call === "skipped") return `${call.call} ${call.name}`;
     return call.call;
   });
 }
+
+function footageCalls(calls: ReturnType<typeof recordingSteps>["calls"]) {
+  return calls.flatMap((call) => (call.call === "recordFootageSeconds" ? [call] : []));
+}
+
+describe("runPipeline footage seconds", () => {
+  it("records the retimed length after a retime that ran, before remove_background", async () => {
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    await run(steps);
+    const recorded = footageCalls(calls);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]!.reelId).toBe(TEST_JOB.reel_id);
+    expect(recorded[0]!.seconds).toBeGreaterThan(0);
+    const at = calls.findIndex((call) => call.call === "recordFootageSeconds");
+    const removing = calls.findIndex(
+      (call) => call.call === "start" && call.name === "remove_background",
+    );
+    expect(at).toBeLessThan(removing);
+  });
+
+  it("downloads the kept retime.json on a hit when the reel has no length", async () => {
+    const first = recordingSteps(SOURCE_KEY);
+    await run(first.steps);
+    const seconds = footageCalls(first.calls)[0]!.seconds;
+    counts = { getFile: 0, putFileIfAbsent: 0 };
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    await run(steps);
+    expect(footageCalls(calls)).toEqual([
+      { call: "recordFootageSeconds", reelId: TEST_JOB.reel_id, seconds },
+    ]);
+    expect(counts.getFile).toBe(1);
+  });
+
+  it("downloads nothing on a hit when the reel already has a length", async () => {
+    await run(recordingSteps(SOURCE_KEY).steps);
+    counts = { getFile: 0, putFileIfAbsent: 0 };
+    const { steps, calls } = recordingSteps(SOURCE_KEY, { footageSeconds: 12 });
+    await run(steps);
+    expect(footageCalls(calls)).toEqual([]);
+    expect(counts.getFile).toBe(0);
+  });
+});
 
 describe("runPipeline", () => {
   it("runs every step on a first run and stores every output under its key", async () => {
@@ -274,7 +321,8 @@ describe("runPipeline", () => {
     await run(recordingSteps(SOURCE_KEY).steps);
     spawned = [];
     counts = { getFile: 0, putFileIfAbsent: 0 };
-    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    // The first run recorded the reel's footage length.
+    const { steps, calls } = recordingSteps(SOURCE_KEY, { footageSeconds: 1.5 });
     await run(steps);
     expect(shape(calls)).toEqual([
       "status converting",

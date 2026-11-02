@@ -51,6 +51,10 @@ export interface PipelineStep<S extends object = object> {
   reusedWhat: string;
   inputs(source: SourceRef, fingerprints: Record<string, string>): StepInput[];
   run(args: StepRunArgs<S>): Promise<{ what: string }>;
+  // The output holding the length of the footage the long steps work on, and
+  // how to read it: recorded on the reel after the step (ran or hit) while the
+  // reel has none, the divisor of the studio's time-left estimate.
+  footage?: { file: string; seconds(text: string): number };
 }
 
 export const PIPELINE: readonly PipelineStep[] = [

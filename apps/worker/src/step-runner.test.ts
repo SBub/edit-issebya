@@ -493,3 +493,85 @@ describe("recordHit", () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe("runToolsStep progress", () => {
+  const parse = (line: string) => (line.startsWith("pct ") ? Number(line.slice(4)) : null);
+
+  function loggingSpawn(lines: string[], code = 0): SpawnTool {
+    return (_call, _signal, log) => {
+      for (const line of lines) log(line, "stdout");
+      const output = `${lines.join("\n")}\n`;
+      return Promise.resolve({
+        code,
+        exitSignal: null,
+        report: "",
+        output,
+        stdout: output,
+        groupPeakBytes: null,
+      });
+    };
+  }
+
+  const lines = ["starting", "pct 5", "pct 20", "noise", "pct 60", "pct 90"];
+
+  it("writes the throttled values, then 100 before done", async () => {
+    const { steps, calls } = recordingSteps();
+    await runToolsStep(
+      stepContext(steps),
+      {
+        name: "long",
+        async work(tool) {
+          await tool({ file: "t", args: [], progress: parse });
+          return { what: "made" };
+        },
+      },
+      loggingSpawn(lines),
+    );
+    // Every line arrives inside the first 10 s window: the first value, then 100.
+    expect(calls.map((c) => (c.call === "progress" ? `progress ${c.percent}` : c.call))).toEqual([
+      "start",
+      "progress 5",
+      "progress 100",
+      "done",
+    ]);
+    expect(calls.filter((c) => c.call === "progress").map((c) => c.stepId)).toEqual(["s1", "s1"]);
+  });
+
+  it("writes no progress for a call without a parser", async () => {
+    const { steps, calls } = recordingSteps();
+    await runToolsStep(
+      stepContext(steps),
+      {
+        name: "short",
+        async work(tool) {
+          await tool({ file: "t", args: [] });
+          return { what: "made" };
+        },
+      },
+      loggingSpawn(lines),
+    );
+    expect(calls.some((c) => c.call === "progress")).toBe(false);
+  });
+
+  it("writes no 100 when the step fails", async () => {
+    const { steps, calls } = recordingSteps();
+    await expect(
+      runToolsStep(
+        stepContext(steps),
+        {
+          name: "long",
+          async work(tool) {
+            await tool({ file: "t", args: [], progress: parse });
+            return { what: "made" };
+          },
+        },
+        loggingSpawn(lines, 1),
+      ),
+    ).rejects.toThrow(/long exited with 1/);
+    expect(calls.map((c) => (c.call === "progress" ? `progress ${c.percent}` : c.call))).toEqual([
+      "start",
+      "progress 5",
+      "failed",
+    ]);
+  });
+});

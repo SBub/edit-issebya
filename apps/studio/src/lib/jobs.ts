@@ -3,7 +3,7 @@
 export const JOB_COLUMNS =
   "id, reel_id, kind, request, restore_version_id, version_id, status, attempts, error_tail, created_at, started_at, finished_at";
 export const STEP_COLUMNS =
-  "id, job_id, reel_id, name, status, summary, error_tail, started_at, finished_at";
+  "id, job_id, reel_id, name, status, summary, error_tail, started_at, finished_at, progress_percent, progress_updated_at";
 
 // `process` after an upload; `change` carries the owner's words; `restore`
 // goes back to an earlier version; `render` exports a version to an MP4.
@@ -44,6 +44,9 @@ export interface StepRow {
   error_tail: string | null;
   started_at: string;
   finished_at: string | null;
+  // A long step's progress (0 to 100) and when it was written; null otherwise.
+  progress_percent: number | null;
+  progress_updated_at: string | null;
 }
 
 // Replaces the row with the same id or adds it, then orders by `order`

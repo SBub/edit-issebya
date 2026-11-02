@@ -52,6 +52,12 @@ export interface StepStore {
   reelStatus(reelId: string, status: PipelineReelStatus): Promise<void>;
   sourceKey(reelId: string): Promise<string | null>;
   done(stepId: string, summary: string, measurements: StepMeasurements): Promise<void>;
+  // A long step's progress (0 to 100) on its own running row.
+  progress(stepId: string, percent: number): Promise<void>;
+  // The reel's retimed footage length in seconds, null until recorded.
+  footageSeconds(reelId: string): Promise<number | null>;
+  // Sets it only while the reel has none.
+  recordFootageSeconds(reelId: string, seconds: number): Promise<void>;
   failed(
     stepId: string,
     errorTail: string,
@@ -107,6 +113,31 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
         .maybeSingle();
       if (error) throw new Error(`reel not read: ${error.message}`);
       return (data as { source_key: string | null } | null)?.source_key ?? null;
+    },
+    async progress(stepId, percent) {
+      const { error } = await db
+        .from("steps")
+        .update({ progress_percent: percent, progress_updated_at: new Date().toISOString() })
+        .eq("id", stepId);
+      if (error) throw new Error(`step progress not written: ${error.message}`);
+    },
+    async footageSeconds(reelId) {
+      const { data, error } = await db
+        .from("reels")
+        .select("footage_seconds")
+        .eq("id", reelId)
+        .maybeSingle();
+      if (error) throw new Error(`reel not read: ${error.message}`);
+      const raw = (data as { footage_seconds: number | string | null } | null)?.footage_seconds;
+      return raw === null || raw === undefined ? null : Number(raw);
+    },
+    async recordFootageSeconds(reelId, seconds) {
+      const { error } = await db
+        .from("reels")
+        .update({ footage_seconds: seconds })
+        .eq("id", reelId)
+        .is("footage_seconds", null);
+      if (error) throw new Error(`footage seconds not recorded: ${error.message}`);
     },
     async done(stepId, summary, measurements) {
       const { error } = await db
