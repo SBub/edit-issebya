@@ -1,10 +1,11 @@
 "use client";
 
 import type { HyperframesPlayer } from "@hyperframes/player";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type MediaState, activeAt, canPlayFrom } from "@/lib/preview-clock";
 import { recordSoundSchedule } from "@/lib/preview-test-hooks";
 import { type SoundHit, scheduleAt } from "@/lib/sound-schedule";
+import { formatClock } from "@/lib/tracks-timeline";
 
 interface Props {
   // The page handed to the player (already transformed for the preview).
@@ -13,6 +14,11 @@ interface Props {
   hits: SoundHit[];
   // The encoded sound files the hits name, by preset path.
   soundBytes: Record<string, ArrayBuffer>;
+  // Told the clock's position wherever the player's own position changes (its
+  // clock, a seek, a hold): the tracks timeline's playhead.
+  onPosition?: (seconds: number) => void;
+  // Extra buttons at the end of the control row (Undo and Redo).
+  controls?: ReactNode;
 }
 
 interface Tracked extends MediaState {
@@ -28,13 +34,6 @@ const STALL_EVENTS = ["waiting", "stalled"];
 const SEEK_SLACK = 0.1;
 // A resume that never settles must not hang playback.
 const RESUME_TIMEOUT_MS = 500;
-
-function formatTime(seconds: number): string {
-  const safe = Math.max(0, seconds);
-  const minutes = Math.floor(safe / 60);
-  const rest = (safe - minutes * 60).toFixed(2).padStart(5, "0");
-  return `${minutes}:${rest}`;
-}
 
 // The timed videos of the composition, and the player's parent-frame copies
 // when it moved playback there (autoplay blocked): read only.
@@ -78,7 +77,7 @@ function mediaOf(player: HyperframesPlayer): Tracked[] {
 // point can play from there (first play, every seek, every stall). The
 // edit's sounds play through one AudioContext, scheduled against the clock at
 // each start and cancelled at every pause, seek and stall.
-export function PreviewPlayer({ html, versionId, hits, soundBytes }: Props) {
+export function PreviewPlayer({ html, versionId, hits, soundBytes, onPosition, controls }: Props) {
   const playerRef = useRef<HyperframesPlayer>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const buffersRef = useRef<Promise<Map<string, AudioBuffer>>>(Promise.resolve(new Map()));
@@ -89,6 +88,7 @@ export function PreviewPlayer({ html, versionId, hits, soundBytes }: Props) {
   const stallCleanupRef = useRef<(() => void) | null>(null);
   const hitsRef = useRef(hits);
   const expectedVideosRef = useRef(0);
+  const onPositionRef = useRef(onPosition);
 
   const [defined, setDefined] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
@@ -101,6 +101,16 @@ export function PreviewPlayer({ html, versionId, hits, soundBytes }: Props) {
     hitsRef.current = hits;
     expectedVideosRef.current = html.split("<video ").length - 1;
   }, [hits, html]);
+
+  useEffect(() => {
+    onPositionRef.current = onPosition;
+  }, [onPosition]);
+
+  // The position shown here and reported to the page, set together.
+  function report(seconds: number) {
+    setPosition(seconds);
+    onPositionRef.current?.(seconds);
+  }
 
   // The custom element is registered in the browser only, never at module
   // load on the server.
@@ -241,7 +251,7 @@ export function PreviewPlayer({ html, versionId, hits, soundBytes }: Props) {
     stopSounds();
     if (!player.paused) player.pause();
     if (Math.abs(player.currentTime - t) > 0.001) player.seek(t);
-    setPosition(t);
+    report(t);
     setHolding(true);
     // A video left where it was is moved to the target, so its readiness
     // is measured there.
@@ -303,7 +313,7 @@ export function PreviewPlayer({ html, versionId, hits, soundBytes }: Props) {
   }
 
   function onSeek(value: number) {
-    setPosition(value);
+    report(value);
     if (intentRef.current === "playing") {
       holdThenStart(value);
       return;
@@ -322,7 +332,7 @@ export function PreviewPlayer({ html, versionId, hits, soundBytes }: Props) {
     };
     const onTime = (event: Event) => {
       const detail = (event as CustomEvent<{ currentTime?: number }>).detail;
-      setPosition(detail?.currentTime ?? player.currentTime);
+      report(detail?.currentTime ?? player.currentTime);
     };
     const onEnded = () => {
       generationRef.current += 1;
@@ -355,39 +365,47 @@ export function PreviewPlayer({ html, versionId, hits, soundBytes }: Props) {
     <div
       data-preview={loading ? "loading" : "ready"}
       data-preview-version={versionId}
-      className="flex w-full max-w-sm flex-col gap-2"
+      className="flex min-h-0 w-full flex-1 flex-col gap-2"
     >
-      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-md bg-black">
-        {defined && (
-          <hyperframes-player
-            ref={playerRef}
-            width="1080"
-            height="1920"
-            srcdoc={html}
-            disable-click-to-play=""
-            assets-loading-ui="none"
-            no-load-timeout=""
-            className="block h-full w-full"
-          />
-        )}
-        {loading && (
-          <p
-            role="status"
-            className="absolute inset-x-0 bottom-2 text-center text-sm font-medium text-white"
-          >
-            Loading
-          </p>
-        )}
+      <div className="flex min-h-0 flex-1 justify-center">
+        <div className="relative aspect-[9/16] h-full max-h-full max-w-full overflow-hidden rounded-lg bg-black">
+          {defined && (
+            <hyperframes-player
+              ref={playerRef}
+              width="1080"
+              height="1920"
+              srcdoc={html}
+              disable-click-to-play=""
+              assets-loading-ui="none"
+              no-load-timeout=""
+              className="block h-full w-full"
+            />
+          )}
+          {loading && (
+            <p
+              role="status"
+              className="absolute inset-x-0 bottom-2 text-center text-sm font-medium text-white"
+            >
+              Loading
+            </p>
+          )}
+        </div>
       </div>
-      <div className="flex items-center gap-3 text-sm">
+      <div className="flex flex-none items-center gap-2 text-sm">
         <button
           type="button"
           onClick={onPlayClick}
           disabled={!playerReady}
-          className="rounded-md bg-stone-900 px-3 py-1.5 font-medium text-white disabled:opacity-50"
+          className="w-16 rounded-full bg-accent px-3 py-1.5 font-semibold text-surface disabled:opacity-50"
         >
           {intent === "playing" ? "Pause" : "Play"}
         </button>
+        <span
+          data-testid="preview-clock"
+          className="text-xs whitespace-nowrap text-muted tabular-nums"
+        >
+          {formatClock(position)} / {formatClock(duration)}
+        </span>
         <input
           type="range"
           aria-label="Position"
@@ -397,11 +415,9 @@ export function PreviewPlayer({ html, versionId, hits, soundBytes }: Props) {
           value={Math.min(position, duration)}
           disabled={!playerReady}
           onChange={(event) => onSeek(Number(event.target.value))}
-          className="min-w-0 flex-1"
+          className="min-w-0 flex-1 accent-accent"
         />
-        <span className="tabular-nums text-stone-600">
-          {formatTime(position)} / {formatTime(duration)}
-        </span>
+        {controls}
       </div>
     </div>
   );

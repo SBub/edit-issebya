@@ -39,8 +39,9 @@ test("a landscape clip is refused at once with its message, live, and nothing el
   baseURL,
 }) => {
   await page.goto(await signInLink(admin, owner.email, baseURL!));
+  await page.getByRole("button", { name: "Upload a reel" }).click();
   await page.getByLabel("Clip").setInputFiles(CLIP);
-  await page.getByRole("button", { name: "Upload" }).click();
+  await page.getByRole("button", { name: "Upload", exact: true }).click();
   await expect(page).toHaveURL(
     /\/studio\/reels\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     { timeout: 20_000 },

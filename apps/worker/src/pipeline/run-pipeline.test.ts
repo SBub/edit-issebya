@@ -276,6 +276,8 @@ describe("runPipeline", () => {
       expect(key).not.toMatch(/remove_background|subject/);
     }
     expect(typeOf("footage-preview.mp4")).toBe("video/mp4");
+    expect(typeOf("thumbnail.jpg")).toBe("image/jpeg");
+    expect(typeOf("frames.jpg")).toBe("image/jpeg");
     expect(typeOf("head-track.json")).toBe("application/json");
   });
 

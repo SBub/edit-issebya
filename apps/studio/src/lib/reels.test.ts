@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   REEL_COLUMNS,
   REEL_DETAIL_COLUMNS,
+  REEL_GRID_COLUMNS,
   REEL_STATUSES,
   formatBytes,
+  formatAge,
   formatCreatedAt,
   isReelId,
   reelName,
@@ -43,6 +45,8 @@ describe("formatBytes", () => {
     expect(formatBytes(512)).toBe("512 B");
     expect(formatBytes(1536)).toBe("1.5 KB");
     expect(formatBytes(5 * 1024 * 1024 * 1024)).toBe("5.0 GB");
+    // The reels grid's example.
+    expect(formatBytes(65_221_017)).toBe("62.2 MB");
   });
 });
 
@@ -50,6 +54,7 @@ describe("columns", () => {
   it("never selects every column", () => {
     expect(REEL_COLUMNS).not.toContain("*");
     expect(REEL_DETAIL_COLUMNS).not.toContain("*");
+    expect(REEL_GRID_COLUMNS).not.toContain("*");
   });
 });
 
@@ -70,5 +75,38 @@ describe("REEL_STATUSES", () => {
       "failed",
       "refused",
     ]);
+  });
+});
+
+describe("formatAge", () => {
+  const NOW = Date.parse("2026-11-02T12:00:00Z");
+  const ago = (ms: number) => new Date(NOW - ms).toISOString();
+  const S = 1000;
+  const M = 60 * S;
+  const H = 60 * M;
+  const D = 24 * H;
+
+  it("reads under a minute, or the future, as now", () => {
+    expect(formatAge(ago(0), NOW)).toBe("now");
+    expect(formatAge(ago(59 * S), NOW)).toBe("now");
+    expect(formatAge(ago(-5 * M), NOW)).toBe("now");
+    expect(formatAge("not a date", NOW)).toBe("now");
+  });
+
+  it("uses one unit at each boundary", () => {
+    expect(formatAge(ago(M), NOW)).toBe("1m");
+    expect(formatAge(ago(59 * M + 59 * S), NOW)).toBe("59m");
+    expect(formatAge(ago(H), NOW)).toBe("1h");
+    expect(formatAge(ago(23 * H + 59 * M), NOW)).toBe("23h");
+    expect(formatAge(ago(D), NOW)).toBe("1d");
+    expect(formatAge(ago(6 * D + 23 * H), NOW)).toBe("6d");
+    expect(formatAge(ago(7 * D), NOW)).toBe("1w");
+    expect(formatAge(ago(8 * D), NOW)).toBe("1w");
+    expect(formatAge(ago(14 * D), NOW)).toBe("2w");
+    expect(formatAge(ago(29 * D), NOW)).toBe("4w");
+    expect(formatAge(ago(30 * D), NOW)).toBe("1mo");
+    expect(formatAge(ago(364 * D), NOW)).toBe("12mo");
+    expect(formatAge(ago(365 * D), NOW)).toBe("1y");
+    expect(formatAge(ago(800 * D), NOW)).toBe("2y");
   });
 });

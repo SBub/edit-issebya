@@ -11,13 +11,21 @@ interface Props {
   reelId: string;
   versions: readonly VersionListRow[];
   currentVersionId: string | null;
+  // The version the preview shows (Undo and Redo move it); marked in the list.
+  selectedVersionId?: string | null;
   // Null when going back is open; otherwise why not, in one line.
   blockedReason: string | null;
 }
 
 // Every version of the reel, newest first. Going back queues a `restore`
 // job: a new version copying the old one, so going back can be undone too.
-export function VersionList({ reelId, versions, currentVersionId, blockedReason }: Props) {
+export function VersionList({
+  reelId,
+  versions,
+  currentVersionId,
+  selectedVersionId = null,
+  blockedReason,
+}: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -46,31 +54,38 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason 
 
   return (
     <section aria-labelledby="versions-heading" className="flex flex-col gap-2">
-      <h2 id="versions-heading" className="text-lg font-semibold">
+      <h2 id="versions-heading" className="text-sm font-semibold">
         Versions
       </h2>
       {newestFirst.length === 0 ? (
-        <p className="text-sm text-stone-600">No version yet.</p>
+        <p className="text-sm text-muted">No version yet.</p>
       ) : (
-        <ol className="divide-y divide-stone-200 rounded-md border border-stone-200 bg-white text-sm">
+        <ol className="divide-y divide-line rounded-md border border-line bg-panel text-sm">
           {newestFirst.map((version) => {
             const current = version.id === currentVersionId;
+            const selected = version.id === selectedVersionId;
             return (
               <li
                 key={version.id}
                 data-testid="version-item"
                 data-version-number={version.number}
                 data-current={current ? "true" : undefined}
-                className="flex flex-col gap-1 px-4 py-3"
+                data-selected={selected ? "true" : undefined}
+                className={`flex flex-col gap-1 px-3 py-2 ${selected ? "bg-raised" : ""}`}
               >
                 <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span className="font-medium">v{version.number}</span>
                   {current && (
-                    <span data-testid="version-current" className="text-xs text-green-700">
+                    <span data-testid="version-current" className="text-xs text-accent">
                       current
                     </span>
                   )}
-                  <time dateTime={version.created_at} className="text-stone-600">
+                  {selected && !current && (
+                    <span data-testid="version-showing" className="text-xs text-warn">
+                      showing
+                    </span>
+                  )}
+                  <time dateTime={version.created_at} className="text-muted">
                     {formatCreatedAt(version.created_at)}
                   </time>
                 </span>
@@ -78,7 +93,7 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason 
                   {versionOrigin(version, byId)}
                 </span>
                 {version.change_summary && (
-                  <span data-testid="version-summary" className="break-words text-stone-600">
+                  <span data-testid="version-summary" className="break-words text-muted">
                     {version.change_summary}
                   </span>
                 )}
@@ -88,7 +103,7 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason 
                     onClick={() => void goBack(version.id)}
                     disabled={busy || blockedReason !== null}
                     aria-describedby="versions-status"
-                    className="self-start rounded-md border border-stone-300 px-3 py-1 text-sm disabled:opacity-60"
+                    className="self-start rounded-full border border-line px-3 py-1 text-xs hover:bg-raised disabled:opacity-50"
                   >
                     Go back to this
                   </button>
@@ -98,7 +113,7 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason 
           })}
         </ol>
       )}
-      <p id="versions-status" aria-live="polite" className="min-h-6 text-sm text-stone-600">
+      <p id="versions-status" aria-live="polite" className="text-xs text-muted">
         {message || blockedReason || ""}
       </p>
     </section>

@@ -4,6 +4,14 @@ export const REEL_COLUMNS = "id, status, source_name, created_at";
 export const REEL_DETAIL_COLUMNS =
   "id, status, source_name, source_bytes, created_at, updated_at, current_version_id, preview_copies, footage_seconds, refusal_message";
 
+// The reels grid: the summary plus the size, the preview copies and the
+// current version's key, from which the server derives (and signs) the
+// thumbnail's key. The embed names the FK constraint, since versions.reel_id is
+// a second relation between the two tables and the composite
+// (current_version_id, id) key cannot be named by its column. Server only: the key never reaches
+// a client component.
+export const REEL_GRID_COLUMNS = `${REEL_COLUMNS}, source_bytes, current_version_id, preview_copies, current_version:versions!reels_current_version_fkey(r2_key)`;
+
 export const REEL_STATUSES = [
   "uploading",
   "uploaded",
@@ -26,6 +34,13 @@ export interface ReelSummary {
   status: ReelStatus;
   source_name: string | null;
   created_at: string;
+}
+
+export interface ReelGridRow extends ReelSummary {
+  source_bytes: number | null;
+  current_version_id: string | null;
+  preview_copies: unknown;
+  current_version: { r2_key: string } | null;
 }
 
 export interface ReelDetail extends ReelSummary {
@@ -74,4 +89,23 @@ export function formatBytes(bytes: number | null): string {
     unit += 1;
   }
   return `${value.toFixed(1)} ${units[unit]}`;
+}
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+// How old a reel is, in one short unit: `now` under a minute, then `5m`,
+// `3h`, `2d`, `1w` (7 to 29 days, whole weeks), `3mo` (30 to 364 days,
+// 30-day months) and `1y`. A date in the future reads as `now`.
+export function formatAge(createdIso: string, now: number): string {
+  const age = now - Date.parse(createdIso);
+  if (!Number.isFinite(age) || age < MINUTE) return "now";
+  if (age < HOUR) return `${Math.floor(age / MINUTE)}m`;
+  if (age < DAY) return `${Math.floor(age / HOUR)}h`;
+  const days = Math.floor(age / DAY);
+  if (days < 7) return `${days}d`;
+  if (days < 30) return `${Math.floor(days / 7)}w`;
+  if (days < 365) return `${Math.floor(days / 30)}mo`;
+  return `${Math.floor(days / 365)}y`;
 }

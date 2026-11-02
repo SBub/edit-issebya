@@ -102,6 +102,8 @@ describe("PIPELINE", () => {
       "retime/envelope.json": "kept",
       "head_track/head-track.json": "kept",
       "preview_copies/footage-preview.mp4": "kept",
+      "preview_copies/thumbnail.jpg": "kept",
+      "preview_copies/frames.jpg": "kept",
     });
     for (const tag of Object.values(tags)) expect(["kept", "rebuildable"]).toContain(tag);
   });

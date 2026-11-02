@@ -40,6 +40,7 @@ function contentType(file: string): string {
   if (file.endsWith(".mp4")) return "video/mp4";
   if (file.endsWith(".webm")) return "video/webm";
   if (file.endsWith(".json")) return "application/json";
+  if (file.endsWith(".jpg")) return "image/jpeg";
   return "application/octet-stream";
 }
 

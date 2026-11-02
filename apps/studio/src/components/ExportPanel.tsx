@@ -89,49 +89,52 @@ export function ExportPanel({ reel, jobs, latestExportId }: Props) {
     result?.status === "expired" || (result?.status === "ready" && expiredId === result.exportId);
 
   return (
-    <section aria-labelledby="export-heading" className="flex flex-col gap-2">
-      <h2 id="export-heading" className="text-lg font-semibold">
+    <section
+      aria-labelledby="export-heading"
+      className="flex min-w-0 flex-col items-end gap-0.5 text-right"
+    >
+      <h2 id="export-heading" className="sr-only">
         Export
       </h2>
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+        <p
+          id="export-reason"
+          data-testid="export-blocked-reason"
+          className="max-w-[9rem] text-xs text-muted sm:max-w-[18rem]"
+        >
+          {blockedReason ?? ""}
+        </p>
         <button
           type="button"
           data-testid="export-button"
           onClick={exportNow}
           disabled={disabled}
           aria-describedby="export-reason"
-          className="rounded-md bg-stone-900 px-4 py-2 text-base font-medium text-white disabled:opacity-60"
+          className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-surface disabled:opacity-50"
         >
           Export
         </button>
-        <p
-          id="export-reason"
-          data-testid="export-blocked-reason"
-          className="text-sm text-stone-600"
-        >
-          {blockedReason ?? ""}
-        </p>
       </div>
-      <p aria-live="polite" className="min-h-6 text-sm break-words">
+      <p aria-live="polite" className="text-xs break-words empty:hidden">
         {message}
       </p>
       {expired ? (
-        <p data-testid="export-expired" className="text-sm text-stone-600">
+        <p data-testid="export-expired" className="text-xs text-muted">
           expired, export again
         </p>
       ) : (
         result?.status === "ready" && (
-          <p className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+          <p className="flex flex-wrap justify-end gap-x-2 text-xs">
             <a
               data-testid="export-link"
               href={result.url}
               download={result.fileName}
               onClick={() => capture("studio_export_downloaded", { reel_id: reelId })}
-              className="font-medium underline"
+              className="font-medium text-accent underline"
             >
               Download version {result.versionNumber} ({formatBytes(result.bytes)})
             </a>
-            <span className="text-stone-600">
+            <span className="text-muted">
               expires <time dateTime={result.expiresAt}>{formatCreatedAt(result.expiresAt)}</time>
             </span>
           </p>

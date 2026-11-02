@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { LiveReel } from "@/components/LiveReel";
 import { NotConfigured } from "@/components/NotConfigured";
@@ -6,7 +5,7 @@ import { StudioIdentify } from "@/components/StudioIdentify";
 import { JOB_COLUMNS, type JobRow, STEP_COLUMNS, type StepRow } from "@/lib/jobs";
 import { ESTIMATE_LAST_ROWS, type HistoryRow, PROGRESS_STEPS, historyRates } from "@/lib/progress";
 import type { ReelDetail } from "@/lib/reels";
-import { REEL_DETAIL_COLUMNS, isReelId, reelName } from "@/lib/reels";
+import { REEL_DETAIL_COLUMNS, isReelId } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
 import { WORKER_STATUS_COLUMNS, type WorkerStatusRow } from "@/lib/worker-status";
@@ -20,7 +19,13 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
   if (!isReelId(id)) notFound();
 
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return <NotConfigured />;
+  if (!supabase) {
+    return (
+      <main className="mx-auto max-w-md px-4 py-10">
+        <NotConfigured />
+      </main>
+    );
+  }
 
   const {
     data: { user },
@@ -95,13 +100,10 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
     estimateRates[name] = historyRates(result.data ?? []);
   }
 
+  // LiveReel owns the whole screen, header (back link, name, Export) included.
   return (
-    <article className="flex flex-col gap-4">
+    <>
       <StudioIdentify userId={user.id} />
-      <Link href="/" className="text-sm text-stone-600 underline">
-        Back to your reels
-      </Link>
-      <h1 className="text-2xl font-semibold break-all">{reelName(reel)}</h1>
       <LiveReel
         reel={reel}
         jobs={jobs.data ?? []}
@@ -111,6 +113,6 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
         workerStatus={workerStatus.data ?? []}
         estimateRates={estimateRates}
       />
-    </article>
+    </>
   );
 }

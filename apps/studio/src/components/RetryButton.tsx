@@ -51,11 +51,11 @@ export function RetryButton({ reelId, jobId }: Props) {
         data-testid="job-retry"
         onClick={() => void retry()}
         disabled={busy || queued}
-        className="rounded-md bg-stone-900 px-3 py-1 text-sm font-medium text-white disabled:opacity-60"
+        className="rounded-md bg-accent px-3 py-1 text-sm font-medium text-surface disabled:opacity-60"
       >
         Retry
       </button>
-      <span aria-live="polite" data-testid="job-retry-message" className="text-sm text-stone-700">
+      <span aria-live="polite" data-testid="job-retry-message" className="text-sm text-muted">
         {message}
       </span>
     </span>
