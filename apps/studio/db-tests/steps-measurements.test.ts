@@ -33,6 +33,8 @@ const STEP_COLUMNS = [
   ["ai_cost_usd", "numeric"],
   ["ai_model", "text"],
   ["cache_hit", "boolean"],
+  ["progress_percent", "smallint"],
+  ["progress_updated_at", "timestamp with time zone"],
 ];
 
 describe("steps columns", () => {

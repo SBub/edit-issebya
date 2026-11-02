@@ -1,5 +1,7 @@
 import { rename } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseRemoveBackgroundProgress } from "../progress-parsers.ts";
 import type { PipelineStep } from "./definition.ts";
 import { HYPERFRAMES_VERSION, hyperframesEnv } from "./tools.ts";
 
@@ -22,26 +24,26 @@ const OUTPUT = "subject.webm";
 // ends in `.webm` too; renamed once it exited 0.
 const PARTIAL = "subject.part.webm";
 
-// HyperFrames' arguments (after its entry file).
+// The worker's own entry around HyperFrames' `removeBackground` (it prints
+// the frame progress the pinned CLI keeps to itself unattended), run by the
+// same Node as HyperFrames' CLI.
+export const REMOVE_BACKGROUND_ENTRY = fileURLToPath(
+  new URL("./remove-background-entry.ts", import.meta.url),
+);
+
+// The entry's arguments: the CLI's `remove-background` options, the same
+// values, without the command name and `--json` (the entry always ends with
+// the JSON result).
 export function removeBackgroundArgs(
   input: string,
   output: string,
   settings: RemoveBackgroundSettings,
 ): string[] {
-  return [
-    "remove-background",
-    input,
-    "-o",
-    output,
-    "--device",
-    settings.device,
-    "--quality",
-    settings.quality,
-    "--json",
-  ];
+  return [input, "-o", output, "--device", settings.device, "--quality", settings.quality];
 }
 
-// The last non-empty stdout line is HyperFrames' JSON result.
+// The last non-empty stdout line is the JSON result (the CLI's `--json`
+// document, printed by the entry).
 export function parseRemoveBackgroundResult(stdout: string): {
   framesProcessed: number;
   provider: string;
@@ -83,12 +85,16 @@ export const removeBackground: PipelineStep<RemoveBackgroundSettings> = {
     },
   ],
   async run({ tool, tools, dir, files, settings }) {
-    const [node, entry] = tools.hyperframes;
+    const [node] = tools.hyperframes;
     const partial = join(dir, PARTIAL);
     const stdout = await tool({
       file: node,
-      args: [entry, ...removeBackgroundArgs(files["source.mp4"]!, partial, settings)],
+      args: [
+        REMOVE_BACKGROUND_ENTRY,
+        ...removeBackgroundArgs(files["source.mp4"]!, partial, settings),
+      ],
       env: hyperframesEnv(),
+      progress: parseRemoveBackgroundProgress,
     });
     parseRemoveBackgroundResult(stdout);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder

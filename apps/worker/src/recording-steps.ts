@@ -11,6 +11,8 @@ export type StepCall =
   | { call: "skipped"; jobId: string; name: string; summary: string; wallMs: number }
   | { call: "reelStatus"; reelId: string; status: PipelineReelStatus }
   | { call: "done"; stepId: string; summary: string; measurements: StepMeasurements }
+  | { call: "progress"; stepId: string; percent: number }
+  | { call: "recordFootageSeconds"; reelId: string; seconds: number }
   | {
       call: "failed";
       stepId: string;
@@ -19,9 +21,13 @@ export type StepCall =
       measurements: StepMeasurements;
     };
 
-export function recordingSteps(sourceKey: string | null = null) {
+export function recordingSteps(
+  sourceKey: string | null = null,
+  { footageSeconds = null }: { footageSeconds?: number | null } = {},
+) {
   const calls: StepCall[] = [];
   let next = 0;
+  let footage = footageSeconds;
   const steps: StepStore = {
     async start(job, name) {
       calls.push({ call: "start", jobId: job.id, name });
@@ -39,6 +45,16 @@ export function recordingSteps(sourceKey: string | null = null) {
     },
     async done(stepId, summary, measurements) {
       calls.push({ call: "done", stepId, summary, measurements });
+    },
+    async progress(stepId, percent) {
+      calls.push({ call: "progress", stepId, percent });
+    },
+    async footageSeconds() {
+      return footage;
+    },
+    async recordFootageSeconds(reelId, seconds) {
+      calls.push({ call: "recordFootageSeconds", reelId, seconds });
+      footage ??= seconds;
     },
     async failed(stepId, tail, summary, measurements) {
       calls.push({ call: "failed", stepId, tail, summary, measurements });

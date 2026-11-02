@@ -1,4 +1,4 @@
-import { access, mkdir, rm } from "node:fs/promises";
+import { access, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Storage } from "@edit-issebya/storage";
 import { type SpawnTool, type StepContext, recordHit, runToolsStep } from "../step-runner.ts";
@@ -78,6 +78,30 @@ export async function runPipeline({
   // Storage keys already on disk in this job: earlier outputs and downloads.
   const local = new Map<string, string>();
 
+  // After a step naming the footage length (retime), while the reel has none:
+  // read from the step's own output when it ran, else from the kept file,
+  // downloaded. Before the long steps, so the studio has it while they run.
+  const recordFootage = async (step: PipelineStep, fingerprint: string) => {
+    if (!step.footage) return;
+    if ((await steps.footageSeconds(job.reel_id)) !== null) return;
+    const ref = { step: step.name, fingerprint, file: step.footage.file };
+    const key = keyOf(ref);
+    let path = local.get(key);
+    if (!path) {
+      path = downloadPath(ref);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
+      await mkdir(dirname(path), { recursive: true });
+      if (!(await storage.getFile(key, path, { signal }))) {
+        throw new Error(`${step.name}: footage length missing: ${key}`);
+      }
+      local.set(key, path);
+    }
+    signal.throwIfAborted();
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
+    const seconds = step.footage.seconds(await readFile(path, "utf8"));
+    await steps.recordFootageSeconds(job.reel_id, seconds);
+  };
+
   await rm(jobDir, { recursive: true, force: true });
   try {
     for (const step of pipeline) {
@@ -101,6 +125,7 @@ export async function runPipeline({
           summary: `${step.reusedWhat}, reused`,
           wallMs: elapsedMs(started),
         });
+        await recordFootage(step, fingerprint);
         continue;
       }
 
@@ -158,6 +183,7 @@ export async function runPipeline({
         },
         spawnTool,
       );
+      await recordFootage(step, fingerprint);
     }
   } finally {
     await rm(jobDir, { recursive: true, force: true });

@@ -25,6 +25,16 @@ function json(value: unknown): string {
   return `${JSON.stringify(value, null, 1)}\n`;
 }
 
+// The retimed length from `retime.json`: what background removal and the
+// render work on.
+function retimedSeconds(text: string): number {
+  const { durationSeconds } = JSON.parse(text) as { durationSeconds?: unknown };
+  if (typeof durationSeconds !== "number" || !(durationSeconds > 0)) {
+    throw new Error(`retime.json has no positive durationSeconds: ${String(durationSeconds)}`);
+  }
+  return durationSeconds;
+}
+
 // Probe, envelope, plan, one encode; then the retimed transcript (same ids),
 // the plan and the envelope beside the footage.
 export const retime: PipelineStep<RetimeSettings> = {
@@ -34,6 +44,7 @@ export const retime: PipelineStep<RetimeSettings> = {
   reelStatus: "retiming",
   outputs: OUTPUTS,
   reusedWhat: "retimed",
+  footage: { file: "retime.json", seconds: retimedSeconds },
   inputs: (_source, fingerprints) => [
     {
       ref: { step: "convert", fingerprint: fingerprints.convert!, file: "converted.mp4" },

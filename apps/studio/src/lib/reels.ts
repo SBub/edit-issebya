@@ -2,7 +2,7 @@
 // never reaches the page by accident.
 export const REEL_COLUMNS = "id, status, source_name, created_at";
 export const REEL_DETAIL_COLUMNS =
-  "id, status, source_name, source_bytes, created_at, updated_at, current_version_id, preview_copies";
+  "id, status, source_name, source_bytes, created_at, updated_at, current_version_id, preview_copies, footage_seconds";
 
 export const REEL_STATUSES = [
   "uploading",
@@ -32,6 +32,9 @@ export interface ReelDetail extends ReelSummary {
   current_version_id: string | null;
   // Where the preview copies are (worker-written; see lib/preview-sources).
   preview_copies: unknown;
+  // The retimed footage's length (numeric, a string from PostgREST), the
+  // divisor of the time-left estimate; null until the worker's retime.
+  footage_seconds: number | string | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

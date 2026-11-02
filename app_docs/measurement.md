@@ -150,5 +150,5 @@ client, identifies the signed-in user and sends `studio_*` events.
 - The trace's root is virtual; PostHog groups by trace id, so a reel opens as one timeline.
 - `app_docs/studio.md` (Worker, Live status) and `app_docs/analytics.md` (landing rules unchanged) are the
   neighbouring features this change touches.
-- Out of scope: the data warehouse source and dashboard, progress and time left, AI token and cost
-  values, any real video step.
+- Out of scope: the data warehouse source and dashboard, AI token and cost values, any real video
+  step. Step progress and time left are in `app_docs/status.md`.

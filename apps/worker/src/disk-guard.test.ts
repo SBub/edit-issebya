@@ -1,10 +1,12 @@
 import { tmpdir } from "node:os";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 import {
   type WorkerStatusStore,
   freeBytesFn,
   guardedClaim,
   statfsFreeBytes,
+  supabaseWorkerStatus,
   waitingReason,
 } from "./disk-guard.ts";
 
@@ -16,9 +18,41 @@ function memoryStatus() {
     async set(row) {
       rows.push(row);
     },
+    async heartbeat() {
+      throw new Error("the guard never beats");
+    },
   };
   return { rows, status };
 }
+
+describe("supabaseWorkerStatus heartbeat", () => {
+  it("upserts the heartbeat and free space, never the waiting reason", async () => {
+    const upserts: { table: string; row: Record<string, unknown>; options: unknown }[] = [];
+    const db = {
+      from: (table: string) => ({
+        async upsert(row: Record<string, unknown>, options: unknown) {
+          upserts.push({ table, row, options });
+          return { error: null };
+        },
+      }),
+    } as unknown as SupabaseClient;
+    const before = Date.now();
+    await supabaseWorkerStatus(db, "w1").heartbeat({ freeDiskBytes: 42 });
+    expect(upserts).toHaveLength(1);
+    const { table, row, options } = upserts[0]!;
+    expect(table).toBe("worker_status");
+    expect(options).toEqual({ onConflict: "worker_id" });
+    expect(Object.keys(row).sort()).toEqual([
+      "free_disk_bytes",
+      "heartbeat_at",
+      "updated_at",
+      "worker_id",
+    ]);
+    expect(row).toMatchObject({ worker_id: "w1", free_disk_bytes: 42 });
+    expect(Date.parse(row.heartbeat_at as string)).toBeGreaterThanOrEqual(before - 1000);
+    expect(row.updated_at).toBe(row.heartbeat_at);
+  });
+});
 
 async function attempt(freeGb: number) {
   const { rows, status } = memoryStatus();

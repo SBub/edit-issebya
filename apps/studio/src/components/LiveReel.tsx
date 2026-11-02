@@ -12,10 +12,19 @@ import {
 } from "@/lib/jobs";
 import { ChangeRequestForm } from "@/components/ChangeRequestForm";
 import { ExportPanel } from "@/components/ExportPanel";
+import { NotifyToggle } from "@/components/NotifyToggle";
 import { ReelPreview } from "@/components/ReelPreview";
 import { VersionList } from "@/components/VersionList";
+import { useReadyNotice } from "@/components/useReadyNotice";
 import { changeBlockedReason, jobRequestLabel } from "@/lib/change-requests";
-import { REEL_DETAIL_COLUMNS, type ReelDetail, formatBytes, formatCreatedAt } from "@/lib/reels";
+import { formatTimeLeft, isProgressStep, timeLeftSeconds } from "@/lib/progress";
+import {
+  REEL_DETAIL_COLUMNS,
+  type ReelDetail,
+  formatBytes,
+  formatCreatedAt,
+  reelName,
+} from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
 import {
@@ -24,6 +33,7 @@ import {
   upsertWorkerStatus,
   waitingReasonOf,
 } from "@/lib/worker-status";
+import { formatOfflineSince, offlineAt, offlineSince } from "@/lib/worker-offline";
 
 interface Snapshot {
   reel: ReelDetail;
@@ -32,8 +42,41 @@ interface Snapshot {
   versions: VersionListRow[];
   // The newest export's id (the panel reads and signs it itself).
   latestExportId: string | null;
-  // Workers' rows with a reason they are not claiming (free disk).
+  // Every worker's row: why it is not claiming (free disk) and its heartbeat.
   workerStatus: WorkerStatusRow[];
+}
+
+interface LiveReelProps extends Snapshot {
+  // Per long step, the owner's earlier done rows as ms per footage second,
+  // newest first: read once per page open, the time-left estimate's history.
+  estimateRates: Record<string, number[]>;
+}
+
+// The running long step's percentage and time left, a pure function of its
+// row: elapsed is measured to the progress write, so it changes with each
+// Realtime update and needs no ticking timer.
+function StepProgress({
+  step,
+  rates,
+  footageSeconds,
+}: {
+  step: StepRow;
+  rates: number[] | undefined;
+  footageSeconds: ReelDetail["footage_seconds"];
+}) {
+  if (step.status !== "running" || !isProgressStep(step.name)) return null;
+  if (step.progress_percent === null || step.progress_percent === undefined) return null;
+  const elapsedMs = step.progress_updated_at
+    ? Date.parse(step.progress_updated_at) - Date.parse(step.started_at)
+    : 0;
+  return (
+    <span className="flex flex-wrap gap-3 text-stone-700">
+      <span data-testid="step-progress">{step.progress_percent}%</span>
+      <span data-testid="step-time-left" className="text-stone-600">
+        {formatTimeLeft(timeLeftSeconds({ rates, footageSeconds, elapsedMs }))}
+      </span>
+    </span>
+  );
 }
 
 async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snapshot | null> {
@@ -64,11 +107,7 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle<{ id: string }>(),
-    supabase
-      .from("worker_status")
-      .select(WORKER_STATUS_COLUMNS)
-      .not("waiting_reason", "is", null)
-      .returns<WorkerStatusRow[]>(),
+    supabase.from("worker_status").select(WORKER_STATUS_COLUMNS).returns<WorkerStatusRow[]>(),
   ]);
   if (
     reel.error ||
@@ -92,7 +131,10 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
 }
 
 // The reel's preview, export, change box, versions, status, jobs (a queued
-// one with the reason no worker is claiming, if any) and step log. Read once on the server, then followed
+// one with the reason no worker is claiming, if any, and since when the
+// worker is offline) and step log (a running long step with its percentage
+// and time left). When the reel becomes ready with the tab hidden, the title
+// and, if turned on, a notification say so. Read once on the server, then followed
 // through Realtime filtered to this reel (RLS decides what arrives). One
 // catch-up read each time the subscription becomes ready covers changes made
 // between the server read and the subscription. No interval, no polling.
@@ -103,7 +145,8 @@ export function LiveReel({
   versions: initialVersions,
   latestExportId: initialLatestExportId,
   workerStatus: initialWorkerStatus,
-}: Snapshot) {
+  estimateRates,
+}: LiveReelProps) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
   const [steps, setSteps] = useState(initialSteps);
@@ -111,7 +154,26 @@ export function LiveReel({
   const [latestExportId, setLatestExportId] = useState(initialLatestExportId);
   const [workerStatus, setWorkerStatus] = useState(initialWorkerStatus);
   const [ready, setReady] = useState(false);
+  // The clock the offline line reads: set after mount (never on the server,
+  // whose time and time zone are not the owner's), then once more at the
+  // moment the newest heartbeat turns eleven minutes old. One timeout, no
+  // interval, no database read.
+  const [now, setNow] = useState<number | null>(null);
   const id = initialReel.id;
+  const offlineMoment = offlineAt(workerStatus)?.getTime() ?? null;
+
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const first = setTimeout(tick, 0);
+    const delay = offlineMoment === null ? null : offlineMoment - Date.now();
+    const later = delay !== null && delay > 0 ? setTimeout(tick, delay) : undefined;
+    return () => {
+      clearTimeout(first);
+      clearTimeout(later);
+    };
+  }, [offlineMoment]);
+
+  useReadyNotice({ status: reel.status, latestExportId, reelName: reelName(reel) });
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
@@ -207,6 +269,7 @@ export function LiveReel({
   const blockedReason = changeBlockedReason(reel, jobs);
   const versionsById = new Map(versions.map((version) => [version.id, version]));
   const waitingReason = waitingReasonOf(workerStatus);
+  const offline = now === null ? null : offlineSince(workerStatus, new Date(now));
 
   return (
     <div data-realtime={ready ? "ready" : "pending"} className="flex flex-col gap-6">
@@ -230,6 +293,7 @@ export function LiveReel({
           <time dateTime={reel.created_at}>{formatCreatedAt(reel.created_at)}</time>
         </dd>
       </dl>
+      <NotifyToggle />
       <section aria-labelledby="jobs-heading" className="flex flex-col gap-2">
         <h2 id="jobs-heading" className="text-lg font-semibold">
           Jobs
@@ -255,6 +319,11 @@ export function LiveReel({
                   {job.status === "queued" && waitingReason && (
                     <span data-testid="job-waiting" className="text-amber-800">
                       {waitingReason}
+                    </span>
+                  )}
+                  {job.status === "queued" && offline && (
+                    <span data-testid="job-offline" className="text-amber-800">
+                      {formatOfflineSince(offline)}
                     </span>
                   )}
                   {label && (
@@ -287,6 +356,11 @@ export function LiveReel({
                 <span data-testid="step-line" className="break-words">
                   {step.name}: {step.summary ?? step.status}
                 </span>
+                <StepProgress
+                  step={step}
+                  rates={estimateRates[step.name]}
+                  footageSeconds={reel.footage_seconds}
+                />
                 {step.status === "failed" && step.error_tail && (
                   <details data-testid="step-error-tail" className="text-xs">
                     <summary className="cursor-pointer text-stone-600">Show error</summary>

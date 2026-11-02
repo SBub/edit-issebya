@@ -6,12 +6,21 @@ import {
   waitingReasonOf,
 } from "./worker-status";
 
-const row = (worker_id: string, waiting_reason: string | null, updated_at: string) =>
-  ({ worker_id, waiting_reason, updated_at }) satisfies WorkerStatusRow;
+const row = (
+  worker_id: string,
+  waiting_reason: string | null,
+  updated_at: string,
+): WorkerStatusRow => ({ worker_id, waiting_reason, heartbeat_at: null, updated_at });
 
 describe("WORKER_STATUS_COLUMNS", () => {
-  it("names its columns", () => {
+  it("names its columns, the heartbeat among them", () => {
     expect(WORKER_STATUS_COLUMNS).not.toContain("*");
+    expect(WORKER_STATUS_COLUMNS.split(", ")).toEqual([
+      "worker_id",
+      "waiting_reason",
+      "heartbeat_at",
+      "updated_at",
+    ]);
   });
 });
 

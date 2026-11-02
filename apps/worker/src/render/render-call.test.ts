@@ -1,7 +1,13 @@
 import { existsSync } from "node:fs";
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ToolPaths } from "../pipeline/tools.ts";
+import { parseRenderProgress } from "../progress-parsers.ts";
+import { spawnChild } from "../step-runner.ts";
 import {
+  FAKE_RENDER,
   RENDER_SETTINGS,
   STUB_EXPORT,
   renderArgs,
@@ -57,26 +63,30 @@ describe("renderArgs", () => {
 });
 
 describe("renderEnv", () => {
-  it("turns telemetry off and drops every PRODUCER_ variable", () => {
+  it("turns telemetry off and drops every PRODUCER_ variable and the TTY flag", () => {
     const env = renderEnv({
       PATH: "/bin",
       PRODUCER_AUDIO_GAIN: "0.5",
       PRODUCER_OTHER: "x",
       HYPERFRAMES_NO_TELEMETRY: "0",
+      // Set to 1 it would silence the @hf-progress lines.
+      HYPERFRAMES_STDOUT_IS_TTY: "1",
     });
     expect(env).toEqual({ PATH: "/bin", HYPERFRAMES_NO_TELEMETRY: "1" });
   });
 });
 
 describe("renderCall", () => {
-  it("runs the installed HyperFrames with group memory sampling", () => {
+  it("runs the installed HyperFrames with group memory sampling and its progress", () => {
     const call = renderCall({
       tools: TOOLS,
       dir: "/s",
       projectDir: "/p",
       output: "/o.mp4",
-      env: { PRODUCER_AUDIO_GAIN: "2" },
+      env: { PRODUCER_AUDIO_GAIN: "2", HYPERFRAMES_STDOUT_IS_TTY: "1" },
     });
+    expect(call.progress).toBe(parseRenderProgress);
+    expect(call.env).not.toHaveProperty("HYPERFRAMES_STDOUT_IS_TTY");
     expect(call.file).toBe("/usr/bin/node");
     expect(call.args).toEqual([
       "/hf/bin/hyperframes.mjs",
@@ -122,20 +132,59 @@ describe("renderCall", () => {
         env: { E2E_MOCK_RENDER: flag },
       });
       expect(call.file).toBe("/usr/bin/node");
+      expect(call.args[0]).toBe("/hf/bin/hyperframes.mjs");
     }
     const fake = renderCall({
       tools: TOOLS,
       dir: "/s",
       projectDir: "/p",
       output: "/o.mp4",
-      env: { E2E_MOCK_RENDER: "true" },
+      env: { E2E_MOCK_RENDER: "true", E2E_MOCK_RENDER_SECONDS: "25" },
     });
     expect(fake).toEqual({
-      file: "/bin/cp",
-      args: [STUB_EXPORT, "/o.mp4"],
+      file: process.execPath,
+      args: [FAKE_RENDER, STUB_EXPORT, "/o.mp4"],
+      env: { E2E_MOCK_RENDER: "true", E2E_MOCK_RENDER_SECONDS: "25" },
       sampleGroupMemory: true,
+      progress: parseRenderProgress,
     });
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the double's own file
+    expect(existsSync(FAKE_RENDER)).toBe(true);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed stub
     expect(existsSync(STUB_EXPORT)).toBe(true);
+  });
+});
+
+describe("the render double's process", () => {
+  it("prints the sample's progress lines, then copies the stub", { timeout: 20_000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fake-render-"));
+    try {
+      const output = join(dir, "export.mp4");
+      const call = renderCall({
+        tools: TOOLS,
+        dir,
+        projectDir: join(dir, "project"),
+        output,
+        env: { ...process.env, E2E_MOCK_RENDER: "true", E2E_MOCK_RENDER_SECONDS: "0" },
+      });
+      const lines: string[] = [];
+      const run = await spawnChild(call, new AbortController().signal, (line) => lines.push(line));
+      expect(run.code).toBe(0);
+      const values = lines.map(parseRenderProgress).filter((value) => value !== null);
+      expect(values.length).toBeGreaterThan(1);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+      expect((await stat(output)).size).toBe((await stat(STUB_EXPORT)).size);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to run without E2E_MOCK_RENDER=true", { timeout: 20_000 }, async () => {
+    const run = await spawnChild(
+      { file: process.execPath, args: [FAKE_RENDER, STUB_EXPORT, "/nonexistent/out.mp4"] },
+      new AbortController().signal,
+      () => {},
+    );
+    expect(run.code).toBe(2);
   });
 });

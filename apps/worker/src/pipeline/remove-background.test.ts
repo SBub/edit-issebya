@@ -1,17 +1,21 @@
 import { describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
+import { parseRemoveBackgroundProgress } from "../progress-parsers.ts";
+import type { ToolCall } from "../step-runner.ts";
 import {
+  REMOVE_BACKGROUND_ENTRY,
   REMOVE_BACKGROUND_SETTINGS,
   parseRemoveBackgroundResult,
+  removeBackground,
   removeBackgroundArgs,
 } from "./remove-background.ts";
 import { HYPERFRAMES_VERSION } from "./tools.ts";
 
 describe(removeBackgroundArgs.name, () => {
-  it("runs remove-background on the input with device, quality and a JSON result", () => {
+  it("passes the entry the input, output, device and quality, as the CLI takes them", () => {
     expect(
       removeBackgroundArgs("/in/source.mp4", "/out/subject.part.webm", REMOVE_BACKGROUND_SETTINGS),
     ).toEqual([
-      "remove-background",
       "/in/source.mp4",
       "-o",
       "/out/subject.part.webm",
@@ -19,8 +23,33 @@ describe(removeBackgroundArgs.name, () => {
       "auto",
       "--quality",
       "balanced",
-      "--json",
     ]);
+  });
+
+  it("runs the worker's own entry with this Node and reads its progress", async () => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the worker's own entry file
+    expect(existsSync(REMOVE_BACKGROUND_ENTRY)).toBe(true);
+    const calls: ToolCall[] = [];
+    const ok = JSON.stringify({ ok: true, framesProcessed: 3, provider: "cpu" });
+    await expect(
+      removeBackground.run({
+        tool: async (call) => {
+          calls.push(call);
+          return `${ok}\n`;
+        },
+        tools: { ffmpeg: "ffmpeg", ffprobe: "ffprobe", hyperframes: ["/node", "/hf.mjs"] },
+        dir: "/nonexistent-scratch",
+        files: { "source.mp4": "/in/source.mp4" },
+        settings: REMOVE_BACKGROUND_SETTINGS,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow(/ENOENT/);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.file).toBe("/node");
+    expect(calls[0]!.args[0]).toBe(REMOVE_BACKGROUND_ENTRY);
+    expect(calls[0]!.args).not.toContain("/hf.mjs");
+    expect(calls[0]!.progress).toBe(parseRemoveBackgroundProgress);
+    expect(calls[0]!.env?.HYPERFRAMES_NO_TELEMETRY).toBe("1");
   });
 
   it("pins the HyperFrames version in the settings, so an upgrade re-runs the step", () => {

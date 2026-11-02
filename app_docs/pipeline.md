@@ -63,7 +63,11 @@ live status shows one line per step (`name: summary`).
   `framesProcessed`, else the step fails), then renames. Output `subject.webm`, the full-size cut-out
   (VP9 with alpha). Settings: `device`, `quality` and the HyperFrames version (the model,
   `u2net_human_seg`, is HyperFrames' default and is pinned by that version). Slowest step (about
-  seven minutes for a 50 s reel).
+  seven minutes for a 50 s reel). It runs HyperFrames through
+  `apps/worker/src/pipeline/remove-background-entry.ts` (HyperFrames' own Node, the package's
+  `removeBackground` with the CLI's options), so it can print per-frame progress
+  (`app_docs/status.md`) and still ends with the CLI's JSON result. Same arguments, settings and
+  HyperFrames version, so its fingerprint and cache hits are unchanged.
 - `apps/worker/src/pipeline/head-track.ts`: the pure tracker, `HEAD_TRACK_SETTINGS`, `headSample`,
   `withinBounds`, `headTrackWhat`; tested on synthetic frames without ffmpeg.
 - `apps/worker/src/pipeline/head-track-step.ts`: ffmpeg decodes `subject.webm` (`-c:v libvpx-vp9`

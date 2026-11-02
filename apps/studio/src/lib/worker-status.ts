@@ -1,9 +1,11 @@
 // Named columns, never `*`. The free disk stays on the worker's side.
-export const WORKER_STATUS_COLUMNS = "worker_id, waiting_reason, updated_at";
+export const WORKER_STATUS_COLUMNS = "worker_id, waiting_reason, heartbeat_at, updated_at";
 
 export interface WorkerStatusRow {
   worker_id: string;
   waiting_reason: string | null;
+  // The long-running worker's last beat; null for a worker that never beat.
+  heartbeat_at: string | null;
   updated_at: string;
 }
 

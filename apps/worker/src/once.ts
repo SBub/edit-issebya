@@ -1,6 +1,8 @@
 // Claims and runs at most one job, then exits: 0 when it ended `done` (or there
 // was none, or the disk guard kept it from claiming), 1 otherwise. No
-// subscription, no timer, no slimming. Specs spawn this.
+// subscription, no timer, no slimming. Specs spawn this. No heartbeat either:
+// it exits at once, and a beat from it would show a live worker for eleven
+// minutes that is not there.
 import { workerConfig } from "./config.ts";
 import { freeBytesFn, guardedClaim, supabaseWorkerStatus } from "./disk-guard.ts";
 import { processJob } from "./process-job.ts";
