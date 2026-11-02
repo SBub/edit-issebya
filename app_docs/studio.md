@@ -106,6 +106,19 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   `reels.current_version_id` points at the current one. Written only through `save_version`, which
   only `service_role` (the worker) may execute; details in `app_docs/edit-model.md`.
 
+### Table grants
+
+- The hosted project's default privileges for tables `postgres` creates in `public` give `anon`,
+  `authenticated` and `service_role` only `references`, `trigger`, `truncate` and `maintain`, and
+  nothing on sequences or functions. A table no migration grants anything is unreadable by every
+  API role there, the service role included.
+- `supabase/migrations/20261102121556_service_role_table_grants.sql`: `service_role` (the worker)
+  gets `select`, `insert`, `update`, `delete` on every public table, and the local stack's default
+  privileges are cut down to the hosted ones (and the trigger functions' leftover local `execute`
+  grants removed), so local grants after a reset equal hosted's. Before it the local defaults
+  granted all, and the worker failed on hosted with `permission denied for table jobs` while every
+  local test passed.
+
 ### Live status
 
 - `apps/studio/src/components/LiveReel.tsx`: renders status, jobs (`job-status`) and the step log
@@ -195,7 +208,10 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 - DB integration: `apps/studio/db-tests/` (`yarn test:db`): RLS on every public table, owner
   isolation, the upload path and `finish_upload`, `claim_job`'s lease (`jobs.test.ts`), `save_version`, version immutability and its RLS
   (`versions.test.ts`), `stored_files`, `worker_status`, the slimming, export expiry and
-  `finish_upload`'s source row (`stored-files.test.ts`), Realtime follows RLS for `reels` and `steps`. Needs the local stack (in ADW runs, the ADW stack through
+  `finish_upload`'s source row (`stored-files.test.ts`), Realtime follows RLS for `reels` and `steps`, and the grants
+  (`grants.test.ts`: `service_role`'s four data privileges on every public table, no `anon`
+  privilege on any, no table-wide write for `authenticated`, and default privileges as on hosted).
+  Needs the local stack (in ADW runs, the ADW stack through
   `SUPABASE_DB_URL` and the other hook variables); not in the pre-push hook.
 - E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload`, `multipart-upload`, `disk-guard` specs, chromium, through the
   landing address), run after the landing suite by `yarn test:e2e`. `upload.spec.ts` uploads the
@@ -234,6 +250,10 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 - Do not change `assetPrefix` on one side only: it must equal `STUDIO_ASSET_PREFIX`.
 - Do not return an absolute `Location` from the confirm route.
 - Never future-date or reuse a migration version; `migration-versions.test.ts` enforces it.
+- Never create a public table without explicit grants per role in the same migration: `service_role`
+  its `select`, `insert`, `update`, `delete`, `authenticated` only what its RLS policies need, and
+  `revoke all ... from anon` (hosted defaults give `anon` `truncate`). Never rely on default
+  privileges, and never widen the local defaults again: they must match hosted (`grants.test.ts`).
 
 ## Notes
 
