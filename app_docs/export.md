@@ -69,6 +69,11 @@ exportFileName(...) })`. The name is `reel-v<N>-<YYYYMMDD-HHMM>.mp4` in UTC and 
   worker's machine than the GPU mode with one, and runs without a graphics chip; `--sdr` because
   the platforms show SDR.
 
+  The render also sets `HYPERFRAMES_EXTRACT_CACHE_DIR`, `HYPERFRAMES_HISTORY_ROOT` and `TMPDIR`
+  inside the render's folder in the job scratch (`renderScratchEnv`), so removing the job folder
+  takes the frame cache, the history and the work folders with it (`app_docs/storage.md`). The
+  export write records its `export` row in `stored_files` through `recordingStorage`.
+
 - Sound comes only from the edit's sound track, inside the page. HyperFrames mixes at unity gain
   (no `PRODUCER_AUDIO_GAIN`); the worker tools test measures the voice within 0.5 LU of the source
   and each click within 20 ms of its place on the track.
@@ -99,8 +104,10 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
 - `E2E_MOCK_RENDER`: tests only. `apps/studio/test-support/worker.ts` sets it to `"true"` for every
   spec; the tools spec passes it empty to render for real.
 - `FFMPEG_PATH` is honoured by `apps/studio/test-support/frames.ts`.
-- The owner's R2 lifecycle rule deletes `<prefix>exports/` objects 1 day after creation. It is a
-  backstop: `expires_at` is what the owner sees.
+- The worker's slimming deletes an export's object once `expires_at` passes
+  (`expire_export_files`, see `app_docs/storage.md`). The owner's R2 lifecycle rule, which deletes
+  `<prefix>exports/` objects 1 day after creation, stays as a backstop: `expires_at` is what the
+  owner sees.
 
 ## Testing
 
@@ -152,8 +159,7 @@ The render step's `peak_rss_bytes` in the same run was 1583153152 (above 256 MB)
 
 ## Notes
 
-- Out of scope: render progress and time left, deleting rebuildable files and the disk guard,
-  cloud rendering.
+- Out of scope: render progress and time left, cloud rendering.
 - The pipeline does not verify a full-length render on the worker machine, the platforms'
   recompression or the R2 lifecycle rule.
 - The page loads GSAP from jsdelivr, so a real render needs network.

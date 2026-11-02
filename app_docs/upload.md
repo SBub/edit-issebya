@@ -73,6 +73,9 @@ signed-out caller gets `401`. Sign, list and abort need the reel still `uploadin
   no-op). The reel stays as `failed`, since `authenticated` has no delete on `reels`.
 - Both are `security definer`, executable by `authenticated` only. The size `finish_upload` records
   comes from storage (`head` after assembling), never from the browser.
+- `supabase/migrations/20261101233625_storage_records.sql` replaced `finish_upload`: in the same
+  transaction it also records the raw footage's `source` row in `stored_files` (step `upload`, the
+  size from storage), once; a repeated call records nothing more. See `app_docs/storage.md`.
 
 ### Resume
 

@@ -78,6 +78,9 @@ machine (`apps/worker`) and a reel page that follows the job live through Realti
   `queued | running | done | failed`, lease holder and expiry, attempts, error tail) and `steps`
   (name, status, summary, error tail), both with owner-only `select` RLS and in the
   `supabase_realtime` publication. Only the worker (secret key) writes job and step state.
+- `supabase/migrations/20261101233625_storage_records.sql`: tables `stored_files` (one row per
+  stored object and reel) and `worker_status` (why a worker is not claiming), see
+  `app_docs/storage.md`.
 - `supabase/migrations/20261101184843_change_restore_jobs.sql`: `jobs` then had three kinds,
   `process`, `change` (carries the owner's words in `request`, 1 to 1000 trimmed characters) and
   `restore` (names an earlier version of the same reel in `restore_version_id`). Owners insert jobs
@@ -119,8 +122,10 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   used by specs) and `doctor` (checks Supabase, R2, ffmpeg and one structured `claude -p` call).
   Each loads `.env.development` or `.env.production` from `apps/worker/` when present.
 - `apps/worker/src/main.ts`: wakes on Realtime `INSERT` into `jobs`, also checks every
-  `WORKER_POLL_INTERVAL_SECONDS` reading only job ids, skips claiming when free disk is below
-  `WORKER_MIN_FREE_DISK_GB`, runs one job at a time (`loop.ts`).
+  `WORKER_POLL_INTERVAL_SECONDS` reading only job ids, skips claiming below
+  `WORKER_MIN_FREE_DISK_GB` and records the reason in `worker_status`, which the reel page shows
+  under a queued job, slims storage at most hourly between jobs, removes each job's scratch folder
+  and runs one job at a time (`loop.ts`). See `app_docs/storage.md`.
 - `apps/worker/src/steps/receive.ts`: the one placeholder step. It HEADs the source in R2, writes a
   step `footage received, 12.3 MB`, and `run-job.ts` then marks the job `done` and the reel
   `received` (or `failed` with an error tail).
@@ -167,7 +172,8 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 - Worker (`apps/worker/.env.development`): `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `WORKER_ID`,
   `R2_WORKER_ACCESS_KEY_ID`, `R2_WORKER_SECRET_ACCESS_KEY`, `WORKER_POLL_INTERVAL_SECONDS`
   (default 120), `WORKER_MIN_FREE_DISK_GB` (default 10), `WORKER_SCRATCH_DIR`, `CLAUDE_CODE_PATH`,
-  `FFMPEG_PATH`, `E2E_MOCK_AI`, `E2E_MOCK_STORAGE`, `E2E_MOCK_RENDER` (the last three tests only).
+  `FFMPEG_PATH`, `E2E_MOCK_AI`, `E2E_MOCK_STORAGE`, `E2E_MOCK_RENDER`, `E2E_MOCK_FREE_DISK_GB` (the
+  last four tests only).
 - `SUPABASE_SECRET_KEY` is read only by the worker and by the test helpers in
   `apps/studio/test-support/`, from `apps/worker/.env.development`.
 - `SUPABASE_DB_URL`: test helpers only (`localDbUrl` in `apps/studio/test-support/local-supabase.ts`),
@@ -184,12 +190,13 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   `apps/worker/src/**/*.test.ts` and `packages/storage/src/**/*.test.ts` (`yarn test`).
 - DB integration: `apps/studio/db-tests/` (`yarn test:db`): RLS on every public table, owner
   isolation, the upload path and `finish_upload`, `claim_job`'s lease (`jobs.test.ts`), `save_version`, version immutability and its RLS
-  (`versions.test.ts`), Realtime
-  follows RLS for `reels` and `steps`. Needs the local stack (in ADW runs, the ADW stack through
+  (`versions.test.ts`), `stored_files`, `worker_status`, the slimming, export expiry and
+  `finish_upload`'s source row (`stored-files.test.ts`), Realtime follows RLS for `reels` and `steps`. Needs the local stack (in ADW runs, the ADW stack through
   `SUPABASE_DB_URL` and the other hook variables); not in the pre-push hook.
-- E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload`, `multipart-upload` specs, chromium, through the
+- E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload`, `multipart-upload`, `disk-guard` specs, chromium, through the
   landing address), run after the landing suite by `yarn test:e2e`. `upload.spec.ts` uploads the
-  test clip, spawns the worker's `once` and expects the page to update without a reload. `multipart-upload.spec.ts` covers parts, a
+  test clip, spawns the worker's `once` and expects the page to update without a reload, then checks one `stored_files` row per stored object.
+  `disk-guard.spec.ts` covers the waiting reason (`app_docs/storage.md`). `multipart-upload.spec.ts` covers parts, a
   retried part, resume, ownership and cancel (details in `app_docs/upload.md`).
 
 ## Rules

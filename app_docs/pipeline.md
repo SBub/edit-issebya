@@ -32,8 +32,9 @@ live status shows one line per step (`name: summary`).
   Outputs live at `${R2_KEY_PREFIX}cache/<step>/<fingerprint>/<file>`.
 - `apps/worker/src/pipeline/run-pipeline.ts`: for each step it HEADs every output key. All present:
   it sets the reel status, records a hit (`skipped`, `cache_hit = true`, summary `<what>, reused`)
-  and spawns nothing. Otherwise it downloads the declared inputs into
-  `<WORKER_SCRATCH_DIR>/job-<job id>/`, runs the step as one measured row, and uploads each missing
+  and spawns nothing. Every output it finds stored also records a `stored_files` row for the job's
+  reel, from the `head` it already made. Otherwise it downloads the declared inputs into
+  `<WORKER_SCRATCH_DIR>/<job id>/job-<job id>/` (the job's scratch folder, removed after the job), runs the step as one measured row, and uploads each missing
   output with put-if-absent, so a stored output is never replaced. The job folder is removed at the
   end; after a lost lease nothing more is written. A source with no ETag fails the job.
   `PipelineRun.setReelStatus` (default `true`) set to `false` never calls `steps.reelStatus`: the
@@ -112,7 +113,7 @@ reel; made for Chrome.
 
 ### Kept and rebuildable
 
-Every output carries a tag, so the cleanup (slice 14) can act on it. `kept` cannot be regenerated
+Every output carries a tag, so the slimming (`app_docs/storage.md`) can act on it. `kept` cannot be regenerated
 cheaply and stays; `rebuildable` is heavy and may be deleted, since its step re-runs from the
 fingerprint. Tags are not part of a fingerprint.
 
@@ -206,7 +207,7 @@ fingerprint. Tags are not part of a fingerprint.
   track all `null`, enough for cache hits.
 - The ffmpeg build is in no fingerprint: after an ffmpeg upgrade that changes output, bump the
   affected versions by hand.
-- Single PUT only: an output above 5 GiB fails. Multipart comes with storage records (slice 14).
+- Single PUT only: an output above 5 GiB fails. The storage records (`app_docs/storage.md`) did not add multipart for outputs; it is still to come.
 - Deviations from the old `retime.py`: slow stretches and short-gap frames are chosen by rule, audio
   pieces are trimmed to their video length instead of measured, `fix_words.py` is out of scope.
 - Touches `app_docs/studio.md` (worker, statuses, `skipped`, `cache_hit`, storage) and
