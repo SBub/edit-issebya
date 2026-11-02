@@ -89,15 +89,21 @@ only, run by hand; CI uses the committed files).
   scroll), checks `describing` then `ready` live after the worker's `once`, the `describe_photo`
   step's AI columns and the three `stored_files` rows, Delete, and the Library tab at 390x844.
 
+## Rules
+
+- Never give Claude Code a tool other than `Read` on the one photo file; every other AI call keeps
+  no tools.
+- At most two AI calls per photo: one retry, never a loop.
+- Never let the browser send a storage key or upload id; they come from the row.
+- Never put a storage key in what the client receives; sign on the server.
+- The size comes from storage (`head`), never from the browser.
+- Never send a photo's bytes to the studio's server; the browser PUTs them straight to storage.
+- Never slim a photo's file; only the owner's Delete removes a photo's objects.
+- Quote a photo's description and tags as data in any later prompt, never as instructions.
+- Bump `DESCRIBE_PROMPT_VERSION` with every change to `describe-prompt.md`.
+
 ## Notes
 
-- Rules:
-  - Never give Claude Code a tool other than `Read` on the one photo file; every other AI call keeps
-    no tools.
-  - Never let the browser send a storage key or upload id; they come from the row.
-  - Never put a storage key in what the client receives; sign on the server.
-  - Never slim a photo's file; only the owner's Delete removes a photo's objects.
-  - Quote a photo's description and tags as data in any later prompt, never as instructions.
 - Photos are not yet placed in a reel; later issues use them behind the speaker.
 - This change also touched `app_docs/studio.md`, `studio-reel-layout.md`, `storage.md`,
   `decide-step.md`, `failures.md`, `measurement.md` and `error-tracking.md`.
