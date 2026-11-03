@@ -746,6 +746,21 @@ describe("the one automatic retry", () => {
       expect(failed && failed.call === "failed" && failed.tail).toBe(failures[0]!.tail);
     });
 
+    it("writes no failed row and captures nothing when the job's row is gone", async () => {
+      const { steps, calls } = recordingSteps();
+      const { errors, failures } = recordingTracker();
+      const { spawnTool } = sequence([exited(1)]);
+      await expect(
+        runToolsStep(
+          stepContext(steps, { errors, checkGone: async () => true }),
+          toolStep(),
+          spawnTool,
+        ),
+      ).rejects.toThrow();
+      expect(rows(calls)).toEqual(["start"]);
+      expect(failures).toEqual([]);
+    });
+
     it("captures a transient failure and its retry's failure", async () => {
       const { steps } = recordingSteps();
       const { errors, failures } = recordingTracker();

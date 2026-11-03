@@ -31,12 +31,15 @@ export interface StepContext {
   // The job span's context; each step span is its child.
   jobContext: Context;
   job: ClaimedJob;
-  // Aborted when the lease is lost or the job was cancelled: the step stops
-  // and writes nothing more.
+  // Aborted when the lease is lost, the job was cancelled or its row is gone
+  // (its reel or photo was deleted): the step stops and writes nothing more.
   signal: AbortSignal;
   // Checks for a cancel at once and aborts `signal` when there was one (a
   // render job; absent, nothing is checked).
   checkCancelled?: () => Promise<boolean>;
+  // Checks at once whether the job's row is gone and aborts `signal` when it
+  // is; asked before a failure is written (absent, nothing is checked).
+  checkGone?: () => Promise<boolean>;
   // The pause before a step's one automatic retry (default
   // TRANSIENT_RETRY_DELAY_MS; unit tests pass 0).
   retryDelayMs?: number;
@@ -181,7 +184,9 @@ function setMeasurementAttributes(span: Span, measurements: StepMeasurements): v
 // attempt marks that row failed (`<name> failed, retrying once`) and runs the
 // body again in a new row; a second failure, or any other failure, fails the
 // step. An unavailable AI writes the row `waiting` and is never retried here
-// (the job waits). A lost lease is never retried and writes nothing more.
+// (the job waits). A lost lease is never retried and writes nothing more, and
+// neither is a failure while the job's row is gone (a write refused because
+// its reel was deleted): no failed row, no capture.
 async function withStep(
   ctx: StepContext,
   name: string,
@@ -220,8 +225,9 @@ async function withStep(
       return;
     } catch (error) {
       span.setStatus({ code: SpanStatusCode.ERROR });
-      // A lost lease: another worker may hold the job now.
-      if (ctx.signal.aborted) throw error;
+      // A lost lease (another worker may hold the job now), or the job's row
+      // is gone (its reel was deleted): nothing more is written or captured.
+      if (ctx.signal.aborted || (await ctx.checkGone?.())) throw error;
       const failure = error instanceof StepFailure ? error : null;
       const measurements = failure?.measurements ?? emptyMeasurements(elapsedMs(started));
       setMeasurementAttributes(span, measurements);

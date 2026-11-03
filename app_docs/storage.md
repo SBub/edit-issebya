@@ -184,7 +184,10 @@ Nothing to do for the owner. What they see:
 ## Rules
 
 - Never delete a `source`, `kept` or `version` file, except a photo's files when its owner deletes
-  the photo (`app_docs/photo-library.md`).
+  the photo (`app_docs/photo-library.md`), and a reel's files when its owner deletes the reel
+  (`delete_reel`) and no other live `stored_files` row holds the key.
+- Never delete a queued key's `storage_deletions` row before its object is deleted.
+- Never delete a key another live `stored_files` row holds.
 - Never slim a photo's file.
 - Masks are `rebuildable`, never `kept`; making them `kept` is an owner decision, changed here and
   in `ON_DEMAND_OUTPUTS` together.

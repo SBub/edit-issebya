@@ -16,6 +16,10 @@ export interface ThumbnailGridItem {
   badge?: string;
   // The badge's test id (the reels list keeps `reel-list-status`).
   badgeTestId?: string;
+  // A control in the tile's bottom-right corner (the reels list's bin): a
+  // sibling of the link or button, never inside it, so using it never opens
+  // the tile.
+  corner?: ReactNode;
 }
 
 // The grid's first tile, before every item: a dashed "+" that adds one (a
@@ -51,6 +55,10 @@ const COLUMNS = {
   page: "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 2xl:grid-cols-8",
   panel: "grid-cols-3",
 } as const;
+
+// The room a corner control takes beside the title and meta lines, so their
+// text never runs under it (size-11 on a phone, size-8 above).
+const PAD = "pr-12 sm:pr-9";
 
 const TILE = "group flex flex-col gap-1 rounded-lg text-left focus-visible:outline-offset-4";
 
@@ -121,14 +129,19 @@ export function ThumbnailGrid({
                 </span>
               )}
             </span>
-            <span className="truncate text-xs font-medium text-ink">{item.title}</span>
-            <span data-testid="tile-meta" className="truncate text-[11px] text-muted">
+            <span className={`truncate text-xs font-medium text-ink ${item.corner ? PAD : ""}`}>
+              {item.title}
+            </span>
+            <span
+              data-testid="tile-meta"
+              className={`truncate text-[11px] text-muted ${item.corner ? PAD : ""}`}
+            >
               {item.meta}
             </span>
           </>
         );
         return (
-          <li key={item.id} className="min-w-0">
+          <li key={item.id} className="relative min-w-0">
             {item.href !== undefined ? (
               <Link href={item.href} className={TILE}>
                 {body}
@@ -138,6 +151,7 @@ export function ThumbnailGrid({
                 {body}
               </button>
             )}
+            {item.corner && <div className="absolute right-0 bottom-0">{item.corner}</div>}
           </li>
         );
       })}

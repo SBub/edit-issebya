@@ -18,7 +18,11 @@ const JOB: ClaimedJob = {
 };
 
 function deps(
-  work: (signal: AbortSignal, checkCancelled: () => Promise<boolean>) => Promise<void>,
+  work: (
+    signal: AbortSignal,
+    checkCancelled: () => Promise<boolean>,
+    checkGone: () => Promise<boolean>,
+  ) => Promise<void>,
 ) {
   return {
     job: JOB,
@@ -192,5 +196,118 @@ describe("runJob", () => {
     };
     expect(await runJob(d)).toBe("cancelled");
     expect(d.finish).not.toHaveBeenCalled();
+  });
+
+  describe("a job whose row is gone (its reel deleted)", () => {
+    function goneDeps(work: Parameters<typeof deps>[0]) {
+      const lines: string[] = [];
+      const d = {
+        ...deps(work),
+        gone: vi.fn(async () => true),
+        log: (line: string) => void lines.push(line),
+      };
+      return { d, lines };
+    }
+
+    function expectNothingWritten(d: ReturnType<typeof goneDeps>["d"], lines: string[]) {
+      expect(d.finish).not.toHaveBeenCalled();
+      expect(d.fail).not.toHaveBeenCalled();
+      expect(d.refuse).not.toHaveBeenCalled();
+      expect(d.wait).not.toHaveBeenCalled();
+      expect(d.errors.jobFailed).not.toHaveBeenCalled();
+      expect(lines).toEqual(["job j1: reel deleted, stopped"]);
+    }
+
+    it("is deleted when a renewal finds the row gone", async () => {
+      vi.useFakeTimers();
+      try {
+        const { d, lines } = goneDeps(async (signal) => {
+          await vi.advanceTimersByTimeAsync(60_000);
+          signal.throwIfAborted();
+        });
+        d.renew.mockResolvedValue(false);
+        expect(await runJob(d)).toBe("deleted");
+        expectNothingWritten(d, lines);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("is deleted when the work throws (a refused write) and the row is gone", async () => {
+      const { d, lines } = goneDeps(async () => {
+        throw new Error('insert violates foreign key constraint "steps_reel_id_fkey"');
+      });
+      expect(await runJob(d)).toBe("deleted");
+      expectNothingWritten(d, lines);
+    });
+
+    it("is deleted, never refused or waiting, for a refusal or an unavailable AI", async () => {
+      for (const error of [new FootageRefused("not vertical"), new AiUnavailable("limit")]) {
+        const { d, lines } = goneDeps(async () => {
+          throw error;
+        });
+        expect(await runJob(d)).toBe("deleted");
+        expectNothingWritten(d, lines);
+      }
+    });
+
+    it("is deleted when finish matched no row and the row is gone", async () => {
+      const lines: string[] = [];
+      let deleted = false;
+      const d = {
+        ...deps(async () => {}),
+        gone: vi.fn(async () => deleted),
+        log: (line: string) => void lines.push(line),
+      };
+      d.finish.mockImplementation(async () => {
+        deleted = true;
+        return false;
+      });
+      expect(await runJob(d)).toBe("deleted");
+      expect(d.fail).not.toHaveBeenCalled();
+      expect(lines).toEqual(["job j1: reel deleted, stopped"]);
+    });
+
+    it("is deleted when a failure's write matched no row and the row is gone by then", async () => {
+      let deleted = false;
+      const lines: string[] = [];
+      const d = {
+        ...deps(async () => {
+          throw new Error("boom");
+        }),
+        gone: vi.fn(async () => deleted),
+        log: (line: string) => void lines.push(line),
+      };
+      d.fail.mockImplementation(async () => {
+        deleted = true;
+        return false;
+      });
+      expect(await runJob(d)).toBe("deleted");
+      expect(lines.filter((line) => line.includes("lease lost"))).toEqual([]);
+      expect(lines.at(-1)).toBe("job j1: reel deleted, stopped");
+    });
+
+    it("says photo for a describe_photo job", async () => {
+      const { d, lines } = goneDeps(async () => {
+        throw new Error("gone");
+      });
+      const photoJob = {
+        ...d,
+        job: { ...JOB, reel_id: null, photo_id: "p1", kind: "describe_photo" },
+      };
+      expect(await runJob(photoJob)).toBe("deleted");
+      expect(lines).toEqual(["job j1: photo deleted, stopped"]);
+    });
+
+    it("stays failed when the row is still there", async () => {
+      const d = {
+        ...deps(async () => {
+          throw new Error("boom");
+        }),
+        gone: vi.fn(async () => false),
+      };
+      expect(await runJob(d)).toBe("failed");
+      expect(d.fail).toHaveBeenCalledOnce();
+    });
   });
 });

@@ -185,7 +185,7 @@ no `anon` execute, no export for a cancelled job, never claimed), `sync-columns.
 every table PostHog syncs (`reels`, `jobs`, `steps`, `versions`, `exports`, `stored_files`),
 `dashboard-queries.test.ts` for the dashboard queries' columns and events against the real schema and
 their Postgres rendering's numbers on seeded rows (one rolled-back transaction), `stored-files.test.ts` for the `stored_files` and `worker_status` tables (`heartbeat_at` included, and a heartbeat upsert leaving `waiting_reason`), their RLS,
-`record_stored_file`, the seven-day slimming and export expiry with a fixed clock and `finish_upload`'s source row; `grants.test.ts` for per-role table grants and default privileges matching hosted, `photos.test.ts` for the `photos` table's RLS, insert policy, status and ready checks, `finish_photo_upload`, `delete_photo`, `record_photo_file` and `jobs_target_check`), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
+`record_stored_file`, the seven-day slimming and export expiry with a fixed clock and `finish_upload`'s source row; `grants.test.ts` for per-role table grants and default privileges matching hosted, `photos.test.ts` for the `photos` table's RLS, insert policy, status and ready checks, `finish_photo_upload`, `delete_photo`, `record_photo_file` and `jobs_target_check`, `reel-deletion.test.ts` for `delete_reel` (owner only, the cascade, every key queued), `record_stored_file` on a deleted reel and the `storage_deletions` queue's functions), kept out of `yarn test` so the pre-push hook needs no database. There is no component test
 layer; the browser layer is the Playwright suites below.
 
 E2E code suites: `apps/web/e2e/*.spec.ts` (`@playwright/test`, chromium, plus webkit for the dialog
@@ -213,7 +213,7 @@ the `left` spot: the worker's `once` makes the span's mask in a `cutout` step wi
 render doubles: a black mask made by ffmpeg, no Apple Vision), version 3 names the mask and the
 photo, the mask's `stored_files` row is `rebuildable` with step `cutout`, the live preview shows the
 photo over its spot inside the span and not after it, and the timeline's Behind row shows
-`photo left`, `decide-behind.spec.ts` seeds a ready library photo before a processed reel whose
+`photo left`, `delete-reel.spec.ts` shows the bin in every reels tile's bottom-right corner without hover at 1440x900 and 390x844 (44 px on the phone), Cancel and Escape keeping the reel, and Delete removing it and its queued job without a reload, its source key queued in `storage_deletions` and its page then `Reel not found`, `decide-behind.spec.ts` seeds a ready library photo before a processed reel whose
 automatic decide (scripted answer) puts it behind the speaker in `left` (version 2, its mask and
 photo named, the Behind row `photo left`), then `no photos in this one` saves version 3 with no
 photo and `reels.no_photos` set, and a later change whose first answer puts the photo back is
