@@ -450,7 +450,7 @@ export function PreviewPlayer({
       className="flex min-h-0 w-full flex-1 flex-col gap-2"
     >
       <div className="flex min-h-0 flex-1 justify-center">
-        <div className="relative aspect-[9/16] h-full max-h-full max-w-full overflow-hidden rounded-lg bg-black">
+        <div className="relative aspect-[9/16] h-full max-h-full max-w-full overflow-hidden rounded-lg bg-black ring-1 ring-line">
           {defined && (
             <hyperframes-player
               ref={playerRef}

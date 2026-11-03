@@ -104,7 +104,7 @@ export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs, ref 
           textarea only; the whole box shows the ring instead. */}
       <div
         data-testid="change-field"
-        className="relative flex rounded-xl border border-line bg-raised focus-within:ring-2 focus-within:ring-accent has-[textarea:disabled]:bg-panel lg:min-h-0 lg:flex-1"
+        className="relative flex rounded-xl border border-line bg-chrome focus-within:ring-2 focus-within:ring-accent has-[textarea:disabled]:bg-chrome/50 lg:min-h-0 lg:flex-1"
       >
         <textarea
           ref={field}

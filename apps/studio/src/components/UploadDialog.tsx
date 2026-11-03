@@ -33,7 +33,7 @@ export function UploadDialog() {
       <dialog
         ref={dialogRef}
         aria-labelledby="upload-heading"
-        className="m-auto w-[min(28rem,calc(100%-2rem))] rounded-xl border border-line bg-panel p-5 text-ink backdrop:bg-black/60"
+        className="m-auto w-[min(28rem,calc(100%-2rem))] rounded-xl border border-line bg-surface p-5 text-ink backdrop:bg-black/60"
       >
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 id="upload-heading" className="text-lg font-semibold">

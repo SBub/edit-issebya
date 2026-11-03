@@ -308,6 +308,22 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
   await expectDesktopSplit(page);
   await expectOwnScroll(page, page.getByTestId("versions-area"));
   await expectNoPageScroll(page);
+
+  // Pitch black theme: the page and the edit area are black; only the
+  // navigation, the tracks timeline and the change field are lifted.
+  const background = (locator: Locator) =>
+    locator.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(await background(page.locator("body"))).toBe("rgb(0, 0, 0)");
+  expect(await background(page.getByTestId("edit-area"))).toBe("rgb(0, 0, 0)");
+  for (const lifted of [
+    page.locator("header"),
+    page.getByTestId("tracks"),
+    page.getByTestId("change-field"),
+  ]) {
+    const colour = await background(lifted);
+    expect(colour).not.toBe("rgb(0, 0, 0)");
+    expect(colour).not.toBe("rgba(0, 0, 0, 0)");
+  }
 });
 
 // Every version is one line at one height whatever its text; the arrow opens

@@ -122,7 +122,7 @@ export function ThumbnailGrid({
                   className="absolute inset-0 h-full w-full object-cover transition-opacity group-hover:opacity-90"
                 />
               ) : (
-                <span data-thumbnail="none" className="absolute inset-0 bg-panel" />
+                <span data-thumbnail="none" className="absolute inset-0 bg-raised" />
               )}
               {item.badge && (
                 <span

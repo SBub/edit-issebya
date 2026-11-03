@@ -159,95 +159,99 @@ export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
     <section
       aria-label="Tracks"
       data-testid="tracks"
-      className="relative flex flex-none flex-col gap-0.5 text-[10px] leading-none select-none"
+      className="flex-none rounded-lg bg-chrome p-2 text-[10px] leading-none select-none"
     >
-      <div className="flex h-4 items-end">
-        <span className="w-20 flex-none" />
-        <div
-          ref={rulerRef}
-          role="slider"
-          tabIndex={0}
-          aria-label="Position"
-          aria-valuemin={0}
-          aria-valuemax={Number(duration.toFixed(2))}
-          aria-valuenow={Number(at.toFixed(2))}
-          aria-valuetext={`${formatClock(at)} of ${formatClock(duration)}`}
-          aria-orientation="horizontal"
-          data-testid="ruler"
-          data-duration={duration}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endScrub}
-          onPointerCancel={endScrub}
-          onLostPointerCapture={endScrub}
-          onKeyDown={onKeyDown}
-          className="relative h-full min-w-0 flex-1 cursor-pointer touch-none rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          {ticks.map((tick) => (
-            <span
-              key={tick.seconds}
-              className={`absolute bottom-0 w-px bg-line ${tick.label ? "h-2" : "h-1"}`}
-              style={{ left: `${percent(tick.seconds, duration)}%` }}
-            >
-              {tick.label && (
-                <span className="absolute bottom-2.5 left-0.5 whitespace-nowrap text-muted tabular-nums">
-                  {tick.label}
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-      </div>
-      {rows.map((row) => (
-        <div
-          key={row.key}
-          data-track={row.key}
-          className="flex items-center"
-          style={{ height: row.key === "footage" ? FOOTAGE_ROW_PX : ROW_PX }}
-        >
-          <span className="w-20 flex-none truncate pr-2 text-xs text-muted">{row.label}</span>
+      {/* The lifted panel's padding sits outside this box, so the playhead's
+          left-20 still lines up with the lanes after the label column. */}
+      <div className="relative flex flex-col gap-0.5">
+        <div className="flex h-4 items-end">
+          <span className="w-20 flex-none" />
           <div
-            data-testid="track-lane"
-            className="relative h-full min-w-0 flex-1 overflow-hidden rounded-sm bg-panel"
+            ref={rulerRef}
+            role="slider"
+            tabIndex={0}
+            aria-label="Position"
+            aria-valuemin={0}
+            aria-valuemax={Number(duration.toFixed(2))}
+            aria-valuenow={Number(at.toFixed(2))}
+            aria-valuetext={`${formatClock(at)} of ${formatClock(duration)}`}
+            aria-orientation="horizontal"
+            data-testid="ruler"
+            data-duration={duration}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endScrub}
+            onPointerCancel={endScrub}
+            onLostPointerCapture={endScrub}
+            onKeyDown={onKeyDown}
+            className="relative h-full min-w-0 flex-1 cursor-pointer touch-none rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            {row.items.map((item) => (
-              <div
-                key={item.id}
-                data-testid="track-item"
-                data-item-id={item.id}
-                data-start={item.start.toFixed(3)}
-                data-end={item.end.toFixed(3)}
-                title={span(item)}
-                className={`absolute inset-y-0 overflow-hidden rounded-sm ${ITEM_COLOURS[row.key]}`}
-                style={{
-                  left: `${percent(item.start, duration)}%`,
-                  width: `${percent(item.end - item.start, duration)}%`,
-                  minWidth: 2,
-                }}
+            {ticks.map((tick) => (
+              <span
+                key={tick.seconds}
+                className={`absolute bottom-0 w-px bg-line ${tick.label ? "h-2" : "h-1"}`}
+                style={{ left: `${percent(tick.seconds, duration)}%` }}
               >
-                {row.key === "footage" && frames && <FootageFrames item={item} frames={frames} />}
-                <span
-                  className={`relative block truncate px-1 leading-5 ${
-                    row.key === "footage" ? "bg-surface/60 text-ink" : ""
-                  }`}
-                >
-                  {item.label}
-                </span>
-              </div>
+                {tick.label && (
+                  <span className="absolute bottom-2.5 left-0.5 whitespace-nowrap text-muted tabular-nums">
+                    {tick.label}
+                  </span>
+                )}
+              </span>
             ))}
           </div>
         </div>
-      ))}
-      <div className="pointer-events-none absolute inset-y-0 right-0 left-20 overflow-hidden">
-        <div
-          data-testid="playhead"
-          data-seconds={at.toFixed(3)}
-          aria-hidden="true"
-          className="absolute inset-y-0 left-0 w-full"
-          style={{ transform: `translateX(${percent(at, duration)}%)` }}
-        >
-          <span className="absolute inset-y-0 left-0 w-0.5 -translate-x-1/2 bg-accent" />
-          <span className="absolute top-0 left-0 size-2 -translate-x-1/2 rounded-full bg-accent" />
+        {rows.map((row) => (
+          <div
+            key={row.key}
+            data-track={row.key}
+            className="flex items-center"
+            style={{ height: row.key === "footage" ? FOOTAGE_ROW_PX : ROW_PX }}
+          >
+            <span className="w-20 flex-none truncate pr-2 text-xs text-muted">{row.label}</span>
+            <div
+              data-testid="track-lane"
+              className="relative h-full min-w-0 flex-1 overflow-hidden rounded-sm bg-surface"
+            >
+              {row.items.map((item) => (
+                <div
+                  key={item.id}
+                  data-testid="track-item"
+                  data-item-id={item.id}
+                  data-start={item.start.toFixed(3)}
+                  data-end={item.end.toFixed(3)}
+                  title={span(item)}
+                  className={`absolute inset-y-0 overflow-hidden rounded-sm ${ITEM_COLOURS[row.key]}`}
+                  style={{
+                    left: `${percent(item.start, duration)}%`,
+                    width: `${percent(item.end - item.start, duration)}%`,
+                    minWidth: 2,
+                  }}
+                >
+                  {row.key === "footage" && frames && <FootageFrames item={item} frames={frames} />}
+                  <span
+                    className={`relative block truncate px-1 leading-5 ${
+                      row.key === "footage" ? "bg-surface/60 text-ink" : ""
+                    }`}
+                  >
+                    {item.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <div className="pointer-events-none absolute inset-y-0 right-0 left-20 overflow-hidden">
+          <div
+            data-testid="playhead"
+            data-seconds={at.toFixed(3)}
+            aria-hidden="true"
+            className="absolute inset-y-0 left-0 w-full"
+            style={{ transform: `translateX(${percent(at, duration)}%)` }}
+          >
+            <span className="absolute inset-y-0 left-0 w-0.5 -translate-x-1/2 bg-accent" />
+            <span className="absolute top-0 left-0 size-2 -translate-x-1/2 rounded-full bg-accent" />
+          </div>
         </div>
       </div>
     </section>

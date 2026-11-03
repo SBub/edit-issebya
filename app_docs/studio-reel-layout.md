@@ -97,6 +97,27 @@ lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unch
 - `apps/studio/src/app/globals.css`, `layout.tsx`: dark theme tokens (Tailwind v4 `@theme`) and
   `color-scheme: dark`; every studio component uses them.
 
+### Dark theme tokens
+
+The studio is pitch black (owner, 2026-11-03). Tokens in `apps/studio/src/app/globals.css`:
+
+| Token                            | Value                | Use                                                                                                                                                                                                                  |
+| -------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--color-surface`                | `#000000`            | The page (`body`) and every area: the reels list and its grid, the reel page's edit area with the preview, Versions, Library, the correction area around the box, dialogs, the progress overlay (`bg-surface/85`)    |
+| `--color-chrome`                 | `#15171b`            | The lifted surfaces only: the header bars (reels list and reel page), the phone's tab bar, the tracks timeline panel (`data-testid="tracks"`) and the correction box (`change-field`; `bg-chrome/50` while disabled) |
+| `--color-raised`                 | `#1f2228`            | Hover, the selected version row, inputs, progress tracks, thumbnail placeholders                                                                                                                                     |
+| `--color-line`                   | `#2e323a`            | Borders and dividers (1.63:1 on black, subtle but visible); the preview frame has a `ring-line` edge                                                                                                                 |
+| `--color-ink`                    | `#eceef1`            | Text: 18.1:1 on black, 15.4:1 on chrome                                                                                                                                                                              |
+| `--color-muted`                  | `#a3a9b3`            | Secondary text: 8.9:1 on black, 7.6:1 on chrome, 6.7:1 on raised (WCAG AA for small text everywhere)                                                                                                                 |
+| `--color-accent`                 | `#7cc4ff`            | Send, current marks (tab underline, playhead), focus rings                                                                                                                                                           |
+| `--color-danger`, `--color-warn` | `#ff8a80`, `#f5c451` | Errors and warnings                                                                                                                                                                                                  |
+| `--color-track-*`                | unchanged            | Track item colours                                                                                                                                                                                                   |
+
+Before this change `--color-surface` was `#0c0d10` and the lifted token was named `--color-panel`
+(same `#15171b`) and also filled the correction area, dialogs and track lanes. The track lanes are
+now black wells (`bg-surface`) inside the lifted tracks panel. The tracks panel's padding sits
+outside an inner `relative` box, so the playhead's `left-20` still matches the lanes.
+
 ### Tracks timeline
 
 - `apps/studio/src/lib/tracks-timeline.ts`: `timelineRows(edit, transcript)` turns the shown version's
@@ -234,6 +255,8 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   `photo-library.spec.ts` checks the library right of `edit-area` at 1440x900 and the Library
   tab at 390x844, with no page scroll. `progress-overlay.spec.ts` checks the overlay inside the
   preview, clear of Play and the ruler, at 1440x900 and 390x844.
+- `reel-layout.spec.ts` also checks at 1440x900 that the page background and the edit area are
+  `rgb(0, 0, 0)` and the header, `tracks` and `change-field` are neither black nor transparent.
 - Measure edge-aligned elements from the root box, not `window.innerWidth` (see `AGENTS.md`).
 
 ## Rules
@@ -263,6 +286,10 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 - Do not unmount `UploadForm` when the upload dialog closes.
 - A missing or malformed thumbnail or frames sprite is null, never a failure.
 - The overlay never blocks the player's controls: `pointer-events` off except its own buttons.
+- The studio's background is pitch black (`--color-surface`, `#000`); only the navigation (header
+  bars, the phone's tab bar), the tracks timeline and the correction box are lifted
+  (`--color-chrome`). Never give another area a lifted or tinted background; use tokens, never raw
+  colours.
 
 ## Notes
 

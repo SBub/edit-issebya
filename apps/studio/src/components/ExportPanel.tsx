@@ -280,7 +280,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
           event.preventDefault();
           close();
         }}
-        className="m-auto w-[min(24rem,calc(100%-2rem))] rounded-xl border border-line bg-panel p-5 text-left text-ink backdrop:bg-black/60"
+        className="m-auto w-[min(24rem,calc(100%-2rem))] rounded-xl border border-line bg-surface p-5 text-left text-ink backdrop:bg-black/60"
       >
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 id="export-modal-heading" className="text-lg font-semibold">

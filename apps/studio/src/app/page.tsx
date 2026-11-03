@@ -114,7 +114,7 @@ export default async function StudioHome({
   return (
     <div className="flex h-dvh flex-col">
       <StudioIdentify userId={user.id} />
-      <header className="flex flex-none flex-wrap items-center justify-between gap-3 border-b border-line bg-panel px-4 py-3">
+      <header className="flex flex-none flex-wrap items-center justify-between gap-3 border-b border-line bg-chrome px-4 py-3">
         <div className="min-w-0">
           <h1 className="text-lg font-semibold">Your reels</h1>
           <p className="truncate text-xs text-muted">{user.email}</p>

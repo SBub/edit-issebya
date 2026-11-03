@@ -1,11 +1,15 @@
 @import "tailwindcss";
 
-/* The studio's dark, editor-like theme. Every component uses these tokens
-   (bg-surface, text-muted, border-line, bg-track-footage, ...), never raw
-   stone or white. Muted text keeps at least 4.5:1 on the panel colour. */
+/* The studio's pitch black, editor-like theme. Every component uses these
+   tokens (bg-surface, bg-chrome, text-muted, border-line, bg-track-footage,
+   ...), never raw stone or white. The page and every area are surface
+   (#000); only the navigation (header, phone tabs), the tracks timeline and
+   the correction box are chrome, a lifted very dark grey. Raised is for
+   hover, selected rows, inputs and placeholders. Muted text keeps at least
+   4.5:1 on raised, the lightest background it sits on. */
 @theme {
-  --color-surface: #0c0d10;
-  --color-panel: #15171b;
+  --color-surface: #000000;
+  --color-chrome: #15171b;
   --color-raised: #1f2228;
   --color-line: #2e323a;
   --color-ink: #eceef1;

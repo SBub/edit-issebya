@@ -49,7 +49,7 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
         setConfirming(false);
         setMessage("");
       }}
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(40rem,calc(100%-2rem))] overflow-y-auto rounded-xl border border-line bg-panel p-5 text-ink backdrop:bg-black/60"
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(40rem,calc(100%-2rem))] overflow-y-auto rounded-xl border border-line bg-surface p-5 text-ink backdrop:bg-black/60"
     >
       <div className="mb-4 flex items-center gap-1">
         <h2 id="photo-heading" className="min-w-0 flex-1 truncate text-lg font-semibold">

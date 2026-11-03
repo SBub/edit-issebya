@@ -70,14 +70,14 @@ export function ReelScreen({ header, main, footer, versions, library }: Props) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="flex flex-none items-center gap-3 border-b border-line bg-panel px-3 py-2 lg:px-5">
+      <header className="flex flex-none items-center gap-3 border-b border-line bg-chrome px-3 py-2 lg:px-5">
         {header}
       </header>
       <div
         role="tablist"
         aria-label="Reel"
         onKeyDown={onKeyDown}
-        className="flex flex-none border-b border-line bg-panel lg:hidden"
+        className="flex flex-none border-b border-line bg-chrome lg:hidden"
       >
         {TABS.map((entry) => (
           <button
@@ -104,7 +104,7 @@ export function ReelScreen({ header, main, footer, versions, library }: Props) {
         <div
           {...panel("edit")}
           data-testid="edit-area"
-          className={`${shown("edit")} min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-3 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:px-5`}
+          className={`${shown("edit")} min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain bg-surface p-3 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:px-5`}
         >
           {main}
         </div>
@@ -124,7 +124,7 @@ export function ReelScreen({ header, main, footer, versions, library }: Props) {
         </div>
         <div
           data-testid="change-area"
-          className="flex flex-none flex-col border-t border-line bg-panel px-3 py-2 lg:col-span-2 lg:col-start-2 lg:row-start-2 lg:min-h-0 lg:border-l lg:p-3"
+          className="flex flex-none flex-col border-t border-line px-3 py-2 lg:col-span-2 lg:col-start-2 lg:row-start-2 lg:min-h-0 lg:border-l lg:p-3"
         >
           {footer}
         </div>

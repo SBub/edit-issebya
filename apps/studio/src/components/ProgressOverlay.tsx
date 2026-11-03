@@ -35,7 +35,7 @@ export function ProgressOverlay({
     <div
       data-testid="progress-overlay"
       data-overlay-kind={state.kind}
-      className="pointer-events-none absolute top-2 right-2 left-2 z-10 flex flex-col gap-2 rounded-xl border border-line bg-panel/90 px-3 py-2 text-sm shadow-lg backdrop-blur-sm sm:right-auto sm:max-w-xs"
+      className="pointer-events-none absolute top-2 right-2 left-2 z-10 flex flex-col gap-2 rounded-xl border border-line bg-surface/85 px-3 py-2 text-sm shadow-lg backdrop-blur-sm sm:right-auto sm:max-w-xs"
     >
       <div role="status" aria-live="polite" className="flex flex-col gap-1">
         {state.kind === "notice" && (
