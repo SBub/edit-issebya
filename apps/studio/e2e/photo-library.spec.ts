@@ -11,6 +11,7 @@ import {
 } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
+import { dropFiles, fileTransfer } from "./drop.ts";
 
 // The worker's own folder for the derived files (thumbnail and large copy).
 const WORKER_PREFIX = `e2e-${crypto.randomUUID()}/`;
@@ -121,8 +122,20 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
   await expectNoPageScroll(page);
   await expect(library.getByText("No photos yet.")).toBeVisible();
 
-  const plus = page.getByRole("button", { name: "Upload a photo" });
+  // No round button in the header: the one upload button is the grid's first
+  // tile, dashed, and with no photo the only one.
+  await expect(page.getByRole("button", { name: "Upload a photo" })).toHaveCount(1);
+  await expect(library.locator("#library-heading").locator("..").getByRole("button")).toHaveCount(
+    0,
+  );
+  const grid = library.getByRole("list", { name: "Photos" });
+  await expect(grid.getByRole("listitem")).toHaveCount(1);
+  const plus = grid.getByRole("listitem").first().getByRole("button", { name: "Upload a photo" });
   await expect(plus).toHaveAttribute("data-ready", "true");
+  await expect(plus).toContainText("Upload a photo");
+  expect(await plus.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe("dashed");
+  const tileBox = (await plus.boundingBox())!;
+  expect(Math.abs(tileBox.width - tileBox.height)).toBeLessThanOrEqual(1);
   const chooser = page.waitForEvent("filechooser");
   await plus.click();
   await (await chooser).setFiles(SAMPLE);
@@ -217,15 +230,116 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
   }
 });
 
-test("390x844: the Library tab beside Edit and Versions", async ({ page, baseURL }) => {
-  await openReel(page, baseURL!, PHONE);
-  const tabs = page.getByRole("tablist", { name: "Reel" });
-  await expect(tabs.getByRole("tab")).toHaveText(["Edit", "Versions", "Library"]);
-  await expect(page.getByTestId("library-area")).toBeHidden();
+test("1440x900: a photo dropped on the section uploads; several files or a non-image upload nothing", async ({
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(180_000);
+  await openReel(page, baseURL!, DESKTOP);
+  await expect(page.locator('[data-library="ready"]')).toBeVisible({ timeout: 30_000 });
+  const library = page.getByTestId("library-area");
+  const zone = page.getByTestId("photo-drop");
+  const hint = page.getByTestId("drop-hint");
+  await expect(page.getByRole("button", { name: "Upload a photo" })).toHaveAttribute(
+    "data-ready",
+    "true",
+  );
+  const one = await fileTransfer(page, [{ name: "sample.jpg", type: "image/jpeg", path: SAMPLE }]);
 
-  await tabs.getByRole("tab", { name: "Library" }).click();
-  await expect(page.getByTestId("library-area")).toBeVisible();
-  await expect(page.getByTestId("edit-area")).toBeHidden();
-  await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
-  await expectNoPageScroll(page);
+  // The highlight: on with the drag's enter, kept while it crosses a child
+  // (the heading's own enter and leave), off with the zone's leave.
+  await expect(zone).toHaveAttribute("data-drop", "idle");
+  await expect(hint).toHaveCount(0);
+  await zone.dispatchEvent("dragenter", { dataTransfer: one });
+  await expect(zone).toHaveAttribute("data-drop", "over");
+  await expect(hint).toHaveText("Drop to upload");
+  expect(await zone.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("dashed");
+  const heading = page.locator("#library-heading");
+  await heading.dispatchEvent("dragenter", { dataTransfer: one });
+  await heading.dispatchEvent("dragleave", { dataTransfer: one });
+  await expect(zone).toHaveAttribute("data-drop", "over");
+  await zone.dispatchEvent("dragleave", { dataTransfer: one });
+  await expect(zone).toHaveAttribute("data-drop", "idle");
+  await expect(hint).toHaveCount(0);
+
+  // Two files: none uploads.
+  const two = await fileTransfer(page, [
+    { name: "sample.jpg", type: "image/jpeg", path: SAMPLE },
+    { name: "second.jpg", type: "image/jpeg", path: SAMPLE },
+  ]);
+  await dropFiles(zone, two);
+  await expect(library.getByRole("alert")).toHaveText("One file at a time, for now.");
+  await expect(zone).toHaveAttribute("data-drop", "idle");
+  await expect(library.getByTestId("photo-status")).toHaveCount(0);
+
+  // A file the picker would not offer: refused by name.
+  const text = await fileTransfer(page, [
+    { name: "notes.txt", type: "text/plain", text: "not a photo" },
+  ]);
+  await dropFiles(zone, text);
+  await expect(library.getByRole("alert")).toHaveText(
+    "notes.txt is not a JPEG, PNG, HEIC, HEIF or WebP photo.",
+  );
+  await expect(library.getByTestId("photo-status")).toHaveCount(0);
+
+  // One photo: the same upload as a pick.
+  await dropFiles(zone, one);
+  const badge = library.getByTestId("photo-status");
+  await expect(badge).toHaveText("describing", { timeout: 30_000 });
+  await expect(library.getByRole("alert")).toHaveCount(0);
+  // Exactly one photo: neither refused drop left a row behind.
+  const rows = await photoRows();
+  expect(rows).toHaveLength(1);
+  const [photo] = rows;
+  leftKeys.push(photo!.r2_key);
+  expect(photo!.r2_key.endsWith(`library/${photo!.id}/original.jpg`)).toBe(true);
+
+  const worker = await runWorkerOnce({
+    R2_KEY_PREFIX: WORKER_PREFIX,
+    WORKER_ID,
+    E2E_MOCK_AI_SCRIPT: DESCRIBE_ANSWER,
+  });
+  expect(worker.code, worker.output).toBe(0);
+  await expect(badge).toHaveText("ready", { timeout: 15_000 });
+  const [described] = await photoRows();
+  leftKeys.push(described!.thumbnail_key!, described!.large_key!);
+});
+
+test.describe("on a touch phone", () => {
+  test.use({ hasTouch: true });
+
+  test("390x844: the Library tab beside Edit and Versions, its add tile working by tap", async ({
+    page,
+    baseURL,
+  }) => {
+    await openReel(page, baseURL!, PHONE);
+    const tabs = page.getByRole("tablist", { name: "Reel" });
+    await expect(tabs.getByRole("tab")).toHaveText(["Edit", "Versions", "Library"]);
+    await expect(page.getByTestId("library-area")).toBeHidden();
+
+    await tabs.getByRole("tab", { name: "Library" }).tap();
+    const library = page.getByTestId("library-area");
+    await expect(library).toBeVisible();
+    await expect(page.getByTestId("edit-area")).toBeHidden();
+    await expect(page.locator('[data-library="ready"]')).toBeVisible({ timeout: 30_000 });
+    const plus = page.getByRole("button", { name: "Upload a photo" });
+    await expectInsideRoot(page, plus);
+    await expectNoPageScroll(page);
+    // The same dashed tile as on desktop, first in the grid.
+    await expect(
+      library.getByRole("list", { name: "Photos" }).getByRole("listitem").first(),
+    ).toContainText("Upload a photo");
+    await expect(plus).toHaveAttribute("data-ready", "true");
+
+    const before = (await photoRows()).length;
+    const chooser = page.waitForEvent("filechooser");
+    await plus.tap();
+    await (await chooser).setFiles(SAMPLE);
+    await expect(library.getByTestId("photo-status")).toHaveCount(before + 1, { timeout: 30_000 });
+    await expect.poll(async () => (await photoRows()).length, { timeout: 30_000 }).toBe(before + 1);
+    for (const row of await photoRows()) {
+      if (!leftKeys.includes(row.r2_key)) leftKeys.push(row.r2_key);
+    }
+    await expectNoPageScroll(page);
+  });
 });
