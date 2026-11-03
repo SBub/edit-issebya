@@ -38,7 +38,11 @@ lg:row-start-1`, `min-h-0 overflow-y-auto overscroll-contain`, no padding of its
 lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unchanged), and the
   correction field the bottom 32% across both (`lg:col-span-2 lg:col-start-2 lg:row-start-2`,
   `border-t` and `border-l`). In that area `ChangeRequestForm` grows (`lg:flex-1 lg:min-h-0` on the
-  form and the field's box), so the field is tall and Send stays in its bottom right corner; behaviour (Send, disabled states, messages) is the same as on a phone. Phone:
+  form and the field's box), so the field is tall and Send stays in its bottom right corner. The
+  area has one padding on every side (`p-3`, desktop and phone), and the box is inset by exactly
+  that on all four sides: the reason and status lines under the box hide while empty
+  (`empty:hidden`), so the form's `gap-1` adds no space below the box unless a line has text;
+  behaviour (Send, disabled states, messages) is the same as on a phone. Phone:
   the same header, the middle split into Edit, Versions and Library tabs (WAI-ARIA tabs: arrows,
   Home and End wrap over the three) and the correction field pinned at the bottom, its usual two-row
   height. The correction field is last in the DOM, after the three panels, so the tab order follows
@@ -280,7 +284,8 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   tabs with the correction field pinned at the bottom over the full width). On both it checks that
   Send is a square icon button with no text (named by `aria-label` and `title`) inside the field's
   box (`data-testid="change-field"`) at its bottom right, and that the textarea's right padding
-  clears it. At 1440x900, 1280x800
+  clears it. At 1440x900, with no reason or status text, it checks that the four gaps between the
+  change area's inner edges and the box are equal within 1 px. At 1440x900, 1280x800
   and 1024x768 (the `lg` breakpoint) it checks the desktop split within 1 px: the edit area over the
   full height under the header, Versions and the library side by side each 68% of that height with
   Versions' list scrolling inside it, the correction field below both and as wide as the two, its

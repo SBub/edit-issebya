@@ -46,7 +46,10 @@ version` as above; otherwise the version's `change_title`, falling back (version
   under the button. No visible label: the textarea is named by `aria-label="Ask for a change"`, and
   its placeholder says what to do ("What should change? For example: slower transitions, no photos
   in this one, bigger captions"). Enter adds a new line; the button sends. Disabled with the blocked reason beside it, otherwise the queue note (`changeQueueNote` in
-  `apps/studio/src/lib/failures.ts`) when jobs are ahead; after sending it shows `Pending: <request>` until the job ends.
+  `apps/studio/src/lib/failures.ts`) when jobs are ahead; after sending it shows `Pending: <request>` until the job ends. These lines sit under the box: the
+  blocked reason or queue note (`change-blocked-reason`), then the status line (`change-status`,
+  `aria-live`, the pending line or a send error). Each hides while empty (`empty:hidden`), so with
+  no text the box keeps the area's even inset on all four sides; one shows only when it has text.
   Its `refill(text)` handle puts a request back in the field and focuses it (the overlay's Change
   the request).
 - A change refused twice (the job `failed` with `failure_kind` `answer_refused`) shows in the

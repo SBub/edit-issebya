@@ -312,6 +312,35 @@ async function expectDesktopSplit(page: Page) {
   expect([...order].sort((a, b) => a - b)).toEqual(order);
 }
 
+// The correction box is inset evenly: with no reason or status text showing,
+// the space between the change area's inner edges (inside its borders) and
+// the box is one value on all four sides, within 1 px.
+async function expectChangeBoxEvenlyInset(page: Page) {
+  await expect(page.getByTestId("change-blocked-reason")).toHaveText("");
+  await expect(page.locator("#change-status")).toHaveText("");
+  const gaps = await page.evaluate(() => {
+    const area = document.querySelector<HTMLElement>('[data-testid="change-area"]')!;
+    const outer = area.getBoundingClientRect();
+    const inner = {
+      top: outer.top + area.clientTop,
+      left: outer.left + area.clientLeft,
+      right: outer.left + area.clientLeft + area.clientWidth,
+      bottom: outer.top + area.clientTop + area.clientHeight,
+    };
+    const box = document.querySelector('[data-testid="change-field"]')!.getBoundingClientRect();
+    return [
+      box.top - inner.top,
+      inner.right - box.right,
+      inner.bottom - box.bottom,
+      box.left - inner.left,
+    ];
+  });
+  for (const gap of gaps) {
+    expect(gap).toBeGreaterThan(0);
+    expect(Math.abs(gap - gaps[0]!)).toBeLessThanOrEqual(1);
+  }
+}
+
 test("one screen at 1440x900: preview, timeline, change box and the side panel at once", async ({
   page,
   baseURL,
@@ -335,6 +364,7 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
   await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
 
   await expectDesktopSplit(page);
+  await expectChangeBoxEvenlyInset(page);
   await expectOwnScroll(page, page.getByTestId("versions-area"));
   await expectNoPageScroll(page);
 

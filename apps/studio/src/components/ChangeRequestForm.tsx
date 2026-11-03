@@ -101,7 +101,10 @@ export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs, ref 
       {/* One box, like a chat composer: the field and, at its bottom right,
           the Send button. The textarea's right padding keeps text from
           running under the button. The global focus outline is off on the
-          textarea only; the whole box shows the ring instead. */}
+          textarea only; the whole box shows the ring instead. The reason
+          and status lines below hide while empty (`empty:hidden`), so the
+          form's gap adds nothing under the box and the area's one padding
+          insets it evenly. */}
       <div
         data-testid="change-field"
         className="relative flex rounded-reel border border-line bg-chrome focus-within:ring-2 focus-within:ring-accent has-[textarea:disabled]:bg-chrome/50 lg:min-h-0 lg:flex-1"
@@ -144,12 +147,16 @@ export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs, ref 
       <p
         id="change-reason"
         data-testid="change-blocked-reason"
-        className="flex-none text-xs text-muted"
+        className="flex-none text-xs text-muted empty:hidden"
       >
         {blockedReason ??
           (queueNote ? <span data-testid="change-queue-note">{queueNote}</span> : "")}
       </p>
-      <p id="change-status" aria-live="polite" className="flex-none text-xs break-words">
+      <p
+        id="change-status"
+        aria-live="polite"
+        className="flex-none text-xs break-words empty:hidden"
+      >
         {pending && sent ? (
           <span data-testid="change-pending">Pending: {sent.request}</span>
         ) : (

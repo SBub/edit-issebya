@@ -124,7 +124,7 @@ export function ReelScreen({ header, main, footer, versions, library }: Props) {
         </div>
         <div
           data-testid="change-area"
-          className="flex flex-none flex-col border-t border-line px-3 py-2 lg:col-span-2 lg:col-start-2 lg:row-start-2 lg:min-h-0 lg:border-l lg:p-3"
+          className="flex flex-none flex-col border-t border-line p-3 lg:col-span-2 lg:col-start-2 lg:row-start-2 lg:min-h-0 lg:border-l"
         >
           {footer}
         </div>
