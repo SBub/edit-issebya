@@ -142,7 +142,10 @@ per target, or nothing for a root-only change; the plain root scripts `yarn lint
 `yarn turbo run typecheck <filter>` (`next typegen` then `tsc --noEmit` in each app; it rewrites
 the gitignored `next-env.d.ts`, never stage it); dead code `yarn knip` (whole repository, one root
 `knip.json` with a workspace per package); format `yarn format:check` (whole repository; write
-`yarn format`); unit `yarn turbo run test <filter>` (vitest, database-free); for a run targeting
+`yarn format`); unit `yarn turbo run test <filter>` (vitest, database-free; `test` depends on
+`^transit`, a no-op task in every workspace, so an app's test hash covers the internal packages it
+lists in `dependencies` and a change in `packages/*` reruns it instead of replaying the cache; an app
+that imports an internal package must list it there); for a run targeting
 the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (real ffmpeg and
 HyperFrames on the committed clip, `footage-check.tools.test.ts` with real ffprobe, and
 `photos/photo-images.tools.test.ts` with real ffmpeg on `fixtures/photos/sample.jpg` and `sample.heic`,

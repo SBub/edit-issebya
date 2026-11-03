@@ -163,6 +163,16 @@ two AI calls. A failure before the first AI call may still be retried once.
   answer), `prompt.test.ts`, `run-decide.test.ts` (pass, one retry, second failure, nothing
   written on failure; a behind photo: the library quoted as data in the prompt, the mask made
   before the save, `inputs.photos` and `, 1 behind` on the step line) and `step-runner.test.ts` (stdin, cap, `StepError`).
+  `run-decide.test.ts` builds its refused answers from the preset's constants: the off-box title
+  sits at `ISSEBYA_PRESET.safe.right - 20`, inside the answer schema's bounds, so only the
+  safe-box check refuses it; the behind photos use the `top` spot, which the fallback caption line
+  never reaches; the face test puts a wide fake head over the `top` spot (the face covers 62% of
+  it) that ends above the dim transition's text region, so its retry without the photo passes.
+  After a change to the preset or the layout, re-derive these from the new values; never loosen a
+  check to make them pass.
+- The worker's and the studio's `test` tasks depend on `^transit` in `turbo.json`, so a change in
+  `packages/edit` or `packages/storage` changes their hash and turbo runs them again instead of
+  replaying a cached pass; both also hash `fixtures/pipeline/`.
 - `decide/testdata/short-speech-answer.json` is the scripted answer for the fixture clip; a unit
   test proves it passes the checks.
 - `yarn turbo run test:db --filter=./apps/studio`: `versions.test.ts` covers the new columns.
