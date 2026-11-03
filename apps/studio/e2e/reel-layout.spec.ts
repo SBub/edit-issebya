@@ -787,6 +787,29 @@ async function settledTime(page: Page, seconds: number, held = false): Promise<n
   return reads.at(-1)!;
 }
 
+// Waits until a pause has landed and returns the player's time. The pause
+// reaches the player's frame by message, so the clock can still tick a few
+// frames after the Play button shows (more on a slow machine): the time read
+// at the click is not yet the paused time. Landed: the same over three reads
+// 100 ms apart (never true while playing), and the playhead on it.
+async function pausedTime(page: Page): Promise<number> {
+  const reads: number[] = [];
+  await expect
+    .poll(
+      async () => {
+        const t = await playerTime(page);
+        reads.push(t);
+        const last = reads.slice(-3);
+        if (last.length < 3 || !last.every((read) => read === t)) return false;
+        const shown = Number(await page.getByTestId("playhead").getAttribute("data-seconds"));
+        return Math.abs(shown - t) <= 0.0005;
+      },
+      { intervals: [100], timeout: 10_000 },
+    )
+    .toBe(true);
+  return reads.at(-1)!;
+}
+
 for (const [size, viewport] of [
   ["1440x900", DESKTOP],
   ["390x844", PHONE],
@@ -1062,7 +1085,7 @@ for (const [size, viewport] of [
     // Paused stays paused through a toggle, at the same time.
     await toggle.click();
     await expect(page.locator('[data-intent="paused"]')).toBeVisible();
-    const paused = await settledTime(page, await playerTime(page));
+    const paused = await pausedTime(page);
     await expand.click();
     await expect(page.locator('[data-intent="paused"]')).toBeVisible();
     await page.waitForTimeout(500);
