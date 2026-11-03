@@ -12,7 +12,7 @@ import {
 } from "@edit-issebya/edit";
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type PreviewSourcesResult, loadPreviewSources } from "@/app/preview-actions";
-import { PreviewPlayer } from "@/components/PreviewPlayer";
+import { PreviewPlayer, type PreviewPlayerHandle } from "@/components/PreviewPlayer";
 import { type TimelineFrames, TracksTimeline } from "@/components/TracksTimeline";
 import { isChromium } from "@/lib/browser";
 import { editAssetUrl } from "@/lib/edit-assets";
@@ -138,7 +138,8 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
 }
 
 // One built version: the player and its tracks timeline, the playhead
-// following the player's clock (set only from the player's callback). Keyed
+// following the player's clock (set only from the player's callback) and the
+// timeline's ruler seeking through the player's own seek. Keyed
 // by version, so a new version mounts a new player, started from the
 // hand-off (the previous version's position and play or pause state).
 function BuiltPreview({
@@ -153,9 +154,11 @@ function BuiltPreview({
   onHandoff: (change: Partial<Handoff>) => void;
 }) {
   const [position, setPosition] = useState(handoff.position);
+  const playerRef = useRef<PreviewPlayerHandle>(null);
   return (
     <>
       <PreviewPlayer
+        ref={playerRef}
         html={built.html}
         versionId={built.versionId}
         hits={built.hits}
@@ -169,7 +172,12 @@ function BuiltPreview({
         onIntent={(intent) => onHandoff({ intent })}
         controls={controls}
       />
-      <TracksTimeline timeline={built.timeline} position={position} frames={built.frames} />
+      <TracksTimeline
+        timeline={built.timeline}
+        position={position}
+        frames={built.frames}
+        onSeek={(seconds) => playerRef.current?.seek(seconds)}
+      />
     </>
   );
 }

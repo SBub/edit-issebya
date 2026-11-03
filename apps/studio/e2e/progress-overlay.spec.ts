@@ -6,6 +6,7 @@ import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixt
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
+import { ruler } from "../test-support/ruler.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds } from "../test-support/worker.ts";
 import { eventsNamed, recordEvents } from "./events.ts";
@@ -84,8 +85,8 @@ async function expectNoPageScroll(page: Page) {
   expect(sizes.scrollHeight).toBe(sizes.clientHeight);
 }
 
-// The overlay lies inside the preview, clear of Play and the Position slider,
-// and Play still answers a click while it shows.
+// The overlay lies inside the preview, clear of Play and the ruler (the one
+// scrubber), and Play still answers a click while it shows.
 async function expectOverlayNeverBlocks(page: Page) {
   const overlay = await box(page.getByTestId("progress-overlay"));
   const preview = await box(page.locator('section[aria-labelledby="preview-heading"]'));
@@ -95,7 +96,7 @@ async function expectOverlayNeverBlocks(page: Page) {
   expect(overlay.y + overlay.height).toBeLessThanOrEqual(preview.y + preview.height + 1);
   const play = page.getByRole("button", { name: "Play" });
   expect(intersects(overlay, await box(play))).toBe(false);
-  expect(intersects(overlay, await box(page.getByLabel("Position")))).toBe(false);
+  expect(intersects(overlay, await box(ruler(page)))).toBe(false);
   await play.click();
   await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
   await page.getByRole("button", { name: "Pause" }).click();

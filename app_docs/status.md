@@ -210,7 +210,7 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
   and `progress_updated_at` columns) and `stored-files.test.ts` (`worker_status.heartbeat_at`, and a
   heartbeat upsert keeps the disk guard's `waiting_reason`).
 - E2E: `apps/studio/e2e/progress-overlay.spec.ts` (scripted step rows read in plain words with step
-  k of n at 1440x900 and 390x844, clear of Play and the Position slider; a version saved while
+  k of n at 1440x900 and 390x844, clear of Play and the timeline's ruler; a version saved while
   playing replaces the preview at the same time, still playing, with `New version N`; one saved while
   paused stays paused); `progress.spec.ts`, `waiting-ai.spec.ts`, `worker-offline.spec.ts` and
   `disk-guard.spec.ts` read their lines inside `progress-overlay`;

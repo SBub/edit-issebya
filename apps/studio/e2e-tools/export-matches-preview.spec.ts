@@ -24,6 +24,7 @@ import { behindPhotoAnswerScript, behindWordAnswerScript } from "../test-support
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { SAMPLE_PHOTO, type SeededPhoto, seedReadyPhoto } from "../test-support/photos.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
+import { seekOnRuler } from "../test-support/ruler.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
@@ -200,16 +201,11 @@ async function openPreview(versionId: string) {
   await expect(page.locator('[data-realtime="ready"]')).toBeVisible({ timeout: 30_000 });
 }
 
-// Seeks the way a drag does, then waits until every video in the frame has
+// Seeks with a click on the ruler, then waits until every video in the frame has
 // finished seeking to that moment with a frame decoded, and two animation
 // frames have painted.
 async function seekTo(seconds: number) {
-  await page.getByLabel("Position").evaluate((el, value) => {
-    const input = el as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    setter.call(input, String(value));
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  }, seconds);
+  await seekOnRuler(page, seconds);
   await expect
     .poll(
       () =>

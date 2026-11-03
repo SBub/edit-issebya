@@ -11,7 +11,14 @@ import handEdit from "../../../../packages/edit/src/testdata/versions/rethink-wo
 import baselineEdit from "../../../../packages/edit/src/testdata/versions/baseline-short-speech.edit.json" with { type: "json" };
 import handTranscript from "../../../../packages/edit/src/testdata/rethink-work/transcript.json" with { type: "json" };
 import speechTranscript from "../../../../fixtures/pipeline/retime/transcript.json" with { type: "json" };
-import { formatClock, frameIndexAt, rulerTicks, timelineRows } from "./tracks-timeline";
+import {
+  formatClock,
+  frameIndexAt,
+  rulerTicks,
+  scrubKey,
+  secondsAtX,
+  timelineRows,
+} from "./tracks-timeline";
 
 function parsed(json: unknown, transcriptJson: unknown) {
   const transcript = transcriptSchema.parse(transcriptJson);
@@ -148,5 +155,58 @@ describe("frameIndexAt", () => {
     expect(frameIndexAt(64, LAYOUT)).toBe(31);
     expect(frameIndexAt(500, LAYOUT)).toBe(31);
     expect(frameIndexAt(Number.NaN, LAYOUT)).toBe(0);
+  });
+});
+
+describe("secondsAtX", () => {
+  const box = { left: 100, width: 400 };
+
+  it("maps x inside the ruler's box onto the reel's clock", () => {
+    expect(secondsAtX(100, box, 52)).toBe(0);
+    expect(secondsAtX(200, box, 52)).toBe(13);
+    expect(secondsAtX(400, box, 52)).toBe(39);
+    expect(secondsAtX(500, box, 52)).toBe(52);
+  });
+
+  it("clamps a pointer left or right of the ruler to 0 and the duration", () => {
+    expect(secondsAtX(20, box, 52)).toBe(0);
+    expect(secondsAtX(900, box, 52)).toBe(52);
+  });
+
+  it("reads 0 for an empty box, no duration or a pointer that is not a number", () => {
+    expect(secondsAtX(200, { left: 100, width: 0 }, 52)).toBe(0);
+    expect(secondsAtX(200, box, 0)).toBe(0);
+    expect(secondsAtX(Number.NaN, box, 52)).toBe(0);
+  });
+});
+
+describe("scrubKey", () => {
+  it("steps 1 s on an arrow and 5 s with Shift or Page Up and Page Down", () => {
+    expect(scrubKey("ArrowRight", false, 12, 52)).toBe(13);
+    expect(scrubKey("ArrowLeft", false, 12, 52)).toBe(11);
+    expect(scrubKey("ArrowUp", false, 12, 52)).toBe(13);
+    expect(scrubKey("ArrowDown", false, 12, 52)).toBe(11);
+    expect(scrubKey("ArrowRight", true, 12, 52)).toBe(17);
+    expect(scrubKey("ArrowLeft", true, 12, 52)).toBe(7);
+    expect(scrubKey("PageUp", false, 12, 52)).toBe(17);
+    expect(scrubKey("PageDown", false, 12, 52)).toBe(7);
+  });
+
+  it("clamps a step to 0 and the duration", () => {
+    expect(scrubKey("ArrowLeft", false, 0.4, 52)).toBe(0);
+    expect(scrubKey("ArrowLeft", true, 3, 52)).toBe(0);
+    expect(scrubKey("ArrowRight", false, 51.6, 52)).toBe(52);
+    expect(scrubKey("ArrowRight", true, 50, 52)).toBe(52);
+  });
+
+  it("jumps to the start on Home and the end on End", () => {
+    expect(scrubKey("Home", false, 30, 52)).toBe(0);
+    expect(scrubKey("End", false, 30, 52)).toBe(52);
+    expect(scrubKey("End", false, 30, 0)).toBe(0);
+  });
+
+  it("ignores any other key", () => {
+    expect(scrubKey("Enter", false, 12, 52)).toBeNull();
+    expect(scrubKey("a", false, 12, 52)).toBeNull();
   });
 });

@@ -106,3 +106,55 @@ export function frameIndexAt(footageSeconds: number, layout: FramesLayout): numb
     : 0;
   return Math.min(Math.max(index, 0), layout.columns - 1);
 }
+
+// The ruler is the one scrubber: what an arrow key moves, in seconds, and
+// with Shift held.
+const SCRUB_STEP = 1;
+const SCRUB_STEP_LARGE = 5;
+
+function clampTo(seconds: number, duration: number): number {
+  if (!Number.isFinite(duration) || duration <= 0) return 0;
+  if (!Number.isFinite(seconds)) return 0;
+  return Math.min(Math.max(seconds, 0), duration);
+}
+
+// The reel time under a pointer on the ruler: its x within the ruler's own
+// box (never the window), clamped to 0 and the duration.
+export function secondsAtX(
+  clientX: number,
+  box: { left: number; width: number },
+  duration: number,
+): number {
+  if (!(box.width > 0)) return 0;
+  return clampTo(((clientX - box.left) / box.width) * duration, duration);
+}
+
+// Where a key on the ruler moves the position, or null for a key it ignores:
+// arrows step SCRUB_STEP (SCRUB_STEP_LARGE with Shift), Page Up and Page Down
+// step SCRUB_STEP_LARGE, Home and End jump to the start and the end.
+export function scrubKey(
+  key: string,
+  shift: boolean,
+  position: number,
+  duration: number,
+): number | null {
+  const step = shift ? SCRUB_STEP_LARGE : SCRUB_STEP;
+  switch (key) {
+    case "ArrowRight":
+    case "ArrowUp":
+      return clampTo(position + step, duration);
+    case "ArrowLeft":
+    case "ArrowDown":
+      return clampTo(position - step, duration);
+    case "PageUp":
+      return clampTo(position + SCRUB_STEP_LARGE, duration);
+    case "PageDown":
+      return clampTo(position - SCRUB_STEP_LARGE, duration);
+    case "Home":
+      return 0;
+    case "End":
+      return clampTo(duration, duration);
+    default:
+      return null;
+  }
+}

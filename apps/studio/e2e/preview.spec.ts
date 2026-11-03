@@ -12,6 +12,7 @@ import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixt
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
+import { seekOnRuler } from "../test-support/ruler.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds } from "../test-support/worker.ts";
 import { eventsNamed, recordEvents } from "./events.ts";
@@ -74,14 +75,10 @@ function composition(page: Page) {
   return page.frameLocator("hyperframes-player iframe");
 }
 
-// A range input set the way a drag sets it: the value, then an input event.
+// A seek the way the owner makes one: a pointer down and up on the tracks
+// timeline's ruler at that time.
 async function setPosition(page: Page, seconds: number) {
-  await page.getByLabel("Position").evaluate((el, value) => {
-    const input = el as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    setter.call(input, String(value));
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  }, seconds);
+  await seekOnRuler(page, seconds);
 }
 
 // Samples the player's clock every 100 ms for two seconds.

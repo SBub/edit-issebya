@@ -1,13 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { FramesLayout } from "@/lib/preview-sources";
 import {
   type Timeline,
   type TimelineItem,
   type TrackKey,
+  formatClock,
   frameIndexAt,
   rulerTicks,
+  scrubKey,
+  secondsAtX,
 } from "@/lib/tracks-timeline";
 
 export interface TimelineFrames {
@@ -21,6 +30,8 @@ interface Props {
   position: number;
   // The footage preview copy's frames sprite; null shows a plain bar.
   frames: TimelineFrames | null;
+  // Moves the player's clock (the ruler's pointer and keys).
+  onSeek: (seconds: number) => void;
 }
 
 const FOOTAGE_ROW_PX = 36;
@@ -87,13 +98,64 @@ function FootageFrames({ item, frames }: { item: TimelineItem; frames: TimelineF
   );
 }
 
-// The shown version's tracks on the reel's clock, read only: a ruler, one row
-// per track with its items where resolveTimeline puts them, and a playhead
-// following the player. Nothing in it takes focus, a pointer or a drag.
-export function TracksTimeline({ timeline, position, frames }: Props) {
+// The shown version's tracks on the reel's clock: a ruler, one row per track
+// with its items where resolveTimeline puts them, and a playhead following the
+// player. The ruler is the one scrubber (a slider: pointer down seeks, a drag
+// keeps seeking under the pointer, arrows, Page Up and Down, Home and End).
+// The rows are read only: nothing in them takes focus, a pointer or a drag.
+// The ruler, every lane and the playhead share one time axis: the same left
+// edge after the label column and the same width.
+export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
   const { duration, rows } = timeline;
   const ticks = rulerTicks(duration);
-  const at = Math.min(Math.max(position, 0), duration);
+  const clock = Math.min(Math.max(position, 0), duration);
+  const rulerRef = useRef<HTMLDivElement>(null);
+  // While the pointer is down on the ruler, the time under it. The player
+  // settles a seek on a frame boundary (up to one frame earlier, several px
+  // on a phone), so the playhead shows the pointer's time until release,
+  // keeping the handle under the pointer; then it follows the clock again.
+  const [scrubbing, setScrubbing] = useState<number | null>(null);
+  const at = scrubbing ?? clock;
+
+  // The time under the pointer, from the ruler's own box (never the window).
+  function seekToPointer(clientX: number) {
+    const ruler = rulerRef.current;
+    if (!ruler) return;
+    const box = ruler.getBoundingClientRect();
+    const seconds = secondsAtX(clientX, box, duration);
+    setScrubbing(seconds);
+    onSeek(seconds);
+  }
+
+  function endScrub() {
+    setScrubbing(null);
+  }
+
+  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    // Captured, so a drag that leaves the ruler keeps scrubbing.
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // A pointer the browser no longer tracks: the click still seeks.
+    }
+    event.currentTarget.focus({ preventScroll: true });
+    event.preventDefault();
+    seekToPointer(event.clientX);
+  }
+
+  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    seekToPointer(event.clientX);
+  }
+
+  function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const next = scrubKey(event.key, event.shiftKey, clock, duration);
+    if (next === null) return;
+    event.preventDefault();
+    onSeek(next);
+  }
 
   return (
     <section
@@ -103,7 +165,26 @@ export function TracksTimeline({ timeline, position, frames }: Props) {
     >
       <div className="flex h-4 items-end">
         <span className="w-20 flex-none" />
-        <div className="relative h-full min-w-0 flex-1" aria-hidden="true">
+        <div
+          ref={rulerRef}
+          role="slider"
+          tabIndex={0}
+          aria-label="Position"
+          aria-valuemin={0}
+          aria-valuemax={Number(duration.toFixed(2))}
+          aria-valuenow={Number(at.toFixed(2))}
+          aria-valuetext={`${formatClock(at)} of ${formatClock(duration)}`}
+          aria-orientation="horizontal"
+          data-testid="ruler"
+          data-duration={duration}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endScrub}
+          onPointerCancel={endScrub}
+          onLostPointerCapture={endScrub}
+          onKeyDown={onKeyDown}
+          className="relative h-full min-w-0 flex-1 cursor-pointer touch-none rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
           {ticks.map((tick) => (
             <span
               key={tick.seconds}
@@ -168,6 +249,7 @@ export function TracksTimeline({ timeline, position, frames }: Props) {
           style={{ transform: `translateX(${percent(at, duration)}%)` }}
         >
           <span className="absolute inset-y-0 left-0 w-0.5 -translate-x-1/2 bg-accent" />
+          <span className="absolute top-0 left-0 size-2 -translate-x-1/2 rounded-full bg-accent" />
         </div>
       </div>
     </section>
