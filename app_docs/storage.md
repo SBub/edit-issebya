@@ -5,6 +5,7 @@
 - specs/issue-37-adw-203f77eb-sdlc_planner-storage-records-slimming-disk-guard.md
 - specs/issue-91-adw-fb57dacf-sdlc_planner-worker-scratch-dir-and-r2-write-probe.md
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
+- specs/issue-136-adw-0c90e622-sdlc_planner-delete-reel-from-list.md
 
 ## Overview
 
