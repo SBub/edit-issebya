@@ -1,4 +1,4 @@
-import type { BigWordBox } from "./behind.ts";
+import { type BigWordBox, spotBox, spotFaceShare } from "./behind.ts";
 import { type HeadTrack, faceBox } from "./head-track.ts";
 import type { TextBox } from "./layout.ts";
 import type { Preset } from "./preset.ts";
@@ -7,7 +7,15 @@ import type { ResolvedItem } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
 export type CheckRule =
-  "safe-box" | "frame" | "face" | "sound-gap" | "time-in-speech" | "out-of-reel" | "glossary";
+  | "safe-box"
+  | "frame"
+  | "behind-face"
+  | "behind-caption"
+  | "face"
+  | "sound-gap"
+  | "time-in-speech"
+  | "out-of-reel"
+  | "glossary";
 
 // One failed layout rule; an empty list means every rule passes.
 export interface Check {
@@ -32,7 +40,8 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
 
 // The layout checks, in a stable order: text inside the safe box, big words
 // behind the speaker inside the frame (they cross the safe box by design),
-// captions clear of the face, sounds at least the preset's gap apart, time
+// photos behind the speaker not taken over by the face and with no caption
+// over them, captions clear of the face, sounds at least the preset's gap apart, time
 // anchors outside speech, anchors inside the reel.
 export function runChecks(
   edit: Edit,
@@ -77,6 +86,41 @@ export function runChecks(
         rule: "frame",
         item: word.itemId,
         reason: `big word ${word.itemId} (${JSON.stringify(word.text)}) leaves the frame: ${edges.join(", ")}`,
+      });
+    }
+  }
+
+  const photos = (edit.tracks.behind ?? []).flatMap((item) =>
+    item.kind === "photo" ? [{ item, span: resolved.get(item.id)! }] : [],
+  );
+  for (const { item, span } of photos) {
+    const face = faceBox(headTrack, span.start, span.end, { left: 0, right: 0 });
+    const share = spotFaceShare(item.spot, face, preset);
+    const max = preset.behind.maxFaceShare;
+    if (share > max + SLACK) {
+      checks.push({
+        rule: "behind-face",
+        item: item.id,
+        reason: `photo ${item.id} in the ${item.spot} spot: the face covers ${Math.round(share * 100)}% of it, more than ${Math.round(max * 100)}%; pick a spot clear of the head`,
+      });
+    }
+  }
+  for (const { item, span } of photos) {
+    const spot = spotBox(item.spot, preset);
+    for (const box of boxes) {
+      if (box.kind !== "caption") continue;
+      if (!(box.start < span.end - SLACK && span.start < box.end - SLACK)) continue;
+      const rect = {
+        left: box.x,
+        right: box.x + box.width,
+        top: box.y,
+        bottom: box.y + box.height,
+      };
+      if (!overlaps(rect, spot)) continue;
+      checks.push({
+        rule: "behind-caption",
+        item: item.id,
+        reason: `photo ${item.id} in the ${item.spot} spot sits under caption ${box.itemId} (${JSON.stringify(box.text)}); pick another spot`,
       });
     }
   }

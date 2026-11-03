@@ -15,7 +15,7 @@ const readJson = (path: string): unknown =>
 export const BEHIND_TRANSCRIPT = transcriptSchema.parse(readJson("rethink-work/transcript.json"));
 export const BEHIND_PHOTO = "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14";
 
-// The fixture with one top photo and one big word, its masks and photos
+// The fixture with one right photo and one big word, its masks and photos
 // removed (what a new answer looks like before the cut-out step).
 export function behindEdit(): Edit {
   const parsed = parseEdit(

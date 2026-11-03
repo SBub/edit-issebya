@@ -114,3 +114,58 @@ describe("runChecks on big words behind the speaker", () => {
     );
   });
 });
+
+describe("runChecks on photos behind the speaker", () => {
+  const behind = FIXTURES.find((fixture) => fixture.name === "rethink-work-behind")!;
+
+  async function behindChecks(spot: "top" | "left" | "right", headTrack: HeadTrack) {
+    const edit = structuredClone(behind.edit);
+    const photo = edit.tracks.behind!.find((item) => item.kind === "photo")!;
+    if (photo.kind === "photo") photo.spot = spot;
+    const { checks } = build(
+      edit,
+      behind.transcript,
+      headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    return checks.filter((check) => check.rule.startsWith("behind-"));
+  }
+
+  // A head 300 px wide centred in the left spot: its face box (300 by 405 px)
+  // lies wholly inside the spot and covers 43% of it.
+  const bigHeadLeft: HeadTrack = behind.headTrack.map(
+    (sample, index) => sample && { t: index * 0.25, head_top: 600, cx: 270, head_w: 300 },
+  );
+
+  it("fails behind-face for a photo in left over a face inside the spot", async () => {
+    const checks = await behindChecks("left", bigHeadLeft);
+    const face = checks.filter((check) => check.rule === "behind-face");
+    expect(face).toHaveLength(1);
+    expect(face[0]).toMatchObject({ item: "behind-photo" });
+    expect(face[0]!.reason).toBe(
+      "photo behind-photo in the left spot: the face covers 43% of it, more than 40%; pick a spot clear of the head",
+    );
+  });
+
+  it("passes behind-face for the same photo with no head in the clip", async () => {
+    const empty: HeadTrack = behind.headTrack.map(() => null);
+    const checks = await behindChecks("left", empty);
+    expect(checks.filter((check) => check.rule === "behind-face")).toEqual([]);
+  });
+
+  it("fails behind-caption for a photo in top under the captions shown with it", async () => {
+    const checks = await behindChecks("top", behind.headTrack);
+    expect(checks.every((check) => check.rule === "behind-caption")).toBe(true);
+    expect(checks.length).toBeGreaterThan(0);
+    expect(checks[0]!.item).toBe("behind-photo");
+    expect(checks[0]!.reason).toMatch(
+      /^photo behind-photo in the top spot sits under caption cw\d+ \(".+"\); pick another spot$/,
+    );
+    expect(checks.map((check) => check.reason).join("\n")).toContain("caption cw18 ");
+  });
+
+  it("passes both for the stored fixture's photo in right", async () => {
+    expect(await behindChecks("right", behind.headTrack)).toEqual([]);
+  });
+});

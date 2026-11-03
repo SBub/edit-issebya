@@ -277,6 +277,7 @@ describe("runDoctor", () => {
       "change_summary",
       "unexpressed",
       "free_field",
+      "behind_rules",
     ]);
     expect(JSON.stringify(schema)).toContain('"enum":["w0001","w0002"]');
   });

@@ -263,7 +263,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
     await check("ai structured call", async () => {
       const result = await deps.ai().call(plainTool, {
         prompt:
-          'Reply with every track an empty list, change_summary "ok", and unexpressed and free_field empty lists.',
+          'Reply with every track an empty list, change_summary "ok", unexpressed and free_field empty lists, and behind_rules photos and big_word "keep".',
         schema: doctorAiSchema(),
         cwd: tmpdir(),
       });

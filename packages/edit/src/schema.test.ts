@@ -170,6 +170,62 @@ describe("the behind track", () => {
     ).toBeGreaterThan(0);
   });
 
+  describe("with the decide counts", () => {
+    const counts = { behindCounts: { photos: 2, words: 1 } };
+    const word = (start: number, end: number, id = "w") => ({
+      id,
+      kind: "word",
+      text: "WORK",
+      start: { time: start },
+      end: { time: end },
+    });
+    const limited = (json: unknown) => parseEdit(json, ISSEBYA_PRESET, behind.transcript, counts);
+
+    it("refuses a third photo, naming it", () => {
+      const json = withItems([photo(1, 4, "a"), photo(10, 13, "b"), photo(20, 23, "c")]);
+      const result = limited(json);
+      expect(result.ok).toBe(false);
+      expect(!result.ok && result.reasons.join("\n")).toMatch(
+        /behind c: a third photo; at most 2 photos per reel/,
+      );
+      expect(!result.ok && result.reasons.join("\n")).not.toMatch(/behind b:/);
+    });
+
+    it("refuses a second big word", () => {
+      const result = limited(withItems([word(1, 4, "a"), word(10, 13, "b")]));
+      expect(!result.ok && result.reasons.join("\n")).toMatch(
+        /behind b: a second big word; at most 1 per reel/,
+      );
+    });
+
+    it("accepts two photos and one word", () => {
+      const json = withItems([photo(1, 4, "a"), photo(10, 13, "b"), word(20, 23)]);
+      expect(limited(json)).toMatchObject({ ok: true });
+    });
+
+    it("caps the array in the JSON Schema", () => {
+      const schema = z.toJSONSchema(editSchemaFor(ISSEBYA_PRESET, behind.transcript, counts), {
+        io: "output",
+        reused: "inline",
+      }) as unknown as {
+        properties: { tracks: { properties: { behind: { maxItems?: number } } } };
+      };
+      expect(schema.properties.tracks.properties.behind.maxItems).toBe(3);
+    });
+
+    it("still refuses a 5-second photo", () => {
+      const result = limited(withItems([photo(10, 15)]));
+      expect(!result.ok && result.reasons.join("\n")).toMatch(
+        /behind p: lasts 5\.000 s, must be 2 to 4 s/,
+      );
+    });
+  });
+
+  it("parses three photos without the counts (stored versions are not limited)", () => {
+    const json = withItems([photo(1, 4, "a"), photo(10, 13, "b"), photo(20, 23, "c")]);
+    expect(parseEdit(json, ISSEBYA_PRESET, behind.transcript)).toMatchObject({ ok: true });
+  });
+
   it("limits photos to the given library", () => {
     const json = withItems([photo(10, 13)]);
     expect(parseEdit(json, ISSEBYA_PRESET, behind.transcript, { photoIds: [PHOTO] }).ok).toBe(true);

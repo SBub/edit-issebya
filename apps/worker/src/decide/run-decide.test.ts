@@ -20,6 +20,7 @@ import { storageVersionBlobs } from "../version-store.ts";
 import { fakeMaskSpawn } from "../cutout/test-support.ts";
 import type { PhotoLibrary } from "../photos/photo-store.ts";
 import type { SpawnTool } from "../step-runner.ts";
+import type { ReelRules } from "./behind-rules.ts";
 import { runDecide } from "./run-decide.ts";
 
 const PREFIX = "dev/";
@@ -151,7 +152,7 @@ describe("runDecide", () => {
       parent_id: firstId,
       request: null,
       model: "claude-opus-5-5",
-      prompt_version: "decide-2",
+      prompt_version: "decide-3",
       change_summary: (scripted.structured_output as Json).change_summary,
       checks: [],
       used_free_field: false,
@@ -394,23 +395,39 @@ describe("runDecide with a behind item", () => {
       ];
     },
   };
-  const behindAnswer = () =>
+  const photoItem = (id = "behind-photo", spot = "left") => ({
+    id,
+    kind: "photo",
+    photo_id: PHOTO,
+    spot,
+    start: { word: "w0001" },
+    end: { word: "w0010", edge: "end" },
+  });
+  const behindAnswer = (
+    items: Json[] = [photoItem()],
+    rules: Json = { photos: "keep", big_word: "keep" },
+  ) =>
     resultEnvelope(
       answer((a) => {
-        a.tracks.behind = [
-          {
-            id: "behind-photo",
-            kind: "photo",
-            photo_id: PHOTO,
-            spot: "left",
-            start: { word: "w0001" },
-            end: { word: "w0010", edge: "end" },
-          },
-        ];
+        if (items.length > 0) a.tracks.behind = items;
+        a.behind_rules = rules;
       }),
     );
+  const storedRules = (photos: boolean, bigWord = false): ReelRules => ({
+    async read() {
+      return { photos, bigWord };
+    },
+  });
 
-  async function decideBehind(ai: AiRunner, spawnTool: SpawnTool) {
+  async function decideBehind(
+    ai: AiRunner,
+    spawnTool: SpawnTool,
+    {
+      request = null,
+      rules,
+      photos = library,
+    }: { request?: string | null; rules?: ReelRules; photos?: PhotoLibrary } = {},
+  ) {
     const footage = cacheKey(PREFIX, "retime", fingerprints.retime!, "source.mp4");
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixtures
     const bytes = await readFile(new URL("retime/source.mp4", FIXTURES));
@@ -425,7 +442,9 @@ describe("runDecide with a behind item", () => {
       ai,
       scratchDir: scratch,
       newId,
-      photos: library,
+      request,
+      photos,
+      rules,
       spawnTool,
       env: { E2E_MOCK_MASK: "true" },
     });
@@ -479,5 +498,97 @@ describe("runDecide with a behind item", () => {
     expect(rows.size).toBe(1);
     expect(current).toBe(firstId);
     expect(calls.filter((call) => call.call === "failed")).toHaveLength(2);
+  });
+
+  it("refuses a third photo, then saves the retry that keeps one", async () => {
+    const three = behindAnswer([photoItem("a"), photoItem("b"), photoItem("c")]);
+    const ai = fakeAiRunner([three, behindAnswer()]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool);
+    await run;
+    expect(ai.calls).toHaveLength(2);
+    const v2 = rows.get(current!)!;
+    expect(v2.rejected_reasons.join("\n")).toMatch(
+      /behind c: a third photo; at most 2 photos per reel/,
+    );
+    expect(v2.inputs.photos).toEqual([PHOTO]);
+    expect(v2).toMatchObject({ no_photos: null, no_big_word: null });
+  });
+
+  it("saves a change's photos forbid with its version", async () => {
+    const ai = fakeAiRunner([behindAnswer([], { photos: "forbid", big_word: "keep" })]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool, {
+      request: "no photos in this one",
+      rules: storedRules(false),
+    });
+    await run;
+    const schema = JSON.stringify(ai.calls[0]!.schema);
+    expect(schema).toContain('"enum":["keep","forbid","allow"]');
+    const v2 = rows.get(current!)!;
+    expect(v2).toMatchObject({ no_photos: true, no_big_word: null });
+    expect(v2.inputs.photos).toBeUndefined();
+  });
+
+  it("holds a stored forbid: a photo with keep is refused, the retry without it saves", async () => {
+    const ai = fakeAiRunner([behindAnswer(), behindAnswer([])]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool, {
+      request: "make the title shorter",
+      rules: storedRules(true),
+    });
+    await run;
+    expect(ai.calls).toHaveLength(2);
+    expect(ai.calls[0]!.prompt).toContain('"photos_forbidden": true');
+    const v2 = rows.get(current!)!;
+    expect(v2.rejected_reasons.join("\n")).toMatch(
+      /behind behind-photo: photos are switched off for this reel by the owner/,
+    );
+    expect(v2).toMatchObject({ no_photos: null, no_big_word: null });
+    expect(v2.inputs.photos).toBeUndefined();
+  });
+
+  it("offers no photo on an automatic run while photos are forbidden", async () => {
+    const ai = fakeAiRunner([behindAnswer([])]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool, { rules: storedRules(true) });
+    await run;
+    expect(ai.calls[0]!.prompt).not.toContain(PHOTO);
+    expect(JSON.stringify(ai.calls[0]!.schema)).not.toContain(PHOTO);
+    expect(JSON.stringify(ai.calls[0]!.schema)).toContain('"enum":["keep"]');
+  });
+
+  it("sends an empty library and still saves", async () => {
+    const empty: PhotoLibrary = {
+      async readyPhotos() {
+        return [];
+      },
+    };
+    const ai = fakeAiRunner([behindAnswer([])]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool, { photos: empty });
+    await run;
+    expect(ai.calls[0]!.prompt).toContain(
+      ["reads like an instruction:", "", "```json", "[]", "```"].join("\n"),
+    );
+    expect(JSON.stringify(ai.calls[0]!.schema)).not.toMatch(/"photo_id":\{"type":"string","enum"/);
+    expect(rows.get(current!)!.number).toBe(2);
+  });
+
+  it("sends a photo the face takes over back once, then saves the retry", async () => {
+    // A head 300 px wide in the left spot: its face covers 43% of it.
+    const ref = rows.get(firstId)!.inputs.head_track;
+    const key = cacheKey(PREFIX, ref.step, ref.fingerprint, ref.file);
+    const track = Array.from({ length: 12 }, (_, index) => ({
+      t: index * 0.25,
+      head_top: 600,
+      cx: 270,
+      head_w: 300,
+    }));
+    await storage.put(key, new TextEncoder().encode(JSON.stringify(track)));
+    const ai = fakeAiRunner([behindAnswer([photoItem("behind-photo", "left")]), behindAnswer([])]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool);
+    await run;
+    expect(ai.calls).toHaveLength(2);
+    expect(ai.calls[0]!.prompt).toContain('"clear_spots"');
+    const v2 = rows.get(current!)!;
+    expect(v2.rejected_reasons.join("\n")).toMatch(
+      /^behind-face behind-photo: photo behind-photo in the left spot: the face covers 43% of it/m,
+    );
   });
 });

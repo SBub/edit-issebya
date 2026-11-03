@@ -65,6 +65,9 @@ export interface EditLimits {
   duration?: number;
   bounds?: Box;
   photoIds?: readonly string[];
+  // The decide limits: at most this many photos and big words behind the
+  // speaker. Stored versions parse without them.
+  behindCounts?: { photos: number; words: number };
 }
 
 // The six tracks, built per reel: the word ids are the transcript's, the
@@ -151,7 +154,10 @@ export function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: 
     sounds: z.array(sound),
     // A library photo or one big word behind the speaker; stored versions
     // without it parse, and the builder reads it as empty.
-    behind: z.array(behind).optional(),
+    behind: (limits.behindCounts === undefined
+      ? z.array(behind)
+      : z.array(behind).max(limits.behindCounts.photos + limits.behindCounts.words)
+    ).optional(),
   });
 }
 
@@ -167,6 +173,7 @@ function refineEdit(
   edit: { duration: number; tracks: Tracks },
   transcript: Transcript,
   preset: Preset,
+  limits: EditLimits,
   ctx: z.RefinementCtx,
 ): void {
   const words = new Map(transcript.words.map((word) => [word.id, word]));
@@ -197,16 +204,49 @@ function refineEdit(
       ctx.addIssue({ code: "custom", message: `overlay ${item.id}: needs words or text` });
     }
   }
-  refineBehind(edit, transcript, preset, ctx);
+  refineBehind(edit, transcript, preset, limits, ctx);
 }
 
-function refineBehind(
+const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"];
+
+function ordinal(n: number): string {
+  return ORDINALS[n - 1] ?? `${n}th`;
+}
+
+// The behind track's own rules (counts with the decide limits, length, one at
+// a time, clear of hidden footage); the decide answer runs it too.
+export function refineBehind(
   edit: { duration: number; tracks: Tracks },
   transcript: Transcript,
   preset: Preset,
+  limits: EditLimits,
   ctx: z.RefinementCtx,
 ): void {
   const words = new Map(transcript.words.map((word) => [word.id, word]));
+  if (limits.behindCounts) {
+    const { photos, words: bigWords } = limits.behindCounts;
+    let photoCount = 0;
+    let wordCount = 0;
+    for (const item of edit.tracks.behind ?? []) {
+      if (item.kind === "photo") {
+        photoCount += 1;
+        if (photoCount > photos) {
+          ctx.addIssue({
+            code: "custom",
+            message: `behind ${item.id}: a ${ordinal(photoCount)} photo; at most ${photos} photo${photos === 1 ? "" : "s"} per reel`,
+          });
+        }
+      } else {
+        wordCount += 1;
+        if (wordCount > bigWords) {
+          ctx.addIssue({
+            code: "custom",
+            message: `behind ${item.id}: a ${ordinal(wordCount)} big word; at most ${bigWords} per reel`,
+          });
+        }
+      }
+    }
+  }
   const { minSeconds, maxSeconds } = preset.behind;
   const spans = (edit.tracks.behind ?? []).map((item) => ({
     id: item.id,
@@ -266,7 +306,7 @@ export function editSchemaFor(preset: Preset, transcript: Transcript, limits: Ed
       inputs: editInputsSchema,
       tracks: tracksSchemaFor(preset, transcript, limits),
     })
-    .superRefine((edit, ctx) => refineEdit(edit, transcript, preset, ctx));
+    .superRefine((edit, ctx) => refineEdit(edit, transcript, preset, limits, ctx));
 }
 
 export type Edit = z.infer<ReturnType<typeof editSchemaFor>>;

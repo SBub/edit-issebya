@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bigWordLayout, maskSpans, spotBox } from "./behind.ts";
+import { bigWordLayout, maskSpans, spotBox, spotFaceShare } from "./behind.ts";
 import { build } from "./build.ts";
 import { faceBox } from "./head-track.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
@@ -32,6 +32,22 @@ function withBehind(
   }));
   return edit;
 }
+
+describe("spotFaceShare", () => {
+  it("is 0 without a face", () => {
+    expect(spotFaceShare("left", null, ISSEBYA_PRESET)).toBe(0);
+  });
+
+  it("is the face's area over the spot's for a face inside the spot", () => {
+    const face = { left: 100, right: 300, top: 600, bottom: 900 };
+    expect(spotFaceShare("left", face, ISSEBYA_PRESET)).toBeCloseTo((200 * 300) / (460 * 620), 9);
+  });
+
+  it("is 0 for a face outside the spot", () => {
+    const face = { left: 600, right: 900, top: 600, bottom: 900 };
+    expect(spotFaceShare("left", face, ISSEBYA_PRESET)).toBe(0);
+  });
+});
 
 describe("spotBox", () => {
   it("gives each spot's preset rectangle", () => {
@@ -154,7 +170,7 @@ describe("build with behind items", () => {
       await nodeMeasurer(),
     );
     expect(html).toContain(
-      `<img id="behind-photo" class="clip photo" src="photos/${PHOTO}.jpg" alt="" data-start="5.206" data-duration="2.632" data-track-index="21" style="left: 90px; top: 160px; width: 900px; height: 600px" />`,
+      `<img id="behind-photo" class="clip photo" src="photos/${PHOTO}.jpg" alt="" data-start="5.206" data-duration="2.632" data-track-index="21" style="left: 580px; top: 560px; width: 460px; height: 620px" />`,
     );
     expect(html.match(/<video /g)).toHaveLength(9);
     expect(html).not.toContain("#behind-photo");
