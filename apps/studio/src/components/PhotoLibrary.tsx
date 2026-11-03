@@ -19,15 +19,15 @@ import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 const noSubscribe = () => () => {};
 
 const ERRORS: Record<PhotoError, string> = {
-  "signed-out": "You are signed out. Sign in again to upload.",
-  unavailable: "Photo uploads are not available right now.",
-  name: "That file name cannot be used.",
-  empty: "That file is empty.",
-  "too-large": "That photo is over 25 MB.",
-  type: "Choose a JPEG, PNG, HEIC, HEIF or WebP photo.",
-  "not-found": "That photo is gone.",
-  "upload-gone": "The upload did not reach storage. Try again.",
-  failed: "Something went wrong. Try again.",
+  "signed-out": "You are signed out. Sign in again to upload",
+  unavailable: "Photo uploads are not available right now",
+  name: "That file name cannot be used",
+  empty: "That file is empty",
+  "too-large": "That photo is over 25 MB",
+  type: "Choose a JPEG, PNG, HEIC, HEIF or WebP photo",
+  "not-found": "That photo is gone",
+  "upload-gone": "The upload did not reach storage. Try again",
+  failed: "Something went wrong. Try again",
 };
 
 interface Props {
@@ -136,7 +136,7 @@ export function PhotoLibrary({ initial }: Props) {
     if (decision.kind === "upload") void upload(decision.file);
     else if (decision.kind === "too-many") setMessage(TOO_MANY_FILES);
     else if (decision.kind === "refused") {
-      setMessage(`${decision.name} is not a JPEG, PNG, HEIC, HEIF or WebP photo.`);
+      setMessage(`${decision.name} is not a JPEG, PNG, HEIC, HEIF or WebP photo`);
     }
   });
 

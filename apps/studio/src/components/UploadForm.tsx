@@ -31,10 +31,10 @@ type UploadState =
 
 const MESSAGES: Record<Exclude<UploadState, "uploading">, string> = {
   idle: "",
-  failed: "Upload failed. Pick the same file to continue where it stopped.",
-  restart: "Upload failed. Pick the file again to start over.",
-  cancelled: "Upload cancelled.",
-  invalid: "Pick an MP4, MOV, M4V or WebM clip up to 5 GB.",
+  failed: "Upload failed. Pick the same file to continue where it stopped",
+  restart: "Upload failed. Pick the file again to start over",
+  cancelled: "Upload cancelled",
+  invalid: "Pick an MP4, MOV, M4V or WebM clip up to 5 GB",
   "too-many": TOO_MANY_FILES,
 };
 
@@ -202,7 +202,7 @@ export function UploadForm() {
     <form onSubmit={upload} className="flex flex-col gap-3" noValidate>
       {resume && !busy ? (
         <p data-testid="upload-resume" className="text-sm">
-          An upload of {resume.name} was interrupted. Pick the same file to resume.
+          An upload of {resume.name} was interrupted. Pick the same file to resume
         </p>
       ) : null}
       <label

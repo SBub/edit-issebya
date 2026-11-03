@@ -106,7 +106,7 @@ test("a usage limit makes the job wait with its next try shown live, then it is 
   // The progress overlay shows the waiting job's step and its AI line.
   const overlay = page.getByTestId("progress-overlay");
   await expect(overlay.getByTestId("job-waiting-ai")).toHaveText(
-    `Waiting for the AI: ${REASON}. Next try at ${nextTry}.`,
+    `Waiting for the AI: ${REASON}. Next try at ${nextTry}`,
     { timeout: 10_000 },
   );
   await expect(overlay.getByTestId("overlay-words")).toHaveText("Styling your reel");

@@ -330,17 +330,17 @@ export function LiveReel({
         router.refresh();
         return;
       }
-      if (result.status === "queued") setRetry({ jobId, busy: true, message: "Queued again." });
+      if (result.status === "queued") setRetry({ jobId, busy: true, message: "Queued again" });
       else if (result.status === "already")
-        setRetry({ jobId, busy: true, message: "This job is already being retried." });
+        setRetry({ jobId, busy: true, message: "This job is already being retried" });
       else
         setRetry({
           jobId,
           busy: false,
-          message: result.status === "failed" ? "Retry did not start. Try again." : result.reason,
+          message: result.status === "failed" ? "Retry did not start. Try again" : result.reason,
         });
     } catch {
-      setRetry({ jobId, busy: false, message: "Retry did not start. Try again." });
+      setRetry({ jobId, busy: false, message: "Retry did not start. Try again" });
     }
   }
 

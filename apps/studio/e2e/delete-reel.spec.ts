@@ -16,7 +16,7 @@ import { claimableJobIds } from "../test-support/worker.ts";
 // and its page is then not found. No worker runs here.
 
 const PREFIX = `e2e-del-${crypto.randomUUID().slice(0, 8)}/`;
-const CONFIRM_TEXT = "Delete this reel? Its versions and files are removed and cannot be restored.";
+const CONFIRM_TEXT = "Delete this reel? Its versions and files are removed and cannot be restored";
 const SIZES = [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },

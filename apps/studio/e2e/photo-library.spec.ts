@@ -18,7 +18,7 @@ const WORKER_PREFIX = `e2e-${crypto.randomUUID()}/`;
 const WORKER_ID = `e2e-photos-${crypto.randomUUID()}`;
 // The line under the library's heading (libraryIntro in src/lib/photos.ts).
 const INTRO_EMPTY =
-  "Add photos of your work, places or products. When you talk about them, they can appear behind you in your reels.";
+  "Add photos of your work, places or products. When you talk about them, they can appear behind you in your reels";
 const INTRO_WITH_PHOTOS =
   "Photos you add here can appear in your reels, placed behind you when they fit what you're saying";
 const SAMPLE = fileURLToPath(new URL("../../../fixtures/photos/sample.jpg", import.meta.url));
@@ -356,7 +356,7 @@ test("1440x900: a photo dropped on the section uploads; several files or a non-i
     { name: "second.jpg", type: "image/jpeg", path: SAMPLE },
   ]);
   await dropFiles(zone, two);
-  await expect(library.getByRole("alert")).toHaveText("One file at a time, for now.");
+  await expect(library.getByRole("alert")).toHaveText("One file at a time, for now");
   await expect(zone).toHaveAttribute("data-drop", "idle");
   await expect(library.getByTestId("photo-status")).toHaveCount(0);
 
@@ -366,7 +366,7 @@ test("1440x900: a photo dropped on the section uploads; several files or a non-i
   ]);
   await dropFiles(zone, text);
   await expect(library.getByRole("alert")).toHaveText(
-    "notes.txt is not a JPEG, PNG, HEIC, HEIF or WebP photo.",
+    "notes.txt is not a JPEG, PNG, HEIC, HEIF or WebP photo",
   );
   await expect(library.getByTestId("photo-status")).toHaveCount(0);
 

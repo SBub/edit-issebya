@@ -27,9 +27,9 @@ restore job for own reel`: own reel, status `queued`, and for a restore a versio
   current version. `requestRestore` refuses the already current version. Errors are logged
   without the request text.
 - `apps/studio/src/lib/change-requests.ts`: `normalizeRequest` (trim, 1 to 1000 characters),
-  `changeBlockedReason` (null when open; otherwise `This clip was refused; upload another clip.`,
-  `Changes open once the upload finishes.` or `Processing failed; press Try again on the preview
-first.`, Try again being the progress overlay's, `app_docs/status.md`), `versionOrigin`,
+  `changeBlockedReason` (null when open; otherwise `This clip was refused; upload another clip`,
+  `Changes open once the upload finishes` or `Processing failed; press Try again on the preview
+first`, Try again being the progress overlay's, `app_docs/status.md`), `versionOrigin`,
   `versionTitle` and `jobRequestLabel` (the text shown beside a version or a job; a render job reads
   `export of vN`, or `export` when the version is unknown). `versionOrigin`: `Back to vN` for a
   going back, the owner's own words for a change, `First version` (no parent), else `Styled
@@ -61,7 +61,7 @@ version` as above; otherwise the version's `change_title`, falling back (version
   (`data-testid="versions-intro"`, `text-xs text-muted`, the heading's `px-3`), exactly
   `Your reel's history. Open a version to see what changed and bring it back` (no full stop),
   linked from the section with `aria-describedby`. It shows whether or not versions exist; an
-  empty list keeps `No version yet.` below it. Then every version, newest first, one row each at one
+  empty list keeps `No version yet` below it. Then every version, newest first, one row each at one
   fixed height (`h-14`, sized for two title lines, whatever the text): `v{n}`, the `current` (or
   `showing`) mark, the title (`versionTitle`, `data-testid="version-title"`, wrapping to at most two
   lines, `line-clamp-2`; a long request standing in for an old version's title is cut there, and
@@ -107,8 +107,8 @@ version` as above; otherwise the version's `change_title`, falling back (version
    back to this. A new version, restored from the old one, becomes current; going back can itself
    be undone the same way.
 4. The change box stays open while the reel is processing and shows
-   `Your change will run after processing finishes.` (or `Your change will run after the jobs before
-it finish.` while other jobs are ahead). Both controls are disabled, with the reason beside them,
+   `Your change will run after processing finishes` (or `Your change will run after the jobs before
+it finish` while other jobs are ahead). Both controls are disabled, with the reason beside them,
    only while the reel is `refused`, still `uploading`, or `failed` with no current version. The
    order the jobs run in is `claim_job`'s, see `app_docs/failures.md`.
 

@@ -370,6 +370,9 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 - The thumbnail's storage key is derived and signed on the server and never reaches a client
   component; select named columns from `reels`, never `*`.
 - `ThumbnailGrid` stays free of reel-specific code.
+- One-sentence UI texts in the studio (hints, statuses, empty states, blocked reasons, queue notes,
+  refusals and errors) end without a full stop; a text of two or more sentences drops only its
+  final one. Never add a full stop back to one.
 - Do not unmount `UploadForm` when the upload dialog closes.
 - A missing or malformed thumbnail or frames sprite is null, never a failure.
 - The overlay never blocks the player's controls: `pointer-events` off except its own buttons.

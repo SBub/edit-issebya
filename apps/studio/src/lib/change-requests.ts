@@ -10,11 +10,11 @@ export type NormalizedRequest = { ok: true; request: string } | { ok: false; rea
 // The owner's words as stored: trimmed, 1 to 1000 characters (the table's
 // check says the same).
 export function normalizeRequest(text: unknown): NormalizedRequest {
-  if (typeof text !== "string") return { ok: false, reason: "Write the change you want." };
+  if (typeof text !== "string") return { ok: false, reason: "Write the change you want" };
   const request = text.trim();
-  if (request.length === 0) return { ok: false, reason: "Write the change you want." };
+  if (request.length === 0) return { ok: false, reason: "Write the change you want" };
   if (request.length > MAX_REQUEST_LENGTH) {
-    return { ok: false, reason: `Keep it to ${MAX_REQUEST_LENGTH} characters.` };
+    return { ok: false, reason: `Keep it to ${MAX_REQUEST_LENGTH} characters` };
   }
   return { ok: true, request };
 }
@@ -27,10 +27,10 @@ export function normalizeRequest(text: unknown): NormalizedRequest {
 export function changeBlockedReason(
   reel: Pick<ReelDetail, "status" | "current_version_id">,
 ): string | null {
-  if (reel.status === "refused") return "This clip was refused; upload another clip.";
-  if (reel.status === "uploading") return "Changes open once the upload finishes.";
+  if (reel.status === "refused") return "This clip was refused; upload another clip";
+  if (reel.status === "uploading") return "Changes open once the upload finishes";
   if (reel.status === "failed" && reel.current_version_id === null) {
-    return "Processing failed; press Try again on the preview first.";
+    return "Processing failed; press Try again on the preview first";
   }
   return null;
 }

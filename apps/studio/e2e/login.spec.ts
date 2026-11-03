@@ -25,7 +25,7 @@ test("an unknown address gets the neutral answer and no account", async ({ page 
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Send sign-in link" }).click();
   await expect(
-    page.getByText("If this address has an account, a sign-in link is on its way."),
+    page.getByText("If this address has an account, a sign-in link is on its way"),
   ).toBeVisible();
   expect(await userExists(email)).toBe(false);
 });
@@ -34,7 +34,7 @@ test("a malformed address gets a field error", async ({ page }) => {
   await page.goto("/studio");
   await page.getByLabel("Email").fill("not-an-address");
   await page.getByRole("button", { name: "Send sign-in link" }).click();
-  await expect(page.getByText("Enter a valid email address.")).toBeVisible();
+  await expect(page.getByText("Enter a valid email address")).toBeVisible();
 });
 
 test("a sign-in link signs in on the landing address, and logout signs out", async ({
@@ -59,11 +59,11 @@ test("a sign-in link signs in on the landing address, and logout signs out", asy
 
   // The same link a second time: already used.
   await page.goto(link);
-  await expect(page.getByText("That sign-in link has expired or was already used.")).toBeVisible();
+  await expect(page.getByText("That sign-in link has expired or was already used")).toBeVisible();
   await expect(page.getByLabel("Email")).toBeVisible();
 });
 
 test("a link without a token shows the expired-link message", async ({ page }) => {
   await page.goto("/studio/auth/confirm?type=email");
-  await expect(page.getByText("That sign-in link has expired or was already used.")).toBeVisible();
+  await expect(page.getByText("That sign-in link has expired or was already used")).toBeVisible();
 });

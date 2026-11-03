@@ -126,7 +126,7 @@ describe("library intro", () => {
   it("invites the first photo while the library is empty, then says what photos do", () => {
     expect(libraryIntro(0)).toBe(LIBRARY_INTRO_EMPTY);
     expect(LIBRARY_INTRO_EMPTY).toBe(
-      "Add photos of your work, places or products. When you talk about them, they can appear behind you in your reels.",
+      "Add photos of your work, places or products. When you talk about them, they can appear behind you in your reels",
     );
     expect(libraryIntro(1)).toBe(LIBRARY_INTRO);
     expect(libraryIntro(12)).toBe(LIBRARY_INTRO);

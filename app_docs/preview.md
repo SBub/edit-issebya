@@ -48,9 +48,9 @@ clicks through Web Audio. It is built and tested for Chrome.
   track and fonts, loads `harfbuzzjs` by client-only dynamic import, calls `createMeasurer` and `build`
   from `@edit-issebya/edit`, runs `previewPage`, fetches the sound files `soundHits` names, and hands
   everything to the player. `photo-missing` shows `A photo in this version was deleted from the
-library.` and `cutout-cleared` shows `This version's cut-out was cleared to save space; Export
-rebuilds it.` in place of the player. Sends `studio_preview_opened` (`reel_id`) once per mount, shows the
-  waiting, error and "The preview is built for Chrome." lines, and reloads when `current_version_id`
+library` and `cutout-cleared` shows `This version's cut-out was cleared to save space; Export
+rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) once per mount, shows the
+  waiting, error and "The preview is built for Chrome" lines, and reloads when `current_version_id`
   changes in `LiveReel`'s Realtime state (no page reload, no polling).
 - `apps/studio/src/lib/preview-page.ts`: `previewPage(html, assets, urls, soundIds)` swaps the
   footage path for its signed URL (the cut-out's footage copies included), each `mask` asset's

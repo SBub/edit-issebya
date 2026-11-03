@@ -86,11 +86,9 @@ export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs, ref 
         capture("studio_change_requested", { reel_id: reelId });
         return;
       }
-      setMessage(
-        result.status === "failed" ? "The change was not sent. Try again." : result.reason,
-      );
+      setMessage(result.status === "failed" ? "The change was not sent. Try again" : result.reason);
     } catch {
-      setMessage("The change was not sent. Try again.");
+      setMessage("The change was not sent. Try again");
     } finally {
       setBusy(false);
     }

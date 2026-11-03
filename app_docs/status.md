@@ -56,7 +56,7 @@ version`), the `Working on it` / `Could not finish this step` fallback for an un
 - Failure actions (`FailureAction`): a `change` job whose answer was refused (`failure_kind`
   `answer_refused`, with a request) offers Change the request and Keep the current version; every
   other retryable failure offers Try again and Keep the current version. Try again calls
-  `requestRetry` and shows its answer (`Queued again.`, say). Change the request refills the change
+  `requestRetry` and shows its answer (`Queued again`, say). Change the request refills the change
   box with the sent request and focuses it. Keep the current version dismisses the failure. Each
   action captures `studio_failure_action` with `reel_id`, `job_id`, `action`, `failure_kind`,
   `step` and `job_kind` (the `job_id` links it to the job's error). A handled failure is dismissed

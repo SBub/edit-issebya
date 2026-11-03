@@ -77,7 +77,7 @@ definer`, executable by `authenticated` only, revoked from `public`, `anon` and 
   corner (accessible name `Delete reel`, always visible, 44 px on a phone, 32 px from `sm`): a
   plain bin in ink with no background or shape, square like the rest of the studio
   (`app_docs/studio-reel-layout.md`). It opens a native square `<dialog>`: `Delete this reel? Its versions and files are removed and cannot be
-restored.` with Cancel and Delete. Cancel, Escape and the backdrop change nothing. After a delete,
+restored` with Cancel and Delete. Cancel, Escape and the backdrop change nothing. After a delete,
   or when the reel was already gone, `router.refresh()` drops it from the list at once; a failure
   stays in the dialog as an alert.
 - `apps/studio/src/lib/reels.ts`: named column lists (never `*`), status type, id check and

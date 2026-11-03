@@ -54,8 +54,8 @@ The **+** on the reels list opens `UploadDialog.tsx`, a native `<dialog>` with `
   starts it). While a file is dragged over it the zone is `data-drop="over"`: the dashed border and
   the prompt turn accent ("Drop to choose this video") on `bg-raised`, the adapted form of
   `DROP_ZONE_OVER` (the zone already has a dashed border, so it colours that instead of adding an
-  outline). A non-video says the existing "Pick an MP4, MOV, M4V or WebM clip up to 5 GB.", more
-  than one file says `TOO_MANY_FILES` ("One file at a time, for now."), both in `upload-status`;
+  outline). A non-video says the existing "Pick an MP4, MOV, M4V or WebM clip up to 5 GB", more
+  than one file says `TOO_MANY_FILES` ("One file at a time, for now"), both in `upload-status`;
   a drop while uploading is ignored. Choosing a clip clears either message.
 - Once a clip is chosen (picked or dropped) the zone shows its name (`upload-chosen`) and size
   (`formatBytes`) with "Choose another"; a click anywhere in the zone picks another, and a
@@ -118,7 +118,7 @@ signed-out caller gets `401`. Sign, list and abort need the reel still `uploadin
 `apps/studio/src/lib/upload-resume.ts` keeps one record in `localStorage` (`studio_upload_resume`:
 reel id, key, upload id, file name, size, last modified), written as soon as the multipart upload
 exists; a malformed record reads as none and is cleared. After a reload the form says "An upload of
-`<name>` was interrupted. Pick the same file to resume." When the picked file matches
+`<name>` was interrupted. Pick the same file to resume". When the picked file matches
 (`matchesResume`: same name, size and modified time), Uppy is given `{ key, uploadId }`, lists the
 stored parts and sends only the missing ones. Any other file starts a fresh upload. The record is
 cleared on finish and on cancel, and also when a resumed attempt fails (the upload finished

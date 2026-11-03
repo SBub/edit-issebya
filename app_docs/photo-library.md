@@ -37,7 +37,7 @@ desktop and is a fourth tab, `Library`, on a phone.
   `text-xs text-muted`, the section's `aria-describedby`) says what the library is for, chosen by
   `libraryIntro(count)` in `apps/studio/src/lib/photos.ts` from the number of photos in the library
   (any status). With no photo: "Add photos of your work, places or products. When you talk about
-  them, they can appear behind you in your reels." From the first photo on (an `uploading` one
+  them, they can appear behind you in your reels". From the first photo on (an `uploading` one
   counts): "Photos you add here can appear in your reels, placed behind you when they fit what
   you're saying" (no full stop, owner, 2026-11-03). The grid keeps its accessible name `Photos` (a list of photos). An empty
   library shows only the intro line above the add tile: no `No photos yet.` (owner, 2026-11-03;
@@ -60,7 +60,7 @@ desktop and is a fourth tab, `Library`, on a phone.
   `data-drop="over"`, a dashed accent outline and the `Drop to upload` hint, on while the drag
   crosses children, and a window guard stops the browser opening a file dropped elsewhere on the
   page; `decideDrop` in `apps/studio/src/lib/file-drop.ts` decides upload, refuse or too many): one dropped photo the picker would offer (`PHOTO_ACCEPT`)
-  starts the same upload as a pick; several files upload none (`One file at a time, for now.`),
+  starts the same upload as a pick; several files upload none (`One file at a time, for now`),
   another file is refused by name, and while an upload runs the add tile is disabled and a drop
   shows a busy message.
 - `apps/studio/src/components/ReelScreen.tsx`, `LiveReel.tsx`, `apps/studio/src/app/reels/[id]/page.tsx`:
@@ -84,7 +84,7 @@ desktop and is a fourth tab, `Library`, on a phone.
   (`app_docs/preview.md`), and the render downloads the same large copy into its project
   (`app_docs/export.md`). A version names a photo by id only (`inputs.photos`).
 - Deleting a photo a version uses leaves that version as it is (versions never change): its
-  preview then shows `A photo in this version was deleted from the library.` (status
+  preview then shows `A photo in this version was deleted from the library` (status
   `photo-missing`), and its export fails with `render: photo <id> is no longer in the library`.
 - `apps/worker/src/ai.ts`: `AiRequest.readFile`. Only when set does the runner pass
   `--tools Read --allowedTools Read(<file>) --permission-prompts none`; every other call keeps

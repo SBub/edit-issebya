@@ -93,7 +93,7 @@ export default async function StudioHome({
         <h1 className="mb-6 text-2xl font-semibold">Studio</h1>
         {error === "link" && (
           <p role="alert" className="mb-4 text-sm text-danger">
-            That sign-in link has expired or was already used.
+            That sign-in link has expired or was already used
           </p>
         )}
         <LoginForm />
@@ -122,7 +122,7 @@ export default async function StudioHome({
         <SignOutButton />
       </header>
       <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 pb-24 sm:p-4 sm:pb-24">
-        <ThumbnailGrid label="Reels" items={tiles} empty={<p>No reels yet.</p>} rounded />
+        <ThumbnailGrid label="Reels" items={tiles} empty={<p>No reels yet</p>} rounded />
       </main>
       <UploadDialog />
     </div>

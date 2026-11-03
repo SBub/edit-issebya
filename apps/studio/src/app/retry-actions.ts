@@ -60,10 +60,10 @@ export async function requestRetry(input: {
   }
   if (!reel.data || !job.data || job.data.reel_id !== reel.data.id) return { status: "failed" };
   if (reel.data.status === "refused") {
-    return { status: "blocked", reason: "This clip was refused; upload another clip." };
+    return { status: "blocked", reason: "This clip was refused; upload another clip" };
   }
   if (job.data.status !== "failed") {
-    return { status: "blocked", reason: "Only a failed job can be retried." };
+    return { status: "blocked", reason: "Only a failed job can be retried" };
   }
 
   const failed = job.data;

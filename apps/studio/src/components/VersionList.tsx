@@ -48,10 +48,10 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason 
       }
       if (result.status === "queued") return;
       setMessage(
-        result.status === "failed" ? "Going back did not start. Try again." : result.reason,
+        result.status === "failed" ? "Going back did not start. Try again" : result.reason,
       );
     } catch {
-      setMessage("Going back did not start. Try again.");
+      setMessage("Going back did not start. Try again");
     } finally {
       setBusy(false);
     }
@@ -73,7 +73,7 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason 
         Your reel&apos;s history. Open a version to see what changed and bring it back
       </p>
       {newestFirst.length === 0 ? (
-        <p className="px-3 text-sm text-muted">No version yet.</p>
+        <p className="px-3 text-sm text-muted">No version yet</p>
       ) : (
         <ol
           data-testid="version-list"

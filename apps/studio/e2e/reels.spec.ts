@@ -194,7 +194,7 @@ test("on a phone the grid has three columns, and + opens and closes the upload",
   await expect(zone).toHaveAttribute("data-drop", "idle");
   await dropFiles(zone, notes);
   await expect(dialog.locator("#upload-status")).toHaveText(
-    "Pick an MP4, MOV, M4V or WebM clip up to 5 GB.",
+    "Pick an MP4, MOV, M4V or WebM clip up to 5 GB",
   );
   await expect(dialog.getByTestId("upload-chosen")).toHaveCount(0);
   const two = await fileTransfer(page, [
@@ -202,7 +202,7 @@ test("on a phone the grid has three columns, and + opens and closes the upload",
     { name: "b.mp4", type: "video/mp4", text: "b" },
   ]);
   await dropFiles(zone, two);
-  await expect(dialog.locator("#upload-status")).toHaveText("One file at a time, for now.");
+  await expect(dialog.locator("#upload-status")).toHaveText("One file at a time, for now");
 
   // One clip dropped is chosen: the zone shows its name and size, and the
   // refusal goes.

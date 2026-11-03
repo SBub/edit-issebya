@@ -121,11 +121,11 @@ stored.
   never on a refused reel. The old Retry button component is gone.
 - `LiveReel` calls the server action `requestRetry`
   (`apps/studio/src/app/retry-actions.ts`). It reads the reel and the job under RLS as the owner,
-  answers `blocked` for a refused reel (`This clip was refused; upload another clip.`) or a job that
-  is not `failed` (`Only a failed job can be retried.`), then inserts a new job of the same reel,
+  answers `blocked` for a refused reel (`This clip was refused; upload another clip`) or a job that
+  is not `failed` (`Only a failed job can be retried`), then inserts a new job of the same reel,
   kind and parameters (`request`, `restore_version_id`, `version_id`) with `retry_of_job_id` set to
   the failed job. A unique-violation (`23505`) answers `already`, shown as
-  `This job is already being retried.`. Every step before the one that failed is a fingerprint hit,
+  `This job is already being retried`. Every step before the one that failed is a fingerprint hit,
   so the new job resumes there.
 - `grant insert (retry_of_job_id)` to `authenticated`, on top of the existing insert grants.
 - The restrictive insert policy `jobs: a retry names a failed job of the same reel, kind and
@@ -155,7 +155,7 @@ request, restore_version_id, version_id)`.
   stays `describing` until the job is claimed again.
 - `claim_job` skips a `waiting_ai` job until its `not_before`; the claim clears both columns. The
   worker's periodic check also lists `waiting_ai` jobs past their `not_before`.
-- The studio shows `Waiting for the AI: <reason>. Next try at HH:MM.` under the job
+- The studio shows `Waiting for the AI: <reason>. Next try at HH:MM` under the job
   (`formatWaitingForAi`, 24-hour local time, `data-testid="job-waiting-ai"`), and the waiting step
   row's reason under `Show error`.
 
@@ -220,15 +220,15 @@ first output as its `.part` and waits up to 20 seconds for the spec to kill the 
 
 1. Upload a clip. While it is checked the reel reads `checking_footage`. A clip the studio cannot
    take turns the reel `refused` and shows the reason in a red box; the change box says
-   `This clip was refused; upload another clip.` and nothing offers Try again. Upload another clip.
+   `This clip was refused; upload another clip` and nothing offers Try again. Upload another clip.
 2. A failed job shows its failure in the overlay over the preview with Try again. Pressing it
    queues a new job (`retry_of_job_id` set), which skips every step already done and runs from the
    one that failed.
-3. A job waiting for the AI shows `Waiting for the AI: <reason>. Next try at HH:MM.`. Sign Claude
+3. A job waiting for the AI shows `Waiting for the AI: <reason>. Next try at HH:MM`. Sign Claude
    Code in again or wait for the limit; the worker takes the job again after that time.
 4. The change box stays open while the reel processes and shows
-   `Your change will run after processing finishes.` (or
-   `Your change will run after the jobs before it finish.`); the change runs in its turn.
+   `Your change will run after processing finishes` (or
+   `Your change will run after the jobs before it finish`); the change runs in its turn.
 
 ## Configuration
 

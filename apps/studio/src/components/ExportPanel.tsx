@@ -143,11 +143,9 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
         setJobId(sent.jobId);
         return;
       }
-      setMessage(
-        sent.status === "blocked" ? sent.reason : "The export was not started. Try again.",
-      );
+      setMessage(sent.status === "blocked" ? sent.reason : "The export was not started. Try again");
     } catch {
-      setMessage("The export was not started. Try again.");
+      setMessage("The export was not started. Try again");
     } finally {
       setBusy(false);
     }
@@ -164,9 +162,9 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
     void cancelExport(following).then(
       (result) => {
         if (result.status === "signed-out") router.refresh();
-        else if (result.status === "failed") setMessage("The export was not cancelled.");
+        else if (result.status === "failed") setMessage("The export was not cancelled");
       },
-      () => setMessage("The export was not cancelled."),
+      () => setMessage("The export was not cancelled"),
     );
   }
 
@@ -176,7 +174,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
   if (state?.kind === "failed") {
     body = (
       <p data-testid="export-modal-status" className="text-sm text-danger">
-        The export failed. Try again.
+        The export failed. Try again
       </p>
     );
   } else if (downloaded) {
@@ -202,7 +200,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
   } else if (failedFetch) {
     body = (
       <p data-testid="export-modal-status" className="text-sm text-danger">
-        The file could not be fetched. Export again.
+        The file could not be fetched. Export again
       </p>
     );
   } else if (state) {

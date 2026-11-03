@@ -9,7 +9,7 @@ function twoDigits(value: number): string {
 // time (the same formatting as the offline line).
 export function formatWaitingForAi(reason: string, notBefore: string): string {
   const at = new Date(notBefore);
-  return `Waiting for the AI: ${reason}. Next try at ${twoDigits(at.getHours())}:${twoDigits(at.getMinutes())}.`;
+  return `Waiting for the AI: ${reason}. Next try at ${twoDigits(at.getHours())}:${twoDigits(at.getMinutes())}`;
 }
 
 // The failed jobs that still show Retry: no other job retries them yet. None
@@ -31,8 +31,8 @@ const LIVE_STATUSES: readonly JobRow["status"][] = ["queued", "running", "waitin
 export function changeQueueNote(jobs: readonly Pick<JobRow, "kind" | "status">[]): string | null {
   const live = jobs.filter((job) => LIVE_STATUSES.includes(job.status));
   if (live.some((job) => job.kind === "process")) {
-    return "Your change will run after processing finishes.";
+    return "Your change will run after processing finishes";
   }
-  if (live.length > 0) return "Your change will run after the jobs before it finish.";
+  if (live.length > 0) return "Your change will run after the jobs before it finish";
   return null;
 }

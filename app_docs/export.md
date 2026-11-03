@@ -60,7 +60,7 @@ uploaded file is only a hand-over and is deleted 1 hour after it was made.
   checks `exportBlockedReason` again and inserts `{ reel_id, kind: "render", version_id }` with the
   reel's `current_version_id`. The browser never picks the version.
 - `exportBlockedReason` (`apps/studio/src/lib/exports.ts`) gives one of three reasons: `No version
-to export yet.`, `Export opens once the reel is processed.`, or `Exporting this version...` while
+to export yet`, `Export opens once the reel is processed`, or `Exporting this version...` while
   a render of the current version is queued or running. A change, or a render of an older version,
   does not hold the button.
 - `loadExport(reelId, exportId)` reads that one export under RLS, checks its key is this reel's
@@ -83,7 +83,7 @@ latestExport)` (`apps/studio/src/lib/exports.ts`), a pure function of `LiveReel`
     `studio_export_downloaded`, shows `Downloaded` with a `Download` link as the fallback for a
     browser that blocks a download no click started (it cannot be detected, so the link always
     shows), and closes after 4 seconds;
-  - `failed`: `The export failed. Try again.` until the owner closes it; `cancelled`: closed.
+  - `failed`: `The export failed. Try again` until the owner closes it; `cancelled`: closed.
 - Cancel, Escape and the close control all close the modal; while the job is `waiting` or
   `rendering` they also call `cancelExport`. The modal closes at once and the job's row follows
   live; the panel returns to idle. Closing after the download changes nothing.

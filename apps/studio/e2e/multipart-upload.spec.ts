@@ -270,7 +270,7 @@ test("Reload resumes: after a reload the same file sends only the missing parts"
   await page.getByRole("button", { name: "Upload a reel" }).click();
 
   await expect(page.getByTestId("upload-resume")).toHaveText(
-    "An upload of footage-35mb.mp4 was interrupted. Pick the same file to resume.",
+    "An upload of footage-35mb.mp4 was interrupted. Pick the same file to resume",
   );
   await pickAndUpload(page);
 
@@ -356,7 +356,7 @@ test("Cancel: the reel becomes failed, its parts are gone and no job is queued",
   await expect(page.getByTestId("upload-progress")).toBeVisible();
 
   await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.locator("#upload-status")).toHaveText("Upload cancelled.");
+  await expect(page.locator("#upload-status")).toHaveText("Upload cancelled");
   await expect
     .poll(async () => (await admin.from("reels").select("status").eq("id", row.id).single()).data)
     .toEqual({ status: "failed" });
@@ -397,7 +397,7 @@ test("Create fails: the form shows Upload failed and one exception is captured",
 
   // The create never answered, so no resume record was written.
   await expect(page.locator("#upload-status")).toHaveText(
-    "Upload failed. Pick the file again to start over.",
+    "Upload failed. Pick the file again to start over",
     { timeout: 60_000 },
   );
   const reelsAfter = await admin.from("reels").select("id").eq("owner_id", owner.id);

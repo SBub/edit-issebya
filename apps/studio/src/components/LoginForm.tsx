@@ -33,9 +33,9 @@ export function LoginForm() {
         Send sign-in link
       </button>
       <p id="login-status" aria-live="polite" className="min-h-6 text-sm">
-        {state.status === "invalid" && "Enter a valid email address."}
-        {state.status === "sent" && "If this address has an account, a sign-in link is on its way."}
-        {state.status === "unavailable" && "Sign-in is not available right now."}
+        {state.status === "invalid" && "Enter a valid email address"}
+        {state.status === "sent" && "If this address has an account, a sign-in link is on its way"}
+        {state.status === "unavailable" && "Sign-in is not available right now"}
       </p>
     </form>
   );

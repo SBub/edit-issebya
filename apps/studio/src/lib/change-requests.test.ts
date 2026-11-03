@@ -28,7 +28,7 @@ describe("normalizeRequest", () => {
     expect(normalizeRequest("a".repeat(1000))).toEqual({ ok: true, request: "a".repeat(1000) });
     expect(normalizeRequest("a".repeat(1001))).toEqual({
       ok: false,
-      reason: "Keep it to 1000 characters.",
+      reason: "Keep it to 1000 characters",
     });
     // Counted after trimming.
     expect(normalizeRequest(` ${"a".repeat(1000)} `).ok).toBe(true);
@@ -52,19 +52,19 @@ describe("changeBlockedReason", () => {
 
   it("blocks a refused reel", () => {
     expect(changeBlockedReason({ status: "refused", current_version_id: null })).toBe(
-      "This clip was refused; upload another clip.",
+      "This clip was refused; upload another clip",
     );
   });
 
   it("blocks while uploading", () => {
     expect(changeBlockedReason({ status: "uploading", current_version_id: null })).toBe(
-      "Changes open once the upload finishes.",
+      "Changes open once the upload finishes",
     );
   });
 
   it("blocks a failed reel without a version", () => {
     expect(changeBlockedReason({ status: "failed", current_version_id: null })).toBe(
-      "Processing failed; press Try again on the preview first.",
+      "Processing failed; press Try again on the preview first",
     );
   });
 });

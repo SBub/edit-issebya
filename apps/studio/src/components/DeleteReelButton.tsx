@@ -87,11 +87,11 @@ export function DeleteReelButton({ reelId, title }: Props) {
           {title}
         </h2>
         <p className="text-sm">
-          Delete this reel? Its versions and files are removed and cannot be restored.
+          Delete this reel? Its versions and files are removed and cannot be restored
         </p>
         {failed && (
           <p role="alert" className="mt-3 text-sm text-danger">
-            The reel was not deleted. Try again.
+            The reel was not deleted. Try again
           </p>
         )}
         <div className="mt-4 flex justify-end gap-2">

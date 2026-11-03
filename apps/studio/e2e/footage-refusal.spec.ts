@@ -75,7 +75,7 @@ test("a landscape clip is refused at once with its message, live, and nothing el
   await expect(page.locator('[data-overlay-kind="failure"]')).toHaveCount(0);
   await expect(page.getByLabel("Ask for a change")).toBeDisabled();
   await expect(page.getByTestId("change-blocked-reason")).toHaveText(
-    "This clip was refused; upload another clip.",
+    "This clip was refused; upload another clip",
   );
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
     "marker",
