@@ -15,12 +15,10 @@ import {
 } from "@/lib/jobs";
 import { type ChangeRequestHandle, ChangeRequestForm } from "@/components/ChangeRequestForm";
 import { ExportPanel } from "@/components/ExportPanel";
-import { NotifyToggle } from "@/components/NotifyToggle";
 import { ProgressOverlay } from "@/components/ProgressOverlay";
 import { ReelPreview } from "@/components/ReelPreview";
 import { ReelScreen } from "@/components/ReelScreen";
 import { VersionList } from "@/components/VersionList";
-import { useReadyNotice } from "@/components/useReadyNotice";
 import { changeBlockedReason } from "@/lib/change-requests";
 import { changeQueueNote } from "@/lib/failures";
 import { type FailureAction, overlayState } from "@/lib/progress-overlay";
@@ -119,17 +117,16 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
   };
 }
 
-// The reel page on one screen (ReelScreen): the header with the notification
-// toggle and Export, the shown version's preview and tracks timeline with Undo
-// and Redo, the progress overlay over the preview (what the studio is doing in
-// plain words, how far along, the waiting and offline lines, "New version N",
-// a failure with its actions), the change box and the versions. A newly saved
-// version replaces the preview by itself, at the same time and play state.
-// When the reel becomes ready with the tab hidden, the title and, if turned
-// on, a notification say so. Read once on the server, then followed through
-// Realtime filtered to this reel (RLS decides what arrives). One catch-up read
-// each time the subscription becomes ready covers changes made between the
-// server read and the subscription. No interval, no polling.
+// The reel page on one screen (ReelScreen): the header with Export, the shown
+// version's preview and tracks timeline with Undo and Redo, the progress
+// overlay over the preview (what the studio is doing in plain words, how far
+// along, the waiting and offline lines, "New version N", a failure with its
+// actions), the change box and the versions. A newly saved version replaces
+// the preview by itself, at the same time and play state. Read once on the
+// server, then followed through Realtime filtered to this reel (RLS decides
+// what arrives). One catch-up read each time the subscription becomes ready
+// covers changes made between the server read and the subscription. No
+// interval, no polling.
 export function LiveReel({
   reel: initialReel,
   jobs: initialJobs,
@@ -187,8 +184,6 @@ export function LiveReel({
       clearTimeout(later);
     };
   }, [offlineMoment]);
-
-  useReadyNotice({ status: reel.status, latestExportId, reelName: reelName(reel) });
 
   useEffect(() => {
     if (noticeId === null) return;
@@ -422,7 +417,6 @@ export function LiveReel({
             <h1 className="min-w-0 flex-1 truncate text-base font-semibold" title={reelName(reel)}>
               {reelName(reel)}
             </h1>
-            <NotifyToggle />
             <ExportPanel reel={reel} jobs={jobs} latestExportId={latestExportId} />
           </>
         }

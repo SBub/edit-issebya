@@ -32,7 +32,7 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
   the three). The three areas carry `data-testid` `edit-area`, `versions-area` and `library-area`.
   `ReelScreen` takes the library as its `library` prop.
 - `apps/studio/src/components/LiveReel.tsx`: keeps the Realtime state as before and hands pieces to
-  `ReelScreen`: header (back link, reel name, the notification toggle between the name and Export,
+  `ReelScreen`: header (back link, reel name,
   Export), `ReelPreview` with the progress overlay over it, `ChangeRequestForm` and `VersionList`.
   Also holds the shown version (the owner's pick, remembered with the
   current version it was made for). It passes the `library` node through to `ReelScreen`;
@@ -118,7 +118,7 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   `apps/studio/src/lib/`; the worker's `preview-copies.test.ts` and `preview-copies-record.test.ts`.
 - E2E: `apps/studio/e2e/reel-layout.spec.ts` seeds a processed reel with 14 versions and 48 steps and
   checks at 1440x900 and 390x844 that the page never scrolls (Send and Export inside the root box, no
-  status area and no step log, Versions as tall as the side column within 1 px with its list
+  status area, no step log and no ready-notification control, Versions as tall as the side column within 1 px with its list
   scrolling inside it, the phone's Edit, Versions and Library tabs), the timeline items at
   `resolveTimeline`'s times with footage frames from the sprite and nothing focusable, the playhead
   following the clock, and Undo and Redo changing only the shown version. `reels.spec.ts` checks the
