@@ -252,7 +252,9 @@ worker's `job <id>: failed:` log line and the job's `error_tail` keep that first
 - Tools: `apps/worker/src/pipeline/footage-check.tools.test.ts` (real ffprobe, `yarn workspace
 @edit-issebya/worker test:tools`).
 - Unit (`apps/studio`): `src/lib/failures.test.ts`, `src/lib/change-requests.test.ts`.
-- DB: `apps/studio/db-tests/job-order.test.ts` (one job per reel, in order, `not_before`),
+- DB: `apps/studio/db-tests/job-order.test.ts` (one job per reel, in order, `not_before`; its
+  two-worker loop holds the overlapping jobs until an event, never for a fixed time, so a slow
+  session cannot turn the overlap checks into a race),
   `retry-jobs.test.ts` (the Retry insert policy through `is_retry_of_failed_job`) and
   `failure-and-size-columns.test.ts` (the checks on `failure_kind` and `failure_rules`, readable,
   never writable by the owner).
