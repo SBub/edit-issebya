@@ -243,7 +243,10 @@ lefthook runs prettier, `yarn lint`, `yarn typecheck` and `yarn knip` on every c
 (`.github/workflows/ci.yml`, job `check`) runs format check, lint, typecheck, knip, unit and build,
 then starts its own fresh Supabase stack (which applies the migrations), exports its URL and keys
 under allow-listed names (never Supabase's `STUDIO_URL`), builds again, and runs `test:db` and E2E,
-on every pull request and push to `develop` and `master`.
+on every pull request and push to `develop` and `master`. That `supabase start` is also the
+migrations dry run. `.github/workflows/migrations.yml` (`prod-migration-sync`, `push`,
+`drift-check`) reads and applies the hosted project's migrations on promotion to `master`; see
+`app_docs/migrations-ci.md`.
 
 ## Ports
 
@@ -275,6 +278,10 @@ on every pull request and push to `develop` and `master`.
   `.adw/supabase-stack reset`. Never `supabase db reset`, `start`, `stop`, `migration up`, a seed,
   `--linked` or `db push` by hand. Never reset the developer's stack. CI applies the migrations to
   its own fresh stack.
+- CI applies hosted migrations (project `ykjgyapmrszliovfqjfx`): `.github/workflows/migrations.yml`
+  pushes `master`'s pending migrations after a merge into `master`, through the `SUPABASE_DB_URL`
+  repository secret (`app_docs/migrations-ci.md`). Agents still never run `db push`, `link` or
+  `--linked` by hand, never dispatch that workflow's `push` arm, and never read or set the secret.
 - The ADW stack may be reset freely, and only through `.adw/supabase-stack`; if it fails, report
   its error and stop. No test points at the hosted project (the helpers refuse any host but
   `127.0.0.1` and `localhost`).

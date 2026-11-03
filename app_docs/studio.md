@@ -210,6 +210,11 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 7. For a quick sign-in in tests or review, open the URL printed by
    `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url`.
 
+Hosted (project `ykjgyapmrszliovfqjfx`): migrations reach it only through CI on promotion, never by
+a hand-run `supabase db push`. The PR from `develop` into `master` lists what its merge will apply,
+the merge applies it, and the production worker is restarted only after that run is green (see
+`app_docs/migrations-ci.md`).
+
 ## Configuration
 
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SITE_URL`:
@@ -286,6 +291,8 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 - Do not change `assetPrefix` on one side only: it must equal `STUDIO_ASSET_PREFIX`.
 - Do not return an absolute `Location` from the confirm route.
 - Never future-date or reuse a migration version; `migration-versions.test.ts` enforces it.
+- Never apply a migration to the hosted project by hand (`supabase db push`, `link`, `--linked`);
+  CI applies them from `master` (`app_docs/migrations-ci.md`).
 - Never create a public table without explicit grants per role in the same migration: `service_role`
   its `select`, `insert`, `update`, `delete`, `authenticated` only what its RLS policies need, and
   `revoke all ... from anon` (hosted defaults give `anon` `truncate`). Never rely on default
