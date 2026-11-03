@@ -108,15 +108,27 @@ function FootageFrames({ item, frames }: { item: TimelineItem; frames: TimelineF
 export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
   const { duration, rows } = timeline;
   const ticks = rulerTicks(duration);
-  const at = Math.min(Math.max(position, 0), duration);
+  const clock = Math.min(Math.max(position, 0), duration);
   const rulerRef = useRef<HTMLDivElement>(null);
+  // While the pointer is down on the ruler, the time under it. The player
+  // settles a seek on a frame boundary (up to one frame earlier, several px
+  // on a phone), so the playhead shows the pointer's time until release,
+  // keeping the handle under the pointer; then it follows the clock again.
+  const [scrubbing, setScrubbing] = useState<number | null>(null);
+  const at = scrubbing ?? clock;
 
   // The time under the pointer, from the ruler's own box (never the window).
   function seekToPointer(clientX: number) {
     const ruler = rulerRef.current;
     if (!ruler) return;
     const box = ruler.getBoundingClientRect();
-    onSeek(secondsAtX(clientX, box, duration));
+    const seconds = secondsAtX(clientX, box, duration);
+    setScrubbing(seconds);
+    onSeek(seconds);
+  }
+
+  function endScrub() {
+    setScrubbing(null);
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -139,7 +151,7 @@ export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
-    const next = scrubKey(event.key, event.shiftKey, at, duration);
+    const next = scrubKey(event.key, event.shiftKey, clock, duration);
     if (next === null) return;
     event.preventDefault();
     onSeek(next);
@@ -167,6 +179,9 @@ export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
           data-duration={duration}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
+          onPointerUp={endScrub}
+          onPointerCancel={endScrub}
+          onLostPointerCapture={endScrub}
           onKeyDown={onKeyDown}
           className="relative h-full min-w-0 flex-1 cursor-pointer touch-none rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >

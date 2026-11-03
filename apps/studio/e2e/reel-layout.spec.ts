@@ -368,6 +368,43 @@ async function playheadX(page: Page): Promise<number> {
   return line.x + line.width / 2;
 }
 
+// One frame of the player's runtime, in seconds.
+async function frameSeconds(page: Page): Promise<number> {
+  const fps = await page
+    .locator("hyperframes-player")
+    .evaluate((el) => (el as unknown as { _runtimeFps?: number })._runtimeFps ?? 0);
+  return 1 / (fps > 0 ? fps : 30);
+}
+
+// Waits until a seek to `seconds` has settled and returns the player's time.
+// The player first reads the asked-for time, then the runtime moves it to a
+// frame boundary (2.0175 becomes 2.0), sooner or later depending on the
+// machine. Settled: on a frame, within one frame of `seconds`, the same over
+// three reads 100 ms apart, and (unless the pointer is still down on the
+// ruler, where the playhead shows the pointer's time) the playhead on it.
+async function settledTime(page: Page, seconds: number, held = false): Promise<number> {
+  const frame = await frameSeconds(page);
+  const reads: number[] = [];
+  await expect
+    .poll(
+      async () => {
+        const t = await playerTime(page);
+        reads.push(t);
+        const last = reads.slice(-3);
+        const stable = last.length === 3 && last.every((read) => read === t);
+        const onFrame = Math.abs(t / frame - Math.round(t / frame)) < 1e-6;
+        const close = Math.abs(t - seconds) <= frame + 1e-6;
+        if (!stable || !onFrame || !close) return false;
+        if (held) return true;
+        const shown = Number(await page.getByTestId("playhead").getAttribute("data-seconds"));
+        return Math.abs(shown - t) <= 0.0005;
+      },
+      { intervals: [100], timeout: 10_000 },
+    )
+    .toBe(true);
+  return reads.at(-1)!;
+}
+
 for (const [size, viewport] of [
   ["1440x900", DESKTOP],
   ["390x844", PHONE],
@@ -378,11 +415,12 @@ for (const [size, viewport] of [
     const slider = ruler(page);
     const duration = Number(await slider.getAttribute("data-duration"));
     expect(duration).toBeGreaterThan(1);
+    const frame = await frameSeconds(page);
+    // Settled on `seconds`, with the slider's value on the player's time.
     const near = async (seconds: number) => {
-      await expect.poll(() => playerTime(page)).toBeCloseTo(seconds, 1);
-      await expect
-        .poll(async () => Number(await slider.getAttribute("aria-valuenow")))
-        .toBeCloseTo(seconds, 1);
+      const t = await settledTime(page, seconds);
+      await expect(slider).toHaveAttribute("aria-valuenow", String(Number(t.toFixed(2))));
+      return t;
     };
 
     // The control row has Play and the clock, and no Position slider; the
@@ -419,62 +457,72 @@ for (const [size, viewport] of [
     }
     await expect(slider).toBeFocused();
 
-    // Clicking a track row does nothing.
-    const before = await playerTime(page);
-    await tracks.locator('[data-track="captions"] [data-testid="track-lane"]').click({
-      position: { x: 5, y: 5 },
-    });
-    await page.waitForTimeout(300);
-    expect(await playerTime(page)).toBeCloseTo(before, 2);
+    // Clicking a track row does nothing: read once the last seek has settled,
+    // the time stays put (within a frame), far from the 5 px the row click
+    // would mean on the shared axis.
+    const before = await near(0.75 * duration);
+    const lane = tracks.locator('[data-track="captions"] [data-testid="track-lane"]');
+    const laneBox = (await lane.boundingBox())!;
+    await lane.click({ position: { x: 5, y: 5 } });
+    await page.waitForTimeout(500);
+    const after = await playerTime(page);
+    expect(Math.abs(after - before)).toBeLessThanOrEqual(frame);
+    expect(Math.abs(after - (5 / laneBox.width) * duration)).toBeGreaterThan(duration / 4);
 
-    // A drag keeps the playhead under the pointer, and keeps scrubbing once
-    // the pointer leaves the ruler (pointer capture).
+    // A drag keeps the playhead under the pointer, even once the player's
+    // clock has settled on a frame, and keeps scrubbing once the pointer
+    // leaves the ruler (pointer capture).
+    const under = async (x: number) => {
+      await expect.poll(async () => Math.abs((await playheadX(page)) - x)).toBeLessThanOrEqual(2);
+    };
     const from = await rulerPoint(page, 0.2 * duration);
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
-    await expect
-      .poll(async () => Math.abs((await playheadX(page)) - from.x))
-      .toBeLessThanOrEqual(2);
+    await under(from.x);
+    await settledTime(page, 0.2 * duration, true);
+    await under(from.x);
     for (const share of [0.35, 0.5, 0.65]) {
       const to = await rulerPoint(page, share * duration);
       await page.mouse.move(to.x, to.y, { steps: 4 });
+      await under(to.x);
+      await settledTime(page, share * duration, true);
+      await under(to.x);
       await expect
-        .poll(async () => Math.abs((await playheadX(page)) - to.x))
-        .toBeLessThanOrEqual(2);
-      await near(share * duration);
+        .poll(async () => Number(await slider.getAttribute("aria-valuenow")))
+        .toBeCloseTo(share * duration, 2);
     }
     // Below the ruler and past its right end: still scrubbing, clamped to the
-    // end (the player holds its last frame, so the playhead sits where the
-    // player's own clock is on the ruler's axis).
+    // end, the playhead on the ruler's right edge.
     await page.mouse.move(rulerBox.x + rulerBox.width + 40, rulerBox.y + 60, { steps: 4 });
-    await near(duration);
-    await expect
-      .poll(async () => {
-        const at = rulerBox.x + ((await playerTime(page)) / duration) * rulerBox.width;
-        return Math.abs((await playheadX(page)) - at);
-      })
-      .toBeLessThanOrEqual(2);
+    await under(rulerBox.x + rulerBox.width);
+    await settledTime(page, duration, true);
     await page.mouse.up();
-    // Released: a move no longer seeks.
+    // Released: the playhead follows the player's clock (its last frame).
+    const end = await near(duration);
+    await under(rulerBox.x + (end / duration) * rulerBox.width);
+    // A move no longer seeks.
     await page.mouse.move(from.x, from.y);
-    await page.waitForTimeout(300);
-    expect(await playerTime(page)).toBeCloseTo(duration, 1);
+    await page.waitForTimeout(500);
+    expect(Math.abs((await playerTime(page)) - end)).toBeLessThanOrEqual(frame);
 
-    // Keys: Home, arrows (1 s), Shift with an arrow (5 s), End.
+    // Keys: Home, arrows (1 s), Shift with an arrow (5 s), End. Each key
+    // waits for the previous seek to settle, and each step is from the
+    // settled time.
     await slider.focus();
     await page.keyboard.press("Home");
-    await near(0);
+    let t = await near(0);
+    expect(t).toBe(0);
     await expect(slider).toHaveAttribute("aria-valuetext", `00:00 of ${formatClock(duration)}`);
     await page.keyboard.press("ArrowRight");
-    await near(Math.min(1, duration));
+    t = await near(Math.min(t + 1, duration));
     await page.keyboard.press("Shift+ArrowRight");
-    await near(Math.min(6, duration));
+    t = await near(Math.min(t + 5, duration));
     await page.keyboard.press("ArrowLeft");
-    await near(Math.min(6, duration) - 1);
+    t = await near(Math.max(t - 1, 0));
     await page.keyboard.press("End");
-    await near(duration);
+    t = await near(duration);
     await page.keyboard.press("Shift+ArrowLeft");
-    await near(Math.max(duration - 5, 0));
+    await near(Math.max(t - 5, 0));
 
     await expectNoPageScroll(page);
   });

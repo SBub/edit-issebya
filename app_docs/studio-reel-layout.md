@@ -81,8 +81,10 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
   drag, as it did with the old slider: every seek while playing re-enters the player's
   hold-then-start routine; paused stays paused. Keys: Arrow Left and Right (and Down and Up) step
   1 s, with Shift 5 s; Page Up and Page Down step 5 s; Home and End jump to the start and the end.
-  The playhead line, with a dot at its top, is the visible handle and sits under the pointer. The
-  ruler, every row's lane (`track-lane`) and the playhead share one time axis: the same left edge
+  The playhead line, with a dot at its top, is the visible handle and sits under the pointer: while
+  the pointer is down it shows the pointer's time (the player settles each seek on a frame
+  boundary, up to one frame earlier, which is several px on a phone), and after release it follows
+  the player's clock again. The ruler, every row's lane (`track-lane`) and the playhead share one time axis: the same left edge
   after the 80 px label column (`w-20`) and the same width. The rows are read only: nothing in them
   is focusable, selectable, clickable, draggable or editable, and a click on a row does nothing.
   Footage items show frames cut from the frames sprite. Behind items use
@@ -151,8 +153,11 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   Redo changing only the shown version. At both sizes it checks the ruler as the one scrubber: no
   Position control in the control row and the ruler the page's one `role="slider"`; the ruler's left
   edge and width equal every lane's within 1 px; clicks at 25% and 75% of its box seek the player
-  there; a drag keeps the playhead within 2 px of the pointer and keeps scrubbing past the ruler's
-  end; a click on a row does nothing; arrows, Shift, Home and End move the position. The seeking
+  there; a drag keeps the playhead within 2 px of the pointer (also once the clock has settled on a
+  frame) and keeps scrubbing past the ruler's end; a click on a row does nothing; arrows, Shift, Home
+  and End move the position. Every read waits for the seek to settle (`settledTime`: on a frame,
+  within one frame of the target, the same over three reads 100 ms apart), since the player first
+  reads the asked-for time and the runtime moves it to a frame boundary later. The seeking
   specs (`preview`, `behind`, `e2e-tools/export-matches-preview`) seek with a real click on the
   ruler (`test-support/ruler.ts`). `reels.spec.ts` checks the
   grid (age and size, status, thumbnail, three columns at 390 px, **+** opening the dialog). `preview`,
