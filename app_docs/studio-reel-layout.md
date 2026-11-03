@@ -57,8 +57,18 @@ lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unch
   `apps/studio/src/app/reels/[id]/page.tsx` loads the library on the server and renders `PhotoLibrary`
   into it (details in `app_docs/photo-library.md`).
 - `apps/studio/src/components/ProgressOverlay.tsx`: the progress overlay, an absolutely positioned
-  card in the top-left of the preview (`absolute left-2 top-2 right-2 sm:right-auto sm:max-w-xs`,
-  `z-10`), `pointer-events-none` except its own buttons, so Play under it stays usable (the ruler
+  card at the top right of the preview, like a notification (`absolute top-0 right-0 w-full
+max-w-xs`, `z-10`; owner, 2026-11-03). Its top edge sits exactly on the preview frame's top edge
+  (it was `top-2`, which left it lower than the reel) and its right edge on the edit area's right
+  content edge, the edge the control row's expand icon and the tracks panel end on, on desktop and
+  phone, collapsed and expanded: its positioned parent spans the edit area's content box and the
+  frame starts at its top, so `top-0 right-0` lines them up. It is at most `max-w-xs` wide and never
+  wider than its parent, its text wrapping. Where the free space right of the 9:16 reel is wide
+  enough it sits there; where it is not (phone, narrow windows, expanded preview) it overlays the
+  reel's top-right corner. Before this change it sat at the top left (`left-2 right-2
+sm:right-auto`) and could cover up to 320 px of the reel's top-left. Its bar is a `bg-line` track
+  with a white `bg-primary` fill. It is `pointer-events-none` except its own buttons, so Play under
+  it stays usable (the ruler
   sits below the preview, clear of it). What it says and when is in `app_docs/status.md`. The reel
   page has no jobs list, step log or status area; the refusal message of a refused reel stays above
   the preview.
@@ -125,8 +135,8 @@ The studio is pitch black (owner, 2026-11-03). Tokens in `apps/studio/src/app/gl
 | `--color-line`                   | `#2e323a`            | Borders and dividers (1.63:1 on black, subtle but visible); the preview frame has a `ring-line` edge                                                                                                                 |
 | `--color-ink`                    | `#eceef1`            | Text: 18.1:1 on black, 15.4:1 on chrome                                                                                                                                                                              |
 | `--color-muted`                  | `#a3a9b3`            | Secondary text: 8.9:1 on black, 7.6:1 on chrome, 6.7:1 on raised (WCAG AA for small text everywhere)                                                                                                                 |
-| `--color-accent`                 | `#7cc4ff`            | Current marks (tab underline, playhead, the current version mark), focus rings, links, progress fill, drop outlines                                                                                                  |
-| `--color-primary`                | `#ffffff`            | Filled primary buttons (`bg-primary`): Send, Export, Send sign-in link, Upload and the + button                                                                                                                      |
+| `--color-accent`                 | `#7cc4ff`            | Current marks (tab underline, playhead, the current version mark), focus rings, links, drop outlines                                                                                                                 |
+| `--color-primary`                | `#ffffff`            | Filled primary buttons (`bg-primary`): Send, Export, Send sign-in link, Upload and the + button; progress fills                                                                                                      |
 | `--color-on-primary`             | `#000000`            | Text and icons on primary buttons (`text-on-primary`)                                                                                                                                                                |
 | `--color-danger`, `--color-warn` | `#ff8a80`, `#f5c451` | Errors and warnings                                                                                                                                                                                                  |
 | `--color-track-*`                | unchanged            | Track item colours                                                                                                                                                                                                   |
@@ -135,6 +145,12 @@ Primary buttons are white with black content (owner, 2026-11-03): every filled b
 `bg-primary text-on-primary`, `enabled:hover:opacity-90` on hover and `disabled:opacity-50` while
 disabled; none uses `bg-accent`. Before this change they were filled with the accent blue. Their
 corner radius rules are unchanged (see Corner radius).
+
+Progress fills are white too (owner, 2026-11-03): the progress overlay's bar, the export bar (its
+pulsing `bg-primary/60` block while waiting and its `bg-primary` fill while rendering) and the
+upload `<progress>` (`::-webkit-progress-value` and `::-moz-progress-bar`) fill with `bg-primary`.
+Their tracks are unchanged (`bg-line` in the overlay, `bg-raised` for export and upload). Before
+this change they filled with the accent blue.
 
 Before this change `--color-surface` was `#0c0d10` and the lifted token was named `--color-panel`
 (same `#15171b`) and also filled the correction area, dialogs and track lanes. The track lanes are
@@ -328,7 +344,10 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   `upload`, `multipart-upload` and `footage-refusal` specs were adjusted to the new markup.
   `photo-library.spec.ts` checks the library right of `edit-area` at 1440x900 and the Library
   tab at 390x844, with no page scroll. `progress-overlay.spec.ts` checks the overlay inside the
-  preview, clear of Play and the ruler, at 1440x900 and 390x844.
+  preview, clear of Play and the ruler, at 1440x900 and 390x844, its top equal to
+  `preview-frame`'s top and its right equal to `edit-area`'s content right (and to `tracks`' right
+  while collapsed) within 1 px, collapsed and expanded, at most 320 px wide, and its bar fill
+  `rgb(255, 255, 255)`.
 - `reel-layout.spec.ts` also checks at 1440x900 that the page background and the edit area are
   `rgb(0, 0, 0)` and the header, `tracks` and `change-field` are neither black nor transparent.
 - `reel-layout.spec.ts` checks at 1440x900 that `preview-frame`, `change-field`, Send and Export
@@ -376,6 +395,10 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 - Do not unmount `UploadForm` when the upload dialog closes.
 - A missing or malformed thumbnail or frames sprite is null, never a failure.
 - The overlay never blocks the player's controls: `pointer-events` off except its own buttons.
+- The overlay sits at the top right: its top edge on the preview frame's top edge and its right
+  edge on the edit area's right content edge. Never offset it below the reel, never move it back
+  to the left, and never make it wider than `max-w-xs` or its parent.
+- Progress fills use `--color-primary`, never `--color-accent`.
 - The studio's background is pitch black (`--color-surface`, `#000`); only the navigation (header
   bars, the phone's tab bar), the tracks timeline and the correction box are lifted
   (`--color-chrome`). Never give another area a lifted or tinted background; use tokens, never raw

@@ -12,7 +12,9 @@ import { claimableJobIds } from "../test-support/worker.ts";
 import { eventsNamed, recordEvents } from "./events.ts";
 
 // The reel page's progress overlay (app_docs/status.md): a scripted job's
-// plain words and progress over the preview at both sizes, never blocking the
+// plain words and progress over the preview at both sizes, at the top right
+// (its top edge on the preview frame's, its right edge on the edit area's
+// content right, collapsed and expanded) with a white fill, never blocking the
 // player's controls, and the automatic switch to a newly saved version at the
 // same time and play state, with "New version N".
 
@@ -104,6 +106,38 @@ async function expectOverlayNeverBlocks(page: Page) {
   await expectNoPageScroll(page);
 }
 
+// The right edge of the edit area's content box (inside its padding and any
+// scrollbar): the edge the control row's expand icon and the tracks panel end on.
+function editContentRight(page: Page): Promise<number> {
+  return page.getByTestId("edit-area").evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    const padding = parseFloat(getComputedStyle(el).paddingRight);
+    return rect.left + el.clientLeft + el.clientWidth - padding;
+  });
+}
+
+// The card at the top right, like a notification: its top edge on the preview
+// frame's top edge, its right edge on the edit area's content right (the same
+// edge as the tracks panel's right while collapsed), no wider than max-w-xs,
+// and its bar filled white (--color-primary) over the unfilled track.
+async function expectOverlayTopRight(page: Page) {
+  const overlay = page.getByTestId("progress-overlay");
+  const card = await box(overlay);
+  const frame = await box(page.getByTestId("preview-frame"));
+  expect(Math.abs(card.y - frame.y)).toBeLessThanOrEqual(1);
+  const right = await editContentRight(page);
+  expect(Math.abs(card.x + card.width - right)).toBeLessThanOrEqual(1);
+  const tracks = page.getByTestId("tracks");
+  if ((await tracks.count()) > 0) {
+    const panel = await box(tracks);
+    expect(Math.abs(card.x + card.width - (panel.x + panel.width))).toBeLessThanOrEqual(1);
+  }
+  expect(card.width).toBeLessThanOrEqual(320 + 1);
+  const fill = overlay.getByRole("progressbar").locator("> div");
+  await expect(fill).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expectNoPageScroll(page);
+}
+
 // A running process job held by a worker that does not exist (its lease an
 // hour ahead, so never claimable), with its step rows written by the spec.
 async function scriptedJob(): Promise<string> {
@@ -149,6 +183,7 @@ async function scriptedJobAtBothSizes(page: Page, baseURL: string, viewport: typ
   await expect(overlay.getByTestId("overlay-step")).toHaveText("Step 2 of 8");
   await expect(overlay.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "13");
   await expectOverlayNeverBlocks(page);
+  await expectOverlayTopRight(page);
 
   await admin.from("steps").update({ status: "done" }).eq("id", convert);
   await stepRow(jobId, "decide", "running");
@@ -157,6 +192,14 @@ async function scriptedJobAtBothSizes(page: Page, baseURL: string, viewport: typ
   });
   await expect(overlay.getByTestId("overlay-step")).toHaveText("Step 8 of 8");
   await expectOverlayNeverBlocks(page);
+  await expectOverlayTopRight(page);
+  // Expanded, the card still starts on the frame's top edge and ends on the
+  // edit area's right content edge.
+  await page.getByRole("button", { name: "Expand preview" }).click();
+  await expect(page.getByRole("button", { name: "Collapse preview" })).toBeVisible();
+  await expectOverlayTopRight(page);
+  await page.getByRole("button", { name: "Collapse preview" }).click();
+  await expect(page.getByRole("button", { name: "Expand preview" })).toBeVisible();
 
   await admin
     .from("jobs")

@@ -224,9 +224,12 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
           className="h-2 w-full overflow-hidden bg-raised"
         >
           {percent === null ? (
-            <div className="h-full w-1/3 animate-pulse bg-accent/60" />
+            <div className="h-full w-1/3 animate-pulse bg-primary/60" />
           ) : (
-            <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
+            <div
+              className="h-full bg-primary transition-[width]"
+              style={{ width: `${percent}%` }}
+            />
           )}
         </div>
         <p data-testid="export-modal-status" className="text-sm text-muted">

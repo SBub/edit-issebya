@@ -300,7 +300,7 @@ export function UploadForm() {
           data-testid="upload-progress"
           max={100}
           value={percent}
-          className="h-2 w-full appearance-none overflow-hidden bg-raised [&::-moz-progress-bar]:bg-accent [&::-webkit-progress-bar]:bg-raised [&::-webkit-progress-value]:bg-accent"
+          className="h-2 w-full appearance-none overflow-hidden bg-raised [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-raised [&::-webkit-progress-value]:bg-primary"
         />
       ) : null}
       <p id="upload-status" aria-live="polite" className="min-h-6 text-sm">
