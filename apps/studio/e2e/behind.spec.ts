@@ -15,9 +15,11 @@ import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 // A change request that puts a library photo behind the speaker: the worker
 // makes the span's mask (the mask double: black, no person) in a `cutout`
 // step, records it, and saves version 3 naming it; the live preview shows the
-// photo exactly over the `left` spot inside the span and not after it.
+// photo exactly over the `top` spot inside the span and not after it (the side spots reach
+// down into the fallback caption line the platform guard moved up, so a side
+// photo here would sit under the captions).
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
-const REQUEST = "put my test pattern photo behind me on the left";
+const REQUEST = "put my test pattern photo behind me at the top";
 const INSIDE = 1.3;
 // The span ends with w0010 at 2.605 s; the fixture reel lasts 2.69 s.
 const AFTER = 2.65;
@@ -148,7 +150,7 @@ test("a change puts a library photo behind the speaker, in its spot, from a stor
 
   const worker = await runWorkerOnce({
     R2_KEY_PREFIX: CACHE_PREFIX,
-    E2E_MOCK_AI_SCRIPT: await behindPhotoAnswerScript(scriptDir, photo!.id, "left"),
+    E2E_MOCK_AI_SCRIPT: await behindPhotoAnswerScript(scriptDir, photo!.id, "top"),
   });
   expect(worker.code, worker.output).toBe(0);
 
@@ -200,12 +202,12 @@ test("a change puts a library photo behind the speaker, in its spot, from a stor
     .eq("r2_key", maskKey);
   expect(stored).toEqual([{ kind: "rebuildable", step: "cutout" }]);
 
-  // The preview of version 3: the photo over the left spot inside the span.
+  // The preview of version 3: the photo over the top spot inside the span.
   await expect(
     page.locator(`[data-preview-version="${v3!.id}"][data-preview="ready"]`),
   ).toBeVisible({ timeout: 30_000 });
   await seekTo(page, INSIDE);
-  const spot = ISSEBYA_PRESET.behind.spots.left;
+  const spot = ISSEBYA_PRESET.behind.spots.top;
   const inside = await photoState(page);
   expect(inside).toMatchObject({ shown: true });
   expect(inside.src).toContain(`library/${photo!.id}/large.jpg`);
@@ -226,5 +228,5 @@ test("a change puts a library photo behind the speaker, in its spot, from a stor
   // The tracks timeline's Behind row shows the one item.
   const behindRow = page.getByTestId("tracks").locator('[data-track="behind"]');
   await expect(behindRow.getByTestId("track-item")).toHaveCount(1);
-  await expect(behindRow.getByTestId("track-item")).toHaveText("photo left");
+  await expect(behindRow.getByTestId("track-item")).toHaveText("photo top");
 });
