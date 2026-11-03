@@ -10,7 +10,6 @@ import {
   parsePhotoUpload,
   photoKey,
 } from "./photos";
-import { formatAge } from "./reels";
 import { PART_URL_SECONDS, parseParts } from "./upload-server";
 
 // The server side of the photo library. The bytes go from the browser
@@ -266,10 +265,7 @@ async function signed(
 // signed here. RLS returns only the owner's rows; no owner filter, so a
 // missing policy can never be masked by the query. A failed signing is a
 // neutral tile.
-export async function loadLibrary(
-  deps: PhotoDeps,
-  now: number = Date.now(),
-): Promise<PhotoAnswer<LibraryItem[]>> {
+export async function loadLibrary(deps: PhotoDeps): Promise<PhotoAnswer<LibraryItem[]>> {
   const session = await signedIn(deps.supabase);
   if (!session.ok) return session;
   const { supabase, userId } = session.value;
@@ -287,8 +283,6 @@ export async function loadLibrary(
       id: row.id,
       fileName: row.file_name,
       status: row.status,
-      createdAt: row.created_at,
-      age: formatAge(row.created_at, now),
       bytes: row.bytes,
       width: row.width,
       height: row.height,

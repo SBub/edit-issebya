@@ -7,11 +7,15 @@ export interface ThumbnailGridItem {
   // one with `onSelect` (and no `href`) is a button.
   href?: string;
   onSelect?: () => void;
-  title: string;
+  // The visible name under the image; a tile without one shows only its
+  // image (photos) and needs `label`.
+  title?: string;
+  // The tile's accessible name when no title is shown (`aria-label`).
+  label?: string;
   // A short-lived signed storage URL, or null for a neutral tile.
   imageUrl: string | null;
-  // One short line under the title (for reels, age and size).
-  meta: ReactNode;
+  // One short line under the title (for reels, age and size), or none.
+  meta?: ReactNode;
   // An optional status line.
   badge?: string;
   // The badge's test id (the reels list keeps `reel-list-status`).
@@ -129,25 +133,34 @@ export function ThumbnailGrid({
                 </span>
               )}
             </span>
-            <span className={`truncate text-xs font-medium text-ink ${item.corner ? PAD : ""}`}>
-              {item.title}
-            </span>
-            <span
-              data-testid="tile-meta"
-              className={`truncate text-[11px] text-muted ${item.corner ? PAD : ""}`}
-            >
-              {item.meta}
-            </span>
+            {item.title !== undefined && (
+              <span className={`truncate text-xs font-medium text-ink ${item.corner ? PAD : ""}`}>
+                {item.title}
+              </span>
+            )}
+            {item.meta !== undefined && (
+              <span
+                data-testid="tile-meta"
+                className={`truncate text-[11px] text-muted ${item.corner ? PAD : ""}`}
+              >
+                {item.meta}
+              </span>
+            )}
           </>
         );
         return (
           <li key={item.id} className="relative min-w-0">
             {item.href !== undefined ? (
-              <Link href={item.href} className={TILE}>
+              <Link href={item.href} aria-label={item.label} className={TILE}>
                 {body}
               </Link>
             ) : (
-              <button type="button" onClick={item.onSelect} className={`${TILE} w-full`}>
+              <button
+                type="button"
+                onClick={item.onSelect}
+                aria-label={item.label}
+                className={`${TILE} w-full`}
+              >
                 {body}
               </button>
             )}

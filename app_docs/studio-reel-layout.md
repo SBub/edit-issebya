@@ -109,7 +109,9 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
   hover), 44 px on a phone (see `app_docs/studio.md`).
 - `apps/studio/src/components/ThumbnailGrid.tsx`: generic tile grid, each tile with a thumbnail or
   neutral block, title, a meta line (age and size, `1w · 62.2 MB`) and a status badge
-  (`reel-list-status` kept). An item has `href` (a link tile) or `onSelect` (a `<button>` tile). Prop
+  (`reel-list-status` kept). Title, meta and badge are each optional: an item without them shows
+  only its image (the photo library's tiles), and its `label` is then the tile's `aria-label`; the
+  reel cards always pass all three. An item has `href` (a link tile) or `onSelect` (a `<button>` tile). Prop
   `aspect`: `"portrait"` (default, 9:16) or `"square"`. Prop `columns`: `"page"` (default, 3 columns
   on a phone, up to 8 on wide screens) or `"panel"` (3 at every width). Optional prop `add`: a dashed
   add tile first in the grid, the tiles' size and aspect, with a **+** and a visible label that is

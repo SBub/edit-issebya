@@ -96,6 +96,15 @@ interface PhotoRecord {
   large_key: string | null;
 }
 
+// A ready tile: its image and nothing else (no badge, no text under it).
+async function expectOnlyThumbnail(tile: Locator) {
+  await expect(tile).toBeVisible();
+  await expect(tile.locator("img")).toHaveCount(1);
+  await expect(tile.getByTestId("photo-status")).toHaveCount(0);
+  await expect(tile.getByTestId("tile-meta")).toHaveCount(0);
+  await expect(tile).toHaveText("");
+}
+
 async function photoRows(): Promise<PhotoRecord[]> {
   const { data, error } = await admin
     .from("photos")
@@ -142,6 +151,8 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
 
   const badge = library.getByTestId("photo-status");
   await expect(badge).toHaveText("describing", { timeout: 30_000 });
+  // A tile not ready yet keeps its status, in its name too.
+  await expect(library.getByRole("button", { name: "sample.jpg, describing" })).toBeVisible();
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
   const sampleBytes = (await stat(SAMPLE)).size;
   const [photo] = await photoRows();
@@ -165,9 +176,11 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
   });
   expect(worker.code, worker.output).toBe(0);
 
-  // Live, without a reload.
-  await expect(badge).toHaveText("ready", { timeout: 15_000 });
+  // Live, without a reload: a ready tile shows only its thumbnail (no badge,
+  // no file name, age or size), its file name kept as its accessible name.
+  await expect(badge).toHaveCount(0, { timeout: 15_000 });
   await expect(library.locator("img")).toHaveCount(1);
+  await expectOnlyThumbnail(library.getByRole("button", { name: "sample.jpg", exact: true }));
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
     "marker",
   );
@@ -300,9 +313,43 @@ test("1440x900: a photo dropped on the section uploads; several files or a non-i
     E2E_MOCK_AI_SCRIPT: DESCRIBE_ANSWER,
   });
   expect(worker.code, worker.output).toBe(0);
-  await expect(badge).toHaveText("ready", { timeout: 15_000 });
+  await expect(badge).toHaveCount(0, { timeout: 15_000 });
+  await expectOnlyThumbnail(library.getByRole("button", { name: "sample.jpg", exact: true }));
   const [described] = await photoRows();
   leftKeys.push(described!.thumbnail_key!, described!.large_key!);
+});
+
+test("1440x900: a failed photo keeps its status on the tile", async ({ page, baseURL }) => {
+  // Written by the admin the way the worker fails a photo (a HEIC it could
+  // not read, say): no thumbnail, status `failed`.
+  const id = crypto.randomUUID();
+  const inserted = await admin.from("photos").insert({
+    id,
+    owner_id: owner.id,
+    r2_key: `${WORKER_PREFIX}library/${id}/original.heic`,
+    file_name: "broken.heic",
+    content_type: "image/heic",
+    status: "failed",
+  });
+  if (inserted.error) throw new Error(`photo not inserted: ${inserted.error.message}`);
+  try {
+    await openReel(page, baseURL!, DESKTOP);
+    const library = page.getByTestId("library-area");
+    await expect(page.locator('[data-library="ready"]')).toBeVisible({ timeout: 30_000 });
+    const failed = library.getByRole("button", { name: "broken.heic, failed" });
+    await expect(failed.getByTestId("photo-status")).toHaveText("failed");
+    await expect(failed.locator("img")).toHaveCount(0);
+    await expect(failed.getByTestId("tile-meta")).toHaveCount(0);
+    await expect(failed).toHaveText("failed");
+    // The ready photo beside it shows only its thumbnail.
+    await expectOnlyThumbnail(library.getByRole("button", { name: "sample.jpg", exact: true }));
+    // The tile still opens the dialog.
+    await failed.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("dialog").getByTestId("photo-dialog-status")).toHaveText("failed");
+  } finally {
+    await admin.from("photos").delete().eq("id", id);
+  }
 });
 
 test.describe("on a touch phone", () => {
@@ -335,7 +382,9 @@ test.describe("on a touch phone", () => {
     const chooser = page.waitForEvent("filechooser");
     await plus.tap();
     await (await chooser).setFiles(SAMPLE);
-    await expect(library.getByTestId("photo-status")).toHaveCount(before + 1, { timeout: 30_000 });
+    await expect(library.getByRole("button", { name: /^sample\.jpg/ })).toHaveCount(before + 1, {
+      timeout: 30_000,
+    });
     await expect.poll(async () => (await photoRows()).length, { timeout: 30_000 }).toBe(before + 1);
     for (const row of await photoRows()) {
       if (!leftKeys.includes(row.r2_key)) leftKeys.push(row.r2_key);

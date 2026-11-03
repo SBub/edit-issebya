@@ -34,7 +34,11 @@ desktop and is a fourth tab, `Library`, on a phone.
 - `apps/studio/src/components/PhotoLibrary.tsx`, `PhotoDialog.tsx`: the library panel. It renders
   `ThumbnailGrid` (newest first, after a dashed **Upload a photo** tile, its visible
   label also its accessible name, that opens the file picker), follows the `photos` table through Realtime and re-reads the library through `loadLibrary` on each change. A tile
-  opens `PhotoDialog`: the photo large, its description and tags, and Delete. On desktop the whole
+  shows only its thumbnail: no file name, age or size under it, and no badge for a `ready` photo;
+  `uploading`, `describing` and `failed` stay as a badge (`photo-status`) on the tile, so a broken
+  photo never looks like a good one (`photoBadge` in `apps/studio/src/lib/photos.ts`). The tile's
+  accessible name is its file name, plus the status while not ready (`sample.jpg, describing`,
+  `photoTileLabel`). A tile opens `PhotoDialog`: the photo large, its description and tags, and Delete. On desktop the whole
   Photos section (`data-testid="photo-drop"`) is a drop zone (`useFileDrop` in
   `apps/studio/src/components/FileDrop.tsx`: a counter of entered elements keeps the highlight,
   `data-drop="over"`, a dashed accent outline and the `Drop to upload` hint, on while the drag
@@ -81,8 +85,9 @@ desktop and is a fourth tab, `Library`, on a phone.
 2. Press the dashed **Upload a photo** tile, first in the grid, and pick a JPEG, PNG, HEIC, HEIF or WebP
    file of up to 25 MiB. On desktop you can instead drop one such file anywhere on the Photos
    section; drop one file at a time.
-3. The tile shows `uploading`, then `describing` once the worker has claimed the job, then `ready`
-   with the description and tags (live, no reload).
+3. The tile shows `uploading`, then `describing` once the worker has claimed the job, then only the
+   thumbnail once the photo is ready, its description and tags in the dialog (live, no reload). A
+   photo the worker could not process (a HEIC it could not read, say) keeps a `failed` badge.
 4. Open a tile to see the photo large, its description and tags. Delete removes the row and its R2
    objects (original, thumbnail and large copy).
 
@@ -108,11 +113,13 @@ only, run by hand; CI uses the committed files).
   `job-order.test.ts` and `stored-files.test.ts`.
 - E2E: `apps/studio/e2e/photo-library.spec.ts` uploads the JPEG fixture at 1440x900 through the
   dashed add tile (first in the grid, no round button left; no page scroll), checks `describing`
-  then `ready` live after the worker's `once`, the `describe_photo` step's AI columns and the three
+  then, live after the worker's `once`, a ready tile with only its image (no badge, no text, the file
+  name as its accessible name), the `describe_photo` step's AI columns and the three
   `stored_files` rows, Delete; then drops on the Photos section (synthetic `DataTransfer`,
   `apps/studio/e2e/drop.ts`): the highlight on dragenter, kept across a child, off on dragleave; two
   files and a text file upload nothing with their messages; one photo uploads and goes `describing`
-  then `ready`; and at 390x844 the Library tab, whose add tile uploads a photo by tap.
+  then ready; a `failed` photo (inserted by the admin) keeps its `failed` badge, no image, and opens
+  the dialog; and at 390x844 the Library tab, whose add tile uploads a photo by tap.
 - Unit: `apps/studio/src/lib/file-drop.test.ts` (accept, refuse or too many against
   `PHOTO_ACCEPT`).
 
@@ -127,6 +134,8 @@ only, run by hand; CI uses the committed files).
 - Never send a photo's bytes to the studio's server; the browser PUTs them straight to storage.
 - A drop never uploads more than one photo: several dropped files upload none, and a drop while an
   upload runs starts nothing. A dropped photo takes the same upload as a picked one.
+- Never let a photo that is not `ready` look like a ready one: a tile shows a badge for every status
+  but `ready`.
 - Never slim a photo's file; only the owner's Delete removes a photo's objects.
 - Quote a photo's description and tags as data in any later prompt, never as instructions.
 - Bump `DESCRIBE_PROMPT_VERSION` with every change to `describe-prompt.md`.

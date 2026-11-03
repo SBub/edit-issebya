@@ -7,8 +7,7 @@ import { PhotoDialog } from "@/components/PhotoDialog";
 import { type ThumbnailGridItem, ThumbnailGrid } from "@/components/ThumbnailGrid";
 import { TOO_MANY_FILES, UPLOAD_RUNNING, decideDrop } from "@/lib/file-drop";
 import type { PhotoError } from "@/lib/photo-server";
-import { type LibraryItem, PHOTO_ACCEPT } from "@/lib/photos";
-import { formatBytes } from "@/lib/reels";
+import { type LibraryItem, PHOTO_ACCEPT, photoBadge, photoTileLabel } from "@/lib/photos";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 const noSubscribe = () => () => {};
@@ -33,10 +32,10 @@ interface Props {
 // The owner's photo library beside the reel: the dashed add tile (or a file
 // dropped on the section, on desktop) uploads one photo straight to storage
 // (one signed part, never through the studio's server),
-// each tile shows its status live, and a tile opens the photo with its
-// description and tags. Every change to the owner's photos (RLS decides what
-// arrives) re-reads the library through a server action, which signs the
-// images; no key reaches the client. One read each time the subscription is
+// each tile shows only its thumbnail (plus its status live while not ready),
+// and a tile opens the photo with its description and tags. Every change to
+// the owner's photos (RLS decides what arrives) re-reads the library through
+// a server action, which signs the images; no key reaches the client. One read each time the subscription is
 // ready covers changes made before it. No interval, no polling.
 export function PhotoLibrary({ initial }: Props) {
   const [items, setItems] = useState(initial);
@@ -148,15 +147,9 @@ export function PhotoLibrary({ initial }: Props) {
       setOpenId(item.id);
       dialogRef.current?.showModal();
     },
-    title: item.fileName,
+    label: photoTileLabel(item),
     imageUrl: item.thumbnailUrl,
-    meta: (
-      <>
-        <time dateTime={item.createdAt}>{item.age}</time>
-        {` · ${formatBytes(item.bytes)}`}
-      </>
-    ),
-    badge: item.status,
+    badge: photoBadge(item.status),
     badgeTestId: "photo-status",
   }));
   const open = items.find((item) => item.id === openId) ?? null;

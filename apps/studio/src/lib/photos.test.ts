@@ -8,7 +8,9 @@ import {
   formatDimensions,
   isPhotoId,
   parsePhotoUpload,
+  photoBadge,
   photoKey,
+  photoTileLabel,
 } from "./photos";
 
 const ID = "0b9f6c1e-3c1d-4c8e-9a51-2f4d7b6e8a10";
@@ -98,5 +100,21 @@ describe("photo keys and ids", () => {
   it("formats dimensions once measured", () => {
     expect(formatDimensions(1200, 900)).toBe("1200 x 900");
     expect(formatDimensions(null, 900)).toBeNull();
+  });
+});
+
+describe("library tiles", () => {
+  it("shows no badge for a ready photo and every other status", () => {
+    expect(photoBadge("ready")).toBeUndefined();
+    expect(photoBadge("uploading")).toBe("uploading");
+    expect(photoBadge("describing")).toBe("describing");
+    expect(photoBadge("failed")).toBe("failed");
+    expect(PHOTO_STATUSES.filter((status) => photoBadge(status) === undefined)).toEqual(["ready"]);
+  });
+
+  it("names each tile by its file name, and its status while not ready", () => {
+    expect(photoTileLabel({ fileName: "a.jpg", status: "ready" })).toBe("a.jpg");
+    expect(photoTileLabel({ fileName: "b.heic", status: "failed" })).toBe("b.heic, failed");
+    expect(photoTileLabel({ fileName: "c.png", status: "describing" })).toBe("c.png, describing");
   });
 });

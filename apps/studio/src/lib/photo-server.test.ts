@@ -338,10 +338,7 @@ describe("loadLibrary", () => {
       large_key: "w/l.jpg",
     });
     const { supabase } = client({ rows: [ready, row({ id: OTHER })] });
-    const answer = await loadLibrary(
-      { supabase, storage: storage().store, errors },
-      Date.parse("2026-11-02T10:05:00.000Z"),
-    );
+    const answer = await loadLibrary({ supabase, storage: storage().store, errors });
     expect(answer.ok).toBe(true);
     if (!answer.ok) return;
     expect(answer.value[0]).toMatchObject({
