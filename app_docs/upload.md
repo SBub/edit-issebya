@@ -31,6 +31,40 @@ it only creates, signs, lists, completes and aborts.
 - `start` resolves to `finished` (with the reel id read from the completed key), `cancelled` or
   `failed`. `cancel` calls Uppy's `cancelAll`, which sends the abort request.
 
+### Upload dialog
+
+The **+** on the reels list opens `UploadDialog.tsx`, a native `<dialog>` with `UploadForm.tsx`
+(owner, 2026-11-03):
+
+- **Close** is the photo dialog's cross (`apps/studio/src/components/CloseButton.tsx`, used by both
+  dialogs): a plain X inline SVG (`aria-hidden`) in `text-ink`, no background or shape, an opacity
+  fade on hover, a 40x40 tap target, `aria-label` and `title` `Close`, at the top right of the
+  header. Escape and the backdrop close the dialog too.
+- The clip is chosen in a drop zone (`data-testid="upload-drop"`): a `<label>` for the input, a
+  large square area with a 2px dashed `border-line` on black (`bg-surface`), an upload icon, the
+  prompt (`upload-prompt`) "Drop a video here or click to choose" ("Tap to choose a video" on a
+  coarse pointer, a phone, which never drags files) and a muted line with `CLIP_LIMITS` ("MP4, MOV,
+  M4V or WebM, up to 5 GB"). The accept list is `CLIP_ACCEPT` in `apps/studio/src/lib/upload.ts`.
+  The native `<input type="file" id="clip">` stays inside the zone, visually hidden (`sr-only`)
+  and named `Clip` (`aria-label`): a click or tap anywhere in the zone opens the picker through
+  the label, and Enter or Space on the focused input does too; its focus ring is drawn on the zone
+  (`has-[input:focus-visible]`).
+- A drop goes through `useFileDrop` (`FileDrop.tsx`) and `decideDrop` (`file-drop.ts`) with
+  `CLIP_ACCEPT`, as the photo library's does, but it only chooses the clip (the Upload button still
+  starts it). While a file is dragged over it the zone is `data-drop="over"`: the dashed border and
+  the prompt turn accent ("Drop to choose this video") on `bg-raised`, the adapted form of
+  `DROP_ZONE_OVER` (the zone already has a dashed border, so it colours that instead of adding an
+  outline). A non-video says the existing "Pick an MP4, MOV, M4V or WebM clip up to 5 GB.", more
+  than one file says `TOO_MANY_FILES` ("One file at a time, for now."), both in `upload-status`;
+  a drop while uploading is ignored. Choosing a clip clears either message.
+- Once a clip is chosen (picked or dropped) the zone shows its name (`upload-chosen`) and size
+  (`formatBytes`) with "Choose another"; a click anywhere in the zone picks another, and a
+  cancelled picker keeps the chosen clip. The white **Upload** button, the progress bar, Cancel
+  and the messages work as before; the form uploads the chosen clip.
+
+The zone is square: the corner rule (`app_docs/studio-reel-layout.md`, Corner radius) leaves only
+the six listed elements and track items rounded.
+
 ### Design change from the spec
 
 The spec planned three server actions plus one parts route, four parallel parts and custom retry
@@ -142,12 +176,20 @@ Not done by the pipeline and not verified by it, any more than real network drop
 - DB (`yarn turbo run test:db --filter=./apps/studio`): `apps/studio/db-tests/rls.test.ts` covers
   `finish_upload` (one job, idempotent repeat, refused for another owner, no user or a bad size),
   `fail_upload`, and `source_upload_id` (owner-only read, malformed or reused value refused).
+- Unit: `upload.test.ts` also checks that `CLIP_ACCEPT` offers every accepted extension and that
+  `CLIP_LIMITS` states `MAX_UPLOAD_BYTES`.
+- E2E: `apps/studio/e2e/reels.spec.ts` checks the dialog: the drop zone (dashed, black, square)
+  with its prompt and limits line, the over state on a drag, a dropped non-video and a drop of two
+  files refused with their messages, a dropped clip's name and size in the zone, and the Close
+  cross (by role and name, no text, `title`, an `aria-hidden` SVG). `upload.spec.ts`,
+  `multipart-upload.spec.ts` and `footage-refusal.spec.ts` pick through `setInputFiles` on the
+  hidden input labelled `Clip` and check the chosen name in the zone.
 - E2E: `apps/studio/e2e/multipart-upload.spec.ts`, five tests through the mock route: a 35 MiB clip
   goes up in four 10 MiB parts with a progress bar; one failed part is sent again alone and the
   upload completes; after a reload the same file sends only the missing parts; another user and a
   signed-out caller cannot sign, list, complete or abort; cancel leaves the reel `failed` with no
   parts and no job. A reel an earlier test left `uploading` is skipped when a test picks its own
-  uploading reel. `apps/studio/e2e/upload.spec.ts` is unchanged.
+  uploading reel.
 
 ## Rules
 
@@ -161,6 +203,8 @@ Not done by the pipeline and not verified by it, any more than real network drop
 - Keep a fixed part size: every part but the last the same size.
 - Do not add Uppy UI packages; the uploader stays headless.
 - Never go to the reel after a finished upload before the bar shows 100.
+- Keep the native file input in the DOM, inside the drop zone and labelled `Clip`; never replace it
+  with a script-only picker. A drop only chooses the clip; it never starts the upload.
 
 ## Notes
 

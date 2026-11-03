@@ -51,7 +51,7 @@ desktop and is a fourth tab, `Library`, on a phone.
   `photoTileLabel`). A tile opens `PhotoDialog`: the photo large, its description and tags. Its header row holds
   the file name and, at the top right, two 40x40 icon buttons: the bin (`aria-label` and `title`
   `Delete photo`, danger colour) directly left of the cross (`Close`, `text-ink`, no background,
-  only an opacity fade on hover). The bin asks once more: `Cancel` and `Yes, delete`
+  only an opacity fade on hover; `CloseButton.tsx`, shared with the upload dialog). The bin asks once more: `Cancel` and `Yes, delete`
   (`photo-delete-confirm`) take its place in the header, still left of the cross, and an error shows
   under the tags. Nothing sits under the tags at the bottom right. Escape and the backdrop close the
   dialog as the cross does. On desktop the whole

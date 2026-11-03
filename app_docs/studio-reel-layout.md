@@ -169,13 +169,13 @@ rounded). The items in the Behind, Accents and Transitions rows of the tracks ti
 `track-item` element but holds a strip of frames from the sprite, so the Footage row's items stay
 square: `trackItemClass` adds `rounded-track` for every row but `footage`.
 
-Every other element is square: buttons (Zones, Go back, tabs, dialog buttons, Close, Cancel and
+Every other element is square: buttons (Zones, Go back, tabs, dialog buttons, the Close cross, Cancel and
 Yes, Delete, Sign out, a reel card's bin and its delete dialog's Cancel and Delete), photo tiles
 and every add tile, the
 status and tile badges, dialogs, the tracks panel, its lanes, the ruler, the Footage row's clips and the playhead and its dot, the
 progress overlay and its bars, the export and upload progress bars (the native `<progress>` is
-styled flat with `appearance-none`), the drop overlay, the refusal message, inputs (the sign-in
-page, the upload form), and focus rings (square because they follow the element; a reel card's
+styled flat with `appearance-none`), the drop overlay, the upload dialog's dashed drop zone, the refusal message, inputs (the sign-in
+page), and focus rings (square because they follow the element; a reel card's
 is rounded for the same reason). Icon artwork
 inside an SVG (the play triangle's round joins, the pause bars' `rx`, round line caps) is drawing,
 not a corner, and is unchanged.
@@ -249,7 +249,9 @@ not a corner, and is unchanged.
   (`app_docs/photo-library.md`).
 - `apps/studio/src/components/UploadDialog.tsx`: the white, rounded (`rounded-reel`) **+** button and a native `<dialog>` with
   `UploadForm`. The dialog stays in the DOM when closed so an upload in progress is never unmounted.
-  The button is disabled (`data-ready="false"`) until the client has hydrated.
+  The button is disabled (`data-ready="false"`) until the client has hydrated. The dialog closes
+  with the same cross as the photo dialog (`CloseButton.tsx`) and picks the clip in a square
+  dashed drop zone (`app_docs/upload.md`, Upload dialog).
 
 ## How to Use
 

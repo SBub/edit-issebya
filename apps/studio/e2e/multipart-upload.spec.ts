@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { type Page, type Route, expect, test } from "@playwright/test";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
@@ -108,11 +108,12 @@ async function recordProgress(page: Page) {
 async function signIn(page: Page, email: string, baseURL: string) {
   await page.goto(await signInLink(admin, email, baseURL));
   await page.getByRole("button", { name: "Upload a reel" }).click();
-  await expect(page.getByLabel("Clip")).toBeVisible();
+  await expect(page.getByTestId("upload-drop")).toBeVisible();
 }
 
 async function pickAndUpload(page: Page) {
   await page.getByLabel("Clip").setInputFiles(footage.path);
+  await expect(page.getByTestId("upload-chosen")).toHaveText(basename(footage.path));
   await page.getByRole("button", { name: "Upload", exact: true }).click();
 }
 

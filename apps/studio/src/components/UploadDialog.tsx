@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useSyncExternalStore } from "react";
+import { CloseButton } from "@/components/CloseButton";
 import { UploadForm } from "@/components/UploadForm";
 
 // The square + button and the native dialog holding the upload form. The
@@ -35,17 +36,11 @@ export function UploadDialog() {
         aria-labelledby="upload-heading"
         className="m-auto w-[min(28rem,calc(100%-2rem))] border border-line bg-surface p-5 text-ink backdrop:bg-black/60"
       >
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-4 flex items-center justify-between gap-1">
           <h2 id="upload-heading" className="text-lg font-semibold">
             Upload a reel
           </h2>
-          <button
-            type="button"
-            onClick={() => dialogRef.current?.close()}
-            className="border border-line px-3 py-1 text-sm hover:bg-raised"
-          >
-            Close
-          </button>
+          <CloseButton onClick={() => dialogRef.current?.close()} />
         </div>
         <UploadForm />
       </dialog>

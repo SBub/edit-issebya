@@ -1,6 +1,7 @@
 "use client";
 
 import { type RefObject, useState } from "react";
+import { CloseButton } from "@/components/CloseButton";
 import { type LibraryItem, formatDimensions } from "@/lib/photos";
 import { formatBytes } from "@/lib/reels";
 
@@ -100,25 +101,7 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
               </svg>
             </button>
           ))}
-        <button
-          type="button"
-          aria-label="Close"
-          title="Close"
-          onClick={close}
-          className="-mr-2 flex size-10 flex-none items-center justify-center text-ink transition-opacity hover:opacity-70"
-        >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            className="size-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
+        <CloseButton onClick={close} />
       </div>
       {photo && (
         <div className="flex flex-col gap-3">

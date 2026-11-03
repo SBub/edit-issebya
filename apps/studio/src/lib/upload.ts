@@ -14,6 +14,11 @@ export function partCount(bytes: number): number {
 }
 
 const EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm"]);
+
+// What the clip picker and the upload drop zone offer (lib/file-drop's
+// `acceptsFile` reads it for a drop), and the line the zone shows about it.
+export const CLIP_ACCEPT = "video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm";
+export const CLIP_LIMITS = "MP4, MOV, M4V or WebM, up to 5 GB";
 const MAX_NAME_LENGTH = 200;
 
 // The file's lower-cased extension when the studio accepts it, else null.

@@ -1,9 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type ChangeEvent,
+  type FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { useFileDrop } from "@/components/FileDrop";
+import { TOO_MANY_FILES, decideDrop } from "@/lib/file-drop";
+import { formatBytes } from "@/lib/reels";
 import { capture, captureException } from "@/lib/track";
-import { parseUploadRequest } from "@/lib/upload";
+import { CLIP_ACCEPT, CLIP_LIMITS, parseUploadRequest } from "@/lib/upload";
 import {
   RESUME_KEY,
   type ResumeRecord,
@@ -15,7 +26,8 @@ import {
 } from "@/lib/upload-resume";
 import { type Uploader, createUploader } from "@/lib/uploader";
 
-type UploadState = "idle" | "uploading" | "failed" | "restart" | "cancelled" | "invalid";
+type UploadState =
+  "idle" | "uploading" | "failed" | "restart" | "cancelled" | "invalid" | "too-many";
 
 const MESSAGES: Record<Exclude<UploadState, "uploading">, string> = {
   idle: "",
@@ -23,6 +35,7 @@ const MESSAGES: Record<Exclude<UploadState, "uploading">, string> = {
   restart: "Upload failed. Pick the file again to start over.",
   cancelled: "Upload cancelled.",
   invalid: "Pick an MP4, MOV, M4V or WebM clip up to 5 GB.",
+  "too-many": TOO_MANY_FILES,
 };
 
 // The resume record as an external store: read from localStorage on the
@@ -62,7 +75,9 @@ function useResumeRecord(): ResumeRecord | null {
 // The browser PUTs each 10 MiB part straight to its own signed storage URL;
 // the studio's server only creates, signs, lists, completes and aborts. An
 // interrupted upload continues from the parts storage already holds once the
-// same file is picked again.
+// same file is picked again. The clip is chosen in a dashed drop zone: a click
+// (or Enter or Space on the visually hidden input inside it) opens the picker,
+// a drop of one clip chooses it, and the zone then shows its name and size.
 export function UploadForm() {
   const router = useRouter();
   const [state, setState] = useState<UploadState>("idle");
@@ -70,6 +85,9 @@ export function UploadForm() {
   const uploader = useRef<Uploader | null>(null);
   // The file being uploaded, for the resume record.
   const pending = useRef<File | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  // The chosen clip, from the picker or a drop.
+  const [chosen, setChosen] = useState<File | null>(null);
   const resume = useResumeRecord();
   const busy = state === "uploading";
 
@@ -102,10 +120,33 @@ export function UploadForm() {
     return uploader.current;
   }
 
+  function choose(file: File) {
+    setChosen(file);
+    if (state === "invalid" || state === "too-many") setState("idle");
+  }
+
+  function onPick(event: ChangeEvent<HTMLInputElement>) {
+    // A cancelled picker keeps the clip chosen before.
+    const file = event.target.files?.[0];
+    if (file) choose(file);
+  }
+
+  // A drop of one clip the picker would offer chooses it, as a pick does;
+  // anything else chooses nothing and says why. Ignored while uploading.
+  const drop = useFileDrop((files) => {
+    if (busy) return;
+    const decision = decideDrop(files, CLIP_ACCEPT);
+    if (decision.kind === "upload") {
+      // The hidden input no longer holds a different clip than the zone shows.
+      if (input.current) input.current.value = "";
+      choose(decision.file);
+    } else if (decision.kind === "too-many") setState("too-many");
+    else if (decision.kind === "refused") setState("invalid");
+  });
+
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const input = event.currentTarget.elements.namedItem("clip");
-    const file = input instanceof HTMLInputElement ? input.files?.[0] : undefined;
+    const file = chosen;
     if (!file || !parseUploadRequest({ name: file.name, bytes: file.size, type: file.type }).ok) {
       setState("invalid");
       return;
@@ -164,18 +205,77 @@ export function UploadForm() {
           An upload of {resume.name} was interrupted. Pick the same file to resume.
         </p>
       ) : null}
-      <label htmlFor="clip" className="text-sm font-medium">
-        Clip
+      <label
+        htmlFor="clip"
+        data-testid="upload-drop"
+        data-drop={drop.over ? "over" : "idle"}
+        {...(busy ? {} : drop.handlers)}
+        className={`flex min-h-44 flex-col items-center justify-center gap-2 border-2 border-dashed bg-surface px-4 py-8 text-center transition-colors has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-accent ${
+          drop.over
+            ? "border-accent bg-raised text-accent"
+            : busy
+              ? "border-line opacity-60"
+              : "cursor-pointer border-line hover:border-muted"
+        }`}
+      >
+        <input
+          ref={input}
+          id="clip"
+          name="clip"
+          type="file"
+          accept={CLIP_ACCEPT}
+          aria-label="Clip"
+          aria-describedby="upload-status"
+          disabled={busy}
+          onChange={onPick}
+          className="sr-only"
+        />
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          className="size-8 text-muted"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 16V4M7 9l5-5 5 5" />
+          <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+        </svg>
+        {chosen ? (
+          <>
+            <span data-testid="upload-chosen" className="max-w-full truncate text-base font-medium">
+              {chosen.name}
+            </span>
+            <span className="text-sm text-muted">
+              {formatBytes(chosen.size)}
+              {busy ? null : (
+                <>
+                  {" · "}
+                  <span className="text-accent underline underline-offset-2">Choose another</span>
+                </>
+              )}
+            </span>
+          </>
+        ) : (
+          <>
+            <span data-testid="upload-prompt" className="text-base font-medium">
+              {drop.over ? (
+                "Drop to choose this video"
+              ) : (
+                <>
+                  <span className="pointer-coarse:hidden">
+                    Drop a video here or click to choose
+                  </span>
+                  <span className="hidden pointer-coarse:inline">Tap to choose a video</span>
+                </>
+              )}
+            </span>
+            <span className="text-sm text-muted">{CLIP_LIMITS}</span>
+          </>
+        )}
       </label>
-      <input
-        id="clip"
-        name="clip"
-        type="file"
-        accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm"
-        aria-describedby="upload-status"
-        disabled={busy}
-        className="w-full max-w-full border border-line bg-raised px-3 py-2 text-base"
-      />
       <div className="flex gap-3">
         <button
           type="submit"

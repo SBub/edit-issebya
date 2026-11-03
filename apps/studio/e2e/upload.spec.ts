@@ -73,6 +73,8 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   await page.goto(await signInLink(admin, owner.email, baseURL!));
   await page.getByRole("button", { name: "Upload a reel" }).click();
   await page.getByLabel("Clip").setInputFiles(CLIP);
+  // The drop zone shows the chosen clip's name.
+  await expect(page.getByTestId("upload-chosen")).toHaveText("short-speech.mp4");
   await page.getByRole("button", { name: "Upload", exact: true }).click();
 
   // One click creates the multipart upload, signs and PUTs its one part to
