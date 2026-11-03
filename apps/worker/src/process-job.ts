@@ -26,6 +26,7 @@ import { supabaseExportStore } from "./render/export-store.ts";
 import { runRender } from "./render/render-step.ts";
 import { runRestore } from "./restore-step.ts";
 import { withKeepAwake } from "./keep-awake.ts";
+import { type ReelSizeHolder, createReelSizeHolder, readReelSize } from "./reel-size.ts";
 import { type JobOutcome, runJob } from "./run-job.ts";
 import { withJobScratch } from "./scratch.ts";
 import { supabaseStepStore } from "./step-store.ts";
@@ -60,7 +61,11 @@ export async function processJob(
   const storage = recordingStorage(rawStorage, { records, target, keyPrefix: config.keyPrefix });
   const recordStored = (key: string, bytes: number) =>
     records.record({ ...target, key, bytes, ...classifyKey(config.keyPrefix, key) });
-  const { span, context: jobContext } = startJobSpan(telemetry, job);
+  // The reel's size, on the job span and every step span (a photo job has none).
+  const size: ReelSizeHolder | undefined = job.reel_id
+    ? createReelSizeHolder(await readReelSize(db, job.reel_id))
+    : undefined;
+  const { span, context: jobContext } = startJobSpan(telemetry, job, size);
   let outcome: JobOutcome = "failed";
   try {
     outcome = await withKeepAwake(() =>
@@ -70,7 +75,7 @@ export async function processJob(
           renewEveryMs: config.renewEveryMs,
           renew: () => renewLease(db, config, job.id),
           async work(signal) {
-            const ctx = { steps, telemetry, errors, jobContext, job, signal };
+            const ctx = { steps, telemetry, errors, jobContext, job, signal, size };
             // Taken again after its worker stopped: the rows it left running
             // end failed, so the step log never shows a step running forever.
             if (job.attempts > 1) await steps.abandonRunning(job.id);
@@ -162,14 +167,15 @@ export async function processJob(
             });
           },
           finish: () => finishJob(db, config, job),
-          fail: (tail) => failJob(db, config, job, tail),
+          fail: (tail, failure) => failJob(db, config, job, tail, failure),
           refuse: (message) => refuseJob(db, config, job, message),
           wait: (reason) => waitJob(db, config, job, reason),
+          errors,
         }),
       ),
     );
     return outcome;
   } finally {
-    endJobSpan(span, outcome);
+    endJobSpan(span, outcome, size);
   }
 }

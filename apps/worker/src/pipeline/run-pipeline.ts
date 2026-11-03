@@ -9,6 +9,11 @@ import type { RunStep } from "./step-double.ts";
 import type { ToolPaths } from "./tools.ts";
 import { reelOf } from "../queue.ts";
 
+// The first step of a `process` job.
+export const CHECK_FOOTAGE_STEP = "check_footage";
+// The transcript a step reads (retime), whose words the reel's count is.
+const TRANSCRIPT_FILE = "transcript.json";
+
 export interface PipelineRun {
   ctx: StepContext;
   storage: Storage;
@@ -114,6 +119,41 @@ export async function runPipeline({
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     const seconds = step.footage.seconds(await readFile(path, "utf8"));
     await steps.recordFootageSeconds(reelId, seconds);
+    ctx.size?.update({ footageSeconds: seconds });
+    await recordWordCount(step);
+  };
+
+  // Next to the footage length: the word count of the transcript the step
+  // read, once. A transcript that cannot be read records nothing and never
+  // fails the job (it is a measurement, not an output).
+  const recordWordCount = async (step: PipelineStep) => {
+    if (ctx.size && ctx.size.current().wordCount !== null) return;
+    const input = step
+      .inputs(source, fingerprints)
+      .find((candidate) => candidate.as === TRANSCRIPT_FILE);
+    if (!input) return;
+    let count: number;
+    try {
+      const key = keyOf(input.ref);
+      let path = local.get(key);
+      if (!path) {
+        path = downloadPath(input.ref);
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
+        await mkdir(dirname(path), { recursive: true });
+        if (!(await storage.getFile(key, path, { signal }))) return;
+        local.set(key, path);
+      }
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
+      const words = (JSON.parse(await readFile(path, "utf8")) as { words?: unknown }).words;
+      if (!Array.isArray(words)) return;
+      count = words.length;
+    } catch {
+      signal.throwIfAborted();
+      return;
+    }
+    signal.throwIfAborted();
+    await steps.recordWordCount(reelId, count);
+    ctx.size?.update({ wordCount: count });
   };
 
   await rm(jobDir, { recursive: true, force: true });
@@ -122,10 +162,11 @@ export async function runPipeline({
       if (setReelStatus) await steps.reelStatus(reelId, "checking_footage");
       // Where convert reads the source: a convert that runs downloads nothing more.
       const sourcePath = downloadPath({ source });
+      let probed = null as { seconds: number; width: number; height: number } | null;
       await runToolsStep(
         ctx,
         {
-          name: "check_footage",
+          name: CHECK_FOOTAGE_STEP,
           inputs: [sourcePath],
           sizeOf: "in",
           async work(tool) {
@@ -137,11 +178,22 @@ export async function runPipeline({
               }
               local.set(sourceKey, sourcePath);
             }
-            return probeFootage({ tool, tools, path: sourcePath });
+            const { what, size } = await probeFootage({ tool, tools, path: sourcePath });
+            probed = size;
+            return { what };
           },
         },
         spawnTool,
       );
+      // Accepted footage: its length and display size, once.
+      if (probed && (!ctx.size || ctx.size.current().sourceSeconds === null)) {
+        await steps.recordSourceSize(reelId, probed);
+        ctx.size?.update({
+          sourceSeconds: probed.seconds,
+          width: probed.width,
+          height: probed.height,
+        });
+      }
     }
     for (const step of pipeline) {
       const started = performance.now();

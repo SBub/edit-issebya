@@ -22,18 +22,18 @@ describe("dry run payloads", () => {
     expect(JSON.stringify(dryRunPayloads())).toBe(text);
   });
 
-  it("hold the dashboard, the 13 insights and both text cards, each once", () => {
-    expect(INSIGHTS).toHaveLength(13);
+  it("hold the dashboard, the 14 insights and both text cards, each once", () => {
+    expect(INSIGHTS).toHaveLength(14);
     expect(count(text, marker("dashboard"))).toBe(1);
     for (const def of INSIGHTS) expect(count(text, marker(def.key))).toBe(1);
     expect(count(text, marker("supabase-usage"))).toBe(1);
     expect(count(text, marker("guardrail"))).toBe(1);
-    expect(new Set(INSIGHTS.map((def) => def.key)).size).toBe(13);
+    expect(new Set(INSIGHTS.map((def) => def.key)).size).toBe(14);
   });
 
   it("tag the dashboard and every insight", () => {
     const posts = payloads.filter((request) => request.method === "POST");
-    expect(posts).toHaveLength(14);
+    expect(posts).toHaveLength(15);
     for (const request of posts) expect((request.body as Body).tags).toEqual([TAG]);
   });
 
@@ -54,7 +54,7 @@ describe("dry run payloads", () => {
       .map((request) => ((request.body as Body).query as Body | undefined)?.source as Body)
       .filter((source) => source?.kind === "HogQLQuery")
       .map((source) => String(source.query));
-    expect(queries).toHaveLength(12);
+    expect(queries).toHaveLength(13);
     for (const query of queries) {
       expect(query).toMatch(/from supabase_[a-z_]+ as [a-z_]+/);
       expect(query).not.toMatch(/from (reels|jobs|steps|versions|exports|stored_files)\b/);

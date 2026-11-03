@@ -33,10 +33,20 @@ interface Built {
   frames: TimelineFrames | null;
 }
 
+// Where the shown player was and whether it was playing: the next version
+// continues from there.
+interface Handoff {
+  position: number;
+  intent: "paused" | "playing";
+}
+
+const FIRST_OPEN: Handoff = { position: 0, intent: "paused" };
+
 // Each outcome remembers the version it was loaded for, so a newer selection
-// shows Loading until its own outcome arrives.
+// keeps the previous preview until its own outcome arrives. A built outcome
+// carries the hand-off read the moment it arrived.
 type Outcome = { forVersion: string } & (
-  { status: "built"; built: Built } | { status: "message"; message: string }
+  { status: "built"; built: Built; handoff?: Handoff } | { status: "message"; message: string }
 );
 
 const MESSAGES: Record<Exclude<PreviewSourcesResult["status"], "ready">, string> = {
@@ -129,9 +139,20 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
 
 // One built version: the player and its tracks timeline, the playhead
 // following the player's clock (set only from the player's callback). Keyed
-// by version, so a new version starts at 0.
-function BuiltPreview({ built, controls }: { built: Built; controls: ReactNode }) {
-  const [position, setPosition] = useState(0);
+// by version, so a new version mounts a new player, started from the
+// hand-off (the previous version's position and play or pause state).
+function BuiltPreview({
+  built,
+  controls,
+  handoff,
+  onHandoff,
+}: {
+  built: Built;
+  controls: ReactNode;
+  handoff: Handoff;
+  onHandoff: (change: Partial<Handoff>) => void;
+}) {
+  const [position, setPosition] = useState(handoff.position);
   return (
     <>
       <PreviewPlayer
@@ -139,7 +160,13 @@ function BuiltPreview({ built, controls }: { built: Built; controls: ReactNode }
         versionId={built.versionId}
         hits={built.hits}
         soundBytes={built.soundBytes}
-        onPosition={setPosition}
+        startAt={handoff.position}
+        autoPlay={handoff.intent === "playing"}
+        onPosition={(seconds) => {
+          setPosition(seconds);
+          onHandoff({ position: seconds });
+        }}
+        onIntent={(intent) => onHandoff({ intent })}
         controls={controls}
       />
       <TracksTimeline timeline={built.timeline} position={position} frames={built.frames} />
@@ -154,7 +181,9 @@ function subscribeNever(): () => void {
 // The live preview of the shown version (the current one unless Undo or Redo
 // picked another) with its tracks timeline. It loads when the shown version
 // changes (LiveReel follows the reel through Realtime): no reload, no
-// polling. A load overtaken by a newer version is dropped.
+// polling. A load overtaken by a newer version is dropped. While the next
+// version loads, the previous one keeps playing; the next one then takes over
+// at the same time, playing or paused as it was.
 export function ReelPreview({
   reelId,
   versionId,
@@ -167,6 +196,8 @@ export function ReelPreview({
 }) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const opened = useRef(false);
+  // The mounted player's position and intent; the first open starts at 0, paused.
+  const handoffRef = useRef<Handoff>(FIRST_OPEN);
   // Read after hydration; the server renders as Chromium, so no note flashes.
   const chromium = useSyncExternalStore(
     subscribeNever,
@@ -179,7 +210,10 @@ export function ReelPreview({
     let stale = false;
     loadPreview(reelId, versionId)
       .then((next) => {
-        if (!stale) setOutcome(next);
+        if (stale) return;
+        setOutcome(
+          next.status === "built" ? { ...next, handoff: { ...handoffRef.current } } : next,
+        );
       })
       .catch((error: unknown) => {
         console.error("studio: preview not built:", (error as Error).message);
@@ -193,7 +227,11 @@ export function ReelPreview({
   }, [reelId, versionId]);
 
   const current = outcome && outcome.forVersion === versionId ? outcome : null;
-  const built = current?.status === "built" ? current.built : null;
+  // The previous version's preview stays until the shown version's own
+  // outcome arrives (a message for it replaces it).
+  const shown = current ?? (outcome?.status === "built" ? outcome : null);
+  const built = shown?.status === "built" ? shown.built : null;
+  const handoff = (shown?.status === "built" && shown.handoff) || FIRST_OPEN;
 
   // Once per preview open, the first time a page reaches the player.
   useEffect(() => {
@@ -220,7 +258,15 @@ export function ReelPreview({
       {!versionId ? (
         note(MESSAGES["no-version"])
       ) : built ? (
-        <BuiltPreview key={built.versionId} built={built} controls={controls} />
+        <BuiltPreview
+          key={built.versionId}
+          built={built}
+          controls={controls}
+          handoff={handoff}
+          onHandoff={(change) => {
+            handoffRef.current = { ...handoffRef.current, ...change };
+          }}
+        />
       ) : current?.status === "message" ? (
         note(current.message)
       ) : (

@@ -11,6 +11,7 @@ import { mainMetric } from "./main-metric.ts";
 import { mainMetricStreak } from "./main-metric-streak.ts";
 import { storagePerReel } from "./storage-per-reel.ts";
 import { storagePerStep } from "./storage-per-step.ts";
+import { stepTimeVsLength } from "./step-time-vs-length.ts";
 import { storageTotal } from "./storage-total.ts";
 
 // Dashboard order.
@@ -23,6 +24,7 @@ export const INSIGHTS: readonly Insight[] = [
   funnel,
   costPerReel,
   costPerStep,
+  stepTimeVsLength,
   failedSteps,
   storageTotal,
   storagePerReel,

@@ -217,10 +217,10 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
   }
 });
 
-test("390x844: the Library tab beside Edit, Versions and Status", async ({ page, baseURL }) => {
+test("390x844: the Library tab beside Edit and Versions", async ({ page, baseURL }) => {
   await openReel(page, baseURL!, PHONE);
   const tabs = page.getByRole("tablist", { name: "Reel" });
-  await expect(tabs.getByRole("tab")).toHaveText(["Edit", "Versions", "Status", "Library"]);
+  await expect(tabs.getByRole("tab")).toHaveText(["Edit", "Versions", "Library"]);
   await expect(page.getByTestId("library-area")).toBeHidden();
 
   await tabs.getByRole("tab", { name: "Library" }).click();

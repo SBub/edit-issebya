@@ -5,6 +5,7 @@ import { type Page, expect, test } from "@playwright/test";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
+import { stepLines } from "../test-support/rows.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 import type { CapturedEvent } from "../src/lib/track";
 import { eventsNamed, recordEvents } from "./events.ts";
@@ -163,13 +164,13 @@ test("Export renders the current version and the link downloads it without a rel
   const link = page.getByTestId("export-link");
   await expect(link).toBeVisible({ timeout: 15_000 });
   await expect(link).toContainText("Download version 2");
-  await expect(page.getByTestId("step-line").filter({ hasText: /^render: / })).toHaveText(
-    /^render: exported, /,
+  const renderLines = (await stepLines(admin, reel!.reelId)).filter(
+    (line) => line.name === "render",
   );
+  expect(renderLines.map((line) => line.summary)).toEqual([expect.stringMatching(/^exported, /)]);
   await expect(button).toBeEnabled();
   expect(await noReloadMarker()).toBe("marker");
   expect((await reelRow()).status).toBe("processed");
-  await expect(page.getByTestId("reel-status")).toHaveText("processed");
 
   const [job] = await renderJobs();
   expect(job).toMatchObject({ status: "done" });

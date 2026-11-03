@@ -8,6 +8,7 @@ import {
 } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
+import { reelStatus } from "../test-support/rows.ts";
 import { claimableJobIds } from "../test-support/worker.ts";
 
 // This run's own cache folder: the worker reads it through R2_KEY_PREFIX.
@@ -119,7 +120,8 @@ test("the grid shows only the owner's reels, newest first, with age, size, statu
   await items.nth(1).getByRole("link").click();
   await expect(page).toHaveURL(`/studio/reels/${newerId}`);
   await expect(page.getByRole("heading", { level: 1, name: "newer-take.mov" })).toBeVisible();
-  await expect(page.getByTestId("reel-status")).toHaveText("received");
+  // The reel page shows no machine status (the grid's badge does); the row is read instead.
+  expect(await reelStatus(admin, newerId)).toBe("received");
 
   await page.goto(`/studio/reels/${otherReelId}`);
   await expect(page.getByRole("heading", { name: "Reel not found" })).toBeVisible();

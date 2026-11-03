@@ -32,8 +32,11 @@ function workerEnv(env: Record<string, string>): NodeJS.ProcessEnv {
     // so a filled file can never make a spec export to PostHog.
     OTEL_EXPORTER_OTLP_ENDPOINT: "",
     OTEL_EXPORTER_OTLP_HEADERS: "",
-    // The same for the worker's error tracking: no token, no client.
+    // The same for the worker's error tracking: no token, no client. Its local
+    // error log then goes under the gitignored .e2e-storage/, never the
+    // owner's home.
     POSTHOG_PROJECT_TOKEN: "",
+    WORKER_STATE_DIR: `${REPOSITORY_ROOT}.e2e-storage/worker-state`,
     SUPABASE_URL: assertLocalUrl(process.env.SUPABASE_URL),
     E2E_MOCK_STORAGE: "true",
     E2E_MOCK_AI: "true",

@@ -37,8 +37,12 @@ export function NotifyToggle() {
   if (current === "unknown" || current === "unsupported") return null;
   if (current === "blocked") {
     return (
-      <p data-testid="notify-blocked" className="text-sm text-muted">
-        Notifications blocked in this browser
+      <p
+        data-testid="notify-blocked"
+        title="Notifications blocked in this browser"
+        className="hidden flex-none text-xs text-muted sm:block"
+      >
+        Notifications blocked
       </p>
     );
   }
@@ -55,15 +59,23 @@ export function NotifyToggle() {
     });
   };
 
+  // Compact in the header: an icon under `sm`, the words from `sm` up; the
+  // accessible name is the words at every size.
+  const label = current === "on" ? "Notifications on" : "Notify me when ready";
   return (
     <button
       type="button"
       data-testid="notify-toggle"
       aria-pressed={current === "on"}
+      aria-label={label}
+      title={label}
       onClick={onClick}
-      className="self-start rounded-md border border-line bg-raised px-3 py-1.5 text-sm text-ink hover:bg-line"
+      className="flex flex-none items-center gap-1 rounded-full border border-line bg-raised px-2 py-1 text-sm text-ink hover:bg-line sm:px-3"
     >
-      {current === "on" ? "Notifications on" : "Notify me when ready"}
+      <span aria-hidden="true" className="sm:hidden">
+        {current === "on" ? "\u{1F514}" : "\u{1F515}"}
+      </span>
+      <span className="hidden sm:inline">{label}</span>
     </button>
   );
 }

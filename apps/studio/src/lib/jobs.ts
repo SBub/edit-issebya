@@ -1,7 +1,7 @@
 // Named columns, never "*", and no lease column: the page shows what a job
 // did, not which worker holds it.
 export const JOB_COLUMNS =
-  "id, reel_id, kind, request, restore_version_id, version_id, retry_of_job_id, status, waiting_reason, not_before, attempts, error_tail, created_at, started_at, finished_at";
+  "id, reel_id, kind, request, restore_version_id, version_id, retry_of_job_id, status, waiting_reason, not_before, attempts, error_tail, failure_kind, failure_rules, created_at, started_at, finished_at";
 export const STEP_COLUMNS =
   "id, job_id, reel_id, name, status, summary, error_tail, started_at, finished_at, progress_percent, progress_updated_at";
 
@@ -34,6 +34,10 @@ export interface JobRow {
   not_before: string | null;
   attempts: number;
   error_tail: string | null;
+  // What kind of failure ended a failed job (null for older rows and every
+  // other status), and for a refused AI answer the check rules it failed.
+  failure_kind: "transient" | "failed" | "answer_refused" | null;
+  failure_rules: string[] | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

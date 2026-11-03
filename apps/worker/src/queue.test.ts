@@ -11,6 +11,7 @@ import {
 } from "./queue.ts";
 
 const CONFIG = { workerId: "w1", leaseSeconds: 60 };
+const FAILED = { kind: "failed", rules: null } as const;
 
 function job(kind: string): ClaimedJob {
   return {
@@ -65,15 +66,45 @@ describe("ending a job", () => {
     expect(done.updates[1]?.values).toEqual({ status: "processed" });
 
     const failed = stubClient();
-    expect(await failJob(failed.db, CONFIG, job("process"), "boom")).toBe(true);
+    expect(await failJob(failed.db, CONFIG, job("process"), "boom", FAILED)).toBe(true);
     expect(failed.updates[1]?.values).toEqual({ status: "failed" });
+  });
+
+  it("writes the failure kind and rules in the same update as the status", async () => {
+    const failed = stubClient();
+    expect(
+      await failJob(failed.db, CONFIG, job("change"), "decide: the answer failed twice", {
+        kind: "answer_refused",
+        rules: ["behind-caption", "safe-box"],
+      }),
+    ).toBe(true);
+    expect(failed.updates).toHaveLength(1);
+    expect(failed.updates[0]?.values).toMatchObject({
+      status: "failed",
+      error_tail: "decide: the answer failed twice",
+      failure_kind: "answer_refused",
+      failure_rules: ["behind-caption", "safe-box"],
+    });
+
+    const transient = stubClient();
+    await failJob(transient.db, CONFIG, job("process"), "boom", { kind: "transient", rules: null });
+    expect(transient.updates[0]?.values).toMatchObject({
+      failure_kind: "transient",
+      failure_rules: null,
+    });
+  });
+
+  it("writes no failure kind when footage is refused", async () => {
+    const refused = stubClient();
+    await refuseJob(refused.db, CONFIG, job("process"), "not vertical");
+    expect(refused.updates[0]?.values).not.toHaveProperty("failure_kind");
   });
 
   it("sets a describing photo failed when its describe_photo job fails, never a reel", async () => {
     const failed = stubClient();
-    expect(await failJob(failed.db, CONFIG, job("describe_photo"), "describe_photo: twice")).toBe(
-      true,
-    );
+    expect(
+      await failJob(failed.db, CONFIG, job("describe_photo"), "describe_photo: twice", FAILED),
+    ).toBe(true);
     expect(failed.updates.map((u) => u.table)).toEqual(["jobs", "photos"]);
     expect(failed.updates[1]?.values).toEqual({ status: "failed" });
     expect(failed.filters).toContain("photos.id=p1");
@@ -98,9 +129,9 @@ describe("ending a job", () => {
       expect(done.updates[0]?.values).toMatchObject({ status: "done" });
 
       const failed = stubClient();
-      expect(await failJob(failed.db, CONFIG, job(kind), "decide: the answer failed twice")).toBe(
-        true,
-      );
+      expect(
+        await failJob(failed.db, CONFIG, job(kind), "decide: the answer failed twice", FAILED),
+      ).toBe(true);
       expect(failed.updates.map((u) => u.table)).toEqual(["jobs"]);
       expect(failed.updates[0]?.values).toMatchObject({
         status: "failed",

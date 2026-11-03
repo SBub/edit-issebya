@@ -721,6 +721,7 @@ describe("the one automatic retry", () => {
       const errors: ErrorTracker = {
         enabled: true,
         stepFailed: (input) => void failures.push(input),
+        jobFailed: () => undefined,
         crashed: () => undefined,
         shutdown: async () => undefined,
       };

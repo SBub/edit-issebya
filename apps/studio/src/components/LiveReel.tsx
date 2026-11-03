@@ -2,7 +2,9 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Link from "next/link";
-import { type ReactNode, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { requestRetry } from "@/app/retry-actions";
 import {
   JOB_COLUMNS,
   type JobRow,
@@ -11,17 +13,20 @@ import {
   pickColumns,
   upsertById,
 } from "@/lib/jobs";
-import { ChangeRequestForm } from "@/components/ChangeRequestForm";
+import { type ChangeRequestHandle, ChangeRequestForm } from "@/components/ChangeRequestForm";
 import { ExportPanel } from "@/components/ExportPanel";
+import { NotifyToggle } from "@/components/NotifyToggle";
+import { ProgressOverlay } from "@/components/ProgressOverlay";
 import { ReelPreview } from "@/components/ReelPreview";
 import { ReelScreen } from "@/components/ReelScreen";
-import { StatusPanel } from "@/components/StatusPanel";
 import { VersionList } from "@/components/VersionList";
 import { useReadyNotice } from "@/components/useReadyNotice";
 import { changeBlockedReason } from "@/lib/change-requests";
-import { changeQueueNote, retryableJobIds } from "@/lib/failures";
+import { changeQueueNote } from "@/lib/failures";
+import { type FailureAction, overlayState } from "@/lib/progress-overlay";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, reelName } from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { capture, reportBrowserFailure } from "@/lib/track";
 import {
   type VersionSelection,
   nextVersionId,
@@ -56,6 +61,12 @@ interface LiveReelProps extends Snapshot {
   // reel on desktop and as the phone's Library tab.
   library: ReactNode;
 }
+
+// How long "New version N" shows after a save.
+const NEW_VERSION_NOTICE_MS = 4000;
+
+// Realtime statuses that mean the page stopped following the reel.
+const DROPPED_STATUSES = new Set(["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"]);
 
 async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snapshot | null> {
   const [reel, jobs, steps, versions, latestExport, workerStatus] = await Promise.all([
@@ -108,15 +119,17 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
   };
 }
 
-// The reel page on one screen (ReelScreen): the header with Export, the
-// shown version's preview and tracks timeline with Undo and Redo, the change
-// box, the versions, and the status panel (jobs, with the reason no worker is
-// claiming and since when the worker is offline, and the step log with a
-// running long step's percentage and time left). When the reel becomes ready with the tab hidden, the title
-// and, if turned on, a notification say so. Read once on the server, then followed
-// through Realtime filtered to this reel (RLS decides what arrives). One
-// catch-up read each time the subscription becomes ready covers changes made
-// between the server read and the subscription. No interval, no polling.
+// The reel page on one screen (ReelScreen): the header with the notification
+// toggle and Export, the shown version's preview and tracks timeline with Undo
+// and Redo, the progress overlay over the preview (what the studio is doing in
+// plain words, how far along, the waiting and offline lines, "New version N",
+// a failure with its actions), the change box and the versions. A newly saved
+// version replaces the preview by itself, at the same time and play state.
+// When the reel becomes ready with the tab hidden, the title and, if turned
+// on, a notification say so. Read once on the server, then followed through
+// Realtime filtered to this reel (RLS decides what arrives). One catch-up read
+// each time the subscription becomes ready covers changes made between the
+// server read and the subscription. No interval, no polling.
 export function LiveReel({
   reel: initialReel,
   jobs: initialJobs,
@@ -142,6 +155,22 @@ export function LiveReel({
   // moment the newest heartbeat turns eleven minutes old. One timeout, no
   // interval, no database read.
   const [now, setNow] = useState<number | null>(null);
+  // Failed jobs the owner handled on this page load (memory only: a reload
+  // shows a still-unhandled failure again).
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
+  // "New version N": the version whose notice shows, set when the current
+  // version changes after the first render (derived during render, no
+  // effect), cleared by one timeout.
+  const [noticeId, setNoticeId] = useState<string | null>(null);
+  const [lastCurrentId, setLastCurrentId] = useState(initialReel.current_version_id);
+  if (reel.current_version_id !== lastCurrentId) {
+    setLastCurrentId(reel.current_version_id);
+    if (reel.current_version_id) setNoticeId(reel.current_version_id);
+  }
+  const [retryBusy, setRetryBusy] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
+  const changeForm = useRef<ChangeRequestHandle>(null);
+  const router = useRouter();
   const id = initialReel.id;
   const offlineMoment = offlineAt(workerStatus)?.getTime() ?? null;
 
@@ -157,6 +186,12 @@ export function LiveReel({
   }, [offlineMoment]);
 
   useReadyNotice({ status: reel.status, latestExportId, reelName: reelName(reel) });
+
+  useEffect(() => {
+    if (noticeId === null) return;
+    const timer = setTimeout(() => setNoticeId(null), NEW_VERSION_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [noticeId]);
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
@@ -237,10 +272,21 @@ export function LiveReel({
         },
       );
 
+    // A dropped channel means the page stopped following the reel: reported
+    // once per status change, never for the close an unmount causes.
+    let lastStatus: string | null = null;
+    const onStatus = (status: string) => {
+      if (!active || status === lastStatus) return;
+      lastStatus = status;
+      if (DROPPED_STATUSES.has(status)) {
+        reportBrowserFailure("studio: realtime channel dropped", { reel_id: id, status });
+      }
+    };
+
     // setAuth hands the session's token to Realtime before joining, so RLS
     // sees the owner.
     void supabase.realtime.setAuth().then(() => {
-      if (active) channel.subscribe();
+      if (active) channel.subscribe((status) => onStatus(status));
     });
 
     return () => {
@@ -251,7 +297,6 @@ export function LiveReel({
 
   const blockedReason = changeBlockedReason(reel);
   const queueNote = changeQueueNote(jobs);
-  const retryable = new Set(retryableJobIds(reel, jobs));
   const versionsById = new Map(versions.map((version) => [version.id, version]));
   const waitingReason = waitingReasonOf(workerStatus);
   const offline = now === null ? null : offlineSince(workerStatus, new Date(now));
@@ -259,6 +304,70 @@ export function LiveReel({
   const shownId = shownVersionId(selection, currentId);
   const previousId = previousVersionId(versions, shownId);
   const nextId = nextVersionId(versions, shownId);
+  const overlay = overlayState({
+    reel,
+    jobs,
+    steps,
+    versionsById,
+    waitingReason,
+    offline,
+    notice: noticeId ? (versionsById.get(noticeId)?.number ?? null) : null,
+    dismissed,
+    estimateRates,
+  });
+  const failure = overlay.kind === "failure" ? overlay : null;
+
+  // Every overlay action names the failed job, so it links to its error.
+  const recordAction = (action: FailureAction) => {
+    if (!failure) return;
+    capture("studio_failure_action", {
+      reel_id: reel.id,
+      job_id: failure.jobId,
+      action,
+      failure_kind: failure.failureKind,
+      step: failure.step,
+      job_kind: failure.jobKind,
+    });
+  };
+  const dismiss = (jobId: string) => setDismissed((current) => new Set([...current, jobId]));
+
+  async function tryAgain() {
+    if (!failure) return;
+    recordAction("try_again");
+    setRetryBusy(true);
+    setActionMessage("");
+    try {
+      const result = await requestRetry({ reelId: reel.id, jobId: failure.jobId });
+      if (result.status === "signed-out") {
+        router.refresh();
+        return;
+      }
+      if (result.status === "queued") setActionMessage("Queued again.");
+      else if (result.status === "already") setActionMessage("This job is already being retried.");
+      else
+        setActionMessage(
+          result.status === "failed" ? "Retry did not start. Try again." : result.reason,
+        );
+      if (result.status !== "queued" && result.status !== "already") setRetryBusy(false);
+    } catch {
+      setActionMessage("Retry did not start. Try again.");
+      setRetryBusy(false);
+    }
+  }
+
+  function changeRequest() {
+    if (!failure) return;
+    const request = jobs.find((job) => job.id === failure.jobId)?.request ?? "";
+    recordAction("change_request");
+    dismiss(failure.jobId);
+    changeForm.current?.refill(request);
+  }
+
+  function keepCurrent() {
+    if (!failure) return;
+    recordAction("keep_current");
+    dismiss(failure.jobId);
+  }
 
   // Undo and Redo change only what is shown: never a server action, never a
   // version or a job.
@@ -308,6 +417,7 @@ export function LiveReel({
             <h1 className="min-w-0 flex-1 truncate text-base font-semibold" title={reelName(reel)}>
               {reelName(reel)}
             </h1>
+            <NotifyToggle />
             <ExportPanel reel={reel} jobs={jobs} latestExportId={latestExportId} />
           </>
         }
@@ -322,11 +432,22 @@ export function LiveReel({
                 {reel.refusal_message}
               </p>
             )}
-            <ReelPreview reelId={reel.id} versionId={shownId} controls={controls} />
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              <ReelPreview reelId={reel.id} versionId={shownId} controls={controls} />
+              <ProgressOverlay
+                state={overlay}
+                onTryAgain={() => void tryAgain()}
+                onChangeRequest={changeRequest}
+                onKeep={keepCurrent}
+                actionMessage={actionMessage}
+                tryAgainBusy={retryBusy}
+              />
+            </div>
           </>
         }
         footer={
           <ChangeRequestForm
+            ref={changeForm}
             reelId={reel.id}
             blockedReason={blockedReason}
             queueNote={queueNote}
@@ -340,18 +461,6 @@ export function LiveReel({
             currentVersionId={currentId}
             selectedVersionId={shownId}
             blockedReason={blockedReason}
-          />
-        }
-        status={
-          <StatusPanel
-            reel={reel}
-            jobs={jobs}
-            steps={steps}
-            versionsById={versionsById}
-            retryable={retryable}
-            waitingReason={waitingReason}
-            offline={offline}
-            estimateRates={estimateRates}
           />
         }
         library={library}

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ClaimedJob } from "./queue.ts";
-import { AiUnavailable, FootageRefused } from "./failure.ts";
+import type { ClaimedJob, JobFailure } from "./queue.ts";
+import { AiUnavailable, AnswerRefused, FootageRefused, TransientError } from "./failure.ts";
 import { runJob } from "./run-job.ts";
+import { recordingSteps, stepContext } from "./recording-steps.ts";
+import { StepError, runInProcessStep } from "./step-runner.ts";
 
 const JOB: ClaimedJob = {
   id: "j1",
@@ -22,9 +24,10 @@ function deps(work: (signal: AbortSignal) => Promise<void>) {
     renew: vi.fn(async () => true),
     work,
     finish: vi.fn(async () => true),
-    fail: vi.fn(async (tail: string) => tail.length > 0),
+    fail: vi.fn(async (tail: string, failure: JobFailure) => tail.length > 0 && failure !== null),
     refuse: vi.fn(async (message: string) => message.length > 0),
     wait: vi.fn(async (reason: string) => reason.length > 0),
+    errors: { jobFailed: vi.fn() },
     log: () => {},
   };
 }
@@ -44,6 +47,52 @@ describe("runJob", () => {
     expect(await runJob(d)).toBe("failed");
     expect(d.finish).not.toHaveBeenCalled();
     expect(d.fail.mock.calls[0]?.[0]).toContain("source object missing");
+  });
+
+  it("passes the failure kind to fail and captures a failure outside any step", async () => {
+    const d = deps(async () => {
+      throw new TransientError("fetch failed");
+    });
+    expect(await runJob(d)).toBe("failed");
+    expect(d.fail.mock.calls[0]?.[1]).toEqual({ kind: "transient", rules: null });
+    expect(d.errors.jobFailed).toHaveBeenCalledOnce();
+    expect(d.errors.jobFailed.mock.calls[0]?.[0]).toMatchObject({
+      job: JOB,
+      failure: { kind: "transient", rules: null },
+    });
+  });
+
+  it("passes a refused answer's rules and keeps the log line", async () => {
+    const lines: string[] = [];
+    const d = {
+      ...deps(async () => {
+        throw new StepError("decide: the answer failed twice", "tail", undefined, {
+          cause: new AnswerRefused(["behind-caption", "safe-box"], 2),
+        });
+      }),
+      log: (line: string) => lines.push(line),
+    };
+    expect(await runJob(d)).toBe("failed");
+    expect(d.fail.mock.calls[0]?.[1]).toEqual({
+      kind: "answer_refused",
+      rules: ["behind-caption", "safe-box"],
+    });
+    expect(lines).toEqual(["job j1: failed: StepError: decide: the answer failed twice"]);
+  });
+
+  it("never captures a job failure for an error a step already captured", async () => {
+    const { steps } = recordingSteps();
+    const d = deps(async (signal) => {
+      await runInProcessStep(stepContext(steps, { signal, job: JOB }), {
+        name: "convert",
+        work: async () => {
+          throw new Error("no such file");
+        },
+      });
+    });
+    expect(await runJob(d)).toBe("failed");
+    expect(d.fail.mock.calls[0]?.[1]).toEqual({ kind: "failed", rules: null });
+    expect(d.errors.jobFailed).not.toHaveBeenCalled();
   });
 
   it("logs and stores a failed tool's stderr, not only its first line", async () => {

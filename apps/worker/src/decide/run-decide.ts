@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { type Context, trace } from "@opentelemetry/api";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -28,7 +29,7 @@ import type { AiRunner } from "../ai.ts";
 import { ensureCutouts } from "../cutout/ensure-cutouts.ts";
 import { withMasks } from "../cutout/spans.ts";
 import { editMeasurer } from "../edit-measurer.ts";
-import { AiUnavailable, permanentAfterAiCall } from "../failure.ts";
+import { AiUnavailable, AnswerRefused, permanentAfterAiCall } from "../failure.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { type ToolPaths, toolPaths } from "../pipeline/tools.ts";
 import type { PhotoLibrary } from "../photos/photo-store.ts";
@@ -45,7 +46,7 @@ import type { ReelRules } from "./behind-rules.ts";
 import { decideInput } from "./input.ts";
 import { PROMPT_VERSION, decidePrompt } from "./prompt.ts";
 
-const STEP = "decide";
+export const STEP = "decide";
 // Reason lines per round in the failure tail (the "and k more" line
 // included), so the heading and both rounds fit its 20 lines.
 const LINES_PER_ROUND = 8;
@@ -73,8 +74,20 @@ export interface DecideRun {
   recordStored?: (key: string, bytes: number) => Promise<void>;
 }
 
+// A refused attempt carries its reasons (the tail's lines) and the names of
+// the rules it failed (data for the job and error tracking, never free text).
 type Attempt =
-  { ok: true; edit: Edit; answer: DecideAnswer; reasons: [] } | { ok: false; reasons: string[] };
+  | { ok: true; edit: Edit; answer: DecideAnswer; reasons: [] }
+  | { ok: false; reasons: string[]; rules: string[] };
+
+// The number of items over every track of an edit (`reel.tracks_items`).
+function trackItems(edit: Edit): number {
+  let count = 0;
+  for (const items of Object.values(edit.tracks)) {
+    if (Array.isArray(items)) count += items.length;
+  }
+  return count;
+}
 
 function plural(count: number, unit: string): string {
   return `${count} ${unit}${count === 1 ? "" : "s"}`;
@@ -118,7 +131,7 @@ export function runDecide({
   const preset = ISSEBYA_PRESET;
   return runToolsStep(ctx, {
     name: STEP,
-    async work(tool: Tool) {
+    async work(tool: Tool, stepContext: Context) {
       const reelId = reelOf(ctx.job);
       const currentId = await rows.current(reelId);
       if (currentId === null) throw new Error(`${STEP}: no current version`);
@@ -171,7 +184,11 @@ export function runDecide({
           // Not available now: the job waits, nothing is written.
           if (result.kind === "unavailable") throw new AiUnavailable(result.reason);
           if (result.kind === "broken") {
-            return { ok: false, reasons: [`the answer was not valid JSON: ${result.reason}`] };
+            return {
+              ok: false,
+              reasons: [`the answer was not valid JSON: ${result.reason}`],
+              rules: ["answer-json"],
+            };
           }
           const answer = parseDecideAnswer(
             result.answer,
@@ -181,9 +198,9 @@ export function runDecide({
             photoIds,
             decideRules,
           );
-          if (!answer.ok) return answer;
+          if (!answer.ok) return { ok: false, reasons: answer.reasons, rules: ["answer-schema"] };
           const composed = editFromAnswer(current, answer.answer, preset, transcript);
-          if (!composed.ok) return composed;
+          if (!composed.ok) return { ok: false, reasons: composed.reasons, rules: ["answer-edit"] };
           // Built with the masks it will name: their fingerprints are known
           // before any is made.
           const checks = [
@@ -195,6 +212,7 @@ export function runDecide({
             return {
               ok: false,
               reasons: checks.map((check) => `${check.rule} ${check.item}: ${check.reason}`),
+              rules: checks.map((check) => check.rule),
             };
           }
           return { ok: true, edit: composed.edit, answer: answer.answer, reasons: [] };
@@ -209,7 +227,9 @@ export function runDecide({
             ...roundLines(1, first.reasons),
             ...roundLines(2, passed.reasons),
           ].join("\n");
-          throw new StepError(tail, tail, usage);
+          const firstRules = first.ok ? [] : first.rules;
+          const failed = [...new Set([...firstRules, ...passed.rules])].sort();
+          throw new StepError(tail, tail, usage, { cause: new AnswerRefused(failed, 2) });
         }
 
         ctx.signal.throwIfAborted();
@@ -256,6 +276,7 @@ export function runDecide({
             edit,
           },
         ).catch(permanentAfterAiCall);
+        trace.getSpan(stepContext)?.setAttribute("reel.tracks_items", trackItems(edit));
         const counts = decideCounts(edit, transcript, preset);
         const what = [
           `version ${saved.number}: ${plural(counts.accents, "accent")}`,

@@ -5,7 +5,6 @@ import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
 const TABS = [
   { key: "edit", label: "Edit" },
   { key: "versions", label: "Versions" },
-  { key: "status", label: "Status" },
   { key: "library", label: "Library" },
 ] as const;
 
@@ -17,9 +16,8 @@ interface Props {
   main: ReactNode;
   // Pinned under the middle on every size: the correction field.
   footer: ReactNode;
-  // The side panel's two areas (desktop), the phone's Versions and Status tabs.
+  // The side panel over the full height (desktop), the phone's Versions tab.
   versions: ReactNode;
-  status: ReactNode;
   // The owner's photo library: a third column on desktop, the phone's
   // Library tab.
   library: ReactNode;
@@ -29,17 +27,16 @@ interface Props {
 // root is exactly the height it is given, every child that can grow is
 // `min-h-0`, and only the list areas scroll (inside their own box).
 //
-// Desktop (`lg:`): the header; a main column (preview, controls, timeline)
-// with the correction field pinned under it; a side panel with Versions and
-// Status stacked, both visible; the photo library as a third column over the
-// full height. Phone: the same header and pinned footer, the middle split
-// into four tabs (Edit, Versions, Status, Library), one shown.
-export function ReelScreen({ header, main, footer, versions, status, library }: Props) {
+// Desktop (`lg:`): the header; a main column (preview with its progress
+// overlay, controls, timeline) with the correction field pinned under it; a
+// side panel with Versions over the full height; the photo library as a third
+// column over the full height. Phone: the same header and pinned footer, the
+// middle split into three tabs (Edit, Versions, Library), one shown.
+export function ReelScreen({ header, main, footer, versions, library }: Props) {
   const [tab, setTab] = useState<TabKey>("edit");
   const tabRefs = useRef<Record<TabKey, HTMLButtonElement | null>>({
     edit: null,
     versions: null,
-    status: null,
     library: null,
   });
 
@@ -114,16 +111,9 @@ export function ReelScreen({ header, main, footer, versions, status, library }: 
         <div
           {...panel("versions")}
           data-testid="versions-area"
-          className={`${shown("versions")} min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-3 lg:col-start-2 lg:row-start-1 lg:border-b lg:border-l lg:border-line`}
+          className={`${shown("versions")} min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-3 lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:border-l lg:border-line`}
         >
           {versions}
-        </div>
-        <div
-          {...panel("status")}
-          data-testid="status-area"
-          className={`${shown("status")} min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-3 lg:col-start-2 lg:row-span-2 lg:row-start-2 lg:border-l lg:border-line`}
-        >
-          {status}
         </div>
         <div
           {...panel("library")}

@@ -190,7 +190,9 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
 }) => {
   await openReel(page, baseURL!, DESKTOP);
   await expect(page.getByTestId("version-item")).toHaveCount(2 + EXTRA_VERSIONS);
-  await expect(page.getByTestId("step-line")).not.toHaveCount(0);
+  // The seeded steps exist, but the page shows no Status area and no step log.
+  await expect(page.getByTestId("status-area")).toHaveCount(0);
+  await expect(page.getByTestId("step-line")).toHaveCount(0);
 
   await expectNoPageScroll(page);
   await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
@@ -198,21 +200,30 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
   await expectInsideRoot(page, page.getByTestId("tracks"));
   await expect(page.locator("hyperframes-player")).toBeVisible();
   await expect(page.getByTestId("version-item").first()).toBeVisible();
-  await expect(page.getByTestId("step-line").first()).toBeVisible();
   await expect(page.getByRole("tablist", { name: "Reel" })).toBeHidden();
   // The photo library is a third column, beside the side panel.
   await expect(page.getByTestId("library-area")).toBeVisible();
   await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
 
+  // Versions takes the whole side column: from the header's bottom to the
+  // root box's bottom, measured from the root box (never the window).
+  const column = await page.evaluate(() => {
+    const header = document.querySelector("header")!.getBoundingClientRect();
+    const root = document.documentElement.getBoundingClientRect();
+    return {
+      top: header.bottom,
+      bottom: Math.min(root.bottom, document.documentElement.clientHeight),
+    };
+  });
+  const versionsBox = (await page.getByTestId("versions-area").boundingBox())!;
+  expect(Math.abs(versionsBox.y - column.top)).toBeLessThanOrEqual(1);
+  expect(Math.abs(versionsBox.height - (column.bottom - column.top))).toBeLessThanOrEqual(1);
+
   await expectOwnScroll(page, page.getByTestId("versions-area"));
-  await expectOwnScroll(page, page.getByTestId("status-area"));
   await expectNoPageScroll(page);
 });
 
-test("one screen at 390x844 with tabs Edit, Versions, Status and Library", async ({
-  page,
-  baseURL,
-}) => {
+test("one screen at 390x844 with tabs Edit, Versions and Library", async ({ page, baseURL }) => {
   await openReel(page, baseURL!, PHONE);
   await expectNoPageScroll(page);
   await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
@@ -221,7 +232,9 @@ test("one screen at 390x844 with tabs Edit, Versions, Status and Library", async
   const tabs = page.getByRole("tablist", { name: "Reel" });
   await expect(tabs).toBeVisible();
   const tab = (name: string) => tabs.getByRole("tab", { name });
-  await expect(tabs.getByRole("tab")).toHaveText(["Edit", "Versions", "Status", "Library"]);
+  await expect(tabs.getByRole("tab")).toHaveText(["Edit", "Versions", "Library"]);
+  await expect(page.getByTestId("status-area")).toHaveCount(0);
+  await expect(page.getByTestId("step-line")).toHaveCount(0);
   const field = page.getByLabel("Ask for a change");
 
   await expect(tab("Edit")).toHaveAttribute("aria-selected", "true");
@@ -238,25 +251,24 @@ test("one screen at 390x844 with tabs Edit, Versions, Status and Library", async
   await expectNoPageScroll(page);
   await expectOwnScroll(page, page.getByTestId("versions-area"));
 
-  await tab("Status").click();
-  await expect(page.getByTestId("step-line").first()).toBeVisible();
+  await tab("Library").click();
+  await expect(page.getByTestId("library-area")).toBeVisible();
   await expect(page.getByTestId("version-item").first()).toBeHidden();
   await expect(field).toBeVisible();
   await expectNoPageScroll(page);
-  await expectOwnScroll(page, page.getByTestId("status-area"));
   await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
 
-  await tab("Library").click();
-  await expect(page.getByTestId("library-area")).toBeVisible();
-  await expect(page.getByTestId("step-line").first()).toBeHidden();
-  await expectNoPageScroll(page);
-
-  // Arrow keys move between the tabs (WAI-ARIA tabs), wrapping at the end.
+  // Arrow keys move between the three tabs (WAI-ARIA tabs), wrapping at both ends.
   await tab("Library").focus();
   await page.keyboard.press("ArrowRight");
   await expect(tab("Edit")).toHaveAttribute("aria-selected", "true");
   await expect(tab("Edit")).toBeFocused();
   await expect(page.locator("hyperframes-player")).toBeVisible();
+  await page.keyboard.press("ArrowLeft");
+  await expect(tab("Library")).toHaveAttribute("aria-selected", "true");
+  await expect(tab("Library")).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(tab("Versions")).toHaveAttribute("aria-selected", "true");
 });
 
 test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable", async ({

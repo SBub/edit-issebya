@@ -2,6 +2,7 @@ import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { expect, test } from "@playwright/test";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
+import { jobsOf, reelStatus, stepLines } from "../test-support/rows.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
 // A landscape clip (320 x 180, two seconds, with a tone): the footage check
@@ -59,14 +60,18 @@ test("a landscape clip is refused at once with its message, live, and nothing el
   // Refused is not done: `once` exits 1.
   expect(worker.code, worker.output).toBe(1);
 
-  await expect(page.getByTestId("reel-status")).toHaveText("refused", { timeout: 10_000 });
-  await expect(page.getByTestId("reel-refusal")).toHaveText(MESSAGE);
+  await expect.poll(() => reelStatus(admin, reelId), { timeout: 10_000 }).toBe("refused");
+  await expect(page.getByTestId("reel-refusal")).toHaveText(MESSAGE, { timeout: 10_000 });
   await expect(page.getByRole("alert").filter({ hasText: MESSAGE })).toBeVisible();
-  await expect(page.getByTestId("step-line")).toHaveCount(1);
-  await expect(page.getByTestId("step-line")).toHaveText(/^check_footage: /);
-  await expect(page.getByTestId("job-status")).toHaveText("failed");
-  // A refused clip has no Retry: another clip is the only way on.
-  await expect(page.getByTestId("job-retry")).toHaveCount(0);
+  const lines = await stepLines(admin, reelId);
+  expect(lines.map((line) => line.name)).toEqual(["check_footage"]);
+  expect((await jobsOf(admin, reelId)).map((job) => [job.status, job.failure_kind])).toEqual([
+    ["failed", null],
+  ]);
+  // A refused clip has no Try again and no failure overlay: another clip is
+  // the only way on, and the red refusal box says why.
+  await expect(page.getByTestId("overlay-try-again")).toHaveCount(0);
+  await expect(page.locator('[data-overlay-kind="failure"]')).toHaveCount(0);
   await expect(page.getByLabel("Ask for a change")).toBeDisabled();
   await expect(page.getByTestId("change-blocked-reason")).toHaveText(
     "This clip was refused; upload another clip.",

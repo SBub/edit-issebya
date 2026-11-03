@@ -66,3 +66,22 @@ export function captureException(
   if (!posthog.__loaded) return;
   posthog.captureException(new Error(message), properties);
 }
+
+/**
+ * A studio browser failure the owner cannot see (a dropped Realtime channel):
+ * an exception in production, where PostHog is loaded, and a console warning
+ * otherwise (development never sends it; console.error stays reserved for
+ * server failures through reportFailure, server-failures.test.ts). Under automation the test hook
+ * records it, as for captureException.
+ */
+export function reportBrowserFailure(
+  message: string,
+  properties: Record<string, string | number | boolean | null>,
+): void {
+  if (posthog.__loaded) {
+    captureException(message, properties);
+    return;
+  }
+  recordForTests("$exception", { $exception_message: message, ...properties });
+  console.warn(message, properties);
+}

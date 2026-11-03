@@ -35,7 +35,7 @@ import { type RenderRange, renderCall, renderScratchEnv } from "./render-call.ts
 import { type RenderFiles, writeRenderProject } from "./render-project.ts";
 import { reelOf } from "../queue.ts";
 
-const STEP = "render";
+export const STEP = "render";
 
 export interface RenderExport {
   tool: Tool;

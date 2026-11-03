@@ -103,11 +103,14 @@ test("a usage limit makes the job wait with its next try shown live, then it is 
     const two = (value: number) => String(value).padStart(2, "0");
     return `${two(at.getHours())}:${two(at.getMinutes())}`;
   }, waiting.not_before!);
-  await expect(page.getByTestId("job-waiting-ai")).toHaveText(
+  // The progress overlay shows the waiting job's step and its AI line.
+  const overlay = page.getByTestId("progress-overlay");
+  await expect(overlay.getByTestId("job-waiting-ai")).toHaveText(
     `Waiting for the AI: ${REASON}. Next try at ${nextTry}.`,
     { timeout: 10_000 },
   );
-  await expect(page.getByTestId("job-status")).toHaveText("waiting_ai");
+  await expect(overlay.getByTestId("overlay-words")).toHaveText("Styling your reel");
+  await expect(overlay.getByTestId("overlay-try-again")).toHaveCount(0);
 
   // The next try is due: an hour in the past on any clock.
   const due = await admin
@@ -127,8 +130,7 @@ test("a usage limit makes the job wait with its next try shown live, then it is 
     not_before: null,
   });
 
-  await expect(page.getByTestId("job-status")).toHaveText("done", { timeout: 10_000 });
-  await expect(page.getByTestId("job-waiting-ai")).toHaveCount(0);
+  await expect(page.getByTestId("job-waiting-ai")).toHaveCount(0, { timeout: 10_000 });
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
     "marker",
   );

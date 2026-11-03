@@ -36,6 +36,7 @@ One command from the repository root starts the landing page, the studio and the
 yarn dev:studio                    # checks, then runs web + studio + worker; Ctrl-C stops all three
 yarn dev:studio --check            # the checks only, no servers (same as yarn dev:studio:status)
 yarn dev:studio add-owner <email>  # once: creates the owner account in the local auth
+yarn dev:studio errors             # the worker's last failures in development, in plain words
 ```
 
 `scripts/dev-studio.sh` checks that Docker is running, starts the local Supabase stack

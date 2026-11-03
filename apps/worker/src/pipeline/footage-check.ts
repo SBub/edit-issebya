@@ -86,7 +86,7 @@ export async function checkFootage({
   tool: Tool;
   tools: ToolPaths;
   path: string;
-}): Promise<{ what: string }> {
+}): Promise<{ what: string; size: { seconds: number; width: number; height: number } }> {
   let probe: Probe | null;
   try {
     probe = parseProbe(await tool({ file: tools.ffprobe, args: probeArgs(path) }));
@@ -98,5 +98,8 @@ export async function checkFootage({
   const refusal = footageRefusal(probe);
   if (refusal !== null || !probe) throw new FootageRefused(refusal ?? NOT_A_VIDEO);
   const { width, height } = displaySize(probe);
-  return { what: `footage checked, ${clock(probe.durationSeconds)}, ${width} x ${height}` };
+  return {
+    what: `footage checked, ${clock(probe.durationSeconds)}, ${width} x ${height}`,
+    size: { seconds: probe.durationSeconds, width, height },
+  };
 }

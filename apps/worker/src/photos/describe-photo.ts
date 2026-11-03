@@ -17,7 +17,7 @@ import { DESCRIBE_PROMPT_VERSION, describePrompt } from "./describe-prompt.ts";
 import { largeCopyPath, runPhotoImages } from "./photo-images.ts";
 import type { PhotoStore } from "./photo-store.ts";
 
-const STEP = "describe_photo";
+export const STEP = "describe_photo";
 // The one file Claude Code may read, alone in its folder.
 const READ_FILE = "photo.jpg";
 

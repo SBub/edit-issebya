@@ -7,6 +7,7 @@ import { pipelineManifest, seedPipelineCache } from "../test-support/pipeline-ca
 import { eventsNamed, recordEvents } from "./events.ts";
 import { SHORT_SPEECH_ANSWER } from "../test-support/ai-script.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
+import { jobsOf, reelStatus, stepLines } from "../test-support/rows.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
 const CLIP = new URL("../../../fixtures/footage/short-speech.mp4", import.meta.url).pathname;
@@ -118,22 +119,21 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   });
   expect(worker.code, worker.output).toBe(0);
 
-  await expect(page.getByTestId("job-status")).toHaveText("done", { timeout: 10_000 });
+  expect((await jobsOf(admin, reelId)).map((job) => job.status)).toEqual(["done"]);
   // The footage check runs first (ffprobe on the downloaded source); every
-  // fixed step's outputs were already stored: each is a hit, nothing ran.
-  await expect(page.getByTestId("step-line")).toHaveText(
-    [
-      /^check_footage: footage checked, /,
-      "convert: footage converted, reused",
-      "transcribe: transcribed, reused",
-      "retime: retimed, reused",
-      "head_track: head tracked, reused",
-      "preview_copies: preview copies made, reused",
-      /^first_version: version 1 saved, /,
-      /^decide: version 2: 1 accent, 1 transition, title set, 1 word fixed, /,
-    ],
-    { timeout: 10_000 },
-  );
+  // fixed step's outputs were already stored: each is a hit, nothing ran. The
+  // summaries still matter (PostHog reads them), so they are checked in the rows.
+  const lines = (await stepLines(admin, reelId)).map((line) => `${line.name}: ${line.summary}`);
+  expect(lines).toEqual([
+    expect.stringMatching(/^check_footage: footage checked, /),
+    "convert: footage converted, reused",
+    "transcribe: transcribed, reused",
+    "retime: retimed, reused",
+    "head_track: head tracked, reused",
+    "preview_copies: preview copies made, reused",
+    expect.stringMatching(/^first_version: version 1 saved, /),
+    expect.stringMatching(/^decide: version 2: 1 accent, 1 transition, title set, 1 word fixed, /),
+  ]);
   // A hit: wall time only, the other measurements null.
   const { data: steps } = await admin
     .from("steps")
@@ -291,7 +291,9 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
       expect(parsed.edit.tracks.overlays.map((item) => item.id)).toContain("title");
     }
   }
-  await expect(page.getByTestId("reel-status")).toHaveText("processed", { timeout: 10_000 });
+  expect(await reelStatus(admin, reelId)).toBe("processed");
+  // The page followed it live: the new version notice or nothing, never a failure.
+  await expect(page.locator('[data-overlay-kind="failure"]')).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
     "marker",
   );

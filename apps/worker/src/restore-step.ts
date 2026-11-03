@@ -4,7 +4,7 @@ import { type CutoutDeps, ensureVersionCutouts } from "./cutout/version-cutouts.
 import { reelOf } from "./queue.ts";
 import { type StepContext, runInProcessStep } from "./step-runner.ts";
 
-const STEP = "restore";
+export const STEP = "restore";
 
 export interface RestoreRun {
   ctx: StepContext;

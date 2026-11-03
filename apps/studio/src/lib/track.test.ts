@@ -19,7 +19,7 @@ const win = {
 } as unknown as Window;
 vi.stubGlobal("window", win);
 
-const { capture, captureException, identify } = await import("./track");
+const { capture, captureException, identify, reportBrowserFailure } = await import("./track");
 
 afterEach(() => {
   delete win.__capturedEvents;
@@ -96,5 +96,64 @@ describe("captureException", () => {
     const [error, sent] = posthog.captureException.mock.calls[0]!;
     expect((error as Error).message).toBe("studio: upload failed");
     expect(sent).toEqual(properties);
+  });
+});
+
+describe("studio_failure_action", () => {
+  it("goes through capture with the failed job's id", () => {
+    vi.stubGlobal("navigator", { webdriver: true });
+    win.__capturedEvents = [];
+    const properties = {
+      reel_id: "r",
+      job_id: "j1",
+      action: "try_again",
+      failure_kind: "transient",
+      step: "transcribe",
+      job_kind: "process",
+    };
+    capture("studio_failure_action", properties);
+    expect(posthog.capture).toHaveBeenCalledWith("studio_failure_action", properties);
+    expect(win.__capturedEvents).toEqual([
+      { event: "studio_failure_action", properties: { app: "studio", ...properties } },
+    ]);
+  });
+});
+
+describe("reportBrowserFailure", () => {
+  it("sends an exception once PostHog is loaded", () => {
+    vi.stubGlobal("navigator", { webdriver: false });
+    posthog.__loaded = true;
+    const error = vi.spyOn(console, "warn").mockImplementation(() => {});
+    reportBrowserFailure("studio: realtime channel dropped", { reel_id: "r", status: "TIMED_OUT" });
+    expect(posthog.captureException).toHaveBeenCalledOnce();
+    expect((posthog.captureException.mock.calls[0]![0] as Error).message).toBe(
+      "studio: realtime channel dropped",
+    );
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("prints to the console when PostHog is not loaded, recorded under automation", () => {
+    vi.stubGlobal("navigator", { webdriver: true });
+    win.__capturedEvents = [];
+    const error = vi.spyOn(console, "warn").mockImplementation(() => {});
+    reportBrowserFailure("studio: realtime channel dropped", { reel_id: "r", status: "CLOSED" });
+    expect(posthog.captureException).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith("studio: realtime channel dropped", {
+      reel_id: "r",
+      status: "CLOSED",
+    });
+    expect(win.__capturedEvents).toEqual([
+      {
+        event: "$exception",
+        properties: {
+          app: "studio",
+          $exception_message: "studio: realtime channel dropped",
+          reel_id: "r",
+          status: "CLOSED",
+        },
+      },
+    ]);
+    error.mockRestore();
   });
 });

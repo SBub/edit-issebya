@@ -90,6 +90,7 @@ async function endJob(
     job: "done" | "failed";
     reel: "processed" | "failed" | null;
     errorTail: string | null;
+    failure?: JobFailure;
   },
 ): Promise<boolean> {
   const { data, error } = await db
@@ -99,6 +100,9 @@ async function endJob(
       finished_at: new Date().toISOString(),
       error_tail: outcome.errorTail,
       lease_expires_at: null,
+      ...(outcome.failure
+        ? { failure_kind: outcome.failure.kind, failure_rules: outcome.failure.rules }
+        : {}),
     })
     .eq("id", job.id)
     .eq("lease_holder", config.workerId)
@@ -141,16 +145,26 @@ export function finishJob(db: SupabaseClient, config: QueueConfig, job: ClaimedJ
   });
 }
 
+// What kind of failure ended a job, and for a refused AI answer the names of
+// the check rules it failed (rule names only): the overlay's actions come
+// from them (app_docs/status.md).
+export interface JobFailure {
+  kind: "transient" | "failed" | "answer_refused";
+  rules: string[] | null;
+}
+
 export function failJob(
   db: SupabaseClient,
   config: QueueConfig,
   job: ClaimedJob,
   errorTail: string,
+  failure: JobFailure,
 ) {
   return endJob(db, config, job, {
     job: "failed",
     reel: reelStatusAfter(job, "failed"),
     errorTail,
+    failure,
   });
 }
 
