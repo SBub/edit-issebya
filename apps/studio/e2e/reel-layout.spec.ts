@@ -1136,6 +1136,8 @@ test("the playhead follows the player's clock", async ({ page, baseURL }) => {
     .toBe(true);
   await page.waitForTimeout(500);
   expect(await playhead.getAttribute("data-seconds")).toBe(paused);
+  // And it rests on the player's own paused time, every last frame told.
+  expect(Math.abs(Number(paused) - (await playerTime(page)))).toBeLessThanOrEqual(0.0005);
 });
 
 test("no Undo or Redo: the preview shows the current version at both sizes", async ({

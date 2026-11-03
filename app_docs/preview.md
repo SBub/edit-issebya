@@ -70,7 +70,10 @@ rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) o
   one hold-then-start routine: pause, seek, then wait (event-driven, a newer action supersedes) until
   the player's assets are ready and every active video can play from that point, then resume the
   `AudioContext`, start the player's clock and schedule the sounds. A `waiting` or `stalled` event while
-  playing re-enters the routine. Pause, seek and `ended` cancel scheduled sounds. The root carries
+  playing re-enters the routine. Pause, seek and `ended` cancel scheduled sounds.
+  The player sends `timeupdate` at most every 100 ms, so while paused the wrapper also reports the
+  player's time after each message from its frame when it changed: the clock and the playhead rest
+  on the player's paused time, never a few frames before it. The root carries
   `data-preview="loading|ready"` and `data-preview-version`.
 - `apps/studio/src/components/PlatformZones.tsx`, `src/lib/platform-zones.ts`: the player's `Zones`
   button (`aria-pressed`, off on every open, never saved, switched off when the preview expands and

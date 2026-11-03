@@ -130,6 +130,7 @@ export function PreviewPlayer({
   const hitsRef = useRef(hits);
   const expectedVideosRef = useRef(0);
   const onPositionRef = useRef(onPosition);
+  const reportedRef = useRef(0);
   const onIntentRef = useRef(onIntent);
   // The start position and intent are applied once, when the player is ready.
   const startedRef = useRef(false);
@@ -163,6 +164,7 @@ export function PreviewPlayer({
 
   // The position shown here and reported to the page, set together.
   function report(seconds: number) {
+    reportedRef.current = seconds;
     setPosition(seconds);
     onPositionRef.current?.(seconds);
   }
@@ -405,6 +407,17 @@ export function PreviewPlayer({
       stopWatching();
       stopSounds();
     };
+    // The player takes the time of every message from its frame but sends
+    // `timeupdate` at most every 100 ms, so the frames a pause lets through
+    // (it reaches the frame by message) can land without one: the clock and
+    // the playhead would rest a few frames before the player. While paused,
+    // each message from the frame is followed by the player's time when it
+    // differs. The player listened first, so its time is already applied.
+    const onMessage = (event: MessageEvent) => {
+      if (intentRef.current !== "paused") return;
+      if (event.source !== player.iframeElement?.contentWindow) return;
+      if (player.currentTime !== reportedRef.current) report(player.currentTime);
+    };
     if (player.ready) {
       setDuration(player.duration);
       setPlayerReady(true);
@@ -412,10 +425,12 @@ export function PreviewPlayer({
     player.addEventListener("ready", onReady);
     player.addEventListener("timeupdate", onTime);
     player.addEventListener("ended", onEnded);
+    window.addEventListener("message", onMessage);
     return () => {
       player.removeEventListener("ready", onReady);
       player.removeEventListener("timeupdate", onTime);
       player.removeEventListener("ended", onEnded);
+      window.removeEventListener("message", onMessage);
       generationRef.current += 1;
       stopWatching();
       stopSounds();
