@@ -4,6 +4,7 @@ import type { HyperframesPlayer } from "@hyperframes/player";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type MediaState, activeAt, canPlayFrom, mediaTimeAt } from "@/lib/preview-clock";
 import { recordSoundSchedule } from "@/lib/preview-test-hooks";
+import { PlatformZones } from "./PlatformZones";
 import { type SoundHit, scheduleAt } from "@/lib/sound-schedule";
 import { formatClock } from "@/lib/tracks-timeline";
 
@@ -120,6 +121,8 @@ export function PreviewPlayer({
   const [position, setPosition] = useState(0);
   const [intent, setIntent] = useState<"paused" | "playing">("paused");
   const [holding, setHolding] = useState(false);
+  // The platform zones over the preview: off on every open, never saved.
+  const [zones, setZones] = useState(false);
 
   useEffect(() => {
     hitsRef.current = hits;
@@ -446,6 +449,7 @@ export function PreviewPlayer({
               Loading
             </p>
           )}
+          {zones && <PlatformZones />}
         </div>
       </div>
       <div className="flex flex-none items-center gap-2 text-sm">
@@ -474,6 +478,15 @@ export function PreviewPlayer({
           onChange={(event) => onSeek(Number(event.target.value))}
           className="min-w-0 flex-1 accent-accent"
         />
+        <button
+          type="button"
+          aria-pressed={zones}
+          title="Show what TikTok and Instagram cover"
+          onClick={() => setZones((on) => !on)}
+          className="flex h-8 flex-none items-center rounded-full border border-line px-2.5 text-xs hover:bg-raised aria-pressed:bg-raised aria-pressed:font-semibold"
+        >
+          Zones
+        </button>
         {controls}
       </div>
     </div>

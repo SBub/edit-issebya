@@ -1,7 +1,7 @@
 import { type BigWordBox, spotBox, spotFaceShare } from "./behind.ts";
 import { type HeadTrack, faceBox } from "./head-track.ts";
 import type { TextBox } from "./layout.ts";
-import type { Preset } from "./preset.ts";
+import { PLATFORM_SAFE, type Preset, intersectBox } from "./preset.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import type { ResolvedItem } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -38,7 +38,8 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
 
-// The layout checks, in a stable order: text inside the safe box, big words
+// The layout checks, in a stable order: text inside the safe box, never past
+// the platform guard whatever the preset says, big words
 // behind the speaker inside the frame (they cross the safe box by design),
 // photos behind the speaker not taken over by the face and with no caption
 // over them, captions clear of the face, sounds at least the preset's gap apart, time
@@ -53,7 +54,7 @@ export function runChecks(
   bigWords: readonly BigWordBox[] = [],
 ): Check[] {
   const checks: Check[] = [];
-  const { safe } = preset;
+  const safe = intersectBox(preset.safe, PLATFORM_SAFE);
 
   for (const box of boxes) {
     const right = box.x + box.width;

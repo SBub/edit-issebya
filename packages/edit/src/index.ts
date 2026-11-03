@@ -16,6 +16,7 @@ export {
   BEHIND_SPOTS,
   FONT_KEYS,
   ISSEBYA_PRESET,
+  PLATFORM_SAFE,
   cleanWord,
 } from "./preset.ts";
 export {

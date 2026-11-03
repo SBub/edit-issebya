@@ -144,6 +144,39 @@ test("the reel opens with the player, the first caption, one open event and the 
   expect(cutoutRequests).toEqual([]);
 });
 
+test("the Zones toggle shades what TikTok and Instagram cover, and takes no clicks", async ({
+  page,
+  baseURL,
+}) => {
+  await routePreviewCdn(page);
+  await openReel(page, baseURL!);
+  const toggle = page.getByRole("button", { name: "Zones" });
+  const layer = page.getByTestId("platform-zones");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(layer).toHaveCount(0);
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(layer).toBeVisible();
+  // The layer fills the player's stage; each zone edge sits at the guard's
+  // edge in frame pixels (1164 of 1920 down, 840 of 1080 across).
+  const stage = (await layer.boundingBox())!;
+  const bottom = (await layer.locator('[data-zone="bottom"]').boundingBox())!;
+  const right = (await layer.locator('[data-zone="right"]').boundingBox())!;
+  expect(Math.abs(bottom.y - stage.y - (1164 / 1920) * stage.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(right.x - stage.x - (840 / 1080) * stage.width)).toBeLessThanOrEqual(1);
+
+  // Play still works with the layer on.
+  await page.getByRole("button", { name: "Play" }).click();
+  await expect(page.locator('[data-intent="playing"]')).toBeVisible();
+  await page.getByRole("button", { name: "Pause" }).click();
+  await expect(page.locator('[data-intent="paused"]')).toBeVisible();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(layer).toHaveCount(0);
+});
+
 test("the clock waits until the footage can play, on play and after a seek", async ({
   page,
   baseURL,
