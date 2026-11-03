@@ -16,6 +16,11 @@ import { dropFiles, fileTransfer } from "./drop.ts";
 // The worker's own folder for the derived files (thumbnail and large copy).
 const WORKER_PREFIX = `e2e-${crypto.randomUUID()}/`;
 const WORKER_ID = `e2e-photos-${crypto.randomUUID()}`;
+// The line under the library's heading (libraryIntro in src/lib/photos.ts).
+const INTRO_EMPTY =
+  "Add photos of your work, places or products. When you talk about them, they can appear behind you in your reels.";
+const INTRO_WITH_PHOTOS =
+  "Photos you add here can appear in your reels, placed behind you when they fit what you're saying";
 const SAMPLE = fileURLToPath(new URL("../../../fixtures/photos/sample.jpg", import.meta.url));
 const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
@@ -171,6 +176,11 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
   await expectInsideRoot(page, library);
   await expectNoPageScroll(page);
   await expect(library.getByText("No photos yet.")).toBeVisible();
+  // The heading names the library; the line under it invites the first photo.
+  await expect(library.getByRole("heading", { level: 2 })).toHaveText("Your library");
+  await expect(page.getByRole("region", { name: "Your library" })).toBeVisible();
+  const intro = library.getByTestId("library-intro");
+  await expect(intro).toHaveText(INTRO_EMPTY);
 
   // No round button in the header: the one upload button is the grid's first
   // tile, dashed, and with no photo the only one.
@@ -192,6 +202,8 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
 
   const badge = library.getByTestId("photo-status");
   await expect(badge).toHaveText("describing", { timeout: 30_000 });
+  // With a photo in the library, the line says what photos do in a reel.
+  await expect(intro).toHaveText(INTRO_WITH_PHOTOS);
   // A tile not ready yet keeps its status, in its name too.
   await expect(library.getByRole("button", { name: "sample.jpg, describing" })).toBeVisible();
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
@@ -298,6 +310,7 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
   await expect(dialog).toBeHidden();
   await expect(library.getByTestId("photo-status")).toHaveCount(0);
   await expect(library.getByText("No photos yet.")).toBeVisible();
+  await expect(intro).toHaveText(INTRO_EMPTY);
   expect(await photoRows()).toEqual([]);
   for (const key of [photo!.r2_key, described!.thumbnail_key!, described!.large_key!]) {
     expect(await storage.head(key)).toBeNull();

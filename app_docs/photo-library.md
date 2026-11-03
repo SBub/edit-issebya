@@ -31,7 +31,16 @@ desktop and is a fourth tab, `Library`, on a phone.
   upload with the ETag, reads the size from storage and calls `finish_photo_upload`, which queues
   the `describe_photo` job and records the original's `kept` row in `stored_files`. The key and
   upload id always come from the row, never from the browser.
-- `apps/studio/src/components/PhotoLibrary.tsx`, `PhotoDialog.tsx`: the library panel. It renders
+- `apps/studio/src/components/PhotoLibrary.tsx`, `PhotoDialog.tsx`: the library panel. Its heading
+  (`id="library-heading"`, the section's `aria-labelledby`) reads **Your library** (owner,
+  2026-11-03; the phone tab stays `Library`). Under it a short muted line (`library-intro`,
+  `text-xs text-muted`, the section's `aria-describedby`) says what the library is for, chosen by
+  `libraryIntro(count)` in `apps/studio/src/lib/photos.ts` from the number of photos in the library
+  (any status). With no photo: "Add photos of your work, places or products. When you talk about
+  them, they can appear behind you in your reels." From the first photo on (an `uploading` one
+  counts): "Photos you add here can appear in your reels, placed behind you when they fit what
+  you're saying" (no full stop, owner, 2026-11-03). The grid keeps its accessible name `Photos` (a list of photos), and an empty
+  library still shows `No photos yet.` above the add tile. It renders
   `ThumbnailGrid` (newest first, after a dashed **Upload a photo** tile, its visible
   label also its accessible name, that opens the file picker), follows the `photos` table through Realtime and re-reads the library through `loadLibrary` on each change. A tile
   shows only its thumbnail: no file name, age or size under it, and no badge for a `ready` photo;
@@ -45,7 +54,7 @@ desktop and is a fourth tab, `Library`, on a phone.
   (`photo-delete-confirm`) take its place in the header, still left of the cross, and an error shows
   under the tags. Nothing sits under the tags at the bottom right. Escape and the backdrop close the
   dialog as the cross does. On desktop the whole
-  Photos section (`data-testid="photo-drop"`) is a drop zone (`useFileDrop` in
+  library section (`data-testid="photo-drop"`) is a drop zone (`useFileDrop` in
   `apps/studio/src/components/FileDrop.tsx`: a counter of entered elements keeps the highlight,
   `data-drop="over"`, a dashed accent outline and the `Drop to upload` hint, on while the drag
   crosses children, and a window guard stops the browser opening a file dropped elsewhere on the
@@ -86,11 +95,12 @@ desktop and is a fourth tab, `Library`, on a phone.
 
 ## How to Use
 
-1. Open a reel in the studio. On desktop the library is the top 68% of the third column; on a phone open the
-   `Library` tab.
+1. Open a reel in the studio. On desktop the library (headed **Your library**) is the top 68% of the
+   third column; on a phone open the `Library` tab. The line under the heading says what the photos
+   are for, with an invitation to add the first one while the library is empty.
 2. Press the dashed **Upload a photo** tile, first in the grid, and pick a JPEG, PNG, HEIC, HEIF or WebP
-   file of up to 25 MiB. On desktop you can instead drop one such file anywhere on the Photos
-   section; drop one file at a time.
+   file of up to 25 MiB. On desktop you can instead drop one such file anywhere on the
+   library; drop one file at a time.
 3. The tile shows `uploading`, then `describing` once the worker has claimed the job, then only the
    thumbnail once the photo is ready, its description and tags in the dialog (live, no reload). A
    photo the worker could not process (a HEIC it could not read, say) keeps a `failed` badge.
@@ -110,20 +120,22 @@ only, run by hand; CI uses the committed files).
 
 ## Testing
 
-- Unit: `apps/studio/src/lib/photos.test.ts`, `photo-server.test.ts`; in the worker `src/photos/*.test.ts`,
+- Unit: `apps/studio/src/lib/photos.test.ts` (badges, tile names, `libraryIntro`), `photo-server.test.ts`; in the worker `src/photos/*.test.ts`,
   `ai.test.ts`, `queue.test.ts`, `stored-files.test.ts`, `doctor-checks.test.ts`.
 - Tools (owner's Mac only): `yarn workspace @edit-issebya/worker test:tools` runs
   `photos/photo-images.tools.test.ts` with real ffmpeg on the JPEG and HEIC fixtures.
 - DB: `apps/studio/db-tests/photos.test.ts` (RLS, insert policy, status and ready checks,
   `finish_photo_upload`, `delete_photo`, `record_photo_file`, `jobs_target_check`), plus
   `job-order.test.ts` and `stored-files.test.ts`.
-- E2E: `apps/studio/e2e/photo-library.spec.ts` uploads the JPEG fixture at 1440x900 through the
+- E2E: `apps/studio/e2e/photo-library.spec.ts` checks the heading **Your library** and the empty
+  intro before the first upload, and the other intro once a photo is in the library (and the empty
+  one again after Delete); it uploads the JPEG fixture at 1440x900 through the
   dashed add tile (first in the grid, no other upload button; no page scroll), checks `describing`
   then, live after the worker's `once`, a ready tile with only its image (no badge, no text, the file
   name as its accessible name), the `describe_photo` step's AI columns and the three
   `stored_files` rows, the dialog's header (the cross found by role and name `Close`, no text, an
   svg, at the top right; the bin directly left of it, the dialog's only two buttons), Delete with
-  its confirmation in the header; then drops on the Photos section (synthetic `DataTransfer`,
+  its confirmation in the header; then drops on the library section (synthetic `DataTransfer`,
   `apps/studio/e2e/drop.ts`): the highlight on dragenter, kept across a child, off on dragleave; two
   files and a text file upload nothing with their messages; one photo uploads and goes `describing`
   then ready; a `failed` photo (inserted by the admin) keeps its `failed` badge, no image, and opens

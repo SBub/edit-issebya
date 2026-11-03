@@ -7,7 +7,13 @@ import { PhotoDialog } from "@/components/PhotoDialog";
 import { type ThumbnailGridItem, ThumbnailGrid } from "@/components/ThumbnailGrid";
 import { TOO_MANY_FILES, UPLOAD_RUNNING, decideDrop } from "@/lib/file-drop";
 import type { PhotoError } from "@/lib/photo-server";
-import { type LibraryItem, PHOTO_ACCEPT, photoBadge, photoTileLabel } from "@/lib/photos";
+import {
+  type LibraryItem,
+  PHOTO_ACCEPT,
+  libraryIntro,
+  photoBadge,
+  photoTileLabel,
+} from "@/lib/photos";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 const noSubscribe = () => () => {};
@@ -157,6 +163,7 @@ export function PhotoLibrary({ initial }: Props) {
   return (
     <section
       aria-labelledby="library-heading"
+      aria-describedby="library-intro"
       data-library={ready ? "ready" : "pending"}
       data-testid="photo-drop"
       data-drop={drop.over ? "over" : "idle"}
@@ -165,7 +172,7 @@ export function PhotoLibrary({ initial }: Props) {
     >
       <div className="flex flex-none items-center gap-2 px-3 pt-3 pb-2">
         <h2 id="library-heading" className="text-sm font-semibold">
-          Photos
+          Your library
         </h2>
         <input
           ref={inputRef}
@@ -178,6 +185,13 @@ export function PhotoLibrary({ initial }: Props) {
           aria-hidden="true"
         />
       </div>
+      <p
+        id="library-intro"
+        data-testid="library-intro"
+        className="flex-none px-3 pb-2 text-xs text-muted"
+      >
+        {libraryIntro(items.length)}
+      </p>
       {message && (
         <p role="alert" className="flex-none px-3 pb-2 text-sm text-danger">
           {message}
