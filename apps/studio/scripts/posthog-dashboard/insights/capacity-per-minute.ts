@@ -9,10 +9,8 @@ export const capacityPerMinute: SqlInsight = {
   key: "capacity-per-minute",
   name: "Studio: CPU per source minute and peak memory, per step",
   description:
-    "Per step name, over done steps of reels with a source length (cache hits are recorded " +
-    "skipped and left out): the median CPU seconds per minute of the reel's source_seconds, and " +
-    "the largest peak memory. Raw machine measurements for sizing a server; no money is derived. " +
-    "Source: synced steps table joined to the synced reels table.",
+    "Per step: typical CPU seconds for each minute of uploaded video, and the most memory it used. " +
+    "Use it to size a server. Raw machine measurements, no money.",
   display: "ActionsTable",
   build: (d, t) => `select steps.name as step_name,
   count(steps.id) as done_steps,

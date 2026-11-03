@@ -5,10 +5,8 @@ export const jobRunTime: SqlInsight = {
   key: "job-run-time",
   name: "Studio: job run time per kind, by week",
   description:
-    "By week of the job's start and job kind, over done jobs: the median and 95th percentile " +
-    "minutes from started_at to finished_at. claim_job overwrites started_at when a job is " +
-    "claimed again after a lost lease, so such a job counts its last attempt only. " +
-    "Source: synced jobs table.",
+    "How long jobs take to run, per kind and week: typical (median) and slow (95th percentile) " +
+    "minutes. Lower is better. A restarted job counts only its last try.",
   display: "ActionsTable",
   build: (d, t) => `select ${d.weekOf("jobs.started_at")} as week, jobs.kind as job_kind,
   count(*) as done_jobs,

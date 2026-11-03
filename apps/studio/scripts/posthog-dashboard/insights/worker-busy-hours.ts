@@ -5,10 +5,8 @@ export const workerBusyHours: SqlInsight = {
   key: "worker-busy-hours",
   name: "Studio: worker busy hours per day",
   description:
-    "By day of the job's start: the hours from started_at to finished_at summed over done and " +
-    "failed jobs, and that time over the day's 24 hours. The worker runs one job at a time. A job " +
-    "counts whole on the day it started, and a job claimed again after a lost lease counts its " +
-    "last attempt only (claim_job overwrites started_at). Source: synced jobs table.",
+    "Hours each day the worker spent running jobs, and that as a share of 24 hours. Close to 24 " +
+    "means it is at capacity. Approximate: a restarted job counts only its last try.",
   display: "ActionsBar",
   xAxis: "day",
   yAxis: ["busy_hours"],

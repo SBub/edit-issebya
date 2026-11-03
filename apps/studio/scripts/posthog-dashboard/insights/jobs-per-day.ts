@@ -5,8 +5,8 @@ export const jobsPerDay: SqlInsight = {
   key: "jobs-per-day",
   name: "Studio: jobs per day, by kind",
   description:
-    "By day of the job's creation and job kind: how many jobs were queued, whatever their status " +
-    "now, so the work the worker was asked to do. Source: synced jobs table.",
+    "How many jobs the worker was given each day, by kind, whatever happened to them. Shows how " +
+    "much work comes in.",
   display: "ActionsTable",
   build: (d, t) => `select ${d.dayOf("jobs.created_at")} as day, jobs.kind as job_kind,
   count(*) as jobs

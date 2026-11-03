@@ -5,9 +5,8 @@ export const storageTotal: SqlInsight = {
   key: "storage-total",
   name: "Studio: live storage in total",
   description:
-    "Bytes of distinct live objects (r2_key with a row whose deleted_at is null): an object two " +
-    "reels share counts once. Also the per-reel-row sum and the object count. Source: synced " +
-    "stored_files table.",
+    "Total bytes stored right now, with a file shared by several reels counted once, and the " +
+    "number of files. Deleted files are not counted.",
   display: "BoldNumber",
   build: (_d, t) => `with live_objects as (
   select stored_files.r2_key as r2_key,

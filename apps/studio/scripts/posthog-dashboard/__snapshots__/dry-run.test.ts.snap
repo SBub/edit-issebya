@@ -4,7 +4,7 @@ exports[`dry run payloads > match the committed snapshot 1`] = `
 [
   {
     "body": {
-      "description": "Does the studio turn a two-hour edit into a short one, and what does each reel cost to make. Defined in apps/studio/scripts/posthog-dashboard/ (app_docs/dashboard.md); edit the code, not this dashboard.
+      "description": "Does the studio turn a two-hour edit into a short one, and what does each reel cost to make? Built from code in apps/studio/scripts/posthog-dashboard/: change it there, not here.
 
 [studio-metrics:dashboard]",
       "name": "Studio MVP metrics",
@@ -20,7 +20,7 @@ exports[`dry run payloads > match the committed snapshot 1`] = `
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "The main metric: per exported reel, minutes from upload (its earliest process job) to its first export (earliest exports row, so the render is included). Target: under 30 minutes. Source: synced jobs and exports tables.
+      "description": "The main metric. Each bar is one exported reel: minutes from upload to its first export. Lower is better; the goal is under 30 minutes.
 
 [studio-metrics:main-metric]",
       "name": "Studio: upload to export, minutes per reel",
@@ -81,7 +81,7 @@ order by exported_reels.exported_at",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "The current streak: the latest exported reels, newest first, counted until the first one that took 30 minutes or more from upload to first export (0 when none is exported). Rollout target: 7 in a row. Source: synced jobs and exports tables.
+      "description": "How many of the latest exported reels in a row took under 30 minutes from upload to export. Higher is better; the goal is 7 in a row. A slower reel resets it to 0.
 
 [studio-metrics:main-metric-streak]",
       "name": "Studio: reels in a row under 30 minutes",
@@ -132,7 +132,7 @@ from ranked",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Per reel with a version, minutes from upload (its earliest process job) to version 1 (the player shows a reel only once a version exists). Target: under 15 minutes. Source: synced jobs and versions tables.
+      "description": "Each bar is one reel: minutes from upload until its first preview can be watched. Lower is better; the goal is under 15 minutes.
 
 [studio-metrics:first-preview]",
       "name": "Studio: upload to first preview, minutes per reel",
@@ -188,7 +188,7 @@ order by first_versions.previewed_at",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Per exported reel, the change jobs created before its first export; averaged by the week of that first export. Source: synced jobs and exports tables.
+      "description": "Average number of changes asked for on a reel before its first export, by week of export. Lower means the first edit was closer to what was wanted.
 
 [studio-metrics:changes-per-reel]",
       "name": "Studio: change requests per exported reel, by week",
@@ -239,7 +239,7 @@ order by week",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "By week of upload: reels uploaded (with a process job), reels of those exported (with an exports row) and their ratio. Source: synced jobs and exports tables.
+      "description": "Each week: reels uploaded, and how many of those were exported. The closer the two bars, the more uploads end as a finished reel.
 
 [studio-metrics:completion]",
       "name": "Studio: uploaded and exported reels, by week",
@@ -288,7 +288,7 @@ order by week",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "The five studio events in order (upload, preview opened, change requested, export requested, export downloaded), counted per reel (properties.reel_id), app = studio, within 14 days. Events are absent wherever PostHog is not initialised, so every other chart reads the database.
+      "description": "How far reels get through upload, open preview, ask for a change, export and download, within 14 days. A big drop shows where reels stall. Counts only reels where tracking was on, so it can read low.
 
 [studio-metrics:funnel]",
       "name": "Studio: funnel by reel",
@@ -357,7 +357,7 @@ order by week",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Per reel, over every step of every job: wall and CPU seconds, peak memory, bytes in and out, AI tokens and the AI cost Claude Code reports. No money is derived from machine time. Photo steps (no reel) are left out. Source: synced steps table.
+      "description": "One row per reel: machine time, memory, data moved, AI tokens and the AI cost Claude reports. Higher means the reel cost more to make. Machine time is not turned into money.
 
 [studio-metrics:cost-per-reel]",
       "name": "Studio: cost per reel",
@@ -395,7 +395,7 @@ order by min(steps.started_at)",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Per step name, over every run: the same sums as cost per reel (wall and CPU seconds, peak memory, bytes, AI tokens and reported AI cost). No money is derived from machine time. Source: synced steps table.
+      "description": "The same totals as cost per reel, but per step, so you see which step uses the most time, memory or AI. Machine time is not turned into money.
 
 [studio-metrics:cost-per-step]",
       "name": "Studio: cost per step",
@@ -432,7 +432,7 @@ order by steps.name",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Per step name and source length (15-second buckets of the reel's source seconds): how many done steps, their median and longest wall seconds, and the median seconds per second of retimed footage. Cache hits and failed steps are left out. Source: synced steps table joined to the synced reels table.
+      "description": "How long each step takes for reels of different lengths (in 15-second bands). If time grows faster than length, that step will slow down longer reels. Successful runs only.
 
 [studio-metrics:step-time-vs-length]",
       "name": "Studio: time per step against reel length",
@@ -466,7 +466,7 @@ order by step_name, source_seconds_from",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "By week of the step's start and step name: failed steps over finished ones (done or failed). Running and waiting steps are not finished; skipped ones are cache hits that ran nothing. Source: synced steps table.
+      "description": "Share of runs that failed, per step and week. Lower is better; a rising share points to the step to fix.
 
 [studio-metrics:failed-steps]",
       "name": "Studio: failed steps, by step and week",
@@ -498,7 +498,7 @@ order by week, step_name",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Bytes of distinct live objects (r2_key with a row whose deleted_at is null): an object two reels share counts once. Also the per-reel-row sum and the object count. Source: synced stored_files table.
+      "description": "Total bytes stored right now, with a file shared by several reels counted once, and the number of files. Deleted files are not counted.
 
 [studio-metrics:storage-total]",
       "name": "Studio: live storage in total",
@@ -534,7 +534,7 @@ from live_objects",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Per reel, bytes of its live stored files (deleted_at null). An object two reels share counts for each. Photo files (no reel) are left out. Source: synced stored_files table.
+      "description": "Bytes stored right now for each reel. A file shared by two reels counts for both, so the rows can add up to more than the total.
 
 [studio-metrics:storage-per-reel]",
       "name": "Studio: live storage per reel",
@@ -565,7 +565,7 @@ order by live_bytes desc, reel_id",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Per step that made the file, bytes of live stored files (deleted_at null), per reel row. Source: synced stored_files table.
+      "description": "Bytes stored right now, by the step that made the files: shows which step fills storage most. A file shared by two reels counts for both.
 
 [studio-metrics:storage-per-step]",
       "name": "Studio: live storage per step",
@@ -596,7 +596,7 @@ order by live_bytes desc, step_name",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "By week of the step's start: cache hits (steps recorded skipped with cache_hit true) over finished steps (done, failed or skipped; running and waiting excluded), and the rate to date (the last row is the total). Source: synced steps table.
+      "description": "Share of steps skipped because their result was already saved, by week and to date. Higher means less repeated work and faster edits.
 
 [studio-metrics:cache-hit-rate]",
       "name": "Studio: cache hit rate, by week",
@@ -646,7 +646,7 @@ order by weekly.week",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "By day of the job's creation and job kind: how many jobs were queued, whatever their status now, so the work the worker was asked to do. Source: synced jobs table.
+      "description": "How many jobs the worker was given each day, by kind, whatever happened to them. Shows how much work comes in.
 
 [studio-metrics:jobs-per-day]",
       "name": "Studio: jobs per day, by kind",
@@ -675,7 +675,7 @@ order by day, job_kind",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "By day of the job's start: the hours from started_at to finished_at summed over done and failed jobs, and that time over the day's 24 hours. The worker runs one job at a time. A job counts whole on the day it started, and a job claimed again after a lost lease counts its last attempt only (claim_job overwrites started_at). Source: synced jobs table.
+      "description": "Hours each day the worker spent running jobs, and that as a share of 24 hours. Close to 24 means it is at capacity. Approximate: a restarted job counts only its last try.
 
 [studio-metrics:worker-busy-hours]",
       "name": "Studio: worker busy hours per day",
@@ -716,7 +716,7 @@ order by day",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "By week of the job's start and job kind, over done jobs: the median and 95th percentile minutes from started_at to finished_at. claim_job overwrites started_at when a job is claimed again after a lost lease, so such a job counts its last attempt only. Source: synced jobs table.
+      "description": "How long jobs take to run, per kind and week: typical (median) and slow (95th percentile) minutes. Lower is better. A restarted job counts only its last try.
 
 [studio-metrics:job-run-time]",
       "name": "Studio: job run time per kind, by week",
@@ -748,7 +748,7 @@ order by week, job_kind",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Approximate. By week of the job's creation and job kind, over jobs the worker has claimed: the median and 95th percentile minutes from created_at to started_at. claim_job overwrites started_at when a job is claimed again after a lost lease, so such a job's wait includes its lost attempt. A job also waits while an older job of its reel or photo runs, not only while the worker is busy. Source: synced jobs table.
+      "description": "Minutes jobs wait before the worker starts them, per kind and week: typical (median) and slow (95th percentile). Lower is better. Approximate: a restarted job's wait includes its lost try, and a job also waits for earlier jobs of its reel.
 
 [studio-metrics:queue-wait]",
       "name": "Studio: queue wait per kind, by week (approximate)",
@@ -780,7 +780,7 @@ order by week, job_kind",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "By week of the step's start: the wall seconds of steps with an ai_model (the model Claude Code reported, written on AI steps only) over the wall seconds of every step with a wall time (done, failed or skipped). An AI step's whole wall time counts, so this is an upper bound on the time spent waiting for Claude. Source: synced steps table.
+      "description": "Share of worker time spent on steps that call Claude, by week. Higher means Claude, not the Mac, is the bottleneck. An upper bound: the whole step counts, not only the wait.
 
 [studio-metrics:ai-wait-share]",
       "name": "Studio: share of worker time waiting on Claude, by week",
@@ -822,7 +822,7 @@ order by week",
       "dashboards": [
         "<id:dashboard>",
       ],
-      "description": "Per step name, over done steps of reels with a source length (cache hits are recorded skipped and left out): the median CPU seconds per minute of the reel's source_seconds, and the largest peak memory. Raw machine measurements for sizing a server; no money is derived. Source: synced steps table joined to the synced reels table.
+      "description": "Per step: typical CPU seconds for each minute of uploaded video, and the most memory it used. Use it to size a server. Raw machine measurements, no money.
 
 [studio-metrics:capacity-per-minute]",
       "name": "Studio: CPU per source minute and peak memory, per step",
@@ -1083,7 +1083,7 @@ order by step_name",
             },
           },
           "text": {
-            "body": "**Supabase usage** (database size, egress, auth users) is not synced to PostHog. Read it on the studio project's usage page: https://supabase.com/dashboard/project/ykjgyapmrszliovfqjfx/settings/usage
+            "body": "**Supabase usage** (database size, data sent out, user accounts) is not in PostHog. See it on the studio's Supabase usage page: https://supabase.com/dashboard/project/ykjgyapmrszliovfqjfx/settings/usage
 
 [studio-metrics:supabase-usage]",
           },
@@ -1098,7 +1098,7 @@ order by step_name",
             },
           },
           "text": {
-            "body": "**Preview matches export guardrail.** Checked by \`apps/studio/e2e-tools/export-matches-preview.spec.ts\`, run on the owner's Mac by \`yarn workspace @edit-issebya/studio test:tools\`, never in CI. Its last result is the owner's terminal output; the accepted scores and bound are in app_docs/export.md.
+            "body": "**Preview matches export guardrail.** A test that the exported video looks like the preview. It runs only on the owner's Mac (\`yarn workspace @edit-issebya/studio test:tools\`), so its result is not shown here. Accepted scores: app_docs/export.md.
 
 [studio-metrics:guardrail]",
           },

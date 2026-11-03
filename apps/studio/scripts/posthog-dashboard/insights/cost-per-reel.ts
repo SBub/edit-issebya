@@ -6,9 +6,8 @@ export const costPerReel: SqlInsight = {
   key: "cost-per-reel",
   name: "Studio: cost per reel",
   description:
-    "Per reel, over every step of every job: wall and CPU seconds, peak memory, bytes in and " +
-    "out, AI tokens and the AI cost Claude Code reports. No money is derived from machine time. " +
-    "Photo steps (no reel) are left out. Source: synced steps table.",
+    "One row per reel: machine time, memory, data moved, AI tokens and the AI cost Claude reports. " +
+    "Higher means the reel cost more to make. Machine time is not turned into money.",
   display: "ActionsTable",
   build: (_d, t) => `select steps.reel_id as reel_id,
 ${costColumns()}

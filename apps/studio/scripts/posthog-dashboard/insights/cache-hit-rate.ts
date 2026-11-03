@@ -5,9 +5,8 @@ export const cacheHitRate: SqlInsight = {
   key: "cache-hit-rate",
   name: "Studio: cache hit rate, by week",
   description:
-    "By week of the step's start: cache hits (steps recorded skipped with cache_hit true) over " +
-    "finished steps (done, failed or skipped; running and waiting excluded), and the rate to " +
-    "date (the last row is the total). Source: synced steps table.",
+    "Share of steps skipped because their result was already saved, by week and to date. Higher " +
+    "means less repeated work and faster edits.",
   display: "ActionsLineGraph",
   xAxis: "week",
   yAxis: ["hit_rate", "hit_rate_to_date"],

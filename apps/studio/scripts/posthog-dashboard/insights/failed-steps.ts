@@ -5,9 +5,8 @@ export const failedSteps: SqlInsight = {
   key: "failed-steps",
   name: "Studio: failed steps, by step and week",
   description:
-    "By week of the step's start and step name: failed steps over finished ones (done or " +
-    "failed). Running and waiting steps are not finished; skipped ones are cache hits that ran " +
-    "nothing. Source: synced steps table.",
+    "Share of runs that failed, per step and week. Lower is better; a rising share points to the " +
+    "step to fix.",
   display: "ActionsTable",
   build: (d, t) => `select ${d.weekOf("steps.started_at")} as week, steps.name as step_name,
   sum(case when steps.status = 'failed' then 1 else 0 end) as failed_steps,
