@@ -89,9 +89,12 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
   neutral block, title, a meta line (age and size, `1w · 62.2 MB`) and a status badge
   (`reel-list-status` kept). An item has `href` (a link tile) or `onSelect` (a `<button>` tile). Prop
   `aspect`: `"portrait"` (default, 9:16) or `"square"`. Prop `columns`: `"page"` (default, 3 columns
-  on a phone, up to 8 on wide screens) or `"panel"` (3 at every width). Nothing reel-specific: the
-  reels use the defaults, and the photo library uses it with `onSelect`, `aspect="square"` and
-  `columns="panel"`.
+  on a phone, up to 8 on wide screens) or `"panel"` (3 at every width). Optional prop `add`: a dashed
+  add tile first in the grid, the tiles' size and aspect, with a **+** and a visible label that is
+  also its accessible name, `disabled` and `data-ready`; with no item it is the only tile, under the
+  `empty` text. Nothing reel-specific: the reels use the defaults without `add`, and the photo
+  library uses it with `onSelect`, `aspect="square"`, `columns="panel"` and `add`
+  (`app_docs/photo-library.md`).
 - `apps/studio/src/components/UploadDialog.tsx`: the round **+** button and a native `<dialog>` with
   `UploadForm`. The dialog stays in the DOM when closed so an upload in progress is never unmounted.
   The button is disabled (`data-ready="false"`) until the client has hydrated.

@@ -2,8 +2,10 @@
 
 import { type ChangeEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { deletePhoto, finishPhotoUpload, loadLibrary, startPhotoUpload } from "@/app/photo-actions";
+import { DROP_ZONE_OVER, DropHint, useFileDrop } from "@/components/FileDrop";
 import { PhotoDialog } from "@/components/PhotoDialog";
 import { type ThumbnailGridItem, ThumbnailGrid } from "@/components/ThumbnailGrid";
+import { TOO_MANY_FILES, UPLOAD_RUNNING, decideDrop } from "@/lib/file-drop";
 import type { PhotoError } from "@/lib/photo-server";
 import { type LibraryItem, PHOTO_ACCEPT } from "@/lib/photos";
 import { formatBytes } from "@/lib/reels";
@@ -28,8 +30,9 @@ interface Props {
   initial: LibraryItem[];
 }
 
-// The owner's photo library beside the reel: the round + uploads one photo
-// straight to storage (one signed part, never through the studio's server),
+// The owner's photo library beside the reel: the dashed add tile (or a file
+// dropped on the section, on desktop) uploads one photo straight to storage
+// (one signed part, never through the studio's server),
 // each tile shows its status live, and a tile opens the photo with its
 // description and tags. Every change to the owner's photos (RLS decides what
 // arrives) re-reads the library through a server action, which signs the
@@ -117,6 +120,21 @@ export function PhotoLibrary({ initial }: Props) {
     if (file) void upload(file);
   }
 
+  // A drop starts the same upload as a pick, for one photo the picker would
+  // offer; anything else uploads nothing and says why.
+  const drop = useFileDrop((files) => {
+    if (busy) {
+      setMessage(UPLOAD_RUNNING);
+      return;
+    }
+    const decision = decideDrop(files, PHOTO_ACCEPT);
+    if (decision.kind === "upload") void upload(decision.file);
+    else if (decision.kind === "too-many") setMessage(TOO_MANY_FILES);
+    else if (decision.kind === "refused") {
+      setMessage(`${decision.name} is not a JPEG, PNG, HEIC, HEIF or WebP photo.`);
+    }
+  });
+
   async function onDelete(photoId: string): Promise<string | null> {
     const answer = await deletePhoto(photoId);
     if (!answer.ok) return ERRORS[answer.error];
@@ -147,22 +165,15 @@ export function PhotoLibrary({ initial }: Props) {
     <section
       aria-labelledby="library-heading"
       data-library={ready ? "ready" : "pending"}
-      className="flex min-h-0 flex-1 flex-col"
+      data-testid="photo-drop"
+      data-drop={drop.over ? "over" : "idle"}
+      {...drop.handlers}
+      className={`relative flex min-h-0 flex-1 flex-col ${drop.over ? DROP_ZONE_OVER : ""}`}
     >
-      <div className="flex flex-none items-center justify-between gap-2 px-3 pt-3 pb-2">
+      <div className="flex flex-none items-center gap-2 px-3 pt-3 pb-2">
         <h2 id="library-heading" className="text-sm font-semibold">
           Photos
         </h2>
-        <button
-          type="button"
-          aria-label="Upload a photo"
-          disabled={!hydrated || busy}
-          data-ready={hydrated ? "true" : "false"}
-          onClick={() => inputRef.current?.click()}
-          className="flex size-9 flex-none items-center justify-center rounded-full bg-accent text-2xl leading-none font-light text-surface shadow-md shadow-black/40 disabled:opacity-60"
-        >
-          <span aria-hidden="true">+</span>
-        </button>
         <input
           ref={inputRef}
           type="file"
@@ -189,8 +200,15 @@ export function PhotoLibrary({ initial }: Props) {
           empty={<p className="text-sm">No photos yet.</p>}
           aspect="square"
           columns="panel"
+          add={{
+            label: "Upload a photo",
+            onAdd: () => inputRef.current?.click(),
+            disabled: !hydrated || busy,
+            ready: hydrated,
+          }}
         />
       </div>
+      {drop.over && <DropHint />}
       <PhotoDialog dialogRef={dialogRef} photo={open} onDelete={onDelete} />
     </section>
   );

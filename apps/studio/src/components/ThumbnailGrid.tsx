@@ -18,6 +18,19 @@ export interface ThumbnailGridItem {
   badgeTestId?: string;
 }
 
+// The grid's first tile, before every item: a dashed "+" that adds one (a
+// file picker, an upload dialog; the caller decides).
+export interface ThumbnailGridAdd {
+  // The visible label under the "+", which is also the button's
+  // accessible name.
+  label: string;
+  onAdd: () => void;
+  disabled: boolean;
+  // `data-ready`: false until the client has hydrated (before that a tap
+  // would do nothing); the specs wait for it.
+  ready: boolean;
+}
+
 interface Props {
   // The list's accessible name.
   label: string;
@@ -29,6 +42,8 @@ interface Props {
   // "page": 3 columns on a phone, more as the width allows. "panel": 3 at
   // every width, for a narrow side column.
   columns?: "page" | "panel";
+  // An add tile, first in the grid; with no item it is the only tile.
+  add?: ThumbnailGridAdd;
 }
 
 const ASPECTS = { portrait: "aspect-[9/16]", square: "aspect-square" } as const;
@@ -39,16 +54,21 @@ const COLUMNS = {
 
 const TILE = "group flex flex-col gap-1 rounded-lg text-left focus-visible:outline-offset-4";
 
-// A grid of thumbnails, each a link or a button. Nothing reel- or
-// photo-specific: the reels list and the photo library both use it.
+const ADD =
+  "flex w-full flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-line text-muted transition-colors focus-visible:outline-offset-4 enabled:hover:border-accent enabled:hover:bg-raised enabled:hover:text-accent disabled:opacity-60";
+
+// A grid of thumbnails, each a link or a button, after an optional add tile.
+// Nothing reel- or photo-specific: the reels list and the photo library both
+// use it.
 export function ThumbnailGrid({
   label,
   items,
   empty,
   aspect = "portrait",
   columns = "page",
+  add,
 }: Props) {
-  if (items.length === 0) {
+  if (items.length === 0 && !add) {
     return (
       <section aria-label={label} className="text-muted">
         {empty}
@@ -56,8 +76,25 @@ export function ThumbnailGrid({
     );
   }
 
-  return (
+  const list = (
     <ul aria-label={label} className={`grid gap-2 ${COLUMNS[columns]}`}>
+      {add && (
+        <li className="min-w-0">
+          <button
+            type="button"
+            disabled={add.disabled}
+            data-ready={add.ready ? "true" : "false"}
+            data-testid="add-tile"
+            onClick={add.onAdd}
+            className={`${ADD} ${ASPECTS[aspect]}`}
+          >
+            <span aria-hidden="true" className="text-3xl leading-none font-light">
+              +
+            </span>
+            <span className="text-xs font-medium">{add.label}</span>
+          </button>
+        </li>
+      )}
       {items.map((item) => {
         const body = (
           <>
@@ -105,5 +142,13 @@ export function ThumbnailGrid({
         );
       })}
     </ul>
+  );
+
+  if (items.length > 0) return list;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="text-muted">{empty}</div>
+      {list}
+    </div>
   );
 }

@@ -32,9 +32,17 @@ desktop and is a fourth tab, `Library`, on a phone.
   the `describe_photo` job and records the original's `kept` row in `stored_files`. The key and
   upload id always come from the row, never from the browser.
 - `apps/studio/src/components/PhotoLibrary.tsx`, `PhotoDialog.tsx`: the library panel. It renders
-  `ThumbnailGrid` (newest first, with a round **+** that uploads a photo), follows the `photos`
-  table through Realtime and re-reads the library through `loadLibrary` on each change. A tile
-  opens `PhotoDialog`: the photo large, its description and tags, and Delete.
+  `ThumbnailGrid` (newest first, after a dashed **Upload a photo** tile, its visible
+  label also its accessible name, that opens the file picker), follows the `photos` table through Realtime and re-reads the library through `loadLibrary` on each change. A tile
+  opens `PhotoDialog`: the photo large, its description and tags, and Delete. On desktop the whole
+  Photos section (`data-testid="photo-drop"`) is a drop zone (`useFileDrop` in
+  `apps/studio/src/components/FileDrop.tsx`: a counter of entered elements keeps the highlight,
+  `data-drop="over"`, a dashed accent outline and the `Drop to upload` hint, on while the drag
+  crosses children, and a window guard stops the browser opening a file dropped elsewhere on the
+  page; `decideDrop` in `apps/studio/src/lib/file-drop.ts` decides upload, refuse or too many): one dropped photo the picker would offer (`PHOTO_ACCEPT`)
+  starts the same upload as a pick; several files upload none (`One file at a time, for now.`),
+  another file is refused by name, and while an upload runs the add tile is disabled and a drop
+  shows a busy message.
 - `apps/studio/src/components/ReelScreen.tsx`, `LiveReel.tsx`, `apps/studio/src/app/reels/[id]/page.tsx`:
   the `library` slot (third desktop column, fourth phone tab). Layout rules are in
   `app_docs/studio-reel-layout.md`.
@@ -70,7 +78,9 @@ desktop and is a fourth tab, `Library`, on a phone.
 
 1. Open a reel in the studio. On desktop the library is the third column; on a phone open the
    `Library` tab.
-2. Press the round **+** and pick a JPEG, PNG, HEIC, HEIF or WebP file of up to 25 MiB.
+2. Press the dashed **Upload a photo** tile, first in the grid, and pick a JPEG, PNG, HEIC, HEIF or WebP
+   file of up to 25 MiB. On desktop you can instead drop one such file anywhere on the Photos
+   section; drop one file at a time.
 3. The tile shows `uploading`, then `describing` once the worker has claimed the job, then `ready`
    with the description and tags (live, no reload).
 4. Open a tile to see the photo large, its description and tags. Delete removes the row and its R2
@@ -96,9 +106,15 @@ only, run by hand; CI uses the committed files).
 - DB: `apps/studio/db-tests/photos.test.ts` (RLS, insert policy, status and ready checks,
   `finish_photo_upload`, `delete_photo`, `record_photo_file`, `jobs_target_check`), plus
   `job-order.test.ts` and `stored-files.test.ts`.
-- E2E: `apps/studio/e2e/photo-library.spec.ts` uploads the JPEG fixture at 1440x900 (no page
-  scroll), checks `describing` then `ready` live after the worker's `once`, the `describe_photo`
-  step's AI columns and the three `stored_files` rows, Delete, and the Library tab at 390x844.
+- E2E: `apps/studio/e2e/photo-library.spec.ts` uploads the JPEG fixture at 1440x900 through the
+  dashed add tile (first in the grid, no round button left; no page scroll), checks `describing`
+  then `ready` live after the worker's `once`, the `describe_photo` step's AI columns and the three
+  `stored_files` rows, Delete; then drops on the Photos section (synthetic `DataTransfer`,
+  `apps/studio/e2e/drop.ts`): the highlight on dragenter, kept across a child, off on dragleave; two
+  files and a text file upload nothing with their messages; one photo uploads and goes `describing`
+  then `ready`; and at 390x844 the Library tab, whose add tile uploads a photo by tap.
+- Unit: `apps/studio/src/lib/file-drop.test.ts` (accept, refuse or too many against
+  `PHOTO_ACCEPT`).
 
 ## Rules
 
@@ -109,6 +125,8 @@ only, run by hand; CI uses the committed files).
 - Never put a storage key in what the client receives; sign on the server.
 - The size comes from storage (`head`), never from the browser.
 - Never send a photo's bytes to the studio's server; the browser PUTs them straight to storage.
+- A drop never uploads more than one photo: several dropped files upload none, and a drop while an
+  upload runs starts nothing. A dropped photo takes the same upload as a picked one.
 - Never slim a photo's file; only the owner's Delete removes a photo's objects.
 - Quote a photo's description and tags as data in any later prompt, never as instructions.
 - Bump `DESCRIBE_PROMPT_VERSION` with every change to `describe-prompt.md`.
