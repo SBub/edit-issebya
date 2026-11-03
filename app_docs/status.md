@@ -1,4 +1,4 @@
-# Progress overlay, time left, ready notification, worker heartbeat and keep-awake
+# Progress overlay, time left, worker heartbeat and keep-awake
 
 **Specifications:**
 
@@ -12,9 +12,7 @@ in plain words, step k of n with a bar, the waiting and offline lines, a `New ve
 a version is saved, and a failure with the actions that fit it. The overlay replaced the jobs list
 and step log the page used to show. A newly saved version replaces the preview by itself, at the
 same time and play state. The two long steps, `head_track` (its person mask's per-frame progress) and `render`, write their tool's progress into their own
-step row, and the studio's reel page shows the percentage with an estimate of the time left. When
-the open reel becomes ready while its tab is hidden, the tab title says so and, if the owner turned
-it on, the browser shows a notification. The long-running worker writes a heartbeat every five
+step row, and the studio's reel page shows the percentage with an estimate of the time left. The long-running worker writes a heartbeat every five
 minutes, so a queued job can say since when the worker is offline. On macOS the worker keeps the
 machine from idle-sleeping while a job runs.
 
@@ -143,21 +141,6 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
   (`data-testid="step-progress"`) and the time left (`data-testid="step-time-left"`). Both are a
   pure function of the row, so each Realtime update refreshes them; no ticking timer.
 
-### Ready notification and title
-
-- `apps/studio/src/components/NotifyToggle.tsx`: the "Notify me when ready" button in the reel
-  page's header (`data-testid="notify-toggle"`, "Notifications on" once on). Permission is asked only from its
-  click, never on load; the choice is kept in `localStorage` (`studio-notify`). Hidden where the
-  browser has no Notification API; `Notifications blocked in this browser` when permission is
-  denied.
-- `apps/studio/src/lib/ready-notice.ts`, `readyEvent`: the reel became ready when its status moved
-  into `processed` or a new export was recorded; never on the first render.
-- `apps/studio/src/components/useReadyNotice.ts`: on a ready event while the tab is hidden, the
-  title becomes `Ready: <reel>` and, if the toggle is on and permission is granted, one
-  `Notification` is shown (`Your reel is processed.` or `Your export is ready to download.`;
-  clicking it focuses the window). The saved title comes back when the tab becomes visible. With
-  the tab visible nothing happens.
-
 ### Heartbeat
 
 - `apps/worker/src/heartbeat.ts`, `startHeartbeat`: one beat at start, then one every 5 minutes
@@ -191,8 +174,6 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
 
 - On a reel's page, the overlay over the preview says what the studio is doing, step k of n. A
   running `head_track` or `render` step also shows its percentage and the time left. The first reels show `no estimate yet` until three earlier runs of that step exist.
-- Click "Notify me when ready" once and allow notifications; then switch to another tab while a
-  reel processes or exports.
 - When a job fails, the overlay offers Try again (or, for a refused change, Change the request) and
   Keep the current version.
 - `Worker offline since HH:MM` in the overlay means the worker on the owner's machine has not
@@ -220,7 +201,7 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
   heartbeat upsert's shape), `keep-awake.test.ts` (caffeinate killed on success and failure, none
   off macOS), and `apps/studio/src/lib/progress.test.ts`, `step-words.test.ts` (every step name has
   words, the fallback, `refusalReason`), `progress-overlay.test.ts` (the states' precedence, step k
-  of n, the actions per failure), `ready-notice.test.ts`,
+  of n, the actions per failure),
   `worker-offline.test.ts`, `worker-status.test.ts`.
 - DB (`yarn test:db`): `apps/studio/db-tests/steps-measurements.test.ts` (the `progress_percent`
   and `progress_updated_at` columns) and `stored-files.test.ts` (`worker_status.heartbeat_at`, and a
@@ -232,9 +213,7 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
   `disk-guard.spec.ts` read their lines inside `progress-overlay`;
   `progress.spec.ts` (a render job with `E2E_MOCK_RENDER_SECONDS` shows its
   percentage rising live with `no estimate yet`, and the step ends `done` at 100);
-  `notification.spec.ts` (with the tab hidden, a reel turning `processed` gives one notification
-  on the page's spy and the `Ready: <reel>` title, restored once visible; with the tab visible a new
-  export does neither); `worker-offline.spec.ts` (a 20-minute-old `heartbeat_at` shows
+  `worker-offline.spec.ts` (a 20-minute-old `heartbeat_at` shows
   `Worker offline since HH:MM` under a queued job live, a fresh one removes it, no reload).
 
 ## Rules
@@ -243,8 +222,6 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
 - Progress only for `head_track` and `render`.
 - Never poll the database from the studio for progress, the heartbeat or the offline line: Realtime
   and local timers only.
-- Never ask for notification permission except from a click.
-- No notification service: nothing works with the tab closed.
 - Never write a heartbeat from `once`.
 - Never let the heartbeat clear `waiting_reason`.
 - Step words live only in `step-words.ts`; an unknown step reads `Working on it`.
@@ -254,7 +231,7 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
 ## Notes
 
 - Estimates are wrong for the first reels: few rows, and warm-up runs are slower.
-- Not verified by the pipeline: real macOS notifications, real sleep and wake, the quality of the
+- Not verified by the pipeline: real sleep and wake, the quality of the
   estimates.
 - Owner steps: apply `supabase/migrations/20261102005505_progress_heartbeat.sql` to the hosted
   project after merge, and do the manual acceptance.

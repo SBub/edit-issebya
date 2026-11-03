@@ -184,6 +184,14 @@ async function expectOwnScroll(page: Page, area: Locator) {
   expect(await page.evaluate(() => document.scrollingElement!.scrollTop)).toBe(0);
 }
 
+// The reel page has no ready-notification control: no button, toggle or
+// blocked note.
+async function expectNoNotifyControl(page: Page) {
+  await expect(page.getByRole("button", { name: /notif/i })).toHaveCount(0);
+  await expect(page.getByText(/notif/i)).toHaveCount(0);
+  await expect(page.locator('[data-testid^="notify"]')).toHaveCount(0);
+}
+
 test("one screen at 1440x900: preview, timeline, change box and the side panel at once", async ({
   page,
   baseURL,
@@ -198,6 +206,7 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
   await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
   await expectInsideRoot(page, page.getByTestId("export-button"));
   await expectInsideRoot(page, page.getByTestId("tracks"));
+  await expectNoNotifyControl(page);
   await expect(page.locator("hyperframes-player")).toBeVisible();
   await expect(page.getByTestId("version-item").first()).toBeVisible();
   await expect(page.getByRole("tablist", { name: "Reel" })).toBeHidden();
@@ -228,6 +237,7 @@ test("one screen at 390x844 with tabs Edit, Versions and Library", async ({ page
   await expectNoPageScroll(page);
   await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
   await expectInsideRoot(page, page.getByTestId("export-button"));
+  await expectNoNotifyControl(page);
 
   const tabs = page.getByRole("tablist", { name: "Reel" });
   await expect(tabs).toBeVisible();
