@@ -274,6 +274,7 @@ describe("runDoctor", () => {
     expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
     expect(Object.keys(schema.properties ?? {})).toEqual([
       "tracks",
+      "change_title",
       "change_summary",
       "unexpressed",
       "free_field",

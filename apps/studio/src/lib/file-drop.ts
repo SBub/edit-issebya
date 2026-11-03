@@ -15,8 +15,8 @@ export type DropDecision<F extends DroppedFile> =
   | { kind: "refused"; name: string };
 
 // What a refused drop says.
-export const TOO_MANY_FILES = "One file at a time, for now.";
-export const UPLOAD_RUNNING = "An upload is running. Drop the next file when it finishes.";
+export const TOO_MANY_FILES = "One file at a time, for now";
+export const UPLOAD_RUNNING = "An upload is running. Drop the next file when it finishes";
 
 // True when the file picker would offer the file: an `accept` token is an
 // extension (`.mov`, against the name), a whole family (`image/*`) or an

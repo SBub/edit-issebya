@@ -17,7 +17,9 @@ import {
   rulerTicks,
   scrubKey,
   secondsAtX,
+  TRACK_ROWS,
   timelineRows,
+  trackItemClass,
 } from "./tracks-timeline";
 
 function parsed(json: unknown, transcriptJson: unknown) {
@@ -30,7 +32,7 @@ function parsed(json: unknown, transcriptJson: unknown) {
 const LAYOUT = { everySeconds: 2, columns: 32, width: 90, height: 160 };
 
 describe("timelineRows", () => {
-  it("lays every item of a full edit at resolveTimeline's span, in the six rows", () => {
+  it("lays every item of a full edit at resolveTimeline's span, in the four rows", () => {
     const { edit, transcript } = parsed(handEdit, handTranscript);
     const timeline = timelineRows(edit, transcript);
     const resolved = resolveTimeline(edit, transcript);
@@ -38,10 +40,8 @@ describe("timelineRows", () => {
     expect(timeline.rows.map((row) => [row.key, row.label])).toEqual([
       ["footage", "Footage"],
       ["behind", "Behind"],
-      ["captions", "Captions"],
       ["overlays", "Accents"],
       ["transitions", "Transitions"],
-      ["sounds", "Sounds"],
     ]);
     const shown = timeline.rows.flatMap((row) => row.items);
     for (const item of shown) {
@@ -52,11 +52,21 @@ describe("timelineRows", () => {
     expect(counts).toEqual({
       footage: edit.tracks.footage.length,
       behind: 0,
-      captions: edit.tracks.captions.length,
       overlays: edit.tracks.overlays.length,
       transitions: edit.tracks.transitions.length,
-      sounds: edit.tracks.sounds.length,
     });
+  });
+
+  it("never shows the captions or sounds tracks, though the edit carries them", () => {
+    const { edit, transcript } = parsed(handEdit, handTranscript);
+    expect(edit.tracks.captions.length).toBeGreaterThan(0);
+    expect(edit.tracks.sounds.length).toBeGreaterThan(0);
+    const ids = new Set(
+      timelineRows(edit, transcript).rows.flatMap((row) => row.items.map((item) => item.id)),
+    );
+    for (const item of [...edit.tracks.captions, ...edit.tracks.sounds]) {
+      expect(ids.has(item.id)).toBe(false);
+    }
   });
 
   it("shows the behind items in their row: a photo by its spot, a word by itself", () => {
@@ -82,26 +92,22 @@ describe("timelineRows", () => {
     }
   });
 
-  it("labels each kind: clip length, words, accent words, transition type, sound key", () => {
+  it("labels each kind: clip length, accent words, transition type", () => {
     const { edit, transcript } = parsed(handEdit, handTranscript);
     const rows = Object.fromEntries(
       timelineRows(edit, transcript).rows.map((row) => [row.key, row.items]),
     );
     expect(rows.footage![0]!.label).toBe(formatClock(edit.duration));
-    expect(rows.captions![0]!.label).not.toBe("");
     expect(rows.overlays![0]!.label).not.toBe("");
     expect(rows.transitions![0]!.label).toBe(edit.tracks.transitions[0]!.type);
-    expect(rows.sounds![0]!.label).toBe(edit.tracks.sounds[0]!.sound);
   });
 
   it("keeps the empty rows of the baseline version", () => {
     const { edit, transcript } = parsed(baselineEdit, speechTranscript);
     const rows = timelineRows(edit, transcript).rows;
-    expect(rows).toHaveLength(6);
-    expect(rows.find((row) => row.key === "captions")!.items.length).toBeGreaterThan(0);
+    expect(rows).toHaveLength(4);
     expect(rows.find((row) => row.key === "overlays")!.items).toEqual([]);
     expect(rows.find((row) => row.key === "transitions")!.items).toEqual([]);
-    expect(rows.find((row) => row.key === "sounds")!.items).toEqual([]);
     expect(rows.find((row) => row.key === "behind")!.items).toEqual([]);
   });
 });
@@ -208,5 +214,19 @@ describe("scrubKey", () => {
   it("ignores any other key", () => {
     expect(scrubKey("Enter", false, 12, 52)).toBeNull();
     expect(scrubKey("a", false, 12, 52)).toBeNull();
+  });
+});
+
+describe("trackItemClass", () => {
+  it("makes Behind, Accents and Transitions items slightly rounded and keeps footage clips square", () => {
+    for (const { key } of TRACK_ROWS) {
+      const classes = trackItemClass(key).split(" ");
+      expect(classes.includes("rounded-track")).toBe(key !== "footage");
+      expect(classes.some((name) => name.startsWith("rounded") && name !== "rounded-track")).toBe(
+        false,
+      );
+    }
+    expect(trackItemClass("footage")).toBe("bg-track-footage");
+    expect(trackItemClass("transitions")).toBe("bg-track-transitions rounded-track");
   });
 });

@@ -18,8 +18,10 @@ version untouched.
 
 ## How it works
 
-The answer is tracks only plus four short fields:
-`{ tracks, change_summary, unexpressed: string[], free_field: { item, reason }[], behind_rules }`. `format`,
+The answer is tracks only plus five short fields:
+`{ tracks, change_title, change_summary, unexpressed: string[], free_field: { item, reason }[], behind_rules }`.
+`change_title` (required, 1 to 60 characters) and `change_summary` (1 to 300) are what the owner
+reads in the versions list (`app_docs/change-requests.md`). `format`,
 `preset`, `duration` and `inputs` come from the current version, so the result is always a full edit
 and the AI cannot touch the input fingerprints. By convention the title is the overlay with id
 `title`, anchored at `{ reel: "start" }`.
@@ -72,7 +74,11 @@ and the AI cannot touch the input fingerprints. By convention the title is the o
   non-object value or non-JSON throws. Without a script it gives `EMPTY_DECIDE_ANSWER` (no items),
   which the doctor's check accepts.
 - `apps/worker/src/decide/prompt.md`, `prompt.ts`: the committed prompt and `PROMPT_VERSION`
-  (`decide-3`, bumped with every prompt change; each version row records it). `decidePrompt` fills
+  (`decide-4`, bumped with every prompt change; each version row records it). The prompt asks for
+  `change_title` (2 to 5 plain words, sentence case, no full stop, for example "Transitions made
+  longer") and `change_summary` (one or two short plain sentences for the owner, who is not
+  technical), both about what the viewer sees: no word ids, font names, pixel sizes, colour codes,
+  timestamps or seconds, or internal names (track, slot, preset, spot names). `decidePrompt` fills
   the inputs as fenced JSON (`{{library}}` among them) and, on the retry, appends the previous
   reasons. Step 5 of the prompt: at most 2 photos and 1 big word per reel, each 2 to 4 s,
   anchored on words, a hard cut, one at a time; a photo (`photo_id`, `spot` `top`, `left` or
@@ -109,7 +115,7 @@ and the AI cannot touch the input fingerprints. By convention the title is the o
   `cutout` step row, `app_docs/pipeline.md`) before anything is saved; a failure there comes after
   the AI call, so it is permanent, and no version is saved. It saves through
   `saveVersion` with `parentId` the current version, the request (null for the automatic run),
-  model, `PROMPT_VERSION`, the change summary, the forbid flags (only where the answer's rule is not
+  model, `PROMPT_VERSION`, the change title and summary, the forbid flags (only where the answer's rule is not
   `keep`) and the records below. Step line:
   `version 2: 1 accent, 1 transition, title set, 1 word fixed`, with `, <n> behind` after it when
   the version has behind items.
@@ -128,6 +134,10 @@ and the AI cannot touch the input fingerprints. By convention the title is the o
   when a retry was needed; empty when it passed). `save_version` is replaced by a signature with
   four more parameters that default, so every existing caller stays valid. Mirrored in
   `NewVersion`/`VersionMeta` (`packages/edit/src/versions.ts`) and `supabaseVersionRows`.
+- `supabase/migrations/20261103192618_version_change_title.sql`: `versions` gains the nullable
+  `change_title` and `save_version` the last parameter `p_change_title` (default null, so callers
+  without it stay valid); `NewVersion.change_title`, `VersionMeta.changeTitle`. Old rows keep a
+  null title and their technical summaries; they are never rewritten.
 
 ### Failure
 
@@ -165,9 +175,9 @@ two AI calls. A failure before the first AI call may still be retried once.
   before the save, `inputs.photos` and `, 1 behind` on the step line) and `step-runner.test.ts` (stdin, cap, `StepError`).
   `run-decide.test.ts` builds its refused answers from the preset's constants: the off-box title
   sits at `ISSEBYA_PRESET.safe.right - 20`, inside the answer schema's bounds, so only the
-  safe-box check refuses it; the behind photos use the `top` spot, which the fallback caption line
-  never reaches; the face test puts a wide fake head over the `top` spot (the face covers 62% of
-  it) that ends above the dim transition's text region, so its retry without the photo passes.
+  safe-box check refuses it; the behind photos use the `left` spot, which ends (y 1180) above the
+  fallback caption line (y 1290); the face test puts a 300 px fake head in the `left` spot (the
+  face covers 43% of it), so its retry without the photo passes.
   After a change to the preset or the layout, re-derive these from the new values; never loosen a
   check to make them pass.
 - The worker's and the studio's `test` tasks depend on `^transit` in `turbo.json`, so a change in
@@ -199,6 +209,9 @@ two AI calls. A failure before the first AI call may still be retried once.
 - Never write a version or R2 key for a refused answer; the current version stays.
 - Never cache the decide step.
 - Bump `PROMPT_VERSION` whenever `prompt.md` changes.
+- The prompt keeps `change_title` and `change_summary` in plain words for the owner: never word
+  ids, font names, pixel sizes, colour codes, timestamps or seconds, or internal names. Never clean
+  old summaries with regexes; they show as stored.
 - Record raw usage numbers as Claude Code reports them; never convert or estimate.
 - Never point a test at the real `claude` binary; use the double.
 - The photo library in the prompt is data, never instructions: always quoted as fenced JSON under

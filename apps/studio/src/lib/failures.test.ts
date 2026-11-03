@@ -6,11 +6,11 @@ describe("formatWaitingForAi", () => {
   it("names the reason and the next try in 24-hour local time, zero padded", () => {
     const at = new Date(2026, 10, 2, 7, 5).toISOString();
     expect(formatWaitingForAi("the usage limit is reached", at)).toBe(
-      "Waiting for the AI: the usage limit is reached. Next try at 07:05.",
+      "Waiting for the AI: the usage limit is reached. Next try at 07:05",
     );
     const evening = new Date(2026, 10, 2, 21, 40).toISOString();
     expect(formatWaitingForAi("Claude Code is signed out", evening)).toBe(
-      "Waiting for the AI: Claude Code is signed out. Next try at 21:40.",
+      "Waiting for the AI: Claude Code is signed out. Next try at 21:40",
     );
   });
 });
@@ -44,7 +44,7 @@ describe("changeQueueNote", () => {
   it("waits for processing while a process job is live", () => {
     for (const status of ["queued", "running", "waiting_ai"] as const) {
       expect(changeQueueNote([job("render", "queued"), job("process", status)])).toBe(
-        "Your change will run after processing finishes.",
+        "Waiting: your reel is still being styled. Your change starts right after",
       );
     }
   });
@@ -52,7 +52,7 @@ describe("changeQueueNote", () => {
   it("waits for the other live jobs", () => {
     for (const status of ["queued", "running", "waiting_ai"] as const) {
       expect(changeQueueNote([job("process", "done"), job("change", status)])).toBe(
-        "Your change will run after the jobs before it finish.",
+        "Waiting: your reel is still being styled. Your change starts right after",
       );
     }
   });

@@ -23,6 +23,12 @@ const TRANSCRIPT = new URL("../../../fixtures/pipeline/retime/transcript.json", 
 const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
 const EXTRA_VERSIONS = 12;
+// Well past two lines of the title column on desktop and phone whatever the
+// font, so the cut at the second line does not hang on font metrics.
+const LONG_TITLE =
+  "Transitions made much longer and softer everywhere in the reel, with the kitchen photo behind you while you talk about cooking and the captions a little bigger";
+const LONG_REQUEST =
+  "please make every transition slower and softer, put the kitchen photo behind me while I talk about cooking, and make the captions a little bigger";
 const EXTRA_STEPS = 40;
 const EXTRA_JOBS = 8;
 const FOCUSABLE =
@@ -84,6 +90,8 @@ test.beforeAll(async () => {
   reel = await seedProcessedReel({ admin, storage, ownerId: owner.id, prefix: CACHE_PREFIX });
 
   // 14 versions in all: long enough that the list must scroll in its area.
+  // Their texts differ in length (a long title, no title with a long request,
+  // a short title), so the rows' one fixed height (two title lines) is tested.
   const edit = await currentEdit();
   for (let n = 0; n < EXTRA_VERSIONS; n += 1) {
     const saved = await saveTestVersion({
@@ -92,6 +100,8 @@ test.beforeAll(async () => {
       prefix: CACHE_PREFIX,
       reelId: reel.reelId,
       edit,
+      request: n % 3 === 1 ? LONG_REQUEST : `layout change ${n + 3}`,
+      changeTitle: [LONG_TITLE, null, "Photo added"][n % 3]!,
       changeSummary: `layout version ${n + 3}`,
     });
     extraKeys.push(saved.key);
@@ -153,6 +163,35 @@ async function expectNoPageScroll(page: Page) {
   expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth);
 }
 
+// The control row's outer icons: the Play or Pause svg's left and the expand
+// svg's right (each viewBox ends on its glyph's visible edge) equal the given
+// edges within 1 px.
+async function expectIconsOnEdges(page: Page, edges: { left: number; right: number }) {
+  const play = (await page.getByTestId("play-toggle").locator("svg").boundingBox())!;
+  const expand = (await page.getByTestId("preview-expand").locator("svg").boundingBox())!;
+  expect(Math.abs(play.x - edges.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(expand.x + expand.width - edges.right)).toBeLessThanOrEqual(1);
+}
+
+// The tracks panel's outer box.
+async function tracksEdges(page: Page) {
+  const box = (await page.getByTestId("tracks").boundingBox())!;
+  return { left: box.x, right: box.x + box.width };
+}
+
+// The edit area's content box (inside its padding): where the tracks panel
+// stands when collapsed.
+async function editContentEdges(page: Page) {
+  return page.getByTestId("edit-area").evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return {
+      left: rect.left + el.clientLeft + parseFloat(style.paddingLeft),
+      right: rect.left + el.clientLeft + el.clientWidth - parseFloat(style.paddingRight),
+    };
+  });
+}
+
 // Inside the root box, so clipping cannot fake a pass.
 async function expectInsideRoot(page: Page, locator: Locator) {
   await expect(locator).toBeVisible();
@@ -196,6 +235,114 @@ async function expectNoNotifyControl(page: Page) {
   await expect(page.locator('[data-testid^="notify"]')).toHaveCount(0);
 }
 
+// Send sits inside the field's box, like a chat composer: a small square
+// icon button in its bottom right corner, no text, and the text never runs
+// under it (the textarea's right padding is at least the button's width).
+async function expectSendAtBottomRight(page: Page) {
+  const box = (await page.getByTestId("change-field").boundingBox())!;
+  const sendButton = page.getByRole("button", { name: "Send" });
+  await expect(sendButton).toHaveText("");
+  await expect(sendButton).toHaveAttribute("title", "Send");
+  const send = (await sendButton.boundingBox())!;
+  expect(send.x).toBeGreaterThanOrEqual(box.x);
+  expect(send.y).toBeGreaterThanOrEqual(box.y);
+  const right = box.x + box.width - (send.x + send.width);
+  const bottom = box.y + box.height - (send.y + send.height);
+  for (const gap of [right, bottom]) {
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(16);
+  }
+  expect(Math.abs(send.width - send.height)).toBeLessThanOrEqual(1);
+  expect(send.width).toBeLessThanOrEqual(48);
+  const paddingRight = await page
+    .getByLabel("Ask for a change")
+    .evaluate((element) => parseFloat(getComputedStyle(element).paddingRight));
+  expect(paddingRight).toBeGreaterThanOrEqual(send.width + right);
+}
+
+// The desktop split, measured from the root box (never the window): the edit
+// area over the full height under the header; on its right Versions and the
+// library side by side, each the top 68%; the correction field the bottom
+// 32%, across both, with a tall field and Send in its bottom right corner.
+async function expectDesktopSplit(page: Page) {
+  const column = await page.evaluate(() => {
+    const header = document.querySelector("header")!.getBoundingClientRect();
+    const root = document.documentElement.getBoundingClientRect();
+    return {
+      top: header.bottom,
+      bottom: Math.min(root.bottom, document.documentElement.clientHeight),
+    };
+  });
+  const full = column.bottom - column.top;
+  const edit = (await page.getByTestId("edit-area").boundingBox())!;
+  const versions = (await page.getByTestId("versions-area").boundingBox())!;
+  const library = (await page.getByTestId("library-area").boundingBox())!;
+  const change = (await page.getByTestId("change-area").boundingBox())!;
+
+  expect(Math.abs(edit.y - column.top)).toBeLessThanOrEqual(1);
+  expect(Math.abs(edit.height - full)).toBeLessThanOrEqual(1);
+
+  for (const box of [versions, library]) {
+    expect(Math.abs(box.y - column.top)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.height - full * 0.68)).toBeLessThanOrEqual(1);
+  }
+  expect(versions.x).toBeGreaterThanOrEqual(edit.x + edit.width - 0.5);
+  expect(Math.abs(library.x - (versions.x + versions.width))).toBeLessThanOrEqual(1);
+
+  expect(Math.abs(change.y - (versions.y + versions.height))).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.y + change.height - column.bottom)).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.x - versions.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.width - (versions.width + library.width))).toBeLessThanOrEqual(1);
+
+  // The field grows into the space; its box holds Send at the bottom right.
+  const field = (await page.getByLabel("Ask for a change").boundingBox())!;
+  expect(field.height).toBeGreaterThanOrEqual(change.height / 2);
+  const box = (await page.getByTestId("change-field").boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(change.x - 0.5);
+  expect(box.y + box.height).toBeLessThanOrEqual(change.y + change.height + 0.5);
+  await expectSendAtBottomRight(page);
+
+  // The DOM (and so the tab order) follows the reading order: edit,
+  // Versions, library, then the correction field.
+  const order = await page.evaluate(() =>
+    ["edit-area", "versions-area", "library-area", "change-area"].map((id) =>
+      Array.from(document.querySelectorAll("[data-testid]")).indexOf(
+        document.querySelector(`[data-testid="${id}"]`)!,
+      ),
+    ),
+  );
+  expect([...order].sort((a, b) => a - b)).toEqual(order);
+}
+
+// The correction box is inset evenly: with no reason or status text showing,
+// the space between the change area's inner edges (inside its borders) and
+// the box is one value on all four sides, within 1 px.
+async function expectChangeBoxEvenlyInset(page: Page) {
+  await expect(page.getByTestId("change-blocked-reason")).toHaveText("");
+  await expect(page.locator("#change-status")).toHaveText("");
+  const gaps = await page.evaluate(() => {
+    const area = document.querySelector<HTMLElement>('[data-testid="change-area"]')!;
+    const outer = area.getBoundingClientRect();
+    const inner = {
+      top: outer.top + area.clientTop,
+      left: outer.left + area.clientLeft,
+      right: outer.left + area.clientLeft + area.clientWidth,
+      bottom: outer.top + area.clientTop + area.clientHeight,
+    };
+    const box = document.querySelector('[data-testid="change-field"]')!.getBoundingClientRect();
+    return [
+      box.top - inner.top,
+      inner.right - box.right,
+      inner.bottom - box.bottom,
+      box.left - inner.left,
+    ];
+  });
+  for (const gap of gaps) {
+    expect(gap).toBeGreaterThan(0);
+    expect(Math.abs(gap - gaps[0]!)).toBeLessThanOrEqual(1);
+  }
+}
+
 test("one screen at 1440x900: preview, timeline, change box and the side panel at once", async ({
   page,
   baseURL,
@@ -218,23 +365,228 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
   await expect(page.getByTestId("library-area")).toBeVisible();
   await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
 
-  // Versions takes the whole side column: from the header's bottom to the
-  // root box's bottom, measured from the root box (never the window).
-  const column = await page.evaluate(() => {
-    const header = document.querySelector("header")!.getBoundingClientRect();
-    const root = document.documentElement.getBoundingClientRect();
-    return {
-      top: header.bottom,
-      bottom: Math.min(root.bottom, document.documentElement.clientHeight),
-    };
-  });
-  const versionsBox = (await page.getByTestId("versions-area").boundingBox())!;
-  expect(Math.abs(versionsBox.y - column.top)).toBeLessThanOrEqual(1);
-  expect(Math.abs(versionsBox.height - (column.bottom - column.top))).toBeLessThanOrEqual(1);
-
+  await expectDesktopSplit(page);
+  await expectChangeBoxEvenlyInset(page);
   await expectOwnScroll(page, page.getByTestId("versions-area"));
   await expectNoPageScroll(page);
+
+  // Pitch black theme: the page and the edit area are black; only the
+  // navigation, the tracks timeline and the change field are lifted.
+  const background = (locator: Locator) =>
+    locator.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(await background(page.locator("body"))).toBe("rgb(0, 0, 0)");
+  expect(await background(page.getByTestId("edit-area"))).toBe("rgb(0, 0, 0)");
+  for (const lifted of [
+    page.locator("header"),
+    page.getByTestId("tracks"),
+    page.getByTestId("change-field"),
+  ]) {
+    const colour = await background(lifted);
+    expect(colour).not.toBe("rgb(0, 0, 0)");
+    expect(colour).not.toBe("rgba(0, 0, 0, 0)");
+  }
+  // Filled primary buttons are white (--color-primary) with black content.
+  for (const primary of [
+    page.getByRole("button", { name: "Send" }),
+    page.getByTestId("export-button"),
+  ]) {
+    expect(await background(primary)).toBe("rgb(255, 255, 255)");
+    expect(await primary.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(0, 0, 0)");
+  }
 });
+
+// One corner radius (--radius-reel) in the studio, on five elements only;
+// the one exception is the track items, which are slightly rounded (4px).
+test("one corner radius: the preview, the change box, Send, Export and the reel cards; track items are slightly rounded; nothing else", async ({
+  page,
+  baseURL,
+}) => {
+  await openReel(page, baseURL!, DESKTOP);
+  await expect(page.getByTestId("version-item")).toHaveCount(2 + EXTRA_VERSIONS);
+  const radius = (locator: Locator) =>
+    locator.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return [
+        style.borderTopLeftRadius,
+        style.borderTopRightRadius,
+        style.borderBottomRightRadius,
+        style.borderBottomLeftRadius,
+      ].join(" ");
+    });
+  const rounded = [
+    page.getByTestId("preview-frame"),
+    page.getByTestId("change-field"),
+    page.getByRole("button", { name: "Send" }),
+    page.getByTestId("export-button"),
+  ];
+  const reel = await radius(rounded[0]!);
+  expect(reel).not.toBe("0px 0px 0px 0px");
+  expect(new Set(reel.split(" ")).size).toBe(1);
+  for (const locator of rounded) expect(await radius(locator)).toBe(reel);
+  for (const square of [
+    page.locator("header"),
+    page.getByTestId("version-item").first(),
+    page.getByRole("button", { name: "Zones" }),
+    page.getByTestId("play-toggle"),
+    page.getByRole("button", { name: "Upload a photo" }),
+    page.getByTestId("tracks"),
+  ]) {
+    expect(await radius(square)).toBe("0px 0px 0px 0px");
+  }
+
+  // Track items are slightly rounded: a non-footage item (Behind, Accents or
+  // Transitions) has a 4px radius (rounded-track) on every corner. The seeded
+  // reel shows version 1 unchanged (baselineEdit: footage and captions only),
+  // so it has no such item and this check runs only when one exists; the unit
+  // test of trackItemClass (tracks-timeline.test.ts) covers the classes for
+  // every row. A Footage clip (a strip of frames) and its lane stay square,
+  // always checked.
+  const tracks = page.getByTestId("tracks");
+  const trackItems = tracks
+    .locator('[data-track]:not([data-track="footage"])')
+    .getByTestId("track-item");
+  if (await trackItems.count()) {
+    expect(await radius(trackItems.first())).toBe("4px 4px 4px 4px");
+  }
+  for (const square of [
+    tracks.locator('[data-track="footage"]').getByTestId("track-item").first(),
+    tracks.locator('[data-track="footage"]').getByTestId("track-lane"),
+  ]) {
+    expect(await radius(square)).toBe("0px 0px 0px 0px");
+  }
+
+  // The reels list: a reel card's thumbnail (the image clipped to it) has the
+  // preview's radius, and so does its link (the focus ring follows it).
+  await page.goto("/studio");
+  const card = page.getByRole("list", { name: "Reels" }).getByRole("listitem").first();
+  const thumbnail = card.getByTestId("tile-thumbnail");
+  await expect(thumbnail).toBeVisible();
+  expect(await radius(thumbnail)).toBe(reel);
+  expect(await thumbnail.evaluate((el) => getComputedStyle(el).overflow)).toBe("hidden");
+  expect(await radius(card.getByRole("link"))).toBe(reel);
+  // The card's bin: a plain ink icon, square, with no background.
+  const bin = card.getByTestId("delete-reel");
+  expect(await radius(bin)).toBe("0px 0px 0px 0px");
+  expect(await bin.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+});
+
+// Every version is one line at one height whatever its text; the arrow opens
+// its details in place.
+for (const [size, viewport] of [
+  ["1440x900", DESKTOP],
+  ["390x844", PHONE],
+] as const) {
+  test(`the versions list: one line per version, details behind the arrow at ${size}`, async ({
+    page,
+    baseURL,
+  }) => {
+    await openReel(page, baseURL!, viewport);
+    if (viewport === PHONE) {
+      await page
+        .getByRole("tablist", { name: "Reel" })
+        .getByRole("tab", { name: "Versions" })
+        .click();
+    }
+    const items = page.getByTestId("version-item");
+    await expect(items).toHaveCount(2 + EXTRA_VERSIONS);
+    const heights = async () =>
+      items.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().height));
+    const collapsed = await heights();
+    for (const height of collapsed) expect(Math.abs(height - collapsed[0]!)).toBeLessThanOrEqual(1);
+
+    const item = (number: number) =>
+      page.locator(`[data-testid="version-item"][data-version-number="${number}"]`);
+    // v3 has the long title, v4 the long request and no title, v5 a short title.
+    await expect(item(3).getByTestId("version-title")).toHaveText(LONG_TITLE);
+    await expect(item(4).getByTestId("version-title")).toHaveText(LONG_REQUEST);
+    await expect(item(5).getByTestId("version-title")).toHaveText("Photo added");
+    await expect(item(1).getByTestId("version-title")).toHaveText("First version");
+    // Rows run edge to edge of the Versions area, no box around the list.
+    const area = (await page.getByTestId("versions-area").boundingBox())!;
+    const areaInner = await page
+      .getByTestId("versions-area")
+      .evaluate((node) => ({ width: node.clientWidth, left: node.clientLeft }));
+    for (const box of await items.evaluateAll((nodes) =>
+      nodes.map((node) => node.getBoundingClientRect().toJSON() as { x: number; width: number }),
+    )) {
+      expect(Math.abs(box.width - areaInner.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(box.x - (area.x + areaInner.left))).toBeLessThanOrEqual(1);
+    }
+    const list = await page.getByTestId("version-list").evaluate((node) => ({
+      radius: getComputedStyle(node).borderTopLeftRadius,
+      left: getComputedStyle(node).borderLeftWidth,
+    }));
+    expect(list).toEqual({ radius: "0px", left: "0px" });
+    // No time or date on a row: what changed matters, not when.
+    await expect(items.locator("time")).toHaveCount(0);
+    // A title takes up to two lines: a short one shows in full, a long one
+    // (or a long request standing in for it) is cut at the second line.
+    const fit = (number: number) =>
+      item(number)
+        .getByTestId("version-title")
+        .evaluate((node) => ({
+          clamp: getComputedStyle(node).webkitLineClamp,
+          cut: node.scrollHeight > node.clientHeight + 1,
+        }));
+    expect(await fit(5)).toEqual({ clamp: "2", cut: false });
+    expect(await fit(3)).toEqual({ clamp: "2", cut: true });
+    expect(await fit(4)).toEqual({ clamp: "2", cut: true });
+    // Collapsed: no request, no summary, no Go back.
+    await expect(item(4).getByTestId("version-summary")).toBeHidden();
+    await expect(item(4).getByTestId("version-origin")).toBeHidden();
+    await expect(item(4).getByRole("button", { name: "Go back to this" })).toBeHidden();
+
+    // The arrow is a button: Enter opens, Space closes, with a focus ring.
+    const toggle = item(4).getByTestId("version-toggle");
+    await expect(toggle).toHaveAccessibleName("Show details of v4");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const details = item(4).getByTestId("version-details");
+    await expect(toggle).toHaveAttribute("aria-controls", (await details.getAttribute("id"))!);
+    await toggle.focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(toggle).toBeFocused();
+    expect(await toggle.evaluate((node) => getComputedStyle(node).outlineStyle)).not.toBe("none");
+    await page.keyboard.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(details.getByText("What you asked")).toBeVisible();
+    await expect(details.getByTestId("version-origin")).toHaveText(LONG_REQUEST);
+    await expect(details.getByText("What changed")).toBeVisible();
+    await expect(details.getByTestId("version-summary")).toHaveText("layout version 4");
+    await expect(details.getByRole("button", { name: "Go back to this" })).toBeVisible();
+
+    // Several rows may be open; the others keep their height.
+    await item(5).getByTestId("version-toggle").click();
+    await expect(item(5).getByTestId("version-toggle")).toHaveAttribute("aria-expanded", "true");
+    await expect(item(4).getByTestId("version-toggle")).toHaveAttribute("aria-expanded", "true");
+    const closed = (await item(3).boundingBox())!.height;
+    expect(Math.abs(closed - collapsed[0]!)).toBeLessThanOrEqual(1);
+
+    await toggle.focus();
+    await page.keyboard.press("Space");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(details).toBeHidden();
+    await expectNoPageScroll(page);
+    await expectOwnScroll(page, page.getByTestId("versions-area"));
+  });
+}
+
+// Other desktop sizes, down to the `lg` breakpoint: the same split, Send in
+// the root box, no page scroll.
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 1024, height: 768 },
+]) {
+  test(`the desktop split at ${viewport.width}x${viewport.height}`, async ({ page, baseURL }) => {
+    await openReel(page, baseURL!, viewport);
+    await expectNoPageScroll(page);
+    await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
+    await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
+    await expectDesktopSplit(page);
+    await expectOwnScroll(page, page.getByTestId("versions-area"));
+    await expectNoPageScroll(page);
+  });
+}
 
 test("one screen at 390x844 with tabs Edit, Versions and Library", async ({ page, baseURL }) => {
   await openReel(page, baseURL!, PHONE);
@@ -256,6 +608,26 @@ test("one screen at 390x844 with tabs Edit, Versions and Library", async ({ page
   await expect(page.getByTestId("tracks")).toBeVisible();
   await expect(page.getByTestId("version-item").first()).toBeHidden();
   await expect(field).toBeVisible();
+  // No visible label: the field is named by aria-label, and its placeholder
+  // says what to ask for.
+  await expect(page.getByText("Ask for a change", { exact: true })).toHaveCount(0);
+  await expect(field).toHaveAttribute("placeholder", /^What should change\? For example:/);
+  // Unchanged on a phone: the correction field pinned at the bottom of the
+  // root box, the full width, under the Edit panel.
+  const root = await page.evaluate(() => ({
+    width: document.documentElement.clientWidth,
+    bottom: Math.min(
+      document.documentElement.getBoundingClientRect().bottom,
+      document.documentElement.clientHeight,
+    ),
+  }));
+  const change = (await page.getByTestId("change-area").boundingBox())!;
+  const editBox = (await page.getByTestId("edit-area").boundingBox())!;
+  expect(Math.abs(change.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.width - root.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.y + change.height - root.bottom)).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.y - (editBox.y + editBox.height))).toBeLessThanOrEqual(1);
+  await expectSendAtBottomRight(page);
 
   await tab("Versions").click();
   await expect(tab("Versions")).toHaveAttribute("aria-selected", "true");
@@ -298,14 +670,18 @@ test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable
   expect(await rows.evaluateAll((els) => els.map((el) => el.getAttribute("data-track")))).toEqual([
     "footage",
     "behind",
-    "captions",
     "overlays",
     "transitions",
-    "sounds",
   ]);
-  for (const label of ["Footage", "Behind", "Captions", "Accents", "Transitions", "Sounds"]) {
+  for (const label of ["Footage", "Behind", "Accents", "Transitions"]) {
     await expect(tracks.getByText(label, { exact: true })).toBeVisible();
   }
+  // The captions and sounds tracks are never shown, though the edit has captions.
+  expect(edit.tracks.captions.length).toBeGreaterThan(0);
+  for (const label of ["Captions", "Sounds"]) {
+    await expect(tracks.getByText(label, { exact: true })).toHaveCount(0);
+  }
+  await expect(tracks.locator('[data-track="captions"], [data-track="sounds"]')).toHaveCount(0);
 
   const items = await tracks.getByTestId("track-item").evaluateAll((els) =>
     els.map((el) => ({
@@ -316,7 +692,7 @@ test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable
     })),
   );
   const trackOf = (id: string) =>
-    (["footage", "captions", "overlays", "transitions", "sounds"] as const).find((key) =>
+    (["footage", "overlays", "transitions"] as const).find((key) =>
       edit.tracks[key].some((item) => item.id === id),
     );
   const expected = [...resolved.entries()]
@@ -327,19 +703,25 @@ test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable
       start: span.start.toFixed(3),
       end: span.end.toFixed(3),
     }));
-  expect(items.length).toBeGreaterThan(1);
+  expect(items.length).toBeGreaterThan(0);
   expect([...items].sort((a, b) => a.id.localeCompare(b.id))).toEqual(
     [...expected].sort((a, b) => a.id.localeCompare(b.id)),
   );
 
-  // The first caption's left edge sits at start / duration of its lane.
-  const first = edit.tracks.captions[0]!;
+  // The last footage clip's edges sit at start / duration and end / duration
+  // of its lane.
+  const last = edit.tracks.footage.at(-1)!;
   const lane = (await tracks
-    .locator('[data-track="captions"] [data-testid="track-lane"]')
+    .locator('[data-track="footage"] [data-testid="track-lane"]')
     .boundingBox())!;
-  const caption = (await tracks.locator(`[data-item-id="${first.id}"]`).boundingBox())!;
-  const at = resolved.get(first.id)!.start / edit.duration;
-  expect(Math.abs(caption.x - (lane.x + at * lane.width))).toBeLessThanOrEqual(2);
+  const clip = (await tracks.locator(`[data-item-id="${last.id}"]`).boundingBox())!;
+  const span = resolved.get(last.id)!;
+  expect(
+    Math.abs(clip.x - (lane.x + (span.start / edit.duration) * lane.width)),
+  ).toBeLessThanOrEqual(2);
+  expect(
+    Math.abs(clip.x + clip.width - (lane.x + (span.end / edit.duration) * lane.width)),
+  ).toBeLessThanOrEqual(2);
 
   // The footage strip's frames come from the preview copy's sprite.
   const frame = tracks.locator('[data-track="footage"] [data-frame-index]').first();
@@ -405,6 +787,29 @@ async function settledTime(page: Page, seconds: number, held = false): Promise<n
   return reads.at(-1)!;
 }
 
+// Waits until a pause has landed and returns the player's time. The pause
+// reaches the player's frame by message, so the clock can still tick a few
+// frames after the Play button shows (more on a slow machine): the time read
+// at the click is not yet the paused time. Landed: the same over three reads
+// 100 ms apart (never true while playing), and the playhead on it.
+async function pausedTime(page: Page): Promise<number> {
+  const reads: number[] = [];
+  await expect
+    .poll(
+      async () => {
+        const t = await playerTime(page);
+        reads.push(t);
+        const last = reads.slice(-3);
+        if (last.length < 3 || !last.every((read) => read === t)) return false;
+        const shown = Number(await page.getByTestId("playhead").getAttribute("data-seconds"));
+        return Math.abs(shown - t) <= 0.0005;
+      },
+      { intervals: [100], timeout: 10_000 },
+    )
+    .toBe(true);
+  return reads.at(-1)!;
+}
+
 for (const [size, viewport] of [
   ["1440x900", DESKTOP],
   ["390x844", PHONE],
@@ -440,7 +845,7 @@ for (const [size, viewport] of [
     // edge and width, measured from boxes.
     const rulerBox = (await slider.boundingBox())!;
     const lanes = tracks.getByTestId("track-lane");
-    await expect(lanes).toHaveCount(6);
+    await expect(lanes).toHaveCount(4);
     for (const lane of await lanes.all()) {
       const box = (await lane.boundingBox())!;
       expect(Math.abs(box.x - rulerBox.x)).toBeLessThanOrEqual(1);
@@ -461,7 +866,7 @@ for (const [size, viewport] of [
     // the time stays put (within a frame), far from the 5 px the row click
     // would mean on the shared axis.
     const before = await near(0.75 * duration);
-    const lane = tracks.locator('[data-track="captions"] [data-testid="track-lane"]');
+    const lane = tracks.locator('[data-track="transitions"] [data-testid="track-lane"]');
     const laneBox = (await lane.boundingBox())!;
     await lane.click({ position: { x: 5, y: 5 } });
     await page.waitForTimeout(500);
@@ -526,6 +931,180 @@ for (const [size, viewport] of [
 
     await expectNoPageScroll(page);
   });
+
+  test(`Play and Pause are one icon button and the clock is centred at ${size}`, async ({
+    page,
+    baseURL,
+  }) => {
+    await openReel(page, baseURL!, viewport);
+    const toggle = page.getByTestId("play-toggle");
+    await expect(toggle).toBeEnabled();
+    // An icon and no visible text: the name comes from aria-label.
+    await expect(toggle).toHaveText("");
+    await expect(toggle.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+    await expect(toggle).toHaveAccessibleName("Play");
+    await expect(toggle).toHaveAttribute("title", "Play");
+    // A tap target of at least 40x40, at the left of the control row.
+    const box = (await toggle.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(40);
+    expect(box.height).toBeGreaterThanOrEqual(40);
+    const clock = (await page.getByTestId("preview-clock").boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(clock.x);
+    // No shape behind the icon on hover: the background stays transparent.
+    await toggle.hover();
+    expect(await toggle.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
+      "rgba(0, 0, 0, 0)",
+    );
+
+    // The clock sits on the control row's centre (within 2 px), whatever
+    // stands left and right of it: two lines, the current time above the
+    // total, with the times in the existing format.
+    const row = (await toggle.locator("..").boundingBox())!;
+    expect(Math.abs(clock.x + clock.width / 2 - (row.x + row.width / 2))).toBeLessThanOrEqual(2);
+    const current = page.getByTestId("preview-clock-position");
+    const total = page.getByTestId("preview-clock-duration");
+    await expect(current).toHaveText("00:00");
+    await expect(total).toHaveText(/^\d{2}:\d{2}$/);
+    const currentBox = (await current.boundingBox())!;
+    const totalBox = (await total.boundingBox())!;
+    expect(currentBox.y + currentBox.height).toBeLessThanOrEqual(totalBox.y + 0.5);
+    // The row is no taller than the 40 px button.
+    expect(row.height).toBeLessThanOrEqual(box.height + 0.5);
+    // The play glyph starts on the tracks panel's left edge and the expand
+    // glyph ends on its right edge, paused and playing.
+    await expectIconsOnEdges(page, await tracksEdges(page));
+
+    await toggle.click();
+    await expect(toggle).toHaveAccessibleName("Pause");
+    await expect(toggle).toHaveAttribute("title", "Pause");
+    await expect(toggle).toHaveText("");
+    await expect(page.locator('[data-intent="playing"]')).toBeVisible();
+    await expectIconsOnEdges(page, await tracksEdges(page));
+    await toggle.click();
+    await expect(toggle).toHaveAccessibleName("Play");
+    await expect(page.locator('[data-intent="paused"]')).toBeVisible();
+    await expectNoPageScroll(page);
+  });
+
+  test(`Expand and Collapse the preview at ${size}`, async ({ page, baseURL }) => {
+    await openReel(page, baseURL!, viewport);
+    const expand = page.getByTestId("preview-expand");
+    const toggle = page.getByTestId("play-toggle");
+    const clock = page.getByTestId("preview-clock");
+    const zones = page.getByRole("button", { name: "Zones" });
+    const frame = page.locator("hyperframes-player").locator("..");
+    const row = toggle.locator("..");
+    // The player element itself, tagged to tell a remount from a toggle.
+    await page
+      .locator("hyperframes-player")
+      .evaluate((el) => el.setAttribute("data-e2e-mount", "first"));
+
+    // Collapsed on open: an icon button with no text at the right end of the
+    // control row, after Zones.
+    await expect(expand).toHaveAccessibleName("Expand preview");
+    await expect(expand).toHaveAttribute("title", "Expand preview");
+    await expect(expand).toHaveAttribute("aria-pressed", "false");
+    await expect(expand).toHaveText("");
+    await expect(expand.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+    const box = (await expand.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(40);
+    expect(box.height).toBeGreaterThanOrEqual(40);
+    const rowBox = (await row.boundingBox())!;
+    expect(Math.abs(box.x + box.width - (rowBox.x + rowBox.width))).toBeLessThanOrEqual(1);
+    const zonesBox = (await zones.boundingBox())!;
+    expect(zonesBox.x + zonesBox.width).toBeLessThanOrEqual(box.x + 0.5);
+    await expect(page.getByTestId("tracks")).toBeVisible();
+    await expect(page.getByTestId("ruler")).toBeVisible();
+    const collapsedFrame = (await frame.boundingBox())!;
+    // The tracks panel spans the edit area's content box, the edges the row
+    // keeps when expanded.
+    const panel = await tracksEdges(page);
+    const content = await editContentEdges(page);
+    expect(Math.abs(panel.left - content.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(panel.right - content.right)).toBeLessThanOrEqual(1);
+
+    // Playing, then expanded with the keyboard: playback goes on.
+    await toggle.click();
+    await expect(page.locator('[data-intent="playing"]')).toBeVisible();
+    await expect(page.locator('[data-preview="ready"]')).toBeVisible({ timeout: 10_000 });
+    await expand.focus();
+    await page.keyboard.press("Enter");
+    await expect(expand).toHaveAccessibleName("Collapse preview");
+    await expect(expand).toHaveAttribute("title", "Collapse preview");
+    await expect(expand).toHaveAttribute("aria-pressed", "true");
+    await expect(expand).toBeFocused();
+
+    // Expanded: no tracks, no ruler, no Zones; Play or Pause,
+    // the clock (still centred) and the button stay, the preview is taller
+    // and still 9:16, and the page does not scroll.
+    await expect(page.getByTestId("tracks")).toHaveCount(0);
+    await expect(page.getByTestId("ruler")).toHaveCount(0);
+    await expect(zones).toHaveCount(0);
+    await expect(toggle).toBeVisible();
+    await expect(clock).toBeVisible();
+    await expect(toggle).toHaveAccessibleName("Pause");
+    await expect(page.locator('[data-intent="playing"]')).toBeVisible();
+    const expandedRow = (await row.boundingBox())!;
+    const clockBox = (await clock.boundingBox())!;
+    expect(
+      Math.abs(clockBox.x + clockBox.width / 2 - (expandedRow.x + expandedRow.width / 2)),
+    ).toBeLessThanOrEqual(2);
+    const expandedBox = (await expand.boundingBox())!;
+    expect(
+      Math.abs(expandedBox.x + expandedBox.width - (expandedRow.x + expandedRow.width)),
+    ).toBeLessThanOrEqual(1);
+    // No tracks panel: the icons keep its edges, the edit area's content box.
+    await expectIconsOnEdges(page, await editContentEdges(page));
+    const expandedFrame = (await frame.boundingBox())!;
+    expect(expandedFrame.height).toBeGreaterThan(collapsedFrame.height + 20);
+    expect(Math.abs(expandedFrame.width / expandedFrame.height - 9 / 16)).toBeLessThan(0.01);
+    const area = (await page.getByTestId("edit-area").boundingBox())!;
+    expect(
+      Math.abs(expandedFrame.x + expandedFrame.width / 2 - (area.x + area.width / 2)),
+    ).toBeLessThanOrEqual(2);
+    await expectNoPageScroll(page);
+    // The clock keeps running: the same player, never paused or rebuilt.
+    const t1 = await playerTime(page);
+    await expect.poll(() => playerTime(page), { timeout: 10_000 }).toBeGreaterThan(t1);
+    await expect(page.locator('hyperframes-player[data-e2e-mount="first"]')).toHaveCount(1);
+
+    // Collapsed with Space: everything is back, still playing in the same player.
+    await page.keyboard.press("Space");
+    await expect(expand).toHaveAccessibleName("Expand preview");
+    await expect(expand).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByTestId("tracks")).toBeVisible();
+    await expect(page.getByTestId("ruler")).toBeVisible();
+    await expect(zones).toBeVisible();
+    expect(Math.abs((await frame.boundingBox())!.height - collapsedFrame.height)).toBeLessThan(1);
+    await expect(page.locator('[data-intent="playing"]')).toBeVisible();
+    const t2 = await playerTime(page);
+    await expect.poll(() => playerTime(page), { timeout: 10_000 }).toBeGreaterThan(t2);
+    await expect(page.locator('hyperframes-player[data-e2e-mount="first"]')).toHaveCount(1);
+    await expectNoPageScroll(page);
+
+    // Paused stays paused through a toggle, at the same time.
+    await toggle.click();
+    await expect(page.locator('[data-intent="paused"]')).toBeVisible();
+    const paused = await pausedTime(page);
+    await expand.click();
+    await expect(page.locator('[data-intent="paused"]')).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(await playerTime(page)).toBe(paused);
+    await expand.click();
+    await expect(page.getByTestId("tracks")).toBeVisible();
+
+    // Expanding switches Zones off; collapsing leaves it off.
+    await zones.click();
+    await expect(zones).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("platform-zones")).toHaveCount(1);
+    await expand.click();
+    await expect(expand).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("platform-zones")).toHaveCount(0);
+    await expand.click();
+    await expect(expand).toHaveAttribute("aria-pressed", "false");
+    await expect(zones).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByTestId("platform-zones")).toHaveCount(0);
+  });
 }
 
 test("the playhead follows the player's clock", async ({ page, baseURL }) => {
@@ -557,6 +1136,8 @@ test("the playhead follows the player's clock", async ({ page, baseURL }) => {
     .toBe(true);
   await page.waitForTimeout(500);
   expect(await playhead.getAttribute("data-seconds")).toBe(paused);
+  // And it rests on the player's own paused time, every last frame told.
+  expect(Math.abs(Number(paused) - (await playerTime(page)))).toBeLessThanOrEqual(0.0005);
 });
 
 test("no Undo or Redo: the preview shows the current version at both sizes", async ({

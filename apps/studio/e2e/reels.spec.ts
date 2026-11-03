@@ -10,6 +10,7 @@ import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { reelStatus } from "../test-support/rows.ts";
 import { claimableJobIds } from "../test-support/worker.ts";
+import { dropFiles, fileTransfer } from "./drop.ts";
 
 // This run's own cache folder: the worker reads it through R2_KEY_PREFIX.
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
@@ -151,21 +152,81 @@ test("on a phone the grid has three columns, and + opens and closes the upload",
   expect(boxes[3]!.y).toBeGreaterThan(boxes[0]!.y + boxes[0]!.height - 1);
   expect(Math.abs(boxes[3]!.x - boxes[0]!.x)).toBeLessThanOrEqual(1);
 
-  await expect(page.getByLabel("Clip")).toBeHidden();
+  await expect(page.getByTestId("upload-drop")).toBeHidden();
   await expect(page.getByRole("button", { name: "Upload a reel" })).toBeEnabled();
+  // The + button is white with the studio's one corner radius (8px).
+  expect(
+    await page
+      .getByRole("button", { name: "Upload a reel" })
+      .evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).borderRadius]),
+  ).toEqual(["rgb(255, 255, 255)", "8px"]);
   await expect(page.getByRole("button", { name: "Upload a reel" })).toHaveAttribute(
     "data-ready",
     "true",
   );
   await page.getByRole("button", { name: "Upload a reel" }).click();
-  await expect(page.getByRole("dialog", { name: "Upload a reel" })).toBeVisible();
-  await expect(page.getByLabel("Clip")).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
-  await expect(page.getByLabel("Clip")).toBeHidden();
+  const dialog = page.getByRole("dialog", { name: "Upload a reel" });
+  await expect(dialog).toBeVisible();
+
+  // The clip is chosen in a square, dashed drop zone on black; the native
+  // input stays inside it, visually hidden, labelled Clip.
+  const zone = dialog.getByTestId("upload-drop");
+  await expect(zone).toBeVisible();
+  await expect(zone).toHaveAttribute("data-drop", "idle");
+  // Both wordings are in the DOM; the pointer picks the one shown (a mouse
+  // here), so the check reads the rendered text, not textContent.
+  await expect(dialog.getByTestId("upload-prompt")).toHaveText(
+    "Drop a video here or click to choose",
+    { useInnerText: true },
+  );
+  await expect(zone).toContainText("MP4, MOV, M4V or WebM, up to 5 GB");
+  expect(
+    await zone.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return [style.borderTopStyle, style.backgroundColor, style.borderRadius];
+    }),
+  ).toEqual(["dashed", "rgb(0, 0, 0)", "0px"]);
+  await expect(dialog.getByLabel("Clip")).toHaveAttribute("type", "file");
+
+  // A drag of a file over it shows the over state; a drop of a non-video
+  // chooses nothing and says why, and so does a drop of two clips.
+  const notes = await fileTransfer(page, [{ name: "notes.txt", type: "text/plain", text: "hi" }]);
+  await zone.dispatchEvent("dragenter", { dataTransfer: notes });
+  await expect(zone).toHaveAttribute("data-drop", "over");
+  await zone.dispatchEvent("dragleave", { dataTransfer: notes });
+  await expect(zone).toHaveAttribute("data-drop", "idle");
+  await dropFiles(zone, notes);
+  await expect(dialog.locator("#upload-status")).toHaveText(
+    "Pick an MP4, MOV, M4V or WebM clip up to 5 GB",
+  );
+  await expect(dialog.getByTestId("upload-chosen")).toHaveCount(0);
+  const two = await fileTransfer(page, [
+    { name: "a.mp4", type: "video/mp4", text: "a" },
+    { name: "b.mp4", type: "video/mp4", text: "b" },
+  ]);
+  await dropFiles(zone, two);
+  await expect(dialog.locator("#upload-status")).toHaveText("One file at a time, for now");
+
+  // One clip dropped is chosen: the zone shows its name and size, and the
+  // refusal goes.
+  const one = await fileTransfer(page, [{ name: "beach.mp4", type: "video/mp4", text: "clip" }]);
+  await dropFiles(zone, one);
+  await expect(dialog.getByTestId("upload-chosen")).toHaveText("beach.mp4");
+  await expect(zone).toContainText("4 B");
+  await expect(zone).toContainText("Choose another");
+  await expect(dialog.locator("#upload-status")).toHaveText("");
+
+  // Close is a plain cross: an icon with no text, named and titled Close.
+  const close = dialog.getByRole("button", { name: "Close", exact: true });
+  await expect(close).toHaveAttribute("title", "Close");
+  await expect(close).toHaveText("");
+  await expect(close.locator("svg")).toHaveAttribute("aria-hidden", "true");
+  await close.click();
+  await expect(zone).toBeHidden();
   await page.getByRole("button", { name: "Upload a reel" }).click();
-  await expect(page.getByLabel("Clip")).toBeVisible();
+  await expect(zone).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByLabel("Clip")).toBeHidden();
+  await expect(zone).toBeHidden();
 });
 
 test("a signed-out visit to a reel page goes back to the login form", async ({ page }) => {

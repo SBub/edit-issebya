@@ -14,9 +14,12 @@ interface Props {
 }
 
 const BUTTON =
-  "pointer-events-auto rounded-full border border-line bg-raised px-3 py-1 text-xs font-medium text-ink hover:bg-line disabled:opacity-60";
+  "pointer-events-auto border border-line bg-raised px-3 py-1 text-xs font-medium text-ink hover:bg-line disabled:opacity-60";
 
-// The small card over the top of the preview (app_docs/status.md): what the
+// The small card at the top right of the preview, like a notification: its top
+// edge on the preview frame's top edge and its right edge on the edit area's
+// right content edge, in the free space right of the reel where it fits and
+// over the reel's top-right corner where it does not (app_docs/status.md): what the
 // studio is doing in plain words, how far along, the waiting lines, the new
 // version notice, or a failure with the actions that fit. It never blocks the
 // player: the card takes no pointer events, only its own buttons do. The words
@@ -35,7 +38,7 @@ export function ProgressOverlay({
     <div
       data-testid="progress-overlay"
       data-overlay-kind={state.kind}
-      className="pointer-events-none absolute top-2 right-2 left-2 z-10 flex flex-col gap-2 rounded-xl border border-line bg-panel/90 px-3 py-2 text-sm shadow-lg backdrop-blur-sm sm:right-auto sm:max-w-xs"
+      className="pointer-events-none absolute top-0 right-0 z-10 w-full max-w-xs flex flex-col gap-2 border border-line bg-surface/85 px-3 py-2 text-sm shadow-lg backdrop-blur-sm"
     >
       <div role="status" aria-live="polite" className="flex flex-col gap-1">
         {state.kind === "notice" && (
@@ -59,10 +62,10 @@ export function ProgressOverlay({
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.round(state.fraction * 100)}
-              className="h-1.5 overflow-hidden rounded-full bg-line"
+              className="h-1.5 overflow-hidden bg-line"
             >
               <div
-                className="h-full rounded-full bg-accent transition-[width] duration-500"
+                className="h-full bg-primary transition-[width] duration-500"
                 style={{ width: `${Math.round(state.fraction * 100)}%` }}
               />
             </div>

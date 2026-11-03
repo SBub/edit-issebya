@@ -108,7 +108,7 @@ test("a step killed twice fails the job; Retry resumes at that step and finishes
   });
   expect(await reelStatus(admin, reelId)).toBe("failed");
   await expect(page.getByTestId("change-blocked-reason")).toHaveText(
-    "Processing failed; press Try again on the preview first.",
+    "Processing failed; press Try again on the preview first",
   );
 
   const overlay = page.getByTestId("progress-overlay");

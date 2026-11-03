@@ -156,12 +156,16 @@ test("the Zones toggle shades what TikTok and Instagram cover, and takes no clic
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await expect(layer).toBeVisible();
   // The layer fills the player's stage; each zone edge sits at the guard's
-  // edge in frame pixels (1164 of 1920 down, 840 of 1080 across).
+  // edge in frame pixels (1470 of 1920 down, 1045 of 1080 across), and the
+  // button column's notch starts 945 across and 1164 down.
   const stage = (await layer.boundingBox())!;
   const bottom = (await layer.locator('[data-zone="bottom"]').boundingBox())!;
   const right = (await layer.locator('[data-zone="right"]').boundingBox())!;
-  expect(Math.abs(bottom.y - stage.y - (1164 / 1920) * stage.height)).toBeLessThanOrEqual(1);
-  expect(Math.abs(right.x - stage.x - (840 / 1080) * stage.width)).toBeLessThanOrEqual(1);
+  const buttons = (await layer.locator('[data-zone="buttons"]').boundingBox())!;
+  expect(Math.abs(bottom.y - stage.y - (1470 / 1920) * stage.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(right.x - stage.x - (1045 / 1080) * stage.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(buttons.x - stage.x - (945 / 1080) * stage.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(buttons.y - stage.y - (1164 / 1920) * stage.height)).toBeLessThanOrEqual(1);
 
   // Play still works with the layer on.
   await page.getByRole("button", { name: "Play" }).click();

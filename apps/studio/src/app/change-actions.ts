@@ -105,13 +105,13 @@ export async function requestRestore(input: {
 }): Promise<ChangeActionResult> {
   if (typeof input.reelId !== "string" || !isReelId(input.reelId)) return { status: "failed" };
   if (typeof input.versionId !== "string" || !isReelId(input.versionId)) {
-    return { status: "invalid", reason: "Pick a version to go back to." };
+    return { status: "invalid", reason: "Pick a version to go back to" };
   }
 
   const open = await openReel(input.reelId);
   if (!open.ok) return open.result;
   if (open.currentVersionId === input.versionId) {
-    return { status: "invalid", reason: "This is already the current version." };
+    return { status: "invalid", reason: "This is already the current version" };
   }
   return insertJob(open, {
     reel_id: input.reelId,

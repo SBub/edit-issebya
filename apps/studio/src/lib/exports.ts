@@ -25,8 +25,8 @@ export function exportBlockedReason(
   reel: Pick<ReelDetail, "status" | "current_version_id">,
   jobs: readonly Pick<JobRow, "kind" | "status" | "version_id">[],
 ): string | null {
-  if (!reel.current_version_id) return "No version to export yet.";
-  if (reel.status !== "processed") return "Export opens once the reel is processed.";
+  if (!reel.current_version_id) return "No version to export yet";
+  if (reel.status !== "processed") return "Export opens once the reel is processed";
   const exporting = jobs.some(
     (job) =>
       job.kind === "render" &&

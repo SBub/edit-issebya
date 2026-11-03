@@ -50,13 +50,13 @@ type Outcome = { forVersion: string } & (
 );
 
 const MESSAGES: Record<Exclude<PreviewSourcesResult["status"], "ready">, string> = {
-  "no-version": "The preview appears once the first version is saved.",
-  "no-previews": "This reel has no preview copies yet.",
-  "photo-missing": "A photo in this version was deleted from the library.",
-  "cutout-cleared": "This version's cut-out was cleared to save space; Export rebuilds it.",
-  unconfigured: "The preview is not available: storage is not configured.",
-  "signed-out": "Sign in again to see the preview.",
-  failed: "The preview could not be loaded.",
+  "no-version": "The preview appears once the first version is saved",
+  "no-previews": "This reel has no preview copies yet",
+  "photo-missing": "A photo in this version was deleted from the library",
+  "cutout-cleared": "This version's cut-out was cleared to save space; Export rebuilds it",
+  unconfigured: "The preview is not available: storage is not configured",
+  "signed-out": "Sign in again to see the preview",
+  failed: "The preview could not be loaded",
 };
 
 async function fetchOk(url: string): Promise<Response> {
@@ -137,7 +137,8 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
   };
 }
 
-// One built version: the player and its tracks timeline, the playhead
+// One built version: the player and its tracks timeline (hidden while the
+// preview is expanded), the playhead
 // following the player's clock (set only from the player's callback) and the
 // timeline's ruler seeking through the player's own seek. Keyed
 // by version, so a new version mounts a new player, started from the
@@ -146,10 +147,14 @@ function BuiltPreview({
   built,
   handoff,
   onHandoff,
+  expanded,
+  onExpandedChange,
 }: {
   built: Built;
   handoff: Handoff;
   onHandoff: (change: Partial<Handoff>) => void;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
 }) {
   const [position, setPosition] = useState(handoff.position);
   const playerRef = useRef<PreviewPlayerHandle>(null);
@@ -168,13 +173,17 @@ function BuiltPreview({
           onHandoff({ position: seconds });
         }}
         onIntent={(intent) => onHandoff({ intent })}
+        expanded={expanded}
+        onExpandedChange={onExpandedChange}
       />
-      <TracksTimeline
-        timeline={built.timeline}
-        position={position}
-        frames={built.frames}
-        onSeek={(seconds) => playerRef.current?.seek(seconds)}
-      />
+      {!expanded && (
+        <TracksTimeline
+          timeline={built.timeline}
+          position={position}
+          frames={built.frames}
+          onSeek={(seconds) => playerRef.current?.seek(seconds)}
+        />
+      )}
     </>
   );
 }
@@ -191,6 +200,9 @@ function subscribeNever(): () => void {
 export function ReelPreview({ reelId, versionId }: { reelId: string; versionId: string | null }) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const opened = useRef(false);
+  // The preview filling the edit area, the tracks timeline hidden: collapsed
+  // on every open, never saved, kept across a version switch.
+  const [expanded, setExpanded] = useState(false);
   // The mounted player's position and intent; the first open starts at 0, paused.
   const handoffRef = useRef<Handoff>(FIRST_OPEN);
   // Read after hydration; the server renders as Chromium, so no note flashes.
@@ -248,7 +260,7 @@ export function ReelPreview({ reelId, versionId }: { reelId: string; versionId: 
       <h2 id="preview-heading" className="sr-only">
         Preview
       </h2>
-      {!chromium && <p className="text-sm text-muted">The preview is built for Chrome.</p>}
+      {!chromium && <p className="text-sm text-muted">The preview is built for Chrome</p>}
       {!versionId ? (
         note(MESSAGES["no-version"])
       ) : built ? (
@@ -259,6 +271,8 @@ export function ReelPreview({ reelId, versionId }: { reelId: string; versionId: 
           onHandoff={(change) => {
             handoffRef.current = { ...handoffRef.current, ...change };
           }}
+          expanded={expanded}
+          onExpandedChange={setExpanded}
         />
       ) : current?.status === "message" ? (
         note(current.message)

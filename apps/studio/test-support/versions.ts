@@ -33,6 +33,7 @@ function adminVersionRows(admin: SupabaseClient): VersionRows {
         p_request: row.request,
         p_model: row.model,
         p_prompt_version: row.prompt_version,
+        p_change_title: row.change_title,
         p_change_summary: row.change_summary,
         p_checks: row.checks,
         p_inputs: row.inputs,
@@ -57,6 +58,8 @@ export async function saveTestVersion({
   prefix,
   reelId,
   edit,
+  request = null,
+  changeTitle = null,
   changeSummary,
 }: {
   admin: SupabaseClient;
@@ -64,6 +67,8 @@ export async function saveTestVersion({
   prefix: string;
   reelId: string;
   edit: Edit;
+  request?: string | null;
+  changeTitle?: string | null;
   changeSummary: string;
 }): Promise<{ id: string; key: string }> {
   const rows = adminVersionRows(admin);
@@ -82,9 +87,10 @@ export async function saveTestVersion({
       reelId,
       parentId: await rows.current(reelId),
       restoredFromId: null,
-      request: null,
+      request,
       model: null,
       promptVersion: null,
+      changeTitle,
       changeSummary,
       checks: [],
       edit,

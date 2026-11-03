@@ -23,19 +23,19 @@ export function LoginForm() {
         defaultValue={invalid ? state.email : undefined}
         aria-invalid={invalid || undefined}
         aria-describedby="login-status"
-        className="rounded-md border border-line bg-raised px-3 py-2 text-base"
+        className="border border-line bg-raised px-3 py-2 text-base"
       />
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md bg-accent px-4 py-2 text-base font-medium text-surface disabled:opacity-60"
+        className="bg-primary px-4 py-2 text-base font-medium text-on-primary enabled:hover:opacity-90 disabled:opacity-50"
       >
         Send sign-in link
       </button>
       <p id="login-status" aria-live="polite" className="min-h-6 text-sm">
-        {state.status === "invalid" && "Enter a valid email address."}
-        {state.status === "sent" && "If this address has an account, a sign-in link is on its way."}
-        {state.status === "unavailable" && "Sign-in is not available right now."}
+        {state.status === "invalid" && "Enter a valid email address"}
+        {state.status === "sent" && "If this address has an account, a sign-in link is on its way"}
+        {state.status === "unavailable" && "Sign-in is not available right now"}
       </p>
     </form>
   );

@@ -49,6 +49,7 @@ interface VersionRecord {
   parent_id: string | null;
   restored_from_id: string | null;
   request: string | null;
+  change_title: string | null;
   change_summary: string | null;
   r2_key: string;
 }
@@ -107,7 +108,9 @@ test.afterAll(async () => {
 async function versionsOf(): Promise<VersionRecord[]> {
   const { data, error } = await admin
     .from("versions")
-    .select("id, number, parent_id, restored_from_id, request, change_summary, r2_key")
+    .select(
+      "id, number, parent_id, restored_from_id, request, change_title, change_summary, r2_key",
+    )
     .eq("reel_id", reel!.reelId)
     .order("number");
   if (error) throw new Error(`versions not read: ${error.message}`);
@@ -151,6 +154,19 @@ function versionItem(number: number) {
   return page.locator(`[data-testid="version-item"][data-version-number="${number}"]`);
 }
 
+// Opens a version's details with its arrow (a no-op when open) and returns
+// them: what the owner asked, what changed and Go back live there.
+async function versionDetails(number: number) {
+  const toggle = versionItem(number).getByTestId("version-toggle");
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  return versionItem(number).getByTestId("version-details");
+}
+
+async function goBackButton(number: number) {
+  return (await versionDetails(number)).getByRole("button", { name: "Go back to this" });
+}
+
 async function noReloadMarker() {
   return page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload);
 }
@@ -190,11 +206,11 @@ test("the box and going back stay open while a job is running, with the queue no
   await expect(box()).toBeEnabled();
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
   await expect(page.getByTestId("change-queue-note")).toHaveText(
-    "Your change will run after processing finishes.",
+    "Waiting: your reel is still being styled. Your change starts right after",
   );
-  await expect(versionItem(1).getByRole("button", { name: "Go back to this" })).toBeEnabled();
+  await expect(await goBackButton(1)).toBeEnabled();
   // The current version (2) offers no going back.
-  await expect(versionItem(2).getByRole("button", { name: "Go back to this" })).toHaveCount(0);
+  await expect(await goBackButton(2)).toHaveCount(0);
 
   await admin
     .from("jobs")
@@ -203,7 +219,7 @@ test("the box and going back stay open while a job is running, with the queue no
   await expect(page.getByTestId("change-queue-note")).toHaveCount(0, { timeout: 10_000 });
   await expect(page.getByTestId("change-blocked-reason")).toHaveText("");
   await expect(box()).toBeEnabled();
-  await expect(versionItem(1).getByRole("button", { name: "Go back to this" })).toBeEnabled();
+  await expect(await goBackButton(1)).toBeEnabled();
   expect(await noReloadMarker()).toBe("marker");
 });
 
@@ -235,9 +251,43 @@ test("a change becomes version 3 and the preview shows it without a reload", asy
   await expect(page.locator(`[data-preview-version="${v3.id}"][data-preview="ready"]`)).toBeVisible(
     { timeout: 30_000 },
   );
-  await expect(versionItem(3).getByTestId("version-origin")).toHaveText(`"${REQUEST}"`);
-  await expect(versionItem(3).getByTestId("version-summary")).toHaveText(v3.change_summary!);
+  // Claude's plain title is stored with the version and shown on its one-line
+  // row; the owner's words and the summary wait behind the arrow.
+  expect(v3.change_title).toBe("Title and one accent added");
+  // One muted intro line sits under the Versions heading and describes the section.
+  const versionsHeading = page.locator("#versions-heading");
+  const versionsIntro = page.getByTestId("versions-intro");
+  await expect(versionsIntro).toBeVisible();
+  await expect(versionsIntro).toHaveText(
+    "Your reel's history. Open a version to see what changed and bring it back",
+  );
+  await expect(page.locator('section[aria-labelledby="versions-heading"]')).toHaveAttribute(
+    "aria-describedby",
+    "versions-intro",
+  );
+  const headingBox = (await versionsHeading.boundingBox())!;
+  const introBox = (await versionsIntro.boundingBox())!;
+  expect(introBox.y).toBeGreaterThanOrEqual(headingBox.y + headingBox.height - 1);
+  const toggle = versionItem(3).getByTestId("version-toggle");
+  await expect(versionItem(3).getByTestId("version-title")).toHaveText(v3.change_title!);
   await expect(versionItem(3).getByTestId("version-current")).toBeVisible();
+  // No time or date anywhere in a version's row or details.
+  await expect(versionItem(3).locator("time")).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(toggle).toHaveAccessibleName("Show details of v3");
+  await expect(versionItem(3).getByTestId("version-summary")).toBeHidden();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const details = versionItem(3).getByTestId("version-details");
+  await expect(details.getByText("What you asked")).toBeVisible();
+  await expect(details.getByTestId("version-origin")).toHaveText(REQUEST);
+  await expect(details.getByText("What changed")).toBeVisible();
+  await expect(details.getByTestId("version-summary")).toHaveText(v3.change_summary!);
+  // The current version offers no going back.
+  await expect(details.getByRole("button", { name: "Go back to this" })).toHaveCount(0);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(details).toBeHidden();
   await expect(page.getByTestId("change-pending")).toHaveCount(0);
   expect(await noReloadMarker()).toBe("marker");
 
@@ -321,7 +371,7 @@ test("going back makes a new version copying the old one, and going back again",
   const [v1, , v3] = before;
   const bytesBefore = await Promise.all(before.map((v) => bytesOf(v.r2_key)));
 
-  await versionItem(1).getByRole("button", { name: "Go back to this" }).click();
+  await (await goBackButton(1)).click();
   await expect
     .poll(async () => (await jobsOf("restore")).map((j) => j.restore_version_id))
     .toEqual([v1!.id]);
@@ -331,15 +381,22 @@ test("going back makes a new version copying the old one, and going back again",
   expect(first.code, first.output).toBe(0);
 
   const v4 = (await versionsOf()).find((v) => v.number === 4)!;
-  expect(v4).toMatchObject({ parent_id: v3!.id, restored_from_id: v1!.id, request: null });
+  expect(v4).toMatchObject({
+    parent_id: v3!.id,
+    restored_from_id: v1!.id,
+    request: null,
+    change_title: null,
+    change_summary: "Back to how v1 looked",
+  });
   expect(await bytesOf(v4.r2_key)).toBe(bytesBefore[0]);
   expect((await reelRow()).current_version_id).toBe(v4.id);
   await expect(page.locator(`[data-preview-version="${v4.id}"][data-preview="ready"]`)).toBeVisible(
     { timeout: 30_000 },
   );
-  await expect(versionItem(4).getByTestId("version-origin")).toHaveText("restored from v1");
+  await expect(versionItem(4).getByTestId("version-title")).toHaveText("Back to v1");
+  await expect((await versionDetails(4)).getByTestId("version-origin")).toHaveText("Back to v1");
 
-  await versionItem(3).getByRole("button", { name: "Go back to this" }).click();
+  await (await goBackButton(3)).click();
   await expect.poll(async () => (await jobsOf("restore")).length).toBe(2);
   const second = await runWorker(unchanged);
   expect(second.code, second.output).toBe(0);
@@ -347,7 +404,8 @@ test("going back makes a new version copying the old one, and going back again",
   const v5 = (await versionsOf()).find((v) => v.number === 5)!;
   expect(v5).toMatchObject({ parent_id: v4.id, restored_from_id: v3!.id });
   expect(await bytesOf(v5.r2_key)).toBe(bytesBefore[2]);
-  await expect(versionItem(5).getByTestId("version-origin")).toHaveText("restored from v3");
+  await expect(versionItem(5).getByTestId("version-title")).toHaveText("Back to v3");
+  await expect((await versionDetails(5)).getByTestId("version-origin")).toHaveText("Back to v3");
   await expect(versionItem(5).getByTestId("version-current")).toBeVisible();
 
   // History is never rewritten: v1 to v3 rows and bytes, and v4's, are as they were.

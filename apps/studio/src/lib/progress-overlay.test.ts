@@ -180,7 +180,7 @@ describe("overlayState", () => {
     expect(state).toMatchObject({
       kind: "working",
       words: "Styling your reel",
-      waitingAi: "Waiting for the AI: the usage limit is reached. Next try at 07:05.",
+      waitingAi: "Waiting for the AI: the usage limit is reached. Next try at 07:05",
     });
   });
 

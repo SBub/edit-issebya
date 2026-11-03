@@ -30,6 +30,9 @@ export interface NewVersion {
   request: string | null;
   model: string | null;
   prompt_version: string | null;
+  // The owner's short title for the version (Claude's, from decide); null
+  // for the first version, a going back and versions saved before titles.
+  change_title: string | null;
   change_summary: string | null;
   checks: Check[];
   inputs: EditInputs;
@@ -90,6 +93,8 @@ export interface VersionMeta {
   request: string | null;
   model: string | null;
   promptVersion: string | null;
+  // Null (or absent) when there is no title.
+  changeTitle?: string | null;
   changeSummary: string | null;
   checks: Check[];
   // The decide records; false and empty when not given.
@@ -125,6 +130,7 @@ async function saveBytes(
     request: meta.request,
     model: meta.model,
     prompt_version: meta.promptVersion,
+    change_title: meta.changeTitle ?? null,
     change_summary: meta.changeSummary,
     checks: meta.checks,
     inputs,
@@ -168,7 +174,8 @@ export async function restoreVersion(
       request: null,
       model: null,
       promptVersion: null,
-      changeSummary: `restored version ${old.number}`,
+      // The owner reads it; the list titles it `Back to vN` itself.
+      changeSummary: `Back to how v${old.number} looked`,
       checks: old.checks,
     },
     old.inputs,

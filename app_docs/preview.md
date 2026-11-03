@@ -48,9 +48,9 @@ clicks through Web Audio. It is built and tested for Chrome.
   track and fonts, loads `harfbuzzjs` by client-only dynamic import, calls `createMeasurer` and `build`
   from `@edit-issebya/edit`, runs `previewPage`, fetches the sound files `soundHits` names, and hands
   everything to the player. `photo-missing` shows `A photo in this version was deleted from the
-library.` and `cutout-cleared` shows `This version's cut-out was cleared to save space; Export
-rebuilds it.` in place of the player. Sends `studio_preview_opened` (`reel_id`) once per mount, shows the
-  waiting, error and "The preview is built for Chrome." lines, and reloads when `current_version_id`
+library` and `cutout-cleared` shows `This version's cut-out was cleared to save space; Export
+rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) once per mount, shows the
+  waiting, error and "The preview is built for Chrome" lines, and reloads when `current_version_id`
   changes in `LiveReel`'s Realtime state (no page reload, no polling).
 - `apps/studio/src/lib/preview-page.ts`: `previewPage(html, assets, urls, soundIds)` swaps the
   footage path for its signed URL (the cut-out's footage copies included), each `mask` asset's
@@ -60,19 +60,29 @@ rebuilds it.` in place of the player. Sends `studio_preview_opened` (`reel_id`) 
   Nothing else changes.
 - `apps/studio/src/components/PreviewPlayer.tsx`: renders `<hyperframes-player>` (no `controls`,
   `disable-click-to-play`, `assets-loading-ui="none"`, `no-load-timeout`) with its own Play/Pause
-  button, time display and a `Loading` status; its seek is exposed through a `ref`
+  icon button (named by `aria-label`, no hover background), a clock centred in the control row (current
+  time over total duration), Zones at the right, then an
+  `Expand preview` / `Collapse preview` icon button at the row's right end (`preview-expand`;
+  its outer glyphs on the tracks panel's edges; expanded, the tracks timeline and Zones are hidden and the preview fills the
+  edit area, without remounting the player; `app_docs/studio-reel-layout.md`) and a `Loading` status; its seek is exposed through a `ref`
   (`PreviewPlayerHandle.seek`) to the tracks timeline's ruler, the one scrubber
   (`app_docs/studio-reel-layout.md`). Play, seek and stall all go through
   one hold-then-start routine: pause, seek, then wait (event-driven, a newer action supersedes) until
   the player's assets are ready and every active video can play from that point, then resume the
   `AudioContext`, start the player's clock and schedule the sounds. A `waiting` or `stalled` event while
-  playing re-enters the routine. Pause, seek and `ended` cancel scheduled sounds. The root carries
+  playing re-enters the routine. Pause, seek and `ended` cancel scheduled sounds.
+  The player sends `timeupdate` at most every 100 ms, so while paused the wrapper also reports the
+  player's time after each message from its frame when it changed: the clock and the playhead rest
+  on the player's paused time, never a few frames before it. The root carries
   `data-preview="loading|ready"` and `data-preview-version`.
 - `apps/studio/src/components/PlatformZones.tsx`, `src/lib/platform-zones.ts`: the player's `Zones`
-  button (`aria-pressed`, off on every open, never saved) shows a non-interactive layer
+  button (`aria-pressed`, off on every open, never saved, switched off when the preview expands and
+  left off on collapse) shows a non-interactive layer
   (`data-testid="platform-zones"`, `aria-hidden`, `pointer-events-none`) over the preview that
-  shades the four zones TikTok and Instagram cover. `platformZones(frame, safe)` takes them from
-  `PLATFORM_SAFE` as percentages of the frame, so they scale with the player. It is never part of
+  shades what TikTok and Instagram cover: the four margins outside `PLATFORM_SAFE` (`top`,
+  `bottom`, `left`, `right`) and the button column's notch (`buttons`, from `PLATFORM_BUTTONS`).
+  `platformZones(frame, safe, buttons)` gives them as percentages of the frame, so they scale with
+  the player. It is never part of
   the built page or the export.
 - `apps/studio/src/lib/preview-clock.ts`: `canPlayFrom(media, t)`: every video active at `t` is not
   seeking, has `readyState >= HAVE_FUTURE_DATA` and sits at the target position.
@@ -97,8 +107,8 @@ rebuilds it.` in place of the player. Sends `studio_preview_opened` (`reel_id`) 
 ## How to Use
 
 1. Sign in to the studio and open a reel that has a current version (`/studio/reels/<id>`).
-2. Wait for the preview to load; press `Play`. A short `Loading` shows while the videos buffer.
-3. Click or drag the ruler above the tracks to seek; press `Pause` to stop.
+2. Wait for the preview to load; press Play (the triangle icon). A short `Loading` shows while the videos buffer.
+3. Click or drag the ruler above the tracks to seek; press Pause (the two bars) to stop.
 4. When a new version is saved, the preview rebuilds by itself.
 
 ## Configuration
@@ -125,9 +135,11 @@ jsdelivr.
   at a seek target while the footage past the served bytes is held. Test 3: a new version rebuilds the preview
   without a reload and the clicks are scheduled within 10 ms of their anchors, with no sound `<audio>`
   left in the frame.
-- Unit: `platform-zones.test.ts` (the bottom zone's top at 1164/1920, the right zone's left at
-  840/1080, no overlap). E2E: `preview.spec.ts` toggles Zones: the layer is absent, then shown with
-  its zones at the guard's edges, Play still works through it, and it hides again.
+- Unit: `platform-zones.test.ts` (the top zone's height 220/1920, the bottom zone's top at
+  1470/1920, the left zone's width 35/1080, the right zone's left at 1045/1080, the `buttons` notch
+  from 945/1080 across and 1164/1920 down to the right and bottom zones, no overlap). E2E: `preview.spec.ts` toggles Zones: the layer is absent, then shown with
+  its zones at the guard's edges (the bottom at 1470, the right at 1045, the notch at 945 and
+  1164), Play still works through it, and it hides again.
 - E2E: `apps/studio/e2e/behind.spec.ts`: a change puts a library photo behind the speaker; the
   preview shows the photo over the `left` spot inside its span (from the signed `large` copy, two
   mask videos from `cache/cutout/`) and not after it, and the timeline's Behind row shows
@@ -147,7 +159,8 @@ jsdelivr.
 - Owners never get a write grant on `reels.preview_copies`: the server signs the keys it names.
 - A cleared mask is a notice, never a preview without the cut-out (it would differ from the
   export).
-- The Zones layer takes no clicks and is never saved or built into the page.
+- The Zones layer takes no clicks and is never saved or built into the page. Expanding the preview
+  switches it off; collapsing never switches it back on.
 - A photo's key always comes from its own `photos` row read under RLS, never built from the id.
 
 ## Notes

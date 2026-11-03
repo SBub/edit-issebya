@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { isStorageKey } from "@edit-issebya/storage";
+import { acceptsFile } from "./file-drop";
 import {
+  CLIP_ACCEPT,
+  CLIP_LIMITS,
   MAX_UPLOAD_BYTES,
   PART_SIZE_BYTES,
   parseUploadRequest,
@@ -30,6 +33,25 @@ describe("sourceExtension", () => {
     expect(sourceExtension("a.avi")).toBeNull();
     expect(sourceExtension("mp4")).toBeNull();
     expect(sourceExtension("a.")).toBeNull();
+  });
+});
+
+describe("CLIP_ACCEPT", () => {
+  it("offers every extension the upload accepts, whatever type the browser reports", () => {
+    for (const name of ["a.mp4", "A.MOV", "b.m4v", "c.webm"]) {
+      expect(acceptsFile(CLIP_ACCEPT, { name, type: "" })).toBe(true);
+      expect(sourceExtension(name)).not.toBeNull();
+    }
+    expect(acceptsFile(CLIP_ACCEPT, { name: "clip", type: "video/quicktime" })).toBe(true);
+  });
+
+  it("refuses a photo or another video format", () => {
+    expect(acceptsFile(CLIP_ACCEPT, { name: "a.jpg", type: "image/jpeg" })).toBe(false);
+    expect(acceptsFile(CLIP_ACCEPT, { name: "a.avi", type: "video/x-msvideo" })).toBe(false);
+  });
+
+  it("states the size limit the upload enforces", () => {
+    expect(CLIP_LIMITS).toContain(`${MAX_UPLOAD_BYTES / 1024 ** 3} GB`);
   });
 });
 

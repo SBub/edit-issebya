@@ -51,7 +51,7 @@ export function DeleteReelButton({ reelId, title }: Props) {
         aria-label="Delete reel"
         data-testid="delete-reel"
         onClick={open}
-        className="flex size-11 items-center justify-center rounded-full bg-black/70 text-white shadow-md shadow-black/40 hover:bg-black/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:size-8"
+        className="flex size-11 items-center justify-center text-ink transition-opacity hover:opacity-70 sm:size-8"
       >
         <svg
           aria-hidden="true"
@@ -81,17 +81,17 @@ export function DeleteReelButton({ reelId, title }: Props) {
         onCancel={(event) => {
           if (pending) event.preventDefault();
         }}
-        className="m-auto w-[min(24rem,calc(100%-2rem))] rounded-xl border border-line bg-panel p-5 text-ink backdrop:bg-black/60"
+        className="m-auto w-[min(24rem,calc(100%-2rem))] border border-line bg-surface p-5 text-ink backdrop:bg-black/60"
       >
         <h2 id={headingId} className="mb-2 truncate text-base font-semibold">
           {title}
         </h2>
         <p className="text-sm">
-          Delete this reel? Its versions and files are removed and cannot be restored.
+          Delete this reel? Its versions and files are removed and cannot be restored
         </p>
         {failed && (
           <p role="alert" className="mt-3 text-sm text-danger">
-            The reel was not deleted. Try again.
+            The reel was not deleted. Try again
           </p>
         )}
         <div className="mt-4 flex justify-end gap-2">
@@ -99,7 +99,7 @@ export function DeleteReelButton({ reelId, title }: Props) {
             type="button"
             onClick={close}
             disabled={pending}
-            className="rounded-full border border-line px-3 py-1 text-sm hover:bg-raised disabled:opacity-60"
+            className="border border-line px-3 py-1 text-sm hover:bg-raised disabled:opacity-60"
           >
             Cancel
           </button>
@@ -108,7 +108,7 @@ export function DeleteReelButton({ reelId, title }: Props) {
             onClick={confirm}
             disabled={pending}
             data-testid="confirm-delete-reel"
-            className="rounded-full bg-danger px-3 py-1 text-sm font-medium text-surface disabled:opacity-60"
+            className="bg-danger px-3 py-1 text-sm font-medium text-surface disabled:opacity-60"
           >
             Delete
           </button>

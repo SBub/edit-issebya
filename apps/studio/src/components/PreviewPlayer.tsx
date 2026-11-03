@@ -18,6 +18,11 @@ interface Props {
   // Told the clock's position wherever the player's own position changes (its
   // clock, a seek, a hold): the tracks timeline's playhead.
   onPosition?: (seconds: number) => void;
+  // Whether the preview fills the edit area (the page holds the state and
+  // hides the tracks timeline): Zones is hidden then, and expanding switches
+  // Zones off. With onExpandedChange, an expand or collapse button ends the row.
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   // Where to start once the player is ready (the previous version's position
   // on an automatic switch, clamped to this version's duration), and whether
   // to start playing from there (the previous version's intent). Default: 0,
@@ -50,6 +55,12 @@ const STALL_EVENTS = ["waiting", "stalled"];
 const SEEK_SLACK = 0.1;
 // A resume that never settles must not hang playback.
 const RESUME_TIMEOUT_MS = 500;
+// The control row's outer icons sit flush with the row's edges (the tracks
+// panel's edges): each viewBox starts or ends where its glyph's visible edge
+// is (stroke included), and the icon sits at that end of its 40 px button.
+const PLAY_VIEWBOX = "7.4 0 24 24";
+const PAUSE_VIEWBOX = "6 0 24 24";
+const EXPAND_VIEWBOX = "-2 0 24 24";
 
 // The timed videos of the composition, and the player's parent-frame copies
 // when it moved playback there (autoplay blocked): read only.
@@ -101,6 +112,8 @@ export function PreviewPlayer({
   hits,
   soundBytes,
   onPosition,
+  expanded = false,
+  onExpandedChange,
   startAt = 0,
   autoPlay = false,
   onIntent,
@@ -117,6 +130,7 @@ export function PreviewPlayer({
   const hitsRef = useRef(hits);
   const expectedVideosRef = useRef(0);
   const onPositionRef = useRef(onPosition);
+  const reportedRef = useRef(0);
   const onIntentRef = useRef(onIntent);
   // The start position and intent are applied once, when the player is ready.
   const startedRef = useRef(false);
@@ -150,6 +164,7 @@ export function PreviewPlayer({
 
   // The position shown here and reported to the page, set together.
   function report(seconds: number) {
+    reportedRef.current = seconds;
     setPosition(seconds);
     onPositionRef.current?.(seconds);
   }
@@ -392,6 +407,17 @@ export function PreviewPlayer({
       stopWatching();
       stopSounds();
     };
+    // The player takes the time of every message from its frame but sends
+    // `timeupdate` at most every 100 ms, so the frames a pause lets through
+    // (it reaches the frame by message) can land without one: the clock and
+    // the playhead would rest a few frames before the player. While paused,
+    // each message from the frame is followed by the player's time when it
+    // differs. The player listened first, so its time is already applied.
+    const onMessage = (event: MessageEvent) => {
+      if (intentRef.current !== "paused") return;
+      if (event.source !== player.iframeElement?.contentWindow) return;
+      if (player.currentTime !== reportedRef.current) report(player.currentTime);
+    };
     if (player.ready) {
       setDuration(player.duration);
       setPlayerReady(true);
@@ -399,10 +425,12 @@ export function PreviewPlayer({
     player.addEventListener("ready", onReady);
     player.addEventListener("timeupdate", onTime);
     player.addEventListener("ended", onEnded);
+    window.addEventListener("message", onMessage);
     return () => {
       player.removeEventListener("ready", onReady);
       player.removeEventListener("timeupdate", onTime);
       player.removeEventListener("ended", onEnded);
+      window.removeEventListener("message", onMessage);
       generationRef.current += 1;
       stopWatching();
       stopSounds();
@@ -443,7 +471,10 @@ export function PreviewPlayer({
       className="flex min-h-0 w-full flex-1 flex-col gap-2"
     >
       <div className="flex min-h-0 flex-1 justify-center">
-        <div className="relative aspect-[9/16] h-full max-h-full max-w-full overflow-hidden rounded-lg bg-black">
+        <div
+          data-testid="preview-frame"
+          className="relative aspect-[9/16] h-full max-h-full max-w-full overflow-hidden rounded-reel bg-black ring-1 ring-line"
+        >
           {defined && (
             <hyperframes-player
               ref={playerRef}
@@ -467,30 +498,105 @@ export function PreviewPlayer({
           {zones && <PlatformZones />}
         </div>
       </div>
-      <div className="flex flex-none items-center gap-2 text-sm">
+      {/* Three columns, the outer two equal: the clock sits on the row's centre
+          whatever stands left (Play or Pause) and right (Zones and the extra
+          buttons, then Expand or Collapse). Expanded, the right column keeps
+          only the expand button. */}
+      <div className="grid flex-none grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
         <button
           type="button"
           onClick={onPlayClick}
           disabled={!playerReady}
-          className="w-16 rounded-full bg-accent px-3 py-1.5 font-semibold text-surface disabled:opacity-50"
+          aria-label={intent === "playing" ? "Pause" : "Play"}
+          title={intent === "playing" ? "Pause" : "Play"}
+          data-testid="play-toggle"
+          className="flex size-10 items-center justify-start justify-self-start text-ink transition-opacity enabled:hover:opacity-80 disabled:opacity-50"
         >
-          {intent === "playing" ? "Pause" : "Play"}
+          {/* A filled play triangle with rounded corners, or two filled bars,
+              its left edge on the row's left edge. */}
+          <svg
+            aria-hidden="true"
+            viewBox={intent === "playing" ? PAUSE_VIEWBOX : PLAY_VIEWBOX}
+            fill="currentColor"
+            className="size-7"
+          >
+            {intent === "playing" ? (
+              <>
+                <rect x="6" y="4.5" width="4" height="15" rx="1.25" />
+                <rect x="14" y="4.5" width="4" height="15" rx="1.25" />
+              </>
+            ) : (
+              <path
+                d="M8 5.6v12.8a1.2 1.2 0 0 0 1.82 1.03l10.4-6.4a1.2 1.2 0 0 0 0-2.06l-10.4-6.4A1.2 1.2 0 0 0 8 5.6Z"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+            )}
+          </svg>
         </button>
+        {/* Two lines: the current time on top, the total below. The hidden
+            slash keeps the read-out "00:00 / 00:52" for screen readers. */}
         <span
           data-testid="preview-clock"
-          className="text-xs whitespace-nowrap text-muted tabular-nums"
+          className="flex flex-col items-center font-mono text-xs leading-4 whitespace-nowrap tabular-nums"
         >
-          {formatClock(position)} / {formatClock(duration)}
+          <span data-testid="preview-clock-position" className="text-ink">
+            {formatClock(position)}
+          </span>
+          <span className="sr-only"> / </span>
+          <span data-testid="preview-clock-duration" className="text-muted">
+            {formatClock(duration)}
+          </span>
         </span>
-        <button
-          type="button"
-          aria-pressed={zones}
-          title="Show what TikTok and Instagram cover"
-          onClick={() => setZones((on) => !on)}
-          className="ml-auto flex h-8 flex-none items-center rounded-full border border-line px-2.5 text-xs hover:bg-raised aria-pressed:bg-raised aria-pressed:font-semibold"
-        >
-          Zones
-        </button>
+        <div className="flex min-w-0 items-center justify-end gap-2">
+          {!expanded && (
+            <button
+              type="button"
+              aria-pressed={zones}
+              title="Show what TikTok and Instagram cover"
+              onClick={() => setZones((on) => !on)}
+              className="flex h-8 flex-none items-center border border-line px-2.5 text-xs hover:bg-raised aria-pressed:bg-raised aria-pressed:font-semibold"
+            >
+              Zones
+            </button>
+          )}
+          {onExpandedChange && (
+            <button
+              type="button"
+              onClick={() => {
+                // Expanding switches Zones off (its button is hidden then);
+                // collapsing leaves it off.
+                if (!expanded) setZones(false);
+                onExpandedChange(!expanded);
+              }}
+              aria-pressed={expanded}
+              aria-label={expanded ? "Collapse preview" : "Expand preview"}
+              title={expanded ? "Collapse preview" : "Expand preview"}
+              data-testid="preview-expand"
+              className="flex size-10 flex-none items-center justify-end text-ink transition-opacity hover:opacity-80"
+            >
+              {/* Four arrows out to the corners (expand), or in from them
+                  (collapse), the right edge on the row's right edge. */}
+              <svg
+                aria-hidden="true"
+                viewBox={EXPAND_VIEWBOX}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="size-6"
+              >
+                {expanded ? (
+                  <path d="M3 3l6 6m0-4.8V9H4.2M21 3l-6 6m0-4.8V9h4.8M3 21l6-6m0 4.8V15H4.2M21 21l-6-6m0 4.8V15h4.8" />
+                ) : (
+                  <path d="M9 9 3 3m0 4.8V3h4.8M15 9l6-6m0 4.8V3h-4.8M9 15l-6 6m0-4.8V21h4.8M15 15l6 6m0-4.8V21h-4.8" />
+                )}
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

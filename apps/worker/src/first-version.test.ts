@@ -101,6 +101,7 @@ describe("saveFirstVersion", () => {
       request: null,
       model: null,
       prompt_version: null,
+      change_title: null,
       change_summary: "automatic first version from the issebya style",
       checks: [],
       r2_key: key,

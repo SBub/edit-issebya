@@ -133,7 +133,8 @@ describe("versions", () => {
     expect(rows.get(v4.id)).toMatchObject({
       restored_from_id: v1.id,
       parent_id: v3.id,
-      change_summary: "restored version 1",
+      change_title: null,
+      change_summary: "Back to how v1 looked",
       inputs: edit.inputs,
       checks: [],
       no_photos: null,

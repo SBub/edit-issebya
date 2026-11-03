@@ -39,6 +39,7 @@ export function supabaseVersionRows(db: SupabaseClient): VersionRows {
         p_request: row.request,
         p_model: row.model,
         p_prompt_version: row.prompt_version,
+        p_change_title: row.change_title,
         p_change_summary: row.change_summary,
         p_checks: row.checks,
         p_inputs: row.inputs,

@@ -108,7 +108,7 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   re-run from their fingerprints, and the kept outputs stay cache hits.
 - A cleared mask is rebuilt by the next export, restore or change that needs it (a `cutout` step,
   the same fingerprint and key). Until then the live preview of a version naming it shows the
-  `cutout-cleared` notice (`This version's cut-out was cleared to save space; Export rebuilds it.`,
+  `cutout-cleared` notice (`This version's cut-out was cleared to save space; Export rebuilds it`,
   `app_docs/preview.md`).
 
 ### Slimming

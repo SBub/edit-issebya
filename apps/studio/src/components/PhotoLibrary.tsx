@@ -7,22 +7,27 @@ import { PhotoDialog } from "@/components/PhotoDialog";
 import { type ThumbnailGridItem, ThumbnailGrid } from "@/components/ThumbnailGrid";
 import { TOO_MANY_FILES, UPLOAD_RUNNING, decideDrop } from "@/lib/file-drop";
 import type { PhotoError } from "@/lib/photo-server";
-import { type LibraryItem, PHOTO_ACCEPT } from "@/lib/photos";
-import { formatBytes } from "@/lib/reels";
+import {
+  type LibraryItem,
+  PHOTO_ACCEPT,
+  libraryIntro,
+  photoBadge,
+  photoTileLabel,
+} from "@/lib/photos";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 const noSubscribe = () => () => {};
 
 const ERRORS: Record<PhotoError, string> = {
-  "signed-out": "You are signed out. Sign in again to upload.",
-  unavailable: "Photo uploads are not available right now.",
-  name: "That file name cannot be used.",
-  empty: "That file is empty.",
-  "too-large": "That photo is over 25 MB.",
-  type: "Choose a JPEG, PNG, HEIC, HEIF or WebP photo.",
-  "not-found": "That photo is gone.",
-  "upload-gone": "The upload did not reach storage. Try again.",
-  failed: "Something went wrong. Try again.",
+  "signed-out": "You are signed out. Sign in again to upload",
+  unavailable: "Photo uploads are not available right now",
+  name: "That file name cannot be used",
+  empty: "That file is empty",
+  "too-large": "That photo is over 25 MB",
+  type: "Choose a JPEG, PNG, HEIC, HEIF or WebP photo",
+  "not-found": "That photo is gone",
+  "upload-gone": "The upload did not reach storage. Try again",
+  failed: "Something went wrong. Try again",
 };
 
 interface Props {
@@ -33,10 +38,10 @@ interface Props {
 // The owner's photo library beside the reel: the dashed add tile (or a file
 // dropped on the section, on desktop) uploads one photo straight to storage
 // (one signed part, never through the studio's server),
-// each tile shows its status live, and a tile opens the photo with its
-// description and tags. Every change to the owner's photos (RLS decides what
-// arrives) re-reads the library through a server action, which signs the
-// images; no key reaches the client. One read each time the subscription is
+// each tile shows only its thumbnail (plus its status live while not ready),
+// and a tile opens the photo with its description and tags. Every change to
+// the owner's photos (RLS decides what arrives) re-reads the library through
+// a server action, which signs the images; no key reaches the client. One read each time the subscription is
 // ready covers changes made before it. No interval, no polling.
 export function PhotoLibrary({ initial }: Props) {
   const [items, setItems] = useState(initial);
@@ -131,7 +136,7 @@ export function PhotoLibrary({ initial }: Props) {
     if (decision.kind === "upload") void upload(decision.file);
     else if (decision.kind === "too-many") setMessage(TOO_MANY_FILES);
     else if (decision.kind === "refused") {
-      setMessage(`${decision.name} is not a JPEG, PNG, HEIC, HEIF or WebP photo.`);
+      setMessage(`${decision.name} is not a JPEG, PNG, HEIC, HEIF or WebP photo`);
     }
   });
 
@@ -148,15 +153,9 @@ export function PhotoLibrary({ initial }: Props) {
       setOpenId(item.id);
       dialogRef.current?.showModal();
     },
-    title: item.fileName,
+    label: photoTileLabel(item),
     imageUrl: item.thumbnailUrl,
-    meta: (
-      <>
-        <time dateTime={item.createdAt}>{item.age}</time>
-        {` · ${formatBytes(item.bytes)}`}
-      </>
-    ),
-    badge: item.status,
+    badge: photoBadge(item.status),
     badgeTestId: "photo-status",
   }));
   const open = items.find((item) => item.id === openId) ?? null;
@@ -164,6 +163,7 @@ export function PhotoLibrary({ initial }: Props) {
   return (
     <section
       aria-labelledby="library-heading"
+      aria-describedby="library-intro"
       data-library={ready ? "ready" : "pending"}
       data-testid="photo-drop"
       data-drop={drop.over ? "over" : "idle"}
@@ -172,7 +172,7 @@ export function PhotoLibrary({ initial }: Props) {
     >
       <div className="flex flex-none items-center gap-2 px-3 pt-3 pb-2">
         <h2 id="library-heading" className="text-sm font-semibold">
-          Photos
+          Your library
         </h2>
         <input
           ref={inputRef}
@@ -185,6 +185,13 @@ export function PhotoLibrary({ initial }: Props) {
           aria-hidden="true"
         />
       </div>
+      <p
+        id="library-intro"
+        data-testid="library-intro"
+        className="flex-none px-3 pb-2 text-xs text-muted"
+      >
+        {libraryIntro(items.length)}
+      </p>
       {message && (
         <p role="alert" className="flex-none px-3 pb-2 text-sm text-danger">
           {message}
@@ -197,7 +204,6 @@ export function PhotoLibrary({ initial }: Props) {
         <ThumbnailGrid
           label="Photos"
           items={tiles}
-          empty={<p className="text-sm">No photos yet.</p>}
           aspect="square"
           columns="panel"
           add={{

@@ -93,7 +93,7 @@ export default async function StudioHome({
         <h1 className="mb-6 text-2xl font-semibold">Studio</h1>
         {error === "link" && (
           <p role="alert" className="mb-4 text-sm text-danger">
-            That sign-in link has expired or was already used.
+            That sign-in link has expired or was already used
           </p>
         )}
         <LoginForm />
@@ -114,7 +114,7 @@ export default async function StudioHome({
   return (
     <div className="flex h-dvh flex-col">
       <StudioIdentify userId={user.id} />
-      <header className="flex flex-none flex-wrap items-center justify-between gap-3 border-b border-line bg-panel px-4 py-3">
+      <header className="flex flex-none flex-wrap items-center justify-between gap-3 border-b border-line bg-chrome px-4 py-3">
         <div className="min-w-0">
           <h1 className="text-lg font-semibold">Your reels</h1>
           <p className="truncate text-xs text-muted">{user.email}</p>
@@ -122,7 +122,7 @@ export default async function StudioHome({
         <SignOutButton />
       </header>
       <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 pb-24 sm:p-4 sm:pb-24">
-        <ThumbnailGrid label="Reels" items={tiles} empty={<p>No reels yet.</p>} />
+        <ThumbnailGrid label="Reels" items={tiles} empty={<p>No reels yet</p>} rounded />
       </main>
       <UploadDialog />
     </div>

@@ -330,17 +330,17 @@ export function LiveReel({
         router.refresh();
         return;
       }
-      if (result.status === "queued") setRetry({ jobId, busy: true, message: "Queued again." });
+      if (result.status === "queued") setRetry({ jobId, busy: true, message: "Queued again" });
       else if (result.status === "already")
-        setRetry({ jobId, busy: true, message: "This job is already being retried." });
+        setRetry({ jobId, busy: true, message: "This job is already being retried" });
       else
         setRetry({
           jobId,
           busy: false,
-          message: result.status === "failed" ? "Retry did not start. Try again." : result.reason,
+          message: result.status === "failed" ? "Retry did not start. Try again" : result.reason,
         });
     } catch {
-      setRetry({ jobId, busy: false, message: "Retry did not start. Try again." });
+      setRetry({ jobId, busy: false, message: "Retry did not start. Try again" });
     }
   }
 
@@ -366,7 +366,7 @@ export function LiveReel({
             <Link
               href="/"
               aria-label="Back to your reels"
-              className="flex flex-none items-center gap-1 rounded-full px-2 py-1 text-sm text-muted hover:bg-raised hover:text-ink"
+              className="flex flex-none items-center gap-1 px-2 py-1 text-sm text-muted hover:bg-raised hover:text-ink"
             >
               <span aria-hidden="true">&larr;</span>
               <span className="hidden sm:inline">Your reels</span>
@@ -389,7 +389,7 @@ export function LiveReel({
               <p
                 role="alert"
                 data-testid="reel-refusal"
-                className="flex-none rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+                className="flex-none border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
               >
                 {reel.refusal_message}
               </p>

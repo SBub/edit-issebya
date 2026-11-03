@@ -1,10 +1,10 @@
-import { ISSEBYA_PRESET, PLATFORM_SAFE } from "@edit-issebya/edit";
+import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE } from "@edit-issebya/edit";
 import { platformZones } from "@/lib/platform-zones";
 
-const ZONES = platformZones(ISSEBYA_PRESET.frame, PLATFORM_SAFE);
+const ZONES = platformZones(ISSEBYA_PRESET.frame, PLATFORM_SAFE, PLATFORM_BUTTONS);
 
-// What TikTok and Instagram cover with their own interface, shaded over the
-// preview. Takes no clicks and is never part of the built page or the export.
+// What TikTok and Instagram cover with their own interface (the margins and
+// the button column's notch), shaded over the preview. Takes no clicks and is never part of the built page or the export.
 export function PlatformZones() {
   return (
     <div

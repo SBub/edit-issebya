@@ -73,6 +73,8 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   await page.goto(await signInLink(admin, owner.email, baseURL!));
   await page.getByRole("button", { name: "Upload a reel" }).click();
   await page.getByLabel("Clip").setInputFiles(CLIP);
+  // The drop zone shows the chosen clip's name.
+  await expect(page.getByTestId("upload-chosen")).toHaveText("short-speech.mp4");
   await page.getByRole("button", { name: "Upload", exact: true }).click();
 
   // One click creates the multipart upload, signs and PUTs its one part to
@@ -227,7 +229,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   const { data: versions } = await admin
     .from("versions")
     .select(
-      "id, number, model, request, parent_id, prompt_version, change_summary, checks, used_free_field, unexpressed, free_field, rejected_reasons, r2_key",
+      "id, number, model, request, parent_id, prompt_version, change_title, change_summary, checks, used_free_field, unexpressed, free_field, rejected_reasons, r2_key",
     )
     .eq("reel_id", reelId)
     .order("number");
@@ -241,6 +243,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     request: null,
     parent_id: null,
     prompt_version: null,
+    change_title: null,
     change_summary: "automatic first version from the issebya style",
     checks: [],
     used_free_field: false,
@@ -251,7 +254,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   });
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed script
   const script = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
-    structured_output: { change_summary: string };
+    structured_output: { change_title: string; change_summary: string };
   };
   expect(v2).toEqual({
     id: currentId,
@@ -259,7 +262,8 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     model: "claude-opus-5-5",
     request: null,
     parent_id: v1!.id,
-    prompt_version: "decide-3",
+    prompt_version: "decide-4",
+    change_title: script.structured_output.change_title,
     change_summary: script.structured_output.change_summary,
     checks: [],
     used_free_field: false,

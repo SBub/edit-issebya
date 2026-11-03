@@ -28,10 +28,10 @@ describe("exportBlockedReason", () => {
 
   it("needs a version and a processed reel", () => {
     expect(exportBlockedReason({ ...reel, current_version_id: null }, [])).toBe(
-      "No version to export yet.",
+      "No version to export yet",
     );
     expect(exportBlockedReason({ ...reel, status: "retiming" }, [])).toBe(
-      "Export opens once the reel is processed.",
+      "Export opens once the reel is processed",
     );
   });
 

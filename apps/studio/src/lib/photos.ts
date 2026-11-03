@@ -55,10 +55,6 @@ export interface LibraryItem {
   id: string;
   fileName: string;
   status: PhotoStatus;
-  createdAt: string;
-  // Formatted on the server (`3 min ago`), so the client never renders a
-  // clock of its own.
-  age: string;
   bytes: number | null;
   width: number | null;
   height: number | null;
@@ -119,4 +115,29 @@ export function isPhotoId(id: unknown): id is string {
 // `1200 x 900`, or null while the worker has not measured it.
 export function formatDimensions(width: number | null, height: number | null): string | null {
   return width && height ? `${width} x ${height}` : null;
+}
+
+// A library tile shows only the thumbnail: no badge for a ready photo, and
+// every other status (`uploading`, `describing`, `failed`) on the tile, so a
+// broken photo never looks like a good one.
+export function photoBadge(status: PhotoStatus): string | undefined {
+  return status === "ready" ? undefined : status;
+}
+
+// The tile's accessible name: the file name, which the tile no longer shows,
+// and the status while the photo is not ready.
+export function photoTileLabel(item: Pick<LibraryItem, "fileName" | "status">): string {
+  const badge = photoBadge(item.status);
+  return badge ? `${item.fileName}, ${badge}` : item.fileName;
+}
+
+// The muted line under the library's heading: what the library is for, worded
+// for an empty library until the first photo (any status) is in it.
+export const LIBRARY_INTRO_EMPTY =
+  "Add photos of your work, places or products. When you talk about them, they can appear behind you in your reels";
+export const LIBRARY_INTRO =
+  "Photos you add here can appear in your reels, placed behind you when they fit what you're saying";
+
+export function libraryIntro(photoCount: number): string {
+  return photoCount > 0 ? LIBRARY_INTRO : LIBRARY_INTRO_EMPTY;
 }

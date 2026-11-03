@@ -8,6 +8,7 @@ import { nodeMeasurer } from "./test-support/measurer.node.ts";
 import { resolveTimeline } from "./timeline.ts";
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
+const { bottom: BOTTOM } = ISSEBYA_PRESET.safe;
 
 async function boxesOf(edit: Edit, headTrack: HeadTrack) {
   const resolved = resolveTimeline(edit, hand.transcript);
@@ -21,7 +22,8 @@ async function boxesOf(edit: Edit, headTrack: HeadTrack) {
   );
 }
 
-// A head low in the frame: face 745 to 1150 (1.35 head widths tall).
+// A head low in the frame: face 745 to 1150 (1.35 head widths tall). Captions
+// beside it reach the safe box's bottom edge (1400).
 const lowHead: HeadTrack = Array.from({ length: 400 }, (_, index) => ({
   t: index * 0.25,
   head_top: 745,
@@ -61,7 +63,7 @@ describe("layoutText at the bottom edge", () => {
     }
   });
 
-  it("keeps captions beside a low head above 1164 and off the face", async () => {
+  it("keeps captions beside a low head above the bottom edge and off the face", async () => {
     // No transition: its text area covers the footage by design.
     const edit = structuredClone(hand.edit);
     edit.tracks.transitions = [];
@@ -69,27 +71,32 @@ describe("layoutText at the bottom edge", () => {
     const captions = boxes.filter((box) => box.kind === "caption");
     expect(captions.length).toBeGreaterThan(0);
     for (const box of captions) {
-      expect(box.y + box.height, box.itemId).toBeLessThanOrEqual(1164);
+      expect(box.y + box.height, box.itemId).toBeLessThanOrEqual(BOTTOM);
       const face = faceBox(lowHead, box.start, box.end, { left: 0, right: 0 })!;
       expect(overlaps(box, face), box.itemId).toBe(false);
     }
   });
 
-  it("moves a two-line fallback block up to end at or above 1164", async () => {
+  it("moves a fallback block that would run past the bottom edge up to end there", async () => {
+    // Four 120 px rows from the fallback line (1290) would end at 1812.
     const edit = structuredClone(hand.edit);
-    for (const caption of edit.tracks.captions.slice(0, 4)) caption.text = "extraordinarily";
+    for (const caption of edit.tracks.captions.slice(0, 4)) {
+      caption.text = "extraordinarily";
+      caption.size = 120;
+    }
     const boxes = await boxesOf(edit, [null, null]);
     const group = boxes.filter((box) => ["cw0", "cw1", "cw2", "cw3"].includes(box.itemId));
-    expect(new Set(group.map((box) => box.y)).size).toBeGreaterThan(1);
-    for (const box of group) expect(box.y + box.height, box.itemId).toBeLessThanOrEqual(1164);
+    expect(new Set(group.map((box) => box.y)).size).toBe(4);
+    for (const box of group) expect(box.y + box.height, box.itemId).toBeLessThanOrEqual(BOTTOM);
+    expect(Math.max(...group.map((box) => box.y + box.height))).toBe(BOTTOM);
   });
 
-  it("never sets a 120 px caption in a row that crosses 1164", async () => {
+  it("never sets a 120 px caption in a row that crosses the bottom edge", async () => {
     const edit = structuredClone(hand.edit);
     for (const caption of edit.tracks.captions) caption.size = 120;
     const boxes = await boxesOf(edit, lowHead);
     for (const box of boxes.filter((b) => b.kind === "caption")) {
-      expect(box.y + box.height, box.itemId).toBeLessThanOrEqual(1164);
+      expect(box.y + box.height, box.itemId).toBeLessThanOrEqual(BOTTOM);
     }
   });
 });

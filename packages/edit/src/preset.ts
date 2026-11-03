@@ -81,7 +81,9 @@ export interface GlossaryTerm {
 export interface Preset {
   id: "issebya";
   frame: { width: number; height: number };
-  // Text never leaves it; always inside `PLATFORM_SAFE`.
+  // Text never leaves it; always inside `PLATFORM_SAFE`. A rectangle for the
+  // placement code: the button-column notch (`PLATFORM_BUTTONS`) is left to
+  // the safe-box check.
   safe: Box;
   fonts: Record<FontKey, PresetFont>;
   caption: {
@@ -129,14 +131,34 @@ export function intersectBox(a: Box, b: Box): Box {
   };
 }
 
-// Where TikTok and Instagram Reels leave text visible at 1080x1920: the
-// stricter edge of the two platforms on each side (TikTok's reference: top
-// 252, left 120, a 240 px right margin beside the button column, 756 px
-// covered at the bottom). A guard, not a taste value: no preset and no change
-// request moves it (owner decision, issue #114, 2026-11-03).
-export const PLATFORM_SAFE: Box = { left: 120, right: 840, top: 252, bottom: 1164 };
+// Where TikTok and Instagram Reels leave text visible at 1080x1920 (owner
+// decision 2026-11-03, from a TikTok and Instagram safe-zone reference,
+// replacing issue #114's 120, 840, 252, 1164): 220 px covered at the top,
+// 35 px at each side and 450 px at the bottom. A guard, not a taste value: no
+// preset and no change request moves it.
+export const PLATFORM_SAFE: Box = { left: 35, right: 1045, top: 220, bottom: 1470 };
 
-// The `rethink-work` style's own box, before the platform guard cuts it.
+// The platforms' button column (like, comment, share) on the right: from its
+// top (1164) down to the bottom zone it covers a further 100 px inside
+// `PLATFORM_SAFE`, so text below that line stays left of x 945. The reference
+// drawing does not label the column's top: 1164 is measured from it (TikTok's
+// older reference agrees). Both are starting values the owner tunes by eye
+// with the studio's Zones button.
+const PLATFORM_BUTTONS_TOP = 1164;
+const PLATFORM_BUTTONS_WIDTH = 100;
+
+// The notch the button column cuts out of `PLATFORM_SAFE`'s lower-right
+// corner; text inside `PLATFORM_SAFE` never overlaps it.
+export const PLATFORM_BUTTONS: Box = {
+  left: PLATFORM_SAFE.right - PLATFORM_BUTTONS_WIDTH,
+  right: PLATFORM_SAFE.right,
+  top: PLATFORM_BUTTONS_TOP,
+  bottom: PLATFORM_SAFE.bottom,
+};
+
+// The `rethink-work` style's own box, before the platform guard cuts it. With
+// the 2026-11-03 zone it lies wholly inside `PLATFORM_SAFE` and clear of
+// `PLATFORM_BUTTONS`, so the preset's safe box is this box.
 const STYLE_SAFE: Box = { left: 130, right: 860, top: 260, bottom: 1400 };
 
 // The issebya style: the values of the approved `rethink-work` reel.
@@ -168,10 +190,10 @@ export const ISSEBYA_PRESET: Preset = {
     minSeconds: 0.25,
     groupPauseSeconds: 0.35,
     groupMaxUnits: 4,
-    fallbackY: 1054,
+    fallbackY: 1290,
     lineGap: 14,
   },
-  accent: { font: "primary", color: "#B3E6FF", aboveHead: 190, noHeadY: 894 },
+  accent: { font: "primary", color: "#B3E6FF", aboveHead: 190, noHeadY: 1130 },
   slots: { firstRow: 610, rowGap: 85, rightDrop: 42, minLeft: 110, minRight: 90 },
   transitions: {
     dim: {
@@ -180,15 +202,15 @@ export const ISSEBYA_PRESET: Preset = {
       motion: "fade",
       seconds: 0.3,
       ease: "power2.out",
-      text: { left: 130, right: 840, top: 944, bottom: 1164 },
+      text: { left: 130, right: 860, top: 1180, bottom: 1400 },
     },
     panel: {
-      layer: { left: 0, right: 1080, top: 914, bottom: 1920 },
+      layer: { left: 0, right: 1080, top: 1150, bottom: 1920 },
       background: "#121212",
       motion: "slide",
       seconds: 0.5,
       ease: "power3.inOut",
-      text: { left: 130, right: 840, top: 964, bottom: 1164 },
+      text: { left: 130, right: 860, top: 1200, bottom: 1400 },
     },
     card: {
       layer: FRAME,
@@ -196,7 +218,7 @@ export const ISSEBYA_PRESET: Preset = {
       motion: "fade",
       seconds: 0.25,
       ease: "power2.out",
-      text: { left: 130, right: 840, top: 640, bottom: 1164 },
+      text: { left: 130, right: 860, top: 640, bottom: 1400 },
     },
   },
   sounds: {

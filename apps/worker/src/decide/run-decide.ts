@@ -262,6 +262,7 @@ export function runDecide({
             request,
             model: usage.model,
             promptVersion: PROMPT_VERSION,
+            changeTitle: answer.change_title,
             changeSummary: answer.change_summary,
             // The passing build's checks: none failed.
             checks: [],

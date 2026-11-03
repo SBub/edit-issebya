@@ -42,6 +42,7 @@ test("a landscape clip is refused at once with its message, live, and nothing el
   await page.goto(await signInLink(admin, owner.email, baseURL!));
   await page.getByRole("button", { name: "Upload a reel" }).click();
   await page.getByLabel("Clip").setInputFiles(CLIP);
+  await expect(page.getByTestId("upload-chosen")).toHaveText("landscape.mp4");
   await page.getByRole("button", { name: "Upload", exact: true }).click();
   await expect(page).toHaveURL(
     /\/studio\/reels\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
@@ -74,7 +75,7 @@ test("a landscape clip is refused at once with its message, live, and nothing el
   await expect(page.locator('[data-overlay-kind="failure"]')).toHaveCount(0);
   await expect(page.getByLabel("Ask for a change")).toBeDisabled();
   await expect(page.getByTestId("change-blocked-reason")).toHaveText(
-    "This clip was refused; upload another clip.",
+    "This clip was refused; upload another clip",
   );
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
     "marker",

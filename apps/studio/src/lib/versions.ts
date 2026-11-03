@@ -3,7 +3,7 @@ import type { Check, EditInputs } from "@edit-issebya/edit";
 // Named columns, never "*". The edit itself is in R2 at r2_key; the row holds
 // its metadata.
 export const VERSION_COLUMNS =
-  "id, reel_id, number, parent_id, restored_from_id, request, model, prompt_version, change_summary, checks, inputs, r2_key, created_at";
+  "id, reel_id, number, parent_id, restored_from_id, request, model, prompt_version, change_title, change_summary, checks, inputs, r2_key, created_at";
 
 export interface VersionRow {
   id: string;
@@ -14,6 +14,7 @@ export interface VersionRow {
   request: string | null;
   model: string | null;
   prompt_version: string | null;
+  change_title: string | null;
   change_summary: string | null;
   checks: Check[];
   inputs: EditInputs;
@@ -24,7 +25,7 @@ export interface VersionRow {
 // What the reel page's versions list reads: no edit metadata (checks, inputs,
 // key), only what the owner sees.
 export const VERSION_LIST_COLUMNS =
-  "id, reel_id, number, parent_id, restored_from_id, request, change_summary, created_at";
+  "id, reel_id, number, parent_id, restored_from_id, request, change_title, change_summary, created_at";
 
 export type VersionListRow = Pick<
   VersionRow,
@@ -34,6 +35,7 @@ export type VersionListRow = Pick<
   | "parent_id"
   | "restored_from_id"
   | "request"
+  | "change_title"
   | "change_summary"
   | "created_at"
 >;

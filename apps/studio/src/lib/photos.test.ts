@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  LIBRARY_INTRO,
+  LIBRARY_INTRO_EMPTY,
   MAX_PHOTO_BYTES,
   PHOTO_ACCEPT,
   PHOTO_COLUMNS,
@@ -7,8 +9,11 @@ import {
   PHOTO_TYPES,
   formatDimensions,
   isPhotoId,
+  libraryIntro,
   parsePhotoUpload,
+  photoBadge,
   photoKey,
+  photoTileLabel,
 } from "./photos";
 
 const ID = "0b9f6c1e-3c1d-4c8e-9a51-2f4d7b6e8a10";
@@ -98,5 +103,35 @@ describe("photo keys and ids", () => {
   it("formats dimensions once measured", () => {
     expect(formatDimensions(1200, 900)).toBe("1200 x 900");
     expect(formatDimensions(null, 900)).toBeNull();
+  });
+});
+
+describe("library tiles", () => {
+  it("shows no badge for a ready photo and every other status", () => {
+    expect(photoBadge("ready")).toBeUndefined();
+    expect(photoBadge("uploading")).toBe("uploading");
+    expect(photoBadge("describing")).toBe("describing");
+    expect(photoBadge("failed")).toBe("failed");
+    expect(PHOTO_STATUSES.filter((status) => photoBadge(status) === undefined)).toEqual(["ready"]);
+  });
+
+  it("names each tile by its file name, and its status while not ready", () => {
+    expect(photoTileLabel({ fileName: "a.jpg", status: "ready" })).toBe("a.jpg");
+    expect(photoTileLabel({ fileName: "b.heic", status: "failed" })).toBe("b.heic, failed");
+    expect(photoTileLabel({ fileName: "c.png", status: "describing" })).toBe("c.png, describing");
+  });
+});
+
+describe("library intro", () => {
+  it("invites the first photo while the library is empty, then says what photos do", () => {
+    expect(libraryIntro(0)).toBe(LIBRARY_INTRO_EMPTY);
+    expect(LIBRARY_INTRO_EMPTY).toBe(
+      "Add photos of your work, places or products. When you talk about them, they can appear behind you in your reels",
+    );
+    expect(libraryIntro(1)).toBe(LIBRARY_INTRO);
+    expect(libraryIntro(12)).toBe(LIBRARY_INTRO);
+    expect(LIBRARY_INTRO).toBe(
+      "Photos you add here can appear in your reels, placed behind you when they fit what you're saying",
+    );
   });
 });

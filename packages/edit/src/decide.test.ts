@@ -52,6 +52,7 @@ function enumsUnder(schema: unknown, property: string): unknown[][] {
 function answerOf(edit: Edit) {
   return {
     tracks: edit.tracks,
+    change_title: "No change",
     change_summary: "no change",
     unexpressed: [],
     free_field: [],
@@ -101,6 +102,7 @@ describe("decideJsonSchema", () => {
       expect({ ...schema, $schema: null }).toEqual({ ...draft2020, $schema: null });
       expect(Object.keys(schema.properties as Json)).toEqual([
         "tracks",
+        "change_title",
         "change_summary",
         "unexpressed",
         "free_field",
@@ -374,6 +376,19 @@ describe("parseDecideAnswer", () => {
     expect(
       refused({ ...answerOf(hand.edit), free_field: [{ item: "Bad Id", reason: "x" }] }),
     ).toMatch(/free_field/);
+  });
+
+  it("requires a change title of 1 to 60 characters", () => {
+    const untitled: Partial<ReturnType<typeof answerOf>> = answerOf(hand.edit);
+    delete untitled.change_title;
+    expect(refused(untitled)).toMatch(/change_title/);
+    expect(refused({ ...answerOf(hand.edit), change_title: "" })).toMatch(/change_title/);
+    expect(refused({ ...answerOf(hand.edit), change_title: "x".repeat(61) })).toMatch(
+      /change_title/,
+    );
+    expect(
+      parse({ ...answerOf(hand.edit), change_title: "Transitions made longer" }),
+    ).toMatchObject({ ok: true });
   });
 });
 

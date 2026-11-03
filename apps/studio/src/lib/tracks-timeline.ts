@@ -7,18 +7,32 @@ import {
 } from "@edit-issebya/edit";
 import type { FramesLayout } from "./preview-sources";
 
-// The read-only tracks timeline's rows, in display order. A legacy `cutout`
-// track is never shown. A future title kind adds one entry here.
+// The read-only tracks timeline's rows, in display order. The captions and
+// sounds tracks and a legacy `cutout` track are never shown (the edit still
+// carries them). A future title kind adds one entry here.
 export const TRACK_ROWS = [
   { key: "footage", label: "Footage" },
   { key: "behind", label: "Behind" },
-  { key: "captions", label: "Captions" },
   { key: "overlays", label: "Accents" },
   { key: "transitions", label: "Transitions" },
-  { key: "sounds", label: "Sounds" },
 ] as const;
 
 export type TrackKey = (typeof TRACK_ROWS)[number]["key"];
+
+const ITEM_COLOURS: Record<TrackKey, string> = {
+  footage: "bg-track-footage",
+  behind: "bg-track-behind text-surface",
+  overlays: "bg-track-accents",
+  transitions: "bg-track-transitions",
+};
+
+// A row item's colour and shape. Behind, Accents and Transitions items are
+// slightly rounded (rounded-track, 4px, the studio's one exception to its
+// single corner radius); a footage clip holds a strip of frames and stays
+// square.
+export function trackItemClass(key: TrackKey): string {
+  return key === "footage" ? ITEM_COLOURS[key] : `${ITEM_COLOURS[key]} rounded-track`;
+}
 
 export interface TimelineItem {
   id: string;
@@ -65,14 +79,10 @@ export function timelineRows(edit: Edit, transcript: Transcript): Timeline {
     behind: (tracks.behind ?? []).map((entry) =>
       item(entry.id, () => (entry.kind === "photo" ? `photo ${entry.spot}` : entry.text)),
     ),
-    captions: tracks.captions.map((caption) =>
-      item(caption.id, () => caption.text ?? words(caption.words)),
-    ),
     overlays: tracks.overlays.map((overlay) =>
       item(overlay.id, () => overlay.text ?? words(overlay.words)),
     ),
     transitions: tracks.transitions.map((transition) => item(transition.id, () => transition.type)),
-    sounds: tracks.sounds.map((sound) => item(sound.id, () => sound.sound)),
   };
   return {
     duration: edit.duration,

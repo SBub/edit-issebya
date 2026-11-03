@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { type Page, type Route, expect, test } from "@playwright/test";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
@@ -108,11 +108,12 @@ async function recordProgress(page: Page) {
 async function signIn(page: Page, email: string, baseURL: string) {
   await page.goto(await signInLink(admin, email, baseURL));
   await page.getByRole("button", { name: "Upload a reel" }).click();
-  await expect(page.getByLabel("Clip")).toBeVisible();
+  await expect(page.getByTestId("upload-drop")).toBeVisible();
 }
 
 async function pickAndUpload(page: Page) {
   await page.getByLabel("Clip").setInputFiles(footage.path);
+  await expect(page.getByTestId("upload-chosen")).toHaveText(basename(footage.path));
   await page.getByRole("button", { name: "Upload", exact: true }).click();
 }
 
@@ -269,7 +270,7 @@ test("Reload resumes: after a reload the same file sends only the missing parts"
   await page.getByRole("button", { name: "Upload a reel" }).click();
 
   await expect(page.getByTestId("upload-resume")).toHaveText(
-    "An upload of footage-35mb.mp4 was interrupted. Pick the same file to resume.",
+    "An upload of footage-35mb.mp4 was interrupted. Pick the same file to resume",
   );
   await pickAndUpload(page);
 
@@ -355,7 +356,7 @@ test("Cancel: the reel becomes failed, its parts are gone and no job is queued",
   await expect(page.getByTestId("upload-progress")).toBeVisible();
 
   await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.locator("#upload-status")).toHaveText("Upload cancelled.");
+  await expect(page.locator("#upload-status")).toHaveText("Upload cancelled");
   await expect
     .poll(async () => (await admin.from("reels").select("status").eq("id", row.id).single()).data)
     .toEqual({ status: "failed" });
@@ -396,7 +397,7 @@ test("Create fails: the form shows Upload failed and one exception is captured",
 
   // The create never answered, so no resume record was written.
   await expect(page.locator("#upload-status")).toHaveText(
-    "Upload failed. Pick the file again to start over.",
+    "Upload failed. Pick the file again to start over",
     { timeout: 60_000 },
   );
   const reelsAfter = await admin.from("reels").select("id").eq("owner_id", owner.id);
