@@ -153,7 +153,7 @@ and longest seconds, and the median seconds per second of retimed footage.
 ## Testing
 
 - Worker unit tests (real child processes under `/usr/bin/time`): `step-runner.test.ts` (CPU vs sleep,
-  200 MB memory, group sampling with and without the option, byte counts, failure tail, missing tool,
+  200 MB of random memory touched every turn, so macOS cannot compress it under load, group sampling with and without the option, byte counts, failure tail, missing tool,
   abort), `summary.test.ts`, `time-report.test.ts`, `process-tree.test.ts`, `telemetry.test.ts` (one
   trace per reel, span tree, logs linked to spans, no request when export is off against a local HTTP
   server, positive control), `steps/receive.test.ts`.
