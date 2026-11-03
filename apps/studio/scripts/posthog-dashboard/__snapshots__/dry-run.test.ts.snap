@@ -443,7 +443,7 @@ order by steps.name",
         "source": {
           "kind": "HogQLQuery",
           "query": "select steps.name as step_name, floor(reels.source_seconds / 15) * 15 as source_seconds_from,
-  count(*) as done_steps,
+  count(steps.id) as done_steps,
   median(steps.wall_ms / 1000.0) as median_seconds,
   max(steps.wall_ms / 1000.0) as max_seconds,
   median(steps.wall_ms / 1000.0 / nullif(reels.footage_seconds, 0)) as median_seconds_per_footage_second
@@ -833,7 +833,7 @@ order by week",
         "source": {
           "kind": "HogQLQuery",
           "query": "select steps.name as step_name,
-  count(*) as done_steps,
+  count(steps.id) as done_steps,
   median(steps.cpu_ms / 1000.0 / (reels.source_seconds / 60.0)) as median_cpu_seconds_per_source_minute,
   max(steps.peak_rss_bytes) as max_peak_memory_bytes
 from supabase_steps as steps

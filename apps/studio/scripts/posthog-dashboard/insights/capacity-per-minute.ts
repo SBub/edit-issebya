@@ -15,7 +15,7 @@ export const capacityPerMinute: SqlInsight = {
     "Source: synced steps table joined to the synced reels table.",
   display: "ActionsTable",
   build: (d, t) => `select steps.name as step_name,
-  count(*) as done_steps,
+  count(steps.id) as done_steps,
   ${d.median("steps.cpu_ms / 1000.0 / (reels.source_seconds / 60.0)")} as median_cpu_seconds_per_source_minute,
   max(steps.peak_rss_bytes) as max_peak_memory_bytes
 from ${t("steps")} as steps

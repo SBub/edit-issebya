@@ -14,7 +14,7 @@ export const stepTimeVsLength: SqlInsight = {
     "joined to the synced reels table.",
   display: "ActionsTable",
   build: (d, t) => `select steps.name as step_name, ${BUCKET} as source_seconds_from,
-  count(*) as done_steps,
+  count(steps.id) as done_steps,
   ${d.median("steps.wall_ms / 1000.0")} as median_seconds,
   max(steps.wall_ms / 1000.0) as max_seconds,
   ${d.median("steps.wall_ms / 1000.0 / nullif(reels.footage_seconds, 0)")} as median_seconds_per_footage_second
