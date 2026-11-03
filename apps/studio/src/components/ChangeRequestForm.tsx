@@ -125,7 +125,7 @@ export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs, ref 
           disabled={disabled}
           aria-label="Send"
           title="Send"
-          className="absolute right-2 bottom-2 flex size-8 items-center justify-center rounded-reel bg-accent text-surface disabled:opacity-50"
+          className="absolute right-2 bottom-2 flex size-8 items-center justify-center rounded-reel bg-primary text-on-primary enabled:hover:opacity-90 disabled:opacity-50"
         >
           <svg
             aria-hidden="true"

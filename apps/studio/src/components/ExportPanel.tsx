@@ -260,7 +260,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
           onClick={exportNow}
           disabled={disabled}
           aria-describedby="export-reason"
-          className="rounded-reel bg-accent px-4 py-1.5 text-sm font-semibold text-surface disabled:opacity-50"
+          className="rounded-reel bg-primary px-4 py-1.5 text-sm font-semibold text-on-primary enabled:hover:opacity-90 disabled:opacity-50"
         >
           Export
         </button>

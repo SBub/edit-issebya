@@ -153,6 +153,12 @@ test("on a phone the grid has three columns, and + opens and closes the upload",
 
   await expect(page.getByLabel("Clip")).toBeHidden();
   await expect(page.getByRole("button", { name: "Upload a reel" })).toBeEnabled();
+  // The + button is white with the studio's one corner radius (8px).
+  expect(
+    await page
+      .getByRole("button", { name: "Upload a reel" })
+      .evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).borderRadius]),
+  ).toEqual(["rgb(255, 255, 255)", "8px"]);
   await expect(page.getByRole("button", { name: "Upload a reel" })).toHaveAttribute(
     "data-ready",
     "true",

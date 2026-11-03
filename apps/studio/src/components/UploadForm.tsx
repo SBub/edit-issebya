@@ -180,7 +180,7 @@ export function UploadForm() {
         <button
           type="submit"
           disabled={busy}
-          className="flex-1 bg-accent px-4 py-2 text-base font-medium text-surface disabled:opacity-60"
+          className="flex-1 bg-primary px-4 py-2 text-base font-medium text-on-primary enabled:hover:opacity-90 disabled:opacity-50"
         >
           Upload
         </button>

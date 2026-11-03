@@ -353,6 +353,14 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
     expect(colour).not.toBe("rgb(0, 0, 0)");
     expect(colour).not.toBe("rgba(0, 0, 0, 0)");
   }
+  // Filled primary buttons are white (--color-primary) with black content.
+  for (const primary of [
+    page.getByRole("button", { name: "Send" }),
+    page.getByTestId("export-button"),
+  ]) {
+    expect(await background(primary)).toBe("rgb(255, 255, 255)");
+    expect(await primary.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(0, 0, 0)");
+  }
 });
 
 // One corner radius (--radius-reel) in the studio, on five elements only;

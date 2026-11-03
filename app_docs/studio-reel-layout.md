@@ -15,8 +15,8 @@ desktop the right side splits in two rows (68% and 32% of the height): Versions 
 top 68%, each scrolling inside itself, and the correction field across both in the bottom 32%,
 with a tall text field. On a phone the correction field stays pinned at the bottom. What the studio
 is doing shows in a small progress overlay over the preview.
-The reels list is a grid of thumbnails with a square **+** button that opens the upload in a dialog.
-The studio has one corner radius, on five elements only, and one exception: track items have a small 4px radius (see Corner radius).
+The reels list is a grid of thumbnails with a white, rounded **+** button that opens the upload in a dialog.
+The studio has one corner radius, on six elements only, and one exception: track items have a small 4px radius (see Corner radius).
 The reel page also carries the owner's photo library: the top 68% of the third column on desktop and
 the third tab on a phone.
 
@@ -121,9 +121,16 @@ The studio is pitch black (owner, 2026-11-03). Tokens in `apps/studio/src/app/gl
 | `--color-line`                   | `#2e323a`            | Borders and dividers (1.63:1 on black, subtle but visible); the preview frame has a `ring-line` edge                                                                                                                 |
 | `--color-ink`                    | `#eceef1`            | Text: 18.1:1 on black, 15.4:1 on chrome                                                                                                                                                                              |
 | `--color-muted`                  | `#a3a9b3`            | Secondary text: 8.9:1 on black, 7.6:1 on chrome, 6.7:1 on raised (WCAG AA for small text everywhere)                                                                                                                 |
-| `--color-accent`                 | `#7cc4ff`            | Send, current marks (tab underline, playhead), focus rings                                                                                                                                                           |
+| `--color-accent`                 | `#7cc4ff`            | Current marks (tab underline, playhead, the current version mark), focus rings, links, progress fill, drop outlines                                                                                                  |
+| `--color-primary`                | `#ffffff`            | Filled primary buttons (`bg-primary`): Send, Export, Send sign-in link, Upload and the + button                                                                                                                      |
+| `--color-on-primary`             | `#000000`            | Text and icons on primary buttons (`text-on-primary`)                                                                                                                                                                |
 | `--color-danger`, `--color-warn` | `#ff8a80`, `#f5c451` | Errors and warnings                                                                                                                                                                                                  |
 | `--color-track-*`                | unchanged            | Track item colours                                                                                                                                                                                                   |
+
+Primary buttons are white with black content (owner, 2026-11-03): every filled button uses
+`bg-primary text-on-primary`, `enabled:hover:opacity-90` on hover and `disabled:opacity-50` while
+disabled; none uses `bg-accent`. Before this change they were filled with the accent blue. Their
+corner radius rules are unchanged (see Corner radius).
 
 Before this change `--color-surface` was `#0c0d10` and the lifted token was named `--color-panel`
 (same `#15171b`) and also filled the correction area, dialogs and track lanes. The track lanes are
@@ -133,7 +140,7 @@ outside an inner `relative` box, so the playhead's `left-20` still matches the l
 ### Corner radius
 
 The studio has one corner radius (owner, 2026-11-03): `--radius-reel` in the same `@theme`, `0.5rem`
-(8 px, the value the reel preview frame had as `rounded-lg`), used as `rounded-reel`. It is on five
+(8 px, the value the reel preview frame had as `rounded-lg`), used as `rounded-reel`. It is on six
 elements only:
 
 1. the reel preview frame (`data-testid="preview-frame"` in `PreviewPlayer.tsx`, `overflow-hidden`
@@ -147,6 +154,8 @@ elements only:
    (`tile-thumbnail`, `overflow-hidden`, so the image is clipped to the corners) and the card's
    link, so its focus ring follows the same shape. `ThumbnailGrid` rounds only when its `rounded`
    prop is set, and only the reels list (`page.tsx`) sets it.
+6. the reels list's **+** upload button ("Upload a reel" in `UploadDialog.tsx`, owner, 2026-11-03),
+   white like every filled button.
 
 One exception (owner, 2026-11-03): track items have a small 4px radius (slightly
 rounded). The items in the Behind, Accents and Transitions rows of the tracks timeline
@@ -157,8 +166,8 @@ rounded). The items in the Behind, Accents and Transitions rows of the tracks ti
 square: `trackItemClass` adds `rounded-track` for every row but `footage`.
 
 Every other element is square: buttons (Zones, Go back, tabs, dialog buttons, Close, Cancel and
-Yes, Delete, the **+** upload button, Sign out, a reel card's bin and its delete dialog's Cancel and
-Delete), photo tiles and every add tile, the
+Yes, Delete, Sign out, a reel card's bin and its delete dialog's Cancel and Delete), photo tiles
+and every add tile, the
 status and tile badges, dialogs, the tracks panel, its lanes, the ruler, the Footage row's clips and the playhead and its dot, the
 progress overlay and its bars, the export and upload progress bars (the native `<progress>` is
 styled flat with `appearance-none`), the drop overlay, the refusal message, inputs (the sign-in
@@ -234,7 +243,7 @@ not a corner, and is unchanged.
   title and meta padded clear of it. Nothing reel-specific: the reels use the defaults with `rounded` and without `add`, and the photo
   library uses it with `onSelect`, `aspect="square"`, `columns="panel"` and `add`
   (`app_docs/photo-library.md`).
-- `apps/studio/src/components/UploadDialog.tsx`: the square **+** button and a native `<dialog>` with
+- `apps/studio/src/components/UploadDialog.tsx`: the white, rounded (`rounded-reel`) **+** button and a native `<dialog>` with
   `UploadForm`. The dialog stays in the DOM when closed so an upload in progress is never unmounted.
   The button is disabled (`data-ready="false"`) until the client has hydrated.
 
@@ -362,8 +371,8 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   (`--color-chrome`). Never give another area a lifted or tinted background; use tokens, never raw
   colours.
 - One corner radius (`--radius-reel`) and only on the reel preview, the correction box, its Send
-  button, Export and the reel cards in the reels list (thumbnail and focus ring, through
-  `ThumbnailGrid`'s `rounded`, set by the reels list only). The one exception: track items in the
+  button, Export, the reel cards in the reels list (thumbnail and focus ring, through
+  `ThumbnailGrid`'s `rounded`, set by the reels list only) and the reels list's **+** upload button. The one exception: track items in the
   Behind, Accents and Transitions rows have a small 4px radius (`rounded-track`, from
   `--radius-track`); Footage clips, lanes, the ruler,
   the playhead and the tracks panel stay square. Nothing else is rounded, photo tiles and add tiles

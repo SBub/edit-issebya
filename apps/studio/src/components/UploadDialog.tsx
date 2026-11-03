@@ -26,7 +26,7 @@ export function UploadDialog() {
         disabled={!ready}
         data-ready={ready ? "true" : "false"}
         onClick={() => dialogRef.current?.showModal()}
-        className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] flex size-14 items-center justify-center bg-accent text-3xl leading-none font-light text-surface shadow-lg shadow-black/40 disabled:opacity-60"
+        className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] flex size-14 items-center justify-center rounded-reel bg-primary text-3xl leading-none font-light text-on-primary shadow-lg shadow-black/40 enabled:hover:opacity-90 disabled:opacity-50"
       >
         <span aria-hidden="true">+</span>
       </button>

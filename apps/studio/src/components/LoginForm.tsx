@@ -28,7 +28,7 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={pending}
-        className="bg-accent px-4 py-2 text-base font-medium text-surface disabled:opacity-60"
+        className="bg-primary px-4 py-2 text-base font-medium text-on-primary enabled:hover:opacity-90 disabled:opacity-50"
       >
         Send sign-in link
       </button>
