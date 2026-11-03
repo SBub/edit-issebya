@@ -208,7 +208,9 @@ test("1440x900: a new version replaces the preview while playing, at the same ti
   const events = await recordEvents(page);
   await openReel(page, baseURL!, DESKTOP);
   await page.getByRole("button", { name: "Play" }).click();
-  await expect.poll(() => playerTime(page), { timeout: 15_000 }).toBeGreaterThan(2);
+  // The seeded reel is under 3 seconds and an ended player is paused, so the
+  // new version is saved as soon as the clock moves, while it still plays.
+  await expect.poll(() => playerTime(page), { timeout: 15_000 }).toBeGreaterThan(0);
   const before = await playerTime(page);
 
   const nextId = await saveNextVersion();
