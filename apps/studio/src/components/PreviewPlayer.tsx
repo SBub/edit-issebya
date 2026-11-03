@@ -19,8 +19,8 @@ interface Props {
   // clock, a seek, a hold): the tracks timeline's playhead.
   onPosition?: (seconds: number) => void;
   // Whether the preview fills the edit area (the page holds the state and
-  // hides the tracks timeline): Zones is hidden then. With
-  // onExpandedChange, an expand or collapse button ends the row.
+  // hides the tracks timeline): Zones is hidden then, and expanding switches
+  // Zones off. With onExpandedChange, an expand or collapse button ends the row.
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   // Where to start once the player is ready (the previous version's position
@@ -55,6 +55,12 @@ const STALL_EVENTS = ["waiting", "stalled"];
 const SEEK_SLACK = 0.1;
 // A resume that never settles must not hang playback.
 const RESUME_TIMEOUT_MS = 500;
+// The control row's outer icons sit flush with the row's edges (the tracks
+// panel's edges): each viewBox starts or ends where its glyph's visible edge
+// is (stroke included), and the icon sits at that end of its 40 px button.
+const PLAY_VIEWBOX = "7.4 0 24 24";
+const PAUSE_VIEWBOX = "6 0 24 24";
+const EXPAND_VIEWBOX = "-2 0 24 24";
 
 // The timed videos of the composition, and the player's parent-frame copies
 // when it moved playback there (autoplay blocked): read only.
@@ -489,10 +495,16 @@ export function PreviewPlayer({
           aria-label={intent === "playing" ? "Pause" : "Play"}
           title={intent === "playing" ? "Pause" : "Play"}
           data-testid="play-toggle"
-          className="flex size-10 items-center justify-center justify-self-start text-ink transition-opacity enabled:hover:opacity-80 disabled:opacity-50"
+          className="flex size-10 items-center justify-start justify-self-start text-ink transition-opacity enabled:hover:opacity-80 disabled:opacity-50"
         >
-          {/* A filled play triangle with rounded corners, or two filled bars. */}
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="size-7">
+          {/* A filled play triangle with rounded corners, or two filled bars,
+              its left edge on the row's left edge. */}
+          <svg
+            aria-hidden="true"
+            viewBox={intent === "playing" ? PAUSE_VIEWBOX : PLAY_VIEWBOX}
+            fill="currentColor"
+            className="size-7"
+          >
             {intent === "playing" ? (
               <>
                 <rect x="6" y="4.5" width="4" height="15" rx="1.25" />
@@ -537,18 +549,23 @@ export function PreviewPlayer({
           {onExpandedChange && (
             <button
               type="button"
-              onClick={() => onExpandedChange(!expanded)}
+              onClick={() => {
+                // Expanding switches Zones off (its button is hidden then);
+                // collapsing leaves it off.
+                if (!expanded) setZones(false);
+                onExpandedChange(!expanded);
+              }}
               aria-pressed={expanded}
               aria-label={expanded ? "Collapse preview" : "Expand preview"}
               title={expanded ? "Collapse preview" : "Expand preview"}
               data-testid="preview-expand"
-              className="flex size-10 flex-none items-center justify-center text-ink transition-opacity hover:opacity-80"
+              className="flex size-10 flex-none items-center justify-end text-ink transition-opacity hover:opacity-80"
             >
               {/* Four arrows out to the corners (expand), or in from them
-                  (collapse). */}
+                  (collapse), the right edge on the row's right edge. */}
               <svg
                 aria-hidden="true"
-                viewBox="0 0 24 24"
+                viewBox={EXPAND_VIEWBOX}
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"

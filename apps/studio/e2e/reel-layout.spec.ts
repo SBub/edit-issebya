@@ -161,6 +161,35 @@ async function expectNoPageScroll(page: Page) {
   expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth);
 }
 
+// The control row's outer icons: the Play or Pause svg's left and the expand
+// svg's right (each viewBox ends on its glyph's visible edge) equal the given
+// edges within 1 px.
+async function expectIconsOnEdges(page: Page, edges: { left: number; right: number }) {
+  const play = (await page.getByTestId("play-toggle").locator("svg").boundingBox())!;
+  const expand = (await page.getByTestId("preview-expand").locator("svg").boundingBox())!;
+  expect(Math.abs(play.x - edges.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(expand.x + expand.width - edges.right)).toBeLessThanOrEqual(1);
+}
+
+// The tracks panel's outer box.
+async function tracksEdges(page: Page) {
+  const box = (await page.getByTestId("tracks").boundingBox())!;
+  return { left: box.x, right: box.x + box.width };
+}
+
+// The edit area's content box (inside its padding): where the tracks panel
+// stands when collapsed.
+async function editContentEdges(page: Page) {
+  return page.getByTestId("edit-area").evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return {
+      left: rect.left + el.clientLeft + parseFloat(style.paddingLeft),
+      right: rect.left + el.clientLeft + el.clientWidth - parseFloat(style.paddingRight),
+    };
+  });
+}
+
 // Inside the root box, so clipping cannot fake a pass.
 async function expectInsideRoot(page: Page, locator: Locator) {
   await expect(locator).toBeVisible();
@@ -878,12 +907,16 @@ for (const [size, viewport] of [
     expect(currentBox.y + currentBox.height).toBeLessThanOrEqual(totalBox.y + 0.5);
     // The row is no taller than the 40 px button.
     expect(row.height).toBeLessThanOrEqual(box.height + 0.5);
+    // The play glyph starts on the tracks panel's left edge and the expand
+    // glyph ends on its right edge, paused and playing.
+    await expectIconsOnEdges(page, await tracksEdges(page));
 
     await toggle.click();
     await expect(toggle).toHaveAccessibleName("Pause");
     await expect(toggle).toHaveAttribute("title", "Pause");
     await expect(toggle).toHaveText("");
     await expect(page.locator('[data-intent="playing"]')).toBeVisible();
+    await expectIconsOnEdges(page, await tracksEdges(page));
     await toggle.click();
     await expect(toggle).toHaveAccessibleName("Play");
     await expect(page.locator('[data-intent="paused"]')).toBeVisible();
@@ -920,6 +953,12 @@ for (const [size, viewport] of [
     await expect(page.getByTestId("tracks")).toBeVisible();
     await expect(page.getByTestId("ruler")).toBeVisible();
     const collapsedFrame = (await frame.boundingBox())!;
+    // The tracks panel spans the edit area's content box, the edges the row
+    // keeps when expanded.
+    const panel = await tracksEdges(page);
+    const content = await editContentEdges(page);
+    expect(Math.abs(panel.left - content.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(panel.right - content.right)).toBeLessThanOrEqual(1);
 
     // Playing, then expanded with the keyboard: playback goes on.
     await toggle.click();
@@ -951,6 +990,8 @@ for (const [size, viewport] of [
     expect(
       Math.abs(expandedBox.x + expandedBox.width - (expandedRow.x + expandedRow.width)),
     ).toBeLessThanOrEqual(1);
+    // No tracks panel: the icons keep its edges, the edit area's content box.
+    await expectIconsOnEdges(page, await editContentEdges(page));
     const expandedFrame = (await frame.boundingBox())!;
     expect(expandedFrame.height).toBeGreaterThan(collapsedFrame.height + 20);
     expect(Math.abs(expandedFrame.width / expandedFrame.height - 9 / 16)).toBeLessThan(0.01);
@@ -988,6 +1029,18 @@ for (const [size, viewport] of [
     expect(await playerTime(page)).toBe(paused);
     await expand.click();
     await expect(page.getByTestId("tracks")).toBeVisible();
+
+    // Expanding switches Zones off; collapsing leaves it off.
+    await zones.click();
+    await expect(zones).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("platform-zones")).toHaveCount(1);
+    await expand.click();
+    await expect(expand).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("platform-zones")).toHaveCount(0);
+    await expand.click();
+    await expect(expand).toHaveAttribute("aria-pressed", "false");
+    await expect(zones).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByTestId("platform-zones")).toHaveCount(0);
   });
 }
 

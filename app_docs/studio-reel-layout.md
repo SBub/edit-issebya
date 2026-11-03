@@ -78,6 +78,15 @@ lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unch
   seek through a `ref` (`PreviewPlayerHandle.seek`), and `ReelPreview`'s `BuiltPreview` hands it to
   `TracksTimeline` as `onSeek`, so a ruler seek takes the same path the slider did (the player's
   seek, the hold-then-start routine, sound scheduling, `onPosition`).
+- Control row edges (owner, 2026-11-03): the row spans the same width as the tracks panel
+  (`tracks`, the edit area's content box), and its outer glyphs sit exactly on that box's edges:
+  the visible left edge of the play triangle or the pause bars on the panel's left edge, the
+  visible right edge of the expand or collapse arrows on its right edge. Each SVG's viewBox starts
+  (Play `7.4 0 24 24`, Pause `6 0 24 24`) or ends (expand `-2 0 24 24`) on its glyph's visible edge,
+  stroke included, and the SVG sits at the outer end of its 40x40 button (`justify-start` for
+  Play or Pause, `justify-end` for expand), so the tap targets stay 40x40 and stay inside the row.
+  The clock stays on the row's centre and Zones keeps its place in the right
+  group. Expanded, the row keeps the same edges (the edit area's content box) with no panel below.
 - Expand and collapse (owner, 2026-11-03): the last button of the control row
   (`data-testid="preview-expand"`) is an icon button in the Play/Pause style: an inline `aria-hidden`
   SVG of 24 px in `text-ink` (four arrows out to the corners when collapsed, four arrows in from them
@@ -89,7 +98,9 @@ lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unch
   tracks timeline (ruler included), so the player's `flex-1` box takes the whole edit area (the left
   column on desktop, the Edit tab on a phone) and its 9:16 frame grows, centred; the control row keeps
   only Play or Pause, the clock (still centred by the grid) and the expand button, with Zones not
-  rendered. The Zones layer keeps its state. The right side and the
+  rendered. Expanding switches the Zones layer off (the expand
+  button's click handler sets `PreviewPlayer`'s `zones` state to false, since its button is
+  hidden); collapsing does not switch it back on. The right side and the
   phone's pinned correction field do not change. Toggling only changes the markup around
   `<hyperframes-player>`: the player is never remounted, paused or seeked, so playback goes on.
 - `apps/studio/src/app/preview-actions.ts`: `loadPreviewSources(reelId, versionId?)` signs the URLs
@@ -274,7 +285,9 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   button (`play-toggle`) with no text and one `aria-hidden` SVG, at least 40x40 and left of the
   clock, with a transparent background on hover, whose accessible name and `title` switch from
   `Play` to `Pause` and back; and that the clock's horizontal centre is within 2 px of the control
-  row's, the current time (`00:00`) above the total, and the row no taller than the button. At both sizes it
+  row's, the current time (`00:00`) above the total, and the row no taller than the button; and
+  that the `play-toggle` SVG's left and the `preview-expand` SVG's right equal the `tracks` box's
+  left and right within 1 px, paused and playing. At both sizes it
   checks the ruler as the one scrubber: no
   Position control in the control row and the ruler the page's one `role="slider"`; the ruler's left
   edge and width equal every lane's within 1 px; clicks at 25% and 75% of its box seek the player
@@ -286,7 +299,10 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   centred) and the button at the right end, makes the 9:16 frame taller and centred in the edit area,
   with no page scroll, and switches the name to `Collapse preview`; collapsing with Space brings
   everything back at the collapsed size; the same `<hyperframes-player>` keeps playing through both
-  toggles, and a paused player stays paused at the same time. Every read waits for the seek to settle (`settledTime`: on a frame,
+  toggles, and a paused player stays paused at the same time. Collapsed, the `tracks` box equals
+  the edit area's content box (inside its padding) within 1 px; expanded, the two SVG edges equal
+  that content box's edges within 1 px. With Zones on, expanding removes `platform-zones` and
+  collapsing leaves Zones off (`aria-pressed="false"`, no layer). Every read waits for the seek to settle (`settledTime`: on a frame,
   within one frame of the target, the same over three reads 100 ms apart), since the player first
   reads the asked-for time and the runtime moves it to a frame boundary later. The seeking
   specs (`preview`, `behind`, `e2e-tools/export-matches-preview`) seek with a real click on the
@@ -318,9 +334,14 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   children.
 - The ruler is the one scrubber: the only focusable and draggable element in the tracks timeline, and
   the player's control row has no Position slider. Never add a second seek control.
-- While the preview is expanded the tracks timeline (ruler included) and Zones are hidden; Play or Pause, the clock and the expand button stay. The expanded state is
+- While the preview is expanded the tracks timeline (ruler included) and Zones are hidden; Play or
+  Pause, the clock and the expand button stay. Expanding switches
+  Zones off, and collapsing never switches it back on. The expanded state is
   never saved and starts collapsed on every open. Expanding or collapsing never remounts, pauses or
   seeks the player.
+- The control row's outer glyphs sit on the tracks panel's edges: never inset the play or pause
+  glyph from the panel's left edge or the expand glyph from its right edge, and never shrink their
+  40x40 tap targets or push them outside the row to get there. Expanded, the row keeps those edges.
 - Track items stay read only: nothing in the rows is focusable, selectable, clickable, draggable or
   editable.
 - The timeline never shows a Captions or a Sounds row, and has no toggle to show hidden rows. Only

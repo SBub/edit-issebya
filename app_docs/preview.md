@@ -61,9 +61,9 @@ rebuilds it.` in place of the player. Sends `studio_preview_opened` (`reel_id`) 
 - `apps/studio/src/components/PreviewPlayer.tsx`: renders `<hyperframes-player>` (no `controls`,
   `disable-click-to-play`, `assets-loading-ui="none"`, `no-load-timeout`) with its own Play/Pause
   icon button (named by `aria-label`, no hover background), a clock centred in the control row (current
-  time over total duration), Zones and the extra buttons (Undo, Redo) at the right, then an
+  time over total duration), Zones at the right, then an
   `Expand preview` / `Collapse preview` icon button at the row's right end (`preview-expand`;
-  expanded, the tracks timeline, Zones and the extra buttons are hidden and the preview fills the
+  its outer glyphs on the tracks panel's edges; expanded, the tracks timeline and Zones are hidden and the preview fills the
   edit area, without remounting the player; `app_docs/studio-reel-layout.md`) and a `Loading` status; its seek is exposed through a `ref`
   (`PreviewPlayerHandle.seek`) to the tracks timeline's ruler, the one scrubber
   (`app_docs/studio-reel-layout.md`). Play, seek and stall all go through
@@ -73,7 +73,8 @@ rebuilds it.` in place of the player. Sends `studio_preview_opened` (`reel_id`) 
   playing re-enters the routine. Pause, seek and `ended` cancel scheduled sounds. The root carries
   `data-preview="loading|ready"` and `data-preview-version`.
 - `apps/studio/src/components/PlatformZones.tsx`, `src/lib/platform-zones.ts`: the player's `Zones`
-  button (`aria-pressed`, off on every open, never saved) shows a non-interactive layer
+  button (`aria-pressed`, off on every open, never saved, switched off when the preview expands and
+  left off on collapse) shows a non-interactive layer
   (`data-testid="platform-zones"`, `aria-hidden`, `pointer-events-none`) over the preview that
   shades what TikTok and Instagram cover: the four margins outside `PLATFORM_SAFE` (`top`,
   `bottom`, `left`, `right`) and the button column's notch (`buttons`, from `PLATFORM_BUTTONS`).
@@ -155,7 +156,8 @@ jsdelivr.
 - Owners never get a write grant on `reels.preview_copies`: the server signs the keys it names.
 - A cleared mask is a notice, never a preview without the cut-out (it would differ from the
   export).
-- The Zones layer takes no clicks and is never saved or built into the page.
+- The Zones layer takes no clicks and is never saved or built into the page. Expanding the preview
+  switches it off; collapsing never switches it back on.
 - A photo's key always comes from its own `photos` row read under RLS, never built from the id.
 
 ## Notes
