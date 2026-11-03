@@ -59,9 +59,9 @@ lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unch
   the preview.
 - `apps/studio/src/components/ReelPreview.tsx`, `PreviewPlayer.tsx`: the preview builds the
   reel's current version (`reels.current_version_id`) and exposes the player's clock to the control
-  row (Play or Pause at the left, the clock in the centre, then Zones at the right). The row is a
-  three-column grid (`grid-cols-[1fr_auto_1fr]`), the outer two columns equal, so the clock sits on
-  the row's horizontal centre whatever stands left and right of it.
+  row (Play or Pause at the left, the clock in the centre, then Zones and last the expand button at
+  the right). The row is a three-column grid (`grid-cols-[1fr_auto_1fr]`), the outer two columns
+  equal, so the clock sits on the row's horizontal centre whatever stands left and right of it.
   Play or Pause is an
   icon button at the left of the row (`data-testid="play-toggle"`): a filled play triangle with
   rounded corners when paused, two filled bars while playing, an inline `aria-hidden` SVG of 28 px in
@@ -77,6 +77,20 @@ lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unch
   seek through a `ref` (`PreviewPlayerHandle.seek`), and `ReelPreview`'s `BuiltPreview` hands it to
   `TracksTimeline` as `onSeek`, so a ruler seek takes the same path the slider did (the player's
   seek, the hold-then-start routine, sound scheduling, `onPosition`).
+- Expand and collapse (owner, 2026-11-03): the last button of the control row
+  (`data-testid="preview-expand"`) is an icon button in the Play/Pause style: an inline `aria-hidden`
+  SVG of 24 px in `text-ink` (four arrows out to the corners when collapsed, four arrows in from them
+  when expanded), no background or shape, a 40x40 tap target, a slight opacity change on hover, the
+  global `:focus-visible` ring, `aria-pressed`, and `aria-label` and `title` `Expand preview` or
+  `Collapse preview`. `ReelPreview` holds the state (`expanded`, React state: collapsed on every
+  open, never saved, kept across a version switch) and passes it to `BuiltPreview` and
+  `PreviewPlayer` (`expanded`, `onExpandedChange`). Expanded, `BuiltPreview` does not render the
+  tracks timeline (ruler included), so the player's `flex-1` box takes the whole edit area (the left
+  column on desktop, the Edit tab on a phone) and its 9:16 frame grows, centred; the control row keeps
+  only Play or Pause, the clock (still centred by the grid) and the expand button, with Zones not
+  rendered. The Zones layer keeps its state. The right side and the
+  phone's pinned correction field do not change. Toggling only changes the markup around
+  `<hyperframes-player>`: the player is never remounted, paused or seeked, so playback goes on.
 - `apps/studio/src/app/preview-actions.ts`: `loadPreviewSources(reelId, versionId?)` signs the URLs
   for any version of that reel (a version id of another reel reads as nothing, under RLS) and returns
   the frames sprite's layout (`framesLayout`) beside the URLs.
@@ -157,6 +171,8 @@ lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unch
 3. On the reel page, press Play. To move through the video, click or drag the ruler above the
    tracks (the playhead follows the pointer), or focus it and use the arrow keys (Shift for 5 s),
    Home and End. Read the timeline rows against the playhead.
+   Press the expand button at the right end of the control row to let the preview fill the edit
+   area (the timeline and Zones hide); press it again to collapse.
 4. Open a version's details with its arrow in the Versions area and use "Go back to this" to make
    an older version current (it saves a new version copying the old one); the preview always shows
    the current version.
@@ -202,7 +218,13 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   edge and width equal every lane's within 1 px; clicks at 25% and 75% of its box seek the player
   there; a drag keeps the playhead within 2 px of the pointer (also once the clock has settled on a
   frame) and keeps scrubbing past the ruler's end; a click on a row does nothing; arrows, Shift, Home
-  and End move the position. Every read waits for the seek to settle (`settledTime`: on a frame,
+  and End move the position. At both sizes it checks expand and collapse: the button at the row's
+  right end after Zones, named `Expand preview`; expanding with Enter while playing
+  removes `tracks` and the ruler and Zones, keeps Play or Pause and the clock (still
+  centred) and the button at the right end, makes the 9:16 frame taller and centred in the edit area,
+  with no page scroll, and switches the name to `Collapse preview`; collapsing with Space brings
+  everything back at the collapsed size; the same `<hyperframes-player>` keeps playing through both
+  toggles, and a paused player stays paused at the same time. Every read waits for the seek to settle (`settledTime`: on a frame,
   within one frame of the target, the same over three reads 100 ms apart), since the player first
   reads the asked-for time and the runtime moves it to a frame boundary later. The seeking
   specs (`preview`, `behind`, `e2e-tools/export-matches-preview`) seek with a real click on the
@@ -224,6 +246,9 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   children.
 - The ruler is the one scrubber: the only focusable and draggable element in the tracks timeline, and
   the player's control row has no Position slider. Never add a second seek control.
+- While the preview is expanded the tracks timeline (ruler included) and Zones are hidden; Play or Pause, the clock and the expand button stay. The expanded state is
+  never saved and starts collapsed on every open. Expanding or collapsing never remounts, pauses or
+  seeks the player.
 - Track items stay read only: nothing in the rows is focusable, selectable, clickable, draggable or
   editable.
 - The timeline never shows a Captions or a Sounds row, and has no toggle to show hidden rows. Only

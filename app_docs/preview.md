@@ -61,7 +61,10 @@ rebuilds it.` in place of the player. Sends `studio_preview_opened` (`reel_id`) 
 - `apps/studio/src/components/PreviewPlayer.tsx`: renders `<hyperframes-player>` (no `controls`,
   `disable-click-to-play`, `assets-loading-ui="none"`, `no-load-timeout`) with its own Play/Pause
   icon button (named by `aria-label`, no hover background), a clock centred in the control row (current
-  time over total duration) and a `Loading` status; its seek is exposed through a `ref`
+  time over total duration), Zones and the extra buttons (Undo, Redo) at the right, then an
+  `Expand preview` / `Collapse preview` icon button at the row's right end (`preview-expand`;
+  expanded, the tracks timeline, Zones and the extra buttons are hidden and the preview fills the
+  edit area, without remounting the player; `app_docs/studio-reel-layout.md`) and a `Loading` status; its seek is exposed through a `ref`
   (`PreviewPlayerHandle.seek`) to the tracks timeline's ruler, the one scrubber
   (`app_docs/studio-reel-layout.md`). Play, seek and stall all go through
   one hold-then-start routine: pause, seek, then wait (event-driven, a newer action supersedes) until

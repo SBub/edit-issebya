@@ -798,6 +798,106 @@ for (const [size, viewport] of [
     await expect(page.locator('[data-intent="paused"]')).toBeVisible();
     await expectNoPageScroll(page);
   });
+
+  test(`Expand and Collapse the preview at ${size}`, async ({ page, baseURL }) => {
+    await openReel(page, baseURL!, viewport);
+    const expand = page.getByTestId("preview-expand");
+    const toggle = page.getByTestId("play-toggle");
+    const clock = page.getByTestId("preview-clock");
+    const zones = page.getByRole("button", { name: "Zones" });
+    const frame = page.locator("hyperframes-player").locator("..");
+    const row = toggle.locator("..");
+    // The player element itself, tagged to tell a remount from a toggle.
+    await page
+      .locator("hyperframes-player")
+      .evaluate((el) => el.setAttribute("data-e2e-mount", "first"));
+
+    // Collapsed on open: an icon button with no text at the right end of the
+    // control row, after Zones.
+    await expect(expand).toHaveAccessibleName("Expand preview");
+    await expect(expand).toHaveAttribute("title", "Expand preview");
+    await expect(expand).toHaveAttribute("aria-pressed", "false");
+    await expect(expand).toHaveText("");
+    await expect(expand.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+    const box = (await expand.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(40);
+    expect(box.height).toBeGreaterThanOrEqual(40);
+    const rowBox = (await row.boundingBox())!;
+    expect(Math.abs(box.x + box.width - (rowBox.x + rowBox.width))).toBeLessThanOrEqual(1);
+    const zonesBox = (await zones.boundingBox())!;
+    expect(zonesBox.x + zonesBox.width).toBeLessThanOrEqual(box.x + 0.5);
+    await expect(page.getByTestId("tracks")).toBeVisible();
+    await expect(page.getByTestId("ruler")).toBeVisible();
+    const collapsedFrame = (await frame.boundingBox())!;
+
+    // Playing, then expanded with the keyboard: playback goes on.
+    await toggle.click();
+    await expect(page.locator('[data-intent="playing"]')).toBeVisible();
+    await expect(page.locator('[data-preview="ready"]')).toBeVisible({ timeout: 10_000 });
+    await expand.focus();
+    await page.keyboard.press("Enter");
+    await expect(expand).toHaveAccessibleName("Collapse preview");
+    await expect(expand).toHaveAttribute("title", "Collapse preview");
+    await expect(expand).toHaveAttribute("aria-pressed", "true");
+    await expect(expand).toBeFocused();
+
+    // Expanded: no tracks, no ruler, no Zones; Play or Pause,
+    // the clock (still centred) and the button stay, the preview is taller
+    // and still 9:16, and the page does not scroll.
+    await expect(page.getByTestId("tracks")).toHaveCount(0);
+    await expect(page.getByTestId("ruler")).toHaveCount(0);
+    await expect(zones).toHaveCount(0);
+    await expect(toggle).toBeVisible();
+    await expect(clock).toBeVisible();
+    await expect(toggle).toHaveAccessibleName("Pause");
+    await expect(page.locator('[data-intent="playing"]')).toBeVisible();
+    const expandedRow = (await row.boundingBox())!;
+    const clockBox = (await clock.boundingBox())!;
+    expect(
+      Math.abs(clockBox.x + clockBox.width / 2 - (expandedRow.x + expandedRow.width / 2)),
+    ).toBeLessThanOrEqual(2);
+    const expandedBox = (await expand.boundingBox())!;
+    expect(
+      Math.abs(expandedBox.x + expandedBox.width - (expandedRow.x + expandedRow.width)),
+    ).toBeLessThanOrEqual(1);
+    const expandedFrame = (await frame.boundingBox())!;
+    expect(expandedFrame.height).toBeGreaterThan(collapsedFrame.height + 20);
+    expect(Math.abs(expandedFrame.width / expandedFrame.height - 9 / 16)).toBeLessThan(0.01);
+    const area = (await page.getByTestId("edit-area").boundingBox())!;
+    expect(
+      Math.abs(expandedFrame.x + expandedFrame.width / 2 - (area.x + area.width / 2)),
+    ).toBeLessThanOrEqual(2);
+    await expectNoPageScroll(page);
+    // The clock keeps running: the same player, never paused or rebuilt.
+    const t1 = await playerTime(page);
+    await expect.poll(() => playerTime(page), { timeout: 10_000 }).toBeGreaterThan(t1);
+    await expect(page.locator('hyperframes-player[data-e2e-mount="first"]')).toHaveCount(1);
+
+    // Collapsed with Space: everything is back, still playing in the same player.
+    await page.keyboard.press("Space");
+    await expect(expand).toHaveAccessibleName("Expand preview");
+    await expect(expand).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByTestId("tracks")).toBeVisible();
+    await expect(page.getByTestId("ruler")).toBeVisible();
+    await expect(zones).toBeVisible();
+    expect(Math.abs((await frame.boundingBox())!.height - collapsedFrame.height)).toBeLessThan(1);
+    await expect(page.locator('[data-intent="playing"]')).toBeVisible();
+    const t2 = await playerTime(page);
+    await expect.poll(() => playerTime(page), { timeout: 10_000 }).toBeGreaterThan(t2);
+    await expect(page.locator('hyperframes-player[data-e2e-mount="first"]')).toHaveCount(1);
+    await expectNoPageScroll(page);
+
+    // Paused stays paused through a toggle, at the same time.
+    await toggle.click();
+    await expect(page.locator('[data-intent="paused"]')).toBeVisible();
+    const paused = await settledTime(page, await playerTime(page));
+    await expand.click();
+    await expect(page.locator('[data-intent="paused"]')).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(await playerTime(page)).toBe(paused);
+    await expand.click();
+    await expect(page.getByTestId("tracks")).toBeVisible();
+  });
 }
 
 test("the playhead follows the player's clock", async ({ page, baseURL }) => {

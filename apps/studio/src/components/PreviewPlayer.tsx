@@ -18,6 +18,11 @@ interface Props {
   // Told the clock's position wherever the player's own position changes (its
   // clock, a seek, a hold): the tracks timeline's playhead.
   onPosition?: (seconds: number) => void;
+  // Whether the preview fills the edit area (the page holds the state and
+  // hides the tracks timeline): Zones is hidden then. With
+  // onExpandedChange, an expand or collapse button ends the row.
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   // Where to start once the player is ready (the previous version's position
   // on an automatic switch, clamped to this version's duration), and whether
   // to start playing from there (the previous version's intent). Default: 0,
@@ -101,6 +106,8 @@ export function PreviewPlayer({
   hits,
   soundBytes,
   onPosition,
+  expanded = false,
+  onExpandedChange,
   startAt = 0,
   autoPlay = false,
   onIntent,
@@ -469,7 +476,8 @@ export function PreviewPlayer({
       </div>
       {/* Three columns, the outer two equal: the clock sits on the row's centre
           whatever stands left (Play or Pause) and right (Zones and the extra
-          buttons). */}
+          buttons, then Expand or Collapse). Expanded, the right column keeps
+          only the expand button. */}
       <div className="grid flex-none grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
         <button
           type="button"
@@ -512,15 +520,47 @@ export function PreviewPlayer({
           </span>
         </span>
         <div className="flex min-w-0 items-center justify-end gap-2">
-          <button
-            type="button"
-            aria-pressed={zones}
-            title="Show what TikTok and Instagram cover"
-            onClick={() => setZones((on) => !on)}
-            className="flex h-8 flex-none items-center rounded-full border border-line px-2.5 text-xs hover:bg-raised aria-pressed:bg-raised aria-pressed:font-semibold"
-          >
-            Zones
-          </button>
+          {!expanded && (
+            <button
+              type="button"
+              aria-pressed={zones}
+              title="Show what TikTok and Instagram cover"
+              onClick={() => setZones((on) => !on)}
+              className="flex h-8 flex-none items-center rounded-full border border-line px-2.5 text-xs hover:bg-raised aria-pressed:bg-raised aria-pressed:font-semibold"
+            >
+              Zones
+            </button>
+          )}
+          {onExpandedChange && (
+            <button
+              type="button"
+              onClick={() => onExpandedChange(!expanded)}
+              aria-pressed={expanded}
+              aria-label={expanded ? "Collapse preview" : "Expand preview"}
+              title={expanded ? "Collapse preview" : "Expand preview"}
+              data-testid="preview-expand"
+              className="flex size-10 flex-none items-center justify-center text-ink transition-opacity hover:opacity-80"
+            >
+              {/* Four arrows out to the corners (expand), or in from them
+                  (collapse). */}
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="size-6"
+              >
+                {expanded ? (
+                  <path d="M3 3l6 6m0-4.8V9H4.2M21 3l-6 6m0-4.8V9h4.8M3 21l6-6m0 4.8V15H4.2M21 21l-6-6m0 4.8V15h4.8" />
+                ) : (
+                  <path d="M9 9 3 3m0 4.8V3h4.8M15 9l6-6m0 4.8V3h-4.8M9 15l-6 6m0-4.8V21h4.8M15 15l6 6m0-4.8V21h-4.8" />
+                )}
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>
