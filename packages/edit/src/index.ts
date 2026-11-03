@@ -15,6 +15,7 @@ export {
   type BehindSpot,
   BEHIND_SPOTS,
   FONT_KEYS,
+  TRANSITION_TYPES,
   ISSEBYA_PRESET,
   PLATFORM_SAFE,
   cleanWord,

@@ -165,7 +165,7 @@ describe("runDecide", () => {
       parent_id: firstId,
       request: null,
       model: "claude-opus-5-5",
-      prompt_version: "decide-3",
+      prompt_version: "decide-4",
       change_summary: (scripted.structured_output as Json).change_summary,
       checks: [],
       used_free_field: false,
@@ -215,6 +215,35 @@ describe("runDecide", () => {
     });
     expect(v2.rejected_reasons).toHaveLength(1);
     expect(v2.rejected_reasons[0]).toMatch(/^safe-box title: .* runs past the safe box/);
+  });
+
+  it("sends a phrase under 1.5 s back with its transition-length reason, then saves the retry", async () => {
+    // "the real Studio" with no hold: 1.257 to 2.605 s, 1.35 s.
+    const short = resultEnvelope(
+      answer((a) => {
+        a.tracks.transitions = [
+          {
+            id: "dim-clip",
+            type: "dim",
+            from: "w0008",
+            key_from: "w0009",
+            to: "w0010",
+            hold_seconds: 0,
+          },
+        ];
+      }),
+    );
+    const ai = fakeAiRunner([short, scripted]);
+    const { run } = await decide(ai);
+    await run;
+    expect(ai.calls).toHaveLength(2);
+    expect(ai.calls[1]!.prompt).toMatch(
+      /- transition-length dim-clip: transition dim-clip lasts 1\.35 s, at least 1\.5 s: cover more words or pick a longer phrase/,
+    );
+    const v2 = rows.get(current!)!;
+    expect(v2).toMatchObject({ number: 2, checks: [] });
+    expect(v2.rejected_reasons).toHaveLength(1);
+    expect(v2.rejected_reasons[0]).toMatch(/^transition-length dim-clip: /);
   });
 
   it("fails after two refused answers and writes nothing (verification 3)", async () => {
@@ -376,6 +405,8 @@ describe("runDecide", () => {
   it("keeps the failure tail within 20 lines when there are many reasons", async () => {
     const many = resultEnvelope(
       answer((a) => {
+        // No transition: a phrase would absorb the captions it carries.
+        a.tracks.transitions = [];
         for (const caption of a.tracks.captions!) caption.position = { ...NEAR_RIGHT_EDGE, y: 700 };
       }),
     );
@@ -466,7 +497,12 @@ describe("runDecide with a behind item", () => {
   ) =>
     resultEnvelope(
       answer((a) => {
-        if (items.length > 0) a.tracks.behind = items;
+        // A transition and a behind item never show together, and these
+        // items cover the whole clip: the answer drops its transition.
+        if (items.length > 0) {
+          a.tracks.behind = items;
+          a.tracks.transitions = [];
+        }
         a.behind_rules = rules;
       }),
     );
@@ -631,8 +667,9 @@ describe("runDecide with a behind item", () => {
     // A head 560 px wide at the top spot's top edge: its face (x 215 to 775,
     // y 160 to 916) covers 62% of the spot. It leaves too little room beside
     // it for a caption, so every caption goes to the line below the face, and
-    // the face ends above the dim transition's text region (from y 944): no
-    // caption covers it, so the retry without the photo passes.
+    // the dim transition's levels cover the footage by design (the face check
+    // skips them): no caption covers the face, so the retry without the photo
+    // passes.
     const ref = rows.get(firstId)!.inputs.head_track;
     const key = cacheKey(PREFIX, ref.step, ref.fingerprint, ref.file);
     const track = Array.from({ length: 12 }, (_, index) => ({

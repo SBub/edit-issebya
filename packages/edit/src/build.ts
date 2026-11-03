@@ -4,9 +4,15 @@ import type { HeadTrack } from "./head-track.ts";
 import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
 import { type TextBox, layoutText } from "./layout.ts";
 import type { Measurer } from "./measure.ts";
-import { FONT_KEYS, type Preset } from "./preset.ts";
-import type { BehindItem, Edit, EditMask, EditRef } from "./schema.ts";
-import { resolveSpans, resolveTimeline } from "./timeline.ts";
+import { FONT_KEYS, type Preset, backgroundCss } from "./preset.ts";
+import {
+  type BehindItem,
+  type Edit,
+  type EditMask,
+  type EditRef,
+  isPhraseTransition,
+} from "./schema.ts";
+import { phraseMotion, resolveSpans, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
 export type AssetRole = "footage" | "font" | "sound" | "mask" | "photo";
@@ -42,6 +48,13 @@ const BEHIND_STYLE = [
   "      .word { position: absolute; line-height: 1; white-space: nowrap; }",
 ];
 
+// The extra rules a page with phrase transitions needs: a level (number,
+// lead-in or key phrase) is one element holding its lines.
+const LEVEL_STYLE = [
+  "      .level { position: absolute; inset: 0; opacity: 0; }",
+  "      .line { position: absolute; line-height: 1; white-space: nowrap; }",
+];
+
 export interface BuildResult {
   html: string;
   assets: BuildAsset[];
@@ -67,7 +80,7 @@ export function build(
   preset: Preset,
   measurer: Measurer,
 ): BuildResult {
-  const resolved = resolveTimeline(edit, transcript);
+  const resolved = resolveTimeline(edit, transcript, preset);
   const boxes = layoutText(edit, resolved, transcript, headTrack, preset, measurer);
   const behindItems = edit.tracks.behind ?? [];
   const bigWords = new Map<string, BigWordBox>();
@@ -109,6 +122,7 @@ export function build(
       return `      .f-${key} { font-family: "${font.family}", sans-serif; font-weight: ${font.weight}; }`;
     }),
     ...(spans.length > 0 ? BEHIND_STYLE : []),
+    ...(tracks.transitions.some(isPhraseTransition) ? LEVEL_STYLE : []),
   ];
 
   const body: string[] = [];
@@ -191,8 +205,21 @@ export function build(
     body.push("      </div>");
   }
 
+  // A stored timed transition keeps its frozen legacy look and its anchors; a
+  // phrase transition takes the library entry, the background role at the
+  // entry's strength and its own motion length, if it sets one.
+  const motions = new Map<string, { seconds: number; ease: string }>();
   for (const [index, item] of tracks.transitions.entries()) {
-    const kind = preset.transitions[item.type];
+    const phrase = isPhraseTransition(item);
+    const kind = phrase ? preset.transitions[item.type] : preset.legacyTransitions[item.type];
+    const background = phrase
+      ? backgroundCss(
+          preset.roles.background.color,
+          preset.transitions[item.type].background.strength,
+        )
+      : (item.color ?? preset.legacyTransitions[item.type].background);
+    const seconds = phrase ? phraseMotion(item, preset) : kind.seconds;
+    motions.set(item.id, { seconds, ease: kind.ease });
     const { start, end } = span(item.id);
     const height = kind.layer.bottom - kind.layer.top;
     const hidden = kind.motion === "fade" ? "opacity: 0" : `transform: translateY(${height}px)`;
@@ -201,7 +228,7 @@ export function build(
       `top: ${px(kind.layer.top)}px`,
       `width: ${px(kind.layer.right - kind.layer.left)}px`,
       `height: ${px(height)}px`,
-      `background: ${item.color ?? kind.background}`,
+      `background: ${background}`,
       hidden,
       ...(item.style ? [inlineStyle(item.style)] : []),
     ].join("; ");
@@ -215,17 +242,17 @@ export function build(
         ["style", css],
       ])}></div>`,
     );
-    const out = Math.max(end - kind.seconds, start);
+    const out = Math.max(end - seconds, start);
     const id = selector(item.id);
     if (kind.motion === "fade") {
       js.push(
-        `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(kind.seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
-        `tl.to(${id}, { opacity: 0, duration: ${num(kind.seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
+        `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
+        `tl.to(${id}, { opacity: 0, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
       );
     } else {
       js.push(
-        `tl.fromTo(${id}, { y: ${height} }, { y: 0, duration: ${num(kind.seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
-        `tl.to(${id}, { y: ${height}, duration: ${num(kind.seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
+        `tl.fromTo(${id}, { y: ${height} }, { y: 0, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
+        `tl.to(${id}, { y: ${height}, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
       );
     }
   }
@@ -263,6 +290,44 @@ export function build(
     js.push(
       `tl.fromTo(${id}, { opacity: 0, y: ${caption.rise} }, { opacity: 1, y: 0, duration: ${num(caption.inSeconds)}, ease: "${caption.inEase}" }, ${num(box.start)});`,
       `tl.to(${id}, { opacity: 0, duration: ${num(caption.outSeconds)} }, ${num(Math.max(box.end - caption.outSeconds, box.start + caption.minSeconds))});`,
+    );
+  }
+  // Each level of a phrase transition: one element with its lines, coming in
+  // like a caption on its first word and leaving with the layer's exit.
+  const levels = new Map<string, TextBox[]>();
+  for (const box of boxes) {
+    if (box.transitionId === undefined) continue;
+    levels.set(box.itemId, [...(levels.get(box.itemId) ?? []), box]);
+  }
+  for (const [levelId, lines] of levels) {
+    const first = lines[0]!;
+    const motion = motions.get(first.transitionId!)!;
+    const { end } = span(first.transitionId!);
+    body.push(
+      `        <div${attrs([
+        ["id", levelId],
+        ["class", "level"],
+      ])}>`,
+    );
+    for (const box of lines) {
+      const css = [
+        `left: ${px(box.x)}px`,
+        `top: ${px(box.y)}px`,
+        `font-size: ${px(box.size)}px`,
+        `color: ${box.color}`,
+      ].join("; ");
+      body.push(
+        `          <span${attrs([
+          ["class", `line f-${box.font}`],
+          ["style", css],
+        ])}>${escapeHtml(box.text)}</span>`,
+      );
+    }
+    body.push("        </div>");
+    const id = selector(levelId);
+    js.push(
+      `tl.fromTo(${id}, { opacity: 0, y: ${caption.rise} }, { opacity: 1, y: 0, duration: ${num(caption.inSeconds)}, ease: "${caption.inEase}" }, ${num(first.start)});`,
+      `tl.to(${id}, { opacity: 0, duration: ${num(motion.seconds)}, ease: "${motion.ease}" }, ${num(Math.max(end - motion.seconds, first.start))});`,
     );
   }
   body.push("      </div>");

@@ -1,9 +1,10 @@
 import { type BigWordBox, spotBox, spotFaceShare } from "./behind.ts";
 import { type HeadTrack, faceBox } from "./head-track.ts";
 import type { TextBox } from "./layout.ts";
+import { MIN_LARGE_TEXT_CONTRAST, contrastRatio } from "./contrast.ts";
 import { PLATFORM_SAFE, type Preset, intersectBox } from "./preset.ts";
-import type { Anchor, Edit } from "./schema.ts";
-import type { ResolvedItem } from "./timeline.ts";
+import { type Anchor, type Edit, isPhraseTransition } from "./schema.ts";
+import { type ResolvedItem, phraseWords } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
 export type CheckRule =
@@ -15,7 +16,15 @@ export type CheckRule =
   | "sound-gap"
   | "time-in-speech"
   | "out-of-reel"
-  | "glossary";
+  | "glossary"
+  | "transition-length"
+  | "transition-density"
+  | "transition-behind"
+  | "transition-overlap"
+  | "transition-area"
+  | "transition-fit"
+  | "transition-accent"
+  | "contrast";
 
 // One failed layout rule; an empty list means every rule passes.
 export interface Check {
@@ -109,7 +118,8 @@ export function runChecks(
   for (const { item, span } of photos) {
     const spot = spotBox(item.spot, preset);
     for (const box of boxes) {
-      if (box.kind !== "caption") continue;
+      // A transition's levels never show with a behind item (transition-behind).
+      if (box.kind !== "caption" || box.transitionId !== undefined) continue;
       if (!(box.start < span.end - SLACK && span.start < box.end - SLACK)) continue;
       const rect = {
         left: box.x,
@@ -127,7 +137,8 @@ export function runChecks(
   }
 
   for (const box of boxes) {
-    if (box.kind !== "caption") continue;
+    // A transition's levels cover the footage by design.
+    if (box.kind !== "caption" || box.transitionId !== undefined) continue;
     const face = faceBox(headTrack, box.start, box.end, { left: 0, right: 0 });
     if (!face) continue;
     const rect = { left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height };
@@ -167,6 +178,8 @@ export function runChecks(
     ...(tracks.behind ?? []),
   ];
   for (const item of items) {
+    // A phrase transition has no anchors (its span comes from its words).
+    if (!("start" in item)) continue;
     const anchors: Anchor[] = [item.start, item.end];
     for (const anchor of anchors) {
       if (!("time" in anchor)) continue;
@@ -187,6 +200,149 @@ export function runChecks(
         rule: "out-of-reel",
         item: item.id,
         reason: `${item.id} resolves outside the reel (0 to ${edit.duration.toFixed(3)} s) and was clamped`,
+      });
+    }
+  }
+
+  checks.push(...transitionChecks(edit, boxes, resolved, transcript, preset));
+  return checks;
+}
+
+const LEVEL_NAMES: Record<string, string> = {
+  number: "number",
+  lead: "lead-in",
+  key: "key phrase",
+};
+
+// The phrase transitions' rules (stored timed transitions keep only the
+// checks above, so old versions report what they always did): long enough,
+// about one per `densitySeconds`, never with a behind item or another
+// transition, a text area inside the platform guard, levels that fit it, no
+// accent on a word of the phrase, and the text roles readable on the
+// background role.
+function transitionChecks(
+  edit: Edit,
+  boxes: readonly TextBox[],
+  resolved: ReadonlyMap<string, ResolvedItem>,
+  transcript: Transcript,
+  preset: Preset,
+): Check[] {
+  const checks: Check[] = [];
+  const phrases = edit.tracks.transitions.filter(isPhraseTransition);
+  if (phrases.length === 0) return checks;
+  const rules = preset.transitionRules;
+  const spanOf = (id: string) => resolved.get(id)!;
+
+  for (const item of phrases) {
+    const { start, end } = spanOf(item.id);
+    if (end - start < rules.minSeconds - SLACK) {
+      checks.push({
+        rule: "transition-length",
+        item: item.id,
+        reason: `transition ${item.id} lasts ${(end - start).toFixed(2)} s, at least ${rules.minSeconds} s: cover more words or pick a longer phrase`,
+      });
+    }
+  }
+
+  const allowed = Math.max(1, Math.ceil(edit.duration / rules.densitySeconds - SLACK));
+  if (edit.tracks.transitions.length > allowed) {
+    const extra = edit.tracks.transitions[allowed]!;
+    checks.push({
+      rule: "transition-density",
+      item: extra.id,
+      reason: `${edit.tracks.transitions.length} transitions in a ${edit.duration.toFixed(1)} s reel, at most ${allowed} (one per ${rules.densitySeconds} s): drop ${edit.tracks.transitions.length - allowed === 1 ? "one" : edit.tracks.transitions.length - allowed}`,
+    });
+  }
+
+  const crosses = (a: { start: number; end: number }, b: typeof a) =>
+    a.start < b.end - SLACK && b.start < a.end - SLACK;
+  for (const item of phrases) {
+    const span = spanOf(item.id);
+    for (const behind of edit.tracks.behind ?? []) {
+      if (!crosses(span, spanOf(behind.id))) continue;
+      checks.push({
+        rule: "transition-behind",
+        item: item.id,
+        reason: `transition ${item.id} overlaps behind ${behind.id}; a transition and a behind item never show together`,
+      });
+    }
+  }
+
+  const all = edit.tracks.transitions;
+  for (const [index, item] of all.entries()) {
+    for (const other of all.slice(index + 1)) {
+      if (!isPhraseTransition(item) && !isPhraseTransition(other)) continue;
+      if (!crosses(spanOf(item.id), spanOf(other.id))) continue;
+      checks.push({
+        rule: "transition-overlap",
+        item: other.id,
+        reason: `transition ${other.id} overlaps transition ${item.id}; one transition at a time`,
+      });
+    }
+  }
+
+  const safe = intersectBox(preset.safe, PLATFORM_SAFE);
+  for (const item of phrases) {
+    const { text } = preset.transitions[item.type];
+    const edges: string[] = [];
+    if (text.left < safe.left) edges.push(`left edge ${px(text.left)} < ${safe.left}`);
+    if (text.right > safe.right) edges.push(`right edge ${px(text.right)} > ${safe.right}`);
+    if (text.top < safe.top) edges.push(`top edge ${px(text.top)} < ${safe.top}`);
+    if (text.bottom > safe.bottom) edges.push(`bottom edge ${px(text.bottom)} > ${safe.bottom}`);
+    if (edges.length === 0) continue;
+    checks.push({
+      rule: "transition-area",
+      item: item.id,
+      reason: `transition ${item.id}: the ${item.type} text area runs past the safe box: ${edges.join(", ")}`,
+    });
+  }
+
+  const reported = new Set<string>();
+  for (const box of boxes) {
+    if (box.transitionId === undefined || reported.has(box.itemId)) continue;
+    const item = phrases.find((phrase) => phrase.id === box.transitionId);
+    if (!item) continue;
+    const { text } = preset.transitions[item.type];
+    const inside =
+      box.x >= text.left - SLACK &&
+      box.x + box.width <= text.right + SLACK &&
+      box.y >= text.top - SLACK &&
+      box.y + box.height <= text.bottom + SLACK;
+    if (inside) continue;
+    reported.add(box.itemId);
+    const level = LEVEL_NAMES[box.itemId.slice(item.id.length + 1)] ?? "text";
+    checks.push({
+      rule: "transition-fit",
+      item: item.id,
+      reason: `the ${level} of ${item.id} does not fit the ${item.type}'s text area: pick fewer words${item.type === "dim" ? "" : " or use dim"}`,
+    });
+  }
+
+  for (const item of phrases) {
+    const { lead, key } = phraseWords(item, transcript);
+    const words = new Set([...lead, ...key].map((word) => word.id));
+    for (const overlay of edit.tracks.overlays) {
+      if (overlay.id === "title" || !overlay.words?.some((word) => words.has(word))) continue;
+      checks.push({
+        rule: "transition-accent",
+        item: overlay.id,
+        reason: `accent ${overlay.id} is on a word of transition ${item.id}, which already sets its key phrase in accent text`,
+      });
+    }
+  }
+
+  const { accentText, captionText, background } = preset.roles;
+  for (const item of phrases) {
+    for (const [name, role] of [
+      ["caption text", captionText],
+      ["accent text", accentText],
+    ] as const) {
+      const ratio = contrastRatio(role.color, background.color);
+      if (ratio >= MIN_LARGE_TEXT_CONTRAST) continue;
+      checks.push({
+        rule: "contrast",
+        item: item.id,
+        reason: `transition ${item.id}: ${name} ${role.color} on background ${background.color} has contrast ${ratio.toFixed(1)}, under ${MIN_LARGE_TEXT_CONTRAST}`,
       });
     }
   }

@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from "vitest";
 import behindEdit from "../../../../packages/edit/src/testdata/versions/rethink-work-behind.edit.json" with { type: "json" };
 import handEdit from "../../../../packages/edit/src/testdata/versions/rethink-work-hand.edit.json" with { type: "json" };
+import transitionsEdit from "../../../../packages/edit/src/testdata/versions/rethink-work-transitions.edit.json" with { type: "json" };
 import baselineEdit from "../../../../packages/edit/src/testdata/versions/baseline-short-speech.edit.json" with { type: "json" };
 import handTranscript from "../../../../packages/edit/src/testdata/rethink-work/transcript.json" with { type: "json" };
 import speechTranscript from "../../../../fixtures/pipeline/retime/transcript.json" with { type: "json" };
@@ -92,6 +93,17 @@ describe("timelineRows", () => {
     expect(rows.overlays![0]!.label).not.toBe("");
     expect(rows.transitions![0]!.label).toBe(edit.tracks.transitions[0]!.type);
     expect(rows.sounds![0]!.label).toBe(edit.tracks.sounds[0]!.sound);
+  });
+
+  it("labels a numbered point by its number, other phrase transitions by type, at derived spans", () => {
+    const { edit, transcript } = parsed(transitionsEdit, handTranscript);
+    const resolved = resolveTimeline(edit, transcript);
+    const row = timelineRows(edit, transcript).rows.find((entry) => entry.key === "transitions")!;
+    expect(row.items.map((entry) => entry.label)).toEqual(["numbered 3", "panel", "dim"]);
+    for (const entry of row.items) {
+      const span = resolved.get(entry.id)!;
+      expect([entry.start, entry.end]).toEqual([span.start, span.end]);
+    }
   });
 
   it("keeps the empty rows of the baseline version", () => {

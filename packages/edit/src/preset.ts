@@ -8,16 +8,59 @@ export interface PresetFont {
   // Relative to packages/edit (and to the built page): `assets/fonts/...`.
   file: string;
   weight: number;
+}
+
+// A text role of the style: the font, colour and size a kind of text is set
+// in. Transitions and the default caption and accent read them, so a later
+// font pair or colour wheel changes the roles, never a transition.
+export interface TextRole {
+  font: FontKey;
+  color: string;
   size: number;
 }
 
-export type TransitionType = "dim" | "panel" | "card";
+export interface PresetRoles {
+  accentText: TextRole;
+  captionText: TextRole;
+  background: { color: string };
+}
+
+// What `decide` may choose for a transition.
+export type TransitionType = "dim" | "panel" | "numbered";
 export const TRANSITION_TYPES = [
   "dim",
   "panel",
-  "card",
+  "numbered",
 ] as const satisfies readonly TransitionType[];
 
+// What a stored timed transition (one with `start` and `end`) may name.
+export type LegacyTransitionType = "dim" | "panel" | "card";
+export const LEGACY_TRANSITION_TYPES = [
+  "dim",
+  "panel",
+  "card",
+] as const satisfies readonly LegacyTransitionType[];
+
+// One transition of the library: never a font or a colour, only the roles.
+export interface LibraryTransition {
+  // The layer covering the footage, in frame pixels.
+  layer: Box;
+  // The background role, at this opacity (1 is solid).
+  background: { role: "background"; strength: number };
+  // How the layer comes in and goes out: a fade, or a slide up from below.
+  motion: "fade" | "slide";
+  // The default length of the entrance and of the exit.
+  seconds: number;
+  ease: string;
+  // Where the phrase's levels are set; inside the platform guard.
+  text: Box;
+  // What Claude reads to pick the type.
+  description: string;
+  // `numbered` only: the number's size over the accent text's.
+  numberScale?: number;
+}
+
+// The frozen look of a stored timed transition.
 export interface PresetTransition {
   // The layer covering the footage, in frame pixels.
   layer: Box;
@@ -72,6 +115,20 @@ export interface PresetBehind {
   maxFaceShare: number;
 }
 
+export interface TransitionRules {
+  // A phrase transition holds at most this long after its last word.
+  maxHoldSeconds: number;
+  // A phrase transition lasts at least this long.
+  minSeconds: number;
+  // At most one transition per this many seconds of reel (at least one).
+  densitySeconds: number;
+  // The ranges a change request may set `motion_seconds` and `hold_seconds` in.
+  motionRange: { min: number; max: number };
+  holdRange: { min: number; max: number };
+  // The levels shrink together down to this share of their size to fit.
+  shrinkFloor: number;
+}
+
 export interface GlossaryTerm {
   term: string;
   // The word sequences the transcriber writes for it, lower-case, cleaned.
@@ -84,9 +141,8 @@ export interface Preset {
   // Text never leaves it; always inside `PLATFORM_SAFE`.
   safe: Box;
   fonts: Record<FontKey, PresetFont>;
+  roles: PresetRoles;
   caption: {
-    font: FontKey;
-    color: string;
     // Appear: opacity 0 to 1 while rising `rise` pixels; disappear: a fade.
     rise: number;
     inSeconds: number;
@@ -102,10 +158,12 @@ export interface Preset {
     fallbackY: number;
     lineGap: number;
   };
-  accent: { font: FontKey; color: string; aboveHead: number; noHeadY: number };
+  accent: { aboveHead: number; noHeadY: number };
   // Spots beside the head (build.py's `_slots`).
   slots: { firstRow: number; rowGap: number; rightDrop: number; minLeft: number; minRight: number };
-  transitions: Record<TransitionType, PresetTransition>;
+  transitions: Record<TransitionType, LibraryTransition>;
+  legacyTransitions: Record<LegacyTransitionType, PresetTransition>;
+  transitionRules: TransitionRules;
   sounds: Record<SoundKey, PresetSound>;
   behind: PresetBehind;
   // Words a caption keeps capitalised (lower-case key, shown value).
@@ -149,18 +207,19 @@ export const ISSEBYA_PRESET: Preset = {
       family: "Raleway Light",
       file: "assets/fonts/Raleway-Light.ttf",
       weight: 300,
-      size: 110,
     },
     secondary: {
       family: "Golos Text",
       file: "assets/fonts/GolosText-Bold.ttf",
       weight: 700,
-      size: 50,
     },
   },
+  roles: {
+    accentText: { font: "primary", color: "#B3E6FF", size: 110 },
+    captionText: { font: "secondary", color: "#FFFFFF", size: 50 },
+    background: { color: "#121212" },
+  },
   caption: {
-    font: "secondary",
-    color: "#FFFFFF",
     rise: 12,
     inSeconds: 0.18,
     inEase: "power2.out",
@@ -171,9 +230,44 @@ export const ISSEBYA_PRESET: Preset = {
     fallbackY: 1054,
     lineGap: 14,
   },
-  accent: { font: "primary", color: "#B3E6FF", aboveHead: 190, noHeadY: 894 },
+  accent: { aboveHead: 190, noHeadY: 894 },
   slots: { firstRow: 610, rowGap: 85, rightDrop: 42, minLeft: 110, minRight: 90 },
+  // Starting values; the owner tunes them by eye on a real reel.
   transitions: {
+    dim: {
+      layer: FRAME,
+      background: { role: "background", strength: 0.62 },
+      motion: "fade",
+      seconds: 0.3,
+      ease: "power2.out",
+      text: { left: 130, right: 840, top: 700, bottom: 1164 },
+      description: "the key thought of the reel, with its lead-in",
+    },
+    panel: {
+      layer: { left: 0, right: 1080, top: 914, bottom: 1920 },
+      background: { role: "background", strength: 1 },
+      motion: "slide",
+      seconds: 0.5,
+      ease: "power3.inOut",
+      text: { left: 130, right: 840, top: 964, bottom: 1164 },
+      description: "a short statement that should stand alone",
+    },
+    numbered: {
+      layer: FRAME,
+      background: { role: "background", strength: 0.4 },
+      motion: "fade",
+      seconds: 0.3,
+      ease: "power2.out",
+      text: { left: 130, right: 840, top: 560, bottom: 1164 },
+      description:
+        "one point of a list; points named in a row are numbered 1, 2, 3 even when not counted aloud",
+      numberScale: 1.6,
+    },
+  },
+  // The frozen look of stored timed transitions (the ones with `start` and
+  // `end`), so old versions build byte for byte as they did. Never offered to
+  // `decide`, never changed, never extended.
+  legacyTransitions: {
     dim: {
       layer: FRAME,
       background: "rgba(0, 0, 0, 0.62)",
@@ -198,6 +292,14 @@ export const ISSEBYA_PRESET: Preset = {
       ease: "power2.out",
       text: { left: 130, right: 840, top: 640, bottom: 1164 },
     },
+  },
+  transitionRules: {
+    maxHoldSeconds: 1,
+    minSeconds: 1.5,
+    densitySeconds: 7,
+    motionRange: { min: 0.2, max: 1.5 },
+    holdRange: { min: 0, max: 2 },
+    shrinkFloor: 0.6,
   },
   sounds: {
     click: {
@@ -270,4 +372,18 @@ export function cleanWord(text: string, preset: Preset): string {
     .replace(/^[\s,.?!:;"]+|[\s,.?!:;"]+$/g, "")
     .toLowerCase();
   return preset.keepCaps[lower] ?? lower;
+}
+
+// The size of the first role (accent text, then caption text) set in a font:
+// the size an item that names the font and no size gets.
+export function fontSize(preset: Preset, font: FontKey): number {
+  const { accentText, captionText } = preset.roles;
+  return [accentText, captionText].find((role) => role.font === font)?.size ?? captionText.size;
+}
+
+// A `#RRGGBB` colour at an opacity: the colour itself when solid, else rgba().
+export function backgroundCss(color: string, strength: number): string {
+  if (strength >= 1) return color;
+  const channel = (at: number) => Number.parseInt(color.slice(at, at + 2), 16);
+  return `rgba(${channel(1)}, ${channel(3)}, ${channel(5)}, ${strength})`;
 }

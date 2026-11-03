@@ -71,7 +71,14 @@ export function timelineRows(edit: Edit, transcript: Transcript): Timeline {
     overlays: tracks.overlays.map((overlay) =>
       item(overlay.id, () => overlay.text ?? words(overlay.words)),
     ),
-    transitions: tracks.transitions.map((transition) => item(transition.id, () => transition.type)),
+    // A numbered point by its number.
+    transitions: tracks.transitions.map((transition) =>
+      item(transition.id, () =>
+        "number" in transition && transition.number !== undefined
+          ? `${transition.type} ${transition.number}`
+          : transition.type,
+      ),
+    ),
     sounds: tracks.sounds.map((sound) => item(sound.id, () => sound.sound)),
   };
   return {

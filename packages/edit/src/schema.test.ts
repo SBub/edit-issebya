@@ -232,3 +232,76 @@ describe("the behind track", () => {
     expect(parseEdit(json, ISSEBYA_PRESET, behind.transcript, { photoIds: [] }).ok).toBe(false);
   });
 });
+
+describe("parseEdit with phrase transitions", () => {
+  const transitions = FIXTURES.find((fixture) => fixture.name === "rethink-work-transitions")!;
+
+  function withTransition(change: Record<string, unknown>): unknown {
+    const edit = structuredClone(transitions.edit) as unknown as {
+      tracks: { transitions: Record<string, unknown>[] };
+    };
+    Object.assign(edit.tracks.transitions[2]!, change);
+    return edit;
+  }
+
+  function refusedOf(json: unknown): string {
+    const result = parseEdit(json, ISSEBYA_PRESET, transitions.transcript);
+    if (result.ok) throw new Error("expected the edit to be refused");
+    return result.reasons.join("\n");
+  }
+
+  it("accepts a phrase transition and keeps it without times", () => {
+    const result = parseEdit(transitions.edit, ISSEBYA_PRESET, transitions.transcript);
+    expect(result.ok).toBe(true);
+    const item = result.ok ? result.edit.tracks.transitions[2]! : null;
+    expect(item).toEqual({ id: "t-want", type: "dim", from: "w145", key_from: "w158", to: "w161" });
+    expect(item).not.toHaveProperty("start");
+  });
+
+  it("still accepts a stored timed panel and a stored timed card", () => {
+    const panel = hand.edit.tracks.transitions[0]!;
+    expect(panel).toHaveProperty("start");
+    expect(parseEdit(hand.edit, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });
+    const edit = structuredClone(hand.edit);
+    edit.tracks.transitions = [{ ...panel, type: "card" } as (typeof edit.tracks.transitions)[0]];
+    expect(parseEdit(edit, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });
+  });
+
+  it("refuses a phrase card", () => {
+    expect(refusedOf(withTransition({ type: "card" }))).toMatch(/transitions\[2\]/);
+  });
+
+  it("refuses a key phrase starting outside the phrase", () => {
+    expect(refusedOf(withTransition({ key_from: "w12" }))).toContain(
+      "transition t-want: key_from w12 is outside the phrase w145 to w161",
+    );
+  });
+
+  it("refuses a last word before the first", () => {
+    expect(refusedOf(withTransition({ from: "w161", to: "w145", key_from: undefined }))).toContain(
+      "transition t-want: its last word w145 comes before its first word w161",
+    );
+  });
+
+  it("refuses numbered without its number and dim with one", () => {
+    expect(refusedOf(withTransition({ type: "numbered" }))).toContain(
+      "transition t-want: numbered needs its number",
+    );
+    expect(refusedOf(withTransition({ number: 2 }))).toContain(
+      "transition t-want: only numbered takes a number, not dim",
+    );
+  });
+
+  it("refuses motion_seconds and hold_seconds outside their ranges", () => {
+    expect(refusedOf(withTransition({ motion_seconds: 3 }))).toMatch(/motion_seconds/);
+    expect(refusedOf(withTransition({ motion_seconds: 0.1 }))).toMatch(/motion_seconds/);
+    expect(refusedOf(withTransition({ hold_seconds: 2.5 }))).toMatch(/hold_seconds/);
+    expect(
+      parseEdit(
+        withTransition({ motion_seconds: 0.8, hold_seconds: 0 }),
+        ISSEBYA_PRESET,
+        transitions.transcript,
+      ),
+    ).toMatchObject({ ok: true });
+  });
+});

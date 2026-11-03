@@ -188,3 +188,151 @@ describe("runChecks on photos behind the speaker", () => {
     expect(await behindChecks("right", behind.headTrack)).toEqual([]);
   });
 });
+
+describe("runChecks on phrase transitions", () => {
+  const fixture = FIXTURES.find((entry) => entry.name === "rethink-work-transitions")!;
+  const behind = FIXTURES.find((entry) => entry.name === "rethink-work-behind")!;
+
+  async function ruleChecks(
+    rule: string,
+    change: (edit: Edit) => void = () => {},
+    preset = ISSEBYA_PRESET,
+    base = fixture,
+  ) {
+    const edit = structuredClone(base.edit);
+    change(edit);
+    const { checks } = build(edit, base.transcript, base.headTrack, preset, await nodeMeasurer());
+    return checks.filter((check) => check.rule === rule);
+  }
+
+  const phrase = (edit: Edit, id: string) =>
+    edit.tracks.transitions.find((item) => item.id === id)! as Record<string, unknown>;
+
+  it("fails transition-length for a phrase under 1.5 s", async () => {
+    const checks = await ruleChecks("transition-length", (edit) => {
+      Object.assign(phrase(edit, "t-live"), { key_from: "w92", to: "w93", hold_seconds: 0.3 });
+    });
+    expect(checks).toEqual([
+      {
+        rule: "transition-length",
+        item: "t-live",
+        reason:
+          "transition t-live lasts 1.00 s, at least 1.5 s: cover more words or pick a longer phrase",
+      },
+    ]);
+  });
+
+  it("fails transition-density for more than one transition per densitySeconds", async () => {
+    const sparse = {
+      ...ISSEBYA_PRESET,
+      transitionRules: { ...ISSEBYA_PRESET.transitionRules, densitySeconds: 30 },
+    };
+    const checks = await ruleChecks("transition-density", undefined, sparse);
+    expect(checks).toEqual([
+      {
+        rule: "transition-density",
+        item: "t-want",
+        reason: "3 transitions in a 47.5 s reel, at most 2 (one per 30 s): drop one",
+      },
+    ]);
+  });
+
+  it("fails transition-behind for a transition over a behind item", async () => {
+    const checks = await ruleChecks(
+      "transition-behind",
+      (edit) => {
+        edit.tracks.transitions = [{ id: "t-over", type: "dim", from: "w77", to: "w80" }];
+      },
+      ISSEBYA_PRESET,
+      behind,
+    );
+    expect(checks.map((check) => check.reason)).toEqual([
+      "transition t-over overlaps behind behind-word; a transition and a behind item never show together",
+    ]);
+  });
+
+  it("fails transition-overlap for two transitions at once", async () => {
+    const checks = await ruleChecks("transition-overlap", (edit) => {
+      edit.tracks.transitions.push({ id: "t-again", type: "panel", from: "w97", to: "w103" });
+    });
+    expect(checks.map((check) => check.reason)).toEqual([
+      "transition t-again overlaps transition t-live; one transition at a time",
+    ]);
+  });
+
+  it("fails transition-area for a text area running to y 1300", async () => {
+    const low = {
+      ...ISSEBYA_PRESET,
+      transitions: {
+        ...ISSEBYA_PRESET.transitions,
+        dim: {
+          ...ISSEBYA_PRESET.transitions.dim,
+          text: { left: 130, right: 840, top: 700, bottom: 1300 },
+        },
+      },
+    };
+    const checks = await ruleChecks("transition-area", undefined, low);
+    expect(checks.map((check) => check.reason)).toEqual([
+      "transition t-want: the dim text area runs past the safe box: bottom edge 1300 > 1164",
+    ]);
+  });
+
+  it("fails transition-fit for a key phrase too long for the panel", async () => {
+    const checks = await ruleChecks("transition-fit", (edit) => {
+      Object.assign(phrase(edit, "t-fund-life"), { from: "w123", to: "w133" });
+    });
+    expect(checks.map((check) => check.reason)).toEqual([
+      "the key phrase of t-fund-life does not fit the panel's text area: pick fewer words or use dim",
+    ]);
+  });
+
+  it("fails transition-accent for an accent on a word of a phrase", async () => {
+    const checks = await ruleChecks("transition-accent", (edit) => {
+      edit.tracks.overlays.push({
+        id: "a-work",
+        kind: "accent",
+        start: { word: "w97" },
+        end: { word: "w97", edge: "end" },
+        words: ["w97"],
+      });
+    });
+    expect(checks.map((check) => check.reason)).toEqual([
+      "accent a-work is on a word of transition t-live, which already sets its key phrase in accent text",
+    ]);
+  });
+
+  it("fails contrast for accent text too close to the background", async () => {
+    const pale = {
+      ...ISSEBYA_PRESET,
+      roles: {
+        ...ISSEBYA_PRESET.roles,
+        accentText: { ...ISSEBYA_PRESET.roles.accentText, color: "#E0E0E0" },
+        background: { color: "#F0F0F0" },
+      },
+    };
+    const checks = await ruleChecks("contrast", undefined, pale);
+    expect(checks.map((check) => check.item)).toEqual([
+      "t-live",
+      "t-live",
+      "t-fund-life",
+      "t-fund-life",
+      "t-want",
+      "t-want",
+    ]);
+    expect(checks[1]!.reason).toBe(
+      "transition t-live: accent text #E0E0E0 on background #F0F0F0 has contrast 1.2, under 3",
+    );
+  });
+
+  it("leaves the stored timed panel of the hand fixture without new checks", async () => {
+    expect(await ruleChecks("contrast", undefined, ISSEBYA_PRESET, hand)).toEqual([]);
+    const { checks } = build(
+      hand.edit,
+      hand.transcript,
+      hand.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(checks).toEqual([]);
+  });
+});

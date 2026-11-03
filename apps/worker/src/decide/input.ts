@@ -8,6 +8,7 @@ import {
   type Preset,
   type Transcript,
   FONT_KEYS,
+  TRANSITION_TYPES,
   faceBox,
   spotFaceShare,
 } from "@edit-issebya/edit";
@@ -99,31 +100,42 @@ export function headTrackSummary(
 }
 
 // What of the preset the AI can use: the frame, the safe box, the fonts, the
-// caption and accent defaults, the transitions with their text regions, the
-// sounds and the glossary.
+// style's text roles and background, the transition library (each type's
+// description, text region, motion and background strength) with its rules,
+// the sounds and the glossary.
 export function presetSummary(preset: Preset) {
+  const rules = preset.transitionRules;
+  const role = (text: Preset["roles"]["accentText"]) => ({
+    font: text.font,
+    family: preset.fonts[text.font].family,
+    color: text.color,
+    size: text.size,
+  });
   return {
     frame: preset.frame,
     safe_box: preset.safe,
-    fonts: FONT_KEYS.map((key) => ({
-      key,
-      family: preset.fonts[key].family,
-      size: preset.fonts[key].size,
-    })),
-    caption: {
-      font: preset.caption.font,
-      color: preset.caption.color,
-      size: preset.fonts[preset.caption.font].size,
+    fonts: FONT_KEYS.map((key) => ({ key, family: preset.fonts[key].family })),
+    roles: {
+      caption_text: role(preset.roles.captionText),
+      accent_text: role(preset.roles.accentText),
+      background: { color: preset.roles.background.color },
     },
-    accent: {
-      font: preset.accent.font,
-      color: preset.accent.color,
-      size: preset.fonts[preset.accent.font].size,
+    transitions: TRANSITION_TYPES.map((type) => {
+      const entry = preset.transitions[type];
+      return {
+        type,
+        description: entry.description,
+        text_region: entry.text,
+        motion: entry.motion,
+        motion_seconds: { default: entry.seconds, ...rules.motionRange },
+        background_strength: entry.background.strength,
+      };
+    }),
+    transition_rules: {
+      min_seconds: rules.minSeconds,
+      hold_seconds: { default: rules.maxHoldSeconds, ...rules.holdRange },
+      one_per_seconds: rules.densitySeconds,
     },
-    transitions: Object.entries(preset.transitions).map(([type, kind]) => ({
-      type,
-      text_region: kind.text,
-    })),
     sounds: Object.entries(preset.sounds).map(([key, sound]) => ({
       key,
       min_gap_seconds: sound.minGapSeconds,

@@ -164,18 +164,14 @@
         {
           "id": "dim-clip",
           "type": "dim",
-          "start": {
-            "word": "w0006"
-          },
-          "end": {
-            "word": "w0008",
-            "edge": "end"
-          }
+          "from": "w0006",
+          "key_from": "w0009",
+          "to": "w0010"
         }
       ],
       "sounds": []
     },
-    "change_summary": "Title, one accent on \"test\", a dim over \"clip for the\", \"Studio\" capitalised.",
+    "change_summary": "Title, one accent on \"test\", a dim over \"clip for the real Studio\" with \"real Studio\" as its key phrase, \"Studio\" capitalised.",
     "unexpressed": [],
     "free_field": [],
     "behind_rules": { "photos": "keep", "big_word": "keep" }

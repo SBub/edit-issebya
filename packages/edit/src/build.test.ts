@@ -104,3 +104,55 @@ describe("build", () => {
     expect(performance.now() - started).toBeLessThan(200);
   });
 });
+
+describe("build with phrase transitions", () => {
+  const fixture = FIXTURES.find((entry) => entry.name === "rethink-work-transitions")!;
+
+  async function built(edit = fixture.edit) {
+    return build(edit, fixture.transcript, fixture.headTrack, ISSEBYA_PRESET, await nodeMeasurer());
+  }
+
+  it("builds the library's three transitions with no failed check", async () => {
+    expect((await built()).checks).toEqual([]);
+  });
+
+  it("starts a dim its motion before the first word, on the background role", async () => {
+    const { html } = await built();
+    expect(html).toContain(
+      '<div id="t-want" class="clip layer" data-start="42.235" data-duration="5.291" data-track-index="42" style="left: 0px; top: 0px; width: 1080px; height: 1920px; background: rgba(18, 18, 18, 0.62); opacity: 0"></div>',
+    );
+    expect(html).toContain('<div id="t-want-lead" class="level">');
+    expect(html).toContain('<div id="t-want-key" class="level">');
+  });
+
+  it("moves the start and both tweens with motion_seconds", async () => {
+    const edit = structuredClone(fixture.edit);
+    Object.assign(edit.tracks.transitions[2]!, { motion_seconds: 0.8 });
+    const { html } = await built(edit);
+    expect(html).toContain('<div id="t-want" class="clip layer" data-start="41.735"');
+    expect(html).toContain(
+      'tl.fromTo("#t-want", { opacity: 0 }, { opacity: 1, duration: 0.8, ease: "power2.out" }, 41.735);',
+    );
+    expect(html).toContain(
+      'tl.to("#t-want", { opacity: 0, duration: 0.8, ease: "power2.out" }, 46.726);',
+    );
+    expect(html).toContain(
+      'tl.to("#t-want-key", { opacity: 0, duration: 0.8, ease: "power2.out" }, 46.726);',
+    );
+  });
+
+  it("builds a stored timed card with its frozen background", async () => {
+    const edit = structuredClone(hand.edit);
+    const panel = edit.tracks.transitions[0]!;
+    edit.tracks.transitions = [{ ...panel, type: "card" } as typeof panel];
+    const { html } = build(
+      edit,
+      hand.transcript,
+      hand.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(html).toContain("background: rgba(8, 8, 8, 0.9); opacity: 0");
+    expect(html).not.toContain('class="level"');
+  });
+});

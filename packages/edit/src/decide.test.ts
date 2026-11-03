@@ -49,9 +49,20 @@ function enumsUnder(schema: unknown, property: string): unknown[][] {
   return found;
 }
 
+// A decide answer carries phrase transitions only: a stored timed one (the hand
+// fixture's panel) becomes the phrase transition over the same words.
+function answerTracks(edit: Edit) {
+  return {
+    ...edit.tracks,
+    transitions: edit.tracks.transitions.map((item) =>
+      "from" in item ? item : { id: item.id, type: "panel" as const, from: "w126", to: "w133" },
+    ),
+  };
+}
+
 function answerOf(edit: Edit) {
   return {
-    tracks: edit.tracks,
+    tracks: answerTracks(edit),
     change_summary: "no change",
     unexpressed: [],
     free_field: [],
@@ -146,7 +157,7 @@ describe("the behind track in the decide answer", () => {
   };
   const answerWith = (behind: unknown[]) => ({
     ...answerOf(hand.edit),
-    tracks: { ...hand.edit.tracks, cutout: undefined, behind },
+    tracks: { ...answerTracks(hand.edit), cutout: undefined, behind },
   });
 
   it("takes a photo of the library and names it in the JSON Schema enum", () => {
@@ -189,7 +200,7 @@ describe("the behind track in the decide answer", () => {
     current.inputs.photos = [PHOTO];
     const made = editFromAnswer(
       current,
-      { tracks: { ...hand.edit.tracks, behind: [photo] } },
+      { tracks: { ...answerTracks(hand.edit), behind: [photo] } },
       ISSEBYA_PRESET,
       hand.transcript,
     );
@@ -229,7 +240,7 @@ describe("the behind limits and rules in the decide answer", () => {
   const bigWord = (text: string) => ({ id: "big", kind: "word", text, ...spokenFrom });
   const answerWith = (behind: unknown[], rules = { photos: "keep", big_word: "keep" }) => ({
     ...answerOf(hand.edit),
-    tracks: { ...hand.edit.tracks, cutout: undefined, behind },
+    tracks: { ...answerTracks(hand.edit), cutout: undefined, behind },
     behind_rules: rules,
   });
   const parse = (answer: unknown, rules: DecideRules = NO_RULES, ids = [PHOTO]) =>
@@ -389,16 +400,16 @@ describe("editFromAnswer", () => {
 
   it("drops a cut-out track the answer carries anyway", () => {
     const tracks = {
-      ...structuredClone(short.edit.tracks),
-      cutout: [{ id: "cutout", start: { reel: "start" }, end: { reel: "end" } }],
-    } as Edit["tracks"];
+      ...answerTracks(structuredClone(short.edit)),
+      cutout: [{ id: "cutout", start: { reel: "start" as const }, end: { reel: "end" as const } }],
+    };
     const result = editFromAnswer(short.edit, { tracks }, ISSEBYA_PRESET, short.transcript);
     if (!result.ok) throw new Error(result.reasons.join("; "));
     expect(result.edit.tracks).not.toHaveProperty("cutout");
   });
 
   it("refuses an id used twice", () => {
-    const tracks = structuredClone(short.edit.tracks);
+    const tracks = answerTracks(structuredClone(short.edit));
     tracks.captions[1]!.id = tracks.captions[0]!.id;
     const result = editFromAnswer(short.edit, { tracks }, ISSEBYA_PRESET, short.transcript);
     expect(result.ok).toBe(false);
@@ -446,5 +457,48 @@ describe("decideCounts and usedFreeField", () => {
     expect(usedFreeField(edit)).toBe(false);
     tracks.overlays[1]!.style = { "letter-spacing": "2px" };
     expect(usedFreeField(edit)).toBe(true);
+  });
+});
+
+describe("transitions in the decide answer", () => {
+  type TransitionSchema = { properties: Record<string, Json>; required: string[] };
+  const transitionSchema = () => {
+    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, hand.edit.duration) as {
+      properties: { tracks: { properties: { transitions: { items: TransitionSchema } } } };
+    };
+    return schema.properties.tracks.properties.transitions.items;
+  };
+
+  it("offers only phrase transitions of the library's three types, words and no times", () => {
+    const item = transitionSchema();
+    const ids = hand.transcript.words.map((word) => word.id);
+    expect(item.properties.type!.enum).toEqual(["dim", "panel", "numbered"]);
+    for (const key of ["from", "to", "key_from"]) expect(item.properties[key]!.enum).toEqual(ids);
+    expect(item.properties).not.toHaveProperty("start");
+    expect(item.properties).not.toHaveProperty("end");
+    expect(item.properties).not.toHaveProperty("color");
+    expect(item.properties.motion_seconds).toMatchObject({ minimum: 0.2, maximum: 1.5 });
+    expect(item.properties.hold_seconds).toMatchObject({ minimum: 0, maximum: 2 });
+    expect([...item.required].sort()).toEqual(["from", "id", "to", "type"]);
+  });
+
+  it("refuses a timed transition and a card, accepts the phrase", () => {
+    const parse = (transitions: unknown[]) =>
+      parseDecideAnswer(
+        { ...answerOf(hand.edit), tracks: { ...answerTracks(hand.edit), transitions } },
+        ISSEBYA_PRESET,
+        hand.transcript,
+        hand.edit.duration,
+      );
+    expect(parse([hand.edit.tracks.transitions[0]]).ok).toBe(false);
+    expect(parse([{ id: "t-a", type: "card", from: "w126", to: "w133" }]).ok).toBe(false);
+    const numbered = parse([{ id: "t-a", type: "numbered", from: "w126", to: "w133" }]);
+    expect(numbered.ok).toBe(false);
+    expect(!numbered.ok && numbered.reasons.join("\n")).toContain(
+      "transition t-a: numbered needs its number",
+    );
+    expect(parse([{ id: "t-a", type: "numbered", number: 1, from: "w126", to: "w133" }]).ok).toBe(
+      true,
+    );
   });
 });

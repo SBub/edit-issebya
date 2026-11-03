@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import { parseEdit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
-import { resolveTimeline } from "./timeline.ts";
+import { phraseWords, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
@@ -75,5 +75,75 @@ describe("resolveTimeline with behind items", () => {
     const resolved = resolveTimeline(behind.edit, behind.transcript);
     expect(resolved.get("behind-photo")).toEqual({ start: 5.206, end: 7.838, clamped: false });
     expect(resolved.get("behind-word")).toEqual({ start: 20.068, end: 22.613, clamped: false });
+  });
+});
+
+describe("resolveTimeline with phrase transitions", () => {
+  const fixture = FIXTURES.find((entry) => entry.name === "rethink-work-transitions")!;
+  const word = (id: string) => fixture.transcript.words.find((entry) => entry.id === id)!;
+
+  function spanOf(change: Record<string, unknown>, transcript: Transcript = fixture.transcript) {
+    const edit = structuredClone(fixture.edit);
+    const item = edit.tracks.transitions.find((entry) => entry.id === "t-live")!;
+    Object.assign(item, change);
+    return resolveTimeline(edit, transcript).get("t-live")!;
+  }
+
+  it("starts each library type its motion before the first word", () => {
+    const resolved = resolveTimeline(fixture.edit, fixture.transcript);
+    expect(resolved.get("t-live")!.start).toBe(ms(word("w91").start - 0.3));
+    expect(resolved.get("t-fund-life")!.start).toBe(ms(word("w126").start - 0.5));
+    expect(resolved.get("t-want")!.start).toBe(ms(word("w145").start - 0.3));
+    expect(spanOf({ motion_seconds: 0.8 }).start).toBe(ms(word("w91").start - 0.8));
+  });
+
+  it("ends when the next word starts after a pause under the hold", () => {
+    // w99 ends at 26.033, w100 starts at 26.124.
+    expect(spanOf({}).end).toBe(word("w100").start);
+  });
+
+  it("ends the hold after the last word when the pause is longer", () => {
+    const transcript: Transcript = {
+      words: fixture.transcript.words.map((entry) =>
+        entry.id === "w100" ? { ...entry, start: 28 } : entry,
+      ),
+    };
+    expect(spanOf({}, transcript).end).toBe(ms(word("w99").end + 1));
+    expect(spanOf({ hold_seconds: 0 }, transcript).end).toBe(word("w99").end);
+  });
+
+  it("ends at the reel's end on the last word", () => {
+    const resolved = resolveTimeline(fixture.edit, fixture.transcript);
+    expect(resolved.get("t-want")).toEqual({
+      start: ms(word("w145").start - 0.3),
+      end: fixture.edit.duration,
+      clamped: false,
+    });
+  });
+
+  it("clamps a phrase whose first word comes under its motion after 0", () => {
+    expect(
+      spanOf({ from: "w0", key_from: undefined, to: "w3", type: "dim", number: undefined }),
+    ).toMatchObject({ start: 0, clamped: true });
+  });
+
+  it("moves with its words through a re-timed transcript", () => {
+    const shifted = retimed((t) => t + 0.5);
+    const after = spanOf({}, shifted);
+    const before = spanOf({});
+    expect(after.start).toBe(ms(before.start + 0.5));
+    expect(after.end).toBe(ms(before.end + 0.5));
+  });
+
+  it("splits the phrase into its lead-in and key phrase", () => {
+    const { lead, key } = phraseWords(
+      { from: "w91", key_from: "w96", to: "w99" },
+      fixture.transcript,
+    );
+    expect(lead.map((entry) => entry.id)).toEqual(["w91", "w92", "w93", "w94", "w95"]);
+    expect(key.map((entry) => entry.id)).toEqual(["w96", "w97", "w98", "w99"]);
+    const whole = phraseWords({ from: "w126", to: "w133" }, fixture.transcript);
+    expect(whole.lead).toEqual([]);
+    expect(whole.key).toHaveLength(8);
   });
 });

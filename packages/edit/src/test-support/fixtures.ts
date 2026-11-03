@@ -7,6 +7,7 @@ import type { Transcript } from "../transcript.ts";
 import baselineShortSpeech from "../testdata/versions/baseline-short-speech.edit.json" with { type: "json" };
 import rethinkBehind from "../testdata/versions/rethink-work-behind.edit.json" with { type: "json" };
 import rethinkHand from "../testdata/versions/rethink-work-hand.edit.json" with { type: "json" };
+import rethinkTransitions from "../testdata/versions/rethink-work-transitions.edit.json" with { type: "json" };
 import { RETHINK_WORK, SHORT_SPEECH } from "./inputs.ts";
 
 export interface Fixture {
@@ -30,4 +31,7 @@ export const FIXTURES: Fixture[] = [
   fixture("baseline-short-speech", baselineShortSpeech, SHORT_SPEECH),
   fixture("rethink-work-hand", rethinkHand, RETHINK_WORK),
   fixture("rethink-work-behind", rethinkBehind, RETHINK_WORK),
+  // The library's three phrase transitions: a numbered point, a panel with a
+  // key phrase only and a dim with a lead-in.
+  fixture("rethink-work-transitions", rethinkTransitions, RETHINK_WORK),
 ];

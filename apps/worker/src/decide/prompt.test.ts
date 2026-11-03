@@ -31,7 +31,30 @@ const input = decideInput({
 
 describe("decidePrompt", () => {
   it("is versioned", () => {
-    expect(PROMPT_VERSION).toBe("decide-3");
+    expect(PROMPT_VERSION).toBe("decide-4");
+  });
+
+  it("explains phrase transitions, the library, the two levels and the density", () => {
+    const prompt = decidePrompt(input);
+    expect(prompt).toContain("(`dim`, `panel` or `numbered`)");
+    expect(prompt).not.toContain("`card`");
+    expect(prompt).toMatch(/pick its words, never times/);
+    expect(prompt).toMatch(/`from`.*`to`.*`key_from`/s);
+    expect(prompt).toMatch(
+      /lead-in is shown in the caption text role and the key phrase in the\s+accent text role/,
+    );
+    expect(prompt).toMatch(/Do not put an accent on a word inside a phrase/);
+    expect(prompt).toMatch(/one_per_seconds/);
+    expect(prompt).toMatch(/Never during a behind item or another transition/);
+    expect(prompt).toContain('"description": "the key thought of the reel, with its lead-in"');
+  });
+
+  it("carries the wording rule for transition requests", () => {
+    const prompt = decidePrompt(input);
+    expect(prompt).toMatch(/"longer" or "cover more" changes the phrase/);
+    expect(prompt).toMatch(/"slower" or "smoother" raises `motion_seconds`/);
+    expect(prompt).toMatch(/"stay longer" raises `hold_seconds`/);
+    expect(prompt).toMatch(/applies to\s+this reel only/);
   });
 
   it("carries the current version, every word id, the glossary, the safe box and no request", () => {

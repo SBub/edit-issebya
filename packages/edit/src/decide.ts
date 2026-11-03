@@ -7,7 +7,9 @@ import {
   ITEM_ID,
   issueReasons,
   parseEdit,
+  phraseTransitionSchemaFor,
   refineBehind,
+  refinePhrases,
   tracksSchemaFor,
 } from "./schema.ts";
 import { resolveAnchor } from "./timeline.ts";
@@ -56,6 +58,8 @@ export function applyBehindRules(
 // the input fingerprints) and three short records. Built per reel: word ids
 // from its transcript, `{ time }` anchors capped at its duration, positions
 // inside the preset's safe box, fonts and transition types from the preset.
+// Transitions are phrase transitions only, of the library's types: words,
+// never times, so Claude cannot pick a stored timed look such as `card`.
 // By convention the title is the overlay with id `title`, anchored at
 // `{ reel: "start" }`.
 // The behind track's photos are limited to `photoIds`, the owner's ready
@@ -83,9 +87,9 @@ export function decideAnswerSchemaFor(
   return z
     .object({
       // No whole-clip cut-out track: masks are made only for behind items.
-      tracks: tracksSchemaFor(preset, transcript, limits).omit({
-        cutout: true,
-      }),
+      tracks: tracksSchemaFor(preset, transcript, limits)
+        .omit({ cutout: true })
+        .extend({ transitions: z.array(phraseTransitionSchemaFor(preset, transcript)) }),
       change_summary: z.string().min(1).max(300),
       unexpressed: z.array(z.string().min(1).max(300)).max(20),
       free_field: z
@@ -95,6 +99,7 @@ export function decideAnswerSchemaFor(
     })
     .superRefine((answer, ctx) => {
       refineBehind({ duration, tracks: answer.tracks }, transcript, preset, limits, ctx);
+      refinePhrases(answer.tracks.transitions, transcript, ctx);
       const forbid = applyBehindRules(rules.forbid, answer.behind_rules);
       for (const item of answer.tracks.behind ?? []) {
         if (item.kind === "photo" && forbid.photos) {

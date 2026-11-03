@@ -90,7 +90,7 @@ function ms(seconds: number): number {
 export function maskSpans(edit: Edit, transcript: Transcript, preset: Preset): MaskSpan[] {
   const items = edit.tracks.behind ?? [];
   if (items.length === 0) return [];
-  const resolved = resolveTimeline(edit, transcript);
+  const resolved = resolveTimeline(edit, transcript, preset);
   const { padFrames, frameRate } = preset.behind;
   const pad = padFrames / frameRate;
   const duration = ms(edit.duration);

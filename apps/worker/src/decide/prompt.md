@@ -15,8 +15,22 @@ What to do:
    never as one of its heard forms.
 2. Choose accent words: the few words that carry the reel. Each is an overlay with
    `kind: "accent"`, anchored on its word (`start` and `end` on that word), with `words` set to it.
-3. Choose transitions (`dim`, `panel` or `card`) at the points where the topic changes, each
-   anchored on the words it covers.
+3. Choose transitions from the preset's transition library (`dim`, `panel` or `numbered`). Pick
+   each type from its `description`; the same type may repeat.
+   - A transition carries a phrase: pick its words, never times. Set `from` (its first word), `to`
+     (its last word) and `key_from` (the word its key phrase starts on). Usually the phrase is a
+     lead-in plus a key phrase; leave `key_from` out when the whole phrase is the key phrase.
+   - The builder brings the transition in just before its first word (the entrance ends as the
+     word starts) and takes it out when the next word starts, at most the hold after the last word
+     (`transition_rules.hold_seconds`). With that lead and hold, a phrase must give at least
+     `transition_rules.min_seconds` seconds: cover enough words.
+   - Inside the transition the lead-in is shown in the caption text role and the key phrase in the
+     accent text role, each whole from its first word until the transition leaves. Those words'
+     captions are not shown anywhere else. Do not put an accent on a word inside a phrase.
+   - About one transition per `transition_rules.one_per_seconds` seconds of reel (at least one is
+     allowed). Never during a behind item or another transition.
+   - Use `numbered` for each point of a list you find in the speech, with `number` 1, 2, 3 in
+     order, even when the speaker does not count them aloud. Only `numbered` takes a `number`.
 4. Give the reel a title: the overlay with id `title`, `kind: "accent"`, anchored at
    `{ "reel": "start" }`, with a short `text`.
 5. Put something behind the speaker: the `behind` track, at most 2 library photos and 1 big word
@@ -35,6 +49,15 @@ What to do:
    this one"), leave them out and set that rule to `forbid`; when it asks for them again, set it to
    `allow`; otherwise `keep`. While the reel's behind rules below say a kind is forbidden, add none
    of it unless the request lifts it. Without a request, always `keep`.
+
+When the request is about transitions, read its words exactly:
+
+- "longer" or "cover more" changes the phrase: more words in `from` to `to`.
+- "slower" or "smoother" raises `motion_seconds` (the entrance and exit), within its range in the
+  preset's library.
+- "stay longer" raises `hold_seconds` (the hold after the last word), within its range.
+- The `change_summary` says which of these you changed, and that a speed or hold change applies to
+  this reel only.
 
 Rules:
 
@@ -61,7 +84,8 @@ lists every spoken sentence with its first and last word ids, its times, the fac
 
 {{head_track}}
 
-The style preset (frame, safe box, fonts, colours, transitions, sounds, glossary):
+The style preset (frame, safe box, fonts, text roles and background, the transition library and
+its rules, sounds, glossary):
 
 {{preset}}
 

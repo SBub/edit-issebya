@@ -95,7 +95,12 @@ async function roundEnvelope({ items, changeSummary, rules = KEEP_RULES }: Answe
       behind_rules: BehindRules;
     };
   };
-  if (items.length > 0) envelope.structured_output.tracks.behind = items;
+  // A transition and a behind item never show together, and the clip's behind
+  // items cover the whole clip: the round drops the committed transition.
+  if (items.length > 0) {
+    envelope.structured_output.tracks.behind = items;
+    envelope.structured_output.tracks.transitions = [];
+  }
   envelope.structured_output.change_summary = changeSummary;
   envelope.structured_output.behind_rules = rules;
   return envelope;
@@ -112,6 +117,23 @@ export async function answerRoundsScript(
   const path = join(dir, `answer-rounds-${crypto.randomUUID()}.json`);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
   await writeFile(path, JSON.stringify(envelopes));
+  return path;
+}
+
+// The change summary of the scripted answer to "make the transitions slower".
+export const SLOWER_TRANSITIONS_SUMMARY =
+  "made the transitions slower (0.6 s motion), for this reel only";
+
+// Writes, into `dir`, a script whose one answer is the committed decide answer
+// with its dim's motion raised to 0.6 s (the answer to "make the transitions
+// slower"). Returns its path.
+export async function slowerTransitionsAnswerScript(dir: string): Promise<string> {
+  const envelope = await roundEnvelope({ items: [], changeSummary: SLOWER_TRANSITIONS_SUMMARY });
+  const transitions = envelope.structured_output.tracks.transitions as Record<string, unknown>[];
+  for (const transition of transitions) transition.motion_seconds = 0.6;
+  const path = join(dir, `slower-transitions-${crypto.randomUUID()}.json`);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
+  await writeFile(path, JSON.stringify([envelope]));
   return path;
 }
 

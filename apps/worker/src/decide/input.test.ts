@@ -1,7 +1,7 @@
 import { ISSEBYA_PRESET, type Transcript, parseEdit } from "@edit-issebya/edit";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { decideInput, headTrackSummary, sentenceSpans } from "./input.ts";
+import { decideInput, headTrackSummary, presetSummary, sentenceSpans } from "./input.ts";
 
 const word = (id: string, text: string, start: number, end: number) => ({ id, text, start, end });
 
@@ -90,6 +90,37 @@ describe("decideInput library", () => {
     expect(inputWith(true, null).behind_rules).toEqual({
       photos_forbidden: true,
       big_word_forbidden: false,
+    });
+  });
+});
+
+describe("presetSummary", () => {
+  const summary = presetSummary(ISSEBYA_PRESET);
+
+  it("names the style's text roles and background, and no size per font", () => {
+    expect(summary.roles).toEqual({
+      caption_text: { font: "secondary", family: "Golos Text", color: "#FFFFFF", size: 50 },
+      accent_text: { font: "primary", family: "Raleway Light", color: "#B3E6FF", size: 110 },
+      background: { color: "#121212" },
+    });
+    for (const font of summary.fonts) expect(font).not.toHaveProperty("size");
+  });
+
+  it("describes the library's three transitions with their motion ranges, and no card", () => {
+    expect(summary.transitions.map((entry) => entry.type)).toEqual(["dim", "panel", "numbered"]);
+    for (const entry of summary.transitions) {
+      expect(entry.description.length, entry.type).toBeGreaterThan(10);
+      expect(entry.motion_seconds).toMatchObject({ min: 0.2, max: 1.5 });
+    }
+    expect(summary.transitions[2]!.description).toMatch(/numbered 1, 2, 3/);
+    expect(JSON.stringify(summary)).not.toContain("card");
+  });
+
+  it("carries the transition rules", () => {
+    expect(summary.transition_rules).toEqual({
+      min_seconds: 1.5,
+      hold_seconds: { default: 1, min: 0, max: 2 },
+      one_per_seconds: 7,
     });
   });
 });

@@ -1,6 +1,13 @@
 import { z } from "zod";
 import type { Box } from "./head-track.ts";
-import { BEHIND_SPOTS, FONT_KEYS, type Preset, SOUND_KEYS, TRANSITION_TYPES } from "./preset.ts";
+import {
+  BEHIND_SPOTS,
+  FONT_KEYS,
+  LEGACY_TRANSITION_TYPES,
+  type Preset,
+  SOUND_KEYS,
+  TRANSITION_TYPES,
+} from "./preset.ts";
 import { resolveAnchor } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
@@ -70,12 +77,37 @@ export interface EditLimits {
   behindCounts?: { photos: number; words: number };
 }
 
+function wordIdSchema(transcript: Transcript) {
+  const ids = transcript.words.map((word) => word.id);
+  return ids.length > 0 ? z.enum(ids as [string, ...string[]]) : z.never();
+}
+
+// A transition tied to a phrase: its first and last word (and the word its
+// key phrase starts on), never times. The builder derives its span from the
+// words and the preset, at every build. `motion_seconds` and `hold_seconds`
+// replace the library's entrance and exit length and the hold after the last
+// word, within the preset's ranges; `number` is `numbered`'s only.
+export function phraseTransitionSchemaFor(preset: Preset, transcript: Transcript) {
+  const wordId = wordIdSchema(transcript);
+  const { motionRange, holdRange } = preset.transitionRules;
+  return z.object({
+    id: z.string().regex(ITEM_ID),
+    type: z.enum(TRANSITION_TYPES),
+    from: wordId,
+    to: wordId,
+    key_from: wordId.optional(),
+    number: z.number().int().min(1).max(9).optional(),
+    motion_seconds: z.number().min(motionRange.min).max(motionRange.max).optional(),
+    hold_seconds: z.number().min(holdRange.min).max(holdRange.max).optional(),
+    style: styleSchema.optional(),
+  });
+}
+
 // The six tracks, built per reel: the word ids are the transcript's, the
 // fonts the preset's, so an unknown word or font is refused by the schema
 // itself. No refinement, so it converts to JSON Schema as is.
 export function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLimits = {}) {
-  const ids = transcript.words.map((word) => word.id);
-  const wordId = ids.length > 0 ? z.enum(ids as [string, ...string[]]) : z.never();
+  const wordId = wordIdSchema(transcript);
   const time =
     limits.duration === undefined ? z.number().min(0) : z.number().min(0).max(limits.duration);
   const bounds = limits.bounds ?? {
@@ -123,12 +155,15 @@ export function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: 
     words: z.array(wordId).min(1).optional(),
     ...textProps,
   });
-  const transition = z.object({
+  // A stored version's timed transition: free anchors, the frozen legacy
+  // looks. New versions carry phrase transitions; these still parse and build.
+  const timedTransition = z.object({
     ...base,
-    type: z.enum(TRANSITION_TYPES),
+    type: z.enum(LEGACY_TRANSITION_TYPES),
     // Replaces the preset's layer colour.
     color: z.string().regex(COLOR).optional(),
   });
+  const transition = z.union([phraseTransitionSchemaFor(preset, transcript), timedTransition]);
   const sound = z.object({
     ...base,
     sound: z.enum(SOUND_KEYS),
@@ -192,6 +227,8 @@ function refineEdit(
       ctx.addIssue({ code: "custom", message: `${kind} ${item.id}: id used twice` });
     }
     seen.add(item.id);
+    // A phrase transition has no anchors: its span comes from its words.
+    if (!("start" in item)) continue;
     const start = resolveAnchor(item.start, words, edit.duration);
     const end = resolveAnchor(item.end, words, edit.duration);
     if (end < start) {
@@ -205,6 +242,47 @@ function refineEdit(
     }
   }
   refineBehind(edit, transcript, preset, limits, ctx);
+  refinePhrases(edit.tracks.transitions, transcript, ctx);
+}
+
+// The phrase transitions' own rules: the last word not before the first, the
+// key phrase starting inside the phrase, a number exactly on `numbered`. The
+// decide answer runs it too.
+export function refinePhrases(
+  transitions: readonly (Tracks["transitions"][number] | PhraseTransitionItem)[],
+  transcript: Transcript,
+  ctx: z.RefinementCtx,
+): void {
+  const order = new Map(transcript.words.map((word, index) => [word.id, index]));
+  for (const item of transitions) {
+    if (!isPhraseTransition(item)) continue;
+    const from = order.get(item.from)!;
+    const to = order.get(item.to)!;
+    if (to < from) {
+      ctx.addIssue({
+        code: "custom",
+        message: `transition ${item.id}: its last word ${item.to} comes before its first word ${item.from}`,
+      });
+    }
+    if (item.key_from !== undefined) {
+      const key = order.get(item.key_from)!;
+      if (key < from || key > to) {
+        ctx.addIssue({
+          code: "custom",
+          message: `transition ${item.id}: key_from ${item.key_from} is outside the phrase ${item.from} to ${item.to}`,
+        });
+      }
+    }
+    if (item.type === "numbered" && item.number === undefined) {
+      ctx.addIssue({ code: "custom", message: `transition ${item.id}: numbered needs its number` });
+    }
+    if (item.type !== "numbered" && item.number !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: `transition ${item.id}: only numbered takes a number, not ${item.type}`,
+      });
+    }
+  }
 }
 
 const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"];
@@ -317,11 +395,19 @@ export type ClipItem = Edit["tracks"]["footage"][number];
 export type CaptionItem = Edit["tracks"]["captions"][number];
 export type OverlayItem = Edit["tracks"]["overlays"][number];
 export type TransitionItem = Edit["tracks"]["transitions"][number];
+export type PhraseTransitionItem = z.infer<ReturnType<typeof phraseTransitionSchemaFor>>;
 export type SoundItem = Edit["tracks"]["sounds"][number];
 export type BehindItem = NonNullable<Edit["tracks"]["behind"]>[number];
 export type BehindPhotoItem = Extract<BehindItem, { kind: "photo" }>;
 export type BehindWordItem = Extract<BehindItem, { kind: "word" }>;
 export type EditMask = NonNullable<EditInputs["masks"]>[number];
+
+// A transition tied to a phrase (words, no times), not a stored timed one.
+export function isPhraseTransition(
+  item: TransitionItem | PhraseTransitionItem,
+): item is PhraseTransitionItem {
+  return "from" in item;
+}
 
 // The path of an issue, as the item it names: `tracks.captions.3` becomes
 // `captions[3]`.
