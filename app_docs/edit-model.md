@@ -3,6 +3,7 @@
 **Specifications:**
 
 - specs/issue-31-adw-7f81a19d-sdlc_planner-edit-model-builder-versions.md
+- specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 
 Every edit of a reel is a small JSON file (`edit.json`) anchored to the words of its transcript.
 One builder turns it into a HyperFrames page, the same bytes in the worker and in the studio, and
@@ -24,9 +25,21 @@ types until slice 9 brings the live preview.
 - `src/schema.ts`: `edit.json`, format 1: `format`, `preset` (`"issebya"`), `duration`, `inputs`
   (the pipeline outputs it was made from, each `{ step, fingerprint, file }`: `footage`,
   `transcript`, `head_track`) and `tracks`: `footage`, `captions`, `overlays`
-  (`kind: "accent"`), `transitions` (`dim`, `panel`, `card`) and `sounds` (`click`).
-  `inputs.cutout` and `tracks.cutout` are optional and never written now (old versions may hold
-  them); the builder ignores them.
+  (`kind: "accent"`), `transitions` (`dim`, `panel`, `card`), `sounds` (`click`) and the optional
+  `behind` track. `inputs.cutout` and `tracks.cutout` (the old whole-clip cut-out) are optional and
+  never written now (old versions may hold them); the builder ignores them.
+- `tracks.behind`: what sits behind the speaker. An item is either a library photo
+  (`kind: "photo"`, `photo_id` a photo's uuid, `spot` one of `top`, `left`, `right`) or one big
+  word (`kind: "word"`, `text` a single word of 1 to 24 characters with no space, `<`, `>` or
+  `&`). It is anchored on words like a caption, lasts the preset's 2 to 4 s, cuts in and out with
+  no animation, and only one is shown at a time. A refinement refuses an item outside 2 to 4 s, two
+  overlapping items and an item crossing a footage clip's `hidden` span. A version without the
+  track parses, and the builder reads it as empty.
+- `inputs.masks` and `inputs.photos`, both optional, filled by the worker before a version with a
+  `behind` item is saved: `masks` lists the person masks (`EditMask`, a `{ step: "cutout",
+fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it covers, in
+  seconds, by start), `photos` the library photo ids the track names (sorted, unique). A version
+  without behind items has neither.
 - Every item has an `id` (`^[a-z][a-z0-9-]{0,63}$`, unique across tracks), a `start` and an `end`
   anchor. An anchor is a word (`{ word, edge?: "start" | "end", offset? }`, offset within plus or
   minus 1 s), a time in seconds (`{ time }`, only where nobody speaks) or the reel's edge
@@ -41,8 +54,10 @@ types until slice 9 brings the live preview.
   cannot leave the style attribute (no `;`, `{`, `}`, `<`, `>`, backslash or `url(`).
 - Validation is Zod 4. `editSchemaFor(preset, transcript)` is built per reel: word ids are the
   transcript's and fonts the preset's, so an unknown word or font is refused by the schema itself;
-  a refinement refuses a duplicate id, an end before its start and an overlay with neither words
-  nor text. `src/transcript.ts` is the studio transcript (`{ words: [{ id, text, start, end }] }`).
+  a refinement refuses a duplicate id, an end before its start, an overlay with neither words
+  nor text, and a `behind` item breaking its rules above. `EditLimits.photoIds` limits
+  `photo_id` to the given ids (the decide answer passes the owner's ready photos); without it any
+  uuid parses. `src/transcript.ts` is the studio transcript (`{ words: [{ id, text, start, end }] }`).
 
 ### Preset values
 
@@ -61,6 +76,12 @@ types until slice 9 brings the live preview.
   `#121212`, slide 0.5 s `power3.inOut`), `card` (full frame,
   `rgba(8, 8, 8, 0.9)`, fade 0.25 s).
 - Click sound: `assets/sounds/mouse-click-trimmed.wav`, 0.23 s, -13 dB, at least 0.25 s apart.
+- Behind (`behind`, starting values the owner tunes by eye): photo spots `top` (left 90, right 990,
+  top 160, bottom 760), `left` (40 to 500, 560 to 1180) and `right` (580 to 1040, 560 to 1180),
+  each covered exactly by the photo. The big word: `secondary` font, at most 400 px, side margin
+  40, `#FFFFFF`, its vertical centre 60 px below the head's top (`belowHeadTop`) or at y 700 with
+  no head (`noHeadY`). The cut-out covers each item plus 3 frames on each side (`padFrames` at
+  `frameRate` 30); an item lasts 2 s (`minSeconds`) to 4 s (`maxSeconds`).
 - Caption units: kept capitals (`I`, `I'm`, `I've`, `I'll`, `I'd`, `AI`), a number joined with the
   unit after it, a month with its day number, and the glossary (`lock-in`, heard as `locking` or
   `lock in`).
@@ -70,7 +91,9 @@ types until slice 9 brings the live preview.
 - `src/build.ts`: `build(edit, transcript, headTrack, preset, measurer) -> { html, assets, checks }`.
   `html` is a HyperFrames composition (`data-composition-id="main"`, a paused GSAP 3.14.2 timeline
   registered on `window.__timelines`); `assets` lists every referenced file with its role
-  (`footage`, `font`, `sound`), sorted; `checks` is the layout check list.
+  (`footage`, `font`, `sound`, `mask`, `photo`), sorted; `checks` is the layout check list. A
+  `mask` asset carries its `cutout` ref at `maskPath(mask)` (`masks/<fingerprint>.mp4`); a `photo`
+  asset has no ref, its `photoId` and the path `photoPath(id)` (`photos/<id>.jpg`).
 - Deterministic: no clock, no randomness, no I/O. The same inputs give the same bytes in Node and in
   the browser. One builder serves the preview and the export.
 - `src/measure.ts`: `createMeasurer(hb, fonts)` over the initialised `harfbuzzjs` module and the
@@ -80,6 +103,23 @@ types until slice 9 brings the live preview.
   goldens compare). The same wasm on the same font bytes gives identical widths everywhere.
 - `src/layout.ts` (`layoutText`) places every caption and accent from the measured widths and the
   head track; `src/html.ts` escapes text and attributes and formats numbers.
+- `src/behind.ts`: `spotBox(spot, preset)` (the spot's rectangle), `bigWordLayout` (the big word
+  as large as fits between the side margins, at most the preset's size and at least 8 px, centred
+  across the frame, its centre below the head's top at the item's start or at `noHeadY`; its width
+  from HarfBuzz at 1 px, so the measurer records it and the goldens cover it) and
+  `maskSpans(edit, transcript, preset)`: each behind item's span padded by `padFrames`, clamped to
+  the reel, widened to whole frames, overlapping or touching spans merged, sorted, to the
+  millisecond. The builder (one composite per span) and the worker (one mask per span) both call
+  it, so they always agree.
+- Behind the speaker, one composite per mask span, above the footage and under transitions and
+  text: an untimed isolated group (`.cutout`, id `cut_<n>`) holding a footage copy (`muted`,
+  `data-media-start` equal to its `data-start`), the span's behind items (a photo `<img>` exactly
+  over its spot, or the big word `<div>` at its measured size, each with its own start and
+  duration as the hard cut), the mask inverted and multiplied (`.mask-under`, keeps the picture
+  where the person is not), and an untimed `plus-lighter` sub-group (`.cutout-front`) of a second
+  footage copy times the mask (the person back in front). Every layer is a plain timed element, so
+  the player and the render's frame injector show the same pixels. A span with no matching entry
+  in `inputs.masks` (start and end within half a millisecond) throws.
 
 ### Checks
 
@@ -87,6 +127,8 @@ types until slice 9 brings the live preview.
 readable reason string (an empty list means every rule passes):
 
 - `safe-box`: text inside the safe box (the edge and value that run past it).
+- `frame`: a big word behind the speaker inside the frame (each edge that leaves it, and the
+  word). It crosses the safe box by design, so it is never checked against it.
 - `face`: captions clear of the face (the face box from the head track).
 - `sound-gap`: two sounds at least the preset's gap (0.25 s) apart.
 - `time-in-speech`: a time anchor outside speech (it names the word to anchor to instead).
@@ -137,8 +179,10 @@ never fatal.
 - `src/testdata/versions/` holds the stored fixture versions: `baseline-short-speech.edit.json`
   (the baseline over `fixtures/pipeline/`) and `rethink-work-hand.edit.json` (by hand, with
   accents, the `panel` transition and a click), with `src/testdata/rethink-work/` (its transcript
-  and real head track). `src/test-support/fixtures.ts` imports them as JSON modules so both runs
-  build exactly the same inputs.
+  and real head track), and `rethink-work-behind.edit.json` (the hand edit with a `top` photo and
+  the big word `WORK` behind the speaker, two masks with placeholder fingerprints and one photo id
+  in `inputs`) on the same data. `src/test-support/fixtures.ts` imports them as JSON modules so
+  both runs build exactly the same inputs.
 - `src/build.test.ts` (Node, `measurer.node.ts`) and `src/build.browser.test.ts` (Chromium,
   `measurer.browser.ts`, the same wasm and fonts fetched from the test server) build every fixture
   and compare the page and the widths with the committed goldens in `src/testdata/golden/` byte for
@@ -153,8 +197,10 @@ never fatal.
 
 - `yarn turbo run test --filter=./packages/edit`: the `node` and `browser` Vitest projects
   (`vitest.config.ts`); the browser project needs Install step 3's chromium. `turbo.json` passes
-  `PLAYWRIGHT_*` and `CI` through. Also schema, timeline, checks, baseline and versions tests, and a
-  build of the 50-second hand edit under 200 ms.
+  `PLAYWRIGHT_*` and `CI` through. Also schema, timeline, checks, baseline and versions tests, a
+  build of the 50-second hand edit under 200 ms, and `src/behind.test.ts` (spots, the big word's
+  size and place, mask spans padded, clamped and merged). The `rethink-work-behind` golden is
+  compared in both projects.
 - `apps/studio/db-tests/versions.test.ts` under `yarn test:db`: `save_version`, version
   immutability and its RLS.
 - `apps/worker/src/first-version.test.ts` (version 1 saved, kept on a retry) and
@@ -171,6 +217,10 @@ never fatal.
 - One builder for preview and export; never fork it per environment.
 - Never store a built page; versions hold the edit, the page is built from it.
 - Anchors are words; seconds only where nobody speaks.
+- A version with a `behind` item is saved only once every mask it names exists; the builder never
+  builds a behind item without its mask.
+- A big word is checked against the frame, never the safe box.
+- A version names a library photo by its id, never by its storage key.
 - Nothing Node-only or browser-only in `packages/edit`; the caller injects the platform.
 - Never commit an asset without its licence (`assets/fonts/OFL-*.txt`,
   `assets/sounds/LICENSE-sounds.md`).

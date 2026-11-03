@@ -3,6 +3,7 @@
 **Specifications:**
 
 - specs/issue-96-adw-173ac961-sdlc_planner-photo-library.md
+- specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 
 ## Overview
 
@@ -46,7 +47,17 @@ desktop and is a fourth tab, `Library`, on a phone.
   is sent back once with the reasons, a second refusal fails the job and the photo. An unavailable
   Claude makes the job `waiting_ai` (`app_docs/failures.md`). The prompt is versioned by
   `DESCRIBE_PROMPT_VERSION`.
-- `apps/worker/src/photos/photo-store.ts`: the worker's writes to the `photos` row.
+- `apps/worker/src/photos/photo-store.ts`: the worker's writes to the `photos` row, and
+  `supabasePhotoLibrary(db).readyPhotos(ownerId)`: the owner's `ready` photos (`id`,
+  `description`, `tags`, `large_key`), oldest first, a row without `large_key` left out.
+- Ready photos are used behind the speaker (`app_docs/edit-model.md`, the `behind` track): the
+  decide step offers them to the AI by id, description and tags (`app_docs/decide-step.md`), the
+  live preview signs each shown photo's `large_key` read from its own row under RLS
+  (`app_docs/preview.md`), and the render downloads the same large copy into its project
+  (`app_docs/export.md`). A version names a photo by id only (`inputs.photos`).
+- Deleting a photo a version uses leaves that version as it is (versions never change): its
+  preview then shows `A photo in this version was deleted from the library.` (status
+  `photo-missing`), and its export fails with `render: photo <id> is no longer in the library`.
 - `apps/worker/src/ai.ts`: `AiRequest.readFile`. Only when set does the runner pass
   `--tools Read --allowedTools Read(<file>) --permission-prompts none`; every other call keeps
   `--tools ""` (`app_docs/decide-step.md`).
@@ -104,6 +115,6 @@ only, run by hand; CI uses the committed files).
 
 ## Notes
 
-- Photos are not yet placed in a reel; later issues use them behind the speaker.
+- Only the large copy is placed in a reel; the thumbnail stays the library's.
 - This change also touched `app_docs/studio.md`, `studio-reel-layout.md`, `storage.md`,
   `decide-step.md`, `failures.md`, `measurement.md` and `error-tracking.md`.

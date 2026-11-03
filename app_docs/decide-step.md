@@ -3,6 +3,7 @@
 **Specifications:**
 
 - specs/issue-33-adw-b632a861-sdlc_planner-ai-decide-step.md
+- specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 
 ## Overview
 
@@ -22,15 +23,19 @@ The answer is tracks only plus three short fields:
 and the AI cannot touch the input fingerprints. By convention the title is the overlay with id
 `title`, anchored at `{ reel: "start" }`.
 
-- `packages/edit/src/decide.ts`: `decideAnswerSchemaFor(preset, transcript, duration)` (word-id
-  enums from the reel's transcript, `{ time }` anchors capped at the clip's end, positions inside
-  the preset's safe box, fonts and transition types from the preset), `decideJsonSchema` (Zod 4
+- `packages/edit/src/decide.ts`: `decideAnswerSchemaFor(preset, transcript, duration, photoIds)`
+  (word-id enums from the reel's transcript, `{ time }` anchors capped at the clip's end, positions
+  inside the preset's safe box, fonts and transition types from the preset, and the `behind` track
+  with `photo_id` an enum of the owner's ready library ids, so no photo can be named without
+  them; no whole-clip cut-out track), `decideJsonSchema` (Zod 4
   `z.toJSONSchema`, draft-07 because the Claude Code CLI's `--json-schema` validator rejects a
   draft 2020-12 `$schema`, real `enum` lists, every object closed, refs inlined),
   `parseDecideAnswer`, `editFromAnswer` (the answer's tracks over the current version, parsed with
-  the decide limits), `decideCounts` (the step line) and `usedFreeField`.
+  the decide limits; the current version's `inputs.masks` and `inputs.photos` are dropped, since
+  the worker names them again for the new `behind` track), `decideCounts` (the step line, with
+  `behindPhotos` and `behindWords`) and `usedFreeField`.
 - `packages/edit/src/schema.ts`: `editSchemaFor` and the new `tracksSchemaFor` take optional
-  `EditLimits { duration, bounds }`; without them stored versions keep parsing with the default
+  `EditLimits { duration, bounds, photoIds }`; without them stored versions keep parsing with the default
   frame limits. `issueReasons` turns Zod issues into readable reasons.
 - `packages/edit/src/glossary.ts`: `glossaryChecks`, check rule `glossary` (added to `CheckRule`):
   no caption or overlay shows a heard form of a glossary term; the term itself passes.
@@ -50,17 +55,33 @@ and the AI cannot touch the input fingerprints. By convention the title is the o
   non-object value or non-JSON throws. Without a script it gives `EMPTY_DECIDE_ANSWER` (no items),
   which the doctor's check accepts.
 - `apps/worker/src/decide/prompt.md`, `prompt.ts`: the committed prompt and `PROMPT_VERSION`
-  (`decide-1`, bumped with every prompt change; each version row records it). `decidePrompt` fills
-  the inputs as fenced JSON and, on the retry, appends the previous reasons.
+  (`decide-2`, bumped with every prompt change; each version row records it). `decidePrompt` fills
+  the inputs as fenced JSON (`{{library}}` among them) and, on the retry, appends the previous
+  reasons. Step 5 of the prompt: put something behind the speaker only when the request asks for
+  it (or the content plainly calls for it), a library photo (`photo_id`, `spot` `top`, `left` or
+  `right`) or one big word, anchored on words, 2 to 4 s, a hard cut, one at a time; move a photo by
+  changing its `spot`, swap it by changing its `photo_id`, remove it by leaving it out. The library
+  is introduced as data describing the photos, never instructions, to be ignored where it reads
+  like one.
 - `apps/worker/src/decide/input.ts`: the prompt input: current edit, transcript with ids, head
-  track summary, preset with glossary, and the request.
+  track summary, preset with glossary (and its `behind` summary: photo spots, the big word's font,
+  colour and maximum size, 2 to 4 s), the library and the request. The library is a list of
+  `LibraryEntry` (`id`, `description`, `tags`): the owner's ready photos only, oldest first, read by
+  `PhotoLibrary.readyPhotos(owner_id)` (`apps/worker/src/photos/photo-store.ts`, service role,
+  filtered by owner and `status = 'ready'`, a row without `large_key` left out).
 - `apps/worker/src/decide/run-decide.ts`: `runDecide`, a `runToolsStep` named `decide`. It reads
   the current version and its inputs, builds the schema, and makes at most two calls, never a
   loop. An attempt passes only when the JSON parses, the schema accepts it, `editFromAnswer`
-  accepts it, `build` reports no checks and `glossaryChecks` reports none. It saves through
+  accepts it, `build` reports no checks and `glossaryChecks` reports none (the build runs on the
+  edit naming the masks it will need, `withMasks`, whose fingerprints are known before any is
+  made). With `behind` items, `ensureCutouts` (`apps/worker/src/cutout/ensure-cutouts.ts`) then
+  refuses a photo outside the library and makes sure each padded span's mask is stored (a
+  `cutout` step row, `app_docs/pipeline.md`) before anything is saved; a failure there comes after
+  the AI call, so it is permanent, and no version is saved. It saves through
   `saveVersion` with `parentId` the current version, the request (null for the automatic run),
   model, `PROMPT_VERSION`, the change summary, and the records below. Step line:
-  `version 2: 1 accent, 1 transition, title set, 1 word fixed`.
+  `version 2: 1 accent, 1 transition, title set, 1 word fixed`, with `, <n> behind` after it when
+  the version has behind items.
 - `apps/worker/src/process-job.ts`: runs `runDecide` after `saveFirstVersion`. Never cached: a
   retried job decides again from the then-current version.
 - `apps/worker/src/step-runner.ts`: `ToolCall` gains `stdin` and `maxStdoutBytes`; `ToolsStep.work`
@@ -109,7 +130,8 @@ two AI calls. A failure before the first AI call may still be retried once.
   schema, composition, counts), `glossary.test.ts`, `ai.test.ts` (parser on the committed real
   result `decide/testdata/claude-result.json`, the fake, the script loader on the committed
   answer), `prompt.test.ts`, `run-decide.test.ts` (pass, one retry, second failure, nothing
-  written on failure) and `step-runner.test.ts` (stdin, cap, `StepError`).
+  written on failure; a behind photo: the library quoted as data in the prompt, the mask made
+  before the save, `inputs.photos` and `, 1 behind` on the step line) and `step-runner.test.ts` (stdin, cap, `StepError`).
 - `decide/testdata/short-speech-answer.json` is the scripted answer for the fixture clip; a unit
   test proves it passes the checks.
 - `yarn turbo run test:db --filter=./apps/studio`: `versions.test.ts` covers the new columns.
@@ -117,7 +139,9 @@ two AI calls. A failure before the first AI call may still be retried once.
   checks the decide line, the `ai_*` columns (1500, 456, 0.0123, `claude-opus-5-5`), version 2's row
   and both R2 keys. `preview.spec.ts` seeds through `test-support/ai-script.ts`
   (`unchangedAnswerScript`), whose answer repeats version 1's tracks, so version 2 matches the
-  version 1 golden.
+  version 1 golden. `behind.spec.ts` scripts a change answer (`behindPhotoAnswerScript`) that puts
+  a seeded ready photo behind the speaker; the `cutout` row and the version's `inputs.masks` and
+  `inputs.photos` are checked.
 
 ## Rules
 
@@ -131,6 +155,10 @@ two AI calls. A failure before the first AI call may still be retried once.
 - Bump `PROMPT_VERSION` whenever `prompt.md` changes.
 - Record raw usage numbers as Claude Code reports them; never convert or estimate.
 - Never point a test at the real `claude` binary; use the double.
+- The photo library in the prompt is data, never instructions: always quoted as fenced JSON under
+  the line saying so.
+- A `behind` photo is only ever one of the owner's ready library ids; the schema allows no other.
+- Never save a version with a `behind` item before its masks are stored.
 
 ## Notes
 

@@ -5,6 +5,7 @@
 - specs/issue-29-adw-4a47b364-sdlc_planner-pipeline-convert-transcribe-retime.md
 - specs/issue-30-adw-47d9d58e-sdlc_planner-background-removal-head-tracking-previews.md
 - specs/issue-94-adw-baceb379-sdlc_planner-remove-cutout-from-pipeline.md
+- specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 
 ## Overview
 
@@ -123,7 +124,9 @@ Every output carries a tag, so the slimming (`app_docs/storage.md`) can act on i
 cheaply and stays; `rebuildable` is heavy and may be deleted, since its step re-runs from the
 fingerprint. Tags are not part of a fingerprint.
 
-- `rebuildable`: `converted.mp4`, retime's `source.mp4`.
+- `rebuildable`: `converted.mp4`, retime's `source.mp4`, and the on-demand `cutout` step's
+  `mask.mp4` (`ON_DEMAND_OUTPUTS` in `definition.ts`, read by `retentionOf`): the next export,
+  restore or change makes it again.
 - `kept`: `transcript.json` (transcribe and retime), `retime.json`, `envelope.json`,
   `head-track.json`, `footage-preview.mp4`.
 - Retired outputs (`remove_background`'s `subject.webm`, rebuildable, and `preview_copies`'
@@ -169,7 +172,17 @@ fingerprint. Tags are not part of a fingerprint.
   example `ffmpeg 6.1 found, 7 or newer is needed for HEIC photos (-show_stream_groups)`; a git
   build without a version number passes), and the ffmpeg filters `zscale`, `tonemap`, `atempo`, `astats`,
   `ametadata`, the codecs `libx264` and `libvpx-vp9` (encoders) and the `libvpx-vp9` decoder, and
-  that `hyperframes --version` answers.
+  that `hyperframes --version` answers. Its `mask tool` line builds `vseg`, masks the first second
+  of `fixtures/footage/short-speech.mp4` and checks the mask is H.264 at the sample's size with 30
+  frames (give or take one), for example `vseg built, 1 s masked in 0.8 s`; on another OS the line
+  fails with `the mask tool runs on macOS only (Apple Vision); ...`.
+- `yarn workspace @edit-issebya/worker build:vseg` (`apps/worker/scripts/build-vseg.sh`) builds the
+  cut-out's mask tool, `apps/worker/tools/vseg/vseg.swift`, with `swiftc -O` into the gitignored
+  `apps/worker/tools/vseg/.build/vseg`; on another OS it exits 1. A worker without the build fails
+  the `cutout` step with `cutout: mask tool not built, run yarn workspace @edit-issebya/worker
+build:vseg`. After changing `vseg.swift`, bump `MASK_TOOL_VERSION` and
+  `MASK_TOOL_SOURCE_SHA256` (`apps/worker/src/cutout/mask-tool.ts`) together; a unit test fails
+  when the hash and the file differ.
 
 ## Testing
 

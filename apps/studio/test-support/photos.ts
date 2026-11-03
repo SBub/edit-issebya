@@ -1,8 +1,12 @@
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import type { Storage } from "@edit-issebya/storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const SAMPLE = new URL("../../../fixtures/photos/sample.jpg", import.meta.url);
+// The committed sample photo (1200x900).
+export const SAMPLE_PHOTO = fileURLToPath(
+  new URL("../../../fixtures/photos/sample.jpg", import.meta.url),
+);
 
 export interface SeededPhoto {
   id: string;
@@ -13,22 +17,25 @@ export interface SeededPhoto {
 
 // A ready library photo of `ownerId`, as describe_photo leaves it: its row
 // (description, tags, sizes and keys) and fixtures/photos/sample.jpg stored
-// as its original, thumbnail and large copy under the run's prefix.
+// as its original, thumbnail and large copy under the run's prefix. `bytes`
+// replaces the sample with another 1200x900 JPEG.
 export async function seedReadyPhoto({
   admin,
   storage,
   ownerId,
   prefix,
+  bytes: given,
 }: {
   admin: SupabaseClient;
   storage: Storage;
   ownerId: string;
   prefix: string;
+  bytes?: Uint8Array;
 }): Promise<SeededPhoto> {
   const id = crypto.randomUUID();
   const key = (name: string) => `${prefix}library/${id}/${name}`;
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed sample photo
-  const bytes = new Uint8Array(await readFile(SAMPLE));
+  const bytes = given ?? new Uint8Array(await readFile(SAMPLE_PHOTO));
   const keys = [key("original.jpg"), key("thumbnail.jpg"), key("large.jpg")];
   for (const written of keys) await storage.put(written, bytes, { contentType: "image/jpeg" });
   const { error } = await admin.from("photos").insert({
