@@ -164,6 +164,32 @@ describe("save_version", () => {
     ]);
   });
 
+  it("stores the layout engine's record it is given, an empty list when not", async () => {
+    const own = await insertReel(admin, {
+      ownerId: owner.id,
+      name: "engine.mov",
+      status: "received",
+    });
+    const note = { item: "photo-1", action: "dropped", rule: "no-room", reason: "no free spot" };
+    const placed = randomUUID();
+    const { error } = await admin.rpc("save_version", {
+      ...args(own, placed, null),
+      p_engine_record: [note],
+    });
+    expect(error).toBeNull();
+    const plain = randomUUID();
+    expect((await admin.rpc("save_version", args(own, plain, placed))).error).toBeNull();
+    const { data } = await ownerClient
+      .from("versions")
+      .select("id, engine_record")
+      .eq("reel_id", own)
+      .order("number");
+    expect(data).toEqual([
+      { id: placed, engine_record: [note] },
+      { id: plain, engine_record: [] },
+    ]);
+  });
+
   it("cannot be executed by anon or an authenticated user", async () => {
     for (const client of [localSupabaseClient(), ownerClient]) {
       const { error } = await client.rpc("save_version", args(reel, randomUUID(), saved[2]!));

@@ -6,15 +6,18 @@ import type { Edit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
-const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
+// The behind edit's choices placed by the layout engine: every check passes.
+const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-engine")!;
 
 async function checksOf(edit: Edit, headTrack: HeadTrack = hand.headTrack) {
   return build(edit, hand.transcript, headTrack, ISSEBYA_PRESET, await nodeMeasurer()).checks;
 }
 
 describe("runChecks", () => {
-  it("passes the stored fixture versions (an empty list)", async () => {
-    for (const fixture of FIXTURES) {
+  it("passes the engine-placed fixture versions (an empty list)", async () => {
+    for (const fixture of FIXTURES.filter(
+      (f) => !f.name.endsWith("-hand") && !f.name.endsWith("-behind"),
+    )) {
       const { checks } = build(
         fixture.edit,
         fixture.transcript,
@@ -26,14 +29,36 @@ describe("runChecks", () => {
     }
   });
 
+  it("finds the faults of the old fixed-spot placement in the hand-made versions", async () => {
+    for (const name of ["rethink-work-hand", "rethink-work-behind"]) {
+      const fixture = FIXTURES.find((f) => f.name === name)!;
+      const { checks } = build(
+        fixture.edit,
+        fixture.transcript,
+        fixture.headTrack,
+        ISSEBYA_PRESET,
+        await nodeMeasurer(),
+      );
+      // Captions over a moving head, a last word shown under 0.25 s, accents
+      // under 1.5 s; and in the behind edit the big word on the captions,
+      // shown before its word is said (today's failures).
+      const rules = new Set(checks.map((check) => check.rule));
+      expect([...rules].sort()).toEqual(
+        name === "rethink-work-hand"
+          ? ["face", "timing"]
+          : ["big-word-timing", "face", "text-overlap", "timing"],
+      );
+    }
+  });
+
   it("fails safe-box for a 40-character word as an accent at 110 px", async () => {
     const edit = structuredClone(hand.edit);
     edit.tracks.overlays[0]!.text = "a".repeat(40);
     const checks = await checksOf(edit);
     expect(checks).toHaveLength(1);
-    expect(checks[0]).toMatchObject({ rule: "safe-box", item: "aw29" });
+    expect(checks[0]).toMatchObject({ rule: "safe-box", item: "accent-1" });
     expect(checks[0]!.reason).toMatch(
-      /^accent aw29 \("a{40}"\) runs past the safe box: left edge -?\d+ < 130, right edge \d+ > 860$/,
+      /^accent accent-1 \("a{40}"\) runs past the safe box: right edge \d+ > 860$/,
     );
   });
 
@@ -127,14 +152,33 @@ describe("runChecks on big words behind the speaker", () => {
 
   it("skips the safe box for a big word (it crosses the frame by design)", async () => {
     const { checks, html } = build(
-      behind.edit,
-      behind.transcript,
-      behind.headTrack,
+      hand.edit,
+      hand.transcript,
+      hand.headTrack,
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
-    expect(html).toContain('id="behind-word"');
+    expect(html).toContain('id="big-word"');
     expect(checks).toEqual([]);
+  });
+
+  it("fails text-overlap for a big word set on the captions, big-word-timing before its word", async () => {
+    const edit = structuredClone(hand.edit);
+    const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
+    // On the captions' line, and a word said only after it shows.
+    if (word.kind === "word") Object.assign(word, { position: { x: 42, y: 1000 }, text: "work" });
+    const { checks } = build(
+      edit,
+      hand.transcript,
+      hand.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    const rules = [...new Set(checks.map((check) => check.rule))];
+    expect(rules).toEqual(["text-overlap", "big-word-timing"]);
+    expect(checks.at(-1)!.reason).toMatch(
+      /^big word big-word \("work"\) shows at \d+\.\d{3} s, before w95 is said at 24\.887 s$/,
+    );
   });
 
   it("fails frame for a big word pushed above the frame by a head at its top edge", async () => {

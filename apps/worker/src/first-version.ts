@@ -7,16 +7,20 @@ import {
   baselineEdit,
   build,
   headTrackSchema,
+  placeEdit,
   saveVersion,
   transcriptSchema,
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import { editMeasurer } from "./edit-measurer.ts";
+import { engineRecordLine } from "./engine-record.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
 import { reelOf } from "./queue.ts";
 import { type StepContext, recordHit, runInProcessStep } from "./step-runner.ts";
 
 export const STEP = "first_version";
+
+const NO_CHOICES = { accents: [], big_word: null, photos: [], transitions: [], word_fixes: [] };
 
 export interface FirstVersionRun {
   ctx: StepContext;
@@ -27,6 +31,8 @@ export interface FirstVersionRun {
   // Every pipeline step's fingerprint, from runPipeline.
   fingerprints: Record<string, string>;
   newId?: () => string;
+  // Where the engine record is logged, one line per version.
+  log?: (line: string) => void;
 }
 
 // The pipeline outputs version 1 is built from, by producer.
@@ -44,9 +50,11 @@ function firstVersionInputs(fingerprints: Record<string, string>): EditInputs {
 }
 
 // After the fixed steps: the automatic version 1, built from the issebya
-// preset alone (no AI), so the reel has something to play. A reel that
-// already has a version (a retried job) keeps it: a hit, nothing written.
-// Failed layout checks are stored on the row, never fatal.
+// preset alone (no AI) and placed by the layout engine with no choices
+// (captions only), so the reel has something to play. A reel that already
+// has a version (a retried job) keeps it: a hit, nothing written. Failed
+// layout checks are stored on the row, never fatal; the engine record is
+// saved with the version and logged in one line.
 export async function saveFirstVersion({
   ctx,
   storage,
@@ -55,6 +63,7 @@ export async function saveFirstVersion({
   keyPrefix,
   fingerprints,
   newId = randomUUID,
+  log = console.log,
 }: FirstVersionRun): Promise<void> {
   const started = performance.now();
   const reelId = reelOf(ctx.job);
@@ -84,12 +93,22 @@ export async function saveFirstVersion({
       if (typeof retime.durationSeconds !== "number") {
         throw new Error(`${STEP}: retime.json has no durationSeconds`);
       }
-      const edit = baselineEdit(
+      const baseline = baselineEdit(
         transcript,
         { inputs, duration: retime.durationSeconds },
         ISSEBYA_PRESET,
       );
-      const { checks } = build(edit, transcript, headTrack, ISSEBYA_PRESET, await editMeasurer());
+      const measurer = await editMeasurer();
+      const { tracks, record } = placeEdit(
+        baseline,
+        NO_CHOICES,
+        transcript,
+        headTrack,
+        ISSEBYA_PRESET,
+        measurer,
+      );
+      const edit = { ...baseline, tracks };
+      const { checks } = build(edit, transcript, headTrack, ISSEBYA_PRESET, measurer);
       ctx.signal.throwIfAborted();
       const saved = await saveVersion(
         { rows, blobs, keyPrefix, newId },
@@ -102,9 +121,11 @@ export async function saveFirstVersion({
           promptVersion: null,
           changeSummary: "automatic first version from the issebya style",
           checks,
+          engineRecord: record,
           edit,
         },
       );
+      log(engineRecordLine(reelId, saved.number, record));
       return { what: `version ${saved.number} saved`, sizeBytes: saved.bytes };
     },
   });

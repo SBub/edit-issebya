@@ -11,6 +11,8 @@ export interface TextBox extends Span {
   itemId: string;
   kind: "caption" | "accent";
   text: string;
+  // The text's lines: one, or two for a text set with `break_after`.
+  lines: string[];
   font: FontKey;
   size: number;
   color: string;
@@ -21,8 +23,9 @@ export interface TextBox extends Span {
   height: number;
 }
 
-type TextItem = Omit<TextBox, "x" | "y" | "width" | "height"> & {
+type TextItem = Omit<TextBox, "x" | "y" | "width" | "height" | "lines"> & {
   position: CaptionItem["position"];
+  breakAfter: number | undefined;
 };
 
 // A spot beside the head: `r` is right-anchored at x (text ends there), `l`
@@ -123,11 +126,18 @@ function lines(
   return out;
 }
 
-function boxAt(item: TextItem, x: number, y: number, width: number): TextBox {
+function boxAt(
+  item: TextItem,
+  x: number,
+  y: number,
+  width: number,
+  lines: string[] = [item.text],
+): TextBox {
   return {
     itemId: item.itemId,
     kind: item.kind,
     text: item.text,
+    lines,
     font: item.font,
     size: item.size,
     color: item.color,
@@ -137,8 +147,15 @@ function boxAt(item: TextItem, x: number, y: number, width: number): TextBox {
     x,
     y,
     width,
-    height: item.size,
+    height: item.size * lines.length,
   };
+}
+
+// A text's lines: split after `breakAfter` words when set.
+function textLines(text: string, breakAfter: number | undefined): string[] {
+  const words = text.split(" ");
+  if (breakAfter === undefined || breakAfter >= words.length) return [text];
+  return [words.slice(0, breakAfter).join(" "), words.slice(breakAfter).join(" ")];
 }
 
 function anchored(
@@ -147,9 +164,10 @@ function anchored(
   y: number,
   align: "left" | "right" | "center",
   width: number,
+  lines?: string[],
 ) {
   const left = align === "left" ? x : align === "right" ? x - width : x - width / 2;
-  return boxAt(item, left, y, width);
+  return boxAt(item, left, y, width, lines);
 }
 
 // The caption text the words show by default: each word cleaned, a glossary
@@ -164,7 +182,10 @@ export function wordsText(ids: readonly string[], transcript: Transcript, preset
   return cleaned.join(" ");
 }
 
-// Positions for every caption and accent. Items that set a position keep it;
+// Positions for every caption and accent. Items that set a position keep it:
+// every caption and accent the layout engine (`engine.ts`) placed, so a
+// stored version is never placed again. The rest is the fixed-spot placement
+// of versions saved before the engine, kept so they look as they did:
 // captions inside a transition go to its text region; other captions, one
 // group (same end) at a time, take the spots beside the face over the group's
 // span (a word too wide for them, and every caption when no head is in the
@@ -196,14 +217,16 @@ export function layoutText(
       start: span(item.id).start,
       end: span(item.id).end,
       position: item.position,
+      breakAfter: item.break_after,
     };
   };
 
   const boxes: TextBox[] = [];
   const place = (item: TextItem): boolean => {
     if (!item.position) return false;
-    const width = measurer.width(item.font, item.size, item.text);
-    boxes.push(anchored(item, item.position.x, item.position.y, item.position.align, width));
+    const lines = textLines(item.text, item.breakAfter);
+    const width = Math.max(...lines.map((line) => measurer.width(item.font, item.size, line)));
+    boxes.push(anchored(item, item.position.x, item.position.y, item.position.align, width, lines));
     return true;
   };
 

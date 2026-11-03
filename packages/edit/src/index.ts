@@ -69,8 +69,8 @@ export {
   type WordFix,
   WISHES,
   choicesOf,
-  placeDirect,
 } from "./engine-input.ts";
+export { type EngineAction, type EngineNote, placeEdit } from "./engine.ts";
 export { glossaryChecks } from "./glossary.ts";
 export { type HarfBuzz, type Measurer, createMeasurer } from "./measure.ts";
 export { type ResolvedItem, resolveTimeline } from "./timeline.ts";

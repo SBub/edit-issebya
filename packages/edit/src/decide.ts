@@ -1,7 +1,9 @@
 import { z } from "zod";
-import { type EngineInput, WISHES, placeDirect } from "./engine-input.ts";
+import { type EngineNote, placeEdit } from "./engine.ts";
+import { type EngineInput, WISHES } from "./engine-input.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { wordsText } from "./layout.ts";
+import type { Measurer } from "./measure.ts";
 import { type Preset, TRANSITION_TYPES, cleanWord } from "./preset.ts";
 import { BEHIND_WORD, type Edit, issueReasons, parseEdit } from "./schema.ts";
 import type { Transcript } from "./transcript.ts";
@@ -253,33 +255,42 @@ export function parseDecideAnswer(
   return { ok: false, reasons: issueReasons(json, result.error.issues) };
 }
 
-// The answer placed over the current version (`placeDirect`, the stand-in for
-// the layout engine) as a full edit, parsed with the decide limits and the
+// The answer placed over the current version by the layout engine
+// (`placeEdit`) as a full edit, parsed with the decide limits and the
 // refinement (ids used once, nothing ending before it starts, the behind
-// counts and lengths). The current version's masks and photos are not carried
-// over: the worker's cut-out step names them again for the new behind track.
+// counts and lengths), with the engine's record of what it moved, shrank,
+// wrapped, retimed or dropped. The items the answer's checklist names are
+// placed first. The current version's masks and photos are not carried over:
+// the worker's cut-out step names them again for the new behind track. A
+// parse failure here is an engine bug, never the answer's.
 export function editFromAnswer(
   current: Edit,
-  answer: EngineInput,
+  answer: EngineInput & { checklist?: readonly { fulfilled_by: readonly string[] }[] },
   preset: Preset,
   transcript: Transcript,
   headTrack: HeadTrack,
-): { ok: true; edit: Edit } | { ok: false; reasons: string[] } {
+  measurer: Measurer,
+): { ok: true; edit: Edit; record: EngineNote[] } | { ok: false; reasons: string[] } {
   const inputs = { ...current.inputs };
   delete inputs.masks;
   delete inputs.photos;
+  const requested = [...new Set((answer.checklist ?? []).flatMap((entry) => entry.fulfilled_by))];
+  const { tracks, record } = placeEdit(current, answer, transcript, headTrack, preset, measurer, {
+    requested,
+  });
   const json = {
     format: 1,
     preset: preset.id,
     duration: current.duration,
     inputs,
-    tracks: placeDirect(current, answer, transcript, headTrack, preset),
+    tracks,
   };
-  return parseEdit(json, preset, transcript, {
+  const parsed = parseEdit(json, preset, transcript, {
     duration: current.duration,
     bounds: preset.safe,
     behindCounts: { photos: preset.behind.maxPhotos, words: preset.behind.maxWords },
   });
+  return parsed.ok ? { ok: true, edit: parsed.edit, record } : parsed;
 }
 
 export interface DecideCounts {

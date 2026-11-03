@@ -102,6 +102,7 @@ async function roundEnvelope({
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed worker script
   const envelope = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
     structured_output: {
+      accents: unknown[];
       photos: unknown[];
       big_word: { word: string } | null;
       change_title: string;
@@ -111,6 +112,9 @@ async function roundEnvelope({
   };
   envelope.structured_output.photos = photos;
   envelope.structured_output.big_word = bigWord ? { word: bigWord } : null;
+  // On the 2.7 s fixture clip the title holds the screen for most of it, and
+  // the layout engine shows one extra at a time: a behind item needs it gone.
+  if (photos.length > 0 || bigWord) envelope.structured_output.accents = [];
   envelope.structured_output.change_summary = changeSummary;
   if (changeTitle) envelope.structured_output.change_title = changeTitle;
   envelope.structured_output.behind_rules = rules;

@@ -1,7 +1,7 @@
 import { type BigWordBox, spotBox, spotFaceShare } from "./behind.ts";
-import { type Box, type HeadTrack, faceBox } from "./head-track.ts";
+import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import type { TextBox } from "./layout.ts";
-import { PLATFORM_BUTTONS, PLATFORM_SAFE, type Preset, intersectBox } from "./preset.ts";
+import { PLATFORM_BUTTONS, PLATFORM_SAFE, type Preset, cleanWord, intersectBox } from "./preset.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import type { ResolvedItem } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -12,6 +12,9 @@ export type CheckRule =
   | "behind-face"
   | "behind-caption"
   | "face"
+  | "text-overlap"
+  | "timing"
+  | "big-word-timing"
   | "sound-gap"
   | "time-in-speech"
   | "out-of-reel"
@@ -51,9 +54,13 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
 // The layout checks, in a stable order: text inside the safe box, never past
 // the platform guard nor over its button column whatever the preset says, big words
 // behind the speaker inside the frame (they cross the safe box by design),
-// photos behind the speaker not taken over by the face and with no caption
-// over them, captions clear of the face, sounds at least the preset's gap apart, time
-// anchors outside speech, anchors inside the reel.
+// photos behind the speaker not taken over by the face and with no caption or
+// accent over them, captions clear of the face, no text on other text shown
+// at the same time, captions and accents at least their minimum on screen,
+// the big word never before its word is said, sounds at least the preset's
+// gap apart, time anchors outside speech, anchors inside the reel. The face is
+// the robust one (`facesOver`) the layout engine places around, so the checks
+// never fail on the engine's output: they are its final guard.
 export function runChecks(
   edit: Edit,
   boxes: readonly TextBox[],
@@ -114,8 +121,12 @@ export function runChecks(
     item.kind === "photo" ? [{ item, span: resolved.get(item.id)! }] : [],
   );
   for (const { item, span } of photos) {
-    const face = faceBox(headTrack, span.start, span.end, { left: 0, right: 0 });
-    const share = spotFaceShare(item.spot, face, preset);
+    const share = Math.max(
+      0,
+      ...facesOver(headTrack, span.start, span.end).map((face) =>
+        spotFaceShare(item.spot, face, preset),
+      ),
+    );
     const max = preset.behind.maxFaceShare;
     if (share > max + SLACK) {
       checks.push({
@@ -128,7 +139,6 @@ export function runChecks(
   for (const { item, span } of photos) {
     const spot = spotBox(item.spot, preset);
     for (const box of boxes) {
-      if (box.kind !== "caption") continue;
       if (!(box.start < span.end - SLACK && span.start < box.end - SLACK)) continue;
       const rect = {
         left: box.x,
@@ -140,21 +150,77 @@ export function runChecks(
       checks.push({
         rule: "behind-caption",
         item: item.id,
-        reason: `photo ${item.id} in the ${item.spot} spot sits under caption ${box.itemId} (${JSON.stringify(box.text)}); pick another spot`,
+        reason: `photo ${item.id} in the ${item.spot} spot sits under ${box.kind} ${box.itemId} (${JSON.stringify(box.text)}); pick another spot`,
       });
     }
   }
 
   for (const box of boxes) {
     if (box.kind !== "caption") continue;
-    const face = faceBox(headTrack, box.start, box.end, { left: 0, right: 0 });
-    if (!face) continue;
     const rect = { left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height };
-    if (overlaps(rect, face)) {
+    const face = facesOver(headTrack, box.start, box.end).find((candidate) =>
+      overlaps(shrink(rect, SLACK), candidate),
+    );
+    if (face) {
       checks.push({
         rule: "face",
         item: box.itemId,
         reason: `${label(box)} covers the face (x ${px(face.left)} to ${px(face.right)}, y ${px(face.top)} to ${px(face.bottom)})`,
+      });
+    }
+  }
+
+  const texts = [
+    ...boxes.map((box) => ({
+      id: box.itemId,
+      what: label(box),
+      start: box.start,
+      end: box.end,
+      rect: { left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height },
+    })),
+    ...bigWords.map((word) => ({
+      id: word.itemId,
+      what: `big word ${word.itemId} (${JSON.stringify(word.text)})`,
+      ...resolved.get(word.itemId)!,
+      rect: { left: word.x, right: word.x + word.width, top: word.y, bottom: word.y + word.height },
+    })),
+  ];
+  for (let index = 0; index < texts.length; index += 1) {
+    const text = texts[index]!;
+    for (const other of texts.slice(0, index)) {
+      if (!(text.start < other.end - SLACK && other.start < text.end - SLACK)) continue;
+      if (!overlaps(shrink(text.rect, SLACK), other.rect)) continue;
+      checks.push({
+        rule: "text-overlap",
+        item: text.id,
+        reason: `${text.what} sits on ${other.what} while both are shown`,
+      });
+    }
+  }
+
+  for (const box of boxes) {
+    const min = box.kind === "caption" ? preset.caption.minSeconds : preset.accent.minSeconds;
+    const span = resolved.get(box.itemId)!;
+    if (span.end - span.start < min - SLACK) {
+      checks.push({
+        rule: "timing",
+        item: box.itemId,
+        reason: `${label(box)} shows ${(span.end - span.start).toFixed(3)} s, under ${min} s`,
+      });
+    }
+  }
+
+  for (const item of edit.tracks.behind ?? []) {
+    if (item.kind !== "word") continue;
+    const { start } = resolved.get(item.id)!;
+    const said = transcript.words
+      .filter((word) => cleanWord(word.text, preset).toLowerCase() === item.text.toLowerCase())
+      .sort((a, b) => Math.abs(a.start - start) - Math.abs(b.start - start))[0];
+    if (said && start < said.start - SLACK) {
+      checks.push({
+        rule: "big-word-timing",
+        item: item.id,
+        reason: `big word ${item.id} (${JSON.stringify(item.text)}) shows at ${start.toFixed(3)} s, before ${said.id} is said at ${said.start.toFixed(3)} s`,
       });
     }
   }

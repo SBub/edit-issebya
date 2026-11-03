@@ -59,9 +59,9 @@ The records:
   font names, pixel sizes, colour codes, timestamps or seconds, or internal names (track, slot,
   preset, spot names).
 
-An answer that does not pass comes back with reasons. A reason naming a layout rule (for example
-`behind-face` or `behind-caption`) means the layout could not place that item where its words are:
-choose other words, another photo, or leave the item out.
+An answer that does not pass the answer's own rules (the schema, the glossary) comes back with
+reasons. Layout never refuses an answer: the layout code fits every item it can and leaves out
+what has no room, so never shorten or move a choice to help it.
 
 An example answer, for a request "put a photo behind me on the left":
 

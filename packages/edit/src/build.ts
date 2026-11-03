@@ -1,4 +1,4 @@
-import { type BigWordBox, bigWordLayout, maskSpans, spotBox } from "./behind.ts";
+import { type BigWordBox, bigWordLayout, maskSpans, placedBigWord, spotBox } from "./behind.ts";
 import { type Check, runChecks } from "./checks.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
@@ -73,7 +73,12 @@ export function build(
   const bigWords = new Map<string, BigWordBox>();
   for (const item of behindItems) {
     if (item.kind !== "word") continue;
-    bigWords.set(item.id, bigWordLayout(item, resolved.get(item.id)!, headTrack, preset, measurer));
+    bigWords.set(
+      item.id,
+      item.position && item.size
+        ? placedBigWord(item, item.position, item.size, preset, measurer)
+        : bigWordLayout(item, resolved.get(item.id)!, headTrack, preset, measurer),
+    );
   }
   const checks = runChecks(edit, boxes, resolved, transcript, headTrack, preset, [
     ...bigWords.values(),
@@ -250,6 +255,7 @@ export function build(
       `top: ${px(box.y)}px`,
       `font-size: ${px(box.size)}px`,
       `color: ${box.color}`,
+      ...(box.lines.length > 1 ? ["text-align: center"] : []),
       ...(box.style ? [inlineStyle(box.style)] : []),
     ].join("; ");
     body.push(
@@ -257,7 +263,7 @@ export function build(
         ["id", box.itemId],
         ["class", `text f-${box.font}`],
         ["style", css],
-      ])}>${escapeHtml(box.text)}</span>`,
+      ])}>${box.lines.map(escapeHtml).join("<br />")}</span>`,
     );
     const id = selector(box.itemId);
     js.push(

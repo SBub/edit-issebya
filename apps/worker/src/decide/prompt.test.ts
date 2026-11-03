@@ -27,7 +27,7 @@ const input = decideInput({
 
 describe("decidePrompt", () => {
   it("is versioned", () => {
-    expect(PROMPT_VERSION).toBe("decide-5");
+    expect(PROMPT_VERSION).toBe("decide-6");
   });
 
   it("asks for a plain title and summary for the owner, without technical details", () => {

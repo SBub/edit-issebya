@@ -48,7 +48,11 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   `resolveAnchor`, `resolveTimeline`, to the millisecond), so items follow their words through a
   re-time.
 - Per-item properties: captions and overlays take `words`, `text`, `font` (`primary` or
-  `secondary`), `size`, `color` (`#RRGGBB`) and `position` (`{ x, y, align }` inside the frame);
+  `secondary`), `size`, `color` (`#RRGGBB`), `position` (`{ x, y, align }` inside the frame) and
+  `break_after` (set in two lines, this many words on the first); a big word behind the speaker
+  takes `position` (`{ x, y }`, its top left corner in the frame) and `size`. The layout engine
+  writes `position` and `size` on every caption, accent and big word it places; versions saved
+  before it have none;
   footage clips take `hidden` spans; transitions a replacement `color`; sounds
   `gain_db` (-60 to 12). Unset properties come from the preset.
 - `style` is the free custom-style field: CSS property to value, added to the element. Values
@@ -85,8 +89,12 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
 - Captions: `#FFFFFF`, rise 12 px over 0.18 s (`power2.out`), fade out 0.15 s, at least 0.25 s on
   screen, a group breaks at a 0.35 s pause or after 4 units, fallback line y 1290 when no head is
   in the frame, line gap 14.
-- Accents: `#B3E6FF`, 190 px above the head, y 1130 with no head. Slots beside the head: first row
-  610, row gap 85, right drop 42, minimum left 110, minimum right 90.
+- Accents: `#B3E6FF`, 190 px above the head, y 1130 with no head, from the first word to 1 s
+  (`afterSeconds`) after the last, at least 1.5 s (`minSeconds`). Slots beside the head (versions
+  saved before the layout engine): first row 610, row gap 85, right drop 42, minimum left 110,
+  minimum right 90.
+- Layout (`layout`): text shrinks to 60% of its size (`minScale`) before it gives up a place, and
+  keeps 12 px (`gap`) from the face and from other text.
 - Transitions: `dim` (full frame, `rgba(0, 0, 0, 0.62)`, fade 0.3 s), `panel` (y 1150 to 1920,
   `#121212`, slide 0.5 s `power3.inOut`), `card` (full frame,
   `rgba(8, 8, 8, 0.9)`, fade 0.25 s). Their text areas end at 1400 and stop at x 860 (`dim` 1180 to
@@ -120,9 +128,14 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   them from `packages/edit/assets/`, once per process). The `Measurer` returns advance widths
   (`sum(x_advance) * size / upem`) and records every width it measured (`widths()`, what the
   goldens compare). The same wasm on the same font bytes gives identical widths everywhere.
-- `src/layout.ts` (`layoutText`) places every caption and accent from the measured widths and the
-  head track; `src/html.ts` escapes text and attributes and formats numbers.
-- `src/behind.ts`: `spotBox(spot, preset)` (the spot's rectangle), `bigWordLayout` (the big word
+- `src/layout.ts` (`layoutText`) turns every caption and accent into its measured box: an item with
+  a `position` (everything the layout engine placed) keeps it, with its `size` and its two lines
+  when it has `break_after` (rendered `first<br />second`, centred); an item without one (a version
+  saved before the engine) gets the old fixed-spot placement, kept unchanged so stored versions look
+  as they did. `src/html.ts` escapes text and attributes and formats numbers.
+- `src/behind.ts`: `spotBox(spot, preset)` (the spot's rectangle), `placedBigWord` (a big word at
+  its stored `position` and `size`, its width from HarfBuzz at 1 px), `bigWordLayout` (for a
+  version saved before the engine: the big word
   as large as fits between the side margins, at most the preset's size and at least 8 px, centred
   across the frame, its centre below the head's top at the item's start or at `noHeadY`; its width
   from HarfBuzz at 1 px, so the measurer records it and the goldens cover it) and
@@ -140,30 +153,92 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   the player and the render's frame injector show the same pixels. A span with no matching entry
   in `inputs.masks` (start and end within half a millisecond) throws.
 
-### The layout engine's input (stand-in placement)
+### The layout engine's input
 
 - `src/engine-input.ts`: `EngineInput` is what the decide answer hands the layout: `accents`
   (word ranges, one may be the title), `big_word` (one word id or null), `photos` (a library id and
   a word range), `transitions` (a kind and a word range), `word_fixes` (a word id and its text), each
   with an optional `wish` from `WISHES` (`top`, `bottom`, `left`, `right`, `behind`, `beside_head`,
   `big`, `small`). No times, positions, sizes or spots.
-- `placeDirect(current, input, transcript, headTrack, preset)` is the stand-in until the layout
-  engine replaces it: footage and sounds kept from the current version; captions kept with each fix
-  as the text of the caption showing that word; accents `title` and `accent-<n>`, transitions
-  `transition-<n>`, from their first word's start to their last word's end; a photo (`photo-<n>`)
-  from its first word to the end of its range and the big word (`big-word`, the word as spoken) to
-  the end of its sentence (`sentenceSpans`, `src/transcript.ts`), both held to the preset's 2 to 4 s
-  and ending on the nearest word edge with an offset. A photo takes its wished spot, else the spot it
-  had in the current version, else the first spot whose face share is within `maxFaceShare`; with no
-  clear spot it keeps the first and the `behind-face` check refuses it. It solves no free space and
-  handles no overlap.
 - `choicesOf(edit, transcript, preset)` reads a version back as an `EngineInput` (what Claude is
   shown): each item by its anchor words, or the words spoken under it (an older version's written
-  title); a caption whose text differs from its words is a fix on its first word.
+  title); a caption whose text differs from its words is a fix on its first word. A photo reads back
+  as the words it shows over, so the choices placed again place the same.
 
-### Bottom edge in the layout
+### Layout engine
 
-`src/layout.ts` never places text below the safe box's bottom (1400): a beside-the-head slot is
+`src/engine.ts`, `placeEdit(current, input, transcript, headTrack, preset, measurer, { requested })`
+returns `{ tracks, record }`: the edit's tracks as the builder consumes them (every caption, accent
+and big word with `position` and `size`, every photo with a `spot`) and the record of what it did.
+Pure and deterministic: no randomness, no clock, no I/O; the same input gives the same tracks and
+record. `editFromAnswer` (decide) and the worker's `first_version` step (with no choices) call it.
+
+- Inputs: the current version (footage, sounds and captions kept; each word fix becomes the text
+  of the caption showing that word; old positions and sizes are dropped), the answer's choices, the
+  transcript with word times, the head track, the preset (safe box, fonts and sizes, transition
+  text areas, behind spots as candidates) and the HarfBuzz measurer.
+- Timing first (owner decision 6):
+  - Captions: each from its own word; a group (consecutive captions ending on the same anchor)
+    leaves at its last word's end, held so its last caption shows at least 0.25 s, never past the
+    next group's start; a last caption that cannot show that long joins the next group.
+  - Accent: from its first word to 1 s after its last, at least 1.5 s.
+  - Big word: exactly on its spoken word, to the end of its sentence, 2 to 4 s; never before it.
+  - Photo: from its sentence's start (from its first word when that is more than 1 s into a long
+    sentence) to the sentence's end, 2 to 4 s, taking the pauses around a short sentence but never
+    another sentence's words; dropped when that is under 2 s.
+  - At most one extra (accent, big word or photo) at a time on top of the captions: a later extra
+    may cut an earlier one short down to its minimum, or end itself before a later one down to its
+    minimum; else it is dropped. Behind items never cross a hidden span of footage.
+- Scene: the reel is cut into moments at every item edge; each moment's face is the bounding box
+  of the robust faces around it (`facesOver` in `src/head-track.ts`: at each head-track sample, the
+  samples within 0.5 s, `cx` their median, the width their upper quartile, the top their lower
+  quartile, so one bad reading never moves it), padded like the old layout (35 px left, 30 px right)
+  plus `gap` above and below. The body under the face (1.8 head widths wide, to the frame's bottom)
+  is an obstacle for accents only: captions may sit on the chest, and the big word and photos sit
+  behind the person by design. The mask itself is not read (it is a video).
+- Free space (`src/engine-space.ts`): an area minus its obstacles (the moment faces over the item's
+  time, the text already placed over it, the `PLATFORM_BUTTONS` notch) as the largest free
+  rectangles (each rectangle an obstacle cuts becomes its parts left, right, above and below), and
+  `placeBox`: the whole-pixel place nearest a wanted point where a box fits.
+- Placement by priority:
+  - Captions first, in time order, one spot per sentence (`sentenceSpans`): the sentence's groups
+    all start at the same place, sized for its largest group (at most two lines per group);
+    captions inside a transition take its text area as one block instead. Candidates: beside the
+    head (the wider side first, aligned towards the face, near the mouth), below the face, the
+    caption line (`fallbackY` to the safe bottom); with no head, the caption line then the safe
+    zone. Every candidate is tried at the full size before a smaller one, down to the floor (60%),
+    so captions stay readable. A sentence that shares its time with a planned photo first tries
+    only places that leave the photo a spot.
+  - Then the extras: the items the request checklist links (`requested`, item 5 strengthens this),
+    then accents, the big word, photos, each in answer order.
+  - Accent: above the head (its top about 190 px above the head), the upper part of the frame, the
+    free part of the safe zone (with no head: the accent line at y 1130, then the safe zone); a
+    `top`, `bottom`, `left`, `right` or `beside_head` wish goes first, `small` starts at 80%. In
+    each candidate it shrinks to the floor and wraps to two lines (the balanced break) before it
+    moves on.
+  - Big word: as large as fits between the side margins (at most `maxSize`), its centre wanted
+    `belowHeadTop` below the robust head top at its word (or at `noHeadY`), placed nearest that
+    inside the frame (40 px margin) clear of every text shown with it, shrinking to the floor.
+  - Photo: the wished spot, the spot it had, then `top`, `left`, `right`: the first spot the face
+    leaves within `maxFaceShare` at every moment and no caption or accent covers over its span.
+- Drops: an extra that fits nowhere is dropped and recorded. Captions are never dropped: with no
+  free place even at the floor, they take the caption line over the face (recorded `covers-face`).
+- Record: a list of `EngineNote` `{ item, action, rule, reason }`, `action` one of `moved` (not its
+  kind's first place), `shrunk`, `wrapped`, `retimed`, `dropped`, `covers-face`, `wish-not-kept`,
+  `reason` in plain words with the item's text and times, for example
+  `{ "item": "photo-1", "action": "dropped", "rule": "no-room", "reason": "photo 1: every photo spot
+is under captions or the face from 23.48 s to 26.23 s" }`. Rules: `caption-min`, `caption-spot`,
+  `caption-size`, `caption-face`, `accent-time`, `accent-spot`, `accent-size`, `accent-wrap`,
+  `big-word-time`, `big-word-size`, `photo-time`, `photo-spot`, `hidden-footage`, `one-extra`,
+  `no-room`, `wish`. Saved with the version (`versions.engine_record`) and logged by the worker in
+  one line per version; item 6 turns it into the summary.
+- Final checks: `runChecks` (below) runs on every placed edit. They must never fail on the engine's
+  output; one that does is an engine bug, logged with the reel id while the version is still saved.
+
+### Bottom edge in the old layout
+
+For versions saved before the engine only: `src/layout.ts` never places text below the safe box's
+bottom (1400): a beside-the-head slot is
 taken by a caption only if its row ends above the edge; a wrapped block (the fallback line,
 below-the-face text, transition text) that would run past the edge moves up to end there (never
 above the safe top); captions too wide for every slot go below the face when that fits, else above
@@ -180,7 +255,15 @@ readable reason string (an empty list means every rule passes):
   or `runs into the platform button column below y 1164` with the right edge past x 945).
 - `frame`: a big word behind the speaker inside the frame (each edge that leaves it, and the
   word). It crosses the safe box by design, so it is never checked against it.
-- `face`: captions clear of the face (the face box from the head track).
+- `behind-face`, `behind-caption` (`app_docs/decide-step.md`): a photo's spot not taken over by
+  the face, and no caption or accent over it.
+- `face`: captions clear of the face (the robust faces, `facesOver`, at every moment of the
+  caption's span, the same ones the engine avoids).
+- `text-overlap`: no caption, accent or big word on another one shown at the same time.
+- `timing`: captions at least `caption.minSeconds` (0.25 s) and accents at least
+  `accent.minSeconds` (1.5 s) on screen.
+- `big-word-timing`: the big word never shows before its word (the matching spoken word nearest
+  its start) is said.
 - `sound-gap`: two sounds at least the preset's gap (0.25 s) apart.
 - `time-in-speech`: a time anchor outside speech (it names the word to anchor to instead).
 - `out-of-reel`: an anchor that resolved outside the reel and was clamped.
@@ -221,8 +304,10 @@ word or unit, starting on its own word and ending on the last word of its group;
 
 `apps/worker/src/first-version.ts`, the `first_version` step after the five pipeline steps: reads
 the retimed `transcript.json` and `retime.json` and the `head-track.json` by their fingerprints,
-builds the baseline, runs `build` for its checks and saves version 1 (`request`, `model` and
-`prompt_version` null, change summary `automatic first version from the issebya style`). Its step
+builds the baseline, places it with the layout engine (no choices: captions only, every caption
+with its `position` and `size`), runs `build` for its checks and saves version 1 (`request`,
+`model` and `prompt_version` null, change summary `automatic first version from the issebya
+style`) with the engine record, logged in one line. Its step
 line is `version 1 saved, <time>, <size>`. A reel that already has a version (a retried job) keeps
 it: a hit, `first version kept, reused`, nothing written. Failed checks are stored on the row,
 never fatal.
@@ -230,7 +315,9 @@ never fatal.
 ### Cross-environment test and negative proof
 
 - `src/testdata/versions/` holds the stored fixture versions: `baseline-short-speech.edit.json`
-  (the baseline over `fixtures/pipeline/`) and `rethink-work-hand.edit.json` (by hand, with
+  (the baseline over `fixtures/pipeline/`, placed by the engine as `first_version` saves it),
+  `rethink-work-engine.edit.json` (the behind edit's choices placed by the engine, placeholder
+  masks; every check passes) and `rethink-work-hand.edit.json` (by hand, with
   accents, the `panel` transition and a click), with `src/testdata/rethink-work/` (its transcript
   and real head track), and `rethink-work-behind.edit.json` (the hand edit with a `top` photo and
   the big word `WORK` behind the speaker, two masks with placeholder fingerprints and one photo id
@@ -243,8 +330,9 @@ never fatal.
 - Negative proof: during the run a temporary probe (never committed) swapped the browser
   measurer for canvas `measureText` with the same fonts loaded through `FontFace`; the browser
   comparison then failed, so the test detects a measurer that differs from HarfBuzz.
-- `scripts/golden.ts` (`yarn workspace @edit-issebya/edit golden`) rewrites the baseline fixture
-  version and every golden from the Node build. Commit what it writes.
+- `scripts/golden.ts` (`yarn workspace @edit-issebya/edit golden`) rewrites the two engine-placed
+  fixture versions and every golden from the Node build. Commit what it writes. The hand-made
+  versions keep their goldens: stored versions are never placed again.
 
 ## Testing
 
@@ -258,6 +346,16 @@ never fatal.
   immutability and its RLS.
 - `apps/worker/src/first-version.test.ts` (version 1 saved, kept on a retry) and
   `apps/worker/src/edit-import.test.ts` (Node imports the package's TypeScript source).
+- `src/engine.test.ts`: each timing rule (captions, accents, the big word, photos, drops under the
+  minimum, one extra at a time, the request's items first), no check failing on a dense reel (a
+  title, four accents, the big word, two photos and a panel) with the real head and with a large
+  centred face, one spot per sentence, the big word on its word and inside the frame with one bad
+  head reading, a long title shrunk and wrapped (and one too long dropped), captions over a face
+  that fills the safe zone recorded, today's failures (two accents in a row, captions on the big
+  word, card captions on the face, a photo whose sentence's captions filled every spot, a photo
+  with no free spot dropped with its reason), determinism, and the engine placing its own output
+  the same again. `src/checks.test.ts` also shows the new checks finding the old fixed-spot
+  placement's faults in the hand-made versions.
 - `src/preset.test.ts` (the intersection, the preset's box, every moved value inside it, the
   no-head big word inside the guard vertically), `src/layout.test.ts` (low face, a fallback block moved
   up and large captions end at or above the safe box's bottom, 1400) and `src/checks.test.ts` (a
@@ -276,8 +374,19 @@ never fatal.
 - One builder for preview and export; never fork it per environment.
 - Never store a built page; versions hold the edit, the page is built from it.
 - Anchors are words; seconds only where nobody speaks.
-- Claude never writes times, positions or sizes: every one in a decided version comes from
-  `placeDirect` (later the layout engine), never from the answer.
+- Claude never writes times, positions or sizes: every one in a decided version comes from the
+  layout engine, never from the answer.
+- Never let text overlap text, or a photo sit under a caption or an accent: the engine places
+  nothing on what is already placed, and `text-overlap` and `behind-caption` guard it.
+- Never drop a caption; only extras (accents, the big word, photos) are dropped, each with a
+  recorded reason.
+- Never read a single head-track sample for a placement or a check: always the robust faces
+  (`facesOver`).
+- Never show more than one extra at a time on top of the captions, or the big word before its
+  word.
+- Never place a stored version again: the builder keeps every stored position, and a version saved
+  before the engine keeps the old fixed-spot placement.
+- The engine is pure and deterministic: no randomness, no clock, no I/O.
 - A version with a `behind` item is saved only once every mask it names exists; the builder never
   builds a behind item without its mask.
 - A big word is checked against the frame, never the safe box.

@@ -111,6 +111,8 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
         align: z.enum(["left", "right", "center"]),
       })
       .optional(),
+    // Set in two lines: this many words of the text on the first.
+    break_after: z.number().int().min(1).max(60).optional(),
   };
   const clip = z.object({
     ...base,
@@ -142,7 +144,20 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
         : z.never();
   const behind = z.discriminatedUnion("kind", [
     z.object({ ...base, kind: z.literal("photo"), photo_id: photoId, spot: z.enum(BEHIND_SPOTS) }),
-    z.object({ ...base, kind: z.literal("word"), text: z.string().regex(BEHIND_WORD) }),
+    z.object({
+      ...base,
+      kind: z.literal("word"),
+      text: z.string().regex(BEHIND_WORD),
+      // Where the layout engine set it (its top left corner in the frame) and
+      // at what size; a version saved before the engine has neither.
+      position: z
+        .object({
+          x: z.number().min(0).max(preset.frame.width),
+          y: z.number().min(0).max(preset.frame.height),
+        })
+        .optional(),
+      size: z.number().int().min(8).max(400).optional(),
+    }),
   ]);
   return z.object({
     footage: z.array(clip),

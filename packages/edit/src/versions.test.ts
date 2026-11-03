@@ -101,6 +101,19 @@ describe("versions", () => {
     });
   });
 
+  it("stores the layout engine's record, empty when not given", async () => {
+    const note = {
+      item: "photo-1",
+      action: "dropped" as const,
+      rule: "no-room",
+      reason: "photo 1: every photo spot is under captions or the face from 1.00 s to 3.00 s",
+    };
+    const saved = await saveVersion(deps, { ...meta(null), engineRecord: [note], edit });
+    expect(rows.get(saved.id)!.engine_record).toEqual([note]);
+    const plain = await saveVersion(deps, { ...meta(saved.id), edit });
+    expect(rows.get(plain.id)!.engine_record).toEqual([]);
+  });
+
   it("passes the reel's behind forbids to the row, null where unchanged", async () => {
     const saved = await saveVersion(deps, {
       ...meta(null),

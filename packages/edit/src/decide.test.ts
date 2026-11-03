@@ -14,6 +14,7 @@ import {
 import { WISHES } from "./engine-input.ts";
 import { ISSEBYA_PRESET, TRANSITION_TYPES } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
+import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
 const short = FIXTURES.find((fixture) => fixture.name === "baseline-short-speech")!;
@@ -356,14 +357,21 @@ describe("the behind limits and rules in the decide answer", () => {
 });
 
 describe("editFromAnswer", () => {
-  const place = (json: Json, current = short.edit) => {
+  const place = async (json: Json, current = short.edit) => {
     const parsed = parse(json, [PHOTO], REQUEST);
     if (!parsed.ok) throw new Error(parsed.reasons.join("; "));
-    return editFromAnswer(current, parsed.answer, ISSEBYA_PRESET, short.transcript, []);
+    return editFromAnswer(
+      current,
+      parsed.answer,
+      ISSEBYA_PRESET,
+      short.transcript,
+      [],
+      await nodeMeasurer(),
+    );
   };
 
-  it("keeps the current version's inputs, duration, footage and sounds", () => {
-    const made = place(answer());
+  it("keeps the current version's inputs, duration, footage and sounds", async () => {
+    const made = await place(answer());
     expect(made.ok).toBe(true);
     if (!made.ok) return;
     expect(made.edit.inputs).toEqual(short.edit.inputs);
@@ -372,28 +380,31 @@ describe("editFromAnswer", () => {
     expect(made.edit.tracks.sounds).toEqual(short.edit.tracks.sounds);
   });
 
-  it("drops the current masks and photos", () => {
+  it("drops the current masks and photos", async () => {
     const current = structuredClone(short.edit);
     current.inputs.masks = [
       { step: "cutout", fingerprint: "f".repeat(64), file: "mask.mp4", start: 0, end: 2 },
     ];
     current.inputs.photos = [PHOTO];
-    const made = place(answer(), current);
+    const made = await place(answer(), current);
     if (!made.ok) throw new Error(made.reasons.join("; "));
     expect(made.edit.inputs.masks).toBeUndefined();
     expect(made.edit.inputs.photos).toBeUndefined();
   });
 
-  it("refuses two behind items at the same time", () => {
-    const made = place(
+  it("drops a behind item that cannot last 2 s before the reel ends, with the reason", async () => {
+    const made = await place(
       answer((a) => {
+        a.accents = [];
         a.photos = [{ photo_id: PHOTO, from: "w0001", to: "w0010" }];
         a.big_word = { word: "w0005" };
       }),
     );
-    expect(made.ok).toBe(false);
-    if (made.ok) return;
-    expect(made.reasons.join("\n")).toMatch(/only one at a time/);
+    if (!made.ok) throw new Error(made.reasons.join("; "));
+    expect(made.edit.tracks.behind?.map((item) => item.id)).toEqual(["photo-1"]);
+    expect(made.record).toContainEqual(
+      expect.objectContaining({ item: "big-word", action: "dropped", rule: "big-word-time" }),
+    );
   });
 });
 
