@@ -1,6 +1,7 @@
 // The long-running worker on the owner's machine (never on Vercel). It wakes
 // on Realtime inserts into public.jobs, checks the table every
-// WORKER_POLL_INTERVAL_SECONDS reading only ids, and runs one job at a time.
+// WORKER_POLL_INTERVAL_SECONDS reading only ids (of claimable jobs and of one
+// due storage_deletions row), and runs one job at a time.
 // Between jobs it deletes the objects of deleted reels (the storage_deletions
 // queue, also drained by the poll when no job is waiting) and slims storage at
 // most once an hour, and it claims nothing
@@ -16,7 +17,11 @@ import { processJob } from "./process-job.ts";
 import { claimJob, claimableJobIds } from "./queue.ts";
 import { prepareScratchDir, sweepStaleScratch } from "./scratch.ts";
 import { createSlimmer, runSlimming } from "./slimming.ts";
-import { runStorageDeletions, supabaseStorageDeletions } from "./storage-deletions.ts";
+import {
+  dueStorageDeletionIds,
+  runStorageDeletions,
+  supabaseStorageDeletions,
+} from "./storage-deletions.ts";
 import { workerStorage } from "./storage.ts";
 import { supabaseStoredFiles } from "./stored-files.ts";
 import { workerSupabase } from "./supabase.ts";
@@ -96,12 +101,12 @@ const poll = setInterval(() => {
       if (ids.length > 0) drainer.signal();
     })
     .catch((error: unknown) => console.error("worker: check failed:", error));
-  // A worker with no jobs still drains the deletion queue: the drain's claim
-  // runs the pass.
-  deletions
-    .pending(config.keyPrefix, 1)
-    .then((rows) => {
-      if (rows.length > 0) drainer.signal();
+  // A worker with no jobs still drains the deletion queue: the poll reads only
+  // the id of one due row, and the drain's claim runs the pass (which also
+  // drops held keys).
+  dueStorageDeletionIds(db, config.keyPrefix)
+    .then((ids) => {
+      if (ids.length > 0) drainer.signal();
     })
     .catch((error: unknown) => console.error("storage deletions: check failed:", error));
 }, config.pollIntervalSeconds * 1000);

@@ -104,7 +104,9 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
   `reels_current_version_fkey`) and `formatAge` (`now`, `5m`, `3h`, `2d`, `1w`, `3mo`, `1y`). Server
   only: the key never reaches a client component.
 - `apps/studio/src/app/page.tsx`: signed in, reads the grid columns, signs each thumbnail on the
-  server and renders `ThumbnailGrid` (replaces `ReelList`) plus `UploadDialog`.
+  server and renders `ThumbnailGrid` (replaces `ReelList`) plus `UploadDialog`. Each reel passes
+  `DeleteReelButton` as its tile's `corner`: the bin in the bottom-right corner, always visible (no
+  hover), 44 px on a phone (see `app_docs/studio.md`).
 - `apps/studio/src/components/ThumbnailGrid.tsx`: generic tile grid, each tile with a thumbnail or
   neutral block, title, a meta line (age and size, `1w · 62.2 MB`) and a status badge
   (`reel-list-status` kept). An item has `href` (a link tile) or `onSelect` (a `<button>` tile). Prop
@@ -112,7 +114,8 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
   on a phone, up to 8 on wide screens) or `"panel"` (3 at every width). Optional prop `add`: a dashed
   add tile first in the grid, the tiles' size and aspect, with a **+** and a visible label that is
   also its accessible name, `disabled` and `data-ready`; with no item it is the only tile, under the
-  `empty` text. Nothing reel-specific: the reels use the defaults without `add`, and the photo
+  `empty` text. Optional `corner` per item: a control rendered as a sibling of the tile's link,
+  never inside it, with the title and meta padded clear of it. Nothing reel-specific: the reels use the defaults without `add`, and the photo
   library uses it with `onSelect`, `aspect="square"`, `columns="panel"` and `add`
   (`app_docs/photo-library.md`).
 - `apps/studio/src/components/UploadDialog.tsx`: the round **+** button and a native `<dialog>` with

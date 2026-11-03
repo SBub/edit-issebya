@@ -1,7 +1,9 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 import {
   type PendingDeletion,
   type StorageDeletionQueue,
+  dueStorageDeletionIds,
   runStorageDeletions,
 } from "./storage-deletions.ts";
 
@@ -124,5 +126,69 @@ describe("runStorageDeletions", () => {
     await expect(
       runStorageDeletions({ queue, storage: stubStorage().storage, keyPrefix: PREFIX }),
     ).rejects.toThrow(/offline/);
+  });
+});
+
+// A client that records the one select the poll makes; it has no `rpc`, so a
+// call to pending_storage_deletions would throw.
+function selectStub(result: { data: { id: string }[] | null; error: { message: string } | null }) {
+  const calls = {
+    tables: [] as string[],
+    columns: [] as string[],
+    like: [] as [string, string][],
+    lte: [] as [string, string][],
+    limit: [] as number[],
+  };
+  const db = {
+    from(table: string) {
+      calls.tables.push(table);
+      const builder = {
+        select(columns: string) {
+          calls.columns.push(columns);
+          return builder;
+        },
+        like(column: string, pattern: string) {
+          calls.like.push([column, pattern]);
+          return builder;
+        },
+        lte(column: string, value: string) {
+          calls.lte.push([column, value]);
+          return builder;
+        },
+        limit(count: number) {
+          calls.limit.push(count);
+          return Promise.resolve(result);
+        },
+      };
+      return builder;
+    },
+  } as unknown as SupabaseClient;
+  return { db, calls };
+}
+
+describe("dueStorageDeletionIds", () => {
+  it("selects only the id of one due row under the prefix, with no rpc", async () => {
+    const { db, calls } = selectStub({ data: [{ id: "d1" }], error: null });
+    expect(await dueStorageDeletionIds(db, PREFIX)).toEqual(["d1"]);
+    expect(calls.tables).toEqual(["storage_deletions"]);
+    expect(calls.columns).toEqual(["id"]);
+    expect(calls.like).toEqual([["r2_key", "dev/%"]]);
+    expect(calls.lte).toHaveLength(1);
+    expect(calls.lte[0]?.[0]).toBe("not_before");
+    expect(new Date(calls.lte[0]?.[1] ?? "").toISOString()).toBe(calls.lte[0]?.[1]);
+    expect(calls.limit).toEqual([1]);
+  });
+
+  it("matches the prefix literally, escaping like's wildcards", async () => {
+    const { db, calls } = selectStub({ data: [], error: null });
+    expect(await dueStorageDeletionIds(db, "a_b%/")).toEqual([]);
+    expect(calls.like).toEqual([["r2_key", "a\\_b\\%/%"]]);
+  });
+
+  it("throws when the check fails", async () => {
+    const { db } = selectStub({ data: null, error: { message: "down" } });
+    await expect(dueStorageDeletionIds(db, PREFIX)).rejects.toThrow(
+      "storage deletions not checked: down",
+    );
   });
 });

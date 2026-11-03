@@ -41,6 +41,21 @@ export function supabaseStorageDeletions(db: SupabaseClient): StorageDeletionQue
   };
 }
 
+// The poll's check: the id of one due row under the prefix, nothing else. It
+// never writes; a key another row holds is left for pending_storage_deletions,
+// which the pass in the drain's claim calls and which drops it there.
+export async function dueStorageDeletionIds(db: SupabaseClient, prefix: string): Promise<string[]> {
+  const now = new Date().toISOString();
+  const { data, error } = await db
+    .from("storage_deletions")
+    .select("id")
+    .like("r2_key", `${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`)
+    .lte("not_before", now)
+    .limit(1);
+  if (error) throw new Error(`storage deletions not checked: ${error.message}`);
+  return (data ?? []).map((row: { id: string }) => row.id);
+}
+
 export interface StorageDeletionCounts {
   removed: number;
   failed: number;
