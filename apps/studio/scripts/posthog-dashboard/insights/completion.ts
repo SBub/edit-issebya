@@ -5,8 +5,8 @@ export const completion: SqlInsight = {
   key: "completion",
   name: "Studio: uploaded and exported reels, by week",
   description:
-    "By week of upload: reels uploaded (with a process job), reels of those exported (with an " +
-    "exports row) and their ratio. Source: synced jobs and exports tables.",
+    "Each week: reels uploaded, and how many of those were exported. The closer the two bars, " +
+    "the more uploads end as a finished reel.",
   display: "ActionsBar",
   xAxis: "week",
   yAxis: ["uploaded_reels", "exported_reels"],

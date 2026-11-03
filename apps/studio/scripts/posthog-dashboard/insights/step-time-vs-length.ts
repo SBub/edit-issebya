@@ -8,10 +8,8 @@ export const stepTimeVsLength: SqlInsight = {
   key: "step-time-vs-length",
   name: "Studio: time per step against reel length",
   description:
-    "Per step name and source length (15-second buckets of the reel's source seconds): how many " +
-    "done steps, their median and longest wall seconds, and the median seconds per second of " +
-    "retimed footage. Cache hits and failed steps are left out. Source: synced steps table " +
-    "joined to the synced reels table.",
+    "How long each step takes for reels of different lengths (in 15-second bands). If time grows " +
+    "faster than length, that step will slow down longer reels. Successful runs only.",
   display: "ActionsTable",
   build: (d, t) => `select steps.name as step_name, ${BUCKET} as source_seconds_from,
   count(steps.id) as done_steps,

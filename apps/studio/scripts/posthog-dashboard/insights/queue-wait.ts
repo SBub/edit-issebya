@@ -5,11 +5,9 @@ export const queueWait: SqlInsight = {
   key: "queue-wait",
   name: "Studio: queue wait per kind, by week (approximate)",
   description:
-    "Approximate. By week of the job's creation and job kind, over jobs the worker has claimed: " +
-    "the median and 95th percentile minutes from created_at to started_at. claim_job overwrites " +
-    "started_at when a job is claimed again after a lost lease, so such a job's wait includes " +
-    "its lost attempt. A job also waits while an older job of its reel or photo runs, not only " +
-    "while the worker is busy. Source: synced jobs table.",
+    "Minutes jobs wait before the worker starts them, per kind and week: typical (median) and slow " +
+    "(95th percentile). Lower is better. Approximate: a restarted job's wait includes its lost " +
+    "try, and a job also waits for earlier jobs of its reel.",
   display: "ActionsTable",
   build: (d, t) => `select ${d.weekOf("jobs.created_at")} as week, jobs.kind as job_kind,
   count(*) as claimed_jobs,

@@ -7,9 +7,8 @@ export const funnel: FunnelInsight = {
   key: "funnel",
   name: "Studio: funnel by reel",
   description:
-    `The five studio events in order (upload, preview opened, change requested, export ` +
-    `requested, export downloaded), counted per reel (properties.reel_id), app = studio, within ` +
-    `${FUNNEL_WINDOW_DAYS} days. Events are absent wherever PostHog is not initialised, so every ` +
-    `other chart reads the database.`,
+    `How far reels get through upload, open preview, ask for a change, export and download, ` +
+    `within ${FUNNEL_WINDOW_DAYS} days. A big drop shows where reels stall. Counts only reels where ` +
+    `tracking was on, so it can read low.`,
   events: STUDIO_EVENTS,
 };

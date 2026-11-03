@@ -5,8 +5,8 @@ export const storagePerStep: SqlInsight = {
   key: "storage-per-step",
   name: "Studio: live storage per step",
   description:
-    "Per step that made the file, bytes of live stored files (deleted_at null), per reel row. " +
-    "Source: synced stored_files table.",
+    "Bytes stored right now, by the step that made the files: shows which step fills storage most. " +
+    "A file shared by two reels counts for both.",
   display: "ActionsTable",
   build: (_d, t) => `select stored_files.step as step_name,
   sum(stored_files.bytes) as live_bytes,

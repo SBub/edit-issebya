@@ -6,9 +6,8 @@ export const firstPreview: SqlInsight = {
   key: "first-preview",
   name: "Studio: upload to first preview, minutes per reel",
   description:
-    `Per reel with a version, minutes from upload (its earliest process job) to version 1 ` +
-    `(the player shows a reel only once a version exists). Target: under ` +
-    `${FIRST_PREVIEW_MINUTES} minutes. Source: synced jobs and versions tables.`,
+    `Each bar is one reel: minutes from upload until its first preview can be watched. ` +
+    `Lower is better; the goal is under ${FIRST_PREVIEW_MINUTES} minutes.`,
   display: "ActionsBar",
   xAxis: "previewed_at",
   yAxis: ["minutes"],

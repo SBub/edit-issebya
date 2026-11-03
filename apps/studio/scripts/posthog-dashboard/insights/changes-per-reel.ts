@@ -5,8 +5,8 @@ export const changesPerReel: SqlInsight = {
   key: "changes-per-reel",
   name: "Studio: change requests per exported reel, by week",
   description:
-    "Per exported reel, the change jobs created before its first export; averaged by the week " +
-    "of that first export. Source: synced jobs and exports tables.",
+    "Average number of changes asked for on a reel before its first export, by week of export. " +
+    "Lower means the first edit was closer to what was wanted.",
   display: "ActionsBar",
   xAxis: "week",
   yAxis: ["changes_per_reel"],

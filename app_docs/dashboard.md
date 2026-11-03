@@ -142,7 +142,8 @@ To preview without a variable: `yarn workspace @edit-issebya/studio posthog:dash
 
 ## Testing
 
-- `apps/studio/scripts/posthog-dashboard/dry-run.test.ts`: snapshot of the dry-run payloads.
+- `apps/studio/scripts/posthog-dashboard/dry-run.test.ts`: snapshot of the dry-run payloads, and
+  every description (dashboard, insights, text cards) under 400 characters and ending in its marker.
 - `apps/studio/scripts/posthog-dashboard/apply.test.ts`: `--apply` idempotency against a fake HTTP
   client, no network.
 - `apps/studio/db-tests/sync-columns.test.ts`: `updated_at` and trigger on every synced table.
@@ -160,6 +161,10 @@ To preview without a variable: `yarn workspace @edit-issebya/studio posthog:dash
 ## Rules
 
 - Never run `posthog:dashboard --apply` from automation (ADW, CI, tests); only the owner, from their shell.
+- Every description stays under 400 characters, marker included (PostHog's MCP tool caps insight
+  descriptions there). A description over the cap is rewritten shorter, never truncated: a short,
+  plain sentence or two on what the tile shows and how to read it, keeping each caveat that changes
+  the reading.
 - Never write a measurement twice: no event copies a database measurement.
 - Never derive money from machine measurements.
 - Never rename a `studio_*` event or a property.

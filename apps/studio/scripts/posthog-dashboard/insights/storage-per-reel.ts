@@ -5,8 +5,8 @@ export const storagePerReel: SqlInsight = {
   key: "storage-per-reel",
   name: "Studio: live storage per reel",
   description:
-    "Per reel, bytes of its live stored files (deleted_at null). An object two reels share " +
-    "counts for each. Photo files (no reel) are left out. Source: synced stored_files table.",
+    "Bytes stored right now for each reel. A file shared by two reels counts for both, so the rows " +
+    "can add up to more than the total.",
   display: "ActionsTable",
   build: (_d, t) => `select stored_files.reel_id as reel_id,
   sum(stored_files.bytes) as live_bytes,

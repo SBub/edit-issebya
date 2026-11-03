@@ -6,9 +6,8 @@ export const mainMetricStreak: SqlInsight = {
   key: "main-metric-streak",
   name: `Studio: reels in a row under ${MAIN_METRIC_MINUTES} minutes`,
   description:
-    `The current streak: the latest exported reels, newest first, counted until the first one ` +
-    `that took ${MAIN_METRIC_MINUTES} minutes or more from upload to first export (0 when none ` +
-    `is exported). Rollout target: ${STREAK_TARGET} in a row. Source: synced jobs and exports tables.`,
+    `How many of the latest exported reels in a row took under ${MAIN_METRIC_MINUTES} minutes from ` +
+    `upload to export. Higher is better; the goal is ${STREAK_TARGET} in a row. A slower reel resets it to 0.`,
   display: "BoldNumber",
   build: (d, t) => `with ${uploadsCte(t)},
 ${firstExportsCte(t)},

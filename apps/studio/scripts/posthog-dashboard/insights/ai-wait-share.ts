@@ -5,10 +5,8 @@ export const aiWaitShare: SqlInsight = {
   key: "ai-wait-share",
   name: "Studio: share of worker time waiting on Claude, by week",
   description:
-    "By week of the step's start: the wall seconds of steps with an ai_model (the model Claude " +
-    "Code reported, written on AI steps only) over the wall seconds of every step with a wall " +
-    "time (done, failed or skipped). An AI step's whole wall time counts, so this is an upper " +
-    "bound on the time spent waiting for Claude. Source: synced steps table.",
+    "Share of worker time spent on steps that call Claude, by week. Higher means Claude, not the " +
+    "Mac, is the bottleneck. An upper bound: the whole step counts, not only the wait.",
   display: "ActionsLineGraph",
   xAxis: "week",
   yAxis: ["ai_share"],

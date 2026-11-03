@@ -32,8 +32,8 @@ export const TAG = "studio-metrics";
 export const DASHBOARD_KEY = "dashboard";
 export const DASHBOARD_NAME = "Studio MVP metrics";
 export const DASHBOARD_DESCRIPTION =
-  "Does the studio turn a two-hour edit into a short one, and what does each reel cost to make. " +
-  "Defined in apps/studio/scripts/posthog-dashboard/ (app_docs/dashboard.md); edit the code, not this dashboard.";
+  "Does the studio turn a two-hour edit into a short one, and what does each reel cost to make? " +
+  "Built from code in apps/studio/scripts/posthog-dashboard/: change it there, not here.";
 
 /** The line that identifies an object the script owns, whatever its name became. */
 export function marker(key: string): string {
@@ -56,12 +56,11 @@ const SUPABASE_USAGE_URL = `https://supabase.com/dashboard/project/${SUPABASE_PR
 
 export const SUPABASE_CARD_KEY = "supabase-usage";
 export const SUPABASE_CARD_TEXT =
-  "**Supabase usage** (database size, egress, auth users) is not synced to PostHog. " +
-  `Read it on the studio project's usage page: ${SUPABASE_USAGE_URL}`;
+  "**Supabase usage** (database size, data sent out, user accounts) is not in PostHog. " +
+  `See it on the studio's Supabase usage page: ${SUPABASE_USAGE_URL}`;
 
 export const GUARDRAIL_CARD_KEY = "guardrail";
 export const GUARDRAIL_TEXT =
-  "**Preview matches export guardrail.** Checked by " +
-  "`apps/studio/e2e-tools/export-matches-preview.spec.ts`, run on the owner's Mac by " +
-  "`yarn workspace @edit-issebya/studio test:tools`, never in CI. Its last result is the " +
-  "owner's terminal output; the accepted scores and bound are in app_docs/export.md.";
+  "**Preview matches export guardrail.** A test that the exported video looks like the preview. " +
+  "It runs only on the owner's Mac (`yarn workspace @edit-issebya/studio test:tools`), so its " +
+  "result is not shown here. Accepted scores: app_docs/export.md.";

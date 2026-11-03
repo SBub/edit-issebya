@@ -31,6 +31,25 @@ describe("dry run payloads", () => {
     expect(new Set(INSIGHTS.map((def) => def.key)).size).toBe(20);
   });
 
+  it("keep every description under 400 characters, ending in its marker line", () => {
+    // PostHog's MCP tool caps an insight description at 400 characters, and a
+    // description is rewritten shorter, never cut (app_docs/dashboard.md).
+    const posts = payloads.filter((request) => request.method === "POST");
+    const patch = payloads.find((request) => request.method === "PATCH");
+    const cards = ((patch?.body as Body).tiles as Body[])
+      .map((tile) => (tile.text as Body | undefined)?.body)
+      .filter((body) => body !== undefined);
+    const keys = ["dashboard", ...INSIGHTS.map((def) => def.key), "supabase-usage", "guardrail"];
+    const descriptions = [...posts.map((request) => (request.body as Body).description), ...cards];
+    expect(descriptions).toHaveLength(keys.length);
+    descriptions.forEach((description, index) => {
+      const key = keys[index] ?? "";
+      expect(typeof description, key).toBe("string");
+      expect(String(description).length, key).toBeLessThan(400);
+      expect(String(description).endsWith(`\n\n${marker(key)}`), key).toBe(true);
+    });
+  });
+
   it("tag the dashboard and every insight", () => {
     const posts = payloads.filter((request) => request.method === "POST");
     expect(posts).toHaveLength(21);

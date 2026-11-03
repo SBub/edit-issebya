@@ -6,9 +6,8 @@ export const mainMetric: SqlInsight = {
   key: "main-metric",
   name: "Studio: upload to export, minutes per reel",
   description:
-    `The main metric: per exported reel, minutes from upload (its earliest process job) to its ` +
-    `first export (earliest exports row, so the render is included). Target: under ` +
-    `${MAIN_METRIC_MINUTES} minutes. Source: synced jobs and exports tables.`,
+    `The main metric. Each bar is one exported reel: minutes from upload to its first export. ` +
+    `Lower is better; the goal is under ${MAIN_METRIC_MINUTES} minutes.`,
   display: "ActionsBar",
   xAxis: "exported_at",
   yAxis: ["minutes"],

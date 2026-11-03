@@ -6,9 +6,8 @@ export const costPerStep: SqlInsight = {
   key: "cost-per-step",
   name: "Studio: cost per step",
   description:
-    "Per step name, over every run: the same sums as cost per reel (wall and CPU seconds, peak " +
-    "memory, bytes, AI tokens and reported AI cost). No money is derived from machine time. " +
-    "Source: synced steps table.",
+    "The same totals as cost per reel, but per step, so you see which step uses the most time, " +
+    "memory or AI. Machine time is not turned into money.",
   display: "ActionsTable",
   build: (_d, t) => `select steps.name as step_name,
 ${costColumns()}
