@@ -118,7 +118,10 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   `job-<job id>/` folder lives inside it.
 - `sweepStaleScratch` runs at `worker` start-up and removes the UUID-named folders a crashed run
   left behind (`worker: stale scratch of job <id> removed, <size> freed`); anything else there
-  stays.
+  stays. It cannot tell another worker's running job from a crashed one, so specs never share a
+  scratch folder: `apps/studio/test-support/worker.ts` sets `WORKER_SCRATCH_DIR` to
+  `.e2e-storage/worker-scratch` (a spec may pass its own), never the owner's folder from
+  `apps/worker/.env.development`.
 - `apps/worker/src/render/render-call.ts`: `renderScratchEnv` sets `HYPERFRAMES_EXTRACT_CACHE_DIR`,
   `HYPERFRAMES_HISTORY_ROOT` and `TMPDIR` inside the render's folder, so the frame cache, the
   history and the work folders go with the job folder. `hyperframes clean` is not run.
