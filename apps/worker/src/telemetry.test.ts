@@ -5,8 +5,9 @@ import { InMemoryLogRecordExporter, SimpleLogRecordProcessor } from "@openteleme
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DISABLED_TRACKER } from "./error-tracking.ts";
-import { TEST_JOB, recordingSteps } from "./recording-steps.ts";
-import { runInProcessStep, runStep } from "./step-runner.ts";
+import { UNKNOWN_SIZE, createReelSizeHolder } from "./reel-size.ts";
+import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
+import { recordHit, runInProcessStep, runStep } from "./step-runner.ts";
 import {
   type Telemetry,
   createTelemetry,
@@ -193,5 +194,54 @@ describe("export", () => {
     await runJobWithSteps(telemetry);
     await telemetry.shutdown();
     expect(requests.sort()).toEqual(["POST /v1/logs", "POST /v1/traces"]);
+  });
+});
+
+describe("reel size attributes", () => {
+  it("puts reel.* on the job span, every step span and a cache hit's span", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const size = createReelSizeHolder({ ...UNKNOWN_SIZE, sourceBytes: 1000, sourceSeconds: 50 });
+    const { span, context: jobContext } = startJobSpan(telemetry, TEST_JOB, size);
+    const { steps } = recordingSteps();
+    const ctx = { ...stepContext(steps, { telemetry, size }), jobContext };
+    await runInProcessStep(ctx, {
+      name: "retime",
+      work: async () => {
+        // Learned mid-step: on this step's span when it ends, and every later one.
+        size.update({ footageSeconds: 41, wordCount: 120 });
+        return { what: "retimed", sizeBytes: null };
+      },
+    });
+    await recordHit(ctx, { name: "head_track", summary: "reused", wallMs: 1 });
+    endJobSpan(span, "done", size);
+    const spans = exporter.getFinishedSpans();
+    const byName = Object.fromEntries(spans.map((s) => [s.name, s.attributes]));
+    const learned = {
+      "reel.source_bytes": 1000,
+      "reel.source_seconds": 50,
+      "reel.footage_seconds": 41,
+      "reel.word_count": 120,
+    };
+    expect(byName["step retime"]).toMatchObject(learned);
+    expect(byName["step head_track"]).toMatchObject(learned);
+    expect(byName["job process"]).toMatchObject(learned);
+    await telemetry.shutdown();
+  });
+
+  it("puts none on a span without a size (a photo job)", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const { span } = startJobSpan(telemetry, TEST_JOB);
+    endJobSpan(span, "done");
+    const keys = Object.keys(exporter.getFinishedSpans()[0]!.attributes);
+    expect(keys.filter((key) => key.startsWith("reel.") && key !== "reel.id")).toEqual([]);
+    await telemetry.shutdown();
   });
 });

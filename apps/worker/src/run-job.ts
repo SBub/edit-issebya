@@ -1,7 +1,9 @@
+import type { ErrorTracker } from "./error-tracking.ts";
 import { errorTail, failureReason } from "./errors.ts";
-import { AiUnavailable, FootageRefused, findCause } from "./failure.ts";
+import { AiUnavailable, AnswerRefused, FootageRefused, failureKind, findCause } from "./failure.ts";
 import { keepLease } from "./lease.ts";
-import type { ClaimedJob } from "./queue.ts";
+import type { ClaimedJob, JobFailure } from "./queue.ts";
+import { isStepFailure } from "./step-runner.ts";
 
 export type JobOutcome = "done" | "failed" | "refused" | "waiting" | "lost";
 
@@ -11,12 +13,26 @@ export interface RunJobDeps {
   renew: () => Promise<boolean>;
   work: (signal: AbortSignal) => Promise<void>;
   finish: () => Promise<boolean>;
-  fail: (errorTail: string) => Promise<boolean>;
+  fail: (errorTail: string, failure: JobFailure) => Promise<boolean>;
   // The footage cannot be used: the reel is refused with this human message.
   refuse: (message: string) => Promise<boolean>;
   // The AI is not available: the job waits and is taken again later.
   wait: (reason: string) => Promise<boolean>;
+  // A failure outside any step (no step row captured it) is captured here.
+  errors: Pick<ErrorTracker, "jobFailed">;
   log?: (message: string) => void;
+}
+
+// The job's failure kind and, for a refused AI answer, its rule names.
+function jobFailure(error: unknown): JobFailure {
+  const kind = failureKind(error);
+  if (kind === "answer_refused") {
+    const refused = findCause(error, AnswerRefused);
+    const rules = refused && refused.rules.length > 0 ? refused.rules.slice(0, 20) : null;
+    // The column wants rules with this kind; none known is a plain failure.
+    return rules ? { kind, rules } : { kind: "failed", rules: null };
+  }
+  return { kind: kind === "transient" ? "transient" : "failed", rules: null };
 }
 
 // Runs one claimed job while keeping its lease. Success finishes the job,
@@ -34,6 +50,7 @@ export async function runJob({
   fail,
   refuse,
   wait,
+  errors,
   log = console.log,
 }: RunJobDeps): Promise<JobOutcome> {
   const lease = keepLease({ renew, everyMs: renewEveryMs });
@@ -70,7 +87,9 @@ export async function runJob({
     const carriesOutput = error instanceof Error && error.message.trimEnd().includes("\n");
     const tail = carriesOutput ? reason : errorTail(error);
     log(`job ${job.id}: failed: ${reason}`);
-    return (await fail(tail)) ? "failed" : "lost";
+    const failure = jobFailure(error);
+    if (!isStepFailure(error)) errors.jobFailed({ job, error, tail, failure });
+    return (await fail(tail, failure)) ? "failed" : "lost";
   } finally {
     lease.stop();
   }

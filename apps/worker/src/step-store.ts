@@ -70,6 +70,14 @@ export interface StepStore {
   footageSeconds(reelId: string): Promise<number | null>;
   // Sets it only while the reel has none.
   recordFootageSeconds(reelId: string, seconds: number): Promise<void>;
+  // The source's length and display size from check_footage, set only while
+  // the reel has none.
+  recordSourceSize(
+    reelId: string,
+    size: { seconds: number; width: number; height: number },
+  ): Promise<void>;
+  // The transcript's word count after retime, set only while the reel has none.
+  recordWordCount(reelId: string, count: number): Promise<void>;
   failed(
     stepId: string,
     errorTail: string,
@@ -164,6 +172,22 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
         .eq("id", reelId)
         .is("footage_seconds", null);
       if (error) throw new Error(`footage seconds not recorded: ${error.message}`);
+    },
+    async recordSourceSize(reelId, { seconds, width, height }) {
+      const { error } = await db
+        .from("reels")
+        .update({ source_seconds: seconds, source_width: width, source_height: height })
+        .eq("id", reelId)
+        .is("source_seconds", null);
+      if (error) throw new Error(`source size not recorded: ${error.message}`);
+    },
+    async recordWordCount(reelId, count) {
+      const { error } = await db
+        .from("reels")
+        .update({ word_count: count })
+        .eq("id", reelId)
+        .is("word_count", null);
+      if (error) throw new Error(`word count not recorded: ${error.message}`);
     },
     async done(stepId, summary, measurements) {
       const { error } = await db

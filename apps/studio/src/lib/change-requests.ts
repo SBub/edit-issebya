@@ -30,7 +30,7 @@ export function changeBlockedReason(
   if (reel.status === "refused") return "This clip was refused; upload another clip.";
   if (reel.status === "uploading") return "Changes open once the upload finishes.";
   if (reel.status === "failed" && reel.current_version_id === null) {
-    return "Processing failed; press Retry on the failed job first.";
+    return "Processing failed; press Try again on the preview first.";
   }
   return null;
 }

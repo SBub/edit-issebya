@@ -135,6 +135,7 @@ describe("checkFootage", () => {
     };
     expect(await checkFootage({ tool, tools: TOOLS, path: "/job/inputs/source" })).toEqual({
       what: "footage checked, 0:24, 1080 x 1920",
+      size: { seconds: expect.closeTo(24, 0), width: 1080, height: 1920 },
     });
     expect(seen[0]?.[0]).toBe("/fake/ffprobe");
     expect(seen[0]?.at(-1)).toBe("/job/inputs/source");

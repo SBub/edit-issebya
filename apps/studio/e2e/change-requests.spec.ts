@@ -127,7 +127,9 @@ async function reelRow() {
 async function jobsOf(kind: string) {
   const { data, error } = await admin
     .from("jobs")
-    .select("id, kind, status, request, restore_version_id, error_tail")
+    .select(
+      "id, kind, status, request, restore_version_id, error_tail, failure_kind, failure_rules",
+    )
     .eq("reel_id", reel!.reelId)
     .eq("kind", kind)
     .order("created_at");
@@ -268,14 +270,49 @@ test("a change refused twice fails the job and keeps version 3 and the reel proc
   const failed = (await jobsOf("change")).at(-1)!;
   expect(failed).toMatchObject({ status: "failed", request: SECOND_REQUEST });
   expect(failed.error_tail).toContain("the answer failed twice, version 3 stays current");
-  const job = page.locator('[data-testid="job-item"][data-job-kind="change"]').last();
-  await expect(job.getByTestId("job-status")).toHaveText("failed", { timeout: 10_000 });
-  await expect(job).toContainText("the answer failed twice, version 3 stays current");
+  // The broken answer is not JSON in both rounds: one rule name, as data.
+  expect(failed.failure_kind).toBe("answer_refused");
+  expect(failed.failure_rules).toEqual(["answer-json"]);
 
   expect(await reelRow()).toEqual({ status: "processed", current_version_id: v3 });
   expect((await versionsOf()).map((v) => v.number)).toEqual([1, 2, 3]);
-  await expect(page.getByTestId("reel-status")).toHaveText("processed");
+
+  // The overlay says it in plain words, with the actions a refused change has:
+  // never Try again, never the raw tail.
+  const overlay = page.getByTestId("progress-overlay");
+  await expect(overlay).toHaveAttribute("data-overlay-kind", "failure", { timeout: 10_000 });
+  await expect(overlay.getByTestId("overlay-headline")).toHaveText("Could not finish styling");
+  await expect(overlay.getByTestId("overlay-reason")).toHaveText(
+    "The AI's answer could not be used",
+  );
+  await expect(overlay.getByTestId("overlay-change-request")).toBeVisible();
+  await expect(overlay.getByTestId("overlay-keep")).toBeVisible();
+  await expect(overlay.getByTestId("overlay-try-again")).toHaveCount(0);
+  await expect(overlay).not.toContainText("failed twice");
   await expect(box()).toBeEnabled();
+
+  // Change the request puts the sent words back in the field, focused.
+  await overlay.getByTestId("overlay-change-request").click();
+  await expect(box()).toHaveValue(SECOND_REQUEST);
+  await expect(box()).toBeFocused();
+  await expect(page.getByTestId("progress-overlay")).toHaveCount(0);
+  await expect
+    .poll(() => eventsNamed(events, "studio_failure_action"))
+    .toEqual([
+      {
+        event: "studio_failure_action",
+        properties: {
+          app: "studio",
+          reel_id: reel!.reelId,
+          job_id: failed.id,
+          action: "change_request",
+          failure_kind: "answer_refused",
+          step: "decide",
+          job_kind: "change",
+        },
+      },
+    ]);
+  await box().fill("");
   expect(await noReloadMarker()).toBe("marker");
 });
 
@@ -288,9 +325,7 @@ test("going back makes a new version copying the old one, and going back again",
   await expect
     .poll(async () => (await jobsOf("restore")).map((j) => j.restore_version_id))
     .toEqual([v1!.id]);
-  await expect(page.locator('[data-testid="job-item"][data-job-kind="restore"]')).toContainText(
-    "go back to v1",
-  );
+  expect((await jobsOf("restore")).map((j) => j.kind)).toEqual(["restore"]);
   const unchanged = await unchangedAnswerScript(scriptDir);
   const first = await runWorker(unchanged);
   expect(first.code, first.output).toBe(0);

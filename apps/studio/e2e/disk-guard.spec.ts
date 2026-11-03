@@ -109,9 +109,12 @@ test("a queued job shows why the worker is not claiming it, live, until it claim
     version_id: reel!.versionId,
   });
   expect(queued.error).toBeNull();
-  const job = page.locator('[data-testid="job-item"][data-job-kind="render"]');
-  await expect(job.getByTestId("job-status")).toHaveText("queued", { timeout: 10_000 });
-  await expect(job.getByTestId("job-waiting")).toHaveCount(0);
+  // The queued job reads "Waiting to start" in the progress overlay.
+  const overlay = page.getByTestId("progress-overlay");
+  await expect(overlay.getByTestId("overlay-words")).toHaveText("Waiting to start", {
+    timeout: 10_000,
+  });
+  await expect(overlay.getByTestId("job-waiting")).toHaveCount(0);
 
   const waiting = await runWorkerOnce({
     R2_KEY_PREFIX: CACHE_PREFIX,
@@ -123,7 +126,7 @@ test("a queued job shows why the worker is not claiming it, live, until it claim
   expect(waiting.output).toContain(REASON);
   // Never claimed: no attempt, no lease.
   expect(await renderJob()).toMatchObject({ status: "queued", attempts: 0, lease_holder: null });
-  await expect(job.getByTestId("job-waiting")).toHaveText(REASON, { timeout: 10_000 });
+  await expect(overlay.getByTestId("job-waiting")).toHaveText(REASON, { timeout: 10_000 });
 
   const claimed = await runWorkerOnce({
     R2_KEY_PREFIX: CACHE_PREFIX,
@@ -133,8 +136,8 @@ test("a queued job shows why the worker is not claiming it, live, until it claim
   });
   expect(claimed.code, claimed.output).toBe(0);
   expect((await renderJob()).status).toBe("done");
-  await expect(job.getByTestId("job-status")).toHaveText("done", { timeout: 10_000 });
-  await expect(page.getByTestId("job-waiting")).toHaveCount(0);
+  await expect(page.getByTestId("job-waiting")).toHaveCount(0, { timeout: 10_000 });
+  await expect(page.getByTestId("overlay-words")).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
     "marker",
   );

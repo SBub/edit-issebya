@@ -3,6 +3,7 @@
 import { ROOT_CONTEXT } from "@opentelemetry/api";
 import { DISABLED_TRACKER, type ErrorTracker } from "./error-tracking.ts";
 import type { ClaimedJob } from "./queue.ts";
+import type { ReelSizeHolder } from "./reel-size.ts";
 import type { StepContext } from "./step-runner.ts";
 import type { PipelineReelStatus, StepMeasurements, StepStore } from "./step-store.ts";
 import { type Telemetry, createTelemetry } from "./telemetry.ts";
@@ -14,6 +15,12 @@ export type StepCall =
   | { call: "done"; stepId: string; summary: string; measurements: StepMeasurements }
   | { call: "progress"; stepId: string; percent: number }
   | { call: "recordFootageSeconds"; reelId: string; seconds: number }
+  | {
+      call: "recordSourceSize";
+      reelId: string;
+      size: { seconds: number; width: number; height: number };
+    }
+  | { call: "recordWordCount"; reelId: string; count: number }
   | {
       call: "failed";
       stepId: string;
@@ -65,6 +72,12 @@ export function recordingSteps(
       calls.push({ call: "recordFootageSeconds", reelId, seconds });
       footage ??= seconds;
     },
+    async recordSourceSize(reelId, size) {
+      calls.push({ call: "recordSourceSize", reelId, size });
+    },
+    async recordWordCount(reelId, count) {
+      calls.push({ call: "recordWordCount", reelId, count });
+    },
     async failed(stepId, tail, summary, measurements) {
       calls.push({ call: "failed", stepId, tail, summary, measurements });
     },
@@ -99,13 +112,15 @@ export function stepContext(
     job = TEST_JOB,
     retryDelayMs = 0,
     errors = DISABLED_TRACKER,
+    size,
   }: {
     signal?: AbortSignal;
     telemetry?: Telemetry;
     job?: ClaimedJob;
     retryDelayMs?: number;
     errors?: ErrorTracker;
+    size?: ReelSizeHolder;
   } = {},
 ): StepContext {
-  return { steps, telemetry, errors, jobContext: ROOT_CONTEXT, job, signal, retryDelayMs };
+  return { steps, telemetry, errors, jobContext: ROOT_CONTEXT, job, signal, retryDelayMs, size };
 }

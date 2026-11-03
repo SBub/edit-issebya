@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   AiUnavailable,
+  AnswerRefused,
   FootageRefused,
   PermanentError,
   TransientError,
+  failureKind,
   findCause,
   isTransient,
   permanentAfterAiCall,
@@ -134,5 +136,29 @@ describe("permanentAfterAiCall", () => {
     expect(thrown).toBeInstanceOf(PermanentError);
     expect((thrown as Error).cause).toBe(network);
     expect(isTransient(thrown)).toBe(false);
+  });
+});
+
+describe("failureKind", () => {
+  it("names each class, through a cause chain", () => {
+    expect(failureKind(wrapped(new FootageRefused("not vertical"), 2))).toBe("refused");
+    expect(
+      failureKind(
+        new StepError("decide: the answer failed twice", "tail", undefined, {
+          cause: new AnswerRefused(["safe-box"], 2),
+        }),
+      ),
+    ).toBe("answer_refused");
+    expect(failureKind(wrapped(withCode("ECONNRESET")))).toBe("transient");
+    expect(failureKind(new Error("no such file"))).toBe("failed");
+    expect(failureKind(new AnswerRefused(["frame"], 2))).toBe("answer_refused");
+  });
+
+  it("keeps a refused answer permanent and free of free text", () => {
+    const refused = new AnswerRefused(["behind-caption"], 2);
+    expect(isTransient(refused)).toBe(false);
+    expect(refused.message).toBe("the answer failed the checks");
+    expect(refused.rules).toEqual(["behind-caption"]);
+    expect(refused.rounds).toBe(2);
   });
 });

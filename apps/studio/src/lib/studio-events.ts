@@ -11,4 +11,9 @@ export const STUDIO_EVENTS = [
   "studio_export_requested",
   "studio_export_downloaded",
 ] as const;
-export type StudioEvent = (typeof STUDIO_EVENTS)[number];
+// The owner's actions on the reel page's overlay, kept out of STUDIO_EVENTS
+// because the dashboard's funnel uses that list as its series:
+// studio_failure_action (reel_id, job_id of the failed job, action,
+// failure_kind, step, job_kind). Never renamed once shipped.
+export const STUDIO_ACTION_EVENTS = ["studio_failure_action"] as const;
+export type StudioEvent = (typeof STUDIO_EVENTS)[number] | (typeof STUDIO_ACTION_EVENTS)[number];

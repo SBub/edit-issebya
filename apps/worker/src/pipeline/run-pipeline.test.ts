@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { UNKNOWN_SIZE, createReelSizeHolder } from "../reel-size.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
 import type { ChildRun, SpawnTool, ToolCall } from "../step-runner.ts";
 import { PIPELINE, type StepOutput, fingerprintsFor, outputFiles } from "./definition.ts";
@@ -171,9 +172,13 @@ function run(
 
 // The step rows and statuses; progress and the footage length have their own tests.
 function shape(calls: ReturnType<typeof recordingSteps>["calls"]) {
-  const rows = calls.filter(
-    (call) => call.call !== "progress" && call.call !== "recordFootageSeconds",
-  );
+  const measuring = new Set([
+    "progress",
+    "recordFootageSeconds",
+    "recordSourceSize",
+    "recordWordCount",
+  ]);
+  const rows = calls.filter((call) => !measuring.has(call.call));
   return rows.map((call) => {
     if (call.call === "reelStatus") return `status ${call.status}`;
     if (call.call === "start" || call.call === "skipped") return `${call.call} ${call.name}`;
@@ -208,7 +213,8 @@ describe("runPipeline footage seconds", () => {
     expect(footageCalls(calls)).toEqual([
       { call: "recordFootageSeconds", reelId: TEST_JOB.reel_id, seconds },
     ]);
-    expect(counts.getFile).toBe(1);
+    // retime.json, and the transcript for the word count.
+    expect(counts.getFile).toBe(2);
   });
 
   it("downloads nothing on a hit when the reel already has a length", async () => {
@@ -218,6 +224,68 @@ describe("runPipeline footage seconds", () => {
     await run(steps);
     expect(footageCalls(calls)).toEqual([]);
     expect(counts.getFile).toBe(0);
+  });
+});
+
+function sizeCalls(calls: ReturnType<typeof recordingSteps>["calls"]) {
+  return calls.flatMap((call) =>
+    call.call === "recordSourceSize" || call.call === "recordWordCount" ? [call] : [],
+  );
+}
+
+describe("runPipeline reel size", () => {
+  it("records the source size after check_footage and the word count after retime", async () => {
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    const size = createReelSizeHolder();
+    await runPipeline({
+      ctx: stepContext(steps, { size }),
+      storage,
+      keyPrefix: PREFIX,
+      scratchDir: scratch,
+      tools: TOOLS,
+      spawnTool: fakeTools(),
+      checkFootage: true,
+    });
+    const recorded = sizeCalls(calls);
+    expect(recorded.map((call) => call.call)).toEqual(["recordSourceSize", "recordWordCount"]);
+    expect(recorded[0]).toMatchObject({
+      reelId: TEST_JOB.reel_id,
+      size: { width: 320, height: 568 },
+    });
+    const sourceAt = calls.findIndex((call) => call.call === "recordSourceSize");
+    const convertAt = calls.findIndex((call) => call.call === "start" && call.name === "convert");
+    expect(sourceAt).toBeLessThan(convertAt);
+    const wordsAt = calls.findIndex((call) => call.call === "recordWordCount");
+    const trackAt = calls.findIndex((call) => call.call === "start" && call.name === "head_track");
+    expect(wordsAt).toBeLessThan(trackAt);
+    const words = recorded[1];
+    expect(words?.call === "recordWordCount" && words.count).toBeGreaterThanOrEqual(0);
+    expect(size.current()).toMatchObject({ width: 320, height: 568 });
+    expect(size.current().sourceSeconds).toBeGreaterThan(0);
+    expect(size.current().footageSeconds).toBeGreaterThan(0);
+    expect(size.current().wordCount).not.toBeNull();
+  });
+
+  it("writes neither twice when the job already knows them", async () => {
+    await run(recordingSteps(SOURCE_KEY).steps);
+    const { steps, calls } = recordingSteps(SOURCE_KEY);
+    const size = createReelSizeHolder({
+      ...UNKNOWN_SIZE,
+      sourceSeconds: 2,
+      width: 320,
+      height: 568,
+      wordCount: 4,
+    });
+    await runPipeline({
+      ctx: stepContext(steps, { size }),
+      storage,
+      keyPrefix: PREFIX,
+      scratchDir: scratch,
+      tools: TOOLS,
+      spawnTool: fakeTools(),
+      checkFootage: true,
+    });
+    expect(sizeCalls(calls)).toEqual([]);
   });
 });
 

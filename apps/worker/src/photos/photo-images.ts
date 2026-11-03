@@ -4,7 +4,7 @@ import { type Storage, assertStorageKey } from "@edit-issebya/storage";
 import type { ToolPaths } from "../pipeline/tools.ts";
 import { type SpawnTool, type StepContext, type Tool, runToolsStep } from "../step-runner.ts";
 
-const STEP = "photo_images";
+export const STEP = "photo_images";
 
 // The grid tile and the copy Claude Code reads and the dialog shows (a
 // browser other than Safari cannot show HEIC).

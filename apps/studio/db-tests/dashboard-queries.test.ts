@@ -35,7 +35,7 @@ describe("dashboard queries name real columns and events", () => {
         [[...SYNCED_TABLES]],
       );
       const existing = new Set(rows.map((r) => `${r.table_name}.${r.column_name}`));
-      expect(SQL_INSIGHTS).toHaveLength(12);
+      expect(SQL_INSIGHTS).toHaveLength(13);
       for (const def of SQL_INSIGHTS) {
         const tables: string[] = [];
         const sql = def.build(postgres, (name) => {
@@ -153,6 +153,12 @@ describe("dashboard metric logic", () => {
     const b = await reel();
     const c = await reel();
     const d = await reel();
+    // A's size (the worker writes it after check_footage and retime); B, C
+    // and D have none, so the length insight reads A's steps only.
+    await db.query(
+      `update public.reels set source_seconds = 20, footage_seconds = 16 where id = $1`,
+      [a],
+    );
     // Process jobs at T, T+1h, T+2h, T+3h; A also has a later Retry process job.
     const jobA = await job(a, "process", 0);
     await job(a, "process", 5);
@@ -276,6 +282,23 @@ describe("dashboard metric logic", () => {
     expect(rows.map((r) => [r.step_name, num(r.wall_seconds), num(r.step_runs)])).toEqual([
       ["convert", 1.01, 3],
       ["decide", 2.5, 2],
+    ]);
+  });
+
+  it("time per step against reel length: done steps by step and 15-second bucket", async () => {
+    const rows = await run("step-time-vs-length");
+    expect(
+      rows.map((r) => [
+        r.step_name,
+        num(r.source_seconds_from),
+        num(r.done_steps),
+        num(r.median_seconds),
+        num(r.max_seconds),
+        num(r.median_seconds_per_footage_second),
+      ]),
+    ).toEqual([
+      ["convert", 15, 1, 1, 1, 1 / 16],
+      ["decide", 15, 1, 2, 2, 2 / 16],
     ]);
   });
 

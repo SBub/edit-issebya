@@ -4,6 +4,7 @@ import { type Page, expect, test } from "@playwright/test";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
+import { stepLines } from "../test-support/rows.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
 // The render step's progress rising live: the render double replays a real
@@ -96,15 +97,16 @@ test("a running render shows its percentage rising live and the time left", asyn
     { timeoutMs: 90_000 },
   );
 
-  const renderLine = page.locator("li", {
-    has: page.getByTestId("step-line").filter({ hasText: /^render: / }),
-  });
-  const progress = renderLine.getByTestId("step-progress");
+  // The progress overlay over the preview: the render's plain words, its
+  // percent and the time left.
+  const overlay = page.getByTestId("progress-overlay");
+  const progress = overlay.getByTestId("step-progress");
   await expect(progress).toHaveText(/^\d{1,2}%$/, { timeout: 30_000 });
   const first = Number((await progress.textContent())!.replace("%", ""));
   expect(first).toBeLessThan(100);
   // A fresh owner has no earlier render rows to estimate from.
-  await expect(renderLine.getByTestId("step-time-left")).toHaveText("no estimate yet");
+  await expect(overlay.getByTestId("overlay-words")).toHaveText("Exporting");
+  await expect(overlay.getByTestId("step-time-left")).toHaveText("no estimate yet");
   await expect
     .poll(async () => Number(((await progress.textContent()) ?? "").replace("%", "")), {
       timeout: 30_000,
@@ -113,10 +115,14 @@ test("a running render shows its percentage rising live and the time left", asyn
 
   const { code, output } = await worker;
   expect(code, output).toBe(0);
-  await expect(renderLine.getByTestId("step-line")).toHaveText(/^render: exported/, {
-    timeout: 10_000,
-  });
-  await expect(renderLine.getByTestId("step-progress")).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      (await stepLines(admin, reel!.reelId))
+        .filter((line) => line.name === "render")
+        .map((line) => line.summary),
+    )
+    .toEqual([expect.stringMatching(/^exported/)]);
+  await expect(page.getByTestId("step-progress")).toHaveCount(0, { timeout: 10_000 });
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
     "marker",
   );

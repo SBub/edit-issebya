@@ -12,7 +12,15 @@ import {
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AiRunner, fakeAiRunner, resultEnvelope } from "../ai.ts";
-import { AiUnavailable, PermanentError, isTransient } from "../failure.ts";
+import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
+import {
+  AiUnavailable,
+  AnswerRefused,
+  PermanentError,
+  findCause,
+  isTransient,
+} from "../failure.ts";
+import { createTelemetry } from "../telemetry.ts";
 import { saveFirstVersion } from "../first-version.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
@@ -215,6 +223,47 @@ describe("runDecide", () => {
     expect(current).toBe(firstId);
     expect(rows.size).toBe(1);
     expect(await storage.list(`${PREFIX}reels/${TEST_JOB.reel_id}/versions/`)).toHaveLength(1);
+  });
+
+  it("throws with the rule names of both rounds as data, the tail unchanged", async () => {
+    const ai = fakeAiRunner(["not json", offSafeBox()]);
+    const { run, calls } = await decide(ai);
+    const error = await run.catch((thrown: unknown) => thrown);
+    const refused = findCause(error, AnswerRefused);
+    expect(refused?.rules).toEqual(["answer-json", "safe-box"]);
+    expect(refused?.rounds).toBe(2);
+    const failed = lastCall(calls);
+    if (failed.call !== "failed") throw new Error(JSON.stringify(calls));
+    expect(failed.tail).toMatch(
+      /round 1:\n- the answer was not valid JSON[^\n]*\nround 2:\n- safe-box title: /,
+    );
+  });
+
+  it("puts reel.tracks_items on the decide span after a save", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const { steps } = recordingSteps();
+    await runDecide({
+      ctx: stepContext(steps, { telemetry }),
+      storage,
+      rows: memoryRows(),
+      blobs: storageVersionBlobs(storage),
+      keyPrefix: PREFIX,
+      ai: fakeAiRunner([scripted]),
+      scratchDir: scratch,
+      newId,
+    });
+    const span = exporter.getFinishedSpans().find((s) => s.name === "step decide");
+    const stored = JSON.parse(
+      new TextDecoder().decode((await storage.get(rows.get(current!)!.r2_key))!),
+    ) as { tracks: Record<string, unknown[]> };
+    const items = Object.values(stored.tracks).reduce((sum, track) => sum + track.length, 0);
+    expect(items).toBeGreaterThan(0);
+    expect(span?.attributes["reel.tracks_items"]).toBe(items);
+    await telemetry.shutdown();
   });
 
   it("retries a broken JSON answer (verification 4)", async () => {

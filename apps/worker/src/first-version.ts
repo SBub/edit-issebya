@@ -16,7 +16,7 @@ import { cacheKey } from "./pipeline/fingerprint.ts";
 import { reelOf } from "./queue.ts";
 import { type StepContext, recordHit, runInProcessStep } from "./step-runner.ts";
 
-const STEP = "first_version";
+export const STEP = "first_version";
 
 export interface FirstVersionRun {
   ctx: StepContext;

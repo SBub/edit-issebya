@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, type Ref, useImperativeHandle, useRef, useState } from "react";
 import { requestChange } from "@/app/change-actions";
 import { MAX_REQUEST_LENGTH, normalizeRequest } from "@/lib/change-requests";
 import type { JobRow } from "@/lib/jobs";
@@ -16,17 +16,42 @@ interface Props {
   queueNote: string | null;
   // The reel's live jobs, so the pending line ends when its job does.
   jobs: readonly Pick<JobRow, "id" | "status">[];
+  // The overlay's "Change the request" puts a refused request back here.
+  ref?: Ref<ChangeRequestHandle>;
+}
+
+export interface ChangeRequestHandle {
+  // Sets the text, clears the message, focuses the field, caret at the end.
+  refill(text: string): void;
 }
 
 // The text box under the preview. Sending queues a `change` job with the
 // owner's words; it runs after the reel's earlier jobs (the database's order),
 // and the new version reaches the preview through Realtime.
-export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs }: Props) {
+export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs, ref }: Props) {
   const router = useRouter();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [sent, setSent] = useState<{ jobId: string; request: string } | null>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(
+    ref,
+    () => ({
+      refill(value: string) {
+        setText(value);
+        setMessage("");
+        const element = field.current;
+        if (!element) return;
+        // The value is set on the element now, so the caret lands after it
+        // before React's render catches up with the same text.
+        element.value = value;
+        element.focus();
+        element.setSelectionRange(value.length, value.length);
+      },
+    }),
+    [],
+  );
 
   // Derived from the live jobs: pending until the sent job is done or failed
   // (or while it has not arrived yet, or waits for the AI). No timer.
@@ -77,6 +102,7 @@ export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs }: Pr
       </label>
       <div className="flex items-end gap-2">
         <textarea
+          ref={field}
           id="change-request"
           name="request"
           rows={2}

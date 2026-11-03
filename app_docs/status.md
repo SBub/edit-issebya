@@ -1,12 +1,17 @@
-# Progress, time left, ready notification, worker heartbeat and keep-awake
+# Progress overlay, time left, ready notification, worker heartbeat and keep-awake
 
 **Specifications:**
 
 - specs/issue-38-adw-119c12a9-sdlc_planner-reel-progress-notification-heartbeat.md
+- specs/issue-117-adw-d16e6f05-sdlc_planner-reel-progress-overlay.md
 
 ## Overview
 
-The two long steps, `head_track` (its person mask's per-frame progress) and `render`, write their tool's progress into their own
+The reel page shows what the studio is doing in a small progress overlay over the preview: the step
+in plain words, step k of n with a bar, the waiting and offline lines, a `New version N` notice when
+a version is saved, and a failure with the actions that fit it. The overlay replaced the jobs list
+and step log the page used to show. A newly saved version replaces the preview by itself, at the
+same time and play state. The two long steps, `head_track` (its person mask's per-frame progress) and `render`, write their tool's progress into their own
 step row, and the studio's reel page shows the percentage with an estimate of the time left. When
 the open reel becomes ready while its tab is hidden, the tab title says so and, if the owner turned
 it on, the browser shows a notification. The long-running worker writes a heartbeat every five
@@ -26,6 +31,54 @@ machine from idle-sleeping while a job runs.
 - `worker_status.heartbeat_at` (`timestamptz`).
 - The existing RLS and the Realtime publication of the three tables cover the new columns: no grant
   or policy changed.
+
+### Progress overlay
+
+- `apps/studio/src/lib/progress-overlay.ts`, `overlayState(...)`: a pure function of `LiveReel`'s
+  existing Realtime state (reel, jobs, steps, versions, worker status, the notice, the dismissed
+  jobs, the time-left history). No new subscription, no polling, no reads, no timers.
+- One state at a time, in this precedence: `failure` (the newest job failed, it is retryable under
+  `retryableJobIds`, so not already retried and never on a refused reel, and the owner has not
+  handled it on this page load), then `notice` (`New version N`), then `working` (the oldest
+  `queued`, `running` or `waiting_ai` job), then `hidden` (nothing rendered).
+- `jobProgress`: step k of n from `JOB_STEPS[job.kind]` in `step-words.ts` (`process` runs eight
+  steps, `change` is `decide`, `restore` and `render` one each). A `cutout` step counts as `decide`;
+  a queued job, or one with no step yet, is step 0 (`Waiting to start`, no "Step k of n" line). The
+  bar's fraction is the finished (`done` or `skipped`) listed steps over n, plus a running long
+  step's `progress_percent`.
+- `apps/studio/src/lib/step-words.ts` is the one place for the step words: `STEP_WORDS` (each
+  step's doing words and failed headline; the headline defaults to `Could not finish` and the doing
+  words), `stepWords(name, { restoreNumber })` (`restore` names its version N, else `an earlier
+version`), the `Working on it` / `Could not finish this step` fallback for an unknown step, and
+  `RULE_WORDS` with `refusalReason(rules)`: the first two distinct rule words of a refused answer,
+  joined with "and", from the rule names only.
+- Failure actions (`FailureAction`): a `change` job whose answer was refused (`failure_kind`
+  `answer_refused`, with a request) offers Change the request and Keep the current version; every
+  other retryable failure offers Try again and Keep the current version. Try again calls
+  `requestRetry` and shows its answer (`Queued again.`, say). Change the request refills the change
+  box with the sent request and focuses it. Keep the current version dismisses the failure. Each
+  action captures `studio_failure_action` with `reel_id`, `job_id`, `action`, `failure_kind`,
+  `step` and `job_kind` (the `job_id` links it to the job's error). A handled failure is dismissed
+  in memory for the page load: a reload shows a still-unhandled one again.
+- The headline is the failed step's `failed` words; the reason line is `refusalReason` for a refused
+  answer and nothing otherwise. No error tail, code or machine step name reaches the page.
+- `apps/studio/src/components/ProgressOverlay.tsx` renders it (layout in
+  `app_docs/studio-reel-layout.md`). The words sit in a polite live region (`role="status"
+aria-live="polite"`); the buttons stay outside it, so updates do not announce them again. Test ids:
+  `progress-overlay` (with `data-overlay-kind`), `overlay-words`, `overlay-step`, `overlay-notice`,
+  `overlay-headline`, `overlay-reason`, `overlay-try-again`, `overlay-change-request`,
+  `overlay-keep`, `overlay-action-message`.
+
+### New version notice and automatic switch
+
+- `LiveReel` shows `New version N` for `NEW_VERSION_NOTICE_MS` (4000 ms) when the reel's
+  `current_version_id` changes after the first render (derived during render, never on the first
+  render). One timeout clears it; a newer version's number replaces the shown one.
+- `apps/studio/src/components/ReelPreview.tsx` keeps the previous built preview on screen until the
+  next version is built, then mounts it with `startAt` (the last position, clamped to the new
+  version's duration) and `autoPlay` (the last play or pause intent), through `PreviewPlayer`'s
+  hold-then-start routine. Undo and Redo hand off the same way. `PreviewPlayer`'s wrapper carries
+  `data-version-id` and `data-intent`.
 
 ### Progress parsing per tool
 
@@ -86,14 +139,14 @@ machine from idle-sleeping while a job runs.
   the step has run (from `started_at` to `progress_updated_at`). Fewer than 3 earlier rows, or no
   `footage_seconds` on this reel: no estimate. Never below 0.
 - `formatTimeLeft`: `no estimate yet`, `less than a minute left`, or `about <n> min left`.
-- `LiveReel` shows, under a running long step with a percentage, `<n>%`
+- The overlay shows, for a running long step with a percentage, `<n>%`
   (`data-testid="step-progress"`) and the time left (`data-testid="step-time-left"`). Both are a
   pure function of the row, so each Realtime update refreshes them; no ticking timer.
 
 ### Ready notification and title
 
-- `apps/studio/src/components/NotifyToggle.tsx`: the "Notify me when ready" button
-  (`data-testid="notify-toggle"`, "Notifications on" once on). Permission is asked only from its
+- `apps/studio/src/components/NotifyToggle.tsx`: the "Notify me when ready" button in the reel
+  page's header (`data-testid="notify-toggle"`, "Notifications on" once on). Permission is asked only from its
   click, never on load; the choice is kept in `localStorage` (`studio-notify`). Hidden where the
   browser has no Notification API; `Notifications blocked in this browser` when permission is
   denied.
@@ -122,8 +175,9 @@ machine from idle-sleeping while a job runs.
 - `LiveReel` reads every worker's row (`WORKER_STATUS_COLUMNS` now includes `heartbeat_at`) and
   follows it through Realtime. One local timeout, set for the moment the newest heartbeat turns 11
   minutes old, flips the display; no interval and no database read.
-- Under a `queued` job it shows `Worker offline since HH:MM` (24-hour local time of the last beat,
-  `data-testid="job-offline"`); a fresh heartbeat arriving through Realtime removes it.
+- For a `queued` job the overlay shows `Worker offline since HH:MM` (24-hour local time of the last
+  beat, `data-testid="job-offline"`), beside the waiting lines (`job-waiting-ai` for a job waiting
+  for the AI, `job-waiting` for the disk guard's reason); a fresh heartbeat arriving through Realtime removes it.
 
 ### Keep-awake
 
@@ -135,11 +189,13 @@ machine from idle-sleeping while a job runs.
 
 ## How to Use
 
-- On a reel's page, a running `head_track` or `render` step shows its percentage and the
-  time left. The first reels show `no estimate yet` until three earlier runs of that step exist.
+- On a reel's page, the overlay over the preview says what the studio is doing, step k of n. A
+  running `head_track` or `render` step also shows its percentage and the time left. The first reels show `no estimate yet` until three earlier runs of that step exist.
 - Click "Notify me when ready" once and allow notifications; then switch to another tab while a
   reel processes or exports.
-- `Worker offline since HH:MM` under a queued job means the worker on the owner's machine has not
+- When a job fails, the overlay offers Try again (or, for a refused change, Change the request) and
+  Keep the current version.
+- `Worker offline since HH:MM` in the overlay means the worker on the owner's machine has not
   beaten for 11 minutes: start it again.
 
 ## Configuration
@@ -162,12 +218,19 @@ machine from idle-sleeping while a job runs.
   `pipeline/run-pipeline.test.ts` (footage seconds after retime: ran, hit without a value, hit with
   one), `heartbeat.test.ts` and `disk-guard.test.ts` (beats at start and every 5 minutes, the
   heartbeat upsert's shape), `keep-awake.test.ts` (caffeinate killed on success and failure, none
-  off macOS), and `apps/studio/src/lib/progress.test.ts`, `ready-notice.test.ts`,
+  off macOS), and `apps/studio/src/lib/progress.test.ts`, `step-words.test.ts` (every step name has
+  words, the fallback, `refusalReason`), `progress-overlay.test.ts` (the states' precedence, step k
+  of n, the actions per failure), `ready-notice.test.ts`,
   `worker-offline.test.ts`, `worker-status.test.ts`.
 - DB (`yarn test:db`): `apps/studio/db-tests/steps-measurements.test.ts` (the `progress_percent`
   and `progress_updated_at` columns) and `stored-files.test.ts` (`worker_status.heartbeat_at`, and a
   heartbeat upsert keeps the disk guard's `waiting_reason`).
-- E2E: `apps/studio/e2e/progress.spec.ts` (a render job with `E2E_MOCK_RENDER_SECONDS` shows its
+- E2E: `apps/studio/e2e/progress-overlay.spec.ts` (scripted step rows read in plain words with step
+  k of n at 1440x900 and 390x844, clear of Play and the Position slider; a version saved while
+  playing replaces the preview at the same time, still playing, with `New version N`; one saved while
+  paused stays paused); `progress.spec.ts`, `waiting-ai.spec.ts`, `worker-offline.spec.ts` and
+  `disk-guard.spec.ts` read their lines inside `progress-overlay`;
+  `progress.spec.ts` (a render job with `E2E_MOCK_RENDER_SECONDS` shows its
   percentage rising live with `no estimate yet`, and the step ends `done` at 100);
   `notification.spec.ts` (with the tab hidden, a reel turning `processed` gives one notification
   on the page's spy and the `Ready: <reel>` title, restored once visible; with the tab visible a new
@@ -184,6 +247,9 @@ machine from idle-sleeping while a job runs.
 - No notification service: nothing works with the tab closed.
 - Never write a heartbeat from `once`.
 - Never let the heartbeat clear `waiting_reason`.
+- Step words live only in `step-words.ts`; an unknown step reads `Working on it`.
+- Never show a raw error tail on the reel page.
+- The overlay reads `LiveReel`'s one Realtime channel; never add a subscription or a poll for it.
 
 ## Notes
 

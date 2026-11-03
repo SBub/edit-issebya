@@ -19,6 +19,14 @@ interface Props {
   onPosition?: (seconds: number) => void;
   // Extra buttons at the end of the control row (Undo and Redo).
   controls?: ReactNode;
+  // Where to start once the player is ready (the previous version's position
+  // on an automatic switch, clamped to this version's duration), and whether
+  // to start playing from there (the previous version's intent). Default: 0,
+  // paused.
+  startAt?: number;
+  autoPlay?: boolean;
+  // Told the play or pause intent wherever it changes.
+  onIntent?: (intent: "paused" | "playing") => void;
 }
 
 interface Tracked extends MediaState {
@@ -79,7 +87,17 @@ function mediaOf(player: HyperframesPlayer): Tracked[] {
 // point can play from there (first play, every seek, every stall). The
 // edit's sounds play through one AudioContext, scheduled against the clock at
 // each start and cancelled at every pause, seek and stall.
-export function PreviewPlayer({ html, versionId, hits, soundBytes, onPosition, controls }: Props) {
+export function PreviewPlayer({
+  html,
+  versionId,
+  hits,
+  soundBytes,
+  onPosition,
+  controls,
+  startAt = 0,
+  autoPlay = false,
+  onIntent,
+}: Props) {
   const playerRef = useRef<HyperframesPlayer>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const buffersRef = useRef<Promise<Map<string, AudioBuffer>>>(Promise.resolve(new Map()));
@@ -91,6 +109,10 @@ export function PreviewPlayer({ html, versionId, hits, soundBytes, onPosition, c
   const hitsRef = useRef(hits);
   const expectedVideosRef = useRef(0);
   const onPositionRef = useRef(onPosition);
+  const onIntentRef = useRef(onIntent);
+  // The start position and intent are applied once, when the player is ready.
+  const startedRef = useRef(false);
+  const startRef = useRef({ startAt, autoPlay });
 
   const [defined, setDefined] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
@@ -107,6 +129,14 @@ export function PreviewPlayer({ html, versionId, hits, soundBytes, onPosition, c
   useEffect(() => {
     onPositionRef.current = onPosition;
   }, [onPosition]);
+
+  useEffect(() => {
+    onIntentRef.current = onIntent;
+  }, [onIntent]);
+
+  useEffect(() => {
+    onIntentRef.current?.(intent);
+  }, [intent]);
 
   // The position shown here and reported to the page, set together.
   function report(seconds: number) {
@@ -361,12 +391,37 @@ export function PreviewPlayer({ html, versionId, hits, soundBytes, onPosition, c
     };
   }, [defined]);
 
+  // An automatic switch: once ready, the new version continues from where the
+  // previous one was, playing or paused as it was. Playing goes through the
+  // same hold-then-start routine as a click, so the clock still never runs
+  // before the videos can play from there.
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!playerReady || !player || startedRef.current) return;
+    startedRef.current = true;
+    const { startAt: from, autoPlay: play } = startRef.current;
+    const t = Math.max(0, Math.min(from, player.duration || duration));
+    if (play) {
+      holdThenStart(t >= (player.duration || duration) ? 0 : t);
+      return;
+    }
+    if (t > 0) {
+      player.seek(t);
+      report(t);
+    }
+    // Once per mounted version, when it becomes ready: the start position and
+    // intent are read from a ref, and holdThenStart is the same routine a click uses.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerReady]);
+
   const loading = !playerReady || holding;
 
   return (
     <div
       data-preview={loading ? "loading" : "ready"}
       data-preview-version={versionId}
+      data-version-id={versionId}
+      data-intent={intent}
       className="flex min-h-0 w-full flex-1 flex-col gap-2"
     >
       <div className="flex min-h-0 flex-1 justify-center">

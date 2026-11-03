@@ -11,18 +11,22 @@ export interface Dialect {
   minutesBetween(from: string, to: string): string;
   /** The Monday that starts the week of `ts`. */
   weekOf(ts: string): string;
+  /** The median of `expr` over the group. */
+  median(expr: string): string;
 }
 
 export const hogql: Dialect = {
   name: "hogql",
   minutesBetween: (from, to) => `dateDiff('second', ${from}, ${to}) / 60.0`,
   weekOf: (ts) => `toStartOfWeek(${ts}, 1)`,
+  median: (expr) => `median(${expr})`,
 };
 
 export const postgres: Dialect = {
   name: "postgres",
   minutesBetween: (from, to) => `extract(epoch from (${to} - ${from})) / 60.0`,
   weekOf: (ts) => `date_trunc('week', ${ts})`,
+  median: (expr) => `percentile_cont(0.5) within group (order by ${expr})`,
 };
 
 /** Resolves a synced table's bare name to its reference in the target database. */

@@ -8,6 +8,7 @@ import { unchangedAnswerScript } from "../test-support/ai-script.ts";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { seedPipelineCache } from "../test-support/pipeline-cache.ts";
+import { reelStatus } from "../test-support/rows.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
 // The ready notice: with the tab hidden, the reel turning `processed` changes
@@ -171,16 +172,19 @@ test("a reel processed while the tab is hidden changes the title and notifies", 
   // real permission). Check that state first so a regression names its cause.
   expect(await page.evaluate(() => Notification.permission)).toBe("default");
   await expect(page.getByTestId("notify-blocked")).toHaveCount(0);
-  const toggle = page.getByTestId("notify-toggle");
+  // The toggle lives in the header now (an icon on a phone, words from sm up);
+  // its accessible name is the words at every size.
+  const toggle = page.locator("header").getByTestId("notify-toggle");
   await expect(toggle).toBeVisible();
-  await expect(toggle).toHaveText("Notify me when ready");
+  await expect(toggle).toHaveAccessibleName("Notify me when ready");
+  await expect(toggle).toContainText("Notify me when ready");
   await toggle.click();
-  await expect(toggle).toHaveText("Notifications on");
+  await expect(toggle).toHaveAccessibleName("Notifications on");
 
   await setHidden(true);
   const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_AI_SCRIPT: aiScript });
   expect(worker.code, worker.output).toBe(0);
-  await expect(page.getByTestId("reel-status")).toHaveText("processed", { timeout: 10_000 });
+  await expect.poll(() => reelStatus(admin, reelId!), { timeout: 10_000 }).toBe("processed");
   await expect(page).toHaveTitle("Ready: short-speech.mp4");
   await expect.poll(notifications).toHaveLength(1);
   expect((await notifications())[0]!.title).toBe("Ready: short-speech.mp4");

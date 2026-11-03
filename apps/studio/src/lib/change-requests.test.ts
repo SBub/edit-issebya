@@ -63,7 +63,7 @@ describe("changeBlockedReason", () => {
 
   it("blocks a failed reel without a version", () => {
     expect(changeBlockedReason({ status: "failed", current_version_id: null })).toBe(
-      "Processing failed; press Retry on the failed job first.",
+      "Processing failed; press Try again on the preview first.",
     );
   });
 });

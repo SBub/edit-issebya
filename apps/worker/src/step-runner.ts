@@ -11,6 +11,7 @@ import { type ProgressThrottle, createProgressThrottle } from "./progress.ts";
 import type { ProgressParser } from "./progress-parsers.ts";
 import { sampleTreeRss } from "./process-tree.ts";
 import type { ClaimedJob } from "./queue.ts";
+import { type ReelSizeHolder, reelSizeAttributes } from "./reel-size.ts";
 import {
   type AiUsage,
   type StepMeasurements,
@@ -35,6 +36,14 @@ export interface StepContext {
   // The pause before a step's one automatic retry (default
   // TRANSIENT_RETRY_DELAY_MS; unit tests pass 0).
   retryDelayMs?: number;
+  // The reel's size, put on every step span as `reel.*` attributes (none for
+  // a photo job or a unit test without it).
+  size?: ReelSizeHolder;
+}
+
+// The `reel.*` attributes of what the job knows of its reel's size now.
+function sizeAttributes(ctx: StepContext) {
+  return ctx.size ? reelSizeAttributes(ctx.size.current()) : {};
 }
 
 const TRANSIENT_RETRY_DELAY_MS = 2000;
@@ -81,7 +90,8 @@ export interface ToolsStep {
   outputs?: string[];
   sizeOf?: "out" | "in";
   // `ai`: what the step's AI calls used, written as the ai_* measurements.
-  work: (tool: Tool) => Promise<{ what: string; ai?: AiUsage }>;
+  // `stepContext` carries the step's span (an attribute the work learns).
+  work: (tool: Tool, stepContext: Context) => Promise<{ what: string; ai?: AiUsage }>;
 }
 
 // A step that fails with a tail of its own (the reasons, not a stack), and
@@ -90,8 +100,8 @@ export class StepError extends Error {
   readonly tail: string;
   readonly ai: AiUsage | undefined;
 
-  constructor(message: string, tail: string, ai?: AiUsage) {
-    super(message);
+  constructor(message: string, tail: string, ai?: AiUsage, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = "StepError";
     this.tail = tail;
     this.ai = ai;
@@ -134,6 +144,20 @@ class StepFailure extends Error {
   }
 }
 
+// Every error a step's row failed with and the error tracker captured there.
+const STEP_FAILURES = new WeakSet<object>();
+
+// True when the error (or one of its causes) failed a step: its row failed and
+// it was captured there, so the job's failure needs no capture of its own.
+export function isStepFailure(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 10 && typeof current === "object" && current !== null; depth += 1) {
+    if (STEP_FAILURES.has(current)) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 function emptyMeasurements(wallMs: number): StepMeasurements {
   return { wall_ms: wallMs, cpu_ms: null, peak_rss_bytes: null, bytes_in: null, bytes_out: null };
 }
@@ -174,6 +198,7 @@ async function withStep(
           "job.id": ctx.job.id,
           "step.name": name,
           "step.attempt": attempt,
+          ...sizeAttributes(ctx),
         },
       },
       ctx.jobContext,
@@ -219,8 +244,10 @@ async function withStep(
         measurements,
       );
       ctx.errors.stepFailed({ job: ctx.job, step: name, attempt, retrying: retry, error, tail });
+      if (typeof error === "object" && error !== null) STEP_FAILURES.add(error);
       if (!retry) throw error;
     } finally {
+      span.setAttributes(sizeAttributes(ctx));
       span.end();
     }
     await sleep(ctx.retryDelayMs ?? TRANSIENT_RETRY_DELAY_MS, undefined, { signal: ctx.signal });
@@ -243,6 +270,7 @@ export async function recordHit(
         "step.name": name,
         "step.cache_hit": true,
         "step.wall_ms": wallMs,
+        ...sizeAttributes(ctx),
       },
     },
     ctx.jobContext,
@@ -250,6 +278,7 @@ export async function recordHit(
   try {
     await ctx.steps.skipped(ctx.job, name, summary, wallMs);
   } finally {
+    span.setAttributes(sizeAttributes(ctx));
     span.end();
   }
 }
@@ -480,7 +509,7 @@ export function runToolsStep(
     let what: string;
     let ai: AiUsage | undefined;
     try {
-      ({ what, ai } = await spec.work(tool));
+      ({ what, ai } = await spec.work(tool, stepContext));
       ctx.signal.throwIfAborted();
       // 100 lands before the `done` write.
       await (throttle as ProgressThrottle | null)?.finish();

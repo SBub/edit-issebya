@@ -7,7 +7,7 @@ import {
   THUMBNAIL_FILE,
 } from "./pipeline/preview-copies.ts";
 
-const STEP = "preview_copies";
+export const STEP = "preview_copies";
 
 export interface PreviewCopiesRefs {
   footage: EditRef;

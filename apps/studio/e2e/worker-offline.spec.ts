@@ -75,13 +75,14 @@ test("a queued job says since when the worker is offline, live", async ({ baseUR
   await page.evaluate(() => {
     (window as unknown as { __noReload: string }).__noReload = "marker";
   });
-  const job = page.locator('[data-testid="job-item"][data-job-kind="process"]');
-  await expect(job.getByTestId("job-status")).toHaveText("queued");
-  await expect(job.getByTestId("job-offline")).toHaveCount(0);
+  // The queued job reads "Waiting to start" in the progress overlay.
+  const overlay = page.getByTestId("progress-overlay");
+  await expect(overlay.getByTestId("overlay-words")).toHaveText("Waiting to start");
+  await expect(overlay.getByTestId("job-offline")).toHaveCount(0);
 
   const lastBeat = new Date(Date.now() - 20 * 60_000);
   await beat(lastBeat);
-  const offline = job.getByTestId("job-offline");
+  const offline = overlay.getByTestId("job-offline");
   await expect(offline).toHaveText(/^Worker offline since \d{2}:\d{2}$/, { timeout: 10_000 });
   const expected = await page.evaluate((iso) => {
     const at = new Date(iso);

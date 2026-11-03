@@ -19,6 +19,7 @@ import {
 } from "@opentelemetry/sdk-logs";
 import { BatchSpanProcessor, type SpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
 import type { ClaimedJob } from "./queue.ts";
+import { type ReelSizeHolder, reelSizeAttributes } from "./reel-size.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -113,10 +114,12 @@ export function createTelemetry(
 // The job span, under a remote parent carrying the reel's trace id (span id
 // from the reel id's last 16 hex digits, never exported), so every job of the
 // reel, at any time, lands in the same trace. A photo's job does the same
-// with the photo's id.
+// with the photo's id. With the reel's size, the span carries its `reel.*`
+// attributes from the start.
 export function startJobSpan(
   telemetry: Telemetry,
   job: ClaimedJob,
+  size?: ReelSizeHolder,
 ): { span: Span; context: Context } {
   const traceId = traceIdForJob(job);
   const parent = trace.setSpanContext(ROOT_CONTEXT, {
@@ -127,15 +130,24 @@ export function startJobSpan(
   });
   const span = telemetry.tracer.startSpan(
     `job ${job.kind}`,
-    { attributes: { ...targetAttributes(job), "job.id": job.id, "job.attempt": job.attempts } },
+    {
+      attributes: {
+        ...targetAttributes(job),
+        "job.id": job.id,
+        "job.attempt": job.attempts,
+        ...(size ? reelSizeAttributes(size.current()) : {}),
+      },
+    },
     parent,
   );
   return { span, context: trace.setSpan(parent, span) };
 }
 
-// Ends the job span with its outcome.
-export function endJobSpan(span: Span, outcome: string): void {
+// Ends the job span with its outcome, and the reel's size as the job ended
+// knowing it (values learned during the job included).
+export function endJobSpan(span: Span, outcome: string, size?: ReelSizeHolder): void {
   span.setAttribute("job.outcome", outcome);
+  if (size) span.setAttributes(reelSizeAttributes(size.current()));
   // A wait is not an error: the job is taken again later.
   if (outcome === "failed" || outcome === "refused") span.setStatus({ code: SpanStatusCode.ERROR });
   span.end();

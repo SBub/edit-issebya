@@ -35,6 +35,13 @@ Metrics, as defined by the code:
   are absent wherever PostHog is not initialised, so every other chart reads the database.
 - Cost per reel and per step: wall and CPU seconds, peak memory, bytes, AI tokens and the AI cost
   Claude Code reports, summed from `steps`. No money is derived from machine time.
+- Time per step against reel length (`insights/step-time-vs-length.ts`, key `step-time-vs-length`,
+  "Studio: time per step against reel length", registered in `insights/index.ts` after the cost per
+  step and in the dry-run snapshot): per step name and 15-second bucket of the reel's
+  `source_seconds`, the count of `done` steps, their median and longest seconds, and the median
+  seconds per second of retimed footage. Sources: `steps` joined to `reels` on `reel_id` (details in
+  `app_docs/measurement.md`). Like every insight it reaches PostHog only through the owner's
+  `--apply`.
 - Failed steps by step name and week, over finished steps (done or failed).
 - Cache hit rate by week and to date: skipped steps with `cache_hit` over finished steps (`steps`).
 - Storage in total (distinct live `r2_key`, so a shared object counts once), per reel and per step,

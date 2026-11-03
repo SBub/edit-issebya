@@ -27,18 +27,26 @@ restore job for own reel`: own reel, status `queued`, and for a restore a versio
   without the request text.
 - `apps/studio/src/lib/change-requests.ts`: `normalizeRequest` (trim, 1 to 1000 characters),
   `changeBlockedReason` (null when open; otherwise `This clip was refused; upload another clip.`,
-  `Changes open once the upload finishes.` or `Processing failed; press Retry on the failed job
-first.`), `versionOrigin` and `jobRequestLabel` (the text shown beside a version or a job; a
+  `Changes open once the upload finishes.` or `Processing failed; press Try again on the preview
+first.`, Try again being the progress overlay's, `app_docs/status.md`), `versionOrigin` and `jobRequestLabel` (the text shown beside a version or a job; a
   render job reads `export of vN`, or `export` when the version is unknown).
 - `apps/studio/src/components/ChangeRequestForm.tsx`: the change box above the versions list. Disabled
   with the blocked reason beside it, otherwise the queue note (`changeQueueNote` in
   `apps/studio/src/lib/failures.ts`) when jobs are ahead; after sending it shows `Pending: <request>` until the job ends.
+  Its `refill(text)` handle puts a request back in the field and focuses it (the overlay's Change
+  the request).
+- A change refused twice (the job `failed` with `failure_kind` `answer_refused`) shows in the
+  progress overlay as `Could not finish styling`, a plain reason from the rule names
+  (`refusalReason` in `apps/studio/src/lib/step-words.ts`), Change the request (refills the field
+  with the sent request and focuses it) and Keep the current version; never Try again and never the
+  raw error tail.
 - `apps/studio/src/components/VersionList.tsx`: every version, newest first, the current one marked,
   each with its origin (`restored from vN`, the owner's quoted words, or `automatic`), its change
   summary and a go back control.
 - `apps/studio/src/components/LiveReel.tsx`: reads `versions` with the snapshot (`VERSION_LIST_COLUMNS`
   in `apps/studio/src/lib/versions.ts`, no edit metadata) and follows `INSERT` on `versions` over
-  Realtime, filtered to the reel. The jobs list shows each job's request or `go back to vN`.
+  Realtime, filtered to the reel. The reel page shows no jobs list; what a job is doing shows in the
+  progress overlay.
 - `apps/worker/src/job-kinds.ts`: `runJobKind` dispatches a claimed job by kind. A change without a
   request, a restore without a version and an unknown kind fail the job.
 - `apps/worker/src/process-job.ts`: `process` runs the pipeline, preview copies, first version and
@@ -77,7 +85,9 @@ specs, see `app_docs/decide-step.md`).
 - `apps/studio/db-tests/change-jobs.test.ts`: the kind checks, the column grant and the insert policy.
 - `apps/studio/e2e/change-requests.spec.ts`: a change makes version 3, a change the AI refuses twice
   (`brokenAnswerScript` in `apps/studio/test-support/ai-script.ts`) keeps version 3 and the reel
-  `processed`, and going back makes versions 4 and 5.
+  `processed`, with the overlay's `Could not finish styling`, its reason, Change the request (the
+  field refilled and focused, `studio_failure_action` sent) and Keep the current version, no Try
+  again, and going back makes versions 4 and 5.
 
 ## Notes
 

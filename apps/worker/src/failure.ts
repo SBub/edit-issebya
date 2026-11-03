@@ -27,6 +27,20 @@ export class FootageRefused extends Error {
   }
 }
 
+// The AI's answer failed the checks in every round: the names of the check
+// rules it failed (rule names only, never free text) and how many rounds ran.
+export class AnswerRefused extends PermanentError {
+  readonly rules: string[];
+  readonly rounds: number;
+
+  constructor(rules: string[], rounds: number) {
+    super("the answer failed the checks");
+    this.name = "AnswerRefused";
+    this.rules = rules;
+    this.rounds = rounds;
+  }
+}
+
 // The AI is not available (a usage limit, a signed-out Claude Code): the job
 // waits and is taken again later.
 export class AiUnavailable extends Error {
@@ -141,4 +155,15 @@ export function supabaseFailure(
 ): Error {
   const message = `${what}: ${error.message}`;
   return status >= 500 || status === 0 ? new TransientError(message) : new Error(message);
+}
+
+export type FailureKind = "refused" | "answer_refused" | "transient" | "failed";
+
+// What kind of failure an error is, for the job's `failure_kind` and error
+// tracking: refused footage, a refused AI answer, else transient or failed by
+// isTransient.
+export function failureKind(error: unknown): FailureKind {
+  if (findCause(error, FootageRefused)) return "refused";
+  if (findCause(error, AnswerRefused)) return "answer_refused";
+  return isTransient(error) ? "transient" : "failed";
 }
