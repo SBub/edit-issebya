@@ -43,8 +43,10 @@ interface Props {
   // The list's accessible name.
   label: string;
   items: readonly ThumbnailGridItem[];
-  // Shown in place of the list when there is no item.
-  empty: ReactNode;
+  // Shown in place of the list when there is no item (above the add tile
+  // when there is one). Without it an empty grid with an add tile shows only
+  // the add tile.
+  empty?: ReactNode;
   // Vertical 9:16 tiles (reels) or square ones.
   aspect?: "portrait" | "square";
   // "page": 3 columns on a phone, more as the width allows. "panel": 3 at
@@ -178,7 +180,7 @@ export function ThumbnailGrid({
     </ul>
   );
 
-  if (items.length > 0) return list;
+  if (items.length > 0 || empty === undefined) return list;
   return (
     <div className="flex flex-col gap-2">
       <div className="text-muted">{empty}</div>

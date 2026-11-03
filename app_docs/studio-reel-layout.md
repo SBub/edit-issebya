@@ -229,8 +229,9 @@ not a corner, and is unchanged.
   on a phone, up to 8 on wide screens) or `"panel"` (3 at every width). Optional prop `add`: a dashed
   add tile first in the grid, the tiles' size and aspect, with a **+** and a visible label that is
   also its accessible name, `disabled` and `data-ready`; with no item it is the only tile, under the
-  `empty` text. Optional `corner` per item: a control rendered as a sibling of the tile's link,
-  never inside it, with the title and meta padded clear of it. Nothing reel-specific: the reels use the defaults with `rounded` and without `add`, and the photo
+  optional `empty` text (none when `empty` is not passed, as in the photo library). Optional
+  `corner` per item: a control rendered as a sibling of the tile's link, never inside it, with the
+  title and meta padded clear of it. Nothing reel-specific: the reels use the defaults with `rounded` and without `add`, and the photo
   library uses it with `onSelect`, `aspect="square"`, `columns="panel"` and `add`
   (`app_docs/photo-library.md`).
 - `apps/studio/src/components/UploadDialog.tsx`: the square **+** button and a native `<dialog>` with

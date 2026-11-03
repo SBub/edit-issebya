@@ -175,12 +175,13 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
   expect(column.x).toBeGreaterThanOrEqual(edit.x + edit.width);
   await expectInsideRoot(page, library);
   await expectNoPageScroll(page);
-  await expect(library.getByText("No photos yet.")).toBeVisible();
-  // The heading names the library; the line under it invites the first photo.
+  // The heading names the library; the line under it invites the first photo,
+  // and is the only line: no "No photos yet." above the add tile.
   await expect(library.getByRole("heading", { level: 2 })).toHaveText("Your library");
   await expect(page.getByRole("region", { name: "Your library" })).toBeVisible();
   const intro = library.getByTestId("library-intro");
   await expect(intro).toHaveText(INTRO_EMPTY);
+  await expect(library.getByText("No photos yet.")).toHaveCount(0);
 
   // No round button in the header: the one upload button is the grid's first
   // tile, dashed, and with no photo the only one.
@@ -309,8 +310,8 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
   await dialog.getByRole("button", { name: "Yes, delete" }).click();
   await expect(dialog).toBeHidden();
   await expect(library.getByTestId("photo-status")).toHaveCount(0);
-  await expect(library.getByText("No photos yet.")).toBeVisible();
   await expect(intro).toHaveText(INTRO_EMPTY);
+  await expect(library.getByText("No photos yet.")).toHaveCount(0);
   expect(await photoRows()).toEqual([]);
   for (const key of [photo!.r2_key, described!.thumbnail_key!, described!.large_key!]) {
     expect(await storage.head(key)).toBeNull();

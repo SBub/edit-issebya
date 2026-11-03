@@ -39,8 +39,9 @@ desktop and is a fourth tab, `Library`, on a phone.
   (any status). With no photo: "Add photos of your work, places or products. When you talk about
   them, they can appear behind you in your reels." From the first photo on (an `uploading` one
   counts): "Photos you add here can appear in your reels, placed behind you when they fit what
-  you're saying" (no full stop, owner, 2026-11-03). The grid keeps its accessible name `Photos` (a list of photos), and an empty
-  library still shows `No photos yet.` above the add tile. It renders
+  you're saying" (no full stop, owner, 2026-11-03). The grid keeps its accessible name `Photos` (a list of photos). An empty
+  library shows only the intro line above the add tile: no `No photos yet.` (owner, 2026-11-03;
+  `PhotoLibrary` passes no `empty` to `ThumbnailGrid`). It renders
   `ThumbnailGrid` (newest first, after a dashed **Upload a photo** tile, its visible
   label also its accessible name, that opens the file picker), follows the `photos` table through Realtime and re-reads the library through `loadLibrary` on each change. A tile
   shows only its thumbnail: no file name, age or size under it, and no badge for a `ready` photo;
@@ -128,8 +129,8 @@ only, run by hand; CI uses the committed files).
   `finish_photo_upload`, `delete_photo`, `record_photo_file`, `jobs_target_check`), plus
   `job-order.test.ts` and `stored-files.test.ts`.
 - E2E: `apps/studio/e2e/photo-library.spec.ts` checks the heading **Your library** and the empty
-  intro before the first upload, and the other intro once a photo is in the library (and the empty
-  one again after Delete); it uploads the JPEG fixture at 1440x900 through the
+  intro before the first upload with no `No photos yet.` line, and the other intro once a photo is in
+  the library (and the empty one again after Delete, still with no `No photos yet.`); it uploads the JPEG fixture at 1440x900 through the
   dashed add tile (first in the grid, no other upload button; no page scroll), checks `describing`
   then, live after the worker's `once`, a ready tile with only its image (no badge, no text, the file
   name as its accessible name), the `describe_photo` step's AI columns and the three

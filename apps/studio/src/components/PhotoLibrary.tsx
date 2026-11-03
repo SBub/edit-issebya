@@ -204,7 +204,6 @@ export function PhotoLibrary({ initial }: Props) {
         <ThumbnailGrid
           label="Photos"
           items={tiles}
-          empty={<p className="text-sm">No photos yet.</p>}
           aspect="square"
           columns="panel"
           add={{
