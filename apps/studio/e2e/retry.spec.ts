@@ -8,14 +8,24 @@ import { jobsOf, reelStatus } from "../test-support/rows.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 import { eventsNamed, recordEvents } from "./events.ts";
 
-// This run's own cache folder: the worker reads it through R2_KEY_PREFIX.
-const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
-// The pipeline step double (no real tools) and the committed decide answer.
-const STEPS = {
-  R2_KEY_PREFIX: CACHE_PREFIX,
-  E2E_MOCK_STEPS: "true",
-  E2E_MOCK_AI_SCRIPT: SHORT_SPEECH_ANSWER,
-};
+const cachePrefixes: string[] = [];
+
+// Each case gets its own cache folder: a step one case runs is stored in the
+// cache, and would be a hit for the next case's reel (same fixture clip).
+function freshCache() {
+  // The worker reads this case's folder through R2_KEY_PREFIX.
+  const prefix = `e2e-${crypto.randomUUID()}/`;
+  cachePrefixes.push(prefix);
+  return {
+    prefix,
+    // The pipeline step double (no real tools) and the committed decide answer.
+    steps: {
+      R2_KEY_PREFIX: prefix,
+      E2E_MOCK_STEPS: "true",
+      E2E_MOCK_AI_SCRIPT: SHORT_SPEECH_ANSWER,
+    },
+  };
+}
 
 const admin = localSupabaseAdmin();
 const storage = fakeStorage({
@@ -53,7 +63,9 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  for (const key of await storage.list(CACHE_PREFIX)) await storage.delete(key);
+  for (const prefix of cachePrefixes) {
+    for (const key of await storage.list(prefix)) await storage.delete(key);
+  }
   if (owner) await deleteTestUser(admin, owner.id);
 });
 
@@ -62,17 +74,18 @@ test("a step killed twice fails the job; Retry resumes at that step and finishes
   baseURL,
 }) => {
   test.setTimeout(180_000);
+  const { prefix, steps } = freshCache();
   const { reelId, jobId } = await insertQueuedReel({
     admin,
     storage,
     ownerId: owner.id,
-    prefix: CACHE_PREFIX,
+    prefix,
   });
-  await seedPipelineCache(storage, CACHE_PREFIX, { except: ["transcribe"] });
+  await seedPipelineCache(storage, prefix, { except: ["transcribe"] });
 
   // The transcribe double kills itself with SIGKILL: transient, so it runs
   // once more, then the job fails.
-  const first = await runWorkerOnce({ ...STEPS, E2E_MOCK_STEP_FAULT: "transcribe:signal" });
+  const first = await runWorkerOnce({ ...steps, E2E_MOCK_STEP_FAULT: "transcribe:signal" });
   expect(first.code, first.output).toBe(1);
   const { data: failed } = await admin
     .from("jobs")
@@ -135,7 +148,7 @@ test("a step killed twice fails the job; Retry resumes at that step and finishes
   expect(retries).toEqual([{ id: expect.any(String), kind: "process", status: "queued" }]);
   const retryId = retries![0]!.id as string;
 
-  const second = await runWorkerOnce(STEPS);
+  const second = await runWorkerOnce(steps);
   expect(second.code, second.output).toBe(0);
 
   await expect
@@ -163,15 +176,16 @@ test("a step killed twice fails the job; Retry resumes at that step and finishes
 
 test("a retry that fails again offers a fresh Try again, live", async ({ page, baseURL }) => {
   test.setTimeout(180_000);
+  const { prefix, steps } = freshCache();
   const { reelId, jobId } = await insertQueuedReel({
     admin,
     storage,
     ownerId: owner.id,
-    prefix: CACHE_PREFIX,
+    prefix,
   });
-  await seedPipelineCache(storage, CACHE_PREFIX, { except: ["transcribe"] });
+  await seedPipelineCache(storage, prefix, { except: ["transcribe"] });
 
-  const first = await runWorkerOnce({ ...STEPS, E2E_MOCK_STEP_FAULT: "transcribe:signal" });
+  const first = await runWorkerOnce({ ...steps, E2E_MOCK_STEP_FAULT: "transcribe:signal" });
   expect(first.code, first.output).toBe(1);
   const { data: failed } = await admin
     .from("jobs")
@@ -200,7 +214,7 @@ test("a retry that fails again offers a fresh Try again, live", async ({ page, b
   await expect(overlay).toHaveAttribute("data-overlay-kind", "working", { timeout: 10_000 });
 
   // The retry fails the same way.
-  const second = await runWorkerOnce({ ...STEPS, E2E_MOCK_STEP_FAULT: "transcribe:signal" });
+  const second = await runWorkerOnce({ ...steps, E2E_MOCK_STEP_FAULT: "transcribe:signal" });
   expect(second.code, second.output).toBe(1);
   await expect
     .poll(async () => (await jobsOf(admin, reelId)).map((job) => job.status), { timeout: 10_000 })
@@ -227,7 +241,7 @@ test("a retry that fails again offers a fresh Try again, live", async ({ page, b
     ]);
 
   // Finish the reel, so no claimable job is left for later specs.
-  const third = await runWorkerOnce(STEPS);
+  const third = await runWorkerOnce(steps);
   expect(third.code, third.output).toBe(0);
   await expect.poll(() => reelStatus(admin, reelId), { timeout: 10_000 }).toBe("processed");
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
