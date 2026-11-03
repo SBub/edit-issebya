@@ -4,6 +4,7 @@
 
 - specs/issue-95-adw-f1d8b655-sdlc_planner-studio-one-screen-reel-layout.md
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
+- specs/issue-121-adw-98c26124-sdlc_planner-remove-reel-undo-redo.md
 
 ## Overview
 
