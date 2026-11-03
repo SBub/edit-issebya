@@ -48,7 +48,9 @@ client, identifies the signed-in user and sends `studio_*` events.
   `ai_input_tokens`, `ai_output_tokens`, `ai_cost_usd`, `ai_model`, written by a later slice. No
   column converts machine measurements to money.
 - A lost lease aborts the signal: the process group gets SIGTERM, SIGKILL after 5 seconds, and nothing
-  more is written to the row.
+  more is written to the row. The tool call settles only once no process of the group is left (reaped
+  included, at most 2 seconds past the SIGKILL), so a member that let go of the pipes still gets the
+  SIGKILL. No tool call starts after an abort.
 
 ### Telemetry (`apps/worker/src/telemetry.ts`)
 
@@ -154,7 +156,8 @@ and longest seconds, and the median seconds per second of retimed footage.
 
 - Worker unit tests (real child processes under `/usr/bin/time`): `step-runner.test.ts` (CPU vs sleep,
   200 MB of random memory touched every turn, so macOS cannot compress it under load, group sampling with and without the option, byte counts, failure tail, missing tool,
-  abort), `summary.test.ts`, `time-report.test.ts`, `process-tree.test.ts`, `telemetry.test.ts` (one
+  abort: the whole group gone when the step settles, a grandchild that ignores SIGTERM and holds no
+  pipes killed, no call started after the abort), `summary.test.ts`, `time-report.test.ts`, `process-tree.test.ts`, `telemetry.test.ts` (one
   trace per reel, span tree, logs linked to spans, no request when export is off against a local HTTP
   server, positive control), `steps/receive.test.ts`.
 - Studio unit tests: `src/lib/analytics.test.ts`, `src/lib/track.test.ts`.
