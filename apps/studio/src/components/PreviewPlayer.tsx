@@ -467,7 +467,10 @@ export function PreviewPlayer({
           {zones && <PlatformZones />}
         </div>
       </div>
-      <div className="flex flex-none items-center gap-2 text-sm">
+      {/* Three columns, the outer two equal: the clock sits on the row's centre
+          whatever stands left (Play or Pause) and right (Zones and the extra
+          buttons). */}
+      <div className="grid flex-none grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
         <button
           type="button"
           onClick={onPlayClick}
@@ -475,7 +478,7 @@ export function PreviewPlayer({
           aria-label={intent === "playing" ? "Pause" : "Play"}
           title={intent === "playing" ? "Pause" : "Play"}
           data-testid="play-toggle"
-          className="flex size-10 items-center justify-center text-ink transition-opacity enabled:hover:opacity-80 disabled:opacity-50"
+          className="flex size-10 items-center justify-center justify-self-start text-ink transition-opacity enabled:hover:opacity-80 disabled:opacity-50"
         >
           {/* A filled play triangle with rounded corners, or two filled bars. */}
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="size-7">
@@ -494,21 +497,31 @@ export function PreviewPlayer({
             )}
           </svg>
         </button>
+        {/* Two lines: the current time on top, the total below. The hidden
+            slash keeps the read-out "00:00 / 00:52" for screen readers. */}
         <span
           data-testid="preview-clock"
-          className="text-xs whitespace-nowrap text-muted tabular-nums"
+          className="flex flex-col items-center font-mono text-xs leading-4 whitespace-nowrap tabular-nums"
         >
-          {formatClock(position)} / {formatClock(duration)}
+          <span data-testid="preview-clock-position" className="text-ink">
+            {formatClock(position)}
+          </span>
+          <span className="sr-only"> / </span>
+          <span data-testid="preview-clock-duration" className="text-muted">
+            {formatClock(duration)}
+          </span>
         </span>
-        <button
-          type="button"
-          aria-pressed={zones}
-          title="Show what TikTok and Instagram cover"
-          onClick={() => setZones((on) => !on)}
-          className="ml-auto flex h-8 flex-none items-center rounded-full border border-line px-2.5 text-xs hover:bg-raised aria-pressed:bg-raised aria-pressed:font-semibold"
-        >
-          Zones
-        </button>
+        <div className="flex min-w-0 items-center justify-end gap-2">
+          <button
+            type="button"
+            aria-pressed={zones}
+            title="Show what TikTok and Instagram cover"
+            onClick={() => setZones((on) => !on)}
+            className="flex h-8 flex-none items-center rounded-full border border-line px-2.5 text-xs hover:bg-raised aria-pressed:bg-raised aria-pressed:font-semibold"
+          >
+            Zones
+          </button>
+        </div>
       </div>
     </div>
   );

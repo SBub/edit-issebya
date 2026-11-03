@@ -630,7 +630,10 @@ for (const [size, viewport] of [
     await expectNoPageScroll(page);
   });
 
-  test(`Play and Pause are one icon button at ${size}`, async ({ page, baseURL }) => {
+  test(`Play and Pause are one icon button and the clock is centred at ${size}`, async ({
+    page,
+    baseURL,
+  }) => {
     await openReel(page, baseURL!, viewport);
     const toggle = page.getByTestId("play-toggle");
     await expect(toggle).toBeEnabled();
@@ -650,6 +653,21 @@ for (const [size, viewport] of [
     expect(await toggle.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
       "rgba(0, 0, 0, 0)",
     );
+
+    // The clock sits on the control row's centre (within 2 px), whatever
+    // stands left and right of it: two lines, the current time above the
+    // total, with the times in the existing format.
+    const row = (await toggle.locator("..").boundingBox())!;
+    expect(Math.abs(clock.x + clock.width / 2 - (row.x + row.width / 2))).toBeLessThanOrEqual(2);
+    const current = page.getByTestId("preview-clock-position");
+    const total = page.getByTestId("preview-clock-duration");
+    await expect(current).toHaveText("00:00");
+    await expect(total).toHaveText(/^\d{2}:\d{2}$/);
+    const currentBox = (await current.boundingBox())!;
+    const totalBox = (await total.boundingBox())!;
+    expect(currentBox.y + currentBox.height).toBeLessThanOrEqual(totalBox.y + 0.5);
+    // The row is no taller than the 40 px button.
+    expect(row.height).toBeLessThanOrEqual(box.height + 0.5);
 
     await toggle.click();
     await expect(toggle).toHaveAccessibleName("Pause");

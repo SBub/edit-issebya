@@ -57,12 +57,20 @@ lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unch
   the preview.
 - `apps/studio/src/components/ReelPreview.tsx`, `PreviewPlayer.tsx`: the preview builds the
   reel's current version (`reels.current_version_id`) and exposes the player's clock to the control
-  row (Play or Pause, `00:00 / 00:52`, then Zones). Play or Pause is an
+  row (Play or Pause at the left, the clock in the centre, then Zones at the right). The row is a
+  three-column grid (`grid-cols-[1fr_auto_1fr]`), the outer two columns equal, so the clock sits on
+  the row's horizontal centre whatever stands left and right of it.
+  Play or Pause is an
   icon button at the left of the row (`data-testid="play-toggle"`): a filled play triangle with
   rounded corners when paused, two filled bars while playing, an inline `aria-hidden` SVG of 28 px in
   `text-ink` (`fill="currentColor"`) with no background, shape or text, a 40x40 tap target, a slight
   opacity change on hover (`enabled:hover:opacity-80`), dimmed when disabled, and the global
-  `:focus-visible` ring. Its `aria-label` and `title` switch between `Play` and `Pause`. The control row has
+  `:focus-visible` ring. Its `aria-label` and `title` switch between `Play` and `Pause`. The clock
+  (`data-testid="preview-clock"`) is two stacked lines in `font-mono` with tabular figures: the
+  current time on top (`preview-clock-position`, `text-ink`) and the total duration below
+  (`preview-clock-duration`, `text-muted`), both `00:00`; a screen-reader-only `/` between them
+  keeps the read-out `00:00 / 00:52`. The two 16 px lines fit inside the 40 px button height, so the
+  row is no taller than before. The control row has
   no Position slider: the tracks timeline's ruler is the one scrubber. `PreviewPlayer` exposes its
   seek through a `ref` (`PreviewPlayerHandle.seek`), and `ReelPreview`'s `BuiltPreview` hands it to
   `TracksTimeline` as `onSeek`, so a ruler seek takes the same path the slider did (the player's
@@ -180,7 +188,8 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   sizes. At both sizes it checks that Play and Pause is one icon
   button (`play-toggle`) with no text and one `aria-hidden` SVG, at least 40x40 and left of the
   clock, with a transparent background on hover, whose accessible name and `title` switch from
-  `Play` to `Pause` and back. At both sizes it
+  `Play` to `Pause` and back; and that the clock's horizontal centre is within 2 px of the control
+  row's, the current time (`00:00`) above the total, and the row no taller than the button. At both sizes it
   checks the ruler as the one scrubber: no
   Position control in the control row and the ruler the page's one `role="slider"`; the ruler's left
   edge and width equal every lane's within 1 px; clicks at 25% and 75% of its box seek the player
