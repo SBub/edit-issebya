@@ -10,6 +10,8 @@
   "scripts": {
     "postinstall": "lefthook install",
     "dev": "turbo run dev",
+    "dev:studio": "bash scripts/dev-studio.sh",
+    "dev:studio:status": "bash scripts/dev-studio.sh --check",
     "build": "turbo run build",
     "start": "turbo run start",
     "typecheck": "turbo run typecheck",
