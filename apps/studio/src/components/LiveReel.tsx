@@ -366,7 +366,7 @@ export function LiveReel({
             <Link
               href="/"
               aria-label="Back to your reels"
-              className="flex flex-none items-center gap-1 rounded-full px-2 py-1 text-sm text-muted hover:bg-raised hover:text-ink"
+              className="flex flex-none items-center gap-1 px-2 py-1 text-sm text-muted hover:bg-raised hover:text-ink"
             >
               <span aria-hidden="true">&larr;</span>
               <span className="hidden sm:inline">Your reels</span>
@@ -389,7 +389,7 @@ export function LiveReel({
               <p
                 role="alert"
                 data-testid="reel-refusal"
-                className="flex-none rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+                className="flex-none border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
               >
                 {reel.refusal_message}
               </p>

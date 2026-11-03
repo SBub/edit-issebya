@@ -174,13 +174,13 @@ export function UploadForm() {
         accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm"
         aria-describedby="upload-status"
         disabled={busy}
-        className="w-full max-w-full rounded-md border border-line bg-raised px-3 py-2 text-base"
+        className="w-full max-w-full border border-line bg-raised px-3 py-2 text-base"
       />
       <div className="flex gap-3">
         <button
           type="submit"
           disabled={busy}
-          className="flex-1 rounded-md bg-accent px-4 py-2 text-base font-medium text-surface disabled:opacity-60"
+          className="flex-1 bg-accent px-4 py-2 text-base font-medium text-surface disabled:opacity-60"
         >
           Upload
         </button>
@@ -188,7 +188,7 @@ export function UploadForm() {
           <button
             type="button"
             onClick={cancel}
-            className="rounded-md border border-line px-4 py-2 text-base font-medium"
+            className="border border-line px-4 py-2 text-base font-medium"
           >
             Cancel
           </button>
@@ -200,7 +200,7 @@ export function UploadForm() {
           data-testid="upload-progress"
           max={100}
           value={percent}
-          className="h-2 w-full overflow-hidden rounded-full accent-accent"
+          className="h-2 w-full appearance-none overflow-hidden bg-raised [&::-moz-progress-bar]:bg-accent [&::-webkit-progress-bar]:bg-raised [&::-webkit-progress-value]:bg-accent"
         />
       ) : null}
       <p id="upload-status" aria-live="polite" className="min-h-6 text-sm">

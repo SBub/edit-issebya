@@ -17,7 +17,9 @@ import {
   rulerTicks,
   scrubKey,
   secondsAtX,
+  TRACK_ROWS,
   timelineRows,
+  trackItemClass,
 } from "./tracks-timeline";
 
 function parsed(json: unknown, transcriptJson: unknown) {
@@ -212,5 +214,19 @@ describe("scrubKey", () => {
   it("ignores any other key", () => {
     expect(scrubKey("Enter", false, 12, 52)).toBeNull();
     expect(scrubKey("a", false, 12, 52)).toBeNull();
+  });
+});
+
+describe("trackItemClass", () => {
+  it("makes Behind, Accents and Transitions items slightly rounded and keeps footage clips square", () => {
+    for (const { key } of TRACK_ROWS) {
+      const classes = trackItemClass(key).split(" ");
+      expect(classes.includes("rounded-track")).toBe(key !== "footage");
+      expect(classes.some((name) => name.startsWith("rounded") && name !== "rounded-track")).toBe(
+        false,
+      );
+    }
+    expect(trackItemClass("footage")).toBe("bg-track-footage");
+    expect(trackItemClass("transitions")).toBe("bg-track-transitions rounded-track");
   });
 });

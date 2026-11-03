@@ -326,6 +326,81 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
   }
 });
 
+// One corner radius (--radius-reel) in the studio, on five elements only;
+// the one exception is the track items, which are slightly rounded (4px).
+test("one corner radius: the preview, the change box, Send, Export and the reel cards; track items are slightly rounded; nothing else", async ({
+  page,
+  baseURL,
+}) => {
+  await openReel(page, baseURL!, DESKTOP);
+  await expect(page.getByTestId("version-item")).toHaveCount(2 + EXTRA_VERSIONS);
+  const radius = (locator: Locator) =>
+    locator.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return [
+        style.borderTopLeftRadius,
+        style.borderTopRightRadius,
+        style.borderBottomRightRadius,
+        style.borderBottomLeftRadius,
+      ].join(" ");
+    });
+  const rounded = [
+    page.getByTestId("preview-frame"),
+    page.getByTestId("change-field"),
+    page.getByRole("button", { name: "Send" }),
+    page.getByTestId("export-button"),
+  ];
+  const reel = await radius(rounded[0]!);
+  expect(reel).not.toBe("0px 0px 0px 0px");
+  expect(new Set(reel.split(" ")).size).toBe(1);
+  for (const locator of rounded) expect(await radius(locator)).toBe(reel);
+  for (const square of [
+    page.locator("header"),
+    page.getByTestId("version-item").first(),
+    page.getByRole("button", { name: "Zones" }),
+    page.getByTestId("play-toggle"),
+    page.getByRole("button", { name: "Upload a photo" }),
+    page.getByTestId("tracks"),
+  ]) {
+    expect(await radius(square)).toBe("0px 0px 0px 0px");
+  }
+
+  // Track items are slightly rounded: a non-footage item (Behind, Accents or
+  // Transitions) has a 4px radius (rounded-track) on every corner. The seeded
+  // reel shows version 1 unchanged (baselineEdit: footage and captions only),
+  // so it has no such item and this check runs only when one exists; the unit
+  // test of trackItemClass (tracks-timeline.test.ts) covers the classes for
+  // every row. A Footage clip (a strip of frames) and its lane stay square,
+  // always checked.
+  const tracks = page.getByTestId("tracks");
+  const trackItems = tracks
+    .locator('[data-track]:not([data-track="footage"])')
+    .getByTestId("track-item");
+  if (await trackItems.count()) {
+    expect(await radius(trackItems.first())).toBe("4px 4px 4px 4px");
+  }
+  for (const square of [
+    tracks.locator('[data-track="footage"]').getByTestId("track-item").first(),
+    tracks.locator('[data-track="footage"]').getByTestId("track-lane"),
+  ]) {
+    expect(await radius(square)).toBe("0px 0px 0px 0px");
+  }
+
+  // The reels list: a reel card's thumbnail (the image clipped to it) has the
+  // preview's radius, and so does its link (the focus ring follows it).
+  await page.goto("/studio");
+  const card = page.getByRole("list", { name: "Reels" }).getByRole("listitem").first();
+  const thumbnail = card.getByTestId("tile-thumbnail");
+  await expect(thumbnail).toBeVisible();
+  expect(await radius(thumbnail)).toBe(reel);
+  expect(await thumbnail.evaluate((el) => getComputedStyle(el).overflow)).toBe("hidden");
+  expect(await radius(card.getByRole("link"))).toBe(reel);
+  // The card's bin: a plain ink icon, square, with no background.
+  const bin = card.getByTestId("delete-reel");
+  expect(await radius(bin)).toBe("0px 0px 0px 0px");
+  expect(await bin.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+});
+
 // Every version is one line at one height whatever its text; the arrow opens
 // its details in place.
 for (const [size, viewport] of [

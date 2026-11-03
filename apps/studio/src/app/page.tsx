@@ -122,7 +122,7 @@ export default async function StudioHome({
         <SignOutButton />
       </header>
       <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 pb-24 sm:p-4 sm:pb-24">
-        <ThumbnailGrid label="Reels" items={tiles} empty={<p>No reels yet.</p>} />
+        <ThumbnailGrid label="Reels" items={tiles} empty={<p>No reels yet.</p>} rounded />
       </main>
       <UploadDialog />
     </div>

@@ -11,12 +11,12 @@ import type { FramesLayout } from "@/lib/preview-sources";
 import {
   type Timeline,
   type TimelineItem,
-  type TrackKey,
   formatClock,
   frameIndexAt,
   rulerTicks,
   scrubKey,
   secondsAtX,
+  trackItemClass,
 } from "@/lib/tracks-timeline";
 
 export interface TimelineFrames {
@@ -37,13 +37,6 @@ interface Props {
 const FOOTAGE_ROW_PX = 36;
 const ROW_PX = 20;
 const TILE_PX = (FOOTAGE_ROW_PX * 9) / 16;
-
-const ITEM_COLOURS: Record<TrackKey, string> = {
-  footage: "bg-track-footage",
-  behind: "bg-track-behind text-surface",
-  overlays: "bg-track-accents",
-  transitions: "bg-track-transitions",
-};
 
 function percent(seconds: number, duration: number): number {
   return duration > 0 ? Math.min(Math.max((seconds / duration) * 100, 0), 100) : 0;
@@ -159,7 +152,7 @@ export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
     <section
       aria-label="Tracks"
       data-testid="tracks"
-      className="flex-none rounded-lg bg-chrome p-2 text-[10px] leading-none select-none"
+      className="flex-none bg-chrome p-2 text-[10px] leading-none select-none"
     >
       {/* The lifted panel's padding sits outside this box, so the playhead's
           left-20 still lines up with the lanes after the label column. */}
@@ -184,7 +177,7 @@ export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
             onPointerCancel={endScrub}
             onLostPointerCapture={endScrub}
             onKeyDown={onKeyDown}
-            className="relative h-full min-w-0 flex-1 cursor-pointer touch-none rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="relative h-full min-w-0 flex-1 cursor-pointer touch-none outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             {ticks.map((tick) => (
               <span
@@ -211,7 +204,7 @@ export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
             <span className="w-20 flex-none truncate pr-2 text-xs text-muted">{row.label}</span>
             <div
               data-testid="track-lane"
-              className="relative h-full min-w-0 flex-1 overflow-hidden rounded-sm bg-surface"
+              className="relative h-full min-w-0 flex-1 overflow-hidden bg-surface"
             >
               {row.items.map((item) => (
                 <div
@@ -221,7 +214,7 @@ export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
                   data-start={item.start.toFixed(3)}
                   data-end={item.end.toFixed(3)}
                   title={span(item)}
-                  className={`absolute inset-y-0 overflow-hidden rounded-sm ${ITEM_COLOURS[row.key]}`}
+                  className={`absolute inset-y-0 overflow-hidden ${trackItemClass(row.key)}`}
                   style={{
                     left: `${percent(item.start, duration)}%`,
                     width: `${percent(item.end - item.start, duration)}%`,
@@ -250,7 +243,7 @@ export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
             style={{ transform: `translateX(${percent(at, duration)}%)` }}
           >
             <span className="absolute inset-y-0 left-0 w-0.5 -translate-x-1/2 bg-accent" />
-            <span className="absolute top-0 left-0 size-2 -translate-x-1/2 rounded-full bg-accent" />
+            <span className="absolute top-0 left-0 size-2 -translate-x-1/2 bg-accent" />
           </div>
         </div>
       </div>

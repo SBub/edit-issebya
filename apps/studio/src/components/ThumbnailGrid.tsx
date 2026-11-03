@@ -52,6 +52,10 @@ interface Props {
   columns?: "page" | "panel";
   // An add tile, first in the grid; with no item it is the only tile.
   add?: ThumbnailGridAdd;
+  // Each item's thumbnail (and the tile's focus ring) takes the studio's one
+  // corner radius (`rounded-reel`); the add tile stays square. Off by
+  // default: only the reels list rounds its cards.
+  rounded?: boolean;
 }
 
 const ASPECTS = { portrait: "aspect-[9/16]", square: "aspect-square" } as const;
@@ -64,10 +68,10 @@ const COLUMNS = {
 // text never runs under it (size-11 on a phone, size-8 above).
 const PAD = "pr-12 sm:pr-9";
 
-const TILE = "group flex flex-col gap-1 rounded-lg text-left focus-visible:outline-offset-4";
+const TILE = "group flex flex-col gap-1 text-left focus-visible:outline-offset-4";
 
 const ADD =
-  "flex w-full flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-line text-muted transition-colors focus-visible:outline-offset-4 enabled:hover:border-accent enabled:hover:bg-raised enabled:hover:text-accent disabled:opacity-60";
+  "flex w-full flex-col items-center justify-center gap-1 border-2 border-dashed border-line text-muted transition-colors focus-visible:outline-offset-4 enabled:hover:border-accent enabled:hover:bg-raised enabled:hover:text-accent disabled:opacity-60";
 
 // A grid of thumbnails, each a link or a button, after an optional add tile.
 // Nothing reel- or photo-specific: the reels list and the photo library both
@@ -79,7 +83,9 @@ export function ThumbnailGrid({
   aspect = "portrait",
   columns = "page",
   add,
+  rounded = false,
 }: Props) {
+  const corner = rounded ? "rounded-reel" : "";
   if (items.length === 0 && !add) {
     return (
       <section aria-label={label} className="text-muted">
@@ -111,7 +117,8 @@ export function ThumbnailGrid({
         const body = (
           <>
             <span
-              className={`relative block ${ASPECTS[aspect]} w-full overflow-hidden rounded-lg border border-line bg-raised`}
+              data-testid="tile-thumbnail"
+              className={`relative block ${ASPECTS[aspect]} w-full overflow-hidden border border-line bg-raised ${corner}`}
             >
               {item.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- a short-lived signed storage URL, never a Next image
@@ -127,7 +134,7 @@ export function ThumbnailGrid({
               {item.badge && (
                 <span
                   data-testid={item.badgeTestId}
-                  className="absolute top-1 left-1 rounded-full bg-surface/80 px-1.5 py-0.5 text-[10px] font-medium text-ink"
+                  className="absolute top-1 left-1 bg-surface/80 px-1.5 py-0.5 text-[10px] font-medium text-ink"
                 >
                   {item.badge}
                 </span>
@@ -151,7 +158,7 @@ export function ThumbnailGrid({
         return (
           <li key={item.id} className="relative min-w-0">
             {item.href !== undefined ? (
-              <Link href={item.href} aria-label={item.label} className={TILE}>
+              <Link href={item.href} aria-label={item.label} className={`${TILE} ${corner}`}>
                 {body}
               </Link>
             ) : (
@@ -159,7 +166,7 @@ export function ThumbnailGrid({
                 type="button"
                 onClick={item.onSelect}
                 aria-label={item.label}
-                className={`${TILE} w-full`}
+                className={`${TILE} w-full ${corner}`}
               >
                 {body}
               </button>

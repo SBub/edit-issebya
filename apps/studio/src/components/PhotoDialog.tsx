@@ -49,7 +49,7 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
         setConfirming(false);
         setMessage("");
       }}
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(40rem,calc(100%-2rem))] overflow-y-auto rounded-xl border border-line bg-surface p-5 text-ink backdrop:bg-black/60"
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(40rem,calc(100%-2rem))] overflow-y-auto border border-line bg-surface p-5 text-ink backdrop:bg-black/60"
     >
       <div className="mb-4 flex items-center gap-1">
         <h2 id="photo-heading" className="min-w-0 flex-1 truncate text-lg font-semibold">
@@ -62,7 +62,7 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
                 type="button"
                 disabled={busy}
                 onClick={() => setConfirming(false)}
-                className="rounded-full border border-line px-3 py-1 text-sm hover:bg-raised"
+                className="border border-line px-3 py-1 text-sm hover:bg-raised"
               >
                 Cancel
               </button>
@@ -70,7 +70,7 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
                 type="button"
                 disabled={busy}
                 onClick={() => void remove()}
-                className="rounded-full bg-danger px-3 py-1 text-sm font-medium text-surface disabled:opacity-60"
+                className="bg-danger px-3 py-1 text-sm font-medium text-surface disabled:opacity-60"
               >
                 Yes, delete
               </button>
@@ -127,12 +127,12 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
             <img
               src={photo.largeUrl}
               alt={photo.description ?? ""}
-              className="max-h-[60dvh] w-full rounded-lg bg-raised object-contain"
+              className="max-h-[60dvh] w-full bg-raised object-contain"
             />
           ) : (
             <p
               data-testid="photo-dialog-status"
-              className="rounded-lg border border-line bg-raised px-3 py-6 text-center text-sm text-muted"
+              className="border border-line bg-raised px-3 py-6 text-center text-sm text-muted"
             >
               {photo.status}
             </p>
@@ -152,7 +152,7 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
                 <li
                   key={tag}
                   data-testid="photo-tag"
-                  className="rounded-full border border-line px-2 py-0.5 text-xs"
+                  className="border border-line px-2 py-0.5 text-xs"
                 >
                   {tag}
                 </li>

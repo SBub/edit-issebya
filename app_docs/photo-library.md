@@ -118,7 +118,7 @@ only, run by hand; CI uses the committed files).
   `finish_photo_upload`, `delete_photo`, `record_photo_file`, `jobs_target_check`), plus
   `job-order.test.ts` and `stored-files.test.ts`.
 - E2E: `apps/studio/e2e/photo-library.spec.ts` uploads the JPEG fixture at 1440x900 through the
-  dashed add tile (first in the grid, no round button left; no page scroll), checks `describing`
+  dashed add tile (first in the grid, no other upload button; no page scroll), checks `describing`
   then, live after the worker's `once`, a ready tile with only its image (no badge, no text, the file
   name as its accessible name), the `describe_photo` step's AI columns and the three
   `stored_files` rows, the dialog's header (the cross found by role and name `Close`, no text, an

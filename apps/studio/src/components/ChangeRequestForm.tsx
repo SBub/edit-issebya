@@ -104,7 +104,7 @@ export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs, ref 
           textarea only; the whole box shows the ring instead. */}
       <div
         data-testid="change-field"
-        className="relative flex rounded-xl border border-line bg-chrome focus-within:ring-2 focus-within:ring-accent has-[textarea:disabled]:bg-chrome/50 lg:min-h-0 lg:flex-1"
+        className="relative flex rounded-reel border border-line bg-chrome focus-within:ring-2 focus-within:ring-accent has-[textarea:disabled]:bg-chrome/50 lg:min-h-0 lg:flex-1"
       >
         <textarea
           ref={field}
@@ -118,14 +118,14 @@ export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs, ref 
           aria-label="Ask for a change"
           aria-describedby="change-reason change-status"
           placeholder="What should change? For example: slower transitions, no photos in this one, bigger captions"
-          className="min-w-0 flex-1 resize-none rounded-xl bg-transparent py-2 pr-12 pl-3 text-base outline-none! placeholder:text-muted"
+          className="min-w-0 flex-1 resize-none bg-transparent py-2 pr-12 pl-3 text-base outline-none! placeholder:text-muted"
         />
         <button
           type="submit"
           disabled={disabled}
           aria-label="Send"
           title="Send"
-          className="absolute right-2 bottom-2 flex size-8 items-center justify-center rounded-lg bg-accent text-surface disabled:opacity-50"
+          className="absolute right-2 bottom-2 flex size-8 items-center justify-center rounded-reel bg-accent text-surface disabled:opacity-50"
         >
           <svg
             aria-hidden="true"

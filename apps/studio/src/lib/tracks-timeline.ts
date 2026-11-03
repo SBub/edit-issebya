@@ -19,6 +19,21 @@ export const TRACK_ROWS = [
 
 export type TrackKey = (typeof TRACK_ROWS)[number]["key"];
 
+const ITEM_COLOURS: Record<TrackKey, string> = {
+  footage: "bg-track-footage",
+  behind: "bg-track-behind text-surface",
+  overlays: "bg-track-accents",
+  transitions: "bg-track-transitions",
+};
+
+// A row item's colour and shape. Behind, Accents and Transitions items are
+// slightly rounded (rounded-track, 4px, the studio's one exception to its
+// single corner radius); a footage clip holds a strip of frames and stays
+// square.
+export function trackItemClass(key: TrackKey): string {
+  return key === "footage" ? ITEM_COLOURS[key] : `${ITEM_COLOURS[key]} rounded-track`;
+}
+
 export interface TimelineItem {
   id: string;
   start: number;

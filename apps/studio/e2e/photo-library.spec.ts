@@ -222,6 +222,21 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
   await expect(badge).toHaveCount(0, { timeout: 15_000 });
   await expect(library.locator("img")).toHaveCount(1);
   await expectOnlyThumbnail(library.getByRole("button", { name: "sample.jpg", exact: true }));
+  // Photo tiles stay square: only the reel cards take the studio's radius.
+  const photoTile = library.getByRole("button", { name: "sample.jpg", exact: true });
+  for (const square of [photoTile, photoTile.getByTestId("tile-thumbnail")]) {
+    expect(
+      await square.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return [
+          style.borderTopLeftRadius,
+          style.borderTopRightRadius,
+          style.borderBottomRightRadius,
+          style.borderBottomLeftRadius,
+        ].join(" ");
+      }),
+    ).toBe("0px 0px 0px 0px");
+  }
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
     "marker",
   );

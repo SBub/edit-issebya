@@ -223,15 +223,12 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
           aria-valuenow={percent ?? undefined}
           data-testid="export-progress"
           data-percent={percent ?? ""}
-          className="h-2 w-full overflow-hidden rounded-full bg-raised"
+          className="h-2 w-full overflow-hidden bg-raised"
         >
           {percent === null ? (
-            <div className="h-full w-1/3 animate-pulse rounded-full bg-accent/60" />
+            <div className="h-full w-1/3 animate-pulse bg-accent/60" />
           ) : (
-            <div
-              className="h-full rounded-full bg-accent transition-[width]"
-              style={{ width: `${percent}%` }}
-            />
+            <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
           )}
         </div>
         <p data-testid="export-modal-status" className="text-sm text-muted">
@@ -263,7 +260,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
           onClick={exportNow}
           disabled={disabled}
           aria-describedby="export-reason"
-          className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-surface disabled:opacity-50"
+          className="rounded-reel bg-accent px-4 py-1.5 text-sm font-semibold text-surface disabled:opacity-50"
         >
           Export
         </button>
@@ -280,7 +277,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
           event.preventDefault();
           close();
         }}
-        className="m-auto w-[min(24rem,calc(100%-2rem))] rounded-xl border border-line bg-surface p-5 text-left text-ink backdrop:bg-black/60"
+        className="m-auto w-[min(24rem,calc(100%-2rem))] border border-line bg-surface p-5 text-left text-ink backdrop:bg-black/60"
       >
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 id="export-modal-heading" className="text-lg font-semibold">
@@ -291,7 +288,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
             aria-label="Close"
             data-testid="export-modal-close"
             onClick={close}
-            className="flex size-8 items-center justify-center rounded-full border border-line text-base hover:bg-raised"
+            className="flex size-8 items-center justify-center border border-line text-base hover:bg-raised"
           >
             <span aria-hidden="true">&times;</span>
           </button>
@@ -304,7 +301,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
             type="button"
             data-testid="export-cancel"
             onClick={close}
-            className="rounded-full border border-line px-3 py-1 text-sm hover:bg-raised"
+            className="border border-line px-3 py-1 text-sm hover:bg-raised"
           >
             {state && exportCancellable(state) ? "Cancel" : "Close"}
           </button>

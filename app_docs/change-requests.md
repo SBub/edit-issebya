@@ -38,10 +38,10 @@ version` as above; otherwise the version's `change_title`, falling back (version
   titles) to the owner's request, else `Styled automatically`.
 - `apps/studio/src/components/ChangeRequestForm.tsx`: the change box (on desktop the bottom 32% of the right
   side, under Versions and the library; pinned at the bottom on a phone; placement in
-  `app_docs/studio-reel-layout.md`). Built like a chat composer: one rounded box
-  (`data-testid="change-field"`, `border-line`, `bg-chrome`, `bg-chrome/50` while disabled, an accent ring
+  `app_docs/studio-reel-layout.md`). Built like a chat composer: one box with the studio's one corner radius
+  (`rounded-reel`, `data-testid="change-field"`, `border-line`, `bg-chrome`, `bg-chrome/50` while disabled, an accent ring
   while focused) holds the textarea and, in its bottom right corner, Send: a small square `bg-accent`
-  button with an up arrow icon (inline SVG, `aria-hidden`) and no text, named by `aria-label="Send"`
+  button (`rounded-reel` too) with an up arrow icon (inline SVG, `aria-hidden`) and no text, named by `aria-label="Send"`
   and `title`, at half opacity while disabled. The textarea's right padding keeps text from running
   under the button. No visible label: the textarea is named by `aria-label="Ask for a change"`, and
   its placeholder says what to do ("What should change? For example: slower transitions, no photos

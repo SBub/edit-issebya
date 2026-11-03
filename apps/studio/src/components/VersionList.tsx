@@ -108,7 +108,7 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason 
                     aria-label={`Show details of v${version.number}`}
                     title={open ? "Hide details" : "Show details"}
                     onClick={() => toggle(version.id)}
-                    className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-accent"
+                    className="flex size-8 shrink-0 items-center justify-center text-muted hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-accent"
                   >
                     <svg
                       aria-hidden="true"
@@ -150,7 +150,7 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason 
                       onClick={() => void goBack(version.id)}
                       disabled={busy || blockedReason !== null}
                       aria-describedby="versions-status"
-                      className="mt-1 self-start rounded-full border border-line px-3 py-1 text-xs hover:bg-raised disabled:opacity-50"
+                      className="mt-1 self-start border border-line px-3 py-1 text-xs hover:bg-raised disabled:opacity-50"
                     >
                       Go back to this
                     </button>

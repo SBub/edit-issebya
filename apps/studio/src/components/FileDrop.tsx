@@ -70,7 +70,7 @@ export function DropHint() {
   return (
     <p
       data-testid="drop-hint"
-      className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-surface/70 text-sm font-medium text-accent"
+      className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-surface/70 text-sm font-medium text-accent"
     >
       Drop to upload
     </p>

@@ -450,7 +450,10 @@ export function PreviewPlayer({
       className="flex min-h-0 w-full flex-1 flex-col gap-2"
     >
       <div className="flex min-h-0 flex-1 justify-center">
-        <div className="relative aspect-[9/16] h-full max-h-full max-w-full overflow-hidden rounded-lg bg-black ring-1 ring-line">
+        <div
+          data-testid="preview-frame"
+          className="relative aspect-[9/16] h-full max-h-full max-w-full overflow-hidden rounded-reel bg-black ring-1 ring-line"
+        >
           {defined && (
             <hyperframes-player
               ref={playerRef}
@@ -526,7 +529,7 @@ export function PreviewPlayer({
               aria-pressed={zones}
               title="Show what TikTok and Instagram cover"
               onClick={() => setZones((on) => !on)}
-              className="flex h-8 flex-none items-center rounded-full border border-line px-2.5 text-xs hover:bg-raised aria-pressed:bg-raised aria-pressed:font-semibold"
+              className="flex h-8 flex-none items-center border border-line px-2.5 text-xs hover:bg-raised aria-pressed:bg-raised aria-pressed:font-semibold"
             >
               Zones
             </button>
