@@ -105,6 +105,47 @@ async function expectOnlyThumbnail(tile: Locator) {
   await expect(tile).toHaveText("");
 }
 
+// The photo dialog's header: the cross (Close) at the top right, an icon with no
+// text, and the bin (Delete photo) directly left of it on the same row. They are
+// the dialog's only buttons, so nothing is left at the bottom right.
+async function expectDialogHeader(dialog: Locator) {
+  const close = dialog.getByRole("button", { name: "Close", exact: true });
+  const remove = dialog.getByRole("button", { name: "Delete photo", exact: true });
+  await expect(dialog.getByRole("button")).toHaveCount(2);
+  for (const icon of [close, remove]) {
+    await expect(icon).toBeVisible();
+    await expect(icon).toHaveText("");
+    await expect(icon.locator("svg")).toHaveCount(1);
+    const box = (await icon.boundingBox())!;
+    expect(Math.round(box.width)).toBe(40);
+    expect(Math.round(box.height)).toBe(40);
+  }
+  await expect(close).toHaveAttribute("title", "Close");
+  await expect(remove).toHaveAttribute("title", "Delete photo");
+  const frame = (await dialog.boundingBox())!;
+  const closeBox = (await close.boundingBox())!;
+  expect(frame.x + frame.width - (closeBox.x + closeBox.width)).toBeLessThanOrEqual(24);
+  expect(closeBox.y - frame.y).toBeLessThanOrEqual(28);
+  await expectLeftOfClose(dialog, remove);
+}
+
+// Directly left of Close, on the same row.
+async function expectLeftOfClose(dialog: Locator, locator: Locator) {
+  const close = (await dialog.getByRole("button", { name: "Close", exact: true }).boundingBox())!;
+  const box = (await locator.boundingBox())!;
+  expect(box.x + box.width).toBeLessThanOrEqual(close.x + 0.5);
+  expect(close.x - (box.x + box.width)).toBeLessThanOrEqual(12);
+  expect(Math.abs(box.y + box.height / 2 - (close.y + close.height / 2))).toBeLessThanOrEqual(2);
+}
+
+// Inside the dialog's box, so the header does not overflow it.
+async function expectInsideBox(dialog: Locator, locator: Locator) {
+  const frame = (await dialog.boundingBox())!;
+  const box = (await locator.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(frame.x - 0.5);
+  expect(box.x + box.width).toBeLessThanOrEqual(frame.x + frame.width + 0.5);
+}
+
 async function photoRows(): Promise<PhotoRecord[]> {
   const { data, error } = await admin
     .from("photos")
@@ -231,8 +272,13 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
     "abstract",
   ]);
   await expect(dialog.getByRole("img")).toBeVisible();
+  await expectDialogHeader(dialog);
 
   await dialog.getByRole("button", { name: "Delete photo" }).click();
+  // The confirmation takes the bin's place in the header, still left of Close.
+  const confirm = dialog.getByTestId("photo-delete-confirm");
+  await expect(confirm.getByRole("button")).toHaveText(["Cancel", "Yes, delete"]);
+  await expectLeftOfClose(dialog, confirm);
   await dialog.getByRole("button", { name: "Yes, delete" }).click();
   await expect(dialog).toBeHidden();
   await expect(library.getByTestId("photo-status")).toHaveCount(0);
@@ -390,5 +436,23 @@ test.describe("on a touch phone", () => {
       if (!leftKeys.includes(row.r2_key)) leftKeys.push(row.r2_key);
     }
     await expectNoPageScroll(page);
+
+    // The dialog's header fits at 390 px: the bin and the cross at its top right,
+    // and with the confirmation shown nothing spills out of the dialog.
+    await library
+      .getByRole("button", { name: /^sample\.jpg/ })
+      .first()
+      .tap();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expectDialogHeader(dialog);
+    await dialog.getByRole("button", { name: "Delete photo" }).tap();
+    const confirm = dialog.getByTestId("photo-delete-confirm");
+    await expectLeftOfClose(dialog, confirm);
+    await expectInsideBox(dialog, confirm);
+    await expectInsideBox(dialog, dialog.getByRole("button", { name: "Close", exact: true }));
+    await confirm.getByRole("button", { name: "Cancel" }).tap();
+    await dialog.getByRole("button", { name: "Close", exact: true }).tap();
+    await expect(dialog).toBeHidden();
   });
 });

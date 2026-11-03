@@ -38,7 +38,13 @@ desktop and is a fourth tab, `Library`, on a phone.
   `uploading`, `describing` and `failed` stay as a badge (`photo-status`) on the tile, so a broken
   photo never looks like a good one (`photoBadge` in `apps/studio/src/lib/photos.ts`). The tile's
   accessible name is its file name, plus the status while not ready (`sample.jpg, describing`,
-  `photoTileLabel`). A tile opens `PhotoDialog`: the photo large, its description and tags, and Delete. On desktop the whole
+  `photoTileLabel`). A tile opens `PhotoDialog`: the photo large, its description and tags. Its header row holds
+  the file name and, at the top right, two 40x40 icon buttons: the bin (`aria-label` and `title`
+  `Delete photo`, danger colour) directly left of the cross (`Close`, `text-ink`, no background,
+  only an opacity fade on hover). The bin asks once more: `Cancel` and `Yes, delete`
+  (`photo-delete-confirm`) take its place in the header, still left of the cross, and an error shows
+  under the tags. Nothing sits under the tags at the bottom right. Escape and the backdrop close the
+  dialog as the cross does. On desktop the whole
   Photos section (`data-testid="photo-drop"`) is a drop zone (`useFileDrop` in
   `apps/studio/src/components/FileDrop.tsx`: a counter of entered elements keeps the highlight,
   `data-drop="over"`, a dashed accent outline and the `Drop to upload` hint, on while the drag
@@ -115,11 +121,14 @@ only, run by hand; CI uses the committed files).
   dashed add tile (first in the grid, no round button left; no page scroll), checks `describing`
   then, live after the worker's `once`, a ready tile with only its image (no badge, no text, the file
   name as its accessible name), the `describe_photo` step's AI columns and the three
-  `stored_files` rows, Delete; then drops on the Photos section (synthetic `DataTransfer`,
+  `stored_files` rows, the dialog's header (the cross found by role and name `Close`, no text, an
+  svg, at the top right; the bin directly left of it, the dialog's only two buttons), Delete with
+  its confirmation in the header; then drops on the Photos section (synthetic `DataTransfer`,
   `apps/studio/e2e/drop.ts`): the highlight on dragenter, kept across a child, off on dragleave; two
   files and a text file upload nothing with their messages; one photo uploads and goes `describing`
   then ready; a `failed` photo (inserted by the admin) keeps its `failed` badge, no image, and opens
-  the dialog; and at 390x844 the Library tab, whose add tile uploads a photo by tap.
+  the dialog; and at 390x844 the Library tab, whose add tile uploads a photo by tap, and whose dialog header (bin, cross, and
+  the confirmation) stays inside the dialog.
 - Unit: `apps/studio/src/lib/file-drop.test.ts` (accept, refuse or too many against
   `PHOTO_ACCEPT`).
 
@@ -134,6 +143,8 @@ only, run by hand; CI uses the committed files).
 - Never send a photo's bytes to the studio's server; the browser PUTs them straight to storage.
 - A drop never uploads more than one photo: several dropped files upload none, and a drop while an
   upload runs starts nothing. A dropped photo takes the same upload as a picked one.
+- Never put a button under the photo dialog's content: Delete and Close live in its header, Delete
+  directly left of Close.
 - Never let a photo that is not `ready` look like a ready one: a tile shows a badge for every status
   but `ready`.
 - Never slim a photo's file; only the owner's Delete removes a photo's objects.
