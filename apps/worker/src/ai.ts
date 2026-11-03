@@ -232,6 +232,7 @@ export const EMPTY_DECIDE_ANSWER = {
   change_summary: "ok",
   unexpressed: [],
   free_field: [],
+  behind_rules: { photos: "keep", big_word: "keep" },
 };
 
 // The double only when E2E_MOCK_AI is exactly "true" (its script from

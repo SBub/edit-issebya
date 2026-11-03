@@ -37,8 +37,13 @@ export {
   parseEdit,
 } from "./schema.ts";
 export {
+  type BehindForbid,
+  type BehindRule,
   type DecideAnswer,
   type DecideCounts,
+  type DecideRules,
+  NO_RULES,
+  applyBehindRules,
   decideAnswerSchemaFor,
   decideCounts,
   decideJsonSchema,
@@ -59,7 +64,14 @@ export {
   maskPath,
   photoPath,
 } from "./build.ts";
-export { type BigWordBox, type MaskSpan, bigWordLayout, maskSpans, spotBox } from "./behind.ts";
+export {
+  type BigWordBox,
+  type MaskSpan,
+  bigWordLayout,
+  maskSpans,
+  spotBox,
+  spotFaceShare,
+} from "./behind.ts";
 export { baselineEdit } from "./baseline.ts";
 export {
   type FreeFieldUse,

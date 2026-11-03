@@ -20,6 +20,14 @@ export const DESCRIBE_ANSWER = fileURLToPath(
   new URL("../../worker/src/photos/testdata/describe-answer.json", import.meta.url),
 );
 
+// What a decide answer does with the reel's behind rules.
+interface BehindRules {
+  photos: "keep" | "forbid" | "allow";
+  big_word: "keep" | "forbid" | "allow";
+}
+
+const KEEP_RULES: BehindRules = { photos: "keep", big_word: "keep" };
+
 // The worker's version 1 over fixtures/pipeline/.
 const BASELINE = new URL(
   "../../../packages/edit/src/testdata/versions/baseline-short-speech.edit.json",
@@ -40,6 +48,7 @@ export async function unchangedAnswerScript(dir: string): Promise<string> {
       change_summary: "kept the first version as it is",
       unexpressed: [],
       free_field: [],
+      behind_rules: KEEP_RULES,
     },
     total_cost_usd: 0,
     usage: { input_tokens: 0, output_tokens: 0 },
@@ -68,23 +77,84 @@ export async function brokenAnswerScript(dir: string): Promise<string> {
   return path;
 }
 
+// One round of a scripted decide: the behind items (none: no behind track),
+// the change summary and the behind rules (all `keep` by default).
+interface AnswerRound {
+  items: Record<string, unknown>[];
+  changeSummary: string;
+  rules?: BehindRules;
+}
+
+// The committed decide answer with the round's behind items, summary and rules.
+async function roundEnvelope({ items, changeSummary, rules = KEEP_RULES }: AnswerRound) {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed worker script
+  const envelope = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
+    structured_output: {
+      tracks: Record<string, unknown>;
+      change_summary: string;
+      behind_rules: BehindRules;
+    };
+  };
+  if (items.length > 0) envelope.structured_output.tracks.behind = items;
+  envelope.structured_output.change_summary = changeSummary;
+  envelope.structured_output.behind_rules = rules;
+  return envelope;
+}
+
+// Writes, into `dir`, a script of one envelope per round, replayed in order
+// (the last repeating), for a first answer the decide step refuses and a
+// retry that passes. Returns its path.
+export async function answerRoundsScript(
+  dir: string,
+  rounds: readonly AnswerRound[],
+): Promise<string> {
+  const envelopes = await Promise.all(rounds.map(roundEnvelope));
+  const path = join(dir, `answer-rounds-${crypto.randomUUID()}.json`);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
+  await writeFile(path, JSON.stringify(envelopes));
+  return path;
+}
+
 // Writes, into `dir`, a script whose one answer is the committed decide answer
 // with `item` as the only behind-the-speaker item. Returns its path.
-async function writeBehindAnswer(
+function writeBehindAnswer(
   dir: string,
   item: Record<string, unknown>,
   changeSummary: string,
+  rules?: BehindRules,
 ): Promise<string> {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed worker script
-  const envelope = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
-    structured_output: { tracks: Record<string, unknown>; change_summary: string };
+  return answerRoundsScript(dir, [{ items: [item], changeSummary, rules }]);
+}
+
+// Writes, into `dir`, a script whose one answer is the committed decide answer
+// with nothing behind the speaker and photos switched off for the reel (the
+// answer to "no photos in this one"). Returns its path.
+export function forbidPhotosAnswerScript(dir: string): Promise<string> {
+  return answerRoundsScript(dir, [
+    {
+      items: [],
+      changeSummary: "took the photo out; no photos in this reel",
+      rules: { photos: "forbid", big_word: "keep" },
+    },
+  ]);
+}
+
+// One library photo behind the speaker in `spot`, from the start of w0001 to
+// the end of w0010 (about 2.6 s of the fixture clip).
+export function behindPhotoItem(
+  photoId: string,
+  spot: "top" | "left" | "right",
+  style?: Record<string, string>,
+): Record<string, unknown> {
+  return {
+    id: "behind-photo",
+    kind: "photo",
+    photo_id: photoId,
+    spot,
+    start: { word: "w0001" },
+    end: { word: "w0010", edge: "end" },
+    ...(style ? { style } : {}),
   };
-  envelope.structured_output.tracks.behind = [item];
-  envelope.structured_output.change_summary = changeSummary;
-  const path = join(dir, `behind-answer-${crypto.randomUUID()}.json`);
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
-  await writeFile(path, JSON.stringify([envelope]));
-  return path;
 }
 
 // Writes, into `dir`, a script whose one answer is the committed decide answer
@@ -99,15 +169,7 @@ export async function behindPhotoAnswerScript(
 ): Promise<string> {
   return writeBehindAnswer(
     dir,
-    {
-      id: "behind-photo",
-      kind: "photo",
-      photo_id: photoId,
-      spot,
-      start: { word: "w0001" },
-      end: { word: "w0010", edge: "end" },
-      ...(style ? { style } : {}),
-    },
+    behindPhotoItem(photoId, spot, style),
     `put the photo behind me on the ${spot}`,
   );
 }

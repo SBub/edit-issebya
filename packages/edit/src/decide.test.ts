@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  type DecideRules,
+  NO_RULES,
+  applyBehindRules,
   decideAnswerSchemaFor,
   decideCounts,
   decideJsonSchema,
@@ -47,7 +50,13 @@ function enumsUnder(schema: unknown, property: string): unknown[][] {
 }
 
 function answerOf(edit: Edit) {
-  return { tracks: edit.tracks, change_summary: "no change", unexpressed: [], free_field: [] };
+  return {
+    tracks: edit.tracks,
+    change_summary: "no change",
+    unexpressed: [],
+    free_field: [],
+    behind_rules: { photos: "keep", big_word: "keep" },
+  };
 }
 
 describe("decideJsonSchema", () => {
@@ -95,6 +104,7 @@ describe("decideJsonSchema", () => {
         "change_summary",
         "unexpressed",
         "free_field",
+        "behind_rules",
       ]);
     });
   }
@@ -191,6 +201,121 @@ describe("the behind track in the decide answer", () => {
     expect(decideCounts(made.edit, hand.transcript, ISSEBYA_PRESET)).toMatchObject({
       behindPhotos: 1,
       behindWords: 0,
+    });
+  });
+});
+
+describe("the behind limits and rules in the decide answer", () => {
+  const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
+  const words = hand.transcript.words;
+  const duration = hand.edit.duration;
+  // Three-second stretches of the reel, starting on words far apart.
+  const at = (from: number) => {
+    const first = words.findIndex((word) => word.start > from);
+    const last = words.findIndex((word) => word.end > words[first]!.start + 3);
+    return { start: { word: words[first]!.id }, end: { word: words[last]!.id, edge: "start" } };
+  };
+  const photo = (id: string, from: number, extra: Record<string, unknown> = {}) => ({
+    id,
+    kind: "photo",
+    photo_id: PHOTO,
+    spot: "left",
+    ...at(from),
+    ...extra,
+  });
+  // A big word showing a word spoken in its own stretch.
+  const spokenFrom = at(10);
+  const spokenWord = words.find((word) => word.id === (spokenFrom.start as { word: string }).word)!;
+  const bigWord = (text: string) => ({ id: "big", kind: "word", text, ...spokenFrom });
+  const answerWith = (behind: unknown[], rules = { photos: "keep", big_word: "keep" }) => ({
+    ...answerOf(hand.edit),
+    tracks: { ...hand.edit.tracks, cutout: undefined, behind },
+    behind_rules: rules,
+  });
+  const parse = (answer: unknown, rules: DecideRules = NO_RULES, ids = [PHOTO]) =>
+    parseDecideAnswer(answer, ISSEBYA_PRESET, hand.transcript, duration, ids, rules);
+  const reasonsOf = (result: ReturnType<typeof parse>) =>
+    result.ok ? "" : result.reasons.join("\n");
+  const forbidPhotos: DecideRules = { requested: false, forbid: { photos: true, bigWord: false } };
+
+  it("caps the behind track and lists the rules in the draft-07 JSON Schema", () => {
+    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, duration, [PHOTO]) as {
+      $schema: string;
+      properties: {
+        tracks: { properties: { behind: { maxItems: number } } };
+        behind_rules: { required: string[] };
+      };
+    };
+    expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(schema.properties.tracks.properties.behind.maxItems).toBe(3);
+    expect(enumsUnder(schema, "photo_id")).toEqual([[PHOTO]]);
+    expect(schema.properties.behind_rules.required).toEqual(["photos", "big_word"]);
+    expect(enumsUnder(schema, "photos")).toEqual([["keep"]]);
+    expect(enumsUnder(schema, "big_word")).toEqual([["keep"]]);
+    const requested = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, duration, [PHOTO], {
+      ...NO_RULES,
+      requested: true,
+    });
+    expect(enumsUnder(requested, "photos")).toEqual([["keep", "forbid", "allow"]]);
+    expect(enumsUnder(requested, "big_word")).toEqual([["keep", "forbid", "allow"]]);
+  });
+
+  it("accepts two photos and the spoken key word", () => {
+    const answer = answerWith([photo("a", 1), photo("b", 20), bigWord(spokenWord.text)]);
+    expect(parse(answer)).toMatchObject({ ok: true });
+  });
+
+  it("refuses an unknown photo id, a third photo and a 5-second photo", () => {
+    const unknown = photo("a", 1, { photo_id: "1f2e3d4c-5b6a-4789-8a7b-6c5d4e3f2a1b" });
+    expect(parse(answerWith([unknown])).ok).toBe(false);
+    const three = answerWith([photo("a", 1), photo("b", 20), photo("c", 30)]);
+    expect(reasonsOf(parse(three))).toMatch(/behind c: a third photo; at most 2 photos per reel/);
+    const long = photo("a", 1, { start: { time: 0 }, end: { time: 5 } });
+    expect(reasonsOf(parse(answerWith([long])))).toMatch(/behind a: lasts 5\.000 s/);
+  });
+
+  it("refuses every photo id with an empty library", () => {
+    expect(parse(answerWith([photo("a", 1)]), NO_RULES, []).ok).toBe(false);
+    expect(
+      enumsUnder(decideJsonSchema(ISSEBYA_PRESET, hand.transcript, duration), "photo_id"),
+    ).toEqual([]);
+  });
+
+  it("refuses a photo under a stored forbid with keep, accepts it with allow on a request", () => {
+    expect(reasonsOf(parse(answerWith([photo("a", 1)]), forbidPhotos))).toMatch(
+      /behind a: photos are switched off for this reel by the owner; leave them out/,
+    );
+    const lifted = answerWith([photo("a", 1)], { photos: "allow", big_word: "keep" });
+    expect(parse(lifted, { ...forbidPhotos, requested: true })).toMatchObject({ ok: true });
+  });
+
+  it("refuses forbid and allow without a request", () => {
+    const answer = answerWith([], { photos: "forbid", big_word: "keep" });
+    expect(parse(answer).ok).toBe(false);
+    expect(parse(answer, { ...NO_RULES, requested: true })).toMatchObject({ ok: true });
+  });
+
+  it("refuses a photo in the same answer that forbids photos", () => {
+    const answer = answerWith([photo("a", 1)], { photos: "forbid", big_word: "keep" });
+    expect(reasonsOf(parse(answer, { ...NO_RULES, requested: true }))).toMatch(
+      /photos are switched off/,
+    );
+  });
+
+  it("refuses an unspoken big word on the automatic run, accepts it on a request", () => {
+    const answer = answerWith([bigWord("ZEBRA")]);
+    expect(reasonsOf(parse(answer))).toMatch(
+      /behind big: the big word must be one of the words spoken while it shows/,
+    );
+    expect(parse(answer, { ...NO_RULES, requested: true })).toMatchObject({ ok: true });
+  });
+
+  it("applies the rules to the stored flags", () => {
+    const stored = { photos: true, bigWord: false };
+    expect(applyBehindRules(stored, { photos: "keep", big_word: "keep" })).toEqual(stored);
+    expect(applyBehindRules(stored, { photos: "allow", big_word: "forbid" })).toEqual({
+      photos: false,
+      bigWord: true,
     });
   });
 });

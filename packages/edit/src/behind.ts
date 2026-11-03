@@ -14,6 +14,18 @@ export function spotBox(spot: BehindSpot, preset: Preset): Box {
   return preset.behind.spots[spot];
 }
 
+// The share (0 to 1) of a photo's spot the face box covers; 0 without a face.
+// Shared by the `behind-face` check and the decide prompt's clear spots, so
+// the two never disagree.
+export function spotFaceShare(spot: BehindSpot, face: Box | null, preset: Preset): number {
+  if (!face) return 0;
+  const box = spotBox(spot, preset);
+  const width = Math.max(0, Math.min(box.right, face.right) - Math.max(box.left, face.left));
+  const height = Math.max(0, Math.min(box.bottom, face.bottom) - Math.max(box.top, face.top));
+  const area = (box.right - box.left) * (box.bottom - box.top);
+  return area > 0 ? (width * height) / area : 0;
+}
+
 // One big word as placed: its box in frame pixels.
 export interface BigWordBox {
   itemId: string;

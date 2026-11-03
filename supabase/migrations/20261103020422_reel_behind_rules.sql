@@ -1,0 +1,105 @@
+-- Reel behind rules: a change request can switch photos or the big word
+-- behind the speaker off for a reel ("no photos in this one"). The flag holds
+-- for every later decide and change run until a later request lifts it. Only
+-- the worker writes them, through save_version, together with the version
+-- that set or lifted them; the owner reads them with the reel (table select).
+
+alter table public.reels
+  add column no_photos boolean not null default false,
+  add column no_big_word boolean not null default false;
+
+comment on column public.reels.no_photos is
+  'No library photos behind the speaker: set by a change request, lifted only by a later one.';
+comment on column public.reels.no_big_word is
+  'No big word behind the speaker: set by a change request, lifted only by a later one.';
+
+drop function public.save_version(
+  uuid, uuid, uuid, uuid, text, text, text, text, jsonb, jsonb, text, boolean, jsonb, jsonb, jsonb
+);
+
+-- Saves one version in one transaction: locks the reel, refuses a parent that
+-- is not the reel's current version (a stale or concurrent save), inserts the
+-- row with the reel's owner and the next number, and makes it current, writing
+-- the reel's behind forbids in the same update (null leaves a flag as it is),
+-- so a saved version and its forbid never disagree. Returns the number.
+create function public.save_version(
+  p_id uuid,
+  p_reel_id uuid,
+  p_parent_id uuid,
+  p_restored_from_id uuid,
+  p_request text,
+  p_model text,
+  p_prompt_version text,
+  p_change_summary text,
+  p_checks jsonb,
+  p_inputs jsonb,
+  p_r2_key text,
+  p_used_free_field boolean default false,
+  p_unexpressed jsonb default '[]'::jsonb,
+  p_free_field jsonb default '[]'::jsonb,
+  p_rejected_reasons jsonb default '[]'::jsonb,
+  p_no_photos boolean default null,
+  p_no_big_word boolean default null
+)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_owner uuid;
+  v_current uuid;
+  v_number int;
+begin
+  select r.owner_id, r.current_version_id
+  into v_owner, v_current
+  from public.reels r
+  where r.id = p_reel_id
+  for update;
+  if not found then
+    raise exception 'reel % does not exist', p_reel_id using errcode = 'P0002';
+  end if;
+  if p_parent_id is distinct from v_current then
+    -- The default SQLSTATE (P0001): a serialization failure (40001) would be
+    -- retried by the API instead of reported.
+    raise exception 'parent % is not the current version % of reel %',
+      p_parent_id, v_current, p_reel_id;
+  end if;
+
+  select coalesce(max(v.number), 0) + 1
+  into v_number
+  from public.versions v
+  where v.reel_id = p_reel_id;
+
+  insert into public.versions (
+    id, reel_id, owner_id, number, parent_id, restored_from_id, request, model,
+    prompt_version, change_summary, checks, inputs, r2_key,
+    used_free_field, unexpressed, free_field, rejected_reasons
+  ) values (
+    p_id, p_reel_id, v_owner, v_number, p_parent_id, p_restored_from_id, p_request, p_model,
+    p_prompt_version, p_change_summary, coalesce(p_checks, '[]'::jsonb), p_inputs, p_r2_key,
+    coalesce(p_used_free_field, false), coalesce(p_unexpressed, '[]'::jsonb),
+    coalesce(p_free_field, '[]'::jsonb), coalesce(p_rejected_reasons, '[]'::jsonb)
+  );
+
+  update public.reels
+  set current_version_id = p_id,
+    no_photos = coalesce(p_no_photos, no_photos),
+    no_big_word = coalesce(p_no_big_word, no_big_word)
+  where id = p_reel_id;
+  return v_number;
+end;
+$$;
+
+-- Supabase's default privileges grant execute on new public functions to
+-- every role: the worker's service role only.
+revoke execute on function public.save_version(
+  uuid, uuid, uuid, uuid, text, text, text, text, jsonb, jsonb, text, boolean, jsonb, jsonb, jsonb,
+  boolean, boolean
+) from public, anon, authenticated;
+grant execute on function public.save_version(
+  uuid, uuid, uuid, uuid, text, text, text, text, jsonb, jsonb, text, boolean, jsonb, jsonb, jsonb,
+  boolean, boolean
+) to service_role;
+
+notify pgrst, 'reload schema';

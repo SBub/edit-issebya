@@ -56,7 +56,7 @@ describe("timelineRows", () => {
     const { edit, transcript } = parsed(behindEdit, handTranscript);
     const row = timelineRows(edit, transcript).rows.find((entry) => entry.key === "behind")!;
     expect(row.items.map((item) => [item.id, item.label])).toEqual([
-      ["behind-photo", "photo top"],
+      ["behind-photo", "photo right"],
       ["behind-word", "WORK"],
     ]);
     expect(row.items[0]).toMatchObject({ start: 5.206, end: 7.838 });

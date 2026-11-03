@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Storage } from "@edit-issebya/storage";
 import { aiRunner } from "./ai.ts";
 import type { WorkerConfig } from "./config.ts";
+import { supabaseReelRules } from "./decide/behind-rules.ts";
 import { runDecide } from "./decide/run-decide.ts";
 import type { ErrorTracker } from "./error-tracking.ts";
 import { saveFirstVersion } from "./first-version.ts";
@@ -95,6 +96,7 @@ export async function processJob(
                 scratchDir,
                 request,
                 photos,
+                rules: supabaseReelRules(db),
                 tools: cutouts.tools,
                 recordStored,
               });

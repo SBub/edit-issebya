@@ -96,7 +96,18 @@ describe("versions", () => {
       unexpressed: ["a slow zoom"],
       free_field: [{ item: "title", reason: "letter spacing" }],
       rejected_reasons: ["safe-box title: runs past the safe box"],
+      no_photos: null,
+      no_big_word: null,
     });
+  });
+
+  it("passes the reel's behind forbids to the row, null where unchanged", async () => {
+    const saved = await saveVersion(deps, {
+      ...meta(null),
+      forbid: { photos: true, bigWord: null },
+      edit,
+    });
+    expect(rows.get(saved.id)).toMatchObject({ no_photos: true, no_big_word: null });
   });
 
   it("refuses to write a version key twice and keeps the stored bytes", async () => {
@@ -125,6 +136,8 @@ describe("versions", () => {
       change_summary: "restored version 1",
       inputs: edit.inputs,
       checks: [],
+      no_photos: null,
+      no_big_word: null,
       used_free_field: false,
       unexpressed: [],
       free_field: [],

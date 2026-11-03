@@ -3,10 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type DecideAnswer,
+  type DecideRules,
   type Edit,
   type EditRef,
   ISSEBYA_PRESET,
   type Measurer,
+  applyBehindRules,
   type VersionBlobs,
   type VersionRows,
   build,
@@ -39,6 +41,7 @@ import {
   runToolsStep,
 } from "../step-runner.ts";
 import { type AiUsage, addUsage } from "../step-store.ts";
+import type { ReelRules } from "./behind-rules.ts";
 import { decideInput } from "./input.ts";
 import { PROMPT_VERSION, decidePrompt } from "./prompt.ts";
 
@@ -61,6 +64,8 @@ export interface DecideRun {
   newId?: () => string;
   // The owner's ready photos, offered for the behind track; none without it.
   photos?: PhotoLibrary;
+  // The reel's behind rules ("no photos in this one"); none: nothing forbidden.
+  rules?: ReelRules;
   // For the cut-out a behind item needs before the version is saved.
   tools?: ToolPaths;
   spawnTool?: SpawnTool;
@@ -104,6 +109,7 @@ export function runDecide({
   measurer = editMeasurer,
   newId = randomUUID,
   photos,
+  rules,
   tools = toolPaths(),
   spawnTool,
   env = process.env,
@@ -134,10 +140,22 @@ export function runDecide({
         throw new Error(`${STEP}: current version does not parse: ${parsed.reasons.join("; ")}`);
       }
       const current = parsed.edit;
-      const library = photos ? await photos.readyPhotos(ctx.job.owner_id) : [];
+      const forbid = rules ? await rules.read(reelId) : { photos: false, bigWord: false };
+      const decideRules: DecideRules = { requested: request !== null, forbid };
+      // Photos switched off and no request that could lift it: none offered.
+      const photosOff = forbid.photos && request === null;
+      const library = photos && !photosOff ? await photos.readyPhotos(ctx.job.owner_id) : [];
       const photoIds = library.map((photo) => photo.id);
-      const schema = decideJsonSchema(preset, transcript, current.duration, photoIds);
-      const input = decideInput({ current, transcript, headTrack, preset, library, request });
+      const schema = decideJsonSchema(preset, transcript, current.duration, photoIds, decideRules);
+      const input = decideInput({
+        current,
+        transcript,
+        headTrack,
+        preset,
+        library,
+        forbid,
+        request,
+      });
       const measure = await measurer();
 
       let usage: AiUsage = { inputTokens: null, outputTokens: null, costUsd: null, model: null };
@@ -161,6 +179,7 @@ export function runDecide({
             transcript,
             current.duration,
             photoIds,
+            decideRules,
           );
           if (!answer.ok) return answer;
           const composed = editFromAnswer(current, answer.answer, preset, transcript);
@@ -211,6 +230,9 @@ export function runDecide({
           recordStored,
         }).catch(permanentAfterAiCall);
         ctx.signal.throwIfAborted();
+        // The forbids this answer sets or lifts, written with its version;
+        // null where it keeps the stored flag.
+        const after = applyBehindRules(forbid, answer.behind_rules);
         const saved = await saveVersion(
           { rows, blobs, keyPrefix, newId },
           {
@@ -227,6 +249,10 @@ export function runDecide({
             unexpressed: answer.unexpressed,
             freeField: answer.free_field,
             rejectedReasons: first.ok ? [] : first.reasons,
+            forbid: {
+              photos: answer.behind_rules.photos === "keep" ? null : after.photos,
+              bigWord: answer.behind_rules.big_word === "keep" ? null : after.bigWord,
+            },
             edit,
           },
         ).catch(permanentAfterAiCall);

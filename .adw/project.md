@@ -169,7 +169,7 @@ step 3's), building the stored fixture versions and comparing them with the comm
 byte for byte, like the Node project does. The DB layer is `apps/studio/db-tests/**/*.test.ts`
 (`apps/studio/vitest.db.config.ts`: RLS on every public table, owner isolation, Realtime follows
 RLS, `jobs.test.ts` for `claim_job`'s lease, `versions.test.ts` for `save_version`, version
-immutability and its RLS, `steps-measurements.test.ts` for the exact
+immutability and its RLS (and the reel's `no_photos` and `no_big_word`, written only through `save_version`), `steps-measurements.test.ts` for the exact
 `steps` column set (`progress_percent` and `progress_updated_at` included), `job-order.test.ts` for
 `claim_job`'s order (one job per reel at a time, oldest first, `not_before` skipped until due),
 `retry-jobs.test.ts` for the Retry insert policy through `is_retry_of_failed_job`, and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit` (the reel's `footage_seconds` column comes from the progress migration and is written once by the worker after `retime`, unit-tested in `apps/worker/src/pipeline/run-pipeline.test.ts`, no DB test), `exports.test.ts` for
@@ -204,7 +204,11 @@ the `left` spot: the worker's `once` makes the span's mask in a `cutout` step wi
 render doubles: a black mask made by ffmpeg, no Apple Vision), version 3 names the mask and the
 photo, the mask's `stored_files` row is `rebuildable` with step `cutout`, the live preview shows the
 photo over its spot inside the span and not after it, and the timeline's Behind row shows
-`photo left`, run last by
+`photo left`, `decide-behind.spec.ts` seeds a ready library photo before a processed reel whose
+automatic decide (scripted answer) puts it behind the speaker in `left` (version 2, its mask and
+photo named, the Behind row `photo left`), then `no photos in this one` saves version 3 with no
+photo and `reels.no_photos` set, and a later change whose first answer puts the photo back is
+refused and its retry saves version 4 without it, the flag kept, run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
 arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by

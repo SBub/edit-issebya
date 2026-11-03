@@ -41,6 +41,10 @@ export interface NewVersion {
   unexpressed: string[];
   free_field: FreeFieldUse[];
   rejected_reasons: string[];
+  // The reel's behind forbids to write with the version; null (or absent)
+  // leaves the stored flag as it is.
+  no_photos?: boolean | null;
+  no_big_word?: boolean | null;
 }
 
 export interface FreeFieldUse {
@@ -93,6 +97,8 @@ export interface VersionMeta {
   unexpressed?: string[];
   freeField?: FreeFieldUse[];
   rejectedReasons?: string[];
+  // The reel's behind forbids written with the version; null leaves a flag.
+  forbid?: { photos: boolean | null; bigWord: boolean | null };
 }
 
 // The canonical bytes of an edit: what a version's blob holds.
@@ -127,6 +133,8 @@ async function saveBytes(
     unexpressed: meta.unexpressed ?? [],
     free_field: meta.freeField ?? [],
     rejected_reasons: meta.rejectedReasons ?? [],
+    no_photos: meta.forbid?.photos ?? null,
+    no_big_word: meta.forbid?.bigWord ?? null,
   });
   return { id, number, key, bytes: bytes.byteLength };
 }

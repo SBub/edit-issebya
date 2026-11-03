@@ -65,6 +65,11 @@ export interface PresetBehind {
   // A behind item lasts between these, in seconds.
   minSeconds: number;
   maxSeconds: number;
+  // A decide answer holds at most this many photos and big words per reel.
+  maxPhotos: number;
+  maxWords: number;
+  // The largest share (0 to 1) of a photo's spot the face box may cover.
+  maxFaceShare: number;
 }
 
 export interface GlossaryTerm {
@@ -201,6 +206,9 @@ export const ISSEBYA_PRESET: Preset = {
     frameRate: 30,
     minSeconds: 2,
     maxSeconds: 4,
+    maxPhotos: 2,
+    maxWords: 1,
+    maxFaceShare: 0.4,
   },
   keepCaps: { i: "I", "i'm": "I'm", "i've": "I've", "i'll": "I'll", "i'd": "I'd", ai: "AI" },
   units: [

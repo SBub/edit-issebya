@@ -177,7 +177,8 @@
     },
     "change_summary": "Title, one accent on \"test\", a dim over \"clip for the\", \"Studio\" capitalised.",
     "unexpressed": [],
-    "free_field": []
+    "free_field": [],
+    "behind_rules": { "photos": "keep", "big_word": "keep" }
   },
   "total_cost_usd": 0.0123,
   "usage": {
