@@ -3,6 +3,7 @@
 **Specifications:**
 
 - specs/issue-35-adw-1abe562e-sdlc_planner-export-render-job.md
+- specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 
 ## Overview
 
