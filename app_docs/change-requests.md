@@ -107,8 +107,8 @@ version` as above; otherwise the version's `change_title`, falling back (version
    back to this. A new version, restored from the old one, becomes current; going back can itself
    be undone the same way.
 4. The change box stays open while the reel is processing and shows
-   `Your change will run after processing finishes` (or `Your change will run after the jobs before
-it finish` while other jobs are ahead). Both controls are disabled, with the reason beside them,
+   `Waiting: your reel is still being styled. Your change starts right after` (the same line while
+   other jobs are ahead). Both controls are disabled, with the reason beside them,
    only while the reel is `refused`, still `uploading`, or `failed` with no current version. The
    order the jobs run in is `claim_job`'s, see `app_docs/failures.md`.
 

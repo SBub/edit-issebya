@@ -206,7 +206,7 @@ test("the box and going back stay open while a job is running, with the queue no
   await expect(box()).toBeEnabled();
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
   await expect(page.getByTestId("change-queue-note")).toHaveText(
-    "Your change will run after processing finishes",
+    "Waiting: your reel is still being styled. Your change starts right after",
   );
   await expect(await goBackButton(1)).toBeEnabled();
   // The current version (2) offers no going back.

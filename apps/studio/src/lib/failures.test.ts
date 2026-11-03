@@ -44,7 +44,7 @@ describe("changeQueueNote", () => {
   it("waits for processing while a process job is live", () => {
     for (const status of ["queued", "running", "waiting_ai"] as const) {
       expect(changeQueueNote([job("render", "queued"), job("process", status)])).toBe(
-        "Your change will run after processing finishes",
+        "Waiting: your reel is still being styled. Your change starts right after",
       );
     }
   });
@@ -52,7 +52,7 @@ describe("changeQueueNote", () => {
   it("waits for the other live jobs", () => {
     for (const status of ["queued", "running", "waiting_ai"] as const) {
       expect(changeQueueNote([job("process", "done"), job("change", status)])).toBe(
-        "Your change will run after the jobs before it finish",
+        "Waiting: your reel is still being styled. Your change starts right after",
       );
     }
   });

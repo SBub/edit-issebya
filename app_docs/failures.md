@@ -227,8 +227,8 @@ first output as its `.part` and waits up to 20 seconds for the spec to kill the 
 3. A job waiting for the AI shows `Waiting for the AI: <reason>. Next try at HH:MM`. Sign Claude
    Code in again or wait for the limit; the worker takes the job again after that time.
 4. The change box stays open while the reel processes and shows
-   `Your change will run after processing finishes` (or
-   `Your change will run after the jobs before it finish`); the change runs in its turn.
+   `Waiting: your reel is still being styled. Your change starts right after` (the same line
+   while other jobs are ahead); the change runs in its turn.
 
 ## Configuration
 
