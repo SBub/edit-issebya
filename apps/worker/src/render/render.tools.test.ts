@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { type Edit, ISSEBYA_PRESET, resolveTimeline } from "@edit-issebya/edit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -10,6 +11,9 @@ import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
 import { withJobScratch } from "../scratch.ts";
 import { type ChildRun, type SpawnTool, runToolsStep, spawnChild } from "../step-runner.ts";
 import { parseTimeReport } from "../time-report.ts";
+import { withMasks } from "../cutout/spans.ts";
+import { maskToolCall } from "../cutout/mask-tool.ts";
+import type { RenderFiles } from "./render-project.ts";
 import { renderExport } from "./render-step.ts";
 import { fixtureEdit, fixturePath } from "./render-test-support.ts";
 
@@ -33,7 +37,12 @@ interface Rendered {
   peakRssBytes: number | null;
 }
 
-async function render(name: string, edit: Edit, parent = dir): Promise<Rendered> {
+async function render(
+  name: string,
+  edit: Edit,
+  parent = dir,
+  files: RenderFiles = FILES,
+): Promise<Rendered> {
   const { transcript, headTrack } = await fixtureEdit();
   const renderDir = join(parent, name);
   const { steps, calls } = recordingSteps();
@@ -57,7 +66,7 @@ async function render(name: string, edit: Edit, parent = dir): Promise<Rendered>
           edit,
           transcript,
           headTrack,
-          files: FILES,
+          files,
           range: RANGE,
         }));
         return { what: "exported" };
@@ -277,5 +286,119 @@ describe("the real render", () => {
       expect(rendered.peakRssBytes).toBe(rendered.child.groupPeakBytes);
       expect(rendered.child.groupPeakBytes!).toBeGreaterThan(single!.peakRssBytes);
     }
+  });
+});
+
+// A photo, then a big word, behind the speaker over the whole reel's speech,
+// each with its real mask (vseg on the retimed source; the fixture clip has no
+// person, so the mask is black and the item shows whole).
+describe.runIf(process.platform === "darwin")("the real render behind the speaker", () => {
+  const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
+  const SAMPLE_PHOTO = fileURLToPath(
+    new URL("../../../../fixtures/photos/sample.jpg", import.meta.url),
+  );
+  const span = { start: { word: "w0001" }, end: { word: "w0010", edge: "end" as const } };
+
+  async function renderBehind(name: string, item: NonNullable<Edit["tracks"]["behind"]>[number]) {
+    const { edit, transcript } = await fixtureEdit();
+    const behind = withMasks({ ...edit, tracks: { ...edit.tracks, behind: [item] } }, transcript);
+    await run("bash", [fileURLToPath(new URL("../../scripts/build-vseg.sh", import.meta.url))]);
+    const masks: Record<string, string> = {};
+    for (const mask of behind.inputs.masks!) {
+      const output = join(dir, `${name}-${mask.fingerprint}.mp4`);
+      const call = maskToolCall(
+        { input: SOURCE, start: mask.start, end: mask.end, output },
+        { tools: REAL_TOOLS, env: {} },
+      );
+      await run(call.file, call.args);
+      masks[`masks/${mask.fingerprint}.mp4`] = output;
+    }
+    return render(name, behind, dir, {
+      footage: SOURCE,
+      masks,
+      photos: { [`photos/${PHOTO}.jpg`]: SAMPLE_PHOTO },
+    });
+  }
+
+  // SSIM of a box of two renders' frames at 1.3 s.
+  async function boxSsim(a: string, b: string, box: string): Promise<number> {
+    const stderr = await ffmpegStderr([
+      "-ss",
+      "1.3",
+      "-i",
+      a,
+      "-ss",
+      "1.3",
+      "-i",
+      b,
+      "-filter_complex",
+      `[0:v]trim=end_frame=1,crop=${box}[x];[1:v]trim=end_frame=1,crop=${box}[y];[x][y]ssim`,
+      "-f",
+      "null",
+      "-",
+    ]);
+    const match = /All:([\d.]+)/.exec(stderr);
+    if (!match) throw new Error("no SSIM");
+    return Number(match[1]);
+  }
+
+  // SSIM of a render's spot at 1.3 s against the sample photo scaled to
+  // cover the spot, centred.
+  async function photoSsim(
+    rendered: string,
+    box: string,
+    spot: { left: number; right: number; top: number; bottom: number },
+  ): Promise<number> {
+    const width = spot.right - spot.left;
+    const height = spot.bottom - spot.top;
+    const stderr = await ffmpegStderr([
+      "-ss",
+      "1.3",
+      "-i",
+      rendered,
+      "-i",
+      SAMPLE_PHOTO,
+      "-filter_complex",
+      `[0:v]trim=end_frame=1,crop=${box},format=yuv420p[x];[1:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},format=yuv420p[y];[x][y]ssim`,
+      "-f",
+      "null",
+      "-",
+    ]);
+    const match = /All:([\d.]+)/.exec(stderr);
+    if (!match) throw new Error("no SSIM");
+    console.log(`behind photo: spot against the photo SSIM ${match[1]}`);
+    return Number(match[1]);
+  }
+
+  it("renders a photo in its spot and a big word, each changing only its own part", async () => {
+    const photo = await renderBehind("behind-photo", {
+      id: "behind-photo",
+      kind: "photo",
+      photo_id: PHOTO,
+      spot: "left",
+      ...span,
+    });
+    const word = await renderBehind("behind-word", {
+      id: "behind-word",
+      kind: "word",
+      text: "WORK",
+      ...span,
+    });
+    for (const rendered of [photo, word]) {
+      expect(await streamInfo(rendered.output)).toMatchObject({
+        codec_name: "h264",
+        width: 1080,
+        height: 1920,
+      });
+    }
+    const left = ISSEBYA_PRESET.behind.spots.left;
+    const spot = `${left.right - left.left}:${left.bottom - left.top}:${left.left}:${left.top}`;
+    // The spot shows the photo, covering it exactly (the clip has no person,
+    // so the black mask keeps all of it).
+    expect(await photoSsim(photo.output, spot, left)).toBeGreaterThan(0.8);
+    expect(await boxSsim(photo.output, silent.output, spot)).toBeLessThan(0.8);
+    // The bottom of the frame, below every spot and the word, is untouched.
+    expect(await boxSsim(photo.output, silent.output, "1080:500:0:1400")).toBeGreaterThan(0.95);
+    expect(await boxSsim(word.output, silent.output, "1080:500:0:1400")).toBeGreaterThan(0.95);
   });
 });

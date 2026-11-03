@@ -54,6 +54,13 @@ afterEach(async () => {
 });
 
 describe("classifyKey", () => {
+  it("classifies an on-demand cut-out mask as rebuildable, step cutout", () => {
+    expect(classifyKey(PREFIX, `${PREFIX}cache/cutout/${FP}/mask.mp4`)).toEqual({
+      kind: "rebuildable",
+      step: "cutout",
+    });
+  });
+
   it("tells every stored layout apart", () => {
     expect(classifyKey(PREFIX, `${PREFIX}cache/convert/${FP}/converted.mp4`)).toEqual({
       kind: "rebuildable",

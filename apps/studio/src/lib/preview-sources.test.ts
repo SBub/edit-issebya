@@ -132,7 +132,31 @@ describe("previewKeys", () => {
       headTrack: `dev/cache/head_track/${fp("head_track")}/head-track.json`,
       footage: `dev/cache/preview_copies/${fp("preview_copies")}/footage-preview.mp4`,
       frames: `dev/cache/preview_copies/${fp("preview_copies")}/frames.jpg`,
+      masks: [],
+      photoIds: [],
     });
+  });
+
+  it("gives each cut-out mask's key at its page path, and the photo ids", () => {
+    const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
+    const mask = {
+      step: "cutout" as const,
+      fingerprint: "c".repeat(64),
+      file: "mask.mp4",
+      start: 1,
+      end: 4,
+    };
+    const inputs = { ...INPUTS, masks: [mask], photos: [PHOTO] };
+    expect(previewKeys({ ...args("dev/"), inputs })).toMatchObject({
+      masks: [
+        { path: `masks/${"c".repeat(64)}.mp4`, key: `dev/cache/cutout/${"c".repeat(64)}/mask.mp4` },
+      ],
+      photoIds: [PHOTO],
+    });
+    const wrongStep = { ...inputs, masks: [{ ...mask, step: "retime" }] } as unknown;
+    expect(previewKeys({ ...args("dev/"), inputs: wrongStep as EditInputs })).toBeNull();
+    const badPhoto = { ...inputs, photos: ["../x"] };
+    expect(previewKeys({ ...args("dev/"), inputs: badPhoto })).toBeNull();
   });
 
   it("gives no frames key without a sprite or with a malformed one", () => {

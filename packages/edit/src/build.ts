@@ -1,23 +1,46 @@
+import { type BigWordBox, bigWordLayout, maskSpans, spotBox } from "./behind.ts";
 import { type Check, runChecks } from "./checks.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
 import { type TextBox, layoutText } from "./layout.ts";
 import type { Measurer } from "./measure.ts";
 import { FONT_KEYS, type Preset } from "./preset.ts";
-import type { Edit, EditRef } from "./schema.ts";
+import type { BehindItem, Edit, EditMask, EditRef } from "./schema.ts";
 import { resolveSpans, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
-export type AssetRole = "footage" | "font" | "sound";
+export type AssetRole = "footage" | "font" | "sound" | "mask" | "photo";
 
-// A file the page references: the footage is a pipeline output (by producer),
-// fonts and sounds are packages/edit's assets. A stored version naming a
-// cut-out builds without it: no cut-out video, no cut-out asset.
+// A file the page references: the footage and the masks are stored outputs
+// (by producer), a photo is a library photo (by id), fonts and sounds are
+// packages/edit's assets. A stored version naming the old whole-clip cut-out
+// builds without it: no cut-out video, no cut-out asset.
 export interface BuildAsset {
   path: string;
   role: AssetRole;
   ref: EditRef | null;
+  photoId?: string;
 }
+
+// Where the page looks for a mask and a photo, inside the project.
+export function maskPath(mask: Pick<EditMask, "fingerprint">): string {
+  return `masks/${mask.fingerprint}.mp4`;
+}
+
+export function photoPath(photoId: string): string {
+  return `photos/${photoId}.jpg`;
+}
+
+// The extra rules a page with behind items needs: the composite's groups and
+// blends, the photo and the big word.
+const BEHIND_STYLE = [
+  "      .cutout { position: absolute; inset: 0; isolation: isolate; }",
+  "      .cutout-front { position: absolute; inset: 0; isolation: isolate; mix-blend-mode: plus-lighter; }",
+  "      .mask-under { filter: invert(1); mix-blend-mode: multiply; }",
+  "      .mask-front { mix-blend-mode: multiply; }",
+  "      .photo { position: absolute; object-fit: cover; }",
+  "      .word { position: absolute; line-height: 1; white-space: nowrap; }",
+];
 
 export interface BuildResult {
   html: string;
@@ -46,7 +69,25 @@ export function build(
 ): BuildResult {
   const resolved = resolveTimeline(edit, transcript);
   const boxes = layoutText(edit, resolved, transcript, headTrack, preset, measurer);
-  const checks = runChecks(edit, boxes, resolved, transcript, headTrack, preset);
+  const behindItems = edit.tracks.behind ?? [];
+  const bigWords = new Map<string, BigWordBox>();
+  for (const item of behindItems) {
+    if (item.kind !== "word") continue;
+    bigWords.set(item.id, bigWordLayout(item, resolved.get(item.id)!, headTrack, preset, measurer));
+  }
+  const checks = runChecks(edit, boxes, resolved, transcript, headTrack, preset, [
+    ...bigWords.values(),
+  ]);
+  const spans = maskSpans(edit, transcript, preset);
+  const masks = spans.map((maskSpan) => {
+    const mask = (edit.inputs.masks ?? []).find(
+      (entry) =>
+        Math.abs(entry.start - maskSpan.start) < 0.0005 &&
+        Math.abs(entry.end - maskSpan.end) < 0.0005,
+    );
+    if (!mask) throw new Error(`build: behind item ${maskSpan.items[0]} has no cut-out`);
+    return mask;
+  });
   const span = (id: string) => resolved.get(id)!;
   const duration = sec(edit.duration);
   const { tracks } = edit;
@@ -67,6 +108,7 @@ export function build(
       const font = preset.fonts[key];
       return `      .f-${key} { font-family: "${font.family}", sans-serif; font-weight: ${font.weight}; }`;
     }),
+    ...(spans.length > 0 ? BEHIND_STYLE : []),
   ];
 
   const body: string[] = [];
@@ -92,6 +134,62 @@ export function build(
     }
   };
   for (const item of tracks.footage) clip(item, 1);
+
+  // Behind the speaker, one composite per mask span, above the footage and
+  // under transitions and text. Inside an isolated group: a footage copy, the
+  // span's behind items on it, the inverted mask multiplied (keeps the
+  // picture where the person is not), and an isolated sub-group adding the
+  // footage times the mask (the person back in front). Every layer is a plain
+  // timed element, so the player and the render's frame injector (which
+  // copies `filter` and `mix-blend-mode` onto its frames) show the same
+  // pixels; the groups themselves are untimed (HyperFrames times the video or
+  // its wrapper, never both).
+  for (const [index, maskSpan] of spans.entries()) {
+    const id = `cut_${index + 1}`;
+    const mask = masks[index]!;
+    const timing = [
+      ["data-start", sec(maskSpan.start)],
+      ["data-duration", sec(maskSpan.end - maskSpan.start)],
+    ] as const;
+    const footageCopy = (copy: string, track: number) =>
+      `<video${attrs([
+        ["id", `${id}_${copy}`],
+        ["class", "clip full"],
+        ["src", edit.inputs.footage.file],
+        ["muted", null],
+        ["playsinline", null],
+        ...timing,
+        ["data-media-start", sec(maskSpan.start)],
+        ["data-track-index", String(track)],
+      ])}></video>`;
+    const maskVideo = (copy: string, className: string, track: number) =>
+      `<video${attrs([
+        ["id", `${id}_${copy}`],
+        ["class", `clip full ${className}`],
+        ["src", maskPath(mask)],
+        ["muted", null],
+        ["playsinline", null],
+        ...timing,
+        ["data-track-index", String(track)],
+      ])}></video>`;
+    body.push(
+      `      <div${attrs([
+        ["id", id],
+        ["class", "cutout"],
+      ])}>`,
+    );
+    body.push(`        ${footageCopy("footage", 20)}`);
+    for (const item of behindItems) {
+      if (!maskSpan.items.includes(item.id)) continue;
+      body.push(`        ${behindElement(item, span(item.id), bigWords.get(item.id), preset)}`);
+    }
+    body.push(`        ${maskVideo("under", "mask-under", 22)}`);
+    body.push(`        <div${attrs([["class", "cutout-front"]])}>`);
+    body.push(`          ${footageCopy("person", 23)}`);
+    body.push(`          ${maskVideo("mask", "mask-front", 24)}`);
+    body.push("        </div>");
+    body.push("      </div>");
+  }
 
   for (const [index, item] of tracks.transitions.entries()) {
     const kind = preset.transitions[item.type];
@@ -219,7 +317,56 @@ export function build(
     "",
   ].join("\n");
 
-  return { html, assets: assetsOf(edit, preset), checks };
+  return { html, assets: assetsOf(edit, preset, masks), checks };
+}
+
+// One behind item as its element: a photo exactly covering its spot, or the
+// big word at its measured size. Its own start and duration are the hard cut
+// in and out; nothing animates it.
+function behindElement(
+  item: BehindItem,
+  { start, end }: { start: number; end: number },
+  word: BigWordBox | undefined,
+  preset: Preset,
+): string {
+  const timing = [
+    ["data-start", sec(start)],
+    ["data-duration", sec(end - start)],
+    ["data-track-index", "21"],
+  ] as const;
+  const extra = item.style ? [inlineStyle(item.style)] : [];
+  if (item.kind === "photo") {
+    const box = spotBox(item.spot, preset);
+    const css = [
+      `left: ${px(box.left)}px`,
+      `top: ${px(box.top)}px`,
+      `width: ${px(box.right - box.left)}px`,
+      `height: ${px(box.bottom - box.top)}px`,
+      ...extra,
+    ].join("; ");
+    return `<img${attrs([
+      ["id", item.id],
+      ["class", "clip photo"],
+      ["src", photoPath(item.photo_id)],
+      ["alt", ""],
+      ...timing,
+      ["style", css],
+    ])} />`;
+  }
+  const box = word!;
+  const css = [
+    `left: ${px(box.x)}px`,
+    `top: ${px(box.y)}px`,
+    `font-size: ${px(box.size)}px`,
+    `color: ${box.color}`,
+    ...extra,
+  ].join("; ");
+  return `<div${attrs([
+    ["id", item.id],
+    ["class", `clip word f-${box.font}`],
+    ...timing,
+    ["style", css],
+  ])}>${escapeHtml(box.text)}</div>`;
 }
 
 function inlineStyle(style: Record<string, string>): string {
@@ -229,8 +376,19 @@ function inlineStyle(style: Record<string, string>): string {
     .join("; ");
 }
 
-function assetsOf(edit: Edit, preset: Preset): BuildAsset[] {
+function assetsOf(edit: Edit, preset: Preset, masks: readonly EditMask[]): BuildAsset[] {
   const assets: BuildAsset[] = [];
+  for (const mask of new Map(masks.map((entry) => [entry.fingerprint, entry])).values()) {
+    const { step, fingerprint, file } = mask;
+    assets.push({ path: maskPath(mask), role: "mask", ref: { step, fingerprint, file } });
+  }
+  const photoIds = new Set<string>();
+  for (const item of edit.tracks.behind ?? []) {
+    if (item.kind === "photo") photoIds.add(item.photo_id);
+  }
+  for (const photoId of photoIds) {
+    assets.push({ path: photoPath(photoId), role: "photo", ref: null, photoId });
+  }
   if (edit.tracks.footage.length > 0) {
     assets.push({ path: edit.inputs.footage.file, role: "footage", ref: edit.inputs.footage });
   }

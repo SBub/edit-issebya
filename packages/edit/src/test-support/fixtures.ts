@@ -5,6 +5,7 @@ import { ISSEBYA_PRESET } from "../preset.ts";
 import { type Edit, parseEdit } from "../schema.ts";
 import type { Transcript } from "../transcript.ts";
 import baselineShortSpeech from "../testdata/versions/baseline-short-speech.edit.json" with { type: "json" };
+import rethinkBehind from "../testdata/versions/rethink-work-behind.edit.json" with { type: "json" };
 import rethinkHand from "../testdata/versions/rethink-work-hand.edit.json" with { type: "json" };
 import { RETHINK_WORK, SHORT_SPEECH } from "./inputs.ts";
 
@@ -28,4 +29,5 @@ function fixture(
 export const FIXTURES: Fixture[] = [
   fixture("baseline-short-speech", baselineShortSpeech, SHORT_SPEECH),
   fixture("rethink-work-hand", rethinkHand, RETHINK_WORK),
+  fixture("rethink-work-behind", rethinkBehind, RETHINK_WORK),
 ];

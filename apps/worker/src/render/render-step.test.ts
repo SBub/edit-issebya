@@ -1,4 +1,4 @@
-import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@edit-issebya/edit";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { withMasks } from "../cutout/spans.ts";
 import { editMeasurer } from "../edit-measurer.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
@@ -246,6 +247,106 @@ describe("runRender", () => {
   it("refuses a version of another reel", async () => {
     version = { ...version, reel_id: "11111111-2222-4333-8444-555555555555" };
     await expect(run(recordingSteps().steps)).rejects.toThrow(/not a version of this reel/);
+    expect(inserted).toEqual([]);
+  });
+});
+
+describe("runRender with a behind photo", () => {
+  const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
+  const LARGE = `${PREFIX}library/${PHOTO}/large.jpg`;
+  let projectFiles: string[];
+
+  // The fixture edit with one left photo over its whole speech, its mask and
+  // the photo's large copy stored.
+  beforeEach(async () => {
+    const { edit, transcript } = await fixtureEdit();
+    const behind = withMasks(
+      {
+        ...edit,
+        tracks: {
+          ...edit.tracks,
+          behind: [
+            {
+              id: "behind-photo",
+              kind: "photo",
+              photo_id: PHOTO,
+              spot: "left",
+              start: { word: "w0001" },
+              end: { word: "w0010", edge: "end" },
+            },
+          ],
+        },
+      },
+      transcript,
+    );
+    await storage.put(version.r2_key, editBytes(behind));
+    version = { ...version, inputs: behind.inputs };
+    for (const mask of behind.inputs.masks!) {
+      await storage.put(
+        cacheKey(PREFIX, mask.step, mask.fingerprint, mask.file),
+        new TextEncoder().encode("mask"),
+      );
+    }
+    await storage.put(LARGE, new TextEncoder().encode("jpeg"));
+    projectFiles = [];
+  });
+
+  function runBehind(library: { id: string; large_key: string }[]) {
+    const { steps, calls } = recordingSteps();
+    const spawnTool: SpawnTool = async (call) => {
+      if (call.args.includes("-o")) {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+        projectFiles = await readdir(join(call.args[2]!), { recursive: true });
+      }
+      return fakeSpawn(call, new AbortController().signal, () => {});
+    };
+    const done = runRender({
+      ctx: stepContext(steps, { job: JOB }),
+      storage,
+      rows,
+      exports: exportsStore,
+      keyPrefix: PREFIX,
+      scratchDir: join(root, "scratch"),
+      tools: TOOLS,
+      versionId: VERSION_ID,
+      ensureInputs: async () => {},
+      newId: () => EXPORT_ID,
+      spawnTool,
+      env: {},
+      photos: {
+        async readyPhotos() {
+          return library.map((photo) => ({ ...photo, description: "a kitchen", tags: [] }));
+        },
+      },
+      cutouts: {
+        storage,
+        keyPrefix: PREFIX,
+        scratchDir: join(root, "scratch"),
+        tools: TOOLS,
+        spawnTool,
+      },
+    });
+    return { done, calls };
+  }
+
+  it("reuses the stored mask and places the mask and the photo in the project", async () => {
+    const { done, calls } = runBehind([{ id: PHOTO, large_key: LARGE }]);
+    await done;
+    expect(calls[0]).toMatchObject({ call: "skipped", name: "cutout", summary: "cut-out reused" });
+    expect(projectHtml).toContain(`src="photos/${PHOTO}.jpg"`);
+    const [mask] = version.inputs.masks!;
+    expect(projectHtml).toContain(`src="masks/${mask!.fingerprint}.mp4"`);
+    expect(projectFiles).toEqual(
+      expect.arrayContaining([`photos/${PHOTO}.jpg`, `masks/${mask!.fingerprint}.mp4`]),
+    );
+    expect(inserted).toHaveLength(1);
+  });
+
+  it("fails with one line when the photo left the library", async () => {
+    const { done, calls } = runBehind([]);
+    await expect(done).rejects.toThrow(`render: photo ${PHOTO} is no longer in the library`);
+    const failed = calls.find((call) => call.call === "failed");
+    expect(failed?.call === "failed" && failed.tail).toContain("is no longer in the library");
     expect(inserted).toEqual([]);
   });
 });

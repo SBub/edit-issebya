@@ -7,6 +7,9 @@ export const HAVE_FUTURE_DATA = 3;
 export interface MediaState {
   start: number;
   duration: number;
+  // Where in its file the medium starts playing (`data-media-start`, a
+  // cut-out's footage copy); 0 when unset.
+  mediaStart?: number;
   readyState: number;
   seeking: boolean;
   // The element's own currentTime, when known: right after a seek a video can
@@ -17,6 +20,11 @@ export interface MediaState {
 // How far a video may sit from the target and count as there (a frame or two
 // of the preview copies' 30 fps, plus the runtime's own sync slack).
 const POSITION_TOLERANCE = 0.1;
+
+// Where a medium's own clock must be at reel time t.
+export function mediaTimeAt(item: Pick<MediaState, "start" | "mediaStart">, t: number): number {
+  return t - item.start + (item.mediaStart ?? 0);
+}
 
 // The media whose [start, start + duration) window contains t.
 export function activeAt<T extends MediaState>(media: readonly T[], t: number): T[] {
@@ -31,6 +39,6 @@ export function canPlayFrom(media: readonly MediaState[], t: number): boolean {
       !item.seeking &&
       item.readyState >= HAVE_FUTURE_DATA &&
       (item.position === undefined ||
-        Math.abs(item.position - (t - item.start)) <= POSITION_TOLERANCE),
+        Math.abs(item.position - mediaTimeAt(item, t)) <= POSITION_TOLERANCE),
   );
 }

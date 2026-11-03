@@ -23,11 +23,21 @@ import {
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import type { AiRunner } from "../ai.ts";
+import { ensureCutouts } from "../cutout/ensure-cutouts.ts";
+import { withMasks } from "../cutout/spans.ts";
 import { editMeasurer } from "../edit-measurer.ts";
 import { AiUnavailable, permanentAfterAiCall } from "../failure.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
+import { type ToolPaths, toolPaths } from "../pipeline/tools.ts";
+import type { PhotoLibrary } from "../photos/photo-store.ts";
 import { reelOf } from "../queue.ts";
-import { type StepContext, StepError, type Tool, runToolsStep } from "../step-runner.ts";
+import {
+  type SpawnTool,
+  type StepContext,
+  StepError,
+  type Tool,
+  runToolsStep,
+} from "../step-runner.ts";
 import { type AiUsage, addUsage } from "../step-store.ts";
 import { decideInput } from "./input.ts";
 import { PROMPT_VERSION, decidePrompt } from "./prompt.ts";
@@ -49,6 +59,13 @@ export interface DecideRun {
   request?: string | null;
   measurer?: () => Promise<Measurer>;
   newId?: () => string;
+  // The owner's ready photos, offered for the behind track; none without it.
+  photos?: PhotoLibrary;
+  // For the cut-out a behind item needs before the version is saved.
+  tools?: ToolPaths;
+  spawnTool?: SpawnTool;
+  env?: NodeJS.ProcessEnv;
+  recordStored?: (key: string, bytes: number) => Promise<void>;
 }
 
 type Attempt =
@@ -71,7 +88,9 @@ function roundLines(round: number, reasons: readonly string[]): string[] {
 // answer is checked again by Zod, built, run through the layout checks and
 // the glossary check. A refused answer goes back once with its reasons; a
 // second refusal fails the step with both rounds' reasons and writes nothing,
-// so the current version stays. A passing answer becomes a new version.
+// so the current version stays. A passing answer becomes a new version, once
+// the masks its behind items need are stored (the `cutout` step); a failed
+// cut-out saves nothing.
 // Never cached: a retried job decides again from the then-current version.
 export function runDecide({
   ctx,
@@ -84,6 +103,11 @@ export function runDecide({
   request = null,
   measurer = editMeasurer,
   newId = randomUUID,
+  photos,
+  tools = toolPaths(),
+  spawnTool,
+  env = process.env,
+  recordStored,
 }: DecideRun): Promise<void> {
   const preset = ISSEBYA_PRESET;
   return runToolsStep(ctx, {
@@ -110,8 +134,10 @@ export function runDecide({
         throw new Error(`${STEP}: current version does not parse: ${parsed.reasons.join("; ")}`);
       }
       const current = parsed.edit;
-      const schema = decideJsonSchema(preset, transcript, current.duration);
-      const input = decideInput({ current, transcript, headTrack, preset, request });
+      const library = photos ? await photos.readyPhotos(ctx.job.owner_id) : [];
+      const photoIds = library.map((photo) => photo.id);
+      const schema = decideJsonSchema(preset, transcript, current.duration, photoIds);
+      const input = decideInput({ current, transcript, headTrack, preset, library, request });
       const measure = await measurer();
 
       let usage: AiUsage = { inputTokens: null, outputTokens: null, costUsd: null, model: null };
@@ -129,12 +155,21 @@ export function runDecide({
           if (result.kind === "broken") {
             return { ok: false, reasons: [`the answer was not valid JSON: ${result.reason}`] };
           }
-          const answer = parseDecideAnswer(result.answer, preset, transcript, current.duration);
+          const answer = parseDecideAnswer(
+            result.answer,
+            preset,
+            transcript,
+            current.duration,
+            photoIds,
+          );
           if (!answer.ok) return answer;
           const composed = editFromAnswer(current, answer.answer, preset, transcript);
           if (!composed.ok) return composed;
+          // Built with the masks it will name: their fingerprints are known
+          // before any is made.
           const checks = [
-            ...build(composed.edit, transcript, headTrack, preset, measure).checks,
+            ...build(withMasks(composed.edit, transcript), transcript, headTrack, preset, measure)
+              .checks,
             ...glossaryChecks(composed.edit, transcript, preset),
           ];
           if (checks.length > 0) {
@@ -159,7 +194,23 @@ export function runDecide({
         }
 
         ctx.signal.throwIfAborted();
-        const { edit, answer } = passed;
+        const { answer } = passed;
+        // The masks first: a version is saved (and so shown) only once they
+        // exist. A failure here comes after the AI call, so it is permanent.
+        const edit = await ensureCutouts({
+          ctx,
+          storage,
+          keyPrefix,
+          scratchDir,
+          edit: passed.edit,
+          transcript,
+          photoIds,
+          tools,
+          spawnTool,
+          env,
+          recordStored,
+        }).catch(permanentAfterAiCall);
+        ctx.signal.throwIfAborted();
         const saved = await saveVersion(
           { rows, blobs, keyPrefix, newId },
           {
@@ -185,6 +236,9 @@ export function runDecide({
           plural(counts.transitions, "transition"),
           counts.title ? "title set" : "no title",
           `${plural(counts.wordsFixed, "word")} fixed`,
+          ...(counts.behindPhotos + counts.behindWords > 0
+            ? [`${counts.behindPhotos + counts.behindWords} behind`]
+            : []),
         ].join(", ");
         return { what, ai: usage };
       } finally {

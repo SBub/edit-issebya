@@ -78,8 +78,15 @@ const RETIRED_OUTPUTS: readonly (StepOutput & { step: string })[] = [
   { step: "preview_copies", file: "subject-preview.webm", retention: "kept" },
 ];
 
-// The retention tag of one step's output (a live step's, else a retired
-// output's); null when nothing declares it.
+// Outputs made on demand outside the fixed pipeline: the person mask of one
+// span of a behind item (the `cutout` step, apps/worker/src/cutout/).
+// Rebuildable: the next export, restore or change makes it again.
+const ON_DEMAND_OUTPUTS: readonly (StepOutput & { step: string })[] = [
+  { step: "cutout", file: "mask.mp4", retention: "rebuildable" },
+];
+
+// The retention tag of one step's output (a live step's, an on-demand one's,
+// else a retired output's); null when nothing declares it.
 export function retentionOf(
   step: string,
   file: string,
@@ -89,6 +96,7 @@ export function retentionOf(
     pipeline
       .find((candidate) => candidate.name === step)
       ?.outputs.find((candidate) => candidate.file === file) ??
+    ON_DEMAND_OUTPUTS.find((candidate) => candidate.step === step && candidate.file === file) ??
     RETIRED_OUTPUTS.find((candidate) => candidate.step === step && candidate.file === file);
   return output?.retention ?? null;
 }

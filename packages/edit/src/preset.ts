@@ -41,6 +41,32 @@ export interface PresetSound {
   minGapSeconds: number;
 }
 
+// Where a library photo goes behind the speaker: three preset spots.
+export type BehindSpot = "top" | "left" | "right";
+export const BEHIND_SPOTS = ["top", "left", "right"] as const satisfies readonly BehindSpot[];
+
+export interface PresetBehind {
+  // Each spot's rectangle in frame pixels; the photo covers it exactly.
+  spots: Record<BehindSpot, Box>;
+  // The one big word: as large as fits between the side margins (at most
+  // `maxSize`), centred, its vertical centre `belowHeadTop` below the head's
+  // top so the head overlaps it, or at `noHeadY` with no head in the frame.
+  word: {
+    font: FontKey;
+    maxSize: number;
+    margin: number;
+    color: string;
+    belowHeadTop: number;
+    noHeadY: number;
+  };
+  // The cut-out covers each item plus this many frames on each side.
+  padFrames: number;
+  frameRate: number;
+  // A behind item lasts between these, in seconds.
+  minSeconds: number;
+  maxSeconds: number;
+}
+
 export interface GlossaryTerm {
   term: string;
   // The word sequences the transcriber writes for it, lower-case, cleaned.
@@ -76,6 +102,7 @@ export interface Preset {
   slots: { firstRow: number; rowGap: number; rightDrop: number; minLeft: number; minRight: number };
   transitions: Record<TransitionType, PresetTransition>;
   sounds: Record<SoundKey, PresetSound>;
+  behind: PresetBehind;
   // Words a caption keeps capitalised (lower-case key, shown value).
   keepCaps: Record<string, string>;
   // Joined with the number before them into one caption unit.
@@ -154,6 +181,26 @@ export const ISSEBYA_PRESET: Preset = {
       gainDb: -13,
       minGapSeconds: 0.25,
     },
+  },
+  // Starting values; the owner tunes them by eye on a real reel.
+  behind: {
+    spots: {
+      top: { left: 90, right: 990, top: 160, bottom: 760 },
+      left: { left: 40, right: 500, top: 560, bottom: 1180 },
+      right: { left: 580, right: 1040, top: 560, bottom: 1180 },
+    },
+    word: {
+      font: "secondary",
+      maxSize: 400,
+      margin: 40,
+      color: "#FFFFFF",
+      belowHeadTop: 60,
+      noHeadY: 700,
+    },
+    padFrames: 3,
+    frameRate: 30,
+    minSeconds: 2,
+    maxSeconds: 4,
   },
   keepCaps: { i: "I", "i'm": "I'm", "i've": "I've", "i'll": "I'll", "i'd": "I'd", ai: "AI" },
   units: [

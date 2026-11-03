@@ -68,3 +68,12 @@ describe("resolveTimeline", () => {
     expect(resolved.get("early")).toEqual({ start: 0, end: 0.355, clamped: true });
   });
 });
+
+describe("resolveTimeline with behind items", () => {
+  it("resolves the behind track like any other", () => {
+    const behind = FIXTURES.find((fixture) => fixture.name === "rethink-work-behind")!;
+    const resolved = resolveTimeline(behind.edit, behind.transcript);
+    expect(resolved.get("behind-photo")).toEqual({ start: 5.206, end: 7.838, clamped: false });
+    expect(resolved.get("behind-word")).toEqual({ start: 20.068, end: 22.613, clamped: false });
+  });
+});

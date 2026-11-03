@@ -10,7 +10,7 @@ import {
   fakeAiRunner,
   resultEnvelope,
 } from "./ai.ts";
-import { type DoctorDeps, ffmpegMajor, runDoctor } from "./doctor-checks.ts";
+import { type DoctorDeps, type MaskToolDeps, ffmpegMajor, runDoctor } from "./doctor-checks.ts";
 
 let root: string;
 let storage: FakeStorage;
@@ -78,8 +78,57 @@ const PASSING: DoctorDeps = {
     ].join("\n"),
   hyperframes: async () => "0.8.222\n",
   ai: () => answeringAi(),
+  maskTool: () => maskTool(),
   scratchDir: async () => ({ dir: "/scratch", state: "exists" }),
 };
+
+// A mask tool that builds, runs at once and gives a mask of the sample's size.
+function maskTool(change: Partial<MaskToolDeps> = {}): MaskToolDeps {
+  return {
+    platform: "darwin",
+    sample: "/fixtures/short-speech.mp4",
+    build: async () => {},
+    run: async () => {},
+    probe: async (file) =>
+      file === "/fixtures/short-speech.mp4"
+        ? { codec: "h264", width: 720, height: 1280, frames: 83 }
+        : { codec: "h264", width: 720, height: 1280, frames: 30 },
+    ...change,
+  };
+}
+
+describe("runDoctor's mask tool line", () => {
+  const line = async (deps: MaskToolDeps) =>
+    (await runDoctor({ ...PASSING, maskTool: () => deps })).lines[8];
+
+  it("refuses off macOS with one line", async () => {
+    expect(await line(maskTool({ platform: "linux" }))).toBe(
+      "FAIL mask tool: the mask tool runs on macOS only (Apple Vision); this worker runs on linux",
+    );
+  });
+
+  it("fails when the build fails", async () => {
+    const build = async () => Promise.reject(new Error("swiftc: error: no such file"));
+    expect(await line(maskTool({ build }))).toBe("FAIL mask tool: swiftc: error: no such file");
+  });
+
+  it("fails a mask of the wrong size or length", async () => {
+    const wrong = maskTool({
+      probe: async (file) =>
+        file.endsWith("mask.mp4")
+          ? { codec: "h264", width: 540, height: 960, frames: 30 }
+          : { codec: "h264", width: 720, height: 1280, frames: 83 },
+    });
+    expect(await line(wrong)).toBe("FAIL mask tool: mask is 540x960, the footage 720x1280");
+    const short = maskTool({
+      probe: async (file) =>
+        file.endsWith("mask.mp4")
+          ? { codec: "h264", width: 720, height: 1280, frames: 12 }
+          : { codec: "h264", width: 720, height: 1280, frames: 83 },
+    });
+    expect(await line(short)).toBe("FAIL mask tool: mask has 12 frames, not 30");
+  });
+});
 
 describe("runDoctor", () => {
   it("fails the ffmpeg line on ffmpeg or ffprobe older than 7", async () => {
@@ -130,6 +179,7 @@ describe("runDoctor", () => {
         "ok   hyperframes 0.8.222",
         "ok   ai structured call",
         "ok   ai image call",
+        "ok   mask tool vseg built, 1 s masked in 0.0 s",
         "ok   scratch dir /scratch exists",
       ],
       exitCode: 0,
@@ -193,13 +243,13 @@ describe("runDoctor", () => {
       ...PASSING,
       scratchDir: async () => ({ dir: "/scratch/prod", state: "can be created" }),
     });
-    expect(creatable.lines[8]).toBe("ok   scratch dir /scratch/prod can be created");
+    expect(creatable.lines[9]).toBe("ok   scratch dir /scratch/prod can be created");
     expect(creatable.exitCode).toBe(0);
     const failing = await runDoctor({
       ...PASSING,
       scratchDir: async () => Promise.reject(new Error("/scratch is not a folder")),
     });
-    expect(failing.lines[8]).toBe("FAIL scratch dir: /scratch is not a folder");
+    expect(failing.lines[9]).toBe("FAIL scratch dir: /scratch is not a folder");
     expect(failing.exitCode).toBe(1);
   });
 
@@ -249,7 +299,8 @@ describe("runDoctor", () => {
       [{ ai: () => fakeAiRunner([resultEnvelope({ ok: false })]) }, [6, 7]],
       [{ ai: () => fakeAiRunner(["not json"]) }, [6, 7]],
       [{ ai: () => fakeAiRunner([resultEnvelope(EMPTY_DECIDE_ANSWER)]) }, 7],
-      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 8],
+      [{ maskTool: () => maskTool({ platform: "linux" }) }, 8],
+      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 9],
     ];
     for (const [override, failing] of cases) {
       const { lines, exitCode } = await runDoctor({ ...PASSING, ...override });

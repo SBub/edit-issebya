@@ -5,8 +5,16 @@ import type {
   VersionBlobs,
   VersionRows,
 } from "@edit-issebya/edit";
-import { versionKey } from "@edit-issebya/edit";
-import { beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { editBytes, versionKey } from "@edit-issebya/edit";
+import { type Storage, fakeStorage } from "@edit-issebya/storage";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { withMasks } from "./cutout/spans.ts";
+import { BEHIND_TRANSCRIPT, behindEdit, fakeMaskSpawn } from "./cutout/test-support.ts";
+import { cacheKey } from "./pipeline/fingerprint.ts";
+import { storageVersionBlobs } from "./version-store.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
 import { runRestore } from "./restore-step.ts";
 
@@ -132,5 +140,70 @@ describe("runRestore", () => {
     expect(current).toBe(V2);
     expect(blobs.size).toBe(3);
     expect(calls.map((call) => call.call)).toEqual(["start", "failed"]);
+  });
+});
+
+describe("runRestore of a version with a behind item", () => {
+  let root: string;
+  let storage: Storage;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "restore-cutout-"));
+    storage = fakeStorage({ root: join(root, "store"), uploadUrlBase: "" });
+    const edit = withMasks(behindEdit(), BEHIND_TRANSCRIPT);
+    const ref = edit.inputs.transcript;
+    await storage.put(
+      cacheKey(PREFIX, ref.step, ref.fingerprint, ref.file),
+      new TextEncoder().encode(JSON.stringify(BEHIND_TRANSCRIPT)),
+    );
+    const footage = edit.inputs.footage;
+    await storage.put(
+      cacheKey(PREFIX, footage.step, footage.fingerprint, footage.file),
+      new TextEncoder().encode("footage"),
+    );
+    const key = versionKey(PREFIX, REEL, V1);
+    await storage.put(key, editBytes(edit));
+    // The first mask is still stored; the second was slimmed.
+    const [first] = edit.inputs.masks!;
+    await storage.put(
+      cacheKey(PREFIX, first!.step, first!.fingerprint, first!.file),
+      new TextEncoder().encode("stored"),
+    );
+    rows.set(V1, { ...rows.get(V1)!, inputs: edit.inputs, r2_key: key });
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("rebuilds the slimmed mask, then saves the copy of the old bytes", async () => {
+    const recorded = recordingSteps();
+    const spawn = fakeMaskSpawn();
+    await runRestore({
+      ctx: stepContext(recorded.steps),
+      rows: memoryRows(),
+      blobs: storageVersionBlobs(storage),
+      keyPrefix: PREFIX,
+      versionId: V1,
+      newId: () => NEW,
+      cutouts: {
+        storage,
+        keyPrefix: PREFIX,
+        scratchDir: join(root, "scratch"),
+        tools: { ffmpeg: "ffmpeg", ffprobe: "ffprobe", hyperframes: ["node", "hf.mjs"] },
+        spawnTool: spawn.spawnTool,
+        env: { E2E_MOCK_MASK: "true" },
+      },
+    });
+    expect(spawn.calls).toHaveLength(1);
+    const names = recorded.calls.flatMap((call) => (call.call === "start" ? [call.name] : []));
+    expect(names).toEqual(["cutout", "restore"]);
+    const [, second] = rows.get(V1)!.inputs.masks!;
+    expect(
+      await storage.head(cacheKey(PREFIX, second!.step, second!.fingerprint, second!.file)),
+    ).not.toBeNull();
+    const row = rows.get(NEW)!;
+    expect(row.restored_from_id).toBe(V1);
+    expect(await storage.get(row.r2_key)).toEqual(await storage.get(rows.get(V1)!.r2_key));
   });
 });

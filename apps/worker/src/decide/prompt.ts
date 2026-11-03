@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import type { DecideInput } from "./input.ts";
 
 // Bump with every change to prompt.md: each version row records it.
-export const PROMPT_VERSION = "decide-1";
+export const PROMPT_VERSION = "decide-2";
 
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed prompt
 const TEMPLATE = readFileSync(new URL("./prompt.md", import.meta.url), "utf8");
@@ -19,6 +19,7 @@ export function decidePrompt(input: DecideInput, previousReasons?: readonly stri
     transcript: fenced(input.transcript),
     head_track: fenced(input.head_track),
     preset: fenced(input.preset),
+    library: fenced(input.library),
     request: input.request ?? "(none)",
   };
   const filled = TEMPLATE.replace(/\{\{(\w+)\}\}/g, (match, name: string) => values[name] ?? match);

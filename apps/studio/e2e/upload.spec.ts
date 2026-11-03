@@ -259,7 +259,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     model: "claude-opus-5-5",
     request: null,
     parent_id: v1!.id,
-    prompt_version: "decide-1",
+    prompt_version: "decide-2",
     change_summary: script.structured_output.change_summary,
     checks: [],
     used_free_field: false,

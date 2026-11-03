@@ -271,12 +271,13 @@ test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable
   const rows = tracks.locator("[data-track]");
   expect(await rows.evaluateAll((els) => els.map((el) => el.getAttribute("data-track")))).toEqual([
     "footage",
+    "behind",
     "captions",
     "overlays",
     "transitions",
     "sounds",
   ]);
-  for (const label of ["Footage", "Captions", "Accents", "Transitions", "Sounds"]) {
+  for (const label of ["Footage", "Behind", "Captions", "Accents", "Transitions", "Sounds"]) {
     await expect(tracks.getByText(label, { exact: true })).toBeVisible();
   }
 

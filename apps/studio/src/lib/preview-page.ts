@@ -16,29 +16,50 @@ function escapeAttr(text: string): string {
 }
 
 // The page the player is handed, from the page packages/edit built: each
-// footage video's file becomes its preview copy's signed URL (and buffers ahead), each
-// font comes from the edit-assets route, and the sound items' `<audio>` clips
-// are dropped (the studio plays them through Web Audio). Nothing else
-// changes. Throws when the page is not shaped the way the builder writes it.
+// footage video's file (the cut-out's footage copies included) becomes its
+// preview copy's signed URL, each mask video's file its signed URL (both
+// buffer ahead), each photo `<img>`'s file its signed URL, each font comes
+// from the edit-assets route, and the sound items' `<audio>` clips are dropped
+// (the studio plays them through Web Audio). Nothing else changes. Throws
+// when the page is not shaped the way the builder writes it, or a mask or
+// photo has no URL.
 export function previewPage(
   html: string,
   assets: readonly BuildAsset[],
-  urls: { footage: string },
+  urls: {
+    footage: string;
+    masks?: readonly { path: string; url: string }[];
+    photos?: readonly { path: string; url: string }[];
+  },
   soundIds: readonly string[],
 ): string {
   let lines = html.split("\n");
 
+  // Every `<tag ` line playing `path` gets `url` (and `extra`); none throws.
+  const swap = (tag: string, path: string, url: string, extra: string) => {
+    const from = ` src="${escapeAttr(path)}"`;
+    const to = ` src="${escapeAttr(url)}"${extra}`;
+    let found = false;
+    lines = lines.map((line) => {
+      if (!line.trimStart().startsWith(`<${tag} `) || !line.includes(from)) return line;
+      found = true;
+      return line.replace(from, to);
+    });
+    if (!found) throw new Error(`preview: no <${tag}> plays ${path}`);
+  };
+  const urlOf = (list: readonly { path: string; url: string }[] | undefined, path: string) => {
+    const url = list?.find((entry) => entry.path === path)?.url;
+    if (!url) throw new Error(`preview: no URL for ${path}`);
+    return url;
+  };
+
   for (const asset of assets) {
     if (asset.role === "footage") {
-      const from = ` src="${escapeAttr(asset.path)}"`;
-      const to = ` src="${escapeAttr(urls.footage)}" preload="auto"`;
-      let found = false;
-      lines = lines.map((line) => {
-        if (!line.trimStart().startsWith("<video ") || !line.includes(from)) return line;
-        found = true;
-        return line.replace(from, to);
-      });
-      if (!found) throw new Error(`preview: no <video> plays ${asset.path}`);
+      swap("video", asset.path, urls.footage, ' preload="auto"');
+    } else if (asset.role === "mask") {
+      swap("video", asset.path, urlOf(urls.masks, asset.path), ' preload="auto"');
+    } else if (asset.role === "photo") {
+      swap("img", asset.path, urlOf(urls.photos, asset.path), "");
     } else if (asset.role === "font") {
       const from = `url("${asset.path}")`;
       const to = `url("${editAssetUrl(asset.path)}")`;

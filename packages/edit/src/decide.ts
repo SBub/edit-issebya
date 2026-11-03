@@ -11,10 +11,21 @@ import type { Transcript } from "./transcript.ts";
 // inside the preset's safe box, fonts and transition types from the preset.
 // By convention the title is the overlay with id `title`, anchored at
 // `{ reel: "start" }`.
-export function decideAnswerSchemaFor(preset: Preset, transcript: Transcript, duration: number) {
+// The behind track's photos are limited to `photoIds`, the owner's ready
+// library photos (none given: no photo can be named).
+export function decideAnswerSchemaFor(
+  preset: Preset,
+  transcript: Transcript,
+  duration: number,
+  photoIds: readonly string[] = [],
+) {
   return z.object({
-    // No cut-out track: the pipeline makes no cut-out until #20 brings it back.
-    tracks: tracksSchemaFor(preset, transcript, { duration, bounds: preset.safe }).omit({
+    // No whole-clip cut-out track: masks are made only for behind items.
+    tracks: tracksSchemaFor(preset, transcript, {
+      duration,
+      bounds: preset.safe,
+      photoIds,
+    }).omit({
       cutout: true,
     }),
     change_summary: z.string().min(1).max(300),
@@ -38,8 +49,9 @@ export function decideJsonSchema(
   preset: Preset,
   transcript: Transcript,
   duration: number,
+  photoIds: readonly string[] = [],
 ): Record<string, unknown> {
-  return z.toJSONSchema(decideAnswerSchemaFor(preset, transcript, duration), {
+  return z.toJSONSchema(decideAnswerSchemaFor(preset, transcript, duration, photoIds), {
     target: "draft-07",
     io: "output",
     reused: "inline",
@@ -52,8 +64,9 @@ export function parseDecideAnswer(
   preset: Preset,
   transcript: Transcript,
   duration: number,
+  photoIds: readonly string[] = [],
 ): { ok: true; answer: DecideAnswer } | { ok: false; reasons: string[] } {
-  const result = decideAnswerSchemaFor(preset, transcript, duration).safeParse(json);
+  const result = decideAnswerSchemaFor(preset, transcript, duration, photoIds).safeParse(json);
   if (result.success) return { ok: true, answer: result.data };
   return { ok: false, reasons: issueReasons(json, result.error.issues) };
 }
@@ -68,13 +81,25 @@ export function editFromAnswer(
   transcript: Transcript,
 ): { ok: true; edit: Edit } | { ok: false; reasons: string[] } {
   // Only the answer's own tracks: a cut-out track it carries anyway is dropped.
-  const { footage, captions, overlays, transitions, sounds } = answer.tracks;
-  const tracks = { footage, captions, overlays, transitions, sounds };
+  const { footage, captions, overlays, transitions, sounds, behind } = answer.tracks;
+  const tracks = {
+    footage,
+    captions,
+    overlays,
+    transitions,
+    sounds,
+    ...(behind && behind.length > 0 ? { behind } : {}),
+  };
+  // The current version's masks and photos are not carried over: the worker's
+  // cut-out step names them again for the new behind track.
+  const inputs = { ...current.inputs };
+  delete inputs.masks;
+  delete inputs.photos;
   const json = {
     format: 1,
     preset: preset.id,
     duration: current.duration,
-    inputs: current.inputs,
+    inputs,
     tracks,
   };
   return parseEdit(json, preset, transcript, { duration: current.duration, bounds: preset.safe });
@@ -85,13 +110,18 @@ export interface DecideCounts {
   transitions: number;
   title: boolean;
   wordsFixed: number;
+  behindPhotos: number;
+  behindWords: number;
 }
 
 // What the step line names: accent overlays (the title apart), transitions,
 // whether there is a title, and captions whose text differs from their words.
 export function decideCounts(edit: Edit, transcript: Transcript, preset: Preset): DecideCounts {
   const { overlays, transitions, captions } = edit.tracks;
+  const behind = edit.tracks.behind ?? [];
   return {
+    behindPhotos: behind.filter((item) => item.kind === "photo").length,
+    behindWords: behind.filter((item) => item.kind === "word").length,
     accents: overlays.filter((item) => item.id !== "title").length,
     transitions: transitions.length,
     title: overlays.some((item) => item.id === "title"),
@@ -111,5 +141,6 @@ export function usedFreeField(edit: Edit): boolean {
     ...tracks.overlays,
     ...tracks.transitions,
     ...tracks.sounds,
+    ...(tracks.behind ?? []),
   ].some((item) => item.style !== undefined && Object.keys(item.style).length > 0);
 }

@@ -3,6 +3,7 @@
 **Specifications:**
 
 - specs/issue-32-adw-086c739a-sdlc_planner-studio-live-preview-player.md
+- specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 
 ## Overview
 
@@ -25,11 +26,19 @@ clicks through Web Audio. It is built and tested for Chrome.
 - `apps/studio/src/app/preview-actions.ts`: server action `loadPreviewSources(reelId)`. Reads the reel's
   `current_version_id` and `preview_copies` and the version's `r2_key` and `inputs` under RLS, and signs
   one download URL (one hour) for the edit, transcript, head track and footage preview.
-  Returns `ready`, `no-version`, `no-previews`, `unconfigured`, `signed-out` or `failed`.
+  For a version with `behind` items it also reads each photo the version names from its own
+  `photos` row under RLS (`id`, `large_key`, `status`; the key is the row's, never built from the
+  id), HEADs each mask before signing anything, and signs both by the path the page names them at
+  (`urls.masks` and `urls.photos`, `{ path, url }` each).
+  Returns `ready`, `no-version`, `no-previews`, `photo-missing` (a photo the version shows is not a
+  ready photo of the owner's, for example deleted from the library), `cutout-cleared` (a mask the
+  version needs was cleared by the slimming), `unconfigured`, `signed-out` or `failed`.
 - `apps/studio/src/lib/preview-sources.ts`: pure. The cache prefix is derived from the version's own
   `r2_key` (`<prefix>reels/<reel_id>/versions/<version_id>.json`), so the studio never needs the
   worker's `R2_KEY_PREFIX`. Builds and validates the five storage keys (64-hex fingerprints, expected
-  steps) and narrows the jsonb column.
+  steps) and narrows the jsonb column. `previewKeys` also returns `masks` (each `inputs.masks`
+  entry as `{ path: maskPath(mask), key }`, step `cutout`) and `photoIds` (`inputs.photos`, each a
+  uuid); a version without them has none, and a malformed list fails the whole read.
 - `apps/studio/src/app/api/edit-assets/[...path]/route.ts` and `src/lib/edit-assets.ts`: serve the
   preset's fonts and click sound from `packages/edit/assets/` (allow-list taken from `ISSEBYA_PRESET`,
   404 for anything else, immutable cache). `outputFileTracingIncludes` in `apps/studio/next.config.ts`
@@ -37,13 +46,17 @@ clicks through Web Audio. It is built and tested for Chrome.
 - `apps/studio/src/components/ReelPreview.tsx`: loads the sources, fetches the edit, transcript, head
   track and fonts, loads `harfbuzzjs` by client-only dynamic import, calls `createMeasurer` and `build`
   from `@edit-issebya/edit`, runs `previewPage`, fetches the sound files `soundHits` names, and hands
-  everything to the player. Sends `studio_preview_opened` (`reel_id`) once per mount, shows the
+  everything to the player. `photo-missing` shows `A photo in this version was deleted from the
+library.` and `cutout-cleared` shows `This version's cut-out was cleared to save space; Export
+rebuilds it.` in place of the player. Sends `studio_preview_opened` (`reel_id`) once per mount, shows the
   waiting, error and "The preview is built for Chrome." lines, and reloads when `current_version_id`
   changes in `LiveReel`'s Realtime state (no page reload, no polling).
 - `apps/studio/src/lib/preview-page.ts`: `previewPage(html, assets, urls, soundIds)` swaps the
-  footage path for its signed URL (adding `preload="auto"`), points fonts at the
-  edit-assets route and drops the sound items' `<audio>` clips. Throws if the page is not shaped the way
-  the builder writes it. Nothing else changes.
+  footage path for its signed URL (the cut-out's footage copies included), each `mask` asset's
+  path for its signed URL (both adding `preload="auto"`) and each `photo` asset's `<img>` path for
+  its signed URL, points fonts at the edit-assets route and drops the sound items' `<audio>` clips.
+  Throws if the page is not shaped the way the builder writes it, or a mask or photo has no URL.
+  Nothing else changes.
 - `apps/studio/src/components/PreviewPlayer.tsx`: renders `<hyperframes-player>` (no `controls`,
   `disable-click-to-play`, `assets-loading-ui="none"`, `no-load-timeout`) with its own Play/Pause
   button, `Position` slider, time display and a `Loading` status. Play, seek and stall all go through
@@ -54,6 +67,9 @@ clicks through Web Audio. It is built and tested for Chrome.
   `data-preview="loading|ready"` and `data-preview-version`.
 - `apps/studio/src/lib/preview-clock.ts`: `canPlayFrom(media, t)`: every video active at `t` is not
   seeking, has `readyState >= HAVE_FUTURE_DATA` and sits at the target position.
+  `mediaTimeAt(item, t)` is `t - start + mediaStart`: the wrapper reads each video's
+  `data-media-start` (a cut-out's footage copy starts inside its file; 0 when unset), so a seek
+  places the copy at the same footage frame as the main clip.
 - `apps/studio/src/lib/sound-schedule.ts`: `soundHits(edit, transcript, preset)` resolves every sound
   item through `resolveTimeline`; `scheduleAt(hits, playhead, ctxNow)` returns start times and offsets
   (a hit in progress starts part way in, earlier hits are skipped).
@@ -90,6 +106,8 @@ jsdelivr.
 
 - Unit: `preview-sources`, `preview-page`, `preview-clock`, `sound-schedule`, `browser`, `edit-assets`
   tests, the edit-assets and mock-storage route tests, and the worker's `preview-copies-record.test.ts`.
+  They cover the masks' keys and paths, malformed mask and photo lists, mask and photo URLs swapped
+  in, and `data-media-start` in the seek target.
 - DB: `apps/studio/db-tests/rls.test.ts` checks owners cannot insert or update `preview_copies`.
 - E2E: `apps/studio/e2e/preview.spec.ts` (chromium, CDN scripts routed to local packages). Test 1: the
   player, the first caption, one `studio_preview_opened`, and the browser build equal to the worker's
@@ -98,6 +116,10 @@ jsdelivr.
   at a seek target while the footage past the served bytes is held. Test 3: a new version rebuilds the preview
   without a reload and the clicks are scheduled within 10 ms of their anchors, with no sound `<audio>`
   left in the frame.
+- E2E: `apps/studio/e2e/behind.spec.ts`: a change puts a library photo behind the speaker; the
+  preview shows the photo over the `left` spot inside its span (from the signed `large` copy, two
+  mask videos from `cache/cutout/`) and not after it, and the timeline's Behind row shows
+  `photo left`.
 
 ## Rules
 
@@ -111,6 +133,9 @@ jsdelivr.
 - Chrome only, but never block other browsers (show the note).
 - Test hooks only under `navigator.webdriver`, in memory only.
 - Owners never get a write grant on `reels.preview_copies`: the server signs the keys it names.
+- A cleared mask is a notice, never a preview without the cut-out (it would differ from the
+  export).
+- A photo's key always comes from its own `photos` row read under RLS, never built from the id.
 
 ## Notes
 

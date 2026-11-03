@@ -8,6 +8,7 @@
     "worker:prod": "node --env-file-if-exists=.env.production src/main.ts",
     "once": "node --env-file-if-exists=.env.development src/once.ts",
     "doctor": "node --env-file-if-exists=.env.development src/doctor.ts",
+    "build:vseg": "bash scripts/build-vseg.sh",
     "fixtures:pipeline": "node --env-file-if-exists=.env.development src/make-pipeline-fixtures.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

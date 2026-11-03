@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { HAVE_FUTURE_DATA, type MediaState, activeAt, canPlayFrom } from "./preview-clock";
+import {
+  HAVE_FUTURE_DATA,
+  type MediaState,
+  activeAt,
+  canPlayFrom,
+  mediaTimeAt,
+} from "./preview-clock";
 
 const ready = (start = 0, duration = 10): MediaState => ({
   start,
@@ -47,5 +53,13 @@ describe("canPlayFrom", () => {
 
   it("treats start + duration as outside the window", () => {
     expect(canPlayFrom([{ ...ready(0, 2), readyState: 1 }], 2)).toBe(true);
+  });
+
+  it("measures a footage copy's position from its data-media-start", () => {
+    const copy = { ...ready(5, 3), mediaStart: 5 };
+    expect(canPlayFrom([{ ...copy, position: 6 }], 6)).toBe(true);
+    expect(canPlayFrom([{ ...copy, position: 1 }], 6)).toBe(false);
+    expect(mediaTimeAt(copy, 6)).toBe(6);
+    expect(mediaTimeAt(ready(5, 3), 6)).toBe(1);
   });
 });

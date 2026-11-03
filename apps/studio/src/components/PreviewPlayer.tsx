@@ -2,7 +2,7 @@
 
 import type { HyperframesPlayer } from "@hyperframes/player";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { type MediaState, activeAt, canPlayFrom } from "@/lib/preview-clock";
+import { type MediaState, activeAt, canPlayFrom, mediaTimeAt } from "@/lib/preview-clock";
 import { recordSoundSchedule } from "@/lib/preview-test-hooks";
 import { type SoundHit, scheduleAt } from "@/lib/sound-schedule";
 import { formatClock } from "@/lib/tracks-timeline";
@@ -49,10 +49,12 @@ function mediaOf(player: HyperframesPlayer): Tracked[] {
     const start = Number(el.dataset.start);
     const duration = Number(el.dataset.duration);
     if (!Number.isFinite(start) || !Number.isFinite(duration) || !el.getAttribute("src")) continue;
+    const mediaStart = Number(el.dataset.mediaStart ?? 0);
     tracked.push({
       el,
       start,
       duration,
+      mediaStart: Number.isFinite(mediaStart) ? mediaStart : 0,
       readyState: el.readyState,
       seeking: el.seeking,
       position: el.currentTime,
@@ -256,8 +258,8 @@ export function PreviewPlayer({ html, versionId, hits, soundBytes, onPosition, c
     // A video left where it was is moved to the target, so its readiness
     // is measured there.
     for (const item of activeAt(mediaOf(player), t)) {
-      if (Math.abs(item.el.currentTime - (t - item.start)) > SEEK_SLACK) {
-        item.el.currentTime = t - item.start;
+      if (Math.abs(item.el.currentTime - mediaTimeAt(item, t)) > SEEK_SLACK) {
+        item.el.currentTime = mediaTimeAt(item, t);
       }
     }
 

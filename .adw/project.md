@@ -145,7 +145,9 @@ the gitignored `next-env.d.ts`, never stage it); dead code `yarn knip` (whole re
 `yarn format`); unit `yarn turbo run test <filter>` (vitest, database-free); for a run targeting
 the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (real ffmpeg and
 HyperFrames on the committed clip, `footage-check.tools.test.ts` with real ffprobe, and
-`photos/photo-images.tools.test.ts` with real ffmpeg on `fixtures/photos/sample.jpg` and `sample.heic`; on the
+`photos/photo-images.tools.test.ts` with real ffmpeg on `fixtures/photos/sample.jpg` and `sample.heic`,
+`cutout/mask-tool.tools.test.ts` with the real `vseg` mask tool (built by
+`yarn workspace @edit-issebya/worker build:vseg`, Apple Vision, macOS only) on the person clip; on the
 owner's Mac only, never in CI), and the studio's
 `yarn workspace @edit-issebya/studio test:tools` (`apps/studio/e2e-tools/export-matches-preview.spec.ts`,
 the preview-matches-export guardrail, real HyperFrames, on the owner's Mac only, never in CI, run as
@@ -195,7 +197,14 @@ makes version 3 live, a change the AI refuses twice keeps version 3 and the reel
 going back makes versions 4 and 5, `export.spec.ts` seeds a processed reel the same way, Export
 queues a `render` job the worker's `once` runs with the stubbed render (`E2E_MOCK_RENDER=true`, set
 by `test-support/worker.ts` for every spec, so no spec renders for real), the link downloads the
-stub, and a 25-hour-old export shows `expired, export again`, run last by
+stub, and a 25-hour-old export shows `expired, export again`, `behind.spec.ts` seeds a processed
+reel and a ready library photo, a change (scripted AI answer) puts the photo behind the speaker in
+the `left` spot: the worker's `once` makes the span's mask in a `cutout` step with the mask double
+(`E2E_MOCK_MASK=true`, set by `test-support/worker.ts` for every spec beside the storage, AI and
+render doubles: a black mask made by ffmpeg, no Apple Vision), version 3 names the mask and the
+photo, the mask's `stored_files` row is `rebuildable` with step `cutout`, the live preview shows the
+photo over its spot inside the span and not after it, and the timeline's Behind row shows
+`photo left`, run last by
 the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
 arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by

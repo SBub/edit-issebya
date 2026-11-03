@@ -4,6 +4,7 @@
 
 - specs/issue-37-adw-203f77eb-sdlc_planner-storage-records-slimming-disk-guard.md
 - specs/issue-91-adw-fb57dacf-sdlc_planner-worker-scratch-dir-and-r2-write-probe.md
+- specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 
 ## Overview
 
@@ -56,13 +57,21 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   the interface fails typecheck until it is classified.
 - A pipeline cache hit records each output's row from the `head` it already made
   (`run-pipeline.ts`, `recordStored`).
+- The cut-out's masks: `${R2_KEY_PREFIX}cache/cutout/<fingerprint>/mask.mp4`
+  (`apps/worker/src/cutout/spans.ts`, `cutoutKey`), one per padded span of a version's `behind`
+  items, the fingerprint of the footage (by its producer), the span and the mask tool's version.
+  `ensureCutouts` uploads a missing one put-if-absent through the job's `recordingStorage`, and a
+  mask it finds already stored records the job reel's row from its `head`, so every reel that
+  needs a mask has a row: step `cutout`, kind `rebuildable` (the on-demand output's tag,
+  `app_docs/pipeline.md`).
 - A failed record fails the job; the row is idempotent, so the retry records it.
 
 ### What is kept and what is deleted
 
 - Kept forever: the source, the preview copies and every other `kept` output, and the versions.
-- Deleted: the two live `rebuildable` outputs (`convert`'s `converted.mp4`, `retime`'s
-  `source.mp4`) once every reel holding the key was last exported more than seven days ago. A reel never exported, or exported within seven days, keeps the file for everyone.
+- Deleted: the live `rebuildable` outputs (`convert`'s `converted.mp4`, `retime`'s `source.mp4`
+  and the cut-out's `cutout/<fingerprint>/mask.mp4`) once every reel holding the key was last
+  exported more than seven days ago. A reel never exported, or exported within seven days, keeps the file for everyone.
 - Old reels' `remove_background/subject.webm` and `preview_copies/subject-preview.webm` objects
   stay where they are, still classified as retired outputs (`app_docs/pipeline.md`) and slimmed like
   any file of their tag: `subject.webm` is rebuildable and deleted under the same seven-day rule;
@@ -70,6 +79,10 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
 - Deleted: export files once their export's `expires_at` has passed.
 - The next export rebuilds whatever rebuildable output is missing: only `convert` and `retime`
   re-run from their fingerprints, and the kept outputs stay cache hits.
+- A cleared mask is rebuilt by the next export, restore or change that needs it (a `cutout` step,
+  the same fingerprint and key). Until then the live preview of a version naming it shows the
+  `cutout-cleared` notice (`This version's cut-out was cleared to save space; Export rebuilds it.`,
+  `app_docs/preview.md`).
 
 ### Slimming
 
@@ -78,6 +91,8 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   storage (never a job's). The database marks the deletion first; a failed delete is logged
   (`slimming: <key> not deleted: <message>`) and the pass goes on. Each pass logs
   `slimming: <n> rebuildable files (<size>), <n> expired exports (<size>) deleted`.
+- `slim_rebuildable_files` may select masks like any other `rebuildable` row; no migration was
+  needed (`stored_files.step` accepts `cutout`).
 - `createSlimmer` runs a pass when at least an hour passed since the last one started (the first
   call always runs) and never throws.
 - `apps/worker/src/main.ts` calls it between jobs, before each claim, never during a job. `once`
@@ -163,6 +178,8 @@ Nothing to do for the owner. What they see:
 - Never delete a `source`, `kept` or `version` file, except a photo's files when its owner deletes
   the photo (`app_docs/photo-library.md`).
 - Never slim a photo's file.
+- Masks are `rebuildable`, never `kept`; making them `kept` is an owner decision, changed here and
+  in `ON_DEMAND_OUTPUTS` together.
 - Never delete a rebuildable file within seven days of the last export of any reel that holds it.
 - Always record a deletion in the same statement that selects it.
 - Remove the job folder on failure too.

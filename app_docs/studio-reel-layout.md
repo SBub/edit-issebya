@@ -3,6 +3,7 @@
 **Specifications:**
 
 - specs/issue-95-adw-f1d8b655-sdlc_planner-studio-one-screen-reel-layout.md
+- specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 
 ## Overview
 
@@ -52,11 +53,14 @@ phone.
 
 - `apps/studio/src/lib/tracks-timeline.ts`: `timelineRows(edit, transcript)` turns the shown version's
   `resolveTimeline` spans (the same ones the builder uses, so rows sit where the preview plays them)
-  into rows Footage, Captions, Accents, Transitions and Sounds (`TRACK_ROWS`; a legacy `cutout` track
-  is never shown). `formatClock` makes `mm:ss`.
+  into rows Footage, Behind, Captions, Accents, Transitions and Sounds (`TRACK_ROWS`; a legacy
+  `cutout` track is never shown). The Behind row holds the version's `behind` items (empty for a
+  version without them): a photo labelled `photo <spot>` (for example `photo left`), a big word by
+  its text. `formatClock` makes `mm:ss`.
 - `apps/studio/src/components/TracksTimeline.tsx`: renders the ruler, the rows and a playhead that
   follows the player's clock. Read only: nothing in it is focusable, selectable, draggable or editable.
-  Footage items show frames cut from the frames sprite.
+  Footage items show frames cut from the frames sprite. Behind items use
+  `--color-track-behind` (`#81ecec`, `bg-track-behind`) with dark text (`text-surface`).
 
 ### Thumbnails and the reels grid
 

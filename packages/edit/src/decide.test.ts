@@ -101,7 +101,7 @@ describe("decideJsonSchema", () => {
 });
 
 describe("decideJsonSchema tracks", () => {
-  it("has no cut-out track", () => {
+  it("has no cut-out track, and an optional behind track", () => {
     const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, hand.edit.duration) as {
       properties: { tracks: { properties: Record<string, unknown>; required: string[] } };
     };
@@ -112,8 +112,86 @@ describe("decideJsonSchema tracks", () => {
       "overlays",
       "transitions",
       "sounds",
+      "behind",
     ]);
     expect(tracks.required).not.toContain("cutout");
+    expect(tracks.required).not.toContain("behind");
+  });
+});
+
+describe("the behind track in the decide answer", () => {
+  const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
+  const OTHER = "1f2e3d4c-5b6a-4789-8a7b-6c5d4e3f2a1b";
+  const words = hand.transcript.words;
+  // Word anchors about three seconds apart.
+  const first = words.findIndex((word) => word.start > 2);
+  const last = words.findIndex((word) => word.end > words[first]!.start + 3);
+  const photo = {
+    id: "behind-photo",
+    kind: "photo" as const,
+    photo_id: PHOTO,
+    spot: "left" as const,
+    start: { word: words[first]!.id },
+    end: { word: words[last]!.id, edge: "start" as const },
+  };
+  const answerWith = (behind: unknown[]) => ({
+    ...answerOf(hand.edit),
+    tracks: { ...hand.edit.tracks, cutout: undefined, behind },
+  });
+
+  it("takes a photo of the library and names it in the JSON Schema enum", () => {
+    const parsed = parseDecideAnswer(
+      answerWith([photo]),
+      ISSEBYA_PRESET,
+      hand.transcript,
+      hand.edit.duration,
+      [PHOTO],
+    );
+    expect(parsed.ok).toBe(true);
+    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, hand.edit.duration, [PHOTO]);
+    expect(enumsUnder(schema, "photo_id")).toEqual([[PHOTO]]);
+    expect(enumsUnder(schema, "spot")).toEqual([["top", "left", "right"]]);
+  });
+
+  it("refuses a photo outside the library", () => {
+    const parsed = parseDecideAnswer(
+      answerWith([{ ...photo, photo_id: OTHER }]),
+      ISSEBYA_PRESET,
+      hand.transcript,
+      hand.edit.duration,
+      [PHOTO],
+    );
+    expect(parsed.ok).toBe(false);
+    const none = parseDecideAnswer(
+      answerWith([photo]),
+      ISSEBYA_PRESET,
+      hand.transcript,
+      hand.edit.duration,
+    );
+    expect(none.ok).toBe(false);
+  });
+
+  it("passes the behind track through and drops the current masks and photos", () => {
+    const current = structuredClone(hand.edit);
+    current.inputs.masks = [
+      { step: "cutout", fingerprint: "f".repeat(64), file: "mask.mp4", start: 1, end: 4 },
+    ];
+    current.inputs.photos = [PHOTO];
+    const made = editFromAnswer(
+      current,
+      { tracks: { ...hand.edit.tracks, behind: [photo] } },
+      ISSEBYA_PRESET,
+      hand.transcript,
+    );
+    expect(made.ok).toBe(true);
+    if (!made.ok) return;
+    expect(made.edit.tracks.behind).toEqual([photo]);
+    expect(made.edit.inputs.masks).toBeUndefined();
+    expect(made.edit.inputs.photos).toBeUndefined();
+    expect(decideCounts(made.edit, hand.transcript, ISSEBYA_PRESET)).toMatchObject({
+      behindPhotos: 1,
+      behindWords: 0,
+    });
   });
 });
 
@@ -237,6 +315,8 @@ describe("decideCounts and usedFreeField", () => {
       transitions: 1,
       title: true,
       wordsFixed: 1,
+      behindPhotos: 0,
+      behindWords: 0,
     });
     expect(usedFreeField(edit)).toBe(false);
     tracks.overlays[1]!.style = { "letter-spacing": "2px" };

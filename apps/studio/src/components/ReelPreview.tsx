@@ -42,6 +42,8 @@ type Outcome = { forVersion: string } & (
 const MESSAGES: Record<Exclude<PreviewSourcesResult["status"], "ready">, string> = {
   "no-version": "The preview appears once the first version is saved.",
   "no-previews": "This reel has no preview copies yet.",
+  "photo-missing": "A photo in this version was deleted from the library.",
+  "cutout-cleared": "This version's cut-out was cleared to save space; Export rebuilds it.",
   unconfigured: "The preview is not available: storage is not configured.",
   "signed-out": "Sign in again to see the preview.",
   failed: "The preview could not be loaded.",
@@ -97,7 +99,7 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
   const html = previewPage(
     result.html,
     result.assets,
-    { footage: urls.footage },
+    { footage: urls.footage, masks: urls.masks, photos: urls.photos },
     hits.map((hit) => hit.id),
   );
   const files = [...new Set(hits.map((hit) => hit.file))];

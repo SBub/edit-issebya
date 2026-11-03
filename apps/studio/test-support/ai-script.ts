@@ -67,3 +67,65 @@ export async function brokenAnswerScript(dir: string): Promise<string> {
   await writeFile(path, JSON.stringify(envelope));
   return path;
 }
+
+// Writes, into `dir`, a script whose one answer is the committed decide answer
+// with `item` as the only behind-the-speaker item. Returns its path.
+async function writeBehindAnswer(
+  dir: string,
+  item: Record<string, unknown>,
+  changeSummary: string,
+): Promise<string> {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed worker script
+  const envelope = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
+    structured_output: { tracks: Record<string, unknown>; change_summary: string };
+  };
+  envelope.structured_output.tracks.behind = [item];
+  envelope.structured_output.change_summary = changeSummary;
+  const path = join(dir, `behind-answer-${crypto.randomUUID()}.json`);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
+  await writeFile(path, JSON.stringify([envelope]));
+  return path;
+}
+
+// Writes, into `dir`, a script whose one answer is the committed decide answer
+// plus one library photo behind the speaker in `spot`, from the start of
+// w0001 to the end of w0010 (about 2.6 s of the fixture clip), with an
+// optional free style (a probe moving it). Returns its path.
+export async function behindPhotoAnswerScript(
+  dir: string,
+  photoId: string,
+  spot: "top" | "left" | "right",
+  style?: Record<string, string>,
+): Promise<string> {
+  return writeBehindAnswer(
+    dir,
+    {
+      id: "behind-photo",
+      kind: "photo",
+      photo_id: photoId,
+      spot,
+      start: { word: "w0001" },
+      end: { word: "w0010", edge: "end" },
+      ...(style ? { style } : {}),
+    },
+    `put the photo behind me on the ${spot}`,
+  );
+}
+
+// Writes, into `dir`, a script whose one answer is the committed decide answer
+// plus one big word behind the speaker over w0001 to the end of w0010 (about
+// 2.6 s), the photo's span, since the clip is too short for two 2 to 4 s items
+// in one version. Returns its path.
+export async function behindWordAnswerScript(dir: string, text: string): Promise<string> {
+  return writeBehindAnswer(
+    dir,
+    {
+      id: "behind-word",
+      kind: "word",
+      text,
+      start: { word: "w0001" },
+      end: { word: "w0010", edge: "end" },
+    },
+    `put the word ${text} behind me`,
+  );
+}

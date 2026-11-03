@@ -20,11 +20,11 @@ export async function claimableJobIds(admin: SupabaseClient): Promise<string[]> 
   return (data ?? []).map((row: { id: string }) => row.id);
 }
 
-// The worker's environment: the local stack with the storage, AI and render
-// doubles on, OTLP export off and the disk guard seeing 1000 GB free against a
+// The worker's environment: the local stack with the storage, AI, render and
+// mask doubles on (the cut-out's masks made black by ffmpeg, no Apple Vision), OTLP export off and the disk guard seeing 1000 GB free against a
 // 10 GB minimum (so no spec depends on the runner's real disk; a spec
 // overrides both). No spec ever starts a real render: only the tools spec
-// passes `E2E_MOCK_RENDER: ""` (with a longer timeout).
+// passes `E2E_MOCK_RENDER: ""` and `E2E_MOCK_MASK: ""` (with a longer timeout).
 function workerEnv(env: Record<string, string>): NodeJS.ProcessEnv {
   const childEnv = {
     ...process.env,
@@ -38,6 +38,7 @@ function workerEnv(env: Record<string, string>): NodeJS.ProcessEnv {
     E2E_MOCK_STORAGE: "true",
     E2E_MOCK_AI: "true",
     E2E_MOCK_RENDER: "true",
+    E2E_MOCK_MASK: "true",
     E2E_MOCK_FREE_DISK_GB: "1000",
     WORKER_MIN_FREE_DISK_GB: "10",
     WORKER_ID: `e2e-${crypto.randomUUID()}`,

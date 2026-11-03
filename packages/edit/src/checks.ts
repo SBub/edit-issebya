@@ -1,3 +1,4 @@
+import type { BigWordBox } from "./behind.ts";
 import { type HeadTrack, faceBox } from "./head-track.ts";
 import type { TextBox } from "./layout.ts";
 import type { Preset } from "./preset.ts";
@@ -6,7 +7,7 @@ import type { ResolvedItem } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
 export type CheckRule =
-  "safe-box" | "face" | "sound-gap" | "time-in-speech" | "out-of-reel" | "glossary";
+  "safe-box" | "frame" | "face" | "sound-gap" | "time-in-speech" | "out-of-reel" | "glossary";
 
 // One failed layout rule; an empty list means every rule passes.
 export interface Check {
@@ -29,9 +30,10 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
 
-// The layout checks, in a stable order: text inside the safe box, captions
-// clear of the face, sounds at least the preset's gap apart, time anchors
-// outside speech, anchors inside the reel.
+// The layout checks, in a stable order: text inside the safe box, big words
+// behind the speaker inside the frame (they cross the safe box by design),
+// captions clear of the face, sounds at least the preset's gap apart, time
+// anchors outside speech, anchors inside the reel.
 export function runChecks(
   edit: Edit,
   boxes: readonly TextBox[],
@@ -39,6 +41,7 @@ export function runChecks(
   transcript: Transcript,
   headTrack: HeadTrack,
   preset: Preset,
+  bigWords: readonly BigWordBox[] = [],
 ): Check[] {
   const checks: Check[] = [];
   const { safe } = preset;
@@ -56,6 +59,24 @@ export function runChecks(
         rule: "safe-box",
         item: box.itemId,
         reason: `${label(box)} runs past the safe box: ${edges.join(", ")}`,
+      });
+    }
+  }
+
+  for (const word of bigWords) {
+    const right = word.x + word.width;
+    const bottom = word.y + word.height;
+    const { width, height } = preset.frame;
+    const edges: string[] = [];
+    if (word.x < -SLACK) edges.push(`left edge ${px(word.x)} < 0`);
+    if (right > width + SLACK) edges.push(`right edge ${px(right)} > ${width}`);
+    if (word.y < -SLACK) edges.push(`top edge ${px(word.y)} < 0`);
+    if (bottom > height + SLACK) edges.push(`bottom edge ${px(bottom)} > ${height}`);
+    if (edges.length > 0) {
+      checks.push({
+        rule: "frame",
+        item: word.itemId,
+        reason: `big word ${word.itemId} (${JSON.stringify(word.text)}) leaves the frame: ${edges.join(", ")}`,
       });
     }
   }
@@ -98,6 +119,7 @@ export function runChecks(
     ...tracks.captions,
     ...tracks.overlays,
     ...tracks.sounds,
+    ...(tracks.behind ?? []),
   ];
   for (const item of items) {
     const anchors: Anchor[] = [item.start, item.end];

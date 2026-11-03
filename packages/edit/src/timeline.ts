@@ -60,6 +60,7 @@ export function resolveTimeline(edit: Edit, transcript: Transcript): Map<string,
     ...tracks.captions,
     ...tracks.overlays,
     ...tracks.sounds,
+    ...(tracks.behind ?? []),
   ]) {
     add(item);
   }

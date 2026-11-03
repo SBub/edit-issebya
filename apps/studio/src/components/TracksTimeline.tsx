@@ -29,6 +29,7 @@ const TILE_PX = (FOOTAGE_ROW_PX * 9) / 16;
 
 const ITEM_COLOURS: Record<TrackKey, string> = {
   footage: "bg-track-footage",
+  behind: "bg-track-behind text-surface",
   captions: "bg-track-captions",
   overlays: "bg-track-accents",
   transitions: "bg-track-transitions",
