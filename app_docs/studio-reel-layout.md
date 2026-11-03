@@ -85,8 +85,10 @@ lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unch
 
 - `apps/studio/src/lib/tracks-timeline.ts`: `timelineRows(edit, transcript)` turns the shown version's
   `resolveTimeline` spans (the same ones the builder uses, so rows sit where the preview plays them)
-  into rows Footage, Behind, Captions, Accents, Transitions and Sounds (`TRACK_ROWS`; a legacy
-  `cutout` track is never shown). The Behind row holds the version's `behind` items (empty for a
+  into four rows Footage, Behind, Accents and Transitions (`TRACK_ROWS`). The rows are a reference
+  for Claude's decisions, so the edit's captions and sounds tracks have no row (owner, 2026-11-03;
+  the edit and `resolveTimeline` still carry them, and there is no toggle to show them), and a
+  legacy `cutout` track is never shown. The Behind row holds the version's `behind` items (empty for a
   version without them): a photo labelled `photo <spot>` (for example `photo left`), a big word by
   its text. `formatClock` makes `mm:ss`. `secondsAtX(clientX, box, duration)` maps a pointer x to
   reel seconds from the ruler's own box, clamped to 0 and the duration;
@@ -167,8 +169,8 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 
 ## Testing
 
-- Unit: `tracks-timeline` (including `secondsAtX` and `scrubKey`: clamping, Home and End, the
-  Shift step), `reels` (`formatAge`), `preview-sources` tests in
+- Unit: `tracks-timeline` (the four rows, no captions or sounds items; `secondsAtX` and `scrubKey`:
+  clamping, Home and End, the Shift step), `reels` (`formatAge`), `preview-sources` tests in
   `apps/studio/src/lib/`; the worker's `preview-copies.test.ts` and `preview-copies-record.test.ts`.
 - E2E: `apps/studio/e2e/reel-layout.spec.ts` seeds a processed reel with 14 versions and 48 steps and
   checks at 1440x900 and 390x844 that the page never scrolls (Send and Export inside the root box, no
@@ -181,8 +183,9 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   full height under the header, Versions and the library side by side each 68% of that height with
   Versions' list scrolling inside it, the correction field below both and as wide as the two, its
   field at least half the area's height, and the DOM order edit, Versions,
-  library, correction field (the tab order). It also checks the timeline items at
-  `resolveTimeline`'s times with footage frames from the sprite and nothing in the rows focusable
+  library, correction field (the tab order). It also checks the
+  timeline's four rows in order (Footage, Behind, Accents, Transitions; no Captions or Sounds row,
+  though the edit has captions), the items at `resolveTimeline`'s times with footage frames from the sprite and nothing in the rows focusable
   (the ruler the timeline's one focusable element), the playhead following the clock, and no Undo or
   Redo button, the preview showing the current version and no version marked as showing, at both
   sizes. At both sizes it checks that Play and Pause is one icon
@@ -219,6 +222,8 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   the player's control row has no Position slider. Never add a second seek control.
 - Track items stay read only: nothing in the rows is focusable, selectable, clickable, draggable or
   editable.
+- The timeline never shows a Captions or a Sounds row, and has no toggle to show hidden rows. Only
+  the studio's `TRACK_ROWS` drops them; never remove those tracks from the edit or `resolveTimeline`.
 - The ruler, every row's lane and the playhead share one time axis (same left edge after the label
   column, same width). The ruler maps a pointer from its own box, never the window.
 - A ruler seek goes through the player's own seek (`PreviewPlayerHandle.seek`); never a second clock.

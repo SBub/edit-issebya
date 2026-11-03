@@ -401,14 +401,18 @@ test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable
   expect(await rows.evaluateAll((els) => els.map((el) => el.getAttribute("data-track")))).toEqual([
     "footage",
     "behind",
-    "captions",
     "overlays",
     "transitions",
-    "sounds",
   ]);
-  for (const label of ["Footage", "Behind", "Captions", "Accents", "Transitions", "Sounds"]) {
+  for (const label of ["Footage", "Behind", "Accents", "Transitions"]) {
     await expect(tracks.getByText(label, { exact: true })).toBeVisible();
   }
+  // The captions and sounds tracks are never shown, though the edit has captions.
+  expect(edit.tracks.captions.length).toBeGreaterThan(0);
+  for (const label of ["Captions", "Sounds"]) {
+    await expect(tracks.getByText(label, { exact: true })).toHaveCount(0);
+  }
+  await expect(tracks.locator('[data-track="captions"], [data-track="sounds"]')).toHaveCount(0);
 
   const items = await tracks.getByTestId("track-item").evaluateAll((els) =>
     els.map((el) => ({
@@ -419,7 +423,7 @@ test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable
     })),
   );
   const trackOf = (id: string) =>
-    (["footage", "captions", "overlays", "transitions", "sounds"] as const).find((key) =>
+    (["footage", "overlays", "transitions"] as const).find((key) =>
       edit.tracks[key].some((item) => item.id === id),
     );
   const expected = [...resolved.entries()]
@@ -430,19 +434,25 @@ test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable
       start: span.start.toFixed(3),
       end: span.end.toFixed(3),
     }));
-  expect(items.length).toBeGreaterThan(1);
+  expect(items.length).toBeGreaterThan(0);
   expect([...items].sort((a, b) => a.id.localeCompare(b.id))).toEqual(
     [...expected].sort((a, b) => a.id.localeCompare(b.id)),
   );
 
-  // The first caption's left edge sits at start / duration of its lane.
-  const first = edit.tracks.captions[0]!;
+  // The last footage clip's edges sit at start / duration and end / duration
+  // of its lane.
+  const last = edit.tracks.footage.at(-1)!;
   const lane = (await tracks
-    .locator('[data-track="captions"] [data-testid="track-lane"]')
+    .locator('[data-track="footage"] [data-testid="track-lane"]')
     .boundingBox())!;
-  const caption = (await tracks.locator(`[data-item-id="${first.id}"]`).boundingBox())!;
-  const at = resolved.get(first.id)!.start / edit.duration;
-  expect(Math.abs(caption.x - (lane.x + at * lane.width))).toBeLessThanOrEqual(2);
+  const clip = (await tracks.locator(`[data-item-id="${last.id}"]`).boundingBox())!;
+  const span = resolved.get(last.id)!;
+  expect(
+    Math.abs(clip.x - (lane.x + (span.start / edit.duration) * lane.width)),
+  ).toBeLessThanOrEqual(2);
+  expect(
+    Math.abs(clip.x + clip.width - (lane.x + (span.end / edit.duration) * lane.width)),
+  ).toBeLessThanOrEqual(2);
 
   // The footage strip's frames come from the preview copy's sprite.
   const frame = tracks.locator('[data-track="footage"] [data-frame-index]').first();
@@ -543,7 +553,7 @@ for (const [size, viewport] of [
     // edge and width, measured from boxes.
     const rulerBox = (await slider.boundingBox())!;
     const lanes = tracks.getByTestId("track-lane");
-    await expect(lanes).toHaveCount(6);
+    await expect(lanes).toHaveCount(4);
     for (const lane of await lanes.all()) {
       const box = (await lane.boundingBox())!;
       expect(Math.abs(box.x - rulerBox.x)).toBeLessThanOrEqual(1);
@@ -564,7 +574,7 @@ for (const [size, viewport] of [
     // the time stays put (within a frame), far from the 5 px the row click
     // would mean on the shared axis.
     const before = await near(0.75 * duration);
-    const lane = tracks.locator('[data-track="captions"] [data-testid="track-lane"]');
+    const lane = tracks.locator('[data-track="transitions"] [data-testid="track-lane"]');
     const laneBox = (await lane.boundingBox())!;
     await lane.click({ position: { x: 5, y: 5 } });
     await page.waitForTimeout(500);

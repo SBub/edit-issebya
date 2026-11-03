@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* The studio's dark, editor-like theme. Every component uses these tokens
-   (bg-surface, text-muted, border-line, bg-track-captions, ...), never raw
+   (bg-surface, text-muted, border-line, bg-track-footage, ...), never raw
    stone or white. Muted text keeps at least 4.5:1 on the panel colour. */
 @theme {
   --color-surface: #0c0d10;
@@ -15,10 +15,8 @@
   --color-warn: #f5c451;
   --color-track-footage: #4b6584;
   --color-track-behind: #81ecec;
-  --color-track-captions: #6c5ce7;
   --color-track-accents: #e17055;
   --color-track-transitions: #00b894;
-  --color-track-sounds: #fdcb6e;
 }
 
 :root {
