@@ -1,7 +1,7 @@
 "use client";
 
 import type { HyperframesPlayer } from "@hyperframes/player";
-import { type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { type MediaState, activeAt, canPlayFrom, mediaTimeAt } from "@/lib/preview-clock";
 import { recordSoundSchedule } from "@/lib/preview-test-hooks";
 import { PlatformZones } from "./PlatformZones";
@@ -18,8 +18,6 @@ interface Props {
   // Told the clock's position wherever the player's own position changes (its
   // clock, a seek, a hold): the tracks timeline's playhead.
   onPosition?: (seconds: number) => void;
-  // Extra buttons at the end of the control row (Undo and Redo).
-  controls?: ReactNode;
   // Where to start once the player is ready (the previous version's position
   // on an automatic switch, clamped to this version's duration), and whether
   // to start playing from there (the previous version's intent). Default: 0,
@@ -103,7 +101,6 @@ export function PreviewPlayer({
   hits,
   soundBytes,
   onPosition,
-  controls,
   startAt = 0,
   autoPlay = false,
   onIntent,
@@ -494,7 +491,6 @@ export function PreviewPlayer({
         >
           Zones
         </button>
-        {controls}
       </div>
     </div>
   );

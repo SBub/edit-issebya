@@ -26,12 +26,6 @@ import { type FailureAction, overlayState } from "@/lib/progress-overlay";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, reelName } from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { capture, reportBrowserFailure } from "@/lib/track";
-import {
-  type VersionSelection,
-  nextVersionId,
-  previousVersionId,
-  shownVersionId,
-} from "@/lib/version-steps";
 import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
 import {
   WORKER_STATUS_COLUMNS,
@@ -119,8 +113,8 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
   };
 }
 
-// The reel page on one screen (ReelScreen): the header with Export, the shown
-// version's preview and tracks timeline with Undo and Redo, the progress
+// The reel page on one screen (ReelScreen): the header with Export, the
+// current version's preview and tracks timeline, the progress
 // overlay over the preview (what the studio is doing in plain words, how far
 // along, the waiting and offline lines, "New version N", a failure with its
 // actions), the change box and the versions. A newly saved version replaces
@@ -146,9 +140,6 @@ export function LiveReel({
   const [latestExport, setLatestExport] = useState(initialLatestExport);
   const [workerStatus, setWorkerStatus] = useState(initialWorkerStatus);
   const [ready, setReady] = useState(false);
-  // The owner's Undo or Redo pick, kept only while the current version is the
-  // one it was made for (derived below, no effect).
-  const [selection, setSelection] = useState<VersionSelection | null>(null);
   // The clock the offline line reads: set after mount (never on the server,
   // whose time and time zone are not the owner's), then once more at the
   // moment the newest heartbeat turns eleven minutes old. One timeout, no
@@ -300,9 +291,6 @@ export function LiveReel({
   const waitingReason = waitingReasonOf(workerStatus);
   const offline = now === null ? null : offlineSince(workerStatus, new Date(now));
   const currentId = reel.current_version_id;
-  const shownId = shownVersionId(selection, currentId);
-  const previousId = previousVersionId(versions, shownId);
-  const nextId = nextVersionId(versions, shownId);
   const overlay = overlayState({
     reel,
     jobs,
@@ -370,38 +358,6 @@ export function LiveReel({
     dismiss(failure.jobId);
   }
 
-  // Undo and Redo change only what is shown: never a server action, never a
-  // version or a job.
-  const show = (versionId: string | null) => {
-    if (versionId) setSelection({ id: versionId, forCurrent: currentId });
-  };
-  const stepButton =
-    "flex size-8 items-center justify-center rounded-full border border-line text-base hover:bg-raised disabled:opacity-40";
-  const controls = (
-    <>
-      <button
-        type="button"
-        aria-label="Undo"
-        title="Undo: show the previous version"
-        disabled={previousId === null}
-        onClick={() => show(previousId)}
-        className={stepButton}
-      >
-        <span aria-hidden="true">&#x21B6;</span>
-      </button>
-      <button
-        type="button"
-        aria-label="Redo"
-        title="Redo: show the next version"
-        disabled={nextId === null}
-        onClick={() => show(nextId)}
-        className={stepButton}
-      >
-        <span aria-hidden="true">&#x21B7;</span>
-      </button>
-    </>
-  );
-
   return (
     <div data-realtime={ready ? "ready" : "pending"} className="h-dvh">
       <ReelScreen
@@ -439,7 +395,7 @@ export function LiveReel({
               </p>
             )}
             <div className="relative flex min-h-0 flex-1 flex-col">
-              <ReelPreview reelId={reel.id} versionId={shownId} controls={controls} />
+              <ReelPreview reelId={reel.id} versionId={currentId} />
               <ProgressOverlay
                 state={overlay}
                 onTryAgain={() => void tryAgain()}
@@ -465,7 +421,6 @@ export function LiveReel({
             reelId={reel.id}
             versions={versions}
             currentVersionId={currentId}
-            selectedVersionId={shownId}
             blockedReason={blockedReason}
           />
         }

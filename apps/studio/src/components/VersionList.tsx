@@ -11,21 +11,13 @@ interface Props {
   reelId: string;
   versions: readonly VersionListRow[];
   currentVersionId: string | null;
-  // The version the preview shows (Undo and Redo move it); marked in the list.
-  selectedVersionId?: string | null;
   // Null when going back is open; otherwise why not, in one line.
   blockedReason: string | null;
 }
 
 // Every version of the reel, newest first. Going back queues a `restore`
 // job: a new version copying the old one, so going back can be undone too.
-export function VersionList({
-  reelId,
-  versions,
-  currentVersionId,
-  selectedVersionId = null,
-  blockedReason,
-}: Props) {
+export function VersionList({ reelId, versions, currentVersionId, blockedReason }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -63,26 +55,19 @@ export function VersionList({
         <ol className="divide-y divide-line rounded-md border border-line bg-panel text-sm">
           {newestFirst.map((version) => {
             const current = version.id === currentVersionId;
-            const selected = version.id === selectedVersionId;
             return (
               <li
                 key={version.id}
                 data-testid="version-item"
                 data-version-number={version.number}
                 data-current={current ? "true" : undefined}
-                data-selected={selected ? "true" : undefined}
-                className={`flex flex-col gap-1 px-3 py-2 ${selected ? "bg-raised" : ""}`}
+                className="flex flex-col gap-1 px-3 py-2"
               >
                 <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span className="font-medium">v{version.number}</span>
                   {current && (
                     <span data-testid="version-current" className="text-xs text-accent">
                       current
-                    </span>
-                  )}
-                  {selected && !current && (
-                    <span data-testid="version-showing" className="text-xs text-warn">
-                      showing
                     </span>
                   )}
                   <time dateTime={version.created_at} className="text-muted">
