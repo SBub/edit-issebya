@@ -1,7 +1,7 @@
 import { type BigWordBox, spotBox, spotFaceShare } from "./behind.ts";
-import { type HeadTrack, faceBox } from "./head-track.ts";
+import { type Box, type HeadTrack, faceBox } from "./head-track.ts";
 import type { TextBox } from "./layout.ts";
-import { PLATFORM_SAFE, type Preset, intersectBox } from "./preset.ts";
+import { PLATFORM_BUTTONS, PLATFORM_SAFE, type Preset, intersectBox } from "./preset.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import type { ResolvedItem } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -34,12 +34,22 @@ function label(box: TextBox): string {
   return `${box.kind} ${box.itemId} (${JSON.stringify(box.text)})`;
 }
 
+// The box with each edge moved `by` inwards, so touching edges do not count.
+function shrink(box: Box, by: number): Box {
+  return {
+    left: box.left + by,
+    right: box.right - by,
+    top: box.top + by,
+    bottom: box.bottom - by,
+  };
+}
+
 function overlaps(a: { left: number; right: number; top: number; bottom: number }, b: typeof a) {
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
 
 // The layout checks, in a stable order: text inside the safe box, never past
-// the platform guard whatever the preset says, big words
+// the platform guard nor over its button column whatever the preset says, big words
 // behind the speaker inside the frame (they cross the safe box by design),
 // photos behind the speaker not taken over by the face and with no caption
 // over them, captions clear of the face, sounds at least the preset's gap apart, time
@@ -69,6 +79,15 @@ export function runChecks(
         rule: "safe-box",
         item: box.itemId,
         reason: `${label(box)} runs past the safe box: ${edges.join(", ")}`,
+      });
+    } else if (
+      overlaps({ left: box.x, right, top: box.y, bottom }, shrink(PLATFORM_BUTTONS, SLACK))
+    ) {
+      const { left, top } = PLATFORM_BUTTONS;
+      checks.push({
+        rule: "safe-box",
+        item: box.itemId,
+        reason: `${label(box)} runs into the platform button column below y ${top}: right edge ${px(right)} > ${left}`,
       });
     }
   }

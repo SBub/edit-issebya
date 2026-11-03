@@ -64,26 +64,36 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
 
 `src/preset.ts`, `ISSEBYA_PRESET`, the values of the approved `rethink-work` reel:
 
-- Frame 1080x1920; safe box left 130, right 840, top 260, bottom 1164. Text never leaves it. It is
+- Frame 1080x1920; safe box left 130, right 860, top 260, bottom 1400. Text never leaves it. It is
   the style's own box (130, 860, 260, 1400, `STYLE_SAFE`) cut to `PLATFORM_SAFE` with
-  `intersectBox`.
-- `PLATFORM_SAFE` (left 120, right 840, top 252, bottom 1164): where TikTok and Instagram Reels
-  leave text visible at 1080x1920, the stricter edge of the two on each side (owner decision, issue
-  #114, 2026-11-03). A module constant, not a `Preset` field: no preset and no change request
-  moves it. Everything the platforms cover (top tabs, the button column on the right, the name,
-  caption and audio lines at the bottom) is outside it.
+  `intersectBox`; with the current zone the style's box lies wholly inside the guard, so the cut
+  changes nothing. It stays a rectangle for the placement code; the button-column notch is left to
+  the `safe-box` check.
+- `PLATFORM_SAFE` (left 35, right 1045, top 220, bottom 1470) and `PLATFORM_BUTTONS` (left 945,
+  right 1045, top 1164, bottom 1470): where TikTok and Instagram Reels leave text visible at
+  1080x1920 (owner decision 2026-11-03 from a TikTok and Instagram safe-zone reference, replacing
+  issue #114's 120, 840, 252, 1164). The platforms cover 220 px at the top, 35 px at each side and
+  450 px at the bottom, and the button column on the right covers a further 100 px from y 1164
+  down, so the visible area is `PLATFORM_SAFE` minus the `PLATFORM_BUTTONS` notch at its
+  lower-right corner. The column's top (`PLATFORM_BUTTONS_TOP`, 1164) is measured from the
+  reference drawing, which does not label it; it and the column's width
+  (`PLATFORM_BUTTONS_WIDTH`, 100) are named constants the owner tunes by eye with the studio's
+  Zones button. Module constants, not `Preset` fields: no preset and no change request moves them.
 - Fonts: `primary` Raleway Light (`assets/fonts/Raleway-Light.ttf`, weight 300, 110 px) for
   accents, `secondary` Golos Text Bold (`assets/fonts/GolosText-Bold.ttf`, weight 700, 50 px) for
   captions.
 - Captions: `#FFFFFF`, rise 12 px over 0.18 s (`power2.out`), fade out 0.15 s, at least 0.25 s on
-  screen, a group breaks at a 0.35 s pause or after 4 units, fallback line y 1054 when no head is
+  screen, a group breaks at a 0.35 s pause or after 4 units, fallback line y 1290 when no head is
   in the frame, line gap 14.
-- Accents: `#B3E6FF`, 190 px above the head, y 894 with no head. Slots beside the head: first row
+- Accents: `#B3E6FF`, 190 px above the head, y 1130 with no head. Slots beside the head: first row
   610, row gap 85, right drop 42, minimum left 110, minimum right 90.
-- Transitions: `dim` (full frame, `rgba(0, 0, 0, 0.62)`, fade 0.3 s), `panel` (y 914 to 1920,
+- Transitions: `dim` (full frame, `rgba(0, 0, 0, 0.62)`, fade 0.3 s), `panel` (y 1150 to 1920,
   `#121212`, slide 0.5 s `power3.inOut`), `card` (full frame,
-  `rgba(8, 8, 8, 0.9)`, fade 0.25 s). Their text areas end at 1164 and stop at x 840 (`dim` 944 to
-  1164, `panel` 964 to 1164, `card` 640 to 1164).
+  `rgba(8, 8, 8, 0.9)`, fade 0.25 s). Their text areas end at 1400 and stop at x 860 (`dim` 1180 to
+  1400, `panel` 1200 to 1400, `card` 640 to 1400), back at the approved reel's values (issue
+  #114 had moved these, the fallback line and the accent's no-head line up to fit its smaller
+  zone; owner decision 2026-11-03 to restore them). Every one fits `STYLE_SAFE`, `PLATFORM_SAFE`
+  and stays left of `PLATFORM_BUTTONS`.
 - Click sound: `assets/sounds/mouse-click-trimmed.wav`, 0.23 s, -13 dB, at least 0.25 s apart.
 - Behind (`behind`, starting values the owner tunes by eye): photo spots `top` (left 90, right 990,
   top 160, bottom 760), `left` (40 to 500, 560 to 1180) and `right` (580 to 1040, 560 to 1180),
@@ -132,7 +142,7 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
 
 ### Bottom edge in the layout
 
-`src/layout.ts` never places text below the safe box's bottom (1164): a beside-the-head slot is
+`src/layout.ts` never places text below the safe box's bottom (1400): a beside-the-head slot is
 taken by a caption only if its row ends above the edge; a wrapped block (the fallback line,
 below-the-face text, transition text) that would run past the edge moves up to end there (never
 above the safe top); captions too wide for every slot go below the face when that fits, else above
@@ -144,7 +154,9 @@ reports it.
 `src/checks.ts`, `runChecks`, in a stable order, each failure `{ rule, item, reason }` with a
 readable reason string (an empty list means every rule passes):
 
-- `safe-box`: text inside `intersectBox(preset.safe, PLATFORM_SAFE)`, so it holds whatever a preset says (the edge and value that run past it).
+- `safe-box`: text inside `intersectBox(preset.safe, PLATFORM_SAFE)` and clear of
+  `PLATFORM_BUTTONS`, so it holds whatever a preset says (the edge and value that run past the box,
+  or `runs into the platform button column below y 1164` with the right edge past x 945).
 - `frame`: a big word behind the speaker inside the frame (each edge that leaves it, and the
   word). It crosses the safe box by design, so it is never checked against it.
 - `face`: captions clear of the face (the face box from the head track).
@@ -224,9 +236,11 @@ never fatal.
 - `apps/worker/src/first-version.test.ts` (version 1 saved, kept on a retry) and
   `apps/worker/src/edit-import.test.ts` (Node imports the package's TypeScript source).
 - `src/preset.test.ts` (the intersection, the preset's box, every moved value inside it, the
-  no-head big word inside the guard vertically), `src/layout.test.ts` (low face, wrapped fallback
-  and large caption end above 1164) and `src/checks.test.ts` (a caption at y 1300 fails `safe-box`,
-  also under a looser preset; no stored fixture's text leaves the guard).
+  no-head big word inside the guard vertically), `src/layout.test.ts` (low face, a fallback block moved
+  up and large captions end at or above the safe box's bottom, 1400) and `src/checks.test.ts` (a
+  caption at y 1380 fails `safe-box`, and one at y 1450 under a looser preset; under that preset
+  a caption right-aligned at x 1040 fails in the button column at y 1204 and passes at y 1064; no
+  stored fixture's text leaves the guard).
 - E2E: `apps/studio/e2e/upload.spec.ts` ends with `first_version: version 1 saved, ...`, the
   version row and its R2 key checked.
 
@@ -242,8 +256,8 @@ never fatal.
 - A version with a `behind` item is saved only once every mask it names exists; the builder never
   builds a behind item without its mask.
 - A big word is checked against the frame, never the safe box.
-- Text never enters the platform zones: `PLATFORM_SAFE` is a guard, never a preset value, and no
-  preset or change request moves it.
+- Text never enters the platform zones: `PLATFORM_SAFE` and `PLATFORM_BUTTONS` are a guard, never
+  a preset value, and no preset or change request moves them.
 - Never rewrite a stored version to fit the guard; it shows its failed check.
 - A version names a library photo by its id, never by its storage key.
 - Nothing Node-only or browser-only in `packages/edit`; the caller injects the platform.

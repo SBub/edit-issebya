@@ -165,9 +165,9 @@ two AI calls. A failure before the first AI call may still be retried once.
   before the save, `inputs.photos` and `, 1 behind` on the step line) and `step-runner.test.ts` (stdin, cap, `StepError`).
   `run-decide.test.ts` builds its refused answers from the preset's constants: the off-box title
   sits at `ISSEBYA_PRESET.safe.right - 20`, inside the answer schema's bounds, so only the
-  safe-box check refuses it; the behind photos use the `top` spot, which the fallback caption line
-  never reaches; the face test puts a wide fake head over the `top` spot (the face covers 62% of
-  it) that ends above the dim transition's text region, so its retry without the photo passes.
+  safe-box check refuses it; the behind photos use the `left` spot, which ends (y 1180) above the
+  fallback caption line (y 1290); the face test puts a 300 px fake head in the `left` spot (the
+  face covers 43% of it), so its retry without the photo passes.
   After a change to the preset or the layout, re-derive these from the new values; never loosen a
   check to make them pass.
 - The worker's and the studio's `test` tasks depend on `^transit` in `turbo.json`, so a change in

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { bigWordLayout } from "./behind.ts";
-import { ISSEBYA_PRESET, PLATFORM_SAFE, TRANSITION_TYPES, intersectBox } from "./preset.ts";
+import {
+  ISSEBYA_PRESET,
+  PLATFORM_BUTTONS,
+  PLATFORM_SAFE,
+  TRANSITION_TYPES,
+  intersectBox,
+} from "./preset.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
 const safe = ISSEBYA_PRESET.safe;
@@ -17,13 +23,19 @@ describe("intersectBox", () => {
 });
 
 describe("the platform guard", () => {
-  it("is the stricter TikTok and Instagram box at 1080x1920", () => {
-    expect(PLATFORM_SAFE).toEqual({ left: 120, right: 840, top: 252, bottom: 1164 });
+  it("is the TikTok and Instagram box at 1080x1920", () => {
+    expect(PLATFORM_SAFE).toEqual({ left: 35, right: 1045, top: 220, bottom: 1470 });
   });
 
-  it("cuts the style's safe box", () => {
-    expect(safe).toEqual({ left: 130, right: 840, top: 260, bottom: 1164 });
+  it("cuts the button column out of the box's lower-right corner", () => {
+    expect(PLATFORM_BUTTONS).toEqual({ left: 945, right: 1045, top: 1164, bottom: 1470 });
+    expect(intersectBox(PLATFORM_BUTTONS, PLATFORM_SAFE)).toEqual(PLATFORM_BUTTONS);
+  });
+
+  it("cuts the style's safe box, which lies inside the guard and clear of the buttons", () => {
+    expect(safe).toEqual({ left: 130, right: 860, top: 260, bottom: 1400 });
     expect(intersectBox(safe, PLATFORM_SAFE)).toEqual(safe);
+    expect(safe.right).toBeLessThanOrEqual(PLATFORM_BUTTONS.left);
   });
 
   it("keeps the caption fallback line inside the safe box", () => {

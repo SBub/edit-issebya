@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { build } from "./build.ts";
 import type { HeadTrack } from "./head-track.ts";
-import { ISSEBYA_PRESET } from "./preset.ts";
+import { ISSEBYA_PRESET, PLATFORM_BUTTONS } from "./preset.ts";
 import type { Edit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
@@ -33,27 +33,47 @@ describe("runChecks", () => {
     expect(checks).toHaveLength(1);
     expect(checks[0]).toMatchObject({ rule: "safe-box", item: "aw29" });
     expect(checks[0]!.reason).toMatch(
-      /^accent aw29 \("a{40}"\) runs past the safe box: left edge -?\d+ < 130, right edge \d+ > 840$/,
+      /^accent aw29 \("a{40}"\) runs past the safe box: left edge -?\d+ < 130, right edge \d+ > 860$/,
     );
   });
 
-  it("fails safe-box for a caption set at y 1300", async () => {
+  it("fails safe-box for a caption set at y 1380", async () => {
     const edit = structuredClone(hand.edit);
-    edit.tracks.captions[0]!.position = { x: 540, y: 1300, align: "center" };
+    edit.tracks.captions[0]!.position = { x: 540, y: 1380, align: "center" };
     const checks = (await checksOf(edit)).filter((check) => check.rule === "safe-box");
     expect(checks.map((check) => check.item)).toEqual(["cw0"]);
-    expect(checks[0]!.reason).toMatch(/runs past the safe box: bottom edge 1350 > 1164$/);
+    expect(checks[0]!.reason).toMatch(/runs past the safe box: bottom edge 1430 > 1400$/);
   });
+
+  // A preset whose box is the whole frame: only the platform guard holds.
+  const loose = { ...ISSEBYA_PRESET, safe: { left: 0, right: 1080, top: 0, bottom: 1920 } };
+  async function looseSafeBox(position: { x: number; y: number; align: "right" }) {
+    const edit = structuredClone(hand.edit);
+    edit.tracks.captions[0]!.position = position;
+    const { checks } = build(edit, hand.transcript, hand.headTrack, loose, await nodeMeasurer());
+    // The looser box also lets the layout set other text past the guard;
+    // only the moved caption is looked at.
+    return checks.filter((check) => check.rule === "safe-box" && check.item === "cw0");
+  }
 
   it("checks against the platform guard under a preset with a looser box", async () => {
     const edit = structuredClone(hand.edit);
-    edit.tracks.captions[0]!.position = { x: 540, y: 1300, align: "center" };
-    const loose = { ...ISSEBYA_PRESET, safe: { left: 0, right: 1080, top: 0, bottom: 1920 } };
+    edit.tracks.captions[0]!.position = { x: 540, y: 1450, align: "center" };
     const { checks } = build(edit, hand.transcript, hand.headTrack, loose, await nodeMeasurer());
-    // The looser box also lets the layout set other text past the guard;
-    // the item at y 1300 is reported whatever the preset says.
     const cw0 = checks.find((check) => check.rule === "safe-box" && check.item === "cw0");
-    expect(cw0?.reason).toMatch(/runs past the safe box: bottom edge 1350 > 1164$/);
+    expect(cw0?.reason).toMatch(/runs past the safe box: bottom edge 1500 > 1470$/);
+  });
+
+  it("fails safe-box for text in the button column's notch, passes it higher up", async () => {
+    // Right-aligned to the guard's right edge: inside the outer box either way.
+    const low = await looseSafeBox({ x: 1040, y: PLATFORM_BUTTONS.top + 40, align: "right" });
+    expect(low).toHaveLength(1);
+    expect(low[0]!.reason).toMatch(
+      /runs into the platform button column below y 1164: right edge 1040 > 945$/,
+    );
+    expect(await looseSafeBox({ x: 1040, y: PLATFORM_BUTTONS.top - 100, align: "right" })).toEqual(
+      [],
+    );
   });
 
   it("fails face for a caption set over the head", async () => {
