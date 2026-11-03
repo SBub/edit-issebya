@@ -30,8 +30,16 @@ restore job for own reel`: own reel, status `queued`, and for a restore a versio
   `Changes open once the upload finishes.` or `Processing failed; press Try again on the preview
 first.`, Try again being the progress overlay's, `app_docs/status.md`), `versionOrigin` and `jobRequestLabel` (the text shown beside a version or a job; a
   render job reads `export of vN`, or `export` when the version is unknown).
-- `apps/studio/src/components/ChangeRequestForm.tsx`: the change box above the versions list. Disabled
-  with the blocked reason beside it, otherwise the queue note (`changeQueueNote` in
+- `apps/studio/src/components/ChangeRequestForm.tsx`: the change box (on desktop the bottom 32% of the right
+  side, under Versions and the library; pinned at the bottom on a phone; placement in
+  `app_docs/studio-reel-layout.md`). Built like a chat composer: one rounded box
+  (`data-testid="change-field"`, `border-line`, `bg-raised`, `bg-panel` while disabled, an accent ring
+  while focused) holds the textarea and, in its bottom right corner, Send: a small square `bg-accent`
+  button with an up arrow icon (inline SVG, `aria-hidden`) and no text, named by `aria-label="Send"`
+  and `title`, at half opacity while disabled. The textarea's right padding keeps text from running
+  under the button. No visible label: the textarea is named by `aria-label="Ask for a change"`, and
+  its placeholder says what to do ("What should change? For example: slower transitions, no photos
+  in this one, bigger captions"). Enter adds a new line; the button sends. Disabled with the blocked reason beside it, otherwise the queue note (`changeQueueNote` in
   `apps/studio/src/lib/failures.ts`) when jobs are ahead; after sending it shows `Pending: <request>` until the job ends.
   Its `refill(text)` handle puts a request back in the field and focuses it (the overlay's Change
   the request).

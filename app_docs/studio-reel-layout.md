@@ -10,12 +10,14 @@
 
 The studio has a dark, editor-like look with the same layout on desktop and phone. The reel page fits
 one screen and never scrolls as a page: a large 9:16 preview with its controls and a tracks timeline
-whose ruler is the one scrubber (the rows are read only), the correction field pinned under it, and
-Versions in its own scrolling area over the whole side column. What the studio is doing shows in a
-small progress overlay over the preview.
+whose ruler is the one scrubber (the rows are read only), all over the full height on the left. On
+desktop the right side splits in two rows (68% and 32% of the height): Versions and the photo library side by side in the
+top 68%, each scrolling inside itself, and the correction field across both in the bottom 32%,
+with a tall text field. On a phone the correction field stays pinned at the bottom. What the studio
+is doing shows in a small progress overlay over the preview.
 The reels list is a grid of thumbnails with a round **+** button that opens the upload in a dialog.
-The reel page also carries the owner's photo library: a third column on desktop and the third tab on a
-phone.
+The reel page also carries the owner's photo library: the top 68% of the third column on desktop and
+the third tab on a phone.
 
 ## How it works
 
@@ -24,14 +26,21 @@ phone.
 - `apps/studio/src/components/ReelScreen.tsx`: the one responsive layout, CSS only (Tailwind `lg:`
   breakpoint, 1024 px) plus a small tab state. The root is exactly the height it is given; every child
   that can grow is `min-h-0`, and only the list areas scroll inside their own box (no JavaScript
-  measures the window). Desktop: header, main column (preview, controls, timeline) with the correction
-  field pinned under it, a side panel where Versions spans all three rows of the side column
-  (`lg:col-start-2 lg:row-span-3 lg:row-start-1`, still `min-h-0 overflow-y-auto
-overscroll-contain`, so its list scrolls inside it), and a third column, the photo library
-  (`id="reel-panel-library"`), spanning every row (`lg:grid-cols-[minmax(0,1fr)_20rem_18rem]`, wider
-  at `xl:`), with `min-h-0` on its growing children. Phone: the same header and pinned footer, the
-  middle split into Edit, Versions and Library tabs (WAI-ARIA tabs: arrows, Home and End wrap over
-  the three). The three areas carry `data-testid` `edit-area`, `versions-area` and `library-area`.
+  measures the window). Desktop: header, then a grid of three columns
+  (`lg:grid-cols-[minmax(0,1fr)_20rem_18rem]`, wider at `xl:`) and two rows, 68% and 32%
+  (`lg:grid-rows-[minmax(0,17fr)_minmax(0,8fr)]`). The main column (preview, controls, timeline)
+  spans both rows (`lg:row-span-2`). Versions is the top 68% of column 2 (`lg:col-start-2
+lg:row-start-1`, `min-h-0 overflow-y-auto overscroll-contain`, so its list scrolls inside it), the
+  photo library (`id="reel-panel-library"`) the top 68% of column 3 (`lg:col-start-3
+lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unchanged), and the
+  correction field the bottom 32% across both (`lg:col-span-2 lg:col-start-2 lg:row-start-2`,
+  `border-t` and `border-l`). In that area `ChangeRequestForm` grows (`lg:flex-1 lg:min-h-0` on the
+  form and the field's box), so the field is tall and Send stays in its bottom right corner; behaviour (Send, disabled states, messages) is the same as on a phone. Phone:
+  the same header, the middle split into Edit, Versions and Library tabs (WAI-ARIA tabs: arrows,
+  Home and End wrap over the three) and the correction field pinned at the bottom, its usual two-row
+  height. The correction field is last in the DOM, after the three panels, so the tab order follows
+  the reading order on both (edit, Versions, library, correction field), with no CSS `order`. The
+  areas carry `data-testid` `edit-area`, `versions-area`, `library-area` and `change-area`.
   `ReelScreen` takes the library as its `library` prop.
 - `apps/studio/src/components/LiveReel.tsx`: keeps the Realtime state as before and hands pieces to
   `ReelScreen`: header (back link, reel name,
@@ -133,9 +142,10 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
    Home and End. Read the timeline rows against the playhead.
 4. Use "Go back to this" in the Versions area to make an older version current (it saves a new
    version copying the old one); the preview always shows the current version.
-5. On a phone, switch between the Edit, Versions and Library tabs; on desktop the library is
-   the right-hand column. Type a correction in the field pinned at the bottom and press Send; use
-   Export in the header.
+5. On a phone, switch between the Edit, Versions and Library tabs and type a correction in the
+   field pinned at the bottom. On desktop the edit area is the left column, Versions and the
+   library sit side by side in the top right, and the correction field fills the bottom right.
+   Press Send; use Export in the header.
 
 ## Configuration
 
@@ -149,8 +159,16 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   `apps/studio/src/lib/`; the worker's `preview-copies.test.ts` and `preview-copies-record.test.ts`.
 - E2E: `apps/studio/e2e/reel-layout.spec.ts` seeds a processed reel with 14 versions and 48 steps and
   checks at 1440x900 and 390x844 that the page never scrolls (Send and Export inside the root box, no
-  status area, no step log and no ready-notification control, Versions as tall as the side column within 1 px with its list
-  scrolling inside it, the phone's Edit, Versions and Library tabs), the timeline items at
+  status area, no step log and no ready-notification control, the phone's Edit, Versions and Library
+  tabs with the correction field pinned at the bottom over the full width). On both it checks that
+  Send is a square icon button with no text (named by `aria-label` and `title`) inside the field's
+  box (`data-testid="change-field"`) at its bottom right, and that the textarea's right padding
+  clears it. At 1440x900, 1280x800
+  and 1024x768 (the `lg` breakpoint) it checks the desktop split within 1 px: the edit area over the
+  full height under the header, Versions and the library side by side each 68% of that height with
+  Versions' list scrolling inside it, the correction field below both and as wide as the two, its
+  field at least half the area's height, and the DOM order edit, Versions,
+  library, correction field (the tab order). It also checks the timeline items at
   `resolveTimeline`'s times with footage frames from the sprite and nothing in the rows focusable
   (the ruler the timeline's one focusable element), the playhead following the clock, and no Undo or
   Redo button, the preview showing the current version and no version marked as showing, at both
@@ -166,7 +184,7 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   ruler (`test-support/ruler.ts`). `reels.spec.ts` checks the
   grid (age and size, status, thumbnail, three columns at 390 px, **+** opening the dialog). `preview`,
   `upload`, `multipart-upload` and `footage-refusal` specs were adjusted to the new markup.
-  `photo-library.spec.ts` checks the library column right of `edit-area` at 1440x900 and the Library
+  `photo-library.spec.ts` checks the library right of `edit-area` at 1440x900 and the Library
   tab at 390x844, with no page scroll. `progress-overlay.spec.ts` checks the overlay inside the
   preview, clear of Play and the ruler, at 1440x900 and 390x844.
 - Measure edge-aligned elements from the root box, not `window.innerWidth` (see `AGENTS.md`).
@@ -174,6 +192,9 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 ## Rules
 
 - The reel page never scrolls as a page at any size; lists scroll inside their own area.
+- On desktop the edit area takes the full height; never put the correction field under it. The
+  correction field stays last in the DOM, so the tab order follows the reading order; do not
+  reorder it with CSS `order`.
 - Do not measure the window in JavaScript to size the layout; keep it CSS, with `min-h-0` on growing
   children.
 - The ruler is the one scrubber: the only focusable and draggable element in the tracks timeline, and

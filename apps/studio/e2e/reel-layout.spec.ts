@@ -196,6 +196,85 @@ async function expectNoNotifyControl(page: Page) {
   await expect(page.locator('[data-testid^="notify"]')).toHaveCount(0);
 }
 
+// Send sits inside the field's box, like a chat composer: a small square
+// icon button in its bottom right corner, no text, and the text never runs
+// under it (the textarea's right padding is at least the button's width).
+async function expectSendAtBottomRight(page: Page) {
+  const box = (await page.getByTestId("change-field").boundingBox())!;
+  const sendButton = page.getByRole("button", { name: "Send" });
+  await expect(sendButton).toHaveText("");
+  await expect(sendButton).toHaveAttribute("title", "Send");
+  const send = (await sendButton.boundingBox())!;
+  expect(send.x).toBeGreaterThanOrEqual(box.x);
+  expect(send.y).toBeGreaterThanOrEqual(box.y);
+  const right = box.x + box.width - (send.x + send.width);
+  const bottom = box.y + box.height - (send.y + send.height);
+  for (const gap of [right, bottom]) {
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(16);
+  }
+  expect(Math.abs(send.width - send.height)).toBeLessThanOrEqual(1);
+  expect(send.width).toBeLessThanOrEqual(48);
+  const paddingRight = await page
+    .getByLabel("Ask for a change")
+    .evaluate((element) => parseFloat(getComputedStyle(element).paddingRight));
+  expect(paddingRight).toBeGreaterThanOrEqual(send.width + right);
+}
+
+// The desktop split, measured from the root box (never the window): the edit
+// area over the full height under the header; on its right Versions and the
+// library side by side, each the top 68%; the correction field the bottom
+// 32%, across both, with a tall field and Send in its bottom right corner.
+async function expectDesktopSplit(page: Page) {
+  const column = await page.evaluate(() => {
+    const header = document.querySelector("header")!.getBoundingClientRect();
+    const root = document.documentElement.getBoundingClientRect();
+    return {
+      top: header.bottom,
+      bottom: Math.min(root.bottom, document.documentElement.clientHeight),
+    };
+  });
+  const full = column.bottom - column.top;
+  const edit = (await page.getByTestId("edit-area").boundingBox())!;
+  const versions = (await page.getByTestId("versions-area").boundingBox())!;
+  const library = (await page.getByTestId("library-area").boundingBox())!;
+  const change = (await page.getByTestId("change-area").boundingBox())!;
+
+  expect(Math.abs(edit.y - column.top)).toBeLessThanOrEqual(1);
+  expect(Math.abs(edit.height - full)).toBeLessThanOrEqual(1);
+
+  for (const box of [versions, library]) {
+    expect(Math.abs(box.y - column.top)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.height - full * 0.68)).toBeLessThanOrEqual(1);
+  }
+  expect(versions.x).toBeGreaterThanOrEqual(edit.x + edit.width - 0.5);
+  expect(Math.abs(library.x - (versions.x + versions.width))).toBeLessThanOrEqual(1);
+
+  expect(Math.abs(change.y - (versions.y + versions.height))).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.y + change.height - column.bottom)).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.x - versions.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.width - (versions.width + library.width))).toBeLessThanOrEqual(1);
+
+  // The field grows into the space; its box holds Send at the bottom right.
+  const field = (await page.getByLabel("Ask for a change").boundingBox())!;
+  expect(field.height).toBeGreaterThanOrEqual(change.height / 2);
+  const box = (await page.getByTestId("change-field").boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(change.x - 0.5);
+  expect(box.y + box.height).toBeLessThanOrEqual(change.y + change.height + 0.5);
+  await expectSendAtBottomRight(page);
+
+  // The DOM (and so the tab order) follows the reading order: edit,
+  // Versions, library, then the correction field.
+  const order = await page.evaluate(() =>
+    ["edit-area", "versions-area", "library-area", "change-area"].map((id) =>
+      Array.from(document.querySelectorAll("[data-testid]")).indexOf(
+        document.querySelector(`[data-testid="${id}"]`)!,
+      ),
+    ),
+  );
+  expect([...order].sort((a, b) => a - b)).toEqual(order);
+}
+
 test("one screen at 1440x900: preview, timeline, change box and the side panel at once", async ({
   page,
   baseURL,
@@ -218,23 +297,27 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
   await expect(page.getByTestId("library-area")).toBeVisible();
   await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
 
-  // Versions takes the whole side column: from the header's bottom to the
-  // root box's bottom, measured from the root box (never the window).
-  const column = await page.evaluate(() => {
-    const header = document.querySelector("header")!.getBoundingClientRect();
-    const root = document.documentElement.getBoundingClientRect();
-    return {
-      top: header.bottom,
-      bottom: Math.min(root.bottom, document.documentElement.clientHeight),
-    };
-  });
-  const versionsBox = (await page.getByTestId("versions-area").boundingBox())!;
-  expect(Math.abs(versionsBox.y - column.top)).toBeLessThanOrEqual(1);
-  expect(Math.abs(versionsBox.height - (column.bottom - column.top))).toBeLessThanOrEqual(1);
-
+  await expectDesktopSplit(page);
   await expectOwnScroll(page, page.getByTestId("versions-area"));
   await expectNoPageScroll(page);
 });
+
+// Other desktop sizes, down to the `lg` breakpoint: the same split, Send in
+// the root box, no page scroll.
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 1024, height: 768 },
+]) {
+  test(`the desktop split at ${viewport.width}x${viewport.height}`, async ({ page, baseURL }) => {
+    await openReel(page, baseURL!, viewport);
+    await expectNoPageScroll(page);
+    await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
+    await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
+    await expectDesktopSplit(page);
+    await expectOwnScroll(page, page.getByTestId("versions-area"));
+    await expectNoPageScroll(page);
+  });
+}
 
 test("one screen at 390x844 with tabs Edit, Versions and Library", async ({ page, baseURL }) => {
   await openReel(page, baseURL!, PHONE);
@@ -256,6 +339,26 @@ test("one screen at 390x844 with tabs Edit, Versions and Library", async ({ page
   await expect(page.getByTestId("tracks")).toBeVisible();
   await expect(page.getByTestId("version-item").first()).toBeHidden();
   await expect(field).toBeVisible();
+  // No visible label: the field is named by aria-label, and its placeholder
+  // says what to ask for.
+  await expect(page.getByText("Ask for a change", { exact: true })).toHaveCount(0);
+  await expect(field).toHaveAttribute("placeholder", /^What should change\? For example:/);
+  // Unchanged on a phone: the correction field pinned at the bottom of the
+  // root box, the full width, under the Edit panel.
+  const root = await page.evaluate(() => ({
+    width: document.documentElement.clientWidth,
+    bottom: Math.min(
+      document.documentElement.getBoundingClientRect().bottom,
+      document.documentElement.clientHeight,
+    ),
+  }));
+  const change = (await page.getByTestId("change-area").boundingBox())!;
+  const editBox = (await page.getByTestId("edit-area").boundingBox())!;
+  expect(Math.abs(change.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.width - root.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.y + change.height - root.bottom)).toBeLessThanOrEqual(1);
+  expect(Math.abs(change.y - (editBox.y + editBox.height))).toBeLessThanOrEqual(1);
+  await expectSendAtBottomRight(page);
 
   await tab("Versions").click();
   await expect(tab("Versions")).toHaveAttribute("aria-selected", "true");

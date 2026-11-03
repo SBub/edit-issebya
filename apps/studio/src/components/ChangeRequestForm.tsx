@@ -25,8 +25,9 @@ export interface ChangeRequestHandle {
   refill(text: string): void;
 }
 
-// The text box under the preview. Sending queues a `change` job with the
-// owner's words; it runs after the reel's earlier jobs (the database's order),
+// The text box: pinned at the bottom on a phone; on desktop it fills the
+// bottom 32% of the right side, the field growing to the space. Sending
+// queues a `change` job with the owner's words; it runs after the reel's earlier jobs (the database's order),
 // and the new version reaches the preview through Realtime.
 export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs, ref }: Props) {
   const router = useRouter();
@@ -96,11 +97,15 @@ export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs, ref 
   }
 
   return (
-    <form onSubmit={send} className="flex flex-col gap-1" noValidate>
-      <label htmlFor="change-request" className="text-xs font-medium text-muted">
-        Ask for a change
-      </label>
-      <div className="flex items-end gap-2">
+    <form onSubmit={send} className="flex flex-col gap-1 lg:min-h-0 lg:flex-1" noValidate>
+      {/* One box, like a chat composer: the field and, at its bottom right,
+          the Send button. The textarea's right padding keeps text from
+          running under the button. The global focus outline is off on the
+          textarea only; the whole box shows the ring instead. */}
+      <div
+        data-testid="change-field"
+        className="relative flex rounded-xl border border-line bg-raised focus-within:ring-2 focus-within:ring-accent has-[textarea:disabled]:bg-panel lg:min-h-0 lg:flex-1"
+      >
         <textarea
           ref={field}
           id="change-request"
@@ -110,23 +115,41 @@ export function ChangeRequestForm({ reelId, blockedReason, queueNote, jobs, ref 
           value={text}
           onChange={(event) => setText(event.target.value)}
           disabled={disabled}
+          aria-label="Ask for a change"
           aria-describedby="change-reason change-status"
-          placeholder="move the title lower"
-          className="min-w-0 flex-1 resize-none rounded-xl border border-line bg-raised px-3 py-2 text-base placeholder:text-muted disabled:bg-panel"
+          placeholder="What should change? For example: slower transitions, no photos in this one, bigger captions"
+          className="min-w-0 flex-1 resize-none rounded-xl bg-transparent py-2 pr-12 pl-3 text-base outline-none! placeholder:text-muted"
         />
         <button
           type="submit"
           disabled={disabled}
-          className="rounded-full bg-accent px-5 py-2 text-base font-semibold text-surface disabled:opacity-50"
+          aria-label="Send"
+          title="Send"
+          className="absolute right-2 bottom-2 flex size-8 items-center justify-center rounded-lg bg-accent text-surface disabled:opacity-50"
         >
-          Send
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            className="size-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
         </button>
       </div>
-      <p id="change-reason" data-testid="change-blocked-reason" className="text-xs text-muted">
+      <p
+        id="change-reason"
+        data-testid="change-blocked-reason"
+        className="flex-none text-xs text-muted"
+      >
         {blockedReason ??
           (queueNote ? <span data-testid="change-queue-note">{queueNote}</span> : "")}
       </p>
-      <p id="change-status" aria-live="polite" className="text-xs break-words">
+      <p id="change-status" aria-live="polite" className="flex-none text-xs break-words">
         {pending && sent ? (
           <span data-testid="change-pending">Pending: {sent.request}</span>
         ) : (

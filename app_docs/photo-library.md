@@ -48,7 +48,7 @@ desktop and is a fourth tab, `Library`, on a phone.
   another file is refused by name, and while an upload runs the add tile is disabled and a drop
   shows a busy message.
 - `apps/studio/src/components/ReelScreen.tsx`, `LiveReel.tsx`, `apps/studio/src/app/reels/[id]/page.tsx`:
-  the `library` slot (third desktop column, fourth phone tab). Layout rules are in
+  the `library` slot (top 68% of the third desktop column, third phone tab). Layout rules are in
   `app_docs/studio-reel-layout.md`.
 - `apps/worker/src/photos/photo-images.ts`: the `photo_images` step: ffprobe for width and height,
   ffmpeg for `thumbnail.jpg` (long side 480) and `large.jpg` (long side 1568), both `rebuildable`.
@@ -80,7 +80,7 @@ desktop and is a fourth tab, `Library`, on a phone.
 
 ## How to Use
 
-1. Open a reel in the studio. On desktop the library is the third column; on a phone open the
+1. Open a reel in the studio. On desktop the library is the top 68% of the third column; on a phone open the
    `Library` tab.
 2. Press the dashed **Upload a photo** tile, first in the grid, and pick a JPEG, PNG, HEIC, HEIF or WebP
    file of up to 25 MiB. On desktop you can instead drop one such file anywhere on the Photos
