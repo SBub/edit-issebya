@@ -81,7 +81,7 @@ export interface GlossaryTerm {
 export interface Preset {
   id: "issebya";
   frame: { width: number; height: number };
-  // Text never leaves it.
+  // Text never leaves it; always inside `PLATFORM_SAFE`.
   safe: Box;
   fonts: Record<FontKey, PresetFont>;
   caption: {
@@ -119,11 +119,31 @@ export interface Preset {
 
 const FRAME = { left: 0, right: 1080, top: 0, bottom: 1920 };
 
+// The part of both boxes: the larger left and top, the smaller right and bottom.
+export function intersectBox(a: Box, b: Box): Box {
+  return {
+    left: Math.max(a.left, b.left),
+    right: Math.min(a.right, b.right),
+    top: Math.max(a.top, b.top),
+    bottom: Math.min(a.bottom, b.bottom),
+  };
+}
+
+// Where TikTok and Instagram Reels leave text visible at 1080x1920: the
+// stricter edge of the two platforms on each side (TikTok's reference: top
+// 252, left 120, a 240 px right margin beside the button column, 756 px
+// covered at the bottom). A guard, not a taste value: no preset and no change
+// request moves it (owner decision, issue #114, 2026-11-03).
+export const PLATFORM_SAFE: Box = { left: 120, right: 840, top: 252, bottom: 1164 };
+
+// The `rethink-work` style's own box, before the platform guard cuts it.
+const STYLE_SAFE: Box = { left: 130, right: 860, top: 260, bottom: 1400 };
+
 // The issebya style: the values of the approved `rethink-work` reel.
 export const ISSEBYA_PRESET: Preset = {
   id: "issebya",
   frame: { width: 1080, height: 1920 },
-  safe: { left: 130, right: 860, top: 260, bottom: 1400 },
+  safe: intersectBox(STYLE_SAFE, PLATFORM_SAFE),
   fonts: {
     primary: {
       family: "Raleway Light",
@@ -148,10 +168,10 @@ export const ISSEBYA_PRESET: Preset = {
     minSeconds: 0.25,
     groupPauseSeconds: 0.35,
     groupMaxUnits: 4,
-    fallbackY: 1290,
+    fallbackY: 1054,
     lineGap: 14,
   },
-  accent: { font: "primary", color: "#B3E6FF", aboveHead: 190, noHeadY: 1130 },
+  accent: { font: "primary", color: "#B3E6FF", aboveHead: 190, noHeadY: 894 },
   slots: { firstRow: 610, rowGap: 85, rightDrop: 42, minLeft: 110, minRight: 90 },
   transitions: {
     dim: {
@@ -160,15 +180,15 @@ export const ISSEBYA_PRESET: Preset = {
       motion: "fade",
       seconds: 0.3,
       ease: "power2.out",
-      text: { left: 130, right: 860, top: 1180, bottom: 1400 },
+      text: { left: 130, right: 840, top: 944, bottom: 1164 },
     },
     panel: {
-      layer: { left: 0, right: 1080, top: 1150, bottom: 1920 },
+      layer: { left: 0, right: 1080, top: 914, bottom: 1920 },
       background: "#121212",
       motion: "slide",
       seconds: 0.5,
       ease: "power3.inOut",
-      text: { left: 130, right: 860, top: 1200, bottom: 1400 },
+      text: { left: 130, right: 840, top: 964, bottom: 1164 },
     },
     card: {
       layer: FRAME,
@@ -176,7 +196,7 @@ export const ISSEBYA_PRESET: Preset = {
       motion: "fade",
       seconds: 0.25,
       ease: "power2.out",
-      text: { left: 130, right: 860, top: 640, bottom: 1400 },
+      text: { left: 130, right: 840, top: 640, bottom: 1164 },
     },
   },
   sounds: {

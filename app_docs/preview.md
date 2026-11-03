@@ -4,6 +4,7 @@
 
 - specs/issue-32-adw-086c739a-sdlc_planner-studio-live-preview-player.md
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
+- specs/issue-114-adw-9049f8fd-sdlc_planner-platform-safe-zone-guard.md
 
 ## Overview
 
@@ -65,6 +66,12 @@ rebuilds it.` in place of the player. Sends `studio_preview_opened` (`reel_id`) 
   `AudioContext`, start the player's clock and schedule the sounds. A `waiting` or `stalled` event while
   playing re-enters the routine. Pause, seek and `ended` cancel scheduled sounds. The root carries
   `data-preview="loading|ready"` and `data-preview-version`.
+- `apps/studio/src/components/PlatformZones.tsx`, `src/lib/platform-zones.ts`: the player's `Zones`
+  button (`aria-pressed`, off on every open, never saved) shows a non-interactive layer
+  (`data-testid="platform-zones"`, `aria-hidden`, `pointer-events-none`) over the preview that
+  shades the four zones TikTok and Instagram cover. `platformZones(frame, safe)` takes them from
+  `PLATFORM_SAFE` as percentages of the frame, so they scale with the player. It is never part of
+  the built page or the export.
 - `apps/studio/src/lib/preview-clock.ts`: `canPlayFrom(media, t)`: every video active at `t` is not
   seeking, has `readyState >= HAVE_FUTURE_DATA` and sits at the target position.
   `mediaTimeAt(item, t)` is `t - start + mediaStart`: the wrapper reads each video's
@@ -116,6 +123,9 @@ jsdelivr.
   at a seek target while the footage past the served bytes is held. Test 3: a new version rebuilds the preview
   without a reload and the clicks are scheduled within 10 ms of their anchors, with no sound `<audio>`
   left in the frame.
+- Unit: `platform-zones.test.ts` (the bottom zone's top at 1164/1920, the right zone's left at
+  840/1080, no overlap). E2E: `preview.spec.ts` toggles Zones: the layer is absent, then shown with
+  its zones at the guard's edges, Play still works through it, and it hides again.
 - E2E: `apps/studio/e2e/behind.spec.ts`: a change puts a library photo behind the speaker; the
   preview shows the photo over the `left` spot inside its span (from the signed `large` copy, two
   mask videos from `cache/cutout/`) and not after it, and the timeline's Behind row shows
@@ -135,6 +145,7 @@ jsdelivr.
 - Owners never get a write grant on `reels.preview_copies`: the server signs the keys it names.
 - A cleared mask is a notice, never a preview without the cut-out (it would differ from the
   export).
+- The Zones layer takes no clicks and is never saved or built into the page.
 - A photo's key always comes from its own `photos` row read under RLS, never built from the id.
 
 ## Notes

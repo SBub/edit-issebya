@@ -56,16 +56,12 @@ function slotsBeside(face: Box, preset: Preset): Slot[] {
   return out;
 }
 
-// Texts set in centred lines inside a region, wrapping at its width.
-function lines(
-  items: readonly TextItem[],
-  region: { left: number; right: number; top: number },
-  preset: Preset,
-  measurer: Measurer,
-): TextBox[] {
-  const width = region.right - region.left;
-  const rows: { item: TextItem; width: number }[][] = [];
-  let row: { item: TextItem; width: number }[] = [];
+type Row = { item: TextItem; width: number }[];
+
+// Texts wrapped into rows at a width.
+function wrap(items: readonly TextItem[], width: number, measurer: Measurer): Row[] {
+  const rows: Row[] = [];
+  let row: Row = [];
   let used = 0;
   for (const item of items) {
     const w = measurer.width(item.font, item.size, item.text);
@@ -79,9 +75,38 @@ function lines(
     row.push({ item, width: w });
   }
   if (row.length > 0) rows.push(row);
+  return rows;
+}
 
+function rowsHeight(rows: readonly Row[], preset: Preset): number {
+  if (rows.length === 0) return 0;
+  const sizes = rows.map((current) => Math.max(...current.map(({ item }) => item.size)));
+  return sizes.reduce((sum, size) => sum + size, 0) + preset.caption.lineGap * (rows.length - 1);
+}
+
+// The height of the texts set in centred lines at a region's width.
+function blockHeight(
+  items: readonly TextItem[],
+  region: { left: number; right: number },
+  preset: Preset,
+  measurer: Measurer,
+): number {
+  return rowsHeight(wrap(items, region.right - region.left, measurer), preset);
+}
+
+// Texts set in centred lines inside a region, wrapping at its width. A block
+// that would run past the region's bottom moves up to end there (never above
+// the safe box's top, where the safe-box check reports it).
+function lines(
+  items: readonly TextItem[],
+  region: Box,
+  preset: Preset,
+  measurer: Measurer,
+): TextBox[] {
+  const width = region.right - region.left;
+  const rows = wrap(items, width, measurer);
   const out: TextBox[] = [];
-  let y = region.top;
+  let y = Math.max(preset.safe.top, Math.min(region.top, region.bottom - rowsHeight(rows, preset)));
   for (const current of rows) {
     const spaces = current.map(({ item }, index) =>
       index === 0 ? 0 : measurer.width(item.font, item.size, " "),
@@ -144,7 +169,10 @@ export function wordsText(ids: readonly string[], transcript: Transcript, preset
 // group (same end) at a time, take the spots beside the face over the group's
 // span (a word too wide for them, and every caption when no head is in the
 // frame, the fallback line); accents are
-// centred above the head. Widths are HarfBuzz's.
+// centred above the head. Nothing placed here ends below the safe box's
+// bottom edge: spots too low for a caption are skipped, wrapped blocks move
+// up to end there, and the line below the face moves above it when it would
+// not fit. Widths are HarfBuzz's.
 export function layoutText(
   edit: Edit,
   resolved: ReadonlyMap<string, ResolvedItem>,
@@ -203,10 +231,11 @@ export function layoutText(
     boxes.push(...lines(items, preset.transitions[transition.type].text, preset, measurer));
   }
 
-  const fallback = {
+  const fallback: Box = {
     left: preset.safe.left,
     right: preset.safe.right,
     top: preset.caption.fallbackY,
+    bottom: preset.safe.bottom,
   };
   for (const group of groups) {
     // The head over the group's span and over each caption's own span: the
@@ -233,9 +262,12 @@ export function layoutText(
     const unplaced: TextItem[] = [];
     for (const item of group) {
       const need = measurer.width(item.font, item.size, item.text);
-      // The first free spot wide enough; a word too wide for every spot goes
-      // to the line below the face.
-      const pick = free.find((index) => slots[index]!.room >= need);
+      // The first free spot wide enough whose row keeps the caption above
+      // the safe box's bottom edge; a word that fits no spot goes to the line
+      // below the face.
+      const pick = free.find(
+        (index) => slots[index]!.room >= need && slots[index]!.y + item.size <= preset.safe.bottom,
+      );
       if (pick === undefined) {
         unplaced.push(item);
         continue;
@@ -245,11 +277,21 @@ export function layoutText(
       boxes.push(anchored(item, slot.x, slot.y, slot.anchor === "r" ? "right" : "left", need));
     }
     if (unplaced.length > 0) {
-      const below = {
-        ...fallback,
-        top: Math.max(fallback.top, face.bottom + preset.caption.lineGap),
-      };
-      boxes.push(...lines(unplaced, below, preset, measurer));
+      // Below the face when the block ends above the bottom edge; else above
+      // the face when that stays under the safe box's top; else the block
+      // moved up to end at the bottom edge, where the face check reports it
+      // if it covers the face (the check stays the safety net).
+      const { lineGap } = preset.caption;
+      const height = blockHeight(unplaced, fallback, preset, measurer);
+      const belowTop = Math.max(fallback.top, face.bottom + lineGap);
+      const aboveTop = face.top - lineGap - height;
+      const region =
+        belowTop + height <= preset.safe.bottom
+          ? { ...fallback, top: belowTop }
+          : aboveTop >= preset.safe.top
+            ? { ...fallback, top: aboveTop, bottom: aboveTop + height }
+            : { ...fallback, top: belowTop };
+      boxes.push(...lines(unplaced, region, preset, measurer));
     }
   }
 

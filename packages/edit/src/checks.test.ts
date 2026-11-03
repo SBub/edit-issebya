@@ -33,8 +33,27 @@ describe("runChecks", () => {
     expect(checks).toHaveLength(1);
     expect(checks[0]).toMatchObject({ rule: "safe-box", item: "aw29" });
     expect(checks[0]!.reason).toMatch(
-      /^accent aw29 \("a{40}"\) runs past the safe box: left edge -?\d+ < 130, right edge \d+ > 860$/,
+      /^accent aw29 \("a{40}"\) runs past the safe box: left edge -?\d+ < 130, right edge \d+ > 840$/,
     );
+  });
+
+  it("fails safe-box for a caption set at y 1300", async () => {
+    const edit = structuredClone(hand.edit);
+    edit.tracks.captions[0]!.position = { x: 540, y: 1300, align: "center" };
+    const checks = (await checksOf(edit)).filter((check) => check.rule === "safe-box");
+    expect(checks.map((check) => check.item)).toEqual(["cw0"]);
+    expect(checks[0]!.reason).toMatch(/runs past the safe box: bottom edge 1350 > 1164$/);
+  });
+
+  it("checks against the platform guard under a preset with a looser box", async () => {
+    const edit = structuredClone(hand.edit);
+    edit.tracks.captions[0]!.position = { x: 540, y: 1300, align: "center" };
+    const loose = { ...ISSEBYA_PRESET, safe: { left: 0, right: 1080, top: 0, bottom: 1920 } };
+    const { checks } = build(edit, hand.transcript, hand.headTrack, loose, await nodeMeasurer());
+    // The looser box also lets the layout set other text past the guard;
+    // the item at y 1300 is reported whatever the preset says.
+    const cw0 = checks.find((check) => check.rule === "safe-box" && check.item === "cw0");
+    expect(cw0?.reason).toMatch(/runs past the safe box: bottom edge 1350 > 1164$/);
   });
 
   it("fails face for a caption set over the head", async () => {
