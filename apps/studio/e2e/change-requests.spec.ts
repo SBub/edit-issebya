@@ -254,6 +254,20 @@ test("a change becomes version 3 and the preview shows it without a reload", asy
   // Claude's plain title is stored with the version and shown on its one-line
   // row; the owner's words and the summary wait behind the arrow.
   expect(v3.change_title).toBe("Title and one accent added");
+  // One muted intro line sits under the Versions heading and describes the section.
+  const versionsHeading = page.locator("#versions-heading");
+  const versionsIntro = page.getByTestId("versions-intro");
+  await expect(versionsIntro).toBeVisible();
+  await expect(versionsIntro).toHaveText(
+    "Your reel's history. Open a version to see what changed and bring it back",
+  );
+  await expect(page.locator('section[aria-labelledby="versions-heading"]')).toHaveAttribute(
+    "aria-describedby",
+    "versions-intro",
+  );
+  const headingBox = (await versionsHeading.boundingBox())!;
+  const introBox = (await versionsIntro.boundingBox())!;
+  expect(introBox.y).toBeGreaterThanOrEqual(headingBox.y + headingBox.height - 1);
   const toggle = versionItem(3).getByTestId("version-toggle");
   await expect(versionItem(3).getByTestId("version-title")).toHaveText(v3.change_title!);
   await expect(versionItem(3).getByTestId("version-current")).toBeVisible();

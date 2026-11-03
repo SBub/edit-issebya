@@ -60,10 +60,18 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason 
   return (
     // No padding of its own around the list: the rows run edge to edge of the
     // Versions area, each with the area's 0.75rem side padding.
-    <section aria-labelledby="versions-heading" className="flex flex-col gap-2 pb-3">
+    <section
+      aria-labelledby="versions-heading"
+      aria-describedby="versions-intro"
+      className="flex flex-col gap-2 pb-3"
+    >
       <h2 id="versions-heading" className="px-3 pt-3 text-sm font-semibold">
         Versions
       </h2>
+      {/* Shown with or without versions; an empty list keeps its line below. */}
+      <p id="versions-intro" data-testid="versions-intro" className="px-3 text-xs text-muted">
+        Your reel&apos;s history. Open a version to see what changed and bring it back
+      </p>
       {newestFirst.length === 0 ? (
         <p className="px-3 text-sm text-muted">No version yet.</p>
       ) : (

@@ -54,7 +54,11 @@ version` as above; otherwise the version's `change_title`, falling back (version
   (`refusalReason` in `apps/studio/src/lib/step-words.ts`), Change the request (refills the field
   with the sent request and focuses it) and Keep the current version; never Try again and never the
   raw error tail.
-- `apps/studio/src/components/VersionList.tsx`: every version, newest first, one row each at one
+- `apps/studio/src/components/VersionList.tsx`: under the `Versions` heading, one muted intro line
+  (`data-testid="versions-intro"`, `text-xs text-muted`, the heading's `px-3`), exactly
+  `Your reel's history. Open a version to see what changed and bring it back` (no full stop),
+  linked from the section with `aria-describedby`. It shows whether or not versions exist; an
+  empty list keeps `No version yet.` below it. Then every version, newest first, one row each at one
   fixed height (`h-14`, sized for two title lines, whatever the text): `v{n}`, the `current` (or
   `showing`) mark, the title (`versionTitle`, `data-testid="version-title"`, wrapping to at most two
   lines, `line-clamp-2`; a long request standing in for an old version's title is cut there, and
@@ -120,6 +124,7 @@ specs, see `app_docs/decide-step.md`).
   `processed`, with the overlay's `Could not finish styling`, its reason, Change the request (the
   field refilled and focused, `studio_failure_action` sent) and Keep the current version, no Try
   again, and going back makes versions 4 and 5. It checks version 3's stored and shown title,
+  the intro line under the Versions heading (visible, exact text, `aria-describedby`),
   details hidden until the arrow opens them (`aria-expanded`), What you asked, What changed, and
   the `Back to vN` titles of the restores.
 - `apps/studio/e2e/reel-layout.spec.ts`: at 1440x900 and 390x844, every row the same height
