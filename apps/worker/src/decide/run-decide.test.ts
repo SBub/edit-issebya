@@ -119,12 +119,17 @@ function answer(change: (answer: Json & { tracks: Record<string, Json[]> }) => v
   return copy;
 }
 
+// A position the answer schema accepts (inside the safe box, its bounds) whose
+// left-aligned text starts 20 px before the safe box's right edge: the text
+// runs past that edge, so the safe-box check, not the schema, refuses it.
+const NEAR_RIGHT_EDGE = { x: ISSEBYA_PRESET.safe.right - 20, align: "left" };
+
 // The title moved so its text runs past the safe box's right edge.
 const offSafeBox = () =>
   resultEnvelope(
     answer((a) => {
       const title = a.tracks.overlays!.find((item) => item.id === "title")!;
-      title.position = { x: 860, y: 420, align: "left" };
+      title.position = { ...NEAR_RIGHT_EDGE, y: 420 };
     }),
   );
 
@@ -371,8 +376,7 @@ describe("runDecide", () => {
   it("keeps the failure tail within 20 lines when there are many reasons", async () => {
     const many = resultEnvelope(
       answer((a) => {
-        for (const caption of a.tracks.captions!)
-          caption.position = { x: 860, y: 700, align: "left" };
+        for (const caption of a.tracks.captions!) caption.position = { ...NEAR_RIGHT_EDGE, y: 700 };
       }),
     );
     const { run, calls } = await decide(fakeAiRunner([many, many]));
@@ -383,6 +387,7 @@ describe("runDecide", () => {
     expect(lines.length).toBeLessThanOrEqual(20);
     expect(lines[0]).toMatch(/^decide: the answer failed twice/);
     expect(failed.tail).toMatch(/- and 3 more\nround 2:/);
+    expect(failed.tail).toMatch(/round 2:\n- safe-box cw\d+: /);
   });
 });
 
@@ -444,7 +449,10 @@ describe("runDecide with a behind item", () => {
       ];
     },
   };
-  const photoItem = (id = "behind-photo", spot = "left") => ({
+  // The `top` spot: with no head in the fixture every caption sits on the
+  // fallback line, which the side spots (`left`, `right`) reach down to and
+  // `top` does not.
+  const photoItem = (id = "behind-photo", spot = "top") => ({
     id,
     kind: "photo",
     photo_id: PHOTO,
@@ -620,24 +628,28 @@ describe("runDecide with a behind item", () => {
   });
 
   it("sends a photo the face takes over back once, then saves the retry", async () => {
-    // A head 300 px wide in the left spot: its face covers 43% of it.
+    // A head 560 px wide at the top spot's top edge: its face (x 215 to 775,
+    // y 160 to 916) covers 62% of the spot. It leaves too little room beside
+    // it for a caption, so every caption goes to the line below the face, and
+    // the face ends above the dim transition's text region (from y 944): no
+    // caption covers it, so the retry without the photo passes.
     const ref = rows.get(firstId)!.inputs.head_track;
     const key = cacheKey(PREFIX, ref.step, ref.fingerprint, ref.file);
     const track = Array.from({ length: 12 }, (_, index) => ({
       t: index * 0.25,
-      head_top: 600,
-      cx: 270,
-      head_w: 300,
+      head_top: ISSEBYA_PRESET.behind.spots.top.top,
+      cx: 495,
+      head_w: 560,
     }));
     await storage.put(key, new TextEncoder().encode(JSON.stringify(track)));
-    const ai = fakeAiRunner([behindAnswer([photoItem("behind-photo", "left")]), behindAnswer([])]);
+    const ai = fakeAiRunner([behindAnswer([photoItem("behind-photo", "top")]), behindAnswer([])]);
     const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool);
     await run;
     expect(ai.calls).toHaveLength(2);
     expect(ai.calls[0]!.prompt).toContain('"clear_spots"');
     const v2 = rows.get(current!)!;
     expect(v2.rejected_reasons.join("\n")).toMatch(
-      /^behind-face behind-photo: photo behind-photo in the left spot: the face covers 43% of it/m,
+      /^behind-face behind-photo: photo behind-photo in the top spot: the face covers 62% of it/m,
     );
   });
 });

@@ -41,7 +41,11 @@
     "lint:fix": {
       "cache": false
     },
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
     "test": {
+      "dependsOn": ["^transit"],
       "outputs": []
     },
     "dev": {
@@ -116,13 +120,24 @@
       ]
     },
     "@edit-issebya/edit#test": {
+      "dependsOn": ["^transit"],
       "outputs": [],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/fixtures/pipeline/**"],
       "passThroughEnv": ["PLAYWRIGHT_*", "CI"]
     },
     "@edit-issebya/studio#test": {
+      "dependsOn": ["^transit"],
       "outputs": [],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/supabase/migrations/**"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/supabase/migrations/**",
+        "$TURBO_ROOT$/fixtures/pipeline/**"
+      ]
+    },
+    "@edit-issebya/worker#test": {
+      "dependsOn": ["^transit"],
+      "outputs": [],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/fixtures/pipeline/**"]
     },
     "@edit-issebya/studio#test:e2e": {
       "cache": false,
