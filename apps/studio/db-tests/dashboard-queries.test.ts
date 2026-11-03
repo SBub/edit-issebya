@@ -35,7 +35,7 @@ describe("dashboard queries name real columns and events", () => {
         [[...SYNCED_TABLES]],
       );
       const existing = new Set(rows.map((r) => `${r.table_name}.${r.column_name}`));
-      expect(SQL_INSIGHTS).toHaveLength(13);
+      expect(SQL_INSIGHTS).toHaveLength(19);
       for (const def of SQL_INSIGHTS) {
         const tables: string[] = [];
         const sql = def.build(postgres, (name) => {
@@ -92,9 +92,20 @@ describe("dashboard metric logic", () => {
     extra: Record<string, unknown> = {},
   ) {
     const { rows } = await db.query<{ id: string }>(
-      `insert into public.jobs (reel_id, owner_id, kind, status, created_at, request, version_id)
-       values ($1, $2, $3, 'done', $4, $5, $6) returning id`,
-      [reelId, owner.id, kind, at(minutes), extra.request ?? null, extra.versionId ?? null],
+      `insert into public.jobs
+         (reel_id, owner_id, kind, status, created_at, request, version_id, started_at, finished_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
+      [
+        reelId,
+        owner.id,
+        kind,
+        extra.status ?? "done",
+        at(minutes),
+        extra.request ?? null,
+        extra.versionId ?? null,
+        typeof extra.started === "number" ? at(extra.started) : null,
+        typeof extra.finished === "number" ? at(extra.finished) : null,
+      ],
     );
     return rows[0]!.id;
   }
@@ -160,11 +171,13 @@ describe("dashboard metric logic", () => {
       [a],
     );
     // Process jobs at T, T+1h, T+2h, T+3h; A also has a later Retry process job.
-    const jobA = await job(a, "process", 0);
-    await job(a, "process", 5);
-    const jobB = await job(b, "process", 60);
-    const jobC = await job(c, "process", 120);
-    await job(d, "process", 180);
+    // Claimed after 1, 1, 2 and 3 minutes; run 3 (done), 1 (failed), 6 (done)
+    // minutes, C still running and D still queued.
+    const jobA = await job(a, "process", 0, { started: 1, finished: 4 });
+    await job(a, "process", 5, { status: "failed", started: 6, finished: 7 });
+    const jobB = await job(b, "process", 60, { started: 62, finished: 68 });
+    const jobC = await job(c, "process", 120, { status: "running", started: 123 });
+    await job(d, "process", 180, { status: "queued" });
     // Version 1 at +9, +12, +8 minutes; D has none.
     const versionA = await version(a, 9);
     const versionB = await version(b, 72);
@@ -198,6 +211,7 @@ describe("dashboard metric logic", () => {
       ai_input_tokens: 100,
       ai_output_tokens: 50,
       ai_cost_usd: 0.25,
+      ai_model: "claude-test",
     });
     await step(jobB, b, {
       name: "convert",
@@ -340,6 +354,64 @@ describe("dashboard metric logic", () => {
     expect(num(rows[0]!.total_bytes)).toBe(1700);
     expect(num(rows[0]!.per_reel_row_bytes)).toBe(2200);
     expect(num(rows[0]!.live_objects)).toBe(3);
+  });
+
+  it("jobs per day: every job by kind, one day", async () => {
+    const rows = await run("jobs-per-day");
+    expect(rows.map((r) => [r.job_kind, num(r.jobs)])).toEqual([
+      ["change", 2],
+      ["process", 5],
+      ["render", 4],
+    ]);
+  });
+
+  it("job run time: median and 95th percentile of done jobs, by kind", async () => {
+    const rows = await run("job-run-time");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.job_kind).toBe("process");
+    expect(num(rows[0]!.done_jobs)).toBe(2);
+    expect(num(rows[0]!.median_minutes)).toBeCloseTo(4.5);
+    expect(num(rows[0]!.p95_minutes)).toBeCloseTo(5.85);
+  });
+
+  it("queue wait: created to started of claimed jobs, by kind", async () => {
+    const rows = await run("queue-wait");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.job_kind).toBe("process");
+    expect(num(rows[0]!.claimed_jobs)).toBe(4);
+    expect(num(rows[0]!.median_wait_minutes)).toBeCloseTo(1.5);
+    expect(num(rows[0]!.p95_wait_minutes)).toBeCloseTo(2.85);
+  });
+
+  it("worker busy hours: done and failed jobs' run time, by day", async () => {
+    const rows = await run("worker-busy-hours");
+    expect(rows).toHaveLength(1);
+    expect(num(rows[0]!.busy_hours)).toBeCloseTo(10 / 60);
+    expect(num(rows[0]!.busy_share)).toBeCloseTo(10 / 60 / 24);
+    expect(num(rows[0]!.finished_jobs)).toBe(3);
+  });
+
+  it("share of worker time waiting on Claude: AI steps' wall time over all", async () => {
+    const rows = await run("ai-wait-share");
+    expect(rows).toHaveLength(1);
+    expect(num(rows[0]!.ai_wall_seconds)).toBe(2);
+    expect(num(rows[0]!.wall_seconds)).toBe(3.51);
+    expect(num(rows[0]!.ai_share)).toBeCloseTo(2000 / 3510);
+  });
+
+  it("capacity: CPU seconds per source minute and peak memory, done steps", async () => {
+    const rows = await run("capacity-per-minute");
+    expect(
+      rows.map((r) => [
+        r.step_name,
+        num(r.done_steps),
+        num(r.median_cpu_seconds_per_source_minute),
+        num(r.max_peak_memory_bytes),
+      ]),
+    ).toEqual([
+      ["convert", 1, 1.5, 100],
+      ["decide", 1, 3, 300],
+    ]);
   });
 
   it("cache hit rate: hits over done, failed or skipped steps", async () => {

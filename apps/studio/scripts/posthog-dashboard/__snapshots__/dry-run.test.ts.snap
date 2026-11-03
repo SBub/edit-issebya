@@ -443,7 +443,7 @@ order by steps.name",
         "source": {
           "kind": "HogQLQuery",
           "query": "select steps.name as step_name, floor(reels.source_seconds / 15) * 15 as source_seconds_from,
-  count(*) as done_steps,
+  count(steps.id) as done_steps,
   median(steps.wall_ms / 1000.0) as median_seconds,
   max(steps.wall_ms / 1000.0) as max_seconds,
   median(steps.wall_ms / 1000.0 / nullif(reels.footage_seconds, 0)) as median_seconds_per_footage_second
@@ -643,6 +643,215 @@ order by weekly.week",
   },
   {
     "body": {
+      "dashboards": [
+        "<id:dashboard>",
+      ],
+      "description": "By day of the job's creation and job kind: how many jobs were queued, whatever their status now, so the work the worker was asked to do. Source: synced jobs table.
+
+[studio-metrics:jobs-per-day]",
+      "name": "Studio: jobs per day, by kind",
+      "query": {
+        "chartSettings": {},
+        "display": "ActionsTable",
+        "kind": "DataVisualizationNode",
+        "source": {
+          "kind": "HogQLQuery",
+          "query": "select toStartOfDay(jobs.created_at) as day, jobs.kind as job_kind,
+  count(*) as jobs
+from supabase_jobs as jobs
+group by toStartOfDay(jobs.created_at), jobs.kind
+order by day, job_kind",
+        },
+      },
+      "tags": [
+        "studio-metrics",
+      ],
+    },
+    "method": "POST",
+    "path": "/api/projects/<POSTHOG_PROJECT_ID>/insights/",
+  },
+  {
+    "body": {
+      "dashboards": [
+        "<id:dashboard>",
+      ],
+      "description": "By day of the job's start: the hours from started_at to finished_at summed over done and failed jobs, and that time over the day's 24 hours. The worker runs one job at a time. A job counts whole on the day it started, and a job claimed again after a lost lease counts its last attempt only (claim_job overwrites started_at). Source: synced jobs table.
+
+[studio-metrics:worker-busy-hours]",
+      "name": "Studio: worker busy hours per day",
+      "query": {
+        "chartSettings": {
+          "xAxis": {
+            "column": "day",
+          },
+          "yAxis": [
+            {
+              "column": "busy_hours",
+            },
+          ],
+        },
+        "display": "ActionsBar",
+        "kind": "DataVisualizationNode",
+        "source": {
+          "kind": "HogQLQuery",
+          "query": "select toStartOfDay(jobs.started_at) as day,
+  sum(dateDiff('second', jobs.started_at, jobs.finished_at)) / 3600.0 as busy_hours,
+  sum(dateDiff('second', jobs.started_at, jobs.finished_at)) / 86400.0 as busy_share,
+  count(*) as finished_jobs
+from supabase_jobs as jobs
+where jobs.status in ('done', 'failed') and jobs.started_at is not null and jobs.finished_at is not null
+group by toStartOfDay(jobs.started_at)
+order by day",
+        },
+      },
+      "tags": [
+        "studio-metrics",
+      ],
+    },
+    "method": "POST",
+    "path": "/api/projects/<POSTHOG_PROJECT_ID>/insights/",
+  },
+  {
+    "body": {
+      "dashboards": [
+        "<id:dashboard>",
+      ],
+      "description": "By week of the job's start and job kind, over done jobs: the median and 95th percentile minutes from started_at to finished_at. claim_job overwrites started_at when a job is claimed again after a lost lease, so such a job counts its last attempt only. Source: synced jobs table.
+
+[studio-metrics:job-run-time]",
+      "name": "Studio: job run time per kind, by week",
+      "query": {
+        "chartSettings": {},
+        "display": "ActionsTable",
+        "kind": "DataVisualizationNode",
+        "source": {
+          "kind": "HogQLQuery",
+          "query": "select toStartOfWeek(jobs.started_at, 1) as week, jobs.kind as job_kind,
+  count(*) as done_jobs,
+  median(dateDiff('second', jobs.started_at, jobs.finished_at) / 60.0) as median_minutes,
+  quantile(0.95)(dateDiff('second', jobs.started_at, jobs.finished_at) / 60.0) as p95_minutes
+from supabase_jobs as jobs
+where jobs.status = 'done' and jobs.started_at is not null and jobs.finished_at is not null
+group by toStartOfWeek(jobs.started_at, 1), jobs.kind
+order by week, job_kind",
+        },
+      },
+      "tags": [
+        "studio-metrics",
+      ],
+    },
+    "method": "POST",
+    "path": "/api/projects/<POSTHOG_PROJECT_ID>/insights/",
+  },
+  {
+    "body": {
+      "dashboards": [
+        "<id:dashboard>",
+      ],
+      "description": "Approximate. By week of the job's creation and job kind, over jobs the worker has claimed: the median and 95th percentile minutes from created_at to started_at. claim_job overwrites started_at when a job is claimed again after a lost lease, so such a job's wait includes its lost attempt. A job also waits while an older job of its reel or photo runs, not only while the worker is busy. Source: synced jobs table.
+
+[studio-metrics:queue-wait]",
+      "name": "Studio: queue wait per kind, by week (approximate)",
+      "query": {
+        "chartSettings": {},
+        "display": "ActionsTable",
+        "kind": "DataVisualizationNode",
+        "source": {
+          "kind": "HogQLQuery",
+          "query": "select toStartOfWeek(jobs.created_at, 1) as week, jobs.kind as job_kind,
+  count(*) as claimed_jobs,
+  median(dateDiff('second', jobs.created_at, jobs.started_at) / 60.0) as median_wait_minutes,
+  quantile(0.95)(dateDiff('second', jobs.created_at, jobs.started_at) / 60.0) as p95_wait_minutes
+from supabase_jobs as jobs
+where jobs.started_at is not null
+group by toStartOfWeek(jobs.created_at, 1), jobs.kind
+order by week, job_kind",
+        },
+      },
+      "tags": [
+        "studio-metrics",
+      ],
+    },
+    "method": "POST",
+    "path": "/api/projects/<POSTHOG_PROJECT_ID>/insights/",
+  },
+  {
+    "body": {
+      "dashboards": [
+        "<id:dashboard>",
+      ],
+      "description": "By week of the step's start: the wall seconds of steps with an ai_model (the model Claude Code reported, written on AI steps only) over the wall seconds of every step with a wall time (done, failed or skipped). An AI step's whole wall time counts, so this is an upper bound on the time spent waiting for Claude. Source: synced steps table.
+
+[studio-metrics:ai-wait-share]",
+      "name": "Studio: share of worker time waiting on Claude, by week",
+      "query": {
+        "chartSettings": {
+          "xAxis": {
+            "column": "week",
+          },
+          "yAxis": [
+            {
+              "column": "ai_share",
+            },
+          ],
+        },
+        "display": "ActionsLineGraph",
+        "kind": "DataVisualizationNode",
+        "source": {
+          "kind": "HogQLQuery",
+          "query": "select toStartOfWeek(steps.started_at, 1) as week,
+  sum(case when steps.ai_model is not null then steps.wall_ms else 0 end) / 1000.0 as ai_wall_seconds,
+  sum(steps.wall_ms) / 1000.0 as wall_seconds,
+  sum(case when steps.ai_model is not null then steps.wall_ms else 0 end) * 1.0
+    / nullif(sum(steps.wall_ms), 0) as ai_share
+from supabase_steps as steps
+where steps.wall_ms is not null
+group by toStartOfWeek(steps.started_at, 1)
+order by week",
+        },
+      },
+      "tags": [
+        "studio-metrics",
+      ],
+    },
+    "method": "POST",
+    "path": "/api/projects/<POSTHOG_PROJECT_ID>/insights/",
+  },
+  {
+    "body": {
+      "dashboards": [
+        "<id:dashboard>",
+      ],
+      "description": "Per step name, over done steps of reels with a source length (cache hits are recorded skipped and left out): the median CPU seconds per minute of the reel's source_seconds, and the largest peak memory. Raw machine measurements for sizing a server; no money is derived. Source: synced steps table joined to the synced reels table.
+
+[studio-metrics:capacity-per-minute]",
+      "name": "Studio: CPU per source minute and peak memory, per step",
+      "query": {
+        "chartSettings": {},
+        "display": "ActionsTable",
+        "kind": "DataVisualizationNode",
+        "source": {
+          "kind": "HogQLQuery",
+          "query": "select steps.name as step_name,
+  count(steps.id) as done_steps,
+  median(steps.cpu_ms / 1000.0 / (reels.source_seconds / 60.0)) as median_cpu_seconds_per_source_minute,
+  max(steps.peak_rss_bytes) as max_peak_memory_bytes
+from supabase_steps as steps
+inner join supabase_reels as reels on reels.id = steps.reel_id
+where steps.status = 'done' and not steps.cache_hit and reels.source_seconds is not null
+group by steps.name
+order by step_name",
+        },
+      },
+      "tags": [
+        "studio-metrics",
+      ],
+    },
+    "method": "POST",
+    "path": "/api/projects/<POSTHOG_PROJECT_ID>/insights/",
+  },
+  {
+    "body": {
       "tiles": [
         {
           "id": "<tile:main-metric>",
@@ -799,16 +1008,82 @@ order by weekly.week",
           },
         },
         {
+          "id": "<tile:jobs-per-day>",
           "layouts": {
             "sm": {
-              "h": 2,
+              "h": 5,
               "w": 6,
               "x": 0,
               "y": 35,
             },
           },
+        },
+        {
+          "id": "<tile:worker-busy-hours>",
+          "layouts": {
+            "sm": {
+              "h": 5,
+              "w": 6,
+              "x": 6,
+              "y": 35,
+            },
+          },
+        },
+        {
+          "id": "<tile:job-run-time>",
+          "layouts": {
+            "sm": {
+              "h": 5,
+              "w": 6,
+              "x": 0,
+              "y": 40,
+            },
+          },
+        },
+        {
+          "id": "<tile:queue-wait>",
+          "layouts": {
+            "sm": {
+              "h": 5,
+              "w": 6,
+              "x": 6,
+              "y": 40,
+            },
+          },
+        },
+        {
+          "id": "<tile:ai-wait-share>",
+          "layouts": {
+            "sm": {
+              "h": 5,
+              "w": 6,
+              "x": 0,
+              "y": 45,
+            },
+          },
+        },
+        {
+          "id": "<tile:capacity-per-minute>",
+          "layouts": {
+            "sm": {
+              "h": 5,
+              "w": 6,
+              "x": 6,
+              "y": 45,
+            },
+          },
+        },
+        {
+          "layouts": {
+            "sm": {
+              "h": 2,
+              "w": 6,
+              "x": 0,
+              "y": 50,
+            },
+          },
           "text": {
-            "body": "**Supabase usage** (database size, egress, auth users) is not synced to PostHog. Read it on the studio project's usage page: https://supabase.com/dashboard/project/<studio-project-ref>/settings/usage
+            "body": "**Supabase usage** (database size, egress, auth users) is not synced to PostHog. Read it on the studio project's usage page: https://supabase.com/dashboard/project/ykjgyapmrszliovfqjfx/settings/usage
 
 [studio-metrics:supabase-usage]",
           },
@@ -819,7 +1094,7 @@ order by weekly.week",
               "h": 2,
               "w": 6,
               "x": 6,
-              "y": 35,
+              "y": 50,
             },
           },
           "text": {
