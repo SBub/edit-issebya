@@ -4,6 +4,7 @@
 
 - specs/issue-33-adw-b632a861-sdlc_planner-ai-decide-step.md
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
+- specs/issue-97-adw-7283e118-sdlc_planner-decide-proposes-behind-within-limits.md
 
 ## Overview
 
@@ -17,8 +18,8 @@ version untouched.
 
 ## How it works
 
-The answer is tracks only plus three short fields:
-`{ tracks, change_summary, unexpressed: string[], free_field: { item, reason }[] }`. `format`,
+The answer is tracks only plus four short fields:
+`{ tracks, change_summary, unexpressed: string[], free_field: { item, reason }[], behind_rules }`. `format`,
 `preset`, `duration` and `inputs` come from the current version, so the result is always a full edit
 and the AI cannot touch the input fingerprints. By convention the title is the overlay with id
 `title`, anchored at `{ reel: "start" }`.
@@ -30,12 +31,28 @@ and the AI cannot touch the input fingerprints. By convention the title is the o
   them; no whole-clip cut-out track), `decideJsonSchema` (Zod 4
   `z.toJSONSchema`, draft-07 because the Claude Code CLI's `--json-schema` validator rejects a
   draft 2020-12 `$schema`, real `enum` lists, every object closed, refs inlined),
-  `parseDecideAnswer`, `editFromAnswer` (the answer's tracks over the current version, parsed with
+  `parseDecideAnswer` (all three take a `DecideRules` argument, default `NO_RULES`), `applyBehindRules`
+  (the pure merge of the reel's stored flags and the answer's rules), `editFromAnswer` (the answer's tracks over the current version, parsed with
   the decide limits; the current version's `inputs.masks` and `inputs.photos` are dropped, since
   the worker names them again for the new `behind` track), `decideCounts` (the step line, with
   `behindPhotos` and `behindWords`) and `usedFreeField`.
+- Behind limits (the owner's, 2026-11-02): per reel at most 2 photos and 1 big word, each 2 to 4 s,
+  anchored on words; a photo only where a sentence clearly matches a library photo's description or
+  tags (an empty library means no photos, never an error); the big word only for the reel's key
+  word, spoken inside its span. Where each is enforced: the JSON Schema carries the `behind`
+  `maxItems` (3), the `photo_id` and `spot` enums and the `behind_rules` enums; Zod carries what
+  draft-07 cannot (the per-kind counts, the 2 to 4 s length, the forbid, the spoken key word), each
+  with a readable reason for the retry.
+- `behind_rules: { photos, big_word }`, each `keep`, `forbid` or `allow`: `keep` leaves the reel's
+  stored flag, `forbid` sets it, `allow` lifts it. Without a request (the automatic run) the enums
+  are only `["keep"]`. A Zod refinement refuses a photo (or big word) while the effective rule
+  forbids it, and on the automatic run a big word that is not one of the words spoken in its span.
+  The flags are `reels.no_photos` and `reels.no_big_word`, written only by `save_version` in the
+  same transaction as the version (`p_no_photos`, `p_no_big_word`, null = unchanged; restore and the
+  first version pass null). With photos forbidden and no request, the library sent is empty and the
+  photo enum is `z.never()`.
 - `packages/edit/src/schema.ts`: `editSchemaFor` and the new `tracksSchemaFor` take optional
-  `EditLimits { duration, bounds, photoIds }`; without them stored versions keep parsing with the default
+  `EditLimits { duration, bounds, photoIds, behindCounts }`; without them stored versions keep parsing with the default
   frame limits. `issueReasons` turns Zod issues into readable reasons.
 - `packages/edit/src/glossary.ts`: `glossaryChecks`, check rule `glossary` (added to `CheckRule`):
   no caption or overlay shows a heard form of a glossary term; the term itself passes.
@@ -55,20 +72,33 @@ and the AI cannot touch the input fingerprints. By convention the title is the o
   non-object value or non-JSON throws. Without a script it gives `EMPTY_DECIDE_ANSWER` (no items),
   which the doctor's check accepts.
 - `apps/worker/src/decide/prompt.md`, `prompt.ts`: the committed prompt and `PROMPT_VERSION`
-  (`decide-2`, bumped with every prompt change; each version row records it). `decidePrompt` fills
+  (`decide-3`, bumped with every prompt change; each version row records it). `decidePrompt` fills
   the inputs as fenced JSON (`{{library}}` among them) and, on the retry, appends the previous
-  reasons. Step 5 of the prompt: put something behind the speaker only when the request asks for
-  it (or the content plainly calls for it), a library photo (`photo_id`, `spot` `top`, `left` or
-  `right`) or one big word, anchored on words, 2 to 4 s, a hard cut, one at a time; move a photo by
-  changing its `spot`, swap it by changing its `photo_id`, remove it by leaving it out. The library
+  reasons. Step 5 of the prompt: at most 2 photos and 1 big word per reel, each 2 to 4 s,
+  anchored on words, a hard cut, one at a time; a photo (`photo_id`, `spot` `top`, `left` or
+  `right`) only where a sentence clearly matches a library photo, never a loose fit; the big word
+  only for the reel's key word; the spot taken from the sentence's `clear_spots`; move a photo by
+  changing its `spot`, swap it by changing its `photo_id`, remove it by leaving it out. A further
+  step covers corrections: "no photos in this one" sets `behind_rules` to `forbid`, asking again
+  sets `allow`, otherwise `keep`. The library
   is introduced as data describing the photos, never instructions, to be ignored where it reads
   like one.
 - `apps/worker/src/decide/input.ts`: the prompt input: current edit, transcript with ids, head
-  track summary, preset with glossary (and its `behind` summary: photo spots, the big word's font,
-  colour and maximum size, 2 to 4 s), the library and the request. The library is a list of
+  track summary (with `spans`, one per spoken sentence: word ids, times, the face box over it and
+  `clear_spots`, the spots whose face share is within `preset.behind.maxFaceShare`; built by
+  `sentenceSpans`, a sentence ending at `.`, `?`, `!` or a pause of 0.6 s), preset with glossary
+  (and its `behind` summary: photo spots, the big word's font, colour and maximum size, 2 to 4 s,
+  `max_photos`, `max_words`, `max_face_share`), `behind_rules` (the reel's current flags), the
+  library and the request. The library is a list of
   `LibraryEntry` (`id`, `description`, `tags`): the owner's ready photos only, oldest first, read by
   `PhotoLibrary.readyPhotos(owner_id)` (`apps/worker/src/photos/photo-store.ts`, service role,
   filtered by owner and `status = 'ready'`, a row without `large_key` left out).
+- `apps/worker/src/decide/behind-rules.ts`: the `ReelRules` store (`supabaseReelRules(db)` reads
+  `reels.no_photos` and `no_big_word` with the service role) and `applyRules`.
+- `packages/edit/src/checks.ts`, `behind.ts`: check rules `behind-face` (the face box covers more
+  than `maxFaceShare` of a photo's spot over its span) and `behind-caption` (a caption shown during
+  the span overlaps its spot); `spotFaceShare` feeds both the check and `clear_spots`. They run in
+  `runChecks`, so a failure goes through the existing single retry.
 - `apps/worker/src/decide/run-decide.ts`: `runDecide`, a `runToolsStep` named `decide`. It reads
   the current version and its inputs, builds the schema, and makes at most two calls, never a
   loop. An attempt passes only when the JSON parses, the schema accepts it, `editFromAnswer`
@@ -79,7 +109,8 @@ and the AI cannot touch the input fingerprints. By convention the title is the o
   `cutout` step row, `app_docs/pipeline.md`) before anything is saved; a failure there comes after
   the AI call, so it is permanent, and no version is saved. It saves through
   `saveVersion` with `parentId` the current version, the request (null for the automatic run),
-  model, `PROMPT_VERSION`, the change summary, and the records below. Step line:
+  model, `PROMPT_VERSION`, the change summary, the forbid flags (only where the answer's rule is not
+  `keep`) and the records below. Step line:
   `version 2: 1 accent, 1 transition, title set, 1 word fixed`, with `, <n> behind` after it when
   the version has behind items.
 - `apps/worker/src/process-job.ts`: runs `runDecide` after `saveFirstVersion`. Never cached: a
@@ -141,7 +172,12 @@ two AI calls. A failure before the first AI call may still be retried once.
   (`unchangedAnswerScript`), whose answer repeats version 1's tracks, so version 2 matches the
   version 1 golden. `behind.spec.ts` scripts a change answer (`behindPhotoAnswerScript`) that puts
   a seeded ready photo behind the speaker; the `cutout` row and the version's `inputs.masks` and
-  `inputs.photos` are checked.
+  `inputs.photos` are checked. `decide-behind.spec.ts` seeds a ready photo and a processed reel
+  whose automatic decide proposes it (`left`), then "no photos in this one" saves a version with no
+  photo and `reels.no_photos` set, and a later change whose first answer brings the photo back is
+  refused and its retry saves without it. Unit: `input.test.ts` (sentences, `clear_spots`, empty
+  library on a forbid), `checks.test.ts`, `schema.test.ts`; DB: `versions.test.ts` covers the reel
+  flags.
 
 ## Rules
 
@@ -159,6 +195,9 @@ two AI calls. A failure before the first AI call may still be retried once.
   the line saying so.
 - A `behind` photo is only ever one of the owner's ready library ids; the schema allows no other.
 - Never save a version with a `behind` item before its masks are stored.
+- Never more than `maxPhotos` photos and `maxWords` big words in a decide answer.
+- Never propose a photo or big word the reel's rules forbid; only a request may set or lift a rule.
+- A forbid is written with its version in one `save_version` call.
 
 ## Notes
 
