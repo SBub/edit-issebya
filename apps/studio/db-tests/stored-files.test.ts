@@ -458,7 +458,8 @@ describe("expire_export_files", () => {
     const now = new Date(Date.now() + 60_000);
     const reel = await reelOf(userA.id);
     const old = await exportAt(reel, userA.id, new Date(now.getTime() - 25 * 3600 * 1000));
-    const fresh = await exportAt(reel, userA.id, new Date(now.getTime() - 3600 * 1000));
+    // Expiry is 1 hour after an export is made.
+    const fresh = await exportAt(reel, userA.id, new Date(now.getTime() - 30 * 60 * 1000));
     await record(reel, old, "export", 1234, "render");
     await record(reel, fresh, "export", 1234, "render");
 
@@ -481,6 +482,30 @@ describe("expire_export_files", () => {
       p_now: now.toISOString(),
       p_prefix: PREFIX,
     });
+    expect(asOwner.error).not.toBeNull();
+  });
+});
+
+describe("discard_export_file", () => {
+  it("marks and returns an unrecorded export file only, never a recorded export's", async () => {
+    const reel = await reelOf(userA.id);
+    const recorded = await exportAt(reel, userA.id, new Date());
+    await record(reel, recorded, "export", 1234, "render");
+    // Uploaded by a render whose job was cancelled: no exports row.
+    const orphan = `${PREFIX}exports/${reel}/${randomUUID()}.mp4`;
+    await record(reel, orphan, "export", 99, "render");
+
+    const kept = await admin.rpc("discard_export_file", { p_r2_key: recorded });
+    expect(kept.error).toBeNull();
+    expect(kept.data).toEqual([]);
+    const discarded = await admin.rpc("discard_export_file", { p_r2_key: orphan });
+    expect(discarded.error).toBeNull();
+    expect(discarded.data).toEqual([{ r2_key: orphan, bytes: 99 }]);
+    const rows = await rowsOf(reel);
+    expect(rows.find((r) => r.r2_key === orphan)!.deleted_at).not.toBeNull();
+    expect(rows.find((r) => r.r2_key === recorded)!.deleted_at).toBeNull();
+
+    const asOwner = await clientA.rpc("discard_export_file", { p_r2_key: orphan });
     expect(asOwner.error).not.toBeNull();
   });
 });

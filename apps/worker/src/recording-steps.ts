@@ -113,8 +113,10 @@ export function stepContext(
     retryDelayMs = 0,
     errors = DISABLED_TRACKER,
     size,
+    checkCancelled,
   }: {
     signal?: AbortSignal;
+    checkCancelled?: () => Promise<boolean>;
     telemetry?: Telemetry;
     job?: ClaimedJob;
     retryDelayMs?: number;
@@ -122,5 +124,15 @@ export function stepContext(
     size?: ReelSizeHolder;
   } = {},
 ): StepContext {
-  return { steps, telemetry, errors, jobContext: ROOT_CONTEXT, job, signal, retryDelayMs, size };
+  return {
+    steps,
+    telemetry,
+    errors,
+    jobContext: ROOT_CONTEXT,
+    job,
+    signal,
+    checkCancelled,
+    retryDelayMs,
+    size,
+  };
 }

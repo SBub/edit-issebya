@@ -106,14 +106,22 @@ client, identifies the signed-in user and sends `studio_*` events.
 - The reel page shows no step log, summary or error tail: the progress overlay says the step in plain
   words (`app_docs/status.md`). The measurement columns are not shown.
 
-| Event                      | Sent when                                                                    | Properties                                                               |
-| -------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `studio_footage_uploaded`  | after the multipart upload completes, once (`UploadForm.tsx`)                | `reel_id`, `app`                                                         |
-| `studio_preview_opened`    | the live preview first reaches the player on a page open (`ReelPreview.tsx`) | `reel_id`, `app`                                                         |
-| `studio_change_requested`  | the owner sends a change request (`ChangeRequestForm.tsx`)                   | `reel_id`, `app` (never the request text)                                |
-| `studio_export_requested`  | the Export button queues a render job (`ExportPanel.tsx`)                    | `reel_id`, `app`                                                         |
-| `studio_export_downloaded` | the owner clicks the download link (`ExportPanel.tsx`)                       | `reel_id`, `app`                                                         |
-| `studio_failure_action`    | the owner presses one of the overlay's failure actions (`LiveReel.tsx`)      | `reel_id`, `job_id`, `action`, `failure_kind`, `step`, `job_kind`, `app` |
+| Event                      | Sent when                                                                                                            | Properties                                                               |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `studio_footage_uploaded`  | after the multipart upload completes, once (`UploadForm.tsx`)                                                        | `reel_id`, `app`                                                         |
+| `studio_preview_opened`    | the live preview first reaches the player on a page open (`ReelPreview.tsx`)                                         | `reel_id`, `app`                                                         |
+| `studio_change_requested`  | the owner sends a change request (`ChangeRequestForm.tsx`)                                                           | `reel_id`, `app` (never the request text)                                |
+| `studio_export_requested`  | the Export button queues a render job (`ExportPanel.tsx`)                                                            | `reel_id`, `app`                                                         |
+| `studio_export_downloaded` | the export modal starts the download by itself, or the owner clicks its fallback `Download` link (`ExportPanel.tsx`) | `reel_id`, `app`                                                         |
+| `studio_failure_action`    | the owner presses one of the overlay's failure actions (`LiveReel.tsx`)                                              | `reel_id`, `job_id`, `action`, `failure_kind`, `step`, `job_kind`, `app` |
+
+A cancelled render (`jobs.status = 'cancelled'`, `app_docs/export.md`) keeps the step rows
+written before the cancel; its `render` row stays `running` with no measurements, as on any abort.
+The dashboard insights read it this way: those that filter steps or jobs on `done`, `failed` or
+`skipped` (`job-run-time`, `worker-busy-hours`, `failed-steps`, `capacity-per-minute`,
+`step-time-vs-length`, `cache-hit-rate`) leave it out; `jobs-per-day` counts it as a created
+render and `queue-wait` counts its wait if it was started; the AI and cost insights sum only the
+measurements written, so the aborted row adds nothing. No insight changed.
 
 ### Reading time per step against reel length
 

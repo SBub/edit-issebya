@@ -16,6 +16,7 @@ import {
 
 const admin = localSupabaseAdmin();
 const DAY_MS = 24 * 3600 * 1000;
+const HOUR_MS = 3600 * 1000;
 let userA: { id: string; email: string };
 let userB: { id: string; email: string };
 let clientA: SupabaseClient;
@@ -200,7 +201,7 @@ describe("render jobs", () => {
 describe("exports", () => {
   let exportA: string;
 
-  it("expires exactly 24 hours after it was made and belongs to the reel's owner", async () => {
+  it("expires exactly 1 hour after it was made and belongs to the reel's owner", async () => {
     const row = exportRow(reelA, jobA, versionA, {
       owner_id: userB.id,
       expires_at: new Date(Date.now() + 365 * DAY_MS).toISOString(),
@@ -212,11 +213,11 @@ describe("exports", () => {
       .single<{ id: string; owner_id: string; created_at: string; expires_at: string }>();
     expect(error).toBeNull();
     expect(data!.owner_id).toBe(userA.id);
-    expect(Date.parse(data!.expires_at) - Date.parse(data!.created_at)).toBe(DAY_MS);
+    expect(Date.parse(data!.expires_at) - Date.parse(data!.created_at)).toBe(HOUR_MS);
     exportA = data!.id;
   });
 
-  it("keeps an older created_at's expiry 24 hours after it", async () => {
+  it("keeps an older created_at's expiry 1 hour after it", async () => {
     const created = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
     const otherJob = await doneRenderJob(reelA, userA.id, versionA);
     const { data, error } = await admin
@@ -225,7 +226,7 @@ describe("exports", () => {
       .select("id, expires_at")
       .single<{ id: string; expires_at: string }>();
     expect(error).toBeNull();
-    expect(Date.parse(data!.expires_at)).toBe(Date.parse(created) + DAY_MS);
+    expect(Date.parse(data!.expires_at)).toBe(Date.parse(created) + HOUR_MS);
     await admin.from("exports").delete().eq("id", data!.id);
   });
 

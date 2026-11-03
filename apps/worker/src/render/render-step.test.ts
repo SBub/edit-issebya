@@ -1,5 +1,7 @@
+import { execFile } from "node:child_process";
 import { copyFile, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { promisify } from "node:util";
 import { join } from "node:path";
 import {
   type EditInputs,
@@ -13,6 +15,7 @@ import {
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withMasks } from "../cutout/spans.ts";
+import { keepLease } from "../lease.ts";
 import { editMeasurer } from "../edit-measurer.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
@@ -348,5 +351,159 @@ describe("runRender with a behind photo", () => {
     const failed = calls.find((call) => call.call === "failed");
     expect(failed?.call === "failed" && failed.tail).toContain("is no longer in the library");
     expect(inserted).toEqual([]);
+  });
+});
+
+// The owner closes the export (cancel_job): the lease keeper's cancel check
+// aborts the signal, as in runJob.
+describe("runRender cancelled", () => {
+  const KEY = `${PREFIX}exports/${TEST_JOB.reel_id}/${EXPORT_ID}.mp4`;
+
+  // Processes whose command line names this test's temp folder (the render
+  // double's output is inside it).
+  async function childrenOf(folder: string): Promise<string[]> {
+    const { stdout } = await promisify(execFile)("ps", ["-ax", "-o", "command="]);
+    return stdout.split("\n").filter((line) => line.includes(folder));
+  }
+
+  function cancellable(cancelledNow: () => boolean) {
+    const lease = keepLease({
+      renew: async () => true,
+      everyMs: 60_000,
+      cancelled: async () => cancelledNow(),
+      cancelCheckEveryMs: 50,
+    });
+    return lease;
+  }
+
+  it("aborts the running render, kills its child and writes no export row and no object", async () => {
+    const { steps, calls } = recordingSteps();
+    // The cancel lands once the render reported progress.
+    const lease = cancellable(() => calls.some((call) => call.call === "progress"));
+    const discarded: string[] = [];
+    const started = performance.now();
+    try {
+      await expect(
+        runRender({
+          ctx: stepContext(steps, {
+            job: JOB,
+            signal: lease.signal,
+            checkCancelled: () => lease.checkCancelled(),
+          }),
+          storage,
+          rows,
+          exports: exportsStore,
+          keyPrefix: PREFIX,
+          scratchDir: join(root, "scratch"),
+          tools: TOOLS,
+          versionId: VERSION_ID,
+          ensureInputs: async () => {},
+          newId: () => EXPORT_ID,
+          // The real child process: the render double replays its progress
+          // over 30 seconds unless it is killed.
+          env: { E2E_MOCK_RENDER: "true", E2E_MOCK_RENDER_SECONDS: "30" },
+          discardExport: async (key) => {
+            discarded.push(key);
+          },
+        }),
+      ).rejects.toMatchObject({ name: "JobCancelled" });
+    } finally {
+      lease.stop();
+    }
+    // Stopped within seconds, not after the double's 30.
+    expect(performance.now() - started).toBeLessThan(15_000);
+    expect(await childrenOf(root)).toEqual([]);
+    // The step row stays as the abort left it: started, some progress, no
+    // done or failed row.
+    expect(calls.map((call) => call.call)).toContain("start");
+    expect(calls.some((call) => call.call === "done" || call.call === "failed")).toBe(false);
+    expect(inserted).toEqual([]);
+    expect(await storage.list(`${PREFIX}exports/`)).toEqual([]);
+    expect(discarded).toEqual([]);
+  }, 30_000);
+
+  it("stops before the render step when the cancel came before it", async () => {
+    const { steps, calls } = recordingSteps();
+    let cancelledNow = false;
+    const lease = cancellable(() => cancelledNow);
+    try {
+      await expect(
+        runRender({
+          ctx: stepContext(steps, {
+            job: JOB,
+            signal: lease.signal,
+            checkCancelled: () => lease.checkCancelled(),
+          }),
+          storage,
+          rows,
+          exports: exportsStore,
+          keyPrefix: PREFIX,
+          scratchDir: join(root, "scratch"),
+          tools: TOOLS,
+          versionId: VERSION_ID,
+          // The pipeline's hits run, then the owner cancels.
+          ensureInputs: async () => {
+            cancelledNow = true;
+          },
+          newId: () => EXPORT_ID,
+          spawnTool: fakeSpawn,
+          env: {},
+        }),
+      ).rejects.toMatchObject({ name: "JobCancelled" });
+    } finally {
+      lease.stop();
+    }
+    expect(calls).toEqual([]);
+    expect(spawned).toEqual([]);
+    expect(inserted).toEqual([]);
+    expect(await storage.list(`${PREFIX}exports/`)).toEqual([]);
+  });
+
+  it("discards the uploaded file when the export row is refused for a cancelled job", async () => {
+    const { steps, calls } = recordingSteps();
+    let cancelledNow = false;
+    const lease = cancellable(() => cancelledNow);
+    const discarded: string[] = [];
+    try {
+      await expect(
+        runRender({
+          ctx: stepContext(steps, {
+            job: JOB,
+            signal: lease.signal,
+            checkCancelled: () => lease.checkCancelled(),
+          }),
+          storage,
+          rows,
+          // The database refuses the row: the owner cancelled after the upload.
+          exports: {
+            async forJob() {
+              return null;
+            },
+            async insert() {
+              cancelledNow = true;
+              throw new Error("export refused: the job was cancelled");
+            },
+          },
+          keyPrefix: PREFIX,
+          scratchDir: join(root, "scratch"),
+          tools: TOOLS,
+          versionId: VERSION_ID,
+          ensureInputs: async () => {},
+          newId: () => EXPORT_ID,
+          spawnTool: fakeSpawn,
+          env: {},
+          discardExport: async (key) => {
+            discarded.push(key);
+            await storage.delete(key);
+          },
+        }),
+      ).rejects.toThrow(/cancelled/);
+    } finally {
+      lease.stop();
+    }
+    expect(discarded).toEqual([KEY]);
+    expect(await storage.list(`${PREFIX}exports/`)).toEqual([]);
+    // Aborted, so the step wrote no done or failed row.
+    expect(calls.some((call) => call.call === "done" || call.call === "failed")).toBe(false);
   });
 });

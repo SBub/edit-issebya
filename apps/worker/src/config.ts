@@ -10,6 +10,8 @@ export interface WorkerConfig {
   pollIntervalSeconds: number;
   leaseSeconds: number;
   renewEveryMs: number;
+  // How often a running render checks whether its owner cancelled it.
+  cancelCheckEveryMs: number;
   minFreeDiskGb: number;
   scratchDir: string;
   // R2_KEY_PREFIX: the folder of this mode's objects (`dev/`), or empty.
@@ -61,6 +63,7 @@ export function workerConfig(env: Env = process.env): WorkerConfig {
     pollIntervalSeconds: positiveNumber(env, "WORKER_POLL_INTERVAL_SECONDS", 120, true),
     leaseSeconds: 300,
     renewEveryMs: 60_000,
+    cancelCheckEveryMs: 5000,
     minFreeDiskGb: positiveNumber(env, "WORKER_MIN_FREE_DISK_GB", 10, false),
     scratchDir: scratchDirOf(env),
     keyPrefix: prefix,

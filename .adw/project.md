@@ -176,8 +176,9 @@ immutability and its RLS (and the reel's `no_photos` and `no_big_word`, written 
 `steps` column set (`progress_percent` and `progress_updated_at` included), `job-order.test.ts` for
 `claim_job`'s order (one job per reel at a time, oldest first, `not_before` skipped until due),
 `retry-jobs.test.ts` for the Retry insert policy through `is_retry_of_failed_job`, `failure-and-size-columns.test.ts` for the checks on `jobs.failure_kind` and `failure_rules` and the reel's `source_seconds`, `source_width`, `source_height` and `word_count`, readable but never writable by the owner, and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit` (the reel's `footage_seconds` column comes from the progress migration and is written once by the worker after `retime`, unit-tested in `apps/worker/src/pipeline/run-pipeline.test.ts`, no DB test), `exports.test.ts` for
-the render job policy and the `exports` table: 24-hour expiry, owner from the reel, never updated,
-owner-only select, `sync-columns.test.ts` for the `updated_at` column and `<table>_set_updated_at` trigger on
+the render job policy and the `exports` table: 1-hour expiry, owner from the reel, never updated,
+owner-only select, `cancel-jobs.test.ts` for `cancel_job` (own queued and running renders only,
+no `anon` execute, no export for a cancelled job, never claimed), `sync-columns.test.ts` for the `updated_at` column and `<table>_set_updated_at` trigger on
 every table PostHog syncs (`reels`, `jobs`, `steps`, `versions`, `exports`, `stored_files`),
 `dashboard-queries.test.ts` for the dashboard queries' columns and events against the real schema and
 their Postgres rendering's numbers on seeded rows (one rolled-back transaction), `stored-files.test.ts` for the `stored_files` and `worker_status` tables (`heartbeat_at` included, and a heartbeat upsert leaving `waiting_reason`), their RLS,
@@ -197,9 +198,12 @@ and plays its live preview: the HyperFrames runtime and GSAP routed from the pin
 packages, so no network), `change-requests.spec.ts` seeds a processed reel the same way, a change
 makes version 3 live, a change the AI refuses twice keeps version 3 and the reel `processed`, and
 going back makes versions 4 and 5, `export.spec.ts` seeds a processed reel the same way, Export
-queues a `render` job the worker's `once` runs with the stubbed render (`E2E_MOCK_RENDER=true`, set
-by `test-support/worker.ts` for every spec, so no spec renders for real), the link downloads the
-stub, and a 25-hour-old export shows `expired, export again`, `behind.spec.ts` seeds a processed
+opens the export modal and queues a `render` job the worker's `once` runs with the stubbed render
+(`E2E_MOCK_RENDER=true`, set by `test-support/worker.ts` for every spec, so no spec renders for
+real; `E2E_MOCK_RENDER_SECONDS` for a rising bar), the stub downloads by itself and the modal
+closes, with no download link or expiry in the panel, Cancel during the render ends the job
+`cancelled` with no export and no download, and Escape while queued cancels a job `once` never
+claims, `behind.spec.ts` seeds a processed
 reel and a ready library photo, a change (scripted AI answer) puts the photo behind the speaker in
 the `left` spot: the worker's `once` makes the span's mask in a `cutout` step with the mask double
 (`E2E_MOCK_MASK=true`, set by `test-support/worker.ts` for every spec beside the storage, AI and

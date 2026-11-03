@@ -1,17 +1,22 @@
 import type { ErrorTracker } from "./error-tracking.ts";
 import { errorTail, failureReason } from "./errors.ts";
 import { AiUnavailable, AnswerRefused, FootageRefused, failureKind, findCause } from "./failure.ts";
-import { keepLease } from "./lease.ts";
+import { isJobCancelled, keepLease } from "./lease.ts";
 import type { ClaimedJob, JobFailure } from "./queue.ts";
 import { isStepFailure } from "./step-runner.ts";
 
-export type JobOutcome = "done" | "failed" | "refused" | "waiting" | "lost";
+export type JobOutcome = "done" | "failed" | "refused" | "waiting" | "lost" | "cancelled";
 
 export interface RunJobDeps {
   job: ClaimedJob;
   renewEveryMs: number;
   renew: () => Promise<boolean>;
-  work: (signal: AbortSignal) => Promise<void>;
+  // Given (a render job), checked every `cancelCheckEveryMs`: true once the
+  // owner cancelled the job.
+  cancelled?: () => Promise<boolean>;
+  cancelCheckEveryMs?: number;
+  // `checkCancelled` checks for a cancel at once (see LeaseKeeper).
+  work: (signal: AbortSignal, checkCancelled: () => Promise<boolean>) => Promise<void>;
   finish: () => Promise<boolean>;
   fail: (errorTail: string, failure: JobFailure) => Promise<boolean>;
   // The footage cannot be used: the reel is refused with this human message.
@@ -39,12 +44,15 @@ function jobFailure(error: unknown): JobFailure {
 // refused footage refuses the reel, an unavailable AI makes the job wait, any
 // other failure fails it with the error's tail (a failed tool's output, else the
 // stack's end), and a lost lease writes
-// nothing more (another worker may hold the job now). Each write is guarded
+// nothing more (another worker may hold the job now). A cancelled job writes
+// nothing more either: `cancel_job` already ended it. Each write is guarded
 // by the lease: one that matched no row is `lost`.
 export async function runJob({
   job,
   renewEveryMs,
   renew,
+  cancelled,
+  cancelCheckEveryMs,
   work,
   finish,
   fail,
@@ -53,13 +61,18 @@ export async function runJob({
   errors,
   log = console.log,
 }: RunJobDeps): Promise<JobOutcome> {
-  const lease = keepLease({ renew, everyMs: renewEveryMs });
-  try {
-    await work(lease.signal);
-    if (lease.signal.aborted) {
-      log(`job ${job.id}: lease lost, leaving it`);
-      return "lost";
+  const lease = keepLease({ renew, everyMs: renewEveryMs, cancelled, cancelCheckEveryMs });
+  const stopped = (): JobOutcome => {
+    if (isJobCancelled(lease.signal)) {
+      log(`job ${job.id}: cancelled, leaving it`);
+      return "cancelled";
     }
+    log(`job ${job.id}: lease lost, leaving it`);
+    return "lost";
+  };
+  try {
+    await work(lease.signal, () => lease.checkCancelled());
+    if (lease.signal.aborted) return stopped();
     if (!(await finish())) {
       log(`job ${job.id}: lease lost before finishing, leaving it`);
       return "lost";
@@ -67,10 +80,7 @@ export async function runJob({
     log(`job ${job.id}: done`);
     return "done";
   } catch (error) {
-    if (lease.signal.aborted) {
-      log(`job ${job.id}: lease lost, leaving it`);
-      return "lost";
-    }
+    if (lease.signal.aborted) return stopped();
     const refusal = findCause(error, FootageRefused);
     if (refusal) {
       log(`job ${job.id}: footage refused: ${refusal.message}`);

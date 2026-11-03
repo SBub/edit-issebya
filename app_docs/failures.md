@@ -63,6 +63,7 @@ The issue's block E, and the rule each follows:
 | A change sent while processing                                               | Waits, then decides from the processed reel's current version.                    |
 | A process job taken again after a crash                                      | Its abandoned `running` step rows end `failed`.                                   |
 | `waiting_ai` with `not_before` in the past                                   | Claimable; the claim clears the reason and `not_before`.                          |
+| A render cancelled by its owner (`cancelled`)                                | Never claimed, never retried, shown as nothing; not a failure.                    |
 | Clock drift between host and database                                        | Tests set `not_before` and leases an hour or a minute away on the database clock. |
 
 ### Transient errors
@@ -170,7 +171,8 @@ regexes in `ai.ts`.
 
 `claim_job(p_worker, p_lease_seconds)` takes the oldest claimable job (`order by created_at, id`,
 `for update skip locked`): `queued`, `waiting_ai` past its `not_before`, or `running` with an
-expired lease. A job is skipped while another job of its reel is `running` under a live lease, or
+expired lease. A `cancelled` job (`app_docs/export.md`) is never claimed and holds no other job of
+its reel back. A job is skipped while another job of its reel is `running` under a live lease, or
 while an older job of its reel is still `queued`, `running` or `waiting_ai`. So one job per reel
 runs at a time, in the order they were created; jobs of other reels keep running. Two workers
 claiming at once cannot run two jobs of a reel: the second skips the row the first has locked and

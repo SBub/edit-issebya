@@ -17,6 +17,7 @@ describe("workerConfig", () => {
       pollIntervalSeconds: 120,
       leaseSeconds: 300,
       renewEveryMs: 60_000,
+      cancelCheckEveryMs: 5000,
       minFreeDiskGb: 10,
       scratchDir: tmpdir(),
       keyPrefix: "",

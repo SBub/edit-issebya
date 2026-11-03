@@ -106,6 +106,10 @@ export interface RenderRun {
   // Given, the version's masks are made sure of after the pipeline (a slimmed
   // one is rebuilt in a `cutout` step).
   cutouts?: CutoutDeps;
+  // Removes an export file uploaded but never recorded (the job was cancelled
+  // or the row was not written): its `stored_files` row is marked deleted and
+  // the object deleted. Never touches a recorded export.
+  discardExport?: (key: string) => Promise<void>;
 }
 
 function elapsedMs(started: number): number {
@@ -115,7 +119,10 @@ function elapsedMs(started: number): number {
 // A render job: the pipeline's hits (or a rebuilt output), then one measured
 // `render` step that renders the version, uploads the MP4 put-if-absent to
 // `${prefix}exports/<reel_id>/<export_id>.mp4` and records the `exports` row.
-// A retried job whose export is already recorded is a hit.
+// A retried job whose export is already recorded is a hit. A cancel (the
+// owner closed the export) aborts the signal: the running render's process
+// group is killed and nothing more is written; a file uploaded but not
+// recorded is discarded.
 export async function runRender({
   ctx,
   storage,
@@ -132,9 +139,13 @@ export async function runRender({
   env = process.env,
   photos,
   cutouts,
+  discardExport,
 }: RenderRun): Promise<void> {
   const started = performance.now();
   const { job, signal } = ctx;
+  const checkCancelled = async () => {
+    await ctx.checkCancelled?.();
+  };
   if ((await exports.forJob(job.id)) !== null) {
     await recordHit(ctx, {
       name: STEP,
@@ -165,6 +176,9 @@ export async function runRender({
     }
     signal.throwIfAborted();
   }
+  // A cancel seen now stops the job before the render step starts.
+  await checkCancelled();
+  signal.throwIfAborted();
 
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the worker's own scratch folder
   await mkdir(scratchDir, { recursive: true });
@@ -260,22 +274,34 @@ export async function runRender({
           });
           inputs.push(...projectFiles);
 
+          // A cancel seen now stops before anything is uploaded.
+          await checkCancelled();
           signal.throwIfAborted();
           const id = newId();
           const key = exportKey(keyPrefix, reelOf(job), id);
           await storage.putFileIfAbsent(key, output, { contentType: "video/mp4" });
-          // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
-          const { size } = await stat(output);
-          signal.throwIfAborted();
-          await exports.insert({
-            id,
-            reel_id: reelOf(job),
-            owner_id: job.owner_id,
-            job_id: job.id,
-            version_id: version.id,
-            r2_key: key,
-            bytes: size,
-          });
+          try {
+            // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
+            const { size } = await stat(output);
+            signal.throwIfAborted();
+            // Refused by the database once the job is cancelled.
+            await exports.insert({
+              id,
+              reel_id: reelOf(job),
+              owner_id: job.owner_id,
+              job_id: job.id,
+              version_id: version.id,
+              r2_key: key,
+              bytes: size,
+            });
+          } catch (error) {
+            // Uploaded but not recorded: the file is removed, so a cancelled
+            // or failed render leaves no export behind. A cancel turns the
+            // refusal into the abort, so the step writes nothing more.
+            await discardExport?.(key);
+            await checkCancelled();
+            throw error;
+          }
           return { what: "exported" };
         },
       },

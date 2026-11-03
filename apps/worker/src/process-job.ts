@@ -13,6 +13,7 @@ import {
   type ClaimedJob,
   failJob,
   finishJob,
+  jobCancelled,
   reelOf,
   refuseJob,
   renewLease,
@@ -30,7 +31,13 @@ import { type ReelSizeHolder, createReelSizeHolder, readReelSize } from "./reel-
 import { type JobOutcome, runJob } from "./run-job.ts";
 import { withJobScratch } from "./scratch.ts";
 import { supabaseStepStore } from "./step-store.ts";
-import { classifyKey, jobTarget, recordingStorage, supabaseStoredFiles } from "./stored-files.ts";
+import {
+  classifyKey,
+  jobTarget,
+  recordingStorage,
+  supabaseDiscardExport,
+  supabaseStoredFiles,
+} from "./stored-files.ts";
 import { type Telemetry, endJobSpan, startJobSpan } from "./telemetry.ts";
 import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 
@@ -41,7 +48,7 @@ import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 // the first version and the decide step; a `change` job only the decide step
 // with the owner's request; a `restore` job only the restore step; a `render`
 // job the pipeline's hits (or a rebuilt output) and the render step, leaving
-// the reel's status alone; a `describe_photo` job a library photo's two copies
+// the reel's status alone, and stops within seconds once its owner cancels it; a `describe_photo` job a library photo's two copies
 // and its description, recorded against the photo. Only a `process` job moves the reel's status
 // (queue.ts). The job runs in its own scratch folder, removed afterwards
 // whatever happened, and writes storage only through the recording storage,
@@ -74,8 +81,20 @@ export async function processJob(
           job,
           renewEveryMs: config.renewEveryMs,
           renew: () => renewLease(db, config, job.id),
-          async work(signal) {
-            const ctx = { steps, telemetry, errors, jobContext, job, signal, size };
+          // Only a render can be cancelled (cancel_job): no other kind reads it.
+          cancelled: job.kind === "render" ? () => jobCancelled(db, job.id) : undefined,
+          cancelCheckEveryMs: config.cancelCheckEveryMs,
+          async work(signal, checkCancelled) {
+            const ctx = {
+              steps,
+              telemetry,
+              errors,
+              jobContext,
+              job,
+              signal,
+              checkCancelled,
+              size,
+            };
             // Taken again after its worker stopped: the rows it left running
             // end failed, so the step log never shows a step running forever.
             if (job.attempts > 1) await steps.abandonRunning(job.id);
@@ -150,6 +169,7 @@ export async function processJob(
                   versionId,
                   photos,
                   cutouts,
+                  discardExport: supabaseDiscardExport(db, rawStorage),
                 }),
               // A library photo: its two copies, then Claude Code's
               // description and tags; no reel is touched.

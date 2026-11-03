@@ -31,8 +31,12 @@ export interface StepContext {
   // The job span's context; each step span is its child.
   jobContext: Context;
   job: ClaimedJob;
-  // Aborted when the lease is lost: the step stops and writes nothing more.
+  // Aborted when the lease is lost or the job was cancelled: the step stops
+  // and writes nothing more.
   signal: AbortSignal;
+  // Checks for a cancel at once and aborts `signal` when there was one (a
+  // render job; absent, nothing is checked).
+  checkCancelled?: () => Promise<boolean>;
   // The pause before a step's one automatic retry (default
   // TRANSIENT_RETRY_DELAY_MS; unit tests pass 0).
   retryDelayMs?: number;

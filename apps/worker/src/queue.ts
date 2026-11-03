@@ -81,6 +81,19 @@ export async function renewLease(
   return (data ?? []).length === 1;
 }
 
+// True once the owner cancelled the job (`cancel_job`). One cheap read of the
+// job's id, filtered to `cancelled`: nothing else of the row is read.
+export async function jobCancelled(db: SupabaseClient, jobId: string): Promise<boolean> {
+  const { data, error } = await db
+    .from("jobs")
+    .select("id")
+    .eq("id", jobId)
+    .eq("status", "cancelled")
+    .limit(1);
+  if (error) throw new Error(`job not checked: ${error.message}`);
+  return (data ?? []).length === 1;
+}
+
 async function endJob(
   db: SupabaseClient,
   config: QueueConfig,

@@ -109,6 +109,30 @@ export function supabaseStoredFiles(db: SupabaseClient): StoredFileRecords {
   };
 }
 
+// Removes an export file the render uploaded but no `exports` row records (the
+// job was cancelled, or the row was not written): `discard_export_file` marks
+// its `stored_files` row deleted and returns it only while no export records
+// the key, then the object is deleted from the raw storage (a job's storage
+// refuses deletes). A recorded export is never touched; a failed removal is
+// logged, never thrown, so the render's own outcome stands.
+export function supabaseDiscardExport(
+  db: SupabaseClient,
+  rawStorage: Pick<Storage, "delete">,
+  log: (message: string) => void = console.log,
+): (key: string) => Promise<void> {
+  return async (key) => {
+    try {
+      const { data, error } = await db.rpc("discard_export_file", { p_r2_key: key });
+      if (error) throw new Error(error.message);
+      for (const file of storedFiles(data)) await rawStorage.delete(file.key);
+    } catch (error) {
+      log(
+        `render: ${key} not discarded: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+}
+
 // Every method of the storage interface, classified: adding one to the
 // interface fails typecheck here until it is, so a new write method cannot
 // skip recording.

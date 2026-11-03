@@ -109,12 +109,19 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   refused answer's check rule names), and the `reels` size columns `source_seconds`,
   `source_width`, `source_height` and `word_count`, each written once by the worker while null. The
   owner reads them all and writes none. See `app_docs/failures.md` and `app_docs/measurement.md`.
+- `supabase/migrations/20261103164248_one_step_export.sql`: job status `cancelled`, set only by
+  `cancel_job(p_job_id)` (`security definer`, `authenticated` may execute, never `anon`): the owner
+  of the reel cancels their own `render` job while it is `queued`, `running` or `waiting_ai` and has
+  no export. Exports now expire 1 hour after they are made. See `app_docs/export.md`.
 - `claim_job(p_worker, p_lease_seconds)`: one statement picks the oldest `queued` job, or a
   `running` one whose lease expired, with `for update skip locked`, then takes the lease and counts
   an attempt. Only `service_role` may execute it. It takes one job per reel at a time, in order,
-  and skips a `waiting_ai` job until its `not_before` (see `app_docs/failures.md`).
+  and skips a `waiting_ai` job until its `not_before` (see `app_docs/failures.md`). It never
+  claims a `cancelled` job.
 - The worker renews its lease while it works (`apps/worker/src/lease.ts`); a failed renewal aborts
-  the work and writes nothing more, since another worker may hold the job.
+  the work and writes nothing more, since another worker may hold the job. A render job also
+  checks every 5 seconds whether its owner cancelled it, and a cancel aborts the work the same
+  way.
 - `supabase/migrations/20261101153653_versions.sql`: table `versions` (per-reel `number`, parent,
   restored-from, request, model, prompt version, change summary, checks, input fingerprints,
   `r2_key`), owner-only `select` RLS for `authenticated`, no `anon` access, rows refused on update
@@ -259,9 +266,10 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   `source_name`, `source_key` and `source_upload_id` under the uploading-only policy; no `anon`
   access.
 - Never give the owner a general right to write `status`; finishing an upload goes only through
-  `finish_upload`, cancelling one only through `fail_upload`.
-- Never let `authenticated` or `anon` execute `claim_job`, or `anon` execute `finish_upload` or
-  `fail_upload`.
+  `finish_upload`, cancelling one only through `fail_upload`, cancelling a render job only through
+  `cancel_job`.
+- Never let `authenticated` or `anon` execute `claim_job`, or `anon` execute `finish_upload`,
+  `fail_upload` or `cancel_job`.
 - Never let `authenticated` or `anon` execute `save_version`; versions are written only through
   it, by the service role (the worker), and never updated.
 - Never poll from the studio; the reel page reads on open and on each ready subscription only.
