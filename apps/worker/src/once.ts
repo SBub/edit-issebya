@@ -1,5 +1,6 @@
-// Claims and runs at most one job, then exits: 0 when it ended `done` (or there
-// was none, or the disk guard kept it from claiming), 1 otherwise. No
+// Claims and runs at most one job, then exits: 0 when it ended `done` or
+// `deleted` (its reel was deleted while it ran: the job did not fail), or there
+// was none, or the disk guard kept it from claiming; 1 otherwise. No
 // subscription, no timer, no slimming. Specs spawn this. No heartbeat either:
 // it exits at once, and a beat from it would show a live worker for eleven
 // minutes that is not there.
@@ -40,4 +41,4 @@ const outcome = await processJob(db, workerStorage(), config, telemetry, errors,
 // Flushes the job's spans, log records and exceptions before exiting.
 await telemetry.shutdown();
 await errors.shutdown();
-process.exit(outcome === "done" ? 0 : 1);
+process.exit(outcome === "done" || outcome === "deleted" ? 0 : 1);

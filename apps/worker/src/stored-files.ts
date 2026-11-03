@@ -79,16 +79,36 @@ function storedFiles(data: unknown): StoredFile[] {
   }));
 }
 
+// The reel was deleted while its job ran: record_stored_file queued the key
+// for deletion instead of recording it, and the job stops (it is `deleted`,
+// never failed: run-job.ts asks whether the job's row is gone first).
+export class TargetGone extends Error {
+  constructor(key: string) {
+    super(`stored-files: the reel is gone, ${key} queued for deletion`);
+    this.name = "TargetGone";
+  }
+}
+
 // The records through the worker's (service role) client.
 export function supabaseStoredFiles(db: SupabaseClient): StoredFileRecords {
   return {
     async record(row) {
       const fields = { p_r2_key: row.key, p_step: row.step, p_kind: row.kind, p_bytes: row.bytes };
-      const { error, status } =
-        "photoId" in row
-          ? await db.rpc("record_photo_file", { p_photo_id: row.photoId, ...fields })
-          : await db.rpc("record_stored_file", { p_reel_id: row.reelId, ...fields });
+      if ("photoId" in row) {
+        const { error, status } = await db.rpc("record_photo_file", {
+          p_photo_id: row.photoId,
+          ...fields,
+        });
+        if (error) throw supabaseFailure("stored file not recorded", { error, status });
+        return;
+      }
+      const { data, error, status } = await db.rpc("record_stored_file", {
+        p_reel_id: row.reelId,
+        ...fields,
+      });
       if (error) throw supabaseFailure("stored file not recorded", { error, status });
+      // false: the reel no longer exists and the key is queued for deletion.
+      if (data === false) throw new TargetGone(row.key);
     },
     async slimRebuildable(now, prefix) {
       const { data, error } = await db.rpc("slim_rebuildable_files", {

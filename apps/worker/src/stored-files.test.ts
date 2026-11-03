@@ -8,6 +8,7 @@ import {
   STORAGE_METHODS,
   type StoredFileRecords,
   type StoredFileRow,
+  TargetGone,
   classifyKey,
   jobTarget,
   recordingStorage,
@@ -295,6 +296,18 @@ describe("jobTarget and supabaseStoredFiles.record", () => {
     expect(jobTarget({ reel_id: REEL, photo_id: null })).toEqual({ reelId: REEL });
     expect(jobTarget({ reel_id: null, photo_id: OTHER })).toEqual({ photoId: OTHER });
     expect(() => jobTarget({ reel_id: null, photo_id: null })).toThrow(/neither/);
+  });
+
+  it("throws TargetGone when record_stored_file answers that the reel is gone", async () => {
+    const db = {
+      async rpc() {
+        return { data: false, error: null, status: 200 };
+      },
+    } as unknown as SupabaseClient;
+    const records = supabaseStoredFiles(db);
+    await expect(
+      records.record({ reelId: REEL, key: "k", step: "upload", kind: "kept", bytes: 5 }),
+    ).rejects.toBeInstanceOf(TargetGone);
   });
 
   it("records a reel's file through record_stored_file and a photo's through record_photo_file", async () => {

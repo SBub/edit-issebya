@@ -14,6 +14,7 @@ import {
   failJob,
   finishJob,
   jobCancelled,
+  jobGone,
   reelOf,
   refuseJob,
   renewLease,
@@ -48,7 +49,8 @@ import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 // the first version and the decide step; a `change` job only the decide step
 // with the owner's request; a `restore` job only the restore step; a `render`
 // job the pipeline's hits (or a rebuilt output) and the render step, leaving
-// the reel's status alone, and stops within seconds once its owner cancels it; a `describe_photo` job a library photo's two copies
+// the reel's status alone, and stops within seconds once its owner cancels it; any job stops
+// within one lease renewal once its reel (or photo) is deleted, as `deleted`; a `describe_photo` job a library photo's two copies
 // and its description, recorded against the photo. Only a `process` job moves the reel's status
 // (queue.ts). The job runs in its own scratch folder, removed afterwards
 // whatever happened, and writes storage only through the recording storage,
@@ -84,7 +86,9 @@ export async function processJob(
           // Only a render can be cancelled (cancel_job): no other kind reads it.
           cancelled: job.kind === "render" ? () => jobCancelled(db, job.id) : undefined,
           cancelCheckEveryMs: config.cancelCheckEveryMs,
-          async work(signal, checkCancelled) {
+          // Its reel (or photo) deleted, the job's row went with it.
+          gone: () => jobGone(db, job.id),
+          async work(signal, checkCancelled, checkGone) {
             const ctx = {
               steps,
               telemetry,
@@ -93,6 +97,7 @@ export async function processJob(
               job,
               signal,
               checkCancelled,
+              checkGone,
               size,
             };
             // Taken again after its worker stopped: the rows it left running

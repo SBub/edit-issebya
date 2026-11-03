@@ -1,7 +1,10 @@
 // The long-running worker on the owner's machine (never on Vercel). It wakes
 // on Realtime inserts into public.jobs, checks the table every
-// WORKER_POLL_INTERVAL_SECONDS reading only ids, and runs one job at a time.
-// Between jobs it slims storage at most once an hour, and it claims nothing
+// WORKER_POLL_INTERVAL_SECONDS reading only ids (of claimable jobs and of one
+// due storage_deletions row), and runs one job at a time.
+// Between jobs it deletes the objects of deleted reels (the storage_deletions
+// queue, also drained by the poll when no job is waiting) and slims storage at
+// most once an hour, and it claims nothing
 // while the scratch volume is below WORKER_MIN_FREE_DISK_GB. It writes a
 // heartbeat at start and every five minutes. Before anything reads the scratch
 // volume it creates the scratch folder, and exits 1 naming it when it cannot.
@@ -14,6 +17,11 @@ import { processJob } from "./process-job.ts";
 import { claimJob, claimableJobIds } from "./queue.ts";
 import { prepareScratchDir, sweepStaleScratch } from "./scratch.ts";
 import { createSlimmer, runSlimming } from "./slimming.ts";
+import {
+  dueStorageDeletionIds,
+  runStorageDeletions,
+  supabaseStorageDeletions,
+} from "./storage-deletions.ts";
 import { workerStorage } from "./storage.ts";
 import { supabaseStoredFiles } from "./stored-files.ts";
 import { workerSupabase } from "./supabase.ts";
@@ -30,6 +38,7 @@ const telemetry = createTelemetry();
 const status = supabaseWorkerStatus(db, config.workerId);
 const freeBytes = freeBytesFn(process.env);
 const records = supabaseStoredFiles(db);
+const deletions = supabaseStorageDeletions(db);
 
 // Job folders a crashed run left behind, before the first job.
 await sweepStaleScratch(config.scratchDir);
@@ -45,8 +54,19 @@ const slimmer = createSlimmer({
   run: (now) => runSlimming({ records, storage, keyPrefix: config.keyPrefix, now }),
 });
 
+// Only between this worker's jobs too; a failed pass is logged, and its keys
+// stay queued for the next one.
+async function deleteQueuedObjects() {
+  try {
+    await runStorageDeletions({ queue: deletions, storage, keyPrefix: config.keyPrefix });
+  } catch (error) {
+    console.error("storage deletions: failed:", error);
+  }
+}
+
 const drainer = createDrainer({
   claim: async () => {
+    await deleteQueuedObjects();
     await slimmer.maybeRun();
     return guardedClaim({
       dir: config.scratchDir,
@@ -81,6 +101,14 @@ const poll = setInterval(() => {
       if (ids.length > 0) drainer.signal();
     })
     .catch((error: unknown) => console.error("worker: check failed:", error));
+  // A worker with no jobs still drains the deletion queue: the poll reads only
+  // the id of one due row, and the drain's claim runs the pass (which also
+  // drops held keys).
+  dueStorageDeletionIds(db, config.keyPrefix)
+    .then((ids) => {
+      if (ids.length > 0) drainer.signal();
+    })
+    .catch((error: unknown) => console.error("storage deletions: check failed:", error));
 }, config.pollIntervalSeconds * 1000);
 
 drainer.signal();

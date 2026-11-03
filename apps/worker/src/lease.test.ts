@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isJobCancelled, keepLease } from "./lease.ts";
+import { isJobCancelled, isJobGone, keepLease } from "./lease.ts";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -101,5 +101,47 @@ describe("keepLease", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(lease.signal.aborted).toBe(true);
     expect(isJobCancelled(lease.signal)).toBe(false);
+  });
+
+  it("aborts with JobGone after one renewal that found the row gone, and stops the timers", async () => {
+    const renew = vi.fn(async () => false);
+    const gone = vi.fn(async () => true);
+    const lease = keepLease({ renew, everyMs: 1000, gone });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(lease.signal.aborted).toBe(true);
+    expect(isJobGone(lease.signal)).toBe(true);
+    expect(isJobCancelled(lease.signal)).toBe(false);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(renew).toHaveBeenCalledTimes(1);
+    expect(gone).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays a lost lease when the row is still there or the gone check fails", async () => {
+    const still = keepLease({ renew: async () => false, everyMs: 1000, gone: async () => false });
+    const failing = keepLease({
+      renew: async () => false,
+      everyMs: 1000,
+      gone: async () => {
+        throw new Error("network");
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    for (const lease of [still, failing]) {
+      expect(lease.signal.aborted).toBe(true);
+      expect(isJobGone(lease.signal)).toBe(false);
+      expect((lease.signal.reason as Error).message).toBe("lease lost");
+    }
+  });
+
+  it("checks for a gone row at once on checkGone, and never without a gone check", async () => {
+    const plain = keepLease({ renew: async () => true, everyMs: 60_000 });
+    expect(await plain.checkGone()).toBe(false);
+    expect(plain.signal.aborted).toBe(false);
+    plain.stop();
+    const lease = keepLease({ renew: async () => true, everyMs: 60_000, gone: async () => true });
+    expect(await lease.checkGone()).toBe(true);
+    expect(isJobGone(lease.signal)).toBe(true);
+    expect(await lease.checkGone()).toBe(true);
+    lease.stop();
   });
 });

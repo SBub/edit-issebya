@@ -37,6 +37,11 @@ function workerEnv(env: Record<string, string>): NodeJS.ProcessEnv {
     // owner's home.
     POSTHOG_PROJECT_TOKEN: "",
     WORKER_STATE_DIR: `${REPOSITORY_ROOT}.e2e-storage/worker-state`,
+    // Job folders go there too, never in the owner's scratch folder from
+    // apps/worker/.env.development: that one is shared with the owner's dev
+    // worker and every other checkout, and a worker starting there sweeps
+    // every job folder in it, a spec's running job included.
+    WORKER_SCRATCH_DIR: `${REPOSITORY_ROOT}.e2e-storage/worker-scratch`,
     SUPABASE_URL: assertLocalUrl(process.env.SUPABASE_URL),
     E2E_MOCK_STORAGE: "true",
     E2E_MOCK_AI: "true",

@@ -2,6 +2,7 @@ import { LoginForm } from "@/components/LoginForm";
 import { NotConfigured } from "@/components/NotConfigured";
 import { SignOutButton } from "@/components/SignOutButton";
 import { StudioIdentify } from "@/components/StudioIdentify";
+import { DeleteReelButton } from "@/components/DeleteReelButton";
 import { type ThumbnailGridItem, ThumbnailGrid } from "@/components/ThumbnailGrid";
 import { UploadDialog } from "@/components/UploadDialog";
 import { parsePreviewCopies, thumbnailKey } from "@/lib/preview-sources";
@@ -60,6 +61,7 @@ async function reelTiles(rows: readonly ReelGridRow[]): Promise<ThumbnailGridIte
         ),
         badge: reel.status,
         badgeTestId: "reel-list-status",
+        corner: <DeleteReelButton reelId={reel.id} title={reelName(reel)} />,
       };
     }),
   );

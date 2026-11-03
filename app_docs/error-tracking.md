@@ -88,6 +88,8 @@ Nothing is sent, and no client is built, without the PostHog variables.
 - `stepFailed` adds `failed_rules` and `rounds` from the error's `AnswerRefused` cause (rule names
   only), else null; such a failure's `failure_kind` is `answer_refused`.
 - A photo job's exception carries `photo_id` (beside a null `reel_id`) in place of a reel id.
+- A job stopped because its reel or photo was deleted (`JobGone`, outcome `deleted`) is not
+  captured, neither as `worker: step failed` nor as `worker: job failed` (`app_docs/studio.md`).
 - `installCrashCapture` listens to `uncaughtException` and `unhandledRejection`: it logs, captures
   (`crashed`, `kind: "uncaught"`, `distinct_id` `worker:<WORKER_ID>` when set), waits for a bounded
   `shutdown(3000)` and exits 1. The drainer's `onError` in `main.ts` also calls `crashed`.
@@ -112,6 +114,8 @@ Nothing is sent, and no client is built, without the PostHog variables.
 - `yarn dev:studio` prints the log's path; `yarn dev:studio errors` (the worker's `dev:errors`,
   `apps/worker/src/dev-errors.ts`) prints the last failures in plain words (`formatLastFailures`,
   both files, oldest first).
+- A job stopped because its reel or photo was deleted writes no line to `errors.jsonl`: it is not a
+  failure.
 - Specs set `WORKER_STATE_DIR` under `.e2e-storage/` (`apps/studio/test-support/worker.ts`), so a
   spec never writes the owner's log.
 
@@ -135,6 +139,7 @@ Nothing is sent, and no client is built, without the PostHog variables.
 | `studio: export key refused`                                      | studio      | `src/app/export-actions.ts`                   | `reel_id`                                                                                                                                                                                                                                                                                                 |
 | `studio: export link not signed`                                  | studio      | `src/app/export-actions.ts`                   | `reel_id`, `error_code` (the error's name only)                                                                                                                                                                                                                                                           |
 | `studio: preview not signed`                                      | studio      | `src/app/preview-actions.ts`                  | `error_code`, `error_message`, `reel_id`                                                                                                                                                                                                                                                                  |
+| `studio: reel not deleted`                                        | studio      | `src/lib/reel-server.ts`                      | `error_code`, `error_message`, `reel_id`                                                                                                                                                                                                                                                                  |
 | `studio: upload failed`                                           | studio      | `src/components/UploadForm.tsx` (browser)     | `status`, `error_code`, `resumed`                                                                                                                                                                                                                                                                         |
 | `studio: realtime channel dropped`                                | studio      | `src/components/LiveReel.tsx` (browser)       | `reel_id`, `status` (`CHANNEL_ERROR`, `TIMED_OUT` or `CLOSED`); console only without PostHog                                                                                                                                                                                                              |
 | `startCheckout: no Stripe secret key is configured`               | web         | `src/app/actions.ts`                          | none                                                                                                                                                                                                                                                                                                      |

@@ -114,9 +114,11 @@ export function stepContext(
     errors = DISABLED_TRACKER,
     size,
     checkCancelled,
+    checkGone,
   }: {
     signal?: AbortSignal;
     checkCancelled?: () => Promise<boolean>;
+    checkGone?: () => Promise<boolean>;
     telemetry?: Telemetry;
     job?: ClaimedJob;
     retryDelayMs?: number;
@@ -132,6 +134,7 @@ export function stepContext(
     job,
     signal,
     checkCancelled,
+    checkGone,
     retryDelayMs,
     size,
   };

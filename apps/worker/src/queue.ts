@@ -94,6 +94,14 @@ export async function jobCancelled(db: SupabaseClient, jobId: string): Promise<b
   return (data ?? []).length === 1;
 }
 
+// True once the job's row is gone: its owner deleted the reel (or the photo)
+// and the cascade took the job. One read of the job's id; an error throws.
+export async function jobGone(db: SupabaseClient, jobId: string): Promise<boolean> {
+  const { data, error } = await db.from("jobs").select("id").eq("id", jobId).limit(1);
+  if (error) throw new Error(`job not checked: ${error.message}`);
+  return (data ?? []).length === 0;
+}
+
 async function endJob(
   db: SupabaseClient,
   config: QueueConfig,

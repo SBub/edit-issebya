@@ -5,6 +5,7 @@
 - specs/issue-37-adw-203f77eb-sdlc_planner-storage-records-slimming-disk-guard.md
 - specs/issue-91-adw-fb57dacf-sdlc_planner-worker-scratch-dir-and-r2-write-probe.md
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
+- specs/issue-136-adw-0c90e622-sdlc_planner-delete-reel-from-list.md
 
 ## Overview
 
@@ -32,7 +33,10 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
 - RLS: the owner selects their own rows; `authenticated` has no insert, update or delete; `anon`
   has nothing.
 - `record_stored_file(p_reel_id, p_r2_key, p_step, p_kind, p_bytes)` inserts unless a live row for
-  that reel and key exists (a retried job adds nothing).
+  that reel and key exists (a retried job adds nothing). Since
+  `20261103201352_reel_deletion.sql` it returns `boolean`: `true` as before, and `false` when the
+  reel no longer exists, after queuing the key in `storage_deletions` (it takes `for key share` on
+  the reel, so it waits for a concurrent `delete_reel`).
 - `slim_rebuildable_files(p_now, p_prefix)` and `expire_export_files(p_now, p_prefix)` each select
   what may be deleted under the prefix, mark `deleted_at` and return the keys and bytes, in one
   statement.
@@ -46,6 +50,21 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
 - `worker_status`: `worker_id`, `free_disk_bytes`, `waiting_reason`, `updated_at`, one row per
   worker. `authenticated` selects every row (no reel data in it), only the service role writes,
   `anon` has nothing. It is in the `supabase_realtime` publication.
+
+`supabase/migrations/20261103201352_reel_deletion.sql`:
+
+- `storage_deletions`: `id`, `r2_key` (unique), `upload_id` (an open multipart upload to abort),
+  `reel_id` (for tracing only, no foreign key), `queued_at`, `not_before`, `attempts`,
+  `last_error` (up to 500 characters). RLS on with one `service_role` policy,
+  `revoke all ... from anon, authenticated`, and `service_role` gets `select`, `insert`, `update`,
+  `delete`.
+- `delete_reel(p_reel_id)`: `security definer`, `authenticated` only (revoked from `public`,
+  `anon` and `service_role`); see "Deleting a reel".
+- `pending_storage_deletions(p_prefix, p_limit)` (limit 1 to 1000) first drops every queued key
+  another live `stored_files` row holds, then returns the due rows under the prefix, oldest first.
+  `finish_storage_deletion(p_id)` removes a row; `fail_storage_deletion(p_id, p_error)` keeps it,
+  adds an attempt, stores the error and sets `not_before` ten minutes on. All three are
+  `security definer` and `service_role` only.
 
 ### Recording every write
 
@@ -106,6 +125,28 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
 - `apps/worker/src/main.ts` calls it between jobs, before each claim, never during a job. `once`
   never slims.
 
+### Deleting a reel
+
+- `delete_reel` locks the caller's own reel (`owner_id = auth.uid()`, `for update`, else `P0002`),
+  queues every key the reel's `stored_files` rows name (deleted or not) and the source key with its
+  `source_upload_id` in `storage_deletions`, then deletes the reel. Its versions, jobs, steps,
+  change requests, exports and `stored_files` rows go through the cascades; the objects wait in the
+  queue.
+- `apps/worker/src/storage-deletions.ts`: `runStorageDeletions` reads
+  `pending_storage_deletions` under `R2_KEY_PREFIX`, aborts the row's open multipart upload,
+  deletes the object, and removes the row on success (`finish_storage_deletion`). A failure marks
+  the row (`fail_storage_deletion`, retried ten minutes on) and the pass goes on. A pass with rows
+  logs `storage deletions: <n> objects removed, <m> failed`.
+- `apps/worker/src/main.ts` runs the pass between jobs, before each claim, and the poll signals
+  the drainer when a due row waits and no job does (it selects only one due row's `id` under the
+  prefix, `dueStorageDeletionIds`; it never calls `pending_storage_deletions`). A failed pass is logged and its keys stay
+  queued. `once` does not run it.
+- A shared key (a pipeline output another reel uses, a photo's file) is dropped from the queue by
+  `pending_storage_deletions` while another live `stored_files` row holds it, so its object stays.
+- A job still running for the deleted reel: its next `record_stored_file` returns `false` and
+  queues the key, `recordingStorage` throws `TargetGone`, and the job ends `deleted`
+  (`app_docs/studio.md`, "Jobs, steps and the lease").
+
 ### Scratch cleanup
 
 - `prepareScratchDir` (`apps/worker/src/scratch.ts`) creates `WORKER_SCRATCH_DIR` with its parents
@@ -118,7 +159,10 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   `job-<job id>/` folder lives inside it.
 - `sweepStaleScratch` runs at `worker` start-up and removes the UUID-named folders a crashed run
   left behind (`worker: stale scratch of job <id> removed, <size> freed`); anything else there
-  stays.
+  stays. It cannot tell another worker's running job from a crashed one, so specs never share a
+  scratch folder: `apps/studio/test-support/worker.ts` sets `WORKER_SCRATCH_DIR` to
+  `.e2e-storage/worker-scratch` (a spec may pass its own), never the owner's folder from
+  `apps/worker/.env.development`.
 - `apps/worker/src/render/render-call.ts`: `renderScratchEnv` sets `HYPERFRAMES_EXTRACT_CACHE_DIR`,
   `HYPERFRAMES_HISTORY_ROOT` and `TMPDIR` inside the render's folder, so the frame cache, the
   history and the work folders go with the job folder. `hyperframes clean` is not run.
@@ -166,7 +210,8 @@ Nothing to do for the owner. What they see:
 - Unit (`yarn test`): `apps/worker/src/stored-files.test.ts`, `scratch.test.ts`,
   `disk-guard.test.ts`, `slimming.test.ts`, `pipeline/definition.test.ts`,
   `pipeline/run-pipeline.test.ts` (hits recorded, the rebuild case), `render/render-call.test.ts`
-  and `apps/studio/src/lib/worker-status.test.ts`. `scratch.test.ts` covers `prepareScratchDir`
+  and `apps/studio/src/lib/worker-status.test.ts`, `apps/worker/src/storage-deletions.test.ts` (the
+  deletion pass) and `reel-deleted.test.ts` (a job whose reel is deleted ends `deleted`). `scratch.test.ts` covers `prepareScratchDir`
   creating a missing nested folder and leaving an existing one, and `scratchDirState` reporting an
   existing folder, a missing one under a writable parent without creating it, and refusing a
   regular file at the path or as a parent; `doctor-checks.test.ts` covers the
@@ -175,16 +220,23 @@ Nothing to do for the owner. What they see:
   delete) and the `scratch dir` line.
 - DB (`yarn test:db`): `apps/studio/db-tests/stored-files.test.ts` (`stored_files` and
   `worker_status` RLS, `record_stored_file`, the seven-day slimming and export expiry with a fixed
-  clock, `discard_export_file`, `finish_upload`'s source row).
+  clock, `discard_export_file`, `finish_upload`'s source row) and
+  `apps/studio/db-tests/reel-deletion.test.ts` (`delete_reel` owner only, the cascade, every key
+  queued, `record_stored_file` on a deleted reel, the queue's functions).
 - E2E: `apps/studio/e2e/upload.spec.ts` checks that every object under the run's prefix and the
   source has exactly one `stored_files` row with its size, kind and step;
   `apps/studio/e2e/disk-guard.spec.ts` runs `once` below the minimum (no claim, the reason shown
-  live under the queued job) and above it (claimed, the reason gone).
+  live under the queued job) and above it (claimed, the reason gone);
+  `apps/studio/e2e/delete-reel.spec.ts` checks a deleted reel's source key is queued in
+  `storage_deletions`.
 
 ## Rules
 
 - Never delete a `source`, `kept` or `version` file, except a photo's files when its owner deletes
-  the photo (`app_docs/photo-library.md`).
+  the photo (`app_docs/photo-library.md`), and a reel's files when its owner deletes the reel
+  (`delete_reel`) and no other live `stored_files` row holds the key.
+- Never delete a queued key's `storage_deletions` row before its object is deleted.
+- Never delete a key another live `stored_files` row holds.
 - Never slim a photo's file.
 - Masks are `rebuildable`, never `kept`; making them `kept` is an owner decision, changed here and
   in `ON_DEMAND_OUTPUTS` together.

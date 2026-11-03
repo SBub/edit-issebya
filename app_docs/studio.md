@@ -5,6 +5,7 @@
 - specs/issue-27-adw-c95d56bf-sdlc_planner-studio-zone-login-reels-list.md
 - specs/issue-43-adw-eff3346d-sdlc_planner-reel-upload-job-queue-worker.md
 - specs/issue-65-adw-65eeae69-sdlc_planner-rename-future-dated-migration-guard.md
+- specs/issue-136-adw-0c90e622-sdlc_planner-delete-reel-from-list.md
 
 ## Overview
 
@@ -60,7 +61,24 @@ reels the studio holds the owner's photo library, each photo described by Claude
   rows, so a missing policy is never masked.
 - `apps/studio/src/app/reels/[id]/page.tsx`: one reel with its jobs and steps. A malformed id
   (`isReelId`) or a reel that is not the caller's is a 404; signed out redirects to `/studio`.
-  Read once on the server, then handed to `LiveReel`.
+  Read once on the server, then handed to `LiveReel`. A deleted reel's page is the same 404,
+  `Reel not found` (`not-found.tsx`).
+- `supabase/migrations/20261103201352_reel_deletion.sql`: `delete_reel(p_reel_id)` (`security
+definer`, executable by `authenticated` only, revoked from `public`, `anon` and `service_role`).
+  It locks the caller's own reel (`owner_id = auth.uid()`, `for update`), else raises `P0002`,
+  queues every key the reel stored and its source in `storage_deletions`, then deletes the reel;
+  versions, jobs, steps, change requests, exports and `stored_files` rows go through the existing
+  cascades. The objects are removed later by the worker (`app_docs/storage.md`, "Deleting a reel").
+- `apps/studio/src/lib/reel-server.ts` `deleteReel`: checks the id, answers signed-out or
+  unavailable, maps `P0002` to `not-found`, and captures any other error as
+  `studio: reel not deleted` and answers `failed`. `apps/studio/src/app/reel-actions.ts` is the
+  server action that calls it.
+- `apps/studio/src/components/DeleteReelButton.tsx`: the bin in each reels tile's bottom-right
+  corner (accessible name `Delete reel`, always visible, 44 px on a phone, 32 px from `sm`). It
+  opens a native `<dialog>`: `Delete this reel? Its versions and files are removed and cannot be
+restored.` with Cancel and Delete. Cancel, Escape and the backdrop change nothing. After a delete,
+  or when the reel was already gone, `router.refresh()` drops it from the list at once; a failure
+  stays in the dialog as an alert.
 - `apps/studio/src/lib/reels.ts`: named column lists (never `*`), status type, id check and
   formatters.
 
@@ -122,6 +140,14 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   the work and writes nothing more, since another worker may hold the job. A render job also
   checks every 5 seconds whether its owner cancelled it, and a cancel aborts the work the same
   way.
+- A job whose reel or photo was deleted stops with `JobGone`: `keepLease` (`lease.ts`) takes a
+  `gone` check (`process-job.ts` passes `jobGone` from `queue.ts`), and a renewal that matched no
+  row asks whether the job's row is gone and aborts with `JobGone` instead of a lost lease, so the
+  job stops within one lease renewal and the tool's process group is killed (`checkGone()`,
+  `isJobGone()`). `run-job.ts` then ends it with outcome `deleted` and one log line
+  `job <id>: reel deleted, stopped` (`photo deleted` for a photo job), also when a final write
+  matched no row: nothing more is written, no failed row and no capture. `withStep`
+  (`step-runner.ts`) does not fail a step while `checkGone` says the row is gone.
 - `supabase/migrations/20261101153653_versions.sql`: table `versions` (per-reel `number`, parent,
   restored-from, request, model, prompt version, change summary, checks, input fingerprints,
   `r2_key`), owner-only `select` RLS for `authenticated`, no `anon` access, rows refused on update
@@ -141,6 +167,9 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   grants removed), so local grants after a reset equal hosted's. Before it the local defaults
   granted all, and the worker failed on hosted with `permission denied for table jobs` while every
   local test passed.
+- `storage_deletions` (`20261103201352_reel_deletion.sql`) has RLS on with only a `service_role`
+  policy, `anon` and `authenticated` revoked, and `service_role` its four data privileges. Its
+  functions are `service_role` only; `delete_reel` is `authenticated` only.
 
 ### Live status
 
@@ -168,10 +197,14 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   `worker:prod` and `once` create the scratch folder (`WORKER_SCRATCH_DIR`) at start-up and exit 1
   when they cannot (see `app_docs/storage.md`).
 - `apps/worker/src/main.ts`: wakes on Realtime `INSERT` into `jobs`, also checks every
-  `WORKER_POLL_INTERVAL_SECONDS` reading only job ids, skips claiming below
+  `WORKER_POLL_INTERVAL_SECONDS` reading only ids (a claimable job's, and one due `storage_deletions`
+  row's under its prefix), skips claiming below
   `WORKER_MIN_FREE_DISK_GB` and records the reason in `worker_status`, which the reel page's
   overlay shows for a queued job, slims storage at most hourly between jobs, removes each job's scratch folder
-  and runs one job at a time (`loop.ts`). See `app_docs/storage.md`.
+  and runs one job at a time (`loop.ts`). Before each claim it runs the deletion pass
+  (`storage-deletions.ts`), and the poll signals the drainer when a due `storage_deletions` row
+  waits and no job does (it reads only that row's `id` and never writes; held keys are dropped by
+  the pass); `once` never runs it. See `app_docs/storage.md`.
 - `apps/worker/src/steps/receive.ts`: the one placeholder step. It HEADs the source in R2, writes a
   step `footage received, 12.3 MB`, and `run-job.ts` then marks the job `done` and the reel
   `received` (or `failed` with an error tail).
@@ -237,7 +270,9 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   `apps/studio/test-support/migration-versions.test.ts` (the migration version guard: fails on a version
   more than 10 minutes in the future, a version two files share or a malformed prefix; turbo
   re-runs it when `supabase/migrations/` changes), `apps/web/src/lib/studio-rewrites.test.ts`,
-  `apps/worker/src/**/*.test.ts` and `packages/storage/src/**/*.test.ts` (`yarn test`).
+  `apps/worker/src/**/*.test.ts` and `packages/storage/src/**/*.test.ts` (`yarn test`), among them
+  `reel-server.test.ts` (`deleteReel`), `storage-deletions.test.ts` (the deletion pass) and
+  `reel-deleted.test.ts` (a job whose reel is deleted ends `deleted`).
 - DB integration: `apps/studio/db-tests/` (`yarn test:db`): RLS on every public table, owner
   isolation, the upload path and `finish_upload`, `claim_job`'s lease (`jobs.test.ts`), `save_version`, version immutability and its RLS
   (`versions.test.ts`), `stored_files`, `worker_status`, the slimming, export expiry and
@@ -245,7 +280,9 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   (`grants.test.ts`: `service_role`'s four data privileges on every public table, no `anon`
   privilege on any, no table-wide write for `authenticated`, and default privileges as on hosted),
   and the `photos` table (`photos.test.ts`: RLS, insert policy, status and ready checks,
-  `finish_photo_upload`, `delete_photo`, `record_photo_file` and `jobs_target_check`).
+  `finish_photo_upload`, `delete_photo`, `record_photo_file` and `jobs_target_check`), and
+  `reel-deletion.test.ts` (`delete_reel` owner only, the cascade, every key queued,
+  `record_stored_file` on a deleted reel and the `storage_deletions` queue's functions).
   Needs the local stack (in ADW runs, the ADW stack through
   `SUPABASE_DB_URL` and the other hook variables); not in the pre-push hook.
 - E2E: `apps/studio/e2e/` (`login`, `reels`, `forwarding`, `upload`, `multipart-upload`, `disk-guard` specs, chromium, through the
@@ -253,6 +290,9 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   test clip, spawns the worker's `once` and expects the page to update without a reload, then checks one `stored_files` row per stored object.
   `disk-guard.spec.ts` covers the waiting reason (`app_docs/storage.md`). `multipart-upload.spec.ts` covers parts, a
   retried part, resume, ownership and cancel (details in `app_docs/upload.md`).
+  `delete-reel.spec.ts` shows the bin on every tile at 1440x900 and 390x844, checks that Cancel and
+  Escape keep the reel, and that Delete removes it and its queued job without a reload, queues its
+  source key in `storage_deletions` and leaves its page `Reel not found`.
 
 ## Rules
 
@@ -272,6 +312,10 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   `fail_upload` or `cancel_job`.
 - Never let `authenticated` or `anon` execute `save_version`; versions are written only through
   it, by the service role (the worker), and never updated.
+- Only the owner deletes a reel, and only through `delete_reel`; never delete a `reels` row any
+  other way.
+- A job whose reel or photo was deleted is never a failure: it ends `deleted`, writes no failed row
+  and captures nothing.
 - Never poll from the studio; the reel page reads on open and on each ready subscription only.
 - Never read more than `id` in the worker's periodic check.
 - Never put large content in rows (files in R2, logs in PostHog).
