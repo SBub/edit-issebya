@@ -44,7 +44,13 @@ Rules:
 - Use the free `style` field only for what the format cannot express, and list each item that
   uses it in `free_field` with the reason.
 - List any part of the request the format cannot express in `unexpressed`.
-- Write a one-line `change_summary` of what you changed.
+- Write `change_title`: 2 to 5 plain words, sentence case, no full stop, saying what changed (for
+  example "Transitions made longer", "Photo added behind you").
+- Write `change_summary`: one or two short plain sentences for the owner, who is not technical,
+  saying what changed.
+- In `change_title` and `change_summary` talk about what the viewer sees. Never write word ids,
+  font names, pixel sizes, colour codes, timestamps or seconds, or internal names (track, slot,
+  preset, spot names).
 - Answer only with the JSON the schema asks for.
 
 The current version:

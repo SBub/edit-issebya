@@ -45,7 +45,8 @@ export async function unchangedAnswerScript(dir: string): Promise<string> {
     is_error: false,
     structured_output: {
       tracks: baseline.tracks,
-      change_summary: "kept the first version as it is",
+      change_title: "Nothing changed",
+      change_summary: "The reel stays as it was.",
       unexpressed: [],
       free_field: [],
       behind_rules: KEEP_RULES,
@@ -78,25 +79,34 @@ export async function brokenAnswerScript(dir: string): Promise<string> {
 }
 
 // One round of a scripted decide: the behind items (none: no behind track),
-// the change summary and the behind rules (all `keep` by default).
+// the change summary and title (the committed answer's when not given) and
+// the behind rules (all `keep` by default).
 interface AnswerRound {
   items: Record<string, unknown>[];
   changeSummary: string;
+  changeTitle?: string;
   rules?: BehindRules;
 }
 
 // The committed decide answer with the round's behind items, summary and rules.
-async function roundEnvelope({ items, changeSummary, rules = KEEP_RULES }: AnswerRound) {
+async function roundEnvelope({
+  items,
+  changeSummary,
+  changeTitle,
+  rules = KEEP_RULES,
+}: AnswerRound) {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed worker script
   const envelope = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
     structured_output: {
       tracks: Record<string, unknown>;
+      change_title: string;
       change_summary: string;
       behind_rules: BehindRules;
     };
   };
   if (items.length > 0) envelope.structured_output.tracks.behind = items;
   envelope.structured_output.change_summary = changeSummary;
+  if (changeTitle) envelope.structured_output.change_title = changeTitle;
   envelope.structured_output.behind_rules = rules;
   return envelope;
 }

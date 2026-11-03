@@ -175,7 +175,8 @@
       ],
       "sounds": []
     },
-    "change_summary": "Title, one accent on \"test\", a dim over \"clip for the\", \"Studio\" capitalised.",
+    "change_title": "Title and one accent added",
+    "change_summary": "A title opens the reel and one word stands out. A soft fade marks the new topic.",
     "unexpressed": [],
     "free_field": [],
     "behind_rules": { "photos": "keep", "big_word": "keep" }

@@ -31,7 +31,23 @@ const input = decideInput({
 
 describe("decidePrompt", () => {
   it("is versioned", () => {
-    expect(PROMPT_VERSION).toBe("decide-3");
+    expect(PROMPT_VERSION).toBe("decide-4");
+  });
+
+  it("asks for a plain title and summary for the owner, without technical details", () => {
+    const prompt = decidePrompt(input);
+    expect(prompt).toContain(
+      "Write `change_title`: 2 to 5 plain words, sentence case, no full stop",
+    );
+    expect(prompt).toContain('"Transitions made longer", "Photo added behind you"');
+    expect(prompt).toMatch(
+      /Write `change_summary`: one or two short plain sentences for the owner,\s+who is not technical/,
+    );
+    expect(prompt).toMatch(
+      /Never write word ids,\s+font names, pixel sizes, colour codes, timestamps or seconds/,
+    );
+    expect(prompt).toContain("internal names (track, slot,\n  preset, spot names)");
+    expect(prompt).not.toContain("one-line `change_summary`");
   });
 
   it("carries the current version, every word id, the glossary, the safe box and no request", () => {

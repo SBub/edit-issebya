@@ -23,6 +23,10 @@ const TRANSCRIPT = new URL("../../../fixtures/pipeline/retime/transcript.json", 
 const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
 const EXTRA_VERSIONS = 12;
+const LONG_TITLE =
+  "Transitions made much longer and softer everywhere in the reel, with a photo behind you";
+const LONG_REQUEST =
+  "please make every transition slower and softer, put the kitchen photo behind me while I talk about cooking, and make the captions a little bigger";
 const EXTRA_STEPS = 40;
 const EXTRA_JOBS = 8;
 const FOCUSABLE =
@@ -84,6 +88,8 @@ test.beforeAll(async () => {
   reel = await seedProcessedReel({ admin, storage, ownerId: owner.id, prefix: CACHE_PREFIX });
 
   // 14 versions in all: long enough that the list must scroll in its area.
+  // Their texts differ in length (a long title, no title with a long request,
+  // a short title), so the rows' one fixed height (two title lines) is tested.
   const edit = await currentEdit();
   for (let n = 0; n < EXTRA_VERSIONS; n += 1) {
     const saved = await saveTestVersion({
@@ -92,6 +98,8 @@ test.beforeAll(async () => {
       prefix: CACHE_PREFIX,
       reelId: reel.reelId,
       edit,
+      request: n % 3 === 1 ? LONG_REQUEST : `layout change ${n + 3}`,
+      changeTitle: [LONG_TITLE, null, "Photo added"][n % 3]!,
       changeSummary: `layout version ${n + 3}`,
     });
     extraKeys.push(saved.key);
@@ -301,6 +309,107 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
   await expectOwnScroll(page, page.getByTestId("versions-area"));
   await expectNoPageScroll(page);
 });
+
+// Every version is one line at one height whatever its text; the arrow opens
+// its details in place.
+for (const [size, viewport] of [
+  ["1440x900", DESKTOP],
+  ["390x844", PHONE],
+] as const) {
+  test(`the versions list: one line per version, details behind the arrow at ${size}`, async ({
+    page,
+    baseURL,
+  }) => {
+    await openReel(page, baseURL!, viewport);
+    if (viewport === PHONE) {
+      await page
+        .getByRole("tablist", { name: "Reel" })
+        .getByRole("tab", { name: "Versions" })
+        .click();
+    }
+    const items = page.getByTestId("version-item");
+    await expect(items).toHaveCount(2 + EXTRA_VERSIONS);
+    const heights = async () =>
+      items.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().height));
+    const collapsed = await heights();
+    for (const height of collapsed) expect(Math.abs(height - collapsed[0]!)).toBeLessThanOrEqual(1);
+
+    const item = (number: number) =>
+      page.locator(`[data-testid="version-item"][data-version-number="${number}"]`);
+    // v3 has the long title, v4 the long request and no title, v5 a short title.
+    await expect(item(3).getByTestId("version-title")).toHaveText(LONG_TITLE);
+    await expect(item(4).getByTestId("version-title")).toHaveText(LONG_REQUEST);
+    await expect(item(5).getByTestId("version-title")).toHaveText("Photo added");
+    await expect(item(1).getByTestId("version-title")).toHaveText("First version");
+    // Rows run edge to edge of the Versions area, no box around the list.
+    const area = (await page.getByTestId("versions-area").boundingBox())!;
+    const areaInner = await page
+      .getByTestId("versions-area")
+      .evaluate((node) => ({ width: node.clientWidth, left: node.clientLeft }));
+    for (const box of await items.evaluateAll((nodes) =>
+      nodes.map((node) => node.getBoundingClientRect().toJSON() as { x: number; width: number }),
+    )) {
+      expect(Math.abs(box.width - areaInner.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(box.x - (area.x + areaInner.left))).toBeLessThanOrEqual(1);
+    }
+    const list = await page.getByTestId("version-list").evaluate((node) => ({
+      radius: getComputedStyle(node).borderTopLeftRadius,
+      left: getComputedStyle(node).borderLeftWidth,
+    }));
+    expect(list).toEqual({ radius: "0px", left: "0px" });
+    // No time or date on a row: what changed matters, not when.
+    await expect(items.locator("time")).toHaveCount(0);
+    // A title takes up to two lines: a short one shows in full, a long one
+    // (or a long request standing in for it) is cut at the second line.
+    const fit = (number: number) =>
+      item(number)
+        .getByTestId("version-title")
+        .evaluate((node) => ({
+          clamp: getComputedStyle(node).webkitLineClamp,
+          cut: node.scrollHeight > node.clientHeight + 1,
+        }));
+    expect(await fit(5)).toEqual({ clamp: "2", cut: false });
+    expect(await fit(3)).toEqual({ clamp: "2", cut: true });
+    expect(await fit(4)).toEqual({ clamp: "2", cut: true });
+    // Collapsed: no request, no summary, no Go back.
+    await expect(item(4).getByTestId("version-summary")).toBeHidden();
+    await expect(item(4).getByTestId("version-origin")).toBeHidden();
+    await expect(item(4).getByRole("button", { name: "Go back to this" })).toBeHidden();
+
+    // The arrow is a button: Enter opens, Space closes, with a focus ring.
+    const toggle = item(4).getByTestId("version-toggle");
+    await expect(toggle).toHaveAccessibleName("Show details of v4");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const details = item(4).getByTestId("version-details");
+    await expect(toggle).toHaveAttribute("aria-controls", (await details.getAttribute("id"))!);
+    await toggle.focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(toggle).toBeFocused();
+    expect(await toggle.evaluate((node) => getComputedStyle(node).outlineStyle)).not.toBe("none");
+    await page.keyboard.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(details.getByText("What you asked")).toBeVisible();
+    await expect(details.getByTestId("version-origin")).toHaveText(LONG_REQUEST);
+    await expect(details.getByText("What changed")).toBeVisible();
+    await expect(details.getByTestId("version-summary")).toHaveText("layout version 4");
+    await expect(details.getByRole("button", { name: "Go back to this" })).toBeVisible();
+
+    // Several rows may be open; the others keep their height.
+    await item(5).getByTestId("version-toggle").click();
+    await expect(item(5).getByTestId("version-toggle")).toHaveAttribute("aria-expanded", "true");
+    await expect(item(4).getByTestId("version-toggle")).toHaveAttribute("aria-expanded", "true");
+    const closed = (await item(3).boundingBox())!.height;
+    expect(Math.abs(closed - collapsed[0]!)).toBeLessThanOrEqual(1);
+
+    await toggle.focus();
+    await page.keyboard.press("Space");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(details).toBeHidden();
+    await expectNoPageScroll(page);
+    await expectOwnScroll(page, page.getByTestId("versions-area"));
+  });
+}
 
 // Other desktop sizes, down to the `lg` breakpoint: the same split, Send in
 // the root box, no page scroll.

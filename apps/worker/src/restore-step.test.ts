@@ -116,7 +116,8 @@ describe("runRestore", () => {
       number: 3,
       parent_id: V2,
       restored_from_id: V1,
-      change_summary: "restored version 1",
+      change_title: null,
+      change_summary: "Back to how v1 looked",
       r2_key: versionKey(PREFIX, REEL, NEW),
     });
     expect(current).toBe(NEW);

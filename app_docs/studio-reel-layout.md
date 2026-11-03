@@ -30,7 +30,9 @@ the third tab on a phone.
   (`lg:grid-cols-[minmax(0,1fr)_20rem_18rem]`, wider at `xl:`) and two rows, 68% and 32%
   (`lg:grid-rows-[minmax(0,17fr)_minmax(0,8fr)]`). The main column (preview, controls, timeline)
   spans both rows (`lg:row-span-2`). Versions is the top 68% of column 2 (`lg:col-start-2
-lg:row-start-1`, `min-h-0 overflow-y-auto overscroll-contain`, so its list scrolls inside it), the
+lg:row-start-1`, `min-h-0 overflow-y-auto overscroll-contain`, no padding of its own, so its list
+  of fixed-height version rows (no time or date, edge to edge of the area),
+  each opened with its arrow, scrolls inside it; rows and texts in `app_docs/change-requests.md`), the
   photo library (`id="reel-panel-library"`) the top 68% of column 3 (`lg:col-start-3
 lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unchanged), and the
   correction field the bottom 32% across both (`lg:col-span-2 lg:col-start-2 lg:row-start-2`,
@@ -155,8 +157,9 @@ lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unch
 3. On the reel page, press Play. To move through the video, click or drag the ruler above the
    tracks (the playhead follows the pointer), or focus it and use the arrow keys (Shift for 5 s),
    Home and End. Read the timeline rows against the playhead.
-4. Use "Go back to this" in the Versions area to make an older version current (it saves a new
-   version copying the old one); the preview always shows the current version.
+4. Open a version's details with its arrow in the Versions area and use "Go back to this" to make
+   an older version current (it saves a new version copying the old one); the preview always shows
+   the current version.
 5. On a phone, switch between the Edit, Versions and Library tabs and type a correction in the
    field pinned at the bottom. On desktop the edit area is the left column, Versions and the
    library sit side by side in the top right, and the correction field fills the bottom right.
@@ -183,7 +186,8 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   full height under the header, Versions and the library side by side each 68% of that height with
   Versions' list scrolling inside it, the correction field below both and as wide as the two, its
   field at least half the area's height, and the DOM order edit, Versions,
-  library, correction field (the tab order). It also checks the
+  library, correction field (the tab order). At 1440x900 and 390x844 it checks the versions list:
+  every row one height within 1 px whatever its text, the details behind the arrow. It also checks the
   timeline's four rows in order (Footage, Behind, Accents, Transitions; no Captions or Sounds row,
   though the edit has captions), the items at `resolveTimeline`'s times with footage frames from the sprite and nothing in the rows focusable
   (the ruler the timeline's one focusable element), the playhead following the clock, and no Undo or

@@ -86,6 +86,9 @@ export function decideAnswerSchemaFor(
       tracks: tracksSchemaFor(preset, transcript, limits).omit({
         cutout: true,
       }),
+      // What the owner reads in the versions list: a short plain title and a
+      // one or two sentence summary, both about what the viewer sees.
+      change_title: z.string().min(1).max(60),
       change_summary: z.string().min(1).max(300),
       unexpressed: z.array(z.string().min(1).max(300)).max(20),
       free_field: z

@@ -173,13 +173,15 @@ readable reason string (an empty list means every rule passes):
   `restoreVersion` take `{ rows, blobs, keyPrefix, newId }`, so the package needs no randomness.
 - Restore never rewrites history: `restoreVersion` creates a new version copying the old one's
   bytes, inputs and checks, its parent the current version, `restored_from_id` the old one and
-  change summary `restored version <n>`.
+  change summary `Back to how v<n> looked` (no change title; the versions list titles it `Back to
+v<n>`). Restores saved before read `restored version <n>`.
 - `apps/worker/src/version-store.ts`: `supabaseVersionRows(db)` (`current` reads
   `reels.current_version_id`, `get` reads named columns, `save` calls the `save_version` RPC) and
   `storageVersionBlobs(storage)` (JSON, put-if-absent).
 - `supabase/migrations/20261101153653_versions.sql`: table `versions` (`id`, `reel_id`,
   `owner_id`, `number`, `parent_id`, `restored_from_id`, `request`, `model`, `prompt_version`,
-  `change_summary`, `checks`, `inputs`, unique `r2_key`, `created_at`). Parent and restored-from
+  `change_summary`, `checks`, `inputs`, unique `r2_key`, `created_at`; later `change_title`, see
+  `app_docs/decide-step.md`). Parent and restored-from
   must be versions of the same reel. `reels.current_version_id` names the current one. Trigger
   `versions_refuse_update` refuses every update, even for the service role; rows go only with their
   reel (cascade). Owner-only `select` RLS for `authenticated`, no `anon` access, in the

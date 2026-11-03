@@ -139,6 +139,31 @@ describe("save_version", () => {
     ]);
   });
 
+  it("stores the change title it is given, null when not", async () => {
+    const own = await insertReel(admin, {
+      ownerId: owner.id,
+      name: "title.mov",
+      status: "received",
+    });
+    const titled = randomUUID();
+    const { error } = await admin.rpc("save_version", {
+      ...args(own, titled, null),
+      p_change_title: "Transitions made longer",
+    });
+    expect(error).toBeNull();
+    const untitled = randomUUID();
+    expect((await admin.rpc("save_version", args(own, untitled, titled))).error).toBeNull();
+    const { data } = await ownerClient
+      .from("versions")
+      .select("id, change_title")
+      .eq("reel_id", own)
+      .order("number");
+    expect(data).toEqual([
+      { id: titled, change_title: "Transitions made longer" },
+      { id: untitled, change_title: null },
+    ]);
+  });
+
   it("cannot be executed by anon or an authenticated user", async () => {
     for (const client of [localSupabaseClient(), ownerClient]) {
       const { error } = await client.rpc("save_version", args(reel, randomUUID(), saved[2]!));
