@@ -95,7 +95,8 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
   and in `REEL_STATUSES`, but is no longer in `PipelineReelStatus` and nothing writes it.
 - `apps/worker/src/first-version.ts`: after the five steps the worker saves the automatic first
   version, the `first_version` step: version 1 built from the preset alone (no AI) from the retimed
-  transcript, `retime.json`'s duration and the head track, saved through `save_version`. Its step
+  transcript, `retime.json`'s duration and the head track, its captions placed by the layout
+  engine, saved through `save_version` with the engine record. Its step
   line is `version 1 saved, <time>, <size>`, or `first version kept, reused` (a cache hit, nothing
   written) when the reel already has a current version. Failed layout checks are stored on the
   version, never fatal. See `app_docs/edit-model.md`.

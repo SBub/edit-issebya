@@ -1,5 +1,6 @@
 import { canonicalJson } from "./canonical-json.ts";
 import type { Check } from "./checks.ts";
+import type { EngineNote } from "./engine.ts";
 import type { Edit, EditInputs } from "./schema.ts";
 
 // Where a version's edit.json lives. Written once (put-if-absent), never
@@ -44,6 +45,9 @@ export interface NewVersion {
   unexpressed: string[];
   free_field: FreeFieldUse[];
   rejected_reasons: string[];
+  // The layout engine's record: every item it moved, shrank, wrapped,
+  // retimed or dropped, and why; empty for a going back.
+  engine_record: EngineNote[];
   // The reel's behind forbids to write with the version; null (or absent)
   // leaves the stored flag as it is.
   no_photos?: boolean | null;
@@ -102,6 +106,8 @@ export interface VersionMeta {
   unexpressed?: string[];
   freeField?: FreeFieldUse[];
   rejectedReasons?: string[];
+  // The layout engine's record; empty when not given.
+  engineRecord?: EngineNote[];
   // The reel's behind forbids written with the version; null leaves a flag.
   forbid?: { photos: boolean | null; bigWord: boolean | null };
 }
@@ -139,6 +145,7 @@ async function saveBytes(
     unexpressed: meta.unexpressed ?? [],
     free_field: meta.freeField ?? [],
     rejected_reasons: meta.rejectedReasons ?? [],
+    engine_record: meta.engineRecord ?? [],
     no_photos: meta.forbid?.photos ?? null,
     no_big_word: meta.forbid?.bigWord ?? null,
   });

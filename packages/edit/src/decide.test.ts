@@ -11,12 +11,16 @@ import {
   parseDecideAnswer,
   usedFreeField,
 } from "./decide.ts";
-import { FONT_KEYS, ISSEBYA_PRESET, TRANSITION_TYPES } from "./preset.ts";
-import type { Edit } from "./schema.ts";
+import { WISHES } from "./engine-input.ts";
+import { ISSEBYA_PRESET, TRANSITION_TYPES } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
+import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
 const short = FIXTURES.find((fixture) => fixture.name === "baseline-short-speech")!;
+
+const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
+const OTHER = "1f2e3d4c-5b6a-4789-8a7b-6c5d4e3f2a1b";
 
 type Json = Record<string, unknown>;
 
@@ -49,30 +53,54 @@ function enumsUnder(schema: unknown, property: string): unknown[][] {
   return found;
 }
 
-function answerOf(edit: Edit) {
-  return {
-    tracks: edit.tracks,
-    change_title: "No change",
-    change_summary: "no change",
-    unexpressed: [],
-    free_field: [],
+// A valid answer over the fixture clip: a title, one accent, one dim
+// transition, one fixed word; `change` edits a copy.
+function answer(change: (answer: Json) => void = () => {}): Json {
+  const value: Json = {
+    accents: [
+      { from: "w0001", to: "w0004", title: true },
+      { from: "w0005", to: "w0005", title: false },
+    ],
+    big_word: null,
+    photos: [],
+    transitions: [{ kind: "dim", from: "w0006", to: "w0008" }],
+    word_fixes: [{ word: "w0010", text: "Studio" }],
+    checklist: [],
     behind_rules: { photos: "keep", big_word: "keep" },
+    change_title: "Title and one accent added",
+    change_summary: "A title opens the reel and one word stands out.",
+    unexpressed: [],
   };
+  change(value);
+  return value;
+}
+
+const REQUEST: DecideRules = { requested: true, forbid: { photos: false, bigWord: false } };
+
+function parse(json: unknown, photoIds: readonly string[] = [], rules: DecideRules = NO_RULES) {
+  return parseDecideAnswer(json, ISSEBYA_PRESET, short.transcript, photoIds, rules);
+}
+
+function reasons(json: unknown, photoIds: readonly string[] = [], rules: DecideRules = NO_RULES) {
+  const parsed = parse(json, photoIds, rules);
+  if (parsed.ok) throw new Error("expected a refusal");
+  return parsed.reasons.join("\n");
 }
 
 describe("decideJsonSchema", () => {
   for (const fixture of [hand, short]) {
-    it(`is generated for ${fixture.name}: its word ids, the preset's fonts and transitions, closed objects, its duration`, () => {
-      const schema = decideJsonSchema(ISSEBYA_PRESET, fixture.transcript, fixture.edit.duration);
+    it(`is generated for ${fixture.name}: its word ids, the transition kinds, the wishes, closed objects`, () => {
+      const schema = decideJsonSchema(ISSEBYA_PRESET, fixture.transcript);
       const ids = fixture.transcript.words.map((word) => word.id);
-      const wordEnums = enumsUnder(schema, "word");
-      expect(wordEnums.length).toBeGreaterThan(0);
-      for (const list of wordEnums) expect(list).toEqual(ids);
-      const fonts = enumsUnder(schema, "font");
-      expect(fonts.length).toBeGreaterThan(0);
-      for (const list of fonts) expect(list).toEqual([...FONT_KEYS]);
-      const types = enumsUnder(schema, "type");
-      expect(types).toEqual([[...TRANSITION_TYPES]]);
+      for (const key of ["from", "to", "word"]) {
+        const lists = enumsUnder(schema, key);
+        expect(lists.length).toBeGreaterThan(0);
+        for (const list of lists) expect(list).toEqual(ids);
+      }
+      expect(enumsUnder(schema, "kind")).toEqual([[...TRANSITION_TYPES]]);
+      const wishes = enumsUnder(schema, "wish");
+      expect(wishes).toHaveLength(4);
+      for (const list of wishes) expect(list).toEqual([...WISHES]);
 
       let objects = 0;
       walk(schema, (node) => {
@@ -81,343 +109,302 @@ describe("decideJsonSchema", () => {
         expect(node.additionalProperties).toBe(false);
       });
       expect(objects).toBeGreaterThan(5);
-
-      const timeMaxima: unknown[] = [];
-      walk(schema, (node, key) => {
-        if (key === "time") timeMaxima.push(node.maximum);
-      });
-      expect(timeMaxima.length).toBeGreaterThan(0);
-      for (const max of timeMaxima) expect(max).toBe(fixture.edit.duration);
     });
 
     it(`targets draft-07 for ${fixture.name}, with the same constraints as the 2020-12 output`, () => {
-      const duration = fixture.edit.duration;
-      const schema = decideJsonSchema(ISSEBYA_PRESET, fixture.transcript, duration);
+      const schema = decideJsonSchema(ISSEBYA_PRESET, fixture.transcript);
       expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
       expect(JSON.stringify(schema)).not.toContain("2020-12");
       const draft2020: Json = z.toJSONSchema(
-        decideAnswerSchemaFor(ISSEBYA_PRESET, fixture.transcript, duration),
+        decideAnswerSchemaFor(ISSEBYA_PRESET, fixture.transcript),
         { target: "draft-2020-12", io: "output", reused: "inline" },
       );
       expect({ ...schema, $schema: null }).toEqual({ ...draft2020, $schema: null });
-      expect(Object.keys(schema.properties as Json)).toEqual([
-        "tracks",
-        "change_title",
-        "change_summary",
-        "unexpressed",
-        "free_field",
-        "behind_rules",
-      ]);
     });
   }
-});
 
-describe("decideJsonSchema tracks", () => {
-  it("has no cut-out track, and an optional behind track", () => {
-    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, hand.edit.duration) as {
-      properties: { tracks: { properties: Record<string, unknown>; required: string[] } };
-    };
-    const tracks = schema.properties.tracks;
-    expect(Object.keys(tracks.properties)).toEqual([
-      "footage",
-      "captions",
-      "overlays",
+  it("has meaning only: no time, position, size, font, colour, spot or style anywhere", () => {
+    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, [PHOTO], REQUEST);
+    expect(Object.keys(schema.properties as Json)).toEqual([
+      "accents",
+      "big_word",
+      "photos",
       "transitions",
-      "sounds",
-      "behind",
+      "word_fixes",
+      "checklist",
+      "behind_rules",
+      "change_title",
+      "change_summary",
+      "unexpressed",
     ]);
-    expect(tracks.required).not.toContain("cutout");
-    expect(tracks.required).not.toContain("behind");
+    const keys = new Set<string>();
+    walk(schema, (_node, key) => {
+      if (key) keys.add(key);
+    });
+    for (const banned of [
+      "time",
+      "start",
+      "end",
+      "offset",
+      "position",
+      "x",
+      "y",
+      "size",
+      "font",
+      "color",
+      "spot",
+      "style",
+      "tracks",
+      "free_field",
+    ]) {
+      expect(keys.has(banned), banned).toBe(false);
+    }
+  });
+
+  it("names the library photos, at most the preset's count", () => {
+    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, [PHOTO]) as {
+      properties: { photos: { maxItems: number } };
+    };
+    expect(enumsUnder(schema, "photo_id")).toEqual([[PHOTO]]);
+    expect(schema.properties.photos.maxItems).toBe(ISSEBYA_PRESET.behind.maxPhotos);
   });
 });
 
-describe("the behind track in the decide answer", () => {
-  const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
-  const OTHER = "1f2e3d4c-5b6a-4789-8a7b-6c5d4e3f2a1b";
-  const words = hand.transcript.words;
-  // Word anchors about three seconds apart.
-  const first = words.findIndex((word) => word.start > 2);
-  const last = words.findIndex((word) => word.end > words[first]!.start + 3);
-  const photo = {
-    id: "behind-photo",
-    kind: "photo" as const,
-    photo_id: PHOTO,
-    spot: "left" as const,
-    start: { word: words[first]!.id },
-    end: { word: words[last]!.id, edge: "start" as const },
-  };
-  const answerWith = (behind: unknown[]) => ({
-    ...answerOf(hand.edit),
-    tracks: { ...hand.edit.tracks, cutout: undefined, behind },
+describe("parseDecideAnswer", () => {
+  it("accepts a valid answer", () => {
+    expect(parse(answer())).toMatchObject({ ok: true });
   });
 
-  it("takes a photo of the library and names it in the JSON Schema enum", () => {
-    const parsed = parseDecideAnswer(
-      answerWith([photo]),
-      ISSEBYA_PRESET,
-      hand.transcript,
-      hand.edit.duration,
-      [PHOTO],
-    );
-    expect(parsed.ok).toBe(true);
-    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, hand.edit.duration, [PHOTO]);
-    expect(enumsUnder(schema, "photo_id")).toEqual([[PHOTO]]);
-    expect(enumsUnder(schema, "spot")).toEqual([["top", "left", "right"]]);
-  });
-
-  it("refuses a photo outside the library", () => {
-    const parsed = parseDecideAnswer(
-      answerWith([{ ...photo, photo_id: OTHER }]),
-      ISSEBYA_PRESET,
-      hand.transcript,
-      hand.edit.duration,
-      [PHOTO],
-    );
-    expect(parsed.ok).toBe(false);
-    const none = parseDecideAnswer(
-      answerWith([photo]),
-      ISSEBYA_PRESET,
-      hand.transcript,
-      hand.edit.duration,
-    );
-    expect(none.ok).toBe(false);
-  });
-
-  it("passes the behind track through and drops the current masks and photos", () => {
-    const current = structuredClone(hand.edit);
-    current.inputs.masks = [
-      { step: "cutout", fingerprint: "f".repeat(64), file: "mask.mp4", start: 1, end: 4 },
-    ];
-    current.inputs.photos = [PHOTO];
-    const made = editFromAnswer(
-      current,
-      { tracks: { ...hand.edit.tracks, behind: [photo] } },
-      ISSEBYA_PRESET,
-      hand.transcript,
-    );
-    expect(made.ok).toBe(true);
-    if (!made.ok) return;
-    expect(made.edit.tracks.behind).toEqual([photo]);
-    expect(made.edit.inputs.masks).toBeUndefined();
-    expect(made.edit.inputs.photos).toBeUndefined();
-    expect(decideCounts(made.edit, hand.transcript, ISSEBYA_PRESET)).toMatchObject({
-      behindPhotos: 1,
-      behindWords: 0,
+  it("refuses an answer missing a field", () => {
+    const missing = answer((a) => {
+      delete a.accents;
     });
+    expect(reasons(missing)).toMatch(/^accents: /m);
+    const noBigWord = answer((a) => {
+      delete a.big_word;
+    });
+    expect(reasons(noBigWord)).toMatch(/^big_word: /m);
+  });
+
+  it("refuses a wish not on the list", () => {
+    const loose = answer((a) => {
+      (a.accents as Json[])[1]!.wish = "upper-left";
+    });
+    expect(reasons(loose, [], REQUEST)).toMatch(/^accents\.1\.wish: /m);
+    const listed = answer((a) => {
+      (a.accents as Json[])[1]!.wish = "big";
+    });
+    expect(parse(listed, [], REQUEST).ok).toBe(true);
+  });
+
+  it("refuses a wish without a request: Claude never invents one", () => {
+    const wished = answer((a) => {
+      (a.accents as Json[])[1]!.wish = "big";
+      a.big_word = { word: "w0001", wish: "behind" };
+    });
+    const text = reasons(wished);
+    expect(text).toContain(
+      "accents.1.wish: a wish only forwards the owner's request; there is none, leave it out",
+    );
+    expect(text).toMatch(/^big_word\.wish: /m);
+  });
+
+  it("refuses a word id not in the transcript", () => {
+    const other = answer((a) => {
+      (a.accents as Json[])[1]!.from = "w9999";
+    });
+    expect(reasons(other)).toMatch(/^accents\.1\.from: /m);
+    const fix = answer((a) => {
+      a.word_fixes = [{ word: "w0", text: "x" }];
+    });
+    expect(reasons(fix)).toMatch(/^word_fixes\.0\.word: /m);
+  });
+
+  it("refuses times, positions and sizes: the answer is closed", () => {
+    const timed = answer((a) => {
+      (a.accents as Json[])[0]!.start = { time: 1 };
+    });
+    expect(reasons(timed)).toMatch(/accents\.0: .*start/);
+    const sized = answer((a) => {
+      (a.transitions as Json[])[0]!.size = 80;
+    });
+    expect(parse(sized).ok).toBe(false);
+  });
+
+  it("refuses a phrase that ends before it starts, and a second title", () => {
+    const backwards = answer((a) => {
+      a.transitions = [{ kind: "dim", from: "w0008", to: "w0006" }];
+    });
+    expect(reasons(backwards)).toContain(
+      "transitions.0.to: ends on w0006, before it starts on w0008",
+    );
+    const two = answer((a) => {
+      (a.accents as Json[])[1]!.title = true;
+    });
+    expect(reasons(two)).toContain("accents: only one accent is the title");
+  });
+
+  it("refuses a word fixed twice", () => {
+    const twice = answer((a) => {
+      a.word_fixes = [
+        { word: "w0010", text: "Studio" },
+        { word: "w0010", text: "Stadium" },
+      ];
+    });
+    expect(reasons(twice)).toContain("word_fixes: w0010 is fixed twice");
+  });
+
+  it("requires a change title of 1 to 60 characters", () => {
+    expect(parse(answer((a) => (a.change_title = ""))).ok).toBe(false);
+    expect(parse(answer((a) => (a.change_title = "x".repeat(61)))).ok).toBe(false);
+    expect(parse(answer((a) => (a.change_title = "x".repeat(60)))).ok).toBe(true);
+  });
+});
+
+describe("the request checklist", () => {
+  const withAsk = (fulfilledBy: string[]) =>
+    answer((a) => {
+      a.photos = [{ photo_id: PHOTO, from: "w0001", to: "w0010", wish: "left" }];
+      a.checklist = [
+        { ask: "photos behind", wants: "1 to 2, free choice", fulfilled_by: fulfilledBy },
+      ];
+    });
+
+  it("is empty on the first run", () => {
+    expect(reasons(withAsk(["photos[0]"]), [PHOTO])).toContain(
+      "checklist: the checklist stays empty without a request",
+    );
+    const schema = decideJsonSchema(ISSEBYA_PRESET, short.transcript) as {
+      properties: { checklist: { maxItems: number } };
+    };
+    expect(schema.properties.checklist.maxItems).toBe(0);
+  });
+
+  it("links each ask to answer items on a request", () => {
+    expect(parse(withAsk(["photos[0]", "behind_rules"]), [PHOTO], REQUEST).ok).toBe(true);
+    expect(parse(withAsk([]), [PHOTO], REQUEST).ok).toBe(true);
+  });
+
+  it("refuses a link to an item the answer does not have, or not an item at all", () => {
+    expect(reasons(withAsk(["photos[1]"]), [PHOTO], REQUEST)).toContain(
+      "checklist.0.fulfilled_by: photos[1] is not in the answer",
+    );
+    expect(reasons(withAsk(["big_word"]), [PHOTO], REQUEST)).toContain(
+      "checklist.0.fulfilled_by: big_word is not in the answer",
+    );
+    expect(reasons(withAsk(["the photo"]), [PHOTO], REQUEST)).toMatch(
+      /^checklist\.0\.fulfilled_by\.0: /m,
+    );
   });
 });
 
 describe("the behind limits and rules in the decide answer", () => {
-  const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
-  const words = hand.transcript.words;
-  const duration = hand.edit.duration;
-  // Three-second stretches of the reel, starting on words far apart.
-  const at = (from: number) => {
-    const first = words.findIndex((word) => word.start > from);
-    const last = words.findIndex((word) => word.end > words[first]!.start + 3);
-    return { start: { word: words[first]!.id }, end: { word: words[last]!.id, edge: "start" } };
-  };
-  const photo = (id: string, from: number, extra: Record<string, unknown> = {}) => ({
-    id,
-    kind: "photo",
-    photo_id: PHOTO,
-    spot: "left",
-    ...at(from),
-    ...extra,
-  });
-  // A big word showing a word spoken in its own stretch.
-  const spokenFrom = at(10);
-  const spokenWord = words.find((word) => word.id === (spokenFrom.start as { word: string }).word)!;
-  const bigWord = (text: string) => ({ id: "big", kind: "word", text, ...spokenFrom });
-  const answerWith = (behind: unknown[], rules = { photos: "keep", big_word: "keep" }) => ({
-    ...answerOf(hand.edit),
-    tracks: { ...hand.edit.tracks, cutout: undefined, behind },
-    behind_rules: rules,
-  });
-  const parse = (answer: unknown, rules: DecideRules = NO_RULES, ids = [PHOTO]) =>
-    parseDecideAnswer(answer, ISSEBYA_PRESET, hand.transcript, duration, ids, rules);
-  const reasonsOf = (result: ReturnType<typeof parse>) =>
-    result.ok ? "" : result.reasons.join("\n");
-  const forbidPhotos: DecideRules = { requested: false, forbid: { photos: true, bigWord: false } };
-
-  it("caps the behind track and lists the rules in the draft-07 JSON Schema", () => {
-    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, duration, [PHOTO]) as {
-      $schema: string;
-      properties: {
-        tracks: { properties: { behind: { maxItems: number } } };
-        behind_rules: { required: string[] };
-      };
-    };
-    expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
-    expect(schema.properties.tracks.properties.behind.maxItems).toBe(3);
-    expect(enumsUnder(schema, "photo_id")).toEqual([[PHOTO]]);
-    expect(schema.properties.behind_rules.required).toEqual(["photos", "big_word"]);
-    expect(enumsUnder(schema, "photos")).toEqual([["keep"]]);
-    expect(enumsUnder(schema, "big_word")).toEqual([["keep"]]);
-    const requested = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, duration, [PHOTO], {
-      ...NO_RULES,
-      requested: true,
+  const photo = { photo_id: PHOTO, from: "w0001", to: "w0010" };
+  const withPhotos = (photos: Json[], rules?: Json) =>
+    answer((a) => {
+      a.photos = photos;
+      if (rules) a.behind_rules = rules;
     });
-    expect(enumsUnder(requested, "photos")).toEqual([["keep", "forbid", "allow"]]);
-    expect(enumsUnder(requested, "big_word")).toEqual([["keep", "forbid", "allow"]]);
+  const stored = (photos: boolean, bigWord = false, requested = false): DecideRules => ({
+    requested,
+    forbid: { photos, bigWord },
   });
 
-  it("accepts two photos and the spoken key word", () => {
-    const answer = answerWith([photo("a", 1), photo("b", 20), bigWord(spokenWord.text)]);
-    expect(parse(answer)).toMatchObject({ ok: true });
+  it("refuses a photo outside the library, and every photo with an empty library", () => {
+    expect(parse(withPhotos([photo]), [PHOTO]).ok).toBe(true);
+    expect(parse(withPhotos([{ ...photo, photo_id: OTHER }]), [PHOTO]).ok).toBe(false);
+    expect(parse(withPhotos([photo])).ok).toBe(false);
   });
 
-  it("refuses an unknown photo id, a third photo and a 5-second photo", () => {
-    const unknown = photo("a", 1, { photo_id: "1f2e3d4c-5b6a-4789-8a7b-6c5d4e3f2a1b" });
-    expect(parse(answerWith([unknown])).ok).toBe(false);
-    const three = answerWith([photo("a", 1), photo("b", 20), photo("c", 30)]);
-    expect(reasonsOf(parse(three))).toMatch(/behind c: a third photo; at most 2 photos per reel/);
-    const long = photo("a", 1, { start: { time: 0 }, end: { time: 5 } });
-    expect(reasonsOf(parse(answerWith([long])))).toMatch(/behind a: lasts 5\.000 s/);
-  });
-
-  it("refuses every photo id with an empty library", () => {
-    expect(parse(answerWith([photo("a", 1)]), NO_RULES, []).ok).toBe(false);
-    expect(
-      enumsUnder(decideJsonSchema(ISSEBYA_PRESET, hand.transcript, duration), "photo_id"),
-    ).toEqual([]);
+  it("refuses a third photo", () => {
+    expect(reasons(withPhotos([photo, photo, photo]), [PHOTO])).toContain(
+      "photos: at most 2 photos per reel",
+    );
   });
 
   it("refuses a photo under a stored forbid with keep, accepts it with allow on a request", () => {
-    expect(reasonsOf(parse(answerWith([photo("a", 1)]), forbidPhotos))).toMatch(
-      /behind a: photos are switched off for this reel by the owner; leave them out/,
+    expect(reasons(withPhotos([photo]), [PHOTO], stored(true, false, true))).toContain(
+      "photos: photos are switched off for this reel by the owner",
     );
-    const lifted = answerWith([photo("a", 1)], { photos: "allow", big_word: "keep" });
-    expect(parse(lifted, { ...forbidPhotos, requested: true })).toMatchObject({ ok: true });
+    const allowed = withPhotos([photo], { photos: "allow", big_word: "keep" });
+    expect(parse(allowed, [PHOTO], stored(true, false, true)).ok).toBe(true);
   });
 
-  it("refuses forbid and allow without a request", () => {
-    const answer = answerWith([], { photos: "forbid", big_word: "keep" });
-    expect(parse(answer).ok).toBe(false);
-    expect(parse(answer, { ...NO_RULES, requested: true })).toMatchObject({ ok: true });
+  it("refuses forbid and allow without a request, and a photo in the answer that forbids photos", () => {
+    const forbid = withPhotos([], { photos: "forbid", big_word: "keep" });
+    expect(parse(forbid, [PHOTO]).ok).toBe(false);
+    expect(parse(forbid, [PHOTO], REQUEST).ok).toBe(true);
+    const both = withPhotos([photo], { photos: "forbid", big_word: "keep" });
+    expect(parse(both, [PHOTO], REQUEST).ok).toBe(false);
   });
 
-  it("refuses a photo in the same answer that forbids photos", () => {
-    const answer = answerWith([photo("a", 1)], { photos: "forbid", big_word: "keep" });
-    expect(reasonsOf(parse(answer, { ...NO_RULES, requested: true }))).toMatch(
-      /photos are switched off/,
+  it("refuses the big word while it is forbidden", () => {
+    const big = answer((a) => (a.big_word = { word: "w0005" }));
+    expect(parse(big).ok).toBe(true);
+    expect(reasons(big, [], stored(false, true))).toContain(
+      "big_word: the big word is switched off for this reel by the owner",
     );
-  });
-
-  it("refuses an unspoken big word on the automatic run, accepts it on a request", () => {
-    const answer = answerWith([bigWord("ZEBRA")]);
-    expect(reasonsOf(parse(answer))).toMatch(
-      /behind big: the big word must be one of the words spoken while it shows/,
-    );
-    expect(parse(answer, { ...NO_RULES, requested: true })).toMatchObject({ ok: true });
   });
 
   it("applies the rules to the stored flags", () => {
-    const stored = { photos: true, bigWord: false };
-    expect(applyBehindRules(stored, { photos: "keep", big_word: "keep" })).toEqual(stored);
-    expect(applyBehindRules(stored, { photos: "allow", big_word: "forbid" })).toEqual({
+    const flags = { photos: true, bigWord: false };
+    expect(applyBehindRules(flags, { photos: "keep", big_word: "keep" })).toEqual(flags);
+    expect(applyBehindRules(flags, { photos: "allow", big_word: "forbid" })).toEqual({
       photos: false,
       bigWord: true,
     });
   });
 });
 
-describe("parseDecideAnswer", () => {
-  const parse = (answer: unknown) =>
-    parseDecideAnswer(answer, ISSEBYA_PRESET, hand.transcript, hand.edit.duration);
-
-  function withCaption(change: (caption: Json) => void) {
-    const answer = structuredClone(answerOf(hand.edit)) as unknown as {
-      tracks: { captions: Json[] };
-    };
-    change(answer.tracks.captions[3]!);
-    return answer;
-  }
-
-  function refused(answer: unknown): string {
-    const result = parse(answer);
-    if (result.ok) throw new Error("expected the answer to be refused");
-    return result.reasons.join("\n");
-  }
-
-  it("accepts the hand fixture's tracks", () => {
-    expect(parse(answerOf(hand.edit))).toMatchObject({ ok: true });
-  });
-
-  it("refuses a word id of another reel", () => {
-    const foreign = short.transcript.words.find(
-      (word) => !hand.transcript.words.some((own) => own.id === word.id),
-    )!;
-    expect(refused(withCaption((caption) => (caption.start = { word: foreign.id })))).toMatch(
-      /item cw3 \(captions\[3\]\.start/,
-    );
-  });
-
-  it("refuses a time past the reel's end", () => {
-    const time = hand.edit.duration + 1;
-    expect(refused(withCaption((caption) => (caption.end = { time })))).toMatch(
-      /item cw3 \(captions\[3\]\.end/,
-    );
-  });
-
-  it("refuses a font outside the preset", () => {
-    expect(refused(withCaption((caption) => (caption.font = "comic-sans")))).toMatch(
-      /item cw3 \(captions\[3\]\.font\)/,
-    );
-  });
-
-  it("refuses a position outside the safe box", () => {
-    expect(
-      refused(withCaption((caption) => (caption.position = { x: 900, y: 700, align: "left" }))),
-    ).toMatch(/item cw3 \(captions\[3\]\.position\.x\)/);
-  });
-
-  it("refuses a free_field entry with a malformed item id", () => {
-    expect(
-      refused({ ...answerOf(hand.edit), free_field: [{ item: "Bad Id", reason: "x" }] }),
-    ).toMatch(/free_field/);
-  });
-
-  it("requires a change title of 1 to 60 characters", () => {
-    const untitled: Partial<ReturnType<typeof answerOf>> = answerOf(hand.edit);
-    delete untitled.change_title;
-    expect(refused(untitled)).toMatch(/change_title/);
-    expect(refused({ ...answerOf(hand.edit), change_title: "" })).toMatch(/change_title/);
-    expect(refused({ ...answerOf(hand.edit), change_title: "x".repeat(61) })).toMatch(
-      /change_title/,
-    );
-    expect(
-      parse({ ...answerOf(hand.edit), change_title: "Transitions made longer" }),
-    ).toMatchObject({ ok: true });
-  });
-});
-
 describe("editFromAnswer", () => {
-  it("keeps the current version's inputs and duration", () => {
-    const current = { ...short.edit, duration: short.edit.duration };
-    const result = editFromAnswer(current, answerOf(short.edit), ISSEBYA_PRESET, short.transcript);
-    if (!result.ok) throw new Error(result.reasons.join("; "));
-    expect(result.edit.inputs).toEqual(short.edit.inputs);
-    expect(result.edit.duration).toBe(short.edit.duration);
-    expect(result.edit).toEqual(short.edit);
+  const place = async (json: Json, current = short.edit) => {
+    const parsed = parse(json, [PHOTO], REQUEST);
+    if (!parsed.ok) throw new Error(parsed.reasons.join("; "));
+    return editFromAnswer(
+      current,
+      parsed.answer,
+      ISSEBYA_PRESET,
+      short.transcript,
+      [],
+      await nodeMeasurer(),
+    );
+  };
+
+  it("keeps the current version's inputs, duration, footage and sounds", async () => {
+    const made = await place(answer());
+    expect(made.ok).toBe(true);
+    if (!made.ok) return;
+    expect(made.edit.inputs).toEqual(short.edit.inputs);
+    expect(made.edit.duration).toBe(short.edit.duration);
+    expect(made.edit.tracks.footage).toEqual(short.edit.tracks.footage);
+    expect(made.edit.tracks.sounds).toEqual(short.edit.tracks.sounds);
   });
 
-  it("drops a cut-out track the answer carries anyway", () => {
-    const tracks = {
-      ...structuredClone(short.edit.tracks),
-      cutout: [{ id: "cutout", start: { reel: "start" }, end: { reel: "end" } }],
-    } as Edit["tracks"];
-    const result = editFromAnswer(short.edit, { tracks }, ISSEBYA_PRESET, short.transcript);
-    if (!result.ok) throw new Error(result.reasons.join("; "));
-    expect(result.edit.tracks).not.toHaveProperty("cutout");
+  it("drops the current masks and photos", async () => {
+    const current = structuredClone(short.edit);
+    current.inputs.masks = [
+      { step: "cutout", fingerprint: "f".repeat(64), file: "mask.mp4", start: 0, end: 2 },
+    ];
+    current.inputs.photos = [PHOTO];
+    const made = await place(answer(), current);
+    if (!made.ok) throw new Error(made.reasons.join("; "));
+    expect(made.edit.inputs.masks).toBeUndefined();
+    expect(made.edit.inputs.photos).toBeUndefined();
   });
 
-  it("refuses an id used twice", () => {
-    const tracks = structuredClone(short.edit.tracks);
-    tracks.captions[1]!.id = tracks.captions[0]!.id;
-    const result = editFromAnswer(short.edit, { tracks }, ISSEBYA_PRESET, short.transcript);
-    expect(result.ok).toBe(false);
-    expect(!result.ok && result.reasons.join("\n")).toMatch(/caption cw0001: id used twice/);
+  it("drops a behind item that cannot last 2 s before the reel ends, with the reason", async () => {
+    const made = await place(
+      answer((a) => {
+        a.accents = [];
+        a.photos = [{ photo_id: PHOTO, from: "w0001", to: "w0010" }];
+        a.big_word = { word: "w0005" };
+      }),
+    );
+    if (!made.ok) throw new Error(made.reasons.join("; "));
+    expect(made.edit.tracks.behind?.map((item) => item.id)).toEqual(["photo-1"]);
+    expect(made.record).toContainEqual(
+      expect.objectContaining({ item: "big-word", action: "dropped", rule: "big-word-time" }),
+    );
   });
 });
 

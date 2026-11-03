@@ -3,9 +3,11 @@ import { type Context, trace } from "@opentelemetry/api";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  type Check,
   type DecideAnswer,
   type DecideRules,
   type Edit,
+  type EngineNote,
   type EditRef,
   ISSEBYA_PRESET,
   type Measurer,
@@ -29,6 +31,7 @@ import type { AiRunner } from "../ai.ts";
 import { ensureCutouts } from "../cutout/ensure-cutouts.ts";
 import { withMasks } from "../cutout/spans.ts";
 import { editMeasurer } from "../edit-measurer.ts";
+import { engineRecordLine } from "../engine-record.ts";
 import { AiUnavailable, AnswerRefused, permanentAfterAiCall } from "../failure.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { type ToolPaths, toolPaths } from "../pipeline/tools.ts";
@@ -72,12 +75,22 @@ export interface DecideRun {
   spawnTool?: SpawnTool;
   env?: NodeJS.ProcessEnv;
   recordStored?: (key: string, bytes: number) => Promise<void>;
+  // Where the engine record and a layout check the engine broke are logged.
+  log?: (line: string) => void;
 }
 
 // A refused attempt carries its reasons (the tail's lines) and the names of
 // the rules it failed (data for the job and error tracking, never free text).
+// A placed one carries the engine's record and the layout checks of its build.
 type Attempt =
-  | { ok: true; edit: Edit; answer: DecideAnswer; reasons: [] }
+  | {
+      ok: true;
+      edit: Edit;
+      answer: DecideAnswer;
+      record: EngineNote[];
+      checks: Check[];
+      reasons: [];
+    }
   | { ok: false; reasons: string[]; rules: string[] };
 
 // The number of items over every track of an edit (`reel.tracks_items`).
@@ -101,14 +114,19 @@ function roundLines(round: number, reasons: readonly string[]): string[] {
   return [`round ${round}:`, ...shown, `- and ${reasons.length - shown.length} more`];
 }
 
-// The pipeline's one AI step: Claude Code starts from the current version and
-// answers with new tracks matching a JSON Schema made for this reel. The
-// answer is checked again by Zod, built, run through the layout checks and
-// the glossary check. A refused answer goes back once with its reasons; a
-// second refusal fails the step with both rounds' reasons and writes nothing,
-// so the current version stays. A passing answer becomes a new version, once
-// the masks its behind items need are stored (the `cutout` step); a failed
-// cut-out saves nothing.
+// The pipeline's one AI step: Claude Code starts from the current version's
+// choices and answers in meaning only (word ids, photo ids, wishes) with a
+// JSON Schema made for this reel. The answer is checked again by Zod and the
+// glossary check; only an answer breaking those is refused. It goes back once
+// with its reasons; a second refusal fails the step with both rounds' reasons
+// and writes nothing, so the current version stays. Layout never refuses an
+// answer: the layout engine (`editFromAnswer`) places every item, dropping
+// what fits nowhere into its record, and the layout checks are its final
+// guard. A check failing on the engine's output is an engine bug: it is
+// logged with the reel id and stored on the row, and the version is still
+// saved. A placed answer becomes a new version, once the masks its behind
+// items need are stored (the `cutout` step); a failed cut-out saves nothing.
+// The engine record is saved with the version and logged in one line.
 // Never cached: a retried job decides again from the then-current version.
 export function runDecide({
   ctx,
@@ -127,6 +145,7 @@ export function runDecide({
   spawnTool,
   env = process.env,
   recordStored,
+  log = console.log,
 }: DecideRun): Promise<void> {
   const preset = ISSEBYA_PRESET;
   return runToolsStep(ctx, {
@@ -159,11 +178,10 @@ export function runDecide({
       const photosOff = forbid.photos && request === null;
       const library = photos && !photosOff ? await photos.readyPhotos(ctx.job.owner_id) : [];
       const photoIds = library.map((photo) => photo.id);
-      const schema = decideJsonSchema(preset, transcript, current.duration, photoIds, decideRules);
+      const schema = decideJsonSchema(preset, transcript, photoIds, decideRules);
       const input = decideInput({
         current,
         transcript,
-        headTrack,
         preset,
         library,
         forbid,
@@ -194,28 +212,46 @@ export function runDecide({
             result.answer,
             preset,
             transcript,
-            current.duration,
             photoIds,
             decideRules,
           );
           if (!answer.ok) return { ok: false, reasons: answer.reasons, rules: ["answer-schema"] };
-          const composed = editFromAnswer(current, answer.answer, preset, transcript);
+          // Meaning only: the layout engine places the answer's words.
+          const composed = editFromAnswer(
+            current,
+            answer.answer,
+            preset,
+            transcript,
+            headTrack,
+            measure,
+          );
           if (!composed.ok) return { ok: false, reasons: composed.reasons, rules: ["answer-edit"] };
-          // Built with the masks it will name: their fingerprints are known
-          // before any is made.
-          const checks = [
-            ...build(withMasks(composed.edit, transcript), transcript, headTrack, preset, measure)
-              .checks,
-            ...glossaryChecks(composed.edit, transcript, preset),
-          ];
-          if (checks.length > 0) {
+          // What the answer wrote: a fix showing a glossary word's heard form.
+          const glossary = glossaryChecks(composed.edit, transcript, preset);
+          if (glossary.length > 0) {
             return {
               ok: false,
-              reasons: checks.map((check) => `${check.rule} ${check.item}: ${check.reason}`),
-              rules: checks.map((check) => check.rule),
+              reasons: glossary.map((check) => `${check.rule} ${check.item}: ${check.reason}`),
+              rules: glossary.map((check) => check.rule),
             };
           }
-          return { ok: true, edit: composed.edit, answer: answer.answer, reasons: [] };
+          // Built with the masks it will name: their fingerprints are known
+          // before any is made.
+          const { checks } = build(
+            withMasks(composed.edit, transcript),
+            transcript,
+            headTrack,
+            preset,
+            measure,
+          );
+          return {
+            ok: true,
+            edit: composed.edit,
+            answer: answer.answer,
+            record: composed.record,
+            checks,
+            reasons: [],
+          };
         };
 
         // Exactly one retry, never a loop.
@@ -233,7 +269,20 @@ export function runDecide({
         }
 
         ctx.signal.throwIfAborted();
-        const { answer } = passed;
+        const { answer, record, checks } = passed;
+        // The engine's only allowed face covering: captions it put over the
+        // face because nothing else was free, and said so in its record.
+        const coversFace = new Set(
+          record.filter((note) => note.action === "covers-face").map((note) => note.item),
+        );
+        const broken = checks.filter(
+          (check) => !(check.rule === "face" && coversFace.has(check.item)),
+        );
+        if (broken.length > 0) {
+          log(
+            `${STEP}: engine bug, reel ${reelId}: ${broken.map((check) => `${check.rule} ${check.item}: ${check.reason}`).join("; ")}`,
+          );
+        }
         // The masks first: a version is saved (and so shown) only once they
         // exist. A failure here comes after the AI call, so it is permanent.
         const edit = await ensureCutouts({
@@ -264,12 +313,14 @@ export function runDecide({
             promptVersion: PROMPT_VERSION,
             changeTitle: answer.change_title,
             changeSummary: answer.change_summary,
-            // The passing build's checks: none failed.
-            checks: [],
-            usedFreeField: usedFreeField(edit) || answer.free_field.length > 0,
+            // The engine's build checks: empty unless the engine broke a rule.
+            checks,
+            // The answer has no free style field; a kept item may still carry one.
+            usedFreeField: usedFreeField(edit),
             unexpressed: answer.unexpressed,
-            freeField: answer.free_field,
+            freeField: [],
             rejectedReasons: first.ok ? [] : first.reasons,
+            engineRecord: record,
             forbid: {
               photos: answer.behind_rules.photos === "keep" ? null : after.photos,
               bigWord: answer.behind_rules.big_word === "keep" ? null : after.bigWord,
@@ -277,8 +328,10 @@ export function runDecide({
             edit,
           },
         ).catch(permanentAfterAiCall);
+        log(engineRecordLine(reelId, saved.number, record));
         trace.getSpan(stepContext)?.setAttribute("reel.tracks_items", trackItems(edit));
         const counts = decideCounts(edit, transcript, preset);
+        const dropped = record.filter((note) => note.action === "dropped").length;
         const what = [
           `version ${saved.number}: ${plural(counts.accents, "accent")}`,
           plural(counts.transitions, "transition"),
@@ -287,6 +340,7 @@ export function runDecide({
           ...(counts.behindPhotos + counts.behindWords > 0
             ? [`${counts.behindPhotos + counts.behindWords} behind`]
             : []),
+          ...(dropped > 0 ? [`${dropped} dropped`] : []),
         ].join(", ");
         return { what, ai: usage };
       } finally {

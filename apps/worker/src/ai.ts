@@ -228,12 +228,16 @@ function scriptFrom(path: string): unknown[] {
 
 // A decide answer with no items: what the double gives without a script.
 export const EMPTY_DECIDE_ANSWER = {
-  tracks: { footage: [], captions: [], overlays: [], transitions: [], sounds: [] },
+  accents: [],
+  big_word: null,
+  photos: [],
+  transitions: [],
+  word_fixes: [],
+  checklist: [],
+  behind_rules: { photos: "keep", big_word: "keep" },
   change_title: "ok",
   change_summary: "ok",
   unexpressed: [],
-  free_field: [],
-  behind_rules: { photos: "keep", big_word: "keep" },
 };
 
 // The double only when E2E_MOCK_AI is exactly "true" (its script from

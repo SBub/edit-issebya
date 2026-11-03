@@ -104,7 +104,19 @@ export interface Preset {
     fallbackY: number;
     lineGap: number;
   };
-  accent: { font: FontKey; color: string; aboveHead: number; noHeadY: number };
+  // An accent shows from its first word to `afterSeconds` after its last,
+  // at least `minSeconds`.
+  accent: {
+    font: FontKey;
+    color: string;
+    aboveHead: number;
+    noHeadY: number;
+    minSeconds: number;
+    afterSeconds: number;
+  };
+  // The layout engine: text shrinks to `minScale` of its size before it gives
+  // up a place, and keeps `gap` pixels from the face and from other text.
+  layout: { minScale: number; gap: number };
   // Spots beside the head (build.py's `_slots`).
   slots: { firstRow: number; rowGap: number; rightDrop: number; minLeft: number; minRight: number };
   transitions: Record<TransitionType, PresetTransition>;
@@ -193,7 +205,15 @@ export const ISSEBYA_PRESET: Preset = {
     fallbackY: 1290,
     lineGap: 14,
   },
-  accent: { font: "primary", color: "#B3E6FF", aboveHead: 190, noHeadY: 1130 },
+  accent: {
+    font: "primary",
+    color: "#B3E6FF",
+    aboveHead: 190,
+    noHeadY: 1130,
+    minSeconds: 1.5,
+    afterSeconds: 1,
+  },
+  layout: { minScale: 0.6, gap: 12 },
   slots: { firstRow: 610, rowGap: 85, rightDrop: 42, minLeft: 110, minRight: 90 },
   transitions: {
     dim: {

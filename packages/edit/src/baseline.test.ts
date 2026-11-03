@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { baselineEdit } from "./baseline.ts";
+import { placeEdit } from "./engine.ts";
+import { nodeMeasurer } from "./test-support/measurer.node.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import { parseEdit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
@@ -22,11 +24,18 @@ function captions(transcript: Transcript) {
 }
 
 describe("baselineEdit", () => {
-  it("is the stored baseline of the fixture clip", () => {
+  it("is the stored baseline of the fixture clip, once the layout engine placed it", async () => {
     const stored = FIXTURES.find((fixture) => fixture.name === "baseline-short-speech")!;
-    expect(baselineEdit(SHORT_SPEECH.transcript, baselineInputs(), ISSEBYA_PRESET)).toEqual(
-      stored.edit,
+    const baseline = baselineEdit(SHORT_SPEECH.transcript, baselineInputs(), ISSEBYA_PRESET);
+    const { tracks } = placeEdit(
+      baseline,
+      { accents: [], big_word: null, photos: [], transitions: [], word_fixes: [] },
+      SHORT_SPEECH.transcript,
+      SHORT_SPEECH.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
     );
+    expect({ ...baseline, tracks }).toEqual(stored.edit);
   });
 
   it("has one caption per word, ending with its group, and nothing else", () => {

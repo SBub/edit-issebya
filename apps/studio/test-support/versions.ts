@@ -42,6 +42,7 @@ function adminVersionRows(admin: SupabaseClient): VersionRows {
         p_unexpressed: row.unexpressed,
         p_free_field: row.free_field,
         p_rejected_reasons: row.rejected_reasons,
+        p_engine_record: row.engine_record,
       });
       if (error) throw new Error(`version not saved: ${error.message}`);
       return data as number;

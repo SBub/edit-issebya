@@ -458,12 +458,11 @@ test("a photo and a big word behind the speaker match between preview and export
       expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
     }
 
-    // The probe: the same photo 60 px lower, exported only.
+    // The probe: the same photo in another spot (the answer has no free
+    // style to shift it by pixels any more), exported only.
     const probeId = await changeTo(
-      await behindPhotoAnswerScript(dir, photo.id, "top", {
-        top: `${ISSEBYA_PRESET.behind.spots.top.top + PROBE_SHIFT_PX}px`,
-      }),
-      "the photo 60 px lower",
+      await behindPhotoAnswerScript(dir, photo.id, "left"),
+      "the photo on the left",
     );
     await openPreview(probeId);
     const { mp4: probeMp4 } = await exportNow("behind-probe");
@@ -472,8 +471,8 @@ test("a photo and a big word behind the speaker match between preview and export
 
     // One big word behind the speaker, a second version over the same span.
     const wordId = await changeTo(
-      await behindWordAnswerScript(dir, "WORK"),
-      "the word WORK behind me",
+      await behindWordAnswerScript(dir, "w0001"),
+      "the first word big behind me",
     );
     await openPreview(wordId);
     const wordPreviews = await capturePreview("behind-word");

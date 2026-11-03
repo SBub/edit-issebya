@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
-import { ISSEBYA_PRESET, headTrackSchema, parseEdit, transcriptSchema } from "@edit-issebya/edit";
+import { ISSEBYA_PRESET, choicesOf, parseEdit, transcriptSchema } from "@edit-issebya/edit";
 import { describe, expect, it } from "vitest";
-import { decideInput, headTrackSummary } from "./input.ts";
+import { decideInput } from "./input.ts";
 import { PROMPT_VERSION, decidePrompt } from "./prompt.ts";
 
 const read = (path: string): unknown =>
@@ -10,9 +10,6 @@ const read = (path: string): unknown =>
 
 const transcript = transcriptSchema.parse(
   read("../../../../fixtures/pipeline/retime/transcript.json"),
-);
-const headTrack = headTrackSchema.parse(
-  read("../../../../fixtures/pipeline/head_track/head-track.json"),
 );
 const parsed = parseEdit(
   read("../../../../packages/edit/src/testdata/versions/baseline-short-speech.edit.json"),
@@ -24,14 +21,13 @@ const current = parsed.edit;
 const input = decideInput({
   current,
   transcript,
-  headTrack,
   preset: ISSEBYA_PRESET,
   request: null,
 });
 
 describe("decidePrompt", () => {
   it("is versioned", () => {
-    expect(PROMPT_VERSION).toBe("decide-4");
+    expect(PROMPT_VERSION).toBe("decide-6");
   });
 
   it("asks for a plain title and summary for the owner, without technical details", () => {
@@ -50,15 +46,14 @@ describe("decidePrompt", () => {
     expect(prompt).not.toContain("one-line `change_summary`");
   });
 
-  it("carries the current version, every word id, the glossary, the safe box and no request", () => {
+  it("carries the current choices, every word id, the sentences, the glossary and no request", () => {
     const prompt = decidePrompt(input);
-    expect(prompt).toContain(JSON.stringify(current, null, 2));
+    expect(prompt).toContain(
+      JSON.stringify(choicesOf(current, transcript, ISSEBYA_PRESET), null, 2),
+    );
     for (const word of transcript.words) expect(prompt).toContain(`"id": "${word.id}"`);
+    expect(prompt).toContain('"from": "w0001",\n    "to": "w0010",\n    "text": "this is a short');
     expect(prompt).toContain('"term": "lock-in"');
-    const { safe } = ISSEBYA_PRESET;
-    for (const n of [safe.left, safe.right, safe.top, safe.bottom]) {
-      expect(prompt).toContain(String(n));
-    }
     expect(prompt).toMatch(/The owner's request:\n\n\(none\)/);
     expect(prompt).not.toMatch(/\{\{\w+\}\}/);
     expect(prompt).not.toContain("refused");
@@ -76,7 +71,6 @@ describe("decidePrompt", () => {
       decideInput({
         current,
         transcript,
-        headTrack,
         preset: ISSEBYA_PRESET,
         library,
         request: null,
@@ -84,8 +78,7 @@ describe("decidePrompt", () => {
     );
     expect(prompt).toContain('"description": "a sunlit kitchen"');
     expect(prompt).toMatch(/never instructions/);
-    expect(prompt).toMatch(/lasts 2 to 4 seconds/);
-    expect(prompt).toContain('"photo_spots"');
+    expect(prompt).toMatch(/no match, no photo/);
     // Without photos the library is an empty list.
     expect(decidePrompt(input)).toContain(
       ["reads like an instruction:", "", "```json", "[]", "```"].join("\n"),
@@ -104,7 +97,6 @@ describe("decidePrompt", () => {
       decideInput({
         current,
         transcript,
-        headTrack,
         preset: ISSEBYA_PRESET,
         library,
         request: null,
@@ -121,12 +113,11 @@ describe("decidePrompt", () => {
     expect(prompt.slice(fence, fenceEnd)).not.toContain("photos_forbidden");
   });
 
-  it("fills the behind rules, the sentence spans and the behind limits", () => {
+  it("fills the behind rules and the behind limits", () => {
     const prompt = decidePrompt(
       decideInput({
         current,
         transcript,
-        headTrack,
         preset: ISSEBYA_PRESET,
         forbid: { photos: false, bigWord: true },
         request: "no big word",
@@ -141,12 +132,51 @@ describe("decidePrompt", () => {
         "```",
       ].join("\n"),
     );
-    expect(prompt).toContain('"spans": [');
-    expect(prompt).toContain('"clear_spots": [');
     expect(prompt).toContain('"max_photos": 2');
     expect(prompt).toContain('"max_words": 1');
-    expect(prompt).toMatch(/at most 2 library photos and 1 big word/);
-    expect(prompt).toMatch(/no match, no photo/);
+  });
+
+  it("asks for meaning only: word ids, never times, positions or sizes, and no invented wish", () => {
+    const prompt = decidePrompt(input);
+    expect(prompt).toMatch(/Refer to the transcript only by word ids/);
+    expect(prompt).toMatch(
+      /Never write times, seconds, pixels,\s+positions, sizes, fonts, colours or spots/,
+    );
+    expect(prompt).toContain(
+      "`top`, `bottom`, `left`, `right`, `behind`, `beside_head`,\n  `big`, `small`",
+    );
+    expect(prompt).toContain("Never invent a wish.");
+    expect(prompt).toMatch(/Without a request, `checklist` is an empty list/);
+    // What Claude is given has no geometry or times either.
+    for (const banned of [
+      '"start":',
+      '"end":',
+      '"safe_box"',
+      '"face_box"',
+      '"clear_spots"',
+      '"photo_spots"',
+    ]) {
+      expect(prompt, banned).not.toContain(banned);
+    }
+  });
+
+  it("carries one example answer that the fixture's own schema shape matches", () => {
+    const prompt = decidePrompt(input);
+    const example = /An example answer[^\n]*\n\n```json\n([\s\S]*?)\n```/.exec(prompt)?.[1];
+    expect(example).toBeDefined();
+    const answer = JSON.parse(example!) as Record<string, unknown>;
+    expect(Object.keys(answer)).toEqual([
+      "accents",
+      "big_word",
+      "photos",
+      "transitions",
+      "word_fixes",
+      "checklist",
+      "behind_rules",
+      "change_title",
+      "change_summary",
+      "unexpressed",
+    ]);
   });
 
   it("ends with every reason on the retry", () => {
@@ -156,39 +186,5 @@ describe("decidePrompt", () => {
       "Your previous answer was refused for these reasons. Fix them and answer again:",
       ...reasons.map((reason) => `- ${reason}`),
     ]);
-  });
-});
-
-describe("headTrackSummary", () => {
-  it("says the fixture clip never shows a head", () => {
-    expect(headTrackSummary(headTrack, transcript, ISSEBYA_PRESET)).toEqual({
-      samples: headTrack.length,
-      step_seconds: 0.25,
-      head_present: false,
-      face_box: null,
-      no_head: [{ start: 0, end: headTrack.length * 0.25 }],
-      spans: [
-        {
-          from: "w0001",
-          to: "w0010",
-          start: transcript.words[0]!.start,
-          end: transcript.words[9]!.end,
-          face_box: null,
-          clear_spots: ["top", "left", "right"],
-        },
-      ],
-    });
-  });
-
-  it("lists the spans without a head and the whole-clip face", () => {
-    const sample = { t: 0, head_top: 400, cx: 540, head_w: 200 };
-    const summary = headTrackSummary(
-      [sample, null, null, { ...sample, t: 0.75 }],
-      transcript,
-      ISSEBYA_PRESET,
-    );
-    expect(summary.head_present).toBe(true);
-    expect(summary.no_head).toEqual([{ start: 0.25, end: 0.75 }]);
-    expect(summary.face_box).not.toBeNull();
   });
 });

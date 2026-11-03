@@ -48,6 +48,7 @@ export function supabaseVersionRows(db: SupabaseClient): VersionRows {
         p_unexpressed: row.unexpressed,
         p_free_field: row.free_field,
         p_rejected_reasons: row.rejected_reasons,
+        p_engine_record: row.engine_record,
         p_no_photos: row.no_photos ?? null,
         p_no_big_word: row.no_big_word ?? null,
       });

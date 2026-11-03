@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // The worker's scripted decide answer for the fixture clip (one Claude Code
-// result envelope): a title, one accent, one dim transition, one fixed word.
+// result envelope, meaning only): a title phrase, one accent word, one dim
+// transition, one fixed word.
 export const SHORT_SPEECH_ANSWER = fileURLToPath(
   new URL("../../worker/src/decide/testdata/short-speech-answer.json", import.meta.url),
 );
@@ -28,28 +29,28 @@ interface BehindRules {
 
 const KEEP_RULES: BehindRules = { photos: "keep", big_word: "keep" };
 
-// The worker's version 1 over fixtures/pipeline/.
-const BASELINE = new URL(
-  "../../../packages/edit/src/testdata/versions/baseline-short-speech.edit.json",
-  import.meta.url,
-);
+// A placement wish the owner's request forwards (a photo spot here).
+type Wish = "top" | "left" | "right";
 
-// Writes, into `dir`, a script whose one answer repeats version 1's tracks, so
-// the AI's version 2 has exactly version 1's bytes. Returns its path.
+// Writes, into `dir`, a script whose one answer makes no choice at all. Version
+// 1 has none either (no accents, transitions, photos or fixes), so the AI's
+// version 2 has exactly version 1's bytes. Returns its path.
 export async function unchangedAnswerScript(dir: string): Promise<string> {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture version
-  const baseline = JSON.parse(await readFile(BASELINE, "utf8")) as { tracks: unknown };
   const envelope = {
     type: "result",
     subtype: "success",
     is_error: false,
     structured_output: {
-      tracks: baseline.tracks,
+      accents: [],
+      big_word: null,
+      photos: [],
+      transitions: [],
+      word_fixes: [],
+      checklist: [],
+      behind_rules: KEEP_RULES,
       change_title: "Nothing changed",
       change_summary: "The reel stays as it was.",
       unexpressed: [],
-      free_field: [],
-      behind_rules: KEEP_RULES,
     },
     total_cost_usd: 0,
     usage: { input_tokens: 0, output_tokens: 0 },
@@ -78,19 +79,22 @@ export async function brokenAnswerScript(dir: string): Promise<string> {
   return path;
 }
 
-// One round of a scripted decide: the behind items (none: no behind track),
-// the change summary and title (the committed answer's when not given) and
-// the behind rules (all `keep` by default).
+// One round of a scripted decide: the photos behind the speaker (none by
+// default), the big word (a word id; none by default), the change summary and
+// title (the committed answer's when not given) and the behind rules (all
+// `keep` by default).
 interface AnswerRound {
-  items: Record<string, unknown>[];
+  photos?: Record<string, unknown>[];
+  bigWord?: string;
   changeSummary: string;
   changeTitle?: string;
   rules?: BehindRules;
 }
 
-// The committed decide answer with the round's behind items, summary and rules.
+// The committed decide answer with the round's behind choices, summary and rules.
 async function roundEnvelope({
-  items,
+  photos = [],
+  bigWord,
   changeSummary,
   changeTitle,
   rules = KEEP_RULES,
@@ -98,13 +102,19 @@ async function roundEnvelope({
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed worker script
   const envelope = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
     structured_output: {
-      tracks: Record<string, unknown>;
+      accents: unknown[];
+      photos: unknown[];
+      big_word: { word: string } | null;
       change_title: string;
       change_summary: string;
       behind_rules: BehindRules;
     };
   };
-  if (items.length > 0) envelope.structured_output.tracks.behind = items;
+  envelope.structured_output.photos = photos;
+  envelope.structured_output.big_word = bigWord ? { word: bigWord } : null;
+  // On the 2.7 s fixture clip the title holds the screen for most of it, and
+  // the layout engine shows one extra at a time: a behind item needs it gone.
+  if (photos.length > 0 || bigWord) envelope.structured_output.accents = [];
   envelope.structured_output.change_summary = changeSummary;
   if (changeTitle) envelope.structured_output.change_title = changeTitle;
   envelope.structured_output.behind_rules = rules;
@@ -126,78 +136,44 @@ export async function answerRoundsScript(
 }
 
 // Writes, into `dir`, a script whose one answer is the committed decide answer
-// with `item` as the only behind-the-speaker item. Returns its path.
-function writeBehindAnswer(
-  dir: string,
-  item: Record<string, unknown>,
-  changeSummary: string,
-  rules?: BehindRules,
-): Promise<string> {
-  return answerRoundsScript(dir, [{ items: [item], changeSummary, rules }]);
-}
-
-// Writes, into `dir`, a script whose one answer is the committed decide answer
 // with nothing behind the speaker and photos switched off for the reel (the
 // answer to "no photos in this one"). Returns its path.
 export function forbidPhotosAnswerScript(dir: string): Promise<string> {
   return answerRoundsScript(dir, [
     {
-      items: [],
       changeSummary: "took the photo out; no photos in this reel",
       rules: { photos: "forbid", big_word: "keep" },
     },
   ]);
 }
 
-// One library photo behind the speaker in `spot`, from the start of w0001 to
-// the end of w0010 (about 2.6 s of the fixture clip).
-export function behindPhotoItem(
-  photoId: string,
-  spot: "top" | "left" | "right",
-  style?: Record<string, string>,
-): Record<string, unknown> {
-  return {
-    id: "behind-photo",
-    kind: "photo",
-    photo_id: photoId,
-    spot,
-    start: { word: "w0001" },
-    end: { word: "w0010", edge: "end" },
-    ...(style ? { style } : {}),
-  };
+// One library photo behind the speaker over the fixture clip's one sentence,
+// w0001 to w0010 (about 2.6 s), with the owner's wish for its spot when a
+// request names one. Without a wish (and without a head in the fixture) the
+// layout puts it in the first spot, `top`.
+export function behindPhotoItem(photoId: string, wish?: Wish): Record<string, unknown> {
+  return { photo_id: photoId, from: "w0001", to: "w0010", ...(wish ? { wish } : {}) };
 }
 
 // Writes, into `dir`, a script whose one answer is the committed decide answer
-// plus one library photo behind the speaker in `spot`, from the start of
-// w0001 to the end of w0010 (about 2.6 s of the fixture clip), with an
-// optional free style (a probe moving it). Returns its path.
+// plus one library photo behind the speaker, wished in `wish` (a change
+// request's answer; leave it out for the automatic decide). Returns its path.
 export async function behindPhotoAnswerScript(
   dir: string,
   photoId: string,
-  spot: "top" | "left" | "right",
-  style?: Record<string, string>,
+  wish?: Wish,
 ): Promise<string> {
-  return writeBehindAnswer(
-    dir,
-    behindPhotoItem(photoId, spot, style),
-    `put the photo behind me on the ${spot}`,
-  );
+  return answerRoundsScript(dir, [
+    {
+      photos: [behindPhotoItem(photoId, wish)],
+      changeSummary: `put the photo behind me${wish ? ` on the ${wish}` : ""}`,
+    },
+  ]);
 }
 
 // Writes, into `dir`, a script whose one answer is the committed decide answer
-// plus one big word behind the speaker over w0001 to the end of w0010 (about
-// 2.6 s), the photo's span, since the clip is too short for two 2 to 4 s items
-// in one version. Returns its path.
-export async function behindWordAnswerScript(dir: string, text: string): Promise<string> {
-  return writeBehindAnswer(
-    dir,
-    {
-      id: "behind-word",
-      kind: "word",
-      text,
-      start: { word: "w0001" },
-      end: { word: "w0010", edge: "end" },
-    },
-    `put the word ${text} behind me`,
-  );
+// plus the big word `word` (a word id) behind the speaker, shown from that word
+// to the end of its sentence. Returns its path.
+export async function behindWordAnswerScript(dir: string, word: string): Promise<string> {
+  return answerRoundsScript(dir, [{ bigWord: word, changeSummary: "put the big word behind me" }]);
 }

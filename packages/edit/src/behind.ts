@@ -39,7 +39,7 @@ export interface BigWordBox {
   height: number;
 }
 
-// The big word as large as fits between the side margins (at most the
+// For a version saved before the layout engine: the big word as large as fits between the side margins (at most the
 // preset's size), centred across the frame, its vertical centre below the
 // head's top at the item's start (so the head overlaps it) or at the preset's
 // line when no head is in the frame. The width comes from HarfBuzz at 1 px, so
@@ -68,6 +68,29 @@ export function bigWordLayout(
     x: Math.round((frameWidth - width) / 2),
     y: Math.round(centre - size / 2),
     width,
+    height: size,
+  };
+}
+
+// The big word where the layout engine set it: its top left corner and size
+// from the edit, its width from HarfBuzz.
+export function placedBigWord(
+  item: BehindWordItem,
+  position: { x: number; y: number },
+  size: number,
+  preset: Preset,
+  measurer: Measurer,
+): BigWordBox {
+  const { word } = preset.behind;
+  return {
+    itemId: item.id,
+    text: item.text,
+    font: word.font,
+    size,
+    color: word.color,
+    x: position.x,
+    y: position.y,
+    width: measurer.width(word.font, 1, item.text) * size,
     height: size,
   };
 }

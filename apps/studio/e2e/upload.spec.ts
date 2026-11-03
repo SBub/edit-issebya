@@ -134,7 +134,11 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     "head_track: head tracked, reused",
     "preview_copies: preview copies made, reused",
     expect.stringMatching(/^first_version: version 1 saved, /),
-    expect.stringMatching(/^decide: version 2: 1 accent, 1 transition, title set, 1 word fixed, /),
+    // On the 2.7 s clip the title holds the screen, so the layout engine
+    // drops the accent beside it (one extra at a time).
+    expect.stringMatching(
+      /^decide: version 2: 0 accents, 1 transition, title set, 1 word fixed, 1 dropped, /,
+    ),
   ]);
   // A hit: wall time only, the other measurements null.
   const { data: steps } = await admin
@@ -262,7 +266,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     model: "claude-opus-5-5",
     request: null,
     parent_id: v1!.id,
-    prompt_version: "decide-4",
+    prompt_version: "decide-6",
     change_title: script.structured_output.change_title,
     change_summary: script.structured_output.change_summary,
     checks: [],

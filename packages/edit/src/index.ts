@@ -1,4 +1,10 @@
-export { type Word, type Transcript, transcriptSchema } from "./transcript.ts";
+export {
+  type Word,
+  type Transcript,
+  type SentenceSpan,
+  sentenceSpans,
+  transcriptSchema,
+} from "./transcript.ts";
 export {
   type HeadSample,
   type HeadTrack,
@@ -53,6 +59,18 @@ export {
   parseDecideAnswer,
   usedFreeField,
 } from "./decide.ts";
+export {
+  type AccentChoice,
+  type BigWordChoice,
+  type EngineInput,
+  type PhotoChoice,
+  type TransitionChoice,
+  type Wish,
+  type WordFix,
+  WISHES,
+  choicesOf,
+} from "./engine-input.ts";
+export { type EngineAction, type EngineNote, placeEdit } from "./engine.ts";
 export { glossaryChecks } from "./glossary.ts";
 export { type HarfBuzz, type Measurer, createMeasurer } from "./measure.ts";
 export { type ResolvedItem, resolveTimeline } from "./timeline.ts";
