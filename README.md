@@ -30,30 +30,46 @@ from the repository root.
 
 ### Run the studio locally
 
+One command from the repository root starts the landing page, the studio and the worker:
+
 ```bash
-supabase start                      # once, by the owner: the shared local Supabase stack
-# fill apps/studio/.env.development and apps/worker/.env.development (copy each folder's
-# .env.example) from the values `supabase status` prints
-supabase migration up --local       # apply the migrations
-STUDIO_PORT=3001 yarn turbo run dev --filter=./apps/web --filter=./apps/studio
+yarn dev:studio                    # checks, then runs web + studio + worker; Ctrl-C stops all three
+yarn dev:studio --check            # the checks only, no servers (same as yarn dev:studio:status)
+yarn dev:studio add-owner <email>  # once: creates the owner account in the local auth
 ```
 
-Open `http://localhost:3000/studio`: the studio is reached through the landing page. ADW runs use
-their own local stack (`edit-issebya-adw`, ports 54450 to 54459, see
-`app_docs/adw-supabase-stack.md`), which you do not need to start or stop.
+`scripts/dev-studio.sh` checks that Docker is running, starts the local Supabase stack
+(`edit-issebya`, `supabase/config.toml`) if it is down, applies pending migrations
+(`supabase migration up --local`), checks that `apps/web/.env.development`,
+`apps/studio/.env.development` and `apps/worker/.env.development` exist (fill each from its
+folder's `.env.example` with the values `supabase status` prints and the R2 worker keys), and runs
+the worker doctor. It stops at the first failure with a one-line reason. Once the studio answers it
+prints:
 
-### Run the worker locally
+- Studio: `http://localhost:3000/studio` (reached through the landing page)
+- Magic link emails: Mailpit `http://127.0.0.1:54434`
+- Database: Supabase Studio `http://127.0.0.1:54433`
 
-Copy `apps/worker/.env.example` to `apps/worker/.env.development` and fill it (the local Supabase
-values from `supabase status`, the R2 worker keys). Then, from the repository root:
+Sign-in never creates a user (`shouldCreateUser: false`), so the owner account must exist in the
+local auth: `yarn dev:studio add-owner <email>` creates it as a confirmed user through the local
+Auth admin API (it refuses any host but `127.0.0.1` and `localhost`). Then sign in with that email;
+the link arrives in Mailpit.
+
+ADW runs use their own local stack (`edit-issebya-adw`, ports 54450 to 54459, see
+`app_docs/adw-supabase-stack.md`), which the command never touches.
+
+Manual fallback, each step by hand:
 
 ```bash
+supabase start                               # the shared local Supabase stack
+supabase migration up --local                # apply the migrations
 yarn workspace @edit-issebya/worker doctor   # checks the configuration and connections
-yarn workspace @edit-issebya/worker worker   # long-running: keeps taking jobs until stopped
-yarn workspace @edit-issebya/worker once     # takes one job, then exits
+STUDIO_PORT=3001 yarn turbo run dev --filter=./apps/web --filter=./apps/studio
+yarn workspace @edit-issebya/worker worker   # in a second terminal: keeps taking jobs until stopped
+yarn workspace @edit-issebya/worker once     # or: takes one job, then exits
 ```
 
-`yarn dev` does not start the worker; run it in its own terminal.
+`yarn dev` does not start the worker.
 
 ## Checks
 

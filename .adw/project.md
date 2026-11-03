@@ -281,6 +281,9 @@ on every pull request and push to `develop` and `master`.
   `R2_WORKER_SECRET_ACCESS_KEY`) never appear in `apps/web` or in `apps/studio`'s app code
   (`src/`); only `apps/worker` and the test helpers under `apps/studio/test-support/` read them.
 - Never start the worker (`worker`, `worker:prod`) in a run; only a spec spawns its `once`.
+- Never run `yarn dev:studio` or `yarn dev:studio:status` (`scripts/dev-studio.sh`) in a run: they
+  are the owner's one command, run `supabase start` and `migration up` on the developer's stack and
+  start the worker.
 - Never run `yarn workspace @edit-issebya/studio posthog:dashboard --apply` (it writes to the real
   PostHog project); only the owner runs it from their shell. The dry run (no argument or `--dry-run`)
   needs no variable and may run anywhere.

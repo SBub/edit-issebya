@@ -179,18 +179,19 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 
 ## How to Use
 
-1. Start the shared local Supabase stack (the owner does this) and apply migrations with
-   `supabase migration up --local`. ADW runs use their own local stack (`edit-issebya-adw`, ports
-   54450 to 54459, see `app_docs/adw-supabase-stack.md`), which you do not need to start or stop.
-2. Fill `apps/studio/.env.development` and `apps/worker/.env.development` from the matching
-   `.env.example` files.
-3. Run the web and studio dev servers together (see the root `README.md`) and open
-   `http://localhost:3000/studio`.
+1. Fill `apps/web/.env.development`, `apps/studio/.env.development` and
+   `apps/worker/.env.development` from the matching `.env.example` files.
+2. Create the owner account in the local auth once: `yarn dev:studio add-owner <email>`.
+3. Run `yarn dev:studio` from the repository root (see the root `README.md`): it checks Docker,
+   starts the local Supabase stack if it is down, applies the migrations, runs the worker doctor,
+   then runs the web and studio dev servers and the worker together. Open
+   `http://localhost:3000/studio`. ADW runs use their own local stack (`edit-issebya-adw`, ports
+   54450 to 54459, see `app_docs/adw-supabase-stack.md`), which the command never touches.
 4. Enter an address that already has an account, open the emailed link (local mail: Mailpit), and
    the reels list appears.
 5. Pick a clip under "Upload" and press Upload. The reel page opens and shows the job and step log.
-6. Run the worker on your machine (`yarn workspace @edit-issebya/worker worker`, see the root
-   `README.md`); the page updates without a reload when it finishes the job.
+6. The worker started by `yarn dev:studio` takes the job; the page updates without a reload when it
+   finishes.
 7. For a quick sign-in in tests or review, open the URL printed by
    `PORT=$PORT yarn workspace @edit-issebya/studio e2e:sign-in-url`.
 
