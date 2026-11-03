@@ -3,183 +3,41 @@
   "subtype": "success",
   "is_error": false,
   "structured_output": {
-    "tracks": {
-      "footage": [
-        {
-          "id": "footage",
-          "start": {
-            "reel": "start"
-          },
-          "end": {
-            "reel": "end"
-          }
-        }
-      ],
-      "captions": [
-        {
-          "id": "cw0001",
-          "start": {
-            "word": "w0001"
-          },
-          "end": {
-            "word": "w0004",
-            "edge": "end"
-          },
-          "words": ["w0001"]
-        },
-        {
-          "id": "cw0002",
-          "start": {
-            "word": "w0002"
-          },
-          "end": {
-            "word": "w0004",
-            "edge": "end"
-          },
-          "words": ["w0002"]
-        },
-        {
-          "id": "cw0003",
-          "start": {
-            "word": "w0003"
-          },
-          "end": {
-            "word": "w0004",
-            "edge": "end"
-          },
-          "words": ["w0003"]
-        },
-        {
-          "id": "cw0004",
-          "start": {
-            "word": "w0004"
-          },
-          "end": {
-            "word": "w0004",
-            "edge": "end"
-          },
-          "words": ["w0004"]
-        },
-        {
-          "id": "cw0005",
-          "start": {
-            "word": "w0005"
-          },
-          "end": {
-            "word": "w0008",
-            "edge": "end"
-          },
-          "words": ["w0005"]
-        },
-        {
-          "id": "cw0006",
-          "start": {
-            "word": "w0006"
-          },
-          "end": {
-            "word": "w0008",
-            "edge": "end"
-          },
-          "words": ["w0006"]
-        },
-        {
-          "id": "cw0007",
-          "start": {
-            "word": "w0007"
-          },
-          "end": {
-            "word": "w0008",
-            "edge": "end"
-          },
-          "words": ["w0007"]
-        },
-        {
-          "id": "cw0008",
-          "start": {
-            "word": "w0008"
-          },
-          "end": {
-            "word": "w0008",
-            "edge": "end"
-          },
-          "words": ["w0008"]
-        },
-        {
-          "id": "cw0009",
-          "start": {
-            "word": "w0009"
-          },
-          "end": {
-            "word": "w0010",
-            "edge": "end"
-          },
-          "words": ["w0009"]
-        },
-        {
-          "id": "cw0010",
-          "start": {
-            "word": "w0010"
-          },
-          "end": {
-            "word": "w0010",
-            "edge": "end"
-          },
-          "words": ["w0010"],
-          "text": "Studio"
-        }
-      ],
-      "overlays": [
-        {
-          "id": "title",
-          "kind": "accent",
-          "start": {
-            "reel": "start"
-          },
-          "end": {
-            "word": "w0004",
-            "edge": "end"
-          },
-          "text": "A short test",
-          "font": "primary",
-          "position": {
-            "x": 495,
-            "y": 420,
-            "align": "center"
-          }
-        },
-        {
-          "id": "accent-test",
-          "kind": "accent",
-          "start": {
-            "word": "w0005"
-          },
-          "end": {
-            "word": "w0005",
-            "edge": "end"
-          },
-          "words": ["w0005"]
-        }
-      ],
-      "transitions": [
-        {
-          "id": "dim-clip",
-          "type": "dim",
-          "start": {
-            "word": "w0006"
-          },
-          "end": {
-            "word": "w0008",
-            "edge": "end"
-          }
-        }
-      ],
-      "sounds": []
+    "accents": [
+      {
+        "from": "w0001",
+        "to": "w0004",
+        "title": true
+      },
+      {
+        "from": "w0005",
+        "to": "w0005",
+        "title": false
+      }
+    ],
+    "big_word": null,
+    "photos": [],
+    "transitions": [
+      {
+        "kind": "dim",
+        "from": "w0006",
+        "to": "w0008"
+      }
+    ],
+    "word_fixes": [
+      {
+        "word": "w0010",
+        "text": "Studio"
+      }
+    ],
+    "checklist": [],
+    "behind_rules": {
+      "photos": "keep",
+      "big_word": "keep"
     },
     "change_title": "Title and one accent added",
     "change_summary": "A title opens the reel and one word stands out. A soft fade marks the new topic.",
-    "unexpressed": [],
-    "free_field": [],
-    "behind_rules": { "photos": "keep", "big_word": "keep" }
+    "unexpressed": []
   },
   "total_cost_usd": 0.0123,
   "usage": {

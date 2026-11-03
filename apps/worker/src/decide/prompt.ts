@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import type { DecideInput } from "./input.ts";
 
 // Bump with every change to prompt.md: each version row records it.
-export const PROMPT_VERSION = "decide-4";
+export const PROMPT_VERSION = "decide-5";
 
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed prompt
 const TEMPLATE = readFileSync(new URL("./prompt.md", import.meta.url), "utf8");
@@ -15,9 +15,9 @@ function fenced(value: unknown): string {
 // fenced JSON and, on the retry, the reasons the first answer was refused.
 export function decidePrompt(input: DecideInput, previousReasons?: readonly string[]): string {
   const values: Record<string, string> = {
-    current_version: fenced(input.current_version),
+    current_choices: fenced(input.current_choices),
     transcript: fenced(input.transcript),
-    head_track: fenced(input.head_track),
+    sentences: fenced(input.sentences),
     preset: fenced(input.preset),
     library: fenced(input.library),
     behind_rules: fenced(input.behind_rules),

@@ -110,7 +110,7 @@ async function seekTo(page: Page, seconds: number) {
 // back by the frame's width), and whether it shows.
 function photoState(page: Page) {
   return composition(page)
-    .locator("#behind-photo")
+    .locator("#photo-1")
     .evaluate((img, frameWidth) => {
       const root = img.ownerDocument.getElementById("root")!.getBoundingClientRect();
       const box = img.getBoundingClientRect();

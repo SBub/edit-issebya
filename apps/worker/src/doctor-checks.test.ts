@@ -273,12 +273,16 @@ describe("runDoctor", () => {
     const schema = ai.calls[0]!.schema as { $schema?: unknown; properties?: object };
     expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
     expect(Object.keys(schema.properties ?? {})).toEqual([
-      "tracks",
+      "accents",
+      "big_word",
+      "photos",
+      "transitions",
+      "word_fixes",
+      "checklist",
+      "behind_rules",
       "change_title",
       "change_summary",
       "unexpressed",
-      "free_field",
-      "behind_rules",
     ]);
     expect(JSON.stringify(schema)).toContain('"enum":["w0001","w0002"]');
   });

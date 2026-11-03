@@ -1,7 +1,7 @@
-import { ISSEBYA_PRESET, type Transcript, parseEdit } from "@edit-issebya/edit";
+import { ISSEBYA_PRESET, type Transcript, parseEdit, sentenceSpans } from "@edit-issebya/edit";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { decideInput, headTrackSummary, sentenceSpans } from "./input.ts";
+import { decideInput } from "./input.ts";
 
 const word = (id: string, text: string, start: number, end: number) => ({ id, text, start, end });
 
@@ -32,29 +32,27 @@ describe("sentenceSpans", () => {
   });
 });
 
-describe("headTrackSummary spans", () => {
-  it("keeps all three spots without a head", () => {
-    const summary = headTrackSummary([null, null], transcript, ISSEBYA_PRESET);
-    for (const span of summary.spans) {
-      expect(span.face_box).toBeNull();
-      expect(span.clear_spots).toEqual(["top", "left", "right"]);
-    }
-  });
-
-  it("drops a spot the face covers more than the preset allows", () => {
-    // A head 300 px wide in the left spot: its face covers 43% of it.
-    const track = Array.from({ length: 14 }, (_, index) => ({
-      t: index * 0.25,
-      head_top: 600,
-      cx: 270,
-      head_w: 300,
-    }));
-    const summary = headTrackSummary(track, transcript, ISSEBYA_PRESET);
-    expect(summary.spans).toHaveLength(4);
-    for (const span of summary.spans) {
-      expect(span.face_box).toEqual({ left: 120, right: 420, top: 600, bottom: 1005 });
-      expect(span.clear_spots).toEqual(["top", "right"]);
-    }
+describe("decideInput sentences", () => {
+  it("gives each sentence its word ids and words, no times", () => {
+    const input = decideInput({
+      current: {
+        format: 1,
+        preset: ISSEBYA_PRESET.id,
+        duration: 3.2,
+        inputs: {} as never,
+        tracks: { footage: [], captions: [], overlays: [], transitions: [], sounds: [] },
+      },
+      transcript,
+      preset: ISSEBYA_PRESET,
+      request: null,
+    });
+    expect(input.sentences).toEqual([
+      { from: "w1", to: "w2", text: "photos help" },
+      { from: "w3", to: "w4", text: "do they" },
+      { from: "w5", to: "w5", text: "yes" },
+      { from: "w6", to: "w6", text: "always" },
+    ]);
+    expect(input.transcript[0]).toEqual({ id: "w1", text: "Photos" });
   });
 });
 
@@ -76,7 +74,6 @@ describe("decideInput library", () => {
     decideInput({
       current: parsed.edit,
       transcript: real,
-      headTrack: [],
       preset: ISSEBYA_PRESET,
       library,
       forbid: { photos, bigWord: false },

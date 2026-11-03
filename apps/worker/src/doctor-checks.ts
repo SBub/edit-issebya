@@ -171,11 +171,10 @@ const AI_SAMPLE_TRANSCRIPT: Transcript = {
     { id: "w0002", text: "there", start: 0.4, end: 0.8 },
   ],
 };
-const AI_SAMPLE_DURATION = 1;
 
 // The decide schema the AI check sends, for the sample reel.
 function doctorAiSchema(): Record<string, unknown> {
-  return decideJsonSchema(ISSEBYA_PRESET, AI_SAMPLE_TRANSCRIPT, AI_SAMPLE_DURATION);
+  return decideJsonSchema(ISSEBYA_PRESET, AI_SAMPLE_TRANSCRIPT);
 }
 
 function reasonOf(error: unknown): string {
@@ -263,17 +262,12 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
     await check("ai structured call", async () => {
       const result = await deps.ai().call(plainTool, {
         prompt:
-          'Reply with every track an empty list, change_title and change_summary "ok", unexpressed and free_field empty lists, and behind_rules photos and big_word "keep".',
+          'Reply with accents, photos, transitions, word_fixes, checklist and unexpressed empty lists, big_word null, change_title and change_summary "ok", and behind_rules photos and big_word "keep".',
         schema: doctorAiSchema(),
         cwd: tmpdir(),
       });
       if (result.kind !== "answer") throw new Error(result.reason);
-      const parsed = parseDecideAnswer(
-        result.answer,
-        ISSEBYA_PRESET,
-        AI_SAMPLE_TRANSCRIPT,
-        AI_SAMPLE_DURATION,
-      );
+      const parsed = parseDecideAnswer(result.answer, ISSEBYA_PRESET, AI_SAMPLE_TRANSCRIPT);
       if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
     }),
     await check("ai image call", () => aiImageCall(deps.ai())),

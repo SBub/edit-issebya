@@ -57,7 +57,7 @@ test.beforeAll(async () => {
     storage,
     ownerId: owner.id,
     prefix: CACHE_PREFIX,
-    aiScript: await behindPhotoAnswerScript(scriptDir, photo.id, "left"),
+    aiScript: await behindPhotoAnswerScript(scriptDir, photo.id),
   });
   for (const key of reel.keys) written.add(key);
 });
@@ -122,10 +122,11 @@ test("the automatic decide proposes a photo; no photos in this one removes it fo
 }) => {
   test.setTimeout(240_000);
 
-  // Version 2: the process job's decide put the library photo in `left`.
+  // Version 2: the process job's decide proposed the library photo, with no
+  // wish (no request), so the layout put it in the first spot clear of the face, `top`.
   const v2 = await currentVersion();
   expect(v2.version.number).toBe(2);
-  expect(v2.behind).toEqual([expect.objectContaining({ kind: "photo", spot: "left" })]);
+  expect(v2.behind).toEqual([expect.objectContaining({ kind: "photo", spot: "top" })]);
   expect(v2.version.inputs.photos).toEqual([photo!.id]);
   expect(v2.version.inputs.masks).toHaveLength(1);
   expect(v2.reel).toMatchObject({ no_photos: false, no_big_word: false });
@@ -136,7 +137,7 @@ test("the automatic decide proposes a photo; no photos in this one removes it fo
   await expect(page.locator('[data-realtime="ready"]')).toBeVisible({ timeout: 30_000 });
   await expectPreviewOf(page, v2.version.id);
   const behindRow = page.getByTestId("tracks").locator('[data-track="behind"]');
-  await expect(behindRow.getByTestId("track-item")).toHaveText(["photo left"]);
+  await expect(behindRow.getByTestId("track-item")).toHaveText(["photo top"]);
 
   // Version 3: the photo gone, photos switched off for the reel.
   await sendChange(page, FORBID, await forbidPhotosAnswerScript(scriptDir));
@@ -154,8 +155,8 @@ test("the automatic decide proposes a photo; no photos in this one removes it fo
     page,
     LATER,
     await answerRoundsScript(scriptDir, [
-      { items: [behindPhotoItem(photo!.id, "left")], changeSummary: "shorter title, photo back" },
-      { items: [], changeSummary: "shorter title" },
+      { photos: [behindPhotoItem(photo!.id)], changeSummary: "shorter title, photo back" },
+      { changeSummary: "shorter title" },
     ]),
   );
   const v4 = await currentVersion();

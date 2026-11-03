@@ -101,9 +101,10 @@ function roundLines(round: number, reasons: readonly string[]): string[] {
   return [`round ${round}:`, ...shown, `- and ${reasons.length - shown.length} more`];
 }
 
-// The pipeline's one AI step: Claude Code starts from the current version and
-// answers with new tracks matching a JSON Schema made for this reel. The
-// answer is checked again by Zod, built, run through the layout checks and
+// The pipeline's one AI step: Claude Code starts from the current version's
+// choices and answers in meaning only (word ids, photo ids, wishes) with a
+// JSON Schema made for this reel. The answer is checked again by Zod, placed
+// over the current version (`editFromAnswer`), built, run through the layout checks and
 // the glossary check. A refused answer goes back once with its reasons; a
 // second refusal fails the step with both rounds' reasons and writes nothing,
 // so the current version stays. A passing answer becomes a new version, once
@@ -159,11 +160,10 @@ export function runDecide({
       const photosOff = forbid.photos && request === null;
       const library = photos && !photosOff ? await photos.readyPhotos(ctx.job.owner_id) : [];
       const photoIds = library.map((photo) => photo.id);
-      const schema = decideJsonSchema(preset, transcript, current.duration, photoIds, decideRules);
+      const schema = decideJsonSchema(preset, transcript, photoIds, decideRules);
       const input = decideInput({
         current,
         transcript,
-        headTrack,
         preset,
         library,
         forbid,
@@ -194,12 +194,13 @@ export function runDecide({
             result.answer,
             preset,
             transcript,
-            current.duration,
             photoIds,
             decideRules,
           );
           if (!answer.ok) return { ok: false, reasons: answer.reasons, rules: ["answer-schema"] };
-          const composed = editFromAnswer(current, answer.answer, preset, transcript);
+          // Meaning only: the answer's words placed by the stand-in for the
+          // layout engine, then built and checked as before.
+          const composed = editFromAnswer(current, answer.answer, preset, transcript, headTrack);
           if (!composed.ok) return { ok: false, reasons: composed.reasons, rules: ["answer-edit"] };
           // Built with the masks it will name: their fingerprints are known
           // before any is made.
@@ -266,9 +267,10 @@ export function runDecide({
             changeSummary: answer.change_summary,
             // The passing build's checks: none failed.
             checks: [],
-            usedFreeField: usedFreeField(edit) || answer.free_field.length > 0,
+            // The answer has no free style field; a kept item may still carry one.
+            usedFreeField: usedFreeField(edit),
             unexpressed: answer.unexpressed,
-            freeField: answer.free_field,
+            freeField: [],
             rejectedReasons: first.ok ? [] : first.reasons,
             forbid: {
               photos: answer.behind_rules.photos === "keep" ? null : after.photos,

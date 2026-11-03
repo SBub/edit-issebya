@@ -110,26 +110,21 @@ afterEach(async () => {
   await rm(scratch, { recursive: true, force: true });
 });
 
+type Answer = Json & { word_fixes: Json[]; photos: Json[] };
+
 // The good answer, changed by `change`.
-function answer(change: (answer: Json & { tracks: Record<string, Json[]> }) => void = () => {}) {
-  const copy = structuredClone(scripted.structured_output) as Json & {
-    tracks: Record<string, Json[]>;
-  };
+function answer(change: (answer: Answer) => void = () => {}) {
+  const copy = structuredClone(scripted.structured_output) as Answer;
   change(copy);
   return copy;
 }
 
-// A position the answer schema accepts (inside the safe box, its bounds) whose
-// left-aligned text starts 20 px before the safe box's right edge: the text
-// runs past that edge, so the safe-box check, not the schema, refuses it.
-const NEAR_RIGHT_EDGE = { x: ISSEBYA_PRESET.safe.right - 20, align: "left" };
-
-// The title moved so its text runs past the safe box's right edge.
-const offSafeBox = () =>
+// The schema accepts a word fix in any words, so the glossary check, not the
+// schema, refuses a heard form of a glossary term ("locking" for "lock-in").
+const heardForm = () =>
   resultEnvelope(
     answer((a) => {
-      const title = a.tracks.overlays!.find((item) => item.id === "title")!;
-      title.position = { ...NEAR_RIGHT_EDGE, y: 420 };
+      a.word_fixes = [{ word: "w0003", text: "Locking" }];
     }),
   );
 
@@ -165,7 +160,7 @@ describe("runDecide", () => {
       parent_id: firstId,
       request: null,
       model: "claude-opus-5-5",
-      prompt_version: "decide-4",
+      prompt_version: "decide-5",
       change_title: (scripted.structured_output as Json).change_title,
       change_summary: (scripted.structured_output as Json).change_summary,
       checks: [],
@@ -199,13 +194,28 @@ describe("runDecide", () => {
     expect(await readdir(scratch)).toEqual([]);
   });
 
+  it("saves exactly version 1's bytes for an answer with no choices (the E2E unchanged script)", async () => {
+    const empty = resultEnvelope(
+      answer((a) => {
+        a.accents = [];
+        a.transitions = [];
+        a.word_fixes = [];
+      }),
+    );
+    const { run } = await decide(fakeAiRunner([empty]));
+    await run;
+    const bytes = async (id: string) =>
+      new TextDecoder().decode((await storage.get(rows.get(id)!.r2_key))!);
+    expect(await bytes(current!)).toBe(await bytes(firstId));
+  });
+
   it("retries once with the first answer's reasons, then saves (verification 2)", async () => {
-    const ai = fakeAiRunner([offSafeBox(), scripted]);
+    const ai = fakeAiRunner([heardForm(), scripted]);
     const { run } = await decide(ai);
     await run;
     expect(ai.calls).toHaveLength(2);
     expect(ai.calls[1]!.prompt).toMatch(/Your previous answer was refused/);
-    expect(ai.calls[1]!.prompt).toMatch(/- safe-box title: /);
+    expect(ai.calls[1]!.prompt).toMatch(/- glossary cw0003: /);
     const v2 = rows.get(current!)!;
     // The model is the last one reported (the second round's).
     expect(v2).toMatchObject({
@@ -215,33 +225,35 @@ describe("runDecide", () => {
       model: "claude-opus-5-5",
     });
     expect(v2.rejected_reasons).toHaveLength(1);
-    expect(v2.rejected_reasons[0]).toMatch(/^safe-box title: .* runs past the safe box/);
+    expect(v2.rejected_reasons[0]).toMatch(/^glossary cw0003: caption cw0003 shows "Locking"/);
   });
 
   it("fails after two refused answers and writes nothing (verification 3)", async () => {
-    const ai = fakeAiRunner([offSafeBox(), offSafeBox()]);
+    const ai = fakeAiRunner([heardForm(), heardForm()]);
     const { run, calls } = await decide(ai);
     await expect(run).rejects.toThrow(/the answer failed twice/);
     const failed = lastCall(calls);
     if (failed.call !== "failed") throw new Error(JSON.stringify(calls));
     expect(failed.tail).toMatch(/^decide: the answer failed twice, version 1 stays current\n/);
-    expect(failed.tail).toMatch(/round 1:\n- safe-box title: [^\n]*\nround 2:\n- safe-box title: /);
+    expect(failed.tail).toMatch(
+      /round 1:\n- glossary cw0003: [^\n]*\nround 2:\n- glossary cw0003: /,
+    );
     expect(current).toBe(firstId);
     expect(rows.size).toBe(1);
     expect(await storage.list(`${PREFIX}reels/${TEST_JOB.reel_id}/versions/`)).toHaveLength(1);
   });
 
   it("throws with the rule names of both rounds as data, the tail unchanged", async () => {
-    const ai = fakeAiRunner(["not json", offSafeBox()]);
+    const ai = fakeAiRunner(["not json", heardForm()]);
     const { run, calls } = await decide(ai);
     const error = await run.catch((thrown: unknown) => thrown);
     const refused = findCause(error, AnswerRefused);
-    expect(refused?.rules).toEqual(["answer-json", "safe-box"]);
+    expect(refused?.rules).toEqual(["answer-json", "glossary"]);
     expect(refused?.rounds).toBe(2);
     const failed = lastCall(calls);
     if (failed.call !== "failed") throw new Error(JSON.stringify(calls));
     expect(failed.tail).toMatch(
-      /round 1:\n- the answer was not valid JSON[^\n]*\nround 2:\n- safe-box title: /,
+      /round 1:\n- the answer was not valid JSON[^\n]*\nround 2:\n- glossary cw0003: /,
     );
   });
 
@@ -306,7 +318,7 @@ describe("runDecide", () => {
     });
 
     const bad = {
-      ...offSafeBox(),
+      ...heardForm(),
       total_cost_usd: 0.01,
       usage: { input_tokens: 10, output_tokens: 5 },
     };
@@ -322,7 +334,7 @@ describe("runDecide", () => {
 
   it("records the usage on a failed decide too", async () => {
     const bad = {
-      ...offSafeBox(),
+      ...heardForm(),
       total_cost_usd: 0.01,
       usage: { input_tokens: 10, output_tokens: 5 },
     };
@@ -338,12 +350,7 @@ describe("runDecide", () => {
   });
 
   it("refuses a caption showing a glossary word's heard form", async () => {
-    const locking = resultEnvelope(
-      answer((a) => {
-        a.tracks.captions![2]!.text = "Locking";
-      }),
-    );
-    const ai = fakeAiRunner([locking, scripted]);
+    const ai = fakeAiRunner([heardForm(), scripted]);
     const { run } = await decide(ai);
     await run;
     expect(ai.calls).toHaveLength(2);
@@ -352,23 +359,45 @@ describe("runDecide", () => {
     ]);
   });
 
-  it("records the free field's use", async () => {
-    const styled = resultEnvelope(
+  it("refuses an answer carrying a time or a position, as the schema's", async () => {
+    const placed = resultEnvelope(
       answer((a) => {
-        a.tracks.overlays![1]!.style = { "letter-spacing": "2px" };
-        a.free_field = [{ item: "accent-test", reason: "letter spacing" }];
+        (a.accents as Json[])[1]!.start = { time: 0.9 };
+        (a.accents as Json[])[1]!.position = { x: 500, y: 400, align: "center" };
       }),
     );
-    const { run } = await decide(fakeAiRunner([styled]));
+    const ai = fakeAiRunner([placed, scripted]);
+    const { run } = await decide(ai);
     await run;
-    expect(rows.get(current!)).toMatchObject({
-      used_free_field: true,
-      free_field: [{ item: "accent-test", reason: "letter spacing" }],
-    });
+    expect(ai.calls).toHaveLength(2);
+    const v2 = rows.get(current!)!;
+    expect(v2.rejected_reasons.join("\n")).toMatch(/^accents\.1: .*"start".*"position"/m);
+    expect(v2).toMatchObject({ used_free_field: false, free_field: [] });
+  });
+
+  it("places the answer's words: items anchored on them, the fix on its caption", async () => {
+    const { run } = await decide(fakeAiRunner([scripted]));
+    await run;
+    const stored = JSON.parse(
+      new TextDecoder().decode((await storage.get(rows.get(current!)!.r2_key))!),
+    ) as { tracks: Record<string, Json[]> };
+    expect(stored.tracks.overlays!.map((item) => [item.id, item.start, item.end])).toEqual([
+      ["title", { word: "w0001" }, { word: "w0004", edge: "end" }],
+      ["accent-1", { word: "w0005" }, { word: "w0005", edge: "end" }],
+    ]);
+    expect(stored.tracks.transitions).toEqual([
+      {
+        id: "transition-1",
+        type: "dim",
+        start: { word: "w0006" },
+        end: { word: "w0008", edge: "end" },
+      },
+    ]);
+    expect(stored.tracks.captions!.find((item) => item.id === "cw0010")!.text).toBe("Studio");
   });
 
   it("asks at most twice, however many bad answers are scripted", async () => {
-    const ai = fakeAiRunner([offSafeBox(), offSafeBox(), offSafeBox()]);
+    const ai = fakeAiRunner([heardForm(), heardForm(), heardForm()]);
     const { run } = await decide(ai);
     await expect(run).rejects.toThrow();
     expect(ai.calls).toHaveLength(2);
@@ -377,7 +406,10 @@ describe("runDecide", () => {
   it("keeps the failure tail within 20 lines when there are many reasons", async () => {
     const many = resultEnvelope(
       answer((a) => {
-        for (const caption of a.tracks.captions!) caption.position = { ...NEAR_RIGHT_EDGE, y: 700 };
+        a.word_fixes = Array.from({ length: 10 }, (_, index) => ({
+          word: `w${String(index + 1).padStart(4, "0")}`,
+          text: "locking",
+        }));
       }),
     );
     const { run, calls } = await decide(fakeAiRunner([many, many]));
@@ -388,7 +420,7 @@ describe("runDecide", () => {
     expect(lines.length).toBeLessThanOrEqual(20);
     expect(lines[0]).toMatch(/^decide: the answer failed twice/);
     expect(failed.tail).toMatch(/- and 3 more\nround 2:/);
-    expect(failed.tail).toMatch(/round 2:\n- safe-box cw\d+: /);
+    expect(failed.tail).toMatch(/round 2:\n- glossary cw\d+: /);
   });
 });
 
@@ -412,7 +444,7 @@ describe("runDecide when the AI is not available", () => {
   it("throws AiUnavailable on the second call too", async () => {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
     const limit = JSON.parse(await readFile(USAGE_LIMIT, "utf8")) as Json;
-    const ai = fakeAiRunner([offSafeBox(), limit]);
+    const ai = fakeAiRunner([heardForm(), limit]);
     const { run, calls } = await decide(ai);
     await expect(run).rejects.toThrow();
     expect(ai.calls).toHaveLength(2);
@@ -450,13 +482,12 @@ describe("runDecide with a behind item", () => {
       ];
     },
   };
-  const photoItem = (id = "behind-photo", spot = "left") => ({
-    id,
-    kind: "photo",
+  // A photo over the fixture's one sentence, w0001 to w0010 (about 2.6 s).
+  const photoItem = (wish?: string): Json => ({
     photo_id: PHOTO,
-    spot,
-    start: { word: "w0001" },
-    end: { word: "w0010", edge: "end" },
+    from: "w0001",
+    to: "w0010",
+    ...(wish ? { wish } : {}),
   });
   const behindAnswer = (
     items: Json[] = [photoItem()],
@@ -464,7 +495,7 @@ describe("runDecide with a behind item", () => {
   ) =>
     resultEnvelope(
       answer((a) => {
-        if (items.length > 0) a.tracks.behind = items;
+        a.photos = items;
         a.behind_rules = rules;
       }),
     );
@@ -556,15 +587,13 @@ describe("runDecide with a behind item", () => {
   });
 
   it("refuses a third photo, then saves the retry that keeps one", async () => {
-    const three = behindAnswer([photoItem("a"), photoItem("b"), photoItem("c")]);
+    const three = behindAnswer([photoItem(), photoItem(), photoItem()]);
     const ai = fakeAiRunner([three, behindAnswer()]);
     const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool);
     await run;
     expect(ai.calls).toHaveLength(2);
     const v2 = rows.get(current!)!;
-    expect(v2.rejected_reasons.join("\n")).toMatch(
-      /behind c: a third photo; at most 2 photos per reel/,
-    );
+    expect(v2.rejected_reasons.join("\n")).toMatch(/^photos: at most 2 photos per reel/m);
     expect(v2.inputs.photos).toEqual([PHOTO]);
     expect(v2).toMatchObject({ no_photos: null, no_big_word: null });
   });
@@ -594,7 +623,7 @@ describe("runDecide with a behind item", () => {
     expect(ai.calls[0]!.prompt).toContain('"photos_forbidden": true');
     const v2 = rows.get(current!)!;
     expect(v2.rejected_reasons.join("\n")).toMatch(
-      /behind behind-photo: photos are switched off for this reel by the owner/,
+      /^photos: photos are switched off for this reel by the owner/m,
     );
     expect(v2).toMatchObject({ no_photos: null, no_big_word: null });
     expect(v2.inputs.photos).toBeUndefined();
@@ -625,25 +654,18 @@ describe("runDecide with a behind item", () => {
     expect(rows.get(current!)!.number).toBe(2);
   });
 
-  it("sends a photo the face takes over back once, then saves the retry", async () => {
-    // A head 300 px wide in the left spot: its face covers 43% of it.
-    const ref = rows.get(firstId)!.inputs.head_track;
-    const key = cacheKey(PREFIX, ref.step, ref.fingerprint, ref.file);
-    const track = Array.from({ length: 12 }, (_, index) => ({
-      t: index * 0.25,
-      head_top: 600,
-      cx: 270,
-      head_w: 300,
-    }));
-    await storage.put(key, new TextEncoder().encode(JSON.stringify(track)));
-    const ai = fakeAiRunner([behindAnswer([photoItem("behind-photo", "left")]), behindAnswer([])]);
-    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool);
+  it("puts the photo in the spot the owner's wish names", async () => {
+    const ai = fakeAiRunner([behindAnswer([photoItem("left")])]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool, {
+      request: "the photo on the left",
+    });
     await run;
-    expect(ai.calls).toHaveLength(2);
-    expect(ai.calls[0]!.prompt).toContain('"clear_spots"');
-    const v2 = rows.get(current!)!;
-    expect(v2.rejected_reasons.join("\n")).toMatch(
-      /^behind-face behind-photo: photo behind-photo in the left spot: the face covers 43% of it/m,
-    );
+    expect(ai.calls[0]!.prompt).not.toContain('"clear_spots"');
+    const stored = JSON.parse(
+      new TextDecoder().decode((await storage.get(rows.get(current!)!.r2_key))!),
+    ) as { tracks: { behind: Json[] } };
+    expect(stored.tracks.behind).toEqual([
+      expect.objectContaining({ id: "photo-1", kind: "photo", spot: "left" }),
+    ]);
   });
 });

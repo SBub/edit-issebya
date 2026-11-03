@@ -140,6 +140,27 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   the player and the render's frame injector show the same pixels. A span with no matching entry
   in `inputs.masks` (start and end within half a millisecond) throws.
 
+### The layout engine's input (stand-in placement)
+
+- `src/engine-input.ts`: `EngineInput` is what the decide answer hands the layout: `accents`
+  (word ranges, one may be the title), `big_word` (one word id or null), `photos` (a library id and
+  a word range), `transitions` (a kind and a word range), `word_fixes` (a word id and its text), each
+  with an optional `wish` from `WISHES` (`top`, `bottom`, `left`, `right`, `behind`, `beside_head`,
+  `big`, `small`). No times, positions, sizes or spots.
+- `placeDirect(current, input, transcript, headTrack, preset)` is the stand-in until the layout
+  engine replaces it: footage and sounds kept from the current version; captions kept with each fix
+  as the text of the caption showing that word; accents `title` and `accent-<n>`, transitions
+  `transition-<n>`, from their first word's start to their last word's end; a photo (`photo-<n>`)
+  from its first word to the end of its range and the big word (`big-word`, the word as spoken) to
+  the end of its sentence (`sentenceSpans`, `src/transcript.ts`), both held to the preset's 2 to 4 s
+  and ending on the nearest word edge with an offset. A photo takes its wished spot, else the spot it
+  had in the current version, else the first spot whose face share is within `maxFaceShare`; with no
+  clear spot it keeps the first and the `behind-face` check refuses it. It solves no free space and
+  handles no overlap.
+- `choicesOf(edit, transcript, preset)` reads a version back as an `EngineInput` (what Claude is
+  shown): each item by its anchor words, or the words spoken under it (an older version's written
+  title); a caption whose text differs from its words is a fix on its first word.
+
 ### Bottom edge in the layout
 
 `src/layout.ts` never places text below the safe box's bottom (1400): a beside-the-head slot is
@@ -255,6 +276,8 @@ never fatal.
 - One builder for preview and export; never fork it per environment.
 - Never store a built page; versions hold the edit, the page is built from it.
 - Anchors are words; seconds only where nobody speaks.
+- Claude never writes times, positions or sizes: every one in a decided version comes from
+  `placeDirect` (later the layout engine), never from the answer.
 - A version with a `behind` item is saved only once every mask it names exists; the builder never
   builds a behind item without its mask.
 - A big word is checked against the frame, never the safe box.

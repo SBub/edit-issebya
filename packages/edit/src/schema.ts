@@ -9,7 +9,7 @@ import type { Transcript } from "./transcript.ts";
 // seconds (only where nobody speaks) or the reel's start or end. Items follow
 // their words through a re-time because anchors are resolved at every build.
 
-export const ITEM_ID = /^[a-z][a-z0-9-]{0,63}$/;
+const ITEM_ID = /^[a-z][a-z0-9-]{0,63}$/;
 const COLOR = /^#[0-9A-Fa-f]{6}$/;
 const STYLE_KEY = /^[a-z-]{1,40}$/;
 // No way out of the style attribute: no declaration end, block, tag,
@@ -44,7 +44,7 @@ const editInputsSchema = z.object({
 });
 
 // A big word behind the speaker: one word, nothing that could leave its tag.
-const BEHIND_WORD = /^[^\s<>&]{1,24}$/;
+export const BEHIND_WORD = /^[^\s<>&]{1,24}$/;
 
 // The free custom-style field: CSS property to value, added to the element.
 const styleSchema = z.record(
@@ -73,7 +73,7 @@ export interface EditLimits {
 // The six tracks, built per reel: the word ids are the transcript's, the
 // fonts the preset's, so an unknown word or font is refused by the schema
 // itself. No refinement, so it converts to JSON Schema as is.
-export function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLimits = {}) {
+function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLimits = {}) {
   const ids = transcript.words.map((word) => word.id);
   const wordId = ids.length > 0 ? z.enum(ids as [string, ...string[]]) : z.never();
   const time =
@@ -214,8 +214,8 @@ function ordinal(n: number): string {
 }
 
 // The behind track's own rules (counts with the decide limits, length, one at
-// a time, clear of hidden footage); the decide answer runs it too.
-export function refineBehind(
+// a time, clear of hidden footage).
+function refineBehind(
   edit: { duration: number; tracks: Tracks },
   transcript: Transcript,
   preset: Preset,
