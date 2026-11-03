@@ -160,3 +160,77 @@ test("a step killed twice fails the job; Retry resumes at that step and finishes
   const { data: retryJob } = await admin.from("jobs").select("status").eq("id", retryId).single();
   expect(retryJob).toEqual({ status: "done" });
 });
+
+test("a retry that fails again offers a fresh Try again, live", async ({ page, baseURL }) => {
+  test.setTimeout(180_000);
+  const { reelId, jobId } = await insertQueuedReel({
+    admin,
+    storage,
+    ownerId: owner.id,
+    prefix: CACHE_PREFIX,
+  });
+  await seedPipelineCache(storage, CACHE_PREFIX, { except: ["transcribe"] });
+
+  const first = await runWorkerOnce({ ...STEPS, E2E_MOCK_STEP_FAULT: "transcribe:signal" });
+  expect(first.code, first.output).toBe(1);
+  const { data: failed } = await admin
+    .from("jobs")
+    .select("status, failure_kind")
+    .eq("id", jobId)
+    .single();
+  expect(failed).toEqual({ status: "failed", failure_kind: "transient" });
+
+  await page.goto(await signInLink(admin, owner.email, baseURL!));
+  await page.goto(`/studio/reels/${reelId}`);
+  await expect(page.locator('[data-realtime="ready"]')).toBeVisible({ timeout: 30_000 });
+  await page.evaluate(() => {
+    (window as unknown as { __noReload: string }).__noReload = "marker";
+  });
+
+  const overlay = page.getByTestId("progress-overlay");
+  await expect(overlay).toHaveAttribute("data-overlay-kind", "failure");
+  await overlay.getByTestId("overlay-try-again").click();
+  await expect
+    .poll(async () => (await jobsOf(admin, reelId)).map((job) => [job.status, job.retry_of_job_id]))
+    .toEqual([
+      ["failed", null],
+      ["queued", jobId],
+    ]);
+  const retryId = (await jobsOf(admin, reelId))[1]!.id;
+  await expect(overlay).toHaveAttribute("data-overlay-kind", "working", { timeout: 10_000 });
+
+  // The retry fails the same way.
+  const second = await runWorkerOnce({ ...STEPS, E2E_MOCK_STEP_FAULT: "transcribe:signal" });
+  expect(second.code, second.output).toBe(1);
+  await expect
+    .poll(async () => (await jobsOf(admin, reelId)).map((job) => job.status), { timeout: 10_000 })
+    .toEqual(["failed", "failed"]);
+
+  // The overlay shows the retry's own failure with a fresh, enabled Try again
+  // and no stale "Queued again." line.
+  await expect(overlay).toHaveAttribute("data-overlay-kind", "failure", { timeout: 10_000 });
+  await expect(overlay.getByTestId("overlay-headline")).toHaveText(
+    "Could not finish listening to your words",
+  );
+  const tryAgain = overlay.getByTestId("overlay-try-again");
+  await expect(tryAgain).toBeVisible();
+  await expect(tryAgain).toBeEnabled();
+  await expect(overlay.getByTestId("overlay-action-message")).toHaveCount(0);
+
+  await tryAgain.click();
+  await expect
+    .poll(async () => (await jobsOf(admin, reelId)).map((job) => [job.status, job.retry_of_job_id]))
+    .toEqual([
+      ["failed", null],
+      ["failed", jobId],
+      ["queued", retryId],
+    ]);
+
+  // Finish the reel, so no claimable job is left for later specs.
+  const third = await runWorkerOnce(STEPS);
+  expect(third.code, third.output).toBe(0);
+  await expect.poll(() => reelStatus(admin, reelId), { timeout: 10_000 }).toBe("processed");
+  expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(
+    "marker",
+  );
+});

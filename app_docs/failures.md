@@ -3,13 +3,15 @@
 **Specifications:**
 
 - specs/issue-39-adw-f5af08ca-sdlc_planner-failures-and-footage-checks.md
+- specs/issue-117-adw-d16e6f05-sdlc_planner-reel-progress-overlay.md
 
 ## Overview
 
 Every `process` job starts by checking the footage, so a clip the studio cannot take is refused
 with a human message before any heavy step runs. A step that fails for a passing reason (a network
 hiccup, a 5xx, a tool killed by a signal) is run once more on its own; any other failure fails the
-job, and the owner can press Retry, which queues a new job that resumes at the step that failed.
+job, and the owner can press Try again in the reel page's progress overlay, which queues a new job
+that resumes at the step that failed.
 When Claude Code is signed out or at its usage limit, the job waits and is taken again 15 minutes
 later instead of failing. The database runs one job per reel at a time, in order, so a change can
 be sent while the reel is still processing.
@@ -31,6 +33,16 @@ be sent while the reel is still processing.
 - `steps.status` gains `waiting`.
 - `jobs_claimable_idx` is rebuilt on `(created_at, id)` for `queued`, `running` and `waiting_ai`.
 
+`supabase/migrations/20261103115809_failure_kind_reel_size.sql`:
+
+- `jobs.failure_kind` (`transient`, `failed` or `answer_refused`, the last when the AI's answer
+  failed the checks twice) and `jobs.failure_rules` (the check rule names of a refused answer only,
+  1 to 20, never free text). Only a `failed` job carries a kind; older failed rows keep null.
+- `failJob` (`endJob` in `apps/worker/src/queue.ts`) writes both in the same update as `status`;
+  `refuseJob` writes no kind (a refused reel has no retry). The owner reads them through the
+  existing select grants and never writes them (`failure-and-size-columns.test.ts`). The overlay
+  picks its failure actions from them (`app_docs/status.md`).
+
 ### Edge cases
 
 The issue's block E, and the rule each follows:
@@ -42,8 +54,8 @@ The issue's block E, and the rule each follows:
 | Square footage                                                               | Refused as not vertical (height must be greater than width).                      |
 | Exactly 90.0 s / 90.4 s                                                      | 90.0 s accepted; 90.4 s refused and shown as `1 minute 31 seconds` (rounded up).  |
 | A renamed text file, an image, an audio file with cover art                  | "Not a video", a refusal, never a step failure.                                   |
-| Retry of a refused process job                                               | No button, and the Retry action refuses it too.                                   |
-| Double click on Retry                                                        | The unique index lets one job through; the second answer is `already`.            |
+| Retry of a refused process job                                               | No Try again, and the Retry action refuses it too.                                |
+| Double click on Try again                                                    | The unique index lets one job through; the second answer is `already`.            |
 | A transient failure during the retry attempt                                 | The job fails: no third run.                                                      |
 | A lease lost mid-step                                                        | Never retried, nothing written.                                                   |
 | A decide call that fails transiently after the AI answered                   | Not retried: at most two AI calls per decide step.                                |
@@ -95,15 +107,18 @@ A chain no link decides is permanent (a tool's non-zero exit with its message, f
 A job claimed again after its worker stopped (`attempts` above 1) first calls
 `StepStore.abandonRunning(job.id)` (`apps/worker/src/process-job.ts`): every row the job left
 `running` ends `failed` with the tail `the worker stopped during this step; the job was taken again`
-(`apps/worker/src/step-store.ts`), so the step log never shows a step running forever. The step
+(`apps/worker/src/step-store.ts`), so no step stays `running` forever. The step
 then runs again in a new row; a half-written `<file>.part` was never uploaded, so nothing of it is
 stored.
 
-### Retry button
+### Try again (retry)
 
-- `apps/studio/src/lib/failures.ts`, `retryableJobIds`: a `failed` job shows Retry while no other job
-  names it in `retry_of_job_id`; none while the reel is `refused`.
-- `apps/studio/src/components/RetryButton.tsx` calls the server action `requestRetry`
+- `apps/studio/src/lib/failures.ts`, `retryableJobIds`: a `failed` job is retryable while no other
+  job names it in `retry_of_job_id`; none while the reel is `refused`. The progress overlay
+  (`app_docs/status.md`) offers Try again (`data-testid="overlay-try-again"`) for the newest such
+  job, for every retryable failure except a refused change (which offers Change the request), and
+  never on a refused reel. The old Retry button component is gone.
+- `LiveReel` calls the server action `requestRetry`
   (`apps/studio/src/app/retry-actions.ts`). It reads the reel and the job under RLS as the owner,
   answers `blocked` for a refused reel (`This clip was refused; upload another clip.`) or a job that
   is not `failed` (`Only a failed job can be retried.`), then inserts a new job of the same reel,
@@ -121,7 +136,6 @@ request, restore_version_id, version_id)`.
   parameters. A policy on `jobs` that reads `jobs` in an inline subquery is rejected by Postgres as
   infinite recursion, hence the helper. Execute is revoked from `public`, `anon` and `service_role`
   and granted to `authenticated` only.
-- The jobs list marks a retry job with `retry` (`data-testid="job-retry-of"`).
 
 ### Waiting for the AI
 
@@ -204,9 +218,10 @@ first output as its `.part` and waits up to 20 seconds for the spec to kill the 
 
 1. Upload a clip. While it is checked the reel reads `checking_footage`. A clip the studio cannot
    take turns the reel `refused` and shows the reason in a red box; the change box says
-   `This clip was refused; upload another clip.` and no job offers Retry. Upload another clip.
-2. A failed job shows Retry in the jobs list. Pressing it queues a new job, marked `retry`, which
-   skips every step already done and runs from the one that failed.
+   `This clip was refused; upload another clip.` and nothing offers Try again. Upload another clip.
+2. A failed job shows its failure in the overlay over the preview with Try again. Pressing it
+   queues a new job (`retry_of_job_id` set), which skips every step already done and runs from the
+   one that failed.
 3. A job waiting for the AI shows `Waiting for the AI: <reason>. Next try at HH:MM.`. Sign Claude
    Code in again or wait for the limit; the worker takes the job again after that time.
 4. The change box stays open while the reel processes and shows
@@ -235,10 +250,13 @@ worker's `job <id>: failed:` log line and the job's `error_tail` keep that first
 - Tools: `apps/worker/src/pipeline/footage-check.tools.test.ts` (real ffprobe, `yarn workspace
 @edit-issebya/worker test:tools`).
 - Unit (`apps/studio`): `src/lib/failures.test.ts`, `src/lib/change-requests.test.ts`.
-- DB: `apps/studio/db-tests/job-order.test.ts` (one job per reel, in order, `not_before`) and
-  `retry-jobs.test.ts` (the Retry insert policy through `is_retry_of_failed_job`).
+- DB: `apps/studio/db-tests/job-order.test.ts` (one job per reel, in order, `not_before`),
+  `retry-jobs.test.ts` (the Retry insert policy through `is_retry_of_failed_job`) and
+  `failure-and-size-columns.test.ts` (the checks on `failure_kind` and `failure_rules`, readable,
+  never writable by the owner).
 - E2E (`apps/studio/e2e/`): `footage-refusal.spec.ts` (a landscape clip refused live, one step row),
-  `retry.spec.ts` (a signal-killed `transcribe` run twice, then Retry resumes at it),
+  `retry.spec.ts` (a signal-killed `transcribe` run twice, the overlay's failure, then Try again
+  resumes at it and `studio_failure_action` names the failed job),
   `waiting-ai.spec.ts` (the usage-limit fixture, the waiting line live, then taken again),
   `crash-resume.spec.ts` (a worker killed mid-step, the abandoned row `failed`, the output stored
   once).

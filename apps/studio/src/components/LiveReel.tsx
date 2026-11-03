@@ -167,8 +167,11 @@ export function LiveReel({
     setLastCurrentId(reel.current_version_id);
     if (reel.current_version_id) setNoticeId(reel.current_version_id);
   }
-  const [retryBusy, setRetryBusy] = useState(false);
-  const [actionMessage, setActionMessage] = useState("");
+  // Try again's busy flag and message belong to one failed job, so a later
+  // failure (for example the retry's own) starts fresh.
+  const [retry, setRetry] = useState<{ jobId: string; busy: boolean; message: string } | null>(
+    null,
+  );
   const changeForm = useRef<ChangeRequestHandle>(null);
   const router = useRouter();
   const id = initialReel.id;
@@ -316,6 +319,7 @@ export function LiveReel({
     estimateRates,
   });
   const failure = overlay.kind === "failure" ? overlay : null;
+  const retryForFailure = failure && retry?.jobId === failure.jobId ? retry : null;
 
   // Every overlay action names the failed job, so it links to its error.
   const recordAction = (action: FailureAction) => {
@@ -333,25 +337,26 @@ export function LiveReel({
 
   async function tryAgain() {
     if (!failure) return;
+    const jobId = failure.jobId;
     recordAction("try_again");
-    setRetryBusy(true);
-    setActionMessage("");
+    setRetry({ jobId, busy: true, message: "" });
     try {
-      const result = await requestRetry({ reelId: reel.id, jobId: failure.jobId });
+      const result = await requestRetry({ reelId: reel.id, jobId });
       if (result.status === "signed-out") {
         router.refresh();
         return;
       }
-      if (result.status === "queued") setActionMessage("Queued again.");
-      else if (result.status === "already") setActionMessage("This job is already being retried.");
+      if (result.status === "queued") setRetry({ jobId, busy: true, message: "Queued again." });
+      else if (result.status === "already")
+        setRetry({ jobId, busy: true, message: "This job is already being retried." });
       else
-        setActionMessage(
-          result.status === "failed" ? "Retry did not start. Try again." : result.reason,
-        );
-      if (result.status !== "queued" && result.status !== "already") setRetryBusy(false);
+        setRetry({
+          jobId,
+          busy: false,
+          message: result.status === "failed" ? "Retry did not start. Try again." : result.reason,
+        });
     } catch {
-      setActionMessage("Retry did not start. Try again.");
-      setRetryBusy(false);
+      setRetry({ jobId, busy: false, message: "Retry did not start. Try again." });
     }
   }
 
@@ -439,8 +444,8 @@ export function LiveReel({
                 onTryAgain={() => void tryAgain()}
                 onChangeRequest={changeRequest}
                 onKeep={keepCurrent}
-                actionMessage={actionMessage}
-                tryAgainBusy={retryBusy}
+                actionMessage={retryForFailure?.message ?? ""}
+                tryAgainBusy={retryForFailure?.busy ?? false}
               />
             </div>
           </>

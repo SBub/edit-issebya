@@ -104,6 +104,11 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   is set (`jobs_target_check` also ties `describe_photo` to `photo_id`). Owners never insert a
   `describe_photo` job directly: `finish_photo_upload` queues it. `claim_job` keeps one job per reel
   or per photo at a time. See `app_docs/photo-library.md`.
+- `supabase/migrations/20261103115809_failure_kind_reel_size.sql`: `jobs.failure_kind`
+  (`transient`, `failed` or `answer_refused`, only on a `failed` job) and `jobs.failure_rules` (a
+  refused answer's check rule names), and the `reels` size columns `source_seconds`,
+  `source_width`, `source_height` and `word_count`, each written once by the worker while null. The
+  owner reads them all and writes none. See `app_docs/failures.md` and `app_docs/measurement.md`.
 - `claim_job(p_worker, p_lease_seconds)`: one statement picks the oldest `queued` job, or a
   `running` one whose lease expired, with `for update skip locked`, then takes the lease and counts
   an attempt. Only `service_role` may execute it. It takes one job per reel at a time, in order,
@@ -132,10 +137,13 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 
 ### Live status
 
-- `apps/studio/src/components/LiveReel.tsx`: renders status, jobs (`job-status`) and the step log
-  (`step-line`). One Realtime channel listens to `reels`, `jobs` and `steps` for that reel. When the
-  subscription reports ready it does one catch-up read and sets `data-realtime="ready"`. No timer,
-  no polling.
+- `apps/studio/src/components/LiveReel.tsx`: renders no status panel, jobs list or step log. One
+  Realtime channel listens to `reels`, `jobs` and `steps` (and the reel's versions and exports, and
+  `worker_status`) for that reel; the same channel feeds the progress overlay over the preview
+  (`app_docs/status.md`). When the subscription reports ready it does one catch-up read and sets
+  `data-realtime="ready"`. No timer, no polling. The reel's machine status shows only on the reels
+  grid's badge (`reel-list-status`); specs read the reel's, jobs' and steps' statuses from the
+  database through `apps/studio/test-support/rows.ts`.
 - The reel page also carries the photo library (`PhotoLibrary`, its own Realtime channel on
   `photos`): the third desktop column and the phone's Library tab (`app_docs/studio-reel-layout.md`).
 - `apps/studio/src/lib/jobs.ts`: named column lists (no lease columns), status lists and
@@ -154,8 +162,8 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   when they cannot (see `app_docs/storage.md`).
 - `apps/worker/src/main.ts`: wakes on Realtime `INSERT` into `jobs`, also checks every
   `WORKER_POLL_INTERVAL_SECONDS` reading only job ids, skips claiming below
-  `WORKER_MIN_FREE_DISK_GB` and records the reason in `worker_status`, which the reel page shows
-  under a queued job, slims storage at most hourly between jobs, removes each job's scratch folder
+  `WORKER_MIN_FREE_DISK_GB` and records the reason in `worker_status`, which the reel page's
+  overlay shows for a queued job, slims storage at most hourly between jobs, removes each job's scratch folder
   and runs one job at a time (`loop.ts`). See `app_docs/storage.md`.
 - `apps/worker/src/steps/receive.ts`: the one placeholder step. It HEADs the source in R2, writes a
   step `footage received, 12.3 MB`, and `run-job.ts` then marks the job `done` and the reel

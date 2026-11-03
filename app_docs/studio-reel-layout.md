@@ -9,9 +9,10 @@
 
 The studio has a dark, editor-like look with the same layout on desktop and phone. The reel page fits
 one screen and never scrolls as a page: a large 9:16 preview with its controls and a read-only tracks
-timeline, the correction field pinned under it, and Versions and Status in their own scrolling areas.
+timeline, the correction field pinned under it, and Versions in its own scrolling area over the whole
+side column. What the studio is doing shows in a small progress overlay over the preview.
 The reels list is a grid of thumbnails with a round **+** button that opens the upload in a dialog.
-The reel page also carries the owner's photo library: a third column on desktop and a fourth tab on a
+The reel page also carries the owner's photo library: a third column on desktop and the third tab on a
 phone.
 
 ## How it works
@@ -22,21 +23,26 @@ phone.
   breakpoint, 1024 px) plus a small tab state. The root is exactly the height it is given; every child
   that can grow is `min-h-0`, and only the list areas scroll inside their own box (no JavaScript
   measures the window). Desktop: header, main column (preview, controls, timeline) with the correction
-  field pinned under it, a side panel with Versions above Status, and a third column, the photo library
+  field pinned under it, a side panel where Versions spans all three rows of the side column
+  (`lg:col-start-2 lg:row-span-3 lg:row-start-1`, still `min-h-0 overflow-y-auto
+overscroll-contain`, so its list scrolls inside it), and a third column, the photo library
   (`id="reel-panel-library"`), spanning every row (`lg:grid-cols-[minmax(0,1fr)_20rem_18rem]`, wider
   at `xl:`), with `min-h-0` on its growing children. Phone: the same header and pinned footer, the
-  middle split into Edit, Versions, Status and Library tabs (WAI-ARIA tabs: arrows, Home and End wrap
-  over the four). The four areas carry `data-testid` `edit-area`, `versions-area`, `status-area` and
-  `library-area`. `ReelScreen` takes the library as its `library` prop.
+  middle split into Edit, Versions and Library tabs (WAI-ARIA tabs: arrows, Home and End wrap over
+  the three). The three areas carry `data-testid` `edit-area`, `versions-area` and `library-area`.
+  `ReelScreen` takes the library as its `library` prop.
 - `apps/studio/src/components/LiveReel.tsx`: keeps the Realtime state as before and hands pieces to
-  `ReelScreen`: header (back link, reel name, Export), `ReelPreview`, `ChangeRequestForm`,
-  `VersionList` and `StatusPanel`. Also holds the shown version (the owner's pick, remembered with the
+  `ReelScreen`: header (back link, reel name, the notification toggle between the name and Export,
+  Export), `ReelPreview` with the progress overlay over it, `ChangeRequestForm` and `VersionList`.
+  Also holds the shown version (the owner's pick, remembered with the
   current version it was made for). It passes the `library` node through to `ReelScreen`;
   `apps/studio/src/app/reels/[id]/page.tsx` loads the library on the server and renders `PhotoLibrary`
   into it (details in `app_docs/photo-library.md`).
-- `apps/studio/src/components/StatusPanel.tsx`: the status, jobs and step log that used to sit in
-  `LiveReel` (percent and time left, waiting and offline lines, error disclosure, Retry, "Notify me
-  when ready", the refusal message). Behaviour is unchanged.
+- `apps/studio/src/components/ProgressOverlay.tsx`: the progress overlay, an absolutely positioned
+  card in the top-left of the preview (`absolute left-2 top-2 right-2 sm:right-auto sm:max-w-xs`,
+  `z-10`), `pointer-events-none` except its own buttons, so Play and the Position slider under it stay
+  usable. What it says and when is in `app_docs/status.md`. The reel page has no jobs list, step log
+  or status area; the refusal message of a refused reel stays above the preview.
 - `apps/studio/src/components/ReelPreview.tsx`, `PreviewPlayer.tsx`: the preview now builds the
   version being shown, not only the current one, and exposes the player's clock to the controls row
   (Play or Pause, `00:00 / 00:52`, the Position slider, Undo, Redo).
@@ -97,7 +103,7 @@ phone.
 3. On the reel page, press Play, drag Position, and read the timeline rows against the playhead.
 4. Use Undo and Redo to look at the previous or next saved version; use "Go back to this" in the
    Versions area to make it current.
-5. On a phone, switch between the Edit, Versions, Status and Library tabs; on desktop the library is
+5. On a phone, switch between the Edit, Versions and Library tabs; on desktop the library is
    the right-hand column. Type a correction in the field pinned at the bottom and press Send; use
    Export in the header.
 
@@ -111,14 +117,16 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 - Unit: `tracks-timeline`, `version-steps`, `reels` (`formatAge`), `preview-sources` tests in
   `apps/studio/src/lib/`; the worker's `preview-copies.test.ts` and `preview-copies-record.test.ts`.
 - E2E: `apps/studio/e2e/reel-layout.spec.ts` seeds a processed reel with 14 versions and 48 steps and
-  checks at 1440x900 and 390x844 that the page never scrolls (Send and Export inside the root box,
-  versions and steps scrolling in their own areas, the phone's four tabs), the timeline items at
+  checks at 1440x900 and 390x844 that the page never scrolls (Send and Export inside the root box, no
+  status area and no step log, Versions as tall as the side column within 1 px with its list
+  scrolling inside it, the phone's Edit, Versions and Library tabs), the timeline items at
   `resolveTimeline`'s times with footage frames from the sprite and nothing focusable, the playhead
   following the clock, and Undo and Redo changing only the shown version. `reels.spec.ts` checks the
   grid (age and size, status, thumbnail, three columns at 390 px, **+** opening the dialog). `preview`,
   `upload`, `multipart-upload` and `footage-refusal` specs were adjusted to the new markup.
   `photo-library.spec.ts` checks the library column right of `edit-area` at 1440x900 and the Library
-  tab at 390x844, with no page scroll.
+  tab at 390x844, with no page scroll. `progress-overlay.spec.ts` checks the overlay inside the
+  preview, clear of Play and the Position slider, at 1440x900 and 390x844.
 - Measure edge-aligned elements from the root box, not `window.innerWidth` (see `AGENTS.md`).
 
 ## Rules
@@ -134,6 +142,7 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 - `ThumbnailGrid` stays free of reel-specific code.
 - Do not unmount `UploadForm` when the upload dialog closes.
 - A missing or malformed thumbnail or frames sprite is null, never a failure.
+- The overlay never blocks the player's controls: `pointer-events` off except its own buttons.
 
 ## Notes
 
@@ -141,7 +150,6 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   get a thumbnail and a frames sprite), `fixtures/pipeline/` and `.adw/project.md`; most of the change
   is in `apps/studio`.
 - Other docs to read with it: `app_docs/studio.md` (its reels-list and `LiveReel` lines predate this
-  layout: `ReelList` is replaced by `ThumbnailGrid`, and `LiveReel` delegates the status to
-  `StatusPanel`), `app_docs/preview.md`, `app_docs/change-requests.md`, `app_docs/status.md`,
+  layout: `ReelList` is replaced by `ThumbnailGrid`), `app_docs/preview.md`, `app_docs/change-requests.md`, `app_docs/status.md`,
   `app_docs/photo-library.md`.
 - Out of scope: editing from the timeline.

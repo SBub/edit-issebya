@@ -64,6 +64,17 @@ client, identifies the signed-in user and sends `studio_*` events.
   span `step <name>` with `reel.id`, `job.id`, `step.name` and `step.wall_ms`, `step.cpu_ms`,
   `step.peak_rss_bytes`, `step.bytes_in`, `step.bytes_out`. Output lines are log records emitted in the
   step span's context (INFO for stdout, ERROR for stderr, attribute `stream`).
+- The reel's size: the job span and every step span (cache hits included) carry `reel.source_seconds`,
+  `reel.source_bytes`, `reel.width`, `reel.height`, `reel.footage_seconds` and `reel.word_count` when
+  known (nulls skipped). `src/reel-size.ts`: `readReelSize` reads the reel's size columns once at job
+  start (`process-job.ts`), and the `ReelSizeHolder` on `StepContext` (`size`) is updated when the
+  pipeline learns a value: the source's after `check_footage`, the footage seconds and the word count
+  after `retime`. The `decide` step span adds `reel.tracks_items` (the items over every track of the
+  saved edit). Photo jobs carry none.
+- The four `reels` columns `source_seconds`, `source_width`, `source_height` and `word_count`
+  (`supabase/migrations/20261103115809_failure_kind_reel_size.sql`, beside `source_bytes` and
+  `footage_seconds`) are each written once by the worker while null; the owner reads them, never
+  writes them.
 - A `describe_photo` job's trace uses the photo's id in place of the reel's (`traceIdForJob`), and its
   spans carry `photo.id` in place of `reel.id` (`targetAttributes`).
 - Step measurements are never sent to PostHog as events: PostHog reads the tables as a data source.
@@ -90,17 +101,27 @@ client, identifies the signed-in user and sends `studio_*` events.
   property (the test hook); the hook also records `{ event: "$exception", properties }` (with `app` and
   `$exception_message`) from the upload form's failed upload, via `captureException`.
 - Exceptions: `app_docs/error-tracking.md`.
-- `src/components/LiveReel.tsx`: each step line reads `name: <summary>` (or `name: <status>` while no
-  summary exists), and a failed step's `error_tail` sits in a collapsed `<details data-testid="step-error-tail">`
-  ("Show error"). Still one read on open plus Realtime, no polling. The measurement columns are not shown.
+- `src/lib/studio-events.ts`: `STUDIO_EVENTS` (the five funnel events, the dashboard's funnel series)
+  and `STUDIO_ACTION_EVENTS` (`studio_failure_action`, kept out of the funnel).
+- The reel page shows no step log, summary or error tail: the progress overlay says the step in plain
+  words (`app_docs/status.md`). The measurement columns are not shown.
 
-| Event                      | Sent when                                                                    | Properties                                |
-| -------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------- |
-| `studio_footage_uploaded`  | after the multipart upload completes, once (`UploadForm.tsx`)                | `reel_id`, `app`                          |
-| `studio_preview_opened`    | the live preview first reaches the player on a page open (`ReelPreview.tsx`) | `reel_id`, `app`                          |
-| `studio_change_requested`  | the owner sends a change request (`ChangeRequestForm.tsx`)                   | `reel_id`, `app` (never the request text) |
-| `studio_export_requested`  | the Export button queues a render job (`ExportPanel.tsx`)                    | `reel_id`, `app`                          |
-| `studio_export_downloaded` | the owner clicks the download link (`ExportPanel.tsx`)                       | `reel_id`, `app`                          |
+| Event                      | Sent when                                                                    | Properties                                                               |
+| -------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `studio_footage_uploaded`  | after the multipart upload completes, once (`UploadForm.tsx`)                | `reel_id`, `app`                                                         |
+| `studio_preview_opened`    | the live preview first reaches the player on a page open (`ReelPreview.tsx`) | `reel_id`, `app`                                                         |
+| `studio_change_requested`  | the owner sends a change request (`ChangeRequestForm.tsx`)                   | `reel_id`, `app` (never the request text)                                |
+| `studio_export_requested`  | the Export button queues a render job (`ExportPanel.tsx`)                    | `reel_id`, `app`                                                         |
+| `studio_export_downloaded` | the owner clicks the download link (`ExportPanel.tsx`)                       | `reel_id`, `app`                                                         |
+| `studio_failure_action`    | the owner presses one of the overlay's failure actions (`LiveReel.tsx`)      | `reel_id`, `job_id`, `action`, `failure_kind`, `step`, `job_kind`, `app` |
+
+### Reading time per step against reel length
+
+The dashboard's insight `step-time-vs-length` ("Studio: time per step against reel length",
+`apps/studio/scripts/posthog-dashboard/insights/step-time-vs-length.ts`, `app_docs/dashboard.md`)
+joins the synced `steps` to the synced `reels` on `reel_id`, keeps `done` rows of reels with
+`source_seconds`, and per step name and 15-second `source_seconds` bucket gives the count, the median
+and longest seconds, and the median seconds per second of retimed footage.
 
 ## How to Use
 
@@ -108,7 +129,9 @@ client, identifies the signed-in user and sends `studio_*` events.
    `StepContext` (`steps`, `telemetry`, `jobContext`, `job`, `signal`). Declare `inputs` and `outputs`
    to get byte counts, and `sampleGroupMemory: true` for a step that spawns a process tree.
 2. To export, fill `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` in
-   `apps/worker/.env.production` and check one reel as one trace in PostHog.
+   `apps/worker/.env.production` and check one reel as one trace in PostHog. In development, the same
+   two lines in `apps/worker/.env.development` with `OTEL_SERVICE_NAME=edit-issebya-worker-dev`
+   export to the same project, told apart by the service name.
 3. In the studio, send an event with `capture("studio_...", { reel_id })` from a client component.
 
 ## Configuration
@@ -129,10 +152,11 @@ client, identifies the signed-in user and sends `studio_*` events.
 - Studio unit tests: `src/lib/analytics.test.ts`, `src/lib/track.test.ts`.
 - DB test: `db-tests/steps-measurements.test.ts` pins the exact column set of `steps`, so a money column
   fails it.
-- Studio E2E: `e2e/upload.spec.ts` (step line format, `studio_footage_uploaded` with the reel id and
-  `app`, no PostHog request), `e2e/multipart-upload.spec.ts` (`studio_footage_uploaded` once with the
+- Studio E2E: `e2e/upload.spec.ts` (the step rows' summaries read from the database,
+  `studio_footage_uploaded` with the reel id and `app`, no PostHog request), `e2e/multipart-upload.spec.ts` (`studio_footage_uploaded` once with the
   reel id and `app` after completion, also after a retried part and after a resume, and never after
-  cancel) and `e2e/step-log.spec.ts` (a failed step's summary and collapsed tail).
+  cancel) `e2e/retry.spec.ts` and `e2e/change-requests.spec.ts` (`studio_failure_action` with the
+  failed job's id).
 
 ## Rules
 
