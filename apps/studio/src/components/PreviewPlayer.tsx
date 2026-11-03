@@ -472,9 +472,27 @@ export function PreviewPlayer({
           type="button"
           onClick={onPlayClick}
           disabled={!playerReady}
-          className="w-16 rounded-full bg-accent px-3 py-1.5 font-semibold text-surface disabled:opacity-50"
+          aria-label={intent === "playing" ? "Pause" : "Play"}
+          title={intent === "playing" ? "Pause" : "Play"}
+          data-testid="play-toggle"
+          className="flex size-10 items-center justify-center text-ink transition-opacity enabled:hover:opacity-80 disabled:opacity-50"
         >
-          {intent === "playing" ? "Pause" : "Play"}
+          {/* A filled play triangle with rounded corners, or two filled bars. */}
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="size-7">
+            {intent === "playing" ? (
+              <>
+                <rect x="6" y="4.5" width="4" height="15" rx="1.25" />
+                <rect x="14" y="4.5" width="4" height="15" rx="1.25" />
+              </>
+            ) : (
+              <path
+                d="M8 5.6v12.8a1.2 1.2 0 0 0 1.82 1.03l10.4-6.4a1.2 1.2 0 0 0 0-2.06l-10.4-6.4A1.2 1.2 0 0 0 8 5.6Z"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+            )}
+          </svg>
         </button>
         <span
           data-testid="preview-clock"

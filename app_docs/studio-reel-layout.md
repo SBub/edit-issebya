@@ -57,7 +57,12 @@ lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unch
   the preview.
 - `apps/studio/src/components/ReelPreview.tsx`, `PreviewPlayer.tsx`: the preview builds the
   reel's current version (`reels.current_version_id`) and exposes the player's clock to the control
-  row (Play or Pause, `00:00 / 00:52`, then Zones). The control row has
+  row (Play or Pause, `00:00 / 00:52`, then Zones). Play or Pause is an
+  icon button at the left of the row (`data-testid="play-toggle"`): a filled play triangle with
+  rounded corners when paused, two filled bars while playing, an inline `aria-hidden` SVG of 28 px in
+  `text-ink` (`fill="currentColor"`) with no background, shape or text, a 40x40 tap target, a slight
+  opacity change on hover (`enabled:hover:opacity-80`), dimmed when disabled, and the global
+  `:focus-visible` ring. Its `aria-label` and `title` switch between `Play` and `Pause`. The control row has
   no Position slider: the tracks timeline's ruler is the one scrubber. `PreviewPlayer` exposes its
   seek through a `ref` (`PreviewPlayerHandle.seek`), and `ReelPreview`'s `BuiltPreview` hands it to
   `TracksTimeline` as `onSeek`, so a ruler seek takes the same path the slider did (the player's
@@ -172,7 +177,11 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   `resolveTimeline`'s times with footage frames from the sprite and nothing in the rows focusable
   (the ruler the timeline's one focusable element), the playhead following the clock, and no Undo or
   Redo button, the preview showing the current version and no version marked as showing, at both
-  sizes. At both sizes it checks the ruler as the one scrubber: no
+  sizes. At both sizes it checks that Play and Pause is one icon
+  button (`play-toggle`) with no text and one `aria-hidden` SVG, at least 40x40 and left of the
+  clock, with a transparent background on hover, whose accessible name and `title` switch from
+  `Play` to `Pause` and back. At both sizes it
+  checks the ruler as the one scrubber: no
   Position control in the control row and the ruler the page's one `role="slider"`; the ruler's left
   edge and width equal every lane's within 1 px; clicks at 25% and 75% of its box seek the player
   there; a drag keeps the playhead within 2 px of the pointer (also once the clock has settled on a

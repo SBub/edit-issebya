@@ -629,6 +629,38 @@ for (const [size, viewport] of [
 
     await expectNoPageScroll(page);
   });
+
+  test(`Play and Pause are one icon button at ${size}`, async ({ page, baseURL }) => {
+    await openReel(page, baseURL!, viewport);
+    const toggle = page.getByTestId("play-toggle");
+    await expect(toggle).toBeEnabled();
+    // An icon and no visible text: the name comes from aria-label.
+    await expect(toggle).toHaveText("");
+    await expect(toggle.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+    await expect(toggle).toHaveAccessibleName("Play");
+    await expect(toggle).toHaveAttribute("title", "Play");
+    // A tap target of at least 40x40, at the left of the control row.
+    const box = (await toggle.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(40);
+    expect(box.height).toBeGreaterThanOrEqual(40);
+    const clock = (await page.getByTestId("preview-clock").boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(clock.x);
+    // No shape behind the icon on hover: the background stays transparent.
+    await toggle.hover();
+    expect(await toggle.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
+      "rgba(0, 0, 0, 0)",
+    );
+
+    await toggle.click();
+    await expect(toggle).toHaveAccessibleName("Pause");
+    await expect(toggle).toHaveAttribute("title", "Pause");
+    await expect(toggle).toHaveText("");
+    await expect(page.locator('[data-intent="playing"]')).toBeVisible();
+    await toggle.click();
+    await expect(toggle).toHaveAccessibleName("Play");
+    await expect(page.locator('[data-intent="paused"]')).toBeVisible();
+    await expectNoPageScroll(page);
+  });
 }
 
 test("the playhead follows the player's clock", async ({ page, baseURL }) => {

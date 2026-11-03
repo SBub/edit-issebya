@@ -60,7 +60,7 @@ rebuilds it.` in place of the player. Sends `studio_preview_opened` (`reel_id`) 
   Nothing else changes.
 - `apps/studio/src/components/PreviewPlayer.tsx`: renders `<hyperframes-player>` (no `controls`,
   `disable-click-to-play`, `assets-loading-ui="none"`, `no-load-timeout`) with its own Play/Pause
-  button, time display and a `Loading` status; its seek is exposed through a `ref`
+  icon button (named by `aria-label`, no hover background), time display and a `Loading` status; its seek is exposed through a `ref`
   (`PreviewPlayerHandle.seek`) to the tracks timeline's ruler, the one scrubber
   (`app_docs/studio-reel-layout.md`). Play, seek and stall all go through
   one hold-then-start routine: pause, seek, then wait (event-driven, a newer action supersedes) until
@@ -99,8 +99,8 @@ rebuilds it.` in place of the player. Sends `studio_preview_opened` (`reel_id`) 
 ## How to Use
 
 1. Sign in to the studio and open a reel that has a current version (`/studio/reels/<id>`).
-2. Wait for the preview to load; press `Play`. A short `Loading` shows while the videos buffer.
-3. Click or drag the ruler above the tracks to seek; press `Pause` to stop.
+2. Wait for the preview to load; press Play (the triangle icon). A short `Loading` shows while the videos buffer.
+3. Click or drag the ruler above the tracks to seek; press Pause (the two bars) to stop.
 4. When a new version is saved, the preview rebuilds by itself.
 
 ## Configuration
