@@ -266,9 +266,23 @@ $$;`;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// How long a held job waits for what it waits on before it is released anyway.
+// A claim_job that never lets that happen then fails the checks below instead
+// of hanging the run.
+const HOLD_LIMIT_MS = 5_000;
+
+async function holdUntil(ready: () => boolean): Promise<void> {
+  const deadline = performance.now() + HOLD_LIMIT_MS;
+  while (!ready() && performance.now() < deadline) await sleep(2);
+  await sleep(10);
+}
+
 // Two workers, each its own session, claiming in a loop until the three jobs
-// are done. A's process is held longest, so a worker free early tries A's
-// change while it runs. The start is taken after the claim returned and the
+// are done. The holds wait on events, never on fixed times, so a slow session
+// or a slow runner cannot reorder them: A's process is held until B's job has
+// been released and a later claim has returned (so a worker free early has
+// tried A's change while A's process runs), and B's job is held until A's
+// process has started. The start is taken after the claim returned and the
 // end before the job is released, so a recorded overlap is a real one.
 async function twoWorkers(claimSql: string): Promise<{ events: ClaimEvent[]; reels: string[] }> {
   const reelA = await newReel("loop-a.mov");
@@ -278,24 +292,34 @@ async function twoWorkers(claimSql: string): Promise<{ events: ClaimEvent[]; ree
     await insertJob(reelB, 20),
     await insertJob(reelA, 10, { kind: "change" }),
   ];
+  const [processA, jobB] = jobs as [string, string, string];
   const clients = [0, 1].map(() => new pg.Client({ connectionString: localDbUrl() }));
   const events: ClaimEvent[] = [];
+  let processAStarted = false;
+  let jobBReleased = false;
+  let claimedAfterJobB = false;
   try {
     for (const client of clients) {
       await client.connect();
       await client.query(UNORDERED);
     }
     const remaining = new Set(jobs);
+    const deadline = performance.now() + 4 * HOLD_LIMIT_MS;
     const run = async (client: pg.Client, worker: string) => {
-      for (let round = 0; round < 500 && remaining.size > 0; round += 1) {
+      while (remaining.size > 0 && performance.now() < deadline) {
+        const afterJobB = jobBReleased;
         const { rows } = await client.query<ClaimedRow>(claimSql, [worker]);
         const job = rows[0];
+        const start = performance.now();
+        if (job?.id === processA) processAStarted = true;
+        if (afterJobB) claimedAfterJobB = true;
         if (!job) {
           await sleep(2);
           continue;
         }
-        const start = performance.now();
-        await sleep(job.reel_id === reelA && job.kind === "process" ? 80 : 10);
+        if (job.id === processA) await holdUntil(() => claimedAfterJobB);
+        else if (job.id === jobB) await holdUntil(() => processAStarted);
+        else await sleep(10);
         const end = performance.now();
         events.push({ jobId: job.id, reel: job.reel_id, kind: job.kind, start, end });
         await client.query(
@@ -303,6 +327,7 @@ async function twoWorkers(claimSql: string): Promise<{ events: ClaimEvent[]; ree
           [job.id],
         );
         remaining.delete(job.id);
+        if (job.id === jobB) jobBReleased = true;
       }
     };
     await Promise.all([run(clients[0]!, "loop-1"), run(clients[1]!, "loop-2")]);
