@@ -173,8 +173,11 @@ test("on a phone the grid has three columns, and + opens and closes the upload",
   const zone = dialog.getByTestId("upload-drop");
   await expect(zone).toBeVisible();
   await expect(zone).toHaveAttribute("data-drop", "idle");
+  // Both wordings are in the DOM; the pointer picks the one shown (a mouse
+  // here), so the check reads the rendered text, not textContent.
   await expect(dialog.getByTestId("upload-prompt")).toHaveText(
     "Drop a video here or click to choose",
+    { useInnerText: true },
   );
   await expect(zone).toContainText("MP4, MOV, M4V or WebM, up to 5 GB");
   expect(

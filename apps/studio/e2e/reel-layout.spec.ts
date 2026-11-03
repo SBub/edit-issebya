@@ -23,8 +23,10 @@ const TRANSCRIPT = new URL("../../../fixtures/pipeline/retime/transcript.json", 
 const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
 const EXTRA_VERSIONS = 12;
+// Well past two lines of the title column on desktop and phone whatever the
+// font, so the cut at the second line does not hang on font metrics.
 const LONG_TITLE =
-  "Transitions made much longer and softer everywhere in the reel, with a photo behind you";
+  "Transitions made much longer and softer everywhere in the reel, with the kitchen photo behind you while you talk about cooking and the captions a little bigger";
 const LONG_REQUEST =
   "please make every transition slower and softer, put the kitchen photo behind me while I talk about cooking, and make the captions a little bigger";
 const EXTRA_STEPS = 40;
