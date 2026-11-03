@@ -115,6 +115,10 @@ export class StepError extends Error {
 const OUTPUT_CAP = 64 * 1024;
 const SAMPLE_EVERY_MS = 1000;
 const KILL_AFTER_MS = 5000;
+// After an abort, how long past the SIGKILL the step waits for the group's
+// last process to be reaped, and how often it looks.
+const REAP_GRACE_MS = 2000;
+const GROUP_POLL_MS = 20;
 // Wraps the tool so its stderr goes to fd 3 and `/usr/bin/time`'s report alone
 // to fd 2. `$0` is the tool, `$@` its arguments: nothing is shell-interpreted.
 const WRAPPER = 'exec "$0" "$@" 2>&3';
@@ -342,9 +346,12 @@ function capped(text: string, cap = OUTPUT_CAP): string {
   return text.length > cap ? text.slice(-cap) : text;
 }
 
-// Spawns the tool under `/usr/bin/time` in its own process group.
+// Spawns the tool under `/usr/bin/time` in its own process group. An abort
+// kills the whole group, and the call settles only once the group is gone.
 export const spawnChild: SpawnTool = (spec, signal, log) => {
   const [timeBin, timeFlag] = timeCommand(process.platform);
+  // An abort listener added now would never fire: nothing is spawned.
+  if (signal.aborted) return Promise.reject(signal.reason);
   return new Promise((resolve, reject) => {
     const child = spawn(timeBin, [timeFlag, "/bin/sh", "-c", WRAPPER, spec.file, ...spec.args], {
       cwd: spec.cwd,
@@ -402,7 +409,30 @@ export const spawnChild: SpawnTool = (spec, signal, log) => {
         // The group is already gone.
       }
     };
+    // True once no process of the group is left. A member that exited but is
+    // not reaped yet still counts: kill(-pid, 0) is EPERM for it on macOS and
+    // succeeds on Linux; only ESRCH means none is left.
+    const groupGone = (): boolean => {
+      if (pid === undefined) return true;
+      try {
+        process.kill(-pid, 0);
+        return false;
+      } catch (error) {
+        return (error as NodeJS.ErrnoException).code === "ESRCH";
+      }
+    };
+    let abortedAt: number | null = null;
+    // `close` comes when the last pipe closes, not when the group is gone: a
+    // member that let go of the pipes may still run (SIGKILL reaches it), and
+    // an exited one may wait for its reaper. Bounded, so a process nobody
+    // reaps never holds the step forever.
+    const groupExit = async () => {
+      if (abortedAt === null) return;
+      const deadline = abortedAt + KILL_AFTER_MS + REAP_GRACE_MS;
+      while (!groupGone() && performance.now() < deadline) await sleep(GROUP_POLL_MS);
+    };
     const onAbort = () => {
+      abortedAt = performance.now();
       killGroup("SIGTERM");
       killer = setTimeout(() => killGroup("SIGKILL"), KILL_AFTER_MS);
     };
@@ -418,10 +448,13 @@ export const spawnChild: SpawnTool = (spec, signal, log) => {
       reject(error);
     });
     child.on("close", (code, exitSignal) => {
-      cleanUp();
-      void sampling.then(() =>
-        resolve({ code, exitSignal, report, output, stdout, groupPeakBytes }),
-      );
+      clearInterval(sampler);
+      signal.removeEventListener("abort", onAbort);
+      // The SIGKILL stays armed until the group is gone.
+      void Promise.all([sampling, groupExit()]).then(() => {
+        clearTimeout(killer);
+        resolve({ code, exitSignal, report, output, stdout, groupPeakBytes });
+      });
     });
   });
 };
@@ -484,6 +517,8 @@ export function runToolsStep(
           if (percent !== null) progress.push(percent);
         };
       }
+      // A call after a lost lease never starts.
+      ctx.signal.throwIfAborted();
       const run = await spawnTool(call, ctx.signal, callLog);
       ctx.signal.throwIfAborted();
       const toolStarted = run.code === null || !NOT_STARTED.has(run.code);

@@ -184,6 +184,29 @@ describe("runStep", () => {
     });
   });
 
+  // The pid a tool wrote to `file`, once it is there.
+  async function waitForPid(file: string): Promise<number> {
+    let pid = 0;
+    for (let i = 0; i < 100 && !pid; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
+      pid = Number(await readFile(file, "utf8").catch(() => "0"));
+    }
+    expect(pid).toBeGreaterThan(0);
+    return pid;
+  }
+
+  function isGone(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  // The step settles only once the group is gone, reaped included, so the
+  // checks right after it need no waiting.
   it("kills the process group on abort and writes nothing more", TIMEOUT, async () => {
     const pidFile = join(dir, "pid");
     const { steps, calls } = recordingSteps();
@@ -194,17 +217,64 @@ describe("runStep", () => {
         `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 30000);`,
       ),
     );
-    let pid = 0;
-    for (let i = 0; i < 100 && !pid; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
-      pid = Number(await readFile(pidFile, "utf8").catch(() => "0"));
-    }
-    expect(pid).toBeGreaterThan(0);
+    const pid = await waitForPid(pidFile);
     controller.abort(new Error("lease lost"));
     await expect(running).rejects.toThrow("lease lost");
     expect(calls.map((c) => c.call)).toEqual(["start"]);
-    expect(() => process.kill(pid, 0)).toThrow();
+    expect(isGone(pid)).toBe(true);
+  });
+
+  // The grandchild holds none of the pipes, so the tool's `close` comes while
+  // it still runs; only the SIGKILL 5 seconds later stops it.
+  it("kills a grandchild that ignores SIGTERM and holds no pipes", TIMEOUT, async () => {
+    const pidFile = join(dir, "tool-pid");
+    const grandchildFile = join(dir, "grandchild-pid");
+    const grandchild = `process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(${JSON.stringify(grandchildFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
+    const { steps, calls } = recordingSteps();
+    const controller = new AbortController();
+    const running = runStep(
+      stepContext(steps, { signal: controller.signal }),
+      node(`
+        const fs = require("node:fs");
+        require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(grandchild)}], { stdio: "ignore" });
+        const wait = setInterval(() => {
+          if (!fs.existsSync(${JSON.stringify(grandchildFile)})) return;
+          clearInterval(wait);
+          fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+          setTimeout(() => {}, 30000);
+        }, 20);
+      `),
+    );
+    const pid = await waitForPid(pidFile);
+    const grandchildPid = await waitForPid(grandchildFile);
+    controller.abort(new Error("lease lost"));
+    await expect(running).rejects.toThrow("lease lost");
+    expect(calls.map((c) => c.call)).toEqual(["start"]);
+    expect(isGone(pid)).toBe(true);
+    expect(isGone(grandchildPid)).toBe(true);
+  });
+
+  it("starts no tool call after an abort", TIMEOUT, async () => {
+    const marker = join(dir, "second-call-ran");
+    const { steps, calls } = recordingSteps();
+    const controller = new AbortController();
+    await expect(
+      runToolsStep(stepContext(steps, { signal: controller.signal }), {
+        name: "two",
+        async work(tool) {
+          await tool({ file: NODE, args: ["-e", ""] });
+          controller.abort(new Error("lease lost"));
+          await tool({
+            file: NODE,
+            args: ["-e", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`],
+          });
+          return { what: "both ran" };
+        },
+      }),
+    ).rejects.toThrow("lease lost");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
+    await expect(readFile(marker, "utf8")).rejects.toThrow();
+    expect(calls.map((c) => c.call)).toEqual(["start"]);
   });
 });
 
