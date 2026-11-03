@@ -48,10 +48,11 @@ export const STREAK_TARGET = 7;
 // The funnel's conversion window, in days.
 export const FUNNEL_WINDOW_DAYS = 14;
 
-// The studio project's Supabase usage page. Placeholder until the owner
-// replaces <studio-project-ref> (manual step 4 in app_docs/dashboard.md).
-const SUPABASE_USAGE_URL =
-  "https://supabase.com/dashboard/project/<studio-project-ref>/settings/usage";
+// The studio's hosted Supabase project ref (public: it is in the project's URL)
+// and its usage page.
+// eslint-disable-next-line no-secrets/no-secrets -- a public project ref, not a key
+const SUPABASE_PROJECT_REF = "ykjgyapmrszliovfqjfx";
+const SUPABASE_USAGE_URL = `https://supabase.com/dashboard/project/${SUPABASE_PROJECT_REF}/settings/usage`;
 
 export const SUPABASE_CARD_KEY = "supabase-usage";
 export const SUPABASE_CARD_TEXT =

@@ -138,16 +138,16 @@ class FakePostHog implements HttpClient {
 const KEYS = INSIGHTS.map((def) => def.key);
 
 describe("applyDashboard", () => {
-  it("creates the dashboard, 14 insights and 2 text cards on a first run", async () => {
+  it("creates the dashboard, 20 insights and 2 text cards on a first run", async () => {
     const fake = new FakePostHog();
     const result = await applyDashboard(fake, "42");
     expect(result.created).toEqual(["dashboard", ...KEYS, "text:supabase-usage", "text:guardrail"]);
     expect(result.updated).toEqual([]);
     expect(fake.dashboards.size).toBe(1);
-    expect(fake.insights.size).toBe(14);
+    expect(fake.insights.size).toBe(20);
     expect(fake.textTiles()).toHaveLength(2);
     const [dashboard] = [...fake.dashboards.values()];
-    expect(dashboard!.tiles).toHaveLength(16);
+    expect(dashboard!.tiles).toHaveLength(22);
     expect(dashboard!.tiles.every((tile) => tile.layouts)).toBe(true);
   });
 
@@ -159,15 +159,15 @@ describe("applyDashboard", () => {
     expect(result.created).toEqual([]);
     expect(result.updated).toEqual(["dashboard", ...KEYS, "text:supabase-usage", "text:guardrail"]);
     expect(fake.requests.filter((r) => r.method === "POST")).toEqual([]);
-    // 14 insights two per page: seven pages read.
+    // 20 insights two per page: ten pages read.
     expect(
       fake.requests.filter((r) => r.method === "GET" && r.path.includes("insights")),
-    ).toHaveLength(7);
-    expect(fake.requests.filter((r) => r.method === "PATCH")).toHaveLength(1 + 14 + 1);
+    ).toHaveLength(10);
+    expect(fake.requests.filter((r) => r.method === "PATCH")).toHaveLength(1 + 20 + 1);
     expect(fake.dashboards.size).toBe(1);
-    expect(fake.insights.size).toBe(14);
+    expect(fake.insights.size).toBe(20);
     expect(fake.textTiles()).toHaveLength(2);
-    expect([...fake.dashboards.values()][0]!.tiles).toHaveLength(16);
+    expect([...fake.dashboards.values()][0]!.tiles).toHaveLength(22);
   });
 
   it("finds a renamed insight by its marker and leaves unrelated insights alone", async () => {
@@ -182,7 +182,7 @@ describe("applyDashboard", () => {
     first!.name = "Renamed by hand";
     const result = await applyDashboard(fake, "42");
     expect(result.created).toEqual([]);
-    expect(fake.insights.size).toBe(15);
+    expect(fake.insights.size).toBe(21);
     expect(fake.insights.get((unrelated as Obj).id as number)).toEqual({
       id: (unrelated as Obj).id,
       name: "Landing: visits",
