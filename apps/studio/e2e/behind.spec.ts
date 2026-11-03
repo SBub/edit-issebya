@@ -10,6 +10,7 @@ import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type SeededPhoto, seedReadyPhoto } from "../test-support/photos.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
+import { seekOnRuler } from "../test-support/ruler.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
 // A change request that puts a library photo behind the speaker: the worker
@@ -71,15 +72,10 @@ function composition(page: Page) {
   return page.frameLocator("hyperframes-player iframe");
 }
 
-// Seeks the way a drag does, then waits until every video playing at that
+// Seeks with a click on the ruler, then waits until every video playing at that
 // moment sits there with a frame, and two frames have painted.
 async function seekTo(page: Page, seconds: number) {
-  await page.getByLabel("Position").evaluate((el, value) => {
-    const input = el as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    setter.call(input, String(value));
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  }, seconds);
+  await seekOnRuler(page, seconds);
   await expect
     .poll(
       () =>

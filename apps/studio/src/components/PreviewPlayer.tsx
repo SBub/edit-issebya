@@ -1,7 +1,7 @@
 "use client";
 
 import type { HyperframesPlayer } from "@hyperframes/player";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { type MediaState, activeAt, canPlayFrom, mediaTimeAt } from "@/lib/preview-clock";
 import { recordSoundSchedule } from "@/lib/preview-test-hooks";
 import { PlatformZones } from "./PlatformZones";
@@ -28,6 +28,15 @@ interface Props {
   autoPlay?: boolean;
   // Told the play or pause intent wherever it changes.
   onIntent?: (intent: "paused" | "playing") => void;
+  // The seek the tracks timeline's ruler drives (the one scrubber).
+  ref?: Ref<PreviewPlayerHandle>;
+}
+
+export interface PreviewPlayerHandle {
+  // Moves the clock to `seconds` through the player's own seek: playing stays
+  // playing (hold, then start from there), paused stays paused. Ignored until
+  // the player is ready.
+  seek: (seconds: number) => void;
 }
 
 interface Tracked extends MediaState {
@@ -98,6 +107,7 @@ export function PreviewPlayer({
   startAt = 0,
   autoPlay = false,
   onIntent,
+  ref,
 }: Props) {
   const playerRef = useRef<HyperframesPlayer>(null);
   const ctxRef = useRef<AudioContext | null>(null);
@@ -347,6 +357,8 @@ export function PreviewPlayer({
     holdThenStart(t);
   }
 
+  // The ruler's seek, the way the old Position slider did it: playing stays
+  // playing through the hold-then-start routine, paused just moves the clock.
   function onSeek(value: number) {
     report(value);
     if (intentRef.current === "playing") {
@@ -355,6 +367,12 @@ export function PreviewPlayer({
     }
     playerRef.current?.seek(value);
   }
+
+  useImperativeHandle(ref, () => ({
+    seek: (seconds: number) => {
+      if (playerReady) onSeek(seconds);
+    },
+  }));
 
   // The player's own events: its load, its clock and its end.
   useEffect(() => {
@@ -467,23 +485,12 @@ export function PreviewPlayer({
         >
           {formatClock(position)} / {formatClock(duration)}
         </span>
-        <input
-          type="range"
-          aria-label="Position"
-          min="0"
-          max={duration}
-          step="0.01"
-          value={Math.min(position, duration)}
-          disabled={!playerReady}
-          onChange={(event) => onSeek(Number(event.target.value))}
-          className="min-w-0 flex-1 accent-accent"
-        />
         <button
           type="button"
           aria-pressed={zones}
           title="Show what TikTok and Instagram cover"
           onClick={() => setZones((on) => !on)}
-          className="flex h-8 flex-none items-center rounded-full border border-line px-2.5 text-xs hover:bg-raised aria-pressed:bg-raised aria-pressed:font-semibold"
+          className="ml-auto flex h-8 flex-none items-center rounded-full border border-line px-2.5 text-xs hover:bg-raised aria-pressed:bg-raised aria-pressed:font-semibold"
         >
           Zones
         </button>

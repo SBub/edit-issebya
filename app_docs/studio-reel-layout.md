@@ -8,9 +8,10 @@
 ## Overview
 
 The studio has a dark, editor-like look with the same layout on desktop and phone. The reel page fits
-one screen and never scrolls as a page: a large 9:16 preview with its controls and a read-only tracks
-timeline, the correction field pinned under it, and Versions in its own scrolling area over the whole
-side column. What the studio is doing shows in a small progress overlay over the preview.
+one screen and never scrolls as a page: a large 9:16 preview with its controls and a tracks timeline
+whose ruler is the one scrubber (the rows are read only), the correction field pinned under it, and
+Versions in its own scrolling area over the whole side column. What the studio is doing shows in a
+small progress overlay over the preview.
 The reels list is a grid of thumbnails with a round **+** button that opens the upload in a dialog.
 The reel page also carries the owner's photo library: a third column on desktop and the third tab on a
 phone.
@@ -40,12 +41,17 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
   into it (details in `app_docs/photo-library.md`).
 - `apps/studio/src/components/ProgressOverlay.tsx`: the progress overlay, an absolutely positioned
   card in the top-left of the preview (`absolute left-2 top-2 right-2 sm:right-auto sm:max-w-xs`,
-  `z-10`), `pointer-events-none` except its own buttons, so Play and the Position slider under it stay
-  usable. What it says and when is in `app_docs/status.md`. The reel page has no jobs list, step log
-  or status area; the refusal message of a refused reel stays above the preview.
+  `z-10`), `pointer-events-none` except its own buttons, so Play under it stays usable (the ruler
+  sits below the preview, clear of it). What it says and when is in `app_docs/status.md`. The reel
+  page has no jobs list, step log or status area; the refusal message of a refused reel stays above
+  the preview.
 - `apps/studio/src/components/ReelPreview.tsx`, `PreviewPlayer.tsx`: the preview now builds the
   version being shown, not only the current one, and exposes the player's clock to the controls row
-  (Play or Pause, `00:00 / 00:52`, the Position slider, Undo, Redo).
+  (Play or Pause, `00:00 / 00:52`, then the extra buttons: Zones, Undo, Redo). The control row has
+  no Position slider: the tracks timeline's ruler is the one scrubber. `PreviewPlayer` exposes its
+  seek through a `ref` (`PreviewPlayerHandle.seek`), and `ReelPreview`'s `BuiltPreview` hands it to
+  `TracksTimeline` as `onSeek`, so a ruler seek takes the same path the slider did (the player's
+  seek, the hold-then-start routine, sound scheduling, `onPosition`).
 - `apps/studio/src/app/preview-actions.ts`: `loadPreviewSources(reelId, versionId?)` signs the URLs
   for any version of that reel (a version id of another reel reads as nothing, under RLS) and returns
   the frames sprite's layout (`framesLayout`) beside the URLs.
@@ -62,9 +68,23 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
   into rows Footage, Behind, Captions, Accents, Transitions and Sounds (`TRACK_ROWS`; a legacy
   `cutout` track is never shown). The Behind row holds the version's `behind` items (empty for a
   version without them): a photo labelled `photo <spot>` (for example `photo left`), a big word by
-  its text. `formatClock` makes `mm:ss`.
+  its text. `formatClock` makes `mm:ss`. `secondsAtX(clientX, box, duration)` maps a pointer x to
+  reel seconds from the ruler's own box, clamped to 0 and the duration;
+  `scrubKey(key, shift, position, duration)` gives the ruler's key moves (`SCRUB_STEP` 1 s,
+  `SCRUB_STEP_LARGE` 5 s).
 - `apps/studio/src/components/TracksTimeline.tsx`: renders the ruler, the rows and a playhead that
-  follows the player's clock. Read only: nothing in it is focusable, selectable, draggable or editable.
+  follows the player's clock. The ruler is the one scrubber: one focusable element (`role="slider"`,
+  named `Position`, `aria-valuemin` 0, `aria-valuemax` the duration, `aria-valuenow` and
+  `aria-valuetext` such as `00:12 of 00:52`, `data-testid="ruler"`, a visible focus ring). Pointer
+  down on it seeks to the time under the pointer, and a drag keeps seeking (pointer capture, so a
+  drag that leaves the ruler keeps scrubbing; `touch-action: none`). Playing stays playing through a
+  drag, as it did with the old slider: every seek while playing re-enters the player's
+  hold-then-start routine; paused stays paused. Keys: Arrow Left and Right (and Down and Up) step
+  1 s, with Shift 5 s; Page Up and Page Down step 5 s; Home and End jump to the start and the end.
+  The playhead line, with a dot at its top, is the visible handle and sits under the pointer. The
+  ruler, every row's lane (`track-lane`) and the playhead share one time axis: the same left edge
+  after the 80 px label column (`w-20`) and the same width. The rows are read only: nothing in them
+  is focusable, selectable, clickable, draggable or editable, and a click on a row does nothing.
   Footage items show frames cut from the frames sprite. Behind items use
   `--color-track-behind` (`#81ecec`, `bg-track-behind`) with dark text (`text-surface`).
 
@@ -103,7 +123,9 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
 
 1. Sign in to the studio. The reels show as a grid of thumbnails; tap one to open it.
 2. Tap **+** to open the upload dialog and pick a clip. The reel page opens when the upload finishes.
-3. On the reel page, press Play, drag Position, and read the timeline rows against the playhead.
+3. On the reel page, press Play. To move through the video, click or drag the ruler above the
+   tracks (the playhead follows the pointer), or focus it and use the arrow keys (Shift for 5 s),
+   Home and End. Read the timeline rows against the playhead.
 4. Use Undo and Redo to look at the previous or next saved version; use "Go back to this" in the
    Versions area to make it current.
 5. On a phone, switch between the Edit, Versions and Library tabs; on desktop the library is
@@ -117,19 +139,27 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 
 ## Testing
 
-- Unit: `tracks-timeline`, `version-steps`, `reels` (`formatAge`), `preview-sources` tests in
+- Unit: `tracks-timeline` (including `secondsAtX` and `scrubKey`: clamping, Home and End, the
+  Shift step), `version-steps`, `reels` (`formatAge`), `preview-sources` tests in
   `apps/studio/src/lib/`; the worker's `preview-copies.test.ts` and `preview-copies-record.test.ts`.
 - E2E: `apps/studio/e2e/reel-layout.spec.ts` seeds a processed reel with 14 versions and 48 steps and
   checks at 1440x900 and 390x844 that the page never scrolls (Send and Export inside the root box, no
   status area, no step log and no ready-notification control, Versions as tall as the side column within 1 px with its list
   scrolling inside it, the phone's Edit, Versions and Library tabs), the timeline items at
-  `resolveTimeline`'s times with footage frames from the sprite and nothing focusable, the playhead
-  following the clock, and Undo and Redo changing only the shown version. `reels.spec.ts` checks the
+  `resolveTimeline`'s times with footage frames from the sprite and nothing in the rows focusable
+  (the ruler the timeline's one focusable element), the playhead following the clock, and Undo and
+  Redo changing only the shown version. At both sizes it checks the ruler as the one scrubber: no
+  Position control in the control row and the ruler the page's one `role="slider"`; the ruler's left
+  edge and width equal every lane's within 1 px; clicks at 25% and 75% of its box seek the player
+  there; a drag keeps the playhead within 2 px of the pointer and keeps scrubbing past the ruler's
+  end; a click on a row does nothing; arrows, Shift, Home and End move the position. The seeking
+  specs (`preview`, `behind`, `e2e-tools/export-matches-preview`) seek with a real click on the
+  ruler (`test-support/ruler.ts`). `reels.spec.ts` checks the
   grid (age and size, status, thumbnail, three columns at 390 px, **+** opening the dialog). `preview`,
   `upload`, `multipart-upload` and `footage-refusal` specs were adjusted to the new markup.
   `photo-library.spec.ts` checks the library column right of `edit-area` at 1440x900 and the Library
   tab at 390x844, with no page scroll. `progress-overlay.spec.ts` checks the overlay inside the
-  preview, clear of Play and the Position slider, at 1440x900 and 390x844.
+  preview, clear of Play and the ruler, at 1440x900 and 390x844.
 - Measure edge-aligned elements from the root box, not `window.innerWidth` (see `AGENTS.md`).
 
 ## Rules
@@ -137,7 +167,13 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 - The reel page never scrolls as a page at any size; lists scroll inside their own area.
 - Do not measure the window in JavaScript to size the layout; keep it CSS, with `min-h-0` on growing
   children.
-- The tracks timeline is read only: nothing in it is focusable, selectable, draggable or editable.
+- The ruler is the one scrubber: the only focusable and draggable element in the tracks timeline, and
+  the player's control row has no Position slider. Never add a second seek control.
+- Track items stay read only: nothing in the rows is focusable, selectable, clickable, draggable or
+  editable.
+- The ruler, every row's lane and the playhead share one time axis (same left edge after the label
+  column, same width). The ruler maps a pointer from its own box, never the window.
+- A ruler seek goes through the player's own seek (`PreviewPlayerHandle.seek`); never a second clock.
 - Undo and Redo never create a version or queue a job.
 - Row spans come from `resolveTimeline`; never compute a second timeline for the display.
 - The thumbnail's storage key is derived and signed on the server and never reaches a client

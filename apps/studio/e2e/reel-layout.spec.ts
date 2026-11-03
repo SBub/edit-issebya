@@ -8,10 +8,12 @@ import {
 } from "@edit-issebya/edit";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { type Locator, type Page, expect, test } from "@playwright/test";
+import { formatClock } from "../src/lib/tracks-timeline.ts";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
+import { ruler, rulerPoint } from "../test-support/ruler.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds } from "../test-support/worker.ts";
 
@@ -23,6 +25,8 @@ const PHONE = { width: 390, height: 844 };
 const EXTRA_VERSIONS = 12;
 const EXTRA_STEPS = 40;
 const EXTRA_JOBS = 8;
+const FOCUSABLE =
+  "a, button, input, select, textarea, [tabindex], [contenteditable], [draggable=true]";
 
 const admin = localSupabaseAdmin();
 const storage = fakeStorage({
@@ -344,13 +348,137 @@ test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable
     /\/cache\/preview_copies\/[0-9a-f]{64}\/frames\.jpg/,
   );
 
-  // Read only: nothing in it takes focus or a drag.
-  await expect(
-    tracks.locator(
-      "a, button, input, select, textarea, [tabindex], [contenteditable], [draggable=true]",
-    ),
-  ).toHaveCount(0);
+  // The rows are read only: nothing in them takes focus or a drag. The ruler
+  // is the timeline's one focusable element.
+  await expect(tracks.locator("[data-track]").locator(FOCUSABLE)).toHaveCount(0);
+  await expect(tracks.locator(FOCUSABLE)).toHaveCount(1);
+  await expect(tracks.locator(FOCUSABLE)).toHaveAttribute("data-testid", "ruler");
 });
+
+// The player's position, read from the player itself.
+function playerTime(page: Page): Promise<number> {
+  return page
+    .locator("hyperframes-player")
+    .evaluate((el) => (el as unknown as { currentTime: number }).currentTime);
+}
+
+// The playhead line's centre x on the page.
+async function playheadX(page: Page): Promise<number> {
+  const line = (await page.getByTestId("playhead").locator("span").first().boundingBox())!;
+  return line.x + line.width / 2;
+}
+
+for (const [size, viewport] of [
+  ["1440x900", DESKTOP],
+  ["390x844", PHONE],
+] as const) {
+  test(`the ruler is the one scrubber at ${size}`, async ({ page, baseURL }) => {
+    await openReel(page, baseURL!, viewport);
+    const tracks = page.getByTestId("tracks");
+    const slider = ruler(page);
+    const duration = Number(await slider.getAttribute("data-duration"));
+    expect(duration).toBeGreaterThan(1);
+    const near = async (seconds: number) => {
+      await expect.poll(() => playerTime(page)).toBeCloseTo(seconds, 1);
+      await expect
+        .poll(async () => Number(await slider.getAttribute("aria-valuenow")))
+        .toBeCloseTo(seconds, 1);
+    };
+
+    // The control row has Play and the clock, and no Position slider; the
+    // ruler is the page's one slider.
+    const controlRow = page.getByRole("button", { name: "Play" }).locator("..");
+    await expect(controlRow.getByTestId("preview-clock")).toBeVisible();
+    await expect(controlRow.getByLabel("Position")).toHaveCount(0);
+    await expect(page.locator('input[type="range"]')).toHaveCount(0);
+    await expect(page.getByRole("slider")).toHaveCount(1);
+    await expect(slider).toHaveAttribute("tabindex", "0");
+    await expect(slider).toHaveAttribute("aria-valuemin", "0");
+    await expect(slider).toHaveAttribute("aria-valuemax", String(Number(duration.toFixed(2))));
+    await expect(slider).toHaveAttribute("aria-valuenow", "0");
+    await expect(slider).toHaveAttribute("aria-valuetext", `00:00 of ${formatClock(duration)}`);
+
+    // One time axis: the ruler and every row's time area share their left
+    // edge and width, measured from boxes.
+    const rulerBox = (await slider.boundingBox())!;
+    const lanes = tracks.getByTestId("track-lane");
+    await expect(lanes).toHaveCount(6);
+    for (const lane of await lanes.all()) {
+      const box = (await lane.boundingBox())!;
+      expect(Math.abs(box.x - rulerBox.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(box.width - rulerBox.width)).toBeLessThanOrEqual(1);
+    }
+    // At 0 the playhead sits on the ruler's left edge.
+    expect(Math.abs((await playheadX(page)) - rulerBox.x)).toBeLessThanOrEqual(2);
+
+    // A click on the ruler seeks there.
+    for (const share of [0.25, 0.75]) {
+      const point = await rulerPoint(page, share * duration);
+      await page.mouse.click(point.x, point.y);
+      await near(share * duration);
+    }
+    await expect(slider).toBeFocused();
+
+    // Clicking a track row does nothing.
+    const before = await playerTime(page);
+    await tracks.locator('[data-track="captions"] [data-testid="track-lane"]').click({
+      position: { x: 5, y: 5 },
+    });
+    await page.waitForTimeout(300);
+    expect(await playerTime(page)).toBeCloseTo(before, 2);
+
+    // A drag keeps the playhead under the pointer, and keeps scrubbing once
+    // the pointer leaves the ruler (pointer capture).
+    const from = await rulerPoint(page, 0.2 * duration);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await expect
+      .poll(async () => Math.abs((await playheadX(page)) - from.x))
+      .toBeLessThanOrEqual(2);
+    for (const share of [0.35, 0.5, 0.65]) {
+      const to = await rulerPoint(page, share * duration);
+      await page.mouse.move(to.x, to.y, { steps: 4 });
+      await expect
+        .poll(async () => Math.abs((await playheadX(page)) - to.x))
+        .toBeLessThanOrEqual(2);
+      await near(share * duration);
+    }
+    // Below the ruler and past its right end: still scrubbing, clamped to the
+    // end (the player holds its last frame, so the playhead sits where the
+    // player's own clock is on the ruler's axis).
+    await page.mouse.move(rulerBox.x + rulerBox.width + 40, rulerBox.y + 60, { steps: 4 });
+    await near(duration);
+    await expect
+      .poll(async () => {
+        const at = rulerBox.x + ((await playerTime(page)) / duration) * rulerBox.width;
+        return Math.abs((await playheadX(page)) - at);
+      })
+      .toBeLessThanOrEqual(2);
+    await page.mouse.up();
+    // Released: a move no longer seeks.
+    await page.mouse.move(from.x, from.y);
+    await page.waitForTimeout(300);
+    expect(await playerTime(page)).toBeCloseTo(duration, 1);
+
+    // Keys: Home, arrows (1 s), Shift with an arrow (5 s), End.
+    await slider.focus();
+    await page.keyboard.press("Home");
+    await near(0);
+    await expect(slider).toHaveAttribute("aria-valuetext", `00:00 of ${formatClock(duration)}`);
+    await page.keyboard.press("ArrowRight");
+    await near(Math.min(1, duration));
+    await page.keyboard.press("Shift+ArrowRight");
+    await near(Math.min(6, duration));
+    await page.keyboard.press("ArrowLeft");
+    await near(Math.min(6, duration) - 1);
+    await page.keyboard.press("End");
+    await near(duration);
+    await page.keyboard.press("Shift+ArrowLeft");
+    await near(Math.max(duration - 5, 0));
+
+    await expectNoPageScroll(page);
+  });
+}
 
 test("the playhead follows the player's clock", async ({ page, baseURL }) => {
   await openReel(page, baseURL!, DESKTOP);
