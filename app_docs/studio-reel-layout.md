@@ -4,6 +4,7 @@
 
 - specs/issue-95-adw-f1d8b655-sdlc_planner-studio-one-screen-reel-layout.md
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
+- specs/issue-121-adw-98c26124-sdlc_planner-remove-reel-undo-redo.md
 
 ## Overview
 
@@ -45,9 +46,9 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
   sits below the preview, clear of it). What it says and when is in `app_docs/status.md`. The reel
   page has no jobs list, step log or status area; the refusal message of a refused reel stays above
   the preview.
-- `apps/studio/src/components/ReelPreview.tsx`, `PreviewPlayer.tsx`: the preview now builds the
-  version being shown, not only the current one, and exposes the player's clock to the controls row
-  (Play or Pause, `00:00 / 00:52`, then the extra buttons: Zones, Undo, Redo). The control row has
+- `apps/studio/src/components/ReelPreview.tsx`, `PreviewPlayer.tsx`: the preview builds the
+  reel's current version (`reels.current_version_id`) and exposes the player's clock to the control
+  row (Play or Pause, `00:00 / 00:52`, then Zones). The control row has
   no Position slider: the tracks timeline's ruler is the one scrubber. `PreviewPlayer` exposes its
   seek through a `ref` (`PreviewPlayerHandle.seek`), and `ReelPreview`'s `BuiltPreview` hands it to
   `TracksTimeline` as `onSeek`, so a ruler seek takes the same path the slider did (the player's
@@ -55,9 +56,6 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
 - `apps/studio/src/app/preview-actions.ts`: `loadPreviewSources(reelId, versionId?)` signs the URLs
   for any version of that reel (a version id of another reel reads as nothing, under RLS) and returns
   the frames sprite's layout (`framesLayout`) beside the URLs.
-- `apps/studio/src/lib/version-steps.ts`: Undo and Redo pick the previous or next saved version by
-  number. They move the shown version only: they never create a version or queue a job. "Go back to
-  this" stays the only way to make an older version current.
 - `apps/studio/src/app/globals.css`, `layout.tsx`: dark theme tokens (Tailwind v4 `@theme`) and
   `color-scheme: dark`; every studio component uses them.
 
@@ -128,8 +126,8 @@ overscroll-contain`, so its list scrolls inside it), and a third column, the pho
 3. On the reel page, press Play. To move through the video, click or drag the ruler above the
    tracks (the playhead follows the pointer), or focus it and use the arrow keys (Shift for 5 s),
    Home and End. Read the timeline rows against the playhead.
-4. Use Undo and Redo to look at the previous or next saved version; use "Go back to this" in the
-   Versions area to make it current.
+4. Use "Go back to this" in the Versions area to make an older version current (it saves a new
+   version copying the old one); the preview always shows the current version.
 5. On a phone, switch between the Edit, Versions and Library tabs; on desktop the library is
    the right-hand column. Type a correction in the field pinned at the bottom and press Send; use
    Export in the header.
@@ -142,15 +140,16 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 ## Testing
 
 - Unit: `tracks-timeline` (including `secondsAtX` and `scrubKey`: clamping, Home and End, the
-  Shift step), `version-steps`, `reels` (`formatAge`), `preview-sources` tests in
+  Shift step), `reels` (`formatAge`), `preview-sources` tests in
   `apps/studio/src/lib/`; the worker's `preview-copies.test.ts` and `preview-copies-record.test.ts`.
 - E2E: `apps/studio/e2e/reel-layout.spec.ts` seeds a processed reel with 14 versions and 48 steps and
   checks at 1440x900 and 390x844 that the page never scrolls (Send and Export inside the root box, no
   status area, no step log and no ready-notification control, Versions as tall as the side column within 1 px with its list
   scrolling inside it, the phone's Edit, Versions and Library tabs), the timeline items at
   `resolveTimeline`'s times with footage frames from the sprite and nothing in the rows focusable
-  (the ruler the timeline's one focusable element), the playhead following the clock, and Undo and
-  Redo changing only the shown version. At both sizes it checks the ruler as the one scrubber: no
+  (the ruler the timeline's one focusable element), the playhead following the clock, and no Undo or
+  Redo button, the preview showing the current version and no version marked as showing, at both
+  sizes. At both sizes it checks the ruler as the one scrubber: no
   Position control in the control row and the ruler the page's one `role="slider"`; the ruler's left
   edge and width equal every lane's within 1 px; clicks at 25% and 75% of its box seek the player
   there; a drag keeps the playhead within 2 px of the pointer (also once the clock has settled on a
@@ -179,7 +178,6 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 - The ruler, every row's lane and the playhead share one time axis (same left edge after the label
   column, same width). The ruler maps a pointer from its own box, never the window.
 - A ruler seek goes through the player's own seek (`PreviewPlayerHandle.seek`); never a second clock.
-- Undo and Redo never create a version or queue a job.
 - Row spans come from `resolveTimeline`; never compute a second timeline for the display.
 - The thumbnail's storage key is derived and signed on the server and never reaches a client
   component; select named columns from `reels`, never `*`.

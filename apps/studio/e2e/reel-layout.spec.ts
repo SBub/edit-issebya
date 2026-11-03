@@ -559,58 +559,34 @@ test("the playhead follows the player's clock", async ({ page, baseURL }) => {
   expect(await playhead.getAttribute("data-seconds")).toBe(paused);
 });
 
-test("Undo and Redo show the previous and next saved version and write nothing", async ({
+test("no Undo or Redo: the preview shows the current version at both sizes", async ({
   page,
   baseURL,
 }) => {
-  const versions = await versionRows();
-  expect(versions).toHaveLength(2 + EXTRA_VERSIONS);
-  const before = {
-    versions: versions.length,
-    jobs: (await admin.from("jobs").select("id").eq("reel_id", reel!.reelId)).data!.length,
-  };
-  const newest = versions.at(-1)!;
-  const item = (number: number) =>
-    page.locator(`[data-testid="version-item"][data-version-number="${number}"]`);
-  const shown = async (version: { id: string; number: number }) => {
-    await expect(item(version.number)).toHaveAttribute("data-selected", "true");
-    await expect(
-      page.locator(`[data-preview-version="${version.id}"][data-preview="ready"]`),
-    ).toBeVisible({ timeout: 30_000 });
-  };
-
-  await openReel(page, baseURL!, DESKTOP);
-  const undo = page.getByRole("button", { name: "Undo" });
-  const redo = page.getByRole("button", { name: "Redo" });
-  await expect(item(newest.number)).toHaveAttribute("data-current", "true");
-  await shown(newest);
-  await expect(redo).toBeDisabled();
-
-  await undo.click();
-  const previous = versions.at(-2)!;
-  await shown(previous);
-  await expect(item(previous.number).getByTestId("version-showing")).toBeVisible();
-  await expect(item(newest.number)).toHaveAttribute("data-current", "true");
-
-  await redo.click();
-  await shown(newest);
-  await expect(redo).toBeDisabled();
-
-  // Back to version 1, one Undo at a time; earlier loads are dropped.
-  for (let n = 0; n < versions.length - 1; n += 1) await undo.click({ timeout: 30_000 });
-  await shown(versions[0]!);
-  await expect(undo).toBeDisabled();
-  await expect(redo).toBeEnabled();
-
-  // Nothing was written: the same versions and jobs, the newest still current.
-  expect((await versionRows()).length).toBe(before.versions);
-  expect((await admin.from("jobs").select("id").eq("reel_id", reel!.reelId)).data!.length).toBe(
-    before.jobs,
-  );
-  const { data } = await admin
+  const { data, error } = await admin
     .from("reels")
     .select("current_version_id")
     .eq("id", reel!.reelId)
-    .single();
-  expect(data!.current_version_id).toBe(newest.id);
+    .single<{ current_version_id: string }>();
+  if (error || !data) throw new Error(`reel not read: ${error?.message}`);
+  const currentId = data.current_version_id;
+  const newest = (await versionRows()).at(-1)!;
+  expect(currentId).toBe(newest.id);
+
+  for (const viewport of [DESKTOP, PHONE]) {
+    await openReel(page, baseURL!, viewport);
+    for (const name of ["Undo", "Redo"]) {
+      await expect(
+        page.getByRole("button", { name, exact: true, includeHidden: true }),
+      ).toHaveCount(0);
+    }
+    await expect(
+      page.locator(`[data-preview-version="${currentId}"][data-preview="ready"]`),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.locator(`[data-testid="version-item"][data-version-number="${newest.number}"]`),
+    ).toHaveAttribute("data-current", "true");
+    await expect(page.locator('[data-testid="version-item"][data-selected]')).toHaveCount(0);
+    await expect(page.getByTestId("version-showing")).toHaveCount(0);
+  }
 });

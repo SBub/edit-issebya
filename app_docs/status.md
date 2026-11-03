@@ -78,7 +78,7 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
 - `apps/studio/src/components/ReelPreview.tsx` keeps the previous built preview on screen until the
   next version is built, then mounts it with `startAt` (the last position, clamped to the new
   version's duration) and `autoPlay` (the last play or pause intent), through `PreviewPlayer`'s
-  hold-then-start routine. Undo and Redo hand off the same way. `PreviewPlayer`'s wrapper carries
+  hold-then-start routine. `PreviewPlayer`'s wrapper carries
   `data-version-id` and `data-intent`.
 
 ### Progress parsing per tool

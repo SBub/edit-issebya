@@ -10,7 +10,7 @@ import {
   parseEdit,
   transcriptSchema,
 } from "@edit-issebya/edit";
-import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type PreviewSourcesResult, loadPreviewSources } from "@/app/preview-actions";
 import { PreviewPlayer, type PreviewPlayerHandle } from "@/components/PreviewPlayer";
 import { type TimelineFrames, TracksTimeline } from "@/components/TracksTimeline";
@@ -144,12 +144,10 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
 // hand-off (the previous version's position and play or pause state).
 function BuiltPreview({
   built,
-  controls,
   handoff,
   onHandoff,
 }: {
   built: Built;
-  controls: ReactNode;
   handoff: Handoff;
   onHandoff: (change: Partial<Handoff>) => void;
 }) {
@@ -170,7 +168,6 @@ function BuiltPreview({
           onHandoff({ position: seconds });
         }}
         onIntent={(intent) => onHandoff({ intent })}
-        controls={controls}
       />
       <TracksTimeline
         timeline={built.timeline}
@@ -186,22 +183,12 @@ function subscribeNever(): () => void {
   return () => {};
 }
 
-// The live preview of the shown version (the current one unless Undo or Redo
-// picked another) with its tracks timeline. It loads when the shown version
-// changes (LiveReel follows the reel through Realtime): no reload, no
-// polling. A load overtaken by a newer version is dropped. While the next
+// The live preview of the reel's current version with its tracks timeline. It
+// loads when the current version changes (LiveReel follows the reel through
+// Realtime): no reload, no polling. A load overtaken by a newer version is dropped. While the next
 // version loads, the previous one keeps playing; the next one then takes over
 // at the same time, playing or paused as it was.
-export function ReelPreview({
-  reelId,
-  versionId,
-  controls,
-}: {
-  reelId: string;
-  versionId: string | null;
-  // Undo and Redo, shown in the player's control row.
-  controls: ReactNode;
-}) {
+export function ReelPreview({ reelId, versionId }: { reelId: string; versionId: string | null }) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const opened = useRef(false);
   // The mounted player's position and intent; the first open starts at 0, paused.
@@ -253,7 +240,6 @@ export function ReelPreview({
       <p role={status ? "status" : undefined} className="text-sm text-muted">
         {text}
       </p>
-      {versionId && <div className="flex items-center gap-2">{controls}</div>}
     </div>
   );
 
@@ -269,7 +255,6 @@ export function ReelPreview({
         <BuiltPreview
           key={built.versionId}
           built={built}
-          controls={controls}
           handoff={handoff}
           onHandoff={(change) => {
             handoffRef.current = { ...handoffRef.current, ...change };
