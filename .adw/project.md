@@ -77,7 +77,7 @@ be kept in step with them and with `README.md`.
 "studio"]}` for a change spanning both, `worker` for a change under `apps/worker`, `storage` for one
   under `packages/storage`, `edit` for one under `packages/edit`, and `{"target_apps": []}` for a change to root files only
   (docs, `specs/`, `supabase/`, tooling). Commands then filter with `--filter=./apps/<name>`,
-  repeated per target (see Build).
+  repeated per target (see Build; Tests widens a package target to its dependents).
 
 ## Install
 
@@ -135,7 +135,10 @@ Do not start the dev server during install.
 ## Tests
 
 In the order the test phase runs them, all from the root (`<filter>` is `--filter=./apps/<name>`
-per target, or nothing for a root-only change; the plain root scripts `yarn lint`,
+per app target and `--filter=...{./packages/<name>}` per package target, which adds every workspace
+that depends on that package (for `edit` or `storage` that is the studio and the worker), so a
+package change is checked against the apps that import it; or nothing for a root-only change; the
+plain root scripts `yarn lint`,
 `yarn typecheck`, `yarn test`, `yarn test:db`, `yarn build` and `yarn test:e2e` are the unfiltered
 `turbo run` forms): lint
 `yarn turbo run lint <filter>` (autofix `lint:fix`; each app's `eslint.config.mjs`); typecheck
