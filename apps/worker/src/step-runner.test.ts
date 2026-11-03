@@ -36,10 +36,13 @@ function node(script: string, extra: Partial<Parameters<typeof runStep>[1]> = {}
 
 // Burns at least `ms` of CPU (user + sys) and lasts at least `ms` of wall time,
 // holding `mb` MiB, then prints its own peak RSS in bytes as the last stdout line.
+// The buffer is random and every page is touched again on each turn of the loop:
+// macOS compresses a constant-filled buffer under memory pressure (a full
+// parallel `yarn test`), and 200 MiB of ones then peaked at 80 to 130 MiB.
 function spin(mb: number, ms: number): string {
-  return `const b = Buffer.alloc(${mb} * 1024 * 1024, 1); const t = Date.now();
-    for (;;) { const c = process.cpuUsage(); if (c.user + c.system >= ${ms} * 1000 && Date.now() - t >= ${ms}) break; }
-    void b; console.log(process.resourceUsage().maxRSS * 1024);`;
+  return `const b = require("node:crypto").randomFillSync(Buffer.allocUnsafe(${mb} * 1024 * 1024)); const t = Date.now();
+    for (;;) { for (let i = 0; i < b.length; i += 4096) b[i] ^= 1; const c = process.cpuUsage(); if (c.user + c.system >= ${ms} * 1000 && Date.now() - t >= ${ms}) break; }
+    console.log(process.resourceUsage().maxRSS * 1024);`;
 }
 
 function onlyDone(calls: ReturnType<typeof recordingSteps>["calls"]) {
