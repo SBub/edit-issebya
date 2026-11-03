@@ -1,0 +1,415 @@
+name: migrations
+
+# Hosted Supabase migrations (project ykjgyapmrszliovfqjfx) are applied by CI as
+# part of promotion, never by hand. What each job does, when it runs, the secret,
+# deploy order and drift recovery: app_docs/migrations-ci.md.
+#
+# Ported from issebya-homes-ai-system's .github/workflows/migrations.yml, which
+# carries the incident record behind these choices. The parts that matter here:
+#
+# - No `supabase link`, no --linked, no SUPABASE_ACCESS_TOKEN. `link` routes the
+#   prod gate through Management API privileges a third party can change (and
+#   did: `link` started failing with a 403 on `api-keys?reveal=true` without a
+#   commit in that repo). A direct Postgres connection answers to the database
+#   password alone.
+# - The one secret, SUPABASE_DB_URL, is the session-pooler URL:
+#   postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#   The pooler host, because the direct db.<ref>.supabase.co host is IPv6-only
+#   and GitHub-hosted runners are IPv4-only. Session mode on 5432, because
+#   migrations issue session-level statements transaction mode (6543) refuses.
+#   The password is percent-encoded.
+# - Every job that reads the secret checks it first. An empty --db-url is not an
+#   error to the CLI: it falls back to libpq's defaults and dials the runner's
+#   own Postgres socket. Each job also refuses a URL for any project but this
+#   one, and masks the password (raw and decoded) before the first CLI call.
+# - The push job pins `ref: master`. A dispatch defaults to the default branch
+#   (develop here), and develop's unpromoted migrations must never reach hosted.
+#
+# Where this differs from the reference, and why:
+# - No dry-run job here. ci.yml's `check` job already starts a fresh local stack
+#   on every PR into develop and master (`supabase start` applies the whole
+#   history), so a second stack would only repeat it. See the step named
+#   "Apply all migrations to a fresh local stack (dry run)" in ci.yml.
+# - The hosted migration list is read with psql from
+#   supabase_migrations.schema_migrations in a read-only session, not parsed
+#   from `supabase migration list`. CLI 2.75.0 (this repo's pin) has no JSON
+#   output for that command, and the table's layout is presentation. The CLI's
+#   own `db push --dry-run` still runs, so the log shows exactly what a push
+#   would do.
+# - prod-migration-sync lists what the merge will apply as "PR files minus
+#   hosted", not "PR files minus master": migrations have reached hosted ahead
+#   of master here (applied by hand from develop), and those must show as
+#   present, not pending.
+# - drift-check runs after a successful push and on dispatch, not on PRs. On a
+#   promotion PR, "master equals hosted" is false whenever hosted is ahead of
+#   master, which is a state prod-migration-sync already judges correctly
+#   against the PR's tree.
+# - No diagnose job: nothing here calls the Management API.
+# - The push job takes one lock (concurrency), and a dispatch can pass
+#   --include-all for a pending migration older than hosted's newest one.
+#
+# CLI pin 2.75.0 matches ci.yml. Bump every pin in both files together, on
+# purpose, never to `latest`.
+#
+# The pull_request trigger has no `paths:` filter on purpose: prod-migration-sync
+# must report on every PR into master (a promotion carrying no SQL is exactly
+# when a stranded migration from an earlier failed push must still block), and a
+# workflow suppressed by a paths filter never reports a required check at all.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+    paths:
+      - "supabase/migrations/**"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which job to run (drift-check is read only; push writes to hosted)"
+        type: choice
+        default: drift-check
+        options:
+          - drift-check
+          - push
+      include_all:
+        description: "push only: pass --include-all (a pending migration is older than hosted's newest)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  HOSTED_PROJECT_REF: ykjgyapmrszliovfqjfx
+
+jobs:
+  prod-migration-sync:
+    # Read only. Every PR into master. Compares the state after this PR lands
+    # against hosted: nothing on master may be missing from hosted (a push that
+    # failed or never ran), and hosted may hold no version this PR's tree lacks
+    # a file for (history changed outside the repo, or the PR deletes an
+    # applied migration). Lists what the merge will apply as the job summary.
+    # No `if` on the PR's file list: a skipped job satisfies a required check.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      # The PR's merge commit (the default on pull_request): this job asks about
+      # the tree after the merge. fetch-depth 0 plus an explicit fetch of master
+      # so master's tree is there to compare; a missing master would read as
+      # "no migrations" and pass vacuously.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch master
+        run: git fetch --no-tags origin "+refs/heads/master:refs/remotes/origin/master"
+
+      - name: Require SUPABASE_DB_URL
+        run: |
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "::error title=SUPABASE_DB_URL is not set::Add the repo secret SUPABASE_DB_URL, the hosted project's session-pooler URL: postgresql://postgres.${HOSTED_PROJECT_REF}:<percent-encoded password>@aws-0-<region>.pooler.supabase.com:5432/postgres (app_docs/migrations-ci.md). Refusing to run against an unspecified database."
+            exit 1
+          fi
+          creds="${SUPABASE_DB_URL#*://}"
+          creds="${creds%@*}"
+          password="${creds#*:}"
+          echo "::add-mask::${password}"
+          echo "::add-mask::$(printf '%b' "${password//%/\\x}")"
+          case "$SUPABASE_DB_URL" in
+            postgres://postgres."${HOSTED_PROJECT_REF}":*@*.pooler.supabase.com:5432/postgres | \
+            postgresql://postgres."${HOSTED_PROJECT_REF}":*@*.pooler.supabase.com:5432/postgres) ;;
+            *)
+              echo "::error title=SUPABASE_DB_URL has the wrong shape::It must be the session-pooler URL of project ${HOSTED_PROJECT_REF}: user postgres.${HOSTED_PROJECT_REF}, host *.pooler.supabase.com, port 5432, database postgres. The value is not printed."
+              exit 1
+              ;;
+          esac
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.75.0
+
+      - name: Ensure psql
+        run: command -v psql || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
+
+      - name: Compare hosted, master and this PR
+        run: |
+          # Errexit off: every result is inspected below, so a failing psql or
+          # an empty grep reaches the reporting code instead of killing the
+          # step with no explanation.
+          set -uo pipefail
+          set +e
+
+          flat() { printf '%s\n' "$1" | sed '/^$/d' | tr '\n' ' '; }
+          versions_from_tree() {
+            git ls-tree --name-only "$1" supabase/migrations/ \
+              | sed -n 's#^supabase/migrations/\([0-9][0-9]*\)_.*\.sql$#\1#p' | sort -u
+          }
+          file_of() {
+            git ls-tree --name-only HEAD supabase/migrations/ | sed -n "s#^supabase/migrations/\(${1}_.*\.sql\)\$#\1#p"
+          }
+          set_diff() {
+            comm -23 <(printf '%s\n' "$1" | sed '/^$/d' | sort -u) <(printf '%s\n' "$2" | sed '/^$/d' | sort -u)
+          }
+          as_list() {
+            while read -r v; do
+              [ -n "$v" ] || continue
+              name="$(file_of "$v")"
+              echo "- \`${name:-$v}\`"
+            done <<< "$1"
+          }
+
+          master_local="$(versions_from_tree origin/master)"
+          pr_local="$(versions_from_tree HEAD)"
+
+          # Read only: the session refuses writes before the one select runs.
+          hosted_raw="$(psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -At \
+            -c 'set session characteristics as transaction read only' \
+            -c 'select version from supabase_migrations.schema_migrations order by version')"
+          psql_rc=$?
+          hosted="$(printf '%s\n' "$hosted_raw" | grep -E '^[0-9]+$' | sort -u)"
+          if [ "$psql_rc" -ne 0 ] || { [ -z "$hosted" ] && [ -n "$master_local" ]; }; then
+            echo "::error::Could not read hosted's migration history (psql exited ${psql_rc}, $(printf '%s\n' "$hosted" | sed '/^$/d' | wc -l | tr -d ' ') versions read, master has $(printf '%s\n' "$master_local" | sed '/^$/d' | wc -l | tr -d ' ')). A gate that cannot see hosted does not pass."
+            exit 1
+          fi
+
+          echo "::group::supabase db push --dry-run (what a push from this tree would do)"
+          supabase db push --dry-run --db-url "$SUPABASE_DB_URL" 2>&1
+          dry_rc=$?
+          echo "::endgroup::"
+
+          fail=0
+          missing_on_hosted="$(set_diff "$master_local" "$hosted")"
+          unknown_on_hosted="$(set_diff "$hosted" "$pr_local")"
+          will_apply="$(set_diff "$pr_local" "$hosted")"
+          new_to_master="$(set_diff "$pr_local" "$master_local")"
+          already_on_hosted="$(comm -12 <(printf '%s\n' "$new_to_master" | sed '/^$/d') <(printf '%s\n' "$hosted" | sed '/^$/d'))"
+          newest_hosted="$(printf '%s\n' "$hosted" | sed '/^$/d' | tail -1)"
+          out_of_order="$(printf '%s\n' "$will_apply" | awk -v top="$newest_hosted" 'NF && $1 < top')"
+
+          if [ -n "$missing_on_hosted" ]; then
+            fail=1
+            echo "::error::Migrations on master were never applied to hosted (a push failed or never ran). Dispatch the migrations workflow with job=push, then re-run this check: $(flat "$missing_on_hosted")"
+          fi
+          if [ -n "$unknown_on_hosted" ]; then
+            fail=1
+            echo "::error::Hosted holds migration versions with no file in this PR's tree (history changed outside the repo, or this PR deletes an applied migration): $(flat "$unknown_on_hosted"). See Drift recovery in app_docs/migrations-ci.md."
+          fi
+          if [ -n "$out_of_order" ]; then
+            echo "::warning::Pending migrations are older than hosted's newest (${newest_hosted}); the push job will refuse them without --include-all: $(flat "$out_of_order"). After merging, dispatch job=push with include_all."
+          fi
+          if [ "$dry_rc" -ne 0 ]; then
+            echo "::warning::'supabase db push --dry-run' exited ${dry_rc}; the push job will fail the same way after merge unless the cause above is fixed."
+          fi
+
+          {
+            echo "### Hosted migration sync (${HOSTED_PROJECT_REF})"
+            echo
+            if [ -n "$will_apply" ]; then
+              echo "Merging this PR into master makes the push job apply these migrations to hosted:"
+              echo
+              as_list "$will_apply"
+            else
+              echo "Hosted already holds every migration in this PR. The push job will apply nothing."
+            fi
+            if [ -n "$already_on_hosted" ]; then
+              echo
+              echo "New to master but already on hosted (applied outside CI, will not run again):"
+              echo
+              as_list "$already_on_hosted"
+            fi
+            if [ -n "$out_of_order" ]; then
+              echo
+              echo "**Warning:** older than hosted's newest version \`${newest_hosted}\`; after the merge dispatch \`job=push\` with \`include_all\`:"
+              echo
+              as_list "$out_of_order"
+            fi
+            if [ -n "$missing_on_hosted" ]; then
+              echo
+              echo "**Failing:** on master but never applied to hosted:"
+              echo
+              as_list "$missing_on_hosted"
+            fi
+            if [ -n "$unknown_on_hosted" ]; then
+              echo
+              echo "**Failing (drift):** on hosted with no file in this PR:"
+              echo
+              as_list "$unknown_on_hosted"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "hosted applied:   $(flat "$hosted")"
+          echo "master files:     $(flat "$master_local")"
+          echo "this PR's files:  $(flat "$pr_local")"
+          echo "merge will apply: $(flat "$will_apply")"
+
+          [ "$fail" -eq 0 ] || exit 1
+          echo "In sync: hosted holds everything master has, and nothing this PR lacks."
+
+  push:
+    # Writes to hosted. On a push to master that changed supabase/migrations/**,
+    # and on dispatch with job=push (the retry path, so a failed apply never
+    # needs a fabricated commit). One at a time, never cancelled midway.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.job == 'push')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: hosted-migrations-push
+      cancel-in-progress: false
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      INCLUDE_ALL: ${{ github.event_name == 'workflow_dispatch' && inputs.include_all }}
+    steps:
+      # master, whatever branch a dispatch picked: hosted serves master's code.
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Require SUPABASE_DB_URL
+        run: |
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "::error title=SUPABASE_DB_URL is not set::Add the repo secret SUPABASE_DB_URL, the hosted project's session-pooler URL: postgresql://postgres.${HOSTED_PROJECT_REF}:<percent-encoded password>@aws-0-<region>.pooler.supabase.com:5432/postgres (app_docs/migrations-ci.md). Refusing to run against an unspecified database."
+            exit 1
+          fi
+          creds="${SUPABASE_DB_URL#*://}"
+          creds="${creds%@*}"
+          password="${creds#*:}"
+          echo "::add-mask::${password}"
+          echo "::add-mask::$(printf '%b' "${password//%/\\x}")"
+          case "$SUPABASE_DB_URL" in
+            postgres://postgres."${HOSTED_PROJECT_REF}":*@*.pooler.supabase.com:5432/postgres | \
+            postgresql://postgres."${HOSTED_PROJECT_REF}":*@*.pooler.supabase.com:5432/postgres) ;;
+            *)
+              echo "::error title=SUPABASE_DB_URL has the wrong shape::It must be the session-pooler URL of project ${HOSTED_PROJECT_REF}: user postgres.${HOSTED_PROJECT_REF}, host *.pooler.supabase.com, port 5432, database postgres. The value is not printed."
+              exit 1
+              ;;
+          esac
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.75.0
+
+      # --db-url, never link or --linked (see the header). Seed data and roles
+      # are not pushed (no --include-seed, no --include-roles).
+      - name: Push pending migrations to hosted
+        run: |
+          set -uo pipefail
+          set +e
+          args=()
+          if [ "$INCLUDE_ALL" = "true" ]; then args+=(--include-all); fi
+          out="$(mktemp)"
+          supabase db push --db-url "$SUPABASE_DB_URL" ${args[@]+"${args[@]}"} 2>&1 | tee "$out"
+          rc=$?
+          # Only the CLI's "Applying migration <file>..." lines reach the
+          # summary: the log is masked, the summary file is not filtered.
+          {
+            echo "### Hosted migration push (${HOSTED_PROJECT_REF})"
+            echo
+            if [ "$rc" -ne 0 ]; then
+              echo "**Failed** (exit ${rc}); the job log has the CLI's error. Fix it, then dispatch \`job=push\`."
+              echo
+            fi
+            applied="$(grep -oE 'Applying migration [^ .]+\.sql' "$out" | sed 's/^Applying migration //')"
+            if [ -n "$applied" ]; then
+              echo "Applied:"
+              echo
+              while read -r f; do echo "- \`$f\`"; done <<< "$applied"
+            else
+              echo "Nothing applied."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+  drift-check:
+    # Read only. After a successful push (to confirm hosted now equals master)
+    # and on dispatch with job=drift-check (the default arm). Compares master
+    # as it stands with hosted, both ways.
+    needs: push
+    if: >-
+      !cancelled() && (
+        needs.push.result == 'success' ||
+        (github.event_name == 'workflow_dispatch' && inputs.job == 'drift-check')
+      )
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Require SUPABASE_DB_URL
+        run: |
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "::error title=SUPABASE_DB_URL is not set::Add the repo secret SUPABASE_DB_URL, the hosted project's session-pooler URL: postgresql://postgres.${HOSTED_PROJECT_REF}:<percent-encoded password>@aws-0-<region>.pooler.supabase.com:5432/postgres (app_docs/migrations-ci.md). Refusing to run against an unspecified database."
+            exit 1
+          fi
+          creds="${SUPABASE_DB_URL#*://}"
+          creds="${creds%@*}"
+          password="${creds#*:}"
+          echo "::add-mask::${password}"
+          echo "::add-mask::$(printf '%b' "${password//%/\\x}")"
+          case "$SUPABASE_DB_URL" in
+            postgres://postgres."${HOSTED_PROJECT_REF}":*@*.pooler.supabase.com:5432/postgres | \
+            postgresql://postgres."${HOSTED_PROJECT_REF}":*@*.pooler.supabase.com:5432/postgres) ;;
+            *)
+              echo "::error title=SUPABASE_DB_URL has the wrong shape::It must be the session-pooler URL of project ${HOSTED_PROJECT_REF}: user postgres.${HOSTED_PROJECT_REF}, host *.pooler.supabase.com, port 5432, database postgres. The value is not printed."
+              exit 1
+              ;;
+          esac
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.75.0
+
+      - name: Ensure psql
+        run: command -v psql || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
+
+      - name: Compare master with hosted
+        run: |
+          set -uo pipefail
+          set +e
+
+          flat() { printf '%s\n' "$1" | sed '/^$/d' | tr '\n' ' '; }
+          bullets() { while read -r v; do [ -z "$v" ] || echo "- \`$v\`"; done <<< "$1"; }
+          master_local="$(git ls-tree --name-only HEAD supabase/migrations/ \
+            | sed -n 's#^supabase/migrations/\([0-9][0-9]*\)_.*\.sql$#\1#p' | sort -u)"
+          hosted_raw="$(psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -At \
+            -c 'set session characteristics as transaction read only' \
+            -c 'select version from supabase_migrations.schema_migrations order by version')"
+          psql_rc=$?
+          hosted="$(printf '%s\n' "$hosted_raw" | grep -E '^[0-9]+$' | sort -u)"
+          if [ "$psql_rc" -ne 0 ] || { [ -z "$hosted" ] && [ -n "$master_local" ]; }; then
+            echo "::error::Could not read hosted's migration history (psql exited ${psql_rc}). A check that cannot see hosted does not pass."
+            exit 1
+          fi
+
+          echo "::group::supabase db push --dry-run"
+          supabase db push --dry-run --db-url "$SUPABASE_DB_URL" 2>&1
+          echo "::endgroup::"
+
+          missing="$(comm -23 <(printf '%s\n' "$master_local" | sed '/^$/d') <(printf '%s\n' "$hosted" | sed '/^$/d'))"
+          extra="$(comm -13 <(printf '%s\n' "$master_local" | sed '/^$/d') <(printf '%s\n' "$hosted" | sed '/^$/d'))"
+          drift=0
+          if [ -n "$missing" ]; then
+            drift=1
+            echo "::error::On master but not applied to hosted: $(flat "$missing"). Dispatch job=push."
+          fi
+          if [ -n "$extra" ]; then
+            drift=1
+            echo "::error::On hosted with no file on master: $(flat "$extra"). Applied outside CI ahead of a promotion, or history changed by hand; see Drift recovery in app_docs/migrations-ci.md."
+          fi
+          {
+            echo "### Hosted drift check (${HOSTED_PROJECT_REF})"
+            echo
+            if [ "$drift" -eq 0 ]; then
+              echo "No drift: hosted holds exactly master's $(printf '%s\n' "$master_local" | sed '/^$/d' | wc -l | tr -d ' ') migrations."
+            else
+              [ -z "$missing" ] || { echo "On master, not on hosted:"; echo; bullets "$missing"; echo; }
+              [ -z "$extra" ] || { echo "On hosted, not on master:"; echo; bullets "$extra"; }
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$drift" -eq 0 ] || exit 1
+          echo "No drift: master's migration history matches hosted."

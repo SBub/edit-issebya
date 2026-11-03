@@ -122,6 +122,8 @@ Manual owner steps (ADW never does these):
 
 1. In PostHog, connect the studio project's Supabase Postgres as a data warehouse source and sync
    `reels`, `jobs`, `steps`, `versions`, `exports` and `stored_files` incrementally on `updated_at`.
+   The `updated_at` columns reach hosted with their migration when it is promoted to `master` (CI
+   applies it, `app_docs/migrations-ci.md`); there is no hand-run `supabase db push`.
 2. In the PostHog SQL editor read the real synced table names; if the prefix is not `supabase_`,
    change `TABLE_PREFIX` in `config.ts`.
 3. Create a personal API key with write access to insights and dashboards, and export it in your

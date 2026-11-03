@@ -50,11 +50,15 @@ jobs:
       - run: yarn build
       # CI's own fresh local Supabase stack (never the hosted project): auth,
       # realtime, kong, postgrest and the database. `supabase start` applies
-      # supabase/migrations/ to it.
+      # supabase/migrations/ to it, which is also the migrations dry run for
+      # every PR into develop and master (migrations.yml starts no second
+      # stack; app_docs/migrations-ci.md). The CLI pin moves together with
+      # the pins in migrations.yml.
       - uses: supabase/setup-cli@v3
         with:
           version: 2.75.0
-      - run: supabase start -x storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: Apply all migrations to a fresh local stack (dry run)
+        run: supabase start -x storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       # Only what the tests need, by allow-list and under new names, so the
       # STUDIO_URL `supabase status` prints (Supabase's dashboard) never reaches
       # the environment, where the landing page would forward /studio to it.
