@@ -17,7 +17,9 @@ const JOB: ClaimedJob = {
   version_id: null,
 };
 
-function deps(work: (signal: AbortSignal) => Promise<void>) {
+function deps(
+  work: (signal: AbortSignal, checkCancelled: () => Promise<boolean>) => Promise<void>,
+) {
   return {
     job: JOB,
     renewEveryMs: 60_000,
@@ -162,5 +164,33 @@ describe("runJob", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("is cancelled and writes nothing once the owner cancels the job", async () => {
+    const d = {
+      ...deps(async (signal, checkCancelled) => {
+        expect(await checkCancelled()).toBe(true);
+        signal.throwIfAborted();
+      }),
+      cancelled: vi.fn(async () => true),
+      cancelCheckEveryMs: 60_000,
+    };
+    expect(await runJob(d)).toBe("cancelled");
+    expect(d.finish).not.toHaveBeenCalled();
+    expect(d.fail).not.toHaveBeenCalled();
+    expect(d.refuse).not.toHaveBeenCalled();
+    expect(d.wait).not.toHaveBeenCalled();
+    expect(d.errors.jobFailed).not.toHaveBeenCalled();
+  });
+
+  it("is cancelled when a cancel lands after the work returned", async () => {
+    const d = {
+      ...deps(async (_signal, checkCancelled) => {
+        await checkCancelled();
+      }),
+      cancelled: vi.fn(async () => true),
+    };
+    expect(await runJob(d)).toBe("cancelled");
+    expect(d.finish).not.toHaveBeenCalled();
   });
 });

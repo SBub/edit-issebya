@@ -6,7 +6,7 @@ import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixt
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { stepLines } from "../test-support/rows.ts";
-import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
+import { claimableJobIds, runWorkerOnce, startWorkerOnce } from "../test-support/worker.ts";
 import type { CapturedEvent } from "../src/lib/track";
 import { eventsNamed, recordEvents } from "./events.ts";
 
@@ -14,7 +14,7 @@ import { eventsNamed, recordEvents } from "./events.ts";
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
 // What the render double copies (E2E_MOCK_RENDER=true in runWorkerOnce).
 const STUB = fileURLToPath(new URL("../../../fixtures/render/stub-export.mp4", import.meta.url));
-const DAY_MS = 24 * 3600 * 1000;
+const HOUR_MS = 3600 * 1000;
 // The two scripts the composition loads from jsdelivr, served from the pinned
 // local packages so the spec needs no network.
 const CDN = [
@@ -107,9 +107,10 @@ async function exportsOf(): Promise<ExportRecord[]> {
 async function renderJobs() {
   const { data, error } = await admin
     .from("jobs")
-    .select("id, kind, status, version_id")
+    .select("id, kind, status, version_id, attempts, started_at")
     .eq("reel_id", reel!.reelId)
-    .eq("kind", "render");
+    .eq("kind", "render")
+    .order("created_at");
   if (error) throw new Error(`jobs not read: ${error.message}`);
   return data ?? [];
 }
@@ -128,7 +129,20 @@ async function noReloadMarker() {
   return page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload);
 }
 
-test("Export renders the current version and the link downloads it without a reload", async ({
+// Nothing kept, nothing offered: the panel never shows a download link or an
+// expiry, before or after an export.
+async function expectNothingOffered() {
+  await expect(page.getByTestId("export-link")).toHaveCount(0);
+  await expect(page.getByTestId("export-expired")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /download/i })).toHaveCount(0);
+  await expect(page.getByText(/expires|expired/)).toHaveCount(0);
+}
+
+const modal = () => page.getByTestId("export-modal");
+const progressPercent = async () =>
+  Number((await page.getByTestId("export-progress").getAttribute("data-percent")) || 0);
+
+test("Export shows the render's progress in a modal, downloads the file by itself and closes", async ({
   baseURL,
 }) => {
   test.setTimeout(120_000);
@@ -141,16 +155,21 @@ test("Export renders the current version and the link downloads it without a rel
 
   const button = page.getByTestId("export-button");
   await expect(button).toBeEnabled();
-  await expect(page.getByTestId("export-link")).toHaveCount(0);
+  await expectNothingOffered();
+  await expect(modal()).toBeHidden();
   await button.click();
 
+  await expect(modal()).toBeVisible();
+  await expect(modal().getByRole("heading")).toHaveText("Exporting version 2");
+  await expect(page.getByTestId("export-modal-status")).toHaveText("Waiting to start");
+  // Indeterminate before the render step runs.
+  await expect(page.getByTestId("export-progress")).toHaveAttribute("data-percent", "");
   const { current_version_id: versionId } = await reelRow();
   await expect
     .poll(renderJobs)
     .toEqual([
       expect.objectContaining({ kind: "render", status: "queued", version_id: versionId }),
     ]);
-  await expect(button).toBeDisabled();
   await expect(page.getByTestId("export-blocked-reason")).toHaveText("Exporting this version...");
   await expect
     .poll(() => eventsNamed(events, "studio_export_requested"))
@@ -158,12 +177,37 @@ test("Export renders the current version and the link downloads it without a rel
       { event: "studio_export_requested", properties: { app: "studio", reel_id: reel!.reelId } },
     ]);
 
-  const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX });
-  expect(worker.code, worker.output).toBe(0);
+  const downloaded = page.waitForEvent("download", { timeout: 90_000 });
+  // The render double replays the render's progress over 25 seconds (the
+  // worker writes progress throttled, so a shorter render shows one value).
+  const worker = runWorkerOnce(
+    { R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_RENDER_SECONDS: "25" },
+    { timeoutMs: 90_000 },
+  );
 
-  const link = page.getByTestId("export-link");
-  await expect(link).toBeVisible({ timeout: 15_000 });
-  await expect(link).toContainText("Download version 2");
+  // The bar follows the render step's live percent and rises.
+  await expect.poll(progressPercent, { timeout: 60_000 }).toBeGreaterThan(0);
+  const first = await progressPercent();
+  await expect.poll(progressPercent, { timeout: 30_000 }).toBeGreaterThan(first);
+
+  const download = await downloaded;
+  expect(download.suggestedFilename()).toMatch(/^reel-v2-\d{8}-\d{4}\.mp4$/);
+  const path = await download.path();
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- Playwright's own download file
+  expect(new Uint8Array(await readFile(path))).toEqual(
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed stub
+    new Uint8Array(await readFile(STUB)),
+  );
+  const result = await worker;
+  expect(result.code, result.output).toBe(0);
+  await expect(page.getByTestId("export-modal-status")).toHaveText("Downloaded");
+  await expect(modal()).toBeHidden({ timeout: 10_000 });
+  await expect
+    .poll(() => eventsNamed(events, "studio_export_downloaded"))
+    .toEqual([
+      { event: "studio_export_downloaded", properties: { app: "studio", reel_id: reel!.reelId } },
+    ]);
+
   const renderLines = (await stepLines(admin, reel!.reelId)).filter(
     (line) => line.name === "render",
   );
@@ -184,48 +228,71 @@ test("Export renders the current version and the link downloads it without a rel
     r2_key: `${CACHE_PREFIX}exports/${reel!.reelId}/${row!.id}.mp4`,
     bytes: stubBytes,
   });
-  expect(Date.parse(row!.expires_at) - Date.parse(row!.created_at)).toBe(DAY_MS);
+  // The hand-over file lives 1 hour.
+  expect(Date.parse(row!.expires_at) - Date.parse(row!.created_at)).toBe(HOUR_MS);
   written.add(row!.r2_key);
   expect((await storage.head(row!.r2_key))?.bytes).toBe(stubBytes);
-
-  const [download] = await Promise.all([page.waitForEvent("download"), link.click()]);
-  expect(download.suggestedFilename()).toMatch(/^reel-v2-\d{8}-\d{4}\.mp4$/);
-  const path = await download.path();
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- Playwright's own download file
-  expect(new Uint8Array(await readFile(path))).toEqual(
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed stub
-    new Uint8Array(await readFile(STUB)),
-  );
-  await expect
-    .poll(() => eventsNamed(events, "studio_export_downloaded"))
-    .toEqual([
-      { event: "studio_export_downloaded", properties: { app: "studio", reel_id: reel!.reelId } },
-    ]);
+  await expectNothingOffered();
 });
 
-test("an expired export shows expired, export again and no link", async () => {
-  const [row] = await exportsOf();
-  expect(row).toBeDefined();
-  const deleted = await admin.from("exports").delete().eq("id", row!.id);
-  expect(deleted.error).toBeNull();
-  // Made 25 hours ago: the trigger sets expires_at an hour ago.
-  const inserted = await admin.from("exports").insert({
-    id: crypto.randomUUID(),
-    reel_id: reel!.reelId,
-    owner_id: owner.id,
-    job_id: row!.job_id,
-    version_id: row!.version_id,
-    r2_key: row!.r2_key,
-    bytes: row!.bytes,
-    created_at: new Date(Date.now() - 25 * 3600 * 1000).toISOString(),
-  });
-  expect(inserted.error).toBeNull();
-  const [expired] = await exportsOf();
-  expect(Date.parse(expired!.expires_at)).toBeLessThan(Date.now());
+test("Cancel during the render stops it: no export, no download, Export again", async () => {
+  test.setTimeout(120_000);
+  const before = await exportsOf();
+  let downloads = 0;
+  const count = () => (downloads += 1);
+  page.on("download", count);
+  try {
+    await page.getByTestId("export-button").click();
+    await expect(modal()).toBeVisible();
+    // Long enough that only a cancel ends it in time.
+    const worker = startWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_RENDER_SECONDS: "90" });
+    try {
+      await expect.poll(progressPercent, { timeout: 60_000 }).toBeGreaterThan(0);
+      await page.getByTestId("export-cancel").click();
+      await expect(modal()).toBeHidden();
 
-  await page.reload();
-  await expect(page.locator('[data-realtime="ready"]')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("export-expired")).toHaveText("expired, export again");
-  await expect(page.getByTestId("export-link")).toHaveCount(0);
+      const exited = await worker.exited;
+      expect(exited.output).toMatch(/cancelled, leaving it/);
+    } finally {
+      worker.killGroup();
+    }
+    const jobs = await renderJobs();
+    const cancelled = jobs.find((job) => job.status === "cancelled");
+    expect(cancelled).toBeDefined();
+    expect(await exportsOf()).toEqual(before);
+    expect(await storage.list(`${CACHE_PREFIX}exports/${reel!.reelId}/`)).toEqual(
+      before.map((row) => row.r2_key),
+    );
+    await expect(page.getByTestId("export-button")).toBeEnabled();
+    await expectNothingOffered();
+    expect(downloads).toBe(0);
+  } finally {
+    page.off("download", count);
+  }
+});
+
+test("Cancel while queued: the render is never claimed", async () => {
+  const before = await exportsOf();
+  const known = new Set((await renderJobs()).map((job) => job.id));
+  await page.getByTestId("export-button").click();
+  await expect(modal()).toBeVisible();
+  await expect(page.getByTestId("export-modal-status")).toHaveText("Waiting to start");
+  await expect
+    .poll(async () => (await renderJobs()).filter((job) => !known.has(job.id)))
+    .toEqual([expect.objectContaining({ status: "queued" })]);
+  // Escape closes the modal, which cancels the render.
+  await page.keyboard.press("Escape");
+  await expect(modal()).toBeHidden();
+  await expect
+    .poll(async () => (await renderJobs()).filter((job) => !known.has(job.id)))
+    .toEqual([expect.objectContaining({ status: "cancelled" })]);
+
+  const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX });
+  expect(worker.code, worker.output).toBe(0);
+  expect(worker.output).toMatch(/no job/);
+  const [job] = (await renderJobs()).filter((candidate) => !known.has(candidate.id));
+  expect(job).toMatchObject({ status: "cancelled", attempts: 0, started_at: null });
+  expect(await exportsOf()).toEqual(before);
   await expect(page.getByTestId("export-button")).toBeEnabled();
+  await expectNothingOffered();
 });

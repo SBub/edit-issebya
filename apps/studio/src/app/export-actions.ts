@@ -7,7 +7,6 @@ import {
   exportBlockedReason,
   exportFileName,
   exportLinkSeconds,
-  exportView,
   isExportKey,
 } from "@/lib/exports";
 import type { JobRow } from "@/lib/jobs";
@@ -81,29 +80,24 @@ export async function requestExport(reelId: string): Promise<ExportRequestResult
   return { status: "queued", jobId: data.id, versionId };
 }
 
-export type LatestExportResult =
-  | {
-      status: "ready";
-      exportId: string;
-      url: string;
-      fileName: string;
-      bytes: number;
-      versionNumber: number;
-      expiresAt: string;
-    }
-  | { status: "expired"; exportId: string }
+export type ExportFileResult =
+  | { status: "ready"; url: string; fileName: string }
+  | { status: "expired" }
   | { status: "none" }
   | { status: "unconfigured" }
   | { status: "signed-out" }
   | { status: "failed" };
 
-// The reel's newest export, read under RLS as the signed-in owner. A live one
-// comes with a download link signed for no longer than the time left until
-// its expiry, downloading under a readable name; an expired one is never
-// signed at all. The key comes only from a row owners cannot write, and is
-// checked to be this reel's export before signing.
-export async function loadLatestExport(reelId: string): Promise<LatestExportResult> {
+// One export of the reel, read under RLS as the signed-in owner, with a
+// download link signed for no longer than the time left until its expiry
+// (`Content-Disposition: attachment`, a readable name). The modal fetches it
+// once, the moment the export row arrives, and downloads it at once: nothing
+// is kept or offered afterwards. An expired export is never signed. The key
+// comes only from a row owners cannot write, and is checked to be this reel's
+// export before signing.
+export async function loadExport(reelId: string, exportId: string): Promise<ExportFileResult> {
   if (typeof reelId !== "string" || !isReelId(reelId)) return { status: "failed" };
+  if (typeof exportId !== "string" || !isReelId(exportId)) return { status: "failed" };
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { status: "unconfigured" };
   const {
@@ -111,27 +105,25 @@ export async function loadLatestExport(reelId: string): Promise<LatestExportResu
   } = await supabase.auth.getUser();
   if (!user) return { status: "signed-out" };
 
-  const latest = await supabase
+  const found = await supabase
     .from("exports")
     .select(EXPORT_COLUMNS)
+    .eq("id", exportId)
     .eq("reel_id", reelId)
-    .order("created_at", { ascending: false })
-    .limit(1)
     .maybeSingle<ExportRow>();
-  if (latest.error) {
+  if (found.error) {
     await reportFailure(serverErrorCapture(), {
       message: "studio: export not read",
-      error: latest.error,
+      error: found.error,
       userId: user.id,
       properties: { reel_id: reelId },
-      log: [latest.error.code],
+      log: [found.error.code],
     });
     return { status: "failed" };
   }
-  const row = latest.data;
-  const view = exportView(row, Date.now());
-  if (!row || view.kind === "none") return { status: "none" };
-  if (view.kind === "expired") return { status: "expired", exportId: row.id };
+  const row = found.data;
+  if (!row) return { status: "none" };
+  if (exportLinkSeconds(row.expires_at, Date.now()) === null) return { status: "expired" };
   if (!isExportKey(row.r2_key, reelId)) {
     await reportFailure(serverErrorCapture(), {
       message: "studio: export key refused",
@@ -154,21 +146,13 @@ export async function loadLatestExport(reelId: string): Promise<LatestExportResu
   const fileName = exportFileName(version.data.number, row.created_at);
   // Measured again just before signing: the reads above took time.
   const seconds = exportLinkSeconds(row.expires_at, Date.now());
-  if (seconds === null) return { status: "expired", exportId: row.id };
+  if (seconds === null) return { status: "expired" };
   try {
     const url = await storage.signDownload(row.r2_key, {
       expiresInSeconds: seconds,
       downloadName: fileName,
     });
-    return {
-      status: "ready",
-      exportId: row.id,
-      url,
-      fileName,
-      bytes: row.bytes,
-      versionNumber: version.data.number,
-      expiresAt: row.expires_at,
-    };
+    return { status: "ready", url, fileName };
   } catch (error) {
     // The error's name only: a signing error's message may hold the key.
     await reportFailure(serverErrorCapture(), {
@@ -179,4 +163,36 @@ export async function loadLatestExport(reelId: string): Promise<LatestExportResu
     });
     return { status: "failed" };
   }
+}
+
+export type CancelExportResult =
+  | { status: "cancelled" }
+  | { status: "not-cancelled" }
+  | { status: "signed-out" }
+  | { status: "failed" };
+
+// Cancels the owner's own render job through `cancel_job` (the only path: the
+// owner has no update right on `jobs`). The database refuses another owner's
+// job, any other kind, a finished job and one whose export is recorded, all
+// as `not-cancelled`.
+export async function cancelExport(jobId: string): Promise<CancelExportResult> {
+  if (typeof jobId !== "string" || !isReelId(jobId)) return { status: "failed" };
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return { status: "failed" };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { status: "signed-out" };
+  const { data, error } = await supabase.rpc("cancel_job", { p_job_id: jobId });
+  if (error) {
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: export not cancelled",
+      error,
+      userId: user.id,
+      properties: { job_id: jobId },
+      log: [error.code],
+    });
+    return { status: "failed" };
+  }
+  return data === true ? { status: "cancelled" } : { status: "not-cancelled" };
 }

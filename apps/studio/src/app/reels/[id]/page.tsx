@@ -1,3 +1,4 @@
+import type { ExportRef } from "@/lib/exports";
 import { notFound, redirect } from "next/navigation";
 import { LiveReel } from "@/components/LiveReel";
 import { NotConfigured } from "@/components/NotConfigured";
@@ -82,11 +83,11 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
         .returns<VersionListRow[]>(),
       supabase
         .from("exports")
-        .select("id")
+        .select("id, job_id")
         .eq("reel_id", id)
         .order("created_at", { ascending: false })
         .limit(1)
-        .maybeSingle<{ id: string }>(),
+        .maybeSingle<ExportRef>(),
       supabase.from("worker_status").select(WORKER_STATUS_COLUMNS).returns<WorkerStatusRow[]>(),
       ...PROGRESS_STEPS.map(history),
     ]);
@@ -115,7 +116,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
         jobs={jobs.data ?? []}
         steps={steps.data ?? []}
         versions={versions.data ?? []}
-        latestExportId={latestExport.data?.id ?? null}
+        latestExport={latestExport.data ?? null}
         workerStatus={workerStatus.data ?? []}
         estimateRates={estimateRates}
         library={<PhotoLibrary initial={library.ok ? library.value : []} />}

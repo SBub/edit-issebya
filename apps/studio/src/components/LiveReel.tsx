@@ -20,6 +20,7 @@ import { ReelPreview } from "@/components/ReelPreview";
 import { ReelScreen } from "@/components/ReelScreen";
 import { VersionList } from "@/components/VersionList";
 import { changeBlockedReason } from "@/lib/change-requests";
+import type { ExportRef } from "@/lib/exports";
 import { changeQueueNote } from "@/lib/failures";
 import { type FailureAction, overlayState } from "@/lib/progress-overlay";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, reelName } from "@/lib/reels";
@@ -45,8 +46,9 @@ interface Snapshot {
   jobs: JobRow[];
   steps: StepRow[];
   versions: VersionListRow[];
-  // The newest export's id (the panel reads and signs it itself).
-  latestExportId: string | null;
+  // The newest export and its job: the export modal downloads its job's
+  // export the moment it arrives.
+  latestExport: ExportRef | null;
   // Every worker's row: why it is not claiming (free disk) and its heartbeat.
   workerStatus: WorkerStatusRow[];
 }
@@ -89,11 +91,11 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
       .returns<VersionListRow[]>(),
     supabase
       .from("exports")
-      .select("id")
+      .select("id, job_id")
       .eq("reel_id", id)
       .order("created_at", { ascending: false })
       .limit(1)
-      .maybeSingle<{ id: string }>(),
+      .maybeSingle<ExportRef>(),
     supabase.from("worker_status").select(WORKER_STATUS_COLUMNS).returns<WorkerStatusRow[]>(),
   ]);
   if (
@@ -112,7 +114,7 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
     jobs: jobs.data ?? [],
     steps: steps.data ?? [],
     versions: versions.data ?? [],
-    latestExportId: latestExport.data?.id ?? null,
+    latestExport: latestExport.data ?? null,
     workerStatus: workerStatus.data ?? [],
   };
 }
@@ -132,7 +134,7 @@ export function LiveReel({
   jobs: initialJobs,
   steps: initialSteps,
   versions: initialVersions,
-  latestExportId: initialLatestExportId,
+  latestExport: initialLatestExport,
   workerStatus: initialWorkerStatus,
   estimateRates,
   library,
@@ -141,7 +143,7 @@ export function LiveReel({
   const [jobs, setJobs] = useState(initialJobs);
   const [steps, setSteps] = useState(initialSteps);
   const [versions, setVersions] = useState(initialVersions);
-  const [latestExportId, setLatestExportId] = useState(initialLatestExportId);
+  const [latestExport, setLatestExport] = useState(initialLatestExport);
   const [workerStatus, setWorkerStatus] = useState(initialWorkerStatus);
   const [ready, setReady] = useState(false);
   // The owner's Undo or Redo pick, kept only while the current version is the
@@ -208,7 +210,7 @@ export function LiveReel({
             setJobs(snapshot.jobs);
             setSteps(snapshot.steps);
             setVersions(snapshot.versions);
-            setLatestExportId(snapshot.latestExportId);
+            setLatestExport(snapshot.latestExport);
             setWorkerStatus(snapshot.workerStatus);
           }
           setReady(true);
@@ -256,8 +258,7 @@ export function LiveReel({
         { event: "INSERT", schema: "public", table: "exports", filter: `reel_id=eq.${id}` },
         (payload) => {
           // Exports are never updated; a new one is the newest.
-          const row = pickColumns<{ id: string }>(payload.new, "id");
-          setLatestExportId(row.id);
+          setLatestExport(pickColumns<ExportRef>(payload.new, "id, job_id"));
         },
       )
       .on(
@@ -417,7 +418,13 @@ export function LiveReel({
             <h1 className="min-w-0 flex-1 truncate text-base font-semibold" title={reelName(reel)}>
               {reelName(reel)}
             </h1>
-            <ExportPanel reel={reel} jobs={jobs} latestExportId={latestExportId} />
+            <ExportPanel
+              reel={reel}
+              jobs={jobs}
+              steps={steps}
+              versions={versions}
+              latestExport={latestExport}
+            />
           </>
         }
         main={

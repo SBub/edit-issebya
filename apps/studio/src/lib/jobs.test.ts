@@ -19,7 +19,14 @@ describe("columns", () => {
 
 describe("status lists", () => {
   it("match the check constraints of public.jobs and public.steps", () => {
-    expect(JOB_STATUSES).toEqual(["queued", "running", "waiting_ai", "done", "failed"]);
+    expect(JOB_STATUSES).toEqual([
+      "queued",
+      "running",
+      "waiting_ai",
+      "done",
+      "failed",
+      "cancelled",
+    ]);
     expect(STEP_STATUSES).toEqual(["running", "done", "failed", "skipped", "waiting"]);
   });
 });

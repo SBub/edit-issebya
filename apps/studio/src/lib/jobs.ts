@@ -10,7 +10,15 @@ export const STEP_COLUMNS =
 export const JOB_KINDS = ["process", "change", "restore", "render"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
-export const JOB_STATUSES = ["queued", "running", "waiting_ai", "done", "failed"] as const;
+// `cancelled`: the owner closed a render's export modal (`cancel_job`).
+export const JOB_STATUSES = [
+  "queued",
+  "running",
+  "waiting_ai",
+  "done",
+  "failed",
+  "cancelled",
+] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
 export const STEP_STATUSES = ["running", "done", "failed", "skipped", "waiting"] as const;

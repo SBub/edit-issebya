@@ -10,7 +10,8 @@
 
 Every object a job or an upload writes to R2 gets a `stored_files` row: its reel, the step that
 made it, its size and kind, and when it was deleted. Heavy rebuildable files are deleted seven days
-after the last export of every reel that holds them, and expired exports are deleted. Each job's
+after the last export of every reel that holds them, and expired exports are deleted (an export's
+file is a 1-hour hand-over, `app_docs/export.md`). Each job's
 scratch folder is removed after the job, whatever happened. No job is claimed while the worker's
 disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why under a queued job.
 
@@ -36,6 +37,10 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   what may be deleted under the prefix, mark `deleted_at` and return the keys and bytes, in one
   statement.
 - All three functions are `security definer` and executable by `service_role` only.
+- `discard_export_file(p_r2_key)` (`20261103164248_one_step_export.sql`, `security definer`,
+  `service_role` only) marks deleted and returns an export file's row only while no `exports` row
+  records the key: the file of a render that was cancelled (or whose row was not written) after the
+  upload. Selection and marking are one statement, like the two above.
 - `finish_upload` now also records the raw footage's `source` row (step `upload`, the size from
   storage) in the same transaction, once (`app_docs/upload.md`).
 - `worker_status`: `worker_id`, `free_disk_bytes`, `waiting_reason`, `updated_at`, one row per
@@ -76,7 +81,10 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   stay where they are, still classified as retired outputs (`app_docs/pipeline.md`) and slimmed like
   any file of their tag: `subject.webm` is rebuildable and deleted under the same seven-day rule;
   nothing re-runs to rebuild it, since no version built since needs it.
-- Deleted: export files once their export's `expires_at` has passed.
+- Deleted: export files once their export's `expires_at` has passed (1 hour after the export was
+  made; rows made before `20261103164248_one_step_export.sql` keep their 24 hours), and an
+  export file no export records, at once, by the render that uploaded it (`discard_export_file`,
+  then a delete from the raw storage, `supabaseDiscardExport` in `apps/worker/src/stored-files.ts`).
 - The next export rebuilds whatever rebuildable output is missing: only `convert` and `retime`
   re-run from their fingerprints, and the kept outputs stay cache hits.
 - A cleared mask is rebuilt by the next export, restore or change that needs it (a `cutout` step,
@@ -167,7 +175,7 @@ Nothing to do for the owner. What they see:
   delete) and the `scratch dir` line.
 - DB (`yarn test:db`): `apps/studio/db-tests/stored-files.test.ts` (`stored_files` and
   `worker_status` RLS, `record_stored_file`, the seven-day slimming and export expiry with a fixed
-  clock, `finish_upload`'s source row).
+  clock, `discard_export_file`, `finish_upload`'s source row).
 - E2E: `apps/studio/e2e/upload.spec.ts` checks that every object under the run's prefix and the
   source has exactly one `stored_files` row with its size, kind and step;
   `apps/studio/e2e/disk-guard.spec.ts` runs `once` below the minimum (no claim, the reason shown
@@ -185,7 +193,8 @@ Nothing to do for the owner. What they see:
 - Remove the job folder on failure too.
 - Never claim a job below `WORKER_MIN_FREE_DISK_GB`.
 - Never run `hyperframes clean` from the worker.
-- Never write storage from a job except through `recordingStorage`.
+- Never write storage from a job except through `recordingStorage`. The one delete a job makes is
+  its own unrecorded export upload, through `discard_export_file` first; never a recorded export.
 - Never read the scratch volume before creating the scratch folder.
 
 ## Notes

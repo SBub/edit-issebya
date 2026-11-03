@@ -7,8 +7,11 @@
 
 ## Overview
 
-The Export button on a reel's page renders the current version to an MP4 through a `render` job.
-The owner downloads the file through a 24-hour link.
+Export is one action. The Export button on a reel's page queues a `render` job for the current
+version and opens a modal that shows the render's live progress. When the render finishes, the MP4
+downloads by itself and the modal closes. Nothing is kept or offered afterwards: exporting again
+renders again. Closing the modal (Cancel, Escape or the close control) cancels the export. The
+uploaded file is only a hand-over and is deleted 1 hour after it was made.
 
 ## How it works
 
@@ -23,11 +26,33 @@ The owner downloads the file through a 24-hour link.
   owner from the session, `status = 'queued'`, `kind = 'render'`, the caller's reel and a version
   of that reel.
 - The `exports` table: `id`, `reel_id`, `owner_id`, `job_id` (unique), `version_id`, `r2_key`
-  (unique), `bytes` (above 0), `created_at`, `expires_at`. The `exports_before_insert` trigger sets
-  `expires_at = created_at + 24 hours` and takes `owner_id` from the reel, whatever the insert
-  passes; a check repeats the expiry. `exports_refuse_update` refuses every update, even the
-  service role's. RLS: `exports: owner selects own` only, no insert policy (the worker writes with
-  the secret key), no anon access. The table is in `supabase_realtime`.
+  (unique), `bytes` (above 0), `created_at`, `expires_at`. The `exports_before_insert` trigger
+  takes `owner_id` from the reel and sets the expiry, whatever the insert passes; a check repeats
+  the expiry. `exports_refuse_update` refuses every update, even the service role's. RLS:
+  `exports: owner selects own` only, no insert policy (the worker writes with the secret key), no
+  anon access. The table is in `supabase_realtime`.
+
+`supabase/migrations/20261103164248_one_step_export.sql`:
+
+- The hand-over file lives 1 hour: the trigger sets `expires_at = created_at + 1 hour` and the new
+  `exports_expiry_check` repeats it. The check is added `not valid`, so it holds for every new row
+  and rows made before keep their 24 hours.
+- A new job status, `cancelled` (`jobs_status_check`: `queued`, `running`, `waiting_ai`, `done`,
+  `failed`, `cancelled`).
+- `cancel_job(p_job_id uuid) returns boolean`, `security definer`: locks the job row, then cancels
+  it only when the caller owns the job and its reel, the job is a `render`, it is `queued`, `running`
+  or `waiting_ai`, and no `exports` row records it. The job ends `cancelled` with `finished_at`, its
+  lease and waiting columns cleared. Anything else returns false and changes nothing, never saying
+  why. `authenticated` may execute it, `anon` never. The owner still has no update right on `jobs`:
+  this function is the only way to cancel.
+- The insert trigger locks the same job row (`for share`) and refuses an `exports` row for a
+  cancelled job (`export refused: the job was cancelled`), even from the service role. Together with
+  `cancel_job`'s own check, a render either finishes with its export or is cancelled without one,
+  never both.
+- `claim_job` is unchanged: it claims only `queued`, `waiting_ai` past its `not_before` and `running`
+  with an expired lease, so a cancelled job is never claimed and holds no later job of its reel back.
+- `discard_export_file(p_r2_key)` (service role only) marks deleted and returns an export file's
+  `stored_files` row only while no `exports` row records the key (see Worker).
 
 ### Studio
 
@@ -38,14 +63,34 @@ The owner downloads the file through a 24-hour link.
 to export yet.`, `Export opens once the reel is processed.`, or `Exporting this version...` while
   a render of the current version is queued or running. A change, or a render of an older version,
   does not hold the button.
-- `loadLatestExport` reads the newest export, checks its key is this reel's (`isExportKey`) and
-  signs it with `signDownload(key, { expiresInSeconds: exportLinkSeconds(...), downloadName:
-exportFileName(...) })`. The name is `reel-v<N>-<YYYYMMDD-HHMM>.mp4` in UTC and the link carries
-  `Content-Disposition: attachment`. The seconds are measured again just before signing, so a link
-  is never signed past `expires_at`; an expired export is never signed at all.
-- `ExportPanel.tsx` shows the button, the reason beside it, `Download version N (<size>)` and
-  `expires <time>`, and switches to `expired, export again` by one timeout at the expiry, with no
-  network. `LiveReel.tsx` follows `exports` INSERTs for the reel over Realtime.
+- `loadExport(reelId, exportId)` reads that one export under RLS, checks its key is this reel's
+  (`isExportKey`) and signs it with `signDownload(key, { expiresInSeconds: exportLinkSeconds(...),
+downloadName: exportFileName(...) })`. The name is `reel-v<N>-<YYYYMMDD-HHMM>.mp4` in UTC and the
+  link carries `Content-Disposition: attachment`. The seconds are measured again just before
+  signing, so a link is never signed past `expires_at`; an expired export is never signed at all.
+- `cancelExport(jobId)` calls `cancel_job` under the owner's session.
+- `ExportPanel.tsx` shows only the button and its blocked reason. Pressing Export queues the job
+  (`requestExport`, `studio_export_requested`) and opens a native `<dialog>`, "Exporting version N",
+  that follows that job. What it shows comes from `exportModalState(jobId, jobs, steps,
+latestExport)` (`apps/studio/src/lib/exports.ts`), a pure function of `LiveReel`'s Realtime state:
+  - `waiting` before the render step runs (queued: `Waiting to start`; the pipeline's hits or a
+    cut-out: `Getting ready`) and after it until the export row arrives (`Finishing`): an
+    indeterminate bar;
+  - `rendering`: the job's running `render` step, its live `steps.progress_percent` as the bar
+    (`Rendering, N%`), 0 before the first write;
+  - `ready`: the job's `exports` row arrived (Realtime INSERT): the modal calls `loadExport` once
+    and starts the download at once with a programmatic anchor click, sends
+    `studio_export_downloaded`, shows `Downloaded` with a `Download` link as the fallback for a
+    browser that blocks a download no click started (it cannot be detected, so the link always
+    shows), and closes after 4 seconds;
+  - `failed`: `The export failed. Try again.` until the owner closes it; `cancelled`: closed.
+- Cancel, Escape and the close control all close the modal; while the job is `waiting` or
+  `rendering` they also call `cancelExport`. The modal closes at once and the job's row follows
+  live; the panel returns to idle. Closing after the download changes nothing.
+- A page opened while a render of the current version is live (`liveRenderJobId`) opens the modal
+  for that job again, so it can still be followed or cancelled.
+- `LiveReel.tsx` follows `exports` INSERTs for the reel over Realtime and keeps the newest export's
+  `id` and `job_id` (read once on open and on each ready subscription). No polling.
 
 ### Worker
 
@@ -91,6 +136,26 @@ exportFileName(...) })`. The name is `reel-v<N>-<YYYYMMDD-HHMM>.mp4` in UTC and 
   `putFileIfAbsent`, then the `exports` row. The step log line reads
   `render: exported, <duration>, <size>`.
 
+### Cancel
+
+- A render job's lease keeper (`apps/worker/src/lease.ts`, `keepLease`) also runs one cheap check
+  every `cancelCheckEveryMs` (5 seconds, `config.ts`): `jobCancelled` (`queue.ts`) reads only the
+  job's `id`, filtered to `status = 'cancelled'`. No other kind runs the check. A cancel aborts the
+  job's signal with a `JobCancelled` reason, exactly as a lost lease aborts it: the step runner
+  kills the running tool's process group (`SIGTERM`, then `SIGKILL` after 5 seconds) and writes
+  nothing more, and `runJob` returns `cancelled` and writes no job state (`cancel_job` already
+  ended the job). The worker logs `job <id>: cancelled, leaving it`.
+- `runRender` also checks at once (`ctx.checkCancelled`) after the pipeline's hits and cut-outs,
+  so a cancel there stops the job before the render step starts, and again just before the upload.
+- An MP4 uploaded but not recorded (the `exports` insert was refused for a cancelled job, or
+  failed) is removed: `discard_export_file` marks its `stored_files` row deleted and the object is
+  deleted from the raw storage (`supabaseDiscardExport` in `stored-files.ts`). This is the one
+  removal the worker makes after a cancel; it never touches a recorded export. A refused insert
+  for a cancelled job turns into the abort, so the step writes no `failed` row.
+- A cancelled render's step rows keep what was written so far: the `render` row stays `running`
+  with its last percent, as on any abort. The overlay and the modal show nothing for a cancelled
+  job.
+
 ### Render double
 
 `E2E_MOCK_RENDER` set to exactly `"true"` turns the call into
@@ -104,9 +169,10 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
 ## How to Use
 
 1. Open a processed reel and press Export.
-2. Wait for the step log's `render` line.
-3. Click `Download version N (...)` within 24 hours. After that the panel reads
-   `expired, export again`: press Export again.
+2. Watch the modal's progress. The MP4 downloads by itself when the render finishes, and the modal
+   closes. If the browser blocked it, click `Download` in the modal while it shows.
+3. To stop an export, press Cancel or Escape, or close the modal.
+4. To have the file again, press Export again: it renders again.
 
 ## Configuration
 
@@ -115,21 +181,33 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   spec; the tools spec passes it empty to render for real.
 - `FFMPEG_PATH` is honoured by `apps/studio/test-support/frames.ts`.
 - The worker's slimming deletes an export's object once `expires_at` passes
-  (`expire_export_files`, see `app_docs/storage.md`). The owner's R2 lifecycle rule, which deletes
-  `<prefix>exports/` objects 1 day after creation, stays as a backstop: `expires_at` is what the
-  owner sees.
+  (`expire_export_files`, see `app_docs/storage.md`), 1 hour after it was made. The owner's R2
+  lifecycle rule, which deletes `<prefix>exports/` objects 1 day after creation, stays as a
+  backstop.
+- `cancelCheckEveryMs` (5000) is fixed in `apps/worker/src/config.ts`, not a variable.
 
 ## Testing
 
 - Unit (worker): `render-call.test.ts`, `render-project.test.ts`, `export-key.test.ts`,
-  `render-step.test.ts` (under `apps/worker/src/render/`), `job-kinds.test.ts` and
+  `render-step.test.ts` (under `apps/worker/src/render/`; a cancel during the render kills the
+  render double's real child within seconds and leaves no export row and no object, a cancel
+  before the render step stops before it, a refused insert discards the upload), `lease.test.ts`
+  and `run-job.test.ts` (the cancel check and the `cancelled` outcome), `job-kinds.test.ts` and
   `pipeline/run-pipeline.test.ts` (`setReelStatus: false`).
-- Unit (studio): `apps/studio/src/lib/exports.test.ts`, `change-requests.test.ts` (the
-  `export of vN` label) and the storage mock's
+- Unit (studio): `apps/studio/src/lib/exports.test.ts` (`exportModalState`, `exportCancellable`,
+  `liveRenderJobId`), `change-requests.test.ts` (the `export of vN` label) and the storage mock's
   `apps/studio/src/app/api/e2e-storage-mock/[...key]/route.test.ts`.
 - Unit (storage): `packages/storage/src/r2.test.ts` and `fake.test.ts` (the download name).
-- DB: `apps/studio/db-tests/exports.test.ts`, the render job policy and the `exports` table.
-- E2E: `apps/studio/e2e/export.spec.ts`, the stubbed render, the download and the expiry.
+- DB: `apps/studio/db-tests/exports.test.ts` (the render job policy and the `exports` table, its
+  1-hour expiry), `cancel-jobs.test.ts` (`cancel_job` on own queued and running renders, refusals,
+  no `anon` execute, the refused export of a cancelled job, `claim_job` never taking a cancelled
+  job) and `stored-files.test.ts` (`discard_export_file`).
+- E2E: `apps/studio/e2e/export.spec.ts`: Export opens the modal, the bar rises with the render
+  double (`E2E_MOCK_RENDER_SECONDS=25`), the download starts by itself with the
+  `reel-v2-<YYYYMMDD-HHMM>.mp4` name and the modal closes; no download link or expiry in the panel
+  before or after; Cancel during the render closes the modal, the job ends `cancelled`, no export
+  row, no object, no download, and Export is open again; Escape while queued cancels a job the
+  worker then never claims.
 - Worker tools: `yarn workspace @edit-issebya/worker test:tools` (`render.tools.test.ts`: format,
   loudness, click times, group memory), on the owner's Mac only.
 
@@ -225,6 +303,13 @@ Before the one-screen layout (the 0.99 bound):
 - Use the same builder as the preview (`packages/edit`'s `build`); never a worker copy, never a
   stored page.
 - Never sign a download link past `expires_at`.
+- Never offer a finished export again (no download link, no expiry in the panel): exporting again
+  renders again.
+- Closing the export modal while its render is live always cancels it, only through `cancel_job`;
+  never give the owner an update right on `jobs`.
+- Never let `anon` execute `cancel_job`; only a `render` job can be cancelled.
+- The worker writes nothing after a cancel, except removing its own unrecorded upload through
+  `discard_export_file`; never record an export for a cancelled job.
 - Sounds come only from the edit's sound track.
 - Never write an `exports` row from the studio; only the worker does.
 - Never turn the render double on unless `E2E_MOCK_RENDER` is exactly `"true"`.
@@ -237,6 +322,7 @@ Before the one-screen layout (the 0.99 bound):
   recompression or the R2 lifecycle rule.
 - The page loads GSAP from jsdelivr, so a real render needs network.
 - `--no-best-effort` was considered and not added.
-- Owner steps: the R2 lifecycle rule for `dev/` and the production prefix; applying the migration
-  to the hosted project after merge; the manual acceptance against `rethink-work-02.mp4` and a
+- Owner steps: the R2 lifecycle rule for `dev/` and the production prefix; applying the migrations
+  to the hosted project after merge (`20261103164248_one_step_export.sql` before deploying the
+  worker and the studio that use it); the manual acceptance against `rethink-work-02.mp4` and a
   platform draft upload.

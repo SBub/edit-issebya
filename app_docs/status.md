@@ -38,7 +38,10 @@ machine from idle-sleeping while a job runs.
 - One state at a time, in this precedence: `failure` (the newest job failed, it is retryable under
   `retryableJobIds`, so not already retried and never on a refused reel, and the owner has not
   handled it on this page load), then `notice` (`New version N`), then `working` (the oldest
-  `queued`, `running` or `waiting_ai` job), then `hidden` (nothing rendered).
+  `queued`, `running` or `waiting_ai` job), then `hidden` (nothing rendered). A `cancelled` job
+  (`app_docs/export.md`) is neither live nor failed, so it shows nothing.
+- The export modal (`app_docs/export.md`) reads the same render step's `progress_percent` from the
+  same Realtime state, for the job it follows.
 - `jobProgress`: step k of n from `JOB_STEPS[job.kind]` in `step-words.ts` (`process` runs eight
   steps, `change` is `decide`, `restore` and `render` one each). A `cutout` step counts as `decide`;
   a queued job, or one with no step yet, is step 0 (`Waiting to start`, no "Step k of n" line). The

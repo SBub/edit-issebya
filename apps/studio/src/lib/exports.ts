@@ -1,4 +1,4 @@
-import type { JobRow } from "./jobs";
+import type { JobRow, StepRow } from "./jobs";
 import type { ReelDetail } from "./reels";
 
 // Named columns, never "*".
@@ -13,7 +13,8 @@ export interface ExportRow {
   r2_key: string;
   bytes: number;
   created_at: string;
-  // Exactly 24 hours after created_at (set by the database).
+  // Exactly 1 hour after created_at (set by the database; rows made before the
+  // one-step export keep their 24 hours).
   expires_at: string;
 }
 
@@ -45,15 +46,6 @@ export function exportLinkSeconds(expiresAt: string, nowMs: number): number | nu
   return seconds > 0 ? seconds : null;
 }
 
-export type ExportView =
-  { kind: "none" } | { kind: "expired" } | { kind: "ready"; seconds: number };
-
-export function exportView(row: Pick<ExportRow, "expires_at"> | null, nowMs: number): ExportView {
-  if (!row) return { kind: "none" };
-  const seconds = exportLinkSeconds(row.expires_at, nowMs);
-  return seconds === null ? { kind: "expired" } : { kind: "ready", seconds };
-}
-
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const EXPORT_KEY = new RegExp(`^(?:[a-z0-9_-]+/)*exports/(${UUID})/${UUID}\\.mp4$`);
 
@@ -71,4 +63,74 @@ export function exportFileName(versionNumber: number, createdAt: string): string
   const date = new Date(createdAt);
   const stamp = `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}-${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}`;
   return `reel-v${versionNumber}-${stamp}.mp4`;
+}
+
+// The newest export of the reel as the page follows it: enough to know which
+// job it finished.
+export interface ExportRef {
+  id: string;
+  job_id: string;
+}
+
+// What the export modal shows for the render job it follows (a pure function
+// of the live rows, no reads, no timers):
+// - `waiting`: before the render step runs (queued, the pipeline's hits, a
+//   cut-out) or after it, until the export row arrives: an indeterminate bar
+//   with a short plain label;
+// - `rendering`: the render step is running, with its live percent;
+// - `ready`: the job's export row arrived, so the file can be fetched;
+// - `failed` and `cancelled`: the job ended without an export.
+export type ExportModalState =
+  | { kind: "waiting"; label: string }
+  | { kind: "rendering"; percent: number }
+  | { kind: "ready"; exportId: string }
+  | { kind: "failed" }
+  | { kind: "cancelled" };
+
+export function exportModalState(
+  jobId: string,
+  jobs: readonly Pick<JobRow, "id" | "status">[],
+  steps: readonly Pick<StepRow, "job_id" | "name" | "status" | "progress_percent">[],
+  latestExport: ExportRef | null,
+): ExportModalState {
+  if (latestExport?.job_id === jobId) return { kind: "ready", exportId: latestExport.id };
+  const job = jobs.find((candidate) => candidate.id === jobId);
+  // Just queued: its row has not arrived over Realtime yet.
+  if (!job || job.status === "queued") return { kind: "waiting", label: "Waiting to start" };
+  if (job.status === "cancelled") return { kind: "cancelled" };
+  if (job.status === "failed") return { kind: "failed" };
+  if (job.status === "done") return { kind: "waiting", label: "Finishing" };
+  if (job.status === "waiting_ai") return { kind: "waiting", label: "Waiting" };
+  const render = steps.findLast(
+    (step) => step.job_id === jobId && step.name === "render" && step.status === "running",
+  );
+  if (render) {
+    const percent = Math.min(100, Math.max(0, Math.round(render.progress_percent ?? 0)));
+    return { kind: "rendering", percent };
+  }
+  const rendered = steps.some(
+    (step) => step.job_id === jobId && step.name === "render" && step.status === "done",
+  );
+  return { kind: "waiting", label: rendered ? "Finishing" : "Getting ready" };
+}
+
+// Whether the modal's job may still be cancelled (closing the modal cancels
+// it): it is live and has no export yet.
+export function exportCancellable(state: ExportModalState): boolean {
+  return state.kind === "waiting" || state.kind === "rendering";
+}
+
+// The render job a page opened during an export follows again: the newest
+// render of the current version still queued, running or waiting for the AI.
+export function liveRenderJobId(
+  reel: Pick<ReelDetail, "current_version_id">,
+  jobs: readonly Pick<JobRow, "id" | "kind" | "status" | "version_id">[],
+): string | null {
+  const live = jobs.findLast(
+    (job) =>
+      job.kind === "render" &&
+      job.version_id === reel.current_version_id &&
+      (job.status === "queued" || job.status === "running" || job.status === "waiting_ai"),
+  );
+  return live?.id ?? null;
 }
