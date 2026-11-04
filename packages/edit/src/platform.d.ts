@@ -4,3 +4,6 @@
 declare class TextEncoder {
   encode(input?: string): Uint8Array;
 }
+
+// Base64 to a binary string (one char per byte): the background map's frames.
+declare function atob(data: string): string;

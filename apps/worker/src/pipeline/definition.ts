@@ -83,6 +83,7 @@ const RETIRED_OUTPUTS: readonly (StepOutput & { step: string })[] = [
 // Rebuildable: the next export, restore or change makes it again.
 const ON_DEMAND_OUTPUTS: readonly (StepOutput & { step: string })[] = [
   { step: "cutout", file: "mask.mp4", retention: "rebuildable" },
+  { step: "backgrounds", file: "backgrounds.json", retention: "rebuildable" },
 ];
 
 // The retention tag of one step's output (a live step's, an on-demand one's,

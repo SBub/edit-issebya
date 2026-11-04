@@ -117,6 +117,19 @@ export interface Preset {
   // The layout engine: text shrinks to `minScale` of its size before it gives
   // up a place, and keeps `gap` pixels from the face and from other text.
   layout: { minScale: number; gap: number };
+  // Readable text (WCAG contrast against the footage behind it): captions
+  // need `caption.min`, accents and the big word (large text) `large.min`.
+  // Below it a text moves to a free place within `moveRadius` (a grid every
+  // `moveStep` pixels) in the same zone, else gets a soft shadow: level 2
+  // under `strongBelow`, else level 1. `dark` shadows go under a light text,
+  // `light` ones under a dark text. No colour is ever changed.
+  readability: {
+    caption: { min: number; strongBelow: number };
+    large: { min: number; strongBelow: number };
+    moveRadius: number;
+    moveStep: number;
+    shadows: { dark: [string, string]; light: [string, string] };
+  };
   // Spots beside the head (build.py's `_slots`).
   slots: { firstRow: number; rowGap: number; rightDrop: number; minLeft: number; minRight: number };
   transitions: Record<TransitionType, PresetTransition>;
@@ -214,6 +227,22 @@ export const ISSEBYA_PRESET: Preset = {
     afterSeconds: 1,
   },
   layout: { minScale: 0.6, gap: 12 },
+  readability: {
+    caption: { min: 4.5, strongBelow: 3 },
+    large: { min: 3, strongBelow: 2 },
+    moveRadius: 300,
+    moveStep: 60,
+    shadows: {
+      dark: [
+        "0 2px 8px rgba(0, 0, 0, 0.55)",
+        "0 2px 6px rgba(0, 0, 0, 0.8), 0 0 18px rgba(0, 0, 0, 0.6)",
+      ],
+      light: [
+        "0 2px 8px rgba(255, 255, 255, 0.55)",
+        "0 2px 6px rgba(255, 255, 255, 0.8), 0 0 18px rgba(255, 255, 255, 0.6)",
+      ],
+    },
+  },
   slots: { firstRow: 610, rowGap: 85, rightDrop: 42, minLeft: 110, minRight: 90 },
   transitions: {
     dim: {

@@ -184,6 +184,8 @@ test("a change puts a library photo behind the speaker, in its spot, from a stor
     .order("started_at");
   expect(steps!.map((step) => [step.name, step.status])).toEqual([
     ["decide", "done"],
+    // The footage's background map, made by the process job: reused.
+    ["backgrounds", "skipped"],
     ["cutout", "done"],
   ]);
   expect(steps!.find((step) => step.name === "cutout")!.summary).toMatch(

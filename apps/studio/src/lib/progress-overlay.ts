@@ -79,7 +79,9 @@ export function jobProgress(
     return { step: null, index: 0, total, fraction: 0 };
   }
   const running = own.findLast((step) => step.status === "running");
-  const current = running ?? own.at(-1)!;
+  // A waiting step (decide on an AI limit) is the job's own step even when a
+  // step inside it (backgrounds, cutout) finished after it started.
+  const current = running ?? own.findLast((step) => step.status === "waiting") ?? own.at(-1)!;
   // A step not in the list keeps the last known index.
   let index = 0;
   for (const step of own) {

@@ -125,7 +125,10 @@ Every output carries a tag, so the slimming (`app_docs/storage.md`) can act on i
 cheaply and stays; `rebuildable` is heavy and may be deleted, since its step re-runs from the
 fingerprint. Tags are not part of a fingerprint.
 
-- `rebuildable`: `converted.mp4`, retime's `source.mp4`, and the on-demand `cutout` step's
+- `rebuildable`: `converted.mp4`, retime's `source.mp4`, the on-demand `backgrounds` step's
+  `backgrounds.json` (the footage's luminance grid for readable text, fingerprint of the footage ref,
+  `BACKGROUND_SETTINGS` and a version, made by `ensureBackgrounds` before `first_version` and
+  `decide`, a hit when stored) and the on-demand `cutout` step's
   `mask.mp4` (`ON_DEMAND_OUTPUTS` in `definition.ts`, read by `retentionOf`): the next export,
   restore or change makes it again.
 - `kept`: `transcript.json` (transcribe and retime), `retime.json`, `envelope.json`,

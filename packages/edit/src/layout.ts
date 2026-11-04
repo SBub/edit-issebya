@@ -16,6 +16,8 @@ export interface TextBox extends Span {
   font: FontKey;
   size: number;
   color: string;
+  // The engine's soft shadow for contrast, when it added one.
+  shadow: 1 | 2 | undefined;
   style: Record<string, string> | undefined;
   x: number;
   y: number;
@@ -141,6 +143,7 @@ function boxAt(
     font: item.font,
     size: item.size,
     color: item.color,
+    shadow: item.shadow,
     style: item.style,
     start: item.start,
     end: item.end,
@@ -213,6 +216,7 @@ export function layoutText(
       font,
       size: item.size ?? preset.fonts[font].size,
       color: item.color ?? (kind === "caption" ? preset.caption.color : preset.accent.color),
+      shadow: item.shadow,
       style: item.style,
       start: span(item.id).start,
       end: span(item.id).end,

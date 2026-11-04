@@ -79,6 +79,43 @@ describe("build", () => {
     expect(assets.map((asset) => asset.role)).not.toContain("cutout");
   });
 
+  it("renders the engine's shadow as the preset's text-shadow, and none without it", async () => {
+    const edit = structuredClone(hand.edit);
+    const caption = edit.tracks.captions[0]!;
+    const accent = edit.tracks.overlays[0]!;
+    const plain = build(
+      edit,
+      hand.transcript,
+      hand.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(plain.html).not.toContain("text-shadow");
+    caption.shadow = 1;
+    accent.shadow = 2;
+    const { html } = build(
+      edit,
+      hand.transcript,
+      hand.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    // The span's tag, from its id to the end of the tag.
+    const styleOf = (id: string) => {
+      const from = html.indexOf(`<span id="${id}" `);
+      return html.slice(from, html.indexOf(">", from));
+    };
+    expect(styleOf(caption.id)).toContain("; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.55)");
+    expect(styleOf(accent.id)).toContain(
+      "; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8), 0 0 18px rgba(0, 0, 0, 0.6)",
+    );
+    expect(html.match(/text-shadow/g)).toHaveLength(2);
+    // A dark text gets the light halo.
+    caption.color = "#000000";
+    const dark = build(edit, hand.transcript, hand.headTrack, ISSEBYA_PRESET, await nodeMeasurer());
+    expect(dark.html).toContain("text-shadow: 0 2px 8px rgba(255, 255, 255, 0.55)");
+  });
+
   it("escapes text and style values", async () => {
     const edit = structuredClone(hand.edit);
     edit.tracks.captions[0]!.text = `<b>"Tom" & 'Jerry'</b>`;

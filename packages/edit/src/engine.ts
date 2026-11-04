@@ -1,4 +1,6 @@
+import type { Backgrounds } from "./background.ts";
 import { spotBox, spotFaceShare } from "./behind.ts";
+import { contrastRatio, relativeLuminance } from "./contrast.ts";
 import type { AccentChoice, EngineInput, Wish } from "./engine-input.ts";
 import { expand, overlaps, placeBox } from "./engine-space.ts";
 import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from "./head-track.ts";
@@ -39,11 +41,24 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    two lines before it gives up a place. Nothing ever overlaps.
 // 5. An extra that fits nowhere is dropped; captions never are (in the worst
 //    case they take the caption line over the face).
-// 6. Every move, shrink, wrap, retime or drop is written to the record.
+// 6. Readable text: with a background map, each text placed is measured
+//    (WCAG contrast of its colour against the footage behind it, over its
+//    span). Below the preset's threshold it moves to the nearest free place
+//    in the same zone that reaches it, else keeps its place with a soft
+//    shadow. A colour is never changed; the big word is never moved for it.
+// 7. Every move, shrink, wrap, retime, drop and shadow is written to the
+//    record.
 
 // What the engine did to an item, in plain words.
 export type EngineAction =
-  "moved" | "shrunk" | "wrapped" | "retimed" | "dropped" | "covers-face" | "wish-not-kept";
+  | "moved"
+  | "shrunk"
+  | "wrapped"
+  | "retimed"
+  | "dropped"
+  | "covers-face"
+  | "wish-not-kept"
+  | "shadowed";
 
 export interface EngineNote {
   item: string;
@@ -63,6 +78,9 @@ export interface PlaceOptions {
   // The answer items the owner's request asks for (`accents[0]`, `big_word`,
   // `photos[1]`): placed before every other extra.
   requested?: readonly string[];
+  // What is behind the text (the footage's background map, sampled): with it
+  // every text is kept readable; without it nothing is measured.
+  backgrounds?: Backgrounds;
 }
 
 type Align = "left" | "right" | "center";
@@ -87,6 +105,12 @@ function at(seconds: number): string {
 
 function quote(text: string): string {
   return JSON.stringify(text.length > 40 ? `${text.slice(0, 37)}...` : text);
+}
+
+// A contrast ratio in the record: one decimal, never rounded up to a
+// threshold it does not reach.
+function ratioText(ratio: number): string {
+  return `${(Math.floor(ratio * 10 + 1e-9) / 10).toFixed(1)}:1`;
 }
 
 function during(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
@@ -334,6 +358,7 @@ export function placeEdit(
     delete rest.position;
     delete rest.size;
     delete rest.break_after;
+    delete rest.shadow;
     const fixed = caption.words.filter((id) => fixes.has(id)).map((id) => fixes.get(id)!);
     return fixed.length > 0 ? { ...rest, text: fixed.join(" ") } : rest;
   });
@@ -517,6 +542,139 @@ export function placeEdit(
   const textDuring = (span: { start: number; end: number }) =>
     shown.filter((item) => during(item, span)).map((item) => expand(item.box, gap));
 
+  // Readability: the worst contrast of a text's colours over a box and span.
+  const { backgrounds } = options;
+  const { readability } = preset;
+  type Threshold = { min: number; strongBelow: number };
+  function contrastOf(
+    sampler: Backgrounds,
+    box: Box,
+    span: { start: number; end: number },
+    colors: readonly string[],
+  ): number {
+    let worst = Infinity;
+    for (const color of colors) {
+      const text = relativeLuminance(color);
+      worst = Math.min(worst, contrastRatio(text, sampler.behind(box, span, text)));
+    }
+    return worst;
+  }
+
+  // The nearest free place in the same zone (the same area and obstacles,
+  // the same size) within the preset's radius whose contrast reaches the
+  // threshold. Wanted points: the original centre, then a grid every
+  // `moveStep` pixels, row by row from the top, left to right; ties go to
+  // the higher, then the further left place.
+  function readablePlace(
+    sampler: Backgrounds,
+    area: Box,
+    obstacles: readonly Box[],
+    width: number,
+    height: number,
+    from: { x: number; y: number },
+    span: { start: number; end: number },
+    colors: readonly string[],
+    threshold: Threshold,
+    accept: (box: Box) => boolean = () => true,
+  ): { x: number; y: number; ratio: number; distance: number } | null {
+    const { moveRadius, moveStep } = readability;
+    const cx = from.x + width / 2;
+    const cy = from.y + height / 2;
+    const wants = [{ x: cx, y: cy }];
+    const steps = Math.floor(moveRadius / moveStep);
+    for (let dy = -steps; dy <= steps; dy += 1) {
+      for (let dx = -steps; dx <= steps; dx += 1) {
+        if (dx === 0 && dy === 0) continue;
+        if (Math.hypot(dx, dy) * moveStep > moveRadius + SLACK) continue;
+        wants.push({ x: cx + dx * moveStep, y: cy + dy * moveStep });
+      }
+    }
+    const seen = new Set<string>();
+    let best: { x: number; y: number; ratio: number; distance: number } | null = null;
+    for (const want of wants) {
+      const spot = placeBox(area, obstacles, width, height, want);
+      if (!spot) continue;
+      const key = `${spot.x},${spot.y}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const distance = Math.hypot(spot.x - from.x, spot.y - from.y);
+      if (distance < 0.5 || distance > moveRadius + SLACK) continue;
+      const box = { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + height };
+      if (!accept(box)) continue;
+      const ratio = contrastOf(sampler, box, span, colors);
+      if (ratio < threshold.min) continue;
+      if (
+        !best ||
+        distance < best.distance - 1e-9 ||
+        (Math.abs(distance - best.distance) <= 1e-9 &&
+          (spot.y < best.y || (spot.y === best.y && spot.x < best.x)))
+      ) {
+        best = { ...spot, ratio, distance };
+      }
+    }
+    return best;
+  }
+
+  function shadowLevel(ratio: number, threshold: Threshold): 1 | 2 {
+    return ratio < threshold.strongBelow ? 2 : 1;
+  }
+
+  // What a text placed at `from` does for contrast: stays (readable, or no
+  // map), moves to a readable free place, or gets a shadow; noted.
+  function keepReadable(
+    item: string,
+    label: string,
+    box: { x: number; y: number; width: number; height: number },
+    span: { start: number; end: number },
+    colors: readonly string[],
+    threshold: Threshold,
+    zone: { area: Box; obstacles: readonly Box[]; accept?: (box: Box) => boolean } | null,
+    why: string,
+  ): { x: number; y: number; shadow?: 1 | 2 } {
+    const from = { x: box.x, y: box.y };
+    if (!backgrounds) return from;
+    const placed = {
+      left: box.x,
+      right: box.x + box.width,
+      top: box.y,
+      bottom: box.y + box.height,
+    };
+    const ratio = contrastOf(backgrounds, placed, span, colors);
+    if (ratio >= threshold.min) return from;
+    const when = `from ${at(span.start)} to ${at(span.end)}`;
+    const moved = zone
+      ? readablePlace(
+          backgrounds,
+          zone.area,
+          zone.obstacles,
+          box.width,
+          box.height,
+          from,
+          span,
+          colors,
+          threshold,
+          zone.accept,
+        )
+      : null;
+    if (moved) {
+      record.push({
+        item,
+        action: "moved",
+        rule: "contrast-spot",
+        reason: `${label} moves ${Math.round(moved.distance)} px to a free place it reads on: contrast ${ratioText(ratio)} ${when}, under ${threshold.min}:1, now ${ratioText(moved.ratio)}`,
+      });
+      return { x: moved.x, y: moved.y };
+    }
+    const shadow = shadowLevel(ratio, threshold);
+    record.push({
+      item,
+      action: "shadowed",
+      rule: "contrast-shadow",
+      reason: `${label} gets a soft shadow (level ${shadow}): contrast ${ratioText(ratio)} ${when}, ${why}`,
+    });
+    return { ...from, shadow };
+  }
+
   // Captions: blocks in time order, each a sentence's groups (one spot for the
   // whole sentence) or the captions inside a transition (its text area).
   const blocks: CaptionBlock[] = [];
@@ -562,7 +720,7 @@ export function placeEdit(
   blocks.sort((a, b) => a.start - b.start);
 
   const captionFont = preset.caption.font;
-  const placedCaptions = new Map<number, { x: number; y: number; size: number }>();
+  const placedCaptions = new Map<number, { x: number; y: number; size: number; shadow?: 1 | 2 }>();
   const photoSpans = extras.filter((extra) => extra.kind === "photo");
   for (const block of blocks) {
     placeBlock(block);
@@ -651,7 +809,7 @@ export function placeEdit(
     candidate: Candidate,
     size: number,
     keepPhotoSpot: boolean,
-  ): { x: number; y: number; width: number; layouts: Line[][] } | null {
+  ): { x: number; y: number; width: number; height: number; layouts: Line[][] } | null {
     const areaWidth = candidate.area.right - candidate.area.left;
     if (areaWidth <= 0) return null;
     const layouts: Line[][] = [];
@@ -664,16 +822,23 @@ export function placeEdit(
       width = Math.max(width, ...lines.map((line) => line.width));
       height = Math.max(height, lines.length * size + (lines.length - 1) * preset.caption.lineGap);
     }
-    const obstacles = [
-      ...(candidate.overFace ? [] : faceObstacles(block)),
-      ...textDuring(block),
-      notch,
-    ];
-    const spot = placeBox(candidate.area, obstacles, width, height, candidate.want(width, height));
+    const spot = placeBox(
+      candidate.area,
+      blockObstacles(block, candidate),
+      width,
+      height,
+      candidate.want(width, height),
+    );
     if (!spot) return null;
     const box = { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + height };
     if (keepPhotoSpot && !leavesPhotoSpot(box, block)) return null;
-    return { ...spot, width, layouts };
+    return { ...spot, width, height, layouts };
+  }
+
+  // What a caption block keeps clear of: the face (unless it is the worst
+  // case over it), the text shown with it and the notch.
+  function blockObstacles(block: CaptionBlock, candidate: Candidate): Box[] {
+    return [...(candidate.overFace ? [] : faceObstacles(block)), ...textDuring(block), notch];
   }
 
   function placeBlock(block: CaptionBlock): void {
@@ -688,6 +853,7 @@ export function placeEdit(
       candidate: Candidate;
       size: number;
       fit: NonNullable<ReturnType<typeof tryBlock>>;
+      keep: boolean;
     } | null = null;
     const holdsPhoto =
       block.kind === "sentence" && photoSpans.some((photo) => during(photo, block));
@@ -698,7 +864,7 @@ export function placeEdit(
         for (const candidate of candidates) {
           const fit = tryBlock(block, candidate, size, keep);
           if (fit) {
-            chosen = { candidate, size, fit };
+            chosen = { candidate, size, fit, keep };
             break;
           }
         }
@@ -719,7 +885,7 @@ export function placeEdit(
         };
         const fit = tryBlock(block, worst, floor, false);
         if (fit) {
-          chosen = { candidate: worst, size: floor, fit };
+          chosen = { candidate: worst, size: floor, fit, keep: false };
           break;
         }
       }
@@ -742,7 +908,18 @@ export function placeEdit(
             overFace: true,
           },
           size: floor,
-          fit: { x: safe.left, y: safe.top, width: safe.right - safe.left, layouts },
+          fit: {
+            x: safe.left,
+            y: safe.top,
+            width: safe.right - safe.left,
+            height: Math.max(
+              ...layouts.map(
+                (lines) => lines.length * floor + (lines.length - 1) * preset.caption.lineGap,
+              ),
+            ),
+            layouts,
+          },
+          keep: false,
         };
       }
       record.push({
@@ -759,7 +936,7 @@ export function placeEdit(
         reason: `captions ${quote(label)} (${at(block.start)} to ${at(block.end)}) sit ${chosen.candidate.name}: no room ${candidates[0]!.name}`,
       });
     }
-    const { candidate, size, fit } = chosen;
+    const { candidate, size, fit, keep } = chosen;
     const fullSize = preset.fonts[captionFont].size;
     if (size < fullSize) {
       record.push({
@@ -769,19 +946,52 @@ export function placeEdit(
         reason: `captions ${quote(label)} set at ${size} px instead of ${fullSize} px to fit`,
       });
     }
+    // Readable over the footage: captions inside a transition are on its
+    // layer (dark by preset) and never measured; captions over the face are
+    // only ever shadowed.
+    const place =
+      block.kind === "sentence"
+        ? keepReadable(
+            first.caption.id,
+            `captions ${quote(label)}`,
+            fit,
+            block,
+            [
+              ...new Set(
+                block.groups.flat().map((unit) => unit.caption.color ?? preset.caption.color),
+              ),
+            ],
+            readability.caption,
+            candidate.overFace
+              ? null
+              : {
+                  area: candidate.area,
+                  obstacles: blockObstacles(block, candidate),
+                  ...(keep ? { accept: (box: Box) => leavesPhotoSpot(box, block) } : {}),
+                },
+            candidate.overFace
+              ? "captions over the face are never moved"
+              : `no free place nearby reaches ${readability.caption.min}:1`,
+          )
+        : { x: fit.x, y: fit.y };
     const space = measurer.width(captionFont, size, " ");
     for (const lines of fit.layouts) {
-      let y = fit.y;
+      let y = place.y;
       for (const line of lines) {
         let x =
           candidate.align === "left"
-            ? fit.x
+            ? place.x
             : candidate.align === "right"
-              ? fit.x + fit.width - line.width
-              : fit.x + (fit.width - line.width) / 2;
+              ? place.x + fit.width - line.width
+              : place.x + (fit.width - line.width) / 2;
         for (const { unit, width } of line.units) {
           const left = Math.floor(x * 100) / 100;
-          placedCaptions.set(unit.index, { x: left, y, size });
+          placedCaptions.set(unit.index, {
+            x: left,
+            y,
+            size,
+            ...(place.shadow ? { shadow: place.shadow } : {}),
+          });
           shown.push({
             id: unit.caption.id,
             start: unit.start,
@@ -987,24 +1197,39 @@ export function placeEdit(
             candidate.want(width, height),
           );
           if (!spot) continue;
+          const label = `${accent.title ? "the title" : "accent"} ${quote(text)}`;
+          // Measured once its place and size are known; the notes on the
+          // place itself come first.
+          const notes = record.length;
+          const place = keepReadable(
+            extra.id,
+            label,
+            { ...spot, width, height },
+            span,
+            [preset.accent.color],
+            readability.large,
+            { area: candidate.area, obstacles },
+            `no free place nearby reaches ${readability.large.min}:1`,
+          );
+          const contrastNotes = record.splice(notes);
           const item: OverlayItem = {
             id: extra.id,
             kind: "accent",
             start: { word: accent.from },
             end: { word: accent.to, edge: "end" },
             words: ids,
-            position: { x: spot.x, y: spot.y, align: "left" },
+            position: { x: place.x, y: place.y, align: "left" },
             size,
             ...(lines.length > 1 ? { break_after: lines[0]!.split(" ").length } : {}),
+            ...(place.shadow ? { shadow: place.shadow } : {}),
           };
           overlays.set(extra.id, item);
           shown.push({
             id: extra.id,
             start: span.start,
             end: span.end,
-            box: { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + height },
+            box: { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
           });
-          const label = `${accent.title ? "the title" : "accent"} ${quote(text)}`;
           if (candidate !== candidates[0]) {
             record.push({
               item: extra.id,
@@ -1037,6 +1262,7 @@ export function placeEdit(
               reason: `${label} set in two lines to fit the frame`,
             });
           }
+          record.push(...contrastNotes);
           return true;
         }
       }
@@ -1088,6 +1314,19 @@ export function placeEdit(
       const width = perPx * size;
       const spot = placeBox(area, obstacles, width, size, { x: frameWidth / 2, y: centre });
       if (!spot) continue;
+      const notes = record.length;
+      // The head overlapping it is the design: never moved, only shadowed.
+      const { shadow } = keepReadable(
+        extra.id,
+        `the big word ${quote(text)}`,
+        { ...spot, width, height: size },
+        span,
+        [spec.color],
+        readability.large,
+        null,
+        "the big word is never moved",
+      );
+      const contrastNotes = record.splice(notes);
       behind.set(extra.id, {
         id: extra.id,
         kind: "word",
@@ -1099,6 +1338,7 @@ export function placeEdit(
         ),
         position: spot,
         size,
+        ...(shadow ? { shadow } : {}),
       });
       shown.push({
         id: extra.id,
@@ -1114,6 +1354,7 @@ export function placeEdit(
           reason: `the big word ${quote(text)} set at ${size} px instead of ${largest} px, clear of the captions`,
         });
       }
+      record.push(...contrastNotes);
       return true;
     }
     record.push({
@@ -1220,6 +1461,7 @@ export function placeEdit(
           : { word: lastWord.id, edge: "end", offset },
       position: { x: place.x, y: place.y, align: "left" },
       size: place.size,
+      ...(place.shadow ? { shadow: place.shadow } : {}),
     };
   });
   const outOverlays: OverlayItem[] = [];

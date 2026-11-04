@@ -29,6 +29,25 @@ describe("parseEdit", () => {
     }
   });
 
+  it("accepts a text shadow of level 1 or 2 and nothing else", () => {
+    expect(
+      parseEdit(
+        withCaption((caption) => {
+          caption.shadow = 2;
+        }),
+        ISSEBYA_PRESET,
+        hand.transcript,
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      reasons(
+        withCaption((caption) => {
+          caption.shadow = 3;
+        }),
+      ).join("; "),
+    ).toMatch(/captions\[3\]\.shadow/);
+  });
+
   it("accepts an edit with a cut-out (stored) and one without (new)", () => {
     expect(hand.edit.inputs.cutout).toBeDefined();
     expect(parseEdit(hand.edit, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });

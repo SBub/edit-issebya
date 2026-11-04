@@ -5,6 +5,7 @@
 - specs/issue-31-adw-7f81a19d-sdlc_planner-edit-model-builder-versions.md
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 - specs/issue-114-adw-9049f8fd-sdlc_planner-platform-safe-zone-guard.md
+- specs/issue-154-adw-596f3b25-sdlc_planner-readable-text-contrast.md
 
 Every edit of a reel is a small JSON file (`edit.json`) anchored to the words of its transcript.
 One builder turns it into a HyperFrames page, the same bytes in the worker and in the studio, and
@@ -50,7 +51,9 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
 - Per-item properties: captions and overlays take `words`, `text`, `font` (`primary` or
   `secondary`), `size`, `color` (`#RRGGBB`), `position` (`{ x, y, align }` inside the frame) and
   `break_after` (set in two lines, this many words on the first); a big word behind the speaker
-  takes `position` (`{ x, y }`, its top left corner in the frame) and `size`. The layout engine
+  takes `position` (`{ x, y }`, its top left corner in the frame) and `size`. Captions, accents and
+  the big word also take an optional `shadow` (`1` or `2`, a soft text shadow the engine sets when
+  the text would be hard to read; the builder renders it as the preset's `text-shadow`). The layout engine
   writes `position` and `size` on every caption, accent and big word it places; versions saved
   before it have none;
   footage clips take `hidden` spans; transitions a replacement `color`; sounds
@@ -221,16 +224,34 @@ record. `editFromAnswer` (decide) and the worker's `first_version` step (with no
     inside the frame (40 px margin) clear of every text shown with it, shrinking to the floor.
   - Photo: the wished spot, the spot it had, then `top`, `left`, `right`: the first spot the face
     leaves within `maxFaceShare` at every moment and no caption or accent covers over its span.
+- Readability (`src/contrast.ts`, `src/background.ts`, `PlaceOptions.backgrounds`): the worker
+  samples the footage into a background map (`BackgroundMap`: 2 frames a second, a 36 by 64 grid of
+  30 px cells, each cell's WCAG relative luminance as a byte), and `backgroundSampler(map, frame)`
+  answers `behind(box, span, textLuminance)`: the luminance of every cell the box touches in every
+  sampled frame inside the span (the nearest frame when none is), at the 80th percentile towards
+  the text's own luminance (nearest-rank, integers, so a few cells never decide), memoised per box,
+  span and direction. Right after each caption block (not one inside a transition's text area) and
+  each accent is placed, and after the big word, the engine measures the WCAG contrast ratio of the
+  text colour against that background: below `preset.readability` `caption.min` (4.5) for captions
+  or `large.min` (3) for accents and the big word, it first tries nearby places in the same zone (the
+  chosen candidate's area, the same obstacles, size and line breaks; the original centre, then a
+  60 px grid within 300 px) and moves to the nearest that reaches the threshold (rule
+  `contrast-spot`, action `moved`); else it keeps the place and sets `shadow` (2 under `strongBelow`,
+  else 1; rule `contrast-shadow`, action `shadowed`). The big word is never moved, only shadowed;
+  a caption that already covers the face is shadowed, never moved. The shadow is dark under a light
+  text and light under a dark one. With no `backgrounds` given the engine behaves as before. The
+  colour is never changed. Example reason: `accent "What are you protecting?" gets a soft shadow
+(level 2): contrast 1.6:1 from 3.20 s to 5.10 s, no free place nearby reaches 3:1`.
 - Drops: an extra that fits nowhere is dropped and recorded. Captions are never dropped: with no
   free place even at the floor, they take the caption line over the face (recorded `covers-face`).
 - Record: a list of `EngineNote` `{ item, action, rule, reason }`, `action` one of `moved` (not its
-  kind's first place), `shrunk`, `wrapped`, `retimed`, `dropped`, `covers-face`, `wish-not-kept`,
+  kind's first place), `shrunk`, `wrapped`, `retimed`, `dropped`, `covers-face`, `wish-not-kept`, `shadowed`,
   `reason` in plain words with the item's text and times, for example
   `{ "item": "photo-1", "action": "dropped", "rule": "no-room", "reason": "photo 1: every photo spot
 is under captions or the face from 23.48 s to 26.23 s" }`. Rules: `caption-min`, `caption-spot`,
   `caption-size`, `caption-face`, `accent-time`, `accent-spot`, `accent-size`, `accent-wrap`,
   `big-word-time`, `big-word-size`, `photo-time`, `photo-spot`, `hidden-footage`, `one-extra`,
-  `no-room`, `wish`. Saved with the version (`versions.engine_record`) and logged by the worker in
+  `no-room`, `wish`, `contrast-spot`, `contrast-shadow`. Saved with the version (`versions.engine_record`) and logged by the worker in
   one line per version; item 6 turns it into the summary.
 - Final checks: `runChecks` (below) runs on every placed edit. They must never fail on the engine's
   output; one that does is an engine bug, logged with the reel id while the version is still saved.
@@ -387,6 +408,8 @@ never fatal.
 - Never place a stored version again: the builder keeps every stored position, and a version saved
   before the engine keeps the old fixed-spot placement.
 - The engine is pure and deterministic: no randomness, no clock, no I/O.
+- Never change a text colour to make it readable: move it or add a shadow.
+- Never move the big word for contrast; it only gets a shadow.
 - A version with a `behind` item is saved only once every mask it names exists; the builder never
   builds a behind item without its mask.
 - A big word is checked against the frame, never the safe box.

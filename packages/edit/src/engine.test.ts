@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { type Backgrounds, backgroundSampler } from "./background.ts";
 import { maskSpans } from "./behind.ts";
 import { build } from "./build.ts";
 import { editFromAnswer } from "./decide.ts";
@@ -7,6 +8,7 @@ import type { EngineInput } from "./engine-input.ts";
 import { type HeadTrack, facesOver } from "./head-track.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import type { Edit } from "./schema.ts";
+import { backgroundMapOf } from "./test-support/backgrounds.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 import { resolveTimeline } from "./timeline.ts";
@@ -58,7 +60,8 @@ async function place(
   {
     headTrack = hand.headTrack,
     current = hand.edit,
-  }: { headTrack?: HeadTrack; current?: Edit } = {},
+    backgrounds,
+  }: { headTrack?: HeadTrack; current?: Edit; backgrounds?: Backgrounds } = {},
 ) {
   const measurer = await nodeMeasurer();
   const made = editFromAnswer(
@@ -68,6 +71,7 @@ async function place(
     transcript,
     headTrack,
     measurer,
+    backgrounds,
   );
   if (!made.ok) throw new Error(made.reasons.join("; "));
   const { checks } = build(
@@ -400,5 +404,166 @@ describe("today's failures, placed by the engine", () => {
     expect(record).toContainEqual(
       expect.objectContaining({ item: "photo-1", action: "dropped", rule: "no-room" }),
     );
+  });
+});
+
+describe("readable text", () => {
+  const FRAME = ISSEBYA_PRESET.frame;
+  const BEIGE = "#D8C3A5";
+  const DARK = "#101010";
+  // A sampled map of the whole reel: `paint` gives each cell's colour.
+  const mapOf = (paint: (x: number, y: number, t: number) => string) =>
+    backgroundSampler(backgroundMapOf(FRAME, hand.edit.duration, paint), FRAME);
+  const inside = (
+    x: number,
+    y: number,
+    box: { left: number; right: number; top: number; bottom: number },
+  ) => x >= box.left && x < box.right && y >= box.top && y < box.bottom;
+  const ACCENT: Partial<EngineInput> = { accents: [{ from: "w84", to: "w87", title: false }] };
+
+  it("moves a caption block on a light band to a darker free place in its zone", async () => {
+    const before = await place({});
+    const first = before.edit.tracks.captions[0]!;
+    // A light band across the frame where the first sentence's captions sit.
+    const band = {
+      left: 0,
+      right: FRAME.width,
+      top: first.position!.y - 10,
+      bottom: first.position!.y + first.size! + 10,
+    };
+    const backgrounds = mapOf((x, y) => (inside(x, y, band) ? BEIGE : DARK));
+    const { edit, record, checks } = await place({}, { backgrounds });
+    const moved = edit.tracks.captions[0]!;
+    expect(moved.position).not.toEqual(first.position);
+    expect(moved.shadow).toBeUndefined();
+    expect(moved.color).toBeUndefined();
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: first.id, action: "moved", rule: "contrast-spot" }),
+    );
+    const note = record.find((entry) => entry.rule === "contrast-spot")!;
+    expect(note.reason).toMatch(
+      /^captions ".+" moves \d+ px to a free place it reads on: contrast 1\.\d:1 from \d+\.\d\d s to \d+\.\d\d s, under 4\.5:1, now \d+\.\d:1$/,
+    );
+    expect(record.filter((entry) => entry.action === "shadowed")).toEqual([]);
+    expect(checks).toEqual([]);
+  });
+
+  it("keeps the place and adds a shadow when no free place nearby reads, level by the ratio", async () => {
+    const before = await place({});
+    for (const [color, level] of [
+      [BEIGE, 2],
+      ["#8A8A8A", 1],
+    ] as const) {
+      const { edit, record, checks } = await place({}, { backgrounds: mapOf(() => color) });
+      expect(edit.tracks.captions.map((caption) => caption.position)).toEqual(
+        before.edit.tracks.captions.map((caption) => caption.position),
+      );
+      for (const caption of edit.tracks.captions) {
+        expect(caption.shadow).toBe(level);
+        expect(caption.color).toBeUndefined();
+      }
+      const notes = record.filter((entry) => entry.rule === "contrast-shadow");
+      expect(notes.length).toBeGreaterThan(0);
+      expect(notes[0]!.action).toBe("shadowed");
+      expect(notes[0]!.reason).toContain(`gets a soft shadow (level ${level}): contrast `);
+      expect(notes[0]!.reason).toMatch(/ \d\.\d:1 from .* no free place nearby reaches 4\.5:1$/);
+      expect(record.filter((entry) => entry.rule === "contrast-spot")).toEqual([]);
+      expect(checks).toEqual([]);
+    }
+  });
+
+  it("moves the accent off a beige sweater when its zone has a darker free area", async () => {
+    // No head: the accent's zone is the whole safe zone, room to move.
+    const headTrack: HeadTrack = [];
+    const before = await place(ACCENT, { headTrack });
+    const accent = before.edit.tracks.overlays[0]!;
+    // The sweater: a beige band across the frame where the accent first sits.
+    const band = {
+      left: 0,
+      right: FRAME.width,
+      top: accent.position!.y - 10,
+      bottom: accent.position!.y + accent.size! + 10,
+    };
+    const backgrounds = mapOf((x, y) => (inside(x, y, band) ? BEIGE : DARK));
+    const { edit, record, checks } = await place(ACCENT, { backgrounds, headTrack });
+    const moved = edit.tracks.overlays[0]!;
+    expect(moved.position).not.toEqual(accent.position);
+    expect(moved.shadow).toBeUndefined();
+    expect(moved.color).toBeUndefined();
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "accent-1", action: "moved", rule: "contrast-spot" }),
+    );
+    expect(checks).toEqual([]);
+  });
+
+  it("gives the accent a strong shadow when beige is all around, never a colour", async () => {
+    const before = await place(ACCENT);
+    const { edit, record } = await place(ACCENT, { backgrounds: mapOf(() => BEIGE) });
+    const accent = edit.tracks.overlays[0]!;
+    expect(accent.position).toEqual(before.edit.tracks.overlays[0]!.position);
+    expect(accent.shadow).toBe(2);
+    expect(accent.color).toBeUndefined();
+    expect(record).toContainEqual({
+      item: "accent-1",
+      action: "shadowed",
+      rule: "contrast-shadow",
+      reason: expect.stringMatching(
+        /^accent ".+" gets a soft shadow \(level 2\): contrast 1\.2:1 from \d+\.\d\d s to \d+\.\d\d s, no free place nearby reaches 3:1$/,
+      ),
+    });
+  });
+
+  it("shadows the big word on a light background and never moves it", async () => {
+    const input = { big_word: { word: "w76" } };
+    const before = await place(input);
+    const { edit, record } = await place(input, { backgrounds: mapOf(() => BEIGE) });
+    const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
+    const was = before.edit.tracks.behind!.find((item) => item.kind === "word")!;
+    if (word.kind !== "word" || was.kind !== "word") throw new Error("not a word");
+    expect(word.position).toEqual(was.position);
+    expect(word.shadow).toBe(2);
+    expect(record).toContainEqual(
+      expect.objectContaining({
+        item: "big-word",
+        action: "shadowed",
+        rule: "contrast-shadow",
+        reason: expect.stringMatching(/the big word is never moved$/),
+      }),
+    );
+    expect(record.filter((entry) => entry.item === "big-word" && entry.action === "moved")).toEqual(
+      [],
+    );
+  });
+
+  it("changes nothing on a dark background: the same edit and record as with no map", async () => {
+    const input = { ...ACCENT, big_word: { word: "w76" } };
+    const none = await place(input);
+    const dark = await place(input, { backgrounds: mapOf(() => DARK) });
+    expect(dark.edit).toEqual(none.edit);
+    expect(dark.record).toEqual(none.record);
+  });
+
+  it("is deterministic over a map", async () => {
+    const backgrounds = mapOf((x, y) => (x < 540 === y < 960 ? BEIGE : DARK));
+    const one = await place(ACCENT, { backgrounds });
+    const two = await place(ACCENT, { backgrounds });
+    expect(two.edit).toEqual(one.edit);
+    expect(two.record).toEqual(one.record);
+  });
+
+  it("never measures captions inside a transition", async () => {
+    const input: Partial<EngineInput> = {
+      transitions: [{ kind: "panel", from: "w126", to: "w133" }],
+    };
+    const { edit, spans } = await place(input, { backgrounds: mapOf(() => "#FFFFFF") });
+    const transition = spans.get("transition-1")!;
+    const insideTransition = edit.tracks.captions.filter((caption) => {
+      const start = spans.get(caption.id)!.start;
+      return start >= transition.start - 1e-6 && start < transition.end - 1e-6;
+    });
+    expect(insideTransition.length).toBeGreaterThan(0);
+    for (const caption of insideTransition) expect(caption.shadow).toBeUndefined();
+    const outside = edit.tracks.captions.filter((caption) => !insideTransition.includes(caption));
+    for (const caption of outside) expect(caption.shadow).toBe(2);
   });
 });
