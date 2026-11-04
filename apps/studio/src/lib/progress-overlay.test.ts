@@ -184,6 +184,20 @@ describe("overlayState", () => {
     });
   });
 
+  it("shows the waiting step's words over a step that finished inside it", () => {
+    const j = job({
+      kind: "change",
+      status: "waiting_ai",
+      waiting_reason: "the usage limit is reached",
+      not_before: new Date(2026, 10, 3, 7, 5).toISOString(),
+    });
+    const steps = [step(j.id, "decide", "waiting"), step(j.id, "backgrounds", "done")];
+    expect(overlayState(input({ jobs: [j], steps }))).toMatchObject({
+      kind: "working",
+      words: "Styling your reel",
+    });
+  });
+
   it("offers Change the request and Keep for a refused change, with the plain reason", () => {
     const j = job({
       kind: "change",

@@ -44,7 +44,8 @@ machine from idle-sleeping while a job runs.
   same Realtime state, for the job it follows.
 - `jobProgress`: step k of n from `JOB_STEPS[job.kind]` in `step-words.ts` (`process` runs eight
   steps, `change` is `decide`, `restore` and `render` one each). A `cutout` step counts as `decide`;
-  a queued job, or one with no step yet, is step 0 (`Waiting to start`, no "Step k of n" line). The
+  the current step is the running one, else a `waiting` one (so a `backgrounds` row finished inside a
+  waiting `decide` never takes its words), else the last; a queued job, or one with no step yet, is step 0 (`Waiting to start`, no "Step k of n" line). The
   bar's fraction is the finished (`done` or `skipped`) listed steps over n, plus a running long
   step's `progress_percent`.
 - `apps/studio/src/lib/step-words.ts` is the one place for the step words: `STEP_WORDS` (each
