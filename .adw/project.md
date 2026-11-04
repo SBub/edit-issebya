@@ -200,7 +200,7 @@ its AI answer keeping version 1 unchanged, so version 2 matches the version 1 go
 and plays its live preview: the HyperFrames runtime and GSAP routed from the pinned local
 packages, so no network), `change-requests.spec.ts` seeds a processed reel the same way, a change
 makes version 3 live, a change the AI refuses twice keeps version 3 and the reel `processed`, and
-going back makes versions 4 and 5, `export.spec.ts` seeds a processed reel the same way, Export
+going back makes versions 4 and 5, an unchanged change saves nothing and the overlay says `Nothing changed`, `export.spec.ts` seeds a processed reel the same way, Export
 opens the export modal and queues a `render` job the worker's `once` runs with the stubbed render
 (`E2E_MOCK_RENDER=true`, set by `test-support/worker.ts` for every spec, so no spec renders for
 real; `E2E_MOCK_RENDER_SECONDS` for a rising bar), the stub downloads by itself and the modal

@@ -4,6 +4,7 @@
 
 - specs/issue-34-adw-87bca34b-sdlc_planner-change-requests-versions-list.md
 - Owner request, 2026-11-03: one-line version rows with details behind an arrow, plain titles.
+- specs/issue-156-adw-ca502a36-sdlc_planner-honest-version-summary-from-diff.md
 
 ## Overview
 
@@ -78,9 +79,9 @@ version` as above; otherwise the version's `change_title`, falling back (version
   padding), separated by thin `divide-line` dividers, each with the area's `px-3` side padding; the
   heading and the status line carry the same `px-3`, so they line up with the row text.
 - No time or date shows in the list, in a row or its details: what changed matters, not when.
-- Texts: Claude writes `change_title` and `change_summary` in plain words for the owner
-  (`app_docs/decide-step.md`); a going back saves the summary `Back to how vN looked`. Old
-  technical summaries stay as stored and show only inside the details.
+- Texts: `change_title` and `change_summary` are written after layout from the saved difference,
+  by the summary call or its template (`app_docs/decide-step.md`); a going back saves the summary
+  `Back to how vN looked`. Old technical summaries stay as stored and show only inside the details.
 - `apps/studio/src/components/LiveReel.tsx`: reads `versions` with the snapshot (`VERSION_LIST_COLUMNS`
   in `apps/studio/src/lib/versions.ts`, no edit metadata) and follows `INSERT` on `versions` over
   Realtime, filtered to the reel. The reel page shows no jobs list; what a job is doing shows in the
@@ -129,17 +130,25 @@ specs, see `app_docs/decide-step.md`).
   again, and going back makes versions 4 and 5. It checks version 3's stored and shown title,
   the intro line under the Versions heading (visible, exact text, `aria-describedby`),
   details hidden until the arrow opens them (`aria-expanded`), What you asked, What changed, and
-  the `Back to vN` titles of the restores.
+  the `Back to vN` titles of the restores. A change that would leave the reel as it is saves
+  nothing and the overlay says `Nothing changed`.
 - `apps/studio/e2e/reel-layout.spec.ts`: at 1440x900 and 390x844, every row the same height
   (within 1 px) with a long title, a long request without a title and a short title, no `time`
   element, every row as wide as the Versions area (within 1 px) with no box around the list, the
   short title shown in full and the long ones cut at two lines, the details opened with Enter and closed with Space, several open at once.
 
+## Rules
+
+- The version summary describes only the saved difference.
+- An unchanged edit is never saved as a change.
+
 ## Notes
 
 - Jobs are ordered per reel in the database: `claim_job` runs one job per reel at a time, oldest
   first (`app_docs/failures.md`). The Export button follows its own rule (`app_docs/export.md`).
-- A change that decides on no edit still saves nothing new; see `app_docs/decide-step.md`.
+- A change whose edit would be identical to the current version saves nothing; the job fails as a
+  refused answer with rules starting `no-change` and the overlay says `Nothing changed` with the
+  reason and Change the request / Keep the current version (`app_docs/decide-step.md`).
 - Touches `app_docs/studio.md` (jobs kinds, policies), `app_docs/decide-step.md` (the request path),
   `app_docs/measurement.md` (the `studio_change_requested` event) and `app_docs/edit-model.md`
   (`restored_from_id`, `restoreVersion`).

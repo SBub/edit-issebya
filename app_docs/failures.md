@@ -36,7 +36,8 @@ be sent while the reel is still processing.
 `supabase/migrations/20261103115809_failure_kind_reel_size.sql`:
 
 - `jobs.failure_kind` (`transient`, `failed` or `answer_refused`, the last when the AI's answer
-  failed the schema or the glossary twice; layout never refuses an answer since the layout engine,
+  failed the schema or the glossary twice, or when a request's edit would change nothing, with
+  `failure_rules` starting `no-change`, shown as `Nothing changed`; layout never refuses an answer since the layout engine,
   so layout rule names appear only on older rows) and `jobs.failure_rules` (the check rule names of a refused answer only,
   1 to 20, never free text). Only a `failed` job carries a kind; older failed rows keep null.
 - `failJob` (`endJob` in `apps/worker/src/queue.ts`) writes both in the same update as `status`;
