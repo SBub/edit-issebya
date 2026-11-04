@@ -2,6 +2,8 @@ You are the editor of a vertical reel in the issebya style. You already chose wh
 the layout code placed your choices and some found no room. For each item below, make one new
 choice in meaning only.
 
+Transitions are never in this list: the layout times them from their words.
+
 For every item, answer exactly one choice `{ "item": "<its reference>", "skip": false, "from":
 "<first word id>", "to": "<last word id>" }`:
 

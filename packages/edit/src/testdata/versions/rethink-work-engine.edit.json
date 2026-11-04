@@ -2431,13 +2431,7 @@
         },
         "words": [
           "w126"
-        ],
-        "size": 50,
-        "position": {
-          "x": 135,
-          "y": 1200,
-          "align": "left"
-        }
+        ]
       },
       {
         "id": "cw127",
@@ -2450,13 +2444,7 @@
         },
         "words": [
           "w127"
-        ],
-        "size": 50,
-        "position": {
-          "x": 267.25,
-          "y": 1200,
-          "align": "left"
-        }
+        ]
       },
       {
         "id": "cw128",
@@ -2469,13 +2457,7 @@
         },
         "words": [
           "w128"
-        ],
-        "size": 50,
-        "position": {
-          "x": 445,
-          "y": 1200,
-          "align": "left"
-        }
+        ]
       },
       {
         "id": "cw129",
@@ -2488,13 +2470,7 @@
         },
         "words": [
           "w129"
-        ],
-        "size": 50,
-        "position": {
-          "x": 566.5,
-          "y": 1200,
-          "align": "left"
-        }
+        ]
       },
       {
         "id": "cw130",
@@ -2507,13 +2483,7 @@
         },
         "words": [
           "w130"
-        ],
-        "size": 50,
-        "position": {
-          "x": 656.95,
-          "y": 1200,
-          "align": "left"
-        }
+        ]
       },
       {
         "id": "cw131",
@@ -2526,13 +2496,7 @@
         },
         "words": [
           "w131"
-        ],
-        "size": 50,
-        "position": {
-          "x": 749.45,
-          "y": 1200,
-          "align": "left"
-        }
+        ]
       },
       {
         "id": "cw132",
@@ -2545,13 +2509,7 @@
         },
         "words": [
           "w132"
-        ],
-        "size": 50,
-        "position": {
-          "x": 418.87,
-          "y": 1264,
-          "align": "left"
-        }
+        ]
       },
       {
         "id": "cw133",
@@ -2564,13 +2522,7 @@
         },
         "words": [
           "w133"
-        ],
-        "size": 50,
-        "position": {
-          "x": 465.07,
-          "y": 1264,
-          "align": "left"
-        }
+        ]
       },
       {
         "id": "cw134",
@@ -3159,13 +3111,39 @@
       {
         "id": "transition-1",
         "start": {
-          "word": "w126"
+          "word": "w126",
+          "offset": -0.5
         },
         "end": {
-          "word": "w133",
-          "edge": "end"
+          "word": "w134"
         },
-        "type": "panel"
+        "type": "panel",
+        "words": [
+          "w126",
+          "w127",
+          "w128",
+          "w129",
+          "w130",
+          "w131",
+          "w132",
+          "w133"
+        ],
+        "key": "w126",
+        "levels": {
+          "key": {
+            "text": "work should fund life not take it over",
+            "start": {
+              "word": "w126"
+            },
+            "position": {
+              "x": 494.51,
+              "y": 1180,
+              "align": "center"
+            },
+            "size": 77,
+            "break_after": 3
+          }
+        }
       }
     ],
     "sounds": [

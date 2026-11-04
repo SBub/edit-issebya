@@ -17,6 +17,7 @@ export {
   type Preset,
   type PresetFont,
   type TransitionType,
+  type TransitionKind,
   type SoundKey,
   type BehindSpot,
   BEHIND_SPOTS,
@@ -24,6 +25,7 @@ export {
   ISSEBYA_PRESET,
   PLATFORM_BUTTONS,
   PLATFORM_SAFE,
+  TRANSITION_KINDS,
   cleanWord,
 } from "./preset.ts";
 export {

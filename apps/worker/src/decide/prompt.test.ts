@@ -1,5 +1,11 @@
 import { readFileSync } from "node:fs";
-import { ISSEBYA_PRESET, choicesOf, parseEdit, transcriptSchema } from "@edit-issebya/edit";
+import {
+  ISSEBYA_PRESET,
+  TRANSITION_KINDS,
+  choicesOf,
+  parseEdit,
+  transcriptSchema,
+} from "@edit-issebya/edit";
 import { describe, expect, it } from "vitest";
 import { decideInput } from "./input.ts";
 import { PROMPT_VERSION, decidePrompt } from "./prompt.ts";
@@ -27,7 +33,24 @@ const input = decideInput({
 
 describe("decidePrompt", () => {
   it("is versioned", () => {
-    expect(PROMPT_VERSION).toBe("decide-8");
+    expect(PROMPT_VERSION).toBe("decide-9");
+  });
+
+  it("asks for each transition's phrase and key phrase, by the library's described kinds, never a card", () => {
+    const prompt = decidePrompt(input);
+    expect(prompt).toContain('`{ "kind", "from", "to", "key_from" }`');
+    for (const kind of TRANSITION_KINDS) {
+      expect(prompt).toContain(`"kind": "${kind}"`);
+      expect(prompt).toContain(
+        `"description": ${JSON.stringify(ISSEBYA_PRESET.transitions[kind].description)}`,
+      );
+    }
+    expect(prompt).toContain('"transition_every_seconds": 7');
+    expect(prompt).not.toMatch(/\bcard\b/);
+    // The corrections: "longer" changes the phrase, slower or staying longer a wish.
+    expect(prompt).toMatch(/slower or smoother/);
+    expect(prompt).toMatch(/`slow`/);
+    expect(prompt).toMatch(/`long`/);
   });
 
   it("asks for why_not in plain words when nothing in the answer can do an ask", () => {

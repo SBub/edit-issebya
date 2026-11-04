@@ -256,9 +256,9 @@ test("a change becomes version 3 and the preview shows it without a reload", asy
   // (the double's summary call gets a decide answer, so the code template
   // writes it), is stored with the version and shown on its one-line row; the
   // owner's words and the summary wait behind the arrow.
-  expect(v3.change_title).toBe("Several things changed");
+  expect(v3.change_title).toBe("Transition and captions changed");
   expect(v3.change_summary).toBe(
-    'A title was added on "this is a short". A transition was added, and a few smaller changes.',
+    'A transition was added. One word in the captions is fixed, it now reads "Studio".',
   );
   // One muted intro line sits under the Versions heading and describes the section.
   const versionsHeading = page.locator("#versions-heading");

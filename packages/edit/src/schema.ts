@@ -129,11 +129,31 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     words: z.array(wordId).min(1).optional(),
     ...textProps,
   });
+  // One text level inside a transition's layer, placed by the engine: shown
+  // whole from its `start` until the layer leaves.
+  const level = z.object({
+    text: z.string().min(1).max(300),
+    start: anchor,
+    position: textProps.position.unwrap(),
+    size: z.number().int().min(8).max(400),
+    break_after: textProps.break_after,
+  });
   const transition = z.object({
     ...base,
     type: z.enum(TRANSITION_TYPES),
     // Replaces the preset's layer colour.
     color: z.string().regex(COLOR).optional(),
+    // Written by the layout engine; a version saved before it has none. The
+    // phrase it carries (word ids), its key phrase's first word, the motion
+    // asked slower, the hold asked longer, its number in a list.
+    words: z.array(wordId).min(1).optional(),
+    key: wordId.optional(),
+    pace: z.literal("slow").optional(),
+    hold: z.literal("long").optional(),
+    number: z.number().int().min(1).max(99).optional(),
+    // The phrase's text inside the layer: the number (`numbered`), the
+    // lead-in in caption text, the key phrase in accent text.
+    levels: z.object({ number: level.optional(), lead: level.optional(), key: level }).optional(),
   });
   const sound = z.object({
     ...base,
@@ -222,6 +242,23 @@ function refineEdit(
     }
     if (kind === "overlay" && !("text" in item && item.text) && !("words" in item && item.words)) {
       ctx.addIssue({ code: "custom", message: `overlay ${item.id}: needs words or text` });
+    }
+  }
+  for (const item of edit.tracks.transitions) {
+    if (item.key !== undefined && !(item.words ?? []).includes(item.key)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `transition ${item.id}: its key phrase starts on ${item.key}, outside its words`,
+      });
+    }
+    if (item.levels && !item.words) {
+      ctx.addIssue({ code: "custom", message: `transition ${item.id}: levels without words` });
+    }
+    if (item.levels?.number && item.type !== "numbered") {
+      ctx.addIssue({
+        code: "custom",
+        message: `transition ${item.id}: a number level on a ${item.type} transition`,
+      });
     }
   }
   refineBehind(edit, transcript, preset, limits, ctx);
@@ -337,6 +374,8 @@ export type ClipItem = Edit["tracks"]["footage"][number];
 export type CaptionItem = Edit["tracks"]["captions"][number];
 export type OverlayItem = Edit["tracks"]["overlays"][number];
 export type TransitionItem = Edit["tracks"]["transitions"][number];
+export type TransitionLevels = NonNullable<TransitionItem["levels"]>;
+export type TransitionLevel = TransitionLevels["key"];
 export type SoundItem = Edit["tracks"]["sounds"][number];
 export type BehindItem = NonNullable<Edit["tracks"]["behind"]>[number];
 export type BehindPhotoItem = Extract<BehindItem, { kind: "photo" }>;

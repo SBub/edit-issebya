@@ -167,7 +167,9 @@ test("a change puts a library photo behind the speaker, in its spot, from a stor
     }>();
   expect(v3!.number).toBe(3);
   // Written by the template from the saved difference, never scripted.
-  expect(v3!.change_title).toBe("Several things changed");
+  // The photo and the fixed word (the round leaves the dim out: nothing else
+  // shows during a transition).
+  expect(v3!.change_title).toBe("Photo and captions changed");
   expect(v3!.change_summary).toMatch(/^A photo now shows behind you\. /);
   expect(v3!.inputs.photos).toEqual([photo!.id]);
   expect(v3!.inputs.masks).toHaveLength(1);

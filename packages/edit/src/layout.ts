@@ -9,7 +9,8 @@ import type { Transcript } from "./transcript.ts";
 // `height` its font size (line-height 1).
 export interface TextBox extends Span {
   itemId: string;
-  kind: "caption" | "accent";
+  // `level`: a text level inside a transition's layer.
+  kind: "caption" | "accent" | "level";
   text: string;
   // The text's lines: one, or two for a text set with `break_after`.
   lines: string[];
@@ -25,7 +26,8 @@ export interface TextBox extends Span {
   height: number;
 }
 
-type TextItem = Omit<TextBox, "x" | "y" | "width" | "height" | "lines"> & {
+type TextItem = Omit<TextBox, "x" | "y" | "width" | "height" | "lines" | "kind"> & {
+  kind: "caption" | "accent";
   position: CaptionItem["position"];
   breakAfter: number | undefined;
 };

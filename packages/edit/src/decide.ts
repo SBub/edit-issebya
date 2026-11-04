@@ -5,7 +5,7 @@ import { type EngineInput, WISHES } from "./engine-input.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { wordsText } from "./layout.ts";
 import type { Measurer } from "./measure.ts";
-import { type Preset, TRANSITION_TYPES, cleanWord } from "./preset.ts";
+import { type Preset, TRANSITION_KINDS, cleanWord } from "./preset.ts";
 import { BEHIND_WORD, type Edit, issueReasons, parseEdit } from "./schema.ts";
 import type { Transcript } from "./transcript.ts";
 
@@ -64,8 +64,8 @@ const MAX_ASKS = 10;
 // `wish` only from the fixed list. `behind_rules` says what the answer does
 // with the reel's forbids; without a request it can only `keep` them, and
 // the checklist is empty and no item has a wish. The refinement (dropped from
-// the JSON Schema) refuses a phrase ending before it starts, a wish without a
-// request, a second title, a kind the rules
+// the JSON Schema) refuses a phrase ending before it starts, a transition's
+// key phrase starting outside its phrase, a wish without a request, a second title, a kind the rules
 // forbid, a big word that is not one plain word, a word fixed twice and a
 // checklist entry naming an item the answer does not have.
 export function decideAnswerSchemaFor(
@@ -94,7 +94,9 @@ export function decideAnswerSchemaFor(
         .array(z.strictObject({ photo_id: photoId, ...phrase, wish }))
         .max(maxPhotos, { message: `at most ${maxPhotos} photos per reel` }),
       transitions: z
-        .array(z.strictObject({ kind: z.enum(TRANSITION_TYPES), ...phrase, wish }))
+        .array(
+          z.strictObject({ kind: z.enum(TRANSITION_KINDS), ...phrase, key_from: wordId, wish }),
+        )
         .max(MAX_TRANSITIONS, { message: `at most ${MAX_TRANSITIONS} transitions` }),
       word_fixes: z
         .array(z.strictObject({ word: wordId, text: z.string().min(1).max(60) }))
@@ -136,6 +138,16 @@ export function decideAnswerSchemaFor(
           }
         });
       }
+      answer.transitions.forEach((item, index) => {
+        const key = order.get(item.key_from)!;
+        if (key < order.get(item.from)! || key > order.get(item.to)!) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["transitions", index, "key_from"],
+            message: `key phrase starts on ${item.key_from}, outside ${item.from} to ${item.to}`,
+          });
+        }
+      });
       // A wish forwards the owner's own placement words: none without a request.
       if (!rules.requested) {
         const wished: [string, { wish?: string }[]][] = [

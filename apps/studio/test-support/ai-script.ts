@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 // The worker's scripted decide answer for the fixture clip (one Claude Code
 // result envelope, meaning only): a title phrase, one accent word, one dim
-// transition, one fixed word.
+// transition (over w0006 to w0008, its key phrase from w0007), one fixed word.
 export const SHORT_SPEECH_ANSWER = fileURLToPath(
   new URL("../../worker/src/decide/testdata/short-speech-answer.json", import.meta.url),
 );
@@ -108,9 +108,14 @@ async function roundEnvelope({
   };
   envelope.structured_output.photos = photos;
   envelope.structured_output.big_word = bigWord ? { word: bigWord } : null;
-  // On the 2.7 s fixture clip the title holds the screen for most of it, and
-  // the layout engine shows one extra at a time: a behind item needs it gone.
-  if (photos.length > 0 || bigWord) envelope.structured_output.accents = [];
+  // On the 2.7 s fixture clip the title or the dim holds the screen for most
+  // of it, and the layout engine shows one extra at a time and nothing during
+  // a transition: a behind item needs both gone (a round's own transitions
+  // stay as given).
+  if (photos.length > 0 || bigWord) {
+    envelope.structured_output.accents = [];
+    envelope.structured_output.transitions = [];
+  }
   if (transitions) envelope.structured_output.transitions = transitions;
   envelope.structured_output.behind_rules = rules;
   return envelope;

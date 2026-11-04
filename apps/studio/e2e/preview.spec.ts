@@ -13,6 +13,7 @@ import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
 import { seekOnRuler } from "../test-support/ruler.ts";
+import { withNumberedTransition } from "../test-support/transitions.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds } from "../test-support/worker.ts";
 import { eventsNamed, recordEvents } from "./events.ts";
@@ -312,4 +313,79 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
     const at = resolved.get(start.id)!.start;
     expect(Math.abs(start.when - (ctxTime - playhead) - at)).toBeLessThanOrEqual(0.01);
   }
+});
+
+test("a transition shows its number, lead-in and key phrase inside its layer, never the phrase's captions", async ({
+  page,
+  baseURL,
+}) => {
+  await routePreviewCdn(page);
+  await openReel(page, baseURL!);
+
+  // A version whose numbered transition carries "clip for the" (w0006 to
+  // w0008): its lead-in "clip" and its key phrase "for the" from w0007.
+  const transcript = await fixtureTranscript();
+  const stored = await storage.get(reel!.versionKey);
+  const parsed = parseEdit(
+    JSON.parse(new TextDecoder().decode(stored!)),
+    ISSEBYA_PRESET,
+    transcript,
+  );
+  expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
+  const edit = await withNumberedTransition((parsed as { ok: true; edit: Edit }).edit, transcript);
+  const saved = await saveTestVersion({
+    admin,
+    storage,
+    prefix: CACHE_PREFIX,
+    reelId: reel!.reelId,
+    edit,
+    changeSummary: "a numbered transition",
+  });
+  extraKeys.push(saved.key);
+  await expect(
+    page.locator(`[data-preview-version="${saved.id}"][data-preview="ready"]`),
+  ).toBeVisible({ timeout: 30_000 });
+
+  const frame = composition(page);
+  const opacity = (selector: string) =>
+    frame.locator(selector).evaluate((el) => {
+      const style = getComputedStyle(el);
+      return style.visibility === "hidden" || style.display === "none" ? 0 : Number(style.opacity);
+    });
+  const resolved = resolveTimeline(edit, transcript);
+  const layer = resolved.get("transition-1")!;
+  const key = transcript.words.find((word) => word.id === "w0007")!;
+
+  // Inside the phrase, after its key phrase's first word.
+  await setPosition(page, key.start + 0.3);
+  await expect.poll(() => opacity("#transition-1")).toBeGreaterThan(0.9);
+  await expect(frame.locator("#transition-1 #transition-1-number")).toHaveText("1");
+  await expect(frame.locator("#transition-1 #transition-1-lead")).toHaveText("clip");
+  await expect(frame.locator("#transition-1 #transition-1-key")).toHaveText("for the");
+  await expect.poll(() => opacity("#transition-1-lead")).toBeGreaterThan(0.5);
+  await expect.poll(() => opacity("#transition-1-key")).toBeGreaterThan(0.5);
+  const color = (selector: string) =>
+    frame.locator(selector).evaluate((el) => getComputedStyle(el).color);
+  // The lead-in in caption text, the key phrase and the number in accent text.
+  expect(await color("#transition-1-lead")).toBe("rgb(255, 255, 255)");
+  expect(await color("#transition-1-key")).toBe("rgb(179, 230, 255)");
+  expect(await color("#transition-1-number")).toBe("rgb(179, 230, 255)");
+  // The phrase's captions show nowhere else.
+  for (const id of ["cw0006", "cw0007", "cw0008"]) {
+    await expect(frame.locator(`#${id}`)).toHaveCount(0);
+  }
+
+  // After it has left, the next caption shows as usual.
+  // cw0010 ends with the reel's last word and fades out over
+  // caption.outSeconds, so the check has to land between the layer's end and
+  // that fade.
+  const nextSpan = resolved.get("cw0010")!;
+  const fadeOut = nextSpan.end - ISSEBYA_PRESET.caption.outSeconds;
+  expect(fadeOut).toBeGreaterThan(layer.end);
+  expect(layer.end + 0.001).toBeLessThan(fadeOut);
+  await setPosition(page, layer.end + 0.001);
+  await expect.poll(() => opacity("#transition-1")).toBeLessThan(0.05);
+  const next = frame.locator("#cw0010");
+  await expect(next).toHaveText("studio");
+  await expect.poll(() => opacity("#cw0010")).toBeGreaterThan(0.5);
 });

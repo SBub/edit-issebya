@@ -16,6 +16,19 @@ function ms(seconds: number): number {
   return rounded === 0 ? 0 : rounded;
 }
 
+// An anchor at `t`: the nearest word end within a second (with the offset),
+// else the time itself.
+export function anchorAt(t: number, words: readonly Word[]): Anchor {
+  let best: Word | null = null;
+  for (const word of words) {
+    if (Math.abs(t - word.end) > 1) continue;
+    if (!best || Math.abs(t - word.end) < Math.abs(t - best.end)) best = word;
+  }
+  if (!best) return { time: ms(t) };
+  const offset = ms(t - best.end);
+  return offset === 0 ? { word: best.id, edge: "end" } : { word: best.id, edge: "end", offset };
+}
+
 // One anchor in seconds: a word's edge plus its offset, a time as is, the
 // reel's start (0) or end (the edit's duration). Unclamped, to the millisecond.
 export function resolveAnchor(

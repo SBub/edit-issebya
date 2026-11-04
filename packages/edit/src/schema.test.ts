@@ -109,6 +109,50 @@ describe("parseEdit", () => {
   });
 });
 
+describe("a transition item", () => {
+  const transitions = FIXTURES.find((fixture) => fixture.name === "rethink-work-transitions")!;
+  const parse = (change: (item: Record<string, unknown>) => void) => {
+    const edit = structuredClone(transitions.edit) as unknown as {
+      tracks: { transitions: Record<string, unknown>[] };
+    };
+    change(edit.tracks.transitions[1]!);
+    return parseEdit(edit, ISSEBYA_PRESET, transitions.transcript);
+  };
+
+  it("parses a stored card and an item without the engine's fields", () => {
+    const edit = structuredClone(hand.edit);
+    edit.tracks.transitions = [
+      { id: "card-a", type: "card", start: { word: "w84" }, end: { word: "w99", edge: "end" } },
+    ];
+    expect(parseEdit(edit, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });
+  });
+
+  it("parses the engine's phrase, key, pace, hold, number and levels", () => {
+    expect(parse(() => {})).toMatchObject({ ok: true });
+    expect(
+      parse((item) => {
+        item.pace = "slow";
+        item.hold = "long";
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
+  it("refuses a key outside its words, levels without words and a number on another kind", () => {
+    const outside = parse((item) => (item.key = "w0"));
+    expect(outside.ok ? [] : outside.reasons).toContain(
+      "edit: transition transition-2: its key phrase starts on w0, outside its words",
+    );
+    const bare = parse((item) => delete item.words);
+    expect(bare.ok ? [] : bare.reasons).toContain(
+      "edit: transition transition-2: levels without words",
+    );
+    const dim = parse((item) => (item.type = "dim"));
+    expect(dim.ok ? [] : dim.reasons).toContain(
+      "edit: transition transition-2: a number level on a dim transition",
+    );
+  });
+});
+
 describe("the behind track", () => {
   const behind = FIXTURES.find((fixture) => fixture.name === "rethink-work-behind")!;
   const PHOTO = "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14";

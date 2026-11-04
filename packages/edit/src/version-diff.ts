@@ -38,7 +38,13 @@ export interface DiffEntry {
   photo_id?: string;
   // A behind photo's spot before and after, when it changed.
   spot?: { from?: string; to?: string };
+  // A transition now over other words: the words it was over.
+  was?: string;
+  // A transition's motion or hold changed, in plain words.
+  change?: TransitionChange;
 }
+
+export type TransitionChange = "slower" | "usual speed" | "stays longer" | "usual hold";
 
 export interface RuleChange {
   rule: "photos" | "big_word";
@@ -62,6 +68,13 @@ interface Keyed {
 // Fields that are not placement: anchors, words, the item's own text and
 // meaning, and its identity.
 const NOT_PLACEMENT = new Set([
+  // A transition's phrase, key phrase, motion, hold and number are its
+  // meaning or timing; its levels are compared by place only.
+  "key",
+  "pace",
+  "hold",
+  "number",
+  "levels",
   "id",
   "kind",
   "start",
@@ -82,6 +95,7 @@ const NOT_PLACEMENT = new Set([
 // look, the footage's hidden stretches.
 const MEANING = [
   "words",
+  "key",
   "text",
   "type",
   "sound",
@@ -159,7 +173,13 @@ function keyedItems(edit: Edit, words: ReadonlyMap<string, Word>): Keyed[] {
     else push("big_word", String(item.text), item);
   }
   for (const item of tracks.transitions as AnyItem[]) {
-    const base = "word" in item.start ? `${String(item.type)}:${item.start.word}` : `id:${item.id}`;
+    const list = item.words as string[] | undefined;
+    const base =
+      list && list.length > 0
+        ? `${String(item.type)}:${list[0]}`
+        : "word" in item.start
+          ? `${String(item.type)}:${item.start.word}`
+          : `id:${item.id}`;
     push("transition", base, item);
   }
   for (const item of tracks.captions as AnyItem[]) push("caption", item.id, item);
@@ -169,7 +189,35 @@ function keyedItems(edit: Edit, words: ReadonlyMap<string, Word>): Keyed[] {
 }
 
 function placementOf(item: AnyItem): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(item).filter(([key]) => !NOT_PLACEMENT.has(key)));
+  const out = Object.fromEntries(Object.entries(item).filter(([key]) => !NOT_PLACEMENT.has(key)));
+  // A transition's levels: where they sit and how large, never their text.
+  const levels = item.levels as Record<string, Record<string, unknown>> | undefined;
+  if (levels) {
+    out.levels = Object.fromEntries(
+      Object.entries(levels).map(([role, level]) => [
+        role,
+        { position: level.position, size: level.size, break_after: level.break_after },
+      ]),
+    );
+  }
+  return out;
+}
+
+// A transition's motion and hold, as the owner asked them.
+function transitionChange(a: AnyItem, b: AnyItem): TransitionChange | null {
+  if (a.pace !== b.pace) return b.pace === "slow" ? "slower" : "usual speed";
+  if (a.hold !== b.hold) return b.hold === "long" ? "stays longer" : "usual hold";
+  return null;
+}
+
+// The word positions a transition covers, for pairing one whose phrase changed.
+function phraseRange(
+  item: AnyItem,
+  order: ReadonlyMap<string, number>,
+): { from: number; to: number } | null {
+  const list = item.words as string[] | undefined;
+  if (!list || list.length === 0) return null;
+  return { from: order.get(list[0]!) ?? -1, to: order.get(list.at(-1)!) ?? -1 };
 }
 
 interface Sortable {
@@ -179,7 +227,9 @@ interface Sortable {
 
 // The structured difference between two edits over every track: items added,
 // removed, moved (a placement field: spot, position, size), retimed (an
-// anchor) and changed (text, transition type, sound, look). Captions report
+// anchor, or a transition now over other words, with the words it was over)
+// and changed (text, transition type, sound, look, a transition's motion or
+// hold). Captions report
 // only a changed text one by one; every caption moved or retimed is one
 // `captions moved` entry. Ordered by kind, then by where the item starts.
 export function diffEdits(
@@ -214,7 +264,42 @@ export function diffEdits(
     captionsMoved = captionsMoved === null ? start : Math.min(captionsMoved, start);
   };
 
+  // A transition of the same kind over overlapping words, in both versions
+  // under another key: the same transition over a changed phrase.
+  const phraseChanged = new Map<string, Keyed>();
+  const paired = new Set<string>();
   for (const next of now) {
+    if (next.kind !== "transition" || oldByKey.has(next.key)) continue;
+    const range = phraseRange(next.item, order);
+    if (!range) continue;
+    const prev = old.find((entry) => {
+      if (entry.kind !== "transition" || nowKeys.has(entry.key) || paired.has(entry.key)) {
+        return false;
+      }
+      if (entry.item.type !== next.item.type) return false;
+      const other = phraseRange(entry.item, order);
+      return other !== null && other.from <= range.to && range.from <= other.to;
+    });
+    if (!prev) continue;
+    paired.add(prev.key);
+    phraseChanged.set(next.key, prev);
+  }
+
+  for (const next of now) {
+    const was = phraseChanged.get(next.key);
+    if (was) {
+      const before = text("transition", was.item);
+      found.push({
+        entry: entry(
+          "transition",
+          "retimed",
+          next.item,
+          before === undefined ? {} : { was: before },
+        ),
+        start: next.start,
+      });
+      continue;
+    }
     const prev = oldByKey.get(next.key);
     if (!prev) {
       if (next.kind === "caption") foldCaption(next.start);
@@ -237,6 +322,12 @@ export function diffEdits(
       if (retimed || moved || restChanged) foldCaption(next.start);
       continue;
     }
+    // A transition asked slower or longer: one change, its new timing with it.
+    const motion = next.kind === "transition" ? transitionChange(a, b) : null;
+    if (motion) {
+      found.push({ entry: entry(next.kind, "changed", b, { change: motion }), start: next.start });
+      continue;
+    }
     if (retimed) found.push({ entry: entry(next.kind, "retimed", b), start: next.start });
     if (moved) {
       const spot =
@@ -253,7 +344,7 @@ export function diffEdits(
     if (changed) found.push({ entry: entry(next.kind, "changed", b), start: next.start });
   }
   for (const prev of old) {
-    if (nowKeys.has(prev.key)) continue;
+    if (nowKeys.has(prev.key) || paired.has(prev.key)) continue;
     if (prev.kind === "caption") foldCaption(prev.start);
     else found.push({ entry: entry(prev.kind, "removed", prev.item), start: prev.start });
   }

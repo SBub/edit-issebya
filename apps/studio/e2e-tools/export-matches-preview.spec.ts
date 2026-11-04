@@ -25,12 +25,13 @@ import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { SAMPLE_PHOTO, type SeededPhoto, seedReadyPhoto } from "../test-support/photos.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { seekOnRuler } from "../test-support/ruler.ts";
+import { withNumberedTransition } from "../test-support/transitions.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
 // The guardrail: what the owner downloads is what the preview showed. The
 // studio's live preview and the real exported MP4 are captured at the same
-// moments and compared with ffmpeg's SSIM; a caption moved by 60 px must fall
+// moments and compared with ffmpeg's SSIM; text moved by 60 px must fall
 // below the bound, so the comparison is proven sensitive. Real HyperFrames
 // through the worker's `once`: the owner's Mac only, never CI.
 // The bound started at 0.95 and was raised with measured evidence (never below 0.9): the guardrail
@@ -151,22 +152,19 @@ async function storedEdit(key: string): Promise<Edit> {
   return parsed.edit;
 }
 
-// Version 2's edit plus one accent, one dim transition crossing 1.5 s and one
-// click: every kind of layer the export must match.
-function guardrailEdit(base: Edit): Edit {
-  const edit = structuredClone(base);
+// Version 2's choices with a numbered transition placed by the layout engine
+// (its layer crossing 1.5 s, carrying its number and its two text levels),
+// plus one accent before it and one click: every kind of layer the export
+// must match.
+async function guardrailEdit(base: Edit): Promise<Edit> {
+  const edit = await withNumberedTransition(base, await transcript());
+  // Before the transition comes in: nothing else shows during one.
   edit.tracks.overlays.push({
     id: "accent-guard",
-    start: { word: "w0005" },
-    end: { word: "w0006", edge: "end" },
+    start: { word: "w0001" },
+    end: { word: "w0002", edge: "end" },
     kind: "accent",
-    words: ["w0005"],
-  });
-  edit.tracks.transitions.push({
-    id: "dim-guard",
-    start: { time: 1.3 },
-    end: { time: 1.8 },
-    type: "dim",
+    words: ["w0001"],
   });
   edit.tracks.sounds.push({
     id: "click-guard",
@@ -292,8 +290,9 @@ async function capturePreview(name: string): Promise<Capture[]> {
   return captures;
 }
 
-// Presses Export, runs the real render through the worker, and returns the
-// MP4 on disk and the job's id.
+// Presses Export, runs the real render through the worker, waits for the
+// export modal to close after the download, and returns the MP4 on disk and
+// the job's id.
 async function exportNow(name: string): Promise<{ mp4: string; jobId: string }> {
   const button = page.getByTestId("export-button");
   await expect(button).toBeEnabled({ timeout: 30_000 });
@@ -304,6 +303,11 @@ async function exportNow(name: string): Promise<{ mp4: string; jobId: string }> 
     { timeoutMs: RENDER_TIMEOUT_MS },
   );
   expect(worker.code, worker.output).toBe(0);
+  // The export downloads by itself and the modal closes a few seconds later.
+  // Until it closes it covers the page, and the ruler seeks with a raw pointer
+  // click (no actionability wait), so the next capture's click would land on
+  // the modal.
+  await expect(page.getByTestId("export-modal")).toBeHidden({ timeout: 30_000 });
   const { data, error } = await admin
     .from("exports")
     .select("job_id, r2_key")
@@ -347,7 +351,7 @@ let guardrailEditValue: Edit;
 
 test("the export matches the live preview at every moment", async ({ baseURL }) => {
   test.setTimeout(15 * 60_000);
-  guardrailEditValue = guardrailEdit(await storedEdit(reel!.versionKey));
+  guardrailEditValue = await guardrailEdit(await storedEdit(reel!.versionKey));
   const guard = await saveVersionOf(guardrailEditValue, "guardrail");
 
   await page.goto(await signInLink(admin, owner.email, baseURL!));
@@ -372,16 +376,16 @@ test("the export matches the live preview at every moment", async ({ baseURL }) 
   expect(step!.peak_rss_bytes).toBeGreaterThan(256 * 1024 * 1024);
 });
 
-test("a caption moved by 60 px falls below the bound", async () => {
+test("text moved by 60 px falls below the bound", async () => {
   test.setTimeout(15 * 60_000);
   expect(previews).toHaveLength(MOMENTS.length);
   const probe = structuredClone(guardrailEditValue);
   const timeline = resolveTimeline(probe, await transcript());
+  // The transition's own captions have no place (they show as its levels).
   const onScreen = probe.tracks.captions.filter((caption) => {
     const span = timeline.get(caption.id)!;
-    return span.start <= PROBE_MOMENT && PROBE_MOMENT < span.end;
+    return caption.position && span.start <= PROBE_MOMENT && PROBE_MOMENT < span.end;
   });
-  expect(onScreen.length).toBeGreaterThan(0);
   // Each caption on screen at 1.5 s, pinned where the builder put it, then 60 px lower.
   for (const caption of onScreen) {
     const placed = await composition()
@@ -392,7 +396,18 @@ test("a caption moved by 60 px falls below the bound", async () => {
       });
     caption.position = { x: placed.x, y: placed.y + PROBE_SHIFT_PX, align: "left" };
   }
-  const saved = await saveVersionOf(probe, "guardrail probe: a caption 60 px lower");
+  // Each text level of a transition shown at 1.5 s, 60 px lower.
+  let levels = 0;
+  for (const transition of probe.tracks.transitions) {
+    const span = timeline.get(transition.id)!;
+    if (!transition.levels || PROBE_MOMENT < span.start || span.end <= PROBE_MOMENT) continue;
+    for (const level of Object.values(transition.levels)) {
+      level.position = { ...level.position, y: level.position.y + PROBE_SHIFT_PX };
+      levels += 1;
+    }
+  }
+  expect(onScreen.length + levels).toBeGreaterThan(0);
+  const saved = await saveVersionOf(probe, "guardrail probe: the text 60 px lower");
   await openPreview(saved.id);
 
   const { mp4 } = await exportNow("probe");
