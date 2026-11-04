@@ -261,6 +261,12 @@ two AI calls. A failure before the first AI call may still be retried once.
   library on a forbid), `checks.test.ts`, `schema.test.ts`; DB: `versions.test.ts` covers the reel
   flags.
 
+## Readable text
+
+Before the AI call, `run-decide.ts` ensures the footage's background map (`ensureBackgrounds`, a
+failure is an ordinary step failure) and passes `backgroundSampler(map, preset.frame)` to
+`editFromAnswer`, so the engine moves or shadows unreadable text (see `edit-model.md`).
+
 ## Rules
 
 - At most two AI calls per decide: one retry, never a loop.
