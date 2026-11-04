@@ -8,8 +8,11 @@ import {
   type Transcript,
   decideJsonSchema,
   parseDecideAnswer,
+  parseSummaryAnswer,
+  summaryJsonSchema,
 } from "@edit-issebya/edit";
 import { type AiRunner, plainTool } from "./ai.ts";
+import { SUMMARY_MODEL, summaryPrompt } from "./decide/version-summary.ts";
 import { describePrompt } from "./photos/describe-prompt.ts";
 import { describeJsonSchema, parseDescribeAnswer } from "./photos/describe-schema.ts";
 
@@ -262,13 +265,38 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
     await check("ai structured call", async () => {
       const result = await deps.ai().call(plainTool, {
         prompt:
-          'Reply with accents, photos, transitions, word_fixes, checklist and unexpressed empty lists, big_word null, change_title and change_summary "ok", and behind_rules photos and big_word "keep".',
+          'Reply with accents, photos, transitions, word_fixes, checklist and unexpressed empty lists, big_word null, and behind_rules photos and big_word "keep".',
         schema: doctorAiSchema(),
         cwd: tmpdir(),
       });
       if (result.kind !== "answer") throw new Error(result.reason);
       const parsed = parseDecideAnswer(result.answer, ISSEBYA_PRESET, AI_SAMPLE_TRANSCRIPT);
       if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
+    }),
+    // The version summary's small model, so an id the installed CLI rejects
+    // shows here before a real run.
+    await check("ai summary call", async () => {
+      const result = await deps.ai().call(plainTool, {
+        prompt: summaryPrompt({
+          request: "add a title",
+          checklist: [],
+          diff: {
+            items: [
+              { kind: "title", action: "added", id: "title", text: "Rethink work" },
+              { kind: "caption", action: "moved", id: "captions" },
+            ],
+            rules: [],
+          },
+          record: [],
+        }),
+        schema: summaryJsonSchema(),
+        cwd: tmpdir(),
+        model: SUMMARY_MODEL,
+      });
+      if (result.kind !== "answer") throw new Error(result.reason);
+      const parsed = parseSummaryAnswer(result.answer);
+      if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
+      return SUMMARY_MODEL;
     }),
     await check("ai image call", () => aiImageCall(deps.ai())),
     await check("mask tool", () => maskToolCheck(deps.maskTool())),

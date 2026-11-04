@@ -44,8 +44,6 @@ const ANSWER: DecideAnswer = {
   word_fixes: [],
   checklist: [],
   behind_rules: { photos: "keep", big_word: "keep" },
-  change_title: "Photo added",
-  change_summary: "A photo shows behind you.",
   unexpressed: [],
 };
 

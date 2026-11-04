@@ -52,16 +52,6 @@ to 2, free choice" }`), and `fulfilled_by` the answer items that do it, written 
 - Without a request, `checklist` is an empty list.
 - List any part of the request no choice can express in `unexpressed`.
 
-The records:
-
-- Write `change_title`: 2 to 5 plain words, sentence case, no full stop, saying what changed (for
-  example "Transitions made longer", "Photo added behind you").
-- Write `change_summary`: one or two short plain sentences for the owner, who is not technical,
-  saying what changed.
-- In `change_title` and `change_summary` talk about what the viewer sees. Never write word ids,
-  font names, pixel sizes, colour codes, timestamps or seconds, or internal names (track, slot,
-  preset, spot names).
-
 An answer that does not pass the answer's own rules (the schema, the glossary) comes back with
 reasons. Layout never refuses an answer: the layout code fits every item it can and leaves out
 what has no room, so never shorten or move a choice to help it.
@@ -93,8 +83,6 @@ An example answer, for a request "put a photo behind me on the left":
     }
   ],
   "behind_rules": { "photos": "keep", "big_word": "keep" },
-  "change_title": "Photo added behind you",
-  "change_summary": "A photo now shows behind you on the left while you talk about the kitchen.",
   "unexpressed": []
 }
 ```

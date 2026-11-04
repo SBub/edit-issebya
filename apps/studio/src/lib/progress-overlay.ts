@@ -150,8 +150,12 @@ function failureState(input: OverlayInput): OverlayState | null {
   const own = steps.filter((step) => step.job_id === newest.id);
   const failedStep = own.findLast((step) => step.status === "failed") ?? own.at(-1) ?? null;
   const step = failedStep?.name ?? null;
-  const headline = wordsFor(step ?? "", newest, versionsById).failed;
   const refused = newest.failure_kind === "answer_refused";
+  // A change that would leave the reel as it is: nothing was saved.
+  const unchanged = refused && (newest.failure_rules ?? []).includes("no-change");
+  const headline = unchanged
+    ? "Nothing changed"
+    : wordsFor(step ?? "", newest, versionsById).failed;
   const reword = newest.kind === "change" && refused && Boolean(newest.request);
   const actions: FailureAction[] = reword
     ? ["change_request", "keep_current"]

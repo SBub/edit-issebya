@@ -25,6 +25,7 @@ import { eventsNamed, recordEvents } from "./events.ts";
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
 const REQUEST = "no accent on 'work'";
 const SECOND_REQUEST = "make the title bigger";
+const UNCHANGED_REQUEST = "keep the title and the fade";
 // The two scripts the composition loads from jsdelivr, served from the pinned
 // local packages so the spec needs no network.
 const CDN = [
@@ -251,9 +252,14 @@ test("a change becomes version 3 and the preview shows it without a reload", asy
   await expect(page.locator(`[data-preview-version="${v3.id}"][data-preview="ready"]`)).toBeVisible(
     { timeout: 30_000 },
   );
-  // Claude's plain title is stored with the version and shown on its one-line
-  // row; the owner's words and the summary wait behind the arrow.
-  expect(v3.change_title).toBe("Title and one accent added");
+  // The plain title, written after layout from what the saved edit changes
+  // (the double's summary call gets a decide answer, so the code template
+  // writes it), is stored with the version and shown on its one-line row; the
+  // owner's words and the summary wait behind the arrow.
+  expect(v3.change_title).toBe("Several things changed");
+  expect(v3.change_summary).toBe(
+    'A title was added on "this is a short". A transition was added, and a few smaller changes.',
+  );
   // One muted intro line sits under the Versions heading and describes the section.
   const versionsHeading = page.locator("#versions-heading");
   const versionsIntro = page.getByTestId("versions-intro");
@@ -422,6 +428,39 @@ test("going back makes a new version copying the old one, and going back again",
   expect(await noReloadMarker()).toBe("marker");
 });
 
+test("a change that would leave the reel as it is saves nothing, and the overlay says why", async () => {
+  // Version 5 has version 3's bytes, and the committed answer over them places
+  // exactly the same edit again.
+  const before = await reelRow();
+  const numbers = (await versionsOf()).map((v) => v.number);
+  await box().fill(UNCHANGED_REQUEST);
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByTestId("change-pending")).toHaveText(`Pending: ${UNCHANGED_REQUEST}`);
+
+  const worker = await runWorker(SHORT_SPEECH_ANSWER);
+  expect(worker.code, worker.output).toBe(1);
+
+  const failed = (await jobsOf("change")).at(-1)!;
+  expect(failed).toMatchObject({ status: "failed", request: UNCHANGED_REQUEST });
+  expect(failed.error_tail).toContain("nothing would change, version 5 stays current");
+  expect(failed.failure_kind).toBe("answer_refused");
+  expect(failed.failure_rules[0]).toBe("no-change");
+  expect(await reelRow()).toEqual(before);
+  expect(before.status).toBe("processed");
+  expect((await versionsOf()).map((v) => v.number)).toEqual(numbers);
+
+  const overlay = page.getByTestId("progress-overlay");
+  await expect(overlay).toHaveAttribute("data-overlay-kind", "failure", { timeout: 10_000 });
+  await expect(overlay.getByTestId("overlay-headline")).toHaveText("Nothing changed");
+  await expect(overlay.getByTestId("overlay-reason")).toContainText(
+    "Your reel would look the same",
+  );
+  await expect(overlay.getByTestId("overlay-change-request")).toBeVisible();
+  await expect(overlay.getByTestId("overlay-keep")).toBeVisible();
+  await expect(overlay.getByTestId("overlay-try-again")).toHaveCount(0);
+  expect(await noReloadMarker()).toBe("marker");
+});
+
 test("another owner cannot queue a change, and a change needs words", async () => {
   other = await createTestUser(admin, "change-requests-other");
   const clientB = (await signedInClient(admin, other.email)).client;
@@ -433,6 +472,6 @@ test("another owner cannot queue a change, and a change needs words", async () =
   const clientA = (await signedInClient(admin, owner.email)).client;
   const empty = await clientA.from("jobs").insert({ reel_id: reel!.reelId, kind: "change" });
   expect(empty.error).not.toBeNull();
-  expect(await jobsOf("change")).toHaveLength(2);
+  expect(await jobsOf("change")).toHaveLength(3);
   expect(await claimableJobIds(admin)).toEqual([]);
 });

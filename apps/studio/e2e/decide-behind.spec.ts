@@ -80,6 +80,8 @@ interface VersionRow {
   number: number;
   inputs: { masks?: unknown[]; photos?: string[] };
   rejected_reasons: string[];
+  change_title: string | null;
+  change_summary: string | null;
   r2_key: string;
 }
 
@@ -92,7 +94,7 @@ async function currentVersion() {
     .single<{ current_version_id: string; no_photos: boolean; no_big_word: boolean }>();
   const { data: version } = await admin
     .from("versions")
-    .select("id, number, inputs, rejected_reasons, r2_key")
+    .select("id, number, inputs, rejected_reasons, change_title, change_summary, r2_key")
     .eq("id", reelRow!.current_version_id)
     .single<VersionRow>();
   const bytes = await storage.get(version!.r2_key);
@@ -150,17 +152,23 @@ test("the automatic decide proposes a photo; no photos in this one removes it fo
   await expect(behindRow.getByTestId("track-item")).toHaveCount(0);
 
   // Version 4: a later change's first answer puts the photo back (refused),
-  // its retry leaves it out; the forbid holds.
+  // its retry leaves it out and takes the transition out (a retry identical
+  // to version 3 would save nothing); the forbid holds.
   await sendChange(
     page,
     LATER,
     await answerRoundsScript(scriptDir, [
-      { photos: [behindPhotoItem(photo!.id)], changeSummary: "shorter title, photo back" },
-      { changeSummary: "shorter title" },
+      { photos: [behindPhotoItem(photo!.id)] },
+      { transitions: [] },
     ]),
   );
   const v4 = await currentVersion();
   expect(v4.version.number).toBe(4);
+  // Written by the template from the saved difference: the transition taken
+  // out (the title and captions take its room), never the photo.
+  expect(v4.version.change_title).toBe("Several things changed");
+  expect(v4.version.change_summary).toContain("The transition was taken out");
+  expect(v4.version.change_summary).not.toMatch(/photo/i);
   expect(v4.behind).toEqual([]);
   expect(v4.version.rejected_reasons.join("\n")).toContain("photos are switched off for this reel");
   expect(v4.reel).toMatchObject({ no_photos: true, no_big_word: false });

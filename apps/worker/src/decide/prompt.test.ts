@@ -27,7 +27,7 @@ const input = decideInput({
 
 describe("decidePrompt", () => {
   it("is versioned", () => {
-    expect(PROMPT_VERSION).toBe("decide-7");
+    expect(PROMPT_VERSION).toBe("decide-8");
   });
 
   it("asks for why_not in plain words when nothing in the answer can do an ask", () => {
@@ -36,20 +36,10 @@ describe("decidePrompt", () => {
     expect(prompt).toContain('"Your photo library is\n  empty: upload photos first"');
   });
 
-  it("asks for a plain title and summary for the owner, without technical details", () => {
+  it("never asks for a title or summary: they are written after layout", () => {
     const prompt = decidePrompt(input);
-    expect(prompt).toContain(
-      "Write `change_title`: 2 to 5 plain words, sentence case, no full stop",
-    );
-    expect(prompt).toContain('"Transitions made longer", "Photo added behind you"');
-    expect(prompt).toMatch(
-      /Write `change_summary`: one or two short plain sentences for the owner,\s+who is not technical/,
-    );
-    expect(prompt).toMatch(
-      /Never write word ids,\s+font names, pixel sizes, colour codes, timestamps or seconds/,
-    );
-    expect(prompt).toContain("internal names (track, slot,\n  preset, spot names)");
-    expect(prompt).not.toContain("one-line `change_summary`");
+    expect(prompt).not.toContain("change_title");
+    expect(prompt).not.toContain("change_summary");
   });
 
   it("carries the current choices, every word id, the sentences, the glossary and no request", () => {
@@ -179,8 +169,6 @@ describe("decidePrompt", () => {
       "word_fixes",
       "checklist",
       "behind_rules",
-      "change_title",
-      "change_summary",
       "unexpressed",
     ]);
   });

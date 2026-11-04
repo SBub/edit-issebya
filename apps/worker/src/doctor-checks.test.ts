@@ -24,6 +24,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+const SUMMARY = { change_title: "Title added", change_summary: "A title opens the reel." };
+
 const DESCRIBED = {
   description: "A colourful test pattern.",
   tags: ["test pattern", "colour bars", "abstract"],
@@ -35,6 +37,7 @@ const DESCRIBED = {
 function answeringAi(): AiRunner & { calls: AiRequest[]; folders: string[][] } {
   const decide = fakeAiRunner([resultEnvelope(EMPTY_DECIDE_ANSWER)]);
   const image = fakeAiRunner([resultEnvelope(DESCRIBED)]);
+  const summary = fakeAiRunner([resultEnvelope(SUMMARY)]);
   const calls: AiRequest[] = [];
   const folders: string[][] = [];
   return {
@@ -44,7 +47,8 @@ function answeringAi(): AiRunner & { calls: AiRequest[]; folders: string[][] } {
       calls.push(request);
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- the check's temp folder
       folders.push(await readdir(request.cwd));
-      return (request.readFile ? image : decide).call(tool, request);
+      const runner = request.readFile ? image : request.model ? summary : decide;
+      return runner.call(tool, request);
     },
   };
 }
@@ -99,7 +103,7 @@ function maskTool(change: Partial<MaskToolDeps> = {}): MaskToolDeps {
 
 describe("runDoctor's mask tool line", () => {
   const line = async (deps: MaskToolDeps) =>
-    (await runDoctor({ ...PASSING, maskTool: () => deps })).lines[8];
+    (await runDoctor({ ...PASSING, maskTool: () => deps })).lines[9];
 
   it("refuses off macOS with one line", async () => {
     expect(await line(maskTool({ platform: "linux" }))).toBe(
@@ -178,6 +182,7 @@ describe("runDoctor", () => {
         "ok   ffmpeg codecs libx264, libvpx-vp9, libvpx-vp9 decoder",
         "ok   hyperframes 0.8.222",
         "ok   ai structured call",
+        "ok   ai summary call claude-haiku-5-5",
         "ok   ai image call",
         "ok   mask tool vseg built, 1 s masked in 0.0 s",
         "ok   scratch dir /scratch exists",
@@ -243,13 +248,13 @@ describe("runDoctor", () => {
       ...PASSING,
       scratchDir: async () => ({ dir: "/scratch/prod", state: "can be created" }),
     });
-    expect(creatable.lines[9]).toBe("ok   scratch dir /scratch/prod can be created");
+    expect(creatable.lines[10]).toBe("ok   scratch dir /scratch/prod can be created");
     expect(creatable.exitCode).toBe(0);
     const failing = await runDoctor({
       ...PASSING,
       scratchDir: async () => Promise.reject(new Error("/scratch is not a folder")),
     });
-    expect(failing.lines[9]).toBe("FAIL scratch dir: /scratch is not a folder");
+    expect(failing.lines[10]).toBe("FAIL scratch dir: /scratch is not a folder");
     expect(failing.exitCode).toBe(1);
   });
 
@@ -269,7 +274,7 @@ describe("runDoctor", () => {
   it("sends the real decide schema, the draft the Claude Code CLI validates", async () => {
     const ai = answeringAi();
     await runDoctor({ ...PASSING, ai: () => ai });
-    expect(ai.calls).toHaveLength(2);
+    expect(ai.calls).toHaveLength(3);
     const schema = ai.calls[0]!.schema as { $schema?: unknown; properties?: object };
     expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
     expect(Object.keys(schema.properties ?? {})).toEqual([
@@ -280,11 +285,26 @@ describe("runDoctor", () => {
       "word_fixes",
       "checklist",
       "behind_rules",
-      "change_title",
-      "change_summary",
       "unexpressed",
     ]);
     expect(JSON.stringify(schema)).toContain('"enum":["w0001","w0002"]');
+  });
+
+  it("sends the summary schema on the small model, failing on a broken answer", async () => {
+    const ai = answeringAi();
+    await runDoctor({ ...PASSING, ai: () => ai });
+    const call = ai.calls.find((request) => request.model !== undefined)!;
+    expect(call.model).toBe("claude-haiku-5-5");
+    const schema = call.schema as { $schema?: unknown; properties?: object };
+    expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(Object.keys(schema.properties ?? {})).toEqual(["change_title", "change_summary"]);
+    const broken: AiRunner = {
+      call: (tool, request) =>
+        request.model ? fakeAiRunner(["not json"]).call(tool, request) : ai.call(tool, request),
+    };
+    const { lines } = await runDoctor({ ...PASSING, ai: () => broken });
+    expect(lines[7]).toMatch(/^FAIL ai summary call: /);
+    expect(lines.filter((line) => line.startsWith("FAIL"))).toHaveLength(1);
   });
 
   it("fails only the line of the failing dependency", async () => {
@@ -302,11 +322,11 @@ describe("runDoctor", () => {
       [{ ffmpegFilters: async () => " ... atempo  A->A  Adjust audio tempo." }, 3],
       [{ ffmpegCodecs: async () => "Encoders:\nDecoders:\n" }, 4],
       [{ hyperframes: async () => Promise.reject(new Error("ENOENT")) }, 5],
-      [{ ai: () => fakeAiRunner([resultEnvelope({ ok: false })]) }, [6, 7]],
-      [{ ai: () => fakeAiRunner(["not json"]) }, [6, 7]],
-      [{ ai: () => fakeAiRunner([resultEnvelope(EMPTY_DECIDE_ANSWER)]) }, 7],
-      [{ maskTool: () => maskTool({ platform: "linux" }) }, 8],
-      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 9],
+      [{ ai: () => fakeAiRunner([resultEnvelope({ ok: false })]) }, [6, 7, 8]],
+      [{ ai: () => fakeAiRunner(["not json"]) }, [6, 7, 8]],
+      [{ ai: () => fakeAiRunner([resultEnvelope(EMPTY_DECIDE_ANSWER)]) }, [7, 8]],
+      [{ maskTool: () => maskTool({ platform: "linux" }) }, 9],
+      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 10],
     ];
     for (const [override, failing] of cases) {
       const { lines, exitCode } = await runDoctor({ ...PASSING, ...override });

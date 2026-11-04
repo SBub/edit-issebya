@@ -14,11 +14,23 @@ export interface AiRequest {
   // The one file inside `cwd` Claude Code may read (a plain file name, the
   // describe_photo step's image); without it Claude Code has no tools at all.
   readFile?: string;
+  // The model to answer with (`--model`); without it Claude Code's default.
+  model?: string;
 }
 
 // A plain file name: no folder, no `..`, nothing a shell or a permission rule
 // could read as more than one file.
 const READ_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+
+// A model id: lower-case letters, digits, dots and dashes, nothing else.
+const MODEL = /^[a-z0-9][a-z0-9.-]{0,63}$/;
+
+// The model flag of one call: none, or `--model` with a checked id.
+function modelArgs(model: string | undefined): string[] {
+  if (model === undefined) return [];
+  if (!MODEL.test(model)) throw new Error(`ai: model must be a plain model id: ${model}`);
+  return ["--model", model];
+}
 
 // The tool flags of one call: none at all, or only Read on the one file.
 function toolArgs(readFile: string | undefined): string[] {
@@ -134,8 +146,9 @@ export function parseClaudeResult(stdout: string): AiResult {
 // that is an `unavailable` result.
 function claudeRunner(path: string): AiRunner {
   return {
-    async call(tool, { prompt, schema, cwd, readFile }) {
+    async call(tool, { prompt, schema, cwd, readFile, model }) {
       const tools = toolArgs(readFile);
+      const models = modelArgs(model);
       let stdout: string;
       try {
         stdout = await tool({
@@ -147,6 +160,7 @@ function claudeRunner(path: string): AiRunner {
             "--json-schema",
             JSON.stringify(schema),
             ...tools,
+            ...models,
             "--no-session-persistence",
           ],
           stdin: prompt,
@@ -179,6 +193,7 @@ export function fakeAiRunner(script: unknown[]): FakeAiRunner {
       if (script.length === 0) throw new Error("fake AI runner has no scripted answer");
       // The same refusal as the real runner, so a bad file name fails in tests too.
       toolArgs(request.readFile);
+      modelArgs(request.model);
       const entry = script[Math.min(calls.length, script.length - 1)];
       calls.push(request);
       return parseClaudeResult(typeof entry === "string" ? entry : JSON.stringify(entry));
@@ -235,8 +250,6 @@ export const EMPTY_DECIDE_ANSWER = {
   word_fixes: [],
   checklist: [],
   behind_rules: { photos: "keep", big_word: "keep" },
-  change_title: "ok",
-  change_summary: "ok",
   unexpressed: [],
 };
 

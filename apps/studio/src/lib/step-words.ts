@@ -88,6 +88,14 @@ export const RULE_WORDS: Record<string, string> = {
   "answer-json": "the AI's answer could not be used",
   "answer-schema": "the AI's answer could not be used",
   "answer-edit": "the AI's answer could not be used",
+  // A change that would leave the reel as it is, and why what was asked did
+  // not make it in (the layout engine's drop rules).
+  "no-change": "your reel would look the same",
+  "no-room": "there was no free room on screen",
+  "one-extra": "something else already shows at that moment",
+  "hidden-footage": "that part of the clip is cut",
+  wish: "the place you asked for was taken",
+  "make-room": "there was no room even after making space",
 };
 
 // The reason line of a refused answer: the first two distinct rule words

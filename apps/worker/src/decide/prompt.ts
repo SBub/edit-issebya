@@ -3,7 +3,7 @@ import type { DecideInput } from "./input.ts";
 
 // Bump with every change to prompt.md or editorial.md: each version row
 // records it.
-export const PROMPT_VERSION = "decide-7";
+export const PROMPT_VERSION = "decide-8";
 
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed prompt
 const TEMPLATE = readFileSync(new URL("./prompt.md", import.meta.url), "utf8");
