@@ -7,6 +7,7 @@
 - specs/issue-114-adw-9049f8fd-sdlc_planner-platform-safe-zone-guard.md
 - specs/issue-154-adw-596f3b25-sdlc_planner-readable-text-contrast.md
 - specs/issue-155-adw-2a28c287-sdlc_planner-fulfil-change-requests-make-room.md
+- specs/issue-157-adw-3c1a1736-sdlc_planner-transitions-tied-to-phrases.md
 
 Every edit of a reel is a small JSON file (`edit.json`) anchored to the words of its transcript.
 One builder turns it into a HyperFrames page, the same bytes in the worker and in the studio, and
@@ -30,7 +31,7 @@ types until slice 9 brings the live preview.
 - `src/schema.ts`: `edit.json`, format 1: `format`, `preset` (`"issebya"`), `duration`, `inputs`
   (the pipeline outputs it was made from, each `{ step, fingerprint, file }`: `footage`,
   `transcript`, `head_track`) and `tracks`: `footage`, `captions`, `overlays`
-  (`kind: "accent"`), `transitions` (`dim`, `panel`, `card`), `sounds` (`click`) and the optional
+  (`kind: "accent"`), `transitions` (`dim`, `panel`, `numbered`; `card` is no longer in the library but stays in the stored format so old versions render), `sounds` (`click`) and the optional
   `behind` track. `inputs.cutout` and `tracks.cutout` (the old whole-clip cut-out) are optional and
   never written now (old versions may hold them); the builder ignores them.
 - `tracks.behind`: what sits behind the speaker. An item is either a library photo
@@ -159,13 +160,40 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   the player and the render's frame injector show the same pixels. A span with no matching entry
   in `inputs.masks` (start and end within half a millisecond) throws.
 
+### Transitions tied to a phrase
+
+- `src/transitions.ts`: pure helpers shared by the engine and the builder. `transitionTiming`: the
+  layer's entrance finishes as the phrase's first word starts, it has left when the word after the
+  phrase starts (holding at most `transition.holdSeconds`, 1 s, after the last word; `long` wish
+  `longHoldSeconds`, 2 s; `slow` wish multiplies the motion by `slowFactor`, 1.6), never shorter
+  than `minSeconds` (1.5 s; later end first, then earlier start, else the transition is dropped).
+  About one per `perSeconds` (7 s) of reel, no overlap.
+- Claude gives `{ kind, from, to, key_from }` (kinds `TRANSITION_KINDS`: `dim`, `panel`, `numbered`,
+  each with a `description` Claude reads in the prompt). The engine writes the transition item's
+  `words`, `key`, `pace`, `hold`, `number` and `levels` (`number`, `lead`, `key`, each `{ text,
+position, size, break_after?, start }`). The lead-in (words before `key_from`) is caption text
+  and the key phrase accent text, from the style roles (`levelStyle`), never a literal font or
+  colour; the layer's background is the `background` role at the kind's `shade`
+  (`transitionBackground`). `numbered` shows a large number over a light dim.
+- Each level appears whole on its first word and stays until the layer leaves. The captions
+  inside the phrase are hidden (`hiddenCaptionIds`: no position, shown only through the levels), and
+  no accent, photo or big word shows during a running transition. The engine places transitions'
+  levels before the captions, in free space inside the layer and the safe zone, off the face where
+  possible; every retime, move, shrink, wrap and drop is an `EngineNote`.
+- The builder renders `levels` as children of the layer; a transition without `levels` (a stored
+  version) renders as before. `safe-box` and `text-overlap` include levels; `face`, `timing` and
+  `text-overlap` skip hidden captions. `choicesOf` reads a transition with `words` back as its
+  phrase, `key_from` and `wish`; an older one by its anchors with `key_from = from`; a stored `card`
+  reads back as `dim`.
+- `src/version-diff.ts`, `src/version-summary.ts`: a changed phrase, motion speed or hold is named.
+
 ### The layout engine's input
 
 - `src/engine-input.ts`: `EngineInput` is what the decide answer hands the layout: `accents`
   (word ranges, one may be the title), `big_word` (one word id or null), `photos` (a library id and
-  a word range), `transitions` (a kind and a word range), `word_fixes` (a word id and its text), each
+  a word range), `transitions` (a kind, a word range and `key_from`, where the key phrase starts), `word_fixes` (a word id and its text), each
   with an optional `wish` from `WISHES` (`top`, `bottom`, `left`, `right`, `behind`, `beside_head`,
-  `big`, `small`). No times, positions, sizes or spots.
+  `big`, `small`, `slow`, `long`). No times, positions, sizes or spots.
 - `choicesOf(edit, transcript, preset)` reads a version back as an `EngineInput` (what Claude is
   shown): each item by its anchor words, or the words spoken under it (an older version's written
   title); a caption whose text differs from its words is a fix on its first word. A photo reads back
@@ -424,6 +452,9 @@ never fatal.
   (`facesOver`).
 - Never show more than one extra at a time on top of the captions, or the big word before its
   word.
+- Never let Claude write a transition's time, position or size, nor a literal font or colour in a
+  transition entry: they come from the words and the style roles.
+- Never show an accent, photo or big word during a running transition.
 - Never place a stored version again: the builder keeps every stored position, and a version saved
   before the engine keeps the old fixed-spot placement.
 - The engine is pure and deterministic: no randomness, no clock, no I/O.

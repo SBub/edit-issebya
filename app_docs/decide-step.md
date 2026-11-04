@@ -7,6 +7,7 @@
 - specs/issue-97-adw-7283e118-sdlc_planner-decide-proposes-behind-within-limits.md
 - specs/issue-155-adw-2a28c287-sdlc_planner-fulfil-change-requests-make-room.md
 - specs/issue-156-adw-ca502a36-sdlc_planner-honest-version-summary-from-diff.md
+- specs/issue-157-adw-3c1a1736-sdlc_planner-transitions-tied-to-phrases.md
 
 ## Overview
 
@@ -33,7 +34,7 @@ The answer (`decide-8`) is the layout engine's input plus the request checklist 
   "accents": [{ "from": "w0001", "to": "w0004", "title": true }],
   "big_word": null,
   "photos": [{ "photo_id": "<library id>", "from": "w0020", "to": "w0027", "wish": "left" }],
-  "transitions": [{ "kind": "dim", "from": "w0006", "to": "w0008" }],
+  "transitions": [{ "kind": "dim", "from": "w0006", "to": "w0008", "key_from": "w0007" }],
   "word_fixes": [{ "word": "w0010", "text": "Studio" }],
   "checklist": [
     {
@@ -53,9 +54,9 @@ The answer (`decide-8`) is the layout engine's input plus the request checklist 
   every answer object is closed (`z.strictObject`, `additionalProperties: false`), so an answer
   carrying one is refused as the schema's.
 - `wish`: an optional placement word on any item, only from `WISHES` (`top`, `bottom`, `left`,
-  `right`, `behind`, `beside_head`, `big`, `small`), set only when the owner's request said so. Without
+  `right`, `behind`, `beside_head`, `big`, `small`, `slow`, `long`), set only when the owner's request said so. Without
   a request any wish is refused. The layout engine honours a wish when it can (a photo's spot, an
-  accent's area or size) and records `wish-not-kept` when it cannot.
+  accent's area or size; on a transition `slow` means a slower motion and `long` a longer hold) and records `wish-not-kept` when it cannot.
 - `checklist`: with a request, one entry per ask (`ask`, `wants`, `fulfilled_by`, the answer items
   that do it: `accents[i]`, `photos[i]`, `transitions[i]`, `word_fixes[i]`, `big_word` or
   `behind_rules`). Empty (schema `maxItems` 0) without a request. A link to an item the answer does
