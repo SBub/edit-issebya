@@ -70,7 +70,24 @@ export {
   WISHES,
   choicesOf,
 } from "./engine-input.ts";
-export { type EngineAction, type EngineNote, placeEdit } from "./engine.ts";
+export {
+  type EngineAction,
+  type EngineNote,
+  type ExtraKind,
+  type FreeSentence,
+  type UnplacedItem,
+  type UnplacedWhy,
+  placeEdit,
+} from "./engine.ts";
+export {
+  type ChecklistOutcome,
+  type EditorialAnswer,
+  WHY_WORDS,
+  checklistOutcome,
+  editorialJsonSchema,
+  mergeEditorial,
+  parseEditorialAnswer,
+} from "./editorial.ts";
 export {
   type BackgroundMap,
   type Backgrounds,

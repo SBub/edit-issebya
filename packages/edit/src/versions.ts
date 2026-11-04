@@ -1,5 +1,6 @@
 import { canonicalJson } from "./canonical-json.ts";
 import type { Check } from "./checks.ts";
+import type { ChecklistOutcome } from "./editorial.ts";
 import type { EngineNote } from "./engine.ts";
 import type { Edit, EditInputs } from "./schema.ts";
 
@@ -48,6 +49,10 @@ export interface NewVersion {
   // The layout engine's record: every item it moved, shrank, wrapped,
   // retimed or dropped, and why; empty for a going back.
   engine_record: EngineNote[];
+  // The request checklist: each ask, the items linked, whether the version
+  // does it and, when not, why and what the owner can do; empty without a
+  // request, for the first version and for a going back.
+  checklist: ChecklistOutcome[];
   // The reel's behind forbids to write with the version; null (or absent)
   // leaves the stored flag as it is.
   no_photos?: boolean | null;
@@ -108,6 +113,8 @@ export interface VersionMeta {
   rejectedReasons?: string[];
   // The layout engine's record; empty when not given.
   engineRecord?: EngineNote[];
+  // The request checklist's outcome; empty when not given.
+  checklist?: ChecklistOutcome[];
   // The reel's behind forbids written with the version; null leaves a flag.
   forbid?: { photos: boolean | null; bigWord: boolean | null };
 }
@@ -146,6 +153,7 @@ async function saveBytes(
     free_field: meta.freeField ?? [],
     rejected_reasons: meta.rejectedReasons ?? [],
     engine_record: meta.engineRecord ?? [],
+    checklist: meta.checklist ?? [],
     no_photos: meta.forbid?.photos ?? null,
     no_big_word: meta.forbid?.bigWord ?? null,
   });

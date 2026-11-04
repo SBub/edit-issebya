@@ -285,6 +285,37 @@ describe("the request checklist", () => {
     expect(parse(withAsk([]), [PHOTO], REQUEST).ok).toBe(true);
   });
 
+  it("carries an optional why_not in plain words for an ask nothing can do", () => {
+    const impossible = answer((a) => {
+      a.checklist = [
+        {
+          ask: "add images behind me",
+          wants: "1 photo",
+          fulfilled_by: [],
+          why_not: "Your photo library is empty: upload photos first",
+        },
+      ];
+    });
+    expect(parse(impossible, [], REQUEST).ok).toBe(true);
+    const tooLong = structuredClone(impossible);
+    (tooLong.checklist as Json[])[0]!.why_not = "x".repeat(301);
+    expect(reasons(tooLong, [], REQUEST)).toMatch(/^checklist\.0\.why_not: /m);
+    // Still a draft-07 schema with every object closed.
+    const schema = decideJsonSchema(ISSEBYA_PRESET, short.transcript, [], REQUEST) as {
+      $schema: string;
+      properties: {
+        checklist: {
+          items: { additionalProperties: boolean; properties: Json; required: string[] };
+        };
+      };
+    };
+    expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    const entry = schema.properties.checklist.items;
+    expect(entry.additionalProperties).toBe(false);
+    expect(Object.keys(entry.properties)).toContain("why_not");
+    expect(entry.required).not.toContain("why_not");
+  });
+
   it("refuses a link to an item the answer does not have, or not an item at all", () => {
     expect(reasons(withAsk(["photos[1]"]), [PHOTO], REQUEST)).toContain(
       "checklist.0.fulfilled_by: photos[1] is not in the answer",

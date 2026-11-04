@@ -1,7 +1,13 @@
 import type { Backgrounds } from "./background.ts";
 import { spotBox, spotFaceShare } from "./behind.ts";
 import { contrastRatio, relativeLuminance } from "./contrast.ts";
-import type { AccentChoice, EngineInput, Wish } from "./engine-input.ts";
+import type {
+  AccentChoice,
+  BigWordChoice,
+  EngineInput,
+  PhotoChoice,
+  Wish,
+} from "./engine-input.ts";
 import { expand, overlaps, placeBox } from "./engine-space.ts";
 import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from "./head-track.ts";
 import { wordsText } from "./layout.ts";
@@ -14,13 +20,14 @@ import {
   type Preset,
   cleanWord,
 } from "./preset.ts";
-import type {
-  Anchor,
-  BehindItem,
-  CaptionItem,
-  Edit,
-  OverlayItem,
-  TransitionItem,
+import {
+  type Anchor,
+  BEHIND_WORD,
+  type BehindItem,
+  type CaptionItem,
+  type Edit,
+  type OverlayItem,
+  type TransitionItem,
 } from "./schema.ts";
 import { resolveAnchor } from "./timeline.ts";
 import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./transcript.ts";
@@ -58,7 +65,10 @@ export type EngineAction =
   | "dropped"
   | "covers-face"
   | "wish-not-kept"
-  | "shadowed";
+  | "shadowed"
+  // An extra Claude added on its own, taken out to make room for an item the
+  // owner asked for.
+  | "removed";
 
 export interface EngineNote {
   item: string;
@@ -69,9 +79,43 @@ export interface EngineNote {
 
 export type PlacedTracks = Omit<Edit["tracks"], "cutout">;
 
+// The kinds of extra the engine may leave out.
+export type ExtraKind = "accent" | "big_word" | "photo";
+
+// Why an extra was left out, as a code in editor terms (never a time or a
+// pixel): no free place, another extra shows then, its sentence is too short,
+// the footage is hidden there.
+export type UnplacedWhy = "no-room" | "busy" | "too-short" | "hidden";
+
+// An answer item the placement left out: its answer reference, its item id,
+// the words it was on (the big word: its word twice) and, for a photo, which.
+export interface UnplacedItem {
+  ref: string;
+  id: string;
+  kind: ExtraKind;
+  from: string;
+  to: string;
+  photo_id?: string;
+  // Whether the owner's request asked for it.
+  requested: boolean;
+  why: UnplacedWhy;
+}
+
+// A sentence (by its first and last word ids) with room, after the
+// placement, for the kinds of extra some left-out item has. A hint for the
+// editor, never a promise: what it picks is placed again for real.
+export interface FreeSentence {
+  from: string;
+  to: string;
+  room_for: ExtraKind[];
+}
+
 export interface Placement {
   tracks: PlacedTracks;
   record: EngineNote[];
+  // The answer's extras left out, and where an extra of their kind fits.
+  unplaced: UnplacedItem[];
+  free: FreeSentence[];
 }
 
 export interface PlaceOptions {
@@ -301,12 +345,19 @@ function wrapUnits(
 
 interface Extra {
   ref: string;
-  kind: "accent" | "big_word" | "photo";
+  kind: ExtraKind;
   id: string;
   start: number;
   end: number;
   min: number;
   wish?: Wish;
+  // Its place in the answer's list (0 for the big word).
+  index: number;
+  // A start moved inside its sentence to make room: the word it starts on.
+  startWord?: string;
+  accent?: AccentChoice;
+  photo?: PhotoChoice;
+  word?: string;
 }
 
 interface Accepted {
@@ -315,9 +366,81 @@ interface Accepted {
   end: number;
 }
 
+// What one pass may do to make room for the items the owner asked for
+// (empty: the plain pass, exactly the engine without a request).
+interface Room {
+  // Requested items placed before the captions; the caption blocks sharing
+  // their time keep clear of them, at the full size only (`move`) or down to
+  // the floor (`shrink`), never over the face. A photo's spot is pinned.
+  reserve: ReadonlyMap<string, "move" | "shrink">;
+  spot: ReadonlyMap<string, BehindSpot>;
+  // Extras Claude added on its own, left out (answer refs, transitions too).
+  removed: ReadonlySet<string>;
+  // A requested item's span moved inside its sentence.
+  shift: ReadonlyMap<string, { word?: string; end: number }>;
+  // Requested items that may cover the face.
+  faceOk: ReadonlySet<string>;
+  // Caption blocks (by first caption id) the plain pass put over the face:
+  // the only ones that may stay there while room is made.
+  overFace: ReadonlySet<string>;
+}
+
+const PLAIN: Room = {
+  reserve: new Map(),
+  spot: new Map(),
+  removed: new Set(),
+  shift: new Map(),
+  faceOk: new Set(),
+  overFace: new Set(),
+};
+
+// One caption block as a pass placed it.
+interface BlockPlace {
+  label: string;
+  start: number;
+  end: number;
+  name: string;
+  size: number;
+  x: number;
+  y: number;
+}
+
+// One deterministic pass and what the ladder compares between passes.
+interface Pass {
+  tracks: PlacedTracks;
+  record: EngineNote[];
+  unplaced: UnplacedItem[];
+  // Probes run after the pass, never committing anything.
+  free: () => FreeSentence[];
+  // The answer refs placed.
+  placed: Set<string>;
+  // The extras' own spans and their labels, by answer ref.
+  extras: Map<string, Extra>;
+  labels: Map<string, string>;
+  transitions: { ref: string; label: string; start: number; end: number }[];
+  // Caption blocks by their first caption's id.
+  blocks: Map<string, BlockPlace>;
+  // Caption ids the pass put over the face.
+  facesCovered: Set<string>;
+  // A caption block sharing a reserved item's time found no place clear of it.
+  failed: boolean;
+}
+
+const MAKE_ROOM_TAIL =
+  ", after moving and shrinking captions, removing extras, shifting it in its sentence and allowing the face";
+
 // Places every item of an answer over the current version: footage and
 // sounds kept, captions from the current version's words (each fix as the
 // text of the caption showing that word), every other item from its words.
+// Without a request this is one plain pass. With one, each requested item
+// (in the checklist's order) that the plain pass leaves out gets room, step
+// by step until it is placed: the captions sharing its time move (full
+// size), then shrink or wrap down to the floor, then extras Claude added on
+// its own that stand in the way are removed, then it shifts inside its
+// sentence, then it may cover the face. A step's pass is taken only when the
+// item is placed, every requested item placed before stays placed and no
+// caption block goes over the face that did not already. Every step taken is
+// recorded under the rule `make-room`; nothing found, its drop stands.
 export function placeEdit(
   current: Edit,
   input: EngineInput,
@@ -327,6 +450,307 @@ export function placeEdit(
   measurer: Measurer,
   options: PlaceOptions = {},
 ): Placement {
+  const run = (room: Room) =>
+    placeOnce(current, input, transcript, headTrack, preset, measurer, options, room);
+  const plain = run(PLAIN);
+  const requested = options.requested ?? [];
+  let pass = plain;
+  let room: Room = { ...PLAIN, overFace: plain.facesCovered };
+  const notes: EngineNote[] = [];
+  const done: string[] = [];
+  const sentences = sentenceSpans(transcript);
+  const order = new Map(transcript.words.map((w, index) => [w.id, index]));
+  const byId = new Map(transcript.words.map((w) => [w.id, w]));
+  const sentenceOf = (id: string) =>
+    sentences.find(
+      (s) => order.get(s.from)! <= order.get(id)! && order.get(id)! <= order.get(s.to)!,
+    );
+  const hidden = current.tracks.footage.flatMap((clip) =>
+    (clip.hidden ?? []).map((span) => ({
+      start: resolveAnchor(span.start, byId, current.duration),
+      end: resolveAnchor(span.end, byId, current.duration),
+    })),
+  );
+  const crossesHidden = (span: { start: number; end: number }) =>
+    hidden.some((range) => during(span, range));
+
+  for (const ref of requested) {
+    const extra = plain.extras.get(ref);
+    if (!extra) continue;
+    if (pass.placed.has(ref)) {
+      done.push(ref);
+      continue;
+    }
+    const before = pass;
+    const accept = (next: Pass) =>
+      !next.failed &&
+      next.placed.has(ref) &&
+      done.every((other) => next.placed.has(other)) &&
+      [...next.facesCovered].every((id) => plain.facesCovered.has(id));
+    const attempt = (next: Room): { room: Room; pass: Pass } | null => {
+      const tried = run(next);
+      return accept(tried) ? { room: next, pass: tried } : null;
+    };
+    const span = { start: extra.start, end: extra.end };
+    const spotsFor = (
+      faceOk: boolean,
+      at: { start: number; end: number },
+    ): (BehindSpot | undefined)[] => {
+      if (extra.kind !== "photo") return [undefined];
+      const kept = (current.tracks.behind ?? []).find(
+        (item) => item.kind === "photo" && item.photo_id === extra.photo!.photo_id,
+      );
+      const wished = BEHIND_SPOTS.find((spot) => spot === extra.wish);
+      const spots: BehindSpot[] = [
+        ...new Set([
+          ...(wished ? [wished] : []),
+          ...(kept?.kind === "photo" ? [kept.spot] : []),
+          ...BEHIND_SPOTS,
+        ]),
+      ];
+      if (!faceOk) return spots.filter((spot) => spotClearOfFace(spot, at, preset, headTrack));
+      const share = (spot: BehindSpot) =>
+        Math.max(
+          0,
+          ...facesOver(headTrack, at.start, at.end).map((face) =>
+            spotFaceShare(spot, face, preset),
+          ),
+        );
+      return spots
+        .map((spot, index) => ({ spot, index, share: share(spot) }))
+        .sort((a, b) => a.share - b.share || a.index - b.index)
+        .map(({ spot }) => spot);
+    };
+    const withRef = (
+      base: Room,
+      mode: "move" | "shrink",
+      spot: BehindSpot | undefined,
+      more: Partial<Pick<Room, "removed" | "shift" | "faceOk">> = {},
+    ): Room => ({
+      reserve: new Map([...base.reserve, [ref, mode]]),
+      spot: spot ? new Map([...base.spot, [ref, spot]]) : base.spot,
+      removed: more.removed ?? base.removed,
+      shift: more.shift ?? base.shift,
+      faceOk: more.faceOk ?? base.faceOk,
+      overFace: base.overFace,
+    });
+    // Move, then shrink, at every spot the face leaves clear.
+    const moveOrShrink = (base: Room, removed: ReadonlySet<string>) => {
+      for (const mode of ["move", "shrink"] as const) {
+        for (const spot of spotsFor(false, span)) {
+          const found = attempt(withRef(base, mode, spot, { removed }));
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    let found = moveOrShrink(room, room.removed);
+    // Claude's own extras overlapping its time, one at a time in a fixed
+    // order (accents, the big word, transitions), each followed by the moves.
+    const removable = [
+      ...[...plain.extras.values()]
+        .filter((other) => other.kind === "accent")
+        .map((other) => ({ ref: other.ref, start: other.start, end: other.end })),
+      ...[...plain.extras.values()]
+        .filter((other) => other.kind === "big_word")
+        .map((other) => ({ ref: other.ref, start: other.start, end: other.end })),
+      ...plain.transitions,
+    ]
+      .filter((other) => !requested.includes(other.ref) && !room.removed.has(other.ref))
+      .filter((other) => during(other, span))
+      .map((other) => other.ref);
+    const removed = new Set(room.removed);
+    if (!found) {
+      for (const other of removable) {
+        removed.add(other);
+        found = moveOrShrink(room, removed);
+        if (found) break;
+      }
+      // Put back every removal the room turns out not to need.
+      if (found) {
+        for (const other of removable) {
+          if (!found.room.removed.has(other)) continue;
+          const fewer = new Set([...found.room.removed].filter((r) => r !== other));
+          const again = attempt({ ...found.room, removed: fewer });
+          if (again) found = again;
+        }
+      }
+    }
+    // Its timing inside its own sentence.
+    if (!found) {
+      for (const shift of shiftsOf(extra)) {
+        const at = {
+          start: shift.word ? byId.get(shift.word)!.start : extra.start,
+          end: shift.end,
+        };
+        for (const spot of spotsFor(false, at)) {
+          found = attempt(
+            withRef(room, "shrink", spot, {
+              removed,
+              shift: new Map([...room.shift, [ref, shift]]),
+            }),
+          );
+          if (found) break;
+        }
+        if (found) break;
+      }
+    }
+    // Last: over the face.
+    if (!found) {
+      for (const spot of spotsFor(true, span)) {
+        found = attempt(
+          withRef(room, "shrink", spot, { removed, faceOk: new Set([...room.faceOk, ref]) }),
+        );
+        if (found) break;
+      }
+    }
+    if (!found) {
+      // The drop stands, with every step it took.
+      pass = {
+        ...pass,
+        record: pass.record.map((note) =>
+          note.item === extra.id && note.action === "dropped"
+            ? { ...note, reason: `${note.reason}${MAKE_ROOM_TAIL}` }
+            : note,
+        ),
+      };
+      continue;
+    }
+    notes.push(...roomNotes(ref, before, found.pass, room, found.room));
+    room = found.room;
+    pass = found.pass;
+    done.push(ref);
+  }
+
+  // A requested item's span moved inside its sentence: each word start
+  // nearest the original first, at least the kind's minimum, never into the
+  // next sentence or over hidden footage. The big word only shortens.
+  function shiftsOf(extra: Extra): { word?: string; end: number }[] {
+    const duration = current.duration;
+    if (extra.kind === "big_word") {
+      const end = ms(extra.start + extra.min);
+      return end < extra.end - SLACK ? [{ end }] : [];
+    }
+    const from = extra.kind === "accent" ? extra.accent!.from : extra.photo!.from;
+    const sentence = sentenceOf(from);
+    if (!sentence) return [];
+    const at = sentences.indexOf(sentence);
+    const hi = Math.min(duration, sentences[at + 1]?.start ?? duration);
+    const ids = transcript.words
+      .slice(order.get(sentence.from)!, order.get(sentence.to)! + 1)
+      .filter((w) => Math.abs(w.start - extra.start) > 0.0005)
+      .sort(
+        (a, b) =>
+          Math.abs(a.start - extra.start) - Math.abs(b.start - extra.start) ||
+          order.get(a.id)! - order.get(b.id)!,
+      );
+    const out: { word: string; end: number }[] = [];
+    for (const w of ids) {
+      const start = w.start;
+      let end: number;
+      if (extra.kind === "photo") {
+        const { minSeconds, maxSeconds } = preset.behind;
+        end = Math.min(start + maxSeconds, Math.max(sentence.end, start + minSeconds));
+      } else {
+        const to = byId.get(extra.accent!.to)!;
+        end =
+          start <= to.start
+            ? Math.max(to.end + preset.accent.afterSeconds, start + preset.accent.minSeconds)
+            : start + preset.accent.minSeconds;
+      }
+      end = ms(end);
+      if (end > hi + SLACK || end - start < extra.min - SLACK) continue;
+      if (crossesHidden({ start, end })) continue;
+      out.push({ word: w.id, end });
+    }
+    return out;
+  }
+
+  return {
+    tracks: pass.tracks,
+    record: [...pass.record, ...notes],
+    unplaced: pass.unplaced,
+    free: pass.free(),
+  };
+}
+
+// The `make-room` notes of one requested item: what its accepted pass did
+// that the pass before it did not.
+function roomNotes(ref: string, before: Pass, after: Pass, was: Room, now: Room): EngineNote[] {
+  const notes: EngineNote[] = [];
+  const label = after.labels.get(ref)!;
+  const extra = after.extras.get(ref)!;
+  for (const other of now.removed) {
+    if (was.removed.has(other)) continue;
+    const transition = before.transitions.find((t) => t.ref === other);
+    const id = transition
+      ? `transition-${Number(/\d+/.exec(other)![0]) + 1}`
+      : before.extras.get(other)!.id;
+    const what = transition ? transition.label : before.labels.get(other)!;
+    notes.push({
+      item: id,
+      action: "removed",
+      rule: "make-room",
+      reason: transition
+        ? `${what} removed: it covered every place ${label} needs, as asked`
+        : `${what} removed: it showed at the same time as ${label}, as asked`,
+    });
+  }
+  for (const [id, place] of after.blocks) {
+    const old = before.blocks.get(id);
+    if (!old) continue;
+    const captions = `captions ${quote(place.label)} (${at(place.start)} to ${at(place.end)})`;
+    if (place.name !== old.name || place.x !== old.x || place.y !== old.y) {
+      notes.push({
+        item: id,
+        action: "moved",
+        rule: "make-room",
+        reason: `${captions} move to make room for ${label}: they sit ${place.name}, as asked`,
+      });
+    }
+    if (place.size < old.size) {
+      notes.push({
+        item: id,
+        action: "shrunk",
+        rule: "make-room",
+        reason: `${captions} set at ${place.size} px instead of ${old.size} px to make room for ${label}, as asked`,
+      });
+    }
+  }
+  const shift = now.shift.get(ref);
+  if (shift && was.shift.get(ref) !== shift) {
+    notes.push({
+      item: extra.id,
+      action: "retimed",
+      rule: "make-room",
+      reason: `${label} now shows from ${at(after.extras.get(ref)!.start)} to ${at(shift.end)}, inside its sentence, to find room`,
+    });
+  }
+  if (now.faceOk.has(ref) && !was.faceOk.has(ref)) {
+    const photo = after.tracks.behind?.find((item) => item.id === extra.id);
+    notes.push({
+      item: extra.id,
+      action: "covers-face",
+      rule: "make-room",
+      reason:
+        photo?.kind === "photo"
+          ? `${label} sits in the ${photo.spot} spot over part of the face: nothing else was free, as asked`
+          : `${label} sits over part of the face: nothing else was free, as asked`,
+    });
+  }
+  return notes;
+}
+
+function placeOnce(
+  current: Edit,
+  input: EngineInput,
+  transcript: Transcript,
+  headTrack: HeadTrack,
+  preset: Preset,
+  measurer: Measurer,
+  options: PlaceOptions,
+  room: Room,
+): Pass {
   const record: EngineNote[] = [];
   const duration = current.duration;
   const byId = new Map(transcript.words.map((word) => [word.id, word]));
@@ -349,6 +773,8 @@ export function placeEdit(
       end: resolveAnchor(span.end, byId, duration),
     })),
   );
+  let failed = false;
+  const requested = options.requested ?? [];
 
   // Fixes, then the captions' times.
   const fixes = new Map(input.word_fixes.map((fix) => [fix.word, fix.text]));
@@ -375,97 +801,126 @@ export function placeEdit(
     }
   });
 
-  const transitions: TransitionItem[] = input.transitions.map((transition, index) => ({
-    id: `transition-${index + 1}`,
-    type: transition.kind,
-    start: { word: transition.from },
-    end: { word: transition.to, edge: "end" as const },
-  }));
+  const transitions: TransitionItem[] = input.transitions.flatMap((transition, index) =>
+    room.removed.has(`transitions[${index}]`)
+      ? []
+      : [
+          {
+            id: `transition-${index + 1}`,
+            type: transition.kind,
+            start: { word: transition.from },
+            end: { word: transition.to, edge: "end" as const },
+          },
+        ],
+  );
   const transitionSpans = transitions.map((item) => ({
     item,
     start: resolveAnchor(item.start, byId, duration),
     end: resolveAnchor(item.end, byId, duration),
   }));
 
-  // The extras' own times (before the one-at-a-time rule).
-  const extras: Extra[] = [];
-  let accentCount = 0;
-  const accentIds = input.accents.map((accent) =>
-    accent.title ? "title" : `accent-${++accentCount}`,
-  );
-  input.accents.forEach((accent, index) => {
-    const id = accentIds[index]!;
-    const start = word(accent.from).start;
-    const end = ms(
-      Math.min(
-        duration,
-        Math.max(
-          word(accent.to).end + preset.accent.afterSeconds,
-          start + preset.accent.minSeconds,
-        ),
-      ),
-    );
+  // The extras' own times (before the one-at-a-time rule). A time that
+  // cannot hold the item drops it into `notes` (none for a probe).
+  const { minSeconds, maxSeconds } = preset.behind;
+  const crossesHidden = (span: { start: number; end: number }) =>
+    hidden.some((range) => during(span, range));
+
+  function accentExtra(
+    accent: AccentChoice,
+    index: number,
+    id: string,
+    notes: EngineNote[] | null,
+  ): Extra | null {
+    const ref = `accents[${index}]`;
+    const shift = notes ? room.shift.get(ref) : undefined;
+    const start = word(shift?.word ?? accent.from).start;
+    const end = shift
+      ? shift.end
+      : ms(
+          Math.min(
+            duration,
+            Math.max(
+              word(accent.to).end + preset.accent.afterSeconds,
+              start + preset.accent.minSeconds,
+            ),
+          ),
+        );
     if (end - start < preset.accent.minSeconds - SLACK) {
-      record.push({
+      notes?.push({
         item: id,
         action: "dropped",
         rule: "accent-time",
         reason: `accent ${quote(accentText(accent))} starts too close to the end to show ${preset.accent.minSeconds} s`,
       });
-      return;
+      return null;
     }
-    extras.push({
-      ref: `accents[${index}]`,
+    return {
+      ref,
       kind: "accent",
       id,
       start,
       end,
       min: preset.accent.minSeconds,
       ...(accent.wish ? { wish: accent.wish } : {}),
-    });
-  });
-  const { minSeconds, maxSeconds } = preset.behind;
-  const crossesHidden = (span: { start: number; end: number }) =>
-    hidden.some((range) => during(span, range));
-  if (input.big_word) {
-    const first = word(input.big_word.word);
+      index,
+      ...(shift?.word ? { startWord: shift.word } : {}),
+      accent,
+    };
+  }
+
+  function bigWordExtra(choice: BigWordChoice, notes: EngineNote[] | null): Extra | null {
+    const first = word(choice.word);
     const sentence = sentenceOf(first.id);
-    const end = ms(
-      Math.min(
-        duration,
-        first.start + maxSeconds,
-        Math.max(first.start + minSeconds, sentence?.end ?? first.end),
-      ),
-    );
+    const shift = notes ? room.shift.get("big_word") : undefined;
+    const end =
+      shift?.end ??
+      ms(
+        Math.min(
+          duration,
+          first.start + maxSeconds,
+          Math.max(first.start + minSeconds, sentence?.end ?? first.end),
+        ),
+      );
     const text = cleanWord(first.text, preset);
     if (end - first.start < minSeconds - SLACK) {
-      record.push({
+      notes?.push({
         item: "big-word",
         action: "dropped",
         rule: "big-word-time",
         reason: `the big word ${quote(text)} is said too close to the end to show ${minSeconds} s`,
       });
-    } else if (crossesHidden({ start: first.start, end })) {
-      record.push({
+      return null;
+    }
+    if (crossesHidden({ start: first.start, end })) {
+      notes?.push({
         item: "big-word",
         action: "dropped",
         rule: "hidden-footage",
         reason: `the big word ${quote(text)} would show while the footage is hidden`,
       });
-    } else {
-      extras.push({
-        ref: "big_word",
-        kind: "big_word",
-        id: "big-word",
-        start: first.start,
-        end,
-        min: minSeconds,
-        ...(input.big_word.wish ? { wish: input.big_word.wish } : {}),
-      });
+      return null;
     }
+    return {
+      ref: "big_word",
+      kind: "big_word",
+      id: "big-word",
+      start: first.start,
+      end,
+      min: minSeconds,
+      ...(choice.wish ? { wish: choice.wish } : {}),
+      index: 0,
+      word: first.id,
+    };
   }
-  input.photos.forEach((photo, index) => {
-    const id = `photo-${index + 1}`;
+
+  function photoExtra(
+    photo: PhotoChoice,
+    index: number,
+    id: string,
+    notes: EngineNote[] | null,
+  ): Extra | null {
+    const ref = `photos[${index}]`;
+    const shift = notes ? room.shift.get(ref) : undefined;
     const sentence = sentenceOf(photo.from)!;
     const at0 = sentences.indexOf(sentence);
     const lo = sentences[at0 - 1]?.end ?? 0;
@@ -479,43 +934,70 @@ export function placeEdit(
       end = hi;
       start = Math.max(lo, hi - minSeconds);
     }
+    if (shift?.word) {
+      start = word(shift.word).start;
+      end = shift.end;
+    }
     start = ms(start);
     end = ms(end);
     if (end - start < minSeconds - SLACK) {
-      record.push({
+      notes?.push({
         item: id,
         action: "dropped",
         rule: "photo-time",
         reason: `photo ${index + 1}: its sentence and the pauses around it last under ${minSeconds} s`,
       });
-      return;
+      return null;
     }
     if (crossesHidden({ start, end })) {
-      record.push({
+      notes?.push({
         item: id,
         action: "dropped",
         rule: "hidden-footage",
         reason: `photo ${index + 1} would show while the footage is hidden`,
       });
-      return;
+      return null;
     }
-    if (start < Math.min(sentence.start, first.start) - SLACK) {
-      record.push({
+    if (!shift && start < Math.min(sentence.start, first.start) - SLACK) {
+      notes?.push({
         item: id,
         action: "retimed",
         rule: "photo-time",
         reason: `photo ${index + 1} starts at ${at(start)}, before its short sentence, to show ${minSeconds} s`,
       });
     }
-    extras.push({
-      ref: `photos[${index}]`,
+    return {
+      ref,
       kind: "photo",
       id,
       start,
       end,
       min: minSeconds,
       ...(photo.wish ? { wish: photo.wish } : {}),
-    });
+      index,
+      ...(shift?.word ? { startWord: shift.word } : {}),
+      photo,
+    };
+  }
+
+  const extras: Extra[] = [];
+  let accentCount = 0;
+  const accentIds = input.accents.map((accent) =>
+    accent.title ? "title" : `accent-${++accentCount}`,
+  );
+  input.accents.forEach((accent, index) => {
+    if (room.removed.has(`accents[${index}]`)) return;
+    const extra = accentExtra(accent, index, accentIds[index]!, record);
+    if (extra) extras.push(extra);
+  });
+  if (input.big_word && !room.removed.has("big_word")) {
+    const extra = bigWordExtra(input.big_word, record);
+    if (extra) extras.push(extra);
+  }
+  input.photos.forEach((photo, index) => {
+    if (room.removed.has(`photos[${index}]`)) return;
+    const extra = photoExtra(photo, index, `photo-${index + 1}`, record);
+    if (extra) extras.push(extra);
   });
 
   // The scene: every edge of every item.
@@ -722,8 +1204,54 @@ export function placeEdit(
   const captionFont = preset.caption.font;
   const placedCaptions = new Map<number, { x: number; y: number; size: number; shadow?: 1 | 2 }>();
   const photoSpans = extras.filter((extra) => extra.kind === "photo");
+
+  // The extras by priority, at most one at a time.
+  const rank = (extra: Extra) => {
+    const asked = requested.indexOf(extra.ref);
+    const kind = { accent: 1, big_word: 2, photo: 3 }[extra.kind];
+    return asked >= 0 ? asked - 1000 : kind * 100;
+  };
+  const queue = extras
+    .map((extra, index) => ({ extra, index }))
+    .sort((a, b) => rank(a.extra) - rank(b.extra) || a.index - b.index)
+    .map(({ extra }) => extra);
+  const accepted: Accepted[] = [];
+  const overlays = new Map<string, OverlayItem>();
+  const behind = new Map<string, BehindItem>();
+  const blockPlaces = new Map<string, BlockPlace>();
+  const facesCovered = new Set<string>();
+
+  // Making room: the reserved requested items first, before any caption;
+  // the captions sharing their time keep clear of them (a photo's spot is
+  // an obstacle to them).
+  const reservations: { mode: "move" | "shrink"; start: number; end: number; box?: Box }[] = [];
+  const preplaced = new Set<string>();
+  for (const extra of queue) {
+    const mode = room.reserve.get(extra.ref);
+    if (!mode) continue;
+    const notes = record.length;
+    if (!tryExtra(extra)) {
+      record.length = notes;
+      continue;
+    }
+    preplaced.add(extra.ref);
+    const span = accepted.at(-1)!;
+    const photo = behind.get(extra.id);
+    reservations.push({
+      mode,
+      start: span.start,
+      end: span.end,
+      ...(photo?.kind === "photo" ? { box: spotBox(photo.spot, preset) } : {}),
+    });
+  }
+  const reservedDuring = (span: { start: number; end: number }) =>
+    reservations.filter((reservation) => during(reservation, span));
+
   for (const block of blocks) {
     placeBlock(block);
+  }
+  for (const extra of queue) {
+    if (!preplaced.has(extra.ref)) tryExtra(extra);
   }
 
   function captionCandidates(block: CaptionBlock): Candidate[] {
@@ -838,7 +1366,14 @@ export function placeEdit(
   // What a caption block keeps clear of: the face (unless it is the worst
   // case over it), the text shown with it and the notch.
   function blockObstacles(block: CaptionBlock, candidate: Candidate): Box[] {
-    return [...(candidate.overFace ? [] : faceObstacles(block)), ...textDuring(block), notch];
+    return [
+      ...(candidate.overFace ? [] : faceObstacles(block)),
+      ...textDuring(block),
+      notch,
+      ...reservedDuring(block).flatMap((reservation) =>
+        reservation.box ? [expand(reservation.box, gap)] : [],
+      ),
+    ];
   }
 
   function placeBlock(block: CaptionBlock): void {
@@ -857,10 +1392,16 @@ export function placeEdit(
     } | null = null;
     const holdsPhoto =
       block.kind === "sentence" && photoSpans.some((photo) => during(photo, block));
+    // Sharing time with a reserved item: at the full size only (`move`) or
+    // down to the floor (`shrink`), and never over the face for it.
+    const reserved = reservedDuring(block);
+    const tried = reserved.some((reservation) => reservation.mode === "move")
+      ? sizes.slice(0, 1)
+      : sizes;
     // Captions stay readable first: every place at the full size before any
     // smaller size.
     for (const keep of holdsPhoto ? [true, false] : [false]) {
-      for (const size of sizes) {
+      for (const size of tried) {
         for (const candidate of candidates) {
           const fit = tryBlock(block, candidate, size, keep);
           if (fit) {
@@ -872,6 +1413,7 @@ export function placeEdit(
       }
       if (chosen) break;
     }
+    if (!chosen && reserved.length > 0 && !room.overFace.has(first.caption.id)) failed = true;
     if (!chosen) {
       const floor = sizes.at(-1)!;
       for (const area of [{ ...safe, top: preset.caption.fallbackY }, safe]) {
@@ -922,6 +1464,7 @@ export function placeEdit(
           keep: false,
         };
       }
+      facesCovered.add(first.caption.id);
       record.push({
         item: first.caption.id,
         action: "covers-face",
@@ -937,6 +1480,15 @@ export function placeEdit(
       });
     }
     const { candidate, size, fit, keep } = chosen;
+    blockPlaces.set(first.caption.id, {
+      label,
+      start: block.start,
+      end: block.end,
+      name: candidate.name,
+      size,
+      x: fit.x,
+      y: fit.y,
+    });
     const fullSize = preset.fonts[captionFont].size;
     if (size < fullSize) {
       record.push({
@@ -1005,21 +1557,8 @@ export function placeEdit(
     }
   }
 
-  // The extras by priority, at most one at a time.
-  const requested = options.requested ?? [];
-  const rank = (extra: Extra) => {
-    const asked = requested.indexOf(extra.ref);
-    const kind = { accent: 1, big_word: 2, photo: 3 }[extra.kind];
-    return asked >= 0 ? asked - 1000 : kind * 100;
-  };
-  const queue = extras
-    .map((extra, index) => ({ extra, index }))
-    .sort((a, b) => rank(a.extra) - rank(b.extra) || a.index - b.index)
-    .map(({ extra }) => extra);
-  const accepted: Accepted[] = [];
-  const overlays = new Map<string, OverlayItem>();
-  const behind = new Map<string, BehindItem>();
-  for (const extra of queue) {
+  // One extra by the one-at-a-time rule, then placed; true when placed.
+  function tryExtra(extra: Extra): boolean {
     const timed = fitTime(extra, accepted);
     if (!timed.ok) {
       record.push({
@@ -1028,7 +1567,7 @@ export function placeEdit(
         rule: "one-extra",
         reason: `${describe(extra)} would show at the same time as ${describe(timed.with.extra)} (${at(extra.start)} to ${at(extra.end)}); one extra at a time`,
       });
-      continue;
+      return false;
     }
     const span = { start: extra.start, end: timed.end };
     // The earlier extras it cuts short leave before it comes in, so they are
@@ -1049,7 +1588,7 @@ export function placeEdit(
       cut.forEach(({ item }, index) => {
         if (item) item.end = kept[index]!;
       });
-      continue;
+      return false;
     }
     for (const trim of timed.trims) {
       trim.accepted.end = trim.end;
@@ -1069,18 +1608,18 @@ export function placeEdit(
       });
     }
     accepted.push({ extra, start: span.start, end: span.end });
+    return true;
   }
 
   function describe(extra: Extra): string {
     if (extra.kind === "accent") {
-      const index = Number(/\d+/.exec(extra.ref)![0]);
-      const accent = input.accents[index]!;
+      const accent = extra.accent!;
       return `${accent.title ? "the title" : "accent"} ${quote(accentText(accent))}`;
     }
     if (extra.kind === "big_word") {
-      return `the big word ${quote(cleanWord(word(input.big_word!.word).text, preset))}`;
+      return `the big word ${quote(cleanWord(word(extra.word!).text, preset))}`;
     }
-    return `photo ${extra.id.replace("photo-", "")}`;
+    return `photo ${extra.index + 1}`;
   }
 
   function accentText(accent: AccentChoice): string {
@@ -1088,8 +1627,7 @@ export function placeEdit(
   }
 
   function placeAccent(extra: Extra, span: { start: number; end: number }): boolean {
-    const index = Number(/\d+/.exec(extra.ref)![0]);
-    const accent = input.accents[index]!;
+    const accent = extra.accent!;
     const ids = range(accent.from, accent.to);
     const text = wordsText(ids, transcript, preset);
     const font = preset.accent.font;
@@ -1177,7 +1715,12 @@ export function placeEdit(
     const wished = extra.wish && areas[extra.wish] ? [extra.wish] : [];
     const names = [...new Set([...wished, ...base])];
     const candidates = names.map((name) => areas[name]!);
-    const obstacles = [...faceObstacles(span), ...bodies, ...textDuring(span), notch];
+    // A requested accent allowed over the face keeps clear of text only.
+    const obstacles = [
+      ...(room.faceOk.has(extra.ref) ? [] : [...faceObstacles(span), ...bodies]),
+      ...textDuring(span),
+      notch,
+    ];
     const words = text.split(" ");
     const sizes = sizesFrom(fullSize, preset).filter(
       (size) => extra.wish !== "small" || size <= Math.round(fullSize * 0.8),
@@ -1215,7 +1758,7 @@ export function placeEdit(
           const item: OverlayItem = {
             id: extra.id,
             kind: "accent",
-            start: { word: accent.from },
+            start: { word: extra.startWord ?? accent.from },
             end: { word: accent.to, edge: "end" },
             words: ids,
             position: { x: place.x, y: place.y, align: "left" },
@@ -1291,7 +1834,7 @@ export function placeEdit(
   }
 
   function placeBigWord(extra: Extra, span: { start: number; end: number }): boolean {
-    const first = word(input.big_word!.word);
+    const first = word(extra.word!);
     const text = cleanWord(first.text, preset);
     const spec = preset.behind.word;
     const { width: frameWidth, height: frameHeight } = preset.frame;
@@ -1367,24 +1910,34 @@ export function placeEdit(
   }
 
   function placePhoto(extra: Extra, span: { start: number; end: number }): boolean {
-    const index = Number(/\d+/.exec(extra.ref)![0]);
-    const photo = input.photos[index]!;
+    const index = extra.index;
+    const photo = extra.photo!;
     const kept = (current.tracks.behind ?? []).find(
       (item) => item.kind === "photo" && item.photo_id === photo.photo_id,
     );
     const wished = BEHIND_SPOTS.find((spot) => spot === photo.wish);
-    const order: BehindSpot[] = [
-      ...new Set([
-        ...(wished ? [wished] : []),
-        ...(kept?.kind === "photo" ? [kept.spot] : []),
-        ...BEHIND_SPOTS,
-      ]),
-    ];
+    const pinned = room.spot.get(extra.ref);
+    const order: BehindSpot[] = pinned
+      ? [pinned]
+      : [
+          ...new Set([
+            ...(wished ? [wished] : []),
+            ...(kept?.kind === "photo" ? [kept.spot] : []),
+            ...BEHIND_SPOTS,
+          ]),
+        ];
     const text = shown.filter((item) => during(item, span));
+    // Making room for it: a transition's layer over the spot would hide it.
+    const layers = room.reserve.has(extra.ref)
+      ? transitionSpans
+          .filter((transition) => during(transition, span))
+          .map((transition) => preset.transitions[transition.item.type].layer)
+      : [];
     const free = order.find(
       (spot) =>
-        spotClearOfFace(spot, span, preset, headTrack) &&
-        !text.some((item) => overlaps(item.box, spotBox(spot, preset))),
+        (room.faceOk.has(extra.ref) || spotClearOfFace(spot, span, preset, headTrack)) &&
+        !text.some((item) => overlaps(item.box, spotBox(spot, preset))) &&
+        !layers.some((layer) => overlaps(layer, spotBox(spot, preset))),
     );
     const label = `photo ${index + 1}`;
     if (!free) {
@@ -1402,8 +1955,9 @@ export function placeEdit(
       kind: "photo",
       photo_id: photo.photo_id,
       spot: free,
-      start:
-        Math.abs(span.start - sentence.start) < 0.0005
+      start: extra.startWord
+        ? { word: extra.startWord }
+        : Math.abs(span.start - sentence.start) < 0.0005
           ? { word: sentence.from }
           : Math.abs(span.start - word(photo.from).start) < 0.0005
             ? { word: photo.from }
@@ -1496,6 +2050,126 @@ export function placeEdit(
   // Photos before the big word, as the answer lists them.
   outBehind.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "photo" ? -1 : 1));
 
+  // What the pass left out, by answer item, with its drop as a code.
+  const placed = new Set(
+    extras.filter((extra) => overlays.has(extra.id) || behind.has(extra.id)).map((e) => e.ref),
+  );
+  const WHY: Record<string, UnplacedWhy> = {
+    "no-room": "no-room",
+    "one-extra": "busy",
+    "accent-time": "too-short",
+    "big-word-time": "too-short",
+    "photo-time": "too-short",
+    "hidden-footage": "hidden",
+  };
+  const whyOf = (ref: string, id: string): UnplacedWhy => {
+    if (room.removed.has(ref)) return "busy";
+    const note = record.findLast((entry) => entry.item === id && entry.action === "dropped");
+    return (note && WHY[note.rule]) ?? "no-room";
+  };
+  const items: Omit<UnplacedItem, "requested" | "why">[] = [
+    ...input.accents.map((accent, index) => ({
+      ref: `accents[${index}]`,
+      id: accentIds[index]!,
+      kind: "accent" as const,
+      from: accent.from,
+      to: accent.to,
+    })),
+    ...(input.big_word
+      ? [
+          {
+            ref: "big_word",
+            id: "big-word",
+            kind: "big_word" as const,
+            from: input.big_word.word,
+            to: input.big_word.word,
+          },
+        ]
+      : []),
+    ...input.photos.map((photo, index) => ({
+      ref: `photos[${index}]`,
+      id: `photo-${index + 1}`,
+      kind: "photo" as const,
+      from: photo.from,
+      to: photo.to,
+      photo_id: photo.photo_id,
+    })),
+  ];
+  const unplaced: UnplacedItem[] = items
+    .filter((item) => !placed.has(item.ref))
+    .map((item) => ({
+      ...item,
+      requested: requested.includes(item.ref),
+      why: whyOf(item.ref, item.id),
+    }));
+
+  // Whether an extra would fit now, committing nothing: everything it
+  // touches is put back.
+  function probe(extra: Extra | null): boolean {
+    if (!extra) return false;
+    const notes = record.length;
+    const shownEnds = shown.map((item) => item.end);
+    const shownCount = shown.length;
+    const acceptedEnds = accepted.map((entry) => entry.end);
+    const acceptedCount = accepted.length;
+    const fits = tryExtra({ ...extra, id: PROBE });
+    record.length = notes;
+    shown.length = shownCount;
+    shown.forEach((item, index) => (item.end = shownEnds[index]!));
+    accepted.length = acceptedCount;
+    accepted.forEach((entry, index) => (entry.end = acceptedEnds[index]!));
+    overlays.delete(PROBE);
+    behind.delete(PROBE);
+    return fits;
+  }
+
+  // Sentences with room for the kinds left out: a photo over the whole
+  // sentence, an accent on its first words (up to three), the big word on
+  // its longest plain word.
+  function free(): FreeSentence[] {
+    const kinds = new Set(unplaced.map((item) => item.kind));
+    if (kinds.size === 0) return [];
+    const photoId = unplaced.find((item) => item.kind === "photo")?.photo_id;
+    const out: FreeSentence[] = [];
+    for (const sentence of sentences) {
+      const ids = range(sentence.from, sentence.to);
+      const roomFor: ExtraKind[] = [];
+      if (
+        kinds.has("accent") &&
+        probe(
+          accentExtra(
+            { from: sentence.from, to: ids[Math.min(2, ids.length - 1)]!, title: false },
+            -1,
+            PROBE,
+            null,
+          ),
+        )
+      ) {
+        roomFor.push("accent");
+      }
+      if (
+        kinds.has("photo") &&
+        photoId !== undefined &&
+        probe(
+          photoExtra({ photo_id: photoId, from: sentence.from, to: sentence.to }, -1, PROBE, null),
+        )
+      ) {
+        roomFor.push("photo");
+      }
+      if (kinds.has("big_word")) {
+        let longest: string | null = null;
+        for (const id of ids) {
+          const text = cleanWord(word(id).text, preset);
+          if (!BEHIND_WORD.test(text) || !/^\p{L}+$/u.test(text)) continue;
+          if (!longest || text.length > cleanWord(word(longest).text, preset).length) longest = id;
+        }
+        if (longest && probe(bigWordExtra({ word: longest }, null))) roomFor.push("big_word");
+      }
+      if (roomFor.length > 0) out.push({ from: sentence.from, to: sentence.to, room_for: roomFor });
+    }
+    return out;
+  }
+
   return {
     tracks: {
       footage: current.tracks.footage,
@@ -1506,8 +2180,31 @@ export function placeEdit(
       ...(outBehind.length > 0 ? { behind: outBehind } : {}),
     },
     record,
+    unplaced,
+    free,
+    placed,
+    extras: new Map(extras.map((extra) => [extra.ref, extra])),
+    labels: new Map(extras.map((extra) => [extra.ref, describe(extra)])),
+    transitions: input.transitions.flatMap((transition, index) => {
+      const ref = `transitions[${index}]`;
+      if (room.removed.has(ref)) return [];
+      return [
+        {
+          ref,
+          label: `transition ${index + 1} (${transition.kind})`,
+          start: word(transition.from).start,
+          end: word(transition.to).end,
+        },
+      ];
+    }),
+    blocks: blockPlaces,
+    facesCovered,
+    failed,
   };
 }
+
+// The id a probe places under, never an item's.
+const PROBE = "probe";
 
 // Whether the face leaves a photo spot clear (within the preset's share) at
 // every moment of a span: the same faces the `behind-face` check reads.

@@ -27,7 +27,13 @@ const input = decideInput({
 
 describe("decidePrompt", () => {
   it("is versioned", () => {
-    expect(PROMPT_VERSION).toBe("decide-6");
+    expect(PROMPT_VERSION).toBe("decide-7");
+  });
+
+  it("asks for why_not in plain words when nothing in the answer can do an ask", () => {
+    const prompt = decidePrompt(input);
+    expect(prompt).toMatch(/leave its `fulfilled_by` empty and write `why_not`/);
+    expect(prompt).toContain('"Your photo library is\n  empty: upload photos first"');
   });
 
   it("asks for a plain title and summary for the owner, without technical details", () => {

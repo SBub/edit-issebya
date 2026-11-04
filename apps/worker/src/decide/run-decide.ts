@@ -13,6 +13,7 @@ import {
   type Measurer,
   applyBehindRules,
   backgroundSampler,
+  checklistOutcome,
   type VersionBlobs,
   type VersionRows,
   build,
@@ -48,6 +49,7 @@ import {
 } from "../step-runner.ts";
 import { type AiUsage, addUsage } from "../step-store.ts";
 import type { ReelRules } from "./behind-rules.ts";
+import { type Placed, runEditorialRounds } from "./editorial.ts";
 import { decideInput } from "./input.ts";
 import { PROMPT_VERSION, decidePrompt } from "./prompt.ts";
 
@@ -91,6 +93,7 @@ type Attempt =
       edit: Edit;
       answer: DecideAnswer;
       record: EngineNote[];
+      placed: Placed;
       checks: Check[];
       reasons: [];
     }
@@ -267,6 +270,12 @@ export function runDecide({
             edit: composed.edit,
             answer: answer.answer,
             record: composed.record,
+            placed: {
+              edit: composed.edit,
+              record: composed.record,
+              unplaced: composed.unplaced,
+              free: composed.free,
+            },
             checks,
             reasons: [],
           };
@@ -287,14 +296,70 @@ export function runDecide({
         }
 
         ctx.signal.throwIfAborted();
-        const { answer, record, checks } = passed;
+        // The editorial round: what the engine left out goes back to the
+        // editor for another meaning choice, and the whole answer is placed
+        // again. A refused editorial answer only ends the rounds.
+        const editorial = await runEditorialRounds({
+          ai,
+          tool,
+          cwd,
+          transcript,
+          preset,
+          library,
+          photoIds,
+          request,
+          check: (json) => parseDecideAnswer(json, preset, transcript, photoIds, decideRules),
+          place: (merged) => {
+            const composed = editFromAnswer(
+              current,
+              merged,
+              preset,
+              transcript,
+              headTrack,
+              measure,
+              backgrounds,
+            );
+            if (!composed.ok) {
+              log(`${STEP}: engine bug, reel ${reelId}: ${composed.reasons.join("; ")}`);
+              return null;
+            }
+            return {
+              edit: composed.edit,
+              record: composed.record,
+              unplaced: composed.unplaced,
+              free: composed.free,
+            };
+          },
+          answer: passed.answer,
+          placed: passed.placed,
+        }).catch(permanentAfterAiCall);
+        usage = addUsage(usage, editorial.usage);
+        if (editorial.ended)
+          log(`${STEP}: editorial round ended, reel ${reelId}: ${editorial.ended}`);
+        ctx.signal.throwIfAborted();
+        const { answer } = editorial;
+        const final = editorial.placed;
+        const record = [...final.record, ...editorial.notes];
+        const checks =
+          editorial.placed === passed.placed
+            ? passed.checks
+            : build(withMasks(final.edit, transcript), transcript, headTrack, preset, measure)
+                .checks;
         // The engine's only allowed face covering: captions it put over the
-        // face because nothing else was free, and said so in its record.
+        // face because nothing else was free, and an item the owner asked for
+        // it let cover the face as its last step, each said so in its record.
         const coversFace = new Set(
           record.filter((note) => note.action === "covers-face").map((note) => note.item),
         );
+        const madeRoom = new Set(
+          record
+            .filter((note) => note.action === "covers-face" && note.rule === "make-room")
+            .map((note) => note.item),
+        );
         const broken = checks.filter(
-          (check) => !(check.rule === "face" && coversFace.has(check.item)),
+          (check) =>
+            !(check.rule === "face" && coversFace.has(check.item)) &&
+            !(check.rule === "behind-face" && madeRoom.has(check.item)),
         );
         if (broken.length > 0) {
           log(
@@ -308,7 +373,7 @@ export function runDecide({
           storage,
           keyPrefix,
           scratchDir,
-          edit: passed.edit,
+          edit: final.edit,
           transcript,
           photoIds,
           tools,
@@ -339,6 +404,7 @@ export function runDecide({
             freeField: [],
             rejectedReasons: first.ok ? [] : first.reasons,
             engineRecord: record,
+            checklist: checklistOutcome(answer.checklist, final),
             forbid: {
               photos: answer.behind_rules.photos === "keep" ? null : after.photos,
               bigWord: answer.behind_rules.big_word === "keep" ? null : after.bigWord,
@@ -349,7 +415,7 @@ export function runDecide({
         log(engineRecordLine(reelId, saved.number, record));
         trace.getSpan(stepContext)?.setAttribute("reel.tracks_items", trackItems(edit));
         const counts = decideCounts(edit, transcript, preset);
-        const dropped = record.filter((note) => note.action === "dropped").length;
+        const dropped = final.record.filter((note) => note.action === "dropped").length;
         const what = [
           `version ${saved.number}: ${plural(counts.accents, "accent")}`,
           plural(counts.transitions, "transition"),
@@ -359,6 +425,7 @@ export function runDecide({
             ? [`${counts.behindPhotos + counts.behindWords} behind`]
             : []),
           ...(dropped > 0 ? [`${dropped} dropped`] : []),
+          ...(editorial.rounds > 0 ? [plural(editorial.rounds, "editorial round")] : []),
         ].join(", ");
         return { what, ai: usage };
       } finally {
