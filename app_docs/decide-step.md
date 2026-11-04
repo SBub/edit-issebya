@@ -5,6 +5,7 @@
 - specs/issue-33-adw-b632a861-sdlc_planner-ai-decide-step.md
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 - specs/issue-97-adw-7283e118-sdlc_planner-decide-proposes-behind-within-limits.md
+- specs/issue-155-adw-2a28c287-sdlc_planner-fulfil-change-requests-make-room.md
 
 ## Overview
 
@@ -18,11 +19,13 @@ version by the layout engine (`placeEdit`, `app_docs/edit-model.md`, "Layout eng
 checked, and becomes a new version (version 2 on a fresh reel). Only an answer breaking the schema
 or the glossary is refused: it goes back once with the reasons; a second refusal fails the step and
 leaves the current version untouched. Layout never refuses an answer: what fits nowhere is dropped
-and written to the engine record saved with the version.
+and written to the engine record saved with the version. After a placed answer, an editorial round
+gives the editor a second meaning choice for what the engine left out, and the request checklist's
+outcome is stored with the version.
 
 ## How it works
 
-The answer (`decide-6`) is the layout engine's input plus the request checklist and the records:
+The answer (`decide-7`) is the layout engine's input plus the request checklist and the records:
 
 ```json
 {
@@ -57,7 +60,9 @@ The answer (`decide-6`) is the layout engine's input plus the request checklist 
 - `checklist`: with a request, one entry per ask (`ask`, `wants`, `fulfilled_by`, the answer items
   that do it: `accents[i]`, `photos[i]`, `transitions[i]`, `word_fixes[i]`, `big_word` or
   `behind_rules`). Empty (schema `maxItems` 0) without a request. A link to an item the answer does
-  not have is refused. It is not stored; the items it links (`fulfilled_by`) are placed first among
+  not have is refused. An entry may carry `why_not` (1 to 300 characters, plain words for the owner,
+  optional) when nothing in the answer can do the ask, for example photos with an empty library. The
+  outcome is stored per version as `versions.checklist` (below); the items it links (`fulfilled_by`) are placed first among
   the extras (`editFromAnswer` passes them to the engine as `requested`).
 - `change_title` (required, 1 to 60 characters) and `change_summary` (1 to 300) are what the owner
   reads in the versions list (`app_docs/change-requests.md`). `format`, `preset`, `duration` and
@@ -116,7 +121,7 @@ The answer (`decide-6`) is the layout engine's input plus the request checklist 
   non-object value or non-JSON throws. Without a script it gives `EMPTY_DECIDE_ANSWER` (no items),
   which the doctor's check accepts.
 - `apps/worker/src/decide/prompt.md`, `prompt.ts`: the committed prompt and `PROMPT_VERSION`
-  (`decide-6`, bumped with every prompt change; each version row records it). The prompt makes
+  (`decide-7`, bumped with every prompt change; each version row records it). The prompt makes
   Claude the editor: it decides what and on which words, the layout decides every position, size
   and time; it refers to words only by id and never writes times, seconds, pixels, positions, sizes,
   fonts, colours or spots. It explains each choice (word fixes against the glossary, accents with one
@@ -194,6 +199,34 @@ The answer (`decide-6`) is the layout engine's input plus the request checklist 
   `p_engine_record` (default empty); `NewVersion.engine_record`, `VersionMeta.engineRecord`. Old
   rows keep an empty record.
 
+- `packages/edit/src/editorial.ts`, `apps/worker/src/decide/editorial.ts`, `editorial.md`: the
+  editorial round. `placeEdit` also returns `unplaced` (the answer's extras it dropped, each with its
+  answer ref, kind, words, a reason code in editor terms and whether the owner asked for it) and
+  `free` (the sentences, by word ids, with room for an accent, a photo or the big word, found by
+  non-committing probes). `runEditorialRounds` runs after a placed attempt: one round on the
+  automatic run (only when a left-out item has a free sentence of its kind, so no call is paid for
+  nothing), up to `EDITORIAL_ROUNDS.request` (3) on a request while an item the owner asked for is
+  left out. Each round sends the items and the sentences with room (the words they were on, why in
+  words, no time, size or spot) and the library when a photo is left out; Claude answers per item
+  either new words (`from`, `to`, and for a photo optionally another library `photo_id`) or a skip
+  with a plain `why` for the owner. `editorialJsonSchema` and `parseEditorialAnswer` are built per
+  round (word-id and photo-id enums); `mergeEditorial` applies the choices to the answer (a skip
+  removes the item and re-indexes the checklist links) and the whole merged answer is checked by
+  `parseDecideAnswer` and placed again. A broken, refused or unusable editorial answer only ends the
+  rounds (never a retry, never a failed step) and the version saves with what is placed. The AI
+  being unavailable ends them too, except on a request while a requested item is left out: then the
+  job waits (`AiUnavailable`). The rounds' notes (rule `editorial`) join the engine record and the
+  step line gains `, <n> editorial rounds`.
+- `versions.checklist`: `checklistOutcome(checklist, placement)` turns the final checklist into
+  `{ ask, wants, fulfilled_by, done, reason }` entries. An ask is done when every item it links is in
+  the version (word fixes, transitions and `behind_rules` always are). Otherwise `reason` is each
+  left-out item's drop from the engine record plus what the owner can do; with no link, the answer's
+  `why_not` or a plain default. Empty without a request, for the first version, a going back and
+  every older version.
+- `supabase/migrations/20261104013645_version_checklist.sql`: `versions.checklist` (jsonb array,
+  default empty) and `save_version`'s last parameter `p_checklist` (default empty);
+  `NewVersion.checklist`, `VersionMeta.checklist`.
+
 ### Failure
 
 Two refused rounds throw `StepError` with the tail `decide: the answer failed twice, version <n>
@@ -246,10 +279,13 @@ two AI calls. A failure before the first AI call may still be retried once.
   clip (title w0001 to w0004, accent w0005, dim w0006 to w0008, fix w0010 "Studio"); a unit test
   proves it saves in one round with no failed check. The engine drops the accent (one extra at a
   time beside the title on a 2.7 s clip), so the step line reads `0 accents, ..., 1 dropped`.
-- `yarn turbo run test:db --filter=./apps/studio`: `versions.test.ts` covers the new columns.
+- `editorial.test.ts` in `packages/edit` (schema, merge, checklist outcome) and in the worker (input,
+  rounds, caps, failure handling); `run-decide.test.ts` covers the rounds in a decide.
+- `yarn turbo run test:db --filter=./apps/studio`: `versions.test.ts` covers the new columns,
+  `checklist` included.
 - E2E: `apps/studio/e2e/upload.spec.ts` sets `E2E_MOCK_AI_SCRIPT` to the committed answer and
   checks the decide line, the `ai_*` columns (1500, 456, 0.0123, `claude-opus-5-5`), version 2's row
-  and both R2 keys (`decide-6`, `0 accents, 1 transition, title set, 1 word fixed, 1 dropped`).
+  and both R2 keys (`decide-7`, `0 accents, 1 transition, title set, 1 word fixed, 1 dropped`).
   `preview.spec.ts` seeds through `test-support/ai-script.ts`
   (`unchangedAnswerScript`), whose answer makes no choice (version 1 has none), so version 2 matches
   the version 1 golden. `behind.spec.ts` scripts a change answer (`behindPhotoAnswerScript`, the
@@ -269,7 +305,8 @@ failure is an ordinary step failure) and passes `backgroundSampler(map, preset.f
 
 ## Rules
 
-- At most two AI calls per decide: one retry, never a loop.
+- At most two answer calls (one retry), then the editorial rounds: at most one on the automatic run,
+  at most 3 on a request; never an unbounded loop.
 - Claude never writes times, positions or sizes: the answer is meaning only (word ids, library
   photo ids), every object closed; the layout places everything.
 - Claude only forwards placement words the owner used: a `wish` is one of `WISHES`, never on the
@@ -287,7 +324,7 @@ failure is an ordinary step failure) and passes `backgroundSampler(map, preset.f
 - Never save a decided or first version without its engine record; never rewrite an old row's
   record (a going back has an empty one).
 - Never cache the decide step.
-- Bump `PROMPT_VERSION` whenever `prompt.md` changes.
+- Bump `PROMPT_VERSION` whenever `prompt.md` or `editorial.md` changes.
 - The prompt keeps `change_title` and `change_summary` in plain words for the owner: never word
   ids, font names, pixel sizes, colour codes, timestamps or seconds, or internal names. Never clean
   old summaries with regexes; they show as stored.
@@ -301,11 +338,16 @@ failure is an ordinary step failure) and passes `backgroundSampler(map, preset.f
 - Never propose a photo or big word the reel's rules forbid; only a request may set or lift a rule.
 - The checklist is empty without a request; each entry links only to items the answer has.
 - A forbid is written with its version in one `save_version` call.
+- Claude never sees coordinates, sizes, spots or times in the editorial round either.
+- A refused editorial answer never fails the step and is never retried.
+- Every decided version stores its checklist; a not-done ask carries the exact reason and what the
+  owner can do.
 
 ## Notes
 
 - Touches `app_docs/edit-model.md` (new check rule, version columns, `save_version` signature),
   `app_docs/measurement.md` (the `ai_*` columns are now written by decide) and `app_docs/studio.md`
   (`E2E_MOCK_AI_SCRIPT`); those still describe the AI as only a doctor check in places.
+- The engine side (making room for a request) is in `app_docs/edit-model.md`, "Layout engine".
 - `request` is null for the automatic run. The owner-request path now exists: a `change` job runs
   `runDecide` with `job.request` (see `app_docs/change-requests.md`).

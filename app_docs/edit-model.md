@@ -6,6 +6,7 @@
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 - specs/issue-114-adw-9049f8fd-sdlc_planner-platform-safe-zone-guard.md
 - specs/issue-154-adw-596f3b25-sdlc_planner-readable-text-contrast.md
+- specs/issue-155-adw-2a28c287-sdlc_planner-fulfil-change-requests-make-room.md
 
 Every edit of a reel is a small JSON file (`edit.json`) anchored to the words of its transcript.
 One builder turns it into a HyperFrames page, the same bytes in the worker and in the studio, and
@@ -245,16 +246,32 @@ record. `editFromAnswer` (decide) and the worker's `first_version` step (with no
 - Drops: an extra that fits nowhere is dropped and recorded. Captions are never dropped: with no
   free place even at the floor, they take the caption line over the face (recorded `covers-face`).
 - Record: a list of `EngineNote` `{ item, action, rule, reason }`, `action` one of `moved` (not its
-  kind's first place), `shrunk`, `wrapped`, `retimed`, `dropped`, `covers-face`, `wish-not-kept`, `shadowed`,
+  kind's first place), `shrunk`, `wrapped`, `retimed`, `dropped`, `covers-face`, `wish-not-kept`, `shadowed`, `removed`,
   `reason` in plain words with the item's text and times, for example
   `{ "item": "photo-1", "action": "dropped", "rule": "no-room", "reason": "photo 1: every photo spot
 is under captions or the face from 23.48 s to 26.23 s" }`. Rules: `caption-min`, `caption-spot`,
   `caption-size`, `caption-face`, `accent-time`, `accent-spot`, `accent-size`, `accent-wrap`,
   `big-word-time`, `big-word-size`, `photo-time`, `photo-spot`, `hidden-footage`, `one-extra`,
-  `no-room`, `wish`, `contrast-spot`, `contrast-shadow`. Saved with the version (`versions.engine_record`) and logged by the worker in
+  `no-room`, `wish`, `contrast-spot`, `contrast-shadow`, `make-room`, `editorial`. Saved with the version (`versions.engine_record`) and logged by the worker in
   one line per version; item 6 turns it into the summary.
 - Final checks: `runChecks` (below) runs on every placed edit. They must never fail on the engine's
   output; one that does is an engine bug, logged with the reel id while the version is still saved.
+
+#### Making room for a request
+
+Without `requested` the engine makes no room: one plain pass (`placeOnce`), byte-identical to the
+committed goldens. With it (`editFromAnswer` passes the checklist's linked items), each requested
+item the plain pass leaves out, in checklist order, gets room step by step until it is placed: the
+captions sharing its time move (full size), then shrink or wrap down to the floor, then extras the
+editor added on its own that stand in the way (and transitions covering every place it needs) are
+removed, then it shifts inside its sentence, and only last it may cover the face. A step's pass is
+taken only when the item is placed, every requested item placed before stays placed, and no caption
+block goes over the face that did not already. Each step is recorded under the rule `make-room`
+(action `moved`, `shrunk`, `retimed`, `removed` or `covers-face`); an item for which nothing works
+keeps its `dropped` note with the steps tried. `placeEdit` also returns `unplaced` (extras dropped,
+with answer ref, kind and a reason code) and `free` (sentences with room for each kind), which feed
+the editorial round (`app_docs/decide-step.md`). The final checks tolerate a `behind-face` on an
+item the engine recorded `covers-face` under `make-room`.
 
 ### Bottom edge in the old layout
 
@@ -408,6 +425,11 @@ never fatal.
 - Never place a stored version again: the builder keeps every stored position, and a version saved
   before the engine keeps the old fixed-spot placement.
 - The engine is pure and deterministic: no randomness, no clock, no I/O.
+- Never remove a caption, set it below the floor, put it over the face or outside the safe zone to
+  make room.
+- Never drop or remove an item the owner asked for to make room for another.
+- Cover the face for a requested item only after every other step.
+- Without a request the engine never makes room: its output is the plain pass's.
 - Never change a text colour to make it readable: move it or add a shadow.
 - Never move the big word for contrast; it only gets a shadow.
 - A version with a `behind` item is saved only once every mask it names exists; the builder never
