@@ -376,7 +376,14 @@ test("a transition shows its number, lead-in and key phrase inside its layer, ne
   }
 
   // After it has left, the next caption shows as usual.
-  await setPosition(page, layer.end + 0.1);
+  // cw0010 ends with the reel's last word and fades out over
+  // caption.outSeconds, so the check has to land between the layer's end and
+  // that fade.
+  const nextSpan = resolved.get("cw0010")!;
+  const fadeOut = nextSpan.end - ISSEBYA_PRESET.caption.outSeconds;
+  expect(fadeOut).toBeGreaterThan(layer.end);
+  expect(layer.end + 0.001).toBeLessThan(fadeOut);
+  await setPosition(page, layer.end + 0.001);
   await expect.poll(() => opacity("#transition-1")).toBeLessThan(0.05);
   const next = frame.locator("#cw0010");
   await expect(next).toHaveText("studio");

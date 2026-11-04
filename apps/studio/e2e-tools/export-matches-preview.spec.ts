@@ -290,8 +290,9 @@ async function capturePreview(name: string): Promise<Capture[]> {
   return captures;
 }
 
-// Presses Export, runs the real render through the worker, and returns the
-// MP4 on disk and the job's id.
+// Presses Export, runs the real render through the worker, waits for the
+// export modal to close after the download, and returns the MP4 on disk and
+// the job's id.
 async function exportNow(name: string): Promise<{ mp4: string; jobId: string }> {
   const button = page.getByTestId("export-button");
   await expect(button).toBeEnabled({ timeout: 30_000 });
@@ -302,6 +303,11 @@ async function exportNow(name: string): Promise<{ mp4: string; jobId: string }> 
     { timeoutMs: RENDER_TIMEOUT_MS },
   );
   expect(worker.code, worker.output).toBe(0);
+  // The export downloads by itself and the modal closes a few seconds later.
+  // Until it closes it covers the page, and the ruler seeks with a raw pointer
+  // click (no actionability wait), so the next capture's click would land on
+  // the modal.
+  await expect(page.getByTestId("export-modal")).toBeHidden({ timeout: 30_000 });
   const { data, error } = await admin
     .from("exports")
     .select("job_id, r2_key")
