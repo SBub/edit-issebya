@@ -166,7 +166,7 @@ describe("runDecide", () => {
       parent_id: firstId,
       request: null,
       model: "claude-opus-5-5",
-      prompt_version: "decide-6",
+      prompt_version: "decide-7",
       change_title: (scripted.structured_output as Json).change_title,
       change_summary: (scripted.structured_output as Json).change_summary,
       checks: [],
@@ -174,6 +174,7 @@ describe("runDecide", () => {
       unexpressed: [],
       free_field: [],
       rejected_reasons: [],
+      checklist: [],
     });
     const done = lastCall(calls);
     if (done.call !== "done") throw new Error(JSON.stringify(calls));
@@ -701,6 +702,63 @@ describe("runDecide with a behind item", () => {
     );
     expect(JSON.stringify(ai.calls[0]!.schema)).not.toMatch(/"photo_id":\{"type":"string","enum"/);
     expect(rows.get(current!)!.number).toBe(2);
+  });
+
+  it("stores the request's checklist with the version, done when its photo is placed", async () => {
+    const ai = fakeAiRunner([
+      resultEnvelope(
+        answer((a) => {
+          a.accents = [];
+          a.photos = [photoItem()];
+          a.checklist = [
+            { ask: "add images behind me", wants: "1 photo", fulfilled_by: ["photos[0]"] },
+          ];
+        }),
+      ),
+    ]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool, {
+      request: "add images behind me",
+    });
+    await run;
+    // Placed at once: no editorial round, one AI call.
+    expect(ai.calls).toHaveLength(1);
+    expect(rows.get(current!)!.checklist).toEqual([
+      {
+        ask: "add images behind me",
+        wants: "1 photo",
+        fulfilled_by: ["photos[0]"],
+        done: true,
+        reason: null,
+      },
+    ]);
+  });
+
+  it("stores an impossible ask as not done, with the reason and what the owner can do", async () => {
+    const empty: PhotoLibrary = {
+      async readyPhotos() {
+        return [];
+      },
+    };
+    const why = "Your photo library is empty: upload photos first";
+    const ai = fakeAiRunner([
+      resultEnvelope(
+        answer((a) => {
+          a.accents = [];
+          a.checklist = [
+            { ask: "add images behind me", wants: "1 photo", fulfilled_by: [], why_not: why },
+          ];
+        }),
+      ),
+    ]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool, {
+      request: "add images behind me",
+      photos: empty,
+    });
+    await run;
+    expect(ai.calls).toHaveLength(1);
+    expect(rows.get(current!)!.checklist).toEqual([
+      { ask: "add images behind me", wants: "1 photo", fulfilled_by: [], done: false, reason: why },
+    ]);
   });
 
   it("puts the photo in the spot the owner's wish names", async () => {

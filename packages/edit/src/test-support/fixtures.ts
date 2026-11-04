@@ -9,7 +9,9 @@ import rethinkBehind from "../testdata/versions/rethink-work-behind.edit.json" w
 import rethinkEngine from "../testdata/versions/rethink-work-engine.edit.json" with { type: "json" };
 import rethinkHand from "../testdata/versions/rethink-work-hand.edit.json" with { type: "json" };
 import rethinkReadable from "../testdata/versions/rethink-work-readable.edit.json" with { type: "json" };
+import rethinkRequest from "../testdata/versions/rethink-work-request.edit.json" with { type: "json" };
 import { RETHINK_WORK, SHORT_SPEECH } from "./inputs.ts";
+import { REQUEST_CASE } from "./request.ts";
 
 export interface Fixture {
   name: string;
@@ -37,4 +39,7 @@ export const FIXTURES: Fixture[] = [
   // The same choices placed over a light background: a caption block moved
   // to a darker free place and an accent with a soft shadow.
   fixture("rethink-work-readable", rethinkReadable, RETHINK_WORK),
+  // The 2026-11-03 request "add images behind me": the card Claude added on
+  // its own removed and the captions moved, so the requested photo shows.
+  fixture("rethink-work-request", rethinkRequest, REQUEST_CASE),
 ];

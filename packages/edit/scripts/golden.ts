@@ -1,7 +1,8 @@
 // Writes the engine-placed fixture versions (the baseline as the worker's
 // first_version step saves it, over the fixture clip's background map; the
 // behind hand edit's choices placed by the layout engine; and the same
-// choices over a synthetic light background, readable) and every fixture's
+// choices over a synthetic light background, readable; and the 2026-11-03
+// request placed with room made for its photo) and every fixture's
 // golden page and widths from the Node build: `yarn workspace @edit-issebya/edit golden`. Commit what it
 // writes; the Node and browser tests compare against it.
 import { readFile, writeFile } from "node:fs/promises";
@@ -16,6 +17,7 @@ import { type Edit, parseEdit } from "../src/schema.ts";
 import { backgroundMapOf } from "../src/test-support/backgrounds.ts";
 import { goldenOf } from "../src/test-support/golden.ts";
 import { RETHINK_WORK, SHORT_SPEECH, baselineInputs } from "../src/test-support/inputs.ts";
+import { REQUEST_ANSWER, REQUEST_CASE } from "../src/test-support/request.ts";
 import { nodeMeasurer } from "../src/test-support/measurer.node.ts";
 import { resolveTimeline } from "../src/timeline.ts";
 import { sentenceSpans } from "../src/transcript.ts";
@@ -122,6 +124,28 @@ for (const note of readable.record.filter((entry) => entry.rule.startsWith("cont
   console.log(`readable: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
 }
 await write("rethink-work-readable", withPlaceholders(readable.edit));
+
+// The 2026-11-03 request "add images behind me" over the hand edit, placed
+// with the photo requested: the engine makes room for it.
+const handJson: unknown = JSON.parse(
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
+  await readFile(new URL("versions/rethink-work-hand.edit.json", testdata), "utf8"),
+);
+const hand = parseEdit(handJson, ISSEBYA_PRESET, REQUEST_CASE.transcript);
+if (!hand.ok) throw new Error(hand.reasons.join("; "));
+const request = editFromAnswer(
+  hand.edit,
+  REQUEST_ANSWER,
+  ISSEBYA_PRESET,
+  REQUEST_CASE.transcript,
+  REQUEST_CASE.headTrack,
+  await nodeMeasurer(),
+);
+if (!request.ok) throw new Error(request.reasons.join("; "));
+for (const note of request.record.filter((entry) => entry.rule === "make-room")) {
+  console.log(`request: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
+}
+await write("rethink-work-request", withPlaceholders(request.edit));
 
 // Re-imported after the baseline is written, so the goldens build the new one.
 const { FIXTURES } = await import("../src/test-support/fixtures.ts");

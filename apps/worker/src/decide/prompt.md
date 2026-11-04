@@ -46,6 +46,9 @@ The request checklist:
   owner's words, `wants` what would satisfy it (for example `{ "ask": "photos behind", "wants": "1
 to 2, free choice" }`), and `fulfilled_by` the answer items that do it, written as
   `accents[0]`, `photos[1]`, `transitions[0]`, `word_fixes[2]`, `big_word` or `behind_rules`.
+- When nothing in your answer can do an ask, leave its `fulfilled_by` empty and write `why_not`:
+  plain words for the owner saying why and what they can do (for example "Your photo library is
+  empty: upload photos first"). Leave `why_not` out when the ask is done.
 - Without a request, `checklist` is an empty list.
 - List any part of the request no choice can express in `unexpressed`.
 

@@ -190,6 +190,43 @@ describe("save_version", () => {
     ]);
   });
 
+  it("stores the request checklist it is given, an empty list when not, and only a list", async () => {
+    const own = await insertReel(admin, {
+      ownerId: owner.id,
+      name: "checklist.mov",
+      status: "received",
+    });
+    const entry = {
+      ask: "add images behind me",
+      wants: "1 photo",
+      fulfilled_by: [],
+      done: false,
+      reason: "Your photo library is empty: upload photos first",
+    };
+    const asked = randomUUID();
+    const { error } = await admin.rpc("save_version", {
+      ...args(own, asked, null),
+      p_checklist: [entry],
+    });
+    expect(error).toBeNull();
+    const plain = randomUUID();
+    expect((await admin.rpc("save_version", args(own, plain, asked))).error).toBeNull();
+    const refused = await admin.rpc("save_version", {
+      ...args(own, randomUUID(), plain),
+      p_checklist: { ask: "not a list" },
+    });
+    expect(refused.error?.message).toMatch(/checklist/);
+    const { data } = await ownerClient
+      .from("versions")
+      .select("id, checklist")
+      .eq("reel_id", own)
+      .order("number");
+    expect(data).toEqual([
+      { id: asked, checklist: [entry] },
+      { id: plain, checklist: [] },
+    ]);
+  });
+
   it("cannot be executed by anon or an authenticated user", async () => {
     for (const client of [localSupabaseClient(), ownerClient]) {
       const { error } = await client.rpc("save_version", args(reel, randomUUID(), saved[2]!));

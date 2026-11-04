@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Backgrounds } from "./background.ts";
-import { type EngineNote, placeEdit } from "./engine.ts";
+import { type EngineNote, type FreeSentence, type UnplacedItem, placeEdit } from "./engine.ts";
 import { type EngineInput, WISHES } from "./engine-input.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { wordsText } from "./layout.ts";
@@ -106,6 +106,9 @@ export function decideAnswerSchemaFor(
             ask: z.string().min(1).max(200),
             wants: z.string().min(1).max(200),
             fulfilled_by: z.array(z.string().regex(ITEM_REF)).max(10),
+            // Plain words for the owner when nothing in the answer can do
+            // the ask: why, and what they can do.
+            why_not: z.string().min(1).max(300).optional(),
           }),
         )
         .max(rules.requested ? MAX_ASKS : 0, {
@@ -261,7 +264,9 @@ export function parseDecideAnswer(
 // refinement (ids used once, nothing ending before it starts, the behind
 // counts and lengths), with the engine's record of what it moved, shrank,
 // wrapped, retimed or dropped. The items the answer's checklist names are
-// placed first. The current version's masks and photos are not carried over:
+// placed first, and the engine makes room for them. Also returned: the
+// answer's extras left out and the sentences with room for their kind (the
+// editorial round's input). The current version's masks and photos are not carried over:
 // the worker's cut-out step names them again for the new behind track. A
 // parse failure here is an engine bug, never the answer's.
 export function editFromAnswer(
@@ -274,15 +279,25 @@ export function editFromAnswer(
   // The footage's background map, sampled: the engine keeps every text
   // readable over it. Without it nothing is measured.
   backgrounds?: Backgrounds,
-): { ok: true; edit: Edit; record: EngineNote[] } | { ok: false; reasons: string[] } {
+):
+  | { ok: true; edit: Edit; record: EngineNote[]; unplaced: UnplacedItem[]; free: FreeSentence[] }
+  | { ok: false; reasons: string[] } {
   const inputs = { ...current.inputs };
   delete inputs.masks;
   delete inputs.photos;
   const requested = [...new Set((answer.checklist ?? []).flatMap((entry) => entry.fulfilled_by))];
-  const { tracks, record } = placeEdit(current, answer, transcript, headTrack, preset, measurer, {
-    requested,
-    ...(backgrounds ? { backgrounds } : {}),
-  });
+  const { tracks, record, unplaced, free } = placeEdit(
+    current,
+    answer,
+    transcript,
+    headTrack,
+    preset,
+    measurer,
+    {
+      requested,
+      ...(backgrounds ? { backgrounds } : {}),
+    },
+  );
   const json = {
     format: 1,
     preset: preset.id,
@@ -295,7 +310,7 @@ export function editFromAnswer(
     bounds: preset.safe,
     behindCounts: { photos: preset.behind.maxPhotos, words: preset.behind.maxWords },
   });
-  return parsed.ok ? { ok: true, edit: parsed.edit, record } : parsed;
+  return parsed.ok ? { ok: true, edit: parsed.edit, record, unplaced, free } : parsed;
 }
 
 export interface DecideCounts {
