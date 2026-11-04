@@ -10,6 +10,7 @@ import rethinkEngine from "../testdata/versions/rethink-work-engine.edit.json" w
 import rethinkHand from "../testdata/versions/rethink-work-hand.edit.json" with { type: "json" };
 import rethinkReadable from "../testdata/versions/rethink-work-readable.edit.json" with { type: "json" };
 import rethinkRequest from "../testdata/versions/rethink-work-request.edit.json" with { type: "json" };
+import rethinkTransitions from "../testdata/versions/rethink-work-transitions.edit.json" with { type: "json" };
 import { RETHINK_WORK, SHORT_SPEECH } from "./inputs.ts";
 import { REQUEST_CASE } from "./request.ts";
 
@@ -42,4 +43,7 @@ export const FIXTURES: Fixture[] = [
   // The 2026-11-03 request "add images behind me": the card Claude added on
   // its own removed and the captions moved, so the requested photo shows.
   fixture("rethink-work-request", rethinkRequest, REQUEST_CASE),
+  // The same choices with a transition of each kind (two numbered): the
+  // layers, their text levels, the phrases' captions shown only there.
+  fixture("rethink-work-transitions", rethinkTransitions, RETHINK_WORK),
 ];

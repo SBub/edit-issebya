@@ -116,6 +116,40 @@ describe("runChecks", () => {
     ]);
   });
 
+  it("checks a transition's levels for the safe box and overlaps, never its hidden captions", async () => {
+    const transitions = FIXTURES.find((f) => f.name === "rethink-work-transitions")!;
+    const levelChecks = async (edit: Edit) =>
+      build(
+        edit,
+        transitions.transcript,
+        transitions.headTrack,
+        ISSEBYA_PRESET,
+        await nodeMeasurer(),
+      ).checks;
+    // Hidden captions with no place trip no timing, face or overlap check.
+    expect(await levelChecks(transitions.edit)).toEqual([]);
+    const low = structuredClone(transitions.edit);
+    low.tracks.transitions[0]!.levels!.key.position.y = 1380;
+    expect(
+      (await levelChecks(low)).filter((check) => check.rule === "safe-box").map((c) => c.item),
+    ).toEqual(["transition-1-key"]);
+    // A caption set on a level shown at the same time.
+    const over = structuredClone(transitions.edit);
+    const key = over.tracks.transitions[0]!.levels!.key;
+    const caption = over.tracks.captions.find((c) => c.id === "cw34")!;
+    caption.position = { x: key.position.x, y: key.position.y, align: "center" };
+    over.tracks.transitions[0]!.end = { word: "w36" };
+    expect(
+      (await levelChecks(over)).filter((check) => check.rule === "text-overlap"),
+    ).toContainEqual({
+      rule: "text-overlap",
+      item: "transition-1-key",
+      reason: expect.stringMatching(
+        /^level transition-1-key \("the way we work"\) sits on caption cw34 /,
+      ),
+    });
+  });
+
   it("fails sound-gap for two clicks 0.2 s apart", async () => {
     const edit = structuredClone(hand.edit);
     edit.tracks.sounds.push({

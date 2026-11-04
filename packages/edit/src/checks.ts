@@ -60,7 +60,10 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
 // the big word never before its word is said, sounds at least the preset's
 // gap apart, time anchors outside speech, anchors inside the reel. The face is
 // the robust one (`facesOver`) the layout engine places around, so the checks
-// never fail on the engine's output: they are its final guard.
+// never fail on the engine's output: they are its final guard. `boxes` holds
+// the captions shown in their place (never those a transition shows as its
+// levels), `levels` the transitions' text levels, checked for the safe box
+// and overlaps only (the engine records a level over the face).
 export function runChecks(
   edit: Edit,
   boxes: readonly TextBox[],
@@ -69,11 +72,13 @@ export function runChecks(
   headTrack: HeadTrack,
   preset: Preset,
   bigWords: readonly BigWordBox[] = [],
+  // The transitions' text levels: inside the safe box and on no other text.
+  levels: readonly TextBox[] = [],
 ): Check[] {
   const checks: Check[] = [];
   const safe = intersectBox(preset.safe, PLATFORM_SAFE);
 
-  for (const box of boxes) {
+  for (const box of [...boxes, ...levels]) {
     const right = box.x + box.width;
     const bottom = box.y + box.height;
     const edges: string[] = [];
@@ -171,7 +176,7 @@ export function runChecks(
   }
 
   const texts = [
-    ...boxes.map((box) => ({
+    ...[...boxes, ...levels].map((box) => ({
       id: box.itemId,
       what: label(box),
       start: box.start,

@@ -127,6 +127,34 @@ describe("summaryTemplate", () => {
     expect(many.summary).toMatch(/, and a few smaller changes\.$/);
   });
 
+  it("says whether a transition covers other words, moves slower or stays longer", () => {
+    const covers: DiffEntry = {
+      kind: "transition",
+      action: "retimed",
+      id: "transition-1",
+      text: "we do AI has completely",
+      was: "AI has completely",
+    };
+    expect(template(diffOf([covers])).summary).toBe(
+      'The transition on "AI has completely" now covers "we do AI has completely".',
+    );
+    const slower: DiffEntry = {
+      kind: "transition",
+      action: "changed",
+      id: "transition-1",
+      text: "fair pay",
+      change: "slower",
+    };
+    expect(template(diffOf([slower])).summary).toBe('The transition on "fair pay" moves slower.');
+    expect(template(diffOf([{ ...slower, change: "stays longer" }])).summary).toBe(
+      'The transition on "fair pay" stays longer.',
+    );
+    for (const entry of [covers, slower]) {
+      const { title, summary } = template(diffOf([entry]));
+      expect(`${title} ${summary}`).not.toMatch(/\b(?:pace|hold|levels)\b/);
+    }
+  });
+
   it("says nothing changed for an empty difference", () => {
     expect(template(diffOf([]))).toEqual({
       title: "No changes",
@@ -150,6 +178,18 @@ describe("summaryTemplate", () => {
       [diffOf([TITLE]), [PHOTO_DROPPED], [ASKED_PHOTO]],
       [diffOf([], [{ rule: "big_word", to: "off" }]), [], []],
       [diffOf([{ kind: "footage", action: "changed", id: "footage" }]), [], []],
+      [
+        diffOf([{ kind: "transition", action: "retimed", id: "t1", text: "fair pay", was: "pay" }]),
+        [],
+        [],
+      ],
+      [
+        diffOf([
+          { kind: "transition", action: "changed", id: "t1", text: "x", change: "usual hold" },
+        ]),
+        [],
+        [],
+      ],
       [
         diffOf([
           { kind: "accent", action: "added", id: "a1", text: "w0004 at 2 s" },

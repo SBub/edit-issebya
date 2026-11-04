@@ -11,22 +11,46 @@ export interface PresetFont {
   size: number;
 }
 
-export type TransitionType = "dim" | "panel" | "card";
+// Every transition type the stored format knows. `card` is kept only so
+// versions saved with it still parse and render; it is no longer offered.
+export type TransitionType = "dim" | "panel" | "numbered" | "card";
 export const TRANSITION_TYPES = [
   "dim",
   "panel",
+  "numbered",
   "card",
 ] as const satisfies readonly TransitionType[];
 
+// The transition library: the kinds Claude may pick.
+export const TRANSITION_KINDS = [
+  "dim",
+  "panel",
+  "numbered",
+] as const satisfies readonly TransitionType[];
+export type TransitionKind = (typeof TRANSITION_KINDS)[number];
+
+// One transition kind. No colour and no font: the layer is the preset's
+// `background` role at `shade` opacity, the text inside it takes the caption
+// and accent roles.
 export interface PresetTransition {
   // The layer covering the footage, in frame pixels.
   layer: Box;
-  background: string;
+  // The opacity of the background role on the layer (1: the role as is).
+  shade: number;
   // How the layer comes in and goes out: a fade, or a slide up from below.
   motion: "fade" | "slide";
   seconds: number;
   ease: string;
-  // Where captions inside the transition's span are set.
+  // Where the transition's text levels may go: inside the layer and the
+  // safe zone. `want` is the wanted top of the level stack.
+  area: Box;
+  want: number;
+  // The line Claude reads about the kind (library kinds only).
+  description?: string;
+  // `numbered`: the number's font size.
+  numberSize?: number;
+  // Where captions inside the transition's span were set in versions saved
+  // before the levels (the builder's old path).
   text: Box;
 }
 
@@ -132,7 +156,23 @@ export interface Preset {
   };
   // Spots beside the head (build.py's `_slots`).
   slots: { firstRow: number; rowGap: number; rightDrop: number; minLeft: number; minRight: number };
+  // The background style role: the colour of every transition layer.
+  background: string;
   transitions: Record<TransitionType, PresetTransition>;
+  // Transition timing: the layer's entrance finishes as its phrase's first
+  // word starts; it has left when the next word starts, holding at most
+  // `holdSeconds` after the phrase (`longHoldSeconds` when asked), never
+  // shorter than `minSeconds`. `slowFactor` stretches the motion when asked
+  // slower; about one transition per `perSeconds` of reel; `gap` pixels
+  // between stacked text levels.
+  transition: {
+    minSeconds: number;
+    holdSeconds: number;
+    longHoldSeconds: number;
+    slowFactor: number;
+    perSeconds: number;
+    gap: number;
+  };
   sounds: Record<SoundKey, PresetSound>;
   behind: PresetBehind;
   // Words a caption keeps capitalised (lower-case key, shown value).
@@ -244,31 +284,64 @@ export const ISSEBYA_PRESET: Preset = {
     },
   },
   slots: { firstRow: 610, rowGap: 85, rightDrop: 42, minLeft: 110, minRight: 90 },
+  background: "#121212",
+  // Starting values; the owner tunes them by eye on a real reel.
   transitions: {
     dim: {
       layer: FRAME,
-      background: "rgba(0, 0, 0, 0.62)",
+      shade: 0.62,
       motion: "fade",
       seconds: 0.3,
       ease: "power2.out",
+      area: STYLE_SAFE,
+      want: 1180,
+      description: "darkens the whole picture: for a turn in the story or a strong statement",
       text: { left: 130, right: 860, top: 1180, bottom: 1400 },
     },
     panel: {
       layer: { left: 0, right: 1080, top: 1150, bottom: 1920 },
-      background: "#121212",
+      shade: 1,
       motion: "slide",
       seconds: 0.5,
       ease: "power3.inOut",
+      area: { left: 130, right: 860, top: 1170, bottom: 1400 },
+      want: 1180,
+      description:
+        "a dark panel slides up over the lower part: for an aside, a definition or a short explanation",
       text: { left: 130, right: 860, top: 1200, bottom: 1400 },
     },
+    numbered: {
+      layer: FRAME,
+      shade: 0.38,
+      motion: "fade",
+      seconds: 0.3,
+      ease: "power2.out",
+      area: STYLE_SAFE,
+      want: 640,
+      description:
+        "a large number over a light dim with the phrase below: for each item of a list the speaker goes through, numbered in order",
+      numberSize: 300,
+      text: STYLE_SAFE,
+    },
+    // Kept only for versions saved with it; never offered.
     card: {
       layer: FRAME,
-      background: "rgba(8, 8, 8, 0.9)",
+      shade: 0.9,
       motion: "fade",
       seconds: 0.25,
       ease: "power2.out",
+      area: { left: 130, right: 860, top: 640, bottom: 1400 },
+      want: 640,
       text: { left: 130, right: 860, top: 640, bottom: 1400 },
     },
+  },
+  transition: {
+    minSeconds: 1.5,
+    holdSeconds: 1,
+    longHoldSeconds: 2,
+    slowFactor: 1.6,
+    perSeconds: 7,
+    gap: 24,
   },
   sounds: {
     click: {

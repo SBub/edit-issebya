@@ -17,7 +17,7 @@ import { fenced } from "./prompt.ts";
 
 // The version title and summary: one short call on a small model, after
 // layout, from the saved difference. Bump with every change to summary.md.
-const SUMMARY_PROMPT_VERSION = "summary-1";
+const SUMMARY_PROMPT_VERSION = "summary-2";
 export const SUMMARY_MODEL = "claude-haiku-5-5";
 
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed prompt

@@ -165,7 +165,8 @@ test("the automatic decide proposes a photo; no photos in this one removes it fo
   const v4 = await currentVersion();
   expect(v4.version.number).toBe(4);
   // Written by the template from the saved difference: the transition taken
-  // out (the title and captions take its room), never the photo.
+  // out (the title it held off comes back, the captions take its room),
+  // never the photo.
   expect(v4.version.change_title).toBe("Several things changed");
   expect(v4.version.change_summary).toContain("The transition was taken out");
   expect(v4.version.change_summary).not.toMatch(/photo/i);

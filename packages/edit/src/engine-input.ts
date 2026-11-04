@@ -1,5 +1,5 @@
 import { wordsText } from "./layout.ts";
-import { type Preset, type TransitionType, cleanWord } from "./preset.ts";
+import { type Preset, type TransitionKind, cleanWord } from "./preset.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -21,6 +21,10 @@ export const WISHES = [
   "beside_head",
   "big",
   "small",
+  // Transitions only (the engine records `wish-not-kept` on another kind):
+  // the motion slower, the layer staying longer after its phrase.
+  "slow",
+  "long",
 ] as const;
 export type Wish = (typeof WISHES)[number];
 
@@ -43,10 +47,13 @@ export interface PhotoChoice {
   wish?: Wish;
 }
 
+// A transition carries the phrase `from` to `to`; its key phrase (in accent
+// text) starts on `key_from`, the words before it are the lead-in.
 export interface TransitionChoice {
-  kind: TransitionType;
+  kind: TransitionKind;
   from: string;
   to: string;
+  key_from: string;
   wish?: Wish;
 }
 
@@ -96,8 +103,21 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
   }
   const transitions: TransitionChoice[] = [];
   for (const transition of edit.tracks.transitions) {
+    // A stored `card` reads back as a `dim`, the library's nearest kind.
+    const kind = transition.type === "card" ? "dim" : transition.type;
+    if (transition.words) {
+      const wish =
+        transition.pace === "slow" ? "slow" : transition.hold === "long" ? "long" : undefined;
+      transitions.push({
+        kind,
+        ...ends(transition.words),
+        key_from: transition.key ?? transition.words[0]!,
+        ...(wish ? { wish } : {}),
+      });
+      continue;
+    }
     const ids = under(transition);
-    if (ids.length > 0) transitions.push({ kind: transition.type, ...ends(ids) });
+    if (ids.length > 0) transitions.push({ kind, ...ends(ids), key_from: ids[0]! });
   }
   const photos: PhotoChoice[] = [];
   let bigWord: BigWordChoice | null = null;

@@ -19,8 +19,13 @@ What to choose:
 2. `accents`: the few phrases that carry the reel, each `{ "from": "<first word id>", "to": "<last
 word id>", "title": false }`. Mark exactly one short phrase that names the topic, usually in the
    opening sentence, as the title (`"title": true`).
-3. `transitions`: where the topic changes, each `{ "kind": "dim" | "panel" | "card", "from", "to" }`
-   over the phrase the transition carries.
+3. `transitions`: each `{ "kind", "from", "to", "key_from" }` over the phrase the transition
+   carries: usually a short lead-in and then the key phrase, the point being made. `key_from` is
+   the key phrase's first word (the same as `from` when there is no lead-in); the lead-in shows in
+   caption text and the key phrase in accent text inside the transition. Pick the kind by the
+   descriptions in the style below. About one transition per `transition_every_seconds` of reel;
+   the same kind may repeat. When the speaker goes through a list, give each item its own
+   `numbered` transition, in order (the layout numbers them).
 4. `photos`: library photos behind the speaker, at most `max_photos` per reel, each `{ "photo_id",
 "from", "to" }` over the sentence it belongs to. A photo only where a sentence clearly matches
    a photo's description or tags. Never a loose fit: no match, no photo. An empty library means no
@@ -38,6 +43,9 @@ Placement wishes:
   `big`, `small`, only when the owner's request says where or how big that item should be ("the
   photo on the left", "make the title bigger"). Translate the owner's own words into the nearest
   wish.
+- A transition's wish is `slow` when the owner asks it slower or smoother, `long` when they ask it
+  to stay longer. When they ask a transition longer or to cover more, change its `from` and `to`
+  instead: that is its phrase, not a wish.
 - Never invent a wish. Without such words in the request, leave `wish` out.
 
 The request checklist:
@@ -73,7 +81,7 @@ An example answer, for a request "put a photo behind me on the left":
       "wish": "left"
     }
   ],
-  "transitions": [{ "kind": "dim", "from": "w0030", "to": "w0033" }],
+  "transitions": [{ "kind": "dim", "from": "w0030", "to": "w0033", "key_from": "w0031" }],
   "word_fixes": [{ "word": "w0009", "text": "lock-in" }],
   "checklist": [
     {
@@ -101,7 +109,8 @@ The sentences (each with its first and last word ids):
 
 {{sentences}}
 
-The style (transition kinds, glossary, how many photos and big words behind the speaker):
+The style (transition kinds with what each is for, how often a transition comes, the glossary, how
+many photos and big words behind the speaker):
 
 {{preset}}
 

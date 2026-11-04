@@ -9,6 +9,8 @@ reel has no new photo, and you may only say it did not fit.
 - `change_title`: 2 to 5 plain words, sentence case, no full stop (for example "Photo added behind
   you", "Transitions made longer").
 - `change_summary`: one or two short plain sentences.
+- A transition change is either its words (it now covers other words) or its motion (slower, or
+  staying longer after its words): say which.
 - Never write word ids, font names, sizes, colour codes, times, seconds or internal names (track,
   slot, preset, spot, overlay).
 

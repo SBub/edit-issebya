@@ -201,6 +201,29 @@ describe("checklistOutcome", () => {
     ]);
   });
 
+  it("marks a linked transition done only when the engine kept it", () => {
+    const ask = {
+      ask: "a transition on the list",
+      wants: "1 numbered",
+      fulfilled_by: ["transitions[0]"],
+    };
+    const rate = {
+      item: "transition-1",
+      action: "dropped" as const,
+      rule: "transition-rate",
+      reason:
+        'transition 1 (numbered) on "fair pay" dropped: about one transition per 7 s, this reel has room for 2',
+    };
+    expect(checklistOutcome([ask], { unplaced: [], record: [] })[0]).toMatchObject({
+      done: true,
+      reason: null,
+    });
+    expect(checklistOutcome([ask], { unplaced: [], record: [rate] })[0]).toMatchObject({
+      done: false,
+      reason: `${rate.reason}; ask for it on another phrase, or for fewer transitions`,
+    });
+  });
+
   it("gives an ask with no link its why_not, else a plain default", () => {
     const why = "Your photo library is empty: upload photos first";
     expect(

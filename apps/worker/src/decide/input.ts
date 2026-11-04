@@ -3,6 +3,7 @@ import {
   type Edit,
   type EngineInput,
   type Preset,
+  TRANSITION_KINDS,
   type Transcript,
   choicesOf,
   sentenceSpans,
@@ -26,12 +27,17 @@ function sentences(transcript: Transcript, preset: Preset): SentenceChoice[] {
   }));
 }
 
-// What of the preset the AI decides with: the transition kinds, the glossary
-// and the behind counts. No frame, box, font size or spot: the layout owns
-// every position, size and time.
+// What of the preset the AI decides with: the transition library (each kind
+// with the line saying what it is for) and how often a transition comes, the
+// glossary and the behind counts. No frame, box, font size, colour or spot:
+// the layout owns every position, size and time.
 export function presetSummary(preset: Preset) {
   return {
-    transitions: Object.keys(preset.transitions),
+    transitions: TRANSITION_KINDS.map((kind) => ({
+      kind,
+      description: preset.transitions[kind].description ?? "",
+    })),
+    transition_every_seconds: preset.transition.perSeconds,
     glossary: preset.glossary,
     behind: { max_photos: preset.behind.maxPhotos, max_words: preset.behind.maxWords },
   };

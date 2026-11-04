@@ -6,6 +6,7 @@ import type {
   BigWordChoice,
   EngineInput,
   PhotoChoice,
+  TransitionChoice,
   Wish,
 } from "./engine-input.ts";
 import { expand, overlaps, placeBox } from "./engine-space.ts";
@@ -19,6 +20,7 @@ import {
   PLATFORM_BUTTONS,
   type Preset,
   cleanWord,
+  intersectBox,
 } from "./preset.ts";
 import {
   type Anchor,
@@ -28,24 +30,31 @@ import {
   type Edit,
   type OverlayItem,
   type TransitionItem,
+  type TransitionLevel,
 } from "./schema.ts";
-import { resolveAnchor } from "./timeline.ts";
+import { anchorAt, resolveAnchor } from "./timeline.ts";
+import { type LevelRole, levelStyle, transitionTiming } from "./transitions.ts";
 import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./transcript.ts";
 
 // THE LAYOUT ENGINE. Claude's answer says what and on which words; this code
 // decides every time, position and size, with no randomness and no I/O:
 //
-// 1. Timing first: captions per spoken word, an accent from its first word
-//    to a second after its last, the big word from its word to the end of its
-//    sentence, a photo over its sentence, each at least its minimum.
+// 1. Timing first: captions per spoken word, a transition from its phrase's
+//    words (its entrance finishing as the first word starts, gone when the
+//    next word starts, at most a hold after the last, at least its minimum,
+//    about one per `perSeconds`, never two at once), an accent from its first
+//    word to a second after its last, the big word from its word to the end
+//    of its sentence, a photo over its sentence, each at least its minimum.
 // 2. The scene: the reel cut into moments wherever an item starts or ends,
 //    each with its face (robust over the head track, never one reading).
 // 3. Free space: an area minus the face, the platform notch and the text
 //    already placed, as rectangles (`engine-space.ts`).
-// 4. Placement by priority: captions (one spot per sentence), then the items
-//    the request is about, accents, the big word, photos; at most one of
-//    these extras at a time. Text shrinks to the preset's floor and wraps to
-//    two lines before it gives up a place. Nothing ever overlaps.
+// 4. Placement by priority: each transition's text levels (its phrase's
+//    captions, shown only there), captions (one spot per sentence), then the
+//    items the request is about, accents, the big word, photos; at most one
+//    of these extras at a time, none during a transition. Text shrinks to the
+//    preset's floor and wraps to two lines before it gives up a place.
+//    Nothing ever overlaps.
 // 5. An extra that fits nowhere is dropped; captions never are (in the worst
 //    case they take the caption line over the face).
 // 6. Readable text: with a background map, each text placed is measured
@@ -161,19 +170,6 @@ function during(a: { start: number; end: number }, b: { start: number; end: numb
   return a.start < b.end - SLACK && b.start < a.end - SLACK;
 }
 
-// An anchor at `t`: the nearest word end within a second (with the offset),
-// else the time itself.
-function anchorAt(t: number, words: readonly Word[]): Anchor {
-  let best: Word | null = null;
-  for (const word of words) {
-    if (Math.abs(t - word.end) > 1) continue;
-    if (!best || Math.abs(t - word.end) < Math.abs(t - best.end)) best = word;
-  }
-  if (!best) return { time: ms(t) };
-  const offset = ms(t - best.end);
-  return offset === 0 ? { word: best.id, edge: "end" } : { word: best.id, edge: "end", offset };
-}
-
 // The sizes a text tries, from its own down to the preset's floor.
 function sizesFrom(size: number, preset: Preset): number[] {
   const floor = Math.ceil(size * preset.layout.minScale);
@@ -231,11 +227,9 @@ interface Unit {
 }
 
 interface CaptionBlock {
-  kind: "sentence" | "transition";
   groups: Unit[][];
   start: number;
   end: number;
-  transition?: TransitionItem;
 }
 
 // The current captions as groups (one set of words on screen: consecutive
@@ -345,7 +339,8 @@ function wrapUnits(
 
 interface Extra {
   ref: string;
-  kind: ExtraKind;
+  // `transition`: a running transition, accepted before every extra.
+  kind: ExtraKind | "transition";
   id: string;
   start: number;
   end: number;
@@ -358,6 +353,20 @@ interface Extra {
   accent?: AccentChoice;
   photo?: PhotoChoice;
   word?: string;
+}
+
+// A transition kept by the timing rules: its answer item and its layer's span.
+interface TransitionPlan {
+  ref: string;
+  index: number;
+  id: string;
+  label: string;
+  choice: TransitionChoice;
+  wish?: "slow" | "long";
+  start: number;
+  end: number;
+  startAnchor: Anchor;
+  endAnchor: Anchor;
 }
 
 interface Accepted {
@@ -691,9 +700,7 @@ function roomNotes(ref: string, before: Pass, after: Pass, was: Room, now: Room)
       item: id,
       action: "removed",
       rule: "make-room",
-      reason: transition
-        ? `${what} removed: it covered every place ${label} needs, as asked`
-        : `${what} removed: it showed at the same time as ${label}, as asked`,
+      reason: `${what} removed: it showed at the same time as ${label}, as asked`,
     });
   }
   for (const [id, place] of after.blocks) {
@@ -801,23 +808,142 @@ function placeOnce(
     }
   });
 
-  const transitions: TransitionItem[] = input.transitions.flatMap((transition, index) =>
-    room.removed.has(`transitions[${index}]`)
-      ? []
-      : [
-          {
-            id: `transition-${index + 1}`,
-            type: transition.kind,
-            start: { word: transition.from },
-            end: { word: transition.to, edge: "end" as const },
-          },
-        ],
-  );
-  const transitionSpans = transitions.map((item) => ({
-    item,
-    start: resolveAnchor(item.start, byId, duration),
-    end: resolveAnchor(item.end, byId, duration),
-  }));
+  // Transitions, timed first from their words: the requested ones, then the
+  // answer's order; about one per `perSeconds` of reel; never two at once.
+  const transitionPlans = timeTransitions();
+
+  function transitionText(choice: TransitionChoice): string {
+    return wordsText(range(choice.from, choice.to), transcript, preset);
+  }
+
+  function timeTransitions(): TransitionPlan[] {
+    const { transition: rules } = preset;
+    const most = Math.max(1, Math.round(duration / rules.perSeconds));
+    const order = input.transitions
+      .map((choice, index) => ({ choice, index, ref: `transitions[${index}]` }))
+      .filter(({ ref }) => !room.removed.has(ref))
+      .sort((a, b) => {
+        const ra = requested.indexOf(a.ref);
+        const rb = requested.indexOf(b.ref);
+        return (ra < 0 ? 1e6 : ra) - (rb < 0 ? 1e6 : rb) || a.index - b.index;
+      });
+    const kept: TransitionPlan[] = [];
+    for (const { choice, index, ref } of order) {
+      const id = `transition-${index + 1}`;
+      const label = `transition ${index + 1} (${choice.kind}) on ${quote(transitionText(choice))}`;
+      const wish = choice.wish === "slow" || choice.wish === "long" ? choice.wish : undefined;
+      if (choice.wish !== undefined && !wish) {
+        record.push({
+          item: id,
+          action: "wish-not-kept",
+          rule: "wish",
+          reason: `${label} cannot go ${choice.wish.replace("_", " ")}: a transition only moves slower or stays longer`,
+        });
+      }
+      const kind = preset.transitions[choice.kind];
+      const timing = transitionTiming(
+        { from: choice.from, to: choice.to, ...(wish ? { wish } : {}) },
+        transcript.words,
+        duration,
+        preset,
+        kind,
+      );
+      if (!timing) {
+        record.push({
+          item: id,
+          action: "dropped",
+          rule: "transition-time",
+          reason: `${label} dropped: the reel is too short to show it ${rules.minSeconds} s`,
+        });
+        continue;
+      }
+      if (kept.length >= most) {
+        record.push({
+          item: id,
+          action: "dropped",
+          rule: "transition-rate",
+          reason: `${label} dropped: about one transition per ${rules.perSeconds} s, this reel has room for ${most}`,
+        });
+        continue;
+      }
+      // Never two at once: the earlier one leaves as the later comes in, when
+      // it still lasts the minimum and its key phrase shows; else the one
+      // being added is dropped.
+      const keyStart = (plan: { choice: TransitionChoice }) => word(plan.choice.key_from).start;
+      const holds = (plan: { start: number; choice: TransitionChoice }, end: number) =>
+        end - plan.start >= rules.minSeconds - SLACK &&
+        end - keyStart(plan) >= preset.caption.minSeconds - SLACK;
+      let end = timing.end;
+      let endAnchor = timing.endAnchor;
+      const trims: { plan: TransitionPlan; end: number }[] = [];
+      let clash: TransitionPlan | null = null;
+      for (const other of [...kept].sort((a, b) => a.start - b.start)) {
+        if (!during({ start: timing.start, end }, other)) continue;
+        if (other.start < timing.start - SLACK) {
+          if (!holds(other, timing.start)) {
+            clash = other;
+            break;
+          }
+          trims.push({ plan: other, end: timing.start });
+        } else {
+          if (!holds({ start: timing.start, choice }, other.start)) {
+            clash = other;
+            break;
+          }
+          end = other.start;
+          endAnchor = anchorAt(end, transcript.words);
+        }
+      }
+      if (clash) {
+        record.push({
+          item: id,
+          action: "dropped",
+          rule: "transition-overlap",
+          reason: `${label} dropped: it would show at the same time as ${clash.label} (${at(clash.start)} to ${at(clash.end)}); one transition at a time`,
+        });
+        continue;
+      }
+      for (const trim of trims) {
+        trim.plan.end = trim.end;
+        trim.plan.endAnchor = anchorAt(trim.end, transcript.words);
+        record.push({
+          item: trim.plan.id,
+          action: "retimed",
+          rule: "transition-overlap",
+          reason: `${trim.plan.label} leaves at ${at(trim.end)}, when ${label} comes in`,
+        });
+      }
+      if (end < timing.end - SLACK) {
+        record.push({
+          item: id,
+          action: "retimed",
+          rule: "transition-overlap",
+          reason: `${label} leaves at ${at(end)}, before the next transition comes in`,
+        });
+      }
+      if (timing.lengthened) {
+        record.push({
+          item: id,
+          action: "retimed",
+          rule: "transition-min",
+          reason: `${label} shows from ${at(timing.start)} to ${at(timing.end)}, at least ${rules.minSeconds} s`,
+        });
+      }
+      kept.push({
+        ref,
+        index,
+        id,
+        label,
+        choice,
+        ...(wish ? { wish } : {}),
+        start: timing.start,
+        end,
+        startAnchor: timing.startAnchor,
+        endAnchor,
+      });
+    }
+    return kept.sort((a, b) => a.start - b.start);
+  }
 
   // The extras' own times (before the one-at-a-time rule). A time that
   // cannot hold the item drops it into `notes` (none for a probe).
@@ -1000,12 +1126,49 @@ function placeOnce(
     if (extra) extras.push(extra);
   });
 
+  // Placement words that only a transition takes (`slow`, `long`) asked of
+  // another item: not kept.
+  for (const [index, accent] of input.accents.entries()) {
+    if (room.removed.has(`accents[${index}]`)) continue;
+    if (accent.wish === "slow" || accent.wish === "long") {
+      record.push({
+        item: accentIds[index]!,
+        action: "wish-not-kept",
+        rule: "wish",
+        reason: `${accent.title ? "the title" : "accent"} ${quote(wordsText(range(accent.from, accent.to), transcript, preset))} cannot move ${accent.wish === "slow" ? "slower" : "longer"}: only a transition can`,
+      });
+    }
+  }
+  for (const [index, photo] of input.photos.entries()) {
+    if (room.removed.has(`photos[${index}]`)) continue;
+    if (photo.wish === "slow" || photo.wish === "long") {
+      record.push({
+        item: `photo-${index + 1}`,
+        action: "wish-not-kept",
+        rule: "wish",
+        reason: `photo ${index + 1} cannot move ${photo.wish === "slow" ? "slower" : "longer"}: only a transition can`,
+      });
+    }
+  }
+  if (
+    input.big_word &&
+    !room.removed.has("big_word") &&
+    (input.big_word.wish === "slow" || input.big_word.wish === "long")
+  ) {
+    record.push({
+      item: "big-word",
+      action: "wish-not-kept",
+      rule: "wish",
+      reason: `the big word cannot move ${input.big_word.wish === "slow" ? "slower" : "longer"}: only a transition can`,
+    });
+  }
+
   // The scene: every edge of every item.
   const scene = sceneOf(
     [
       ...captions.map((_, index) => unitStart(index)),
       ...ends,
-      ...transitionSpans.flatMap((span) => [span.start, span.end]),
+      ...transitionPlans.flatMap((plan) => [plan.start, plan.end]),
       ...extras.flatMap((extra) => [extra.start, extra.end]),
     ],
     duration,
@@ -1157,42 +1320,227 @@ function placeOnce(
     return { ...from, shadow };
   }
 
-  // Captions: blocks in time order, each a sentence's groups (one spot for the
-  // whole sentence) or the captions inside a transition (its text area).
-  const blocks: CaptionBlock[] = [];
-  const sentenceBlocks = new Map<SentenceSpan | undefined, CaptionBlock>();
-  const transitionBlocks = new Map<TransitionItem, CaptionBlock>();
-  groups.forEach((group, index) => {
-    const end = ends[index]!;
-    const outside: Unit[] = [];
-    for (const unit of group) {
-      const inside = transitionSpans.find(
-        (span) => unit.start >= span.start - SLACK && unit.start < span.end - SLACK,
-      );
-      if (!inside) {
-        outside.push(unit);
+  // Transitions take the screen over: each kept one's text levels (its
+  // number, its lead-in, its key phrase) are placed before any caption, in
+  // free space inside its area, off the face where possible. One whose levels
+  // fit nowhere is dropped, so its captions show as usual. The captions of a
+  // kept one's phrase show only as its levels.
+  const transitionItems = new Map<string, { index: number; item: TransitionItem }>();
+  const hiddenUnits = new Set<number>();
+  let numbered = 0;
+  for (const plan of transitionPlans) {
+    const number = plan.choice.kind === "numbered" ? numbered + 1 : undefined;
+    const item = placeLevels(plan, number);
+    if (!item) continue;
+    if (number !== undefined) numbered = number;
+    transitionItems.set(plan.id, { index: plan.index, item });
+    const phrase = new Set(item.words);
+    captions.forEach((caption, index) => {
+      if (phrase.has(caption.words[0]!)) hiddenUnits.add(index);
+    });
+  }
+  const keptPlans = transitionPlans.filter((plan) => transitionItems.has(plan.id));
+
+  function placeLevels(plan: TransitionPlan, number: number | undefined): TransitionItem | null {
+    const { choice, label } = plan;
+    const kind = preset.transitions[choice.kind];
+    const ids = range(choice.from, choice.to);
+    const phrase = new Set(ids);
+    const keyAt = order.get(choice.key_from)!;
+    // The phrase's text, after the word fixes: each word as the caption
+    // showing it (once per caption), a word no caption shows as itself. A
+    // caption goes to the lead-in or the key phrase by its first word; one
+    // starting before the phrase keeps its own place and is left out here.
+    const captionOf = new Map<string, number>();
+    captions.forEach((caption, index) => {
+      for (const id of caption.words) if (!captionOf.has(id)) captionOf.set(id, index);
+    });
+    const parts: { at: number; text: string }[] = [];
+    const used = new Set<number>();
+    for (const id of ids) {
+      const index = captionOf.get(id);
+      if (index === undefined) {
+        parts.push({
+          at: order.get(id)!,
+          text: fixes.get(id) ?? wordsText([id], transcript, preset),
+        });
         continue;
       }
-      let block = transitionBlocks.get(inside.item);
-      if (!block) {
-        block = {
-          kind: "transition",
-          groups: [[]],
-          start: unit.start,
-          end,
-          transition: inside.item,
-        };
-        transitionBlocks.set(inside.item, block);
-        blocks.push(block);
-      }
-      block.groups[0]!.push(unit);
-      block.end = Math.max(block.end, end);
+      if (used.has(index)) continue;
+      used.add(index);
+      const first = captions[index]!.words[0]!;
+      if (!phrase.has(first)) continue;
+      parts.push({ at: order.get(first)!, text: texts[index]! });
     }
+    let leadParts = parts.filter((part) => part.at < keyAt);
+    let keyParts = parts.filter((part) => part.at >= keyAt);
+    if (keyParts.length === 0) {
+      keyParts = leadParts.slice(-1);
+      leadParts = leadParts.slice(0, -1);
+    }
+    const lead = leadParts.map((part) => part.text).join(" ");
+    const key = keyParts.map((part) => part.text).join(" ");
+    const specs = [
+      ...(number !== undefined
+        ? [{ role: "number" as const, text: String(number), start: plan.startAnchor }]
+        : []),
+      ...(lead ? [{ role: "lead" as const, text: lead, start: { word: choice.from } }] : []),
+      { role: "key" as const, text: key, start: { word: choice.key_from } },
+    ].map((spec) => ({ ...spec, ...levelStyle(spec.role, preset) }));
+    if (!key || specs.some((spec) => spec.text.length > 300)) {
+      record.push({
+        item: plan.id,
+        action: "dropped",
+        rule: "no-room",
+        reason: `${label} dropped: its phrase has no text to show inside it, or too much`,
+      });
+      return null;
+    }
+    const area = intersectBox(kind.area, safe);
+    const cx = (area.left + area.right) / 2;
+    const sizes = specs.map((spec) => sizesFrom(spec.size, preset));
+    const steps = Math.max(...sizes.map((list) => list.length));
+    // Wrapped in turn: the key phrase, then the lead-in (one word never).
+    const wraps: LevelRole[][] = [[]];
+    for (const role of ["key", "lead"] as const) {
+      const spec = specs.find((entry) => entry.role === role);
+      if (spec && spec.text.includes(" ")) wraps.push([...wraps.at(-1)!, role]);
+    }
+    const stackOf = (step: number, wrapped: readonly LevelRole[]) => {
+      const levels = specs.map((spec, at) => {
+        const list = sizes[at]!;
+        const size = list[Math.min(step, list.length - 1)]!;
+        const lines = wrapped.includes(spec.role)
+          ? balancedBreak(spec.text.split(" "), spec.font, size)
+          : [spec.text];
+        const width = Math.max(...lines.map((line) => measurer.width(spec.font, size, line)));
+        return { spec, size, lines, width, height: size * lines.length };
+      });
+      const gapY = preset.transition.gap;
+      return {
+        levels,
+        width: Math.max(...levels.map((level) => level.width)),
+        height: levels.reduce((sum, level) => sum + level.height, 0) + gapY * (levels.length - 1),
+      };
+    };
+    let found: {
+      stack: ReturnType<typeof stackOf>;
+      spot: { x: number; y: number };
+      step: number;
+      wrapped: readonly LevelRole[];
+      overFace: boolean;
+    } | null = null;
+    for (const overFace of [false, true]) {
+      const obstacles = [...(overFace ? [] : faceObstacles(plan)), ...textDuring(plan), notch];
+      for (let step = 0; step < steps && !found; step += 1) {
+        for (const wrapped of wraps) {
+          const stack = stackOf(step, wrapped);
+          const spot = placeBox(area, obstacles, stack.width, stack.height, {
+            x: cx,
+            y: kind.want + stack.height / 2,
+          });
+          if (spot) {
+            found = { stack, spot, step, wrapped, overFace };
+            break;
+          }
+        }
+      }
+      if (found) break;
+    }
+    if (!found) {
+      record.push({
+        item: plan.id,
+        action: "dropped",
+        rule: "no-room",
+        reason: `${label} dropped: its text found no place inside it from ${at(plan.start)} to ${at(plan.end)}, even at the smallest size`,
+      });
+      return null;
+    }
+    const { stack, spot, step, wrapped, overFace } = found;
+    const first = placeBox(area, [], stack.width, stack.height, {
+      x: cx,
+      y: kind.want + stack.height / 2,
+    });
+    if (overFace) {
+      record.push({
+        item: plan.id,
+        action: "covers-face",
+        rule: "transition-face",
+        reason: `the text of ${label} found no place clear of the face from ${at(plan.start)} to ${at(plan.end)} and sits over part of it`,
+      });
+    } else if (first && (first.x !== spot.x || first.y !== spot.y)) {
+      record.push({
+        item: plan.id,
+        action: "moved",
+        rule: "transition-spot",
+        reason: `the text of ${label} moves ${Math.round(Math.hypot(spot.x - first.x, spot.y - first.y))} px from its first place, clear of the face and other text`,
+      });
+    }
+    if (step > 0) {
+      const sized = stack.levels
+        .map((level) => `${level.spec.role} ${level.size} px instead of ${level.spec.size} px`)
+        .join(", ");
+      record.push({
+        item: plan.id,
+        action: "shrunk",
+        rule: "transition-size",
+        reason: `the text of ${label} set smaller to fit: ${sized}`,
+      });
+    }
+    if (wrapped.length > 0) {
+      record.push({
+        item: plan.id,
+        action: "wrapped",
+        rule: "transition-wrap",
+        reason: `the ${wrapped.map((role) => (role === "key" ? "key phrase" : "lead-in")).join(" and the ")} of ${label} set in two lines to fit`,
+      });
+    }
+    const centre = Math.round((spot.x + stack.width / 2) * 100) / 100;
+    const levels: Partial<Record<LevelRole, TransitionLevel>> = {};
+    let y = spot.y;
+    for (const level of stack.levels) {
+      const left = centre - level.width / 2;
+      levels[level.spec.role] = {
+        text: level.spec.text,
+        start: level.spec.start,
+        position: { x: centre, y, align: "center" },
+        size: level.size,
+        ...(level.lines.length > 1 ? { break_after: level.lines[0]!.split(" ").length } : {}),
+      };
+      shown.push({
+        id: `${plan.id}-${level.spec.role}`,
+        start: Math.max(plan.start, resolveAnchor(level.spec.start, byId, duration)),
+        end: plan.end,
+        box: { left, right: left + level.width, top: y, bottom: y + level.height },
+      });
+      y += level.height + preset.transition.gap;
+    }
+    return {
+      id: plan.id,
+      type: choice.kind,
+      start: plan.startAnchor,
+      end: plan.endAnchor,
+      words: ids,
+      key: choice.key_from,
+      ...(plan.wish === "slow" ? { pace: "slow" as const } : {}),
+      ...(plan.wish === "long" ? { hold: "long" as const } : {}),
+      ...(number !== undefined ? { number } : {}),
+      levels: { ...levels, key: levels.key! },
+    };
+  }
+
+  // Captions: blocks in time order, each a sentence's groups (one spot for the
+  // whole sentence); a transition's own captions show only as its levels.
+  const blocks: CaptionBlock[] = [];
+  const sentenceBlocks = new Map<SentenceSpan | undefined, CaptionBlock>();
+  groups.forEach((group, index) => {
+    const end = ends[index]!;
+    const outside = group.filter((unit) => !hiddenUnits.has(unit.index));
     if (outside.length === 0) return;
     const sentence = sentenceOf(outside[0]!.caption.words[0]!);
     let block = sentenceBlocks.get(sentence);
     if (!block) {
-      block = { kind: "sentence", groups: [], start: outside[0]!.start, end };
+      block = { groups: [], start: outside[0]!.start, end };
       sentenceBlocks.set(sentence, block);
       blocks.push(block);
     }
@@ -1208,14 +1556,27 @@ function placeOnce(
   // The extras by priority, at most one at a time.
   const rank = (extra: Extra) => {
     const asked = requested.indexOf(extra.ref);
-    const kind = { accent: 1, big_word: 2, photo: 3 }[extra.kind];
+    const kind = { transition: 0, accent: 1, big_word: 2, photo: 3 }[extra.kind];
     return asked >= 0 ? asked - 1000 : kind * 100;
   };
   const queue = extras
     .map((extra, index) => ({ extra, index }))
     .sort((a, b) => rank(a.extra) - rank(b.extra) || a.index - b.index)
     .map(({ extra }) => extra);
-  const accepted: Accepted[] = [];
+  // A running transition is an extra the one-at-a-time rule never trims.
+  const accepted: Accepted[] = keptPlans.map((plan) => ({
+    extra: {
+      ref: plan.ref,
+      kind: "transition",
+      id: plan.id,
+      start: plan.start,
+      end: plan.end,
+      min: plan.end - plan.start,
+      index: plan.index,
+    },
+    start: plan.start,
+    end: plan.end,
+  }));
   const overlays = new Map<string, OverlayItem>();
   const behind = new Map<string, BehindItem>();
   const blockPlaces = new Map<string, BlockPlace>();
@@ -1258,17 +1619,7 @@ function placeOnce(
     const faces = facesDuring(scene, block);
     const face = boundingBox(faces);
     const out: Candidate[] = [];
-    if (block.transition) {
-      const area = preset.transitions[block.transition.type].text;
-      out.push({
-        name: "in the transition's text area",
-        area,
-        align: "center",
-        want: (w, h) => ({ x: (area.left + area.right) / 2, y: area.top + h / 2 }),
-        maxLines: 20,
-      });
-    }
-    const maxLines = block.kind === "transition" ? 20 : 2;
+    const maxLines = 2;
     const line: Candidate = {
       name: "on the caption line",
       area: { ...safe, top: preset.caption.fallbackY },
@@ -1390,8 +1741,7 @@ function placeOnce(
       fit: NonNullable<ReturnType<typeof tryBlock>>;
       keep: boolean;
     } | null = null;
-    const holdsPhoto =
-      block.kind === "sentence" && photoSpans.some((photo) => during(photo, block));
+    const holdsPhoto = photoSpans.some((photo) => during(photo, block));
     // Sharing time with a reserved item: at the full size only (`move`) or
     // down to the floor (`shrink`), and never over the face for it.
     const reserved = reservedDuring(block);
@@ -1498,34 +1848,26 @@ function placeOnce(
         reason: `captions ${quote(label)} set at ${size} px instead of ${fullSize} px to fit`,
       });
     }
-    // Readable over the footage: captions inside a transition are on its
-    // layer (dark by preset) and never measured; captions over the face are
-    // only ever shadowed.
-    const place =
-      block.kind === "sentence"
-        ? keepReadable(
-            first.caption.id,
-            `captions ${quote(label)}`,
-            fit,
-            block,
-            [
-              ...new Set(
-                block.groups.flat().map((unit) => unit.caption.color ?? preset.caption.color),
-              ),
-            ],
-            readability.caption,
-            candidate.overFace
-              ? null
-              : {
-                  area: candidate.area,
-                  obstacles: blockObstacles(block, candidate),
-                  ...(keep ? { accept: (box: Box) => leavesPhotoSpot(box, block) } : {}),
-                },
-            candidate.overFace
-              ? "captions over the face are never moved"
-              : `no free place nearby reaches ${readability.caption.min}:1`,
-          )
-        : { x: fit.x, y: fit.y };
+    // Readable over the footage; captions over the face are only ever
+    // shadowed.
+    const place = keepReadable(
+      first.caption.id,
+      `captions ${quote(label)}`,
+      fit,
+      block,
+      [...new Set(block.groups.flat().map((unit) => unit.caption.color ?? preset.caption.color))],
+      readability.caption,
+      candidate.overFace
+        ? null
+        : {
+            area: candidate.area,
+            obstacles: blockObstacles(block, candidate),
+            ...(keep ? { accept: (box: Box) => leavesPhotoSpot(box, block) } : {}),
+          },
+      candidate.overFace
+        ? "captions over the face are never moved"
+        : `no free place nearby reaches ${readability.caption.min}:1`,
+    );
     const space = measurer.width(captionFont, size, " ");
     for (const lines of fit.layouts) {
       let y = place.y;
@@ -1561,11 +1903,17 @@ function placeOnce(
   function tryExtra(extra: Extra): boolean {
     const timed = fitTime(extra, accepted);
     if (!timed.ok) {
+      const other = timed.with;
       record.push({
         item: extra.id,
         action: "dropped",
         rule: "one-extra",
-        reason: `${describe(extra)} would show at the same time as ${describe(timed.with.extra)} (${at(extra.start)} to ${at(extra.end)}); one extra at a time`,
+        reason:
+          other.extra.kind !== "transition"
+            ? `${describe(extra)} would show at the same time as ${describe(other.extra)} (${at(extra.start)} to ${at(extra.end)}); one extra at a time`
+            : other.start <= extra.start + SLACK
+              ? `${describe(extra)} would show (${at(extra.start)} to ${at(extra.end)}) while a transition is running from ${at(other.start)} to ${at(other.end)}; nothing else shows during a transition`
+              : `${describe(extra)} would show (${at(extra.start)} to ${at(extra.end)}) but a transition comes in at ${at(other.start)}, too soon for it to show ${extra.min} s; nothing else shows during a transition`,
       });
       return false;
     }
@@ -1612,6 +1960,7 @@ function placeOnce(
   }
 
   function describe(extra: Extra): string {
+    if (extra.kind === "transition") return `transition ${extra.index + 1}`;
     if (extra.kind === "accent") {
       const accent = extra.accent!;
       return `${accent.title ? "the title" : "accent"} ${quote(accentText(accent))}`;
@@ -1927,17 +2276,10 @@ function placeOnce(
           ]),
         ];
     const text = shown.filter((item) => during(item, span));
-    // Making room for it: a transition's layer over the spot would hide it.
-    const layers = room.reserve.has(extra.ref)
-      ? transitionSpans
-          .filter((transition) => during(transition, span))
-          .map((transition) => preset.transitions[transition.item.type].layer)
-      : [];
     const free = order.find(
       (spot) =>
         (room.faceOk.has(extra.ref) || spotClearOfFace(spot, span, preset, headTrack)) &&
-        !text.some((item) => overlaps(item.box, spotBox(spot, preset))) &&
-        !layers.some((layer) => overlaps(layer, spotBox(spot, preset))),
+        !text.some((item) => overlaps(item.box, spotBox(spot, preset))),
     );
     const label = `photo ${index + 1}`;
     if (!free) {
@@ -1990,6 +2332,8 @@ function placeOnce(
     for (const other of [...taken].sort((a, b) => a.start - b.start)) {
       if (!during({ start: extra.start, end }, other)) continue;
       if (other.start < extra.start - SLACK) {
+        // A running transition is never cut short.
+        if (other.extra.kind === "transition") return { ok: false, with: other };
         if (extra.start - other.start < other.extra.min - SLACK) return { ok: false, with: other };
         trims.push({ accepted: other, end: extra.start });
       } else {
@@ -2002,17 +2346,20 @@ function placeOnce(
   }
 
   // The tracks, in the current version's caption order and the answer's order.
+  // A caption a transition shows as its levels has no place of its own.
   const outCaptions: CaptionItem[] = captions.map((caption, index) => {
     const lastWord = unitEndWord.get(index)!;
     const end = unitEnd.get(index)!;
     const offset = ms(end - lastWord.end);
-    const place = placedCaptions.get(index)!;
+    const endAnchor: Anchor =
+      offset === 0
+        ? { word: lastWord.id, edge: "end" }
+        : { word: lastWord.id, edge: "end", offset };
+    const place = placedCaptions.get(index);
+    if (!place) return { ...caption, end: endAnchor };
     return {
       ...caption,
-      end:
-        offset === 0
-          ? { word: lastWord.id, edge: "end" }
-          : { word: lastWord.id, edge: "end", offset },
+      end: endAnchor,
       position: { x: place.x, y: place.y, align: "left" },
       size: place.size,
       ...(place.shadow ? { shadow: place.shadow } : {}),
@@ -2051,9 +2398,10 @@ function placeOnce(
   outBehind.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "photo" ? -1 : 1));
 
   // What the pass left out, by answer item, with its drop as a code.
-  const placed = new Set(
-    extras.filter((extra) => overlays.has(extra.id) || behind.has(extra.id)).map((e) => e.ref),
-  );
+  const placed = new Set([
+    ...extras.filter((extra) => overlays.has(extra.id) || behind.has(extra.id)).map((e) => e.ref),
+    ...keptPlans.map((plan) => plan.ref),
+  ]);
   const WHY: Record<string, UnplacedWhy> = {
     "no-room": "no-room",
     "one-extra": "busy",
@@ -2175,7 +2523,9 @@ function placeOnce(
       footage: current.tracks.footage,
       captions: outCaptions,
       overlays: outOverlays,
-      transitions,
+      transitions: [...transitionItems.values()]
+        .sort((a, b) => a.index - b.index)
+        .map(({ item }) => item),
       sounds: current.tracks.sounds,
       ...(outBehind.length > 0 ? { behind: outBehind } : {}),
     },
@@ -2185,18 +2535,12 @@ function placeOnce(
     placed,
     extras: new Map(extras.map((extra) => [extra.ref, extra])),
     labels: new Map(extras.map((extra) => [extra.ref, describe(extra)])),
-    transitions: input.transitions.flatMap((transition, index) => {
-      const ref = `transitions[${index}]`;
-      if (room.removed.has(ref)) return [];
-      return [
-        {
-          ref,
-          label: `transition ${index + 1} (${transition.kind})`,
-          start: word(transition.from).start,
-          end: word(transition.to).end,
-        },
-      ];
-    }),
+    transitions: keptPlans.map((plan) => ({
+      ref: plan.ref,
+      label: `transition ${plan.index + 1} (${plan.choice.kind})`,
+      start: plan.start,
+      end: plan.end,
+    })),
     blocks: blockPlaces,
     facesCovered,
     failed,

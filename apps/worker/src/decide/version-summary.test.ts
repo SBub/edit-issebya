@@ -109,7 +109,7 @@ describe("writeVersionSummary", () => {
     expect(summary.title).toBe("Title added");
     expect(summary.summary).toContain("The photo you asked for did not fit");
     expect(lines).toEqual([
-      "decide: summary from the template, reel r1: safeguard: names a photo that is not in the saved difference (summary-1)",
+      "decide: summary from the template, reel r1: safeguard: names a photo that is not in the saved difference (summary-2)",
     ]);
   });
 

@@ -279,11 +279,15 @@ const OWNER_CAN: Record<UnplacedItem["kind"], string> = {
   big_word: "ask for it on another sentence",
 };
 
+// What the owner can do about a transition left out.
+const OWNER_CAN_TRANSITION = "ask for it on another phrase, or for fewer transitions";
+
 // The final checklist against the final placement. An ask is done when
-// every item it links is in the version (`behind_rules`, word fixes and
-// transitions always are). Otherwise its reason is each left-out item's drop
-// (from the engine's record) and what the owner can do; with no link, the
-// answer's `why_not` (or the editor's skip reason), else a plain default.
+// every item it links is in the version (`behind_rules` and word fixes always
+// are; a transition when the engine kept it). Otherwise its reason is each
+// left-out item's drop (from the engine's record) and what the owner can do;
+// with no link, the answer's `why_not` (or the editor's skip reason), else a
+// plain default.
 export function checklistOutcome(
   checklist: DecideAnswer["checklist"],
   placement: { unplaced: readonly UnplacedItem[]; record: readonly EngineNote[] },
@@ -296,7 +300,20 @@ export function checklistOutcome(
     const missing = entry.fulfilled_by
       .map((ref) => placement.unplaced.find((item) => item.ref === ref))
       .filter((item): item is UnplacedItem => item !== undefined);
-    if (missing.length === 0) return { ...base, done: true, reason: null };
+    // A linked transition the engine dropped (by its timing, the rate, an
+    // overlap or no room for its text).
+    const droppedTransitions = entry.fulfilled_by.flatMap((ref) => {
+      const index = /^transitions\[(\d+)\]$/.exec(ref)?.[1];
+      if (index === undefined) return [];
+      const id = `transition-${Number(index) + 1}`;
+      const drop = placement.record.findLast(
+        (note) => note.item === id && (note.action === "dropped" || note.action === "removed"),
+      );
+      return drop ? [`${drop.reason}; ${OWNER_CAN_TRANSITION}`] : [];
+    });
+    if (missing.length === 0 && droppedTransitions.length === 0) {
+      return { ...base, done: true, reason: null };
+    }
     const reasons = missing.map((item) => {
       const drop = placement.record.findLast(
         (note) => note.item === item.id && note.action === "dropped",
@@ -304,6 +321,6 @@ export function checklistOutcome(
       const why = drop ? drop.reason : `${itemLabel(item.id)}: ${WHY_WORDS[item.why]}`;
       return `${why}; ${OWNER_CAN[item.kind]}`;
     });
-    return { ...base, done: false, reason: reasons.join(". ") };
+    return { ...base, done: false, reason: [...reasons, ...droppedTransitions].join(". ") };
   });
 }

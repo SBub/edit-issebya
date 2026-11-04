@@ -16,6 +16,55 @@ function edit(change: (edit: Edit) => void = () => {}): Edit {
 
 const diff = (before: Edit, after: Edit) => diffEdits(before, after, transcript, ISSEBYA_PRESET);
 
+const levelled = FIXTURES.find((fixture) => fixture.name === "rethink-work-transitions")!;
+
+describe("diffEdits on transitions", () => {
+  const changed = (change: (item: Edit["tracks"]["transitions"][number]) => void) => {
+    const copy = structuredClone(levelled.edit);
+    change(copy.tracks.transitions[0]!);
+    return diffEdits(levelled.edit, copy, levelled.transcript, ISSEBYA_PRESET);
+  };
+
+  it("reads a transition over a longer phrase as now covering new words", () => {
+    const entries = changed((item) => {
+      item.words = ["w24", "w25", ...item.words!];
+      item.start = { word: "w24", offset: -0.3 };
+    });
+    expect(entries).toEqual([
+      {
+        kind: "transition",
+        action: "retimed",
+        id: "transition-1",
+        text: "we do AI has completely disrupted the way we work",
+        was: "AI has completely disrupted the way we work",
+      },
+    ]);
+  });
+
+  it("reads a slower or longer transition as one change, its timing with it", () => {
+    expect(
+      changed((item) => {
+        item.pace = "slow";
+        item.start = { word: "w26", offset: -0.48 };
+      }),
+    ).toEqual([expect.objectContaining({ action: "changed", change: "slower" })]);
+    expect(
+      changed((item) => {
+        item.hold = "long";
+        item.end = { word: "w33", edge: "end", offset: 0.2 };
+      }),
+    ).toEqual([expect.objectContaining({ action: "changed", change: "stays longer" })]);
+  });
+
+  it("reads a transition's text set elsewhere as moved, not as a new phrase", () => {
+    expect(
+      changed((item) => {
+        item.levels!.key.position.y += 20;
+      }),
+    ).toEqual([expect.objectContaining({ kind: "transition", action: "moved" })]);
+  });
+});
+
 describe("diffEdits", () => {
   it("gives nothing for identical edits", () => {
     expect(diff(edit(), edit())).toEqual([]);

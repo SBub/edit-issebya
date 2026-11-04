@@ -21,7 +21,8 @@
       {
         "kind": "dim",
         "from": "w0006",
-        "to": "w0008"
+        "to": "w0008",
+        "key_from": "w0007"
       }
     ],
     "word_fixes": [

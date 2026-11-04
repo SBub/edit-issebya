@@ -168,7 +168,7 @@ describe("runDecide", () => {
   it("passes the committed E2E answer in one round, saving version 2", async () => {
     const ai = fakeAiRunner([
       scripted,
-      summaryEnvelope("Title and fade added", "A title opens the reel and a soft fade follows."),
+      summaryEnvelope("Fade added", "A soft fade now covers a few words."),
     ]);
     const { run, calls } = await decide(ai);
     await run;
@@ -176,8 +176,9 @@ describe("runDecide", () => {
     expect(ai.calls[0]!.model).toBeUndefined();
     // The summary call: the small model, the difference and the record.
     expect(ai.calls[1]!.model).toBe("claude-haiku-5-5");
-    expect(ai.calls[1]!.prompt).toContain('"kind": "title"');
+    expect(ai.calls[1]!.prompt).toContain('"kind": "transition"');
     expect(ai.calls[1]!.prompt).toContain('"action": "added"');
+    expect(ai.calls[1]!.prompt).toMatch(/"item": "title",\s+"action": "dropped"/);
     expect(ai.calls[1]!.prompt).toMatch(/"item": "accent-1",\s+"action": "dropped"/);
     expect(rows.size).toBe(2);
     const v2 = rows.get(current!)!;
@@ -186,9 +187,9 @@ describe("runDecide", () => {
       parent_id: firstId,
       request: null,
       model: "claude-opus-5-5",
-      prompt_version: "decide-8",
-      change_title: "Title and fade added",
-      change_summary: "A title opens the reel and a soft fade follows.",
+      prompt_version: "decide-9",
+      change_title: "Fade added",
+      change_summary: "A soft fade now covers a few words.",
       checks: [],
       used_free_field: false,
       unexpressed: [],
@@ -198,10 +199,15 @@ describe("runDecide", () => {
     });
     const done = lastCall(calls);
     if (done.call !== "done") throw new Error(JSON.stringify(calls));
-    // On the 2.7 s clip the title holds the screen: the accent on w0005
-    // cannot come in beside it (one extra at a time) and is dropped.
+    // On the 2.7 s clip the dim over "clip for the" holds the screen for its
+    // 1.5 s from 0.95 s: the title and the accent on w0005 cannot show their
+    // 1.5 s before it comes in (nothing else shows during a transition), so
+    // both are dropped.
     expect(done.summary).toMatch(
-      /^version 2: 0 accents, 1 transition, title set, 1 word fixed, 1 dropped, under a second$/,
+      /^version 2: 0 accents, 1 transition, no title, 1 word fixed, 2 dropped, under a second$/,
+    );
+    expect(v2.engine_record).toContainEqual(
+      expect.objectContaining({ item: "title", action: "dropped", rule: "one-extra" }),
     );
     expect(v2.engine_record).toContainEqual(
       expect.objectContaining({ item: "accent-1", action: "dropped", rule: "one-extra" }),
@@ -255,9 +261,9 @@ describe("runDecide", () => {
     ]);
     const { run } = await decide(ai);
     await run;
-    // Title, transition and a fixed word: the template's text.
+    // A transition and the captions (a fixed word): the template's text.
     expect(rows.get(current!)).toMatchObject({
-      change_title: "Several things changed",
+      change_title: "Transition and captions changed",
     });
     expect(rows.get(current!)!.change_summary).not.toMatch(/photo/i);
   });
@@ -269,9 +275,9 @@ describe("runDecide", () => {
     expect(ai.calls).toHaveLength(2);
     expect(lastCall(calls).call).toBe("done");
     expect(rows.get(current!)).toMatchObject({
-      change_title: "Several things changed",
+      change_title: "Transition and captions changed",
       change_summary:
-        'A title was added on "this is a short". A transition was added, and a few smaller changes.',
+        'A transition was added. One word in the captions is fixed, it now reads "Studio".',
     });
   });
 
@@ -529,20 +535,27 @@ describe("runDecide", () => {
     const stored = JSON.parse(
       new TextDecoder().decode((await storage.get(rows.get(current!)!.r2_key))!),
     ) as { tracks: Record<string, Json[]> };
-    // The title from its first word to a second after its last (on the
-    // nearest word end); the accent beside it is dropped (one extra at a time).
-    expect(stored.tracks.overlays!.map((item) => [item.id, item.start, item.words])).toEqual([
-      ["title", { word: "w0001" }, ["w0001", "w0002", "w0003", "w0004"]],
-    ]);
-    expect(stored.tracks.overlays![0]!.position).toMatchObject({ align: "left" });
+    // The dim over its phrase: in 0.3 s before w0006, its lead-in on w0006
+    // and its key phrase on w0007; lengthened to 1.5 s, it holds the screen,
+    // so the title and the accent are dropped.
+    expect(stored.tracks.overlays).toEqual([]);
     expect(stored.tracks.transitions).toEqual([
-      {
+      expect.objectContaining({
         id: "transition-1",
         type: "dim",
-        start: { word: "w0006" },
-        end: { word: "w0008", edge: "end" },
-      },
+        start: { word: "w0006", offset: -0.3 },
+        words: ["w0006", "w0007", "w0008"],
+        key: "w0007",
+        levels: {
+          lead: expect.objectContaining({ text: "clip", start: { word: "w0006" } }),
+          key: expect.objectContaining({ text: "for the", start: { word: "w0007" } }),
+        },
+      }),
     ]);
+    // Its phrase's captions show only inside it.
+    for (const id of ["cw0006", "cw0007", "cw0008"]) {
+      expect(stored.tracks.captions!.find((item) => item.id === id)!.position).toBeUndefined();
+    }
     expect(stored.tracks.captions!.find((item) => item.id === "cw0010")!.text).toBe("Studio");
   });
 
@@ -550,6 +563,8 @@ describe("runDecide", () => {
     const wide = resultEnvelope(
       answer((a) => {
         a.accents = [{ from: "w0001", to: "w0010", title: true }];
+        // No transition: nothing else shows while one runs.
+        a.transitions = [];
       }),
     );
     const ai = fakeAiRunner([wide]);
@@ -573,7 +588,7 @@ describe("runDecide", () => {
     expect(title.map((note) => note.action)).toEqual(expect.arrayContaining(["wrapped"]));
     // The summary call got a decide answer: the template, said in one line.
     expect(lines[0]).toBe(
-      `decide: summary from the template, reel ${TEST_JOB.reel_id}: answer-schema (summary-1)`,
+      `decide: summary from the template, reel ${TEST_JOB.reel_id}: answer-schema (summary-2)`,
     );
     // One engine record line per version, with the reel id; no engine bug line.
     expect(lines).toHaveLength(2);
@@ -681,8 +696,10 @@ describe("runDecide with a behind item", () => {
   ) =>
     resultEnvelope(
       answer((a) => {
-        // No accents: on the 2.7 s clip the title would hold the screen.
+        // No accents and no transition: on the 2.7 s clip the title or the
+        // transition would hold the screen.
         a.accents = [];
+        a.transitions = [];
         a.photos = items;
         a.behind_rules = rules;
       }),
@@ -907,9 +924,9 @@ describe("runDecide with a behind item", () => {
     });
     await run;
     expect(rows.get(current!)).toMatchObject({
-      change_title: "Several things changed",
+      change_title: "Photo and captions changed",
       change_summary:
-        "A photo now shows behind you. A transition was added, and a few smaller changes.",
+        'A photo now shows behind you. One word in the captions is fixed, it now reads "Studio".',
     });
   });
 

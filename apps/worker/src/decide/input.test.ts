@@ -1,7 +1,7 @@
 import { ISSEBYA_PRESET, type Transcript, parseEdit, sentenceSpans } from "@edit-issebya/edit";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { decideInput } from "./input.ts";
+import { decideInput, presetSummary } from "./input.ts";
 
 const word = (id: string, text: string, start: number, end: number) => ({ id, text, start, end });
 
@@ -29,6 +29,20 @@ describe("sentenceSpans", () => {
 
   it("is empty without words", () => {
     expect(sentenceSpans({ words: [] } as unknown as Transcript)).toEqual([]);
+  });
+});
+
+describe("presetSummary", () => {
+  it("gives the transition library with what each kind is for and how often, never a card", () => {
+    expect(presetSummary(ISSEBYA_PRESET)).toMatchObject({
+      transitions: [
+        { kind: "dim", description: ISSEBYA_PRESET.transitions.dim.description },
+        { kind: "panel", description: ISSEBYA_PRESET.transitions.panel.description },
+        { kind: "numbered", description: ISSEBYA_PRESET.transitions.numbered.description },
+      ],
+      transition_every_seconds: 7,
+    });
+    expect(JSON.stringify(presetSummary(ISSEBYA_PRESET))).not.toMatch(/card|#|rgb/);
   });
 });
 

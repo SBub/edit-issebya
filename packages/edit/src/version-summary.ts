@@ -166,6 +166,7 @@ function kindsOfRef(ref: string): DiffKind[] {
   if (ref === "big_word") return ["big_word"];
   if (ref.startsWith("accents[")) return ["accent", "title"];
   if (ref.startsWith("photos[")) return ["photo"];
+  if (ref.startsWith("transitions[")) return ["transition"];
   return [];
 }
 
@@ -209,6 +210,9 @@ const DROP_WORDS: Record<string, string> = {
   "photo-time": "its sentence is too short",
   "accent-time": "it comes too close to the end",
   "big-word-time": "it comes too close to the end",
+  "transition-time": "the reel is too short for it",
+  "transition-rate": "the reel has room for only a few of them",
+  "transition-overlap": "another one shows at that moment",
 };
 
 const NUMBERS = [
@@ -358,13 +362,38 @@ function sentenceOf(group: Group, preset: Preset, quotes: boolean): string {
             : `${article} ${one} was added${on}.`,
         removed: `The ${one}${on} was taken out.`,
         moved: `The ${one}${where} moved to another place.`,
-        retimed: `The ${one}${on} now shows at a different moment.`,
+        retimed:
+          kind === "transition" && first.was !== undefined
+            ? transitionCovers(first, preset, quotes)
+            : `The ${one}${on} now shows at a different moment.`,
         changed:
-          kind === "footage" ? "The footage was trimmed differently." : `The ${one}${on} changed.`,
+          kind === "footage"
+            ? "The footage was trimmed differently."
+            : kind === "transition" && first.change
+              ? `The ${one}${on} ${TRANSITION_CHANGE[first.change]}.`
+              : `The ${one}${on} changed.`,
       }[first.action];
     }
   }
   return ruleSentence ? `${sentence} ${ruleSentence}` : sentence;
+}
+
+// A transition's motion or hold change, as the summary says it.
+const TRANSITION_CHANGE: Record<NonNullable<DiffEntry["change"]>, string> = {
+  slower: "moves slower",
+  "usual speed": "moves at its usual speed again",
+  "stays longer": "stays longer",
+  "usual hold": "leaves sooner again",
+};
+
+// A transition now over other words: the words it was on and the words it
+// covers now, when both quote safely.
+function transitionCovers(entry: DiffEntry, preset: Preset, quotes: boolean): string {
+  const was = quotes ? quoteOf(entry.was, preset) : null;
+  const now = quotes ? quoteOf(entry.text, preset) : null;
+  if (was && now) return `The transition on ${was} now covers ${now}.`;
+  if (now) return `The transition now covers ${now}.`;
+  return "The transition now covers other words.";
 }
 
 function joinSummary(parts: readonly string[], more: boolean): string {

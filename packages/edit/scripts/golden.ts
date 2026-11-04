@@ -1,8 +1,9 @@
 // Writes the engine-placed fixture versions (the baseline as the worker's
 // first_version step saves it, over the fixture clip's background map; the
 // behind hand edit's choices placed by the layout engine; and the same
-// choices over a synthetic light background, readable; and the 2026-11-03
-// request placed with room made for its photo) and every fixture's
+// choices over a synthetic light background, readable; the 2026-11-03
+// request placed with room made for its photo; and the same choices with one
+// transition of each kind, two of them numbered list items) and every fixture's
 // golden page and widths from the Node build: `yarn workspace @edit-issebya/edit golden`. Commit what it
 // writes; the Node and browser tests compare against it.
 import { readFile, writeFile } from "node:fs/promises";
@@ -146,6 +147,32 @@ for (const note of request.record.filter((entry) => entry.rule === "make-room"))
   console.log(`request: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
 }
 await write("rethink-work-request", withPlaceholders(request.edit));
+
+// The engine's choices with a transition of each kind: a dim, two numbered
+// items of the list "fair pay, ..., protected mental health" (w104 is too
+// close to the first item for both to show, so the second is w106 to w108)
+// and a panel.
+const withTransitions = editFromAnswer(
+  behind.edit,
+  {
+    ...choices,
+    transitions: [
+      { kind: "dim", from: "w26", to: "w33", key_from: "w30" },
+      { kind: "numbered", from: "w100", to: "w103", key_from: "w102" },
+      { kind: "numbered", from: "w106", to: "w108", key_from: "w107" },
+      { kind: "panel", from: "w126", to: "w133", key_from: "w128" },
+    ],
+  },
+  ISSEBYA_PRESET,
+  RETHINK_WORK.transcript,
+  RETHINK_WORK.headTrack,
+  await nodeMeasurer(),
+);
+if (!withTransitions.ok) throw new Error(withTransitions.reasons.join("; "));
+for (const note of withTransitions.record.filter((entry) => entry.item.startsWith("transition-"))) {
+  console.log(`transitions: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
+}
+await write("rethink-work-transitions", withPlaceholders(withTransitions.edit));
 
 // Re-imported after the baseline is written, so the goldens build the new one.
 const { FIXTURES } = await import("../src/test-support/fixtures.ts");

@@ -9,6 +9,12 @@ import { FONT_KEYS, type Preset } from "./preset.ts";
 import type { BehindItem, Edit, EditMask, EditRef } from "./schema.ts";
 import { resolveSpans, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
+import {
+  hiddenCaptionIds,
+  levelBoxes,
+  motionSeconds,
+  transitionBackground,
+} from "./transitions.ts";
 
 export type AssetRole = "footage" | "font" | "sound" | "mask" | "photo";
 
@@ -69,7 +75,26 @@ export function build(
   measurer: Measurer,
 ): BuildResult {
   const resolved = resolveTimeline(edit, transcript);
-  const boxes = layoutText(edit, resolved, transcript, headTrack, preset, measurer);
+  // A transition's own captions show only as its levels, never in their place.
+  const hidden = hiddenCaptionIds(edit);
+  const shownEdit =
+    hidden.size === 0
+      ? edit
+      : {
+          ...edit,
+          tracks: {
+            ...edit.tracks,
+            captions: edit.tracks.captions.filter((caption) => !hidden.has(caption.id)),
+          },
+        };
+  const boxes = layoutText(shownEdit, resolved, transcript, headTrack, preset, measurer);
+  const levels = levelBoxes(
+    edit,
+    resolved,
+    new Map(transcript.words.map((word) => [word.id, word])),
+    preset,
+    measurer,
+  );
   const behindItems = edit.tracks.behind ?? [];
   const bigWords = new Map<string, BigWordBox>();
   for (const item of behindItems) {
@@ -81,9 +106,16 @@ export function build(
         : bigWordLayout(item, resolved.get(item.id)!, headTrack, preset, measurer),
     );
   }
-  const checks = runChecks(edit, boxes, resolved, transcript, headTrack, preset, [
-    ...bigWords.values(),
-  ]);
+  const checks = runChecks(
+    edit,
+    boxes,
+    resolved,
+    transcript,
+    headTrack,
+    preset,
+    [...bigWords.values()],
+    levels,
+  );
   const spans = maskSpans(edit, transcript, preset);
   const masks = spans.map((maskSpan) => {
     const mask = (edit.inputs.masks ?? []).find(
@@ -115,6 +147,9 @@ export function build(
       return `      .f-${key} { font-family: "${font.family}", sans-serif; font-weight: ${font.weight}; }`;
     }),
     ...(spans.length > 0 ? BEHIND_STYLE : []),
+    ...(levels.length > 0
+      ? ["      .level { position: absolute; line-height: 1; white-space: nowrap; opacity: 0; }"]
+      : []),
   ];
 
   const body: string[] = [];
@@ -197,8 +232,13 @@ export function build(
     body.push("      </div>");
   }
 
+  const { caption } = preset;
+  // Each transition is a layer of the background role; its text levels are
+  // children of the layer (so they come and go with it), each revealed on
+  // its own word with the caption's rise.
   for (const [index, item] of tracks.transitions.entries()) {
     const kind = preset.transitions[item.type];
+    const seconds = motionSeconds(item, preset);
     const { start, end } = span(item.id);
     const height = kind.layer.bottom - kind.layer.top;
     const hidden = kind.motion === "fade" ? "opacity: 0" : `transform: translateY(${height}px)`;
@@ -207,31 +247,55 @@ export function build(
       `top: ${px(kind.layer.top)}px`,
       `width: ${px(kind.layer.right - kind.layer.left)}px`,
       `height: ${px(height)}px`,
-      `background: ${item.color ?? kind.background}`,
+      `background: ${transitionBackground(kind, preset, item.color)}`,
       hidden,
       ...(item.style ? [inlineStyle(item.style)] : []),
     ].join("; ");
-    body.push(
-      `      <div${attrs([
-        ["id", item.id],
-        ["class", "clip layer"],
-        ["data-start", sec(start)],
-        ["data-duration", sec(end - start)],
-        ["data-track-index", String(40 + index)],
-        ["style", css],
-      ])}></div>`,
-    );
-    const out = Math.max(end - kind.seconds, start);
+    const own = levels.filter((level) => level.transitionId === item.id);
+    const open = `      <div${attrs([
+      ["id", item.id],
+      ["class", "clip layer"],
+      ["data-start", sec(start)],
+      ["data-duration", sec(end - start)],
+      ["data-track-index", String(40 + index)],
+      ["style", css],
+    ])}>`;
+    if (own.length === 0) {
+      body.push(`${open}</div>`);
+    } else {
+      body.push(open);
+      for (const level of own) {
+        const levelCss = [
+          `left: ${px(level.x - kind.layer.left)}px`,
+          `top: ${px(level.y - kind.layer.top)}px`,
+          `font-size: ${px(level.size)}px`,
+          `color: ${level.color}`,
+          ...(level.lines.length > 1 ? ["text-align: center"] : []),
+        ].join("; ");
+        body.push(
+          `        <div${attrs([
+            ["id", level.itemId],
+            ["class", `level f-${level.font}`],
+            ["style", levelCss],
+          ])}>${level.lines.map(escapeHtml).join("<br />")}</div>`,
+        );
+        js.push(
+          `tl.fromTo(${selector(level.itemId)}, { opacity: 0, y: ${caption.rise} }, { opacity: 1, y: 0, duration: ${num(caption.inSeconds)}, ease: "${caption.inEase}" }, ${num(level.start)});`,
+        );
+      }
+      body.push("      </div>");
+    }
+    const out = Math.max(end - seconds, start);
     const id = selector(item.id);
     if (kind.motion === "fade") {
       js.push(
-        `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(kind.seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
-        `tl.to(${id}, { opacity: 0, duration: ${num(kind.seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
+        `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
+        `tl.to(${id}, { opacity: 0, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
       );
     } else {
       js.push(
-        `tl.fromTo(${id}, { y: ${height} }, { y: 0, duration: ${num(kind.seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
-        `tl.to(${id}, { y: ${height}, duration: ${num(kind.seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
+        `tl.fromTo(${id}, { y: ${height} }, { y: 0, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
+        `tl.to(${id}, { y: ${height}, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
       );
     }
   }
@@ -249,7 +313,6 @@ export function build(
       ["data-track-index", "50"],
     ])}>`,
   );
-  const { caption } = preset;
   for (const box of texts) {
     const css = [
       `left: ${px(box.x)}px`,

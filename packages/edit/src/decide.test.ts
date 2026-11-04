@@ -12,7 +12,7 @@ import {
   usedFreeField,
 } from "./decide.ts";
 import { WISHES } from "./engine-input.ts";
-import { ISSEBYA_PRESET, TRANSITION_TYPES } from "./preset.ts";
+import { ISSEBYA_PRESET, TRANSITION_KINDS } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
@@ -63,7 +63,7 @@ function answer(change: (answer: Json) => void = () => {}): Json {
     ],
     big_word: null,
     photos: [],
-    transitions: [{ kind: "dim", from: "w0006", to: "w0008" }],
+    transitions: [{ kind: "dim", from: "w0006", to: "w0008", key_from: "w0007" }],
     word_fixes: [{ word: "w0010", text: "Studio" }],
     checklist: [],
     behind_rules: { photos: "keep", big_word: "keep" },
@@ -95,7 +95,9 @@ describe("decideJsonSchema", () => {
         expect(lists.length).toBeGreaterThan(0);
         for (const list of lists) expect(list).toEqual(ids);
       }
-      expect(enumsUnder(schema, "kind")).toEqual([[...TRANSITION_TYPES]]);
+      // The library only: `card` is never offered.
+      expect(enumsUnder(schema, "kind")).toEqual([[...TRANSITION_KINDS]]);
+      expect(JSON.stringify(schema)).not.toContain('"card"');
       const wishes = enumsUnder(schema, "wish");
       expect(wishes).toHaveLength(4);
       for (const list of wishes) expect(list).toEqual([...WISHES]);
@@ -229,7 +231,7 @@ describe("parseDecideAnswer", () => {
 
   it("refuses a phrase that ends before it starts, and a second title", () => {
     const backwards = answer((a) => {
-      a.transitions = [{ kind: "dim", from: "w0008", to: "w0006" }];
+      a.transitions = [{ kind: "dim", from: "w0008", to: "w0006", key_from: "w0008" }];
     });
     expect(reasons(backwards)).toContain(
       "transitions.0.to: ends on w0006, before it starts on w0008",
@@ -238,6 +240,52 @@ describe("parseDecideAnswer", () => {
       (a.accents as Json[])[1]!.title = true;
     });
     expect(reasons(two)).toContain("accents: only one accent is the title");
+  });
+
+  it("refuses a card: the library is dim, panel and numbered", () => {
+    const card = answer((a) => {
+      (a.transitions as Json[])[0]!.kind = "card";
+    });
+    expect(reasons(card)).toMatch(/^transitions\.0\.kind: /m);
+    const numbered = answer((a) => {
+      (a.transitions as Json[])[0]!.kind = "numbered";
+    });
+    expect(parse(numbered).ok).toBe(true);
+  });
+
+  it("refuses a transition without key_from, or with its key phrase outside its phrase", () => {
+    const missing = answer((a) => {
+      delete (a.transitions as Json[])[0]!.key_from;
+    });
+    expect(reasons(missing)).toMatch(/^transitions\.0\.key_from: /m);
+    const after = answer((a) => {
+      (a.transitions as Json[])[0]!.key_from = "w0009";
+    });
+    expect(reasons(after)).toContain(
+      "transitions.0.key_from: key phrase starts on w0009, outside w0006 to w0008",
+    );
+    const before = answer((a) => {
+      (a.transitions as Json[])[0]!.key_from = "w0005";
+    });
+    expect(reasons(before)).toContain(
+      "transitions.0.key_from: key phrase starts on w0005, outside w0006 to w0008",
+    );
+    const whole = answer((a) => {
+      (a.transitions as Json[])[0]!.key_from = "w0006";
+    });
+    expect(parse(whole).ok).toBe(true);
+  });
+
+  it("takes slow and long only on a request", () => {
+    for (const wish of ["slow", "long"]) {
+      const asked = answer((a) => {
+        (a.transitions as Json[])[0]!.wish = wish;
+      });
+      expect(reasons(asked)).toContain(
+        "transitions.0.wish: a wish only forwards the owner's request; there is none, leave it out",
+      );
+      expect(parse(asked, [], REQUEST).ok).toBe(true);
+    }
   });
 
   it("refuses a word fixed twice", () => {
@@ -422,6 +470,8 @@ describe("editFromAnswer", () => {
     const made = await place(
       answer((a) => {
         a.accents = [];
+        // No transition: nothing else shows while one runs.
+        a.transitions = [];
         a.photos = [{ photo_id: PHOTO, from: "w0001", to: "w0010" }];
         a.big_word = { word: "w0005" };
       }),
