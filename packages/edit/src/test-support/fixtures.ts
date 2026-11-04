@@ -8,6 +8,7 @@ import baselineShortSpeech from "../testdata/versions/baseline-short-speech.edit
 import rethinkBehind from "../testdata/versions/rethink-work-behind.edit.json" with { type: "json" };
 import rethinkEngine from "../testdata/versions/rethink-work-engine.edit.json" with { type: "json" };
 import rethinkHand from "../testdata/versions/rethink-work-hand.edit.json" with { type: "json" };
+import rethinkReadable from "../testdata/versions/rethink-work-readable.edit.json" with { type: "json" };
 import { RETHINK_WORK, SHORT_SPEECH } from "./inputs.ts";
 
 export interface Fixture {
@@ -33,4 +34,7 @@ export const FIXTURES: Fixture[] = [
   fixture("rethink-work-behind", rethinkBehind, RETHINK_WORK),
   // The behind edit's choices placed by the layout engine.
   fixture("rethink-work-engine", rethinkEngine, RETHINK_WORK),
+  // The same choices placed over a light background: a caption block moved
+  // to a darker free place and an accent with a soft shadow.
+  fixture("rethink-work-readable", rethinkReadable, RETHINK_WORK),
 ];

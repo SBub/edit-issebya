@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BACKGROUNDS_STEP } from "./backgrounds/ensure-backgrounds.ts";
 import { MASK_STEP } from "./cutout/spans.ts";
 import { STEP as DECIDE } from "./decide/run-decide.ts";
 import { STEP as FIRST_VERSION } from "./first-version.ts";
@@ -19,6 +20,7 @@ describe("STEP_NAMES", () => {
     FIRST_VERSION,
     DECIDE,
     MASK_STEP,
+    BACKGROUNDS_STEP,
     RESTORE,
     RENDER,
     DESCRIBE_PHOTO,

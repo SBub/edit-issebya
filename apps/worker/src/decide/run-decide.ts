@@ -12,6 +12,7 @@ import {
   ISSEBYA_PRESET,
   type Measurer,
   applyBehindRules,
+  backgroundSampler,
   type VersionBlobs,
   type VersionRows,
   build,
@@ -28,6 +29,7 @@ import {
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import type { AiRunner } from "../ai.ts";
+import { ensureBackgrounds } from "../backgrounds/ensure-backgrounds.ts";
 import { ensureCutouts } from "../cutout/ensure-cutouts.ts";
 import { withMasks } from "../cutout/spans.ts";
 import { editMeasurer } from "../edit-measurer.ts";
@@ -70,7 +72,8 @@ export interface DecideRun {
   photos?: PhotoLibrary;
   // The reel's behind rules ("no photos in this one"); none: nothing forbidden.
   rules?: ReelRules;
-  // For the cut-out a behind item needs before the version is saved.
+  // For the cut-out a behind item needs before the version is saved, and the
+  // footage's background map the engine keeps the text readable over.
   tools?: ToolPaths;
   spawnTool?: SpawnTool;
   env?: NodeJS.ProcessEnv;
@@ -172,6 +175,20 @@ export function runDecide({
         throw new Error(`${STEP}: current version does not parse: ${parsed.reasons.join("; ")}`);
       }
       const current = parsed.edit;
+      // Before the AI call, so a failure here is an ordinary step failure.
+      const backgrounds = backgroundSampler(
+        await ensureBackgrounds({
+          ctx,
+          storage,
+          keyPrefix,
+          scratchDir,
+          footage: row.inputs.footage,
+          tools,
+          spawnTool,
+          recordStored,
+        }),
+        preset.frame,
+      );
       const forbid = rules ? await rules.read(reelId) : { photos: false, bigWord: false };
       const decideRules: DecideRules = { requested: request !== null, forbid };
       // Photos switched off and no request that could lift it: none offered.
@@ -224,6 +241,7 @@ export function runDecide({
             transcript,
             headTrack,
             measure,
+            backgrounds,
           );
           if (!composed.ok) return { ok: false, reasons: composed.reasons, rules: ["answer-edit"] };
           // What the answer wrote: a fix showing a glossary word's heard form.

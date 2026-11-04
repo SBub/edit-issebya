@@ -1,5 +1,6 @@
 import { type BigWordBox, bigWordLayout, maskSpans, placedBigWord, spotBox } from "./behind.ts";
 import { type Check, runChecks } from "./checks.ts";
+import { isLightText } from "./contrast.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
 import { type TextBox, layoutText } from "./layout.ts";
@@ -256,6 +257,7 @@ export function build(
       `font-size: ${px(box.size)}px`,
       `color: ${box.color}`,
       ...(box.lines.length > 1 ? ["text-align: center"] : []),
+      ...(box.shadow ? [`text-shadow: ${textShadow(box.color, box.shadow, preset)}`] : []),
       ...(box.style ? [inlineStyle(box.style)] : []),
     ].join("; ");
     body.push(
@@ -365,6 +367,7 @@ function behindElement(
     `top: ${px(box.y)}px`,
     `font-size: ${px(box.size)}px`,
     `color: ${box.color}`,
+    ...(item.shadow ? [`text-shadow: ${textShadow(box.color, item.shadow, preset)}`] : []),
     ...extra,
   ].join("; ");
   return `<div${attrs([
@@ -373,6 +376,14 @@ function behindElement(
     ...timing,
     ["style", css],
   ])}>${escapeHtml(box.text)}</div>`;
+}
+
+// The preset's soft shadow at a level: dark under a light text, light under
+// a dark one, so the halo always separates it from what is behind.
+function textShadow(color: string, level: 1 | 2, preset: Preset): string {
+  const { shadows } = preset.readability;
+  const [soft, strong] = isLightText(color) ? shadows.dark : shadows.light;
+  return level === 1 ? soft : strong;
 }
 
 function inlineStyle(style: Record<string, string>): string {

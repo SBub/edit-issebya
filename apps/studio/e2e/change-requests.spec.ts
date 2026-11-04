@@ -291,12 +291,17 @@ test("a change becomes version 3 and the preview shows it without a reload", asy
   await expect(page.getByTestId("change-pending")).toHaveCount(0);
   expect(await noReloadMarker()).toBe("marker");
 
-  // Only the decide step ran: no fixed step, no first version.
+  // Only the decide step ran: no fixed step, no first version; the footage's
+  // background map, made by the process job, reused inside it.
   const { data: steps } = await admin
     .from("steps")
     .select("name, status")
-    .eq("job_id", changes[0]!.id);
-  expect(steps).toEqual([{ name: "decide", status: "done" }]);
+    .eq("job_id", changes[0]!.id)
+    .order("started_at");
+  expect(steps).toEqual([
+    { name: "decide", status: "done" },
+    { name: "backgrounds", status: "skipped" },
+  ]);
 
   // One event, the reel id only: never the request text.
   const sent = eventsNamed(events, "studio_change_requested");

@@ -21,6 +21,7 @@ import {
   isTransient,
 } from "../failure.ts";
 import { createTelemetry } from "../telemetry.ts";
+import { storeFixtureBackgrounds } from "../backgrounds/test-support.ts";
 import { saveFirstVersion } from "../first-version.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
@@ -88,6 +89,7 @@ beforeEach(async () => {
       await storage.put(cacheKey(PREFIX, step.name, step.fingerprint, file), new Uint8Array(bytes));
     }
   }
+  await storeFixtureBackgrounds(storage, PREFIX, fingerprints);
   rows = new Map();
   current = null;
   ids = 0;
@@ -98,6 +100,8 @@ beforeEach(async () => {
     blobs: storageVersionBlobs(storage),
     keyPrefix: PREFIX,
     fingerprints,
+    scratchDir: scratch,
+    tools: { ffmpeg: "ffmpeg", ffprobe: "ffprobe", hyperframes: ["node", "hf.mjs"] },
     newId,
     log: () => {},
   });
@@ -478,7 +482,8 @@ describe("runDecide when the AI is not available", () => {
     expect(ai.calls).toHaveLength(1);
     expect(current).toBe(firstId);
     expect(rows.size).toBe(1);
-    expect(calls.map((c) => c.call)).toEqual(["start", "waiting"]);
+    // The background map, reused before the AI call.
+    expect(calls.map((c) => c.call)).toEqual(["start", "skipped", "waiting"]);
     expect(lastCall(calls)).toMatchObject({ reason: "the usage limit is reached" });
   });
 
@@ -505,7 +510,7 @@ describe("runDecide when the AI is not available", () => {
     expect(made).toBe(1);
     expect(error.cause).toBeInstanceOf(PermanentError);
     expect(isTransient(error)).toBe(false);
-    expect(calls.map((c) => c.call)).toEqual(["start", "failed"]);
+    expect(calls.map((c) => c.call)).toEqual(["start", "skipped", "failed"]);
   });
 });
 

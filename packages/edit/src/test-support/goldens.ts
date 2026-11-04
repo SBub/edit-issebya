@@ -6,6 +6,8 @@ import behindHtml from "../testdata/golden/rethink-work-behind.html?raw";
 import behindWidths from "../testdata/golden/rethink-work-behind.widths.json?raw";
 import engineHtml from "../testdata/golden/rethink-work-engine.html?raw";
 import engineWidths from "../testdata/golden/rethink-work-engine.widths.json?raw";
+import readableHtml from "../testdata/golden/rethink-work-readable.html?raw";
+import readableWidths from "../testdata/golden/rethink-work-readable.widths.json?raw";
 import rethinkHtml from "../testdata/golden/rethink-work-hand.html?raw";
 import rethinkWidths from "../testdata/golden/rethink-work-hand.widths.json?raw";
 
@@ -14,4 +16,5 @@ export const GOLDENS: Record<string, { html: string; widths: string }> = {
   "rethink-work-hand": { html: rethinkHtml, widths: rethinkWidths },
   "rethink-work-behind": { html: behindHtml, widths: behindWidths },
   "rethink-work-engine": { html: engineHtml, widths: engineWidths },
+  "rethink-work-readable": { html: readableHtml, widths: readableWidths },
 };

@@ -99,6 +99,7 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     end: anchor,
     style: styleSchema.optional(),
   };
+  const shadowLevel = z.union([z.literal(1), z.literal(2)]);
   const textProps = {
     text: z.string().min(1).max(200).optional(),
     font: z.enum(FONT_KEYS).optional(),
@@ -113,6 +114,9 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
       .optional(),
     // Set in two lines: this many words of the text on the first.
     break_after: z.number().int().min(1).max(60).optional(),
+    // A soft shadow the layout engine added for contrast (two preset levels);
+    // the text's colour is never changed for it.
+    shadow: shadowLevel.optional(),
   };
   const clip = z.object({
     ...base,
@@ -157,6 +161,7 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
         })
         .optional(),
       size: z.number().int().min(8).max(400).optional(),
+      shadow: shadowLevel.optional(),
     }),
   ]);
   return z.object({

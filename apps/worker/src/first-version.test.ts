@@ -12,6 +12,8 @@ import {
 } from "@edit-issebya/edit";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { backgroundsKey } from "./backgrounds/ensure-backgrounds.ts";
+import { storeFixtureBackgrounds } from "./backgrounds/test-support.ts";
 import { saveFirstVersion } from "./first-version.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
@@ -26,6 +28,7 @@ interface Manifest {
 }
 
 let root: string;
+let scratch: string;
 let storage: Storage;
 let fingerprints: Record<string, string>;
 let rows: Map<string, StoredVersion & NewVersion>;
@@ -51,6 +54,7 @@ function memoryRows(): VersionRows {
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "first-version-"));
+  scratch = await mkdtemp(join(tmpdir(), "first-version-scratch-"));
   storage = fakeStorage({ root, uploadUrlBase: "" });
   const manifest = JSON.parse(
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixtures
@@ -65,12 +69,14 @@ beforeEach(async () => {
       await storage.put(cacheKey(PREFIX, step.name, step.fingerprint, file), new Uint8Array(bytes));
     }
   }
+  await storeFixtureBackgrounds(storage, PREFIX, fingerprints);
   rows = new Map();
   current = null;
 });
 
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
+  await rm(scratch, { recursive: true, force: true });
 });
 
 function run(steps: ReturnType<typeof recordingSteps>["steps"]) {
@@ -81,7 +87,10 @@ function run(steps: ReturnType<typeof recordingSteps>["steps"]) {
     blobs: storageVersionBlobs(storage),
     keyPrefix: PREFIX,
     fingerprints,
+    scratchDir: scratch,
+    tools: { ffmpeg: "ffmpeg", ffprobe: "ffprobe", hyperframes: ["node", "hf.mjs"] },
     newId: () => VERSION_ID,
+    log: () => {},
   });
 }
 
@@ -124,11 +133,47 @@ describe("saveFirstVersion", () => {
     expect(parsed.ok).toBe(true);
     expect(stored.tracks.captions).toHaveLength(transcript.words.length);
 
-    expect(calls.map((call) => call.call)).toEqual(["start", "done"]);
-    const done = calls[1]!;
+    // The fixture clip's background map is stored: reused, no ffmpeg.
+    expect(calls[0]).toMatchObject({
+      call: "skipped",
+      name: "backgrounds",
+      summary: "backgrounds reused",
+    });
+    expect(calls.slice(1).map((call) => call.call)).toEqual(["start", "done"]);
+    const done = calls[2]!;
     expect(done.call === "done" && done.summary).toMatch(
       /^version 1 saved, under a second, [\d.]+ KB$/,
     );
+  });
+
+  it("keeps the captions readable over the footage: a light map gives each a shadow, its colour kept", async () => {
+    const key = backgroundsKey(PREFIX, {
+      step: "retime",
+      fingerprint: fingerprints.retime!,
+      file: "source.mp4",
+    });
+    // Every cell white, for the clip's 2.7 s.
+    const white = Buffer.alloc(36 * 64, 255).toString("base64");
+    const map = {
+      version: 1,
+      everySeconds: 0.5,
+      columns: 36,
+      rows: 64,
+      frames: Array(6).fill(white),
+    };
+    await storage.put(key, new TextEncoder().encode(JSON.stringify(map)));
+    await run(recordingSteps().steps);
+    const row = rows.get(VERSION_ID)!;
+    expect(row.engine_record).toContainEqual(
+      expect.objectContaining({ action: "shadowed", rule: "contrast-shadow" }),
+    );
+    const stored = JSON.parse(new TextDecoder().decode((await storage.get(row.r2_key))!)) as {
+      tracks: { captions: { shadow?: number; color?: string }[] };
+    };
+    for (const caption of stored.tracks.captions) {
+      expect(caption.shadow).toBe(2);
+      expect(caption.color).toBeUndefined();
+    }
   });
 
   it("records a hit and writes nothing when the reel already has a version", async () => {
@@ -138,6 +183,7 @@ describe("saveFirstVersion", () => {
     await run(steps);
     expect(rows.size).toBe(1);
     expect(await storage.list(`${PREFIX}reels/`)).toEqual(before);
+    // Nothing else read: not even the background map.
     expect(calls).toMatchObject([
       { call: "skipped", name: "first_version", summary: "first version kept, reused" },
     ]);

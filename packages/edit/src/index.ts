@@ -71,6 +71,14 @@ export {
   choicesOf,
 } from "./engine-input.ts";
 export { type EngineAction, type EngineNote, placeEdit } from "./engine.ts";
+export {
+  type BackgroundMap,
+  type Backgrounds,
+  BACKGROUND_GRID,
+  backgroundMapSchema,
+  backgroundSampler,
+} from "./background.ts";
+export { luminanceByte, rgbLuminance } from "./contrast.ts";
 export { glossaryChecks } from "./glossary.ts";
 export { type HarfBuzz, type Measurer, createMeasurer } from "./measure.ts";
 export { type ResolvedItem, resolveTimeline } from "./timeline.ts";
