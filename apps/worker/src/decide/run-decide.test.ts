@@ -11,11 +11,12 @@ import {
 } from "@edit-issebya/edit";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type AiRunner, fakeAiRunner, resultEnvelope } from "../ai.ts";
+import { type AiRunner, type FakeAiRunner, fakeAiRunner, resultEnvelope } from "../ai.ts";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import {
   AiUnavailable,
   AnswerRefused,
+  NothingChanged,
   PermanentError,
   findCause,
   isTransient,
@@ -31,6 +32,7 @@ import type { PhotoLibrary } from "../photos/photo-store.ts";
 import type { SpawnTool } from "../step-runner.ts";
 import type { ReelRules } from "./behind-rules.ts";
 import { runDecide } from "./run-decide.ts";
+import { SUMMARY_MODEL } from "./version-summary.ts";
 
 const PREFIX = "dev/";
 const FIXTURES = new URL("../../../../fixtures/pipeline/", import.meta.url);
@@ -149,16 +151,34 @@ async function decide(ai: AiRunner) {
   return { run, calls };
 }
 
+// The editor's calls (decide and editorial rounds), without the summary call.
+function editorCalls(ai: FakeAiRunner) {
+  return ai.calls.filter((call) => call.model !== SUMMARY_MODEL);
+}
+
+// A summary answer envelope for the double.
+const summaryEnvelope = (change_title: string, change_summary: string) =>
+  resultEnvelope({ change_title, change_summary });
+
 function lastCall(calls: ReturnType<typeof recordingSteps>["calls"]) {
   return calls.at(-1)!;
 }
 
 describe("runDecide", () => {
   it("passes the committed E2E answer in one round, saving version 2", async () => {
-    const ai = fakeAiRunner([scripted]);
+    const ai = fakeAiRunner([
+      scripted,
+      summaryEnvelope("Title and fade added", "A title opens the reel and a soft fade follows."),
+    ]);
     const { run, calls } = await decide(ai);
     await run;
-    expect(ai.calls).toHaveLength(1);
+    expect(ai.calls).toHaveLength(2);
+    expect(ai.calls[0]!.model).toBeUndefined();
+    // The summary call: the small model, the difference and the record.
+    expect(ai.calls[1]!.model).toBe("claude-haiku-5-5");
+    expect(ai.calls[1]!.prompt).toContain('"kind": "title"');
+    expect(ai.calls[1]!.prompt).toContain('"action": "added"');
+    expect(ai.calls[1]!.prompt).toMatch(/"item": "accent-1",\s+"action": "dropped"/);
     expect(rows.size).toBe(2);
     const v2 = rows.get(current!)!;
     expect(v2).toMatchObject({
@@ -166,9 +186,9 @@ describe("runDecide", () => {
       parent_id: firstId,
       request: null,
       model: "claude-opus-5-5",
-      prompt_version: "decide-7",
-      change_title: (scripted.structured_output as Json).change_title,
-      change_summary: (scripted.structured_output as Json).change_summary,
+      prompt_version: "decide-8",
+      change_title: "Title and fade added",
+      change_summary: "A title opens the reel and a soft fade follows.",
       checks: [],
       used_free_field: false,
       unexpressed: [],
@@ -214,18 +234,130 @@ describe("runDecide", () => {
         a.word_fixes = [];
       }),
     );
-    const { run } = await decide(fakeAiRunner([empty]));
+    const ai = fakeAiRunner([empty]);
+    const { run } = await decide(ai);
     await run;
     const bytes = async (id: string) =>
       new TextDecoder().decode((await storage.get(rows.get(id)!.r2_key))!);
     expect(await bytes(current!)).toBe(await bytes(firstId));
+    // An empty difference: no summary call, the template's title.
+    expect(ai.calls).toHaveLength(1);
+    expect(rows.get(current!)).toMatchObject({
+      change_title: "No changes",
+      change_summary: "Nothing in the reel changed.",
+    });
+  });
+
+  it("saves the template when the summary names a photo the saved edit does not have", async () => {
+    const ai = fakeAiRunner([
+      scripted,
+      summaryEnvelope("Photo added behind you", "A photo now shows behind you."),
+    ]);
+    const { run } = await decide(ai);
+    await run;
+    // Title, transition and a fixed word: the template's text.
+    expect(rows.get(current!)).toMatchObject({
+      change_title: "Several things changed",
+    });
+    expect(rows.get(current!)!.change_summary).not.toMatch(/photo/i);
+  });
+
+  it("saves the template when the summary call gets a decide answer (the E2E double)", async () => {
+    const ai = fakeAiRunner([scripted]);
+    const { run, calls } = await decide(ai);
+    await run;
+    expect(ai.calls).toHaveLength(2);
+    expect(lastCall(calls).call).toBe("done");
+    expect(rows.get(current!)).toMatchObject({
+      change_title: "Several things changed",
+      change_summary:
+        'A title was added on "this is a short". A transition was added, and a few smaller changes.',
+    });
+  });
+
+  it("saves nothing for a request whose edit is the current one byte for byte", async () => {
+    const empty = resultEnvelope(
+      answer((a) => {
+        a.accents = [];
+        a.transitions = [];
+        a.word_fixes = [];
+      }),
+    );
+    const { steps, calls } = recordingSteps();
+    const blobs = storageVersionBlobs(storage);
+    const puts: string[] = [];
+    const saves: string[] = [];
+    const versionRows = memoryRows();
+    const run = runDecide({
+      ctx: stepContext(steps),
+      storage,
+      rows: {
+        ...versionRows,
+        async save(row) {
+          saves.push(row.id);
+          return versionRows.save(row);
+        },
+      },
+      blobs: {
+        get: (key) => blobs.get(key),
+        async putIfAbsent(key, value) {
+          puts.push(key);
+          return blobs.putIfAbsent(key, value);
+        },
+      },
+      keyPrefix: PREFIX,
+      ai: fakeAiRunner([empty]),
+      scratchDir: scratch,
+      newId,
+      request: "make it nicer",
+      log: () => {},
+    });
+    const error = (await run.catch((caught: unknown) => caught)) as Error;
+    const unchanged = findCause(error, NothingChanged);
+    expect(unchanged).not.toBeNull();
+    expect(unchanged!.rules[0]).toBe("no-change");
+    expect(saves).toEqual([]);
+    expect(puts).toEqual([]);
+    expect(current).toBe(firstId);
+    const failed = lastCall(calls);
+    if (failed.call !== "failed") throw new Error(JSON.stringify(calls));
+    expect(failed.tail).toMatch(/^decide: nothing would change, version 1 stays current/);
+  });
+
+  it("saves a request that only switches photos off, titled from the rule", async () => {
+    const off = resultEnvelope(
+      answer((a) => {
+        a.accents = [];
+        a.transitions = [];
+        a.word_fixes = [];
+        a.behind_rules = { photos: "forbid", big_word: "keep" };
+      }),
+    );
+    const { steps } = recordingSteps();
+    await runDecide({
+      ctx: stepContext(steps),
+      storage,
+      rows: memoryRows(),
+      blobs: storageVersionBlobs(storage),
+      keyPrefix: PREFIX,
+      ai: fakeAiRunner([off]),
+      scratchDir: scratch,
+      newId,
+      request: "no photos in this one",
+      log: () => {},
+    });
+    expect(rows.get(current!)).toMatchObject({
+      number: 2,
+      no_photos: true,
+      change_title: "Photos switched off",
+    });
   });
 
   it("retries once with the first answer's reasons, then saves (verification 2)", async () => {
     const ai = fakeAiRunner([heardForm(), scripted]);
     const { run } = await decide(ai);
     await run;
-    expect(ai.calls).toHaveLength(2);
+    expect(editorCalls(ai)).toHaveLength(2);
     expect(ai.calls[1]!.prompt).toMatch(/Your previous answer was refused/);
     expect(ai.calls[1]!.prompt).toMatch(/- glossary cw0003: /);
     const v2 = rows.get(current!)!;
@@ -301,7 +433,7 @@ describe("runDecide", () => {
     const ai = fakeAiRunner(["not json", scripted]);
     const { run } = await decide(ai);
     await run;
-    expect(ai.calls).toHaveLength(2);
+    expect(editorCalls(ai)).toHaveLength(2);
     const v2 = rows.get(current!)!;
     expect(v2.number).toBe(2);
     expect(v2.rejected_reasons.join("\n")).toMatch(/not valid JSON/);
@@ -323,10 +455,12 @@ describe("runDecide", () => {
     await one.run;
     const done = lastCall(one.calls);
     if (done.call !== "done") throw new Error("not done");
+    // The summary call (the same envelope again) counts its tokens and cost,
+    // never its model.
     expect(done.measurements).toMatchObject({
-      ai_input_tokens: 1500,
-      ai_output_tokens: 456,
-      ai_cost_usd: 0.0123,
+      ai_input_tokens: 3000,
+      ai_output_tokens: 912,
+      ai_cost_usd: 0.0246,
       ai_model: "claude-x",
     });
 
@@ -339,6 +473,7 @@ describe("runDecide", () => {
     await two.run;
     const second = lastCall(two.calls);
     if (second.call !== "done") throw new Error("not done");
+    // Its edit is version 2's: an empty difference makes no summary call.
     expect(second.measurements.ai_input_tokens).toBe(1510);
     expect(second.measurements.ai_output_tokens).toBe(461);
     expect(second.measurements.ai_cost_usd).toBeCloseTo(0.0223, 10);
@@ -366,7 +501,7 @@ describe("runDecide", () => {
     const ai = fakeAiRunner([heardForm(), scripted]);
     const { run } = await decide(ai);
     await run;
-    expect(ai.calls).toHaveLength(2);
+    expect(editorCalls(ai)).toHaveLength(2);
     expect(rows.get(current!)!.rejected_reasons).toEqual([
       'glossary cw0003: caption cw0003 shows "Locking": write the glossary term "lock-in"',
     ]);
@@ -382,7 +517,7 @@ describe("runDecide", () => {
     const ai = fakeAiRunner([placed, scripted]);
     const { run } = await decide(ai);
     await run;
-    expect(ai.calls).toHaveLength(2);
+    expect(editorCalls(ai)).toHaveLength(2);
     const v2 = rows.get(current!)!;
     expect(v2.rejected_reasons.join("\n")).toMatch(/^accents\.1: .*"start".*"position"/m);
     expect(v2).toMatchObject({ used_free_field: false, free_field: [] });
@@ -431,22 +566,26 @@ describe("runDecide", () => {
       newId,
       log: (line) => lines.push(line),
     });
-    expect(ai.calls).toHaveLength(1);
+    expect(editorCalls(ai)).toHaveLength(1);
     const v2 = rows.get(current!)!;
     expect(v2).toMatchObject({ number: 2, checks: [], rejected_reasons: [] });
     const title = v2.engine_record.filter((note) => note.item === "title");
     expect(title.map((note) => note.action)).toEqual(expect.arrayContaining(["wrapped"]));
-    // One line per version, with the reel id; no engine bug line.
-    expect(lines).toHaveLength(1);
-    expect(lines[0]!.startsWith(`engine record, reel ${TEST_JOB.reel_id}, version 2: `)).toBe(true);
-    expect(lines[0]).toMatch(/title wrapped \(accent-wrap\): /);
+    // The summary call got a decide answer: the template, said in one line.
+    expect(lines[0]).toBe(
+      `decide: summary from the template, reel ${TEST_JOB.reel_id}: answer-schema (summary-1)`,
+    );
+    // One engine record line per version, with the reel id; no engine bug line.
+    expect(lines).toHaveLength(2);
+    expect(lines[1]!.startsWith(`engine record, reel ${TEST_JOB.reel_id}, version 2: `)).toBe(true);
+    expect(lines[1]).toMatch(/title wrapped \(accent-wrap\): /);
   });
 
   it("asks at most twice, however many bad answers are scripted", async () => {
     const ai = fakeAiRunner([heardForm(), heardForm(), heardForm()]);
     const { run } = await decide(ai);
     await expect(run).rejects.toThrow();
-    expect(ai.calls).toHaveLength(2);
+    expect(editorCalls(ai)).toHaveLength(2);
   });
 
   it("keeps the failure tail within 20 lines when there are many reasons", async () => {
@@ -480,7 +619,7 @@ describe("runDecide when the AI is not available", () => {
     const { run, calls } = await decide(ai);
     const error = await run.catch((caught: unknown) => caught);
     expect((error as Error).cause).toBeInstanceOf(AiUnavailable);
-    expect(ai.calls).toHaveLength(1);
+    expect(editorCalls(ai)).toHaveLength(1);
     expect(current).toBe(firstId);
     expect(rows.size).toBe(1);
     // The background map, reused before the AI call.
@@ -494,7 +633,7 @@ describe("runDecide when the AI is not available", () => {
     const ai = fakeAiRunner([heardForm(), limit]);
     const { run, calls } = await decide(ai);
     await expect(run).rejects.toThrow();
-    expect(ai.calls).toHaveLength(2);
+    expect(editorCalls(ai)).toHaveLength(2);
     expect(lastCall(calls).call).toBe("waiting");
   });
 
@@ -630,7 +769,7 @@ describe("runDecide with a behind item", () => {
     const error = (await run.catch((caught: unknown) => caught)) as Error;
     expect(error).toBeInstanceOf(Error);
     expect(isTransient(error)).toBe(false);
-    expect(ai.calls).toHaveLength(1);
+    expect(editorCalls(ai)).toHaveLength(1);
     expect(rows.size).toBe(1);
     expect(current).toBe(firstId);
     expect(calls.filter((call) => call.call === "failed")).toHaveLength(2);
@@ -641,7 +780,7 @@ describe("runDecide with a behind item", () => {
     const ai = fakeAiRunner([three, behindAnswer()]);
     const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool);
     await run;
-    expect(ai.calls).toHaveLength(2);
+    expect(editorCalls(ai)).toHaveLength(2);
     const v2 = rows.get(current!)!;
     expect(v2.rejected_reasons.join("\n")).toMatch(/^photos: at most 2 photos per reel/m);
     expect(v2.inputs.photos).toEqual([PHOTO]);
@@ -669,7 +808,7 @@ describe("runDecide with a behind item", () => {
       rules: storedRules(true),
     });
     await run;
-    expect(ai.calls).toHaveLength(2);
+    expect(editorCalls(ai)).toHaveLength(2);
     expect(ai.calls[0]!.prompt).toContain('"photos_forbidden": true');
     const v2 = rows.get(current!)!;
     expect(v2.rejected_reasons.join("\n")).toMatch(
@@ -721,7 +860,7 @@ describe("runDecide with a behind item", () => {
     });
     await run;
     // Placed at once: no editorial round, one AI call.
-    expect(ai.calls).toHaveLength(1);
+    expect(editorCalls(ai)).toHaveLength(1);
     expect(rows.get(current!)!.checklist).toEqual([
       {
         ask: "add images behind me",
@@ -755,10 +894,23 @@ describe("runDecide with a behind item", () => {
       photos: empty,
     });
     await run;
-    expect(ai.calls).toHaveLength(1);
+    expect(editorCalls(ai)).toHaveLength(1);
     expect(rows.get(current!)!.checklist).toEqual([
       { ask: "add images behind me", wants: "1 photo", fulfilled_by: [], done: false, reason: why },
     ]);
+  });
+
+  it("writes the template's summary from the saved photo when the summary call fails", async () => {
+    const ai = fakeAiRunner([behindAnswer([photoItem("left")])]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool, {
+      request: "the photo on the left",
+    });
+    await run;
+    expect(rows.get(current!)).toMatchObject({
+      change_title: "Several things changed",
+      change_summary:
+        "A photo now shows behind you. A transition was added, and a few smaller changes.",
+    });
   });
 
   it("puts the photo in the spot the owner's wish names", async () => {

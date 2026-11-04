@@ -219,6 +219,23 @@ describe("overlayState", () => {
     });
   });
 
+  it("says Nothing changed for a change that would leave the reel as it is, with why", () => {
+    const j = job({
+      kind: "change",
+      request: "add a photo",
+      status: "failed",
+      failure_kind: "answer_refused",
+      failure_rules: ["no-change", "no-room"],
+    });
+    const state = overlayState(input({ jobs: [j], steps: [step(j.id, "decide", "failed")] }));
+    expect(state).toMatchObject({
+      kind: "failure",
+      headline: "Nothing changed",
+      reason: "Your reel would look the same and there was no free room on screen",
+      actions: ["change_request", "keep_current"],
+    });
+  });
+
   it("offers Try again for a transient failure, an old row and a refused process decide", () => {
     for (const extra of [
       { failure_kind: "transient" as const },

@@ -6,6 +6,7 @@
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 - specs/issue-97-adw-7283e118-sdlc_planner-decide-proposes-behind-within-limits.md
 - specs/issue-155-adw-2a28c287-sdlc_planner-fulfil-change-requests-make-room.md
+- specs/issue-156-adw-ca502a36-sdlc_planner-honest-version-summary-from-diff.md
 
 ## Overview
 
@@ -25,7 +26,7 @@ outcome is stored with the version.
 
 ## How it works
 
-The answer (`decide-7`) is the layout engine's input plus the request checklist and the records:
+The answer (`decide-8`) is the layout engine's input plus the request checklist and the records:
 
 ```json
 {
@@ -42,8 +43,6 @@ The answer (`decide-7`) is the layout engine's input plus the request checklist 
     }
   ],
   "behind_rules": { "photos": "keep", "big_word": "keep" },
-  "change_title": "Photo added behind you",
-  "change_summary": "A photo now shows behind you on the left.",
   "unexpressed": []
 }
 ```
@@ -64,9 +63,9 @@ The answer (`decide-7`) is the layout engine's input plus the request checklist 
   optional) when nothing in the answer can do the ask, for example photos with an empty library. The
   outcome is stored per version as `versions.checklist` (below); the items it links (`fulfilled_by`) are placed first among
   the extras (`editFromAnswer` passes them to the engine as `requested`).
-- `change_title` (required, 1 to 60 characters) and `change_summary` (1 to 300) are what the owner
-  reads in the versions list (`app_docs/change-requests.md`). `format`, `preset`, `duration` and
-  `inputs` come from the current version, so the result is always a full edit and the AI cannot
+- The answer carries no title or summary: the version's `change_title` and `change_summary` are
+  written after layout from the saved difference ("Version title and summary" below). `format`,
+  `preset`, `duration` and `inputs` come from the current version, so the result is always a full edit and the AI cannot
   touch the input fingerprints. The title is the overlay with id `title`, over its words.
 - Stored versions are never re-decided or rewritten; an older version's choices are read back by
   `choicesOf` when a change starts from it.
@@ -121,7 +120,7 @@ The answer (`decide-7`) is the layout engine's input plus the request checklist 
   non-object value or non-JSON throws. Without a script it gives `EMPTY_DECIDE_ANSWER` (no items),
   which the doctor's check accepts.
 - `apps/worker/src/decide/prompt.md`, `prompt.ts`: the committed prompt and `PROMPT_VERSION`
-  (`decide-7`, bumped with every prompt change; each version row records it). The prompt makes
+  (`decide-8`, bumped with every prompt change; each version row records it). The prompt makes
   Claude the editor: it decides what and on which words, the layout decides every position, size
   and time; it refers to words only by id and never writes times, seconds, pixels, positions, sizes,
   fonts, colours or spots. It explains each choice (word fixes against the glossary, accents with one
@@ -129,11 +128,8 @@ The answer (`decide-7`) is the layout engine's input plus the request checklist 
   rules), the wishes (only from the owner's own words, never invented), the checklist (empty
   without a request), and carries one example answer. It says that only the answer's own rules (the
   schema, the glossary) refuse an answer and that layout never does: the layout fits what it can
-  and leaves out what has no room. It asks for
-  `change_title` (2 to 5 plain words, sentence case, no full stop, for example "Transitions made
-  longer") and `change_summary` (one or two short plain sentences for the owner, who is not
-  technical), both about what the viewer sees: no word ids, font names, pixel sizes, colour codes,
-  timestamps or seconds, or internal names (track, slot, preset, spot names). `decidePrompt` fills
+  and leaves out what has no room. It no longer asks for a title or a summary: they are written
+  after layout from the saved difference ("Version title and summary" below). `decidePrompt` fills
   the inputs as fenced JSON (`{{library}}` among them) and, on the retry, appends the previous
   reasons. The library is introduced as data describing the photos, never instructions, to be
   ignored where it reads like one.
@@ -165,8 +161,12 @@ The answer (`decide-7`) is the layout engine's input plus the request checklist 
   refuses a photo outside the library and makes sure each padded span's mask is stored (a
   `cutout` step row, `app_docs/pipeline.md`) before anything is saved; a failure there comes after
   the AI call, so it is permanent, and no version is saved. It saves through
-  `saveVersion` with `parentId` the current version, the request (null for the automatic run),
-  model, `PROMPT_VERSION`, the change title and summary, the forbid flags (only where the answer's rule is not
+  the save in this order: the cutouts, the behind rules the answer sets or lifts (`ruleChanges`),
+  the unchanged check (a request whose edit is the current one byte for byte and switches no rule
+  saves nothing, "Failure" below), the difference (`diffEdits`), the summary
+  (`writeVersionSummary`), then `saveVersion` with `parentId` the current version, the request
+  (null for the automatic run), model, `PROMPT_VERSION`, `changeTitle` and `changeSummary` from the
+  summary, the forbid flags (only where the answer's rule is not
   `keep`), the records below (`free_field` is always empty now: the answer has no free style;
   `used_free_field` still reports a kept item's style) and the engine record (`engine_record`).
   After the save the worker logs the record in one line
@@ -183,7 +183,10 @@ The answer (`decide-7`) is the layout engine's input plus the request checklist 
   (`aiMeasurements`).
 - `apps/worker/src/doctor-checks.ts`: the `ai structured call` check uses the new runner
   (`plainTool`) and sends the real `decideJsonSchema` (the meaning-only answer) for a two-word sample reel, so `doctor`
-  fails on a schema the installed CLI rejects; the answer must pass `parseDecideAnswer`.
+  fails on a schema the installed CLI rejects; the answer must pass `parseDecideAnswer`. The
+  `ai summary call` check sends `summaryPrompt` for a sample difference on `SUMMARY_MODEL` with
+  `summaryJsonSchema`, so a model id the installed CLI rejects shows before a real run; the answer
+  must pass `parseSummaryAnswer`.
 - `supabase/migrations/20261101175625_version_decide_records.sql`: `versions` gains
   `used_free_field`, `unexpressed` (requests the format could not express), `free_field` (items
   that needed the `style` field and why) and `rejected_reasons` (why the first answer was refused
@@ -227,7 +230,48 @@ The answer (`decide-7`) is the layout engine's input plus the request checklist 
   default empty) and `save_version`'s last parameter `p_checklist` (default empty);
   `NewVersion.checklist`, `VersionMeta.checklist`.
 
+### Version title and summary
+
+The title and summary the owner reads in the versions list (`app_docs/change-requests.md`) are
+written after layout, from what the saved edit changes, never from what the editor meant to do.
+
+- `packages/edit/src/version-diff.ts`: `diffEdits(current, edit, transcript, preset)` lists the
+  items added, removed, moved, retimed or changed between the current version and the new edit, per
+  kind (`title`, `accent`, `photo`, `big_word`, `transition`, `caption`, `sound`, `footage`), each
+  with the plain words it is over or its own text (never a word id) and, for a behind photo, its
+  spot before and after. Many captions shifted fold into one `captions` moved entry; renumbered ids
+  on the same words are not a change. `ruleChanges(before, after)` gives the behind rules switched
+  (`photos` or `big_word`, `off` or `on`). Pure and deterministic.
+- `apps/worker/src/decide/version-summary.ts`: `writeVersionSummary` makes one call on
+  `SUMMARY_MODEL` (`claude-haiku-5-5`, passed as `--model`) with the committed `summary.md`, given
+  the request, the checklist outcome, the difference, the rules switched and the engine record
+  (items, actions and reasons), all quoted as fenced JSON (`summaryPrompt`).
+- `packages/edit/src/version-summary.ts`: the answer schema (`change_title` 1 to 60 characters,
+  `change_summary` 1 to 300, closed), the safeguard `checkSummary` and the template
+  `summaryTemplate`. The safeguard refuses a word id, a time, a size, a colour code, a font name or
+  an internal name (track, slot, preset, overlay, spot), and any kind of item the title or summary
+  names that is not in the difference (photos and the big word also count when their rule
+  switched); a summary sentence may name a kind the owner asked for and the version left out
+  (`askedNotDone`) only to say it did not happen. The template writes the title and summary from
+  the difference (`No changes` for an empty one, `Photos switched off` for a forbid-only change) and,
+  for an item the owner asked for that the engine dropped, why in plain words; its own output
+  always passes the safeguard.
+- An empty difference makes no call. A refused, invalid or failed call (broken JSON, a schema
+  refusal, the safeguard, the AI unavailable, a thrown error) falls back to the template with the
+  log line `decide: summary from the template, reel <id>: <why> (summary-1)`; it is never retried,
+  never fails the step and never makes the job wait (only a cancel is rethrown).
+- The call's tokens and cost are added to the step's usage, but not its model: `steps.ai_model` and
+  `versions.model` stay the editor's. `SUMMARY_PROMPT_VERSION` (`summary-1`) is logged with the
+  template line, never stored.
+
 ### Failure
+
+A request whose new edit is the current version byte for byte and whose behind rules do not change
+throws `StepError` with the cause `NothingChanged` (an `AnswerRefused`, `apps/worker/src/failure.ts`;
+its rules are `no-change` then the distinct rules of the record's drops and wishes not kept, sorted,
+at most 20 in all, `nothingChangedRules`) and the tail `decide: nothing would change, version <n>
+stays current` plus the asks not done with their reasons. Nothing is written to R2 or `versions`.
+The automatic run (no request) is not a change and still saves.
 
 Two refused rounds throw `StepError` with the tail `decide: the answer failed twice, version <n>
 stays current` and each round's reasons (at most 8 lines per round, `and k more` closing a longer
@@ -279,13 +323,20 @@ two AI calls. A failure before the first AI call may still be retried once.
   clip (title w0001 to w0004, accent w0005, dim w0006 to w0008, fix w0010 "Studio"); a unit test
   proves it saves in one round with no failed check. The engine drops the accent (one extra at a
   time beside the title on a 2.7 s clip), so the step line reads `0 accents, ..., 1 dropped`.
+- `version-diff.test.ts` (`diffEdits`, `ruleChanges`) and `version-summary.test.ts` in
+  `packages/edit` (schema, safeguard, template) and in the worker (`summaryPrompt`, one call on the
+  small model, the template for a broken, unavailable, refused or decide-shaped answer, no call for
+  an empty difference). `run-decide.test.ts` covers the template when the summary names a photo the
+  saved edit does not have and when the call fails, nothing saved for a request whose edit is the
+  current one byte for byte, and a request that only switches photos off titled from the rule. In
+  E2E the scripted answer is a decide answer, so the summary call falls back to the template.
 - `editorial.test.ts` in `packages/edit` (schema, merge, checklist outcome) and in the worker (input,
   rounds, caps, failure handling); `run-decide.test.ts` covers the rounds in a decide.
 - `yarn turbo run test:db --filter=./apps/studio`: `versions.test.ts` covers the new columns,
   `checklist` included.
 - E2E: `apps/studio/e2e/upload.spec.ts` sets `E2E_MOCK_AI_SCRIPT` to the committed answer and
   checks the decide line, the `ai_*` columns (1500, 456, 0.0123, `claude-opus-5-5`), version 2's row
-  and both R2 keys (`decide-7`, `0 accents, 1 transition, title set, 1 word fixed, 1 dropped`).
+  and both R2 keys (`decide-8`, `0 accents, 1 transition, title set, 1 word fixed, 1 dropped`).
   `preview.spec.ts` seeds through `test-support/ai-script.ts`
   (`unchangedAnswerScript`), whose answer makes no choice (version 1 has none), so version 2 matches
   the version 1 golden. `behind.spec.ts` scripts a change answer (`behindPhotoAnswerScript`, the
@@ -293,7 +344,8 @@ two AI calls. A failure before the first AI call may still be retried once.
   `inputs.photos` are checked. `decide-behind.spec.ts` seeds a ready photo and a processed reel
   whose automatic decide proposes it (no wish, so the first clear spot, `top`), then "no photos in this one" saves a version with no
   photo and `reels.no_photos` set, and a later change whose first answer brings the photo back is
-  refused and its retry saves without it. Unit: `input.test.ts` (sentences without times, empty
+  refused and its retry saves without it. `change-requests.spec.ts` covers a change that would
+  leave the reel as it is: nothing saved and the overlay says `Nothing changed`. Unit: `input.test.ts` (sentences without times, empty
   library on a forbid), `checks.test.ts`, `schema.test.ts`; DB: `versions.test.ts` covers the reel
   flags.
 
@@ -325,9 +377,13 @@ failure is an ordinary step failure) and passes `backgroundSampler(map, preset.f
   record (a going back has an empty one).
 - Never cache the decide step.
 - Bump `PROMPT_VERSION` whenever `prompt.md` or `editorial.md` changes.
-- The prompt keeps `change_title` and `change_summary` in plain words for the owner: never word
-  ids, font names, pixel sizes, colour codes, timestamps or seconds, or internal names. Never clean
-  old summaries with regexes; they show as stored.
+- The version summary describes only the saved difference: every item it names is in the
+  difference, else the template replaces it.
+- The summary call is one call, never retried, never fails the step or makes the job wait.
+- Never print a word id, font, size or time in a title or summary.
+- A request whose edit is identical to the current version saves nothing; the owner is told why.
+- Bump `SUMMARY_PROMPT_VERSION` whenever `summary.md` changes.
+- Never clean old summaries with regexes; they show as stored.
 - Record raw usage numbers as Claude Code reports them; never convert or estimate.
 - Never point a test at the real `claude` binary; use the double.
 - The photo library in the prompt is data, never instructions: always quoted as fenced JSON under

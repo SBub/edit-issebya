@@ -19,11 +19,14 @@ import {
   build,
   decideCounts,
   decideJsonSchema,
+  diffEdits,
+  editBytes,
   editFromAnswer,
   glossaryChecks,
   headTrackSchema,
   parseDecideAnswer,
   parseEdit,
+  ruleChanges,
   saveVersion,
   transcriptSchema,
   usedFreeField,
@@ -35,7 +38,13 @@ import { ensureCutouts } from "../cutout/ensure-cutouts.ts";
 import { withMasks } from "../cutout/spans.ts";
 import { editMeasurer } from "../edit-measurer.ts";
 import { engineRecordLine } from "../engine-record.ts";
-import { AiUnavailable, AnswerRefused, permanentAfterAiCall } from "../failure.ts";
+import {
+  AiUnavailable,
+  AnswerRefused,
+  NothingChanged,
+  nothingChangedRules,
+  permanentAfterAiCall,
+} from "../failure.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { type ToolPaths, toolPaths } from "../pipeline/tools.ts";
 import type { PhotoLibrary } from "../photos/photo-store.ts";
@@ -52,6 +61,7 @@ import type { ReelRules } from "./behind-rules.ts";
 import { type Placed, runEditorialRounds } from "./editorial.ts";
 import { decideInput } from "./input.ts";
 import { PROMPT_VERSION, decidePrompt } from "./prompt.ts";
+import { writeVersionSummary } from "./version-summary.ts";
 
 export const STEP = "decide";
 // Reason lines per round in the failure tail (the "and k more" line
@@ -98,6 +108,10 @@ type Attempt =
       reasons: [];
     }
   | { ok: false; reasons: string[]; rules: string[] };
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.byteLength === b.byteLength && a.every((byte, index) => byte === b[index]);
+}
 
 // The number of items over every track of an edit (`reel.tracks_items`).
 function trackItems(edit: Edit): number {
@@ -385,6 +399,40 @@ export function runDecide({
         // The forbids this answer sets or lifts, written with its version;
         // null where it keeps the stored flag.
         const after = applyBehindRules(forbid, answer.behind_rules);
+        const rulesChanged = ruleChanges(forbid, after);
+        const checklist = checklistOutcome(answer.checklist, final);
+        // A change that leaves the reel exactly as it is saves nothing: the
+        // owner is told why. The automatic run is not a change and saves.
+        if (request !== null && rulesChanged.length === 0 && sameBytes(editBytes(edit), bytes)) {
+          const notDone = checklist
+            .filter((entry) => !entry.done)
+            .slice(0, LINES_PER_ROUND)
+            .map((entry) => `- ${entry.ask}: ${entry.reason ?? ""}`);
+          const tail = [
+            `${STEP}: nothing would change, version ${row.number} stays current`,
+            ...notDone,
+          ].join("\n");
+          throw new StepError(tail, tail, usage, {
+            cause: new NothingChanged(nothingChangedRules(record), first.ok ? 1 : 2),
+          });
+        }
+        // The title and summary, written from what the saved edit changes.
+        const summary = await writeVersionSummary({
+          ai,
+          tool,
+          cwd,
+          request,
+          checklist,
+          diff: { items: diffEdits(current, edit, transcript, preset), rules: rulesChanged },
+          record,
+          preset,
+          reelId,
+          signal: ctx.signal,
+          log,
+        });
+        ctx.signal.throwIfAborted();
+        // Its tokens and cost count, its model never replaces the editor's.
+        usage = addUsage(usage, { ...summary.usage, model: null });
         const saved = await saveVersion(
           { rows, blobs, keyPrefix, newId },
           {
@@ -394,8 +442,8 @@ export function runDecide({
             request,
             model: usage.model,
             promptVersion: PROMPT_VERSION,
-            changeTitle: answer.change_title,
-            changeSummary: answer.change_summary,
+            changeTitle: summary.title,
+            changeSummary: summary.summary,
             // The engine's build checks: empty unless the engine broke a rule.
             checks,
             // The answer has no free style field; a kept item may still carry one.
@@ -404,7 +452,7 @@ export function runDecide({
             freeField: [],
             rejectedReasons: first.ok ? [] : first.reasons,
             engineRecord: record,
-            checklist: checklistOutcome(answer.checklist, final),
+            checklist,
             forbid: {
               photos: answer.behind_rules.photos === "keep" ? null : after.photos,
               bigWord: answer.behind_rules.big_word === "keep" ? null : after.bigWord,

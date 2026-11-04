@@ -117,10 +117,6 @@ export function decideAnswerSchemaFor(
             : "the checklist stays empty without a request",
         }),
       behind_rules: z.strictObject({ photos: rule, big_word: rule }),
-      // What the owner reads in the versions list: a short plain title and a
-      // one or two sentence summary, both about what the viewer sees.
-      change_title: z.string().min(1).max(60),
-      change_summary: z.string().min(1).max(300),
       unexpressed: z.array(z.string().min(1).max(300)).max(20),
     })
     .superRefine((answer, ctx) => {

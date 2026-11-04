@@ -48,8 +48,6 @@ export async function unchangedAnswerScript(dir: string): Promise<string> {
       word_fixes: [],
       checklist: [],
       behind_rules: KEEP_RULES,
-      change_title: "Nothing changed",
-      change_summary: "The reel stays as it was.",
       unexpressed: [],
     },
     total_cost_usd: 0,
@@ -80,33 +78,31 @@ export async function brokenAnswerScript(dir: string): Promise<string> {
 }
 
 // One round of a scripted decide: the photos behind the speaker (none by
-// default), the big word (a word id; none by default), the change summary and
-// title (the committed answer's when not given) and the behind rules (all
-// `keep` by default).
+// default), the big word (a word id; none by default), the transitions (the
+// committed answer's when not given) and the behind rules (all `keep` by
+// default). The version title and summary are never scripted: the summary
+// call gets this decide answer too and falls back to the code template.
 interface AnswerRound {
   photos?: Record<string, unknown>[];
   bigWord?: string;
-  changeSummary: string;
-  changeTitle?: string;
+  transitions?: Record<string, unknown>[];
   rules?: BehindRules;
 }
 
-// The committed decide answer with the round's behind choices, summary and rules.
+// The committed decide answer with the round's behind choices, transitions and rules.
 async function roundEnvelope({
   photos = [],
   bigWord,
-  changeSummary,
-  changeTitle,
+  transitions,
   rules = KEEP_RULES,
-}: AnswerRound) {
+}: AnswerRound = {}) {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed worker script
   const envelope = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
     structured_output: {
       accents: unknown[];
       photos: unknown[];
       big_word: { word: string } | null;
-      change_title: string;
-      change_summary: string;
+      transitions: unknown[];
       behind_rules: BehindRules;
     };
   };
@@ -115,8 +111,7 @@ async function roundEnvelope({
   // On the 2.7 s fixture clip the title holds the screen for most of it, and
   // the layout engine shows one extra at a time: a behind item needs it gone.
   if (photos.length > 0 || bigWord) envelope.structured_output.accents = [];
-  envelope.structured_output.change_summary = changeSummary;
-  if (changeTitle) envelope.structured_output.change_title = changeTitle;
+  if (transitions) envelope.structured_output.transitions = transitions;
   envelope.structured_output.behind_rules = rules;
   return envelope;
 }
@@ -128,7 +123,7 @@ export async function answerRoundsScript(
   dir: string,
   rounds: readonly AnswerRound[],
 ): Promise<string> {
-  const envelopes = await Promise.all(rounds.map(roundEnvelope));
+  const envelopes = await Promise.all(rounds.map((round) => roundEnvelope(round)));
   const path = join(dir, `answer-rounds-${crypto.randomUUID()}.json`);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
   await writeFile(path, JSON.stringify(envelopes));
@@ -139,12 +134,7 @@ export async function answerRoundsScript(
 // with nothing behind the speaker and photos switched off for the reel (the
 // answer to "no photos in this one"). Returns its path.
 export function forbidPhotosAnswerScript(dir: string): Promise<string> {
-  return answerRoundsScript(dir, [
-    {
-      changeSummary: "took the photo out; no photos in this reel",
-      rules: { photos: "forbid", big_word: "keep" },
-    },
-  ]);
+  return answerRoundsScript(dir, [{ rules: { photos: "forbid", big_word: "keep" } }]);
 }
 
 // One library photo behind the speaker over the fixture clip's one sentence,
@@ -163,17 +153,12 @@ export async function behindPhotoAnswerScript(
   photoId: string,
   wish?: Wish,
 ): Promise<string> {
-  return answerRoundsScript(dir, [
-    {
-      photos: [behindPhotoItem(photoId, wish)],
-      changeSummary: `put the photo behind me${wish ? ` on the ${wish}` : ""}`,
-    },
-  ]);
+  return answerRoundsScript(dir, [{ photos: [behindPhotoItem(photoId, wish)] }]);
 }
 
 // Writes, into `dir`, a script whose one answer is the committed decide answer
 // plus the big word `word` (a word id) behind the speaker, shown from that word
 // to the end of its sentence. Returns its path.
 export async function behindWordAnswerScript(dir: string, word: string): Promise<string> {
-  return answerRoundsScript(dir, [{ bigWord: word, changeSummary: "put the big word behind me" }]);
+  return answerRoundsScript(dir, [{ bigWord: word }]);
 }

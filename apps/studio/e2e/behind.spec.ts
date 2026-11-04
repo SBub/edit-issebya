@@ -156,14 +156,19 @@ test("a change puts a library photo behind the speaker, in its spot, from a stor
     .single<{ current_version_id: string }>();
   const { data: v3 } = await admin
     .from("versions")
-    .select("id, number, inputs")
+    .select("id, number, inputs, change_title, change_summary")
     .eq("id", reelRow!.current_version_id)
     .single<{
       id: string;
       number: number;
+      change_title: string;
+      change_summary: string;
       inputs: { masks?: { step: string; fingerprint: string; file: string }[]; photos?: string[] };
     }>();
   expect(v3!.number).toBe(3);
+  // Written by the template from the saved difference, never scripted.
+  expect(v3!.change_title).toBe("Several things changed");
+  expect(v3!.change_summary).toMatch(/^A photo now shows behind you\. /);
   expect(v3!.inputs.photos).toEqual([photo!.id]);
   expect(v3!.inputs.masks).toHaveLength(1);
   const [mask] = v3!.inputs.masks!;

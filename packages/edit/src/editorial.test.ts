@@ -60,8 +60,6 @@ const ANSWER: DecideAnswer = {
     { ask: "more photos", wants: "another photo", fulfilled_by: ["photos[1]"] },
   ],
   behind_rules: { photos: "keep", big_word: "keep" },
-  change_title: "Photos added",
-  change_summary: "Photos show behind you.",
   unexpressed: [],
 };
 

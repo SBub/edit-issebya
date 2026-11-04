@@ -18,7 +18,9 @@ every saved edit is an immutable version.
 HarfBuzz builder with its layout checks, and the version operations. It is TypeScript source with
 no build step and no platform API (no `fs`, no DOM, no clock, no randomness): the caller passes in
 everything that touches the platform (the HarfBuzz module and font bytes, storage, the database,
-new ids). `apps/worker` consumes it now (the `first_version` step); `apps/studio` imports only its
+new ids). It also holds `version-diff.ts` (`diffEdits` and `ruleChanges`, the structured
+difference between two edits) and `version-summary.ts` (the version summary's schema, safeguard
+and template), described in `app_docs/decide-step.md`. `apps/worker` consumes it now (the `first_version` step); `apps/studio` imports only its
 types until slice 9 brings the live preview.
 
 ## How it works

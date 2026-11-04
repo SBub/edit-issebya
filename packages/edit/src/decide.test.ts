@@ -67,8 +67,6 @@ function answer(change: (answer: Json) => void = () => {}): Json {
     word_fixes: [{ word: "w0010", text: "Studio" }],
     checklist: [],
     behind_rules: { photos: "keep", big_word: "keep" },
-    change_title: "Title and one accent added",
-    change_summary: "A title opens the reel and one word stands out.",
     unexpressed: [],
   };
   change(value);
@@ -133,8 +131,6 @@ describe("decideJsonSchema", () => {
       "word_fixes",
       "checklist",
       "behind_rules",
-      "change_title",
-      "change_summary",
       "unexpressed",
     ]);
     const keys = new Set<string>();
@@ -254,10 +250,9 @@ describe("parseDecideAnswer", () => {
     expect(reasons(twice)).toContain("word_fixes: w0010 is fixed twice");
   });
 
-  it("requires a change title of 1 to 60 characters", () => {
-    expect(parse(answer((a) => (a.change_title = ""))).ok).toBe(false);
-    expect(parse(answer((a) => (a.change_title = "x".repeat(61)))).ok).toBe(false);
-    expect(parse(answer((a) => (a.change_title = "x".repeat(60)))).ok).toBe(true);
+  it("refuses a change title or summary: they are written after layout", () => {
+    expect(parse(answer((a) => (a.change_title = "Photo added"))).ok).toBe(false);
+    expect(parse(answer((a) => (a.change_summary = "A photo shows."))).ok).toBe(false);
   });
 });
 

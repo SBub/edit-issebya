@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { ISSEBYA_PRESET, parseEdit, transcriptSchema } from "@edit-issebya/edit";
 import { expect, test } from "@playwright/test";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
@@ -202,8 +202,8 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   for (const step of steps!) expect(step.wall_ms).toBeGreaterThanOrEqual(0);
   // No background removal: no step row names it.
   expect(steps!.map((step) => step.name)).not.toContain("remove_background");
-  // The usage the scripted result reports, exactly: every input token
-  // (1200 + 300 + 0), the output tokens, the cost and the model.
+  // The usage the scripted result reports, exactly, once per call: every
+  // input token (1200 + 300 + 0), the output tokens, the cost and the model.
   const { data: decideRow } = await admin
     .from("steps")
     .select("ai_input_tokens, ai_output_tokens, ai_cost_usd, ai_model")
@@ -211,9 +211,12 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     .eq("name", "decide")
     .single();
   expect(decideRow).toEqual({
-    ai_input_tokens: 1500,
-    ai_output_tokens: 456,
-    ai_cost_usd: 0.0123,
+    // The decide call and the summary call (the double replays the same
+    // envelope, so the summary falls back to the template); the model stays
+    // the editor's.
+    ai_input_tokens: 3000,
+    ai_output_tokens: 912,
+    ai_cost_usd: 0.0246,
     ai_model: "claude-opus-5-5",
   });
 
@@ -268,19 +271,18 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     rejected_reasons: [],
     r2_key: key(v1!.id),
   });
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed script
-  const script = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
-    structured_output: { change_title: string; change_summary: string };
-  };
+  // The title and summary come from the code template over the saved
+  // difference (title added, transition added, captions moved, a word fixed).
   expect(v2).toEqual({
     id: currentId,
     number: 2,
     model: "claude-opus-5-5",
     request: null,
     parent_id: v1!.id,
-    prompt_version: "decide-7",
-    change_title: script.structured_output.change_title,
-    change_summary: script.structured_output.change_summary,
+    prompt_version: "decide-8",
+    change_title: "Several things changed",
+    change_summary:
+      'A title was added on "this is a short". A transition was added, and a few smaller changes.',
     checks: [],
     used_free_field: false,
     unexpressed: [],

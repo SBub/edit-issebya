@@ -124,6 +124,37 @@ describe("aiRunner", () => {
     }
   });
 
+  it("asks for the request's model with --model, and for none without one", async () => {
+    const seen: Parameters<Tool>[0][] = [];
+    const tool: Tool = async (call) => {
+      seen.push(call);
+      return JSON.stringify(captured);
+    };
+    const runner = aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" });
+    await runner.call(tool, { ...REQUEST, model: "claude-haiku-5-5" });
+    await runner.call(tool, REQUEST);
+    expect(seen[0]?.args.slice(-3)).toEqual([
+      "--model",
+      "claude-haiku-5-5",
+      "--no-session-persistence",
+    ]);
+    expect(seen[1]?.args).not.toContain("--model");
+    const fake = fakeAiRunner([resultEnvelope({})]);
+    await fake.call(NEVER, { ...REQUEST, model: "claude-haiku-5-5" });
+    expect(fake.calls[0]?.model).toBe("claude-haiku-5-5");
+  });
+
+  it("refuses a model that is not a plain model id, before spawning", async () => {
+    for (const model of ["claude haiku", 'claude"', "--help", "", "Claude-Haiku"]) {
+      await expect(
+        aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(NEVER, { ...REQUEST, model }),
+      ).rejects.toThrow(/plain model id/);
+      await expect(
+        fakeAiRunner([resultEnvelope({})]).call(NEVER, { ...REQUEST, model }),
+      ).rejects.toThrow(/plain model id/);
+    }
+  });
+
   it("replays E2E_MOCK_AI_SCRIPT, raw strings included, then the last entry", async () => {
     const path = join(dir, "script.json");
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
