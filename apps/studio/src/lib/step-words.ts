@@ -71,6 +71,7 @@ export const JOB_STEPS: Record<JobKind, readonly string[]> = {
   change: ["decide"],
   restore: ["restore"],
   render: ["render"],
+  start_over: ["decide"],
 };
 
 // Plain words per check rule of a refused answer (rule names only reach the

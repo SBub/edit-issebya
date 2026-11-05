@@ -79,6 +79,11 @@ export interface DecideRun {
   scratchDir: string;
   // The owner's request; null for the automatic decide after version 1.
   request?: string | null;
+  // Start over (temporary, for testing): the version to decide from instead
+  // of the current one (the reel's version 1); the new version's parent is
+  // still the current one. The reel's behind rules hold as on any run. Null
+  // or absent: from the current version.
+  startFrom?: string | null;
   measurer?: () => Promise<Measurer>;
   newId?: () => string;
   // The owner's ready photos, offered for the behind track; none without it.
@@ -158,6 +163,7 @@ export function runDecide({
   ai,
   scratchDir,
   request = null,
+  startFrom = null,
   measurer = editMeasurer,
   newId = randomUUID,
   photos,
@@ -175,8 +181,14 @@ export function runDecide({
       const reelId = reelOf(ctx.job);
       const currentId = await rows.current(reelId);
       if (currentId === null) throw new Error(`${STEP}: no current version`);
-      const row = await rows.get(currentId);
-      if (!row) throw new Error(`${STEP}: current version ${currentId} not found`);
+      const baseId = startFrom ?? currentId;
+      const row = await rows.get(baseId);
+      if (!row || row.reel_id !== reelId) {
+        throw new Error(`${STEP}: version ${baseId} of this reel not found`);
+      }
+      // The version that stays current when nothing is saved.
+      const currentNumber =
+        baseId === currentId ? row.number : ((await rows.get(currentId))?.number ?? "?");
       const bytes = await blobs.get(row.r2_key);
       if (!bytes) throw new Error(`${STEP}: edit missing at ${row.r2_key}`);
 
@@ -314,7 +326,7 @@ export function runDecide({
         const passed = first.ok ? first : await attempt(first.reasons).catch(permanentAfterAiCall);
         if (!passed.ok) {
           const tail = [
-            `${STEP}: the answer failed twice, version ${row.number} stays current`,
+            `${STEP}: the answer failed twice, version ${currentNumber} stays current`,
             ...roundLines(1, first.reasons),
             ...roundLines(2, passed.reasons),
           ].join("\n");
@@ -427,7 +439,7 @@ export function runDecide({
             .slice(0, LINES_PER_ROUND)
             .map((entry) => `- ${entry.ask}: ${entry.reason ?? ""}`);
           const tail = [
-            `${STEP}: nothing would change, version ${row.number} stays current`,
+            `${STEP}: nothing would change, version ${currentNumber} stays current`,
             ...notDone,
           ].join("\n");
           throw new StepError(tail, tail, usage, {
@@ -494,6 +506,7 @@ export function runDecide({
             : []),
           ...(dropped > 0 ? [`${dropped} dropped`] : []),
           ...(editorial.rounds > 0 ? [plural(editorial.rounds, "editorial round")] : []),
+          ...(startFrom !== null ? [`started over from version ${row.number}`] : []),
         ].join(", ");
         return { what, ai: usage };
       } finally {

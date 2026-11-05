@@ -4,6 +4,7 @@
 
 - specs/issue-34-adw-87bca34b-sdlc_planner-change-requests-versions-list.md
 - Owner request, 2026-11-03: one-line version rows with details behind an arrow, plain titles.
+- Owner request, 2026-11-04: a temporary Start over button for testing the first edit.
 - specs/issue-156-adw-ca502a36-sdlc_planner-honest-version-summary-from-diff.md
 
 ## Overview
@@ -104,6 +105,42 @@ version` as above; otherwise the version's `change_title`, falling back (version
   checklist (`app_docs/decide-step.md`). The version's title and summary then read `Hook changed`
   or `Hook removed`.
 
+### Start over (temporary testing control, to be removed)
+
+A control for the owner's testing of the first edit; it will be removed. It reruns the reel's first
+edit from the decide step on the existing reel, with no upload and no request, and saves the result
+as a new version beside the old ones, so first runs can be compared.
+
+- `supabase/migrations/20261104153506_start_over_jobs.sql`: one more job kind, `start_over`, with no
+  request, no version and no photo (the existing checks refuse any), and the policy `jobs: owner
+inserts a start over job for own reel` (own reel, status `queued`) through the existing
+  (`reel_id`, `kind`) grant. The restrictive retry policy applies, so Try again works as for a
+  change.
+- `apps/studio/src/app/change-actions.ts`: `requestStartOver` refuses like the other two
+  (`changeBlockedReason`) and, with no current version yet, says `Start over opens once the first
+version is ready`.
+- `apps/studio/src/components/StartOverButton.tsx`: `Start over` (`data-testid="start-over"`), a
+  square secondary button like Go back to this (`border-line`, `text-xs`), beside the `Versions`
+  heading (VersionList's `action` slot, passed by `LiveReel.tsx`). Disabled while the reel is
+  blocked, has no version, any job of the reel is queued, running or waiting for the AI (the
+  change box shows the queue note `Waiting: ...` then), and until its own job ends; its title says
+  why. A failure to queue shows beside it. Progress shows in the overlay like a change's
+  (`JOB_STEPS.start_over` is `decide`); a failure gets Try again and Keep the current version.
+- `apps/worker/src/job-kinds.ts` dispatches `start_over`; `apps/worker/src/process-job.ts` reads the
+  reel's version 1 (`firstVersionId` in `apps/worker/src/start-over.ts`; a reel without one fails
+  the job) and runs `runDecide` with `request` null and `startFrom` that version. Every earlier step
+  (convert, transcribe, retime, head_track, preview_copies, the background map, cut-outs) is reused
+  from the cache; decide is never cached. Claude starts from version 1's choices (captions only),
+  never the current version's; the reel's behind rules hold as on any run. The new version's
+  parent is the current version, it becomes current, and its title and summary describe the
+  difference from version 1 (a fresh first edit). In the list it reads like the automatic run
+  (`Styled automatically` when it has no title). The step summary ends with
+  `started over from version 1`.
+- To remove: the button file and its `action` use in `LiveReel.tsx` (and the slot if unused), the
+  action, `start_over` in `JOB_KINDS`, `JOB_STEPS` and `jobRequestLabel`, the worker's runner,
+  `start-over.ts` and `startFrom` in `run-decide.ts`, their tests, `apps/studio/e2e/start-over.spec.ts`,
+  and a new migration dropping the policy and the kind.
+
 ## How to Use
 
 1. Open a processed reel in the studio.
@@ -138,6 +175,12 @@ specs, see `app_docs/decide-step.md`).
   details hidden until the arrow opens them (`aria-expanded`), What you asked, What changed, and
   the `Back to vN` titles of the restores. A change that would leave the reel as it is saves
   nothing and the overlay says `Nothing changed`.
+- Start over: `apps/worker/src/job-kinds.test.ts`, `apps/worker/src/queue.test.ts` (never moves the
+  reel's status), `apps/worker/src/decide/run-decide.test.ts` (`runDecide starting over`: decides
+  from version 1, parent the current version, a version of another reel refused),
+  `apps/studio/db-tests/change-jobs.test.ts` (the policy, no request or version, another owner
+  refused) and `apps/studio/e2e/start-over.spec.ts` (beside the heading, off while a job runs,
+  version 3 with version 1's bytes from an answer with no choices, older versions kept).
 - `apps/studio/e2e/reel-layout.spec.ts`: at 1440x900 and 390x844, every row the same height
   (within 1 px) with a long title, a long request without a title and a short title, no `time`
   element, every row as wide as the Versions area (within 1 px) with no box around the list, the
@@ -145,7 +188,8 @@ specs, see `app_docs/decide-step.md`).
 
 ## Rules
 
-- The version summary describes only the saved difference.
+- The version summary describes only the saved difference (for a Start over, the difference from
+  version 1, the version it decided from).
 - An unchanged edit is never saved as a change.
 - A change keeps the current hook unless the owner asks to change or remove it.
 - A request for photos is always fulfilled with library photos (a loose fit as a `mood` photo,

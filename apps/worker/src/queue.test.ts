@@ -121,7 +121,7 @@ describe("ending a job", () => {
     expect(waiting.updates.map((u) => u.table)).toEqual(["jobs"]);
   });
 
-  for (const kind of ["change", "restore", "render"]) {
+  for (const kind of ["change", "restore", "render", "start_over"]) {
     it(`never writes the reel's status for a ${kind} job, finished or failed`, async () => {
       const done = stubClient();
       expect(await finishJob(done.db, CONFIG, job(kind))).toBe(true);

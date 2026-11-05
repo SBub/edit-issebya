@@ -207,6 +207,31 @@ describe("restore jobs", () => {
     ]);
     await admin.from("jobs").delete().eq("reel_id", reelA);
   });
+
+  // Start over: a temporary testing control (app_docs/change-requests.md).
+  it("lets the owner start over on their own reel, with nothing else on the job", async () => {
+    const { error } = await clientA.from("jobs").insert({ reel_id: reelA, kind: "start_over" });
+    expect(error).toBeNull();
+    expect(await jobsOf(reelA)).toEqual([
+      expect.objectContaining({
+        owner_id: userA.id,
+        kind: "start_over",
+        status: "queued",
+        request: null,
+        restore_version_id: null,
+      }),
+    ]);
+    await admin.from("jobs").delete().eq("reel_id", reelA);
+    for (const extra of [{ request: "lower" }, { restore_version_id: versionA }]) {
+      const refused = await clientA
+        .from("jobs")
+        .insert({ reel_id: reelA, kind: "start_over", ...extra });
+      expect(refused.error, JSON.stringify(extra)).not.toBeNull();
+    }
+    const other = await clientB.from("jobs").insert({ reel_id: reelA, kind: "start_over" });
+    expect(other.error).not.toBeNull();
+    expect(await jobsOf(reelA)).toEqual([]);
+  });
 });
 
 describe("Realtime publication", () => {

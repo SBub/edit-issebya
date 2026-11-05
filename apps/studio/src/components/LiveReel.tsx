@@ -18,6 +18,7 @@ import { ExportPanel } from "@/components/ExportPanel";
 import { ProgressOverlay } from "@/components/ProgressOverlay";
 import { ReelPreview } from "@/components/ReelPreview";
 import { ReelScreen } from "@/components/ReelScreen";
+import { StartOverButton } from "@/components/StartOverButton";
 import { VersionList } from "@/components/VersionList";
 import { changeBlockedReason } from "@/lib/change-requests";
 import type { ExportRef } from "@/lib/exports";
@@ -422,6 +423,15 @@ export function LiveReel({
             versions={versions}
             currentVersionId={currentId}
             blockedReason={blockedReason}
+            action={
+              <StartOverButton
+                reelId={reel.id}
+                blockedReason={blockedReason}
+                queueNote={queueNote}
+                jobs={jobs}
+                hasVersion={currentId !== null}
+              />
+            }
           />
         }
         library={library}

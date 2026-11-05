@@ -1047,3 +1047,73 @@ describe("runDecide with a behind item", () => {
     ]);
   });
 });
+
+// Start over (a temporary testing control): decide again from version 1.
+describe("runDecide starting over", () => {
+  it("decides from version 1, saving a new version after the current one", async () => {
+    const first = await decide(
+      fakeAiRunner([
+        scripted,
+        summaryEnvelope("Fade added", "A soft fade now covers a few words."),
+      ]),
+    );
+    await first.run;
+    const v2 = current!;
+    const empty = resultEnvelope(
+      answer((a) => {
+        a.accents = [];
+        a.transitions = [];
+        a.hook = null;
+        a.word_fixes = [];
+      }),
+    );
+    const ai = fakeAiRunner([empty]);
+    const { steps, calls } = recordingSteps();
+    await runDecide({
+      ctx: stepContext(steps),
+      storage,
+      rows: memoryRows(),
+      blobs: storageVersionBlobs(storage),
+      keyPrefix: PREFIX,
+      ai,
+      scratchDir: scratch,
+      newId,
+      startFrom: firstId,
+      log: () => {},
+    });
+    const v3 = rows.get(current!)!;
+    expect(v3).toMatchObject({
+      number: 3,
+      parent_id: v2,
+      request: null,
+    });
+    // From version 1: no choices leave its bytes, so the difference is empty
+    // (no summary call) though version 2 had a transition.
+    const bytes = async (id: string) =>
+      new TextDecoder().decode((await storage.get(rows.get(id)!.r2_key))!);
+    expect(await bytes(current!)).toBe(await bytes(firstId));
+    expect(ai.calls).toHaveLength(1);
+    expect(v3.change_title).toBe("No changes");
+    const done = lastCall(calls);
+    if (done.call !== "done") throw new Error(JSON.stringify(calls));
+    expect(done.summary).toMatch(/^version 3: .*started over from version 1/);
+  });
+
+  it("refuses a version of another reel", async () => {
+    rows.set("other", { ...rows.get(firstId)!, id: "other", reel_id: "another-reel" });
+    const { steps } = recordingSteps();
+    const run = runDecide({
+      ctx: stepContext(steps),
+      storage,
+      rows: memoryRows(),
+      blobs: storageVersionBlobs(storage),
+      keyPrefix: PREFIX,
+      ai: fakeAiRunner([]),
+      scratchDir: scratch,
+      newId,
+      startFrom: "other",
+      log: () => {},
+    });
+    await expect(run).rejects.toThrow(/version other of this reel not found/);
+  });
+});

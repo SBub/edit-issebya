@@ -33,7 +33,8 @@ the third tab on a phone.
   spans both rows (`lg:row-span-2`). Versions is the top 68% of column 2 (`lg:col-start-2
 lg:row-start-1`, `min-h-0 overflow-y-auto overscroll-contain`, no padding of its own, so its list
   of fixed-height version rows (no time or date, edge to edge of the area),
-  each opened with its arrow, scrolls inside it; rows and texts in `app_docs/change-requests.md`), the
+  each opened with its arrow, scrolls inside it; rows and texts in `app_docs/change-requests.md`;
+  the temporary Start over button sits at the right of the `Versions` heading), the
   photo library (`id="reel-panel-library"`) the top 68% of column 3 (`lg:col-start-3
 lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unchanged), and the
   correction field the bottom 32% across both (`lg:col-span-2 lg:col-start-2 lg:row-start-2`,

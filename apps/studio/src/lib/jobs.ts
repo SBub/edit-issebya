@@ -6,8 +6,9 @@ export const STEP_COLUMNS =
   "id, job_id, reel_id, name, status, summary, error_tail, started_at, finished_at, progress_percent, progress_updated_at";
 
 // `process` after an upload; `change` carries the owner's words; `restore`
-// goes back to an earlier version; `render` exports a version to an MP4.
-export const JOB_KINDS = ["process", "change", "restore", "render"] as const;
+// goes back to an earlier version; `render` exports a version to an MP4;
+// `start_over` (a temporary testing control) decides again from version 1.
+export const JOB_KINDS = ["process", "change", "restore", "render", "start_over"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 // `cancelled`: the owner closed a render's export modal (`cancel_job`).

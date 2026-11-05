@@ -80,5 +80,6 @@ export function jobRequestLabel(
     const of = job.version_id ? versionsById.get(job.version_id) : undefined;
     return of ? `export of v${of.number}` : "export";
   }
+  if (kind === "start_over") return "start over from v1";
   return null;
 }

@@ -13,6 +13,9 @@ export interface KindRunners {
   render: (versionId: string) => Promise<void>;
   // A library photo's images and its description.
   describe_photo: (photoId: string) => Promise<void>;
+  // Start over (temporary, for testing): only the decide step, from version
+  // 1 with no request, saved as a new version.
+  start_over: () => Promise<void>;
 }
 
 // Runs the work of one claimed job by its kind. A change without a request,
@@ -37,6 +40,8 @@ export function runJobKind(
     case "describe_photo":
       if (!job.photo_id) throw new Error("describe_photo job has no photo");
       return runners.describe_photo(job.photo_id);
+    case "start_over":
+      return runners.start_over();
     default:
       throw new Error(`unknown job kind: ${job.kind}`);
   }
