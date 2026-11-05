@@ -34,7 +34,8 @@ Metrics, as defined by the code:
 - Funnel: the five studio events in order, per reel (`properties.reel_id`), 14-day window. Events
   are absent wherever PostHog is not initialised, so every other chart reads the database.
 - Cost per reel and per step: wall and CPU seconds, peak memory, bytes, AI tokens and the AI cost
-  Claude Code reports, summed from `steps`. No money is derived from machine time.
+  OpenRouter reports (else the list price of the call's tokens, `app_docs/decide-step.md`), summed
+  from `steps`. No money is derived from machine time.
 - Time per step against reel length (`insights/step-time-vs-length.ts`, key `step-time-vs-length`,
   "Studio: time per step against reel length", registered in `insights/index.ts` after the cost per
   step and in the dry-run snapshot): per step name and 15-second bucket of the reel's
@@ -72,7 +73,7 @@ Metrics, as defined by the code:
     `ai-wait-share`, "Studio: share of worker time waiting on Claude, by week"): per week of
     `steps.started_at`, the `wall_ms` of steps with a non-null `ai_model` over the `wall_ms` of every
     step that has one (done, failed or skipped; a running step has none). `ai_model` is the model
-    Claude Code reports, written by the worker's `aiMeasurements` on AI steps only, so an AI call
+    that answered (OpenRouter's response model), written by the worker's `aiMeasurements` on AI steps only, so an AI call
     that reported no usage is not counted. The whole wall time of an AI step counts, so the share is
     an upper bound on time spent waiting for Claude. Source: `steps`.
   - CPU per source minute and peak memory, per step (`insights/capacity-per-minute.ts`, key

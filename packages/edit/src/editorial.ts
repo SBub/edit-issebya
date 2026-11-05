@@ -123,7 +123,7 @@ export function editorialAnswerSchemaFor(
 
 export type EditorialAnswer = z.infer<ReturnType<typeof editorialAnswerSchemaFor>>;
 
-// The editorial answer's JSON Schema for `--json-schema`: the same draft-07
+// The editorial answer's JSON Schema for the AI's structured output: the same draft-07
 // settings as the decide answer's.
 export function editorialJsonSchema(
   transcript: Transcript,

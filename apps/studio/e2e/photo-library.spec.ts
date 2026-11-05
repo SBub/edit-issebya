@@ -273,7 +273,7 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
       ai_input_tokens: 1200,
       ai_output_tokens: 80,
       ai_cost_usd: 0.004,
-      ai_model: "claude-opus-5-5",
+      ai_model: "anthropic/claude-haiku-5.5",
     },
   ]);
   const derived = await admin

@@ -7,7 +7,7 @@ const MAX_TAGS = 8;
 // A short lowercase word or phrase: letters, digits, spaces and hyphens.
 const TAG = /^[a-z0-9][a-z0-9 -]{0,29}$/;
 
-// What Claude Code answers for one photo: one plain sentence and 3 to 8
+// What the model answers for one photo: one plain sentence and 3 to 8
 // lowercase tags, nothing else.
 const describeAnswerSchema = z.strictObject({
   description: z.string().min(1).max(MAX_DESCRIPTION_CHARS),
@@ -16,8 +16,8 @@ const describeAnswerSchema = z.strictObject({
 
 export type DescribeAnswer = z.infer<typeof describeAnswerSchema>;
 
-// The answer's JSON Schema for `--json-schema`: draft-07, the dialect the
-// Claude Code CLI accepts, like decide's.
+// The answer's JSON Schema, the structured output the AI runner asks for:
+// draft-07, like decide's.
 export const describeJsonSchema = z.toJSONSchema(describeAnswerSchema, {
   target: "draft-07",
   io: "output",

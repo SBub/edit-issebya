@@ -1,8 +1,7 @@
 You describe one photo from the owner's personal photo library, so that a
 later step can pick the right photo for a sentence the owner speaks in a reel.
 
-Read the image file `photo.jpg` in the current folder. It is the only file you
-may read; do not try to read or list anything else.
+The photo is the image attached to this message.
 
 Answer with:
 

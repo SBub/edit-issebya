@@ -67,7 +67,7 @@ const MAX_TRANSITIONS = 12;
 const MAX_FIXES = 60;
 const MAX_ASKS = 10;
 // The hook's text: no line break and nothing that could leave its tag (a
-// plain pattern, so the CLI's JSON Schema validator reads it as is).
+// plain pattern, so a provider's JSON Schema validator reads it as is).
 const HOOK_TEXT = /^[^\n\r<>]+$/;
 
 // The hook as placed and saved: its final full stops and ellipses (".",
@@ -285,13 +285,12 @@ export function decideAnswerSchemaFor(
 
 export type DecideAnswer = z.infer<ReturnType<typeof decideAnswerSchemaFor>>;
 
-// The answer's JSON Schema, for Claude Code's `--json-schema`: real `enum`
-// lists, every object closed (`additionalProperties: false`), refs inlined.
-// Draft-07, because the Claude Code CLI's validator rejects a schema whose
-// `$schema` is draft 2020-12 ("no schema with key or ref"). Every keyword this
-// schema uses (`enum`, `anyOf`, `pattern`, closed objects) is draft-07 too, so
-// only the `$schema` line differs from the 2020-12 output.
-// The worker doctor's `ai structured call` sends this schema to the real CLI.
+// The answer's JSON Schema, the structured output the worker's AI runner asks
+// for: real `enum` lists, every object closed (`additionalProperties: false`),
+// refs inlined. Draft-07 (kept from the Claude Code CLI, whose validator
+// rejected draft 2020-12; the runner leaves the `$schema` line and the length
+// bounds out of what it sends, and Zod checks them). The worker doctor's
+// `ai structured call` sends this schema in one real call.
 export function decideJsonSchema(
   preset: Preset,
   transcript: Transcript,

@@ -20,9 +20,8 @@ import {
   parseEditorialAnswer,
   wordsText,
 } from "@edit-issebya/edit";
-import type { AiRunner } from "../ai.ts";
+import { type AiExchange, type AiRunner, NO_USAGE } from "../ai.ts";
 import { AiUnavailable } from "../failure.ts";
-import type { Tool } from "../step-runner.ts";
 import { type AiUsage, addUsage } from "../step-store.ts";
 import type { InSpan, Telemetry } from "../telemetry.ts";
 import type { LibraryEntry } from "./input.ts";
@@ -129,8 +128,8 @@ export function editorialPrompt(input: EditorialInput): string {
 
 export interface EditorialRun {
   ai: AiRunner;
-  tool: Tool;
-  cwd: string;
+  // The job's signal: a lost lease stops a round's call.
+  signal?: AbortSignal;
   transcript: Transcript;
   preset: Preset;
   library: readonly LibraryEntry[];
@@ -157,19 +156,12 @@ export interface EditorialResult {
   notes: EngineNote[];
   rounds: number;
   usage: AiUsage;
+  // Each round's call as sent and answered, for the version's AI record.
+  exchanges: AiExchange[];
   // Why the rounds ended early (a refused or broken answer, the AI not
   // available); null when they ran their course.
   ended: string | null;
 }
-
-const NO_USAGE: AiUsage = {
-  inputTokens: null,
-  outputTokens: null,
-  costUsd: null,
-  model: null,
-  cacheReadTokens: null,
-  cacheWriteTokens: null,
-};
 
 // The editorial rounds after a placed answer. Each round sends the items to
 // decide on (every requested item left out; in the first round also the
@@ -185,6 +177,7 @@ export async function runEditorialRounds(run: EditorialRun): Promise<EditorialRe
   let placed = run.placed;
   let usage = NO_USAGE;
   const notes: EngineNote[] = [];
+  const exchanges: AiExchange[] = [];
   let rounds = 0;
   const end = (ended: string): EditorialResult => ({
     answer,
@@ -192,6 +185,7 @@ export async function runEditorialRounds(run: EditorialRun): Promise<EditorialRe
     notes,
     rounds,
     usage,
+    exchanges,
     ended,
   });
   // One round: its AI call and the placement of the merged answer. Returns
@@ -201,7 +195,8 @@ export async function runEditorialRounds(run: EditorialRun): Promise<EditorialRe
     span: Span,
     context: Context,
   ): Promise<string | null> => {
-    const result = await run.ai.call(run.tool, {
+    const result = await run.ai.call({
+      role: "editorial",
       prompt: editorialPrompt(
         editorialInput({
           items,
@@ -213,11 +208,12 @@ export async function runEditorialRounds(run: EditorialRun): Promise<EditorialRe
         }),
       ),
       schema: editorialJsonSchema(run.transcript, items, run.photoIds),
-      cwd: run.cwd,
+      ...(run.signal ? { signal: run.signal } : {}),
       ...(run.telemetry ? { trace: { telemetry: run.telemetry, parent: context } } : {}),
     });
     rounds += 1;
     usage = addUsage(usage, result.usage);
+    exchanges.push(result.exchange);
     if (result.kind === "unavailable") {
       span.setAttribute("decide.outcome", "unavailable");
       if (run.request !== null && placed.unplaced.some((item) => item.requested)) {
@@ -267,5 +263,5 @@ export async function runEditorialRounds(run: EditorialRun): Promise<EditorialRe
       : await oneRound(items, trace.wrapSpanContext(INVALID_SPAN_CONTEXT), ROOT_CONTEXT);
     if (ended !== null) return end(ended);
   }
-  return { answer, placed, notes, rounds, usage, ended: null };
+  return { answer, placed, notes, rounds, usage, exchanges, ended: null };
 }
