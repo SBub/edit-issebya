@@ -419,10 +419,10 @@ test("text moved by 60 px falls below the bound", async () => {
 // a change job (the scripted answer) that makes the cut-out with the real mask
 // tool and saves the version, then the composite in the live preview and in
 // the real export are compared at the same moments. The photo and the word
-// are each 2.567 s over the whole speech, as two versions, because the
-// fixture's speech (0.038 to 2.605 s) is too short for two non-overlapping
-// 2 to 4 s items in one version. Every moment is inside both spans. The photo
-// moved by 60 px is the probe and must fall below the bound.
+// each show 2 s from the speech's start (0.038 s), as two versions over the
+// same span. The first two moments are inside it, the last one after it (the
+// composite gone in both). The photo moved by 60 px is the probe and must
+// fall below the bound.
 async function changeTo(script: string, request: string): Promise<string> {
   const { error } = await admin
     .from("jobs")

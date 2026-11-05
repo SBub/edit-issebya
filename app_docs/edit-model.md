@@ -31,21 +31,31 @@ types until slice 9 brings the live preview.
 - `src/schema.ts`: `edit.json`, format 1: `format`, `preset` (`"issebya"`), `duration`, `inputs`
   (the pipeline outputs it was made from, each `{ step, fingerprint, file }`: `footage`,
   `transcript`, `head_track`) and `tracks`: `footage`, `captions`, `overlays`
-  (`kind: "accent"`), `transitions` (`dim`, `panel`, `numbered`; `card` is no longer in the library but stays in the stored format so old versions render), `sounds` (`click`) and the optional
+  (`kind: "accent"`, or `kind: "hook"` for the written hook, below), `transitions` (`dim`, `panel`, `numbered`; `card` is no longer in the library but stays in the stored format so old versions render), `sounds` (`click`) and the optional
   `behind` track. `inputs.cutout` and `tracks.cutout` (the old whole-clip cut-out) are optional and
   never written now (old versions may hold them); the builder ignores them.
-- `tracks.behind`: what sits behind the speaker. An item is either a library photo
-  (`kind: "photo"`, `photo_id` a photo's uuid, `spot` one of `top`, `left`, `right`) or one big
+- `tracks.behind`: what sits behind the speaker, any number of items. An item is either a library
+  photo (`kind: "photo"`, `photo_id` a photo's uuid, `spot` one of `top`, `left`, `right`, and the
+  optional `reason`, `match` or `mood`, why the editor chose it: written from `decide-13` on, absent
+  in older versions, never rendered; the optional `layer`, `behind` or `front`, and `box`
+  (`{ x, y, width, height }`, whole pixels in the frame), both written by the layout engine from
+  `decide-14` on: absent, the photo is behind the speaker and covers its spot exactly, as every
+  older version renders; with a `box`, `spot` names the preset spot nearest it) or a big
   word (`kind: "word"`, `text` a single word of 1 to 24 characters with no space, `<`, `>` or
-  `&`). It is anchored on words like a caption, lasts the preset's 2 to 4 s, cuts in and out with
-  no animation, and only one is shown at a time. A refinement refuses an item outside 2 to 4 s, two
-  overlapping items and an item crossing a footage clip's `hidden` span. A version without the
-  track parses, and the builder reads it as empty.
+  `&`). It is anchored on words like a caption (a big word starts on its word with a negative
+  `offset`, the lead), cuts in and out with no animation, and only one is shown at a time. In a new
+  version a photo lasts the preset's 1 to 2 s and a big word the accent's timing (at least 1.5 s,
+  at most from the lead before its word to a second after it); one saved before 2026-11-04 may
+  last 2 to 4 s, or 2 s from its word. A refinement refuses two overlapping items and an item
+  crossing a footage clip's `hidden` span; with the decide limit (`EditLimits.behindLengths`, new
+  versions only) also an item outside its kind's length, so a stored version keeps parsing and
+  rendering. A version without the track parses, and the builder reads it as empty.
 - `inputs.masks` and `inputs.photos`, both optional, filled by the worker before a version with a
   `behind` item is saved: `masks` lists the person masks (`EditMask`, a `{ step: "cutout",
 fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it covers, in
   seconds, by start), `photos` the library photo ids the track names (sorted, unique). A version
-  without behind items has neither.
+  without behind items has neither; one whose only items are photos in front of the speaker has
+  `photos` and no `masks` (nothing to cut out).
 - Every item has an `id` (`^[a-z][a-z0-9-]{0,63}$`, unique across tracks), a `start` and an `end`
   anchor. An anchor is a word (`{ word, edge?: "start" | "end", offset? }`, offset within plus or
   minus 1 s), a time in seconds (`{ time }`, only where nobody speaks) or the reel's edge
@@ -56,8 +66,17 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   `secondary`), `size`, `color` (`#RRGGBB`), `position` (`{ x, y, align }` inside the frame) and
   `break_after` (set in two lines, this many words on the first); a big word behind the speaker
   takes `position` (`{ x, y }`, its top left corner in the frame) and `size`. Captions, accents and
-  the big word also take an optional `shadow` (`1` or `2`, a soft text shadow the engine sets when
-  the text would be hard to read; the builder renders it as the preset's `text-shadow`). The layout engine
+  the big word also take an optional `shadow` (`1` or `2`), legacy: a soft text shadow the engine
+  set before 2026-11-04 when the text would be hard to read. The engine never writes it now; it is
+  kept so older versions parse and render unchanged (the builder renders it as the preset's legacy
+  `readability.shadows` `text-shadow`). A caption
+  takes an optional `hidden_by` (the id of the accent or big word showing its words while it would
+  show; the builder leaves it out, and a refinement refuses an id that is no accent or big word,
+  the hook included).
+  The hook (`kind: "hook"`, id `hook`) takes `text` and never `words`: it is the one text on screen
+  nobody says. A refinement refuses a hook with words or without text, and a second hook. Versions
+  saved before it have none and parse as before.
+  The layout engine
   writes `position` and `size` on every caption, accent and big word it places; versions saved
   before it have none;
   footage clips take `hidden` spans; transitions a replacement `color`; sounds
@@ -67,7 +86,8 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
 - Validation is Zod 4. `editSchemaFor(preset, transcript)` is built per reel: word ids are the
   transcript's and fonts the preset's, so an unknown word or font is refused by the schema itself;
   a refinement refuses a duplicate id, an end before its start, an overlay with neither words
-  nor text, and a `behind` item breaking its rules above. `EditLimits.photoIds` limits
+  nor text, and a `behind` item breaking its rules above. `EditLimits.behindLengths` adds the behind
+  lengths (the decide limit); `EditLimits.photoIds` limits
   `photo_id` to the given ids (the decide answer passes the owner's ready photos); without it any
   uuid parses. `src/transcript.ts` is the studio transcript (`{ words: [{ id, text, start, end }] }`).
 
@@ -91,13 +111,18 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   (`PLATFORM_BUTTONS_WIDTH`, 100) are named constants the owner tunes by eye with the studio's
   Zones button. Module constants, not `Preset` fields: no preset and no change request moves them.
 - Fonts: `primary` Raleway Light (`assets/fonts/Raleway-Light.ttf`, weight 300, 110 px) for
-  accents, `secondary` Golos Text Bold (`assets/fonts/GolosText-Bold.ttf`, weight 700, 50 px) for
-  captions.
+  accents, the big word and the key phrase of a transition, `secondary` Golos Text Bold
+  (`assets/fonts/GolosText-Bold.ttf`, weight 700, 50 px) for captions and a transition's lead-in
+  (owner decision 2026-11-04, after a day's trial of Raleway for captions too). The builder lists
+  a font file once even when both roles share it. All text is white (`#FFFFFF`: captions, accents,
+  the big word, transition levels by their roles).
 - Captions: `#FFFFFF`, rise 12 px over 0.18 s (`power2.out`), fade out 0.15 s, at least 0.25 s on
   screen, a group breaks at a 0.35 s pause or after 4 units, fallback line y 1290 when no head is
   in the frame, line gap 14.
-- Accents: `#B3E6FF`, 190 px above the head, y 1130 with no head, from the first word to 1 s
-  (`afterSeconds`) after the last, at least 1.5 s (`minSeconds`). Slots beside the head (versions
+- Accents: `#FFFFFF`, 190 px above the head, y 1130 with no head, from 0.2 s (`leadSeconds`,
+  so the entrance has finished as the word is heard) before the first word to 1 s
+  (`afterSeconds`) after the last, at least 1.5 s (`minSeconds`). The big word takes the same
+  three numbers. Slots beside the head (versions
   saved before the layout engine): first row 610, row gap 85, right drop 42, minimum left 110,
   minimum right 90.
 - Layout (`layout`): text shrinks to 60% of its size (`minScale`) before it gives up a place, and
@@ -109,13 +134,32 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   #114 had moved these, the fallback line and the accent's no-head line up to fit its smaller
   zone; owner decision 2026-11-03 to restore them). Every one fits `STYLE_SAFE`, `PLATFORM_SAFE`
   and stays left of `PLATFORM_BUTTONS`.
-- Click sound: `assets/sounds/mouse-click-trimmed.wav`, 0.23 s, -13 dB, at least 0.25 s apart.
+- Click sound: `assets/sounds/mouse-click-trimmed.wav`, 0.23 s, -6 dB (owner decision 2026-11-04,
+  louder than the -13 dB before; a stored click with no `gain_db` plays at it too, in the preview
+  through `apps/studio/src/lib/sound-schedule.ts` and in the export through the page's
+  `data-volume`, both from `gain_db ?? gainDb`), at least 0.25 s apart.
 - Behind (`behind`, starting values the owner tunes by eye): photo spots `top` (left 90, right 990,
   top 160, bottom 760), `left` (40 to 500, 560 to 1180) and `right` (580 to 1040, 560 to 1180),
-  each covered exactly by the photo. The big word: `secondary` font, at most 400 px, side margin
-  40, `#FFFFFF`, its vertical centre 60 px below the head's top (`belowHeadTop`) or at y 700 with
-  no head (`noHeadY`). The cut-out covers each item plus 3 frames on each side (`padFrames` at
-  `frameRate` 30); an item lasts 2 s (`minSeconds`) to 4 s (`maxSeconds`).
+  each covered exactly by the photo. The big word: `primary` font, at most 400 px, side margin
+  40, `#FFFFFF`, its vertical centre wanted 60 px below the head's top (`belowHeadTop`) or at
+  y 700 with no head (`noHeadY`), moved up until the person covers at most the lower 30% of its
+  height (`minVisible` 0.7). The cut-out covers each item plus 3 frames on each side (`padFrames`
+  at `frameRate` 30); a photo lasts 1 s (`minSeconds`) to 2 s (`maxSeconds`), a short beat rather
+  than a backdrop, and a big word the accent's timing. No count per reel.
+- Photos the engine places (`behind.photo`, owner decision 2026-11-04): behind the speaker only
+  while the person covers at most the lower 30% of the photo's height in every column
+  (`minVisible` 0.7, the big word's measure), else in front; long side `sizes` large 860, medium
+  640, small 460 px, short side at least 280 (`minShortSide`), the library photo's ratio (`aspect`
+  4:3 when the library gives none); its edge needs a contrast of 1.5:1 (`minContrast`) against the
+  footage within 30 px around it (`ring`).
+- Pace (`pace`, one intensity level: Medium, the only one so far; a later Calm or Intense switch
+  swaps the block whole): something new besides captions at least every 3 s
+  (`extraEverySeconds`, the editor's aim, passed to the decide prompt as `extra_every_seconds`)
+  and about one transition per 9 s (`transitionEverySeconds`, the engine's cap, was
+  `transition.perSeconds` 7), slower than the rhythm since a transition covers the speaker. The
+  written hook (`pace.hook`): from 0.2 s (`fromSeconds`, the accent's lead) to 3 s
+  (`untilSeconds`), the first seconds that decide whether people keep watching, at most 7 words
+  (`maxWords`) and 45 characters (`maxCharacters`, both passed to the prompt as `hook_length`).
 - Caption units: kept capitals (`I`, `I'm`, `I've`, `I'll`, `I'd`, `AI`), a number joined with the
   unit after it, a month with its day number, and the glossary (`lock-in`, heard as `locking` or
   `lock in`).
@@ -140,16 +184,26 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   when it has `break_after` (rendered `first<br />second`, centred); an item without one (a version
   saved before the engine) gets the old fixed-spot placement, kept unchanged so stored versions look
   as they did. `src/html.ts` escapes text and attributes and formats numbers.
-- `src/behind.ts`: `spotBox(spot, preset)` (the spot's rectangle), `placedBigWord` (a big word at
+- `src/behind.ts`: `spotBox(spot, preset)` (the spot's rectangle), `photoBox(item, preset)` (a
+  photo's `box`, else its spot), `needsCutout(item)` (a big word, and a photo not in front),
+  `nearestSpot(box, preset)`, `boxFaceShare`, `personBoxes` (the face and the body under it),
+  `placedBigWord` (a big word at
   its stored `position` and `size`, its width from HarfBuzz at 1 px), `bigWordLayout` (for a
   version saved before the engine: the big word
   as large as fits between the side margins, at most the preset's size and at least 8 px, centred
   across the frame, its centre below the head's top at the item's start or at `noHeadY`; its width
   from HarfBuzz at 1 px, so the measurer records it and the goldens cover it) and
-  `maskSpans(edit, transcript, preset)`: each behind item's span padded by `padFrames`, clamped to
+  `maskSpans(edit, transcript, preset)`: the span of each item that needs the cut-out (never a photo
+  in front) padded by `padFrames`, clamped to
   the reel, widened to whole frames, overlapping or touching spans merged, sorted, to the
   millisecond. The builder (one composite per span) and the worker (one mask per span) both call
   it, so they always agree.
+- A caption with `hidden_by` is left out like a transition's own captions (`hiddenCaptionIds` in
+  `src/transitions.ts`), so the page and the checks never see it.
+- The hook renders like an accent (the primary font, white, the same rise in and fade out, no
+  shadow) with its own class: `<span class="text hook f-primary">`, its lines centred by the
+  `.hook { text-align: center; }` rule, written only on a page with a hook (so every stored page
+  builds byte for byte as before). `TextBox.kind` is `hook` for it.
 - Behind the speaker, one composite per mask span, above the footage and under transitions and
   text: an untimed isolated group (`.cutout`, id `cut_<n>`) holding a footage copy (`muted`,
   `data-media-start` equal to its `data-start`), the span's behind items (a photo `<img>` exactly
@@ -158,7 +212,12 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   where the person is not), and an untimed `plus-lighter` sub-group (`.cutout-front`) of a second
   footage copy times the mask (the person back in front). Every layer is a plain timed element, so
   the player and the render's frame injector show the same pixels. A span with no matching entry
-  in `inputs.masks` (start and end within half a millisecond) throws.
+  in `inputs.masks` (start and end within half a millisecond) throws. A photo is drawn over its
+  `box` (its spot without one).
+- In front of the speaker (`layer: "front"`): the photo's `<img>` (`clip photo`, track index 30)
+  after the composites, above the footage and under transitions and text, with no cut-out (so no
+  mask span and no mask). A page whose only photos are in front writes the `.photo` rule alone,
+  never the composite's rules; every stored page builds byte for byte as before.
 
 ### Transitions tied to a phrase
 
@@ -167,7 +226,7 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   phrase starts (holding at most `transition.holdSeconds`, 1 s, after the last word; `long` wish
   `longHoldSeconds`, 2 s; `slow` wish multiplies the motion by `slowFactor`, 1.6), never shorter
   than `minSeconds` (1.5 s; later end first, then earlier start, else the transition is dropped).
-  About one per `perSeconds` (7 s) of reel, no overlap.
+  About one per `pace.transitionEverySeconds` (9 s) of reel, no overlap.
 - Claude gives `{ kind, from, to, key_from }` (kinds `TRANSITION_KINDS`: `dim`, `panel`, `numbered`,
   each with a `description` Claude reads in the prompt). The engine writes the transition item's
   `words`, `key`, `pace`, `hold`, `number` and `levels` (`number`, `lead`, `key`, each `{ text,
@@ -187,17 +246,62 @@ position, size, break_after?, start }`). The lead-in (words before `key_from`) i
   reads back as `dim`.
 - `src/version-diff.ts`, `src/version-summary.ts`: a changed phrase, motion speed or hold is named.
 
+### The written hook
+
+On social media the first seconds decide whether people keep watching; before the hook, nothing
+but captions showed in a reel's first seconds. The basic rule "every text on screen is a spoken
+word" is now "spoken words, plus one written hook at the start".
+
+- Claude writes it in the decide answer (`hook: { text }` or null, `app_docs/decide-step.md`); the
+  engine input carries it as `hook` (`HookChoice`), and `choicesOf` reads it back as its text (null
+  for a version without one), so it round-trips through a change.
+- It reads like a social post and never ends with a full stop: a question mark is welcome, an
+  exclamation mark allowed. The prompt asks for one line with no sentence-ending dot, and
+  `stripHookStop` (`src/decide.ts`) takes any final dots or ellipsis (".", "...", "…", spaces
+  after them) off the parsed answer's hook before it is placed and saved, the owner's exact words
+  included; a dot inside stays, and a hook of nothing but dots is refused ("a hook needs words").
+- Timing: from `pace.hook.fromSeconds` (0.2 s) to `untilSeconds` (3 s), cut to the reel's end; on
+  a reel too short to show it `accent.minSeconds` (1.5 s) it is dropped (rule `hook-time`). Both
+  anchors are `anchorAt` (the nearest word end within a second, else a time where nobody speaks),
+  so it follows its words through a re-time.
+- Must-place: the engine treats it like an item the owner asked for, on every run (`placeEdit`
+  puts `hook` first in `requested`). It is the first extra placed and the one extra of its window
+  (other extras in 0 to 3 s wait or are dropped `one-extra`, and the editorial round may move
+  them); no extra ever cuts it short, and a transition that would show during it is dropped (rule
+  `hook`). Captions keep running below it; nobody says it, so no caption is ever left out for it.
+- Placement: the accent's font, size and colour, in the upper part of the frame (the safe zone's
+  top half, above the face and the body under it), else the free part of the safe zone; in each
+  place it tries one line, then two (the balanced break), at each size down to the floor before
+  it moves on. Contrast as for an accent. When nothing fits, the make-room ladder runs for it as
+  for a request (captions moved, then shrunk or wrapped, Claude's own extras in its window
+  removed, then over part of the face as the last step); its `make-room` notes never say
+  `as asked` unless the owner's checklist linked it. Notes: `hook-spot` (`moved`), `hook-size`
+  (`shrunk`), `hook-wrap` (`wrapped`), `make-room`, `no-room` (`dropped`, only when every step
+  failed).
+- Checks treat it as text: `safe-box`, `text-overlap`, `timing` (at least `accent.minSeconds`) and
+  the glossary check (`glossaryChecks` reads every overlay's text).
+- `src/version-diff.ts` gives it its own kind (`hook`, keyed once per reel): added, changed (its
+  text), moved, retimed, removed. `src/version-summary.ts` names it (`hook`, `hooks`) and the
+  template writes `Hook added` / `A hook now opens the reel: "<its words>".`, `Hook changed` /
+  `The hook now reads "<its words>".` and `Hook removed` (a line naming a kind or carrying a time
+  is not quoted). The studio's tracks timeline shows it in its own `Hook` row
+  (`app_docs/studio-reel-layout.md`).
+
 ### The layout engine's input
 
 - `src/engine-input.ts`: `EngineInput` is what the decide answer hands the layout: `accents`
-  (word ranges, one may be the title), `big_word` (one word id or null), `photos` (a library id and
+  (word ranges, one may be the title), `big_words` (a list of word ids, the same word allowed
+  again), `photos` (a library id and
   a word range), `transitions` (a kind, a word range and `key_from`, where the key phrase starts), `word_fixes` (a word id and its text), each
   with an optional `wish` from `WISHES` (`top`, `bottom`, `left`, `right`, `behind`, `beside_head`,
-  `big`, `small`, `slow`, `long`). No times, positions, sizes or spots.
+  `big`, `small`, `slow`, `long`), and the optional `hook` (`{ text }` or null, no wish). No
+  times, positions, sizes or spots.
 - `choicesOf(edit, transcript, preset)` reads a version back as an `EngineInput` (what Claude is
   shown): each item by its anchor words, or the words spoken under it (an older version's written
   title); a caption whose text differs from its words is a fix on its first word. A photo reads back
-  as the words it shows over, so the choices placed again place the same.
+  as the words it shows over, so the choices placed again place the same. Every big word reads back
+  (an older version's one big word as a list of one). The hook reads back as its text, null when
+  the version has none.
 
 ### Layout engine
 
@@ -207,7 +311,7 @@ and big word with `position` and `size`, every photo with a `spot`) and the reco
 Pure and deterministic: no randomness, no clock, no I/O; the same input gives the same tracks and
 record. `editFromAnswer` (decide) and the worker's `first_version` step (with no choices) call it.
 
-- Inputs: the current version (footage, sounds and captions kept; each word fix becomes the text
+- Inputs: the current version (footage and captions kept, never its sounds; each word fix becomes the text
   of the caption showing that word; old positions and sizes are dropped), the answer's choices, the
   transcript with word times, the head track, the preset (safe box, fonts and sizes, transition
   text areas, behind spots as candidates) and the HarfBuzz measurer.
@@ -215,21 +319,34 @@ record. `editFromAnswer` (decide) and the worker's `first_version` step (with no
   - Captions: each from its own word; a group (consecutive captions ending on the same anchor)
     leaves at its last word's end, held so its last caption shows at least 0.25 s, never past the
     next group's start; a last caption that cannot show that long joins the next group.
-  - Accent: from its first word to 1 s after its last, at least 1.5 s.
-  - Big word: exactly on its spoken word, to the end of its sentence, 2 to 4 s; never before it.
+  - Accent: from `accent.leadSeconds` (0.2 s) before its first word to 1 s after its last, at
+    least 1.5 s (the start anchor is the first word with `offset` -0.2).
+  - Big word: the accent's timing (owner decision 2026-11-04, replacing 2 s from its word): from
+    the lead before its spoken word to 1 s after it, at least 1.5 s; cut short only by the reel's
+    end or the one-at-a-time rule, down to 1.5 s. Ids `big-word-1`, `big-word-2`, ... in answer
+    order (`big-word` in older versions).
+  - The lead never starts before 0 and gives way to the extra before: when that one leaves after
+    the lead would start but by the word, the accent or big word comes in as it leaves (and keeps
+    its minimum by leaving later); one still showing at the word is cut short there, as before.
+    Captions have no lead.
   - Photo: from its sentence's start (from its first word when that is more than 1 s into a long
-    sentence) to the sentence's end, 2 to 4 s, taking the pauses around a short sentence but never
-    another sentence's words; dropped when that is under 2 s.
-  - At most one extra (accent, big word or photo) at a time on top of the captions: a later extra
-    may cut an earlier one short down to its minimum, or end itself before a later one down to its
-    minimum; else it is dropped. Behind items never cross a hidden span of footage.
+    sentence), leaving at the sentence's end or 2 s later, whichever comes first, at least 1 s,
+    taking the pauses around a short sentence but never another sentence's words; dropped when that
+    is under 1 s.
+  - At most one extra (the hook, an accent, a big word or a photo) at a time on top of the
+    captions: a later extra may cut an earlier one short down to its minimum, or end itself before
+    a later one down to its minimum; else it is dropped. The hook and a running transition are
+    never cut short. Behind items never cross a hidden span of footage.
+  - The hook: from `pace.hook.fromSeconds` to `untilSeconds` ("The written hook" above); a
+    transition that would show during it is dropped (rule `hook`).
 - Scene: the reel is cut into moments at every item edge; each moment's face is the bounding box
   of the robust faces around it (`facesOver` in `src/head-track.ts`: at each head-track sample, the
   samples within 0.5 s, `cx` their median, the width their upper quartile, the top their lower
   quartile, so one bad reading never moves it), padded like the old layout (35 px left, 30 px right)
   plus `gap` above and below. The body under the face (1.8 head widths wide, to the frame's bottom)
-  is an obstacle for accents only: captions may sit on the chest, and the big word and photos sit
-  behind the person by design. The mask itself is not read (it is a video).
+  is an obstacle for accents only: captions may sit on the chest, the big word and a photo behind
+  the speaker may have their lower 30% behind the person, and a photo in front may cover the body
+  (never the face). The mask itself is not read (it is a video).
 - Free space (`src/engine-space.ts`): an area minus its obstacles (the moment faces over the item's
   time, the text already placed over it, the `PLATFORM_BUTTONS` notch) as the largest free
   rectangles (each rectangle an obstacle cuts becomes its parts left, right, above and below), and
@@ -243,8 +360,8 @@ record. `editFromAnswer` (decide) and the worker's `first_version` step (with no
     zone. Every candidate is tried at the full size before a smaller one, down to the floor (60%),
     so captions stay readable. A sentence that shares its time with a planned photo first tries
     only places that leave the photo a spot.
-  - Then the extras: the items the request checklist links (`requested`, item 5 strengthens this),
-    then accents, the big word, photos, each in answer order.
+  - Then the extras: the hook first, the items the request checklist links (`requested`, item 5
+    strengthens this), then accents, big words, photos, each in answer order.
   - Accent: above the head (its top about 190 px above the head), the upper part of the frame, the
     free part of the safe zone (with no head: the accent line at y 1130, then the safe zone); a
     `top`, `bottom`, `left`, `right` or `beside_head` wish goes first, `small` starts at 80%. In
@@ -252,9 +369,45 @@ record. `editFromAnswer` (decide) and the worker's `first_version` step (with no
     moves on.
   - Big word: as large as fits between the side margins (at most `maxSize`), its centre wanted
     `belowHeadTop` below the robust head top at its word (or at `noHeadY`), placed nearest that
-    inside the frame (40 px margin) clear of every text shown with it, shrinking to the floor.
-  - Photo: the wished spot, the spot it had, then `top`, `left`, `right`: the first spot the face
-    leaves within `maxFaceShare` at every moment and no caption or accent covers over its span.
+    inside the frame (40 px margin, never above `PLATFORM_SAFE`'s top 220) clear of every text
+    shown with it. Most of it stays in view: in every column the person (the robust faces over
+    its span, `facesOver`, and the body under them, 1.8 head widths wide) covers at most the lower
+    30% of its height (`bigWordCoveredShare` in `src/behind.ts`, shared with the check). Short of
+    that the wanted centre moves up 10 px at a time to the top (recorded `moved`, rule
+    `big-word-visible`), then the next smaller size is tried down to the floor (`shrunk`, rule
+    `big-word-visible`); with no place at all it is dropped (`big-word-visible`, the editor's
+    `no-room`).
+  - Never the same word twice on screen: once the extras are placed, a caption whose words an
+    accent or big word shows (never the hook: nobody says it) at some moment of the caption's own span is left out for that whole
+    span (`hidden_by`, no position), so no word blinks in or out of its group; a caption that
+    appears after the extra has left shows as usual. The rest of its group is set again at the
+    block's place, size and alignment, inside its old box (the sentence keeps its one spot, and
+    nothing else moves); a group with every caption hidden shows no caption then. Nothing is
+    recorded for it.
+  - Photo (owner decision 2026-11-04, replacing the three fixed spots): first behind the speaker,
+    then in front (the owner's `front` wish puts front first, `behind` keeps behind first). Inside
+    `PLATFORM_SAFE`, clear of every text shown with it (plus `gap`) and of the button column,
+    nearest the top of the frame's centre (a `top`, `left` or `right` wish, or the spot a make-room
+    step pins: that spot's centre). Behind: never where the person (the robust faces over its span,
+    `facesOver`, and the body under them) covers more than its lower 30% in any column
+    (`bigWordCoveredShare`, shared with the `photo-hidden` check). In front: never over the face
+    (the moment faces, padded, like captions), the body allowed. In each layer the sizes large,
+    medium, small in turn (small first with a `small` wish), and without a size wish the size of
+    the photo shown just before or after it last, so the same size never comes twice in a row when
+    another fits; the ratio is the library photo's (`PlaceOptions.photos`, `PhotoLook.aspect`).
+    Written: `layer`, `box` and `spot` (the nearest preset spot). Notes: `photo-layer` (`moved`,
+    `photo 1 sits in front: no place behind you keeps 70% of it in view from 5.21 s to 7.21 s`),
+    `photo-size` (`shrunk`, a smaller size than the first it tried), `wish` (`wish-not-kept`: a
+    layer, spot or `big` wish it could not keep, and why), `no-room` (`dropped`: no place behind in
+    view nor in front clear of the face).
+  - Photo contrast: with the background map and the photo's edge luminance (`PhotoLook.edge`, the
+    median of its thumbnail's border cells, measured by the worker), the WCAG ratio of the edge
+    against the footage in and 30 px around the photo (the sampler's 80th percentile towards the
+    edge) must reach `minContrast` (1.5); below it the photo tries nearby places in the same layer
+    and size (the readable-text grid, `readability.moveRadius`, still in view or clear of the face)
+    and moves to the nearest that reaches it (`contrast-spot`, `moved`), else stays (`contrast-stay`,
+    `low-contrast`, `... a photo never gets a frame, an edge or a shadow`). Never a frame, an edge
+    or a shadow; recorded only, never a check. A photo without a known edge is not measured.
 - Readability (`src/contrast.ts`, `src/background.ts`, `PlaceOptions.backgrounds`): the worker
   samples the footage into a background map (`BackgroundMap`: 2 frames a second, a 36 by 64 grid of
   30 px cells, each cell's WCAG relative luminance as a byte), and `backgroundSampler(map, frame)`
@@ -267,30 +420,52 @@ record. `editFromAnswer` (decide) and the worker's `first_version` step (with no
   or `large.min` (3) for accents and the big word, it first tries nearby places in the same zone (the
   chosen candidate's area, the same obstacles, size and line breaks; the original centre, then a
   60 px grid within 300 px) and moves to the nearest that reaches the threshold (rule
-  `contrast-spot`, action `moved`); else it keeps the place and sets `shadow` (2 under `strongBelow`,
-  else 1; rule `contrast-shadow`, action `shadowed`). The big word is never moved, only shadowed;
-  a caption that already covers the face is shadowed, never moved. The shadow is dark under a light
-  text and light under a dark one. With no `backgrounds` given the engine behaves as before. The
-  colour is never changed. Example reason: `accent "What are you protecting?" gets a soft shadow
-(level 2): contrast 1.6:1 from 3.20 s to 5.10 s, no free place nearby reaches 3:1`.
+  `contrast-spot`, action `moved`); else the text stays where it is, plain white, with no shadow
+  and its colour kept, and the record says so (rule `contrast-stay`, action `low-contrast`). Owner
+  decision 2026-11-04 (replacing the soft shadow, which read as a black stroke): move first, never
+  a shadow, never a colour change. The big word is never moved for contrast; a caption that already
+  covers the face is never moved for it. Low contrast is recorded only: it is no check failure and
+  no engine bug, and the version saves as usual. With no `backgrounds` given the engine behaves as
+  before. Example reason: `captions "the time we're living right now push ..." stay in place:
+contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an accent or big word:
+  `stays in place`; for a caption over the face or the big word the reason ends with
+  `captions over the face are never moved` or `the big word is never moved`). The summary never
+  reads these notes (they are no change the viewer sees). Versions saved before the decision keep their stored `shadow`, and their
+  records the legacy rule `contrast-shadow`, action `shadowed`; both are left as they are. No text
+  style anywhere (captions, accents, the title, big words, transition levels) adds a stroke or an
+  outline (`-webkit-text-stroke`, `paint-order`, a text shadow).
+- Sounds (`src/clicks.ts`, `clicksFor`, owner decision 2026-11-04): the engine writes a new
+  version's sound track. One `click` (`click-<item id>`) as each placed photo, behind or in front,
+  and each big word comes in, on the item's own start anchor (a big word's lead, 0.2 s before its
+  word), its end the item's end, so the click follows its item through every retime and goes when
+  it is dropped. Nothing else clicks: captions, accents, the hook and transitions stay silent. In
+  time order, a click under the sound's gap (0.25 s) after the one kept before it is left out,
+  with no note. The current version's sounds are never kept; a stored version's sounds are never
+  rewritten (it is never placed again). No switch to turn them off yet. `src/version-diff.ts`
+  never names a click on a photo or big word (`click-<id>` while that item is in the edit): it
+  comes and goes with its item, whose own entry says what changed.
 - Drops: an extra that fits nowhere is dropped and recorded. Captions are never dropped: with no
   free place even at the floor, they take the caption line over the face (recorded `covers-face`).
 - Record: a list of `EngineNote` `{ item, action, rule, reason }`, `action` one of `moved` (not its
-  kind's first place), `shrunk`, `wrapped`, `retimed`, `dropped`, `covers-face`, `wish-not-kept`, `shadowed`, `removed`,
+  kind's first place), `shrunk`, `wrapped`, `retimed`, `dropped`, `covers-face`, `wish-not-kept`, `low-contrast`, `removed` (and, in older
+  records only, `shadowed`),
   `reason` in plain words with the item's text and times, for example
   `{ "item": "photo-1", "action": "dropped", "rule": "no-room", "reason": "photo 1: every photo spot
 is under captions or the face from 23.48 s to 26.23 s" }`. Rules: `caption-min`, `caption-spot`,
   `caption-size`, `caption-face`, `accent-time`, `accent-spot`, `accent-size`, `accent-wrap`,
-  `big-word-time`, `big-word-size`, `photo-time`, `photo-spot`, `hidden-footage`, `one-extra`,
-  `no-room`, `wish`, `contrast-spot`, `contrast-shadow`, `make-room`, `editorial`. Saved with the version (`versions.engine_record`) and logged by the worker in
+  `big-word-time`, `big-word-size`, `big-word-visible`, `photo-time`, `photo-layer`, `photo-size`
+  (`photo-spot` in older records), `hidden-footage`, `one-extra`,
+  `hook`, `hook-time`, `hook-spot`, `hook-size`, `hook-wrap`,
+  `no-room`, `wish`, `contrast-spot`, `contrast-stay` (`contrast-shadow` in older records), `make-room`, `editorial`. Saved with the version (`versions.engine_record`) and logged by the worker in
   one line per version; item 6 turns it into the summary.
 - Final checks: `runChecks` (below) runs on every placed edit. They must never fail on the engine's
   output; one that does is an engine bug, logged with the reel id while the version is still saved.
 
 #### Making room for a request
 
-Without `requested` the engine makes no room: one plain pass (`placeOnce`), byte-identical to the
-committed goldens. With it (`editFromAnswer` passes the checklist's linked items), each requested
+Without `requested` and without a hook the engine makes no room: one plain pass (`placeOnce`),
+byte-identical to the committed goldens. The hook is always requested (first, ref `hook`). With
+it (`editFromAnswer` passes the checklist's linked items), each requested
 item the plain pass leaves out, in checklist order, gets room step by step until it is placed: the
 captions sharing its time move (full size), then shrink or wrap down to the floor, then extras the
 editor added on its own that stand in the way (and transitions covering every place it needs) are
@@ -300,8 +475,11 @@ block goes over the face that did not already. Each step is recorded under the r
 (action `moved`, `shrunk`, `retimed`, `removed` or `covers-face`); an item for which nothing works
 keeps its `dropped` note with the steps tried. `placeEdit` also returns `unplaced` (extras dropped,
 with answer ref, kind and a reason code) and `free` (sentences with room for each kind), which feed
-the editorial round (`app_docs/decide-step.md`). The final checks tolerate a `behind-face` on an
-item the engine recorded `covers-face` under `make-room`.
+the editorial round (`app_docs/decide-step.md`). For a requested photo the last step lets it sit
+behind the speaker though they hide more than its lower 30% (never in front over the face),
+recorded `covers-face` (`photo 1 sits behind you, where you hide more of it than usual: nothing
+else was free, as asked`). The final checks tolerate a `behind-face` or `photo-hidden` on an item
+the engine recorded `covers-face` under `make-room`.
 
 ### Bottom edge in the old layout
 
@@ -323,15 +501,22 @@ readable reason string (an empty list means every rule passes):
   or `runs into the platform button column below y 1164` with the right edge past x 945).
 - `frame`: a big word behind the speaker inside the frame (each edge that leaves it, and the
   word). It crosses the safe box by design, so it is never checked against it.
-- `behind-face`, `behind-caption` (`app_docs/decide-step.md`): a photo's spot not taken over by
-  the face, and no caption or accent over it.
+- `behind-face`, `behind-caption` (`app_docs/decide-step.md`): a photo behind the speaker (its box,
+  else its spot) not taken over by the face, a photo in front never over any part of the face, and
+  no caption or accent over either.
+- `photo-hidden`: a photo the engine set behind the speaker (one with a `box`) has at most its
+  lower 30% behind the person (`behind.photo.minVisible`, `bigWordCoveredShare`). A stored photo in
+  a spot is not checked for it.
 - `face`: captions clear of the face (the robust faces, `facesOver`, at every moment of the
   caption's span, the same ones the engine avoids).
-- `text-overlap`: no caption, accent or big word on another one shown at the same time.
-- `timing`: captions at least `caption.minSeconds` (0.25 s) and accents at least
+- `text-overlap`: no caption, accent, hook or big word on another one shown at the same time.
+- `timing`: captions at least `caption.minSeconds` (0.25 s) and accents and the hook at least
   `accent.minSeconds` (1.5 s) on screen.
-- `big-word-timing`: the big word never shows before its word (the matching spoken word nearest
-  its start) is said.
+- `big-word-timing`: the big word never shows more than `accent.leadSeconds` (0.2 s) before its
+  word (the matching spoken word nearest its start) is said.
+- `big-word-hidden`: the person covers at most the lower 30% of a big word's height
+  (`bigWordCoveredShare`), so it is not hidden by the head. A version saved before 2026-11-04
+  with a big word at head height shows this failed check.
 - `sound-gap`: two sounds at least the preset's gap (0.25 s) apart.
 - `time-in-speech`: a time anchor outside speech (it names the word to anchor to instead).
 - `out-of-reel`: an anchor that resolved outside the reel and was clamped.
@@ -389,7 +574,11 @@ never fatal.
   accents, the `panel` transition and a click), with `src/testdata/rethink-work/` (its transcript
   and real head track), and `rethink-work-behind.edit.json` (the hand edit with a `top` photo and
   the big word `WORK` behind the speaker, two masks with placeholder fingerprints and one photo id
-  in `inputs`) on the same data. `src/test-support/fixtures.ts` imports them as JSON modules so
+  in `inputs`) on the same data, and `rethink-work-hook.edit.json` (the engine's choices with the
+  written hook "Gen Z won't work like you did", placed by the engine: its own class, wrapped and
+  shrunk in the upper part of the frame), and `rethink-work-front.edit.json` (the engine's choices
+  with the photo wished `front`: over the footage, clear of the face, no mask for it).
+  `src/test-support/fixtures.ts` imports them as JSON modules so
   both runs build exactly the same inputs.
 - `src/build.test.ts` (Node, `measurer.node.ts`) and `src/build.browser.test.ts` (Chromium,
   `measurer.browser.ts`, the same wasm and fonts fetched from the test server) build every fixture
@@ -398,8 +587,8 @@ never fatal.
 - Negative proof: during the run a temporary probe (never committed) swapped the browser
   measurer for canvas `measureText` with the same fonts loaded through `FontFace`; the browser
   comparison then failed, so the test detects a measurer that differs from HarfBuzz.
-- `scripts/golden.ts` (`yarn workspace @edit-issebya/edit golden`) rewrites the two engine-placed
-  fixture versions and every golden from the Node build. Commit what it writes. The hand-made
+- `scripts/golden.ts` (`yarn workspace @edit-issebya/edit golden`) rewrites the engine-placed
+  fixture versions (the hook one included) and every golden from the Node build. Commit what it writes. The hand-made
   versions keep their goldens: stored versions are never placed again.
 
 ## Testing
@@ -414,16 +603,47 @@ never fatal.
   immutability and its RLS.
 - `apps/worker/src/first-version.test.ts` (version 1 saved, kept on a retry) and
   `apps/worker/src/edit-import.test.ts` (Node imports the package's TypeScript source).
-- `src/engine.test.ts`: each timing rule (captions, accents, the big word, photos, drops under the
-  minimum, one extra at a time, the request's items first), no check failing on a dense reel (a
-  title, four accents, the big word, two photos and a panel) with the real head and with a large
+- `src/engine.test.ts`: each timing rule (captions, accents and big words from the lead before
+  their word to a second after it, the lead giving way to the extra before, the same word again,
+  photos 2 s from their sentence's start, drops under the minimum, one extra
+  at a time, the request's items first, about one transition per 9 s), no check failing on a dense
+  reel (a title, four accents, a big word, two photos and a panel) and on the Medium rhythm (an
+  extra on every sentence and two transitions: one extra at a time, nothing during a transition,
+  photos 1 to 2 s, big words on the accent's timing, no word twice on screen, every left-out
+  item's drop recorded) with the real head and with a large
   centred face, one spot per sentence, the big word on its word and inside the frame with one bad
   head reading, a long title shrunk and wrapped (and one too long dropped), captions over a face
   that fills the safe zone recorded, today's failures (two accents in a row, captions on the big
   word, card captions on the face, a photo whose sentence's captions filled every spot, a photo
-  with no free spot dropped with its reason), determinism, and the engine placing its own output
-  the same again. `src/checks.test.ts` also shows the new checks finding the old fixed-spot
+  with no free spot dropped with its reason), the captions an accent or big word shows left out
+  (`and sense of purpose` reads `and`, `it to the world` reads `it to the`, a whole group hidden),
+  a short big word moved up out from behind a large face and one dropped under a head at the safe
+  top, determinism, and the engine placing its own output
+  the same again. The written hook: from 0.2 s to 3 s in the upper part of the frame with no
+  failed check and no caption left out for it, an accent in its window dropped (`busy`) and one
+  after it shown, never cut short, a transition in its window dropped (rule `hook`), room made with
+  the face covered last and never `as asked`, read back and placed the same again, dropped only on
+  a reel too short for it. `src/decide.test.ts` (the answer field: required, null for none, the
+  words and characters caps, one plain line, no wish or time, linked from the checklist, placed on
+  the fixture clip), `src/schema.test.ts` (the overlay kind), `src/version-diff.test.ts` and
+  `src/version-summary.test.ts` (added, changed, removed, quoted), `src/glossary.test.ts` (a heard
+  form in the hook). `src/checks.test.ts` also shows the new checks finding the old fixed-spot
   placement's faults in the hand-made versions.
+- Clicks: `src/clicks.test.ts` (one per photo and big word in time order, the first of two under
+  the gap kept, -6 dB) and `src/engine.test.ts` (a click on each placed photo and big word and
+  nothing else, the current version's sounds not kept, a dropped item's click gone, a retimed
+  item's click on its start, the stored hand edit's click as it was, `data-volume="0.5012"`).
+- Photos behind or in front (`src/engine.test.ts`): behind high in the frame with at most its
+  lower 30% behind the person and drawn in the composite, in front clear of the face with its
+  `photo-layer` note and no cut-out when no place behind keeps it in view, the `front` wish kept
+  and a `behind` wish not kept with its reason, sizes varied and each photo's ratio kept, a photo
+  moved off a light wall and one kept with `low-contrast`; a requested photo hidden behind the
+  person only as the last make-room step. `src/checks.test.ts` (a front photo over the face fails
+  `behind-face`, `photo-hidden` over 30%, a stored spot photo never checked), `src/build.test.ts`
+  (a front-only page), `src/behind.test.ts`, `src/schema.test.ts`, `src/version-diff.test.ts` and
+  `src/version-summary.test.ts` (`front`, "in front of you"); the worker's
+  `photos/photo-looks.test.ts`, `cutout/spans.test.ts` and `cutout/ensure-cutouts.test.ts` (no
+  mask for a front photo).
 - `src/preset.test.ts` (the intersection, the preset's box, every moved value inside it, the
   no-head big word inside the guard vertically), `src/layout.test.ts` (low face, a fallback block moved
   up and large captions end at or above the safe box's bottom, 1400) and `src/checks.test.ts` (a
@@ -444,17 +664,42 @@ never fatal.
 - Anchors are words; seconds only where nobody speaks.
 - Claude never writes times, positions or sizes: every one in a decided version comes from the
   layout engine, never from the answer.
-- Never let text overlap text, or a photo sit under a caption or an accent: the engine places
+- Never let text overlap text, or a photo (behind or in front) sit under a caption or an accent: the engine places
   nothing on what is already placed, and `text-overlap` and `behind-caption` guard it.
-- Never drop a caption; only extras (accents, the big word, photos) are dropped, each with a
-  recorded reason.
+- Never drop a caption; only extras (accents, big words, photos) are dropped, each with a
+  recorded reason. A caption left out while an extra shows its words is not dropped: its words
+  are on screen.
 - Never read a single head-track sample for a placement or a check: always the robust faces
   (`facesOver`).
-- Never show more than one extra at a time on top of the captions, or the big word before its
-  word.
+- Never show more than one extra at a time on top of the captions, or an accent or big word
+  more than `accent.leadSeconds` before its word; never let the lead cut into the extra before.
+- Never show a spoken word twice at once: a caption whose words an accent or big word shows is
+  left out while it shows, for its whole span (never blinking in or out of its group).
+- Every text on screen is a spoken word, except the one written hook at the start: never more than
+  one hook in a version, never a hook with words, and never a caption left out for it.
+- Never end the hook with a full stop or an ellipsis (`stripHookStop` takes them off; "?" and "!"
+  stay).
+- Never drop the hook while any make-room step finds it a place, never cut it short, and never
+  run a transition during it.
+- Never let the person cover more than the lower 30% of a big word (`behind.word.minVisible`)
+  in a new version; never place one above `PLATFORM_SAFE`'s top.
+- Never put a photo behind the speaker where the person covers more than its lower 30%
+  (`behind.photo.minVisible`) in a new version, except a requested photo as the last make-room
+  step (recorded `covers-face`); never put a photo in front over the face, over a caption or other
+  text, or outside `PLATFORM_SAFE`.
+- The engine, never Claude, chooses a photo's layer, place and size; the owner's `front` or
+  `behind` wish is tried first, and a wish it cannot keep is recorded `wish-not-kept`.
+- Never give a photo a frame, an edge or a shadow: a photo that blends with the footage moves,
+  else stays, recorded `low-contrast`.
+- Never cut out (no mask span, no mask) for a photo in front of the speaker.
 - Never let Claude write a transition's time, position or size, nor a literal font or colour in a
   transition entry: they come from the words and the style roles.
 - Never show an accent, photo or big word during a running transition.
+- Never hold a photo past `behind.maxSeconds` (2 s), or a big word past a second after its word
+  (the accent's timing), in a new version; never refuse a stored version for an older, longer
+  one.
+- Never click on anything but a photo or a big word coming in, never off its start, and never two
+  clicks closer than the sound's gap in a new version; never rewrite a stored version's sounds.
 - Never place a stored version again: the builder keeps every stored position, and a version saved
   before the engine keeps the old fixed-spot placement.
 - The engine is pure and deterministic: no randomness, no clock, no I/O.
@@ -462,9 +707,13 @@ never fatal.
   make room.
 - Never drop or remove an item the owner asked for to make room for another.
 - Cover the face for a requested item only after every other step.
-- Without a request the engine never makes room: its output is the plain pass's.
-- Never change a text colour to make it readable: move it or add a shadow.
-- Never move the big word for contrast; it only gets a shadow.
+- Without a request the engine never makes room, except for the hook: with no hook its output is
+  the plain pass's.
+- Never change a text colour to make it readable, and never add a shadow, a stroke or an outline
+  to any text in a new version: move it, else leave it in place, plain, and record it.
+- Never move the big word for contrast.
+- Never fail a check or a version on low contrast: it is recorded only.
+- Never rewrite an older version's stored `shadow`; the builder keeps rendering it.
 - A version with a `behind` item is saved only once every mask it names exists; the builder never
   builds a behind item without its mask.
 - A big word is checked against the frame, never the safe box.

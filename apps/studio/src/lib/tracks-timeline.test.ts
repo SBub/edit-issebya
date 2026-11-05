@@ -12,8 +12,11 @@ import baselineEdit from "../../../../packages/edit/src/testdata/versions/baseli
 import handTranscript from "../../../../packages/edit/src/testdata/rethink-work/transcript.json" with { type: "json" };
 import speechTranscript from "../../../../fixtures/pipeline/retime/transcript.json" with { type: "json" };
 import {
+  clockText,
   formatClock,
+  formatClockMs,
   frameIndexAt,
+  itemTitle,
   rulerTicks,
   scrubKey,
   secondsAtX,
@@ -32,7 +35,7 @@ function parsed(json: unknown, transcriptJson: unknown) {
 const LAYOUT = { everySeconds: 2, columns: 32, width: 90, height: 160 };
 
 describe("timelineRows", () => {
-  it("lays every item of a full edit at resolveTimeline's span, in the four rows", () => {
+  it("lays every item of a full edit at resolveTimeline's span, in the five rows", () => {
     const { edit, transcript } = parsed(handEdit, handTranscript);
     const timeline = timelineRows(edit, transcript);
     const resolved = resolveTimeline(edit, transcript);
@@ -40,6 +43,7 @@ describe("timelineRows", () => {
     expect(timeline.rows.map((row) => [row.key, row.label])).toEqual([
       ["footage", "Footage"],
       ["behind", "Behind"],
+      ["hook", "Hook"],
       ["overlays", "Accents"],
       ["transitions", "Transitions"],
     ]);
@@ -52,6 +56,7 @@ describe("timelineRows", () => {
     expect(counts).toEqual({
       footage: edit.tracks.footage.length,
       behind: 0,
+      hook: 0,
       overlays: edit.tracks.overlays.length,
       transitions: edit.tracks.transitions.length,
     });
@@ -77,6 +82,45 @@ describe("timelineRows", () => {
       ["behind-word", "WORK"],
     ]);
     expect(row.items[0]).toMatchObject({ start: 5.206, end: 7.838 });
+    // A version saved before photos carried a reason has no note.
+    expect(row.items[0]!.note).toBeUndefined();
+  });
+
+  it("names a photo's reason in its tooltip, never in its label", () => {
+    const { edit, transcript } = parsed(behindEdit, handTranscript);
+    const photo = edit.tracks.behind!.find((entry) => entry.kind === "photo")!;
+    if (photo.kind === "photo") photo.reason = "mood";
+    const row = timelineRows(edit, transcript).rows.find((entry) => entry.key === "behind")!;
+    expect(row.items[0]).toMatchObject({ label: "photo right", note: "mood photo" });
+    expect(itemTitle(row.items[0]!)).toBe("photo right, mood photo (5.206 to 7.838 s)");
+  });
+
+  it("labels a photo in front of the speaker as such, its reason still in the tooltip", () => {
+    const { edit, transcript } = parsed(behindEdit, handTranscript);
+    const photo = edit.tracks.behind!.find((entry) => entry.kind === "photo")!;
+    if (photo.kind === "photo") Object.assign(photo, { layer: "front", reason: "match" });
+    const row = timelineRows(edit, transcript).rows.find((entry) => entry.key === "behind")!;
+    expect(row.items[0]).toMatchObject({ label: "photo, in front", note: "matches the words" });
+    expect(itemTitle(row.items[0]!)).toBe("photo, in front, matches the words (5.206 to 7.838 s)");
+  });
+
+  it("shows the written hook in its own row by its text, never among the accents", () => {
+    const { edit, transcript } = parsed(handEdit, handTranscript);
+    edit.tracks.overlays.unshift({
+      id: "hook",
+      kind: "hook",
+      text: "Gen Z won't work like you did",
+      start: { word: "w0", edge: "end", offset: -0.155 },
+      end: { word: "w9", edge: "end", offset: 0.169 },
+    });
+    const rows = Object.fromEntries(
+      timelineRows(edit, transcript).rows.map((row) => [row.key, row.items]),
+    );
+    expect(rows.hook).toEqual([
+      { id: "hook", start: 0.2, end: 3, label: "Gen Z won't work like you did" },
+    ]);
+    expect(rows.overlays!.map((item) => item.id)).not.toContain("hook");
+    expect(trackItemClass("hook")).toBe("bg-track-hook text-surface rounded-track");
   });
 
   it("never shows the legacy cut-out track", () => {
@@ -105,7 +149,8 @@ describe("timelineRows", () => {
   it("keeps the empty rows of the baseline version", () => {
     const { edit, transcript } = parsed(baselineEdit, speechTranscript);
     const rows = timelineRows(edit, transcript).rows;
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(5);
+    expect(rows.find((row) => row.key === "hook")!.items).toEqual([]);
     expect(rows.find((row) => row.key === "overlays")!.items).toEqual([]);
     expect(rows.find((row) => row.key === "transitions")!.items).toEqual([]);
     expect(rows.find((row) => row.key === "behind")!.items).toEqual([]);
@@ -121,6 +166,30 @@ describe("formatClock", () => {
     expect(formatClock(125.7)).toBe("02:05");
     expect(formatClock(-3)).toBe("00:00");
     expect(formatClock(Number.NaN)).toBe("00:00");
+  });
+});
+
+// Temporary testing aid (SHOW_MILLISECONDS), remove with it.
+describe("formatClockMs", () => {
+  it("rounds to mm:ss.mmm and never goes negative", () => {
+    expect(formatClockMs(0)).toBe("00:00.000");
+    expect(formatClockMs(3.412)).toBe("00:03.412");
+    expect(formatClockMs(0.57)).toBe("00:00.570");
+    expect(formatClockMs(57.14)).toBe("00:57.140");
+    expect(formatClockMs(59.9996)).toBe("01:00.000");
+    expect(formatClockMs(125.7)).toBe("02:05.700");
+    expect(formatClockMs(-3)).toBe("00:00.000");
+    expect(formatClockMs(Number.NaN)).toBe("00:00.000");
+  });
+
+  it("is the player's clock and the ruler's read-out while the aid is on", () => {
+    expect(clockText(3.412)).toBe("00:03.412");
+  });
+
+  it("gives each track item its exact span to the millisecond", () => {
+    expect(itemTitle({ id: "c1", start: 0.412, end: 0.7334, label: "There" })).toBe(
+      "There (0.412 to 0.733 s)",
+    );
   });
 });
 

@@ -44,7 +44,8 @@ function plural(count: number, unit: string): string {
 // each missing span and uploads it put-if-absent, so a stored mask is never
 // replaced. Returns the edit with `inputs.masks` (by start) and
 // `inputs.photos` (sorted) naming them; an edit without behind items comes
-// back without either, and no row is written.
+// back without either, and one whose only items are photos in front of the
+// speaker with its photos and no masks; neither writes a row.
 export async function ensureCutouts({
   ctx,
   storage,
@@ -74,6 +75,8 @@ export async function ensureCutouts({
     }
   }
 
+  // Photos in front of the speaker only: no cut-out to make or reuse.
+  if ((named.inputs.masks ?? []).length === 0) return named;
   const footage = edit.inputs.footage;
   const spans = (named.inputs.masks ?? []).map((mask) => ({
     ...mask,

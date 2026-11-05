@@ -15,7 +15,7 @@
         "title": false
       }
     ],
-    "big_word": null,
+    "big_words": [],
     "photos": [],
     "transitions": [
       {
@@ -31,6 +31,9 @@
         "text": "Studio"
       }
     ],
+    "hook": {
+      "text": "A short test for the real studio"
+    },
     "checklist": [],
     "behind_rules": {
       "photos": "keep",

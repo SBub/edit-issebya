@@ -43,6 +43,21 @@ describe("withMasks", () => {
     expect(named.inputs.photos).toEqual([BEHIND_PHOTO]);
   });
 
+  it("names no mask for a photo in front of the speaker, only for what sits behind", () => {
+    const edit = behindEdit();
+    const photo = edit.tracks.behind!.find((item) => item.kind === "photo")!;
+    if (photo.kind !== "photo") throw new Error("not a photo");
+    photo.layer = "front";
+    const named = withMasks(edit, BEHIND_TRANSCRIPT);
+    // The big word keeps its span; the photo's is gone.
+    expect(named.inputs.masks?.map(({ start, end }) => [start, end])).toEqual([[19.967, 22.733]]);
+    expect(named.inputs.photos).toEqual([BEHIND_PHOTO]);
+    edit.tracks.behind = [photo];
+    const front = withMasks(edit, BEHIND_TRANSCRIPT);
+    expect(front.inputs).not.toHaveProperty("masks");
+    expect(front.inputs.photos).toEqual([BEHIND_PHOTO]);
+  });
+
   it("drops masks and photos from an edit without behind items", () => {
     const edit = withMasks(behindEdit(), BEHIND_TRANSCRIPT);
     delete edit.tracks.behind;

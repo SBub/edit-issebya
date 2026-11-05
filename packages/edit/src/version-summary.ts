@@ -41,6 +41,7 @@ export function parseSummaryAnswer(
 // The words that name each kind of item, matched as whole words, any case.
 const NAMES: Record<DiffKind, readonly string[]> = {
   title: ["title", "titles", "heading", "opening line"],
+  hook: ["hook", "hooks"],
   accent: ["accent", "accents", "highlight", "highlights", "highlighted", "stands out", "emphasis"],
   photo: ["photo", "photos", "picture", "pictures", "image", "images"],
   big_word: ["big word", "key word"],
@@ -152,21 +153,23 @@ export function checkSummary(
 }
 
 // The kind of an engine item by its id: `title`, `accent-2`, `photo-1`,
-// `big-word`, `transition-3`.
+// `big-word-1` (`big-word` in an older record), `transition-3`.
 function kindOfItem(id: string): DiffKind | null {
   if (id === "title") return "title";
-  if (id === "big-word") return "big_word";
+  if (id === "hook") return "hook";
+  if (id === "big-word" || /^big-word-\d+$/.test(id)) return "big_word";
   const prefix = /^([a-z]+)-\d+$/.exec(id)?.[1];
   if (prefix === "accent" || prefix === "photo" || prefix === "transition") return prefix;
   return null;
 }
 
-// The kinds an answer reference may be.
+// The kinds an answer reference may be (`big_word` in an older checklist).
 function kindsOfRef(ref: string): DiffKind[] {
-  if (ref === "big_word") return ["big_word"];
+  if (ref === "big_word" || ref.startsWith("big_words[")) return ["big_word"];
   if (ref.startsWith("accents[")) return ["accent", "title"];
   if (ref.startsWith("photos[")) return ["photo"];
   if (ref.startsWith("transitions[")) return ["transition"];
+  if (ref === "hook") return ["hook"];
   return [];
 }
 
@@ -213,6 +216,9 @@ const DROP_WORDS: Record<string, string> = {
   "transition-time": "the reel is too short for it",
   "transition-rate": "the reel has room for only a few of them",
   "transition-overlap": "another one shows at that moment",
+  // A transition in the first seconds, kept clear for the written line.
+  hook: "the first seconds are kept for the written line",
+  "hook-time": "the reel is too short for it",
 };
 
 const NUMBERS = [
@@ -237,6 +243,7 @@ function counted(count: number): string {
 
 const NOUN: Record<DiffKind, { one: string; many: string }> = {
   title: { one: "title", many: "titles" },
+  hook: { one: "hook", many: "hooks" },
   accent: { one: "accent", many: "accents" },
   photo: { one: "photo", many: "photos" },
   big_word: { one: "big word", many: "big words" },
@@ -301,12 +308,12 @@ function titleOf(group: Group): string {
   return `${capital(noun)} ${action ? VERB[action] : "changed"}`;
 }
 
-// A short quote of the words, only when it names nothing and carries nothing
-// the safeguard refuses.
-function quoteOf(text: string | undefined, preset: Preset): string | null {
+// A short quote of the words (a hook's whole line), only when it names
+// nothing and carries nothing the safeguard refuses.
+function quoteOf(text: string | undefined, preset: Preset, longest = 30): string | null {
   if (text === undefined) return null;
   const clean = text.replace(/["“”]/g, "").trim();
-  if (clean.length === 0 || clean.length > 30) return null;
+  if (clean.length === 0 || clean.length > longest) return null;
   const probe = { change_title: "x", change_summary: clean };
   return checkSummary(probe, EMPTY_DIFF, preset).ok ? `"${clean}"` : null;
 }
@@ -321,13 +328,30 @@ function sentenceOf(group: Group, preset: Preset, quotes: boolean): string {
           ? "Photos are switched off for this reel."
           : "Photos are allowed again for this reel."
         : rule === "off"
-          ? "The big word is switched off for this reel."
-          : "The big word is allowed again for this reel.";
+          ? "Big words are switched off for this reel."
+          : "Big words are allowed again for this reel.";
   if (entries.length === 0) return ruleSentence ?? "";
   const first = entries[0]!;
   const quote = quotes ? quoteOf(first.text, preset) : null;
   let sentence: string;
-  if (kind === "caption") {
+  if (kind === "hook") {
+    // One hook per reel: what it says now, quoted whole when it quotes safely.
+    const line = quotes ? quoteOf(first.text, preset, preset.pace.hook.maxCharacters) : null;
+    sentence =
+      first.action === "added"
+        ? line
+          ? `A hook now opens the reel: ${line}.`
+          : "A hook now opens the reel."
+        : first.action === "removed"
+          ? "The hook at the start was taken out."
+          : first.action === "changed"
+            ? line
+              ? `The hook now reads ${line}.`
+              : "The hook now reads differently."
+            : first.action === "moved"
+              ? "The hook moved to another place."
+              : "The hook now shows at a different moment.";
+  } else if (kind === "caption") {
     const fixed = entries.filter((entry) => entry.action === "changed");
     if (fixed.length === 0) sentence = "The captions moved to make room.";
     else {
@@ -340,12 +364,25 @@ function sentenceOf(group: Group, preset: Preset, quotes: boolean): string {
   } else {
     const action = sharedAction(entries);
     const { one, many } = NOUN[kind];
-    const where = kind === "photo" || kind === "big_word" ? " behind you" : "";
+    // Behind the speaker, or in front of them when every photo is.
+    const where =
+      kind === "photo" && entries.every((entry) => entry.front)
+        ? " in front of you"
+        : kind === "photo" && entries.some((entry) => entry.front)
+          ? ""
+          : kind === "photo" || kind === "big_word"
+            ? " behind you"
+            : "";
     const on = quote ? (kind === "photo" ? ` while you say ${quote}` : ` on ${quote}`) : "";
     if (entries.length > 1 && action !== null && kind !== "footage") {
       const what = `${counted(entries.length)} ${many}`;
+      const moods = entries.filter((entry) => entry.reason === "mood").length;
+      const mood =
+        kind === "photo" && moods > 0
+          ? ` ${moods === entries.length ? "All" : counted(moods)} of them ${moods === 1 ? "is" : "are"} there for the mood and ${moods === 1 ? "does" : "do"} not show what you say.`
+          : "";
       sentence = {
-        added: `${what} were added${where}.`,
+        added: `${what} were added${where}.${mood}`,
         removed: `${what} were taken out.`,
         moved: `${what} moved to another place.`,
         retimed: `${what} now show at a different moment.`,
@@ -356,10 +393,13 @@ function sentenceOf(group: Group, preset: Preset, quotes: boolean): string {
     } else {
       const article = kind === "footage" ? "The" : /^[aeiou]/.test(one) ? "An" : "A";
       sentence = {
+        // A mood photo is said to be one: it does not show what is said.
         added:
-          kind === "photo" || kind === "big_word"
-            ? `${article} ${one} now shows${where}${on}.`
-            : `${article} ${one} was added${on}.`,
+          kind === "photo" && first.reason === "mood"
+            ? `${article} ${one} now shows${where}${on} for the mood: it does not show what you say.`
+            : kind === "photo" || kind === "big_word"
+              ? `${article} ${one} now shows${where}${on}.`
+              : `${article} ${one} was added${on}.`,
         removed: `The ${one}${on} was taken out.`,
         moved: `The ${one}${where} moved to another place.`,
         retimed:

@@ -98,6 +98,11 @@ version` as above; otherwise the version's `change_title`, falling back (version
   `process` job moves the reel's status; a failed `change` or `restore` job fails the job and leaves
   the reel `processed` with its current version untouched.
 - `apps/studio/src/lib/track.ts`: sends `studio_change_requested` (reel id and app, never the text).
+- A request about the written hook needs nothing of its own: Claude reads the current hook back
+  from `current_choices`, keeps it unless the request asks to change or remove it ("change the hook
+  to ...", "no hook"), uses the owner's exact words as written, and links the ask to `hook` in the
+  checklist (`app_docs/decide-step.md`). The version's title and summary then read `Hook changed`
+  or `Hook removed`.
 
 ## How to Use
 
@@ -127,7 +132,8 @@ specs, see `app_docs/decide-step.md`).
   (`brokenAnswerScript` in `apps/studio/test-support/ai-script.ts`) keeps version 3 and the reel
   `processed`, with the overlay's `Could not finish styling`, its reason, Change the request (the
   field refilled and focused, `studio_failure_action` sent) and Keep the current version, no Try
-  again, and going back makes versions 4 and 5. It checks version 3's stored and shown title,
+  again, and going back makes versions 4 and 5. It checks version 3's stored and shown title
+  (`Hook and captions changed`: the committed answer's hook and word fix),
   the intro line under the Versions heading (visible, exact text, `aria-describedby`),
   details hidden until the arrow opens them (`aria-expanded`), What you asked, What changed, and
   the `Back to vN` titles of the restores. A change that would leave the reel as it is saves
@@ -141,6 +147,10 @@ specs, see `app_docs/decide-step.md`).
 
 - The version summary describes only the saved difference.
 - An unchanged edit is never saved as a change.
+- A change keeps the current hook unless the owner asks to change or remove it.
+- A request for photos is always fulfilled with library photos (a loose fit as a `mood` photo,
+  said so in the summary); only an empty library, or photos switched off and not lifted by the
+  request, leaves it undone (`app_docs/decide-step.md`).
 
 ## Notes
 

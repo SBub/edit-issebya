@@ -8,7 +8,7 @@ import {
 } from "@edit-issebya/edit";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { type Locator, type Page, expect, test } from "@playwright/test";
-import { formatClock } from "../src/lib/tracks-timeline.ts";
+import { clockText } from "../src/lib/tracks-timeline.ts";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
@@ -670,10 +670,11 @@ test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable
   expect(await rows.evaluateAll((els) => els.map((el) => el.getAttribute("data-track")))).toEqual([
     "footage",
     "behind",
+    "hook",
     "overlays",
     "transitions",
   ]);
-  for (const label of ["Footage", "Behind", "Accents", "Transitions"]) {
+  for (const label of ["Footage", "Behind", "Hook", "Accents", "Transitions"]) {
     await expect(tracks.getByText(label, { exact: true })).toBeVisible();
   }
   // The captions and sounds tracks are never shown, though the edit has captions.
@@ -691,10 +692,13 @@ test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable
       end: el.getAttribute("data-end"),
     })),
   );
-  const trackOf = (id: string) =>
-    (["footage", "overlays", "transitions"] as const).find((key) =>
+  // The written hook is an overlay with its own row.
+  const trackOf = (id: string) => {
+    if (edit.tracks.overlays.some((item) => item.id === id && item.kind === "hook")) return "hook";
+    return (["footage", "overlays", "transitions"] as const).find((key) =>
       edit.tracks[key].some((item) => item.id === id),
     );
+  };
   const expected = [...resolved.entries()]
     .filter(([id]) => trackOf(id))
     .map(([id, span]) => ({
@@ -839,7 +843,10 @@ for (const [size, viewport] of [
     await expect(slider).toHaveAttribute("aria-valuemin", "0");
     await expect(slider).toHaveAttribute("aria-valuemax", String(Number(duration.toFixed(2))));
     await expect(slider).toHaveAttribute("aria-valuenow", "0");
-    await expect(slider).toHaveAttribute("aria-valuetext", `00:00 of ${formatClock(duration)}`);
+    await expect(slider).toHaveAttribute(
+      "aria-valuetext",
+      `${clockText(0)} of ${clockText(duration)}`,
+    );
 
     // One time axis: the ruler and every row's time area share their left
     // edge and width, measured from boxes.
@@ -917,7 +924,10 @@ for (const [size, viewport] of [
     await page.keyboard.press("Home");
     let t = await near(0);
     expect(t).toBe(0);
-    await expect(slider).toHaveAttribute("aria-valuetext", `00:00 of ${formatClock(duration)}`);
+    await expect(slider).toHaveAttribute(
+      "aria-valuetext",
+      `${clockText(0)} of ${clockText(duration)}`,
+    );
     await page.keyboard.press("ArrowRight");
     t = await near(Math.min(t + 1, duration));
     await page.keyboard.press("Shift+ArrowRight");
@@ -963,8 +973,10 @@ for (const [size, viewport] of [
     expect(Math.abs(clock.x + clock.width / 2 - (row.x + row.width / 2))).toBeLessThanOrEqual(2);
     const current = page.getByTestId("preview-clock-position");
     const total = page.getByTestId("preview-clock-duration");
-    await expect(current).toHaveText("00:00");
-    await expect(total).toHaveText(/^\d{2}:\d{2}$/);
+    await expect(current).toHaveText(clockText(0));
+    await expect(total).toHaveText(
+      clockText(0).length > 5 ? /^\d{2}:\d{2}\.\d{3}$/ : /^\d{2}:\d{2}$/,
+    );
     const currentBox = (await current.boundingBox())!;
     const totalBox = (await total.boundingBox())!;
     expect(currentBox.y + currentBox.height).toBeLessThanOrEqual(totalBox.y + 0.5);

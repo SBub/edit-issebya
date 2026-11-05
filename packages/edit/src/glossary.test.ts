@@ -36,6 +36,15 @@ function edit(tracks: Partial<Edit["tracks"]>): Edit {
 const span = { start: { word: "w0" }, end: { word: "w0", edge: "end" as const } };
 
 describe("glossaryChecks", () => {
+  it("fails the written hook showing a heard form, and passes it with the term", () => {
+    const hook = (text: string) =>
+      edit({ overlays: [{ id: "hook", kind: "hook", text, ...span }] });
+    expect(glossaryChecks(hook("Stop locking yourself"), transcript, ISSEBYA_PRESET)).toEqual([
+      expect.objectContaining({ rule: "glossary", item: "hook" }),
+    ]);
+    expect(glossaryChecks(hook("No more lock-in"), transcript, ISSEBYA_PRESET)).toEqual([]);
+  });
+
   it("fails a caption showing a heard form", () => {
     const checks = glossaryChecks(
       edit({ captions: [{ id: "cw0003", ...span, words: ["w0"], text: "Locking" }] }),

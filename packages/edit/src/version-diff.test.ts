@@ -18,6 +18,36 @@ const diff = (before: Edit, after: Edit) => diffEdits(before, after, transcript,
 
 const levelled = FIXTURES.find((fixture) => fixture.name === "rethink-work-transitions")!;
 
+describe("diffEdits on the hook", () => {
+  const withHook = (text: string) =>
+    edit((copy) => {
+      copy.tracks.overlays.unshift({
+        id: "hook",
+        kind: "hook",
+        text,
+        start: { word: "w0", edge: "end", offset: -0.155 },
+        end: { word: "w9", edge: "end", offset: 0.169 },
+        position: { x: 158, y: 260, align: "left" },
+        size: 88,
+        break_after: 3,
+      });
+    });
+
+  it("reads the hook as its own kind, with its text: added, changed, removed", () => {
+    const hook = withHook("Gen Z won't work like you did");
+    expect(diff(behind.edit, hook)).toEqual([
+      { kind: "hook", action: "added", id: "hook", text: "Gen Z won't work like you did" },
+    ]);
+    expect(diff(hook, withHook("Work less"))).toEqual([
+      { kind: "hook", action: "changed", id: "hook", text: "Work less" },
+    ]);
+    expect(diff(hook, behind.edit)).toEqual([
+      { kind: "hook", action: "removed", id: "hook", text: "Gen Z won't work like you did" },
+    ]);
+    expect(diff(hook, structuredClone(hook))).toEqual([]);
+  });
+});
+
 describe("diffEdits on transitions", () => {
   const changed = (change: (item: Edit["tracks"]["transitions"][number]) => void) => {
     const copy = structuredClone(levelled.edit);
@@ -84,9 +114,26 @@ describe("diffEdits", () => {
       }),
     ]);
     expect(added[0]!.text).toMatch(/\w/);
+    // A version saved before photos carried a reason gives none.
+    expect(added[0]).not.toHaveProperty("reason");
     expect(diff(edit(), without)).toEqual([
       expect.objectContaining({ kind: "photo", action: "removed", photo_id: PHOTO }),
     ]);
+  });
+
+  it("gives a photo's reason, and a reason alone is no change", () => {
+    const mood = edit((e) => {
+      const photo = e.tracks.behind!.find((i) => i.kind === "photo")!;
+      if (photo.kind === "photo") photo.reason = "mood";
+    });
+    const without = edit(
+      (e) => (e.tracks.behind = e.tracks.behind!.filter((i) => i.kind !== "photo")),
+    );
+    expect(diff(without, mood)).toEqual([
+      expect.objectContaining({ kind: "photo", action: "added", reason: "mood" }),
+    ]);
+    // An older version's photo without a reason, read again with one.
+    expect(diff(edit(), mood)).toEqual([]);
   });
 
   it("finds a photo whose spot changed as moved, with the spot from and to", () => {
@@ -101,6 +148,46 @@ describe("diffEdits", () => {
         spot: { from: "right", to: "left" },
       }),
     ]);
+  });
+
+  it("says a photo now in front of the speaker moved, and marks it front", () => {
+    const front = edit((e) => {
+      const photo = e.tracks.behind!.find((i) => i.kind === "photo")!;
+      if (photo.kind === "photo") photo.layer = "front";
+    });
+    expect(diff(edit(), front)).toEqual([
+      expect.objectContaining({ kind: "photo", action: "moved", front: true }),
+    ]);
+    const without = edit((e) => {
+      e.tracks.behind = e.tracks.behind!.filter((i) => i.kind !== "photo");
+    });
+    expect(diff(without, front)).toEqual([
+      expect.objectContaining({ kind: "photo", action: "added", front: true }),
+    ]);
+    expect(diff(without, edit())[0]).not.toHaveProperty("front");
+  });
+
+  it("never names the click on a photo or big word: it comes and goes with its item", () => {
+    const clicked = edit((e) => {
+      e.tracks.sounds = (e.tracks.behind ?? []).map((item) => ({
+        id: `click-${item.id}`,
+        sound: "click" as const,
+        start: item.start,
+        end: item.end,
+      }));
+    });
+    const without = edit((e) => {
+      e.tracks.behind = [];
+      e.tracks.sounds = [];
+    });
+    expect(diff(without, clicked).map((entry) => entry.kind)).toEqual(["photo", "big_word"]);
+    // A sound of its own is still a change.
+    const own = edit((e) => {
+      e.tracks.sounds = [
+        { id: "s-own", sound: "click", start: { word: "w20" }, end: { word: "w21" } },
+      ];
+    });
+    expect(diff(edit(), own).map((entry) => entry.kind)).toContain("sound");
   });
 
   it("reads an accent on new words as removed plus added", () => {

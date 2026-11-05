@@ -1,13 +1,14 @@
 import { wordsText } from "./layout.ts";
 import { type Preset, type TransitionKind, cleanWord } from "./preset.ts";
-import type { Anchor, Edit } from "./schema.ts";
+import type { Anchor, Edit, PhotoReason } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
 // THE LAYOUT ENGINE'S INPUT. Claude (the decide step) answers in meaning only:
-// which words are accents, which word is the big word behind, which library
+// which words are accents, which words are big words behind, which library
 // photo belongs to which words, which phrase a transition carries, which
-// misheard words to fix. Everything refers to the transcript by word id; there
+// misheard words to fix, and one short written hook line for the start.
+// Everything refers to the transcript by word id; there
 // are no times, positions, sizes or spots. A `wish` is a placement word the
 // owner used in a request, forwarded from this fixed list; never invented.
 // The layout engine (`engine.ts`, `placeEdit`) turns it into placed tracks.
@@ -18,6 +19,8 @@ export const WISHES = [
   "left",
   "right",
   "behind",
+  // A photo in front of the speaker (over the footage, never over the face).
+  "front",
   "beside_head",
   "big",
   "small",
@@ -40,10 +43,13 @@ export interface BigWordChoice {
   wish?: Wish;
 }
 
+// A new answer always gives `reason`; an older version's photo read back by
+// `choicesOf` may have none.
 export interface PhotoChoice {
   photo_id: string;
   from: string;
   to: string;
+  reason?: PhotoReason;
   wish?: Wish;
 }
 
@@ -63,12 +69,20 @@ export interface WordFix {
   text: string;
 }
 
+// The written hook: Claude's own short line shown in the first seconds, the
+// one text on screen nobody says. Words to show, never instructions.
+export interface HookChoice {
+  text: string;
+}
+
 export interface EngineInput {
   accents: AccentChoice[];
-  big_word: BigWordChoice | null;
+  big_words: BigWordChoice[];
   photos: PhotoChoice[];
   transitions: TransitionChoice[];
   word_fixes: WordFix[];
+  // None (null or left out): no hook.
+  hook?: HookChoice | null;
 }
 
 // The ids from `from` to `to`, in transcript order.
@@ -80,7 +94,10 @@ function range(from: string, to: string, transcript: Transcript): string[] {
 // The current version's choices in the engine input's terms (what Claude is
 // shown and starts from): each item by the words under it. An accent without
 // words (an older version's written title) becomes the words spoken while it
-// shows; an item no word is spoken under is left out.
+// shows; an item no word is spoken under is left out. Every big word reads
+// back (an older version has at most one). A photo reads back with its
+// reason when it has one (a version saved before it has none). The hook reads back as its text
+// (null when the version has none, as every version saved before it).
 export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): EngineInput {
   const resolved = resolveTimeline(edit, transcript);
   // The words under an item: from its start word to its end word when it is
@@ -97,7 +114,12 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
   const ends = (ids: readonly string[]) => ({ from: ids[0]!, to: ids.at(-1)! });
 
   const accents: AccentChoice[] = [];
+  let hook: HookChoice | null = null;
   for (const overlay of edit.tracks.overlays) {
+    if (overlay.kind === "hook") {
+      if (overlay.text) hook = { text: overlay.text };
+      continue;
+    }
     const ids = overlay.words ?? under(overlay);
     if (ids.length > 0) accents.push({ ...ends(ids), title: overlay.id === "title" });
   }
@@ -120,18 +142,22 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
     if (ids.length > 0) transitions.push({ kind, ...ends(ids), key_from: ids[0]! });
   }
   const photos: PhotoChoice[] = [];
-  let bigWord: BigWordChoice | null = null;
+  const bigWords: BigWordChoice[] = [];
   const byId = new Map(transcript.words.map((word) => [word.id, word]));
   for (const item of edit.tracks.behind ?? []) {
     const ids = under(item);
     if (ids.length === 0) continue;
     if (item.kind === "photo") {
-      photos.push({ photo_id: item.photo_id, ...ends(ids) });
-    } else if (!bigWord) {
+      photos.push({
+        photo_id: item.photo_id,
+        ...ends(ids),
+        ...(item.reason ? { reason: item.reason } : {}),
+      });
+    } else {
       const said = ids.find(
         (id) => cleanWord(byId.get(id)!.text, preset).toLowerCase() === item.text.toLowerCase(),
       );
-      bigWord = { word: said ?? ids[0]! };
+      bigWords.push({ word: said ?? ids[0]! });
     }
   }
   const word_fixes: WordFix[] = [];
@@ -143,5 +169,5 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
       word_fixes.push({ word: caption.words[0]!, text: caption.text });
     }
   }
-  return { accents, big_word: bigWord, photos, transitions, word_fixes };
+  return { accents, big_words: bigWords, photos, transitions, word_fixes, hook };
 }

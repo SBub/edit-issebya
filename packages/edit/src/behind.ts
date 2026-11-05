@@ -1,7 +1,7 @@
 import { type Box, type HeadTrack, faceBox } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
-import type { BehindSpot, FontKey, Preset } from "./preset.ts";
-import type { BehindWordItem, Edit } from "./schema.ts";
+import { BEHIND_SPOTS, type BehindSpot, type FontKey, type Preset } from "./preset.ts";
+import type { BehindItem, BehindPhotoItem, BehindWordItem, Edit } from "./schema.ts";
 import { type Span, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
@@ -14,16 +14,90 @@ export function spotBox(spot: BehindSpot, preset: Preset): Box {
   return preset.behind.spots[spot];
 }
 
-// The share (0 to 1) of a photo's spot the face box covers; 0 without a face.
-// Shared by the `behind-face` check and the decide prompt's clear spots, so
-// the two never disagree.
-export function spotFaceShare(spot: BehindSpot, face: Box | null, preset: Preset): number {
+// The rectangle a photo covers: the box the layout engine gave it, else (a
+// version saved before it) its spot exactly.
+export function photoBox(item: BehindPhotoItem, preset: Preset): Box {
+  const { box } = item;
+  if (!box) return spotBox(item.spot, preset);
+  return { left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height };
+}
+
+// Whether a behind-track item needs the cut-out: a big word, and a photo
+// behind the speaker (no `layer`, or `behind`). A photo in front of the
+// speaker sits over the footage and needs none.
+export function needsCutout(item: BehindItem): boolean {
+  return item.kind === "word" || item.layer !== "front";
+}
+
+// The preset spot nearest a photo box (by their centres, ties in spot
+// order): what a placed photo's `spot` names.
+export function nearestSpot(box: Box, preset: Preset): BehindSpot {
+  const cx = (box.left + box.right) / 2;
+  const cy = (box.top + box.bottom) / 2;
+  let best: BehindSpot = BEHIND_SPOTS[0];
+  let distance = Infinity;
+  for (const spot of BEHIND_SPOTS) {
+    const at = spotBox(spot, preset);
+    const d = Math.hypot((at.left + at.right) / 2 - cx, (at.top + at.bottom) / 2 - cy);
+    if (d < distance - 1e-9) {
+      best = spot;
+      distance = d;
+    }
+  }
+  return best;
+}
+
+// The share (0 to 1) of a box the face box covers; 0 without a face.
+export function boxFaceShare(box: Box, face: Box | null): number {
   if (!face) return 0;
-  const box = spotBox(spot, preset);
   const width = Math.max(0, Math.min(box.right, face.right) - Math.max(box.left, face.left));
   const height = Math.max(0, Math.min(box.bottom, face.bottom) - Math.max(box.top, face.top));
   const area = (box.right - box.left) * (box.bottom - box.top);
   return area > 0 ? (width * height) / area : 0;
+}
+
+// The share (0 to 1) of a photo's spot the face box covers; 0 without a face.
+// Shared by the `behind-face` check and the decide prompt's clear spots, so
+// the two never disagree.
+export function spotFaceShare(spot: BehindSpot, face: Box | null, preset: Preset): number {
+  return boxFaceShare(spotBox(spot, preset), face);
+}
+
+// The person in front of a big word or a photo behind them at one face: the
+// face box and, under it, the body (1.8 head widths wide, to the frame's
+// bottom), the same body the engine keeps accents off.
+export function personBoxes(face: Box, preset: Preset): Box[] {
+  const width = face.right - face.left;
+  return [
+    face,
+    {
+      left: face.left - width * 0.4,
+      right: face.right + width * 0.4,
+      top: face.bottom,
+      bottom: preset.frame.height,
+    },
+  ];
+}
+
+// The largest share (0 to 1) of a big word's (or a behind photo's) height
+// the person covers in any of its columns, at any of the faces (the robust
+// ones over its span, `facesOver`); 0 without a face. Where the person is in
+// front of it, the person runs from the face's (or the body's) top down to
+// the frame's bottom, so only its lower part may go behind the head. Shared
+// by the layout engine and the `big-word-hidden` and `photo-hidden` checks,
+// so they never disagree.
+export function bigWordCoveredShare(box: Box, faces: readonly Box[], preset: Preset): number {
+  const height = box.bottom - box.top;
+  if (height <= 0) return 0;
+  let worst = 0;
+  for (const face of faces) {
+    for (const part of personBoxes(face, preset)) {
+      if (!(part.left < box.right && box.left < part.right)) continue;
+      const covered = Math.min(box.bottom, part.bottom) - Math.max(box.top, part.top);
+      worst = Math.max(worst, Math.max(0, covered) / height);
+    }
+  }
+  return worst;
 }
 
 // One big word as placed: its box in frame pixels.
@@ -107,11 +181,13 @@ function ms(seconds: number): number {
 
 // The spans the cut-out must cover, shared by the builder (which draws one
 // composite per span) and the worker (which fingerprints and makes one mask
-// per span), so the two always agree: each behind item's span padded by the
-// preset's frames on each side, clamped to the reel, widened to whole frames,
-// overlapping or touching spans merged, sorted, to the millisecond.
+// per span), so the two always agree: the span of each item behind the
+// speaker (a big word, a photo not in front) padded by the preset's frames
+// on each side, clamped to the reel, widened to whole frames, overlapping or
+// touching spans merged, sorted, to the millisecond.
 export function maskSpans(edit: Edit, transcript: Transcript, preset: Preset): MaskSpan[] {
-  const items = edit.tracks.behind ?? [];
+  // Only what sits behind the speaker: a photo in front needs no mask.
+  const items = (edit.tracks.behind ?? []).filter(needsCutout);
   if (items.length === 0) return [];
   const resolved = resolveTimeline(edit, transcript);
   const { padFrames, frameRate } = preset.behind;

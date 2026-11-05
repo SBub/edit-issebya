@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Box } from "./head-track.ts";
 import { BEHIND_SPOTS, FONT_KEYS, type Preset, SOUND_KEYS, TRANSITION_TYPES } from "./preset.ts";
 import { resolveAnchor } from "./timeline.ts";
-import type { Transcript } from "./transcript.ts";
+import type { Transcript, Word } from "./transcript.ts";
 
 // The edit format (`edit.json`, format 1). Every item starts and ends on an
 // anchor: a word (its start or end edge, plus a small nudge), a time in
@@ -43,6 +43,23 @@ const editInputsSchema = z.object({
   photos: z.array(z.uuid()).optional(),
 });
 
+// The overlay kinds: `accent` (words spoken), `hook` (the one written line at
+// the start of the reel, the only text on screen nobody says). Versions saved
+// before the hook have accents only.
+const OVERLAY_KINDS = ["accent", "hook"] as const;
+
+// Why a library photo sits behind its sentence: `match`, it shows what the
+// sentence says; `mood`, it fits the reel's feel and catches the eye without
+// showing what is said (never contradicting it).
+export const PHOTO_REASONS = ["match", "mood"] as const;
+export type PhotoReason = (typeof PHOTO_REASONS)[number];
+
+// Where a library photo sits: `behind` the speaker (the cut-out composite,
+// the person on top) or in `front` of them (over the footage, no cut-out).
+// A photo without one (every version saved before it) is behind.
+export const PHOTO_LAYERS = ["behind", "front"] as const;
+export type PhotoLayer = (typeof PHOTO_LAYERS)[number];
+
 // A big word behind the speaker: one word, nothing that could leave its tag.
 export const BEHIND_WORD = /^[^\s<>&]{1,24}$/;
 
@@ -65,9 +82,12 @@ export interface EditLimits {
   duration?: number;
   bounds?: Box;
   photoIds?: readonly string[];
-  // The decide limits: at most this many photos and big words behind the
-  // speaker. Stored versions parse without them.
-  behindCounts?: { photos: number; words: number };
+  // The decide limit: a photo lasts the preset's `behind.minSeconds` to
+  // `maxSeconds`, a big word the accent's timing (at least `minSeconds`, at
+  // most from the lead before its word to `afterSeconds` after it). Stored
+  // versions parse without it, so a version saved under older lengths still
+  // renders.
+  behindLengths?: boolean;
 }
 
 // The six tracks, built per reel: the word ids are the transcript's, the
@@ -114,18 +134,29 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
       .optional(),
     // Set in two lines: this many words of the text on the first.
     break_after: z.number().int().min(1).max(60).optional(),
-    // A soft shadow the layout engine added for contrast (two preset levels);
-    // the text's colour is never changed for it.
+    // Legacy: a soft shadow the layout engine added for contrast (two preset
+    // levels) before 2026-11-04. Kept so older versions parse and render
+    // unchanged; the engine never writes it on a new version.
     shadow: shadowLevel.optional(),
   };
   const clip = z.object({
     ...base,
     hidden: z.array(z.object({ start: anchor, end: anchor })).optional(),
   });
-  const caption = z.object({ ...base, words: z.array(wordId).min(1), ...textProps });
+  const caption = z.object({
+    ...base,
+    words: z.array(wordId).min(1),
+    ...textProps,
+    // The accent or big word (its id) showing this caption's words while it
+    // would show: the layout engine leaves the caption out then, so no word is
+    // on screen twice. A version saved before it has none.
+    hidden_by: z.string().regex(ITEM_ID).optional(),
+  });
+  // An accent (spoken words), or the written hook (Claude's own line at the
+  // start, never spoken: `text` only, no words).
   const overlay = z.object({
     ...base,
-    kind: z.literal("accent"),
+    kind: z.enum(OVERLAY_KINDS),
     words: z.array(wordId).min(1).optional(),
     ...textProps,
   });
@@ -167,7 +198,26 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
         ? z.enum(limits.photoIds as [string, ...string[]])
         : z.never();
   const behind = z.discriminatedUnion("kind", [
-    z.object({ ...base, kind: z.literal("photo"), photo_id: photoId, spot: z.enum(BEHIND_SPOTS) }),
+    z.object({
+      ...base,
+      kind: z.literal("photo"),
+      photo_id: photoId,
+      spot: z.enum(BEHIND_SPOTS),
+      // Why the editor put it there; a version saved before it has none.
+      reason: z.enum(PHOTO_REASONS).optional(),
+      // Behind or in front of the speaker; absent: behind.
+      layer: z.enum(PHOTO_LAYERS).optional(),
+      // Where the layout engine set it (its top left corner, width and
+      // height in the frame); absent: it covers its spot exactly.
+      box: z
+        .object({
+          x: z.number().int().min(0).max(preset.frame.width),
+          y: z.number().int().min(0).max(preset.frame.height),
+          width: z.number().int().min(1).max(preset.frame.width),
+          height: z.number().int().min(1).max(preset.frame.height),
+        })
+        .optional(),
+    }),
     z.object({
       ...base,
       kind: z.literal("word"),
@@ -192,12 +242,9 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     overlays: z.array(overlay),
     transitions: z.array(transition),
     sounds: z.array(sound),
-    // A library photo or one big word behind the speaker; stored versions
+    // Library photos and big words behind the speaker; stored versions
     // without it parse, and the builder reads it as empty.
-    behind: (limits.behindCounts === undefined
-      ? z.array(behind)
-      : z.array(behind).max(limits.behindCounts.photos + limits.behindCounts.words)
-    ).optional(),
+    behind: z.array(behind).optional(),
   });
 }
 
@@ -206,9 +253,11 @@ type Tracks = z.infer<ReturnType<typeof tracksSchemaFor>>;
 const SLACK = 1e-6;
 
 // What the JSON Schema cannot say: every id once, no item ending before it
-// starts, an overlay showing words or text, and a behind item lasting the
-// preset's 2 to 4 seconds, never at the same time as another one or as a
-// hidden stretch of footage.
+// starts, an overlay showing words or text, at most one hook, with its own
+// text and no words, a caption hidden only by an accent or a big word (never
+// the hook, which nobody says), and a behind item never at the
+// same time as another one or as a hidden stretch of footage (and, with the
+// decide limit, lasting its kind's length).
 function refineEdit(
   edit: { duration: number; tracks: Tracks },
   transcript: Transcript,
@@ -244,6 +293,31 @@ function refineEdit(
       ctx.addIssue({ code: "custom", message: `overlay ${item.id}: needs words or text` });
     }
   }
+  // The hook is written, never spoken: its own text and no words, at most one.
+  const hooks = edit.tracks.overlays.filter((item) => item.kind === "hook");
+  for (const item of hooks) {
+    if (!item.text || item.words) {
+      ctx.addIssue({
+        code: "custom",
+        message: `hook ${item.id}: a hook has its own text and no words`,
+      });
+    }
+  }
+  if (hooks.length > 1) {
+    ctx.addIssue({ code: "custom", message: `hook ${hooks[1]!.id}: only one hook per reel` });
+  }
+  const showers = new Set([
+    ...edit.tracks.overlays.flatMap((item) => (item.kind === "accent" ? [item.id] : [])),
+    ...(edit.tracks.behind ?? []).flatMap((item) => (item.kind === "word" ? [item.id] : [])),
+  ]);
+  for (const item of edit.tracks.captions) {
+    if (item.hidden_by !== undefined && !showers.has(item.hidden_by)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `caption ${item.id}: hidden by ${item.hidden_by}, which is no accent or big word`,
+      });
+    }
+  }
   for (const item of edit.tracks.transitions) {
     if (item.key !== undefined && !(item.words ?? []).includes(item.key)) {
       ctx.addIssue({
@@ -264,14 +338,8 @@ function refineEdit(
   refineBehind(edit, transcript, preset, limits, ctx);
 }
 
-const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"];
-
-function ordinal(n: number): string {
-  return ORDINALS[n - 1] ?? `${n}th`;
-}
-
-// The behind track's own rules (counts with the decide limits, length, one at
-// a time, clear of hidden footage).
+// The behind track's own rules (length with the decide limit, one at a time,
+// clear of hidden footage).
 function refineBehind(
   edit: { duration: number; tracks: Tracks },
   transcript: Transcript,
@@ -280,42 +348,19 @@ function refineBehind(
   ctx: z.RefinementCtx,
 ): void {
   const words = new Map(transcript.words.map((word) => [word.id, word]));
-  if (limits.behindCounts) {
-    const { photos, words: bigWords } = limits.behindCounts;
-    let photoCount = 0;
-    let wordCount = 0;
-    for (const item of edit.tracks.behind ?? []) {
-      if (item.kind === "photo") {
-        photoCount += 1;
-        if (photoCount > photos) {
-          ctx.addIssue({
-            code: "custom",
-            message: `behind ${item.id}: a ${ordinal(photoCount)} photo; at most ${photos} photo${photos === 1 ? "" : "s"} per reel`,
-          });
-        }
-      } else {
-        wordCount += 1;
-        if (wordCount > bigWords) {
-          ctx.addIssue({
-            code: "custom",
-            message: `behind ${item.id}: a ${ordinal(wordCount)} big word; at most ${bigWords} per reel`,
-          });
-        }
-      }
-    }
-  }
-  const { minSeconds, maxSeconds } = preset.behind;
   const spans = (edit.tracks.behind ?? []).map((item) => ({
+    item,
     id: item.id,
     start: resolveAnchor(item.start, words, edit.duration),
     end: resolveAnchor(item.end, words, edit.duration),
   }));
-  for (const span of spans) {
+  for (const span of limits.behindLengths ? spans : []) {
     const length = span.end - span.start;
-    if (length < minSeconds - SLACK || length > maxSeconds + SLACK) {
+    const [min, max] = behindLength(span.item, words, preset);
+    if (length < min - SLACK || length > max + SLACK) {
       ctx.addIssue({
         code: "custom",
-        message: `behind ${span.id}: lasts ${length.toFixed(3)} s, must be ${minSeconds} to ${maxSeconds} s`,
+        message: `behind ${span.id}: lasts ${length.toFixed(3)} s, must be ${min} to ${Number(max.toFixed(3))} s`,
       });
     }
   }
@@ -350,6 +395,23 @@ function refineBehind(
       });
     }
   }
+}
+
+// The shortest and longest a new behind item may show, in seconds: a photo
+// the behind lengths; a big word the accent's timing, at least its minimum
+// and at most from the lead before its word to `afterSeconds` after it (a
+// longer word holds longer; one cut short by the next extra stays above the
+// minimum).
+function behindLength(
+  item: { kind: "photo" | "word"; start: Anchor },
+  words: ReadonlyMap<string, Word>,
+  preset: Preset,
+): [number, number] {
+  if (item.kind === "photo") return [preset.behind.minSeconds, preset.behind.maxSeconds];
+  const { minSeconds, afterSeconds, leadSeconds } = preset.accent;
+  const said = "word" in item.start ? words.get(item.start.word) : undefined;
+  const longest = said ? leadSeconds + (said.end - said.start) + afterSeconds : minSeconds;
+  return [minSeconds, Math.max(minSeconds, longest)];
 }
 
 // The whole edit, built per reel (see tracksSchemaFor). It stays

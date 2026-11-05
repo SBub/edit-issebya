@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url";
 
 // The worker's scripted decide answer for the fixture clip (one Claude Code
 // result envelope, meaning only): a title phrase, one accent word, one dim
-// transition (over w0006 to w0008, its key phrase from w0007), one fixed word.
+// transition (over w0006 to w0008, its key phrase from w0007), one fixed word
+// and the written hook ("A short test for the real studio"). On the 2.7 s
+// clip the hook holds the screen from 0.2 s to the end, so the layout engine
+// drops the title, the accent and the dim (one extra at a time, no
+// transition during the hook).
 export const SHORT_SPEECH_ANSWER = fileURLToPath(
   new URL("../../worker/src/decide/testdata/short-speech-answer.json", import.meta.url),
 );
@@ -29,11 +33,12 @@ interface BehindRules {
 
 const KEEP_RULES: BehindRules = { photos: "keep", big_word: "keep" };
 
-// A placement wish the owner's request forwards (a photo spot here).
-type Wish = "top" | "left" | "right";
+// A placement wish the owner's request forwards (a photo's spot, or its
+// layer: in front of or behind the speaker).
+type Wish = "top" | "left" | "right" | "front" | "behind";
 
 // Writes, into `dir`, a script whose one answer makes no choice at all. Version
-// 1 has none either (no accents, transitions, photos or fixes), so the AI's
+// 1 has none either (no accents, transitions, photos, fixes or hook), so the AI's
 // version 2 has exactly version 1's bytes. Returns its path.
 export async function unchangedAnswerScript(dir: string): Promise<string> {
   const envelope = {
@@ -42,10 +47,11 @@ export async function unchangedAnswerScript(dir: string): Promise<string> {
     is_error: false,
     structured_output: {
       accents: [],
-      big_word: null,
+      big_words: [],
       photos: [],
       transitions: [],
       word_fixes: [],
+      hook: null,
       checklist: [],
       behind_rules: KEEP_RULES,
       unexpressed: [],
@@ -78,14 +84,16 @@ export async function brokenAnswerScript(dir: string): Promise<string> {
 }
 
 // One round of a scripted decide: the photos behind the speaker (none by
-// default), the big word (a word id; none by default), the transitions (the
-// committed answer's when not given) and the behind rules (all `keep` by
-// default). The version title and summary are never scripted: the summary
+// default), a big word (a word id; none by default), the transitions (the
+// committed answer's when not given), the hook (none by default: on the
+// 2.7 s clip it would hold the screen the behind items need) and the behind
+// rules (all `keep` by default). The version title and summary are never scripted: the summary
 // call gets this decide answer too and falls back to the code template.
 interface AnswerRound {
   photos?: Record<string, unknown>[];
   bigWord?: string;
   transitions?: Record<string, unknown>[];
+  hook?: { text: string } | null;
   rules?: BehindRules;
 }
 
@@ -94,6 +102,7 @@ async function roundEnvelope({
   photos = [],
   bigWord,
   transitions,
+  hook = null,
   rules = KEEP_RULES,
 }: AnswerRound = {}) {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed worker script
@@ -101,13 +110,14 @@ async function roundEnvelope({
     structured_output: {
       accents: unknown[];
       photos: unknown[];
-      big_word: { word: string } | null;
+      big_words: { word: string }[];
       transitions: unknown[];
+      hook: unknown;
       behind_rules: BehindRules;
     };
   };
   envelope.structured_output.photos = photos;
-  envelope.structured_output.big_word = bigWord ? { word: bigWord } : null;
+  envelope.structured_output.big_words = bigWord ? [{ word: bigWord }] : [];
   // On the 2.7 s fixture clip the title or the dim holds the screen for most
   // of it, and the layout engine shows one extra at a time and nothing during
   // a transition: a behind item needs both gone (a round's own transitions
@@ -117,6 +127,7 @@ async function roundEnvelope({
     envelope.structured_output.transitions = [];
   }
   if (transitions) envelope.structured_output.transitions = transitions;
+  envelope.structured_output.hook = hook;
   envelope.structured_output.behind_rules = rules;
   return envelope;
 }
@@ -142,12 +153,18 @@ export function forbidPhotosAnswerScript(dir: string): Promise<string> {
   return answerRoundsScript(dir, [{ rules: { photos: "forbid", big_word: "keep" } }]);
 }
 
-// One library photo behind the speaker over the fixture clip's one sentence,
-// w0001 to w0010 (about 2.6 s), with the owner's wish for its spot when a
-// request names one. Without a wish (and without a head in the fixture) the
-// layout puts it in the first spot, `top`.
-export function behindPhotoItem(photoId: string, wish?: Wish): Record<string, unknown> {
-  return { photo_id: photoId, from: "w0001", to: "w0010", ...(wish ? { wish } : {}) };
+// One library photo over the fixture clip's one sentence, w0001 to w0010
+// (shown 2 s from its start), with the owner's wish for its spot or layer
+// when a request names one. Without a wish (and without a head in the
+// fixture) the layout puts it behind the speaker high in the frame, nearest
+// the `top` spot; with `front`, in front of them. Its reason is `match` (the photo
+// shows what is said) unless the test says `mood`.
+export function behindPhotoItem(
+  photoId: string,
+  wish?: Wish,
+  reason: "match" | "mood" = "match",
+): Record<string, unknown> {
+  return { photo_id: photoId, from: "w0001", to: "w0010", reason, ...(wish ? { wish } : {}) };
 }
 
 // Writes, into `dir`, a script whose one answer is the committed decide answer
@@ -163,7 +180,7 @@ export async function behindPhotoAnswerScript(
 
 // Writes, into `dir`, a script whose one answer is the committed decide answer
 // plus the big word `word` (a word id) behind the speaker, shown from that word
-// to the end of its sentence. Returns its path.
+// for at most 2 s. Returns its path.
 export async function behindWordAnswerScript(dir: string, word: string): Promise<string> {
   return answerRoundsScript(dir, [{ bigWord: word }]);
 }

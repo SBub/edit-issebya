@@ -40,9 +40,16 @@ describe("presetSummary", () => {
         { kind: "panel", description: ISSEBYA_PRESET.transitions.panel.description },
         { kind: "numbered", description: ISSEBYA_PRESET.transitions.numbered.description },
       ],
-      transition_every_seconds: 7,
+      transition_every_seconds: 9,
     });
     expect(JSON.stringify(presetSummary(ISSEBYA_PRESET))).not.toMatch(/card|#|rgb/);
+  });
+
+  it("gives the pace (an extra every 3 s) and no per-reel behind count", () => {
+    const summary = presetSummary(ISSEBYA_PRESET);
+    expect(summary.extra_every_seconds).toBe(ISSEBYA_PRESET.pace.extraEverySeconds);
+    expect(summary.transition_every_seconds).toBe(ISSEBYA_PRESET.pace.transitionEverySeconds);
+    expect(summary).not.toHaveProperty("behind");
   });
 });
 

@@ -146,7 +146,7 @@ describe("saveFirstVersion", () => {
     );
   });
 
-  it("keeps the captions readable over the footage: a light map gives each a shadow, its colour kept", async () => {
+  it("measures the captions over the footage: on a light map each stays in place, plain, no shadow, its colour kept", async () => {
     const key = backgroundsKey(PREFIX, {
       step: "retime",
       fingerprint: fingerprints.retime!,
@@ -165,13 +165,13 @@ describe("saveFirstVersion", () => {
     await run(recordingSteps().steps);
     const row = rows.get(VERSION_ID)!;
     expect(row.engine_record).toContainEqual(
-      expect.objectContaining({ action: "shadowed", rule: "contrast-shadow" }),
+      expect.objectContaining({ action: "low-contrast", rule: "contrast-stay" }),
     );
     const stored = JSON.parse(new TextDecoder().decode((await storage.get(row.r2_key))!)) as {
       tracks: { captions: { shadow?: number; color?: string }[] };
     };
     for (const caption of stored.tracks.captions) {
-      expect(caption.shadow).toBe(2);
+      expect(caption.shadow).toBeUndefined();
       expect(caption.color).toBeUndefined();
     }
   });

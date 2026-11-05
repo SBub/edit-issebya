@@ -2,7 +2,7 @@ import { canonicalJson } from "./canonical-json.ts";
 import type { BehindForbid } from "./decide.ts";
 import { wordsText } from "./layout.ts";
 import type { Preset } from "./preset.ts";
-import type { Anchor, Edit } from "./schema.ts";
+import type { Anchor, Edit, PhotoReason } from "./schema.ts";
 import { resolveAnchor } from "./timeline.ts";
 import type { Transcript, Word } from "./transcript.ts";
 
@@ -14,6 +14,8 @@ import type { Transcript, Word } from "./transcript.ts";
 
 export const DIFF_KINDS = [
   "title",
+  // The written hook at the start (one per reel): its own text.
+  "hook",
   "accent",
   "photo",
   "big_word",
@@ -36,8 +38,14 @@ export interface DiffEntry {
   // The plain words the item is over, or its own text; never a word id.
   text?: string;
   photo_id?: string;
+  // Why a behind photo is there: `match` (it shows what is said) or `mood`
+  // (it fits the reel's feel without showing it). A version saved before it
+  // has none.
+  reason?: PhotoReason;
   // A behind photo's spot before and after, when it changed.
   spot?: { from?: string; to?: string };
+  // A photo in front of the speaker (absent: behind them).
+  front?: true;
   // A transition now over other words: the words it was over.
   was?: string;
   // A transition's motion or hold changed, in plain words.
@@ -85,6 +93,8 @@ const NOT_PLACEMENT = new Set([
   "type",
   "sound",
   "photo_id",
+  // Why a photo is there: neither placement nor a change the viewer sees.
+  "reason",
   "hidden",
   "gain_db",
   "font",
@@ -162,7 +172,8 @@ function keyedItems(edit: Edit, words: ReadonlyMap<string, Word>): Keyed[] {
   };
   const { tracks } = edit;
   for (const item of tracks.overlays as AnyItem[]) {
-    if (item.id === "title") push("title", "title", item);
+    if (item.kind === "hook") push("hook", "hook", item);
+    else if (item.id === "title") push("title", "title", item);
     else {
       const list = item.words as string[] | undefined;
       push("accent", list && list.length > 0 ? `words:${list.join(" ")}` : `id:${item.id}`, item);
@@ -183,7 +194,13 @@ function keyedItems(edit: Edit, words: ReadonlyMap<string, Word>): Keyed[] {
     push("transition", base, item);
   }
   for (const item of tracks.captions as AnyItem[]) push("caption", item.id, item);
-  for (const item of tracks.sounds as AnyItem[]) push("sound", item.id, item);
+  // A click the engine put on a photo or big word comes and goes with it:
+  // that item's own entry says what changed, never the click.
+  const behindIds = new Set((tracks.behind ?? []).map((item) => item.id));
+  for (const item of tracks.sounds as AnyItem[]) {
+    if (item.id.startsWith("click-") && behindIds.has(item.id.slice("click-".length))) continue;
+    push("sound", item.id, item);
+  }
   for (const item of tracks.footage as AnyItem[]) push("footage", item.id, item);
   return out;
 }
@@ -258,6 +275,8 @@ export function diffEdits(
     const said = text(kind, item);
     if (said !== undefined) value.text = said;
     if (typeof item.photo_id === "string") value.photo_id = item.photo_id;
+    if (item.reason === "match" || item.reason === "mood") value.reason = item.reason;
+    if (kind === "photo" && item.layer === "front") value.front = true;
     return { ...value, ...extra };
   };
   const foldCaption = (start: number) => {

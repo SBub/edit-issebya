@@ -62,13 +62,18 @@ export function supabasePhotoStore(db: SupabaseClient): PhotoStore {
 }
 
 // A ready library photo as a version may use it: what the decide step shows
-// the AI (id, description, tags, quoted as data) and where the render finds
-// its large copy.
+// the AI (id, description, tags, quoted as data), where the render finds its
+// large copy, and what the layout reads of it.
 export interface LibraryPhoto {
   id: string;
   description: string;
   tags: string[];
   large_key: string;
+  // Its size on screen and its grid thumbnail, for the layout (its ratio and
+  // edge); absent in a test library.
+  width?: number | null;
+  height?: number | null;
+  thumbnail_key?: string | null;
 }
 
 // The owner's ready photos (service role, so filtered by owner here).
@@ -81,7 +86,7 @@ export function supabasePhotoLibrary(db: SupabaseClient): PhotoLibrary {
     async readyPhotos(ownerId) {
       const { data, error, status } = await db
         .from("photos")
-        .select("id, description, tags, large_key")
+        .select("id, description, tags, large_key, width, height, thumbnail_key")
         .eq("owner_id", ownerId)
         .eq("status", "ready")
         .order("created_at", { ascending: true });

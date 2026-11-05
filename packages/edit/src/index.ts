@@ -77,6 +77,7 @@ export {
   type EngineNote,
   type ExtraKind,
   type FreeSentence,
+  type PhotoLook,
   type UnplacedItem,
   type UnplacedWhy,
   placeEdit,

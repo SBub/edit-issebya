@@ -1,13 +1,13 @@
 import { readFile } from "node:fs/promises";
-import type { BuildAsset } from "@edit-issebya/edit";
+import { type BuildAsset, ISSEBYA_PRESET } from "@edit-issebya/edit";
 import { beforeAll, describe, expect, it } from "vitest";
 import { previewPage } from "./preview-page";
 
 const GOLDEN = new URL("../../../../packages/edit/src/testdata/golden/", import.meta.url);
+// The preset's font files, once each (as the builder lists them).
 const FONTS: BuildAsset[] = [
-  { path: "assets/fonts/GolosText-Bold.ttf", role: "font", ref: null },
-  { path: "assets/fonts/Raleway-Light.ttf", role: "font", ref: null },
-];
+  ...new Set(Object.values(ISSEBYA_PRESET.fonts).map((font) => font.file)),
+].map((path) => ({ path, role: "font" as const, ref: null }));
 const CLIPS: BuildAsset[] = [{ path: "source.mp4", role: "footage", ref: null }];
 const SOUND: BuildAsset = {
   path: "assets/sounds/mouse-click-trimmed.wav",
@@ -56,8 +56,9 @@ describe("previewPage", () => {
 
   it("loads the fonts from the edit-assets route", () => {
     const page = previewPage(baseline, [...CLIPS, ...FONTS], URLS, []);
-    expect(page).toContain('url("/studio/api/edit-assets/assets/fonts/Raleway-Light.ttf")');
-    expect(page).toContain('url("/studio/api/edit-assets/assets/fonts/GolosText-Bold.ttf")');
+    for (const font of FONTS) {
+      expect(page).toContain(`url("/studio/api/edit-assets/${font.path}")`);
+    }
     expect(page).not.toContain('url("assets/');
   });
 

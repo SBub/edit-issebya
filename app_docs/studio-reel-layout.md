@@ -86,7 +86,10 @@ sm:right-auto`) and could cover up to 320 px of the reel's top-left. Its bar is 
   (`data-testid="preview-clock"`) is two stacked lines in `font-mono` with tabular figures: the
   current time on top (`preview-clock-position`, `text-ink`) and the total duration below
   (`preview-clock-duration`, `text-muted`), both `00:00`; a screen-reader-only `/` between them
-  keeps the read-out `00:00 / 00:52`. The two 16 px lines fit inside the 40 px button height, so the
+  keeps the read-out `00:00 / 00:52`. Temporary testing aid, to be removed: while
+  `SHOW_MILLISECONDS` in `tracks-timeline.ts` is true, both lines (and the ruler's `aria-valuetext`)
+  come from `clockText` and show milliseconds, `00:03.412` over `00:57.140`, so caption sync can be
+  judged by eye; the monospace tabular figures keep the width steady while playing. The two 16 px lines fit inside the 40 px button height, so the
   row is no taller than before. The control row has
   no Position slider: the tracks timeline's ruler is the one scrubber. `PreviewPlayer` exposes its
   seek through a `ref` (`PreviewPlayerHandle.seek`), and `ReelPreview`'s `BuiltPreview` hands it to
@@ -178,7 +181,7 @@ elements only:
    white like every filled button.
 
 One exception (owner, 2026-11-03): track items have a small 4px radius (slightly
-rounded). The items in the Behind, Accents and Transitions rows of the tracks timeline
+rounded). The items in the Behind, Hook, Accents and Transitions rows of the tracks timeline
 (`track-item` in `TracksTimeline.tsx`, class from `trackItemClass` in
 `apps/studio/src/lib/tracks-timeline.ts`) take `rounded-track`, from the `--radius-track` token
 (0.25rem) next to `--radius-reel` in `apps/studio/src/app/globals.css`. A footage clip is the same
@@ -200,19 +203,25 @@ not a corner, and is unchanged.
 
 - `apps/studio/src/lib/tracks-timeline.ts`: `timelineRows(edit, transcript)` turns the shown version's
   `resolveTimeline` spans (the same ones the builder uses, so rows sit where the preview plays them)
-  into four rows Footage, Behind, Accents and Transitions (`TRACK_ROWS`). The rows are a reference
+  into five rows Footage, Behind, Hook, Accents and Transitions (`TRACK_ROWS`). The rows are a reference
   for Claude's decisions, so the edit's captions and sounds tracks have no row (owner, 2026-11-03;
   the edit and `resolveTimeline` still carry them, and there is no toggle to show them), and a
   legacy `cutout` track is never shown. The Behind row holds the version's `behind` items (empty for a
   version without them): a photo labelled `photo <spot>` (for example `photo left`), a big word by
-  its text. `formatClock` makes `mm:ss`. `secondsAtX(clientX, box, duration)` maps a pointer x to
+  its text. The Hook row holds the written hook (the overlay of kind `hook`, at most one, labelled
+  by its text; empty for a version without one), so the Accents row keeps the spoken accents
+  only. `formatClock` makes `mm:ss`. Temporary testing aid, to be removed: `SHOW_MILLISECONDS`
+  (true) switches `clockText` (the player's clock and the ruler's read-out) to `formatClockMs`
+  (`mm:ss.mmm`, rounded to the millisecond) and `itemTitle` (each track item's native `title`
+  tooltip, `There (0.412 to 0.733 s)`) to three decimals; with it false they fall back to
+  `formatClock` and two decimals. The ruler's tick labels stay whole seconds either way. `secondsAtX(clientX, box, duration)` maps a pointer x to
   reel seconds from the ruler's own box, clamped to 0 and the duration;
   `scrubKey(key, shift, position, duration)` gives the ruler's key moves (`SCRUB_STEP` 1 s,
   `SCRUB_STEP_LARGE` 5 s).
 - `apps/studio/src/components/TracksTimeline.tsx`: renders the ruler, the rows and a playhead that
   follows the player's clock. The ruler is the one scrubber: one focusable element (`role="slider"`,
   named `Position`, `aria-valuemin` 0, `aria-valuemax` the duration, `aria-valuenow` and
-  `aria-valuetext` such as `00:12 of 00:52`, `data-testid="ruler"`, a visible focus ring). Pointer
+  `aria-valuetext` such as `00:12 of 00:52` (`00:12.250 of 00:52.140` while the testing aid is on), `data-testid="ruler"`, a visible focus ring). Pointer
   down on it seeks to the time under the pointer, and a drag keeps seeking (pointer capture, so a
   drag that leaves the ruler keeps scrubbing; `touch-action: none`). Playing stays playing through a
   drag, as it did with the old slider: every seek while playing re-enters the player's
@@ -225,7 +234,8 @@ not a corner, and is unchanged.
   after the 80 px label column (`w-20`) and the same width. The rows are read only: nothing in them
   is focusable, selectable, clickable, draggable or editable, and a click on a row does nothing.
   Footage items show frames cut from the frames sprite. Behind items use
-  `--color-track-behind` (`#81ecec`, `bg-track-behind`) with dark text (`text-surface`).
+  `--color-track-behind` (`#81ecec`, `bg-track-behind`) with dark text (`text-surface`); the hook
+  `--color-track-hook` (`#fdcb6e`, `bg-track-hook`), dark text too.
 
 ### Thumbnails and the reels grid
 
@@ -293,7 +303,7 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 
 ## Testing
 
-- Unit: `tracks-timeline` (the four rows, no captions or sounds items; `secondsAtX` and `scrubKey`:
+- Unit: `tracks-timeline` (the five rows, the hook in its own row and never among the accents, no captions or sounds items; `secondsAtX` and `scrubKey`:
   clamping, Home and End, the Shift step; `trackItemClass`: slightly rounded except footage), `reels` (`formatAge`), `preview-sources` tests in
   `apps/studio/src/lib/`; the worker's `preview-copies.test.ts` and `preview-copies-record.test.ts`.
 - E2E: `apps/studio/e2e/reel-layout.spec.ts` seeds a processed reel with 14 versions and 48 steps and
@@ -310,7 +320,7 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   field at least half the area's height, and the DOM order edit, Versions,
   library, correction field (the tab order). At 1440x900 and 390x844 it checks the versions list:
   every row one height within 1 px whatever its text, the details behind the arrow. It also checks the
-  timeline's four rows in order (Footage, Behind, Accents, Transitions; no Captions or Sounds row,
+  timeline's five rows in order (Footage, Behind, Hook, Accents, Transitions; no Captions or Sounds row,
   though the edit has captions), the items at `resolveTimeline`'s times with footage frames from the sprite and nothing in the rows focusable
   (the ruler the timeline's one focusable element), the playhead following the clock, and no Undo or
   Redo button, the preview showing the current version and no version marked as showing, at both
@@ -318,7 +328,7 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   button (`play-toggle`) with no text and one `aria-hidden` SVG, at least 40x40 and left of the
   clock, with a transparent background on hover, whose accessible name and `title` switch from
   `Play` to `Pause` and back; and that the clock's horizontal centre is within 2 px of the control
-  row's, the current time (`00:00`) above the total, and the row no taller than the button; and
+  row's, the current time (`clockText(0)`, `00:00.000` while the testing aid is on) above the total, and the row no taller than the button; and
   that the `play-toggle` SVG's left and the `preview-expand` SVG's right equal the `tracks` box's
   left and right within 1 px, paused and playing. At both sizes it
   checks the ruler as the one scrubber: no
@@ -406,7 +416,7 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 - One corner radius (`--radius-reel`) and only on the reel preview, the correction box, its Send
   button, Export, the reel cards in the reels list (thumbnail and focus ring, through
   `ThumbnailGrid`'s `rounded`, set by the reels list only) and the reels list's **+** upload button. The one exception: track items in the
-  Behind, Accents and Transitions rows have a small 4px radius (`rounded-track`, from
+  Behind, Hook, Accents and Transitions rows have a small 4px radius (`rounded-track`, from
   `--radius-track`); Footage clips, lanes, the ruler,
   the playhead and the tracks panel stay square. Nothing else is rounded, photo tiles and add tiles
   included. Never add another `rounded-*` class, inline `borderRadius` or CSS `border-radius` in the

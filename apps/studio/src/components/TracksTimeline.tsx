@@ -11,8 +11,9 @@ import type { FramesLayout } from "@/lib/preview-sources";
 import {
   type Timeline,
   type TimelineItem,
-  formatClock,
+  clockText,
   frameIndexAt,
+  itemTitle,
   rulerTicks,
   scrubKey,
   secondsAtX,
@@ -40,10 +41,6 @@ const TILE_PX = (FOOTAGE_ROW_PX * 9) / 16;
 
 function percent(seconds: number, duration: number): number {
   return duration > 0 ? Math.min(Math.max((seconds / duration) * 100, 0), 100) : 0;
-}
-
-function span(item: TimelineItem): string {
-  return `${item.label} (${item.start.toFixed(2)} to ${item.end.toFixed(2)} s)`;
 }
 
 // A footage clip as a strip of frames from the sprite: as many tiles as fit
@@ -167,7 +164,7 @@ export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
             aria-valuemin={0}
             aria-valuemax={Number(duration.toFixed(2))}
             aria-valuenow={Number(at.toFixed(2))}
-            aria-valuetext={`${formatClock(at)} of ${formatClock(duration)}`}
+            aria-valuetext={`${clockText(at)} of ${clockText(duration)}`}
             aria-orientation="horizontal"
             data-testid="ruler"
             data-duration={duration}
@@ -213,7 +210,7 @@ export function TracksTimeline({ timeline, position, frames, onSeek }: Props) {
                   data-item-id={item.id}
                   data-start={item.start.toFixed(3)}
                   data-end={item.end.toFixed(3)}
-                  title={span(item)}
+                  title={itemTitle(item)}
                   className={`absolute inset-y-0 overflow-hidden ${trackItemClass(row.key)}`}
                   style={{
                     left: `${percent(item.start, duration)}%`,

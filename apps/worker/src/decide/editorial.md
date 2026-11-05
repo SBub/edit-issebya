@@ -8,10 +8,11 @@ For every item, answer exactly one choice `{ "item": "<its reference>", "skip": 
 "<first word id>", "to": "<last word id>" }`:
 
 - Put it on other words. Prefer a sentence from the list of sentences with room for that kind of
-  item. Keep its meaning: an accent on words worth stressing, a photo on a sentence its description
-  matches, the big word on one word (`from` and `to` the same).
-- For a photo you may also name another library photo with `photo_id`, only one that clearly
-  matches the sentence.
+  item. Keep its meaning: an accent on words worth stressing, a photo on a sentence that fits it
+  the same way (it shows what is said for a `match` photo, it suits the feel for a `mood` one,
+  never contradicting what is said), a big word on one word (`from` and `to` the same).
+- For a photo you may also name another library photo with `photo_id`, only one that fits the
+  sentence the same way.
 - Or skip it: `{ "item": "<its reference>", "skip": true, "why": "<plain words>" }`. Write `why`
   for the owner, who is not technical: why it cannot be done and what they can do (for example
   "No other part of the reel matches this photo: add a photo of your desk"). Skip an item the owner

@@ -17,7 +17,7 @@ describe("choicesOf", () => {
       { photo_id: "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14", from: "w18", to: "w27" },
     ]);
     // "WORK" is not spoken under it: the first word under it stands in.
-    expect(choices.big_word).toEqual({ word: "w76" });
+    expect(choices.big_words).toEqual([{ word: "w76" }]);
     expect(choices.accents.map((accent) => accent.from)).toEqual(["w29", "w112"]);
     // Saved before the levels: its key phrase is the whole phrase.
     expect(choices.transitions).toEqual([
@@ -26,6 +26,15 @@ describe("choicesOf", () => {
     expect(choices.word_fixes).toEqual([
       { word: "w89", text: "Gen Z" },
       { word: "w161", text: "want?" },
+    ]);
+  });
+
+  it("reads a photo back with its reason, an older photo without one", () => {
+    const edit = structuredClone(behind.edit);
+    const photo = edit.tracks.behind!.find((item) => item.kind === "photo")!;
+    if (photo.kind === "photo") photo.reason = "mood";
+    expect(choicesOf(edit, behind.transcript, ISSEBYA_PRESET).photos).toEqual([
+      { photo_id: "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14", from: "w18", to: "w27", reason: "mood" },
     ]);
   });
 
@@ -46,6 +55,21 @@ describe("choicesOf", () => {
     expect(
       choicesOf(edit, transitions.transcript, ISSEBYA_PRESET).transitions.map((t) => t.wish),
     ).toEqual(["slow", "long", "slow", undefined]);
+  });
+
+  it("reads every big word back, an older version's one big word as a list of one", () => {
+    const edit = structuredClone(behind.edit);
+    const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
+    edit.tracks.behind!.push({
+      ...word,
+      id: "big-word-2",
+      start: { word: "w140" },
+      end: { word: "w142", edge: "end" },
+    });
+    expect(choicesOf(edit, behind.transcript, ISSEBYA_PRESET).big_words).toEqual([
+      { word: "w76" },
+      { word: "w140" },
+    ]);
   });
 
   it("reads a stored card back as a dim over its words", () => {

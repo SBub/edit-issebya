@@ -241,13 +241,15 @@ function scriptFrom(path: string): unknown[] {
   throw new Error(refusal);
 }
 
-// A decide answer with no items: what the double gives without a script.
+// A decide answer with no items and no hook: what the double gives without a
+// script.
 export const EMPTY_DECIDE_ANSWER = {
   accents: [],
-  big_word: null,
+  big_words: [],
   photos: [],
   transitions: [],
   word_fixes: [],
+  hook: null,
   checklist: [],
   behind_rules: { photos: "keep", big_word: "keep" },
   unexpressed: [],

@@ -20,8 +20,9 @@ import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
 const REQUEST = "put my test pattern photo behind me on the left";
 const INSIDE = 1.3;
-// The span ends with w0010 at 2.605 s; the fixture reel lasts 2.69 s.
-const AFTER = 2.65;
+// The photo leaves 2 s after its sentence starts (about 2.04 s), before the
+// sentence ends with w0010 at 2.605 s: at most 2 s on screen.
+const AFTER = 2.3;
 
 const admin = localSupabaseAdmin();
 const storage = fakeStorage({

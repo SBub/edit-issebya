@@ -279,10 +279,11 @@ describe("runDoctor", () => {
     expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
     expect(Object.keys(schema.properties ?? {})).toEqual([
       "accents",
-      "big_word",
+      "big_words",
       "photos",
       "transitions",
       "word_fixes",
+      "hook",
       "checklist",
       "behind_rules",
       "unexpressed",

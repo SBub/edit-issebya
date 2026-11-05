@@ -168,7 +168,7 @@ describe("runDecide", () => {
   it("passes the committed E2E answer in one round, saving version 2", async () => {
     const ai = fakeAiRunner([
       scripted,
-      summaryEnvelope("Fade added", "A soft fade now covers a few words."),
+      summaryEnvelope("Hook added", 'The reel now opens on "A short test for the real studio".'),
     ]);
     const { run, calls } = await decide(ai);
     await run;
@@ -176,10 +176,12 @@ describe("runDecide", () => {
     expect(ai.calls[0]!.model).toBeUndefined();
     // The summary call: the small model, the difference and the record.
     expect(ai.calls[1]!.model).toBe("claude-haiku-5-5");
-    expect(ai.calls[1]!.prompt).toContain('"kind": "transition"');
+    expect(ai.calls[1]!.prompt).toContain('"kind": "hook"');
     expect(ai.calls[1]!.prompt).toContain('"action": "added"');
+    expect(ai.calls[1]!.prompt).toContain('"text": "A short test for the real studio"');
     expect(ai.calls[1]!.prompt).toMatch(/"item": "title",\s+"action": "dropped"/);
     expect(ai.calls[1]!.prompt).toMatch(/"item": "accent-1",\s+"action": "dropped"/);
+    expect(ai.calls[1]!.prompt).toMatch(/"item": "transition-1",\s+"action": "dropped"/);
     expect(rows.size).toBe(2);
     const v2 = rows.get(current!)!;
     expect(v2).toMatchObject({
@@ -187,9 +189,9 @@ describe("runDecide", () => {
       parent_id: firstId,
       request: null,
       model: "claude-opus-5-5",
-      prompt_version: "decide-9",
-      change_title: "Fade added",
-      change_summary: "A soft fade now covers a few words.",
+      prompt_version: "decide-14",
+      change_title: "Hook added",
+      change_summary: 'The reel now opens on "A short test for the real studio".',
       checks: [],
       used_free_field: false,
       unexpressed: [],
@@ -199,12 +201,15 @@ describe("runDecide", () => {
     });
     const done = lastCall(calls);
     if (done.call !== "done") throw new Error(JSON.stringify(calls));
-    // On the 2.7 s clip the dim over "clip for the" holds the screen for its
-    // 1.5 s from 0.95 s: the title and the accent on w0005 cannot show their
-    // 1.5 s before it comes in (nothing else shows during a transition), so
-    // both are dropped.
+    // On the 2.7 s clip the hook holds the screen from 0.2 s to the end: the
+    // dim over "clip for the" would run during it, and the title and the
+    // accent on w0005 would show with it (one extra at a time), so all three
+    // are dropped.
     expect(done.summary).toMatch(
-      /^version 2: 0 accents, 1 transition, no title, 1 word fixed, 2 dropped, under a second$/,
+      /^version 2: 0 accents, 0 transitions, no title, hook set, 1 word fixed, 3 dropped, under a second$/,
+    );
+    expect(v2.engine_record).toContainEqual(
+      expect.objectContaining({ item: "transition-1", action: "dropped", rule: "hook" }),
     );
     expect(v2.engine_record).toContainEqual(
       expect.objectContaining({ item: "title", action: "dropped", rule: "one-extra" }),
@@ -227,6 +232,14 @@ describe("runDecide", () => {
     const parsed = parseEdit(stored, ISSEBYA_PRESET, transcript);
     expect(parsed.ok).toBe(true);
     expect(stored.inputs).toEqual(rows.get(firstId)!.inputs);
+    // The written hook, the only overlay: its own text, no words.
+    expect(stored.tracks.overlays).toEqual([
+      expect.objectContaining({
+        id: "hook",
+        kind: "hook",
+        text: "A short test for the real studio",
+      }),
+    ]);
     // The scratch folder is gone.
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder
     expect(await readdir(scratch)).toEqual([]);
@@ -237,6 +250,7 @@ describe("runDecide", () => {
       answer((a) => {
         a.accents = [];
         a.transitions = [];
+        a.hook = null;
         a.word_fixes = [];
       }),
     );
@@ -261,9 +275,9 @@ describe("runDecide", () => {
     ]);
     const { run } = await decide(ai);
     await run;
-    // A transition and the captions (a fixed word): the template's text.
+    // The hook and the captions (a fixed word): the template's text.
     expect(rows.get(current!)).toMatchObject({
-      change_title: "Transition and captions changed",
+      change_title: "Hook and captions changed",
     });
     expect(rows.get(current!)!.change_summary).not.toMatch(/photo/i);
   });
@@ -275,9 +289,9 @@ describe("runDecide", () => {
     expect(ai.calls).toHaveLength(2);
     expect(lastCall(calls).call).toBe("done");
     expect(rows.get(current!)).toMatchObject({
-      change_title: "Transition and captions changed",
+      change_title: "Hook and captions changed",
       change_summary:
-        'A transition was added. One word in the captions is fixed, it now reads "Studio".',
+        'A hook now opens the reel: "A short test for the real studio". One word in the captions is fixed, it now reads "Studio".',
     });
   });
 
@@ -286,6 +300,7 @@ describe("runDecide", () => {
       answer((a) => {
         a.accents = [];
         a.transitions = [];
+        a.hook = null;
         a.word_fixes = [];
       }),
     );
@@ -335,6 +350,7 @@ describe("runDecide", () => {
       answer((a) => {
         a.accents = [];
         a.transitions = [];
+        a.hook = null;
         a.word_fixes = [];
         a.behind_rules = { photos: "forbid", big_word: "keep" };
       }),
@@ -377,6 +393,35 @@ describe("runDecide", () => {
     expect(v2.rejected_reasons).toHaveLength(1);
     expect(v2.rejected_reasons[0]).toMatch(/^glossary cw0003: caption cw0003 shows "Locking"/);
   });
+
+  for (const [what, text, reason] of [
+    [
+      "an over-long hook",
+      "This short test clip is for the real studio",
+      /^hook\.text: a hook has at most 7 words$/,
+    ],
+    [
+      "a hook with a glossary word's heard form",
+      "No more locking",
+      /^glossary hook: overlay hook shows "No more locking"/,
+    ],
+  ] as const) {
+    it(`sends ${what} back once with the reasons, then saves`, async () => {
+      const first = resultEnvelope(
+        answer((a) => {
+          a.hook = { text };
+        }),
+      );
+      const ai = fakeAiRunner([first, scripted]);
+      const { run } = await decide(ai);
+      await run;
+      expect(editorCalls(ai)).toHaveLength(2);
+      expect(ai.calls[1]!.prompt).toMatch(/Your previous answer was refused/);
+      const v2 = rows.get(current!)!;
+      expect(v2.rejected_reasons).toHaveLength(1);
+      expect(v2.rejected_reasons[0]).toMatch(reason);
+    });
+  }
 
   it("fails after two refused answers and writes nothing (verification 3)", async () => {
     const ai = fakeAiRunner([heardForm(), heardForm()]);
@@ -530,7 +575,16 @@ describe("runDecide", () => {
   });
 
   it("places the answer's words: items anchored on them, the fix on its caption", async () => {
-    const { run } = await decide(fakeAiRunner([scripted]));
+    // Without the hook, which would hold the 2.7 s clip's screen.
+    const { run } = await decide(
+      fakeAiRunner([
+        resultEnvelope(
+          answer((a) => {
+            a.hook = null;
+          }),
+        ),
+      ]),
+    );
     await run;
     const stored = JSON.parse(
       new TextDecoder().decode((await storage.get(rows.get(current!)!.r2_key))!),
@@ -563,8 +617,10 @@ describe("runDecide", () => {
     const wide = resultEnvelope(
       answer((a) => {
         a.accents = [{ from: "w0001", to: "w0010", title: true }];
-        // No transition: nothing else shows while one runs.
+        // No transition (nothing else shows while one runs) and no hook (it
+        // holds the screen on the 2.7 s clip).
         a.transitions = [];
+        a.hook = null;
       }),
     );
     const ai = fakeAiRunner([wide]);
@@ -588,7 +644,7 @@ describe("runDecide", () => {
     expect(title.map((note) => note.action)).toEqual(expect.arrayContaining(["wrapped"]));
     // The summary call got a decide answer: the template, said in one line.
     expect(lines[0]).toBe(
-      `decide: summary from the template, reel ${TEST_JOB.reel_id}: answer-schema (summary-2)`,
+      `decide: summary from the template, reel ${TEST_JOB.reel_id}: answer-schema (summary-7)`,
     );
     // One engine record line per version, with the reel id; no engine bug line.
     expect(lines).toHaveLength(2);
@@ -684,10 +740,11 @@ describe("runDecide with a behind item", () => {
     },
   };
   // A photo over the fixture's one sentence, w0001 to w0010 (about 2.6 s).
-  const photoItem = (wish?: string): Json => ({
+  const photoItem = (wish?: string, reason = "match"): Json => ({
     photo_id: PHOTO,
     from: "w0001",
     to: "w0010",
+    reason,
     ...(wish ? { wish } : {}),
   });
   const behindAnswer = (
@@ -700,6 +757,7 @@ describe("runDecide with a behind item", () => {
         // transition would hold the screen.
         a.accents = [];
         a.transitions = [];
+        a.hook = null;
         a.photos = items;
         a.behind_rules = rules;
       }),
@@ -763,7 +821,8 @@ describe("runDecide with a behind item", () => {
     expect(v2.inputs.photos).toEqual([PHOTO]);
     expect(v2.inputs.masks).toHaveLength(1);
     const [mask] = v2.inputs.masks!;
-    expect(mask).toMatchObject({ step: "cutout", file: "mask.mp4", start: 0, end: 2.69 });
+    // The photo's 2 s from its sentence's start, padded 3 frames each side.
+    expect(mask).toMatchObject({ step: "cutout", file: "mask.mp4", start: 0, end: 2.167 });
     expect(
       await storage.head(cacheKey(PREFIX, "cutout", mask!.fingerprint, "mask.mp4")),
     ).not.toBeNull();
@@ -792,15 +851,25 @@ describe("runDecide with a behind item", () => {
     expect(calls.filter((call) => call.call === "failed")).toHaveLength(2);
   });
 
-  it("refuses a third photo, then saves the retry that keeps one", async () => {
+  it("takes three photos with no count to refuse: the engine places one and records the rest", async () => {
     const three = behindAnswer([photoItem(), photoItem(), photoItem()]);
-    const ai = fakeAiRunner([three, behindAnswer()]);
+    // The editorial round's answer: both left out, skipped.
+    const skip = resultEnvelope({
+      choices: ["photos[1]", "photos[2]"].map((item) => ({
+        item,
+        skip: true,
+        why: "The clip has room for one photo",
+      })),
+    });
+    const ai = fakeAiRunner([three, skip]);
     const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool);
     await run;
-    expect(editorCalls(ai)).toHaveLength(2);
     const v2 = rows.get(current!)!;
-    expect(v2.rejected_reasons.join("\n")).toMatch(/^photos: at most 2 photos per reel/m);
+    expect(v2.rejected_reasons).toEqual([]);
     expect(v2.inputs.photos).toEqual([PHOTO]);
+    expect(v2.engine_record).toContainEqual(
+      expect.objectContaining({ item: "photo-2", action: "dropped", rule: "one-extra" }),
+    );
     expect(v2).toMatchObject({ no_photos: null, no_big_word: null });
   });
 
@@ -865,6 +934,7 @@ describe("runDecide with a behind item", () => {
       resultEnvelope(
         answer((a) => {
           a.accents = [];
+          a.hook = null;
           a.photos = [photoItem()];
           a.checklist = [
             { ask: "add images behind me", wants: "1 photo", fulfilled_by: ["photos[0]"] },
@@ -887,6 +957,38 @@ describe("runDecide with a behind item", () => {
         reason: null,
       },
     ]);
+  });
+
+  it('fulfils "add photos behind me" with a mood photo: done, stored with its reason, summary told', async () => {
+    const ai = fakeAiRunner([
+      resultEnvelope(
+        answer((a) => {
+          a.accents = [];
+          a.hook = null;
+          a.photos = [photoItem(undefined, "mood")];
+          a.checklist = [
+            { ask: "add photos behind me", wants: "1 photo", fulfilled_by: ["photos[0]"] },
+          ];
+        }),
+      ),
+    ]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool, {
+      request: "add photos behind me",
+    });
+    await run;
+    expect(rows.get(current!)!.checklist).toEqual([
+      expect.objectContaining({ ask: "add photos behind me", done: true, reason: null }),
+    ]);
+    const stored = JSON.parse(
+      new TextDecoder().decode((await storage.get(rows.get(current!)!.r2_key))!),
+    ) as { tracks: { behind: Json[] } };
+    expect(stored.tracks.behind).toEqual([
+      expect.objectContaining({ kind: "photo", photo_id: PHOTO, reason: "mood" }),
+    ]);
+    // The summary call sees the reason and the photo's description.
+    const summaryCall = ai.calls.find((call) => call.model === SUMMARY_MODEL)!;
+    expect(summaryCall.prompt).toContain('"reason": "mood"');
+    expect(summaryCall.prompt).toContain('"description": "a sunlit kitchen.');
   });
 
   it("stores an impossible ask as not done, with the reason and what the owner can do", async () => {

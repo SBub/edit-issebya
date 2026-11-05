@@ -118,7 +118,8 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
 
   seededKeys.push(...(await seedPipelineCache(storage, CACHE_PREFIX)));
   // The AI double answers with the committed script: a title, one accent,
-  // one dim transition (its key phrase from w0007) and one fixed word.
+  // one dim transition (its key phrase from w0007), one fixed word and the
+  // written hook.
   const worker = await runWorkerOnce({
     R2_KEY_PREFIX: CACHE_PREFIX,
     E2E_MOCK_AI_SCRIPT: SHORT_SPEECH_ANSWER,
@@ -141,11 +142,11 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     // (the engine keeps the captions readable over it), then reused by decide.
     expect.stringMatching(/^backgrounds: backgrounds of 5 frames, /),
     expect.stringMatching(/^first_version: version 1 saved, /),
-    // On the 2.7 s clip the dim holds the screen for its 1.5 s from 0.95 s,
-    // so the layout engine drops the title and the accent (nothing else
-    // shows during a transition, and neither can show 1.5 s before it).
+    // On the 2.7 s clip the written hook holds the screen from 0.2 s to the
+    // end, so the layout engine drops the dim (no transition during the
+    // hook), the title and the accent (one extra at a time).
     expect.stringMatching(
-      /^decide: version 2: 0 accents, 1 transition, no title, 1 word fixed, 2 dropped, /,
+      /^decide: version 2: 0 accents, 0 transitions, no title, hook set, 1 word fixed, 3 dropped, /,
     ),
     "backgrounds: backgrounds reused",
   ]);
@@ -273,17 +274,17 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     r2_key: key(v1!.id),
   });
   // The title and summary come from the code template over the saved
-  // difference (transition added, captions moved, a word fixed).
+  // difference (the hook added, captions moved, a word fixed).
   expect(v2).toEqual({
     id: currentId,
     number: 2,
     model: "claude-opus-5-5",
     request: null,
     parent_id: v1!.id,
-    prompt_version: "decide-9",
-    change_title: "Transition and captions changed",
+    prompt_version: "decide-14",
+    change_title: "Hook and captions changed",
     change_summary:
-      'A transition was added. One word in the captions is fixed, it now reads "Studio".',
+      'A hook now opens the reel: "A short test for the real studio". One word in the captions is fixed, it now reads "Studio".',
     checks: [],
     used_free_field: false,
     unexpressed: [],
@@ -311,16 +312,16 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     );
     expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
     if (versionKey === v2!.r2_key && parsed.ok) {
-      // The dim carries its phrase as two text levels; the title is dropped.
-      expect(parsed.edit.tracks.overlays.map((item) => item.id)).not.toContain("title");
-      expect(parsed.edit.tracks.transitions).toEqual([
+      // The written hook is the one overlay (its own text, no words); the
+      // title, the accent and the dim are dropped.
+      expect(parsed.edit.tracks.overlays).toEqual([
         expect.objectContaining({
-          id: "transition-1",
-          type: "dim",
-          words: ["w0006", "w0007", "w0008"],
-          key: "w0007",
+          id: "hook",
+          kind: "hook",
+          text: "A short test for the real studio",
         }),
       ]);
+      expect(parsed.edit.tracks.transitions).toEqual([]);
     }
   }
   expect(await reelStatus(admin, reelId)).toBe("processed");
