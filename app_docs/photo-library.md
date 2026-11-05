@@ -73,11 +73,19 @@ desktop and is a fourth tab, `Library`, on a phone.
   one JPEG image of the call (role `describe`, Claude Haiku 5.5 through OpenRouter, an `image_url`
   data URL on the wire; `app_docs/decide-step.md`, "The AI runner"); the model reads no file and
   has no tools. The answer is checked against a draft-07 JSON Schema and Zod (description at most
-  200 characters, 3 to 8 tags); a refused answer is sent back once with the reasons, a second
-  refusal fails the job and the photo. The doctor's `ai image call` line parses with the same
-  function. An unavailable AI makes the job `waiting_ai` (`app_docs/failures.md`). The prompt is
-  versioned by `DESCRIBE_PROMPT_VERSION` (`describe-photo-2` since the photo is sent as an image);
-  the photo row records it and the model that answered (`photos.model`).
+  200 characters, 3 to 8 tags). The runner sends no length limit (`wireSchema`), so the prompt asks
+  for one short sentence of at most 200 characters (about 30 words), and `parseDescribeAnswer`
+  shortens what still runs long instead of refusing it, with no further call: a description over
+  200 characters is cut by `shortenDescription` (at the last sentence end within the limit when it
+  keeps at least half, else at the last word boundary with any trailing comma, colon, dash or space
+  taken off, never mid-word; one word over the limit is cut hard), a tag over 30 characters is
+  dropped and only the first 8 tags are kept. An empty description, fewer than 3 tags (after the
+  drop) or a tag breaking the pattern is refused: a refused answer is sent back once with the
+  reasons, a second refusal fails the job and the photo. The doctor's `ai image call` line parses
+  with the same function. An unavailable AI makes the job `waiting_ai` (`app_docs/failures.md`).
+  The prompt is versioned by `DESCRIBE_PROMPT_VERSION` (`describe-photo-3` since the prompt asks
+  for one short sentence of about 30 words); the photo row records it and the model that answered
+  (`photos.model`).
 - `apps/worker/src/photos/photo-store.ts`: the worker's writes to the `photos` row, and
   `supabasePhotoLibrary(db).readyPhotos(ownerId)`: the owner's `ready` photos (`id`,
   `description`, `tags`, `large_key`), oldest first, a row without `large_key` left out.
@@ -154,6 +162,8 @@ only, run by hand; CI uses the committed files).
 - Never give the model a tool or a file: the describe call sends only its prompt and the one large
   copy as an image; every other AI call sends no image.
 - At most two AI calls per photo: one retry, never a loop.
+- Never send an answer back for its length alone: an over-long description is shortened and extra
+  or over-long tags are dropped in code (`parseDescribeAnswer`).
 - Never let the browser send a storage key or upload id; they come from the row.
 - Never put a storage key in what the client receives; sign on the server.
 - The size comes from storage (`head`), never from the browser.
