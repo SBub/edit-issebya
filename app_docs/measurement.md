@@ -155,12 +155,14 @@ and longest seconds, and the median seconds per second of retimed footage.
 
 ## Local monitoring
 
-Opt in with `MONITORING=1 yarn dev:studio`. The script checks Docker (as it always does), starts
-`docker-compose.monitoring.yml` (the `grafana/otel-lgtm` image: Grafana, Tempo for traces, Loki for
-logs and Prometheus for metrics in one container, OTLP over HTTP), and gives the worker process
-`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`, an empty `OTEL_EXPORTER_OTLP_HEADERS` and
-`OTEL_SERVICE_NAME=edit-issebya-worker-dev`. Only the worker gets them, and they win over any line in
-`apps/worker/.env.development`, so a PostHog token there never reaches the local container.
+`yarn dev:studio` always starts it. The script starts `docker-compose.monitoring.yml` (the
+`grafana/otel-lgtm` image: Grafana, Tempo for traces, Loki for logs and Prometheus for metrics in one
+container, OTLP over HTTP) and sets `WORKER_DOCKER_OTLP_ENDPOINT=http://host.docker.internal:4318`,
+which `compose.yaml` passes to the worker container as `OTEL_EXPORTER_OTLP_ENDPOINT`. The container
+also gets an empty `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_SERVICE_NAME=edit-issebya-worker-dev` from
+`compose.yaml`; compose `environment` wins over the env file, so a PostHog token in
+`apps/worker/.env.development` never reaches the local container. The monitoring container keeps
+running when `yarn dev:studio` stops.
 
 - Grafana: `http://localhost:3300`. The host port is 3300 because the landing page owns 3000. Both
   published ports (3300 and 4318) are bound to 127.0.0.1.

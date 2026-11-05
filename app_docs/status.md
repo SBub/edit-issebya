@@ -176,6 +176,11 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
   `apps/worker/src/process-job.ts`) and kills it when the job ends, whatever the outcome. `-w` also
   ends it if the worker dies. Nothing is spawned on any other platform, and a missing `caffeinate`
   never fails the job.
+- `startKeepAwake` (same file) is the same `caffeinate` for a process's whole life. Each native
+  bridge (`apps/worker/src/bridge/serve.ts`, `bridge:claude` and `bridge:cutout`) starts it on macOS
+  and stops it on SIGINT or SIGTERM, so the Mac stays awake while any bridge runs. The worker in the
+  container never spawns it (Linux); a sleeping Mac freezes Docker and every job in it. See
+  `app_docs/worker-container.md`.
 
 ## How to Use
 

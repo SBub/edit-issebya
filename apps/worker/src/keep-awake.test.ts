@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { withKeepAwake } from "./keep-awake.ts";
+import { startKeepAwake, withKeepAwake } from "./keep-awake.ts";
 
 function fakeSpawn(events: string[]) {
   const kill = vi.fn(() => {
@@ -53,6 +53,26 @@ describe("withKeepAwake", () => {
   it("spawns nothing on Linux", async () => {
     const { spawn } = fakeSpawn([]);
     expect(await withKeepAwake(async () => "ok", { platform: "linux", spawn })).toBe("ok");
+    expect(spawn).not.toHaveBeenCalled();
+  });
+});
+
+describe("startKeepAwake", () => {
+  it("runs caffeinate for the process's life on macOS until the stop function is called", () => {
+    const events: string[] = [];
+    const { spawn, kill } = fakeSpawn(events);
+    const stop = startKeepAwake({ platform: "darwin", pid: 99, spawn });
+    expect(spawn).toHaveBeenCalledWith("/usr/bin/caffeinate", ["-i", "-w", "99"], {
+      stdio: "ignore",
+    });
+    expect(kill).not.toHaveBeenCalled();
+    stop();
+    expect(kill).toHaveBeenCalledWith("SIGTERM");
+  });
+
+  it("spawns nothing on Linux", () => {
+    const { spawn } = fakeSpawn([]);
+    startKeepAwake({ platform: "linux", spawn })();
     expect(spawn).not.toHaveBeenCalled();
   });
 });

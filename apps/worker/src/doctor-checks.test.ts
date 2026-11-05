@@ -1,6 +1,7 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { type FakeStorage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -86,15 +87,20 @@ const PASSING: DoctorDeps = {
   scratchDir: async () => ({ dir: "/scratch", state: "exists" }),
 };
 
+// The committed sample the mask check copies (the check reads it for real).
+const SAMPLE = fileURLToPath(
+  new URL("../../../fixtures/footage/short-speech.mp4", import.meta.url),
+);
+
 // A mask tool that builds, runs at once and gives a mask of the sample's size.
 function maskTool(change: Partial<MaskToolDeps> = {}): MaskToolDeps {
   return {
     platform: "darwin",
-    sample: "/fixtures/short-speech.mp4",
+    sample: SAMPLE,
     build: async () => {},
     run: async () => {},
     probe: async (file) =>
-      file === "/fixtures/short-speech.mp4"
+      file === SAMPLE
         ? { codec: "h264", width: 720, height: 1280, frames: 83 }
         : { codec: "h264", width: 720, height: 1280, frames: 30 },
     ...change,
@@ -347,5 +353,59 @@ describe("ffmpegMajor", () => {
     expect(ffmpegMajor("version n7.0.2 Copyright")).toBe(7);
     expect(ffmpegMajor("version 7.0.2-static https://johnvansickle.com/ffmpeg/")).toBe(7);
     expect(ffmpegMajor("version N-117000-g1234abcd Copyright")).toBeNull();
+  });
+});
+
+describe("runDoctor through the bridges", () => {
+  const bridged = {
+    ...PASSING,
+    workDir: () => root,
+    bridges: {
+      claude: async () => "claude-bridge",
+      cutout: async () => "cut-out-bridge",
+    },
+    maskTool: () => maskTool({ bridged: true, build: undefined, platform: "linux" }),
+  };
+
+  it("checks the two bridges' health in place of the local binaries", async () => {
+    const { lines, exitCode } = await runDoctor(bridged);
+    expect(exitCode, lines.join("\n")).toBe(0);
+    expect(lines.slice(6, 8)).toEqual([
+      "ok   claude bridge claude-bridge",
+      "ok   cut-out bridge cut-out-bridge",
+    ]);
+    expect(lines.find((line) => line.startsWith("ok   mask tool"))).toBe(
+      "ok   mask tool through the cut-out bridge, 1 s masked in 0.0 s",
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  it("fails a bridge line when its health answer fails", async () => {
+    const { lines } = await runDoctor({
+      ...bridged,
+      bridges: { cutout: async () => Promise.reject(new Error("fetch failed")) },
+    });
+    expect(lines.find((line) => line.startsWith("FAIL cut-out bridge"))).toBe(
+      "FAIL cut-out bridge: fetch failed",
+    );
+  });
+
+  it("runs the mask on a copy inside the work folder, never on the repository sample", async () => {
+    const inputs: string[] = [];
+    await runDoctor({
+      ...bridged,
+      workDir: () => root,
+      maskTool: () =>
+        maskTool({
+          bridged: true,
+          platform: "linux",
+          run: async (input) => {
+            inputs.push(input);
+          },
+        }),
+    });
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]?.startsWith(root)).toBe(true);
+    expect(inputs[0]?.endsWith("sample.mp4")).toBe(true);
   });
 });

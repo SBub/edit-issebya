@@ -12,24 +12,34 @@ type Spawn = (
 
 const CAFFEINATE = "/usr/bin/caffeinate";
 
+// Keeps a Mac from idle-sleeping for as long as this process lives: starts
+// `caffeinate -i -w <pid>` (it also ends by itself if the process dies) and
+// returns the function that stops it. Nothing is spawned on any other platform,
+// and a missing caffeinate never fails anything. Used by the worker's jobs
+// (withKeepAwake) and by the native bridges (apps/worker/src/bridge).
+export function startKeepAwake({
+  platform = process.platform,
+  pid = process.pid,
+  spawn = nodeSpawn,
+}: { platform?: NodeJS.Platform; pid?: number; spawn?: Spawn } = {}): () => void {
+  if (platform !== "darwin") return () => {};
+  const child = spawn(CAFFEINATE, ["-i", "-w", String(pid)], { stdio: "ignore" });
+  child.on("error", () => {});
+  return () => child.kill("SIGTERM");
+}
+
 // Keeps a Mac from idle-sleeping while a job runs: `caffeinate -i -w <pid>`
 // (it also ends by itself if the worker dies), killed when the work ends,
 // whatever the outcome. Nothing is spawned on any other platform, and a
 // missing caffeinate never fails the job.
 export async function withKeepAwake<T>(
   work: () => Promise<T>,
-  {
-    platform = process.platform,
-    pid = process.pid,
-    spawn = nodeSpawn,
-  }: { platform?: NodeJS.Platform; pid?: number; spawn?: Spawn } = {},
+  options: { platform?: NodeJS.Platform; pid?: number; spawn?: Spawn } = {},
 ): Promise<T> {
-  if (platform !== "darwin") return work();
-  const child = spawn(CAFFEINATE, ["-i", "-w", String(pid)], { stdio: "ignore" });
-  child.on("error", () => {});
+  const stop = startKeepAwake(options);
   try {
     return await work();
   } finally {
-    child.kill("SIGTERM");
+    stop();
   }
 }

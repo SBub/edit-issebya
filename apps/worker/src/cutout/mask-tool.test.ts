@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   MASK_TOOL_SOURCE_SHA256,
+  VSEG_SHIM,
   VSEG_SOURCE,
   maskDoubleArgs,
   maskToolArgs,
@@ -89,5 +90,27 @@ describe("the mask tool", () => {
         maskToolCall(span, { tools, env: { E2E_MOCK_MASK: value }, platform: "linux" }),
       ).toThrow(/macOS only/);
     }
+  });
+
+  it("is the vseg shim, with no platform or build check, when VSEG_BRIDGE_URL is set", () => {
+    const shim = maskToolCall(span, {
+      tools,
+      env: { VSEG_BRIDGE_URL: "http://host.docker.internal:8792" },
+      platform: "linux",
+      exists: () => false,
+    });
+    expect(shim).toEqual({ file: VSEG_SHIM, args: maskToolArgs(span) });
+    expect(VSEG_SHIM.endsWith("apps/worker/bin/vseg-bridge.ts")).toBe(true);
+  });
+
+  it("keeps the native check when VSEG_BRIDGE_URL is blank", () => {
+    expect(() =>
+      maskToolCall(span, {
+        tools,
+        env: { VSEG_BRIDGE_URL: "  " },
+        platform: "linux",
+        exists: () => true,
+      }),
+    ).toThrow("cutout: the mask tool runs on macOS only");
   });
 });

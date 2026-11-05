@@ -264,7 +264,8 @@ build:vseg`. After changing `vseg.swift`, bump `MASK_TOOL_VERSION` and
 - Never write to the reference repository (`issebya-homes-reels`).
 - Never fingerprint a source without its ETag.
 - The cut-out is made on demand, only for the padded spans of `behind` items, by `vseg` (Apple
-  Vision `accurate`, grayscale H.264, macOS only, no fallback), fingerprinted by footage, span and
+  Vision `accurate`, grayscale H.264, macOS only, no fallback; in the worker container it runs on the
+  Mac through the cut-out bridge, `app_docs/worker-container.md`), fingerprinted by footage, span and
   tool version, stored put-if-absent as `rebuildable` and reused by later versions. `head_track`
   still makes its own sampled u2net mask and never stores it.
 - Every output carries a `kept` or `rebuildable` tag.

@@ -235,8 +235,10 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
    `apps/worker/.env.development` from the matching `.env.example` files.
 2. Create the owner account in the local auth once: `yarn dev:studio add-owner <email>`.
 3. Run `yarn dev:studio` from the repository root (see the root `README.md`): it checks Docker,
-   starts the local Supabase stack if it is down, applies the migrations, runs the worker doctor,
-   then runs the web and studio dev servers and the worker together. Open
+   starts the local Supabase stack if it is down, applies the migrations, builds the cut-out tool
+   when needed, starts the two native bridges, builds the worker image and runs the doctor inside it,
+   then runs the web and studio dev servers, local monitoring and the worker container together
+   (see `app_docs/worker-container.md`). Open
    `http://localhost:3000/studio`. ADW runs use their own local stack (`edit-issebya-adw`, ports
    54450 to 54459, see `app_docs/adw-supabase-stack.md`), which the command never touches.
 4. Enter an address that already has an account, open the emailed link (local mail: Mailpit), and

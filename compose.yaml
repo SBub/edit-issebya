@@ -1,0 +1,50 @@
+# The worker in a container on the owner's Mac (Docker Desktop). Only the worker
+# runs here. Claude Code and the cut-out tool stay native behind two bridges on
+# the Mac (apps/worker/src/bridge). `yarn dev:studio` starts the bridges, this
+# container, web, studio and monitoring in one command, and stops them all
+# (see app_docs/worker-container.md).
+#
+# compose.prod.yaml is the production override (its own env file, no source mounts).
+name: edit-issebya-worker
+
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    image: edit-issebya-worker:dev
+    # PID 1 forwards signals: the worker's SIGTERM stop (finish the job, then exit).
+    init: true
+    stop_grace_period: 60s
+    env_file:
+      - path: ./apps/worker/.env.development
+        required: true
+    environment:
+      # The scratch folder, mounted below at the same absolute path on both sides,
+      # so every path the bridges receive resolves on the Mac too.
+      WORKER_SCRATCH_DIR: ${WORKER_SCRATCH_DIR:?set WORKER_SCRATCH_DIR to the scratch folder (absolute, the same value as the native worker's)}
+      # The two shims in the image and the bridges on the Mac.
+      CLAUDE_CODE_PATH: /repo/apps/worker/bin/claude-bridge.ts
+      CLAUDE_BRIDGE_URL: http://host.docker.internal:8791
+      VSEG_BRIDGE_URL: http://host.docker.internal:8792
+      # The container's ffmpeg (the env file's path is the Mac's).
+      FFMPEG_PATH: /usr/bin/ffmpeg
+      # Local services on the Mac (development only; compose.prod.yaml resets these).
+      SUPABASE_URL: http://host.docker.internal:54431
+      # Empty turns OTLP export off. `yarn dev:studio` sets WORKER_DOCKER_OTLP_ENDPOINT
+      # to the local monitoring stack (docker-compose.monitoring.yml).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${WORKER_DOCKER_OTLP_ENDPOINT:-}
+      # Empty on purpose: a PostHog token in the env file never goes to local Grafana.
+      OTEL_EXPORTER_OTLP_HEADERS: ""
+      OTEL_SERVICE_NAME: edit-issebya-worker-dev
+      # The development error log, in the same Mac folder `yarn dev:studio errors` reads.
+      WORKER_STATE_DIR: /home/node/.edit-issebya-worker/dev
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${WORKER_SCRATCH_DIR:?set WORKER_SCRATCH_DIR}:${WORKER_SCRATCH_DIR:?set WORKER_SCRATCH_DIR}
+      - ${HOME}/.edit-issebya-worker:/home/node/.edit-issebya-worker
+      # Development: the worker's source from the working tree (rebuild not needed).
+      - ./apps/worker/src:/repo/apps/worker/src:ro
+      - ./packages/edit/src:/repo/packages/edit/src:ro
+      - ./packages/storage/src:/repo/packages/storage/src:ro

@@ -480,7 +480,8 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
   written (never with a final full stop: `stripHookStop` takes it off, theirs too).
 - Never give Claude Code tools or a saved session (`--tools ""`, `--no-session-persistence`),
   except the `describe_photo` call's `Read` limited to its one image file
-  (`app_docs/photo-library.md`).
+  (`app_docs/photo-library.md`). In the worker container Claude Code runs on the Mac through the
+  claude bridge, which accepts only these flags and values (`apps/worker/src/bridge/policy.ts`).
 - Never let the answer carry `format`, `preset`, `duration` or `inputs`.
 - Never write a version or R2 key for a refused answer; the current version stays.
 - Never refuse an answer over layout: only the schema and the glossary refuse. Layout checks are the
