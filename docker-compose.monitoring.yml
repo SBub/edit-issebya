@@ -1,0 +1,21 @@
+# Local monitoring for the worker, opt in with `MONITORING=1 yarn dev:studio`. One container
+# holds Grafana (the UI), Tempo (traces), Loki (logs) and Prometheus (metrics) and takes
+# OpenTelemetry over OTLP/HTTP. The studio does not need it to run. Stop it with
+# `docker compose -f docker-compose.monitoring.yml down`.
+services:
+  otel-lgtm:
+    # A pinned release, never latest (checked on Docker Hub, `docker manifest inspect`).
+    image: grafana/otel-lgtm:0.39.0
+    ports:
+      # Grafana at http://localhost:3300. Not 3000: the landing page (yarn dev) owns that port.
+      - "127.0.0.1:3300:3000"
+      # OTLP over HTTP: the worker posts traces to /v1/traces and logs to /v1/logs here.
+      # 4317 (gRPC) is not published; the worker speaks HTTP.
+      - "127.0.0.1:4318:4318"
+    # The backends keep their data under /data (Loki, Tempo, Prometheus and Grafana each have a
+    # folder there), so it survives a restart. `down -v` deletes it.
+    volumes:
+      - otel-lgtm-data:/data
+
+volumes:
+  otel-lgtm-data:

@@ -21,8 +21,8 @@ client, identifies the signed-in user and sends `studio_*` events.
   `cpu_ms`, `peak_rss_bytes`, `bytes_in`, `bytes_out`, the summary line and, on failure, the error
   tail. `runInProcessStep` is the second entry point for work that stays in the worker (an HTTP
   call): it records `wall_ms` only and leaves the other four measurements null, because moving one
-  call into a child would measure Node's start-up, not the step. `receive` is such a step. Both share
-  the row, the span, the summary and the tail.
+  call into a child would measure Node's start-up, not the step. `first_version` and `restore` are such
+  steps. Both share the row, the span, the summary and the tail.
 - `src/time-report.ts`: `timeCommand(platform)` (`/usr/bin/time -l` on macOS, `-v` on Linux, an error
   elsewhere) and the two report parsers. macOS reports max RSS in bytes, Linux in kilobytes (times
   1024). `/usr/bin/time` is the kernel's `wait4` accounting (`RUSAGE_CHILDREN`): CPU summed over every
@@ -58,8 +58,9 @@ client, identifies the signed-in user and sends `studio_*` events.
   and `main.ts`, passed down, flushed with `shutdown()` before exit). It reads only
   `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,k2=v2`, values URL-decoded) and
   `OTEL_SERVICE_NAME` (default `edit-issebya-worker`). It exports to `<endpoint>/v1/traces` and
-  `<endpoint>/v1/logs` only when both the endpoint and the headers are set; otherwise the providers have
-  no processor and nothing is exported or fails.
+  `<endpoint>/v1/logs` whenever the endpoint is set. The headers are optional: a local collector needs
+  none, and an empty value sends none. Without an endpoint the providers have no processor and nothing
+  is exported or fails.
 - `traceIdForReel(uuid)`: the reel uuid without dashes, lowercased. `startJobSpan` starts the span
   `job <kind>` under a remote parent with that trace id (span id from the last 16 hex digits of the reel
   id, never exported), so every job of a reel, at any time, lands in one trace. Each step is a child
@@ -149,6 +150,25 @@ and longest seconds, and the median seconds per second of retimed footage.
    export to the same project, told apart by the service name.
 3. In the studio, send an event with `capture("studio_...", { reel_id })` from a client component.
 
+## Local monitoring
+
+Opt in with `MONITORING=1 yarn dev:studio`. The script checks Docker (as it always does), starts
+`docker-compose.monitoring.yml` (the `grafana/otel-lgtm` image: Grafana, Tempo for traces, Loki for
+logs and Prometheus for metrics in one container, OTLP over HTTP), and gives the worker process
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`, an empty `OTEL_EXPORTER_OTLP_HEADERS` and
+`OTEL_SERVICE_NAME=edit-issebya-worker-dev`. Only the worker gets them, and they win over any line in
+`apps/worker/.env.development`, so a PostHog token there never reaches the local container.
+
+- Grafana: `http://localhost:3300`. The host port is 3300 because the landing page owns 3000. Both
+  published ports (3300 and 4318) are bound to 127.0.0.1.
+- A reel's trace: Explore, the Tempo data source, query type TraceID, the reel's uuid without dashes
+  (`traceIdForReel`). Each job is a `job <kind>` span and each step a child `step <name>` span.
+- A step's output: from a span, Logs for this span opens Loki (Tempo's `tracesToLogsV2` link). Each
+  output line is a log record in the step span's context, and Loki links back to Tempo by `trace_id`.
+- Stop it with `docker compose -f docker-compose.monitoring.yml down`. The data lives in the named
+  volume `otel-lgtm-data` (under `/data` in the container), so it survives a restart; add `-v` to
+  delete it.
+
 ### AI calls (`chat` spans)
 
 Every model call is one `chat` span, a `CLIENT` span under the stage that made the call, with the
@@ -222,8 +242,8 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
 
 ## Configuration
 
-- Worker: the three `OTEL_*` variables above; both endpoint and headers are needed to export.
-  `apps/studio/test-support/worker.ts` blanks both so a spec never exports.
+- Worker: `OTEL_EXPORTER_OTLP_ENDPOINT` turns export on; `OTEL_EXPORTER_OTLP_HEADERS` is optional
+  and only needed for PostHog. `apps/studio/test-support/worker.ts` blanks both so a spec never exports.
 - Studio: `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` and `NEXT_PUBLIC_POSTHOG_HOST` (inlined at build, empty in
   development and CI). The PostHog project must accept non-cookieless events from the studio.
 - Linux needs GNU `time` at `/usr/bin/time` (`apt-get install time`); CI installs it before the tests.
@@ -234,8 +254,8 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
   200 MB of random memory touched every turn, so macOS cannot compress it under load, group sampling with and without the option, byte counts, failure tail, missing tool,
   abort: the whole group gone when the step settles, a grandchild that ignores SIGTERM and holds no
   pipes killed, no call started after the abort), `summary.test.ts`, `time-report.test.ts`, `process-tree.test.ts`, `telemetry.test.ts` (one
-  trace per reel, span tree, logs linked to spans, no request when export is off against a local HTTP
-  server, positive control), `steps/receive.test.ts`.
+  trace per reel, span tree, logs linked to spans, no request without an endpoint against a local HTTP
+  server, an endpoint alone with no Authorization header, positive control).
 - Decide's spans: `telemetry.test.ts` (`inSpan`: the child's parent and attributes, an error marked
   and rethrown, telemetry that exports nothing), `run-decide.test.ts` (`runDecide spans`: a normal
   run's children in order with their facts, a retry as two attempts, a thrown error on the attempt's
@@ -264,7 +284,7 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
 - Never use the email as the distinct id.
 - Never initialise PostHog in the studio under `navigator.webdriver` or without both variables; never
   write analytics cookies or storage (no `cookieless_mode`, no opt-in or opt-out calls).
-- Never export OTLP unless both endpoint and headers are set; tests blank them.
+- Never export OTLP without `OTEL_EXPORTER_OTLP_ENDPOINT`; tests blank it, and the headers too.
 - Never create telemetry providers at module load or register them globally.
 - Never let a span change a step: no row, measurement, AI call, retry or error depends on a span. A
   stage that throws marks its own span as an error and the step fails as before.
@@ -273,7 +293,8 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
 
 ## Notes
 
-- `receive` is the only step today and runs in-process, so its row carries `wall_ms` only.
+- The step names are the list in `apps/worker/src/step-names.ts`. `first_version` and `restore` run
+  in-process, so their rows carry `wall_ms` only.
 - Group sampling is as fine as one second; the report's max RSS still bounds short single-process peaks.
 - The trace's root is virtual; PostHog groups by trace id, so a reel opens as one timeline.
 - `app_docs/studio.md` (Worker, Live status) and `app_docs/analytics.md` (landing rules unchanged) are the

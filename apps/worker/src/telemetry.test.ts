@@ -155,10 +155,12 @@ describe("export", () => {
   let server: Server;
   let url: string;
   const requests: string[] = [];
+  const authorizations: (string | null)[] = [];
 
   beforeAll(async () => {
     server = createServer((request, response) => {
       requests.push(`${request.method} ${request.url}`);
+      authorizations.push(request.headers.authorization ?? null);
       request.resume();
       request.on("end", () => {
         response.writeHead(200, { "content-type": "application/json" });
@@ -173,10 +175,12 @@ describe("export", () => {
     await new Promise((resolve) => server.close(resolve));
   });
 
-  it("sends nothing when the endpoint or the headers are empty", async () => {
+  it("sends nothing without an endpoint, whatever the headers", async () => {
     for (const env of [
+      {},
+      { OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer x" },
       { OTEL_EXPORTER_OTLP_ENDPOINT: "", OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer x" },
-      { OTEL_EXPORTER_OTLP_ENDPOINT: url, OTEL_EXPORTER_OTLP_HEADERS: "  " },
+      { OTEL_EXPORTER_OTLP_ENDPOINT: "  ", OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer x" },
     ]) {
       const telemetry = createTelemetry(env);
       expect(telemetry.exporting).toBe(false);
@@ -186,7 +190,23 @@ describe("export", () => {
     expect(requests).toEqual([]);
   });
 
+  it("sends traces and logs to the endpoint alone, with no Authorization header", async () => {
+    requests.length = 0;
+    authorizations.length = 0;
+    const telemetry = createTelemetry({
+      OTEL_EXPORTER_OTLP_ENDPOINT: url,
+      OTEL_EXPORTER_OTLP_HEADERS: "",
+    });
+    expect(telemetry.exporting).toBe(true);
+    await runJobWithSteps(telemetry);
+    await telemetry.shutdown();
+    expect(requests.sort()).toEqual(["POST /v1/logs", "POST /v1/traces"]);
+    expect(authorizations).toEqual([null, null]);
+  });
+
   it("sends traces and logs when both are set (positive control)", async () => {
+    requests.length = 0;
+    authorizations.length = 0;
     const telemetry = createTelemetry({
       OTEL_EXPORTER_OTLP_ENDPOINT: `${url}/`,
       OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer%20x,X-Extra=a=b",
@@ -195,6 +215,7 @@ describe("export", () => {
     await runJobWithSteps(telemetry);
     await telemetry.shutdown();
     expect(requests.sort()).toEqual(["POST /v1/logs", "POST /v1/traces"]);
+    expect(authorizations).toEqual(["Bearer x", "Bearer x"]);
   });
 });
 
