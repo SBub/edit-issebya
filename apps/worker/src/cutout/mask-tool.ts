@@ -13,7 +13,10 @@ export const MASK_TOOL_SOURCE_SHA256 =
 
 export const VSEG_SOURCE = fileURLToPath(new URL("../../tools/vseg/vseg.swift", import.meta.url));
 // Built by `yarn workspace @edit-issebya/worker build:vseg`, gitignored.
-const VSEG_BINARY = fileURLToPath(new URL("../../tools/vseg/.build/vseg", import.meta.url));
+export const VSEG_BINARY = fileURLToPath(new URL("../../tools/vseg/.build/vseg", import.meta.url));
+// The container's stand-in for vseg: bin/vseg-bridge.ts forwards the call to the
+// cut-out bridge on the Mac (VSEG_BRIDGE_URL, app_docs/worker-container.md).
+export const VSEG_SHIM = fileURLToPath(new URL("../../bin/vseg-bridge.ts", import.meta.url));
 
 export interface MaskSpanCall {
   // The full-size footage on disk.
@@ -69,7 +72,9 @@ export interface MaskToolOptions {
 // One span's mask as a tool call: `vseg` (Apple Vision person segmentation,
 // accurate), on macOS only and never with a fallback model. Under
 // E2E_MOCK_MASK set to exactly "true" it is the double, a black mask made by
-// ffmpeg through the same step runner, so specs run anywhere.
+// ffmpeg through the same step runner, so specs run anywhere. With
+// VSEG_BRIDGE_URL set (the worker container) it is the vseg shim, which runs
+// vseg on the Mac: no platform or build check here, the bridge makes both.
 export function maskToolCall(
   span: MaskSpanCall,
   {
@@ -82,6 +87,9 @@ export function maskToolCall(
 ): ToolCall {
   if (env.E2E_MOCK_MASK === "true") {
     return { file: tools.ffmpeg, args: maskDoubleArgs(span) };
+  }
+  if (env.VSEG_BRIDGE_URL?.trim()) {
+    return { file: VSEG_SHIM, args: maskToolArgs(span) };
   }
   if (platform !== "darwin") {
     throw new Error(

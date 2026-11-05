@@ -6,11 +6,13 @@
 // created, never created here). Prints one line per check; exits 1 when any
 // failed.
 import { execFile } from "node:child_process";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { keyPrefix } from "@edit-issebya/storage";
 import { aiRunner } from "./ai.ts";
 import { scratchDirOf, workerConfig } from "./config.ts";
+import { checkBridgeHealth } from "./bridge/client.ts";
 import { maskToolCall } from "./cutout/mask-tool.ts";
 import { runDoctor } from "./doctor-checks.ts";
 import { hyperframesEnv, toolPaths } from "./pipeline/tools.ts";
@@ -26,7 +28,18 @@ const MASK_SAMPLE = fileURLToPath(
 );
 const BUILD_VSEG = fileURLToPath(new URL("../scripts/build-vseg.sh", import.meta.url));
 
+// With a bridge URL (the worker container) the checks run through the bridges
+// on the Mac: their health is checked, and temp folders go in the scratch folder.
+const claudeBridge = process.env.CLAUDE_BRIDGE_URL?.trim();
+const cutoutBridge = process.env.VSEG_BRIDGE_URL?.trim();
+const bridged = Boolean(claudeBridge || cutoutBridge);
+
 const { lines, exitCode } = await runDoctor({
+  workDir: () => (bridged ? scratchDirOf(process.env) : tmpdir()),
+  bridges: {
+    claude: claudeBridge ? () => checkBridgeHealth(claudeBridge) : undefined,
+    cutout: cutoutBridge ? () => checkBridgeHealth(cutoutBridge) : undefined,
+  },
   async supabase() {
     const { error } = await workerSupabase(workerConfig()).from("jobs").select("id").limit(1);
     if (error) throw new Error(error.message);
@@ -67,13 +80,16 @@ const { lines, exitCode } = await runDoctor({
   maskTool: () => ({
     platform: process.platform,
     sample: MASK_SAMPLE,
-    async build() {
-      await run("bash", [BUILD_VSEG]);
-    },
-    async run(output) {
+    bridged: Boolean(cutoutBridge),
+    build: cutoutBridge
+      ? undefined
+      : async () => {
+          await run("bash", [BUILD_VSEG]);
+        },
+    async run(input, output) {
       const call = maskToolCall(
-        { input: MASK_SAMPLE, start: 0, end: 1, output },
-        { tools: toolPaths(), env: {} },
+        { input, start: 0, end: 1, output },
+        { tools: toolPaths(), env: { VSEG_BRIDGE_URL: cutoutBridge } },
       );
       await run(call.file, call.args);
     },

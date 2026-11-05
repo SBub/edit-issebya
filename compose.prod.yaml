@@ -1,0 +1,17 @@
+# Production override for the worker container: `docker compose -f compose.yaml
+# -f compose.prod.yaml up`. It resets what development sets: the env file is
+# .env.production, the environment and the mounts keep only what production needs
+# (the scratch folder and the two bridges), and no source is mounted. Same image.
+services:
+  worker:
+    env_file: !reset
+      - path: ./apps/worker/.env.production
+        required: true
+    environment: !reset
+      WORKER_SCRATCH_DIR: ${WORKER_SCRATCH_DIR:?set WORKER_SCRATCH_DIR to the scratch folder (absolute, the same value as the native worker's)}
+      CLAUDE_CODE_PATH: /repo/apps/worker/bin/claude-bridge.ts
+      CLAUDE_BRIDGE_URL: http://host.docker.internal:8791
+      VSEG_BRIDGE_URL: http://host.docker.internal:8792
+      FFMPEG_PATH: /usr/bin/ffmpeg
+    volumes: !reset
+      - ${WORKER_SCRATCH_DIR:?set WORKER_SCRATCH_DIR}:${WORKER_SCRATCH_DIR:?set WORKER_SCRATCH_DIR}

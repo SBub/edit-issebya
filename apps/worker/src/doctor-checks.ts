@@ -21,8 +21,8 @@ const SAMPLE_PHOTO = new URL("../../../fixtures/photos/sample.jpg", import.meta.
 
 // The describe_photo call on the sample photo: Claude Code allowed to read
 // only `photo.jpg`, alone in a fresh folder, answering the describe schema.
-async function aiImageCall(ai: AiRunner): Promise<void> {
-  const dir = await mkdtemp(join(tmpdir(), "doctor-photo-"));
+async function aiImageCall(ai: AiRunner, workDir: string): Promise<void> {
+  const dir = await mkdtemp(join(workDir, "doctor-photo-"));
   try {
     await copyFile(SAMPLE_PHOTO, join(dir, "photo.jpg"));
     const result = await ai.call(plainTool, {
@@ -62,13 +62,25 @@ export interface DoctorDeps {
   maskTool: () => MaskToolDeps;
   // The scratch folder and whether it exists or can be created (never created).
   scratchDir: () => Promise<{ dir: string; state: "exists" | "can be created" }>;
+  // Where the checks' temp folders go: the OS temp folder natively, the scratch
+  // folder when the work runs through the bridges (the Mac must see the paths).
+  workDir?: () => string;
+  // The bridges' health, one check line each, present only when their URLs are
+  // set (the worker container); absent natively.
+  bridges?: {
+    claude?: () => Promise<string>;
+    cutout?: () => Promise<string>;
+  };
 }
 
 export interface MaskToolDeps {
   platform: NodeJS.Platform;
-  build: () => Promise<void>;
-  // The sample's first second masked into `output`.
-  run: (output: string) => Promise<void>;
+  // True when vseg runs on the Mac through the cut-out bridge: no platform or
+  // build check here (the bridge makes both), and the health check stands in.
+  bridged?: boolean;
+  build?: () => Promise<void>;
+  // The sample (a copy in the work folder) masked into `output`.
+  run: (input: string, output: string) => Promise<void>;
   probe: (file: string) => Promise<VideoProbe>;
   // The sample footage the run masks.
   sample: string;
@@ -83,18 +95,23 @@ export interface VideoProbe {
 
 // vseg built, run on one second of the sample, its mask checked: H.264 at the
 // sample's size, 30 frames give or take one. On another OS, one line.
-async function maskToolCheck(deps: MaskToolDeps): Promise<string> {
-  if (deps.platform !== "darwin") {
-    throw new Error(
-      `the mask tool runs on macOS only (Apple Vision); this worker runs on ${deps.platform}`,
-    );
+async function maskToolCheck(deps: MaskToolDeps, workDir: string): Promise<string> {
+  if (!deps.bridged) {
+    if (deps.platform !== "darwin") {
+      throw new Error(
+        `the mask tool runs on macOS only (Apple Vision); this worker runs on ${deps.platform}`,
+      );
+    }
+    await deps.build?.();
   }
-  await deps.build();
-  const dir = await mkdtemp(join(tmpdir(), "doctor-mask-"));
+  const dir = await mkdtemp(join(workDir, "doctor-mask-"));
   try {
+    // A copy inside the work folder: the bridge reads only the scratch folder.
+    const input = join(dir, "sample.mp4");
+    await copyFile(deps.sample, input);
     const output = join(dir, "mask.mp4");
     const started = performance.now();
-    await deps.run(output);
+    await deps.run(input, output);
     const seconds = (performance.now() - started) / 1000;
     const [mask, sample] = [await deps.probe(output), await deps.probe(deps.sample)];
     if (mask.codec !== "h264") throw new Error(`mask is ${mask.codec}, not h264`);
@@ -104,7 +121,9 @@ async function maskToolCheck(deps: MaskToolDeps): Promise<string> {
       );
     }
     if (Math.abs(mask.frames - 30) > 1) throw new Error(`mask has ${mask.frames} frames, not 30`);
-    return `vseg built, 1 s masked in ${seconds.toFixed(1)} s`;
+    return deps.bridged
+      ? `through the cut-out bridge, 1 s masked in ${seconds.toFixed(1)} s`
+      : `vseg built, 1 s masked in ${seconds.toFixed(1)} s`;
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -233,6 +252,31 @@ async function check(name: string, run: () => Promise<string | void>): Promise<s
 // One line per check, never stopping at the first failure; exit code 1 when
 // any line failed.
 export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; exitCode: number }> {
+  const workDir = deps.workDir?.() ?? tmpdir();
+  // The plain AI calls run in a folder of their own, removed after the checks: a
+  // bridge runs them only in a folder inside the scratch folder, never in its root.
+  const aiDir = await mkdtemp(join(workDir, "doctor-ai-"));
+  try {
+    return await runChecks(deps, workDir, aiDir);
+  } finally {
+    await rm(aiDir, { recursive: true, force: true });
+  }
+}
+
+async function runChecks(
+  deps: DoctorDeps,
+  workDir: string,
+  aiDir: string,
+): Promise<{ lines: string[]; exitCode: number }> {
+  const bridgeLines: string[] = [];
+  if (deps.bridges?.claude) {
+    const health = deps.bridges.claude;
+    bridgeLines.push(await check("claude bridge", health));
+  }
+  if (deps.bridges?.cutout) {
+    const health = deps.bridges.cutout;
+    bridgeLines.push(await check("cut-out bridge", health));
+  }
   const lines = [
     await check("supabase reachable", deps.supabase),
     await check("r2 bucket readable and writable", () => probeR2(deps.r2)),
@@ -262,12 +306,13 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
       if (!version) throw new Error("no version printed");
       return version;
     }),
+    ...bridgeLines,
     await check("ai structured call", async () => {
       const result = await deps.ai().call(plainTool, {
         prompt:
           'Reply with accents, big_words, photos, transitions, word_fixes, checklist and unexpressed empty lists, hook null, and behind_rules photos and big_word "keep".',
         schema: doctorAiSchema(),
-        cwd: tmpdir(),
+        cwd: aiDir,
       });
       if (result.kind !== "answer") throw new Error(result.reason);
       const parsed = parseDecideAnswer(result.answer, ISSEBYA_PRESET, AI_SAMPLE_TRANSCRIPT);
@@ -290,7 +335,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
           record: [],
         }),
         schema: summaryJsonSchema(),
-        cwd: tmpdir(),
+        cwd: aiDir,
         model: SUMMARY_MODEL,
       });
       if (result.kind !== "answer") throw new Error(result.reason);
@@ -298,8 +343,8 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
       if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
       return SUMMARY_MODEL;
     }),
-    await check("ai image call", () => aiImageCall(deps.ai())),
-    await check("mask tool", () => maskToolCheck(deps.maskTool())),
+    await check("ai image call", () => aiImageCall(deps.ai(), workDir)),
+    await check("mask tool", () => maskToolCheck(deps.maskTool(), workDir)),
     // Last, so the earlier lines keep their places.
     await check("scratch dir", async () => {
       const { dir, state } = await deps.scratchDir();
