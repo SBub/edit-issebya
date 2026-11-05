@@ -263,6 +263,15 @@ describe("runDoctor", () => {
     expect(Object.keys(schema.properties ?? {})).toEqual(["description", "tags"]);
   });
 
+  it("passes the image call on a description over 200 characters, shortened as the step does", async () => {
+    const description = "A colourful test pattern with bars and a moving circle. ".repeat(5);
+    const { lines } = await runDoctor({
+      ...PASSING,
+      ai: () => answeringAi({ ...DESCRIBED, description }),
+    });
+    expect(lines[8]).toBe("ok   ai image call");
+  });
+
   it("makes one structured call with the real decide schema", async () => {
     const ai = answeringAi();
     await runDoctor({ ...PASSING, ai: () => ai });

@@ -116,6 +116,21 @@ function run(ai: AiRunner, store: PhotoStore = memoryStore()) {
 }
 
 describe("runDescribePhotoJob", () => {
+  it("saves an over-long description shortened, with no second call", async () => {
+    const long = "A colourful test pattern with bars and a moving circle. ".repeat(5);
+    const reply = answer as { answer: Record<string, unknown> };
+    const ai = seeingAi([
+      { ...reply, answer: { ...reply.answer, description: long } } as ScriptedReply,
+    ]);
+    const { job } = run(ai);
+    await job;
+    expect(ai.calls).toHaveLength(1);
+    const saved = readyWrites[0]!.photo.description;
+    expect(saved.length).toBeLessThanOrEqual(200);
+    expect(long.startsWith(saved)).toBe(true);
+    expect(saved.endsWith("circle.")).toBe(true);
+  });
+
   it("makes both copies, sends the large copy as the one image and writes the photo ready", async () => {
     const ai = seeingAi([answer]);
     const { job, calls } = run(ai);
@@ -130,7 +145,7 @@ describe("runDescribePhotoJob", () => {
           description: "A colourful test pattern with bars and a moving circle.",
           tags: ["test pattern", "colour bars", "abstract"],
           model: AI_MODEL,
-          promptVersion: "describe-photo-2",
+          promptVersion: "describe-photo-3",
           width: 4032,
           height: 3024,
           thumbnailKey: `${PREFIX}library/${PHOTO}/thumbnail.jpg`,

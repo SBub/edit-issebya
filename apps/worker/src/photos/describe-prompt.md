@@ -5,9 +5,9 @@ The photo is the image attached to this message.
 
 Answer with:
 
-- `description`: one plain sentence, at most 200 characters, saying what the
-  photo shows (people, place, objects, mood, light). No guesses about who a
-  person is.
+- `description`: one short sentence of at most 200 characters (about 30
+  words), saying what the photo shows (people, place, objects, mood, light).
+  No guesses about who a person is.
 - `tags`: 3 to 8 short lowercase tags (letters, digits, spaces and hyphens,
   at most 30 characters each) that would help match the photo to a spoken
   sentence, for example `beach`, `morning coffee`, `city at night`.
