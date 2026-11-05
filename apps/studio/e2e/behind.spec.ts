@@ -15,13 +15,16 @@ import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
 // A change request that puts a library photo behind the speaker: the worker
 // makes the span's mask (the mask double: black, no person) in a `cutout`
-// step, records it, and saves version 3 naming it; the live preview shows the
-// photo exactly over the `left` spot inside the span and not after it.
+// step, records it, and saves version 3 naming it; the layout engine places
+// the photo behind the speaker near the wished `left` spot (its `box`), and
+// the live preview shows it exactly over that box inside the span and not
+// after it.
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
 const REQUEST = "put my test pattern photo behind me on the left";
 const INSIDE = 1.3;
-// The span ends with w0010 at 2.605 s; the fixture reel lasts 2.69 s.
-const AFTER = 2.65;
+// The photo leaves 2 s after its sentence starts (about 2.04 s), before the
+// sentence ends with w0010 at 2.605 s: at most 2 s on screen.
+const AFTER = 2.3;
 
 const admin = localSupabaseAdmin();
 const storage = fakeStorage({
@@ -156,13 +159,14 @@ test("a change puts a library photo behind the speaker, in its spot, from a stor
     .single<{ current_version_id: string }>();
   const { data: v3 } = await admin
     .from("versions")
-    .select("id, number, inputs, change_title, change_summary")
+    .select("id, number, inputs, change_title, change_summary, r2_key")
     .eq("id", reelRow!.current_version_id)
     .single<{
       id: string;
       number: number;
       change_title: string;
       change_summary: string;
+      r2_key: string;
       inputs: { masks?: { step: string; fingerprint: string; file: string }[]; photos?: string[] };
     }>();
   expect(v3!.number).toBe(3);
@@ -205,24 +209,46 @@ test("a change puts a library photo behind the speaker, in its spot, from a stor
     .eq("r2_key", maskKey);
   expect(stored).toEqual([{ kind: "rebuildable", step: "cutout" }]);
 
-  // The preview of version 3: the photo over the left spot inside the span.
+  // The saved edit: the one photo behind the speaker (no `layer`, or
+  // `behind`), in the box the layout engine gave it near the wished spot.
+  const bytes = await storage.get(v3!.r2_key);
+  const edit = JSON.parse(new TextDecoder().decode(bytes!)) as {
+    tracks: {
+      behind?: {
+        kind: string;
+        photo_id?: string;
+        spot?: string;
+        layer?: string;
+        box?: { x: number; y: number; width: number; height: number };
+      }[];
+    };
+  };
+  const behind = edit.tracks.behind ?? [];
+  expect(behind).toHaveLength(1);
+  const [item] = behind;
+  // The engine names the spot nearest the box it set.
+  expect(item).toMatchObject({ kind: "photo", photo_id: photo!.id, spot: "left" });
+  expect(item!.layer ?? "behind").toBe("behind");
+  const box = item!.box!;
+  expect(box).toBeDefined();
+
+  // The preview of version 3: the photo over its box inside the span.
   await expect(
     page.locator(`[data-preview-version="${v3!.id}"][data-preview="ready"]`),
   ).toBeVisible({ timeout: 30_000 });
   await seekTo(page, INSIDE);
-  const spot = ISSEBYA_PRESET.behind.spots.left;
   const inside = await photoState(page);
   expect(inside).toMatchObject({ shown: true });
   expect(inside.src).toContain(`library/${photo!.id}/large.jpg`);
   for (const [actual, expected] of [
-    [inside.left, spot.left],
-    [inside.top, spot.top],
-    [inside.width, spot.right - spot.left],
-    [inside.height, spot.bottom - spot.top],
+    [inside.left, box.x],
+    [inside.top, box.y],
+    [inside.width, box.width],
+    [inside.height, box.height],
   ] as const) {
     expect(Math.abs(actual - expected)).toBeLessThanOrEqual(2);
   }
-  // The cut-out's mask videos play from the signed mask.
+  // Behind the speaker: the cut-out's mask videos play from the signed mask.
   await expect(composition(page).locator('video[src*="/cache/cutout/"]')).toHaveCount(2);
 
   await seekTo(page, AFTER);

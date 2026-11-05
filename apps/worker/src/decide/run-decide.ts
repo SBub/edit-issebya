@@ -47,6 +47,7 @@ import {
 } from "../failure.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { type ToolPaths, toolPaths } from "../pipeline/tools.ts";
+import { photoLooks } from "../photos/photo-looks.ts";
 import type { PhotoLibrary } from "../photos/photo-store.ts";
 import { reelOf } from "../queue.ts";
 import {
@@ -78,6 +79,11 @@ export interface DecideRun {
   scratchDir: string;
   // The owner's request; null for the automatic decide after version 1.
   request?: string | null;
+  // Start over (temporary, for testing): the version to decide from instead
+  // of the current one (the reel's version 1); the new version's parent is
+  // still the current one. The reel's behind rules hold as on any run. Null
+  // or absent: from the current version.
+  startFrom?: string | null;
   measurer?: () => Promise<Measurer>;
   newId?: () => string;
   // The owner's ready photos, offered for the behind track; none without it.
@@ -157,6 +163,7 @@ export function runDecide({
   ai,
   scratchDir,
   request = null,
+  startFrom = null,
   measurer = editMeasurer,
   newId = randomUUID,
   photos,
@@ -174,8 +181,14 @@ export function runDecide({
       const reelId = reelOf(ctx.job);
       const currentId = await rows.current(reelId);
       if (currentId === null) throw new Error(`${STEP}: no current version`);
-      const row = await rows.get(currentId);
-      if (!row) throw new Error(`${STEP}: current version ${currentId} not found`);
+      const baseId = startFrom ?? currentId;
+      const row = await rows.get(baseId);
+      if (!row || row.reel_id !== reelId) {
+        throw new Error(`${STEP}: version ${baseId} of this reel not found`);
+      }
+      // The version that stays current when nothing is saved.
+      const currentNumber =
+        baseId === currentId ? row.number : ((await rows.get(currentId))?.number ?? "?");
       const bytes = await blobs.get(row.r2_key);
       if (!bytes) throw new Error(`${STEP}: edit missing at ${row.r2_key}`);
 
@@ -226,6 +239,18 @@ export function runDecide({
       let usage: AiUsage = { inputTokens: null, outputTokens: null, costUsd: null, model: null };
       const cwd = await mkdtemp(join(scratchDir, "decide-"));
       try {
+        // Each library photo's ratio and edge, before the AI call: the layout
+        // sizes photos to them and keeps their edges apart from the footage.
+        // In a folder of their own, never the AI's working folder.
+        const looksDir = await mkdtemp(join(scratchDir, "photo-looks-"));
+        const looks = await photoLooks({
+          library,
+          storage,
+          tool,
+          ffmpeg: tools.ffmpeg,
+          dir: looksDir,
+          signal: ctx.signal,
+        }).finally(() => rm(looksDir, { recursive: true, force: true }));
         const attempt = async (previous?: string[]): Promise<Attempt> => {
           const result = await ai.call(tool, {
             prompt: decidePrompt(input, previous),
@@ -259,6 +284,7 @@ export function runDecide({
             headTrack,
             measure,
             backgrounds,
+            looks,
           );
           if (!composed.ok) return { ok: false, reasons: composed.reasons, rules: ["answer-edit"] };
           // What the answer wrote: a fix showing a glossary word's heard form.
@@ -300,7 +326,7 @@ export function runDecide({
         const passed = first.ok ? first : await attempt(first.reasons).catch(permanentAfterAiCall);
         if (!passed.ok) {
           const tail = [
-            `${STEP}: the answer failed twice, version ${row.number} stays current`,
+            `${STEP}: the answer failed twice, version ${currentNumber} stays current`,
             ...roundLines(1, first.reasons),
             ...roundLines(2, passed.reasons),
           ].join("\n");
@@ -332,6 +358,7 @@ export function runDecide({
               headTrack,
               measure,
               backgrounds,
+              looks,
             );
             if (!composed.ok) {
               log(`${STEP}: engine bug, reel ${reelId}: ${composed.reasons.join("; ")}`);
@@ -373,7 +400,10 @@ export function runDecide({
         const broken = checks.filter(
           (check) =>
             !(check.rule === "face" && coversFace.has(check.item)) &&
-            !(check.rule === "behind-face" && madeRoom.has(check.item)),
+            !(
+              (check.rule === "behind-face" || check.rule === "photo-hidden") &&
+              madeRoom.has(check.item)
+            ),
         );
         if (broken.length > 0) {
           log(
@@ -409,7 +439,7 @@ export function runDecide({
             .slice(0, LINES_PER_ROUND)
             .map((entry) => `- ${entry.ask}: ${entry.reason ?? ""}`);
           const tail = [
-            `${STEP}: nothing would change, version ${row.number} stays current`,
+            `${STEP}: nothing would change, version ${currentNumber} stays current`,
             ...notDone,
           ].join("\n");
           throw new StepError(tail, tail, usage, {
@@ -425,6 +455,7 @@ export function runDecide({
           checklist,
           diff: { items: diffEdits(current, edit, transcript, preset), rules: rulesChanged },
           record,
+          library,
           preset,
           reelId,
           signal: ctx.signal,
@@ -468,12 +499,14 @@ export function runDecide({
           `version ${saved.number}: ${plural(counts.accents, "accent")}`,
           plural(counts.transitions, "transition"),
           counts.title ? "title set" : "no title",
+          ...(counts.hook ? ["hook set"] : []),
           `${plural(counts.wordsFixed, "word")} fixed`,
           ...(counts.behindPhotos + counts.behindWords > 0
             ? [`${counts.behindPhotos + counts.behindWords} behind`]
             : []),
           ...(dropped > 0 ? [`${dropped} dropped`] : []),
           ...(editorial.rounds > 0 ? [plural(editorial.rounds, "editorial round")] : []),
+          ...(startFrom !== null ? [`started over from version ${row.number}`] : []),
         ].join(", ");
         return { what, ai: usage };
       } finally {

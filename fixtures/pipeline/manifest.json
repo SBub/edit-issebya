@@ -20,7 +20,7 @@
     },
     {
       "name": "retime",
-      "fingerprint": "f3f3e150e0dac6e8b85f7de8c20e42dc8b76baba83e13b4ea49dc2d897e1f7e8",
+      "fingerprint": "7ab01e62528d8855f980fd499c16b3c229f9713034cbfc90cc88b3af00f59d08",
       "files": [
         "source.mp4",
         "transcript.json",
@@ -30,14 +30,14 @@
     },
     {
       "name": "head_track",
-      "fingerprint": "a76a7c82132dd8a7717a7f461b5ae94a023e20be150dff57cf8f540175aa04df",
+      "fingerprint": "f9962111896c8f92a9393e88c094da6de0e2db4973b5fc430106f7a7817b1104",
       "files": [
         "head-track.json"
       ]
     },
     {
       "name": "preview_copies",
-      "fingerprint": "0815b34a49943f14cf74ccc10a76a8600b254b428be814d4217830eee88a80ac",
+      "fingerprint": "a365b7d4ca07a57488e9eb1655595002d1d2ffb0ecbf2e7d79c4366f05abd9f9",
       "files": [
         "footage-preview.mp4",
         "thumbnail.jpg",

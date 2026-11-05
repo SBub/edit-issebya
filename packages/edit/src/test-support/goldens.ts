@@ -14,6 +14,10 @@ import rethinkHtml from "../testdata/golden/rethink-work-hand.html?raw";
 import rethinkWidths from "../testdata/golden/rethink-work-hand.widths.json?raw";
 import transitionsHtml from "../testdata/golden/rethink-work-transitions.html?raw";
 import transitionsWidths from "../testdata/golden/rethink-work-transitions.widths.json?raw";
+import frontHtml from "../testdata/golden/rethink-work-front.html?raw";
+import frontWidths from "../testdata/golden/rethink-work-front.widths.json?raw";
+import hookHtml from "../testdata/golden/rethink-work-hook.html?raw";
+import hookWidths from "../testdata/golden/rethink-work-hook.widths.json?raw";
 
 export const GOLDENS: Record<string, { html: string; widths: string }> = {
   "baseline-short-speech": { html: baselineHtml, widths: baselineWidths },
@@ -23,4 +27,6 @@ export const GOLDENS: Record<string, { html: string; widths: string }> = {
   "rethink-work-readable": { html: readableHtml, widths: readableWidths },
   "rethink-work-request": { html: requestHtml, widths: requestWidths },
   "rethink-work-transitions": { html: transitionsHtml, widths: transitionsWidths },
+  "rethink-work-hook": { html: hookHtml, widths: hookWidths },
+  "rethink-work-front": { html: frontHtml, widths: frontWidths },
 };

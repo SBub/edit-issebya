@@ -189,6 +189,17 @@ describe("fingerprintsFor", () => {
     expect(after.preview_copies).toBe(before.preview_copies);
   });
 
+  it("re-runs retime and every later step when pause cutting is switched off", () => {
+    const index = PIPELINE.findIndex((step) => step.name === "retime");
+    const retime = PIPELINE[index]!;
+    expect((retime.settings as { maxPauseSeconds: unknown }).maxPauseSeconds).toBe(0.3);
+    expectOnlyFromChanged(
+      index,
+      replaced(index, { ...retime, settings: { ...retime.settings, maxPauseSeconds: null } }),
+      "retime.maxPauseSeconds null",
+    );
+  });
+
   it("changes every step when the source changes", () => {
     const before = fingerprintsFor(SOURCE);
     for (const source of [

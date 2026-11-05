@@ -8,6 +8,7 @@ function runners() {
     restore: vi.fn<(versionId: string) => Promise<void>>(async () => {}),
     render: vi.fn<(versionId: string) => Promise<void>>(async () => {}),
     describe_photo: vi.fn<(photoId: string) => Promise<void>>(async () => {}),
+    start_over: vi.fn(async () => {}),
   };
 }
 
@@ -53,6 +54,13 @@ describe("runJobKind", () => {
     await runJobKind({ kind: "describe_photo", ...NONE, photo_id: "p1" }, r);
     expect(r.describe_photo).toHaveBeenCalledExactlyOnceWith("p1");
     expectOnly(r, "describe_photo");
+  });
+
+  it("runs only the start over for a start_over job", async () => {
+    const r = runners();
+    await runJobKind({ kind: "start_over", ...NONE }, r);
+    expect(r.start_over).toHaveBeenCalledOnce();
+    expectOnly(r, "start_over");
   });
 
   it("fails a describe_photo job without a photo", () => {

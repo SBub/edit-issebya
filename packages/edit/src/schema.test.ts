@@ -20,6 +20,48 @@ function reasons(json: unknown): string[] {
   return result.reasons;
 }
 
+describe("the hook overlay", () => {
+  const HOOK = {
+    id: "hook",
+    kind: "hook",
+    text: "Gen Z won't work like you did",
+    start: { word: "w0", edge: "end", offset: -0.155 },
+    end: { word: "w9", edge: "end", offset: 0.169 },
+  };
+  const withOverlays = (...overlays: Record<string, unknown>[]) => {
+    const edit = structuredClone(hand.edit) as unknown as {
+      tracks: { overlays: Record<string, unknown>[]; captions: Record<string, unknown>[] };
+    };
+    edit.tracks.overlays.push(...overlays);
+    return edit;
+  };
+
+  it("parses a hook with its own text; a stored version without one parses as before", () => {
+    expect(parseEdit(withOverlays(HOOK), ISSEBYA_PRESET, hand.transcript)).toMatchObject({
+      ok: true,
+    });
+    expect(hand.edit.tracks.overlays.every((item) => item.kind === "accent")).toBe(true);
+  });
+
+  it("refuses a hook with words or without text, and a second hook", () => {
+    expect(reasons(withOverlays({ ...HOOK, words: ["w0"] })).join("\n")).toContain(
+      "hook hook: a hook has its own text and no words",
+    );
+    const noText: Record<string, unknown> = { ...HOOK };
+    delete noText.text;
+    expect(reasons(withOverlays(noText)).join("\n")).toContain("overlay hook: needs words or text");
+    expect(reasons(withOverlays(HOOK, { ...HOOK, id: "hook-2" })).join("\n")).toContain(
+      "hook hook-2: only one hook per reel",
+    );
+  });
+
+  it("never hides a caption: nobody says the hook", () => {
+    const edit = withOverlays(HOOK);
+    edit.tracks.captions[0]!.hidden_by = "hook";
+    expect(reasons(edit).join("\n")).toContain("hidden by hook, which is no accent or big word");
+  });
+});
+
 describe("parseEdit", () => {
   it("accepts every stored fixture version", () => {
     for (const fixture of FIXTURES) {
@@ -191,13 +233,36 @@ describe("the behind track", () => {
     expect(parsed.ok && parsed.edit.inputs.photos).toEqual([PHOTO]);
   });
 
-  it("refuses an item under 2 s or over 4 s", () => {
-    expect(behindReasons(withItems([photo(10, 11.5)])).join("\n")).toMatch(
-      /behind p: lasts 1\.500 s, must be 2 to 4 s/,
+  it("parses a photo with its reason, an older one without it, and refuses another reason", () => {
+    const parse = (json: unknown) => parseEdit(json, ISSEBYA_PRESET, behind.transcript);
+    expect(parse(withItems([photo(10, 13)]))).toMatchObject({ ok: true });
+    const mood = parse(withItems([{ ...photo(10, 13), reason: "mood" }]));
+    expect(mood.ok && mood.edit.tracks.behind?.[0]).toMatchObject({ reason: "mood" });
+    expect(
+      behindReasons(withItems([{ ...photo(10, 13), reason: "loose" }])).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("parses a photo's layer and box, an older one without them, and refuses bad ones", () => {
+    const parse = (json: unknown) => parseEdit(json, ISSEBYA_PRESET, behind.transcript);
+    const box = { x: 110, y: 220, width: 640, height: 480 };
+    const front = parse(withItems([{ ...photo(10, 13), layer: "front", box }]));
+    expect(front.ok && front.edit.tracks.behind?.[0]).toMatchObject({ layer: "front", box });
+    expect(parse(withItems([{ ...photo(10, 13), layer: "behind", box }]))).toMatchObject({
+      ok: true,
+    });
+    // Without them (every version saved before): behind, over its spot.
+    const old = parse(withItems([photo(10, 13)]));
+    expect(old.ok && old.edit.tracks.behind?.[0]).not.toHaveProperty("layer");
+    expect(behindReasons(withItems([{ ...photo(10, 13), layer: "over" }])).length).toBeGreaterThan(
+      0,
     );
-    expect(behindReasons(withItems([photo(10, 14.5)])).join("\n")).toMatch(
-      /behind p: lasts 4\.500 s, must be 2 to 4 s/,
-    );
+    expect(
+      behindReasons(withItems([{ ...photo(10, 13), box: { ...box, width: 0 } }])).length,
+    ).toBeGreaterThan(0);
+    expect(
+      behindReasons(withItems([{ ...photo(10, 13), box: { ...box, x: 1.5 } }])).length,
+    ).toBeGreaterThan(0);
   });
 
   it("refuses two items at the same time", () => {
@@ -233,59 +298,78 @@ describe("the behind track", () => {
     ).toBeGreaterThan(0);
   });
 
-  describe("with the decide counts", () => {
-    const counts = { behindCounts: { photos: 2, words: 1 } };
-    const word = (start: number, end: number, id = "w") => ({
-      id,
-      kind: "word",
-      text: "WORK",
-      start: { time: start },
-      end: { time: end },
-    });
-    const limited = (json: unknown) => parseEdit(json, ISSEBYA_PRESET, behind.transcript, counts);
+  describe("with the decide limit on lengths", () => {
+    const lengths = { behindLengths: true };
+    // A big word on the spoken word at `index`, from the lead before it to
+    // `after` seconds after it (by default as the engine times it: a second
+    // after, at least the accent's minimum).
+    const { leadSeconds, minSeconds: accentMin, afterSeconds } = ISSEBYA_PRESET.accent;
+    const spoken = (index: number, id = "w", after?: number) => {
+      const said = behind.transcript.words[index]!;
+      const length = said.end - said.start;
+      return {
+        id,
+        kind: "word",
+        text: "WORK",
+        start: { word: said.id, offset: -leadSeconds },
+        end: {
+          word: said.id,
+          edge: "end",
+          offset: after ?? Math.max(afterSeconds, accentMin - leadSeconds - length),
+        },
+      };
+    };
+    const limited = (json: unknown) => parseEdit(json, ISSEBYA_PRESET, behind.transcript, lengths);
 
-    it("refuses a third photo, naming it", () => {
-      const json = withItems([photo(1, 4, "a"), photo(10, 13, "b"), photo(20, 23, "c")]);
-      const result = limited(json);
-      expect(result.ok).toBe(false);
-      expect(!result.ok && result.reasons.join("\n")).toMatch(
-        /behind c: a third photo; at most 2 photos per reel/,
+    it("refuses a photo under 1 s or over 2 s", () => {
+      const short = limited(withItems([photo(10, 10.5)]));
+      expect(!short.ok && short.reasons.join("\n")).toMatch(
+        /behind p: lasts 0\.500 s, must be 1 to 2 s/,
       );
-      expect(!result.ok && result.reasons.join("\n")).not.toMatch(/behind b:/);
-    });
-
-    it("refuses a second big word", () => {
-      const result = limited(withItems([word(1, 4, "a"), word(10, 13, "b")]));
-      expect(!result.ok && result.reasons.join("\n")).toMatch(
-        /behind b: a second big word; at most 1 per reel/,
+      const long = limited(withItems([photo(10, 12.5)]));
+      expect(!long.ok && long.reasons.join("\n")).toMatch(
+        /behind p: lasts 2\.500 s, must be 1 to 2 s/,
       );
     });
 
-    it("accepts two photos and one word", () => {
-      const json = withItems([photo(1, 4, "a"), photo(10, 13, "b"), word(20, 23)]);
+    it("holds a big word to the accent's timing: at least 1.5 s, at most a second after its word", () => {
+      // w110 "sense", 0.41 s long: at most 0.2 + 0.41 + 1 = 1.61 s.
+      expect(limited(withItems([spoken(110)]))).toMatchObject({ ok: true });
+      const short = limited(withItems([spoken(110, "w", 0.5)]));
+      expect(!short.ok && short.reasons.join("\n")).toMatch(
+        /behind w: lasts 1\.110 s, must be 1\.5 to 1\.61 s/,
+      );
+      const long = limited(withItems([spoken(110, "w", 1.5)]));
+      expect(!long.ok && long.reasons.join("\n")).toMatch(
+        /behind w: lasts 2\.110 s, must be 1\.5 to 1\.61 s/,
+      );
+    });
+
+    it("takes any number of photos and big words, the same word again too", () => {
+      const json = withItems([
+        photo(1, 3, "a"),
+        spoken(20, "b"),
+        photo(10, 12, "c"),
+        spoken(64, "d"),
+        photo(20, 21.5, "e"),
+        spoken(110, "f"),
+      ]);
       expect(limited(json)).toMatchObject({ ok: true });
     });
 
-    it("caps the array in the JSON Schema", () => {
-      const schema = z.toJSONSchema(editSchemaFor(ISSEBYA_PRESET, behind.transcript, counts), {
+    it("leaves the array uncapped in the JSON Schema", () => {
+      const schema = z.toJSONSchema(editSchemaFor(ISSEBYA_PRESET, behind.transcript, lengths), {
         io: "output",
         reused: "inline",
       }) as unknown as {
         properties: { tracks: { properties: { behind: { maxItems?: number } } } };
       };
-      expect(schema.properties.tracks.properties.behind.maxItems).toBe(3);
-    });
-
-    it("still refuses a 5-second photo", () => {
-      const result = limited(withItems([photo(10, 15)]));
-      expect(!result.ok && result.reasons.join("\n")).toMatch(
-        /behind p: lasts 5\.000 s, must be 2 to 4 s/,
-      );
+      expect(schema.properties.tracks.properties.behind.maxItems).toBeUndefined();
     });
   });
 
-  it("parses three photos without the counts (stored versions are not limited)", () => {
-    const json = withItems([photo(1, 4, "a"), photo(10, 13, "b"), photo(20, 23, "c")]);
+  it("parses any length without the limit (stored versions keep older lengths)", () => {
+    const json = withItems([photo(1, 4, "a"), photo(10, 10.5, "b"), photo(20, 25, "c")]);
     expect(parseEdit(json, ISSEBYA_PRESET, behind.transcript)).toMatchObject({ ok: true });
   });
 

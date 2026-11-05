@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { requestRestore } from "@/app/change-actions";
 import { versionOrigin, versionTitle } from "@/lib/change-requests";
 import type { VersionListRow } from "@/lib/versions";
@@ -12,6 +12,8 @@ interface Props {
   currentVersionId: string | null;
   // Null when going back is open; otherwise why not, in one line.
   blockedReason: string | null;
+  // A control beside the heading (the temporary Start over button).
+  action?: ReactNode;
 }
 
 // Every version of the reel, newest first, one row each at one fixed height:
@@ -20,7 +22,7 @@ interface Props {
 // in place (what the owner asked, what changed, Go back). Going back queues a
 // `restore` job: a new version copying the old one, so going back can be
 // undone too.
-export function VersionList({ reelId, versions, currentVersionId, blockedReason }: Props) {
+export function VersionList({ reelId, versions, currentVersionId, blockedReason, action }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -65,9 +67,12 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason 
       aria-describedby="versions-intro"
       className="flex flex-col gap-2 pb-3"
     >
-      <h2 id="versions-heading" className="px-3 pt-3 text-sm font-semibold">
-        Versions
-      </h2>
+      <div className="flex min-h-7 items-center justify-between gap-2 px-3 pt-3">
+        <h2 id="versions-heading" className="text-sm font-semibold">
+          Versions
+        </h2>
+        {action}
+      </div>
       {/* Shown with or without versions; an empty list keeps its line below. */}
       <p id="versions-intro" data-testid="versions-intro" className="px-3 text-xs text-muted">
         Your reel&apos;s history. Open a version to see what changed and bring it back

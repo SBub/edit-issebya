@@ -34,8 +34,8 @@ const ACCENT_LEFT: UnplacedItem = {
   why: "busy",
 };
 const BIG_LEFT: UnplacedItem = {
-  ref: "big_word",
-  id: "big-word",
+  ref: "big_words[0]",
+  id: "big-word-1",
   kind: "big_word",
   from: "w76",
   to: "w76",
@@ -48,13 +48,14 @@ const ANSWER: DecideAnswer = {
     { from: "w2", to: "w3", title: false },
     { from: "w26", to: "w28", title: false },
   ],
-  big_word: null,
+  big_words: [],
   photos: [
-    { photo_id: PHOTO, from: "w84", to: "w99" },
-    { photo_id: OTHER, from: "w117", to: "w133" },
+    { photo_id: PHOTO, from: "w84", to: "w99", reason: "match" },
+    { photo_id: OTHER, from: "w117", to: "w133", reason: "mood" },
   ],
   transitions: [],
   word_fixes: [],
+  hook: null,
   checklist: [
     { ask: "add images behind me", wants: "1 to 2 photos", fulfilled_by: ["photos[0]"] },
     { ask: "more photos", wants: "another photo", fulfilled_by: ["photos[1]"] },
@@ -104,8 +105,10 @@ describe("the editorial answer", () => {
       ),
     ).toContain("accents[0] is not a photo");
     expect(
-      reasons({ choices: [{ item: "big_word", skip: false, from: "w66", to: "w67" }] }, [BIG_LEFT]),
-    ).toContain("the big word is one word");
+      reasons({ choices: [{ item: "big_words[0]", skip: false, from: "w66", to: "w67" }] }, [
+        BIG_LEFT,
+      ]),
+    ).toContain("a big word is one word");
     expect(
       reasons({ choices: [{ item: "photos[0]", skip: false, from: "w112", to: "w100" }] }, [
         PHOTO_LEFT,
@@ -138,7 +141,13 @@ describe("mergeEditorial", () => {
       transcript,
       ISSEBYA_PRESET,
     );
-    expect(answer.photos[0]).toEqual({ photo_id: OTHER, from: "w100", to: "w112" });
+    // The reason stays with the photo: the editor picks one that fits the same way.
+    expect(answer.photos[0]).toEqual({
+      photo_id: OTHER,
+      from: "w100",
+      to: "w112",
+      reason: "match",
+    });
     expect(answer.photos[1]).toEqual(ANSWER.photos[1]);
     expect(answer.checklist).toEqual(ANSWER.checklist);
     expect(notes).toEqual([
@@ -174,7 +183,48 @@ describe("mergeEditorial", () => {
   });
 });
 
+describe("mergeEditorial on big words", () => {
+  it("moves one big word, skips another and re-indexes the links to the rest", () => {
+    const answer = {
+      ...ANSWER,
+      big_words: [{ word: "w76" }, { word: "w140" }, { word: "w76" }],
+      checklist: [
+        { ask: "big words", wants: "two", fulfilled_by: ["big_words[1]", "big_words[2]"] },
+      ],
+    };
+    const second: UnplacedItem = { ...BIG_LEFT, ref: "big_words[1]", id: "big-word-2" };
+    const merged = mergeEditorial(
+      answer,
+      {
+        choices: [
+          { item: "big_words[0]", skip: false, from: "w66", to: "w66" },
+          { item: "big_words[1]", skip: true, why: "No other key word fits here" },
+        ],
+      },
+      [BIG_LEFT, second],
+      transcript,
+      ISSEBYA_PRESET,
+    );
+    expect(merged.answer.big_words).toEqual([{ word: "w66" }, { word: "w76" }]);
+    expect(merged.answer.checklist[0]!.fulfilled_by).toEqual(["big_words[1]"]);
+    expect(merged.notes.map((note) => note.reason)).toEqual([
+      expect.stringMatching(/^the editor moved big word 1 to /),
+      "the editor left out big word 2: No other key word fits here",
+    ]);
+  });
+});
+
 describe("checklistOutcome", () => {
+  it("counts an ask linked to the hook as done: it is never left out", () => {
+    const asks = [
+      { ask: "change the hook to Work less", wants: "hook: Work less", fulfilled_by: ["hook"] },
+      { ask: "no hook", wants: "no hook", fulfilled_by: ["hook"] },
+    ];
+    expect(checklistOutcome(asks, { unplaced: [], record: [] })).toEqual(
+      asks.map((entry) => ({ ...entry, done: true, reason: null })),
+    );
+  });
+
   const drop = {
     item: "photo-1",
     action: "dropped" as const,
@@ -212,7 +262,7 @@ describe("checklistOutcome", () => {
       action: "dropped" as const,
       rule: "transition-rate",
       reason:
-        'transition 1 (numbered) on "fair pay" dropped: about one transition per 7 s, this reel has room for 2',
+        'transition 1 (numbered) on "fair pay" dropped: about one transition per 9 s, this reel has room for 2',
     };
     expect(checklistOutcome([ask], { unplaced: [], record: [] })[0]).toMatchObject({
       done: true,

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { bigWordLayout, maskSpans, spotBox, spotFaceShare } from "./behind.ts";
+import {
+  bigWordLayout,
+  maskSpans,
+  nearestSpot,
+  needsCutout,
+  photoBox,
+  spotBox,
+  spotFaceShare,
+} from "./behind.ts";
 import { build } from "./build.ts";
 import { faceBox } from "./head-track.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
@@ -81,7 +89,7 @@ describe("bigWordLayout", () => {
     expect(box.x + box.width / 2).toBeCloseTo(540, 0);
     const face = faceBox(behind.headTrack, 1, 1)!;
     expect(box.y + box.size / 2).toBeCloseTo(face.top + 60, 0);
-    expect(measurer.widths()).toHaveProperty("secondary:AI");
+    expect(measurer.widths()).toHaveProperty("primary:AI");
   });
 
   it("shrinks a long word to the frame between the side margins", async () => {
@@ -109,6 +117,39 @@ describe("bigWordLayout", () => {
   });
 });
 
+describe("photo boxes", () => {
+  const item = (more: Partial<BehindItem> = {}) =>
+    ({
+      id: "p",
+      kind: "photo",
+      photo_id: PHOTO,
+      spot: "left",
+      start: { time: 0 },
+      end: { time: 2 },
+      ...more,
+    }) as Extract<BehindItem, { kind: "photo" }>;
+
+  it("is the engine's box, or the spot for a version saved before it", () => {
+    expect(photoBox(item(), ISSEBYA_PRESET)).toEqual(spotBox("left", ISSEBYA_PRESET));
+    expect(
+      photoBox(item({ box: { x: 100, y: 220, width: 640, height: 480 } }), ISSEBYA_PRESET),
+    ).toEqual({ left: 100, right: 740, top: 220, bottom: 700 });
+  });
+
+  it("names the nearest spot, and only what sits behind needs the cut-out", () => {
+    expect(nearestSpot({ left: 220, right: 860, top: 220, bottom: 700 }, ISSEBYA_PRESET)).toBe(
+      "top",
+    );
+    expect(nearestSpot({ left: 600, right: 1000, top: 700, bottom: 1000 }, ISSEBYA_PRESET)).toBe(
+      "right",
+    );
+    expect(needsCutout(item())).toBe(true);
+    expect(needsCutout(item({ layer: "behind" }))).toBe(true);
+    expect(needsCutout(item({ layer: "front" }))).toBe(false);
+    expect(needsCutout(word("WORK"))).toBe(true);
+  });
+});
+
 describe("maskSpans", () => {
   it("pads each item by three frames on the frame grid", () => {
     const [span] = maskSpans(withBehind([{ start: 5.01, end: 7.5 }]), behind.transcript, {
@@ -117,6 +158,18 @@ describe("maskSpans", () => {
     // 5.01 - 0.1 = 4.91 snaps down to 4.9; 7.5 + 0.1 = 7.6 is a frame time.
     expect(span).toEqual({ start: 4.9, end: 7.6, items: ["b0"] });
     expect(Math.abs(span!.start / FRAME - Math.round(span!.start / FRAME))).toBeLessThan(0.02);
+  });
+
+  it("leaves out a photo in front of the speaker: it needs no mask", () => {
+    const edit = withBehind([
+      { start: 5, end: 7 },
+      { start: 10, end: 12 },
+    ]);
+    const front = edit.tracks.behind![0]!;
+    if (front.kind === "photo") front.layer = "front";
+    expect(maskSpans(edit, behind.transcript, ISSEBYA_PRESET).map((span) => span.items)).toEqual([
+      ["b1"],
+    ]);
   });
 
   it("clamps to the reel's start and end", () => {

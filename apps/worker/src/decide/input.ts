@@ -28,18 +28,22 @@ function sentences(transcript: Transcript, preset: Preset): SentenceChoice[] {
 }
 
 // What of the preset the AI decides with: the transition library (each kind
-// with the line saying what it is for) and how often a transition comes, the
-// glossary and the behind counts. No frame, box, font size, colour or spot:
-// the layout owns every position, size and time.
+// with the line saying what it is for), the pace (how often something new
+// shows, how often a transition comes), how long the hook may be and the
+// glossary. No count of photos
+// or big words: how many is the editor's choice. No frame, box, font size,
+// colour or spot: the layout owns every position, size and time.
 export function presetSummary(preset: Preset) {
   return {
     transitions: TRANSITION_KINDS.map((kind) => ({
       kind,
       description: preset.transitions[kind].description ?? "",
     })),
-    transition_every_seconds: preset.transition.perSeconds,
+    extra_every_seconds: preset.pace.extraEverySeconds,
+    transition_every_seconds: preset.pace.transitionEverySeconds,
+    // How long the written hook may be (never when or where it shows).
+    hook_length: { words: preset.pace.hook.maxWords, characters: preset.pace.hook.maxCharacters },
     glossary: preset.glossary,
-    behind: { max_photos: preset.behind.maxPhotos, max_words: preset.behind.maxWords },
   };
 }
 

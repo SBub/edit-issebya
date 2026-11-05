@@ -41,7 +41,7 @@ export interface EditorialInput {
     item: string;
     kind: UnplacedItem["kind"];
     words: string;
-    photo?: { id: string; description: string };
+    photo?: { id: string; description: string; reason?: UnplacedItem["reason"] };
     why: string;
     asked_by_owner: boolean;
   }[];
@@ -79,7 +79,15 @@ export function editorialInput({
         item: item.ref,
         kind: item.kind,
         words: text(item.from, item.to),
-        ...(photo ? { photo: { id: photo.id, description: photo.description } } : {}),
+        ...(photo
+          ? {
+              photo: {
+                id: photo.id,
+                description: photo.description,
+                ...(item.reason ? { reason: item.reason } : {}),
+              },
+            }
+          : {}),
         why: WHY_WORDS[item.why],
         asked_by_owner: item.requested,
       };

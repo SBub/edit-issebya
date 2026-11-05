@@ -53,6 +53,7 @@ describe("JOB_STEPS", () => {
       for (const name of list) expect(names.has(name), name).toBe(true);
     }
     expect(JOB_STEPS.process).toHaveLength(8);
+    expect(JOB_STEPS.start_over).toEqual(["decide"]);
   });
 });
 

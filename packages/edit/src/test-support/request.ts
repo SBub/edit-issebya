@@ -26,7 +26,7 @@ export const REQUEST_ANSWER: EngineInput & {
   checklist: { ask: string; wants: string; fulfilled_by: string[] }[];
 } = {
   accents: [],
-  big_word: null,
+  big_words: [],
   photos: [{ photo_id: REQUEST_PHOTO, from: "w84", to: "w99" }],
   transitions: [{ kind: "dim", from: "w84", to: "w99", key_from: "w91" }],
   word_fixes: [],

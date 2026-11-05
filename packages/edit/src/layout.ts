@@ -9,15 +9,17 @@ import type { Transcript } from "./transcript.ts";
 // `height` its font size (line-height 1).
 export interface TextBox extends Span {
   itemId: string;
-  // `level`: a text level inside a transition's layer.
-  kind: "caption" | "accent" | "level";
+  // `level`: a text level inside a transition's layer; `hook`: the written
+  // hook (Claude's own line, nobody says it).
+  kind: "caption" | "accent" | "hook" | "level";
   text: string;
   // The text's lines: one, or two for a text set with `break_after`.
   lines: string[];
   font: FontKey;
   size: number;
   color: string;
-  // The engine's soft shadow for contrast, when it added one.
+  // Legacy: the soft shadow an older version stored for contrast (the
+  // engine never adds one now).
   shadow: 1 | 2 | undefined;
   style: Record<string, string> | undefined;
   x: number;
@@ -27,7 +29,7 @@ export interface TextBox extends Span {
 }
 
 type TextItem = Omit<TextBox, "x" | "y" | "width" | "height" | "lines" | "kind"> & {
-  kind: "caption" | "accent";
+  kind: "caption" | "accent" | "hook";
   position: CaptionItem["position"];
   breakAfter: number | undefined;
 };
@@ -208,7 +210,10 @@ export function layoutText(
   measurer: Measurer,
 ): TextBox[] {
   const span = (id: string) => resolved.get(id)!;
-  const textItem = (item: CaptionItem | OverlayItem, kind: "caption" | "accent"): TextItem => {
+  const textItem = (
+    item: CaptionItem | OverlayItem,
+    kind: "caption" | "accent" | "hook",
+  ): TextItem => {
     const font = item.font ?? (kind === "caption" ? preset.caption.font : preset.accent.font);
     const words = item.words ?? [];
     return {
@@ -325,7 +330,7 @@ export function layoutText(
   }
 
   for (const overlay of edit.tracks.overlays) {
-    const item = textItem(overlay, "accent");
+    const item = textItem(overlay, overlay.kind);
     if (place(item)) continue;
     const face = faceBox(headTrack, item.start, item.end);
     const y = face

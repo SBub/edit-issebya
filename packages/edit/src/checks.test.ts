@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { build } from "./build.ts";
-import type { HeadTrack } from "./head-track.ts";
+import { type HeadTrack, facesOver } from "./head-track.ts";
 import { ISSEBYA_PRESET, PLATFORM_BUTTONS } from "./preset.ts";
 import type { Edit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
@@ -41,12 +41,13 @@ describe("runChecks", () => {
       );
       // Captions over a moving head, a last word shown under 0.25 s, accents
       // under 1.5 s; and in the behind edit the big word on the captions,
-      // shown before its word is said (today's failures).
+      // shown before its word is said and mostly behind the head (today's
+      // failures).
       const rules = new Set(checks.map((check) => check.rule));
       expect([...rules].sort()).toEqual(
         name === "rethink-work-hand"
           ? ["face", "timing"]
-          : ["big-word-timing", "face", "text-overlap", "timing"],
+          : ["big-word-hidden", "big-word-timing", "face", "text-overlap", "timing"],
       );
     }
   });
@@ -152,17 +153,18 @@ describe("runChecks", () => {
 
   it("fails sound-gap for two clicks 0.2 s apart", async () => {
     const edit = structuredClone(hand.edit);
+    // The engine's click as photo 1 comes in (on w18), and a second one.
     edit.tracks.sounds.push({
       id: "s-second",
       sound: "click",
-      start: { word: "w126", offset: 0.17 },
-      end: { word: "w126", offset: 0.4 },
+      start: { word: "w18", offset: 0.2 },
+      end: { word: "w18", offset: 0.43 },
     });
     expect(await checksOf(edit)).toEqual([
       {
         rule: "sound-gap",
         item: "s-second",
-        reason: "sound s-second is 0.200 s after s-fund-life, under 0.25 s",
+        reason: "sound s-second is 0.200 s after click-photo-1, under 0.25 s",
       },
     ]);
   });
@@ -175,7 +177,7 @@ describe("runChecks", () => {
     edit.tracks.sounds[0]!.end = { word: word.id, edge: "end" };
     const checks = await checksOf(edit);
     expect(checks.map((check) => [check.rule, check.item])).toEqual([
-      ["time-in-speech", "s-fund-life"],
+      ["time-in-speech", "click-photo-1"],
     ]);
     expect(checks[0]!.reason).toContain(`inside the word ${word.id}`);
   });
@@ -192,14 +194,15 @@ describe("runChecks on big words behind the speaker", () => {
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
-    expect(html).toContain('id="big-word"');
+    expect(html).toContain('id="big-word-1"');
     expect(checks).toEqual([]);
   });
 
   it("fails text-overlap for a big word set on the captions, big-word-timing before its word", async () => {
     const edit = structuredClone(hand.edit);
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
-    // On the captions' line, and a word said only after it shows.
+    // On the captions' line (behind the body too), and a word said only after
+    // it shows.
     if (word.kind === "word") Object.assign(word, { position: { x: 42, y: 1000 }, text: "work" });
     const { checks } = build(
       edit,
@@ -209,10 +212,42 @@ describe("runChecks on big words behind the speaker", () => {
       await nodeMeasurer(),
     );
     const rules = [...new Set(checks.map((check) => check.rule))];
-    expect(rules).toEqual(["text-overlap", "big-word-timing"]);
-    expect(checks.at(-1)!.reason).toMatch(
-      /^big word big-word \("work"\) shows at \d+\.\d{3} s, before w95 is said at 24\.887 s$/,
+    expect(rules).toEqual(["text-overlap", "big-word-timing", "big-word-hidden"]);
+    expect(checks.find((check) => check.rule === "big-word-timing")!.reason).toMatch(
+      /^big word big-word-1 \("work"\) shows at \d+\.\d{3} s, more than 0\.2 s before w95 is said at 24\.887 s$/,
     );
+  });
+
+  it("passes big-word-timing for a big word coming in the lead before its word", async () => {
+    const word = hand.edit.tracks.behind!.find((item) => item.kind === "word")!;
+    expect(word.start).toMatchObject({ offset: -ISSEBYA_PRESET.accent.leadSeconds });
+    const checks = await checksOf(hand.edit);
+    expect(checks.filter((check) => check.rule === "big-word-timing")).toEqual([]);
+  });
+
+  it("fails big-word-hidden for a big word set at head height, mostly behind the person", async () => {
+    const edit = structuredClone(hand.edit);
+    const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
+    if (word.kind !== "word") throw new Error("expected a big word");
+    // A narrow, small word centred on the head: the head covers nearly all
+    // of it (the old "centre below the head top" place of a short word).
+    const said = hand.transcript.words.find((w) => w.id === (word.start as { word: string }).word)!;
+    const face = facesOver(hand.headTrack, said.start, said.start)[0]!;
+    Object.assign(word, {
+      text: "all",
+      size: 120,
+      position: { x: Math.round((face.left + face.right) / 2 - 80), y: face.top + 20 },
+    });
+    const hidden = (await checksOf(edit)).filter((check) => check.rule === "big-word-hidden");
+    expect(hidden.map((check) => check.item)).toEqual([word.id]);
+    expect(hidden[0]!.reason).toMatch(
+      /^big word big-word-1 \("all"\): the person covers \d+% of its height, more than 30%; move it up out from behind the head$/,
+    );
+  });
+
+  it("passes big-word-hidden for the engine's big word, most of it in view", async () => {
+    const checks = await checksOf(hand.edit);
+    expect(checks.filter((check) => check.rule === "big-word-hidden")).toEqual([]);
   });
 
   it("fails frame for a big word pushed above the frame by a head at its top edge", async () => {
@@ -284,5 +319,63 @@ describe("runChecks on photos behind the speaker", () => {
 
   it("passes both for the stored fixture's photo in right", async () => {
     expect(await behindChecks("right", behind.headTrack)).toEqual([]);
+  });
+
+  // The photo with a box the engine set, in front of or behind the speaker.
+  async function boxChecks(
+    layer: "front" | "behind",
+    box: { x: number; y: number; width: number; height: number },
+    headTrack: HeadTrack,
+  ) {
+    const edit = structuredClone(behind.edit);
+    const photo = edit.tracks.behind!.find((item) => item.kind === "photo")!;
+    if (photo.kind === "photo") Object.assign(photo, { layer, box });
+    const { checks } = build(
+      edit,
+      behind.transcript,
+      headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    return checks.filter(
+      (check) =>
+        check.item === "behind-photo" &&
+        (check.rule === "behind-face" || check.rule === "photo-hidden"),
+    );
+  }
+  // A steady head: face box (padded) x 160 to 375, y 600 to 802.
+  const steady: HeadTrack = behind.headTrack.map(
+    (sample, index) => sample && { t: index * 0.25, head_top: 600, cx: 270, head_w: 150 },
+  );
+
+  it("fails behind-face for a photo in front over any part of the face", async () => {
+    const over = await boxChecks("front", { x: 300, y: 700, width: 300, height: 200 }, steady);
+    expect(over).toEqual([
+      {
+        rule: "behind-face",
+        item: "behind-photo",
+        reason: "photo behind-photo in front covers the face; a photo in front stays clear of it",
+      },
+    ]);
+    // Beside the face, over the body, is fine in front.
+    expect(await boxChecks("front", { x: 600, y: 300, width: 300, height: 200 }, steady)).toEqual(
+      [],
+    );
+  });
+
+  it("fails photo-hidden for a photo behind the speaker the person covers over 30% of", async () => {
+    // Its lower half behind the head.
+    const hidden = await boxChecks("behind", { x: 150, y: 400, width: 300, height: 400 }, steady);
+    expect(hidden.map((check) => check.rule)).toEqual(["photo-hidden"]);
+    expect(hidden[0]!.reason).toMatch(
+      /^photo behind-photo behind you: the person covers \d+% of its height, more than 30%; move it out from behind the person or in front$/,
+    );
+    // Only its lower 30% behind the head: in view.
+    expect(await boxChecks("behind", { x: 150, y: 300, width: 300, height: 400 }, steady)).toEqual(
+      [],
+    );
+    // A stored photo in a spot (no box) is never checked for it.
+    const stored = await behindChecks("left", steady);
+    expect(stored.filter((check) => check.rule === "photo-hidden")).toEqual([]);
   });
 });

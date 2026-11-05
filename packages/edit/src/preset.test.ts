@@ -118,13 +118,67 @@ describe("the transition library", () => {
     expect(numbered.numberSize!).toBeLessThanOrEqual(numbered.area.bottom - numbered.area.top);
   });
 
-  it("times a transition from 1.5 s, holding 1 s (2 s asked), 1.6 times slower when asked, one per 7 s", () => {
+  it("times a transition from 1.5 s, holding 1 s (2 s asked), 1.6 times slower when asked", () => {
     expect(ISSEBYA_PRESET.transition).toMatchObject({
       minSeconds: 1.5,
       holdSeconds: 1,
       longHoldSeconds: 2,
       slowFactor: 1.6,
-      perSeconds: 7,
     });
+  });
+
+  it("paces Medium: something new every 3 s, a transition only every 9 s, the hook to 3 s", () => {
+    const { pace, behind, transition, accent } = ISSEBYA_PRESET;
+    expect(pace).toEqual({
+      extraEverySeconds: 3,
+      transitionEverySeconds: 9,
+      hook: { fromSeconds: 0.2, untilSeconds: 3, maxWords: 7, maxCharacters: 45 },
+    });
+    // The hook comes in on the accent's lead and holds the first beat.
+    expect(pace.hook.fromSeconds).toBe(accent.leadSeconds);
+    expect(pace.hook.untilSeconds - pace.hook.fromSeconds).toBeGreaterThan(accent.minSeconds);
+    // Transitions come slower than the rhythm: they cover the speaker.
+    expect(pace.transitionEverySeconds).toBeGreaterThan(pace.extraEverySeconds);
+    // A photo (1 to 2 s) fits inside one beat, and a transition's minimum
+    // inside its own.
+    expect([behind.minSeconds, behind.maxSeconds]).toEqual([1, 2]);
+    expect(behind.maxSeconds).toBeLessThan(pace.extraEverySeconds);
+    expect(transition.minSeconds).toBeLessThan(pace.transitionEverySeconds);
+  });
+
+  it("times accents and big words alike: 0.2 s before the word, a second after, at least 1.5 s", () => {
+    expect(ISSEBYA_PRESET.accent).toMatchObject({
+      minSeconds: 1.5,
+      afterSeconds: 1,
+      leadSeconds: 0.2,
+    });
+    // The lead fits a start anchor's offset (at most 1 s).
+    expect(ISSEBYA_PRESET.accent.leadSeconds).toBeLessThanOrEqual(1);
+  });
+
+  it("sets captions in Golos Text Bold, accents and the big word in Raleway Light, all white", () => {
+    const { fonts, caption, accent, behind } = ISSEBYA_PRESET;
+    expect(fonts.primary).toMatchObject({
+      family: "Raleway Light",
+      file: "assets/fonts/Raleway-Light.ttf",
+      weight: 300,
+    });
+    expect(fonts.secondary).toMatchObject({
+      family: "Golos Text",
+      file: "assets/fonts/GolosText-Bold.ttf",
+      weight: 700,
+    });
+    expect([caption.font, accent.font, behind.word.font]).toEqual([
+      "secondary",
+      "primary",
+      "primary",
+    ]);
+    expect([caption.color, accent.color, behind.word.color]).toEqual([
+      "#FFFFFF",
+      "#FFFFFF",
+      "#FFFFFF",
+    ]);
+    // Only the lower 30% of a big word may go behind the head.
+    expect(behind.word.minVisible).toBe(0.7);
   });
 });

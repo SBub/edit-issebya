@@ -5,9 +5,9 @@ import type { PipelineStep, StepOutput } from "./definition.ts";
 import { envelopeArgs, parseEnvelope } from "./envelope.ts";
 import { parseProbe, probeArgs } from "./probe.ts";
 import { retimeEncodeArgs, retimeFilterGraph } from "./retime-encode.ts";
-import { planRetime, remapTime } from "./retime-plan.ts";
+import { planRetime, retimeTranscript } from "./retime-plan.ts";
 import { RETIME_PRESET, RETIME_VERSION, type RetimeSettings } from "./retime-preset.ts";
-import { parseTranscript, remapTranscript } from "./transcript.ts";
+import { parseTranscript } from "./transcript.ts";
 
 // The retimed footage is heavy and rebuilt from the kept upload; the small
 // JSON files stay.
@@ -35,8 +35,9 @@ function retimedSeconds(text: string): number {
   return durationSeconds;
 }
 
-// Probe, envelope, plan, one encode; then the retimed transcript (same ids),
-// the plan and the envelope beside the footage.
+// Probe, envelope, plan, one encode; then the retimed transcript (same ids,
+// word starts moved to the speech onset by the audio), the plan and the
+// envelope beside the footage.
 export const retime: PipelineStep<RetimeSettings> = {
   name: "retime",
   version: RETIME_VERSION,
@@ -82,7 +83,7 @@ export const retime: PipelineStep<RetimeSettings> = {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     await rename(partial, join(dir, "source.mp4"));
 
-    const retimed = remapTranscript(transcript, (t) => remapTime(plan, t));
+    const retimed = retimeTranscript({ transcript, plan, envelope, settings });
     await writeAtomic(join(dir, "transcript.json"), `${JSON.stringify(retimed, null, 2)}\n`);
     await writeAtomic(join(dir, "retime.json"), json(plan));
     await writeAtomic(join(dir, "envelope.json"), `${JSON.stringify(envelope)}\n`);

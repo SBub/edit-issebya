@@ -17,7 +17,7 @@ import { fenced } from "./prompt.ts";
 
 // The version title and summary: one short call on a small model, after
 // layout, from the saved difference. Bump with every change to summary.md.
-const SUMMARY_PROMPT_VERSION = "summary-2";
+const SUMMARY_PROMPT_VERSION = "summary-7";
 export const SUMMARY_MODEL = "claude-haiku-5-5";
 
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed prompt
@@ -30,19 +30,35 @@ export interface SummaryInput {
   checklist: readonly ChecklistOutcome[];
   diff: EditDiff;
   record: readonly EngineNote[];
+  // The owner's library photos, to name the photos in the difference by
+  // their description; none given, none named.
+  library?: readonly { id: string; description: string }[];
 }
+
+// A text left in place at low contrast (`low-contrast`, or an older record's
+// `shadowed`) is no change the viewer sees, so the summary never reads it.
+const NOT_A_CHANGE: ReadonlySet<string> = new Set(["low-contrast", "shadowed"]);
 
 // The summary prompt: the committed instructions with the request, the
 // checklist, the difference, the rules switched and the engine record (its
-// items, actions and reasons) quoted as fenced JSON data.
+// items, actions and reasons, without the low-contrast notes) quoted as
+// fenced JSON data, with the description of each library photo the
+// difference names.
 export function summaryPrompt(input: SummaryInput): string {
   const values: Record<string, string> = {
     request: fenced(input.request ?? "(none)"),
     checklist: fenced(input.checklist),
     difference: fenced(input.diff.items),
     rules_changed: fenced(input.diff.rules),
+    photos: fenced(
+      (input.library ?? [])
+        .filter((photo) => input.diff.items.some((item) => item.photo_id === photo.id))
+        .map(({ id, description }) => ({ id, description })),
+    ),
     engine_record: fenced(
-      input.record.map(({ item, action, reason }) => ({ item, action, reason })),
+      input.record
+        .filter(({ action }) => !NOT_A_CHANGE.has(action))
+        .map(({ item, action, reason }) => ({ item, action, reason })),
     ),
   };
   return TEMPLATE.replace(/\{\{(\w+)\}\}/g, (match, name: string) => values[name] ?? match);
@@ -69,6 +85,7 @@ export async function writeVersionSummary({
   checklist,
   diff,
   record,
+  library,
   preset,
   reelId,
   signal,
@@ -96,7 +113,7 @@ export async function writeVersionSummary({
   let result;
   try {
     result = await ai.call(tool, {
-      prompt: summaryPrompt({ request, checklist, diff, record }),
+      prompt: summaryPrompt({ request, checklist, diff, record, ...(library ? { library } : {}) }),
       schema: summaryJsonSchema(),
       cwd,
       model: SUMMARY_MODEL,

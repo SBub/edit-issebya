@@ -32,6 +32,11 @@ describe("build", () => {
         );
       expect(await run()).toEqual(await run());
     });
+
+    // Owner decision 2026-11-04: no text in a version reads as stroked.
+    it(`${fixture.name} draws no shadow or outline on any text`, () => {
+      expect(GOLDENS[fixture.name]!.html).not.toMatch(/text-shadow|text-stroke|paint-order/);
+    });
   }
 
   it("rethink-work-transitions holds one layer per kind with its level texts", async () => {
@@ -69,7 +74,7 @@ describe("build", () => {
     expect(html).toContain("gsap.timeline({ paused: true })");
     expect(html).toContain('window.__timelines["main"] = tl;');
     expect(html).toMatch(
-      /<audio id="s-fund-life" class="clip" src="assets\/sounds\/mouse-click-trimmed.wav" data-start="[\d.]+" data-duration="0.230" data-track-index="60" data-volume="0.2239"><\/audio>/,
+      /<audio id="s-fund-life" class="clip" src="assets\/sounds\/mouse-click-trimmed.wav" data-start="[\d.]+" data-duration="0.230" data-track-index="60" data-volume="0.5012"><\/audio>/,
     );
     expect(html).toContain('<span id="aw29" class="text f-primary"');
   });
@@ -82,11 +87,29 @@ describe("build", () => {
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
+    // Both roles' font files (Golos Text for captions, Raleway for accents).
     expect(assets.map((asset) => [asset.path, asset.role])).toEqual([
       ["assets/fonts/GolosText-Bold.ttf", "font"],
       ["assets/fonts/Raleway-Light.ttf", "font"],
       ["assets/sounds/mouse-click-trimmed.wav", "sound"],
       ["source.mp4", "footage"],
+    ]);
+  });
+
+  it("lists a font file once when both roles share it", async () => {
+    const shared = {
+      ...ISSEBYA_PRESET,
+      fonts: { ...ISSEBYA_PRESET.fonts, secondary: { ...ISSEBYA_PRESET.fonts.primary, size: 50 } },
+    };
+    const { assets } = build(
+      hand.edit,
+      hand.transcript,
+      hand.headTrack,
+      shared,
+      await nodeMeasurer(),
+    );
+    expect(assets.filter((asset) => asset.role === "font").map((asset) => asset.path)).toEqual([
+      "assets/fonts/Raleway-Light.ttf",
     ]);
   });
 
@@ -107,7 +130,7 @@ describe("build", () => {
     expect(assets.map((asset) => asset.role)).not.toContain("cutout");
   });
 
-  it("renders the engine's shadow as the preset's text-shadow, and none without it", async () => {
+  it("renders an older version's stored shadow as the preset's legacy text-shadow, and none without it", async () => {
     const edit = structuredClone(hand.edit);
     const caption = edit.tracks.captions[0]!;
     const accent = edit.tracks.overlays[0]!;
@@ -142,6 +165,31 @@ describe("build", () => {
     caption.color = "#000000";
     const dark = build(edit, hand.transcript, hand.headTrack, ISSEBYA_PRESET, await nodeMeasurer());
     expect(dark.html).toContain("text-shadow: 0 2px 8px rgba(255, 255, 255, 0.55)");
+  });
+
+  it("draws a photo in front of the speaker over the footage, with no cut-out for it", async () => {
+    const behind = FIXTURES.find((fixture) => fixture.name === "rethink-work-behind")!;
+    const edit = structuredClone(behind.edit);
+    edit.tracks.behind = edit.tracks.behind!.flatMap((item) =>
+      item.kind === "photo"
+        ? [{ ...item, layer: "front" as const, box: { x: 600, y: 300, width: 400, height: 300 } }]
+        : [],
+    );
+    delete edit.inputs.masks;
+    const { html, assets } = build(
+      edit,
+      behind.transcript,
+      behind.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(html).toContain("      .photo { position: absolute; object-fit: cover; }");
+    expect(html).not.toContain(".cutout");
+    expect(html).toMatch(
+      /<img id="behind-photo" class="clip photo" src="photos\/[0-9a-f-]+\.jpg" alt="" data-start="[\d.]+" data-duration="[\d.]+" data-track-index="30" style="left: 600px; top: 300px; width: 400px; height: 300px" \/>/,
+    );
+    expect(assets.some((asset) => asset.role === "mask")).toBe(false);
+    expect(assets.filter((asset) => asset.role === "photo")).toHaveLength(1);
   });
 
   it("escapes text and style values", async () => {

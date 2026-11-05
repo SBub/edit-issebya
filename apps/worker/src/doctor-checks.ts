@@ -265,7 +265,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
     await check("ai structured call", async () => {
       const result = await deps.ai().call(plainTool, {
         prompt:
-          'Reply with accents, photos, transitions, word_fixes, checklist and unexpressed empty lists, big_word null, and behind_rules photos and big_word "keep".',
+          'Reply with accents, big_words, photos, transitions, word_fixes, checklist and unexpressed empty lists, hook null, and behind_rules photos and big_word "keep".',
         schema: doctorAiSchema(),
         cwd: tmpdir(),
       });

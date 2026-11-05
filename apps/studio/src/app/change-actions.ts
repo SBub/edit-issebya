@@ -54,7 +54,7 @@ async function insertJob(
   { supabase, userId }: { supabase: SupabaseClient; userId: string },
   row: {
     reel_id: string;
-    kind: "change" | "restore";
+    kind: "change" | "restore" | "start_over";
     request?: string;
     restore_version_id?: string;
   },
@@ -118,4 +118,17 @@ export async function requestRestore(input: {
     kind: "restore",
     restore_version_id: input.versionId,
   });
+}
+
+// Start over (a temporary testing control, to be removed): queues a
+// `start_over` job; the worker decides again from version 1 with no request
+// and saves the result as a new version, so earlier versions stay.
+export async function requestStartOver(input: { reelId: string }): Promise<ChangeActionResult> {
+  if (typeof input.reelId !== "string" || !isReelId(input.reelId)) return { status: "failed" };
+  const open = await openReel(input.reelId);
+  if (!open.ok) return open.result;
+  if (open.currentVersionId === null) {
+    return { status: "invalid", reason: "Start over opens once the first version is ready" };
+  }
+  return insertJob(open, { reel_id: input.reelId, kind: "start_over" });
 }

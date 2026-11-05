@@ -19,7 +19,7 @@ const MAX_WHY = 300;
 // The editorial answer, per reel and per round: one choice for each left-out
 // item, by its answer reference. The refinement (dropped from the JSON
 // Schema) refuses an item missing or chosen twice, a skip without its reason
-// or with words, a choice without words or ending before it starts, the big
+// or with words, a choice without words or ending before it starts, a big
 // word on more than one word, and a photo id on anything but a photo.
 export function editorialAnswerSchemaFor(
   transcript: Transcript,
@@ -98,7 +98,7 @@ export function editorialAnswerSchemaFor(
           ctx.addIssue({
             code: "custom",
             path: [...path, "to"],
-            message: "the big word is one word: from and to are the same",
+            message: "a big word is one word: from and to are the same",
           });
         }
         if (choice.photo_id !== undefined && left?.kind !== "photo") {
@@ -156,11 +156,12 @@ export const WHY_WORDS: Record<UnplacedWhy, string> = {
   hidden: "the footage is hidden there",
 };
 
-// An item by its id, in plain words: `photo 1`, `accent 2`, `the title`.
+// An item by its id, in plain words: `photo 1`, `accent 2`, `big word 1`,
+// `the title` (`big-word` alone: an older version's one big word).
 function itemLabel(id: string): string {
   if (id === "title") return "the title";
   if (id === "big-word") return "the big word";
-  return id.replace("-", " ");
+  return id.replaceAll("-", " ");
 }
 
 // The answer with the editor's choices applied: each chosen item's words
@@ -182,7 +183,7 @@ export function mergeEditorial(
   const notes: EngineNote[] = [];
   const accents = [...answer.accents];
   const photos = [...answer.photos];
-  let bigWord = answer.big_word;
+  const bigWords = [...answer.big_words];
   const skipped = new Map<string, string>();
   for (const choice of editorial.choices) {
     const left = unplaced.find((item) => item.ref === choice.item);
@@ -208,8 +209,9 @@ export function mergeEditorial(
       const photo = photos[index]!;
       another = choice.photo_id !== undefined && choice.photo_id !== photo.photo_id;
       photos[index] = { ...photo, from, to, photo_id: choice.photo_id ?? photo.photo_id };
-    } else if (bigWord) {
-      bigWord = { ...bigWord, word: from };
+    } else {
+      const big = bigWords[index];
+      if (big) bigWords[index] = { ...big, word: from };
     }
     notes.push({
       item: left.id,
@@ -230,13 +232,16 @@ export function mergeEditorial(
     });
     return { out, map };
   };
-  const kept = { accents: keep(accents, "accents"), photos: keep(photos, "photos") };
-  if (skipped.has("big_word")) bigWord = null;
+  const kept = {
+    accents: keep(accents, "accents"),
+    big_words: keep(bigWords, "big_words"),
+    photos: keep(photos, "photos"),
+  };
   const relink = (ref: string): string | null => {
     if (skipped.has(ref)) return null;
-    const list = /^(accents|photos)\[(\d+)\]$/.exec(ref);
+    const list = /^(accents|big_words|photos)\[(\d+)\]$/.exec(ref);
     if (!list) return ref;
-    const to = kept[list[1] as "accents" | "photos"].map.get(Number(list[2]));
+    const to = kept[list[1] as keyof typeof kept].map.get(Number(list[2]));
     return to === undefined ? null : `${list[1]}[${to}]`;
   };
   const checklist = answer.checklist.map((entry) => {
@@ -254,7 +259,7 @@ export function mergeEditorial(
       ...answer,
       accents: kept.accents.out,
       photos: kept.photos.out,
-      big_word: bigWord,
+      big_words: kept.big_words.out,
       checklist,
     },
     notes,

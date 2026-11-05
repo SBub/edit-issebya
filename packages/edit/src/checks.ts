@@ -1,4 +1,4 @@
-import { type BigWordBox, spotBox, spotFaceShare } from "./behind.ts";
+import { type BigWordBox, bigWordCoveredShare, boxFaceShare, photoBox } from "./behind.ts";
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import type { TextBox } from "./layout.ts";
 import { PLATFORM_BUTTONS, PLATFORM_SAFE, type Preset, cleanWord, intersectBox } from "./preset.ts";
@@ -15,6 +15,8 @@ export type CheckRule =
   | "text-overlap"
   | "timing"
   | "big-word-timing"
+  | "big-word-hidden"
+  | "photo-hidden"
   | "sound-gap"
   | "time-in-speech"
   | "out-of-reel"
@@ -54,10 +56,12 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
 // The layout checks, in a stable order: text inside the safe box, never past
 // the platform guard nor over its button column whatever the preset says, big words
 // behind the speaker inside the frame (they cross the safe box by design),
-// photos behind the speaker not taken over by the face and with no caption or
-// accent over them, captions clear of the face, no text on other text shown
+// photos behind the speaker not taken over by the face (one in front never
+// over it) and with no caption or accent over them, a photo the engine set
+// behind the speaker mostly in view, captions clear of the face, no text on other text shown
 // at the same time, captions and accents at least their minimum on screen,
-// the big word never before its word is said, sounds at least the preset's
+// the big word never more than the lead before its word is said and mostly
+// in view (not behind the person), sounds at least the preset's
 // gap apart, time anchors outside speech, anchors inside the reel. The face is
 // the robust one (`facesOver`) the layout engine places around, so the checks
 // never fail on the engine's output: they are its final guard. `boxes` holds
@@ -125,24 +129,35 @@ export function runChecks(
   const photos = (edit.tracks.behind ?? []).flatMap((item) =>
     item.kind === "photo" ? [{ item, span: resolved.get(item.id)! }] : [],
   );
+  // Where it is, in plain words: its spot (behind) or `in front`.
+  const where = (item: (typeof photos)[number]["item"]) =>
+    item.layer === "front" ? "in front" : `in the ${item.spot} spot`;
   for (const { item, span } of photos) {
-    const share = Math.max(
-      0,
-      ...facesOver(headTrack, span.start, span.end).map((face) =>
-        spotFaceShare(item.spot, face, preset),
-      ),
-    );
+    const faces = facesOver(headTrack, span.start, span.end);
+    const box = photoBox(item, preset);
+    if (item.layer === "front") {
+      // In front of the speaker it would hide the face: never over it.
+      if (faces.some((face) => overlaps(shrink(box, SLACK), face))) {
+        checks.push({
+          rule: "behind-face",
+          item: item.id,
+          reason: `photo ${item.id} in front covers the face; a photo in front stays clear of it`,
+        });
+      }
+      continue;
+    }
+    const share = Math.max(0, ...faces.map((face) => boxFaceShare(box, face)));
     const max = preset.behind.maxFaceShare;
     if (share > max + SLACK) {
       checks.push({
         rule: "behind-face",
         item: item.id,
-        reason: `photo ${item.id} in the ${item.spot} spot: the face covers ${Math.round(share * 100)}% of it, more than ${Math.round(max * 100)}%; pick a spot clear of the head`,
+        reason: `photo ${item.id} ${where(item)}: the face covers ${Math.round(share * 100)}% of it, more than ${Math.round(max * 100)}%; pick a spot clear of the head`,
       });
     }
   }
   for (const { item, span } of photos) {
-    const spot = spotBox(item.spot, preset);
+    const spot = photoBox(item, preset);
     for (const box of boxes) {
       if (!(box.start < span.end - SLACK && span.start < box.end - SLACK)) continue;
       const rect = {
@@ -155,7 +170,26 @@ export function runChecks(
       checks.push({
         rule: "behind-caption",
         item: item.id,
-        reason: `photo ${item.id} in the ${item.spot} spot sits under ${box.kind} ${box.itemId} (${JSON.stringify(box.text)}); pick another spot`,
+        reason: `photo ${item.id} ${where(item)} sits under ${box.kind} ${box.itemId} (${JSON.stringify(box.text)}); pick another spot`,
+      });
+    }
+  }
+  // A photo the engine set behind the speaker (with its own box) mostly in
+  // view: the person covers at most `1 - photo.minVisible` of its height in
+  // any column. A version saved before it (a spot only) is not checked.
+  const photoCovered = 1 - preset.behind.photo.minVisible;
+  for (const { item, span } of photos) {
+    if (item.layer === "front" || !item.box) continue;
+    const share = bigWordCoveredShare(
+      photoBox(item, preset),
+      facesOver(headTrack, span.start, span.end),
+      preset,
+    );
+    if (share > photoCovered + SLACK) {
+      checks.push({
+        rule: "photo-hidden",
+        item: item.id,
+        reason: `photo ${item.id} behind you: the person covers ${Math.round(share * 100)}% of its height, more than ${Math.round(photoCovered * 100)}%; move it out from behind the person or in front`,
       });
     }
   }
@@ -221,11 +255,34 @@ export function runChecks(
     const said = transcript.words
       .filter((word) => cleanWord(word.text, preset).toLowerCase() === item.text.toLowerCase())
       .sort((a, b) => Math.abs(a.start - start) - Math.abs(b.start - start))[0];
-    if (said && start < said.start - SLACK) {
+    const lead = preset.accent.leadSeconds;
+    if (said && start < said.start - lead - SLACK) {
       checks.push({
         rule: "big-word-timing",
         item: item.id,
-        reason: `big word ${item.id} (${JSON.stringify(item.text)}) shows at ${start.toFixed(3)} s, before ${said.id} is said at ${said.start.toFixed(3)} s`,
+        reason: `big word ${item.id} (${JSON.stringify(item.text)}) shows at ${start.toFixed(3)} s, more than ${lead} s before ${said.id} is said at ${said.start.toFixed(3)} s`,
+      });
+    }
+  }
+
+  // Most of a big word in view: the person (the robust faces over its span
+  // and the body under them) covers at most `1 - minVisible` of its height
+  // anywhere, so only its lower part goes behind the head.
+  const maxCovered = 1 - preset.behind.word.minVisible;
+  for (const word of bigWords) {
+    const span = resolved.get(word.itemId)!;
+    const box = {
+      left: word.x,
+      right: word.x + word.width,
+      top: word.y,
+      bottom: word.y + word.height,
+    };
+    const share = bigWordCoveredShare(box, facesOver(headTrack, span.start, span.end), preset);
+    if (share > maxCovered + SLACK) {
+      checks.push({
+        rule: "big-word-hidden",
+        item: word.itemId,
+        reason: `big word ${word.itemId} (${JSON.stringify(word.text)}): the person covers ${Math.round(share * 100)}% of its height, more than ${Math.round(maxCovered * 100)}%; move it up out from behind the head`,
       });
     }
   }

@@ -29,7 +29,7 @@ describe("baselineEdit", () => {
     const baseline = baselineEdit(SHORT_SPEECH.transcript, baselineInputs(), ISSEBYA_PRESET);
     const { tracks } = placeEdit(
       baseline,
-      { accents: [], big_word: null, photos: [], transitions: [], word_fixes: [] },
+      { accents: [], big_words: [], photos: [], transitions: [], word_fixes: [] },
       SHORT_SPEECH.transcript,
       SHORT_SPEECH.headTrack,
       ISSEBYA_PRESET,

@@ -6,7 +6,7 @@ import { type MediaState, activeAt, canPlayFrom, mediaTimeAt } from "@/lib/previ
 import { recordSoundSchedule } from "@/lib/preview-test-hooks";
 import { PlatformZones } from "./PlatformZones";
 import { type SoundHit, scheduleAt } from "@/lib/sound-schedule";
-import { formatClock } from "@/lib/tracks-timeline";
+import { clockText } from "@/lib/tracks-timeline";
 
 interface Props {
   // The page handed to the player (already transformed for the preview).
@@ -536,17 +536,17 @@ export function PreviewPlayer({
           </svg>
         </button>
         {/* Two lines: the current time on top, the total below. The hidden
-            slash keeps the read-out "00:00 / 00:52" for screen readers. */}
+            slash keeps the read-out "00:00.000 / 00:52.140" for screen readers. */}
         <span
           data-testid="preview-clock"
           className="flex flex-col items-center font-mono text-xs leading-4 whitespace-nowrap tabular-nums"
         >
           <span data-testid="preview-clock-position" className="text-ink">
-            {formatClock(position)}
+            {clockText(position)}
           </span>
           <span className="sr-only"> / </span>
           <span data-testid="preview-clock-duration" className="text-muted">
-            {formatClock(duration)}
+            {clockText(duration)}
           </span>
         </span>
         <div className="flex min-w-0 items-center justify-end gap-2">

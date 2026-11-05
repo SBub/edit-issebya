@@ -123,6 +123,9 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   is set (`jobs_target_check` also ties `describe_photo` to `photo_id`). Owners never insert a
   `describe_photo` job directly: `finish_photo_upload` queues it. `claim_job` keeps one job per reel
   or per photo at a time. See `app_docs/photo-library.md`.
+- `supabase/migrations/20261104153506_start_over_jobs.sql`: one more kind, `start_over` (a
+  temporary testing control), with its own owner insert policy (`jobs: owner inserts a start over
+job for own reel`) and no new grant. See `app_docs/change-requests.md`.
 - `supabase/migrations/20261103115809_failure_kind_reel_size.sql`: `jobs.failure_kind`
   (`transient`, `failed` or `answer_refused`, only on a `failed` job) and `jobs.failure_rules` (a
   refused answer's check rule names), and the `reels` size columns `source_seconds`,

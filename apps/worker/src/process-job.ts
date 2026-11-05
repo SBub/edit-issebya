@@ -27,6 +27,7 @@ import { toolPaths } from "./pipeline/tools.ts";
 import { supabaseExportStore } from "./render/export-store.ts";
 import { runRender } from "./render/render-step.ts";
 import { runRestore } from "./restore-step.ts";
+import { firstVersionId } from "./start-over.ts";
 import { withKeepAwake } from "./keep-awake.ts";
 import { type ReelSizeHolder, createReelSizeHolder, readReelSize } from "./reel-size.ts";
 import { type JobOutcome, runJob } from "./run-job.ts";
@@ -49,7 +50,9 @@ import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 // the first version and the decide step; a `change` job only the decide step
 // with the owner's request; a `restore` job only the restore step; a `render`
 // job the pipeline's hits (or a rebuilt output) and the render step, leaving
-// the reel's status alone, and stops within seconds once its owner cancels it; any job stops
+// the reel's status alone, and stops within seconds once its owner cancels it; a
+// `start_over` job (a temporary testing control) only the decide step from version 1
+// with no request; any job stops
 // within one lease renewal once its reel (or photo) is deleted, as `deleted`; a `describe_photo` job a library photo's two copies
 // and its description, recorded against the photo. Only a `process` job moves the reel's status
 // (queue.ts). The job runs in its own scratch folder, removed afterwards
@@ -114,7 +117,7 @@ export async function processJob(
               tools: toolPaths(),
               recordStored,
             };
-            const decide = (request: string | null) =>
+            const decide = (request: string | null, startFrom: string | null = null) =>
               runDecide({
                 ctx,
                 storage,
@@ -124,6 +127,7 @@ export async function processJob(
                 ai: aiRunner(process.env),
                 scratchDir,
                 request,
+                startFrom,
                 photos,
                 rules: supabaseReelRules(db),
                 tools: cutouts.tools,
@@ -179,6 +183,9 @@ export async function processJob(
                   cutouts,
                   discardExport: supabaseDiscardExport(db, rawStorage),
                 }),
+              // Start over (temporary, for testing): decide alone, no
+              // request, from version 1; saved as a new version.
+              start_over: async () => decide(null, await firstVersionId(db, reelOf(job))),
               // A library photo: its two copies, then Claude Code's
               // description and tags; no reel is touched.
               describe_photo: (photoId) =>

@@ -2,8 +2,10 @@
 // first_version step saves it, over the fixture clip's background map; the
 // behind hand edit's choices placed by the layout engine; and the same
 // choices over a synthetic light background, readable; the 2026-11-03
-// request placed with room made for its photo; and the same choices with one
-// transition of each kind, two of them numbered list items) and every fixture's
+// request placed with room made for its photo; the same choices with one
+// transition of each kind, two of them numbered list items; the same
+// choices with the written hook; and with the photo wished in front) and
+// every fixture's
 // golden page and widths from the Node build: `yarn workspace @edit-issebya/edit golden`. Commit what it
 // writes; the Node and browser tests compare against it.
 import { readFile, writeFile } from "node:fs/promises";
@@ -24,7 +26,7 @@ import { resolveTimeline } from "../src/timeline.ts";
 import { sentenceSpans } from "../src/transcript.ts";
 
 const testdata = new URL("../src/testdata/", import.meta.url);
-const NO_CHOICES = { accents: [], big_word: null, photos: [], transitions: [], word_fixes: [] };
+const NO_CHOICES = { accents: [], big_words: [], photos: [], transitions: [], word_fixes: [] };
 
 const write = (name: string, value: unknown) =>
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
@@ -89,8 +91,8 @@ await write("rethink-work-engine", withPlaceholders(engine.edit));
 // The same choices over a synthetic background: dark, with a beige band
 // across the frame where the first sentence's captions sit (while it is said)
 // and one where the first accent sits (while it shows), so the captions move
-// to a darker free place and the accent, with no room above the head, gets a
-// soft shadow.
+// to a darker free place and the accent, with no room above the head, stays
+// where it is, plain (never a shadow).
 const spans = resolveTimeline(engine.edit, RETHINK_WORK.transcript);
 const firstCaption = engine.edit.tracks.captions[0]!;
 const firstAccent = engine.edit.tracks.overlays.find((item) => item.id.startsWith("accent-"))!;
@@ -173,6 +175,43 @@ for (const note of withTransitions.record.filter((entry) => entry.item.startsWit
   console.log(`transitions: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
 }
 await write("rethink-work-transitions", withPlaceholders(withTransitions.edit));
+
+// The engine's choices with the written hook the owner liked on her reel:
+// from 0.2 s to 3 s, the one extra of that window (the accent there waits for
+// nothing and is dropped), wrapped and shrunk in the upper part of the frame.
+const withHook = editFromAnswer(
+  behind.edit,
+  { ...choices, hook: { text: "Gen Z won't work like you did" } },
+  ISSEBYA_PRESET,
+  RETHINK_WORK.transcript,
+  RETHINK_WORK.headTrack,
+  await nodeMeasurer(),
+);
+if (!withHook.ok) throw new Error(withHook.reasons.join("; "));
+for (const note of withHook.record.filter((entry) => entry.item === "hook")) {
+  console.log(`hook: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
+}
+await write("rethink-work-hook", withPlaceholders(withHook.edit));
+
+// The engine's choices with the owner's wish for the photo in front of the
+// speaker: over the footage, clear of the face, no cut-out for it.
+const front = editFromAnswer(
+  behind.edit,
+  {
+    ...choices,
+    photos: choices.photos.map((photo) => ({ ...photo, wish: "front" as const })),
+    checklist: [{ fulfilled_by: choices.photos.map((_, index) => `photos[${index}]`) }],
+  },
+  ISSEBYA_PRESET,
+  RETHINK_WORK.transcript,
+  RETHINK_WORK.headTrack,
+  await nodeMeasurer(),
+);
+if (!front.ok) throw new Error(front.reasons.join("; "));
+for (const note of front.record.filter((entry) => entry.item.startsWith("photo-"))) {
+  console.log(`front: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
+}
+await write("rethink-work-front", withPlaceholders(front.edit));
 
 // Re-imported after the baseline is written, so the goldens build the new one.
 const { FIXTURES } = await import("../src/test-support/fixtures.ts");

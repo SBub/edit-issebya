@@ -125,6 +125,22 @@ describe("ensureCutouts", () => {
     expect(result.inputs).not.toHaveProperty("photos");
   });
 
+  it("writes no row and names no masks for photos in front of the speaker only", async () => {
+    const edit = behindEdit();
+    edit.tracks.behind = edit.tracks.behind!.flatMap((item) =>
+      item.kind === "photo" ? [{ ...item, layer: "front" as const }] : [],
+    );
+    const { result, calls, toolCalls } = await ensure(edit);
+    expect(calls).toEqual([]);
+    expect(toolCalls).toEqual([]);
+    expect(result.inputs).not.toHaveProperty("masks");
+    expect(result.inputs.photos).toEqual([BEHIND_PHOTO]);
+    // Still only the owner's library photos.
+    await expect(ensure(edit, { photoIds: [] })).rejects.toThrow(
+      `cutout: photo ${BEHIND_PHOTO} is not in the library`,
+    );
+  });
+
   it("refuses a photo that is not in the owner's library", async () => {
     await expect(ensure(behindEdit(), { photoIds: [] })).rejects.toThrow(
       `cutout: photo ${BEHIND_PHOTO} is not in the library`,

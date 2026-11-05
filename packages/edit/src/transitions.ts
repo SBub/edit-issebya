@@ -82,14 +82,18 @@ export function motionSeconds(item: TransitionItem, preset: Preset): number {
   return item.pace === "slow" ? ms(seconds * preset.transition.slowFactor) : seconds;
 }
 
-// The captions shown only through a transition's levels: those whose first
-// word is in the phrase of a transition carrying levels.
+// The captions never shown in their own place: those shown only through a
+// transition's levels (their first word is in the phrase of a transition
+// carrying levels) and those whose words an accent or a big word shows
+// (`hidden_by`).
 export function hiddenCaptionIds(edit: Edit): Set<string> {
   const words = new Set(
     edit.tracks.transitions.flatMap((item) => (item.levels ? (item.words ?? []) : [])),
   );
   return new Set(
-    edit.tracks.captions.filter((caption) => words.has(caption.words[0]!)).map((c) => c.id),
+    edit.tracks.captions
+      .filter((caption) => caption.hidden_by !== undefined || words.has(caption.words[0]!))
+      .map((c) => c.id),
   );
 }
 

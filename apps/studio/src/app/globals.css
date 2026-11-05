@@ -23,6 +23,7 @@
   --color-warn: #f5c451;
   --color-track-footage: #4b6584;
   --color-track-behind: #81ecec;
+  --color-track-hook: #fdcb6e;
   --color-track-accents: #e17055;
   --color-track-transitions: #00b894;
 
@@ -31,9 +32,9 @@
      reel cards and the reels list's + button use it; every other element is square. */
   --radius-reel: 0.5rem;
 
-  /* The one exception (rounded-track): track items in the Behind, Accents
-     and Transitions rows are slightly rounded, 4px. Footage clips stay
-     square. */
+  /* The one exception (rounded-track): track items in the Behind, Hook,
+     Accents and Transitions rows are slightly rounded, 4px. Footage clips
+     stay square. */
   --radius-track: 0.25rem;
 }
 

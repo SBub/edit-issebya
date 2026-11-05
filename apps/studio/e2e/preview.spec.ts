@@ -366,10 +366,11 @@ test("a transition shows its number, lead-in and key phrase inside its layer, ne
   await expect.poll(() => opacity("#transition-1-key")).toBeGreaterThan(0.5);
   const color = (selector: string) =>
     frame.locator(selector).evaluate((el) => getComputedStyle(el).color);
-  // The lead-in in caption text, the key phrase and the number in accent text.
+  // The lead-in in caption text, the key phrase and the number in accent
+  // text: every text role is white for now.
   expect(await color("#transition-1-lead")).toBe("rgb(255, 255, 255)");
-  expect(await color("#transition-1-key")).toBe("rgb(179, 230, 255)");
-  expect(await color("#transition-1-number")).toBe("rgb(179, 230, 255)");
+  expect(await color("#transition-1-key")).toBe("rgb(255, 255, 255)");
+  expect(await color("#transition-1-number")).toBe("rgb(255, 255, 255)");
   // The phrase's captions show nowhere else.
   for (const id of ["cw0006", "cw0007", "cw0008"]) {
     await expect(frame.locator(`#${id}`)).toHaveCount(0);

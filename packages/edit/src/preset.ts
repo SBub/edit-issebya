@@ -65,16 +65,25 @@ export interface PresetSound {
   minGapSeconds: number;
 }
 
-// Where a library photo goes behind the speaker: three preset spots.
+// Where a library photo goes behind the speaker: three preset spots. A photo
+// the layout engine places (a new version) has its own box; its spot names
+// the preset spot nearest it.
 export type BehindSpot = "top" | "left" | "right";
 export const BEHIND_SPOTS = ["top", "left", "right"] as const satisfies readonly BehindSpot[];
+
+// The photo sizes the engine varies across a reel, largest first.
+export type PhotoSize = "large" | "medium" | "small";
+export const PHOTO_SIZES = ["large", "medium", "small"] as const satisfies readonly PhotoSize[];
 
 export interface PresetBehind {
   // Each spot's rectangle in frame pixels; the photo covers it exactly.
   spots: Record<BehindSpot, Box>;
-  // The one big word: as large as fits between the side margins (at most
-  // `maxSize`), centred, its vertical centre `belowHeadTop` below the head's
-  // top so the head overlaps it, or at `noHeadY` with no head in the frame.
+  // A big word: as large as fits between the side margins (at most
+  // `maxSize`), centred, its vertical centre wanted `belowHeadTop` below the
+  // head's top (or at `noHeadY` with no head in the frame), moved up (never
+  // above `PLATFORM_SAFE`'s top), then smaller, until the person covers at
+  // most `1 - minVisible` of its height: only its lower part behind the head.
+  // It takes the accent's timing.
   word: {
     font: FontKey;
     maxSize: number;
@@ -82,18 +91,55 @@ export interface PresetBehind {
     color: string;
     belowHeadTop: number;
     noHeadY: number;
+    minVisible: number;
   };
   // The cut-out covers each item plus this many frames on each side.
   padFrames: number;
   frameRate: number;
-  // A behind item lasts between these, in seconds.
+  // A photo lasts between these, in seconds.
   minSeconds: number;
   maxSeconds: number;
-  // A decide answer holds at most this many photos and big words per reel.
-  maxPhotos: number;
-  maxWords: number;
   // The largest share (0 to 1) of a photo's spot the face box may cover.
   maxFaceShare: number;
+  // A photo the layout engine places: behind the speaker (the cut-out, the
+  // person on top) only where the person covers at most `1 - minVisible` of
+  // its height in every column, else in front (over the footage, never over
+  // the face). Its long side is one of `sizes` (a different one from the
+  // photo shown just before or after it when that fits), its short side at
+  // least `minShortSide`, its ratio the library photo's (`aspect`, width over
+  // height, when the library gives none). Its edge needs `minContrast`
+  // against the footage within `ring` pixels around it, else it moves to a
+  // place nearby that has it, else stays, recorded `low-contrast`: never a
+  // frame, an edge or a shadow.
+  photo: {
+    minVisible: number;
+    sizes: Record<PhotoSize, number>;
+    minShortSide: number;
+    aspect: number;
+    minContrast: number;
+    ring: number;
+  };
+}
+
+// One intensity level's pacing, in seconds of reel.
+export interface PresetPace {
+  // Something new on screen besides the captions (an accent, a big word, a
+  // photo or a transition) at least this often: what the editor aims for.
+  extraEverySeconds: number;
+  // About one transition per this many seconds, at most (the engine drops
+  // the rest): slower than the extras, since a transition covers the speaker.
+  transitionEverySeconds: number;
+  // The written hook: one line Claude writes (never spoken) shown from
+  // `fromSeconds` to `untilSeconds` of reel, the one extra of that window;
+  // at most `maxWords` words and `maxCharacters` characters.
+  hook: PresetHook;
+}
+
+interface PresetHook {
+  fromSeconds: number;
+  untilSeconds: number;
+  maxWords: number;
+  maxCharacters: number;
 }
 
 export interface GlossaryTerm {
@@ -128,8 +174,10 @@ export interface Preset {
     fallbackY: number;
     lineGap: number;
   };
-  // An accent shows from its first word to `afterSeconds` after its last,
-  // at least `minSeconds`.
+  // An accent shows from `leadSeconds` before its first word (so its
+  // entrance has finished as the word is heard) to `afterSeconds` after its
+  // last, at least `minSeconds`. A big word behind the speaker takes the
+  // same timing, its one word both first and last.
   accent: {
     font: FontKey;
     color: string;
@@ -137,6 +185,7 @@ export interface Preset {
     noHeadY: number;
     minSeconds: number;
     afterSeconds: number;
+    leadSeconds: number;
   };
   // The layout engine: text shrinks to `minScale` of its size before it gives
   // up a place, and keeps `gap` pixels from the face and from other text.
@@ -144,12 +193,14 @@ export interface Preset {
   // Readable text (WCAG contrast against the footage behind it): captions
   // need `caption.min`, accents and the big word (large text) `large.min`.
   // Below it a text moves to a free place within `moveRadius` (a grid every
-  // `moveStep` pixels) in the same zone, else gets a soft shadow: level 2
-  // under `strongBelow`, else level 1. `dark` shadows go under a light text,
-  // `light` ones under a dark text. No colour is ever changed.
+  // `moveStep` pixels) in the same zone, else stays where it is, plain: never
+  // a shadow, never a colour change (owner decision 2026-11-04).
+  // `shadows` are legacy, for versions saved before then only: their stored
+  // `shadow` level (1 soft, 2 strong) renders with them, `dark` under a light
+  // text, `light` under a dark one. No new version uses them.
   readability: {
-    caption: { min: number; strongBelow: number };
-    large: { min: number; strongBelow: number };
+    caption: { min: number };
+    large: { min: number };
     moveRadius: number;
     moveStep: number;
     shadows: { dark: [string, string]; light: [string, string] };
@@ -163,16 +214,18 @@ export interface Preset {
   // word starts; it has left when the next word starts, holding at most
   // `holdSeconds` after the phrase (`longHoldSeconds` when asked), never
   // shorter than `minSeconds`. `slowFactor` stretches the motion when asked
-  // slower; about one transition per `perSeconds` of reel; `gap` pixels
-  // between stacked text levels.
+  // slower; `gap` pixels between stacked text levels. How often one comes is
+  // the pace's.
   transition: {
     minSeconds: number;
     holdSeconds: number;
     longHoldSeconds: number;
     slowFactor: number;
-    perSeconds: number;
     gap: number;
   };
+  // How busy the reel is: one intensity level (Medium, the only one so far).
+  // A later level (Calm, Intense) swaps this block whole.
+  pace: PresetPace;
   sounds: Record<SoundKey, PresetSound>;
   behind: PresetBehind;
   // Words a caption keeps capitalised (lower-case key, shown value).
@@ -260,16 +313,17 @@ export const ISSEBYA_PRESET: Preset = {
   },
   accent: {
     font: "primary",
-    color: "#B3E6FF",
+    color: "#FFFFFF",
     aboveHead: 190,
     noHeadY: 1130,
     minSeconds: 1.5,
     afterSeconds: 1,
+    leadSeconds: 0.2,
   },
   layout: { minScale: 0.6, gap: 12 },
   readability: {
-    caption: { min: 4.5, strongBelow: 3 },
-    large: { min: 3, strongBelow: 2 },
+    caption: { min: 4.5 },
+    large: { min: 3 },
     moveRadius: 300,
     moveStep: 60,
     shadows: {
@@ -340,14 +394,21 @@ export const ISSEBYA_PRESET: Preset = {
     holdSeconds: 1,
     longHoldSeconds: 2,
     slowFactor: 1.6,
-    perSeconds: 7,
     gap: 24,
+  },
+  // Medium: something new about every 3 s, a transition about every 9 s, a
+  // written hook from 0.2 s (the accent's lead) to 3 s, the first seconds
+  // that decide whether people keep watching.
+  pace: {
+    extraEverySeconds: 3,
+    transitionEverySeconds: 9,
+    hook: { fromSeconds: 0.2, untilSeconds: 3, maxWords: 7, maxCharacters: 45 },
   },
   sounds: {
     click: {
       file: "assets/sounds/mouse-click-trimmed.wav",
       durationSeconds: 0.23,
-      gainDb: -13,
+      gainDb: -6,
       minGapSeconds: 0.25,
     },
   },
@@ -359,20 +420,27 @@ export const ISSEBYA_PRESET: Preset = {
       right: { left: 580, right: 1040, top: 560, bottom: 1180 },
     },
     word: {
-      font: "secondary",
+      font: "primary",
       maxSize: 400,
       margin: 40,
       color: "#FFFFFF",
       belowHeadTop: 60,
       noHeadY: 700,
+      minVisible: 0.7,
     },
     padFrames: 3,
     frameRate: 30,
-    minSeconds: 2,
-    maxSeconds: 4,
-    maxPhotos: 2,
-    maxWords: 1,
+    minSeconds: 1,
+    maxSeconds: 2,
     maxFaceShare: 0.4,
+    photo: {
+      minVisible: 0.7,
+      sizes: { large: 860, medium: 640, small: 460 },
+      minShortSide: 280,
+      aspect: 4 / 3,
+      minContrast: 1.5,
+      ring: 30,
+    },
   },
   keepCaps: { i: "I", "i'm": "I'm", "i've": "I've", "i'll": "I'll", "i'd": "I'd", ai: "AI" },
   units: [

@@ -1,4 +1,11 @@
-import { type BigWordBox, bigWordLayout, maskSpans, placedBigWord, spotBox } from "./behind.ts";
+import {
+  type BigWordBox,
+  bigWordLayout,
+  maskSpans,
+  needsCutout,
+  photoBox,
+  placedBigWord,
+} from "./behind.ts";
 import { type Check, runChecks } from "./checks.ts";
 import { isLightText } from "./contrast.ts";
 import type { HeadTrack } from "./head-track.ts";
@@ -38,6 +45,9 @@ export function photoPath(photoId: string): string {
   return `photos/${photoId}.jpg`;
 }
 
+// A library photo's rule: behind the speaker or in front of them.
+const PHOTO_STYLE = "      .photo { position: absolute; object-fit: cover; }";
+
 // The extra rules a page with behind items needs: the composite's groups and
 // blends, the photo and the big word.
 const BEHIND_STYLE = [
@@ -45,7 +55,7 @@ const BEHIND_STYLE = [
   "      .cutout-front { position: absolute; inset: 0; isolation: isolate; mix-blend-mode: plus-lighter; }",
   "      .mask-under { filter: invert(1); mix-blend-mode: multiply; }",
   "      .mask-front { mix-blend-mode: multiply; }",
-  "      .photo { position: absolute; object-fit: cover; }",
+  PHOTO_STYLE,
   "      .word { position: absolute; line-height: 1; white-space: nowrap; }",
 ];
 
@@ -127,6 +137,8 @@ export function build(
     return mask;
   });
   const span = (id: string) => resolved.get(id)!;
+  // Photos in front of the speaker: over the footage, no cut-out.
+  const frontPhotos = behindItems.filter((item) => !needsCutout(item));
   const duration = sec(edit.duration);
   const { tracks } = edit;
   const js: string[] = [];
@@ -146,10 +158,12 @@ export function build(
       const font = preset.fonts[key];
       return `      .f-${key} { font-family: "${font.family}", sans-serif; font-weight: ${font.weight}; }`;
     }),
-    ...(spans.length > 0 ? BEHIND_STYLE : []),
+    ...(spans.length > 0 ? BEHIND_STYLE : frontPhotos.length > 0 ? [PHOTO_STYLE] : []),
     ...(levels.length > 0
       ? ["      .level { position: absolute; line-height: 1; white-space: nowrap; opacity: 0; }"]
       : []),
+    // The written hook's own class (its lines centred); only on a page with one.
+    ...(boxes.some((box) => box.kind === "hook") ? ["      .hook { text-align: center; }"] : []),
   ];
 
   const body: string[] = [];
@@ -230,6 +244,11 @@ export function build(
     body.push(`          ${maskVideo("mask", "mask-front", 24)}`);
     body.push("        </div>");
     body.push("      </div>");
+  }
+  // In front of the speaker: above the footage and the composites, under
+  // transitions and text, each with its own hard cut in and out.
+  for (const item of frontPhotos) {
+    body.push(`      ${behindElement(item, span(item.id), undefined, preset, "30")}`);
   }
 
   const { caption } = preset;
@@ -319,14 +338,14 @@ export function build(
       `top: ${px(box.y)}px`,
       `font-size: ${px(box.size)}px`,
       `color: ${box.color}`,
-      ...(box.lines.length > 1 ? ["text-align: center"] : []),
+      ...(box.lines.length > 1 && box.kind !== "hook" ? ["text-align: center"] : []),
       ...(box.shadow ? [`text-shadow: ${textShadow(box.color, box.shadow, preset)}`] : []),
       ...(box.style ? [inlineStyle(box.style)] : []),
     ].join("; ");
     body.push(
       `        <span${attrs([
         ["id", box.itemId],
-        ["class", `text f-${box.font}`],
+        ["class", box.kind === "hook" ? `text hook f-${box.font}` : `text f-${box.font}`],
         ["style", css],
       ])}>${box.lines.map(escapeHtml).join("<br />")}</span>`,
     );
@@ -391,23 +410,25 @@ export function build(
   return { html, assets: assetsOf(edit, preset, masks), checks };
 }
 
-// One behind item as its element: a photo exactly covering its spot, or the
-// big word at its measured size. Its own start and duration are the hard cut
-// in and out; nothing animates it.
+// One behind-track item as its element: a photo exactly covering its box
+// (its spot in a version saved before the engine set one), or the big word at
+// its measured size. Its own start and duration are the hard cut in and out;
+// nothing animates it.
 function behindElement(
   item: BehindItem,
   { start, end }: { start: number; end: number },
   word: BigWordBox | undefined,
   preset: Preset,
+  track = "21",
 ): string {
   const timing = [
     ["data-start", sec(start)],
     ["data-duration", sec(end - start)],
-    ["data-track-index", "21"],
+    ["data-track-index", track],
   ] as const;
   const extra = item.style ? [inlineStyle(item.style)] : [];
   if (item.kind === "photo") {
-    const box = spotBox(item.spot, preset);
+    const box = photoBox(item, preset);
     const css = [
       `left: ${px(box.left)}px`,
       `top: ${px(box.top)}px`,
@@ -441,8 +462,9 @@ function behindElement(
   ])}>${escapeHtml(box.text)}</div>`;
 }
 
-// The preset's soft shadow at a level: dark under a light text, light under
-// a dark one, so the halo always separates it from what is behind.
+// Legacy, for versions saved before 2026-11-04 only (the engine never writes
+// `shadow` now): the preset's soft shadow at a stored level, dark under a
+// light text, light under a dark one, so old versions render unchanged.
 function textShadow(color: string, level: 1 | 2, preset: Preset): string {
   const { shadows } = preset.readability;
   const [soft, strong] = isLightText(color) ? shadows.dark : shadows.light;
@@ -472,8 +494,10 @@ function assetsOf(edit: Edit, preset: Preset, masks: readonly EditMask[]): Build
   if (edit.tracks.footage.length > 0) {
     assets.push({ path: edit.inputs.footage.file, role: "footage", ref: edit.inputs.footage });
   }
-  for (const key of FONT_KEYS)
-    assets.push({ path: preset.fonts[key].file, role: "font", ref: null });
+  // Each font file once, even when both roles use it.
+  for (const file of new Set(FONT_KEYS.map((key) => preset.fonts[key].file))) {
+    assets.push({ path: file, role: "font", ref: null });
+  }
   for (const key of new Set(edit.tracks.sounds.map((item) => item.sound))) {
     assets.push({ path: preset.sounds[key].file, role: "sound", ref: null });
   }

@@ -11,6 +11,14 @@ reel has no new photo, and you may only say it did not fit.
 - `change_summary`: one or two short plain sentences.
 - A transition change is either its words (it now covers other words) or its motion (slower, or
   staying longer after its words): say which.
+- A photo in the difference carries its `reason`: `match` (it shows what is said) or `mood` (it
+  fits the reel's feel without showing what is said). Say honestly when a photo is a `mood`
+  one: name it by its description below and say it is a loose fit (for example "Added your photo
+  of chairs on 'a sense of purpose': none of your photos match the topic closely").
+- A photo with `front: true` sits in front of the speaker, over the picture: say "in front of
+  you", never "behind you". Every other photo sits behind the speaker.
+- The hook is the one written line that opens the reel (nobody says it): when it is added or its
+  words change, quote its new words exactly ("Hook added: ...", "the hook now reads ...").
 - Never write word ids, font names, sizes, colour codes, times, seconds or internal names (track,
   slot, preset, spot, overlay).
 
@@ -40,9 +48,13 @@ The difference between the current version and the new one:
 
 {{difference}}
 
-The reel's rules switched by this version (photos or the big word behind the speaker):
+The reel's rules switched by this version (photos or big words behind the speaker):
 
 {{rules_changed}}
+
+The photos the difference names (id and description):
+
+{{photos}}
 
 The layout record (what the layout code moved, shrank or left out, and why):
 

@@ -1,4 +1,4 @@
-export const RETIME_VERSION = 1;
+export const RETIME_VERSION = 3;
 
 // Every retime setting in one object; each value is part of the fingerprint
 // (app_docs/pipeline.md describes each one).
@@ -14,7 +14,7 @@ export interface RetimeSettings {
   envelopeFrameSeconds: number;
   minGapAfterSeconds: number;
   gapRate: number;
-  // null: no pause is cut.
+  // Retimed seconds a pause keeps (its middle is cut); null: no pause is cut.
   maxPauseSeconds: number | null;
   frameRate: number;
   endFadeSeconds: number;
@@ -36,7 +36,7 @@ export const RETIME_PRESET: RetimeSettings = {
   envelopeFrameSeconds: 0.01,
   minGapAfterSeconds: 0.065,
   gapRate: 0.6,
-  maxPauseSeconds: null,
+  maxPauseSeconds: 0.3,
   frameRate: 30,
   endFadeSeconds: 0.03,
   videoCodec: "libx264",
