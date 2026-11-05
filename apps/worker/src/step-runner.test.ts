@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ROOT_CONTEXT, SpanStatusCode, trace } from "@opentelemetry/api";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
@@ -390,7 +391,14 @@ describe("runToolsStep stdin", () => {
 });
 
 describe("runToolsStep AI usage and StepError", () => {
-  const usage = { inputTokens: 1500, outputTokens: 456, costUsd: 0.0123, model: "claude-x" };
+  const usage = {
+    inputTokens: 1500,
+    outputTokens: 456,
+    costUsd: 0.0123,
+    model: "claude-x",
+    cacheReadTokens: null,
+    cacheWriteTokens: null,
+  };
   const ok: ChildRun = {
     code: 0,
     exitSignal: null,
@@ -887,5 +895,222 @@ describe("the one automatic retry", () => {
     expect(attempts).toBe(1);
     expect(rows(calls)).toEqual(["start", "waiting: the usage limit is reached"]);
     expect(calls[1]).toMatchObject({ summary: "decide waiting for the AI" });
+  });
+});
+
+describe("exec spans", () => {
+  const ok: ChildRun = {
+    code: 0,
+    exitSignal: null,
+    report: "",
+    output: "",
+    stdout: "{}",
+    groupPeakBytes: null,
+  };
+
+  // Telemetry that keeps its spans in memory, read after the step settles.
+  function tracedSteps() {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    return { telemetry, spans: () => exporter.getFinishedSpans() };
+  }
+
+  it("gives each call one span under the step, measured, with no arguments", TIMEOUT, async () => {
+    const { telemetry, spans } = tracedSteps();
+    const { steps, calls } = recordingSteps();
+    await runToolsStep(stepContext(steps, { telemetry }), {
+      name: "two",
+      async work(tool) {
+        await tool({ file: NODE, args: ["-e", spin(10, 300)] });
+        await tool({ file: NODE, args: ["-e", 'console.log("visible-marker")'] });
+        return { what: "done" };
+      },
+    });
+    const step = spans().find((s) => s.name === "step two");
+    const exec = spans().filter((s) => s.name === "exec node");
+    expect(exec).toHaveLength(2);
+    for (const span of exec) {
+      expect(span.parentSpanContext?.spanId).toBe(step?.spanContext().spanId);
+      expect(span.attributes).toMatchObject({
+        "step.name": "two",
+        "process.executable.name": "node",
+        "process.args_count": 3,
+        "process.exit.code": 0,
+        "edit_issebya.exec.stdout_bytes": expect.any(Number),
+      });
+      expect(span.attributes).not.toHaveProperty("edit_issebya.exec.subcommand");
+      expect(span.status.code).not.toBe(SpanStatusCode.ERROR);
+      // The arguments (the script, the marker) are never on the span.
+      expect(JSON.stringify(span.attributes)).not.toContain("visible-marker");
+      expect(JSON.stringify(span.attributes)).not.toContain("spin");
+    }
+    // The step row keeps the totals: CPU summed and the largest peak over the calls.
+    const { measurements } = onlyDone(calls);
+    const cpu = exec.reduce((sum, s) => sum + Number(s.attributes["edit_issebya.exec.cpu_ms"]), 0);
+    const peak = Math.max(
+      ...exec.map((s) => Number(s.attributes["edit_issebya.exec.peak_rss_bytes"])),
+    );
+    expect(measurements.cpu_ms).toBe(cpu);
+    expect(measurements.peak_rss_bytes).toBe(peak);
+    expect(exec.some((s) => Number(s.attributes["edit_issebya.exec.cpu_ms"]) >= 200)).toBe(true);
+  });
+
+  it("names a node run of a script by the script and keeps only its subcommand", async () => {
+    const { telemetry, spans } = tracedSteps();
+    const { steps } = recordingSteps();
+    await runToolsStep(
+      stepContext(steps, { telemetry }),
+      {
+        name: "transcribe",
+        async work(tool) {
+          await tool({
+            file: NODE,
+            args: [
+              "/opt/app/bin/hyperframes.mjs",
+              "transcribe",
+              "/private/reel-5f1c9e2a/source.mp4",
+              "--engine",
+              "whisper",
+            ],
+          });
+          return { what: "done" };
+        },
+      },
+      () => Promise.resolve(ok),
+    );
+    const exec = spans().filter((s) => s.name === "exec hyperframes");
+    expect(exec).toHaveLength(1);
+    // No CPU or memory from the fake, so neither key is set; the stdout count is.
+    expect(exec[0]?.attributes).toEqual({
+      "step.name": "transcribe",
+      "process.executable.name": "node",
+      "process.args_count": 6,
+      "edit_issebya.exec.subcommand": "transcribe",
+      "process.exit.code": 0,
+      "edit_issebya.exec.stdout_bytes": 2,
+    });
+    expect(JSON.stringify(exec[0]?.attributes)).not.toContain("reel-5f1c9e2a");
+  });
+
+  it("starts the call under the parent it names", async () => {
+    const { telemetry, spans } = tracedSteps();
+    const { steps } = recordingSteps();
+    const chat = telemetry.tracer.startSpan("chat");
+    const parent = trace.setSpan(ROOT_CONTEXT, chat);
+    await runToolsStep(
+      stepContext(steps, { telemetry }),
+      {
+        name: "ai",
+        async work(tool) {
+          await tool({ file: "/opt/claude", args: ["-p"], parent });
+          return { what: "asked" };
+        },
+      },
+      () => Promise.resolve(ok),
+    );
+    chat.end();
+    const exec = spans().find((s) => s.name === "exec claude");
+    expect(exec?.parentSpanContext?.spanId).toBe(chat.spanContext().spanId);
+  });
+
+  it(
+    "marks a non-zero exit as an error with its code, the exception and error.type",
+    TIMEOUT,
+    async () => {
+      const { telemetry, spans } = tracedSteps();
+      const { steps, calls } = recordingSteps();
+      await expect(
+        runToolsStep(stepContext(steps, { telemetry }), {
+          name: "fail",
+          async work(tool) {
+            await tool({ file: NODE, args: ["-e", "process.exit(3)"] });
+            return { what: "never" };
+          },
+        }),
+      ).rejects.toThrow(/fail exited with 3/);
+      const exec = spans().find((s) => s.name === "exec node");
+      expect(exec?.status.code).toBe(SpanStatusCode.ERROR);
+      expect(exec?.attributes).toMatchObject({
+        "error.type": "nonzero_exit",
+        "process.exit.code": 3,
+      });
+      expect(exec?.events.map((event) => event.name)).toEqual(["exception"]);
+      // The step row is failed as before.
+      expect(calls.some((c) => c.call === "failed")).toBe(true);
+    },
+  );
+
+  it("marks a call that could not be spawned as spawn_error, with the error recorded", async () => {
+    const { telemetry, spans } = tracedSteps();
+    const { steps } = recordingSteps();
+    const spawnTool: SpawnTool = () => Promise.reject(new Error("spawn EACCES"));
+    await expect(
+      runToolsStep(
+        stepContext(steps, { telemetry }),
+        {
+          name: "spawn",
+          async work(tool) {
+            await tool({ file: "/opt/tool", args: [] });
+            return { what: "never" };
+          },
+        },
+        spawnTool,
+      ),
+    ).rejects.toThrow("spawn EACCES");
+    const exec = spans().find((s) => s.name === "exec tool");
+    expect(exec?.status.code).toBe(SpanStatusCode.ERROR);
+    expect(exec?.attributes).toMatchObject({ "error.type": "spawn_error" });
+    expect(exec?.attributes).not.toHaveProperty("process.exit.code");
+    expect(exec?.events[0]?.attributes?.["exception.message"]).toBe("spawn EACCES");
+  });
+
+  it("marks a call the abort ended as aborted, and leaves no span open", async () => {
+    const { telemetry, spans } = tracedSteps();
+    const controller = new AbortController();
+    const { steps } = recordingSteps();
+    const spawnTool: SpawnTool = () => {
+      controller.abort();
+      return Promise.resolve({ ...ok, code: null, exitSignal: "SIGTERM", stdout: "" });
+    };
+    await expect(
+      runToolsStep(
+        stepContext(steps, { telemetry, signal: controller.signal }),
+        {
+          name: "stop",
+          async work(tool) {
+            await tool({ file: "/opt/tool", args: [] });
+            return { what: "never" };
+          },
+        },
+        spawnTool,
+      ),
+    ).rejects.toThrow();
+    const exec = spans().find((s) => s.name === "exec tool");
+    expect(exec?.status.code).toBe(SpanStatusCode.ERROR);
+    expect(exec?.attributes).toMatchObject({
+      "error.type": "aborted",
+      "edit_issebya.exec.signal": "SIGTERM",
+    });
+  });
+
+  it("runs and writes its row the same with no exporter, and passes the stdout back", async () => {
+    const { steps, calls } = recordingSteps();
+    const seen: string[] = [];
+    await runToolsStep(
+      stepContext(steps),
+      {
+        name: "quiet",
+        async work(tool) {
+          seen.push(await tool({ file: "/opt/tool", args: ["x"] }));
+          return { what: "done" };
+        },
+      },
+      () => Promise.resolve(ok),
+    );
+    expect(seen).toEqual(["{}"]);
+    expect(onlyDone(calls).measurements.cpu_ms).toBeNull();
   });
 });

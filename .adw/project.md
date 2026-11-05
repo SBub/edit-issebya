@@ -263,6 +263,9 @@ on every pull request and push to `develop` and `master`.
   reuse, probe, `lsof` or kill it.
 - `SERVICES_PORT` in `.ports.env` (9300 + slot) belongs to this run's WebKit server from
   `.adw/worktree-env`; the same never-write rule as the other `.ports.env` values applies.
+- Local monitoring is the developer's, opt-in (`MONITORING=1 yarn dev:studio`, `docker-compose.monitoring.yml`,
+  the `grafana/otel-lgtm` container): Grafana on host port 3300 (container 3000, bound to 127.0.0.1;
+  3000 is the landing page) and OTLP over HTTP on 4318 (127.0.0.1). ADW never starts it.
 
 ## Protected
 

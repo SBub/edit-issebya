@@ -26,7 +26,7 @@ type Env = Record<string, string | undefined>;
 export interface Telemetry {
   tracer: Tracer;
   logger: Logger;
-  // True only when both OTLP variables are set and exporters were built.
+  // True only when OTEL_EXPORTER_OTLP_ENDPOINT is set and exporters were built.
   exporting: boolean;
   // Flushes and stops both providers; call before the process exits.
   shutdown(): Promise<void>;
@@ -66,9 +66,10 @@ function parseHeaders(raw: string): Record<string, string> {
 
 // Built per worker process and passed down, never at module load and never
 // registered globally. It reads only OTEL_EXPORTER_OTLP_ENDPOINT,
-// OTEL_EXPORTER_OTLP_HEADERS and OTEL_SERVICE_NAME, and exports only when the
-// first two are both set; otherwise the providers have no processor at all.
-// Tests pass in-memory processors.
+// OTEL_EXPORTER_OTLP_HEADERS and OTEL_SERVICE_NAME. It exports whenever the
+// endpoint is set; the headers are optional (a local collector needs none), and
+// empty headers send none. Without an endpoint the providers have no processor
+// at all. Tests pass in-memory processors.
 export function createTelemetry(
   env: Env = process.env,
   {
@@ -78,7 +79,7 @@ export function createTelemetry(
 ): Telemetry {
   const endpoint = env.OTEL_EXPORTER_OTLP_ENDPOINT?.trim().replace(/\/+$/, "") ?? "";
   const rawHeaders = env.OTEL_EXPORTER_OTLP_HEADERS?.trim() ?? "";
-  const exporting = endpoint !== "" && rawHeaders !== "";
+  const exporting = endpoint !== "";
   const resource = resourceFromAttributes({
     "service.name": env.OTEL_SERVICE_NAME?.trim() || "edit-issebya-worker",
   });
@@ -152,6 +153,37 @@ export function endJobSpan(span: Span, outcome: string, size?: ReelSizeHolder): 
   if (outcome === "failed" || outcome === "refused") span.setStatus({ code: SpanStatusCode.ERROR });
   span.end();
 }
+
+// Runs `work` in a span of its own, a child of `parent` (a Context carrying
+// the span it belongs to). `work` gets the span, to set attributes on it, and
+// its Context, the parent of any span it starts. A thrown error marks the span
+// as failed and is rethrown unchanged; the span always ends. Spans are
+// observation only: the work runs, and fails, as it would without them.
+export async function inSpan<T>(
+  telemetry: Telemetry,
+  parent: Context,
+  name: string,
+  attributes: Attributes,
+  work: (span: Span, context: Context) => Promise<T>,
+): Promise<T> {
+  const span = telemetry.tracer.startSpan(name, { attributes }, parent);
+  try {
+    return await work(span, trace.setSpan(parent, span));
+  } catch (error) {
+    span.recordException(error instanceof Error ? error : String(error));
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    throw error;
+  } finally {
+    span.end();
+  }
+}
+
+// The same helper, bound to a parent: `inSpan` for the spans under one Context.
+export type InSpan = <T>(
+  name: string,
+  attributes: Attributes,
+  work: (span: Span, context: Context) => Promise<T>,
+) => Promise<T>;
 
 export type StepStream = "stdout" | "stderr";
 

@@ -1,3 +1,4 @@
+import type { Context } from "@opentelemetry/api";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type BackgroundMap, type EditRef, backgroundMapSchema } from "@edit-issebya/edit";
@@ -43,6 +44,9 @@ export interface EnsureBackgrounds {
   // Records that the job's reel needs a map found already stored (its size);
   // a map this step writes is recorded by the storage it is given.
   recordStored?: (key: string, bytes: number) => Promise<void>;
+  // The span the step is a child of when it is not the job's own (decide's
+  // span context); the job span when absent.
+  parent?: Context;
 }
 
 function elapsedMs(started: number): number {
@@ -67,8 +71,11 @@ export async function ensureBackgrounds({
   tools,
   spawnTool,
   recordStored,
+  parent,
 }: EnsureBackgrounds): Promise<BackgroundMap> {
   const { signal } = ctx;
+  // The same step, its span under `parent` when one is given.
+  const stepCtx: StepContext = parent ? { ...ctx, jobContext: parent } : ctx;
   const started = performance.now();
   const key = backgroundsKey(keyPrefix, footage);
   const stored = await storage.get(key);
@@ -76,7 +83,7 @@ export async function ensureBackgrounds({
   if (stored) {
     const map = parse(stored);
     if (recordStored) await recordStored(key, stored.length);
-    await recordHit(ctx, {
+    await recordHit(stepCtx, {
       name: BACKGROUNDS_STEP,
       summary: "backgrounds reused",
       wallMs: elapsedMs(started),
@@ -93,7 +100,7 @@ export async function ensureBackgrounds({
   let map: BackgroundMap | undefined;
   try {
     await runToolsStep(
-      ctx,
+      stepCtx,
       {
         name: BACKGROUNDS_STEP,
         inputs: [footagePath],

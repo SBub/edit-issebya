@@ -1,3 +1,4 @@
+import type { Context } from "@opentelemetry/api";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Edit, Transcript } from "@edit-issebya/edit";
@@ -26,6 +27,9 @@ export interface EnsureCutouts {
   // Records that the job's reel needs a mask found already stored (its HEAD
   // size); masks this step writes are recorded by the storage it is given.
   recordStored?: (key: string, bytes: number) => Promise<void>;
+  // The span the step is a child of when it is not the job's own (decide's
+  // span context); the job span when absent.
+  parent?: Context;
 }
 
 function elapsedMs(started: number): number {
@@ -59,11 +63,14 @@ export async function ensureCutouts({
   env = process.env,
   platform = process.platform,
   recordStored,
+  parent,
 }: EnsureCutouts): Promise<Edit> {
   const named = withMasks(edit, transcript);
   const items = edit.tracks.behind ?? [];
   if (items.length === 0) return named;
   const { signal } = ctx;
+  // The same step, its span under `parent` when one is given.
+  const stepCtx: StepContext = parent ? { ...ctx, jobContext: parent } : ctx;
   const started = performance.now();
 
   if (photoIds) {
@@ -92,7 +99,7 @@ export async function ensureCutouts({
   const missing = spans.filter((_, index) => stored[index] === null);
 
   if (missing.length === 0) {
-    await recordHit(ctx, {
+    await recordHit(stepCtx, {
       name: MASK_STEP,
       summary: "cut-out reused",
       wallMs: elapsedMs(started),
@@ -105,7 +112,7 @@ export async function ensureCutouts({
     const outputs = missing.map((span) => join(dir, `${span.fingerprint}.mp4`));
     try {
       await runToolsStep(
-        ctx,
+        stepCtx,
         {
           name: MASK_STEP,
           inputs: [footagePath],

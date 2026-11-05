@@ -10,6 +10,7 @@ import {
   transcriptSchema,
 } from "@edit-issebya/edit";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
+import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AiRunner, type FakeAiRunner, fakeAiRunner, resultEnvelope } from "../ai.ts";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
@@ -21,7 +22,7 @@ import {
   findCause,
   isTransient,
 } from "../failure.ts";
-import { createTelemetry } from "../telemetry.ts";
+import { type Telemetry, createTelemetry } from "../telemetry.ts";
 import { storeFixtureBackgrounds } from "../backgrounds/test-support.ts";
 import { saveFirstVersion } from "../first-version.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
@@ -135,10 +136,10 @@ const heardForm = () =>
     }),
   );
 
-async function decide(ai: AiRunner) {
+async function decide(ai: AiRunner, telemetry?: Telemetry) {
   const { steps, calls } = recordingSteps();
   const run = runDecide({
-    ctx: stepContext(steps),
+    ctx: stepContext(steps, telemetry ? { telemetry } : {}),
     storage,
     rows: memoryRows(),
     blobs: storageVersionBlobs(storage),
@@ -775,7 +776,13 @@ describe("runDecide with a behind item", () => {
       request = null,
       rules,
       photos = library,
-    }: { request?: string | null; rules?: ReelRules; photos?: PhotoLibrary } = {},
+      telemetry,
+    }: {
+      request?: string | null;
+      rules?: ReelRules;
+      photos?: PhotoLibrary;
+      telemetry?: Telemetry;
+    } = {},
   ) {
     const footage = cacheKey(PREFIX, "retime", fingerprints.retime!, "source.mp4");
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixtures
@@ -783,7 +790,7 @@ describe("runDecide with a behind item", () => {
     await storage.put(footage, new Uint8Array(bytes));
     const { steps, calls } = recordingSteps();
     const run = runDecide({
-      ctx: stepContext(steps),
+      ctx: stepContext(steps, telemetry ? { telemetry } : {}),
       storage,
       rows: memoryRows(),
       blobs: storageVersionBlobs(storage),
@@ -829,6 +836,25 @@ describe("runDecide with a behind item", () => {
     const done = lastCall(calls);
     if (done.call !== "done") throw new Error(JSON.stringify(calls));
     expect(done.summary).toMatch(/^version 2: .*, 1 behind, /);
+  });
+
+  it("nests the cut-out step under the decide span, before the save", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const ai = fakeAiRunner([behindAnswer()]);
+    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool, { telemetry });
+    await run;
+    const spans = exporter.getFinishedSpans();
+    const decideSpan = spans.find((s) => s.name === "step decide");
+    const names = spans
+      .filter((s) => s.parentSpanContext?.spanId === decideSpan?.spanContext().spanId)
+      .map((s) => s.name);
+    expect(names).toEqual(expect.arrayContaining(["step cutout", "decide.save_version"]));
+    expect(names.indexOf("step cutout")).toBeLessThan(names.indexOf("decide.save_version"));
+    await telemetry.shutdown();
   });
 
   it("saves nothing when the cut-out fails, and never asks the AI again", async () => {
@@ -1115,5 +1141,155 @@ describe("runDecide starting over", () => {
       log: () => {},
     });
     await expect(run).rejects.toThrow(/version other of this reel not found/);
+  });
+});
+
+describe("runDecide spans", () => {
+  // Every span an exporter kept, read before the telemetry is shut down.
+  async function traced(ai: AiRunner) {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const { run, calls } = await decide(ai, telemetry);
+    const outcome: unknown = await run.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    const spans = exporter.getFinishedSpans();
+    await telemetry.shutdown();
+    return { spans, outcome, calls };
+  }
+
+  type Spans = ReturnType<InMemorySpanExporter["getFinishedSpans"]>;
+  // The spans whose parent is `parent`, in the order they ended: the
+  // decide stages run one after another, so that is their order.
+  const childrenOf = (spans: Spans, parent: Spans[number] | undefined) =>
+    spans.filter((s) => s.parentSpanContext?.spanId === parent?.spanContext().spanId);
+  const named = (spans: Spans, name: string) => spans.find((s) => s.name === name);
+
+  // A Claude Code envelope that reports its usage and model, for the spans.
+  const reported = (answer: unknown, model: string, output: number) => ({
+    ...resultEnvelope(answer),
+    usage: {
+      input_tokens: 1000,
+      cache_creation_input_tokens: 100,
+      cache_read_input_tokens: 50,
+      output_tokens: output,
+    },
+    total_cost_usd: 0.0123,
+    modelUsage: { [model]: { outputTokens: output } },
+  });
+
+  it("traces a normal run as the decide stages, in order, with their facts", async () => {
+    const ai = fakeAiRunner([
+      reported(scripted.structured_output, "claude-opus-5-5", 200),
+      reported(
+        { change_title: "Hook added", change_summary: "The reel opens on the hook." },
+        SUMMARY_MODEL,
+        20,
+      ),
+    ]);
+    const { spans, outcome } = await traced(ai);
+    expect(outcome).toBeNull();
+    const decideSpan = named(spans, "step decide");
+    expect(decideSpan?.status.code).not.toBe(SpanStatusCode.ERROR);
+    expect(childrenOf(spans, decideSpan).map((s) => s.name)).toEqual([
+      "decide.load",
+      "step backgrounds",
+      "decide.prepare",
+      "decide.photo_looks",
+      "decide.attempt",
+      "decide.version_summary",
+      "decide.save_version",
+    ]);
+    // The background map was reused: a hit row, under decide.
+    expect(named(spans, "step backgrounds")?.attributes["step.cache_hit"]).toBe(true);
+    // The attempt's call is a `chat` span (no request model: Claude Code's
+    // default), then the layout engine's span under the attempt.
+    const attempt = named(spans, "decide.attempt");
+    expect(attempt?.attributes).toMatchObject({ "decide.attempt": 1, "decide.outcome": "ok" });
+    expect(childrenOf(spans, attempt).map((s) => s.name)).toEqual(["chat", "decide.engine"]);
+    const chat = childrenOf(spans, attempt).find((s) => s.name === "chat");
+    expect(chat?.kind).toBe(SpanKind.CLIENT);
+    expect(chat?.attributes).toEqual({
+      "gen_ai.operation.name": "chat",
+      "gen_ai.provider.name": "anthropic",
+      "gen_ai.response.model": "claude-opus-5-5",
+      "gen_ai.usage.input_tokens": 1150,
+      "gen_ai.usage.output_tokens": 200,
+      "gen_ai.usage.cache_read.input_tokens": 50,
+      "gen_ai.usage.cache_write.input_tokens": 100,
+      "edit_issebya.ai.cost_usd": 0.0123,
+    });
+    expect(named(spans, "decide.engine")?.attributes).toMatchObject({
+      "decide.dropped": 3,
+      "decide.checks": 0,
+    });
+    // The summary's call is a `chat` span under the version summary, named
+    // with its request model.
+    const summary = named(spans, "decide.version_summary");
+    expect(summary?.attributes).toEqual({ "decide.summary_source": "ai" });
+    const summaryChat = childrenOf(spans, summary)[0];
+    expect(summaryChat?.name).toBe(`chat ${SUMMARY_MODEL}`);
+    expect(summaryChat?.attributes).toMatchObject({
+      "gen_ai.request.model": SUMMARY_MODEL,
+      "gen_ai.response.model": SUMMARY_MODEL,
+      "gen_ai.usage.output_tokens": 20,
+    });
+    for (const span of spans) {
+      expect(span.status.code).not.toBe(SpanStatusCode.ERROR);
+      // No invented `ai.*` names anywhere: AI facts are `gen_ai.*` on the chat span.
+      expect(Object.keys(span.attributes).filter((key) => key.startsWith("ai."))).toEqual([]);
+    }
+    // The stage spans carry no AI facts of their own.
+    expect(Object.keys(attempt!.attributes).filter((key) => key.startsWith("gen_ai."))).toEqual([]);
+  });
+
+  it("traces a retry as two decide.attempt spans, numbered 1 and 2, the first refused", async () => {
+    const ai = fakeAiRunner([
+      heardForm(),
+      scripted,
+      summaryEnvelope("Hook added", "The reel opens on the hook."),
+    ]);
+    const { spans, outcome } = await traced(ai);
+    expect(outcome).toBeNull();
+    const attempts = spans.filter((s) => s.name === "decide.attempt");
+    expect(attempts.map((s) => s.attributes["decide.attempt"])).toEqual([1, 2]);
+    expect(attempts.map((s) => s.attributes["decide.outcome"])).toEqual(["refused", "ok"]);
+    expect(attempts[0]!.attributes["decide.refused_by"]).toBe("glossary");
+    // Both attempts made their call and ran the engine, under themselves.
+    expect(attempts.map((s) => childrenOf(spans, s).map((c) => c.name))).toEqual([
+      ["chat", "decide.engine"],
+      ["chat", "decide.engine"],
+    ]);
+  });
+
+  it("marks the failing attempt's span as an error and the step fails as before", async () => {
+    const ai: AiRunner = {
+      async call() {
+        throw Object.assign(new Error("socket hang up"), { code: "ECONNRESET" });
+      },
+    };
+    const { spans, outcome, calls } = await traced(ai);
+    expect((outcome as Error).cause).toBeInstanceOf(PermanentError);
+    const attempt = named(spans, "decide.attempt");
+    expect(attempt?.attributes["decide.attempt"]).toBe(1);
+    expect(attempt?.status.code).toBe(SpanStatusCode.ERROR);
+    expect(attempt?.events.map((event) => event.name)).toEqual(["exception"]);
+    expect(named(spans, "step decide")?.status.code).toBe(SpanStatusCode.ERROR);
+    expect(calls.map((c) => c.call)).toEqual(["start", "skipped", "failed"]);
+  });
+
+  it("decides and saves version 2 with telemetry that exports nothing", async () => {
+    const ai = fakeAiRunner([
+      scripted,
+      summaryEnvelope("Hook added", "The reel opens on the hook."),
+    ]);
+    const { run } = await decide(ai);
+    await run;
+    expect(rows.size).toBe(2);
+    expect(rows.get(current!)!.number).toBe(2);
   });
 });

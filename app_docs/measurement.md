@@ -21,8 +21,8 @@ client, identifies the signed-in user and sends `studio_*` events.
   `cpu_ms`, `peak_rss_bytes`, `bytes_in`, `bytes_out`, the summary line and, on failure, the error
   tail. `runInProcessStep` is the second entry point for work that stays in the worker (an HTTP
   call): it records `wall_ms` only and leaves the other four measurements null, because moving one
-  call into a child would measure Node's start-up, not the step. `receive` is such a step. Both share
-  the row, the span, the summary and the tail.
+  call into a child would measure Node's start-up, not the step. `first_version` and `restore` are such
+  steps. Both share the row, the span, the summary and the tail.
 - `src/time-report.ts`: `timeCommand(platform)` (`/usr/bin/time -l` on macOS, `-v` on Linux, an error
   elsewhere) and the two report parsers. macOS reports max RSS in bytes, Linux in kilobytes (times
   1024). `/usr/bin/time` is the kernel's `wait4` accounting (`RUSAGE_CHILDREN`): CPU summed over every
@@ -30,6 +30,8 @@ client, identifies the signed-in user and sends `studio_*` events.
   (the tool could not start, sh exit 126 or 127) stores null CPU and memory, never zeros.
 - The tool runs through `sh -c 'exec "$0" "$@" 2>&3'` so its stderr goes to fd 3 and the time report
   alone goes to fd 2; no mixed stream is parsed.
+- Each tool call is one `exec` span under its step (or under the `chat` span of a Claude Code call),
+  see Tool calls below.
 - `src/process-tree.ts`: with `sampleGroupMemory: true` the runner runs `ps -A -o pid=,ppid=,rss=`
   every second (and once after the spawn), sums the RSS of the tool and all its descendants and keeps
   the peak. `peak_rss_bytes` is the larger of that peak and the report's max RSS. Without the option
@@ -58,14 +60,16 @@ client, identifies the signed-in user and sends `studio_*` events.
   and `main.ts`, passed down, flushed with `shutdown()` before exit). It reads only
   `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,k2=v2`, values URL-decoded) and
   `OTEL_SERVICE_NAME` (default `edit-issebya-worker`). It exports to `<endpoint>/v1/traces` and
-  `<endpoint>/v1/logs` only when both the endpoint and the headers are set; otherwise the providers have
-  no processor and nothing is exported or fails.
+  `<endpoint>/v1/logs` whenever the endpoint is set. The headers are optional: a local collector needs
+  none, and an empty value sends none. Without an endpoint the providers have no processor and nothing
+  is exported or fails.
 - `traceIdForReel(uuid)`: the reel uuid without dashes, lowercased. `startJobSpan` starts the span
   `job <kind>` under a remote parent with that trace id (span id from the last 16 hex digits of the reel
   id, never exported), so every job of a reel, at any time, lands in one trace. Each step is a child
   span `step <name>` with `reel.id`, `job.id`, `step.name` and `step.wall_ms`, `step.cpu_ms`,
   `step.peak_rss_bytes`, `step.bytes_in`, `step.bytes_out`. Output lines are log records emitted in the
-  step span's context (INFO for stdout, ERROR for stderr, attribute `stream`).
+  step span's context (INFO for stdout, ERROR for stderr, attribute `stream`). The exec spans carry
+  no log records, so a step's log lookup is unchanged.
 - The reel's size: the job span and every step span (cache hits included) carry `reel.source_seconds`,
   `reel.source_bytes`, `reel.width`, `reel.height`, `reel.footage_seconds` and `reel.word_count` when
   known (nulls skipped). `src/reel-size.ts`: `readReelSize` reads the reel's size columns once at job
@@ -79,6 +83,11 @@ client, identifies the signed-in user and sends `studio_*` events.
   writes them.
 - A `describe_photo` job's trace uses the photo's id in place of the reel's (`traceIdForJob`), and its
   spans carry `photo.id` in place of `reel.id` (`targetAttributes`).
+- `decide`'s stages are child spans of its `step decide` span, one per stage, with the `decide.*`
+  names and attributes listed under Local monitoring. `step backgrounds` and `step cutout` are
+  children of the decide span when decide runs them (the step takes an optional `parent`); their
+  step rows are the same either way. `src/telemetry.ts` `inSpan` runs a stage in its span. Each AI
+  call is a `chat` span under the stage that made it (`src/ai.ts` `inChatSpan`, see AI calls below).
 - Step measurements are never sent to PostHog as events: PostHog reads the tables as a data source.
 - Exceptions: `app_docs/error-tracking.md`.
 
@@ -144,10 +153,166 @@ and longest seconds, and the median seconds per second of retimed footage.
    export to the same project, told apart by the service name.
 3. In the studio, send an event with `capture("studio_...", { reel_id })` from a client component.
 
+## Local monitoring
+
+Opt in with `MONITORING=1 yarn dev:studio`. The script checks Docker (as it always does), starts
+`docker-compose.monitoring.yml` (the `grafana/otel-lgtm` image: Grafana, Tempo for traces, Loki for
+logs and Prometheus for metrics in one container, OTLP over HTTP), and gives the worker process
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`, an empty `OTEL_EXPORTER_OTLP_HEADERS` and
+`OTEL_SERVICE_NAME=edit-issebya-worker-dev`. Only the worker gets them, and they win over any line in
+`apps/worker/.env.development`, so a PostHog token there never reaches the local container.
+
+- Grafana: `http://localhost:3300`. The host port is 3300 because the landing page owns 3000. Both
+  published ports (3300 and 4318) are bound to 127.0.0.1.
+- A reel's trace: Explore, the Tempo data source, query type TraceID, the reel's uuid without dashes
+  (`traceIdForReel`). Each job is a `job <kind>` span, each step a child `step <name>` span and each
+  tool call a child `exec <executable>` span of its step.
+- A step's output: from a span, Logs for this span opens Loki (Tempo's `tracesToLogsV2` link). Each
+  output line is a log record in the step span's context, and Loki links back to Tempo by `trace_id`.
+- Stop it with `docker compose -f docker-compose.monitoring.yml down`. The data lives in the named
+  volume `otel-lgtm-data` (under `/data` in the container), so it survives a restart; add `-v` to
+  delete it.
+
+### AI calls (`chat` spans)
+
+Every model call is one `chat` span, a `CLIENT` span under the stage that made the call, with the
+attributes of the OpenTelemetry GenAI semantic conventions (status Development:
+https://github.com/open-telemetry/semantic-conventions-genai). `src/ai.ts` `inChatSpan` makes it
+around the Claude Code call itself, so the real runner and the test double both get it. The name is
+`chat <request model>`, or `chat` when the call passes no model (decide's attempts and rounds use
+Claude Code's default model, so theirs are `chat`; the version summary passes `claude-haiku-5-5`).
+
+- `gen_ai.operation.name` = `chat`, `gen_ai.provider.name` = `anthropic`: always.
+- `gen_ai.request.model`: the model the call asked for (`--model`), when it passes one.
+- `gen_ai.response.model`: the model that wrote the most output, from `modelUsage`.
+- `gen_ai.usage.input_tokens`: every input token Claude Code reports, `input_tokens` plus the cache
+  reads and writes (the Anthropic rule of the conventions: Anthropic reports the cache apart).
+- `gen_ai.usage.output_tokens`; `gen_ai.usage.cache_read.input_tokens` and
+  `gen_ai.usage.cache_write.input_tokens` when non-zero (parts of the input tokens above).
+- `edit_issebya.ai.cost_usd`: the cost as Claude Code reports it. A custom attribute, because the
+  standard has none. Never a price we computed.
+- Claude Code's own timings, from the top level of its result (custom attributes, span facts only;
+  no step row keeps them):
+  - `edit_issebya.claude.duration_ms`: the whole Claude Code run, start to finish, as the CLI reports
+    it.
+  - `edit_issebya.claude.duration_api_ms`: the time spent waiting on the model API.
+  - `edit_issebya.claude.overhead_ms`: the CLI's own time, `duration_ms` minus `duration_api_ms`. Set
+    only when both are reported and the result is not negative.
+  - `edit_issebya.claude.num_turns`: the model round trips. With tools off, more than 1 suggests
+    `--json-schema` costs an extra round trip.
+- A value Claude Code did not report is left out.
+- `error.type` and an error status when the call does not succeed (the OpenTelemetry rule for a
+  failed operation): `unavailable` (the usage limit, signed out: the job itself waits, and its job
+  span is not an error) or `broken` (the answer is not JSON or has no answer; a thrown call is
+  `broken` too, with an `exception` event).
+
+To see every AI call in Tempo, TraceQL: `{ span.gen_ai.operation.name = "chat" }`.
+
+To split one call's time, compare three durations:
+
+- The `chat` span's duration: the whole call as the worker sees it (the Claude Code process and
+  the parse of its output).
+- The `exec claude` span under it: the child process alone, from spawn to exit. The gap between
+  the two is the worker's own work around the process.
+- `edit_issebya.claude.duration_ms` on the `chat` span: the CLI's own clock for its run, as the CLI
+  reports it. Compare it with `exec claude` to see how much of the process time the CLI accounts for.
+
+Within `duration_ms`, `duration_api_ms` is the model API's share and `overhead_ms` is the CLI's own
+share. A large `overhead_ms` points at Claude Code itself, a large `duration_api_ms` at the model.
+
+### Tool calls (`exec` spans)
+
+Every tool call the step runner spawns is one `exec` span, an `INTERNAL` span under the step that ran
+it (`src/step-runner.ts`, `startExecSpan` and `endExecSpan`). That covers ffmpeg, ffprobe, HyperFrames,
+vseg, the render and the Claude Code CLI. The step row keeps the totals; the spans show which call
+took the time.
+
+- Name: `exec <executable>`, the executable's base name (`exec ffmpeg`, `exec vseg`, `exec claude`).
+  When `node` runs a script (`.mjs`, `.js`, `.cjs`, `.ts`) the name is the script's base name:
+  `exec hyperframes` for HyperFrames' `bin/hyperframes.mjs`, `exec remove-background-entry` for the
+  person mask. `process.executable.name` stays `node`.
+- Parent: the step's span, or the call's `parent` when it names one. The Claude Code call names its
+  `chat` span, so the tree reads `chat > exec claude`.
+- Process attributes, from the OpenTelemetry process conventions (status Release Candidate:
+  https://github.com/open-telemetry/semantic-conventions/blob/main/docs/registry/attributes/process.md):
+  `process.executable.name`, `process.args_count` (the executable and its arguments, as
+  `process.command_args` counts them) and `process.exit.code` when the call exited. `process.pid` is
+  not set: the spawned process is `/usr/bin/time`, and the tool runs under it.
+- Other attributes: `step.name`; `edit_issebya.exec.subcommand` (the first argument after the script
+  when it is a plain lower-case word, such as `transcribe`; a path or a flag never is);
+  `edit_issebya.exec.cpu_ms` and `edit_issebya.exec.peak_rss_bytes` (this call's own report, read the
+  way the step row reads it, so the step's CPU is the sum of its calls' and its peak the largest);
+  `edit_issebya.exec.stdout_bytes` (the stdout the call returned, UTF-8 bytes, capped as the call
+  returns it); `edit_issebya.exec.signal` when a signal ended the call.
+- Errors: a call the abort ended (`error.type` `aborted`), one that could not be spawned (`spawn_error`,
+  or sh's 126 and 127 for a tool it could not run), one a signal killed (`signal`) and one that exited
+  non-zero (`nonzero_exit`) have an error status, `error.type` and an `exception` event. The step's
+  failure, retry and row are the same as before.
+- Not on the span: the command line, the arguments, the stdin (a prompt, a schema) and the environment.
+  The step's output lines stay log records of the step span.
+- With no exporter the call runs and measures exactly as it does with one.
+
+```
+step decide
+└─ decide.attempt
+   └─ chat                         gen_ai.* (the attempt's AI call)
+      └─ exec claude               process.executable.name, cpu and peak of the CLI
+```
+
+To find slow or failed calls in Tempo, TraceQL: `{ name =~ "exec .*" && duration > 5s }` for the slow
+ones, `{ name =~ "exec .*" && status = error }` for the failed ones, and
+`{ name = "exec hyperframes" && span.edit_issebya.exec.subcommand = "transcribe" }` for one HyperFrames
+command.
+
+### decide's spans
+
+The `step decide` span has one child per stage. On a normal run (automatic, one attempt, no
+behind item, the summary call made) the children run in this order; a retry adds a second
+`decide.attempt`, and a rounds run adds `decide.editorial_round` spans:
+
+```
+step decide                        reel.tracks_items
+├─ decide.load                     the current version, transcript, head track, parse
+├─ step backgrounds                cache hit, or its own measurements
+├─ decide.prepare                  rules, library, schema, prompt input
+├─ decide.photo_looks              decide.photos
+├─ decide.attempt                  decide.attempt 1, decide.outcome, decide.refused_by
+│  ├─ chat                         gen_ai.* (the attempt's AI call)
+│  └─ decide.engine                decide.dropped, decide.checks
+├─ decide.editorial_round          decide.round, decide.outcome (only when a round runs)
+│  ├─ chat                         gen_ai.* (the round's AI call)
+│  └─ decide.engine                decide.dropped (the merged answer placed again)
+├─ decide.engine                   decide.stage "editorial checks" (only when a round placed the answer again)
+├─ step cutout                     (only with a behind item)
+├─ decide.version_summary          decide.summary_source
+│  └─ chat claude-haiku-5-5        gen_ai.* (the summary's AI call)
+└─ decide.save_version
+```
+
+- `decide.attempt`: `decide.attempt` (1 or 2); `decide.outcome`: `ok`, `invalid` (the answer is
+  not JSON), or `refused` (the schema, the placement or the glossary check); `decide.refused_by`
+  the rule names, comma-separated, when refused.
+- `decide.editorial_round`: `decide.round` (1 to 3); `decide.outcome`: `placed`, `invalid`,
+  `refused`, `not_placed` (the engine could not place the merged answer) or `unavailable`.
+- `decide.engine`: `decide.dropped` (items the engine left out) and `decide.checks` (layout checks
+  that failed on its output; `decide.stage` marks the final rebuild after the rounds).
+- `decide.version_summary`: `decide.summary_source` is `ai` or `template` (the code's fallback).
+- The stage spans carry no AI facts; the `chat` span under each stage does (see AI calls above).
+  The step row keeps the summed totals.
+- A stage that throws marks its own span with error status and an `exception` event; the step
+  then fails, is retried or waits exactly as before (the step row says the same).
+
+To read decide in Tempo: Explore, the Tempo data source, TraceID, the reel's uuid without dashes.
+Open `step decide`; its children are the stages above, and any time inside decide that no stage
+covers shows as a gap between them. The AI time is in each `chat` span; a long `decide.engine` is
+the layout, not the AI.
+
+The photo description (`describe_photo`) makes its call as a `chat` span under its step span.
+
 ## Configuration
 
-- Worker: the three `OTEL_*` variables above; both endpoint and headers are needed to export.
-  `apps/studio/test-support/worker.ts` blanks both so a spec never exports.
+- Worker: `OTEL_EXPORTER_OTLP_ENDPOINT` turns export on; `OTEL_EXPORTER_OTLP_HEADERS` is optional
+  and only needed for PostHog. `apps/studio/test-support/worker.ts` blanks both so a spec never exports.
 - Studio: `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` and `NEXT_PUBLIC_POSTHOG_HOST` (inlined at build, empty in
   development and CI). The PostHog project must accept non-cookieless events from the studio.
 - Linux needs GNU `time` at `/usr/bin/time` (`apt-get install time`); CI installs it before the tests.
@@ -158,8 +323,21 @@ and longest seconds, and the median seconds per second of retimed footage.
   200 MB of random memory touched every turn, so macOS cannot compress it under load, group sampling with and without the option, byte counts, failure tail, missing tool,
   abort: the whole group gone when the step settles, a grandchild that ignores SIGTERM and holds no
   pipes killed, no call started after the abort), `summary.test.ts`, `time-report.test.ts`, `process-tree.test.ts`, `telemetry.test.ts` (one
-  trace per reel, span tree, logs linked to spans, no request when export is off against a local HTTP
-  server, positive control), `steps/receive.test.ts`.
+  trace per reel, span tree, logs linked to spans, no request without an endpoint against a local HTTP
+  server, an endpoint alone with no Authorization header, positive control).
+- Decide's spans: `telemetry.test.ts` (`inSpan`: the child's parent and attributes, an error marked
+  and rethrown, telemetry that exports nothing), `run-decide.test.ts` (`runDecide spans`: a normal
+  run's children in order with their facts, a retry as two attempts, a thrown error on the attempt's
+  span, no exporter; the cut-out under decide), `editorial.test.ts` (a round as its own span, its
+  `chat` span under it, an unavailable round).
+- AI calls: `ai.test.ts` (`the chat span of a call`: name, kind, operation, provider, request and
+  response model, the input tokens with cache, the cost, the Claude Code timings and the overhead
+  (the fixture's 5207, 4999, 2, 208; a missing one left out; an untraced call unchanged), the error
+  types, no parent means no span).
+- Tool calls: `step-runner.test.ts` (`exec spans`: one span per call under the step, the row's CPU and
+  peak equal to the calls', a script's name and subcommand with no path, the parent a call names, a
+  non-zero exit, a spawn error, an abort, no exporter), and `ai.test.ts` (`chat > exec claude` under a
+  traced step).
 - Studio unit tests: `src/lib/analytics.test.ts`, `src/lib/track.test.ts`.
 - DB test: `db-tests/steps-measurements.test.ts` pins the exact column set of `steps`, so a money column
   fails it.
@@ -181,12 +359,22 @@ and longest seconds, and the median seconds per second of retimed footage.
 - Never use the email as the distinct id.
 - Never initialise PostHog in the studio under `navigator.webdriver` or without both variables; never
   write analytics cookies or storage (no `cookieless_mode`, no opt-in or opt-out calls).
-- Never export OTLP unless both endpoint and headers are set; tests blank them.
+- Never export OTLP without `OTEL_EXPORTER_OTLP_ENDPOINT`; tests blank it, and the headers too.
 - Never create telemetry providers at module load or register them globally.
+- Never let a span change a step: no row, measurement, AI call, retry or error depends on a span. A
+  stage that throws marks its own span as an error and the step fails as before.
+- Every model call is one `chat` span with `gen_ai.*` attributes, never invented `ai.*` names; the
+  cost is `edit_issebya.ai.cost_usd` because the conventions have no cost attribute. Claude Code's
+  timings are `edit_issebya.claude.*` for the same reason; each is what the CLI reports, and the one
+  value we derive is `overhead_ms` (duration minus API duration, never set when negative).
+- Never put a tool call's command line, its arguments, its stdin or its environment on its `exec`
+  span: the executable's base name, the argument count, a plain-word subcommand and the measurements
+  only. A prompt, a schema or a reel's path never reaches a span.
 
 ## Notes
 
-- `receive` is the only step today and runs in-process, so its row carries `wall_ms` only.
+- The step names are the list in `apps/worker/src/step-names.ts`. `first_version` and `restore` run
+  in-process, so their rows carry `wall_ms` only.
 - Group sampling is as fine as one second; the report's max RSS still bounds short single-process peaks.
 - The trace's root is virtual; PostHog groups by trace id, so a reel opens as one timeline.
 - `app_docs/studio.md` (Worker, Live status) and `app_docs/analytics.md` (landing rules unchanged) are the

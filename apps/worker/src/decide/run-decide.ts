@@ -50,6 +50,7 @@ import { type ToolPaths, toolPaths } from "../pipeline/tools.ts";
 import { photoLooks } from "../photos/photo-looks.ts";
 import type { PhotoLibrary } from "../photos/photo-store.ts";
 import { reelOf } from "../queue.ts";
+import { inSpan } from "../telemetry.ts";
 import {
   type SpawnTool,
   type StepContext,
@@ -179,33 +180,46 @@ export function runDecide({
     name: STEP,
     async work(tool: Tool, stepContext: Context) {
       const reelId = reelOf(ctx.job);
-      const currentId = await rows.current(reelId);
-      if (currentId === null) throw new Error(`${STEP}: no current version`);
-      const baseId = startFrom ?? currentId;
-      const row = await rows.get(baseId);
-      if (!row || row.reel_id !== reelId) {
-        throw new Error(`${STEP}: version ${baseId} of this reel not found`);
-      }
-      // The version that stays current when nothing is saved.
-      const currentNumber =
-        baseId === currentId ? row.number : ((await rows.get(currentId))?.number ?? "?");
-      const bytes = await blobs.get(row.r2_key);
-      if (!bytes) throw new Error(`${STEP}: edit missing at ${row.r2_key}`);
+      // The current version and the inputs it reads (the first stage).
+      const loaded = await inSpan(ctx.telemetry, stepContext, "decide.load", {}, async () => {
+        const currentId = await rows.current(reelId);
+        if (currentId === null) throw new Error(`${STEP}: no current version`);
+        const baseId = startFrom ?? currentId;
+        const row = await rows.get(baseId);
+        if (!row || row.reel_id !== reelId) {
+          throw new Error(`${STEP}: version ${baseId} of this reel not found`);
+        }
+        // The version that stays current when nothing is saved.
+        const currentNumber =
+          baseId === currentId ? row.number : ((await rows.get(currentId))?.number ?? "?");
+        const bytes = await blobs.get(row.r2_key);
+        if (!bytes) throw new Error(`${STEP}: edit missing at ${row.r2_key}`);
 
-      const read = async (ref: EditRef) => {
-        const key = cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file);
-        const stored = await storage.get(key);
-        if (!stored) throw new Error(`${STEP}: input missing: ${key}`);
-        return JSON.parse(new TextDecoder().decode(stored)) as unknown;
-      };
-      const transcript = transcriptSchema.parse(await read(row.inputs.transcript));
-      const headTrack = headTrackSchema.parse(await read(row.inputs.head_track));
-      const parsed = parseEdit(JSON.parse(new TextDecoder().decode(bytes)), preset, transcript);
-      if (!parsed.ok) {
-        throw new Error(`${STEP}: current version does not parse: ${parsed.reasons.join("; ")}`);
-      }
-      const current = parsed.edit;
-      // Before the AI call, so a failure here is an ordinary step failure.
+        const read = async (ref: EditRef) => {
+          const key = cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file);
+          const stored = await storage.get(key);
+          if (!stored) throw new Error(`${STEP}: input missing: ${key}`);
+          return JSON.parse(new TextDecoder().decode(stored)) as unknown;
+        };
+        const transcript = transcriptSchema.parse(await read(row.inputs.transcript));
+        const headTrack = headTrackSchema.parse(await read(row.inputs.head_track));
+        const parsed = parseEdit(JSON.parse(new TextDecoder().decode(bytes)), preset, transcript);
+        if (!parsed.ok) {
+          throw new Error(`${STEP}: current version does not parse: ${parsed.reasons.join("; ")}`);
+        }
+        return {
+          currentId,
+          currentNumber,
+          row,
+          bytes,
+          transcript,
+          headTrack,
+          current: parsed.edit,
+        };
+      });
+      const { currentId, currentNumber, row, bytes, transcript, headTrack, current } = loaded;
+      // Before the AI call, so a failure here is an ordinary step failure. The
+      // step is a child of decide's span.
       const backgrounds = backgroundSampler(
         await ensureBackgrounds({
           ctx,
@@ -216,46 +230,77 @@ export function runDecide({
           tools,
           spawnTool,
           recordStored,
+          parent: stepContext,
         }),
         preset.frame,
       );
-      const forbid = rules ? await rules.read(reelId) : { photos: false, bigWord: false };
-      const decideRules: DecideRules = { requested: request !== null, forbid };
-      // Photos switched off and no request that could lift it: none offered.
-      const photosOff = forbid.photos && request === null;
-      const library = photos && !photosOff ? await photos.readyPhotos(ctx.job.owner_id) : [];
-      const photoIds = library.map((photo) => photo.id);
-      const schema = decideJsonSchema(preset, transcript, photoIds, decideRules);
-      const input = decideInput({
-        current,
-        transcript,
-        preset,
-        library,
-        forbid,
-        request,
+      const prepared = await inSpan(ctx.telemetry, stepContext, "decide.prepare", {}, async () => {
+        const forbid = rules ? await rules.read(reelId) : { photos: false, bigWord: false };
+        const decideRules: DecideRules = { requested: request !== null, forbid };
+        // Photos switched off and no request that could lift it: none offered.
+        const photosOff = forbid.photos && request === null;
+        const library = photos && !photosOff ? await photos.readyPhotos(ctx.job.owner_id) : [];
+        const photoIds = library.map((photo) => photo.id);
+        const schema = decideJsonSchema(preset, transcript, photoIds, decideRules);
+        const input = decideInput({
+          current,
+          transcript,
+          preset,
+          library,
+          forbid,
+          request,
+        });
+        return {
+          forbid,
+          decideRules,
+          library,
+          photoIds,
+          schema,
+          input,
+          measure: await measurer(),
+        };
       });
-      const measure = await measurer();
+      const { forbid, decideRules, library, photoIds, schema, input, measure } = prepared;
 
-      let usage: AiUsage = { inputTokens: null, outputTokens: null, costUsd: null, model: null };
+      let usage: AiUsage = {
+        inputTokens: null,
+        outputTokens: null,
+        costUsd: null,
+        model: null,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+      };
       const cwd = await mkdtemp(join(scratchDir, "decide-"));
       try {
         // Each library photo's ratio and edge, before the AI call: the layout
         // sizes photos to them and keeps their edges apart from the footage.
         // In a folder of their own, never the AI's working folder.
-        const looksDir = await mkdtemp(join(scratchDir, "photo-looks-"));
-        const looks = await photoLooks({
-          library,
-          storage,
-          tool,
-          ffmpeg: tools.ffmpeg,
-          dir: looksDir,
-          signal: ctx.signal,
-        }).finally(() => rm(looksDir, { recursive: true, force: true }));
-        const attempt = async (previous?: string[]): Promise<Attempt> => {
+        const looks = await inSpan(
+          ctx.telemetry,
+          stepContext,
+          "decide.photo_looks",
+          { "decide.photos": library.length },
+          async () => {
+            const looksDir = await mkdtemp(join(scratchDir, "photo-looks-"));
+            return photoLooks({
+              library,
+              storage,
+              tool,
+              ffmpeg: tools.ffmpeg,
+              dir: looksDir,
+              signal: ctx.signal,
+            }).finally(() => rm(looksDir, { recursive: true, force: true }));
+          },
+        );
+        // One call and its placement. The call is a `chat` span under the
+        // attempt's span; the layout engine's work is a `decide.engine` span
+        // under the attempt too.
+        const answerOnce = async (context: Context, previous?: string[]): Promise<Attempt> => {
           const result = await ai.call(tool, {
             prompt: decidePrompt(input, previous),
             schema,
             cwd,
+            trace: { telemetry: ctx.telemetry, parent: context },
           });
           usage = addUsage(usage, result.usage);
           // Not available now: the job waits, nothing is written.
@@ -275,55 +320,93 @@ export function runDecide({
             decideRules,
           );
           if (!answer.ok) return { ok: false, reasons: answer.reasons, rules: ["answer-schema"] };
-          // Meaning only: the layout engine places the answer's words.
-          const composed = editFromAnswer(
-            current,
-            answer.answer,
-            preset,
-            transcript,
-            headTrack,
-            measure,
-            backgrounds,
-            looks,
-          );
-          if (!composed.ok) return { ok: false, reasons: composed.reasons, rules: ["answer-edit"] };
-          // What the answer wrote: a fix showing a glossary word's heard form.
-          const glossary = glossaryChecks(composed.edit, transcript, preset);
-          if (glossary.length > 0) {
-            return {
-              ok: false,
-              reasons: glossary.map((check) => `${check.rule} ${check.item}: ${check.reason}`),
-              rules: glossary.map((check) => check.rule),
-            };
-          }
-          // Built with the masks it will name: their fingerprints are known
-          // before any is made.
-          const { checks } = build(
-            withMasks(composed.edit, transcript),
-            transcript,
-            headTrack,
-            preset,
-            measure,
-          );
-          return {
-            ok: true,
-            edit: composed.edit,
-            answer: answer.answer,
-            record: composed.record,
-            placed: {
-              edit: composed.edit,
-              record: composed.record,
-              unplaced: composed.unplaced,
-              free: composed.free,
+          return inSpan(
+            ctx.telemetry,
+            context,
+            "decide.engine",
+            {},
+            async (engine): Promise<Attempt> => {
+              // Meaning only: the layout engine places the answer's words.
+              const composed = editFromAnswer(
+                current,
+                answer.answer,
+                preset,
+                transcript,
+                headTrack,
+                measure,
+                backgrounds,
+                looks,
+              );
+              if (!composed.ok) {
+                return { ok: false, reasons: composed.reasons, rules: ["answer-edit"] };
+              }
+              engine.setAttribute(
+                "decide.dropped",
+                composed.record.filter((note) => note.action === "dropped").length,
+              );
+              // What the answer wrote: a fix showing a glossary word's heard form.
+              const glossary = glossaryChecks(composed.edit, transcript, preset);
+              if (glossary.length > 0) {
+                return {
+                  ok: false,
+                  reasons: glossary.map((check) => `${check.rule} ${check.item}: ${check.reason}`),
+                  rules: glossary.map((check) => check.rule),
+                };
+              }
+              // Built with the masks it will name: their fingerprints are known
+              // before any is made.
+              const { checks } = build(
+                withMasks(composed.edit, transcript),
+                transcript,
+                headTrack,
+                preset,
+                measure,
+              );
+              engine.setAttribute("decide.checks", checks.length);
+              return {
+                ok: true,
+                edit: composed.edit,
+                answer: answer.answer,
+                record: composed.record,
+                placed: {
+                  edit: composed.edit,
+                  record: composed.record,
+                  unplaced: composed.unplaced,
+                  free: composed.free,
+                },
+                checks,
+                reasons: [],
+              };
             },
-            checks,
-            reasons: [],
-          };
+          );
         };
+        // Each attempt is a `decide.attempt` span with its number, its
+        // outcome and, when refused, the rules that refused it.
+        const attempt = (number: 1 | 2, previous?: string[]): Promise<Attempt> =>
+          inSpan(
+            ctx.telemetry,
+            stepContext,
+            "decide.attempt",
+            { "decide.attempt": number },
+            async (span, context) => {
+              const made = await answerOnce(context, previous);
+              if (made.ok) {
+                span.setAttribute("decide.outcome", "ok");
+              } else {
+                span.setAttributes({
+                  "decide.outcome": made.rules.includes("answer-json") ? "invalid" : "refused",
+                  "decide.refused_by": made.rules.join(","),
+                });
+              }
+              return made;
+            },
+          );
 
         // Exactly one retry, never a loop.
-        const first = await attempt().catch(permanentAfterAiCall);
-        const passed = first.ok ? first : await attempt(first.reasons).catch(permanentAfterAiCall);
+        const first = await attempt(1).catch(permanentAfterAiCall);
+        const passed = first.ok
+          ? first
+          : await attempt(2, first.reasons).catch(permanentAfterAiCall);
         if (!passed.ok) {
           const tail = [
             `${STEP}: the answer failed twice, version ${currentNumber} stays current`,
@@ -349,16 +432,36 @@ export function runDecide({
           photoIds,
           request,
           check: (json) => parseDecideAnswer(json, preset, transcript, photoIds, decideRules),
-          place: (merged) => {
-            const composed = editFromAnswer(
-              current,
-              merged,
-              preset,
-              transcript,
-              headTrack,
-              measure,
-              backgrounds,
-              looks,
+          // Each round is a `decide.editorial_round` span with its `chat`
+          // span and its placement (`decide.engine`) under it.
+          telemetry: ctx.telemetry,
+          inRound: (name, attributes, work) =>
+            inSpan(ctx.telemetry, stepContext, name, attributes, work),
+          place: async (merged, context) => {
+            const composed = await inSpan(
+              ctx.telemetry,
+              context,
+              "decide.engine",
+              {},
+              async (engine) => {
+                const result = editFromAnswer(
+                  current,
+                  merged,
+                  preset,
+                  transcript,
+                  headTrack,
+                  measure,
+                  backgrounds,
+                  looks,
+                );
+                if (result.ok) {
+                  engine.setAttribute(
+                    "decide.dropped",
+                    result.record.filter((note) => note.action === "dropped").length,
+                  );
+                }
+                return result;
+              },
             );
             if (!composed.ok) {
               log(`${STEP}: engine bug, reel ${reelId}: ${composed.reasons.join("; ")}`);
@@ -381,11 +484,19 @@ export function runDecide({
         const { answer } = editorial;
         const final = editorial.placed;
         const record = [...final.record, ...editorial.notes];
+        // Built again only when the editorial rounds changed the placement.
         const checks =
           editorial.placed === passed.placed
             ? passed.checks
-            : build(withMasks(final.edit, transcript), transcript, headTrack, preset, measure)
-                .checks;
+            : await inSpan(
+                ctx.telemetry,
+                stepContext,
+                "decide.engine",
+                { "decide.stage": "editorial checks" },
+                async () =>
+                  build(withMasks(final.edit, transcript), transcript, headTrack, preset, measure)
+                    .checks,
+              );
         // The engine's only allowed face covering: captions it put over the
         // face because nothing else was free, and an item the owner asked for
         // it let cover the face as its last step, each said so in its record.
@@ -424,6 +535,7 @@ export function runDecide({
           spawnTool,
           env,
           recordStored,
+          parent: stepContext,
         }).catch(permanentAfterAiCall);
         ctx.signal.throwIfAborted();
         // The forbids this answer sets or lifts, written with its version;
@@ -447,49 +559,62 @@ export function runDecide({
           });
         }
         // The title and summary, written from what the saved edit changes.
-        const summary = await writeVersionSummary({
-          ai,
-          tool,
-          cwd,
-          request,
-          checklist,
-          diff: { items: diffEdits(current, edit, transcript, preset), rules: rulesChanged },
-          record,
-          library,
-          preset,
-          reelId,
-          signal: ctx.signal,
-          log,
-        });
+        const summary = await inSpan(
+          ctx.telemetry,
+          stepContext,
+          "decide.version_summary",
+          {},
+          async (span, context) => {
+            const made = await writeVersionSummary({
+              ai,
+              tool,
+              cwd,
+              trace: { telemetry: ctx.telemetry, parent: context },
+              request,
+              checklist,
+              diff: { items: diffEdits(current, edit, transcript, preset), rules: rulesChanged },
+              record,
+              library,
+              preset,
+              reelId,
+              signal: ctx.signal,
+              log,
+            });
+            span.setAttribute("decide.summary_source", made.source);
+            return made;
+          },
+        );
         ctx.signal.throwIfAborted();
         // Its tokens and cost count, its model never replaces the editor's.
         usage = addUsage(usage, { ...summary.usage, model: null });
-        const saved = await saveVersion(
-          { rows, blobs, keyPrefix, newId },
-          {
-            reelId,
-            parentId: currentId,
-            restoredFromId: null,
-            request,
-            model: usage.model,
-            promptVersion: PROMPT_VERSION,
-            changeTitle: summary.title,
-            changeSummary: summary.summary,
-            // The engine's build checks: empty unless the engine broke a rule.
-            checks,
-            // The answer has no free style field; a kept item may still carry one.
-            usedFreeField: usedFreeField(edit),
-            unexpressed: answer.unexpressed,
-            freeField: [],
-            rejectedReasons: first.ok ? [] : first.reasons,
-            engineRecord: record,
-            checklist,
-            forbid: {
-              photos: answer.behind_rules.photos === "keep" ? null : after.photos,
-              bigWord: answer.behind_rules.big_word === "keep" ? null : after.bigWord,
+        const saved = await inSpan(ctx.telemetry, stepContext, "decide.save_version", {}, () =>
+          saveVersion(
+            { rows, blobs, keyPrefix, newId },
+            {
+              reelId,
+              parentId: currentId,
+              restoredFromId: null,
+              request,
+              model: usage.model,
+              promptVersion: PROMPT_VERSION,
+              changeTitle: summary.title,
+              changeSummary: summary.summary,
+              // The engine's build checks: empty unless the engine broke a rule.
+              checks,
+              // The answer has no free style field; a kept item may still carry one.
+              usedFreeField: usedFreeField(edit),
+              unexpressed: answer.unexpressed,
+              freeField: [],
+              rejectedReasons: first.ok ? [] : first.reasons,
+              engineRecord: record,
+              checklist,
+              forbid: {
+                photos: answer.behind_rules.photos === "keep" ? null : after.photos,
+                bigWord: answer.behind_rules.big_word === "keep" ? null : after.bigWord,
+              },
+              edit,
             },
-            edit,
-          },
+          ),
         ).catch(permanentAfterAiCall);
         log(engineRecordLine(reelId, saved.number, record));
         trace.getSpan(stepContext)?.setAttribute("reel.tracks_items", trackItems(edit));

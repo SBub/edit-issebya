@@ -10,7 +10,7 @@ import {
   summaryJsonSchema,
   summaryTemplate,
 } from "@edit-issebya/edit";
-import type { AiRunner } from "../ai.ts";
+import type { AiRequest, AiRunner } from "../ai.ts";
 import type { Tool } from "../step-runner.ts";
 import type { AiUsage } from "../step-store.ts";
 import { fenced } from "./prompt.ts";
@@ -23,7 +23,14 @@ export const SUMMARY_MODEL = "claude-haiku-5-5";
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed prompt
 const TEMPLATE = readFileSync(new URL("./summary.md", import.meta.url), "utf8");
 
-const NO_USAGE: AiUsage = { inputTokens: null, outputTokens: null, costUsd: null, model: null };
+const NO_USAGE: AiUsage = {
+  inputTokens: null,
+  outputTokens: null,
+  costUsd: null,
+  model: null,
+  cacheReadTokens: null,
+  cacheWriteTokens: null,
+};
 
 export interface SummaryInput {
   request: string | null;
@@ -90,6 +97,7 @@ export async function writeVersionSummary({
   reelId,
   signal,
   log = console.log,
+  trace,
 }: SummaryInput & {
   ai: AiRunner;
   tool: Tool;
@@ -98,6 +106,8 @@ export async function writeVersionSummary({
   reelId: string;
   signal?: AbortSignal;
   log?: (line: string) => void;
+  // The call's `chat` span goes under this span; without it the call is not traced.
+  trace?: AiRequest["trace"];
 }): Promise<VersionSummary> {
   const template = (why: string, usage: AiUsage): VersionSummary => {
     log(`decide: summary from the template, reel ${reelId}: ${why} (${SUMMARY_PROMPT_VERSION})`);
@@ -117,6 +127,7 @@ export async function writeVersionSummary({
       schema: summaryJsonSchema(),
       cwd,
       model: SUMMARY_MODEL,
+      ...(trace ? { trace } : {}),
     });
   } catch (error) {
     if (signal?.aborted) throw error;

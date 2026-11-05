@@ -1,4 +1,5 @@
 import { copyFile, mkdir, rm } from "node:fs/promises";
+import type { Context } from "@opentelemetry/api";
 import { join } from "node:path";
 import type { Storage } from "@edit-issebya/storage";
 import type { AiRunner } from "../ai.ts";
@@ -55,13 +56,20 @@ async function describeStep({
     ctx,
     {
       name: STEP,
-      async work(tool: Tool) {
+      async work(tool: Tool, stepContext: Context) {
         const cwd = join(scratchDir, "describe");
         await rm(cwd, { recursive: true, force: true });
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
         await mkdir(cwd, { recursive: true });
         await copyFile(largePath, join(cwd, READ_FILE));
-        let usage: AiUsage = { inputTokens: null, outputTokens: null, costUsd: null, model: null };
+        let usage: AiUsage = {
+          inputTokens: null,
+          outputTokens: null,
+          costUsd: null,
+          model: null,
+          cacheReadTokens: null,
+          cacheWriteTokens: null,
+        };
         try {
           const attempt = async (previous?: string[]): Promise<Attempt> => {
             const answer = await ai.call(tool, {
@@ -69,6 +77,7 @@ async function describeStep({
               schema: describeJsonSchema,
               cwd,
               readFile: READ_FILE,
+              trace: { telemetry: ctx.telemetry, parent: stepContext },
             });
             usage = addUsage(usage, answer.usage);
             if (answer.kind === "unavailable") throw new AiUnavailable(answer.reason);

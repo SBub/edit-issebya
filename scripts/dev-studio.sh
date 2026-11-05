@@ -2,6 +2,7 @@
 # One command for the reel studio in local development (the owner's machine only).
 #
 #   yarn dev:studio                    checks, then runs web + studio + worker until Ctrl-C
+#   MONITORING=1 yarn dev:studio       the same, and the worker exports to local Grafana (docker-compose.monitoring.yml)
 #   yarn dev:studio --check            the checks only (also: yarn dev:studio:status)
 #   yarn dev:studio add-owner <email>  creates a confirmed user in the LOCAL auth
 #   yarn dev:studio errors             the worker's last failures in development, in plain words
@@ -22,6 +23,11 @@ STUDIO_URL="http://localhost:3000/studio"
 WORKER_ERRORS="${WORKER_STATE_DIR:-$HOME/.edit-issebya-worker/dev}/errors.jsonl"
 MAILPIT_URL="http://127.0.0.1:54434"
 SUPABASE_STUDIO_URL="http://127.0.0.1:54433"
+# Local monitoring (MONITORING=1), from docker-compose.monitoring.yml. Grafana is on 3300, not 3000,
+# because the landing page owns 3000.
+MONITORING_COMPOSE="$ROOT/docker-compose.monitoring.yml"
+MONITORING_UI_URL="http://localhost:3300"
+MONITORING_OTLP_URL="http://localhost:4318"
 
 fail() {
   echo "dev:studio: $1" >&2
@@ -137,11 +143,32 @@ start_group() {
   PGIDS+=("$(ps -o pgid= -p $! | tr -d ' ')")
 }
 
+# MONITORING=1: starts the local otel-lgtm container. It is left running on exit, since it is cheap to
+# keep and its data survives; `docker compose -f docker-compose.monitoring.yml down` stops it.
+start_monitoring() {
+  docker compose -f "$MONITORING_COMPOSE" up -d ||
+    fail "docker compose up for the monitoring stack failed (see the output above)"
+  ok "Local monitoring is up (Grafana, Tempo, Loki, Prometheus)"
+}
+
 start_all() {
   local port
   for port in 3000 3001; do
     port_in_use "$port" && fail "Port $port is already in use: stop whatever holds it, then retry"
   done
+
+  # Only the worker gets the OTLP endpoint, for that one command. Node's --env-file does not override
+  # a variable already in the environment, so these win over any line in apps/worker/.env.development.
+  local worker_env=()
+  if [ "${MONITORING:-}" = 1 ]; then
+    start_monitoring
+    worker_env=(
+      "OTEL_EXPORTER_OTLP_ENDPOINT=$MONITORING_OTLP_URL"
+      # Empty on purpose: a PostHog token in .env.development never goes to the local container.
+      "OTEL_EXPORTER_OTLP_HEADERS="
+      "OTEL_SERVICE_NAME=edit-issebya-worker-dev"
+    )
+  fi
 
   set -m
   trap 'stop_all; exit 130' INT
@@ -149,7 +176,7 @@ start_all() {
   trap 'stop_all' EXIT
 
   start_group bash -c 'STUDIO_PORT=3001 yarn turbo run dev --filter=./apps/web --filter=./apps/studio'
-  start_group bash -c 'yarn workspace @edit-issebya/worker worker 2>&1 | awk "{ print \"worker: \" \$0; fflush() }"'
+  start_group env ${worker_env[@]+"${worker_env[@]}"} bash -c 'yarn workspace @edit-issebya/worker worker 2>&1 | awk "{ print \"worker: \" \$0; fflush() }"'
 
   local ready=0 i pg
   for i in $(seq 1 180); do
@@ -161,6 +188,10 @@ start_all() {
   done
   [ "$ready" = 1 ] || fail "$STUDIO_URL did not answer within 3 minutes"
 
+  if [ "${MONITORING:-}" = 1 ]; then
+    echo "  Grafana (worker traces, logs):  $MONITORING_UI_URL"
+    echo "  Stop the monitoring container:  docker compose -f docker-compose.monitoring.yml down"
+  fi
   cat <<EOF
 
   Studio:                http://localhost:3000/studio
