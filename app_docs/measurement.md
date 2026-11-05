@@ -191,6 +191,15 @@ Claude Code's default model, so theirs are `chat`; the version summary passes `c
   `gen_ai.usage.cache_write.input_tokens` when non-zero (parts of the input tokens above).
 - `edit_issebya.ai.cost_usd`: the cost as Claude Code reports it. A custom attribute, because the
   standard has none. Never a price we computed.
+- Claude Code's own timings, from the top level of its result (custom attributes, span facts only;
+  no step row keeps them):
+  - `edit_issebya.claude.duration_ms`: the whole Claude Code run, start to finish, as the CLI reports
+    it.
+  - `edit_issebya.claude.duration_api_ms`: the time spent waiting on the model API.
+  - `edit_issebya.claude.overhead_ms`: the CLI's own time, `duration_ms` minus `duration_api_ms`. Set
+    only when both are reported and the result is not negative.
+  - `edit_issebya.claude.num_turns`: the model round trips. With tools off, more than 1 suggests
+    `--json-schema` costs an extra round trip.
 - A value Claude Code did not report is left out.
 - `error.type` and an error status when the call does not succeed (the OpenTelemetry rule for a
   failed operation): `unavailable` (the usage limit, signed out: the job itself waits, and its job
@@ -198,6 +207,18 @@ Claude Code's default model, so theirs are `chat`; the version summary passes `c
   `broken` too, with an `exception` event).
 
 To see every AI call in Tempo, TraceQL: `{ span.gen_ai.operation.name = "chat" }`.
+
+To split one call's time, compare three durations:
+
+- The `chat` span's duration: the whole call as the worker sees it (the Claude Code process and
+  the parse of its output).
+- The `exec claude` span under it: the child process alone, from spawn to exit. The gap between
+  the two is the worker's own work around the process.
+- `edit_issebya.claude.duration_ms` on the `chat` span: the CLI's own clock for its run, as the CLI
+  reports it. Compare it with `exec claude` to see how much of the process time the CLI accounts for.
+
+Within `duration_ms`, `duration_api_ms` is the model API's share and `overhead_ms` is the CLI's own
+share. A large `overhead_ms` points at Claude Code itself, a large `duration_api_ms` at the model.
 
 ### Tool calls (`exec` spans)
 
@@ -310,7 +331,9 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
   span, no exporter; the cut-out under decide), `editorial.test.ts` (a round as its own span, its
   `chat` span under it, an unavailable round).
 - AI calls: `ai.test.ts` (`the chat span of a call`: name, kind, operation, provider, request and
-  response model, the input tokens with cache, the cost, the error types, no parent means no span).
+  response model, the input tokens with cache, the cost, the Claude Code timings and the overhead
+  (the fixture's 5207, 4999, 2, 208; a missing one left out; an untraced call unchanged), the error
+  types, no parent means no span).
 - Tool calls: `step-runner.test.ts` (`exec spans`: one span per call under the step, the row's CPU and
   peak equal to the calls', a script's name and subcommand with no path, the parent a call names, a
   non-zero exit, a spawn error, an abort, no exporter), and `ai.test.ts` (`chat > exec claude` under a
@@ -341,7 +364,9 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
 - Never let a span change a step: no row, measurement, AI call, retry or error depends on a span. A
   stage that throws marks its own span as an error and the step fails as before.
 - Every model call is one `chat` span with `gen_ai.*` attributes, never invented `ai.*` names; the
-  cost is `edit_issebya.ai.cost_usd` because the conventions have no cost attribute.
+  cost is `edit_issebya.ai.cost_usd` because the conventions have no cost attribute. Claude Code's
+  timings are `edit_issebya.claude.*` for the same reason; each is what the CLI reports, and the one
+  value we derive is `overhead_ms` (duration minus API duration, never set when negative).
 - Never put a tool call's command line, its arguments, its stdin or its environment on its `exec`
   span: the executable's base name, the argument count, a plain-word subcommand and the measurements
   only. A prompt, a schema or a reel's path never reaches a span.

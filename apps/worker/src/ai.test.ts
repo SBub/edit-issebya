@@ -392,6 +392,10 @@ describe("the chat span of a call", () => {
       "gen_ai.usage.output_tokens": 52,
       "gen_ai.usage.cache_write.input_tokens": 145193,
       "edit_issebya.ai.cost_usd": 1.1625919999999998,
+      "edit_issebya.claude.duration_ms": 5207,
+      "edit_issebya.claude.duration_api_ms": 4999,
+      "edit_issebya.claude.num_turns": 2,
+      "edit_issebya.claude.overhead_ms": 208,
     });
     expect(chat?.status.code).not.toBe(SpanStatusCode.ERROR);
   });
@@ -495,6 +499,80 @@ describe("the chat span of a call", () => {
       "process.executable.name": "claude",
       "process.exit.code": 0,
     });
+  });
+
+  it("carries Claude Code's own timings from the captured result, and the overhead", async () => {
+    const { trace: traced, finish } = tracing();
+    await fakeAiRunner([captured]).call(NEVER, { ...REQUEST, trace: traced });
+    const { spans } = await finish();
+    const chat = spans.find((span) => span.name === "chat");
+    expect(chat?.attributes).toMatchObject({
+      "edit_issebya.claude.duration_ms": 5207,
+      "edit_issebya.claude.duration_api_ms": 4999,
+      "edit_issebya.claude.num_turns": 2,
+      "edit_issebya.claude.overhead_ms": 208,
+    });
+  });
+
+  it("carries the timings of an unavailable result too (the signed-out envelope)", async () => {
+    const { trace: traced, finish } = tracing();
+    await fakeAiRunner([JSON.parse(testdata("claude-signed-out.json"))]).call(NEVER, {
+      ...REQUEST,
+      trace: traced,
+    });
+    const { spans } = await finish();
+    const chat = spans.find((span) => span.name === "chat");
+    expect(chat?.attributes).toMatchObject({
+      "error.type": "unavailable",
+      "edit_issebya.claude.duration_ms": 412,
+      "edit_issebya.claude.duration_api_ms": 0,
+      "edit_issebya.claude.num_turns": 1,
+      "edit_issebya.claude.overhead_ms": 412,
+    });
+  });
+
+  it("leaves out each timing the JSON lacks, and the overhead unless both are there and it is not negative", async () => {
+    const { trace: traced, finish } = tracing();
+    const runner = fakeAiRunner([
+      { ...resultEnvelope({ ok: true }), duration_ms: 300 },
+      { ...resultEnvelope({ ok: true }), duration_ms: 100, duration_api_ms: 250 },
+      {
+        ...resultEnvelope({ ok: true }),
+        duration_ms: "fast",
+        duration_api_ms: 50,
+        num_turns: null,
+      },
+    ]);
+    for (let i = 0; i < 3; i += 1) await runner.call(NEVER, { ...REQUEST, trace: traced });
+    const { spans } = await finish();
+    const [first, second, third] = spans.filter((span) => span.name === "chat");
+    expect(first?.attributes).toEqual(
+      expect.objectContaining({ "edit_issebya.claude.duration_ms": 300 }),
+    );
+    for (const name of [
+      "edit_issebya.claude.duration_api_ms",
+      "edit_issebya.claude.num_turns",
+      "edit_issebya.claude.overhead_ms",
+    ]) {
+      expect(first?.attributes).not.toHaveProperty(name);
+    }
+    expect(second?.attributes).toMatchObject({
+      "edit_issebya.claude.duration_ms": 100,
+      "edit_issebya.claude.duration_api_ms": 250,
+    });
+    expect(second?.attributes).not.toHaveProperty("edit_issebya.claude.overhead_ms");
+    expect(third?.attributes).toMatchObject({ "edit_issebya.claude.duration_api_ms": 50 });
+    expect(third?.attributes).not.toHaveProperty("edit_issebya.claude.duration_ms");
+    expect(third?.attributes).not.toHaveProperty("edit_issebya.claude.num_turns");
+    expect(third?.attributes).not.toHaveProperty("edit_issebya.claude.overhead_ms");
+  });
+
+  it("changes nothing untraced: the same result as the parser, and no span", async () => {
+    const { finish } = tracing();
+    const result = await fakeAiRunner([captured]).call(NEVER, REQUEST);
+    expect(result).toEqual(parseClaudeResult(JSON.stringify(captured)));
+    const { spans } = await finish();
+    expect(spans.map((span) => span.name)).toEqual(["decide.test"]);
   });
 
   it("is not made without a parent: the call runs, returns its answer, and starts no span", async () => {

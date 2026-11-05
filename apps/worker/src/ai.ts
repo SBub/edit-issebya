@@ -119,22 +119,63 @@ export function aiUnavailableReason(text: string): string | null {
   return UNAVAILABLE.find(({ pattern }) => pattern.test(text))?.reason ?? null;
 }
 
+// Claude Code's own timings from its result envelope: how long the whole CLI
+// run took, how long the model API took, and the model round trips. Span facts
+// only (the `chat` span), never a step measurement. A value Claude Code did not
+// report is null.
+export interface ClaudeTiming {
+  durationMs: number | null;
+  durationApiMs: number | null;
+  numTurns: number | null;
+}
+
+const NO_TIMING: ClaudeTiming = { durationMs: null, durationApiMs: null, numTurns: null };
+
+// What one Claude Code call gave: its result, and the timings when it printed
+// a result envelope at all.
+interface ClaudeOutput {
+  result: AiResult;
+  timing: ClaudeTiming;
+}
+
+function timingOf(envelope: Record<string, unknown>): ClaudeTiming {
+  return {
+    durationMs: count(envelope.duration_ms),
+    durationApiMs: count(envelope.duration_api_ms),
+    numTurns: count(envelope.num_turns),
+  };
+}
+
 // Claude Code's `--output-format json` result: `structured_output` holds the
 // answer `--json-schema` asked for, `result` the text answer (JSON as a
 // fallback). Anything else is a broken answer, with whatever usage could be
 // read.
 export function parseClaudeResult(stdout: string): AiResult {
+  return readClaudeOutput(stdout).result;
+}
+
+function readClaudeOutput(stdout: string): ClaudeOutput {
   let envelope: unknown;
   try {
     envelope = JSON.parse(stdout);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    return { kind: "broken", reason: `stdout is not JSON (${reason})`, usage: NO_USAGE };
+    return {
+      result: { kind: "broken", reason: `stdout is not JSON (${reason})`, usage: NO_USAGE },
+      timing: NO_TIMING,
+    };
   }
   if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
-    return { kind: "broken", reason: "stdout is not a result object", usage: NO_USAGE };
+    return {
+      result: { kind: "broken", reason: "stdout is not a result object", usage: NO_USAGE },
+      timing: NO_TIMING,
+    };
   }
-  const result = envelope as Record<string, unknown>;
+  const envelopeRecord = envelope as Record<string, unknown>;
+  return { result: answerOf(envelopeRecord), timing: timingOf(envelopeRecord) };
+}
+
+function answerOf(result: Record<string, unknown>): AiResult {
   const usage = usageOf(result);
   if (result.is_error === true) {
     const detail = typeof result.result === "string" ? result.result : String(result.subtype);
@@ -155,6 +196,23 @@ export function parseClaudeResult(stdout: string): AiResult {
   return { kind: "broken", reason: "no structured_output and no result", usage };
 }
 
+// The chat span's custom timing attributes: each one Claude Code reported, and
+// the overhead (the CLI's own time: duration minus the API's) when both are
+// present and it is not negative.
+function claudeTimingAttributes(timing: ClaudeTiming): Attributes {
+  const attributes: Attributes = {};
+  if (timing.durationMs !== null) attributes["edit_issebya.claude.duration_ms"] = timing.durationMs;
+  if (timing.durationApiMs !== null) {
+    attributes["edit_issebya.claude.duration_api_ms"] = timing.durationApiMs;
+  }
+  if (timing.numTurns !== null) attributes["edit_issebya.claude.num_turns"] = timing.numTurns;
+  if (timing.durationMs !== null && timing.durationApiMs !== null) {
+    const overhead = timing.durationMs - timing.durationApiMs;
+    if (overhead >= 0) attributes["edit_issebya.claude.overhead_ms"] = overhead;
+  }
+  return attributes;
+}
+
 // The `chat` span of one model call, a child of `request.trace`'s span, with
 // the OpenTelemetry GenAI semantic conventions (status Development:
 // https://github.com/open-telemetry/semantic-conventions-genai). Its name is
@@ -167,9 +225,9 @@ export function parseClaudeResult(stdout: string): AiResult {
 // exec span.
 async function inChatSpan(
   request: AiRequest,
-  work: (chat: Context | undefined) => Promise<AiResult>,
+  work: (chat: Context | undefined) => Promise<ClaudeOutput>,
 ): Promise<AiResult> {
-  if (!request.trace) return work(undefined);
+  if (!request.trace) return (await work(undefined)).result;
   const { telemetry, parent } = request.trace;
   const model = request.model;
   const span = telemetry.tracer.startSpan(
@@ -185,8 +243,9 @@ async function inChatSpan(
     parent,
   );
   try {
-    const result = await work(trace.setSpan(parent, span));
+    const { result, timing } = await work(trace.setSpan(parent, span));
     span.setAttributes(chatAttributes(result.usage));
+    span.setAttributes(claudeTimingAttributes(timing));
     if (result.kind !== "answer") {
       span.setAttribute("error.type", result.kind);
       span.setStatus({ code: SpanStatusCode.ERROR });
@@ -258,10 +317,12 @@ function claudeRunner(path: string): AiRunner {
           const reason = aiUnavailableReason(
             error instanceof Error ? error.message : String(error),
           );
-          if (reason) return { kind: "unavailable", reason, usage: NO_USAGE };
+          if (reason) {
+            return { result: { kind: "unavailable", reason, usage: NO_USAGE }, timing: NO_TIMING };
+          }
           throw error;
         }
-        return parseClaudeResult(stdout);
+        return readClaudeOutput(stdout);
       });
     },
   };
@@ -287,7 +348,7 @@ export function fakeAiRunner(script: unknown[]): FakeAiRunner {
         modelArgs(request.model);
         const entry = script[Math.min(calls.length, script.length - 1)];
         calls.push(request);
-        return parseClaudeResult(typeof entry === "string" ? entry : JSON.stringify(entry));
+        return readClaudeOutput(typeof entry === "string" ? entry : JSON.stringify(entry));
       });
     },
   };
