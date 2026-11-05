@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # One command for the reel studio in local development (the owner's machine only).
 #
-#   yarn dev:studio                    checks, then runs web + studio + worker until Ctrl-C
-#   MONITORING=1 yarn dev:studio       the same, and the worker exports to local Grafana (docker-compose.monitoring.yml)
+#   yarn dev:studio                    checks, then runs web + studio + the worker in Docker until Ctrl-C
 #   yarn dev:studio --check            the checks only (also: yarn dev:studio:status)
 #   yarn dev:studio add-owner <email>  creates a confirmed user in the LOCAL auth
 #   yarn dev:studio errors             the worker's last failures in development, in plain words
@@ -10,6 +9,9 @@
 # Works on the owner's local Supabase stack (project `edit-issebya`, supabase/config.toml), never
 # on the ADW stack (`edit-issebya-adw`) and never on the hosted project. Reads no `.env*` file: it
 # only tests that the three app files exist. Written for the bash 3.2 that ships with macOS.
+#
+# The worker runs in Docker (compose.yaml); Claude Code and the cut-out tool run natively behind two
+# bridges this script starts (app_docs/worker-container.md). Local monitoring always starts too.
 set -uo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
@@ -23,11 +25,19 @@ STUDIO_URL="http://localhost:3000/studio"
 WORKER_ERRORS="${WORKER_STATE_DIR:-$HOME/.edit-issebya-worker/dev}/errors.jsonl"
 MAILPIT_URL="http://127.0.0.1:54434"
 SUPABASE_STUDIO_URL="http://127.0.0.1:54433"
-# Local monitoring (MONITORING=1), from docker-compose.monitoring.yml. Grafana is on 3300, not 3000,
+# Local monitoring, from docker-compose.monitoring.yml. Grafana is on 3300, not 3000,
 # because the landing page owns 3000.
 MONITORING_COMPOSE="$ROOT/docker-compose.monitoring.yml"
 MONITORING_UI_URL="http://localhost:3300"
-MONITORING_OTLP_URL="http://localhost:4318"
+# The worker container reaches the Mac's OTLP port through host.docker.internal.
+MONITORING_OTLP_URL="http://host.docker.internal:4318"
+# The worker's compose file, and the scratch folder it shares with the cut-out bridge at the same
+# absolute path on both sides. Set here, so it never depends on a line in an env file.
+WORKER_COMPOSE="$ROOT/compose.yaml"
+export WORKER_SCRATCH_DIR="$HOME/.edit-issebya-worker/scratch"
+BRIDGE_PORTS="8791 8792"
+VSEG_SOURCE="apps/worker/tools/vseg/vseg.swift"
+VSEG_BINARY="apps/worker/tools/vseg/.build/vseg"
 
 fail() {
   echo "dev:studio: $1" >&2
@@ -70,9 +80,63 @@ check_env_files() {
   ok "Env files exist (web, studio, worker)"
 }
 
+# Builds the cut-out tool when it is missing or older than its source.
+build_vseg() {
+  if [ -x "$VSEG_BINARY" ] && [ ! "$VSEG_SOURCE" -nt "$VSEG_BINARY" ]; then
+    ok "Cut-out tool is built"
+    return
+  fi
+  echo "..  Building the cut-out tool (vseg)"
+  yarn workspace @edit-issebya/worker build:vseg || fail "build:vseg failed (see the output above)"
+  ok "Cut-out tool built"
+}
+
+# Compose never gets the keyboard: its interactive menu puts the terminal in raw mode, and then
+# Ctrl-C no longer reaches this script.
+export COMPOSE_MENU=false
+worker_compose() { docker compose -f "$WORKER_COMPOSE" "$@" </dev/null; }
+
+# Leftovers of a run that did not stop cleanly: the worker container and old bridges.
+clean_leftovers() {
+  worker_compose down --remove-orphans >/dev/null 2>&1
+  local port pid
+  for port in $BRIDGE_PORTS; do
+    for pid in $(lsof -nP -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null); do
+      if ps -o command= -p "$pid" | grep -q "src/bridge/"; then
+        kill -TERM "$pid" 2>/dev/null && echo "..  Stopped a leftover bridge on port $port"
+      else
+        fail "Port $port is in use by something other than a bridge: stop it, then retry"
+      fi
+    done
+  done
+  sleep 1
+}
+
+start_bridges() {
+  mkdir -p "$WORKER_SCRATCH_DIR" || fail "Could not create $WORKER_SCRATCH_DIR"
+  start_group bash -c 'yarn workspace @edit-issebya/worker bridge:claude 2>&1 | awk "{ print \"claude-bridge: \" \$0; fflush() }"'
+  start_group bash -c 'yarn workspace @edit-issebya/worker bridge:cutout 2>&1 | awk "{ print \"cutout-bridge: \" \$0; fflush() }"'
+  local port i up
+  for port in $BRIDGE_PORTS; do
+    up=0
+    for i in $(seq 1 30); do
+      curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$port/health" && up=1 && break
+      sleep 1
+    done
+    [ "$up" = 1 ] || fail "The bridge on port $port did not start (see the output above)"
+  done
+  ok "Bridges are up (claude $(echo $BRIDGE_PORTS | cut -d' ' -f1), cut-out $(echo $BRIDGE_PORTS | cut -d' ' -f2))"
+}
+
+build_worker_image() {
+  worker_compose build worker || fail "docker compose build for the worker failed (see the output above)"
+  ok "Worker image built"
+}
+
+# The doctor runs inside the worker container, against the running bridges.
 run_doctor() {
   local out
-  out="$(yarn workspace @edit-issebya/worker doctor 2>&1)" || {
+  out="$(worker_compose run --rm --no-deps -T worker node src/doctor.ts 2>&1)" || {
     echo "$out" >&2
     fail "the worker doctor failed (see its output above)"
   }
@@ -84,6 +148,11 @@ run_checks() {
   check_supabase
   apply_migrations
   check_env_files
+  build_vseg
+  clean_leftovers
+  install_traps
+  start_bridges
+  build_worker_image
   run_doctor
 }
 
@@ -123,7 +192,7 @@ stop_all() {
   stopping=1
   set +m
   echo
-  echo "Stopping web, studio and worker..."
+  echo "Stopping web, studio, worker and bridges..."
   local pg i
   for pg in ${PGIDS[@]+"${PGIDS[@]}"}; do kill -TERM -- "-$pg" 2>/dev/null; done
   for i in 1 2 3 4 5 6 7 8 9 10; do
@@ -134,16 +203,23 @@ stop_all() {
   done
   for pg in ${PGIDS[@]+"${PGIDS[@]}"}; do kill -KILL -- "-$pg" 2>/dev/null; done
   wait 2>/dev/null
+  # Whatever compose left behind (a killed `compose up` may not stop its container).
+  worker_compose down >/dev/null 2>&1
   echo "Stopped."
 }
 
-# Starts a pipeline in its own process group (job control is on) and records the group id.
+# Starts a pipeline in its own process group and records the group id.
+# Job control is on only for the launch: left on, every foreground command (each `sleep` of the wait
+# loops) would get its own process group and the terminal, and Ctrl-C would reach that command, never
+# this script's trap.
 start_group() {
+  set -m
   "$@" &
+  set +m
   PGIDS+=("$(ps -o pgid= -p $! | tr -d ' ')")
 }
 
-# MONITORING=1: starts the local otel-lgtm container. It is left running on exit, since it is cheap to
+# Starts the local otel-lgtm container. It is left running on exit, since it is cheap to
 # keep and its data survives; `docker compose -f docker-compose.monitoring.yml down` stops it.
 start_monitoring() {
   docker compose -f "$MONITORING_COMPOSE" up -d ||
@@ -151,32 +227,34 @@ start_monitoring() {
   ok "Local monitoring is up (Grafana, Tempo, Loki, Prometheus)"
 }
 
-start_all() {
+# Every process this script starts is stopped on Ctrl-C, on kill, on a closed terminal (HUP) and on
+# exit; the worker container too (stop_all ends with compose down).
+installed_traps=0
+install_traps() {
+  [ "$installed_traps" = 1 ] && return
+  installed_traps=1
+  trap 'stop_all; exit 130' INT
+  trap 'stop_all; exit 143' TERM
+  trap 'stop_all; exit 129' HUP
+  trap 'stop_all' EXIT
+}
+
+# Runs before anything starts, so a busy port never leaves bridges or containers behind.
+check_ports() {
   local port
   for port in 3000 3001; do
     port_in_use "$port" && fail "Port $port is already in use: stop whatever holds it, then retry"
   done
+  return 0
+}
 
-  # Only the worker gets the OTLP endpoint, for that one command. Node's --env-file does not override
-  # a variable already in the environment, so these win over any line in apps/worker/.env.development.
-  local worker_env=()
-  if [ "${MONITORING:-}" = 1 ]; then
-    start_monitoring
-    worker_env=(
-      "OTEL_EXPORTER_OTLP_ENDPOINT=$MONITORING_OTLP_URL"
-      # Empty on purpose: a PostHog token in .env.development never goes to the local container.
-      "OTEL_EXPORTER_OTLP_HEADERS="
-      "OTEL_SERVICE_NAME=edit-issebya-worker-dev"
-    )
-  fi
-
-  set -m
-  trap 'stop_all; exit 130' INT
-  trap 'stop_all; exit 143' TERM
-  trap 'stop_all' EXIT
+start_all() {
+  start_monitoring
+  # The container exports to local Grafana (compose.yaml reads this; empty turns export off).
+  export WORKER_DOCKER_OTLP_ENDPOINT="$MONITORING_OTLP_URL"
 
   start_group bash -c 'STUDIO_PORT=3001 yarn turbo run dev --filter=./apps/web --filter=./apps/studio'
-  start_group env ${worker_env[@]+"${worker_env[@]}"} bash -c 'yarn workspace @edit-issebya/worker worker 2>&1 | awk "{ print \"worker: \" \$0; fflush() }"'
+  start_group bash -c 'docker compose -f "$0" up --no-build --menu=false worker </dev/null 2>&1 | awk "{ print \"worker: \" \$0; fflush() }"' "$WORKER_COMPOSE"
 
   local ready=0 i pg
   for i in $(seq 1 180); do
@@ -188,18 +266,16 @@ start_all() {
   done
   [ "$ready" = 1 ] || fail "$STUDIO_URL did not answer within 3 minutes"
 
-  if [ "${MONITORING:-}" = 1 ]; then
-    echo "  Grafana (worker traces, logs):  $MONITORING_UI_URL"
-    echo "  Stop the monitoring container:  docker compose -f docker-compose.monitoring.yml down"
-  fi
   cat <<EOF
 
   Studio:                http://localhost:3000/studio
   Magic link emails:     Mailpit $MAILPIT_URL
   Database:              Supabase Studio $SUPABASE_STUDIO_URL
   Worker errors:         $WORKER_ERRORS (yarn dev:studio errors)
+  Grafana (worker):      $MONITORING_UI_URL
   Sign in with the owner email; the link arrives in Mailpit.
-  Ctrl-C stops web, studio and worker.
+  Ctrl-C stops web, studio, the worker container and the bridges.
+  Monitoring keeps running: docker compose -f docker-compose.monitoring.yml down
 
 EOF
 
@@ -215,6 +291,6 @@ case "${1:-}" in
   --check | check | status) run_checks && echo "All checks passed; yarn dev:studio starts the studio." ;;
   add-owner) add_owner "${2:-}" ;;
   errors) yarn workspace @edit-issebya/worker dev:errors ;;
-  "") run_checks && start_all ;;
+  "") check_ports && run_checks && start_all ;;
   *) fail "unknown argument $1 (use --check, add-owner <email> or errors)" ;;
 esac

@@ -30,10 +30,11 @@ from the repository root.
 
 ### Run the studio locally
 
-One command from the repository root starts the landing page, the studio and the worker:
+One command from the repository root starts the landing page, the studio, the worker (in Docker, with
+its two native bridges) and local monitoring:
 
 ```bash
-yarn dev:studio                    # checks, then runs web + studio + worker; Ctrl-C stops all three
+yarn dev:studio                    # checks, then runs everything; Ctrl-C stops it all
 yarn dev:studio --check            # the checks only, no servers (same as yarn dev:studio:status)
 yarn dev:studio add-owner <email>  # once: creates the owner account in the local auth
 yarn dev:studio errors             # the worker's last failures in development, in plain words
