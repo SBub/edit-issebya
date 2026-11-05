@@ -1,6 +1,6 @@
 import { silentRuns } from "./envelope.ts";
 import type { RetimeSettings } from "./retime-preset.ts";
-import type { Word } from "./transcript.ts";
+import { type Transcript, type Word, remapTranscript } from "./transcript.ts";
 
 // One piece of the original clip at one speed: `orig` on the original
 // timeline, `new` on the retimed one (seconds).
@@ -111,7 +111,9 @@ function merge(pieces: readonly Piece[]): Piece[] {
 // (few words per second, a drawn-out word, a long pause after) play at the slow
 // speed, the rest at the base speed. Every boundary is a frame point strictly
 // inside a silent run, never on a word join; short gaps get their silent middle
-// frame slowed; pauses are cut only when maxPauseSeconds is a number.
+// frame slowed; when maxPauseSeconds is a number, every silent run of the audio
+// (before the speech, between, after) is shortened to it, whatever the
+// transcript's word times say: where the audio is silent, nobody speaks.
 export function planRetime({
   words,
   envelope,
@@ -188,19 +190,40 @@ export function planRetime({
     pieces = setSpeed(pieces, frame, frame + 1, settings.gapRate);
   }
 
-  // 6. Pause cutting: a pause longer than maxPauseSeconds (retimed) loses its middle.
+  // 6. Pause cutting by the audio: each silent run longer than maxPauseSeconds
+  // (retimed) keeps that much, word intervals ignored. A run between sounds
+  // loses whole frames around its middle; the run from the clip's start, or
+  // the one reaching the audio's end, loses the part away from the speech, to
+  // the clip's own start or end. Every cut point is a frame point strictly
+  // inside the run, so the end fade still falls on silence. A clip silent
+  // throughout is left whole.
   if (settings.maxPauseSeconds !== null) {
-    for (const run of joins) {
-      if (!run) continue;
-      const kept =
-        settings.maxPauseSeconds * speedAt(pieces, Math.round(((run[0] + run[1]) / 2) * fps));
-      if (length(run) <= kept) continue;
-      // Whole frames removed around the middle, both cut points inside the run.
-      const removed = Math.round((length(run) - kept) * fps);
+    const audioEnd = envelope.length * settings.envelopeFrameSeconds;
+    for (const run of runs) {
+      const leading = run[0] <= EPSILON;
+      const trailing = run[1] >= audioEnd - EPSILON;
+      if (leading && trailing) continue;
       const { first: lowest, last: highest } = frameRange(run, fps);
-      const cutFrom = Math.max(Math.round(((run[0] + run[1]) / 2) * fps - removed / 2), lowest);
-      const cutTo = Math.min(cutFrom + removed, highest);
-      if (cutFrom < cutTo) pieces = cut(pieces, cutFrom, cutTo);
+      const at = leading ? highest : trailing ? lowest : Math.round(((run[0] + run[1]) / 2) * fps);
+      const kept =
+        settings.maxPauseSeconds * speedAt(pieces, Math.min(Math.max(at, 0), endFrame - 1));
+      if (length(run) <= kept) continue;
+      let cutFrom: number;
+      let cutTo: number;
+      if (leading) {
+        cutFrom = 0;
+        cutTo = Math.min(Math.round((run[1] - kept) * fps), highest);
+      } else if (trailing) {
+        cutFrom = Math.max(Math.round((run[0] + kept) * fps), lowest);
+        cutTo = endFrame;
+      } else {
+        const removed = Math.round((length(run) - kept) * fps);
+        cutFrom = Math.max(Math.round(((run[0] + run[1]) / 2) * fps - removed / 2), lowest);
+        cutTo = Math.min(cutFrom + removed, highest);
+      }
+      if (cutFrom < cutTo && (cutFrom > 0 || cutTo < endFrame)) {
+        pieces = cut(pieces, cutFrom, cutTo);
+      }
     }
   }
 
@@ -223,4 +246,54 @@ export function remapTime(plan: RetimePlan, t: number): number {
     if (t <= b) return segment.new[0] + (t - a) / segment.speed;
   }
   return plan.durationSeconds;
+}
+
+function ms(seconds: number): number {
+  return Math.round(seconds * 1000) / 1000;
+}
+
+// The retimed transcript, word starts by the audio (pure). A word whose start
+// lies inside a silent run that speech follows starts where the run ends (the
+// speech onset), in a removed part of a pause or in the part kept, so a
+// caption never leads the voice; word ends are not moved (a time inside a cut
+// maps to the cut point). Then every time goes through the plan. A moved word
+// starts at least a frame after the word before and lasts at least a frame;
+// no word starts later than a frame before the end (a word the transcript puts
+// in the trimmed trailing silence still shows); ids and order stay, starts
+// never decrease, no word ends before it starts.
+export function retimeTranscript({
+  transcript,
+  plan,
+  envelope,
+  settings,
+}: {
+  transcript: Transcript;
+  plan: RetimePlan;
+  envelope: readonly number[];
+  settings: RetimeSettings;
+}): Transcript {
+  const audioEnd = envelope.length * settings.envelopeFrameSeconds;
+  const pauses = silentRuns(envelope, settings.silenceDb, settings.envelopeFrameSeconds).filter(
+    (run) => run[1] < audioEnd - EPSILON,
+  );
+  const onset = (t: number) =>
+    pauses.find((run) => t >= run[0] - EPSILON && t < run[1] - EPSILON)?.[1] ?? t;
+  const snapped = transcript.words.map((word) => ({ ...word, start: onset(word.start) }));
+  const mapped = remapTranscript({ words: snapped }, (t) => remapTime(plan, t)).words;
+  const frame = 1 / settings.frameRate;
+  let previous = -Infinity;
+  const words = mapped.map((word, index): Word => {
+    const moved = snapped[index]!.start !== transcript.words[index]!.start;
+    const start = Math.min(
+      ms(Math.max(word.start, moved ? previous + frame : previous)),
+      ms(plan.durationSeconds - frame),
+    );
+    const end = Math.min(
+      Math.max(word.end, moved ? ms(start + frame) : start),
+      plan.durationSeconds,
+    );
+    previous = start;
+    return { ...word, start, end: Math.max(end, start) };
+  });
+  return { words };
 }

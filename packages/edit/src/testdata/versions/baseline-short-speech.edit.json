@@ -5,17 +5,17 @@
   "inputs": {
     "footage": {
       "step": "retime",
-      "fingerprint": "f3f3e150e0dac6e8b85f7de8c20e42dc8b76baba83e13b4ea49dc2d897e1f7e8",
+      "fingerprint": "7ab01e62528d8855f980fd499c16b3c229f9713034cbfc90cc88b3af00f59d08",
       "file": "source.mp4"
     },
     "transcript": {
       "step": "retime",
-      "fingerprint": "f3f3e150e0dac6e8b85f7de8c20e42dc8b76baba83e13b4ea49dc2d897e1f7e8",
+      "fingerprint": "7ab01e62528d8855f980fd499c16b3c229f9713034cbfc90cc88b3af00f59d08",
       "file": "transcript.json"
     },
     "head_track": {
       "step": "head_track",
-      "fingerprint": "a76a7c82132dd8a7717a7f461b5ae94a023e20be150dff57cf8f540175aa04df",
+      "fingerprint": "f9962111896c8f92a9393e88c094da6de0e2db4973b5fc430106f7a7817b1104",
       "file": "head-track.json"
     }
   },

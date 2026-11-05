@@ -147,15 +147,51 @@ fingerprint. Tags are not part of a fingerprint.
 3. Every speed boundary sits on a frame point strictly inside a silent run, never on a word join.
 4. A silent run shorter than `minGapAfterSeconds` after speed-up that holds a whole frame has that
    middle frame slowed to `gapRate`.
-5. Pause cutting: only when `maxPauseSeconds` is a number; a longer silent run is shortened to it by
-   removing its middle. `null` (the default) cuts nothing.
-6. The last piece carries an `endFadeSeconds` audio fade; the end is the duration rounded to a frame.
+5. Pause cutting, by the audio: when `maxPauseSeconds` is a number (the default, 0.3), every
+   silent run of the envelope longer than that once sped up is shortened to it, whatever the
+   transcript says (where the audio is silent, nobody speaks; word intervals are never consulted).
+   A run between two sounds loses whole frames around its middle, so it plays as `maxPauseSeconds`
+   (give or take a frame, about half kept on each side); the run from the clip's start (leading
+   silence) and the one reaching the end of the audio (trailing silence) lose the part away from
+   the speech, so `maxPauseSeconds` stays next to it. Every cut point is a frame point strictly
+   inside its run. A run must be longer than `maxPauseSeconds` at its speed (about 0.32 s) to be
+   cut at all, and the part kept guards soft speech at the edges of a silence; `silentRuns` itself
+   has no minimum length. A clip silent throughout (one run from start to end) is left whole.
+   Audio and video of a piece are trimmed at the same frame, so a cut adds no drift. A pause at a
+   speed boundary keeps its boundary inside the silence; its two halves play at their own speeds.
+   Short-gap frames (rule 4) never reach the limit, so the two rules never meet. `null` cuts
+   nothing. `retime.json` maps original to new time (a time inside a cut maps to the cut point).
+6. Word times by the audio: retime's `transcript.json` (same ids, same order) is the corrected one.
+   A word whose start lies inside a silent run that speech follows starts at that run's end (the
+   speech onset), whether that part of the run was removed or kept, so a caption never leads the
+   voice; then every time goes through `retime.json`. Word ends are not moved (an end inside a cut
+   maps to the cut point). A moved word starts at least a frame after the word before and lasts at
+   least a frame (whisper's pinned opening words become a frame apart at the onset); no word
+   starts later than a frame before the end (a word placed in the trimmed trailing silence still
+   shows); starts never decrease and no word ends before it starts. A start in the trailing run is
+   not moved (no speech follows).
+7. The last piece carries an `endFadeSeconds` audio fade; the end is the duration rounded to a frame,
+   or the trailing trim point (still in silence, so the fade falls on silence).
 
 `RETIME_PRESET` defaults: `baseSpeed` 1.05, `slowSpeed` 1.1, `slowWordsPerSecond` 2.7,
 `drawnOutWordSeconds` 0.6, `longPauseSeconds` 0.3, `phraseGapSeconds` 0.1,
 `minSlowStretchSeconds` 0.8, `silenceDb` -40, `envelopeFrameSeconds` 0.01,
-`minGapAfterSeconds` 0.065, `gapRate` 0.6, `maxPauseSeconds` null, `frameRate` 30,
+`minGapAfterSeconds` 0.065, `gapRate` 0.6, `maxPauseSeconds` 0.3, `frameRate` 30,
 `endFadeSeconds` 0.03, plus the encode settings (`libx264`, `medium`, crf 18, `256k`).
+
+Pause cutting is always on: the owner switched `maxPauseSeconds` from `null` to 0.4 on 2026-11-04
+as the first step toward the rough cut (#166), with no per-reel switch, and lowered it to 0.3 on
+2026-11-04 (tighter pauses between words and at the clip's start and end; a settings change, so
+the fingerprint changes and retime re-runs without a version bump). Retime version 2 added the
+leading and trailing trim but trusted the transcript's word intervals (no cut under a word); version
+3 (owner decision 2026-11-04) cuts and times words by the audio instead, and replaces a separate
+transcript timing fix: whisper (`small`, through HyperFrames) pins the first word at 0 across
+leading silence and starts a word after a long pause inside it (reel IMG_2013: "There" at 0 with
+speech from about 3.5 s, so version 2 trimmed nothing and captions showed up to 3 s early). A cut
+joins two frames of the same take, so the picture may jump slightly at a cut. The setting and the
+version are in the fingerprint, so retime and every step after it re-run for a new upload; a reel
+processed before keeps its footage, and Start over (which decides again from version 1, whose
+inputs name the old retime outputs) does not re-run retime.
 
 ## How to Use
 
@@ -193,7 +229,11 @@ build:vseg`. After changing `vseg.swift`, bump `MASK_TOOL_VERSION` and
 - `yarn test` (pure, no ffmpeg, HyperFrames, database or network): fingerprints, every settings
   leaf and the version changing the fingerprint, `run-pipeline.test.ts` (hits spawn nothing, a
   missing output re-runs only its step, resume, statuses, clean-up), probe (HDR, VFR), planner on
-  synthetic and `testdata/rethink-work/` data, `head-track-step.test.ts` and `person-mask.test.ts`
+  synthetic and `testdata/rethink-work/` data (pause cuts, leading and trailing trims by the
+  audio with a transcript pinned at 0, word starts moved to the speech onset from a removed or a
+  kept silence, a cut at a speed boundary, a clip silent throughout; the reference's longest
+  silence is 0.31 s, so the default cuts nothing there), `retime-encode.test.ts` (audio and video
+  of every planned piece trimmed at the same frame), `head-track-step.test.ts` and `person-mask.test.ts`
   (the sample, mask and decode calls, the person mask's arguments and JSON result), and `pipeline-fixtures.test.ts`, which fails when a
   version or setting change leaves `fixtures/pipeline/` stale.
 - `yarn workspace @edit-issebya/worker test:tools` (`*.tools.test.ts`): real ffmpeg and HyperFrames
@@ -216,6 +256,9 @@ build:vseg`. After changing `vseg.swift`, bump `MASK_TOOL_VERSION` and
 - Every step declares everything it reads (inputs, settings, version) and reads nothing else.
 - Never overwrite a stored output; uploads are put-if-absent.
 - Word ids never change after transcribe; retime keeps them.
+- Retime cuts silence by the audio envelope only, never by the transcript's word intervals, and
+  never removes a frame of a non-silent run; word starts follow the audio (rule 6), never the
+  other way round.
 - Bump a step's version whenever its behaviour changes, then re-run `fixtures:pipeline`.
 - Never run HyperFrames through `npx` or `yarn dlx`, and always with `HYPERFRAMES_NO_TELEMETRY=1`.
 - Never write to the reference repository (`issebya-homes-reels`).
