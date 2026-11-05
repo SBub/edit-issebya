@@ -79,6 +79,11 @@ client, identifies the signed-in user and sends `studio_*` events.
   writes them.
 - A `describe_photo` job's trace uses the photo's id in place of the reel's (`traceIdForJob`), and its
   spans carry `photo.id` in place of `reel.id` (`targetAttributes`).
+- `decide`'s stages are child spans of its `step decide` span, one per stage, with the `decide.*`
+  names and attributes listed under Local monitoring. `step backgrounds` and `step cutout` are
+  children of the decide span when decide runs them (the step takes an optional `parent`); their
+  step rows are the same either way. `src/telemetry.ts` `inSpan` runs a stage in its span. Each AI
+  call is a `chat` span under the stage that made it (`src/ai.ts` `inChatSpan`, see AI calls below).
 - Step measurements are never sent to PostHog as events: PostHog reads the tables as a data source.
 - Exceptions: `app_docs/error-tracking.md`.
 
@@ -144,6 +149,77 @@ and longest seconds, and the median seconds per second of retimed footage.
    export to the same project, told apart by the service name.
 3. In the studio, send an event with `capture("studio_...", { reel_id })` from a client component.
 
+### AI calls (`chat` spans)
+
+Every model call is one `chat` span, a `CLIENT` span under the stage that made the call, with the
+attributes of the OpenTelemetry GenAI semantic conventions (status Development:
+https://github.com/open-telemetry/semantic-conventions-genai). `src/ai.ts` `inChatSpan` makes it
+around the Claude Code call itself, so the real runner and the test double both get it. The name is
+`chat <request model>`, or `chat` when the call passes no model (decide's attempts and rounds use
+Claude Code's default model, so theirs are `chat`; the version summary passes `claude-haiku-5-5`).
+
+- `gen_ai.operation.name` = `chat`, `gen_ai.provider.name` = `anthropic`: always.
+- `gen_ai.request.model`: the model the call asked for (`--model`), when it passes one.
+- `gen_ai.response.model`: the model that wrote the most output, from `modelUsage`.
+- `gen_ai.usage.input_tokens`: every input token Claude Code reports, `input_tokens` plus the cache
+  reads and writes (the Anthropic rule of the conventions: Anthropic reports the cache apart).
+- `gen_ai.usage.output_tokens`; `gen_ai.usage.cache_read.input_tokens` and
+  `gen_ai.usage.cache_write.input_tokens` when non-zero (parts of the input tokens above).
+- `edit_issebya.ai.cost_usd`: the cost as Claude Code reports it. A custom attribute, because the
+  standard has none. Never a price we computed.
+- A value Claude Code did not report is left out.
+- `error.type` and an error status when the call does not succeed (the OpenTelemetry rule for a
+  failed operation): `unavailable` (the usage limit, signed out: the job itself waits, and its job
+  span is not an error) or `broken` (the answer is not JSON or has no answer; a thrown call is
+  `broken` too, with an `exception` event).
+
+To see every AI call in Tempo, TraceQL: `{ span.gen_ai.operation.name = "chat" }`.
+
+### decide's spans
+
+The `step decide` span has one child per stage. On a normal run (automatic, one attempt, no
+behind item, the summary call made) the children run in this order; a retry adds a second
+`decide.attempt`, and a rounds run adds `decide.editorial_round` spans:
+
+```
+step decide                        reel.tracks_items
+├─ decide.load                     the current version, transcript, head track, parse
+├─ step backgrounds                cache hit, or its own measurements
+├─ decide.prepare                  rules, library, schema, prompt input
+├─ decide.photo_looks              decide.photos
+├─ decide.attempt                  decide.attempt 1, decide.outcome, decide.refused_by
+│  ├─ chat                         gen_ai.* (the attempt's AI call)
+│  └─ decide.engine                decide.dropped, decide.checks
+├─ decide.editorial_round          decide.round, decide.outcome (only when a round runs)
+│  ├─ chat                         gen_ai.* (the round's AI call)
+│  └─ decide.engine                decide.dropped (the merged answer placed again)
+├─ decide.engine                   decide.stage "editorial checks" (only when a round placed the answer again)
+├─ step cutout                     (only with a behind item)
+├─ decide.version_summary          decide.summary_source
+│  └─ chat claude-haiku-5-5        gen_ai.* (the summary's AI call)
+└─ decide.save_version
+```
+
+- `decide.attempt`: `decide.attempt` (1 or 2); `decide.outcome`: `ok`, `invalid` (the answer is
+  not JSON), or `refused` (the schema, the placement or the glossary check); `decide.refused_by`
+  the rule names, comma-separated, when refused.
+- `decide.editorial_round`: `decide.round` (1 to 3); `decide.outcome`: `placed`, `invalid`,
+  `refused`, `not_placed` (the engine could not place the merged answer) or `unavailable`.
+- `decide.engine`: `decide.dropped` (items the engine left out) and `decide.checks` (layout checks
+  that failed on its output; `decide.stage` marks the final rebuild after the rounds).
+- `decide.version_summary`: `decide.summary_source` is `ai` or `template` (the code's fallback).
+- The stage spans carry no AI facts; the `chat` span under each stage does (see AI calls above).
+  The step row keeps the summed totals.
+- A stage that throws marks its own span with error status and an `exception` event; the step
+  then fails, is retried or waits exactly as before (the step row says the same).
+
+To read decide in Tempo: Explore, the Tempo data source, TraceID, the reel's uuid without dashes.
+Open `step decide`; its children are the stages above, and any time inside decide that no stage
+covers shows as a gap between them. The AI time is in each `chat` span; a long `decide.engine` is
+the layout, not the AI.
+
+The photo description (`describe_photo`) makes its call as a `chat` span under its step span.
+
 ## Configuration
 
 - Worker: the three `OTEL_*` variables above; both endpoint and headers are needed to export.
@@ -160,6 +236,13 @@ and longest seconds, and the median seconds per second of retimed footage.
   pipes killed, no call started after the abort), `summary.test.ts`, `time-report.test.ts`, `process-tree.test.ts`, `telemetry.test.ts` (one
   trace per reel, span tree, logs linked to spans, no request when export is off against a local HTTP
   server, positive control), `steps/receive.test.ts`.
+- Decide's spans: `telemetry.test.ts` (`inSpan`: the child's parent and attributes, an error marked
+  and rethrown, telemetry that exports nothing), `run-decide.test.ts` (`runDecide spans`: a normal
+  run's children in order with their facts, a retry as two attempts, a thrown error on the attempt's
+  span, no exporter; the cut-out under decide), `editorial.test.ts` (a round as its own span, its
+  `chat` span under it, an unavailable round).
+- AI calls: `ai.test.ts` (`the chat span of a call`: name, kind, operation, provider, request and
+  response model, the input tokens with cache, the cost, the error types, no parent means no span).
 - Studio unit tests: `src/lib/analytics.test.ts`, `src/lib/track.test.ts`.
 - DB test: `db-tests/steps-measurements.test.ts` pins the exact column set of `steps`, so a money column
   fails it.
@@ -183,6 +266,10 @@ and longest seconds, and the median seconds per second of retimed footage.
   write analytics cookies or storage (no `cookieless_mode`, no opt-in or opt-out calls).
 - Never export OTLP unless both endpoint and headers are set; tests blank them.
 - Never create telemetry providers at module load or register them globally.
+- Never let a span change a step: no row, measurement, AI call, retry or error depends on a span. A
+  stage that throws marks its own span as an error and the step fails as before.
+- Every model call is one `chat` span with `gen_ai.*` attributes, never invented `ai.*` names; the
+  cost is `edit_issebya.ai.cost_usd` because the conventions have no cost attribute.
 
 ## Notes
 

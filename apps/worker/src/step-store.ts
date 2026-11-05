@@ -17,11 +17,16 @@ export interface StepMeasurements {
 }
 
 // What one or more AI calls used, raw as reported (null where not reported).
+// `inputTokens` counts every input token (fresh, cache writes, cache reads);
+// the two cache counts are its parts, read for the trace only: the step row
+// stores `aiMeasurements`, which never includes them.
 export interface AiUsage {
   inputTokens: number | null;
   outputTokens: number | null;
   costUsd: number | null;
   model: string | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
 }
 
 // Two calls' usage summed (null only where neither reported it); the model is
@@ -33,6 +38,8 @@ export function addUsage(total: AiUsage, usage: AiUsage): AiUsage {
     outputTokens: sum(total.outputTokens, usage.outputTokens),
     costUsd: sum(total.costUsd, usage.costUsd),
     model: usage.model ?? total.model,
+    cacheReadTokens: sum(total.cacheReadTokens, usage.cacheReadTokens),
+    cacheWriteTokens: sum(total.cacheWriteTokens, usage.cacheWriteTokens),
   };
 }
 

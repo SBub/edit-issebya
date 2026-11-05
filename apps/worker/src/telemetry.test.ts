@@ -1,6 +1,6 @@
 import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { trace } from "@opentelemetry/api";
+import { SpanStatusCode, trace } from "@opentelemetry/api";
 import { InMemoryLogRecordExporter, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -12,6 +12,7 @@ import {
   type Telemetry,
   createTelemetry,
   endJobSpan,
+  inSpan,
   startJobSpan,
   targetAttributes,
   traceIdForJob,
@@ -242,6 +243,64 @@ describe("reel size attributes", () => {
     endJobSpan(span, "done");
     const keys = Object.keys(exporter.getFinishedSpans()[0]!.attributes);
     expect(keys.filter((key) => key.startsWith("reel.") && key !== "reel.id")).toEqual([]);
+    await telemetry.shutdown();
+  });
+});
+
+describe("inSpan", () => {
+  it("runs the work in a child span of the parent, with its attributes and context", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const { span: job, context: jobContext } = startJobSpan(telemetry, TEST_JOB);
+    const value = await inSpan(
+      telemetry,
+      jobContext,
+      "decide.test",
+      { "decide.attempt": 1 },
+      async (span, context) => {
+        span.setAttribute("decide.outcome", "ok");
+        // A span started under the work's context is its child.
+        const inner = telemetry.tracer.startSpan("inner", {}, context);
+        inner.end();
+        return "done";
+      },
+    );
+    endJobSpan(job, "done");
+    expect(value).toBe("done");
+    const spans = exporter.getFinishedSpans();
+    const child = spans.find((s) => s.name === "decide.test");
+    const inner = spans.find((s) => s.name === "inner");
+    expect(child?.parentSpanContext?.spanId).toBe(job.spanContext().spanId);
+    expect(child?.attributes).toMatchObject({ "decide.attempt": 1, "decide.outcome": "ok" });
+    expect(inner?.parentSpanContext?.spanId).toBe(child?.spanContext().spanId);
+    await telemetry.shutdown();
+  });
+
+  it("marks the span failed, records the error, rethrows it unchanged and always ends the span", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const { context: jobContext } = startJobSpan(telemetry, TEST_JOB);
+    const thrown = new Error("the call broke");
+    const error = await inSpan(telemetry, jobContext, "decide.test", {}, async () => {
+      throw thrown;
+    }).catch((caught: unknown) => caught);
+    expect(error).toBe(thrown);
+    const span = exporter.getFinishedSpans().find((s) => s.name === "decide.test");
+    expect(span?.status.code).toBe(SpanStatusCode.ERROR);
+    expect(span?.events.map((event) => event.name)).toEqual(["exception"]);
+    await telemetry.shutdown();
+  });
+
+  it("works with telemetry that exports nothing", async () => {
+    const telemetry = createTelemetry({});
+    const { context } = startJobSpan(telemetry, TEST_JOB);
+    await expect(inSpan(telemetry, context, "decide.test", {}, async () => 7)).resolves.toBe(7);
     await telemetry.shutdown();
   });
 });

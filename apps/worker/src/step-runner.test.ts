@@ -390,7 +390,14 @@ describe("runToolsStep stdin", () => {
 });
 
 describe("runToolsStep AI usage and StepError", () => {
-  const usage = { inputTokens: 1500, outputTokens: 456, costUsd: 0.0123, model: "claude-x" };
+  const usage = {
+    inputTokens: 1500,
+    outputTokens: 456,
+    costUsd: 0.0123,
+    model: "claude-x",
+    cacheReadTokens: null,
+    cacheWriteTokens: null,
+  };
   const ok: ChildRun = {
     code: 0,
     exitSignal: null,

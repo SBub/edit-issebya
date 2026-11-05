@@ -3,6 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ROOT_CONTEXT, SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
+import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   EMPTY_DECIDE_ANSWER,
@@ -13,6 +15,7 @@ import {
   resultEnvelope,
 } from "./ai.ts";
 import type { Tool } from "./step-runner.ts";
+import { createTelemetry } from "./telemetry.ts";
 
 // One real `claude -p --output-format json --json-schema` result, ids
 // replaced by placeholders (decide/testdata/claude-result.json).
@@ -234,6 +237,8 @@ describe("parseClaudeResult", () => {
         outputTokens: 52,
         costUsd: 1.1625919999999998,
         model: "claude-opus-5-5",
+        cacheReadTokens: 0,
+        cacheWriteTokens: 145193,
       },
     });
   });
@@ -242,7 +247,14 @@ describe("parseClaudeResult", () => {
     expect(parseClaudeResult(JSON.stringify({ is_error: false, result: '{"ok":true}' }))).toEqual({
       kind: "answer",
       answer: { ok: true },
-      usage: { inputTokens: null, outputTokens: null, costUsd: null, model: null },
+      usage: {
+        inputTokens: null,
+        outputTokens: null,
+        costUsd: null,
+        model: null,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+      },
     });
   });
 
@@ -308,7 +320,14 @@ describe("an AI that is not available", () => {
     expect(await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(failing, REQUEST)).toEqual({
       kind: "unavailable",
       reason: "Claude Code is signed out",
-      usage: { inputTokens: null, outputTokens: null, costUsd: null, model: null },
+      usage: {
+        inputTokens: null,
+        outputTokens: null,
+        costUsd: null,
+        model: null,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+      },
     });
   });
 
@@ -322,5 +341,130 @@ describe("an AI that is not available", () => {
   it("is replayed by the double from the usage-limit fixture", async () => {
     const runner = fakeAiRunner([JSON.parse(testdata("claude-usage-limit.json"))]);
     expect(await runner.call(NEVER, REQUEST)).toMatchObject({ kind: "unavailable" });
+  });
+});
+
+// A parent span under test, its telemetry, and the trace option that puts a
+// call's `chat` span under that parent. `finish` ends the parent and returns
+// every span that ended.
+function tracing() {
+  const exporter = new InMemorySpanExporter();
+  const telemetry = createTelemetry(
+    {},
+    { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+  );
+  const parent = telemetry.tracer.startSpan("decide.test");
+  const parentContext = trace.setSpan(ROOT_CONTEXT, parent);
+  return {
+    trace: { telemetry, parent: parentContext },
+    async finish() {
+      parent.end();
+      const spans = exporter.getFinishedSpans();
+      await telemetry.shutdown();
+      return { spans, parent };
+    },
+  };
+}
+
+describe("the chat span of a call", () => {
+  it("is one CLIENT span under the parent, named with the request model, with the GenAI attributes", async () => {
+    const { trace: traced, finish } = tracing();
+    const tool: Tool = async () => JSON.stringify(captured);
+    const result = await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(tool, {
+      ...REQUEST,
+      model: "claude-haiku-5-5",
+      trace: traced,
+    });
+    expect(result).toMatchObject({ kind: "answer" });
+    const { spans, parent } = await finish();
+    const chat = spans.find((span) => span.name === "chat claude-haiku-5-5");
+    expect(chat?.kind).toBe(SpanKind.CLIENT);
+    expect(chat?.parentSpanContext?.spanId).toBe(parent.spanContext().spanId);
+    // The captured envelope: 2 fresh input tokens, 145193 cache writes, no
+    // cache reads (so none is recorded), 52 output tokens, its cost as reported.
+    expect(chat?.attributes).toEqual({
+      "gen_ai.operation.name": "chat",
+      "gen_ai.provider.name": "anthropic",
+      "gen_ai.request.model": "claude-haiku-5-5",
+      "gen_ai.response.model": "claude-opus-5-5",
+      "gen_ai.usage.input_tokens": 2 + 145193,
+      "gen_ai.usage.output_tokens": 52,
+      "gen_ai.usage.cache_write.input_tokens": 145193,
+      "edit_issebya.ai.cost_usd": 1.1625919999999998,
+    });
+    expect(chat?.status.code).not.toBe(SpanStatusCode.ERROR);
+  });
+
+  it("counts cache reads and writes into the input tokens, and names the call chat without a request model", async () => {
+    const { trace: traced, finish } = tracing();
+    const envelope = {
+      ...resultEnvelope({ ok: true }),
+      usage: {
+        input_tokens: 10,
+        cache_creation_input_tokens: 60,
+        cache_read_input_tokens: 30,
+        output_tokens: 5,
+      },
+      modelUsage: { "claude-opus-5-5": { outputTokens: 5 } },
+    };
+    await fakeAiRunner([envelope]).call(NEVER, { ...REQUEST, trace: traced });
+    const { spans } = await finish();
+    const chat = spans.find((span) => span.name === "chat");
+    expect(chat?.attributes).toMatchObject({
+      "gen_ai.response.model": "claude-opus-5-5",
+      "gen_ai.usage.input_tokens": 100,
+      "gen_ai.usage.output_tokens": 5,
+      "gen_ai.usage.cache_read.input_tokens": 30,
+      "gen_ai.usage.cache_write.input_tokens": 60,
+    });
+    expect(chat?.attributes).not.toHaveProperty("gen_ai.request.model");
+    // The envelope reports a cost of 0, which is a reported value and kept.
+    expect(chat?.attributes["edit_issebya.ai.cost_usd"]).toBe(0);
+  });
+
+  it("marks a broken answer as an error with error.type broken", async () => {
+    const { trace: traced, finish } = tracing();
+    await fakeAiRunner(["not json"]).call(NEVER, { ...REQUEST, trace: traced });
+    const { spans } = await finish();
+    const chat = spans.find((span) => span.name === "chat");
+    expect(chat?.attributes["error.type"]).toBe("broken");
+    expect(chat?.status.code).toBe(SpanStatusCode.ERROR);
+  });
+
+  it("marks a thrown call as an error with error.type broken, records it and rethrows it", async () => {
+    const { trace: traced, finish } = tracing();
+    const failing: Tool = () => Promise.reject(new Error("decide exited with 1\nsegfault"));
+    await expect(
+      aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(failing, { ...REQUEST, trace: traced }),
+    ).rejects.toThrow("segfault");
+    const { spans } = await finish();
+    const chat = spans.find((span) => span.name === "chat");
+    expect(chat?.attributes["error.type"]).toBe("broken");
+    expect(chat?.status.code).toBe(SpanStatusCode.ERROR);
+    expect(chat?.events.map((event) => event.name)).toEqual(["exception"]);
+  });
+
+  it("marks an unavailable call with error.type unavailable and an error status", async () => {
+    const { trace: traced, finish } = tracing();
+    const stdout = testdata("claude-signed-out-stdout.txt");
+    const failing: Tool = () => Promise.reject(new Error(`decide exited with 1\n${stdout}`));
+    const result = await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(failing, {
+      ...REQUEST,
+      trace: traced,
+    });
+    expect(result).toMatchObject({ kind: "unavailable" });
+    const { spans } = await finish();
+    const chat = spans.find((span) => span.name === "chat");
+    expect(chat?.attributes["error.type"]).toBe("unavailable");
+    expect(chat?.status.code).toBe(SpanStatusCode.ERROR);
+  });
+
+  it("is not made without a parent: the call runs, returns its answer, and starts no span", async () => {
+    const { finish } = tracing();
+    const result = await fakeAiRunner([resultEnvelope({ ok: true })]).call(NEVER, REQUEST);
+    expect(result).toMatchObject({ kind: "answer", answer: { ok: true } });
+    // Only the test's own parent span ended.
+    const { spans } = await finish();
+    expect(spans.map((span) => span.name)).toEqual(["decide.test"]);
   });
 });

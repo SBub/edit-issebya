@@ -6,10 +6,13 @@ import {
   type UnplacedItem,
   checklistOutcome,
 } from "@edit-issebya/edit";
+import { type Context, ROOT_CONTEXT, SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { describe, expect, it } from "vitest";
 import { fakeAiRunner, resultEnvelope } from "../ai.ts";
 import { AiUnavailable } from "../failure.ts";
 import type { Tool } from "../step-runner.ts";
+import { type InSpan, type Telemetry, createTelemetry, inSpan } from "../telemetry.ts";
 import {
   EDITORIAL_ROUNDS,
   type Placed,
@@ -85,13 +88,17 @@ function rounds({
   place = () => placedPass,
   check = (json: unknown) => ({ ok: true as const, answer: json as DecideAnswer }),
   answer = ANSWER,
+  inRound,
+  telemetry,
 }: {
   script: unknown[];
   request?: string | null;
   placed?: Placed;
-  place?: (answer: DecideAnswer) => Placed | null;
+  place?: (answer: DecideAnswer, context: Context) => Placed | null;
   check?: (json: unknown) => { ok: true; answer: DecideAnswer } | { ok: false; reasons: string[] };
   answer?: DecideAnswer;
+  inRound?: InSpan;
+  telemetry?: Telemetry;
 }) {
   const ai = fakeAiRunner(script);
   const run = runEditorialRounds({
@@ -107,6 +114,8 @@ function rounds({
     place,
     answer,
     placed,
+    ...(inRound ? { inRound } : {}),
+    ...(telemetry ? { telemetry } : {}),
   });
   return { ai, run };
 }
@@ -254,5 +263,72 @@ describe("editorialPrompt", () => {
     expect(prompt).not.toMatch(/\d\s?px\b/);
     expect(prompt).not.toMatch(/"(top|left|right)"/);
     expect(prompt).not.toMatch(/\{\{\w+\}\}/);
+  });
+});
+
+describe("runEditorialRounds spans", () => {
+  it("traces each round as decide.editorial_round with its number and outcome, the call and the placement under it", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const { run } = rounds({
+      script: [move],
+      telemetry,
+      inRound: (name, attributes, work) => inSpan(telemetry, ROOT_CONTEXT, name, attributes, work),
+      place: (_answer, context) => {
+        // Stands in for the engine's span under the round's context.
+        telemetry.tracer.startSpan("decide.engine", {}, context).end();
+        return unplacedPass(false);
+      },
+    });
+    const result = await run;
+    expect(result.rounds).toBe(1);
+    const spans = exporter.getFinishedSpans();
+    const round = spans.find((s) => s.name === "decide.editorial_round");
+    expect(round?.attributes).toMatchObject({ "decide.round": 1, "decide.outcome": "placed" });
+    const engine = spans.find((s) => s.name === "decide.engine");
+    expect(engine?.parentSpanContext?.spanId).toBe(round?.spanContext().spanId);
+    // The round's call is a `chat` span under the round, with its own facts.
+    const chat = spans.find((s) => s.name === "chat");
+    expect(chat?.parentSpanContext?.spanId).toBe(round?.spanContext().spanId);
+    expect(chat?.kind).toBe(SpanKind.CLIENT);
+    expect(chat?.attributes).toMatchObject({
+      "gen_ai.operation.name": "chat",
+      "gen_ai.provider.name": "anthropic",
+    });
+    expect(chat?.status.code).not.toBe(SpanStatusCode.ERROR);
+    expect(Object.keys(round!.attributes).filter((key) => key.startsWith("ai."))).toEqual([]);
+    await telemetry.shutdown();
+  });
+
+  it("marks a round the AI cannot answer with error.type and an error status on its chat span", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const unavailable = {
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      result: "Claude AI usage limit reached",
+    };
+    const { run } = rounds({
+      script: [unavailable],
+      telemetry,
+      inRound: (name, attributes, work) => inSpan(telemetry, ROOT_CONTEXT, name, attributes, work),
+    });
+    // The automatic run ends its rounds on an unavailable AI; the step goes on.
+    expect((await run).ended).toMatch(/the AI is not available/);
+    const spans = exporter.getFinishedSpans();
+    expect(spans.find((s) => s.name === "decide.editorial_round")?.attributes).toMatchObject({
+      "decide.outcome": "unavailable",
+    });
+    const chat = spans.find((s) => s.name === "chat");
+    expect(chat?.attributes["error.type"]).toBe("unavailable");
+    expect(chat?.status.code).toBe(SpanStatusCode.ERROR);
+    await telemetry.shutdown();
   });
 });

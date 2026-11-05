@@ -153,6 +153,37 @@ export function endJobSpan(span: Span, outcome: string, size?: ReelSizeHolder): 
   span.end();
 }
 
+// Runs `work` in a span of its own, a child of `parent` (a Context carrying
+// the span it belongs to). `work` gets the span, to set attributes on it, and
+// its Context, the parent of any span it starts. A thrown error marks the span
+// as failed and is rethrown unchanged; the span always ends. Spans are
+// observation only: the work runs, and fails, as it would without them.
+export async function inSpan<T>(
+  telemetry: Telemetry,
+  parent: Context,
+  name: string,
+  attributes: Attributes,
+  work: (span: Span, context: Context) => Promise<T>,
+): Promise<T> {
+  const span = telemetry.tracer.startSpan(name, { attributes }, parent);
+  try {
+    return await work(span, trace.setSpan(parent, span));
+  } catch (error) {
+    span.recordException(error instanceof Error ? error : String(error));
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    throw error;
+  } finally {
+    span.end();
+  }
+}
+
+// The same helper, bound to a parent: `inSpan` for the spans under one Context.
+export type InSpan = <T>(
+  name: string,
+  attributes: Attributes,
+  work: (span: Span, context: Context) => Promise<T>,
+) => Promise<T>;
+
 export type StepStream = "stdout" | "stderr";
 
 // Emits each output line as a log record in the step span's context, so it

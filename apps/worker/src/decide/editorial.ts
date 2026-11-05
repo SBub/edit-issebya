@@ -1,5 +1,12 @@
 import { readFileSync } from "node:fs";
 import {
+  type Context,
+  INVALID_SPAN_CONTEXT,
+  ROOT_CONTEXT,
+  type Span,
+  trace,
+} from "@opentelemetry/api";
+import {
   type DecideAnswer,
   type Edit,
   type EngineNote,
@@ -17,6 +24,7 @@ import type { AiRunner } from "../ai.ts";
 import { AiUnavailable } from "../failure.ts";
 import type { Tool } from "../step-runner.ts";
 import { type AiUsage, addUsage } from "../step-store.ts";
+import type { InSpan, Telemetry } from "../telemetry.ts";
 import type { LibraryEntry } from "./input.ts";
 import { fenced } from "./prompt.ts";
 
@@ -130,9 +138,14 @@ export interface EditorialRun {
   request: string | null;
   // The merged answer checked again (the decide answer's own rules).
   check: (json: unknown) => { ok: true; answer: DecideAnswer } | { ok: false; reasons: string[] };
-  // The whole answer placed again; null when the engine's output does not
-  // parse (an engine bug: the rounds end).
-  place: (answer: DecideAnswer) => Placed | null;
+  // The whole answer placed again, under the round's span context; null when
+  // the engine's output does not parse (an engine bug: the rounds end).
+  place: (answer: DecideAnswer, context: Context) => Placed | null | Promise<Placed | null>;
+  // Runs each round in a span of its own (decide's spans); without it, none.
+  inRound?: InSpan;
+  // Each round's AI call is a `chat` span under the round's span, recorded
+  // with this telemetry; without it the calls are not traced.
+  telemetry?: Telemetry;
   answer: DecideAnswer;
   placed: Placed;
 }
@@ -149,7 +162,14 @@ export interface EditorialResult {
   ended: string | null;
 }
 
-const NO_USAGE: AiUsage = { inputTokens: null, outputTokens: null, costUsd: null, model: null };
+const NO_USAGE: AiUsage = {
+  inputTokens: null,
+  outputTokens: null,
+  costUsd: null,
+  model: null,
+  cacheReadTokens: null,
+  cacheWriteTokens: null,
+};
 
 // The editorial rounds after a placed answer. Each round sends the items to
 // decide on (every requested item left out; in the first round also the
@@ -174,13 +194,13 @@ export async function runEditorialRounds(run: EditorialRun): Promise<EditorialRe
     usage,
     ended,
   });
-  while (rounds < cap) {
-    const hasRoom = (item: UnplacedItem) =>
-      placed.free.some((sentence) => sentence.room_for.includes(item.kind));
-    const items = placed.unplaced.filter(
-      (item) => (run.request !== null && item.requested) || (rounds === 0 && hasRoom(item)),
-    );
-    if (items.length === 0) break;
+  // One round: its AI call and the placement of the merged answer. Returns
+  // why the rounds end, or null to go on.
+  const oneRound = async (
+    items: readonly UnplacedItem[],
+    span: Span,
+    context: Context,
+  ): Promise<string | null> => {
     const result = await run.ai.call(run.tool, {
       prompt: editorialPrompt(
         editorialInput({
@@ -194,27 +214,58 @@ export async function runEditorialRounds(run: EditorialRun): Promise<EditorialRe
       ),
       schema: editorialJsonSchema(run.transcript, items, run.photoIds),
       cwd: run.cwd,
+      ...(run.telemetry ? { trace: { telemetry: run.telemetry, parent: context } } : {}),
     });
     rounds += 1;
     usage = addUsage(usage, result.usage);
     if (result.kind === "unavailable") {
+      span.setAttribute("decide.outcome", "unavailable");
       if (run.request !== null && placed.unplaced.some((item) => item.requested)) {
         throw new AiUnavailable(result.reason);
       }
-      return end(`the AI is not available: ${result.reason}`);
+      return `the AI is not available: ${result.reason}`;
     }
-    if (result.kind === "broken")
-      return end(`the editorial answer was not valid JSON: ${result.reason}`);
+    if (result.kind === "broken") {
+      span.setAttribute("decide.outcome", "invalid");
+      return `the editorial answer was not valid JSON: ${result.reason}`;
+    }
     const parsed = parseEditorialAnswer(result.answer, run.transcript, items, run.photoIds);
-    if (!parsed.ok) return end(`the editorial answer was refused: ${parsed.reasons.join("; ")}`);
+    if (!parsed.ok) {
+      span.setAttribute("decide.outcome", "refused");
+      return `the editorial answer was refused: ${parsed.reasons.join("; ")}`;
+    }
     const merged = mergeEditorial(answer, parsed.answer, items, run.transcript, run.preset);
     const checked = run.check(merged.answer);
-    if (!checked.ok) return end(`the merged answer was refused: ${checked.reasons.join("; ")}`);
-    const again = run.place(checked.answer);
-    if (!again) return end("the merged answer could not be placed");
+    if (!checked.ok) {
+      span.setAttribute("decide.outcome", "refused");
+      return `the merged answer was refused: ${checked.reasons.join("; ")}`;
+    }
+    const again = await run.place(checked.answer, context);
+    if (!again) {
+      span.setAttribute("decide.outcome", "not_placed");
+      return "the merged answer could not be placed";
+    }
+    span.setAttribute("decide.outcome", "placed");
     answer = checked.answer;
     placed = again;
     notes.push(...merged.notes);
+    return null;
+  };
+
+  while (rounds < cap) {
+    const hasRoom = (item: UnplacedItem) =>
+      placed.free.some((sentence) => sentence.room_for.includes(item.kind));
+    const items = placed.unplaced.filter(
+      (item) => (run.request !== null && item.requested) || (rounds === 0 && hasRoom(item)),
+    );
+    if (items.length === 0) break;
+    const round = rounds + 1;
+    const ended = run.inRound
+      ? await run.inRound("decide.editorial_round", { "decide.round": round }, (span, context) =>
+          oneRound(items, span, context),
+        )
+      : await oneRound(items, trace.wrapSpanContext(INVALID_SPAN_CONTEXT), ROOT_CONTEXT);
+    if (ended !== null) return end(ended);
   }
   return { answer, placed, notes, rounds, usage, ended: null };
 }
