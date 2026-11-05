@@ -9,7 +9,7 @@ export interface StepMeasurements {
   peak_rss_bytes: number | null;
   bytes_in: number | null;
   bytes_out: number | null;
-  // An AI step's usage as Claude Code reported it; absent on every other step.
+  // An AI step's usage as OpenRouter reported it; absent on every other step.
   ai_input_tokens?: number | null;
   ai_output_tokens?: number | null;
   ai_cost_usd?: number | null;

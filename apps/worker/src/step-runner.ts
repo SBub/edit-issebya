@@ -79,8 +79,7 @@ export interface ToolCall {
   // Reads the tool's progress from its output lines (the two long steps
   // only); the step writes it to its row, throttled, and 100 before `done`.
   progress?: ProgressParser;
-  // The Context the call's `exec` span is a child of (the `chat` span of a
-  // Claude Code call); absent, the step's span.
+  // The Context the call's `exec` span is a child of; absent, the step's span.
   parent?: Context;
 }
 

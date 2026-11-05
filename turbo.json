@@ -62,7 +62,8 @@
         "STUDIO_URL",
         "STUDIO_PORT",
         "R2_*",
-        "NEXT_PUBLIC_SUPABASE_*"
+        "NEXT_PUBLIC_SUPABASE_*",
+        "OPENROUTER_API_KEY"
       ]
     },
     "start": {
@@ -80,7 +81,8 @@
         "STUDIO_URL",
         "STUDIO_PORT",
         "R2_*",
-        "NEXT_PUBLIC_SUPABASE_*"
+        "NEXT_PUBLIC_SUPABASE_*",
+        "OPENROUTER_API_KEY"
       ]
     },
     "test:e2e": {
@@ -105,7 +107,7 @@
         "NEXT_PUBLIC_SITE_URL",
         "R2_*",
         "WORKER_*",
-        "CLAUDE_CODE_PATH",
+        "OPENROUTER_API_KEY",
         "FFMPEG_PATH"
       ]
     },
@@ -162,7 +164,7 @@
         "NEXT_PUBLIC_SITE_URL",
         "R2_*",
         "WORKER_*",
-        "CLAUDE_CODE_PATH",
+        "OPENROUTER_API_KEY",
         "FFMPEG_PATH"
       ]
     }

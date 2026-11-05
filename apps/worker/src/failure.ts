@@ -66,7 +66,7 @@ export function nothingChangedRules(record: readonly { action: string; rule: str
   return ["no-change", ...drops.slice(0, 19)];
 }
 
-// The AI is not available (a usage limit, a signed-out Claude Code): the job
+// The AI is not available (no key, no credits, a rate limit, OpenRouter down): the job
 // waits and is taken again later.
 export class AiUnavailable extends Error {
   readonly reason: string;

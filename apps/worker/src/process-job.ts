@@ -186,7 +186,7 @@ export async function processJob(
               // Start over (temporary, for testing): decide alone, no
               // request, from version 1; saved as a new version.
               start_over: async () => decide(null, await firstVersionId(db, reelOf(job))),
-              // A library photo: its two copies, then Claude Code's
+              // A library photo: its two copies, then the AI's
               // description and tags; no reel is touched.
               describe_photo: (photoId) =>
                 runDescribePhotoJob({

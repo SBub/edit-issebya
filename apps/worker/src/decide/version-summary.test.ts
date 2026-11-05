@@ -1,18 +1,18 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   type ChecklistOutcome,
   type EditDiff,
   type EngineNote,
   ISSEBYA_PRESET,
 } from "@edit-issebya/edit";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EMPTY_DECIDE_ANSWER, fakeAiRunner, resultEnvelope } from "../ai.ts";
-import type { Tool } from "../step-runner.ts";
-import { SUMMARY_MODEL, summaryPrompt, writeVersionSummary } from "./version-summary.ts";
-
-const NEVER: Tool = () => Promise.reject(new Error("the double never spawns"));
+import { describe, expect, it } from "vitest";
+import {
+  AI_MODELS,
+  EMPTY_DECIDE_ANSWER,
+  type ScriptedReply,
+  fakeAiRunner,
+  scriptedAnswer,
+} from "../ai.ts";
+import { summaryPrompt, writeVersionSummary } from "./version-summary.ts";
 
 const DIFF: EditDiff = {
   items: [{ kind: "title", action: "added", id: "title", text: "Rethink work" }],
@@ -32,21 +32,11 @@ const CHECKLIST: ChecklistOutcome[] = [
 ];
 const REQUEST = "add a title and a photo behind me";
 
-let cwd: string;
-beforeEach(async () => {
-  cwd = await mkdtemp(join(tmpdir(), "summary-"));
-});
-afterEach(async () => {
-  await rm(cwd, { recursive: true, force: true });
-});
-
-function run(script: unknown[], diff: EditDiff = DIFF) {
+function run(script: ScriptedReply[], diff: EditDiff = DIFF) {
   const ai = fakeAiRunner(script);
   const lines: string[] = [];
   const result = writeVersionSummary({
     ai,
-    tool: NEVER,
-    cwd,
     request: REQUEST,
     checklist: CHECKLIST,
     diff,
@@ -136,9 +126,9 @@ describe("summaryPrompt", () => {
 });
 
 describe("writeVersionSummary", () => {
-  it("asks the small model once and uses a passing answer", async () => {
+  it("asks the summary role's model once and uses a passing answer, keeping the exchange", async () => {
     const { ai, result } = run([
-      resultEnvelope({ change_title: " Title added ", change_summary: "A title opens the reel." }),
+      scriptedAnswer({ change_title: " Title added ", change_summary: "A title opens the reel." }),
     ]);
     expect(await result).toMatchObject({
       title: "Title added",
@@ -146,13 +136,14 @@ describe("writeVersionSummary", () => {
       source: "ai",
     });
     expect(ai.calls).toHaveLength(1);
-    expect(ai.calls[0]!.model).toBe(SUMMARY_MODEL);
-    expect(SUMMARY_MODEL).toBe("claude-haiku-5-5");
+    expect(ai.calls[0]!.role).toBe("summary");
+    expect(AI_MODELS.summary).toBe("anthropic/claude-haiku-5.5");
+    expect((await result).exchange).toMatchObject({ role: "summary", outputMode: "json_schema" });
   });
 
   it("gives the template for a summary naming the photo the engine dropped", async () => {
     const { lines, result } = run([
-      resultEnvelope({
+      scriptedAnswer({
         change_title: "Photo added behind you",
         change_summary: "A photo now shows behind you.",
       }),
@@ -167,12 +158,8 @@ describe("writeVersionSummary", () => {
   });
 
   it("gives the template for a broken, an unavailable or a decide answer, never retrying", async () => {
-    const limit = {
-      type: "result",
-      is_error: true,
-      result: "Claude AI usage limit reached",
-    };
-    for (const entry of ["not json", limit, resultEnvelope(EMPTY_DECIDE_ANSWER)]) {
+    const limit: ScriptedReply = { error: { status: 429 } };
+    for (const entry of ["not json", limit, scriptedAnswer(EMPTY_DECIDE_ANSWER)]) {
       const { ai, result } = run([entry]);
       expect((await result).source).toBe("template");
       expect(ai.calls).toHaveLength(1);
@@ -180,7 +167,7 @@ describe("writeVersionSummary", () => {
   });
 
   it("makes no call for an empty difference", async () => {
-    const { ai, result } = run([resultEnvelope({})], { items: [], rules: [] });
+    const { ai, result } = run([scriptedAnswer({})], { items: [], rules: [] });
     expect(await result).toMatchObject({ title: "No changes", source: "template" });
     expect(ai.calls).toHaveLength(0);
   });

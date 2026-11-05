@@ -43,8 +43,9 @@ yarn dev:studio errors             # the worker's last failures in development, 
 (`edit-issebya`, `supabase/config.toml`) if it is down, applies pending migrations
 (`supabase migration up --local`), checks that `apps/web/.env.development`,
 `apps/studio/.env.development` and `apps/worker/.env.development` exist (fill each from its
-folder's `.env.example` with the values `supabase status` prints and the R2 worker keys), and runs
-the worker doctor. It stops at the first failure with a one-line reason. Once the studio answers it
+folder's `.env.example` with the values `supabase status` prints, the R2 worker keys and the
+worker's `OPENROUTER_API_KEY`), and runs the worker doctor (its AI lines make two tiny real
+OpenRouter calls, a fraction of a cent). It stops at the first failure with a one-line reason. Once the studio answers it
 prints:
 
 - Studio: `http://localhost:3000/studio` (reached through the landing page)

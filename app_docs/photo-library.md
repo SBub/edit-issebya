@@ -69,12 +69,15 @@ desktop and is a fourth tab, `Library`, on a phone.
 - `apps/worker/src/photos/photo-images.ts`: the `photo_images` step: ffprobe for width and height,
   ffmpeg for `thumbnail.jpg` (long side 480) and `large.jpg` (long side 1568), both `rebuildable`.
 - `apps/worker/src/photos/describe-photo.ts`, `describe-schema.ts`, `describe-prompt.md`,
-  `describe-prompt.ts`: the `describe_photo` step. The large copy sits alone in a fresh folder and
-  Claude Code reads it with `Read` limited to that one file. The answer is checked against a
-  draft-07 JSON Schema and Zod (description at most 200 characters, 3 to 8 tags); a refused answer
-  is sent back once with the reasons, a second refusal fails the job and the photo. An unavailable
-  Claude makes the job `waiting_ai` (`app_docs/failures.md`). The prompt is versioned by
-  `DESCRIBE_PROMPT_VERSION`.
+  `describe-prompt.ts`: the `describe_photo` step. The large copy's bytes go with the prompt as the
+  one JPEG image of the call (role `describe`, Claude Haiku 5.5 through OpenRouter, an `image_url`
+  data URL on the wire; `app_docs/decide-step.md`, "The AI runner"); the model reads no file and
+  has no tools. The answer is checked against a draft-07 JSON Schema and Zod (description at most
+  200 characters, 3 to 8 tags); a refused answer is sent back once with the reasons, a second
+  refusal fails the job and the photo. The doctor's `ai image call` line parses with the same
+  function. An unavailable AI makes the job `waiting_ai` (`app_docs/failures.md`). The prompt is
+  versioned by `DESCRIBE_PROMPT_VERSION` (`describe-photo-2` since the photo is sent as an image);
+  the photo row records it and the model that answered (`photos.model`).
 - `apps/worker/src/photos/photo-store.ts`: the worker's writes to the `photos` row, and
   `supabasePhotoLibrary(db).readyPhotos(ownerId)`: the owner's `ready` photos (`id`,
   `description`, `tags`, `large_key`), oldest first, a row without `large_key` left out.
@@ -86,13 +89,14 @@ desktop and is a fourth tab, `Library`, on a phone.
 - Deleting a photo a version uses leaves that version as it is (versions never change): its
   preview then shows `A photo in this version was deleted from the library` (status
   `photo-missing`), and its export fails with `render: photo <id> is no longer in the library`.
-- `apps/worker/src/ai.ts`: `AiRequest.readFile`. Only when set does the runner pass
-  `--tools Read --allowedTools Read(<file>) --permission-prompts none`; every other call keeps
-  `--tools ""` (`app_docs/decide-step.md`).
+- `apps/worker/src/ai.ts`: `AiRequest.image` (`{ data, mediaType: "image/jpeg" }`), sent as a file
+  part beside the prompt; only describe_photo sets it. The call's exchange records the image's
+  media type and size, never its bytes.
 - `apps/worker/src/job-kinds.ts`, `queue.ts`, `process-job.ts`, `stored-files.ts`, `telemetry.ts`:
   dispatch of the new kind, nullable `reel_id`, photo files classified and never slimmed, and
   `photo.id` span attributes in place of `reel.id` (`app_docs/measurement.md`).
-- `apps/worker/src/doctor-checks.ts`: a check that sends `fixtures/photos/sample.jpg` to Claude Code.
+- `apps/worker/src/doctor-checks.ts`: the `ai image call` check sends `fixtures/photos/sample.jpg`
+  as the step sends a photo (one real call, only when the owner runs the doctor).
 
 ## How to Use
 
@@ -111,7 +115,7 @@ desktop and is a fourth tab, `Library`, on a phone.
 ## Configuration
 
 None of its own. It needs the same R2 variables as footage (`app_docs/storage.md`) and the worker's
-Claude Code (`claude -p`). ffmpeg and ffprobe must be 7.0 or newer: `photo_images` probes with
+`OPENROUTER_API_KEY`. ffmpeg and ffprobe must be 7.0 or newer: `photo_images` probes with
 `-show_stream_groups` (a HEIC tile grid), which older ffprobe rejects (`Option not found`). The
 worker's `yarn doctor` fails its ffmpeg line on an older ffmpeg or ffprobe, and CI installs the
 static ffmpeg 8.0.1 build (`mwader/static-ffmpeg`, pinned by digest in `.github/workflows/ci.yml`)
@@ -147,8 +151,8 @@ only, run by hand; CI uses the committed files).
 
 ## Rules
 
-- Never give Claude Code a tool other than `Read` on the one photo file; every other AI call keeps
-  no tools.
+- Never give the model a tool or a file: the describe call sends only its prompt and the one large
+  copy as an image; every other AI call sends no image.
 - At most two AI calls per photo: one retry, never a loop.
 - Never let the browser send a storage key or upload id; they come from the row.
 - Never put a storage key in what the client receives; sign on the server.

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 // Bump with every change to describe-prompt.md: each photo row records it.
-export const DESCRIBE_PROMPT_VERSION = "describe-photo-1";
+export const DESCRIBE_PROMPT_VERSION = "describe-photo-2";
 
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed prompt
 const TEMPLATE = readFileSync(new URL("./describe-prompt.md", import.meta.url), "utf8");

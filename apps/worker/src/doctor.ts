@@ -1,7 +1,8 @@
 // Checks this machine can run jobs, one line each: Supabase, R2 read and write
 // (a probe object put, read back and deleted under `<R2_KEY_PREFIX>doctor/`),
-// ffmpeg and ffprobe 7 or newer with the filters and codecs the pipeline needs, HyperFrames, one
-// structured Claude Code call, one image call, the cut-out's mask tool (built
+// ffmpeg and ffprobe 7 or newer with the filters and codecs the pipeline needs, HyperFrames,
+// OPENROUTER_API_KEY set (never printed), one tiny real structured AI call and
+// one image call through OpenRouter (paid, a fraction of a cent), the cut-out's mask tool (built
 // and run on one second of a sample), and the scratch folder (exists or can be
 // created, never created here). Prints one line per check; exits 1 when any
 // failed.
@@ -63,6 +64,7 @@ const { lines, exitCode } = await runDoctor({
     const { stdout } = await run(node, [entry, "--version"], { env: hyperframesEnv() });
     return stdout;
   },
+  openRouterKey: () => process.env.OPENROUTER_API_KEY,
   ai: () => aiRunner(process.env),
   maskTool: () => ({
     platform: process.platform,

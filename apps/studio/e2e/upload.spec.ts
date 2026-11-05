@@ -204,8 +204,8 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   for (const step of steps!) expect(step.wall_ms).toBeGreaterThanOrEqual(0);
   // No background removal: no step row names it.
   expect(steps!.map((step) => step.name)).not.toContain("remove_background");
-  // The usage the scripted result reports, exactly, once per call: every
-  // input token (1200 + 300 + 0), the output tokens, the cost and the model.
+  // The usage the scripted reply reports, exactly, once per call: the input
+  // tokens, the output tokens, the cost and the model.
   const { data: decideRow } = await admin
     .from("steps")
     .select("ai_input_tokens, ai_output_tokens, ai_cost_usd, ai_model")
@@ -214,12 +214,12 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     .single();
   expect(decideRow).toEqual({
     // The decide call and the summary call (the double replays the same
-    // envelope, so the summary falls back to the template); the model stays
+    // reply, so the summary falls back to the template); the model stays
     // the editor's.
     ai_input_tokens: 3000,
     ai_output_tokens: 912,
     ai_cost_usd: 0.0246,
-    ai_model: "claude-opus-5-5",
+    ai_model: "anthropic/claude-haiku-5.5",
   });
 
   // Version 1: built from the preset alone; version 2: the AI's, its parent
@@ -278,7 +278,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   expect(v2).toEqual({
     id: currentId,
     number: 2,
-    model: "claude-opus-5-5",
+    model: "anthropic/claude-haiku-5.5",
     request: null,
     parent_id: v1!.id,
     prompt_version: "decide-14",
@@ -293,6 +293,17 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     r2_key: key(currentId),
   });
   versionKeys.push(v1!.r2_key as string, v2!.r2_key as string);
+  // Version 2's AI record beside its edit: the decide and summary calls, each
+  // with its prompt and raw answer.
+  const aiRecordKey = `${CACHE_PREFIX}reels/${reelId}/versions/${String(currentId)}.ai.json`;
+  const aiRecord = JSON.parse(new TextDecoder().decode((await storage.get(aiRecordKey))!)) as {
+    version_id: string;
+    calls: { role: string; prompt: string; answerText: string | null }[];
+  };
+  expect(aiRecord.version_id).toBe(currentId);
+  expect(aiRecord.calls.map((call) => call.role)).toEqual(["decide", "summary"]);
+  expect(aiRecord.calls[0]!.prompt).toContain("w0010");
+  expect(aiRecord.calls[0]!.answerText).toContain("A short test for the real studio");
   const manifest = await pipelineManifest();
   const retime = manifest.steps.find((step) => step.name === "retime")!;
   const transcript = transcriptSchema.parse(
@@ -359,6 +370,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     if (objectKey === sourceKey!) return { kind: "source", step: "upload" };
     if (objectKey === exportKey) return { kind: "export", step: "render" };
     if (versionKeys.includes(objectKey)) return { kind: "version", step: "version" };
+    if (objectKey === aiRecordKey) return { kind: "version", step: "decide" };
     const [, step, , file] = objectKey.slice(CACHE_PREFIX.length).split("/");
     return { kind: REBUILDABLE.has(`${step}/${file}`) ? "rebuildable" : "kept", step: step! };
   };

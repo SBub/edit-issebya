@@ -12,6 +12,43 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ai-sdk/gateway@npm:4.0.135":
+  version: 4.0.135
+  resolution: "@ai-sdk/gateway@npm:4.0.135"
+  dependencies:
+    "@ai-sdk/provider": "npm:4.0.35"
+    "@ai-sdk/provider-utils": "npm:5.0.74"
+    "@vercel/oidc": "npm:3.2.0"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/3c0a7aac82478091e5a968d9a1c4a8057735e18048e58076799e482738ad67bfb544db734613823baf3c250e39978d6a3b9ec0fd5094a4e4f9962afa137650fe
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider-utils@npm:5.0.74":
+  version: 5.0.74
+  resolution: "@ai-sdk/provider-utils@npm:5.0.74"
+  dependencies:
+    "@ai-sdk/provider": "npm:4.0.35"
+    "@standard-schema/spec": "npm:^1.1.0"
+    "@workflow/serde": "npm:4.1.0"
+    eventsource-parser: "npm:^3.0.8"
+    undici: "npm:^7.29.1"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/5b8c01b15ffa0b897a295a09cb665a96913c479a7ebe2fa95e9820c6a88bb00022b2afd2e3d02545e1a9c59b4d5f0010c7f980178dd5189c1836f7bdb17ae229
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider@npm:4.0.35":
+  version: 4.0.35
+  resolution: "@ai-sdk/provider@npm:4.0.35"
+  dependencies:
+    json-schema: "npm:^0.4.0"
+  checksum: 10c0/e44cefec0716ff815dcd4ed34d68ce4408c9c680c884b29fc696e9bcd1df0250b4cc703b9ceed66cb0be76ded1403b4fb94dc4b3b8c0bf7b4164d3f142aaef81
+  languageName: node
+  linkType: hard
+
 "@alloc/quick-lru@npm:^5.2.0":
   version: 5.3.0
   resolution: "@alloc/quick-lru@npm:5.3.0"
@@ -616,6 +653,7 @@ __metadata:
   dependencies:
     "@edit-issebya/edit": "workspace:*"
     "@edit-issebya/storage": "workspace:*"
+    "@openrouter/ai-sdk-provider": "npm:^3.0.0"
     "@opentelemetry/api": "npm:^1.10.0"
     "@opentelemetry/api-logs": "npm:^0.223.0"
     "@opentelemetry/exporter-logs-otlp-http": "npm:^0.300.0"
@@ -625,6 +663,7 @@ __metadata:
     "@opentelemetry/sdk-trace": "npm:^3.0.0"
     "@supabase/supabase-js": "npm:^2.118.0"
     "@types/node": "npm:^24"
+    ai: "npm:^7.0.0"
     eslint: "npm:^9"
     eslint-config-prettier: "npm:^10.1.8"
     eslint-plugin-no-secrets: "npm:^2.3.3"
@@ -1637,6 +1676,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@openrouter/ai-sdk-provider@npm:^3.0.0":
+  version: 3.1.0
+  resolution: "@openrouter/ai-sdk-provider@npm:3.1.0"
+  peerDependencies:
+    ai: ^7.0.0
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/53951106c1b754b2d375a4e06bdca502cb7f07fb6d081e0eae2e62397ad2af7c94f50ee327d4af254cd72bcd62fed405ca3ec5f0d5317faaf15f6836ce4b9604
+  languageName: node
+  linkType: hard
+
 "@opentelemetry/api-logs@npm:^0.223.0":
   version: 0.223.0
   resolution: "@opentelemetry/api-logs@npm:0.223.0"
@@ -2336,6 +2385,13 @@ __metadata:
   version: 1.0.1
   resolution: "@stablelib/base64@npm:1.0.1"
   checksum: 10c0/6330720f021819d19cecfe274111b79a256caa81df478d6b0ae7effc8842b96915b6aeed85926ff05b4d48ec1fc78ad043d928b730ee4e6cc6e8cba6aa097bed
+  languageName: node
+  linkType: hard
+
+"@standard-schema/spec@npm:^1.1.0":
+  version: 1.1.0
+  resolution: "@standard-schema/spec@npm:1.1.0"
+  checksum: 10c0/d90f55acde4b2deb983529c87e8025fa693de1a5e8b49ecc6eb84d1fd96328add0e03d7d551442156c7432fd78165b2c26ff561b970a9a881f046abb78d6a526
   languageName: node
   linkType: hard
 
@@ -3224,6 +3280,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@vercel/oidc@npm:3.2.0":
+  version: 3.2.0
+  resolution: "@vercel/oidc@npm:3.2.0"
+  checksum: 10c0/98318d3236f58c296616c8c2e1655b268c7bf58525bcd985adac7af6d900e05fc610f6f03ce2ff4bdcd3df7885a40c0ca44fdc761f122dcfe15a78c2756b0243
+  languageName: node
+  linkType: hard
+
 "@vitest/browser-playwright@npm:5.0.5":
   version: 5.0.5
   resolution: "@vitest/browser-playwright@npm:5.0.5"
@@ -3323,6 +3386,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@workflow/serde@npm:4.1.0":
+  version: 4.1.0
+  resolution: "@workflow/serde@npm:4.1.0"
+  checksum: 10c0/8ec68cd9448b486bc8244d1f2b33d64d4af4b0fc18d33417699ce29345b21e4359d880c5ea5d66872def4576c0cddcfa2a63282d1f4d661c455663c075595e81
+  languageName: node
+  linkType: hard
+
 "abbrev@npm:^5.0.0":
   version: 5.0.0
   resolution: "abbrev@npm:5.0.0"
@@ -3361,6 +3431,19 @@ __metadata:
   version: 0.6.1
   resolution: "adm-zip@npm:0.6.1"
   checksum: 10c0/78233c6fbfd418dd605ef3c4c6a656406a49f81f716f2850d565f5e55915f18b99f4fdaf15436d77c73536da0915eeca33adab8055872a983b0ac7d07664cd25
+  languageName: node
+  linkType: hard
+
+"ai@npm:^7.0.0":
+  version: 7.0.162
+  resolution: "ai@npm:7.0.162"
+  dependencies:
+    "@ai-sdk/gateway": "npm:4.0.135"
+    "@ai-sdk/provider": "npm:4.0.35"
+    "@ai-sdk/provider-utils": "npm:5.0.74"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/ff73209f606e735c934a32f0dd6f068c52f9a81d8ba37384e515ff32ea2f12c1407362d491e8dffe95cbe1fe3b7288c64cdf445636a2264dc9cf76e0f0d083d0
   languageName: node
   linkType: hard
 
@@ -4853,6 +4936,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"eventsource-parser@npm:^3.0.8":
+  version: 3.1.1
+  resolution: "eventsource-parser@npm:3.1.1"
+  checksum: 10c0/dd3236c61140587253dcaaf947de528ac0e7371caffdc53c77afaeee36a17661f00e251a6ea16af56c99be5ac138303e67b5d750630e7c41b02e3564e8ad8c44
+  languageName: node
+  linkType: hard
+
 "expect-type@npm:^1.4.0":
   version: 1.4.0
   resolution: "expect-type@npm:1.4.0"
@@ -5835,6 +5925,13 @@ __metadata:
   version: 0.4.1
   resolution: "json-schema-traverse@npm:0.4.1"
   checksum: 10c0/108fa90d4cc6f08243aedc6da16c408daf81793bf903e9fd5ab21983cda433d5d2da49e40711da016289465ec2e62e0324dcdfbc06275a607fe3233fde4942ce
+  languageName: node
+  linkType: hard
+
+"json-schema@npm:^0.4.0":
+  version: 0.4.0
+  resolution: "json-schema@npm:0.4.0"
+  checksum: 10c0/d4a637ec1d83544857c1c163232f3da46912e971d5bf054ba44fdb88f07d8d359a462b4aec46f2745efbc57053365608d88bc1d7b1729f7b4fc3369765639ed3
   languageName: node
   linkType: hard
 
@@ -8525,6 +8622,13 @@ __metadata:
   version: 7.25.0
   resolution: "undici@npm:7.25.0"
   checksum: 10c0/02a0b45dc14eb91bc488948750232450fe52f27a6b08086d6ac6736bb47908d600fe3a96d346f12eab24729c782e5c2f693bc8e8eca6696d4e4c09b1ed4cb4ec
+  languageName: node
+  linkType: hard
+
+"undici@npm:^7.29.1":
+  version: 7.30.1
+  resolution: "undici@npm:7.30.1"
+  checksum: 10c0/c838089b010e8e28a9a5358d4bf4621e0c8d7bb70058b23e819667349c4c0b6791a7c8bc9bbe94ff0923db132faae0d9d9592b9743eda4f2b49466fa57482213
   languageName: node
   linkType: hard
 

@@ -1,6 +1,6 @@
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { expect, test } from "@playwright/test";
-import { SHORT_SPEECH_ANSWER, USAGE_LIMIT_SCRIPT } from "../test-support/ai-script.ts";
+import { SHORT_SPEECH_ANSWER, CREDITS_USED_UP_SCRIPT } from "../test-support/ai-script.ts";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { insertQueuedReel, seedPipelineCache } from "../test-support/pipeline-cache.ts";
@@ -8,7 +8,7 @@ import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
 // This run's own cache folder: the worker reads it through R2_KEY_PREFIX.
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
-const REASON = "the usage limit is reached";
+const REASON = "the OpenRouter credits are used up";
 
 const admin = localSupabaseAdmin();
 const storage = fakeStorage({
@@ -53,7 +53,7 @@ test.afterAll(async () => {
   if (owner) await deleteTestUser(admin, owner.id);
 });
 
-test("a usage limit makes the job wait with its next try shown live, then it is taken again", async ({
+test("used-up OpenRouter credits make the job wait with its next try shown live, then it is taken again", async ({
   page,
   baseURL,
 }) => {
@@ -76,7 +76,7 @@ test("a usage limit makes the job wait with its next try shown live, then it is 
 
   const first = await runWorkerOnce({
     R2_KEY_PREFIX: CACHE_PREFIX,
-    E2E_MOCK_AI_SCRIPT: USAGE_LIMIT_SCRIPT,
+    E2E_MOCK_AI_SCRIPT: CREDITS_USED_UP_SCRIPT,
   });
   const waiting = await readJob();
   expect(waiting, first.output).toMatchObject({
