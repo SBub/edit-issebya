@@ -852,7 +852,8 @@ for (const [size, viewport] of [
     // edge and width, measured from boxes.
     const rulerBox = (await slider.boundingBox())!;
     const lanes = tracks.getByTestId("track-lane");
-    await expect(lanes).toHaveCount(4);
+    // Five rows, each present even when empty: Footage, Behind, Hook, Accents, Transitions.
+    await expect(lanes).toHaveCount(5);
     for (const lane of await lanes.all()) {
       const box = (await lane.boundingBox())!;
       expect(Math.abs(box.x - rulerBox.x)).toBeLessThanOrEqual(1);
