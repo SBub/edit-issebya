@@ -14,7 +14,8 @@ import {
   parseClaudeResult,
   resultEnvelope,
 } from "./ai.ts";
-import type { Tool } from "./step-runner.ts";
+import { type ChildRun, type Tool, runToolsStep } from "./step-runner.ts";
+import { recordingSteps, stepContext } from "./recording-steps.ts";
 import { createTelemetry } from "./telemetry.ts";
 
 // One real `claude -p --output-format json --json-schema` result, ids
@@ -457,6 +458,43 @@ describe("the chat span of a call", () => {
     const chat = spans.find((span) => span.name === "chat");
     expect(chat?.attributes["error.type"]).toBe("unavailable");
     expect(chat?.status.code).toBe(SpanStatusCode.ERROR);
+  });
+
+  it("runs Claude Code as an exec span under the chat span, in the step's trace", async () => {
+    const { trace: traced, finish } = tracing();
+    const { steps } = recordingSteps();
+    const answer: ChildRun = {
+      code: 0,
+      exitSignal: null,
+      report: "",
+      output: "",
+      stdout: JSON.stringify(captured),
+      groupPeakBytes: null,
+    };
+    await runToolsStep(
+      stepContext(steps, { telemetry: traced.telemetry }),
+      {
+        name: "decide",
+        async work(tool) {
+          await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(tool, {
+            ...REQUEST,
+            model: "claude-haiku-5-5",
+            trace: traced,
+          });
+          return { what: "decided" };
+        },
+      },
+      () => Promise.resolve(answer),
+    );
+    const { spans } = await finish();
+    const chat = spans.find((span) => span.name === "chat claude-haiku-5-5");
+    const exec = spans.find((span) => span.name === "exec claude");
+    expect(exec?.parentSpanContext?.spanId).toBe(chat?.spanContext().spanId);
+    expect(exec?.attributes).toMatchObject({
+      "step.name": "decide",
+      "process.executable.name": "claude",
+      "process.exit.code": 0,
+    });
   });
 
   it("is not made without a parent: the call runs, returns its answer, and starts no span", async () => {

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { type Attributes, type Context, SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import { type Attributes, type Context, SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import type { Tool } from "./step-runner.ts";
 import type { AiUsage } from "./step-store.ts";
 import type { Telemetry } from "./telemetry.ts";
@@ -162,9 +162,14 @@ export function parseClaudeResult(stdout: string): AiResult {
 // observation only: the call runs, and fails, as it would without one. A call
 // that does not succeed carries `error.type` (`unavailable` or `broken`; a
 // thrown call is `broken`) and an error status, as the OpenTelemetry rule for
-// a failed operation asks: the job span may still end as a wait.
-async function inChatSpan(request: AiRequest, work: () => Promise<AiResult>): Promise<AiResult> {
-  if (!request.trace) return work();
+// a failed operation asks: the job span may still end as a wait. `work` gets
+// the chat span's Context (none without a trace): the parent of the call's
+// exec span.
+async function inChatSpan(
+  request: AiRequest,
+  work: (chat: Context | undefined) => Promise<AiResult>,
+): Promise<AiResult> {
+  if (!request.trace) return work(undefined);
   const { telemetry, parent } = request.trace;
   const model = request.model;
   const span = telemetry.tracer.startSpan(
@@ -180,7 +185,7 @@ async function inChatSpan(request: AiRequest, work: () => Promise<AiResult>): Pr
     parent,
   );
   try {
-    const result = await work();
+    const result = await work(trace.setSpan(parent, span));
     span.setAttributes(chatAttributes(result.usage));
     if (result.kind !== "answer") {
       span.setAttribute("error.type", result.kind);
@@ -225,7 +230,7 @@ function chatAttributes(usage: AiUsage): Attributes {
 function claudeRunner(path: string): AiRunner {
   return {
     call(tool, request) {
-      return inChatSpan(request, async () => {
+      return inChatSpan(request, async (chat) => {
         const { prompt, schema, cwd, readFile, model } = request;
         const tools = toolArgs(readFile);
         const models = modelArgs(model);
@@ -246,6 +251,8 @@ function claudeRunner(path: string): AiRunner {
             stdin: prompt,
             cwd,
             maxStdoutBytes: MAX_STDOUT_BYTES,
+            // The call's exec span goes under this call's chat span.
+            parent: chat,
           });
         } catch (error) {
           const reason = aiUnavailableReason(

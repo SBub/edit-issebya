@@ -30,6 +30,8 @@ client, identifies the signed-in user and sends `studio_*` events.
   (the tool could not start, sh exit 126 or 127) stores null CPU and memory, never zeros.
 - The tool runs through `sh -c 'exec "$0" "$@" 2>&3'` so its stderr goes to fd 3 and the time report
   alone goes to fd 2; no mixed stream is parsed.
+- Each tool call is one `exec` span under its step (or under the `chat` span of a Claude Code call),
+  see Tool calls below.
 - `src/process-tree.ts`: with `sampleGroupMemory: true` the runner runs `ps -A -o pid=,ppid=,rss=`
   every second (and once after the spawn), sums the RSS of the tool and all its descendants and keeps
   the peak. `peak_rss_bytes` is the larger of that peak and the report's max RSS. Without the option
@@ -66,7 +68,8 @@ client, identifies the signed-in user and sends `studio_*` events.
   id, never exported), so every job of a reel, at any time, lands in one trace. Each step is a child
   span `step <name>` with `reel.id`, `job.id`, `step.name` and `step.wall_ms`, `step.cpu_ms`,
   `step.peak_rss_bytes`, `step.bytes_in`, `step.bytes_out`. Output lines are log records emitted in the
-  step span's context (INFO for stdout, ERROR for stderr, attribute `stream`).
+  step span's context (INFO for stdout, ERROR for stderr, attribute `stream`). The exec spans carry
+  no log records, so a step's log lookup is unchanged.
 - The reel's size: the job span and every step span (cache hits included) carry `reel.source_seconds`,
   `reel.source_bytes`, `reel.width`, `reel.height`, `reel.footage_seconds` and `reel.word_count` when
   known (nulls skipped). `src/reel-size.ts`: `readReelSize` reads the reel's size columns once at job
@@ -162,7 +165,8 @@ logs and Prometheus for metrics in one container, OTLP over HTTP), and gives the
 - Grafana: `http://localhost:3300`. The host port is 3300 because the landing page owns 3000. Both
   published ports (3300 and 4318) are bound to 127.0.0.1.
 - A reel's trace: Explore, the Tempo data source, query type TraceID, the reel's uuid without dashes
-  (`traceIdForReel`). Each job is a `job <kind>` span and each step a child `step <name>` span.
+  (`traceIdForReel`). Each job is a `job <kind>` span, each step a child `step <name>` span and each
+  tool call a child `exec <executable>` span of its step.
 - A step's output: from a span, Logs for this span opens Loki (Tempo's `tracesToLogsV2` link). Each
   output line is a log record in the step span's context, and Loki links back to Tempo by `trace_id`.
 - Stop it with `docker compose -f docker-compose.monitoring.yml down`. The data lives in the named
@@ -194,6 +198,50 @@ Claude Code's default model, so theirs are `chat`; the version summary passes `c
   `broken` too, with an `exception` event).
 
 To see every AI call in Tempo, TraceQL: `{ span.gen_ai.operation.name = "chat" }`.
+
+### Tool calls (`exec` spans)
+
+Every tool call the step runner spawns is one `exec` span, an `INTERNAL` span under the step that ran
+it (`src/step-runner.ts`, `startExecSpan` and `endExecSpan`). That covers ffmpeg, ffprobe, HyperFrames,
+vseg, the render and the Claude Code CLI. The step row keeps the totals; the spans show which call
+took the time.
+
+- Name: `exec <executable>`, the executable's base name (`exec ffmpeg`, `exec vseg`, `exec claude`).
+  When `node` runs a script (`.mjs`, `.js`, `.cjs`, `.ts`) the name is the script's base name:
+  `exec hyperframes` for HyperFrames' `bin/hyperframes.mjs`, `exec remove-background-entry` for the
+  person mask. `process.executable.name` stays `node`.
+- Parent: the step's span, or the call's `parent` when it names one. The Claude Code call names its
+  `chat` span, so the tree reads `chat > exec claude`.
+- Process attributes, from the OpenTelemetry process conventions (status Release Candidate:
+  https://github.com/open-telemetry/semantic-conventions/blob/main/docs/registry/attributes/process.md):
+  `process.executable.name`, `process.args_count` (the executable and its arguments, as
+  `process.command_args` counts them) and `process.exit.code` when the call exited. `process.pid` is
+  not set: the spawned process is `/usr/bin/time`, and the tool runs under it.
+- Other attributes: `step.name`; `edit_issebya.exec.subcommand` (the first argument after the script
+  when it is a plain lower-case word, such as `transcribe`; a path or a flag never is);
+  `edit_issebya.exec.cpu_ms` and `edit_issebya.exec.peak_rss_bytes` (this call's own report, read the
+  way the step row reads it, so the step's CPU is the sum of its calls' and its peak the largest);
+  `edit_issebya.exec.stdout_bytes` (the stdout the call returned, UTF-8 bytes, capped as the call
+  returns it); `edit_issebya.exec.signal` when a signal ended the call.
+- Errors: a call the abort ended (`error.type` `aborted`), one that could not be spawned (`spawn_error`,
+  or sh's 126 and 127 for a tool it could not run), one a signal killed (`signal`) and one that exited
+  non-zero (`nonzero_exit`) have an error status, `error.type` and an `exception` event. The step's
+  failure, retry and row are the same as before.
+- Not on the span: the command line, the arguments, the stdin (a prompt, a schema) and the environment.
+  The step's output lines stay log records of the step span.
+- With no exporter the call runs and measures exactly as it does with one.
+
+```
+step decide
+└─ decide.attempt
+   └─ chat                         gen_ai.* (the attempt's AI call)
+      └─ exec claude               process.executable.name, cpu and peak of the CLI
+```
+
+To find slow or failed calls in Tempo, TraceQL: `{ name =~ "exec .*" && duration > 5s }` for the slow
+ones, `{ name =~ "exec .*" && status = error }` for the failed ones, and
+`{ name = "exec hyperframes" && span.edit_issebya.exec.subcommand = "transcribe" }` for one HyperFrames
+command.
 
 ### decide's spans
 
@@ -263,6 +311,10 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
   `chat` span under it, an unavailable round).
 - AI calls: `ai.test.ts` (`the chat span of a call`: name, kind, operation, provider, request and
   response model, the input tokens with cache, the cost, the error types, no parent means no span).
+- Tool calls: `step-runner.test.ts` (`exec spans`: one span per call under the step, the row's CPU and
+  peak equal to the calls', a script's name and subcommand with no path, the parent a call names, a
+  non-zero exit, a spawn error, an abort, no exporter), and `ai.test.ts` (`chat > exec claude` under a
+  traced step).
 - Studio unit tests: `src/lib/analytics.test.ts`, `src/lib/track.test.ts`.
 - DB test: `db-tests/steps-measurements.test.ts` pins the exact column set of `steps`, so a money column
   fails it.
@@ -290,6 +342,9 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
   stage that throws marks its own span as an error and the step fails as before.
 - Every model call is one `chat` span with `gen_ai.*` attributes, never invented `ai.*` names; the
   cost is `edit_issebya.ai.cost_usd` because the conventions have no cost attribute.
+- Never put a tool call's command line, its arguments, its stdin or its environment on its `exec`
+  span: the executable's base name, the argument count, a plain-word subcommand and the measurements
+  only. A prompt, a schema or a reel's path never reaches a span.
 
 ## Notes
 

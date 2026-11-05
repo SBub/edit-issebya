@@ -2,8 +2,16 @@ import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
+import { basename } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { type Context, type Span, SpanStatusCode, trace } from "@opentelemetry/api";
+import {
+  type Attributes,
+  type Context,
+  type Span,
+  SpanKind,
+  SpanStatusCode,
+  trace,
+} from "@opentelemetry/api";
 import type { ErrorTracker } from "./error-tracking.ts";
 import { errorTail } from "./errors.ts";
 import { AiUnavailable, FootageRefused, findCause, isTransient } from "./failure.ts";
@@ -71,6 +79,9 @@ export interface ToolCall {
   // Reads the tool's progress from its output lines (the two long steps
   // only); the step writes it to its row, throttled, and 100 before `done`.
   progress?: ProgressParser;
+  // The Context the call's `exec` span is a child of (the `chat` span of a
+  // Claude Code call); absent, the step's span.
+  parent?: Context;
 }
 
 export interface ChildStep extends ToolCall {
@@ -465,12 +476,106 @@ export const spawnChild: SpawnTool = (spec, signal, log) => {
   });
 };
 
+// One `exec` span per tool call, a child of the step's span (or of the call's
+// `parent`). Its name is `exec <executable>`; `node` running a script
+// (`.mjs`, `.js`, `.cjs`, `.ts`) is named for the script (`exec hyperframes`
+// for bin/hyperframes.mjs), and `process.executable.name` stays `node`. Its
+// attributes never carry the arguments (paths, prompts): their count, and the
+// first one after the script when it is a plain lower-case word.
+const SCRIPT = /\.[cm]?[jt]s$/;
+const SUBCOMMAND = /^[a-z][a-z-]{0,31}$/;
+
+function execIdentity(file: string, args: readonly string[]) {
+  const executable = basename(file);
+  const script = args[0];
+  if (/^node(\.exe)?$/.test(executable) && script !== undefined && SCRIPT.test(script)) {
+    return {
+      executable,
+      name: `exec ${basename(script).replace(SCRIPT, "")}`,
+      rest: args.slice(1),
+    };
+  }
+  return { executable, name: `exec ${executable}`, rest: args };
+}
+
+function startExecSpan(telemetry: Telemetry, parent: Context, step: string, call: ToolCall): Span {
+  const { executable, name, rest } = execIdentity(call.file, call.args);
+  const subcommand = rest[0];
+  const attributes: Attributes = {
+    "step.name": step,
+    "process.executable.name": executable,
+    // The argv length, the executable included, as process.command_args counts it.
+    "process.args_count": call.args.length + 1,
+  };
+  if (subcommand !== undefined && SUBCOMMAND.test(subcommand)) {
+    attributes["edit_issebya.exec.subcommand"] = subcommand;
+  }
+  return telemetry.tracer.startSpan(name, { kind: SpanKind.INTERNAL, attributes }, parent);
+}
+
+interface ExecEnd {
+  run: ChildRun;
+  // False when the tool never started (sh's 126 or 127).
+  toolStarted: boolean;
+  // The signal that ended the call, or null.
+  exitSignal: string | null;
+  cpuMs: number | null;
+  // This call's peak alone (the step keeps the largest of its calls).
+  peakRssBytes: number | null;
+  aborted: boolean;
+}
+
+// Ends a call's span with what it measured and how it ended. An abort, a tool
+// that did not start, a signal and a non-zero exit are errors. The stdout
+// count is the captured stdout, capped as the call returns it.
+function endExecSpan(
+  span: Span,
+  { run, toolStarted, exitSignal, cpuMs, peakRssBytes, aborted }: ExecEnd,
+): void {
+  span.setAttribute("edit_issebya.exec.stdout_bytes", Buffer.byteLength(run.stdout));
+  if (run.code !== null) span.setAttribute("process.exit.code", run.code);
+  if (exitSignal !== null) span.setAttribute("edit_issebya.exec.signal", exitSignal);
+  if (cpuMs !== null) span.setAttribute("edit_issebya.exec.cpu_ms", cpuMs);
+  if (peakRssBytes !== null) span.setAttribute("edit_issebya.exec.peak_rss_bytes", peakRssBytes);
+  const errorType = aborted
+    ? "aborted"
+    : !toolStarted
+      ? "spawn_error"
+      : exitSignal !== null
+        ? "signal"
+        : run.code !== 0
+          ? "nonzero_exit"
+          : null;
+  if (errorType !== null) {
+    const message = aborted
+      ? "aborted"
+      : !toolStarted
+        ? `did not start, exit ${run.code}`
+        : exitSignal !== null
+          ? `killed by ${exitSignal}`
+          : `exited with ${run.code}`;
+    span.setAttribute("error.type", errorType);
+    span.recordException(message);
+    span.setStatus({ code: SpanStatusCode.ERROR });
+  }
+  span.end();
+}
+
+// A call that threw before it had an outcome (the spawn itself failed).
+function failExecSpan(span: Span, errorType: string, error: unknown): void {
+  span.setAttribute("error.type", errorType);
+  span.recordException(error instanceof Error ? error : String(error));
+  span.setStatus({ code: SpanStatusCode.ERROR });
+  span.end();
+}
+
 // Several tool calls as one step row. Each call runs as its own child process,
 // measured by the operating system; the row has the wall time of the whole
 // step, CPU (user + sys) summed over the calls (null when none reported), the
-// largest peak RSS, and the sizes of the declared files. Output lines go to the
-// OTel logger; a failed call's tail goes to the row and the thrown error, with
-// the measurements gathered so far.
+// largest peak RSS, and the sizes of the declared files. Each call is an `exec`
+// span under the step (see startExecSpan). Output lines go to the OTel logger;
+// a failed call's tail goes to the row and the thrown error, with the
+// measurements gathered so far.
 export function runToolsStep(
   ctx: StepContext,
   spec: ToolsStep,
@@ -525,24 +630,43 @@ export function runToolsStep(
       }
       // A call after a lost lease never starts.
       ctx.signal.throwIfAborted();
-      const run = await spawnTool(call, ctx.signal, callLog);
-      ctx.signal.throwIfAborted();
+      const exec = startExecSpan(ctx.telemetry, call.parent ?? stepContext, spec.name, call);
+      let run: ChildRun;
+      try {
+        run = await spawnTool(call, ctx.signal, callLog);
+      } catch (error) {
+        failExecSpan(exec, ctx.signal.aborted ? "aborted" : "spawn_error", error);
+        throw error;
+      }
       const toolStarted = run.code === null || !NOT_STARTED.has(run.code);
       const report = toolStarted ? parseTimeReport(process.platform, run.report) : null;
-      if (report) cpuMs = (cpuMs ?? 0) + report.cpuMs;
+      let callPeakBytes: number | null = null;
       for (const peak of [report?.peakRssBytes, toolStarted ? run.groupPeakBytes : null]) {
-        if (typeof peak === "number") peakRssBytes = Math.max(peakRssBytes ?? 0, peak);
+        if (typeof peak === "number") callPeakBytes = Math.max(callPeakBytes ?? 0, peak);
       }
-      if (run.code === 0) return run.stdout;
-      const tail = outputTail(run.output);
-      // Killed by a signal is never our abort (checked above): the child
-      // itself (code null), or the tool under `/usr/bin/time` (its report).
+      // Killed by a signal is never our abort (an abort throws below): the
+      // child itself (code null), or the tool under `/usr/bin/time` (its report).
       const exitSignal =
         run.code === null
           ? (run.exitSignal ?? "signal")
           : toolStarted
             ? reportedSignal(process.platform, run.report)
             : null;
+      // Ended before any throw below, so the span always ends.
+      endExecSpan(exec, {
+        run,
+        toolStarted,
+        exitSignal,
+        cpuMs: report?.cpuMs ?? null,
+        peakRssBytes: callPeakBytes,
+        aborted: ctx.signal.aborted,
+      });
+      ctx.signal.throwIfAborted();
+      // Into the step's totals only once the call was not aborted, as before.
+      if (report) cpuMs = (cpuMs ?? 0) + report.cpuMs;
+      if (callPeakBytes !== null) peakRssBytes = Math.max(peakRssBytes ?? 0, callPeakBytes);
+      if (run.code === 0) return run.stdout;
+      const tail = outputTail(run.output);
       const how = exitSignal ? `signal ${exitSignal}` : (run.code ?? "unknown");
       // Measured here: the wall time ends at the failing call.
       throw new StepFailure(`${spec.name} exited with ${how}\n${tail}`, tail, await measure(), {
