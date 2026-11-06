@@ -12,6 +12,7 @@ import {
   EMPTY_DECIDE_ANSWER,
   aiRunner,
   aiUnavailableReason,
+  extractJson,
   fakeAiRunner,
   listPriceUsd,
   modelRunner,
@@ -233,6 +234,30 @@ describe("aiRunner", () => {
   });
 });
 
+describe("extractJson", () => {
+  it("strips a code fence with or without a language tag", () => {
+    expect(extractJson('```json\n{"a":1}\n```')).toBe('{"a":1}');
+    expect(extractJson('  ```\n{"a":1}\n```  \n')).toBe('{"a":1}');
+    expect(extractJson('```JSON {"a":1} ```')).toBe('{"a":1}');
+  });
+
+  it("takes the outermost object out of leading or trailing prose", () => {
+    expect(extractJson('Here it is: {"a":{"b":1}}')).toBe('{"a":{"b":1}}');
+    expect(extractJson('{"a":[1]}\nHope this helps.')).toBe('{"a":[1]}');
+    expect(extractJson('Sure:\n```json\n{"a":1}\n```\nDone.')).toBe('{"a":1}');
+  });
+
+  it("leaves plain JSON as it is", () => {
+    expect(extractJson('{"a":"b"}')).toBe('{"a":"b"}');
+  });
+
+  it("leaves text with no object to fail parsing", () => {
+    for (const text of ["not json", "```json\nnot json\n```", "} nothing {", "{ not json }"]) {
+      expect(() => JSON.parse(extractJson(text))).toThrow();
+    }
+  });
+});
+
 describe("fakeAiRunner", () => {
   it("records every request and its exchange: prompt, schema, raw answer and usage", async () => {
     const runner = fakeAiRunner([
@@ -285,6 +310,34 @@ describe("fakeAiRunner", () => {
     expect(result.exchange.prompt).toContain("matching this JSON Schema");
     expect(result.exchange.prompt).toContain(JSON.stringify(wireSchema(SCHEMA)));
     expect(runner.calls).toHaveLength(1);
+  });
+
+  it("asks for the object only, with no code fence, in JSON mode", async () => {
+    const runner = fakeAiRunner([{ error: { status: 400 } }, scriptedAnswer({ a: "b" })]);
+    const result = await runner.call(REQUEST);
+    expect(result.exchange.prompt).toContain(
+      "Reply with the JSON object only, no code fence around it.",
+    );
+  });
+
+  it("parses a fenced JSON mode answer, keeping the raw text in the exchange", async () => {
+    const fenced = '```json\n{"a":"b"}\n```';
+    const runner = fakeAiRunner([{ error: { status: 400 } }, fenced]);
+    const result = await runner.call(REQUEST);
+    expect(result).toMatchObject({ kind: "answer", answer: { a: "b" } });
+    expect(result.exchange).toMatchObject({ outputMode: "json", answerText: fenced, error: null });
+  });
+
+  it("is broken on a JSON mode answer with no JSON in it, keeping the raw text", async () => {
+    const runner = fakeAiRunner([{ error: { status: 400 } }, "```json\nnot json\n```"]);
+    const result = await runner.call(REQUEST);
+    expect(result).toMatchObject({ kind: "broken", reason: /^the answer is not JSON/ });
+    expect(result.exchange.answerText).toBe("```json\nnot json\n```");
+  });
+
+  it("never extracts from a strict JSON Schema answer", async () => {
+    const result = await fakeAiRunner(['```json\n{"a":"b"}\n```']).call(REQUEST);
+    expect(result).toMatchObject({ kind: "broken", reason: /^the answer is not JSON/ });
   });
 
   it("throws a bad request that JSON mode does not fix either", async () => {

@@ -196,9 +196,9 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
   machine, never on Vercel. Scripts: `worker`, `worker:prod` (long-running), `once` (claim one job,
   used by specs) and `doctor` (checks Supabase, R2 read and write access through a probe it puts,
   reads back and deletes under `<R2_KEY_PREFIX>doctor/`, the scratch folder, which must exist or be
-  creatable and which it never creates, ffmpeg, `OPENROUTER_API_KEY` set (never printed), and one
-  tiny real structured AI call and one image call through OpenRouter, paid, only when the owner
-  runs it). Each loads
+  creatable and which it never creates, ffmpeg, `OPENROUTER_API_KEY` set (never printed), and no
+  AI call; `doctor --ai` adds one tiny real structured AI call and one image call through
+  OpenRouter, paid, only when the owner runs it). Each loads
   `.env.development` or `.env.production` from `apps/worker/` when present. `worker`,
   `worker:prod` and `once` create the scratch folder (`WORKER_SCRATCH_DIR`) at start-up and exit 1
   when they cannot (see `app_docs/storage.md`).
@@ -238,8 +238,8 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
    `apps/worker/.env.development` from the matching `.env.example` files.
 2. Create the owner account in the local auth once: `yarn dev:studio add-owner <email>`.
 3. Run `yarn dev:studio` from the repository root (see the root `README.md`): it checks Docker,
-   starts the local Supabase stack if it is down, applies the migrations, runs the worker doctor,
-   then runs the web and studio dev servers and the worker together. Open
+   starts the local Supabase stack if it is down, applies the migrations, runs the worker doctor
+   (no AI call, so no cost), then runs the web and studio dev servers and the worker together. Open
    `http://localhost:3000/studio`. ADW runs use their own local stack (`edit-issebya-adw`, ports
    54450 to 54459, see `app_docs/adw-supabase-stack.md`), which the command never touches.
 4. Enter an address that already has an account, open the emailed link (local mail: Mailpit), and

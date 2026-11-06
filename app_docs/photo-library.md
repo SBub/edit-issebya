@@ -81,7 +81,7 @@ desktop and is a fourth tab, `Library`, on a phone.
   taken off, never mid-word; one word over the limit is cut hard), a tag over 30 characters is
   dropped and only the first 8 tags are kept. An empty description, fewer than 3 tags (after the
   drop) or a tag breaking the pattern is refused: a refused answer is sent back once with the
-  reasons, a second refusal fails the job and the photo. The doctor's `ai image call` line parses
+  reasons, a second refusal fails the job and the photo. The `ai image call` line of `doctor --ai` parses
   with the same function. An unavailable AI makes the job `waiting_ai` (`app_docs/failures.md`).
   The prompt is versioned by `DESCRIBE_PROMPT_VERSION` (`describe-photo-3` since the prompt asks
   for one short sentence of about 30 words); the photo row records it and the model that answered
@@ -104,7 +104,8 @@ desktop and is a fourth tab, `Library`, on a phone.
   dispatch of the new kind, nullable `reel_id`, photo files classified and never slimmed, and
   `photo.id` span attributes in place of `reel.id` (`app_docs/measurement.md`).
 - `apps/worker/src/doctor-checks.ts`: the `ai image call` check sends `fixtures/photos/sample.jpg`
-  as the step sends a photo (one real call, only when the owner runs the doctor).
+  as the step sends a photo (one real call, only when the owner runs `doctor --ai`; the plain
+  doctor makes no AI call).
 
 ## How to Use
 
