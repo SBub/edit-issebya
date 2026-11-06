@@ -60,7 +60,6 @@ async function ensure(
     tools,
     spawnTool: spawn.spawnTool,
     env: { E2E_MOCK_MASK: "true" },
-    platform: "linux",
     recordStored: options.recordStored,
   });
   return { result, calls, toolCalls: spawn.calls };
@@ -83,6 +82,14 @@ describe("ensureCutouts", () => {
     expect(done[0]!.summary).toMatch(/^2 cut-outs made, 0 reused, 5\.6 s masked/);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder
     expect(await readdir(scratch)).toEqual([]);
+  });
+
+  it("weights each span's frame progress by its length, so the step's progress keeps rising", async () => {
+    const { toolCalls } = await ensure();
+    const at = (index: number, pct: number) =>
+      toolCalls[index]!.progress!(`@hf-progress {"pct":${pct}}`);
+    // The spans are 2.867 s and 2.766 s long.
+    expect([at(0, 0), at(0, 100), at(1, 0), at(1, 100)]).toEqual([0, 51, 51, 100]);
   });
 
   it("reuses stored masks: no spawn, a hit row, each recorded", async () => {

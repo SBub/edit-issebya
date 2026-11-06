@@ -21,7 +21,7 @@ export async function claimableJobIds(admin: SupabaseClient): Promise<string[]> 
 }
 
 // The worker's environment: the local stack with the storage, AI, render and
-// mask doubles on (the cut-out's masks made black by ffmpeg, no Apple Vision), OTLP export off and the disk guard seeing 1000 GB free against a
+// mask doubles on (the cut-out's masks made black by ffmpeg, no MODNet model), OTLP export off and the disk guard seeing 1000 GB free against a
 // 10 GB minimum (so no spec depends on the runner's real disk; a spec
 // overrides both). No spec ever starts a real render: only the tools spec
 // passes `E2E_MOCK_RENDER: ""` and `E2E_MOCK_MASK: ""` (with a longer timeout).

@@ -46,5 +46,3 @@ blob-report/
 # mock route and read by the worker; never commit it.
 .e2e-storage/
 
-# The cut-out mask tool built by `yarn workspace @edit-issebya/worker build:vseg`.
-apps/worker/tools/vseg/.build/

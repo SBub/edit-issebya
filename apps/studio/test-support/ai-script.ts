@@ -2,8 +2,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// The worker's scripted decide answer for the fixture clip (one Claude Code
-// result envelope, meaning only): a title phrase, one accent word, one dim
+// The worker's scripted decide answer for the fixture clip (one AI double
+// reply, meaning only): a title phrase, one accent word, one dim
 // transition (over w0006 to w0008, its key phrase from w0007), one fixed word
 // and the written hook ("A short test for the real studio"). On the 2.7 s
 // clip the hook holds the screen from 0.2 s to the end, so the layout engine
@@ -13,10 +13,11 @@ export const SHORT_SPEECH_ANSWER = fileURLToPath(
   new URL("../../worker/src/decide/testdata/short-speech-answer.json", import.meta.url),
 );
 
-// The worker's "not available" fixture: Claude Code reporting its usage limit,
-// so the decide step waits for the AI (`the usage limit is reached`).
-export const USAGE_LIMIT_SCRIPT = fileURLToPath(
-  new URL("../../worker/src/decide/testdata/claude-usage-limit.json", import.meta.url),
+// The worker's "not available" fixture: OpenRouter answering 402 (credits
+// used up), so the decide step waits for the AI (`the OpenRouter credits are
+// used up`).
+export const CREDITS_USED_UP_SCRIPT = fileURLToPath(
+  new URL("../../worker/src/decide/testdata/ai-credits-used-up.json", import.meta.url),
 );
 
 // The worker's scripted describe_photo answer for fixtures/photos/sample.jpg:
@@ -41,11 +42,8 @@ type Wish = "top" | "left" | "right" | "front" | "behind";
 // 1 has none either (no accents, transitions, photos, fixes or hook), so the AI's
 // version 2 has exactly version 1's bytes. Returns its path.
 export async function unchangedAnswerScript(dir: string): Promise<string> {
-  const envelope = {
-    type: "result",
-    subtype: "success",
-    is_error: false,
-    structured_output: {
+  const reply = {
+    answer: {
       accents: [],
       big_words: [],
       photos: [],
@@ -56,30 +54,19 @@ export async function unchangedAnswerScript(dir: string): Promise<string> {
       behind_rules: KEEP_RULES,
       unexpressed: [],
     },
-    total_cost_usd: 0,
-    usage: { input_tokens: 0, output_tokens: 0 },
   };
   const path = join(dir, "unchanged-answer.json");
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
-  await writeFile(path, JSON.stringify([envelope]));
+  await writeFile(path, JSON.stringify([reply]));
   return path;
 }
 
-// Writes, into `dir`, a script whose one envelope carries a result that is
-// not JSON, replayed for both calls, so the decide step refuses twice. Returns
-// its path.
+// Writes, into `dir`, a script whose one reply is text that is not JSON,
+// replayed for both calls, so the decide step refuses twice. Returns its path.
 export async function brokenAnswerScript(dir: string): Promise<string> {
-  const envelope = {
-    type: "result",
-    subtype: "success",
-    is_error: false,
-    result: "not json",
-    total_cost_usd: 0,
-    usage: { input_tokens: 0, output_tokens: 0 },
-  };
   const path = join(dir, "broken-answer.json");
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
-  await writeFile(path, JSON.stringify(envelope));
+  await writeFile(path, JSON.stringify(["not json"]));
   return path;
 }
 
@@ -98,7 +85,7 @@ interface AnswerRound {
 }
 
 // The committed decide answer with the round's behind choices, transitions and rules.
-async function roundEnvelope({
+async function roundReply({
   photos = [],
   bigWord,
   transitions,
@@ -106,8 +93,8 @@ async function roundEnvelope({
   rules = KEEP_RULES,
 }: AnswerRound = {}) {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed worker script
-  const envelope = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
-    structured_output: {
+  const reply = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
+    answer: {
       accents: unknown[];
       photos: unknown[];
       big_words: { word: string }[];
@@ -116,33 +103,33 @@ async function roundEnvelope({
       behind_rules: BehindRules;
     };
   };
-  envelope.structured_output.photos = photos;
-  envelope.structured_output.big_words = bigWord ? [{ word: bigWord }] : [];
+  reply.answer.photos = photos;
+  reply.answer.big_words = bigWord ? [{ word: bigWord }] : [];
   // On the 2.7 s fixture clip the title or the dim holds the screen for most
   // of it, and the layout engine shows one extra at a time and nothing during
   // a transition: a behind item needs both gone (a round's own transitions
   // stay as given).
   if (photos.length > 0 || bigWord) {
-    envelope.structured_output.accents = [];
-    envelope.structured_output.transitions = [];
+    reply.answer.accents = [];
+    reply.answer.transitions = [];
   }
-  if (transitions) envelope.structured_output.transitions = transitions;
-  envelope.structured_output.hook = hook;
-  envelope.structured_output.behind_rules = rules;
-  return envelope;
+  if (transitions) reply.answer.transitions = transitions;
+  reply.answer.hook = hook;
+  reply.answer.behind_rules = rules;
+  return reply;
 }
 
-// Writes, into `dir`, a script of one envelope per round, replayed in order
+// Writes, into `dir`, a script of one reply per round, replayed in order
 // (the last repeating), for a first answer the decide step refuses and a
 // retry that passes. Returns its path.
 export async function answerRoundsScript(
   dir: string,
   rounds: readonly AnswerRound[],
 ): Promise<string> {
-  const envelopes = await Promise.all(rounds.map((round) => roundEnvelope(round)));
+  const replies = await Promise.all(rounds.map((round) => roundReply(round)));
   const path = join(dir, `answer-rounds-${crypto.randomUUID()}.json`);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
-  await writeFile(path, JSON.stringify(envelopes));
+  await writeFile(path, JSON.stringify(replies));
   return path;
 }
 

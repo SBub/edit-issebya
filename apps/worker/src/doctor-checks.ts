@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Storage } from "@edit-issebya/storage";
@@ -8,35 +8,27 @@ import {
   type Transcript,
   decideJsonSchema,
   parseDecideAnswer,
-  parseSummaryAnswer,
-  summaryJsonSchema,
 } from "@edit-issebya/edit";
-import { type AiRunner, plainTool } from "./ai.ts";
-import { SUMMARY_MODEL, summaryPrompt } from "./decide/version-summary.ts";
+import type { AiRunner } from "./ai.ts";
 import { describePrompt } from "./photos/describe-prompt.ts";
 import { describeJsonSchema, parseDescribeAnswer } from "./photos/describe-schema.ts";
 
 // The committed sample photo the image check sends (scripts/make-test-photos.sh).
 const SAMPLE_PHOTO = new URL("../../../fixtures/photos/sample.jpg", import.meta.url).pathname;
 
-// The describe_photo call on the sample photo: Claude Code allowed to read
-// only `photo.jpg`, alone in a fresh folder, answering the describe schema.
+// The describe_photo call on the sample photo, sent as the step sends it (one
+// JPEG image), answering the describe schema.
 async function aiImageCall(ai: AiRunner): Promise<void> {
-  const dir = await mkdtemp(join(tmpdir(), "doctor-photo-"));
-  try {
-    await copyFile(SAMPLE_PHOTO, join(dir, "photo.jpg"));
-    const result = await ai.call(plainTool, {
-      prompt: describePrompt(),
-      schema: describeJsonSchema,
-      cwd: dir,
-      readFile: "photo.jpg",
-    });
-    if (result.kind !== "answer") throw new Error(result.reason);
-    const parsed = parseDescribeAnswer(result.answer);
-    if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+  const result = await ai.call({
+    role: "describe",
+    prompt: describePrompt(),
+    schema: describeJsonSchema,
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed sample photo
+    image: { data: await readFile(SAMPLE_PHOTO), mediaType: "image/jpeg" },
+  });
+  if (result.kind !== "answer") throw new Error(result.reason);
+  const parsed = parseDescribeAnswer(result.answer);
+  if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
 }
 
 // Each dependency is built inside its own check, so a missing variable fails
@@ -56,17 +48,24 @@ export interface DoctorDeps {
   ffmpegCodecs: () => Promise<string>;
   // `hyperframes --version` output.
   hyperframes: () => Promise<string>;
+  // OPENROUTER_API_KEY as the worker reads it (checked set, never printed).
+  openRouterKey: () => string | undefined;
+  // The AI runner the jobs use: each AI check (run only with `--ai`) makes one
+  // tiny real call.
   ai: () => AiRunner;
-  // The cut-out's mask tool (vseg): the platform, its build, one run on a
-  // 1-second sample (written to `output`), and ffprobe of a file.
+  // The cut-out's mask tool (MODNet): the installed model checked against
+  // its pinned hash, one run on a 1-second sample (written to `output`), and
+  // ffprobe of a file.
   maskTool: () => MaskToolDeps;
   // The scratch folder and whether it exists or can be created (never created).
   scratchDir: () => Promise<{ dir: string; state: "exists" | "can be created" }>;
 }
 
 export interface MaskToolDeps {
-  platform: NodeJS.Platform;
-  build: () => Promise<void>;
+  // Rejects with one line when the model is missing or has another hash.
+  verifyModel: () => Promise<void>;
+  // The pinned model's SHA-256, named on the line.
+  modelSha256: string;
   // The sample's first second masked into `output`.
   run: (output: string) => Promise<void>;
   probe: (file: string) => Promise<VideoProbe>;
@@ -81,15 +80,11 @@ export interface VideoProbe {
   frames: number;
 }
 
-// vseg built, run on one second of the sample, its mask checked: H.264 at the
-// sample's size, 30 frames give or take one. On another OS, one line.
+// The MODNet model present with its pinned hash, run on one second of the
+// sample, its mask checked: H.264 at the sample's size, 30 frames give or
+// take one. Any OS.
 async function maskToolCheck(deps: MaskToolDeps): Promise<string> {
-  if (deps.platform !== "darwin") {
-    throw new Error(
-      `the mask tool runs on macOS only (Apple Vision); this worker runs on ${deps.platform}`,
-    );
-  }
-  await deps.build();
+  await deps.verifyModel();
   const dir = await mkdtemp(join(tmpdir(), "doctor-mask-"));
   try {
     const output = join(dir, "mask.mp4");
@@ -104,7 +99,7 @@ async function maskToolCheck(deps: MaskToolDeps): Promise<string> {
       );
     }
     if (Math.abs(mask.frames - 30) > 1) throw new Error(`mask has ${mask.frames} frames, not 30`);
-    return `vseg built, 1 s masked in ${seconds.toFixed(1)} s`;
+    return `modnet ${deps.modelSha256.slice(0, 8)}, 1 s masked in ${seconds.toFixed(1)} s`;
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -166,8 +161,7 @@ function filterNames(listing: string): Set<string> {
 }
 
 // A tiny reel for the AI check: the real decide schema is built from it, so
-// the doctor fails on a schema the Claude Code CLI rejects, as the decide step
-// would.
+// the doctor fails on a schema the provider rejects, as the decide step would.
 const AI_SAMPLE_TRANSCRIPT: Transcript = {
   words: [
     { id: "w0001", text: "Hello", start: 0, end: 0.4 },
@@ -230,9 +224,18 @@ async function check(name: string, run: () => Promise<string | void>): Promise<s
   }
 }
 
+export interface DoctorOptions {
+  // The two real, paid AI calls (`doctor --ai`); off by default, so a startup
+  // check costs nothing.
+  ai?: boolean;
+}
+
 // One line per check, never stopping at the first failure; exit code 1 when
 // any line failed.
-export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; exitCode: number }> {
+export async function runDoctor(
+  deps: DoctorDeps,
+  options: DoctorOptions = {},
+): Promise<{ lines: string[]; exitCode: number }> {
   const lines = [
     await check("supabase reachable", deps.supabase),
     await check("r2 bucket readable and writable", () => probeR2(deps.r2)),
@@ -262,43 +265,13 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
       if (!version) throw new Error("no version printed");
       return version;
     }),
-    await check("ai structured call", async () => {
-      const result = await deps.ai().call(plainTool, {
-        prompt:
-          'Reply with accents, big_words, photos, transitions, word_fixes, checklist and unexpressed empty lists, hook null, and behind_rules photos and big_word "keep".',
-        schema: doctorAiSchema(),
-        cwd: tmpdir(),
-      });
-      if (result.kind !== "answer") throw new Error(result.reason);
-      const parsed = parseDecideAnswer(result.answer, ISSEBYA_PRESET, AI_SAMPLE_TRANSCRIPT);
-      if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
+    await check("openrouter key", async () => {
+      if (!deps.openRouterKey()?.trim()) {
+        throw new Error("OPENROUTER_API_KEY is not set (apps/worker/.env.development)");
+      }
+      return "set";
     }),
-    // The version summary's small model, so an id the installed CLI rejects
-    // shows here before a real run.
-    await check("ai summary call", async () => {
-      const result = await deps.ai().call(plainTool, {
-        prompt: summaryPrompt({
-          request: "add a title",
-          checklist: [],
-          diff: {
-            items: [
-              { kind: "title", action: "added", id: "title", text: "Rethink work" },
-              { kind: "caption", action: "moved", id: "captions" },
-            ],
-            rules: [],
-          },
-          record: [],
-        }),
-        schema: summaryJsonSchema(),
-        cwd: tmpdir(),
-        model: SUMMARY_MODEL,
-      });
-      if (result.kind !== "answer") throw new Error(result.reason);
-      const parsed = parseSummaryAnswer(result.answer);
-      if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
-      return SUMMARY_MODEL;
-    }),
-    await check("ai image call", () => aiImageCall(deps.ai())),
+    ...(options.ai ? await aiChecks(deps) : []),
     await check("mask tool", () => maskToolCheck(deps.maskTool())),
     // Last, so the earlier lines keep their places.
     await check("scratch dir", async () => {
@@ -307,4 +280,26 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
     }),
   ];
   return { lines, exitCode: lines.some((line) => line.startsWith("FAIL")) ? 1 : 0 };
+}
+
+// The two paid checks, after the key line: one tiny structured call and one
+// image call.
+async function aiChecks(deps: DoctorDeps): Promise<string[]> {
+  return [
+    // One tiny real call with the real decide schema: the line names the
+    // model that answered.
+    await check("ai structured call", async () => {
+      const result = await deps.ai().call({
+        role: "decide",
+        prompt:
+          'Reply with accents, big_words, photos, transitions, word_fixes, checklist and unexpressed empty lists, hook null, and behind_rules photos and big_word "keep".',
+        schema: doctorAiSchema(),
+      });
+      if (result.kind !== "answer") throw new Error(result.reason);
+      const parsed = parseDecideAnswer(result.answer, ISSEBYA_PRESET, AI_SAMPLE_TRANSCRIPT);
+      if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
+      return result.usage.model ?? undefined;
+    }),
+    await check("ai image call", () => aiImageCall(deps.ai())),
+  ];
 }

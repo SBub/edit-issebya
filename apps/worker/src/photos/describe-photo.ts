@@ -1,17 +1,10 @@
-import { copyFile, mkdir, rm } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import type { Context } from "@opentelemetry/api";
-import { join } from "node:path";
 import type { Storage } from "@edit-issebya/storage";
-import type { AiRunner } from "../ai.ts";
+import { type AiRunner, NO_USAGE } from "../ai.ts";
 import { AiUnavailable, PermanentError, permanentAfterAiCall } from "../failure.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
-import {
-  type SpawnTool,
-  type StepContext,
-  StepError,
-  type Tool,
-  runToolsStep,
-} from "../step-runner.ts";
+import { type SpawnTool, type StepContext, StepError, runToolsStep } from "../step-runner.ts";
 import { type AiUsage, addUsage } from "../step-store.ts";
 import { type DescribeAnswer, describeJsonSchema, parseDescribeAnswer } from "./describe-schema.ts";
 import { DESCRIBE_PROMPT_VERSION, describePrompt } from "./describe-prompt.ts";
@@ -19,15 +12,12 @@ import { largeCopyPath, runPhotoImages } from "./photo-images.ts";
 import type { PhotoStore } from "./photo-store.ts";
 
 export const STEP = "describe_photo";
-// The one file Claude Code may read, alone in its folder.
-const READ_FILE = "photo.jpg";
 
 type Attempt = { ok: true; answer: DescribeAnswer } | { ok: false; reasons: string[] };
 
 export interface DescribeStepRun {
   ctx: StepContext;
   ai: AiRunner;
-  scratchDir: string;
   // The large JPEG copy `photo_images` made in this scratch.
   largePath: string;
   // Tests pass a fake; otherwise the real child process.
@@ -38,16 +28,14 @@ function roundLines(round: number, reasons: readonly string[]): string[] {
   return [`round ${round}:`, ...reasons.map((reason) => `- ${reason}`)];
 }
 
-// The `describe_photo` step: the large copy alone in a fresh folder as
-// `photo.jpg`, Claude Code run there allowed to read that one file, its
-// answer checked by Zod. A refused (or broken) answer goes back once with its
-// reasons; a second refusal fails the step with both rounds' reasons and the
+// The `describe_photo` step: the large copy sent with the prompt as one
+// JPEG image (no file access, no tools), its answer checked by Zod. A refused
+// (or broken) answer goes back once with its reasons; a second refusal fails the step with both rounds' reasons and the
 // usage spent. An unavailable AI makes the job wait. From the first call on,
 // every other failure is permanent (never a third call).
 async function describeStep({
   ctx,
   ai,
-  scratchDir,
   largePath,
   spawnTool,
 }: DescribeStepRun): Promise<{ answer: DescribeAnswer; usage: AiUsage }> {
@@ -56,56 +44,41 @@ async function describeStep({
     ctx,
     {
       name: STEP,
-      async work(tool: Tool, stepContext: Context) {
-        const cwd = join(scratchDir, "describe");
-        await rm(cwd, { recursive: true, force: true });
+      async work(_tool, stepContext: Context) {
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
-        await mkdir(cwd, { recursive: true });
-        await copyFile(largePath, join(cwd, READ_FILE));
-        let usage: AiUsage = {
-          inputTokens: null,
-          outputTokens: null,
-          costUsd: null,
-          model: null,
-          cacheReadTokens: null,
-          cacheWriteTokens: null,
-        };
-        try {
-          const attempt = async (previous?: string[]): Promise<Attempt> => {
-            const answer = await ai.call(tool, {
-              prompt: describePrompt(previous),
-              schema: describeJsonSchema,
-              cwd,
-              readFile: READ_FILE,
-              trace: { telemetry: ctx.telemetry, parent: stepContext },
-            });
-            usage = addUsage(usage, answer.usage);
-            if (answer.kind === "unavailable") throw new AiUnavailable(answer.reason);
-            if (answer.kind === "broken") {
-              return { ok: false, reasons: [`the answer was not valid JSON: ${answer.reason}`] };
-            }
-            return parseDescribeAnswer(answer.answer);
-          };
-
-          // Exactly one retry, never a loop.
-          const first = await attempt().catch(permanentAfterAiCall);
-          const passed = first.ok
-            ? first
-            : await attempt(first.reasons).catch(permanentAfterAiCall);
-          if (!passed.ok) {
-            const tail = [
-              `${STEP}: the answer failed twice`,
-              ...roundLines(1, first.ok ? [] : first.reasons),
-              ...roundLines(2, passed.reasons),
-            ].join("\n");
-            throw new StepError(tail, tail, usage);
+        const image = { data: await readFile(largePath), mediaType: "image/jpeg" as const };
+        let usage: AiUsage = NO_USAGE;
+        const attempt = async (previous?: string[]): Promise<Attempt> => {
+          const answer = await ai.call({
+            role: "describe",
+            prompt: describePrompt(previous),
+            schema: describeJsonSchema,
+            image,
+            signal: ctx.signal,
+            trace: { telemetry: ctx.telemetry, parent: stepContext },
+          });
+          usage = addUsage(usage, answer.usage);
+          if (answer.kind === "unavailable") throw new AiUnavailable(answer.reason);
+          if (answer.kind === "broken") {
+            return { ok: false, reasons: [`the answer was not valid JSON: ${answer.reason}`] };
           }
-          result = { answer: passed.answer, usage };
-          const { tags } = passed.answer;
-          return { what: `${tags.length} tags: ${tags.join(", ")}`, ai: usage };
-        } finally {
-          await rm(cwd, { recursive: true, force: true });
+          return parseDescribeAnswer(answer.answer);
+        };
+
+        // Exactly one retry, never a loop.
+        const first = await attempt().catch(permanentAfterAiCall);
+        const passed = first.ok ? first : await attempt(first.reasons).catch(permanentAfterAiCall);
+        if (!passed.ok) {
+          const tail = [
+            `${STEP}: the answer failed twice`,
+            ...roundLines(1, first.ok ? [] : first.reasons),
+            ...roundLines(2, passed.reasons),
+          ].join("\n");
+          throw new StepError(tail, tail, usage);
         }
+        result = { answer: passed.answer, usage };
+        const { tags } = passed.answer;
+        return { what: `${tags.length} tags: ${tags.join(", ")}`, ai: usage };
       },
     },
     spawnTool,
@@ -157,7 +130,6 @@ export async function runDescribePhotoJob({
   const { answer, usage } = await describeStep({
     ctx,
     ai,
-    scratchDir,
     largePath: largeCopyPath(scratchDir),
     spawnTool,
   });

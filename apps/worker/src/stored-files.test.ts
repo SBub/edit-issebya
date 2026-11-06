@@ -91,6 +91,12 @@ describe("classifyKey", () => {
       kind: "version",
       step: "version",
     });
+    // A version's AI record (the decide calls' prompts and answers) is kept like the version.
+    expect(classifyKey(PREFIX, `${PREFIX}reels/${REEL}/versions/${OTHER}.ai.json`)).toEqual({
+      kind: "version",
+      step: "decide",
+    });
+    expect(() => classifyKey(PREFIX, `${PREFIX}reels/${REEL}/versions/${OTHER}.ai.txt`)).toThrow();
     expect(classifyKey(PREFIX, `${PREFIX}exports/${REEL}/${OTHER}.mp4`)).toEqual({
       kind: "export",
       step: "render",

@@ -43,6 +43,7 @@ export interface StoredFileRecords {
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const CACHE = /^cache\/([a-z_]{1,40})\/[a-z0-9]+\/([a-z0-9._-]+)$/;
 const VERSION = new RegExp(`^reels/${UUID}/versions/${UUID}\\.json$`);
+const VERSION_AI = new RegExp(`^reels/${UUID}/versions/${UUID}\\.ai\\.json$`);
 const EXPORT = new RegExp(`^exports/${UUID}/${UUID}\\.mp4$`);
 const SOURCE = new RegExp(`^reels/${UUID}/source/original\\.[a-z0-9]{1,10}$`);
 const PHOTO_ORIGINAL = new RegExp(`^library/${UUID}/original\\.(jpg|png|heic|heif|webp)$`);
@@ -50,7 +51,7 @@ const PHOTO_DERIVED = new RegExp(`^library/${UUID}/(thumbnail|large)\\.jpg$`);
 
 // The kind and step of a key, from its layout alone: a pipeline output
 // (`<prefix>cache/<step>/<fp>/<file>`, kept or rebuildable by the step's
-// tag), a version, an export, the raw footage, or a library photo (its
+// tag), a version and its AI record, an export, the raw footage, or a library photo (its
 // original kept, its thumbnail and large copy rebuildable). Anything else
 // throws, so nothing is ever written unrecorded.
 export function classifyKey(prefix: string, key: string): { kind: StoredFileKind; step: string } {
@@ -65,6 +66,7 @@ export function classifyKey(prefix: string, key: string): { kind: StoredFileKind
     return { kind: retention, step: step! };
   }
   if (VERSION.test(rest)) return { kind: "version", step: "version" };
+  if (VERSION_AI.test(rest)) return { kind: "version", step: "decide" };
   if (EXPORT.test(rest)) return { kind: "export", step: "render" };
   if (SOURCE.test(rest)) return { kind: "source", step: "upload" };
   if (PHOTO_ORIGINAL.test(rest)) return { kind: "kept", step: "upload" };

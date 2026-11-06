@@ -30,8 +30,8 @@ client, identifies the signed-in user and sends `studio_*` events.
   (the tool could not start, sh exit 126 or 127) stores null CPU and memory, never zeros.
 - The tool runs through `sh -c 'exec "$0" "$@" 2>&3'` so its stderr goes to fd 3 and the time report
   alone goes to fd 2; no mixed stream is parsed.
-- Each tool call is one `exec` span under its step (or under the `chat` span of a Claude Code call),
-  see Tool calls below.
+- Each tool call is one `exec` span under its step, see Tool calls below. An AI call is an HTTP call
+  (OpenRouter), not a tool call: it has a `chat` span and no `exec` span.
 - `src/process-tree.ts`: with `sampleGroupMemory: true` the runner runs `ps -A -o pid=,ppid=,rss=`
   every second (and once after the spawn), sums the RSS of the tool and all its descendants and keeps
   the peak. `peak_rss_bytes` is the larger of that peak and the report's max RSS. Without the option
@@ -178,61 +178,48 @@ logs and Prometheus for metrics in one container, OTLP over HTTP), and gives the
 Every model call is one `chat` span, a `CLIENT` span under the stage that made the call, with the
 attributes of the OpenTelemetry GenAI semantic conventions (status Development:
 https://github.com/open-telemetry/semantic-conventions-genai). `src/ai.ts` `inChatSpan` makes it
-around the Claude Code call itself, so the real runner and the test double both get it. The name is
-`chat <request model>`, or `chat` when the call passes no model (decide's attempts and rounds use
-Claude Code's default model, so theirs are `chat`; the version summary passes `claude-haiku-5-5`).
+around the OpenRouter call itself (both tries of the JSON mode fallback included), so the real
+runner and the test double both get it. The name is `chat <model>`: every call names its role's
+model, `chat anthropic/claude-haiku-5.5` today (`app_docs/decide-step.md`, "The AI runner").
 
-- `gen_ai.operation.name` = `chat`, `gen_ai.provider.name` = `anthropic`: always.
-- `gen_ai.request.model`: the model the call asked for (`--model`), when it passes one.
-- `gen_ai.response.model`: the model that wrote the most output, from `modelUsage`.
-- `gen_ai.usage.input_tokens`: every input token Claude Code reports, `input_tokens` plus the cache
-  reads and writes (the Anthropic rule of the conventions: Anthropic reports the cache apart).
+- `gen_ai.operation.name` = `chat`, `gen_ai.provider.name` = `openrouter`,
+  `gen_ai.request.model`: always.
+- `gen_ai.response.model`: the model that answered (`response.modelId`).
+- `gen_ai.usage.input_tokens`: every input token OpenRouter reports, cache reads and writes
+  included.
 - `gen_ai.usage.output_tokens`; `gen_ai.usage.cache_read.input_tokens` and
   `gen_ai.usage.cache_write.input_tokens` when non-zero (parts of the input tokens above).
-- `edit_issebya.ai.cost_usd`: the cost as Claude Code reports it. A custom attribute, because the
-  standard has none. Never a price we computed.
-- Claude Code's own timings, from the top level of its result (custom attributes, span facts only;
-  no step row keeps them):
-  - `edit_issebya.claude.duration_ms`: the whole Claude Code run, start to finish, as the CLI reports
-    it.
-  - `edit_issebya.claude.duration_api_ms`: the time spent waiting on the model API.
-  - `edit_issebya.claude.overhead_ms`: the CLI's own time, `duration_ms` minus `duration_api_ms`. Set
-    only when both are reported and the result is not negative.
-  - `edit_issebya.claude.num_turns`: the model round trips. With tools off, more than 1 suggests
-    `--json-schema` costs an extra round trip.
-- A value Claude Code did not report is left out.
+- `gen_ai.response.finish_reasons`: the one finish reason (`stop`, `length`, ...).
+- `edit_issebya.ai.cost_usd`: the cost OpenRouter reports (usage accounting), else the list price
+  of the call's tokens. A custom attribute, because the standard has none.
+- `edit_issebya.ai.role` (`decide`, `editorial`, `summary`, `describe`) and
+  `edit_issebya.ai.output_mode` (`json_schema`, or `json` after the fallback): custom attributes.
+- A value not known is left out.
 - `error.type` and an error status when the call does not succeed (the OpenTelemetry rule for a
-  failed operation): `unavailable` (the usage limit, signed out: the job itself waits, and its job
-  span is not an error) or `broken` (the answer is not JSON or has no answer; a thrown call is
-  `broken` too, with an `exception` event).
+  failed operation): `unavailable` (no key, a refused key, no credits, a rate limit, OpenRouter not
+  answering: the job itself waits, and its job span is not an error) or `broken` (the answer is not
+  JSON or was cut off; a thrown call is `broken` too, with an `exception` event).
+- Never on the span: the prompt, the schema, the answer or the image (they are in the version's AI
+  record, `app_docs/decide-step.md`).
 
-To see every AI call in Tempo, TraceQL: `{ span.gen_ai.operation.name = "chat" }`.
-
-To split one call's time, compare three durations:
-
-- The `chat` span's duration: the whole call as the worker sees it (the Claude Code process and
-  the parse of its output).
-- The `exec claude` span under it: the child process alone, from spawn to exit. The gap between
-  the two is the worker's own work around the process.
-- `edit_issebya.claude.duration_ms` on the `chat` span: the CLI's own clock for its run, as the CLI
-  reports it. Compare it with `exec claude` to see how much of the process time the CLI accounts for.
-
-Within `duration_ms`, `duration_api_ms` is the model API's share and `overhead_ms` is the CLI's own
-share. A large `overhead_ms` points at Claude Code itself, a large `duration_api_ms` at the model.
+To see every AI call in Tempo, TraceQL: `{ span.gen_ai.operation.name = "chat" }`; the fallback
+calls: `{ span.edit_issebya.ai.output_mode = "json" }`. The `chat` span's duration is the whole
+call, the AI SDK's one retry and its backoff included.
 
 ### Tool calls (`exec` spans)
 
 Every tool call the step runner spawns is one `exec` span, an `INTERNAL` span under the step that ran
 it (`src/step-runner.ts`, `startExecSpan` and `endExecSpan`). That covers ffmpeg, ffprobe, HyperFrames,
-vseg, the render and the Claude Code CLI. The step row keeps the totals; the spans show which call
+the cut-out's MODNet entry and the render. The step row keeps the totals; the spans show which call
 took the time.
 
-- Name: `exec <executable>`, the executable's base name (`exec ffmpeg`, `exec vseg`, `exec claude`).
+- Name: `exec <executable>`, the executable's base name (`exec ffmpeg`, `exec ffprobe`).
   When `node` runs a script (`.mjs`, `.js`, `.cjs`, `.ts`) the name is the script's base name:
   `exec hyperframes` for HyperFrames' `bin/hyperframes.mjs`, `exec remove-background-entry` for the
-  person mask. `process.executable.name` stays `node`.
-- Parent: the step's span, or the call's `parent` when it names one. The Claude Code call names its
-  `chat` span, so the tree reads `chat > exec claude`.
+  person mask, `exec modnet-entry` for each cut-out span. `process.executable.name` stays `node`.
+  The ffmpeg processes the MODNet entry starts itself are not spans of their own; their time is in
+  `exec modnet-entry`.
+- Parent: the step's span, or the call's `parent` when it names one.
 - Process attributes, from the OpenTelemetry process conventions (status Release Candidate:
   https://github.com/open-telemetry/semantic-conventions/blob/main/docs/registry/attributes/process.md):
   `process.executable.name`, `process.args_count` (the executable and its arguments, as
@@ -252,13 +239,6 @@ took the time.
   The step's output lines stay log records of the step span.
 - With no exporter the call runs and measures exactly as it does with one.
 
-```
-step decide
-└─ decide.attempt
-   └─ chat                         gen_ai.* (the attempt's AI call)
-      └─ exec claude               process.executable.name, cpu and peak of the CLI
-```
-
 To find slow or failed calls in Tempo, TraceQL: `{ name =~ "exec .*" && duration > 5s }` for the slow
 ones, `{ name =~ "exec .*" && status = error }` for the failed ones, and
 `{ name = "exec hyperframes" && span.edit_issebya.exec.subcommand = "transcribe" }` for one HyperFrames
@@ -277,15 +257,15 @@ step decide                        reel.tracks_items
 ├─ decide.prepare                  rules, library, schema, prompt input
 ├─ decide.photo_looks              decide.photos
 ├─ decide.attempt                  decide.attempt 1, decide.outcome, decide.refused_by
-│  ├─ chat                         gen_ai.* (the attempt's AI call)
+│  ├─ chat <model>                 gen_ai.* (the attempt's AI call)
 │  └─ decide.engine                decide.dropped, decide.checks
 ├─ decide.editorial_round          decide.round, decide.outcome (only when a round runs)
-│  ├─ chat                         gen_ai.* (the round's AI call)
+│  ├─ chat <model>                 gen_ai.* (the round's AI call)
 │  └─ decide.engine                decide.dropped (the merged answer placed again)
 ├─ decide.engine                   decide.stage "editorial checks" (only when a round placed the answer again)
 ├─ step cutout                     (only with a behind item)
 ├─ decide.version_summary          decide.summary_source
-│  └─ chat claude-haiku-5-5        gen_ai.* (the summary's AI call)
+│  └─ chat <model>                 gen_ai.* (the summary's AI call)
 └─ decide.save_version
 ```
 
@@ -331,13 +311,11 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
   span, no exporter; the cut-out under decide), `editorial.test.ts` (a round as its own span, its
   `chat` span under it, an unavailable round).
 - AI calls: `ai.test.ts` (`the chat span of a call`: name, kind, operation, provider, request and
-  response model, the input tokens with cache, the cost, the Claude Code timings and the overhead
-  (the fixture's 5207, 4999, 2, 208; a missing one left out; an untraced call unchanged), the error
-  types, no parent means no span).
+  response model, the tokens, the cost, the finish reason, the role and output mode, the error
+  types, no trace means no span).
 - Tool calls: `step-runner.test.ts` (`exec spans`: one span per call under the step, the row's CPU and
   peak equal to the calls', a script's name and subcommand with no path, the parent a call names, a
-  non-zero exit, a spawn error, an abort, no exporter), and `ai.test.ts` (`chat > exec claude` under a
-  traced step).
+  non-zero exit, a spawn error, an abort, no exporter).
 - Studio unit tests: `src/lib/analytics.test.ts`, `src/lib/track.test.ts`.
 - DB test: `db-tests/steps-measurements.test.ts` pins the exact column set of `steps`, so a money column
   fails it.
@@ -351,8 +329,9 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
 
 - Never write a step measurement twice: never send it to PostHog as an event or as an attribute of a
   product event (span attributes are traces, not events).
-- Never store or emit a price derived from machine measurements; `ai_cost_usd` is only what Claude Code
-  reports.
+- Never store or emit a price derived from machine measurements; `ai_cost_usd` is what OpenRouter
+  reports, or, for a call whose response carries no cost, the list price of its reported tokens
+  (`PRICES` in `apps/worker/src/ai.ts`).
 - Never measure the whole machine for a step.
 - Never rename a `studio_*` event or a property once shipped.
 - The studio never reads `edit_notrack` or `?notrack`.
@@ -364,12 +343,11 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
 - Never let a span change a step: no row, measurement, AI call, retry or error depends on a span. A
   stage that throws marks its own span as an error and the step fails as before.
 - Every model call is one `chat` span with `gen_ai.*` attributes, never invented `ai.*` names; the
-  cost is `edit_issebya.ai.cost_usd` because the conventions have no cost attribute. Claude Code's
-  timings are `edit_issebya.claude.*` for the same reason; each is what the CLI reports, and the one
-  value we derive is `overhead_ms` (duration minus API duration, never set when negative).
+  cost is `edit_issebya.ai.cost_usd`, the role and output mode `edit_issebya.ai.*`, because the
+  conventions have none.
 - Never put a tool call's command line, its arguments, its stdin or its environment on its `exec`
   span: the executable's base name, the argument count, a plain-word subcommand and the measurements
-  only. A prompt, a schema or a reel's path never reaches a span.
+  only. A prompt, a schema, an answer or a reel's path never reaches a span.
 
 ## Notes
 

@@ -71,6 +71,8 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
 - `apps/worker/src/stored-files.ts`: `classifyKey(prefix, key)` derives the kind and step from the
   key layout alone: a pipeline output `cache/<step>/<fingerprint>/<file>` (`kept` or `rebuildable`
   by the step's output tag, `retentionOf`), `reels/<reel>/versions/<id>.json` (`version`),
+  `reels/<reel>/versions/<id>.ai.json` (the version's AI record, `version`, step `decide`,
+  `app_docs/decide-step.md`),
   `exports/<reel>/<id>.mp4` (`export`, step `render`) and `reels/<reel>/source/original.<ext>`
   (`source`, step `upload`). An unknown key throws before anything is written.
 - `recordingStorage(storage, { records, reelId, keyPrefix })` wraps `Storage` for a job. Every
@@ -83,7 +85,8 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   (`run-pipeline.ts`, `recordStored`).
 - The cut-out's masks: `${R2_KEY_PREFIX}cache/cutout/<fingerprint>/mask.mp4`
   (`apps/worker/src/cutout/spans.ts`, `cutoutKey`), one per padded span of a version's `behind`
-  items, the fingerprint of the footage (by its producer), the span and the mask tool's version.
+  items, the fingerprint of the footage (by its producer), the span, the matte settings (the MODNet
+  model's SHA-256 among them) and the mask tool's version.
   `ensureCutouts` uploads a missing one put-if-absent through the job's `recordingStorage`, and a
   mask it finds already stored records the job reel's row from its `head`, so every reel that
   needs a mask has a row: step `cutout`, kind `rebuildable` (the on-demand output's tag,
@@ -92,7 +95,8 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
 
 ### What is kept and what is deleted
 
-- Kept forever: the source, the preview copies and every other `kept` output, and the versions.
+- Kept forever: the source, the preview copies and every other `kept` output, and the versions
+  (with their AI records).
 - Deleted: the live `rebuildable` outputs (`convert`'s `converted.mp4`, `retime`'s `source.mp4`
   and the cut-out's `cutout/<fingerprint>/mask.mp4`) once every reel holding the key was last
   exported more than seven days ago. A reel never exported, or exported within seven days, keeps the file for everyone.

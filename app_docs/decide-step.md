@@ -1,4 +1,4 @@
-# Decide Step: Claude Code with a Per-Reel JSON Schema, the Layout Engine, One Retry, Version Records
+# Decide Step: Claude Haiku 5.5 through OpenRouter with a Per-Reel JSON Schema, the Layout Engine, One Retry, Version Records
 
 **Specifications:**
 
@@ -12,7 +12,8 @@
 ## Overview
 
 `decide` is the pipeline's one AI step. After the five fixed steps and the automatic version 1, the
-worker asks Claude Code (`claude -p`, no tools, on the owner's machine) to start from the current
+worker asks the model (Claude Haiku 5.5 through OpenRouter, the Vercel AI SDK, no tools; see "The
+AI runner" below) to start from the current
 version's choices, fix misheard words, choose accent phrases and transitions, mark the title,
 choose what goes behind the speaker, and write the hook (one short line for the first seconds). Claude answers in meaning only ("B strict"): word ids and
 library photo ids, never a time, a position, a size or a spot. The answer must match a JSON Schema
@@ -23,7 +24,9 @@ or the glossary is refused: it goes back once with the reasons; a second refusal
 leaves the current version untouched. Layout never refuses an answer: what fits nowhere is dropped
 and written to the engine record saved with the version. After a placed answer, an editorial round
 gives the editor a second meaning choice for what the engine left out, and the request checklist's
-outcome is stored with the version.
+outcome is stored with the version. Every AI call a decided version made (the attempts, the
+editorial rounds, the title and summary) is stored beside it with its prompt, schema and raw answer
+(the version's AI record), so a version can be replayed and diagnosed.
 
 ## How it works
 
@@ -107,9 +110,9 @@ The answer (`decide-14`) is the layout engine's input plus the request checklist
   enums from the reel's transcript, `photo_id` an enum of the owner's ready library ids, so no photo
   can be named without them, transition kinds from the preset, the wish enum; lists are bounded
   only as an answer-size guard, 12 accents, big words, photos and transitions each, never a per-reel
-  count the editor works to), `decideJsonSchema` (Zod 4 `z.toJSONSchema`, draft-07 because the Claude Code CLI's
-  `--json-schema` validator rejects a draft 2020-12 `$schema`, real `enum` lists, every object
-  closed, refs inlined), `parseDecideAnswer` (both take a `DecideRules` argument, default
+  count the editor works to), `decideJsonSchema` (Zod 4 `z.toJSONSchema`, draft-07 (kept from the
+  Claude Code CLI era; the runner leaves the `$schema` line out of what it sends), real `enum` lists,
+  every object closed, refs inlined), `parseDecideAnswer` (both take a `DecideRules` argument, default
   `NO_RULES`), `applyBehindRules` (the pure merge of the reel's stored flags and the answer's rules),
   `editFromAnswer(current, answer, preset, transcript, headTrack, measurer)` (the answer placed by
   the layout engine and parsed with the decide limits, returned with the engine's `record`; the
@@ -163,27 +166,24 @@ The answer (`decide-14`) is the layout engine's input plus the request checklist
   word's 2 s from its word) parses and renders without it. `issueReasons` turns Zod issues into readable reasons.
 - `packages/edit/src/glossary.ts`: `glossaryChecks`, check rule `glossary` (added to `CheckRule`):
   no caption or overlay shows a heard form of a glossary term; the term itself passes.
-- `apps/worker/src/ai.ts`: `AiRunner.call(tool, { prompt, schema, cwd })` runs through the step
-  runner's `Tool`, so the call is measured like any other. Real runner:
-  `claude -p --output-format json --json-schema <schema> --tools "" --no-session-persistence`,
-  the prompt on stdin, the job's scratch folder as cwd, stdout cap 16 MB. `parseClaudeResult`
-  reads `structured_output` (else `result` as JSON) and the usage: input tokens (fresh, cache
-  writes and reads summed), output tokens, `total_cost_usd` as reported, and the model with the
-  most output. Raw numbers, null where missing. A result that is not an answer is `broken`. A
-  signed-out Claude Code or one at its usage limit is `unavailable` with a reason, recognised from
-  Claude's output by `aiUnavailableReason`; `runDecide` throws `AiUnavailable` for it, and the job
-  waits (`waiting_ai`, see `app_docs/failures.md`) instead of failing.
-- The AI double: `E2E_MOCK_AI=true` never spawns; it replays the Claude result envelopes in the
-  JSON file named by `E2E_MOCK_AI_SCRIPT` through the same parser. The file is an array (replayed
-  in order, the last repeating) or one envelope object (used for every call); an empty array, a
-  non-object value or non-JSON throws. Without a script it gives `EMPTY_DECIDE_ANSWER` (no items,
-  `hook` null),
-  which the doctor's check accepts.
+- `apps/worker/src/ai.ts`, the AI runner (owner decision 2026-11-05: OpenRouter through the
+  Vercel AI SDK, Claude Haiku 5.5 for every call, replacing the Claude Code CLI): see "The AI
+  runner" below. `runDecide` throws `AiUnavailable` for an `unavailable` result, and the job waits
+  (`waiting_ai`, see `app_docs/failures.md`) instead of failing.
+- The AI double: `E2E_MOCK_AI=true` is the real runner over a scripted model (the AI SDK's
+  `MockLanguageModelV4`), so the usage, cost, fallback and error mapping run as in production and
+  nothing touches the network. It replays the replies in the JSON file named by
+  `E2E_MOCK_AI_SCRIPT`: an array (replayed in order, the last repeating) or one reply object (used
+  for every call); an empty array, a non-object value or non-JSON throws. A reply is
+  `{ "answer": <json>, "usage"?: { "input_tokens", "output_tokens", "cost_usd" }, "model"? }`, a
+  string (raw model text, so `"not json"` is a broken answer) or `{ "error": { "status", "message"? } }`
+  (an HTTP error: 402 is unavailable, 400 a refused schema). Without a script it gives
+  `EMPTY_DECIDE_ANSWER` (no items, `hook` null). It never retries.
 - `apps/worker/src/decide/prompt.md`, `prompt.ts`: the committed prompt and `PROMPT_VERSION`
   (`decide-14`, bumped with every prompt change; each version row records it; `decide-14` added
   the `front` wish and says the layout puts each photo behind or in front of the speaker and sizes
   it). The prompt makes
-  Claude the editor: it decides what and on which words, the layout decides every position, size
+  the model the editor: it decides what and on which words, the layout decides every position, size
   and time; it refers to words only by id and never writes times, seconds, pixels, positions, sizes,
   fonts, colours or spots. It asks for the rhythm (a new extra at least every
   `extra_every_seconds`, on meaningful words, never filler) and explains each choice (word fixes
@@ -263,16 +263,17 @@ The answer (`decide-14`) is the layout engine's input plus the request checklist
   dropped items.
 - `apps/worker/src/process-job.ts`: runs `runDecide` after `saveFirstVersion`. Never cached: a
   retried job decides again from the then-current version.
-- `apps/worker/src/step-runner.ts`: `ToolCall` gains `stdin` and `maxStdoutBytes`; `ToolsStep.work`
-  may return `ai` usage; `StepError(message, tail, ai)` fails a step with its own tail (the
+- `apps/worker/src/step-runner.ts`: `ToolsStep.work` may return `ai` usage (the AI calls are HTTP
+  calls inside the step's work, so the step's wall time includes them; they are no `exec` span); `StepError(message, tail, ai)` fails a step with its own tail (the
   reasons) and the AI usage spent. `apps/worker/src/step-store.ts` writes the `ai_*` columns
   (`aiMeasurements`).
-- `apps/worker/src/doctor-checks.ts`: the `ai structured call` check uses the new runner
-  (`plainTool`) and sends the real `decideJsonSchema` (the meaning-only answer) for a two-word sample reel, so `doctor`
-  fails on a schema the installed CLI rejects; the answer must pass `parseDecideAnswer`. The
-  `ai summary call` check sends `summaryPrompt` for a sample difference on `SUMMARY_MODEL` with
-  `summaryJsonSchema`, so a model id the installed CLI rejects shows before a real run; the answer
-  must pass `parseSummaryAnswer`.
+- `apps/worker/src/doctor-checks.ts`: the `openrouter key` line checks `OPENROUTER_API_KEY` is set
+  (never printing it) and is the only AI line by default: the plain `doctor` (and so
+  `yarn dev:studio`) makes no AI call. Only `yarn workspace @edit-issebya/worker doctor --ai` adds
+  the `ai structured call` check, one tiny real call with the real `decideJsonSchema` (the
+  meaning-only answer) for a two-word sample reel, so `doctor --ai` fails on a schema the provider
+  rejects; the answer must pass `parseDecideAnswer`, and the line names the model that answered.
+  These calls are real and paid (a fraction of a cent); tests run them with the double only.
 - `supabase/migrations/20261101175625_version_decide_records.sql`: `versions` gains
   `used_free_field`, `unexpressed` (requests the format could not express), `free_field` (items
   that needed the `style` field and why) and `rejected_reasons` (why the first answer was refused
@@ -328,8 +329,8 @@ written after layout, from what the saved edit changes, never from what the edit
   spot before and after. Many captions shifted fold into one `captions` moved entry; renumbered ids
   on the same words are not a change. `ruleChanges(before, after)` gives the behind rules switched
   (`photos` or `big_word`, `off` or `on`). Pure and deterministic.
-- `apps/worker/src/decide/version-summary.ts`: `writeVersionSummary` makes one call on
-  `SUMMARY_MODEL` (`claude-haiku-5-5`, passed as `--model`) with the committed `summary.md`, given
+- `apps/worker/src/decide/version-summary.ts`: `writeVersionSummary` makes one call (role
+  `summary`, the same Haiku 5.5 as every call) with the committed `summary.md`, given
   the request, the checklist outcome, the difference, the rules switched, the description of each
   library photo the difference names (so a `mood` photo is named honestly as a loose fit: "Added
   your photo of chairs on 'a sense of purpose': none of your photos match the topic closely") and the engine record
@@ -384,7 +385,12 @@ two AI calls. A failure before the first AI call may still be retried once.
 
 ## Configuration
 
-- `CLAUDE_CODE_PATH`: the `claude` binary (already used by the doctor).
+- `OPENROUTER_API_KEY`: the worker's OpenRouter key (`apps/worker/.env.development`, placeholder
+  in `apps/worker/.env.example`). Without it every AI call is `unavailable`
+  (`the OpenRouter key is not set`) and the job waits.
+- The model: `AI_MODEL` in `apps/worker/src/ai.ts` (`anthropic/claude-haiku-5.5`), one setting;
+  `AI_MODELS` maps each role (`decide`, `editorial`, `summary`, `describe`) to it, the one place
+  to give a role another model later.
 - `E2E_MOCK_AI` and `E2E_MOCK_AI_SCRIPT`: tests only; documented in `apps/worker/.env.example`.
 - No new variable for production; the migration is applied by `supabase` as usual (in a run,
   `.adw/supabase-stack reset`).
@@ -394,9 +400,12 @@ two AI calls. A failure before the first AI call may still be retried once.
 - `yarn turbo run test --filter=./packages/edit --filter=./apps/worker`: `decide.test.ts` (per-reel
   schema, composition, counts; any number of photos and big words, the same word again, no
   per-reel `maxItems` beyond the size guard; the hook field, its final stop taken off; each photo's
-  `reason` required, only `match` or `mood`, and kept on the placed item), `glossary.test.ts`, `ai.test.ts` (parser on the committed real
-  result `decide/testdata/claude-result.json`, the fake, the script loader on the committed
-  answer), `prompt.test.ts` (the pace filled in, the rhythm and the transitions' slower pace asked,
+  `reason` required, only `match` or `mood`, and kept on the placed item), `glossary.test.ts`, `ai.test.ts` (the OpenRouter request through
+  the real provider over a captured `fetch`, no network: the model slug, the strict
+  `json_schema` response format, `usage: { include: true }`, `require_parameters`, the image as a
+  JPEG data URL, the reported cost read back and the list price without one; the double, the JSON
+  mode fallback, the error mapping, the chat span, the script loader on the committed answer),
+  `ai-record.test.ts` (the record's key and its write-once), `prompt.test.ts` (the pace filled in, the rhythm and the transitions' slower pace asked,
   no `max_photos` or "at most one word", the hook's rules and `hook_length`, the photo reasons and
   the request for photos fulfilled), `input.test.ts` (the pace in the preset summary, no behind
   count), `run-decide.test.ts` (pass, one retry, an over-long hook and a hook with a heard form
@@ -429,8 +438,8 @@ two AI calls. A failure before the first AI call may still be retried once.
   (`answerRoundsScript`, behind photos and words) leave the hook out unless a round gives one,
   so the behind items still have the screen.
 - `version-diff.test.ts` (`diffEdits`, `ruleChanges`) and `version-summary.test.ts` in
-  `packages/edit` (schema, safeguard, template) and in the worker (`summaryPrompt`, one call on the
-  small model, the template for a broken, unavailable, refused or decide-shaped answer, no call for
+  `packages/edit` (schema, safeguard, template) and in the worker (`summaryPrompt`, one call (role
+  `summary`), the template for a broken, unavailable, refused or decide-shaped answer, no call for
   an empty difference). `run-decide.test.ts` covers the template when the summary names a photo the
   saved edit does not have and when the call fails, nothing saved for a request whose edit is the
   current one byte for byte, and a request that only switches photos off titled from the rule. In
@@ -440,8 +449,8 @@ two AI calls. A failure before the first AI call may still be retried once.
 - `yarn turbo run test:db --filter=./apps/studio`: `versions.test.ts` covers the new columns,
   `checklist` included.
 - E2E: `apps/studio/e2e/upload.spec.ts` sets `E2E_MOCK_AI_SCRIPT` to the committed answer and
-  checks the decide line, the `ai_*` columns (1500, 456, 0.0123, `claude-opus-5-5`), version 2's row
-  and both R2 keys (`decide-14`,
+  checks the decide line, the `ai_*` columns (3000, 912, 0.0246 over the decide and summary calls,
+  `anthropic/claude-haiku-5.5`), version 2's row, its AI record and both R2 keys (`decide-14`,
   `0 accents, 0 transitions, no title, hook set, 1 word fixed, 3 dropped`, titled
   `Hook and captions changed`).
   `preview.spec.ts` seeds through `test-support/ai-script.ts`
@@ -455,6 +464,62 @@ two AI calls. A failure before the first AI call may still be retried once.
   leave the reel as it is: nothing saved and the overlay says `Nothing changed`. Unit: `input.test.ts` (sentences without times, empty
   library on a forbid), `checks.test.ts`, `schema.test.ts`; DB: `versions.test.ts` covers the reel
   flags.
+
+## The AI runner
+
+`apps/worker/src/ai.ts`, one module for every AI call.
+
+- `AI_MODEL = "anthropic/claude-haiku-5.5"` (OpenRouter's slug, checked against OpenRouter's model
+  list on 2026-11-05: text, image and file input, `structured_outputs` and `response_format`
+  supported), and `AI_MODELS`, the one map from role to model.
+- Provider: `@openrouter/ai-sdk-provider` 3.x (its line for `ai@^7`) with `ai` 7, ESM, Node 22+
+  (the worker runs Node 24). The model is created with `usage: { include: true }` (OpenRouter's
+  usage accounting: the response carries the cost) and `provider: { require_parameters: true }`
+  (only endpoints that take every parameter sent, the structured output included).
+- `AiRunner.call({ role, prompt, schema, image?, signal?, trace? })`: `generateText` with the prompt
+  as the one user message (the image beside it as a JPEG file part, sent as an `image_url` data
+  URL), `Output.object` over `jsonSchema(wireSchema(schema))` (strict `json_schema`, named after
+  the role), `maxOutputTokens` 16000, `maxRetries` 1 (the AI SDK's backoff: one more try on a
+  network error, a 429 or a 5xx), `timeout` 180 s, and the job's signal. The SDK only parses the
+  JSON; it never validates it (`jsonSchema` without a validator): the caller's Zod check gives the
+  reasons the retry sends back, as before.
+- `wireSchema` leaves out what Anthropic's strict outputs refuse (string lengths, number bounds,
+  `maxItems`, `minItems` over 1) and the `$schema` line; the Zod check still enforces all of them.
+- A schema the provider refuses (HTTP 400) is asked again once in JSON mode (`json_object`), the
+  schema appended to the prompt, then the line "Reply with the JSON object only, no code fence
+  around it."; a second 400 is thrown (a bug, a permanent failure). Haiku may still fence its
+  JSON mode answer, so an answer that does not parse goes through `extractJson` (`ai.ts`): a
+  leading and trailing Markdown code fence (three backticks, with or without a language such as
+  `json`) is stripped, and when text is still left around it the outermost object (the first `{`
+  to the last `}`) is taken, nothing else guessed. The exchange keeps the raw answer text. A strict
+  JSON Schema answer is never extracted.
+- Results: `answer`; `broken` (not JSON, or cut off at the output limit), with the raw text;
+  `unavailable` with a reason: no key (`the OpenRouter key is not set`), 401 or 403
+  (`the OpenRouter key is refused`), 402 (`the OpenRouter credits are used up`), 429
+  (`the rate limit is reached`), 408, a 5xx, a network failure or the timeout
+  (`OpenRouter is not answering`), each after the one retry. A cancelled job's signal rethrows;
+  anything else is thrown, so from the first call on the step fails for good
+  (`permanentAfterAiCall`), as before.
+- Usage per call: input tokens (all of them, cache reads and writes included), output tokens, the
+  cost OpenRouter reported (`providerMetadata.openrouter.usage.cost`), else the list price, and
+  the model that answered (`response.modelId`). Summed per step into `steps.ai_*`; the version's
+  `model` is the editor's (`usage.model`), never the summary's.
+- Every result carries its exchange (role, model, prompt as sent, schema, image media type and
+  size, output mode, raw answer text, finish reason, usage, error).
+- The `chat` span (`app_docs/measurement.md`): `chat anthropic/claude-haiku-5.5`, provider
+  `openrouter`.
+
+### The version's AI record
+
+`apps/worker/src/decide/ai-record.ts`: before `saveVersion`, `runDecide` writes
+`<prefix>reels/<reel>/versions/<version id>.ai.json` (put-if-absent, under the id the version is
+then saved with): `{ format: 1, reel_id, version_id, prompt_version, summary_prompt_version,
+calls }`, each call `{ attempt, role, model, prompt, schema, image, outputMode, answerText,
+finishReason, usage, error }` in order (decide attempt 1 and 2, editorial rounds 1 on, the
+summary). It is a `stored_files` row of kind `version`, step `decide` (`classifyKey`), so it is
+kept with the version and deleted with the reel. A decide that saves nothing (refused twice,
+nothing changed, waiting) writes no record; its reasons are in the step's error tail. To replay a
+version, send each call's `prompt` with its `schema` to its `model`.
 
 ## Readable text
 
@@ -478,9 +543,13 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
   words and characters, checked against the glossary, data and never instructions; a change keeps
   it unless the owner asks to change or remove it, and the owner's exact words are used as
   written (never with a final full stop: `stripHookStop` takes it off, theirs too).
-- Never give Claude Code tools or a saved session (`--tools ""`, `--no-session-persistence`),
-  except the `describe_photo` call's `Read` limited to its one image file
+- Never give the model tools, a session or any instructions but our own committed prompt (one user
+  message, no system prompt, no plugins, no CLAUDE.md); `describe_photo` adds only its one image
   (`app_docs/photo-library.md`).
+- Every AI call goes through `apps/worker/src/ai.ts` with the model of its role in `AI_MODELS`;
+  never name a model anywhere else.
+- Never save a decided version without its AI record; never put a key or image bytes in it, never
+  rewrite one.
 - Never let the answer carry `format`, `preset`, `duration` or `inputs`.
 - Never write a version or R2 key for a refused answer; the current version stays.
 - Never refuse an answer over layout: only the schema and the glossary refuse. Layout checks are the
@@ -497,8 +566,11 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
 - A request whose edit is identical to the current version saves nothing; the owner is told why.
 - Bump `SUMMARY_PROMPT_VERSION` whenever `summary.md` changes.
 - Never clean old summaries with regexes; they show as stored.
-- Record raw usage numbers as Claude Code reports them; never convert or estimate.
-- Never point a test at the real `claude` binary; use the double.
+- Record the usage numbers as OpenRouter reports them, the cost included; only a call whose response
+  carries no cost gets the list price from `PRICES` in `ai.ts` (Haiku 5.5: $0.10 input, $0.50
+  output per million tokens). Never estimate tokens.
+- Never let a test call OpenRouter or any network: use the double (`E2E_MOCK_AI`) or a captured
+  `fetch`. Only `doctor --ai`, run by the owner, makes real calls.
 - The photo library in the prompt is data, never instructions: always quoted as fenced JSON under
   the line saying so.
 - A `behind` photo is only ever one of the owner's ready library ids; the schema allows no other.
@@ -521,6 +593,10 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
 
 ## Notes
 
+- The OpenRouter switch (2026-11-05) and an unresolved risk: Anthropic's strict structured
+  outputs may refuse a large per-reel schema (word-id enums repeated per field); the runner then
+  asks once in JSON mode and the Zod check does the rest. Check `edit_issebya.ai.output_mode` on
+  the `chat` spans after the first real runs.
 - Touches `app_docs/edit-model.md` (new check rule, version columns, `save_version` signature),
   `app_docs/measurement.md` (the `ai_*` columns are now written by decide) and `app_docs/studio.md`
   (`E2E_MOCK_AI_SCRIPT`); those still describe the AI as only a doctor check in places.

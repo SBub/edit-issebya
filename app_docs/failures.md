@@ -12,8 +12,8 @@ with a human message before any heavy step runs. A step that fails for a passing
 hiccup, a 5xx, a tool killed by a signal) is run once more on its own; any other failure fails the
 job, and the owner can press Try again in the reel page's progress overlay, which queues a new job
 that resumes at the step that failed.
-When Claude Code is signed out or at its usage limit, the job waits and is taken again 15 minutes
-later instead of failing. The database runs one job per reel at a time, in order, so a change can
+When the AI cannot answer now (no OpenRouter key, a refused key, used-up credits, a rate limit,
+OpenRouter not answering), the job waits and is taken again 15 minutes later instead of failing. The database runs one job per reel at a time, in order, so a change can
 be sent while the reel is still processing.
 
 ## How it works
@@ -143,10 +143,12 @@ request, restore_version_id, version_id)`.
 ### Waiting for the AI
 
 - `apps/worker/src/ai.ts`: the runner's result may be `{ kind: "unavailable", reason }`.
-  `aiUnavailableReason` recognises Claude's output (the result text, or a failed call's message):
-  `/usage limit|limit reached|hit your limit/i` gives `the usage limit is reached`;
-  `/please run \/login|not logged in|invalid api key|oauth token has expired|authentication_error/i`
-  gives `Claude Code is signed out`.
+  `aiUnavailableReason` maps the failed OpenRouter call (after the AI SDK's one retry): no key
+  gives `the OpenRouter key is not set`; HTTP 401 or 403 `the OpenRouter key is refused`; 402
+  `the OpenRouter credits are used up`; 429 `the rate limit is reached`; 408, a 5xx, a network
+  failure or the call's 180 s timeout `OpenRouter is not answering`. Any other failed call (a 400
+  the JSON mode fallback does not fix, a bug) is thrown, so after the first AI call it fails the
+  step for good (`permanentAfterAiCall`), as a crashed CLI did before.
 - `apps/worker/src/decide/run-decide.ts` throws `AiUnavailable(reason)` for that result. The step
   runner marks the step row `waiting` (tail the reason, summary `<name> waiting for the AI`), and
   `runJob` (`apps/worker/src/run-job.ts`) calls `waitJob` (`apps/worker/src/queue.ts`) instead of
@@ -161,13 +163,11 @@ request, restore_version_id, version_id)`.
   (`formatWaitingForAi`, 24-hour local time, `data-testid="job-waiting-ai"`), and the waiting step
   row's reason under `Show error`.
 
-### Not-available fixtures
+### Not-available fixture
 
-`apps/worker/src/decide/testdata/claude-signed-out.json`, `claude-signed-out-stdout.txt` and
-`claude-usage-limit.json` hold the best-known texts of a signed-out Claude Code and one at its usage
-limit. They still need capturing on the worker machine (`claude -p --output-format json` signed out,
-and at the usage limit); the captured output replaces the fixtures and, if it does not match, the
-regexes in `ai.ts`.
+`apps/worker/src/decide/testdata/ai-credits-used-up.json` is the AI double's reply for OpenRouter's
+402 (`{ "error": { "status": 402 } }`): `waiting-ai.spec.ts` and the worker's unit tests replay it,
+and the job waits with `the OpenRouter credits are used up`.
 
 ### Per-reel order in `claim_job`
 
@@ -226,8 +226,9 @@ first output as its `.part` and waits up to 20 seconds for the spec to kill the 
 2. A failed job shows its failure in the overlay over the preview with Try again. Pressing it
    queues a new job (`retry_of_job_id` set), which skips every step already done and runs from the
    one that failed.
-3. A job waiting for the AI shows `Waiting for the AI: <reason>. Next try at HH:MM`. Sign Claude
-   Code in again or wait for the limit; the worker takes the job again after that time.
+3. A job waiting for the AI shows `Waiting for the AI: <reason>. Next try at HH:MM`. Set or fix
+   `OPENROUTER_API_KEY`, add OpenRouter credits, or wait for the rate limit or the outage; the
+   worker takes the job again after that time.
 4. The change box stays open while the reel processes and shows
    `Waiting: your reel is still being styled. Your change starts right after` (the same line
    while other jobs are ahead); the change runs in its turn.
@@ -263,7 +264,7 @@ worker's `job <id>: failed:` log line and the job's `error_tail` keep that first
 - E2E (`apps/studio/e2e/`): `footage-refusal.spec.ts` (a landscape clip refused live, one step row),
   `retry.spec.ts` (a signal-killed `transcribe` run twice, the overlay's failure, then Try again
   resumes at it and `studio_failure_action` names the failed job),
-  `waiting-ai.spec.ts` (the usage-limit fixture, the waiting line live, then taken again),
+  `waiting-ai.spec.ts` (the credits-used-up fixture, the waiting line live, then taken again),
   `crash-resume.spec.ts` (a worker killed mid-step, the abandoned row `failed`, the output stored
   once).
 

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type AiRequest, type AiRunner, fakeAiRunner } from "../ai.ts";
+import { AI_MODEL, type AiRunner, type ScriptedReply, fakeAiRunner } from "../ai.ts";
 import { AiUnavailable, PermanentError, findCause } from "../failure.ts";
 import type { ClaimedJob } from "../queue.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
@@ -23,18 +23,16 @@ const PHOTO_JOB: ClaimedJob = {
 };
 const TESTDATA = new URL("./testdata/", import.meta.url);
 
-type Json = Record<string, unknown>;
-
 let root: string;
 let scratch: string;
 let storage: Storage;
 let readyWrites: { photoId: string; photo: ReadyPhoto }[];
-let answer: Json;
-let refused: Json;
+let answer: ScriptedReply;
+let refused: ScriptedReply;
 
-async function envelope(name: string): Promise<Json> {
+async function scripted(name: string): Promise<ScriptedReply> {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed script
-  return JSON.parse(await readFile(new URL(name, TESTDATA), "utf8")) as Json;
+  return JSON.parse(await readFile(new URL(name, TESTDATA), "utf8")) as ScriptedReply;
 }
 
 const ok = (stdout = ""): ChildRun => ({
@@ -70,19 +68,20 @@ function memoryStore({ gone = false, deletedMeanwhile = false } = {}): PhotoStor
   };
 }
 
-// The double, also noting what the folder Claude Code runs in holds.
-function seeingAi(script: unknown[]): AiRunner & { calls: AiRequest[]; folders: string[][] } {
+// The double, also noting the image each call sends, as text (the fake
+// ffmpeg writes text into the large copy).
+function seeingAi(script: ScriptedReply[]) {
   const inner = fakeAiRunner(script);
-  const folders: string[][] = [];
   return {
     calls: inner.calls,
-    folders,
-    async call(tool, request) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
-      folders.push(await readdir(request.cwd));
-      return inner.call(tool, request);
-    },
-  };
+    images: () =>
+      inner.calls.map((call) =>
+        call.image
+          ? { mediaType: call.image.mediaType, text: new TextDecoder().decode(call.image.data) }
+          : null,
+      ),
+    call: inner.call,
+  } satisfies AiRunner & Record<string, unknown>;
 }
 
 beforeEach(async () => {
@@ -91,8 +90,8 @@ beforeEach(async () => {
   storage = fakeStorage({ root, uploadUrlBase: "" });
   await storage.put(ORIGINAL, new Uint8Array([0xff, 0xd8, 0xff]));
   readyWrites = [];
-  answer = await envelope("describe-answer.json");
-  refused = await envelope("describe-refused.json");
+  answer = await scripted("describe-answer.json");
+  refused = await scripted("describe-refused.json");
 });
 
 afterEach(async () => {
@@ -117,21 +116,36 @@ function run(ai: AiRunner, store: PhotoStore = memoryStore()) {
 }
 
 describe("runDescribePhotoJob", () => {
-  it("makes both copies, reads only photo.jpg and writes the photo ready", async () => {
+  it("saves an over-long description shortened, with no second call", async () => {
+    const long = "A colourful test pattern with bars and a moving circle. ".repeat(5);
+    const reply = answer as { answer: Record<string, unknown> };
+    const ai = seeingAi([
+      { ...reply, answer: { ...reply.answer, description: long } } as ScriptedReply,
+    ]);
+    const { job } = run(ai);
+    await job;
+    expect(ai.calls).toHaveLength(1);
+    const saved = readyWrites[0]!.photo.description;
+    expect(saved.length).toBeLessThanOrEqual(200);
+    expect(long.startsWith(saved)).toBe(true);
+    expect(saved.endsWith("circle.")).toBe(true);
+  });
+
+  it("makes both copies, sends the large copy as the one image and writes the photo ready", async () => {
     const ai = seeingAi([answer]);
     const { job, calls } = run(ai);
     await job;
     expect(ai.calls).toHaveLength(1);
-    expect(ai.calls[0]).toMatchObject({ readFile: "photo.jpg", cwd: join(scratch, "describe") });
-    expect(ai.folders).toEqual([["photo.jpg"]]);
+    expect(ai.calls[0]).toMatchObject({ role: "describe" });
+    expect(ai.images()).toEqual([{ mediaType: "image/jpeg", text: "jpeg for scale=1568:1176" }]);
     expect(readyWrites).toEqual([
       {
         photoId: PHOTO,
         photo: {
           description: "A colourful test pattern with bars and a moving circle.",
           tags: ["test pattern", "colour bars", "abstract"],
-          model: "claude-opus-5-5",
-          promptVersion: "describe-photo-1",
+          model: AI_MODEL,
+          promptVersion: "describe-photo-3",
           width: 4032,
           height: 3024,
           thumbnailKey: `${PREFIX}library/${PHOTO}/thumbnail.jpg`,
@@ -153,7 +167,7 @@ describe("runDescribePhotoJob", () => {
       ai_input_tokens: 1200,
       ai_output_tokens: 80,
       ai_cost_usd: 0.004,
-      ai_model: "claude-opus-5-5",
+      ai_model: AI_MODEL,
     });
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder
     expect(await readdir(scratch)).toEqual(["photo"]);
@@ -184,16 +198,18 @@ describe("runDescribePhotoJob", () => {
     expect(failed.measurements).toMatchObject({ ai_input_tokens: 2400, ai_cost_usd: 0.008 });
   });
 
-  it("waits when Claude Code is unavailable, writing nothing", async () => {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
-    const limit = await readFile(
-      new URL("../decide/testdata/claude-usage-limit.json", import.meta.url),
-      "utf8",
-    );
+  it("waits when the AI is unavailable, writing nothing", async () => {
+    const limit = JSON.parse(
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
+      await readFile(
+        new URL("../decide/testdata/ai-credits-used-up.json", import.meta.url),
+        "utf8",
+      ),
+    ) as ScriptedReply;
     const ai = seeingAi([limit]);
     const { job, calls } = run(ai);
     const error = await job.catch((thrown: unknown) => thrown);
-    expect(findCause(error, AiUnavailable)?.reason).toBe("the usage limit is reached");
+    expect(findCause(error, AiUnavailable)?.reason).toBe("the OpenRouter credits are used up");
     expect(ai.calls).toHaveLength(1);
     expect(readyWrites).toEqual([]);
     expect(calls.some((call) => call.call === "waiting")).toBe(true);
