@@ -152,9 +152,9 @@ that imports an internal package must list it there); for a run targeting
 the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (real ffmpeg and
 HyperFrames on the committed clip, `footage-check.tools.test.ts` with real ffprobe, and
 `photos/photo-images.tools.test.ts` with real ffmpeg on `fixtures/photos/sample.jpg` and `sample.heic`,
-`cutout/mask-tool.tools.test.ts` with the real `vseg` mask tool (built by
-`yarn workspace @edit-issebya/worker build:vseg`, Apple Vision, macOS only) on the person clip; on the
-owner's Mac only, never in CI), and the studio's
+`cutout/mask-tool.tools.test.ts` with the real MODNet mask tool (ONNX Runtime on the CPU, the model
+installed once by `yarn workspace @edit-issebya/worker models:install`, never downloaded by a test) on
+the person clip; on the owner's Mac only, never in CI), and the studio's
 `yarn workspace @edit-issebya/studio test:tools` (`apps/studio/e2e-tools/export-matches-preview.spec.ts`,
 the preview-matches-export guardrail, real HyperFrames, on the owner's Mac only, never in CI, run as
 `PORT=<run port> STUDIO_PORT=<BACKEND_PORT>` against the run's servers from `/prepare_app`); DB integration
@@ -210,7 +210,7 @@ claims, `behind.spec.ts` seeds a processed
 reel and a ready library photo, a change (scripted AI answer) puts the photo behind the speaker in
 the `left` spot: the worker's `once` makes the span's mask in a `cutout` step with the mask double
 (`E2E_MOCK_MASK=true`, set by `test-support/worker.ts` for every spec beside the storage, AI and
-render doubles: a black mask made by ffmpeg, no Apple Vision), version 3 names the mask and the
+render doubles: a black mask made by ffmpeg, no MODNet model), version 3 names the mask and the
 photo, the mask's `stored_files` row is `rebuildable` with step `cutout`, the live preview shows the
 photo over its spot inside the span and not after it, and the timeline's Behind row shows
 `photo left`, `delete-reel.spec.ts` shows the bin in every reels tile's bottom-right corner without hover at 1440x900 and 390x844 (44 px on the phone), Cancel and Escape keeping the reel, and Delete removing it and its queued job without a reload, its source key queued in `storage_deletions` and its page then `Reel not found`, `decide-behind.spec.ts` seeds a ready library photo before a processed reel whose
@@ -294,7 +294,8 @@ on every pull request and push to `develop` and `master`.
   (`src/`); only `apps/worker` and the test helpers under `apps/studio/test-support/` read them.
 - `OPENROUTER_API_KEY` (the worker's AI key, `apps/worker/.env.development`) is read only by
   `apps/worker`; no test reads it or calls OpenRouter (specs set `E2E_MOCK_AI=true`).
-- Never run the worker's `doctor` in a run: its AI checks make real, paid OpenRouter calls.
+- Never run the worker's `doctor` in a run: it reaches the owner's Supabase and R2, and
+  `doctor --ai` makes real, paid OpenRouter calls.
 - Never start the worker (`worker`, `worker:prod`) in a run; only a spec spawns its `once`.
 - Never run `yarn dev:studio` or `yarn dev:studio:status` (`scripts/dev-studio.sh`) in a run: they
   are the owner's one command, run `supabase start` and `migration up` on the developer's stack and

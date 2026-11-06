@@ -78,6 +78,44 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
   Version 2; its settings are the tracker's plus `mask` (`HEAD_TRACK_STEP_SETTINGS`, the HyperFrames
   version among them, so a HyperFrames upgrade re-runs it). Output `head-track.json` (format
   unchanged). Zero frames or a trailing partial frame fails the step.
+- The on-demand cut-out (`apps/worker/src/cutout/`): `ensure-cutouts.ts` makes the person mask of
+  each padded span of an edit's `behind` items (big words and photos behind the speaker, never a
+  photo in front) that is not stored yet, in one measured `cutout` step, one tool call per span.
+  The tool is MODNet portrait matting (the official `modnet_photographic_portrait_matting.onnx` of
+  ZHKKKe/MODNet, Apache 2.0 code and weights) run through `onnxruntime-node` on the CPU, on any OS
+  (Linux and Docker included): `mask-tool.ts` (`maskToolCall`, `MASK_TOOL_VERSION` 2) runs this
+  Node on `modnet-entry.ts` with `--input --start --end --output --model --ffmpeg --ffprobe`.
+  The entry checks the model's SHA-256, probes the footage's size and frame rate, and streams:
+  ffmpeg decodes exactly `round((end - start) * fps)` frames from the span's first frame (seeking a
+  quarter frame early, `-frames:v`) to raw RGB at MODNet's working size (`workingSize` in
+  `matte.ts`: the short side 512, both sides rounded down to multiples of 32, the aspect kept, area
+  scaling, so 1080x1920 and 720x1280 run at 512x896); each frame is normalised to -1 to 1 (NCHW
+  float32) and run; the matte (0 to 1) becomes 8-bit gray, goes through a 3-frame per-pixel
+  temporal median (`TemporalMedian`: frame i is the median of frames i - 1, i, i + 1, the first and
+  last unchanged; it removes one-frame flicker without the lag a moving average leaves on motion;
+  one frame of delay, three mattes held) and into a second ffmpeg, which scales it to the footage's
+  size (bicubic) and writes the mask: H.264 High `yuv420p`, full-range gray mapped to video range
+  (white = person, chroma neutral), BT.709 tags, crf 12, a keyframe every second, frame i at
+  i / fps, the span's frame count. The same format, keys and layout the Apple Vision tool (`vseg`,
+  removed) wrote, so the builder, the preview and the export read it unchanged. Written to
+  `<output>.part`, renamed when done; one `@hf-progress` line per frame (`app_docs/status.md`); any
+  failure exits 1 with one `modnet: ...` line. About 8 s per second of footage on an M3's CPU.
+- The MODNet model (`apps/worker/src/cutout/modnet-model.ts`, `MODNET_MODEL`): pinned by URL (the
+  official Google Drive file the MODNet ONNX README links), size (25,888,640 bytes) and SHA-256
+  (`07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9`). Never committed, never
+  downloaded at job time: `yarn workspace @edit-issebya/worker models:install`
+  (`src/models-install.ts`) downloads it once into `WORKER_MODELS_DIR` (default
+  `~/.edit-issebya-worker/models/`), hashing as it streams, and keeps it only when size and hash
+  match (a model already there with the hash is kept). Without the model the `cutout` step fails
+  with `cutout: MODNet model not installed at <path>, run yarn workspace @edit-issebya/worker
+models:install`; a file with another hash fails the entry, naming both hashes.
+- A mask's fingerprint (`maskFingerprint` in `spans.ts`): the footage ref, the span, and
+  `MATTE_SETTINGS` (`model`, `modelSha256`, `size` 512, `smoothing` `median3`, `provider` `cpu`,
+  `format` `h264-gray`), version `MASK_TOOL_VERSION`. Version 1 was `vseg`; version 2 makes new masks
+  for new runs, while stored versions keep naming (and rendering) their version 1 masks. Bump the
+  version whenever `modnet-entry.ts` or `matte.ts` changes what a mask looks like. CoreML (in
+  `onnxruntime-node` on the Mac) was tried: slower than the CPU on an M3 and with other values, so
+  the provider is `cpu` everywhere.
 - `apps/worker/src/pipeline/preview-copies.ts`: one encode, `footage-preview.mp4` (H.264, 540x960)
   from the retimed `source.mp4`, version 2; `PREVIEW_SETTINGS` holds every value.
 - `apps/worker/src/step-runner.ts`: `runToolsStep` (one row over several tool calls, CPU summed,
@@ -205,24 +243,24 @@ inputs name the old retime outputs) does not re-run retime.
 ## Configuration
 
 - `FFMPEG_PATH` (default `ffmpeg`; `ffprobe` is taken from beside it), `WORKER_SCRATCH_DIR`,
-  `R2_KEY_PREFIX` (a malformed value fails the config, naming the variable). No new variable.
+  `R2_KEY_PREFIX` (a malformed value fails the config, naming the variable).
 - `HYPERFRAMES_NO_TELEMETRY` is forced to `1` for HyperFrames; the `hyperframes` dependency in
   `apps/worker/package.json` is pinned exactly.
 - `yarn doctor` in the worker checks that ffmpeg and ffprobe are 7.0 or newer (one line, for
   example `ffmpeg 6.1 found, 7 or newer is needed for HEIC photos (-show_stream_groups)`; a git
   build without a version number passes), and the ffmpeg filters `zscale`, `tonemap`, `atempo`, `astats`,
   `ametadata`, the codecs `libx264` and `libvpx-vp9` (encoders) and the `libvpx-vp9` decoder, and
-  that `hyperframes --version` answers. Its `mask tool` line builds `vseg`, masks the first second
-  of `fixtures/footage/short-speech.mp4` and checks the mask is H.264 at the sample's size with 30
-  frames (give or take one), for example `vseg built, 1 s masked in 0.8 s`; on another OS the line
-  fails with `the mask tool runs on macOS only (Apple Vision); ...`.
-- `yarn workspace @edit-issebya/worker build:vseg` (`apps/worker/scripts/build-vseg.sh`) builds the
-  cut-out's mask tool, `apps/worker/tools/vseg/vseg.swift`, with `swiftc -O` into the gitignored
-  `apps/worker/tools/vseg/.build/vseg`; on another OS it exits 1. A worker without the build fails
-  the `cutout` step with `cutout: mask tool not built, run yarn workspace @edit-issebya/worker
-build:vseg`. After changing `vseg.swift`, bump `MASK_TOOL_VERSION` and
-  `MASK_TOOL_SOURCE_SHA256` (`apps/worker/src/cutout/mask-tool.ts`) together; a unit test fails
-  when the hash and the file differ.
+  that `hyperframes --version` answers. Its `mask tool` line checks the MODNet model is installed
+  with its pinned SHA-256, masks the first second of `fixtures/footage/short-speech.mp4` with the
+  real entry and checks the mask is H.264 at the sample's size with 30 frames (give or take one),
+  for example `modnet 07c308cf, 1 s masked in 9.4 s`; a missing model fails the line with
+  `MODNet model not installed at <path>, run yarn workspace @edit-issebya/worker models:install`.
+  It checks only that `OPENROUTER_API_KEY` is set and makes no AI call; `doctor --ai` adds the
+  two paid OpenRouter calls (`app_docs/decide-step.md`).
+- `WORKER_MODELS_DIR` (default `~/.edit-issebya-worker/models`): where `models:install` puts the
+  MODNet model and the `cutout` step and the doctor read it.
+- `yarn workspace @edit-issebya/worker models:install` downloads and verifies the model once per
+  machine (and once per container image or volume): run it after `yarn install` on a new worker.
 
 ## Testing
 
@@ -240,8 +278,17 @@ build:vseg`. After changing `vseg.swift`, bump `MASK_TOOL_VERSION` and
   on `fixtures/footage/short-speech.mp4`; `head-track.tools.test.ts` runs `head_track` and
   `preview_copies` on `fixtures/footage/short-person.mp4` (the real HyperFrames mask with the
   `u2net_human_seg` default model, at least 80 percent of head samples found, no mask, sample clip
-  or raw frames left, one 540x960 footage preview of the source's duration). The owner's Mac only,
+  or raw frames left, one 540x960 footage preview of the source's duration);
+  `cutout/mask-tool.tools.test.ts` runs the real MODNet entry (the installed model, never a
+  download) on 3 seconds of `short-person.mp4` (H.264 1080x1920 `yuv420p`, video range BT.709, 90
+  frames, 90 progress lines, the face white and a corner black); `render/render.tools.test.ts`
+  renders a photo and a big word behind the speaker with real MODNet masks. The owner's Mac only,
   never CI.
+- Unit: `cutout/matte.test.ts` (working size, the model input, the gray matte, the temporal median,
+  the frame count and the two ffmpeg calls), `cutout/modnet-model.test.ts` (the model's place, the
+  pin, a missing or changed model, the install with a tiny stand-in served by a fake `fetch`, never
+  the network), `cutout/mask-tool.test.ts` (the entry's arguments, the missing model line, the
+  double), `cutout/spans.test.ts` (every matte setting and the version in the fingerprint).
 - `yarn turbo run test:db --filter=./apps/studio`: `pipeline-statuses.test.ts` and the pinned
   `steps` columns (`cache_hit`).
 - `apps/studio/e2e/upload.spec.ts` seeds `fixtures/pipeline/` under a per-run key prefix, so every
@@ -263,10 +310,13 @@ build:vseg`. After changing `vseg.swift`, bump `MASK_TOOL_VERSION` and
 - Never run HyperFrames through `npx` or `yarn dlx`, and always with `HYPERFRAMES_NO_TELEMETRY=1`.
 - Never write to the reference repository (`issebya-homes-reels`).
 - Never fingerprint a source without its ETag.
-- The cut-out is made on demand, only for the padded spans of `behind` items, by `vseg` (Apple
-  Vision `accurate`, grayscale H.264, macOS only, no fallback), fingerprinted by footage, span and
-  tool version, stored put-if-absent as `rebuildable` and reused by later versions. `head_track`
-  still makes its own sampled u2net mask and never stores it.
+- The cut-out is made on demand, only for the padded spans of `behind` items, by MODNet through
+  `onnxruntime-node` (the pinned model, `provider` `cpu`, grayscale H.264, any OS, no fallback
+  model), fingerprinted by footage, span, `MATTE_SETTINGS` and `MASK_TOOL_VERSION`, stored
+  put-if-absent as `rebuildable` and reused by later versions. `head_track` still makes its own
+  sampled u2net mask and never stores it.
+- Never commit the MODNet model, and never download it at job time or without checking its pinned
+  size and SHA-256 (`models:install` only).
 - Every output carries a `kept` or `rebuildable` tag.
 - Never touch `fixtures/footage/short-person.mp4`.
 
