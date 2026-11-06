@@ -11,7 +11,7 @@ The reel page shows what the studio is doing in a small progress overlay over th
 in plain words, step k of n with a bar, the waiting and offline lines, a `New version N` notice when
 a version is saved, and a failure with the actions that fit it. The overlay replaced the jobs list
 and step log the page used to show. A newly saved version replaces the preview by itself, at the
-same time and play state. The two long steps, `head_track` (its person mask's per-frame progress) and `render`, write their tool's progress into their own
+same time and play state. The long steps, `head_track` (its person mask's per-frame progress), the on-demand `cutout` (MODNet's per-frame progress) and `render`, write their tool's progress into their own
 step row, and the studio's reel page shows the percentage with an estimate of the time left. The long-running worker writes a heartbeat every five
 minutes, so a queued job can say since when the worker is offline. On macOS the worker keeps the
 machine from idle-sleeping while a job runs.
@@ -89,9 +89,9 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
 
 - `apps/worker/src/progress-parsers.ts` reads one output line at a time. A line
   `@hf-progress {...,"pct":N}` gives `N`, clamped to 0 to 100 and rounded; every other line, and a
-  line whose JSON does not parse or has no finite `pct`, gives null. `parseRenderProgress` and
-  `parsePersonMaskProgress` are the same parser today, named per step so either can follow
-  its tool later.
+  line whose JSON does not parse or has no finite `pct`, gives null. `parseRenderProgress`,
+  `parsePersonMaskProgress` and `parseCutoutProgress` are the same parser today, named per step so
+  each can follow its tool later.
 - `render`: HyperFrames 0.8.222's `hyperframes render`, with stdout not a terminal, prints one
   `@hf-progress` line per progress report. `renderEnv` drops `HYPERFRAMES_STDOUT_IS_TTY`, which
   set to 1 silences those lines (`apps/worker/src/render/render-call.ts`).
@@ -103,9 +103,14 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
   same `removeBackground` with exactly the options the CLI passes (input, output, device, quality),
   prints one `@hf-progress {"index","total","pct"}` line per sampled frame and, at the end, the
   same JSON result document the CLI prints under `--json` (`app_docs/pipeline.md`).
-- `apps/worker/src/progress-testdata/render.txt` and `person-mask.txt` are committed samples
-  of the real output; `apps/worker/src/progress-parsers.test.ts` replays both and expects rising
-  values ending at 100.
+- `cutout`: the MODNet entry (`apps/worker/src/cutout/modnet-entry.ts`, `app_docs/pipeline.md`)
+  prints one `@hf-progress {"index","total","pct"}` line per frame of its span. The step runs one
+  call per missing span, so `ensureCutouts` wraps the parser in `partProgress(parser, from, to)`:
+  each span's 0 to 100 maps onto its share of the step, weighted by the span's length, and the
+  step's progress keeps rising across spans (the throttle drops a value at or below the last).
+- `apps/worker/src/progress-testdata/render.txt`, `person-mask.txt` and `cutout.txt` are committed
+  samples of the real output; `apps/worker/src/progress-parsers.test.ts` replays all three and
+  expects rising values ending at 100 or just below, and checks `partProgress`.
 - A tool call carries its parser as `ToolCall.progress`; `runToolsStep`
   (`apps/worker/src/step-runner.ts`) feeds every logged line through it. A step without a parser
   writes no progress.
@@ -198,8 +203,9 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
 ## Testing
 
 - Unit (`yarn test`): `apps/worker/src/progress.test.ts` (the throttle with a fake clock, rising
-  values only, `stop`, a failed write), `progress-parsers.test.ts` (both committed samples rise to
-  100, other lines give null), `step-runner.test.ts` (throttled progress then 100 before `done`, no
+  values only, `stop`, a failed write), `progress-parsers.test.ts` (the three committed samples rise
+  to 100, other lines give null, `partProgress`), `cutout/ensure-cutouts.test.ts` (each span's
+  progress weighted by its length), `step-runner.test.ts` (throttled progress then 100 before `done`, no
   writes without a parser, no 100 on failure), `pipeline/head-track-step.test.ts` and
   `render/render-call.test.ts` (the calls carry their parser, the render env drops
   `HYPERFRAMES_STDOUT_IS_TTY`, the double is the fake-render process),

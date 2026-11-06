@@ -894,7 +894,7 @@ describe("runDecide with a behind item", () => {
       code: 1,
       exitSignal: null,
       report: "",
-      output: "vseg: segmentation failed\n",
+      output: "modnet: decoding failed: invalid data\n",
       stdout: "",
       groupPeakBytes: null,
     });

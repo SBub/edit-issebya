@@ -1,13 +1,5 @@
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import {
-  MASK_TOOL_SOURCE_SHA256,
-  VSEG_SOURCE,
-  maskDoubleArgs,
-  maskToolArgs,
-  maskToolCall,
-} from "./mask-tool.ts";
+import { MODNET_ENTRY, maskDoubleArgs, maskToolArgs, maskToolCall } from "./mask-tool.ts";
 
 const tools = {
   ffmpeg: "/opt/ffmpeg",
@@ -15,18 +7,12 @@ const tools = {
   hyperframes: ["node", "hf.mjs"] as [string, string],
 };
 const span = { input: "/s/footage.mp4", start: 5.1, end: 7.9667, output: "/s/fp.mp4" };
+const MODEL = "/models/modnet.onnx";
 
 describe("the mask tool", () => {
-  it("was hashed from the committed vseg.swift (bump MASK_TOOL_VERSION and the hash together)", () => {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed tool source
-    const hash = createHash("sha256").update(readFileSync(VSEG_SOURCE)).digest("hex");
-    expect(hash, "vseg.swift changed: bump MASK_TOOL_VERSION and MASK_TOOL_SOURCE_SHA256").toBe(
-      MASK_TOOL_SOURCE_SHA256,
-    );
-  });
-
-  it("calls vseg with the span to the millisecond", () => {
-    expect(maskToolArgs(span)).toEqual([
+  it("runs the MODNet entry with this Node, the span to the millisecond, the model and ffmpeg", () => {
+    expect(maskToolArgs(span, MODEL, tools)).toEqual([
+      MODNET_ENTRY,
       "--input",
       "/s/footage.mp4",
       "--start",
@@ -35,33 +21,37 @@ describe("the mask tool", () => {
       "7.967",
       "--output",
       "/s/fp.mp4",
+      "--model",
+      MODEL,
+      "--ffmpeg",
+      "/opt/ffmpeg",
+      "--ffprobe",
+      "/opt/ffprobe",
     ]);
+    expect(MODNET_ENTRY).toMatch(/cutout\/modnet-entry\.ts$/);
     expect(
-      maskToolCall(span, {
-        tools,
-        env: {},
-        platform: "darwin",
-        binary: "/b/vseg",
-        exists: () => true,
-      }),
-    ).toEqual({ file: "/b/vseg", args: maskToolArgs(span) });
+      maskToolCall(span, { tools, env: {}, model: MODEL, node: "/bin/node", exists: () => true }),
+    ).toEqual({ file: "/bin/node", args: maskToolArgs(span, MODEL, tools) });
   });
 
-  it("refuses off macOS with one line, before spawning", () => {
-    expect(() =>
-      maskToolCall(span, { tools, env: {}, platform: "linux", exists: () => true }),
-    ).toThrow("cutout: the mask tool runs on macOS only (Apple Vision); this worker runs on linux");
+  it("finds the model under WORKER_MODELS_DIR", () => {
+    const call = maskToolCall(span, {
+      tools,
+      env: { WORKER_MODELS_DIR: "/m" },
+      exists: () => true,
+    });
+    expect(call.args).toContain("/m/modnet_photographic_portrait_matting.onnx");
   });
 
-  it("says how to build a missing binary", () => {
-    expect(() =>
-      maskToolCall(span, { tools, env: {}, platform: "darwin", exists: () => false }),
-    ).toThrow("cutout: mask tool not built, run yarn workspace @edit-issebya/worker build:vseg");
+  it("says how to install a missing model, before spawning", () => {
+    expect(() => maskToolCall(span, { tools, env: {}, model: MODEL, exists: () => false })).toThrow(
+      "cutout: MODNet model not installed at /models/modnet.onnx, run yarn workspace @edit-issebya/worker models:install",
+    );
   });
 
-  it("is the ffmpeg double only under E2E_MOCK_MASK set to exactly true, on any platform", () => {
+  it("is the ffmpeg double only under E2E_MOCK_MASK set to exactly true, without a model", () => {
     expect(
-      maskToolCall(span, { tools, env: { E2E_MOCK_MASK: "true" }, platform: "linux" }),
+      maskToolCall(span, { tools, env: { E2E_MOCK_MASK: "true" }, exists: () => false }),
     ).toEqual({
       file: "/opt/ffmpeg",
       args: maskDoubleArgs(span),
@@ -86,8 +76,8 @@ describe("the mask tool", () => {
     ]);
     for (const value of ["1", "TRUE", "true "]) {
       expect(() =>
-        maskToolCall(span, { tools, env: { E2E_MOCK_MASK: value }, platform: "linux" }),
-      ).toThrow(/macOS only/);
+        maskToolCall(span, { tools, env: { E2E_MOCK_MASK: value }, exists: () => false }),
+      ).toThrow(/MODNet model not installed/);
     }
   });
 });

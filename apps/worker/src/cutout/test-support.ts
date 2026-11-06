@@ -31,7 +31,7 @@ export function behindEdit(): Edit {
 }
 
 // Every tool call it gets, and a run that writes `mask <n>` to the file after
-// `--output` (vseg) or the last argument (ffmpeg), exit 0.
+// `--output` (the MODNet entry) or the last argument (ffmpeg), exit 0.
 export function fakeMaskSpawn(): { spawnTool: SpawnTool; calls: ToolCall[] } {
   const calls: ToolCall[] = [];
   const spawnTool: SpawnTool = async (call) => {

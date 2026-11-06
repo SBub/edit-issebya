@@ -210,13 +210,15 @@ call, the AI SDK's one retry and its backoff included.
 
 Every tool call the step runner spawns is one `exec` span, an `INTERNAL` span under the step that ran
 it (`src/step-runner.ts`, `startExecSpan` and `endExecSpan`). That covers ffmpeg, ffprobe, HyperFrames,
-vseg and the render. The step row keeps the totals; the spans show which call
+the cut-out's MODNet entry and the render. The step row keeps the totals; the spans show which call
 took the time.
 
-- Name: `exec <executable>`, the executable's base name (`exec ffmpeg`, `exec vseg`).
+- Name: `exec <executable>`, the executable's base name (`exec ffmpeg`, `exec ffprobe`).
   When `node` runs a script (`.mjs`, `.js`, `.cjs`, `.ts`) the name is the script's base name:
   `exec hyperframes` for HyperFrames' `bin/hyperframes.mjs`, `exec remove-background-entry` for the
-  person mask. `process.executable.name` stays `node`.
+  person mask, `exec modnet-entry` for each cut-out span. `process.executable.name` stays `node`.
+  The ffmpeg processes the MODNet entry starts itself are not spans of their own; their time is in
+  `exec modnet-entry`.
 - Parent: the step's span, or the call's `parent` when it names one.
 - Process attributes, from the OpenTelemetry process conventions (status Release Candidate:
   https://github.com/open-telemetry/semantic-conventions/blob/main/docs/registry/attributes/process.md):

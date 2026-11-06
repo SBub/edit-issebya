@@ -85,7 +85,8 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   (`run-pipeline.ts`, `recordStored`).
 - The cut-out's masks: `${R2_KEY_PREFIX}cache/cutout/<fingerprint>/mask.mp4`
   (`apps/worker/src/cutout/spans.ts`, `cutoutKey`), one per padded span of a version's `behind`
-  items, the fingerprint of the footage (by its producer), the span and the mask tool's version.
+  items, the fingerprint of the footage (by its producer), the span, the matte settings (the MODNet
+  model's SHA-256 among them) and the mask tool's version.
   `ensureCutouts` uploads a missing one put-if-absent through the job's `recordingStorage`, and a
   mask it finds already stored records the job reel's row from its `head`, so every reel that
   needs a mask has a row: step `cutout`, kind `rebuildable` (the on-demand output's tag,

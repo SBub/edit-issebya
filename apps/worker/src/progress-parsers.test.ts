@@ -2,12 +2,15 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import {
   type ProgressParser,
+  parseCutoutProgress,
   parsePersonMaskProgress,
+  partProgress,
   parseRenderProgress,
 } from "./progress-parsers.ts";
 
-// Real HyperFrames 0.8.222 stdout, captured on the committed clips: the
-// worker's person mask entry (HyperFrames' removeBackground) and a full `hyperframes render`.
+// Real stdout, captured on the committed clips: the worker's person mask entry
+// (HyperFrames 0.8.222's removeBackground), a full `hyperframes render` and the
+// cut-out's MODNet entry on one second of the person clip.
 async function sample(name: string): Promise<string[]> {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed samples
   const text = await readFile(new URL(`progress-testdata/${name}`, import.meta.url), "utf8");
@@ -21,6 +24,7 @@ function values(lines: string[], parse: ProgressParser): number[] {
 describe.each([
   ["person-mask.txt", parsePersonMaskProgress],
   ["render.txt", parseRenderProgress],
+  ["cutout.txt", parseCutoutProgress],
 ])("%s", (name, parse) => {
   it("gives rising values from the tool's own progress lines", async () => {
     const found = values(await sample(name), parse);
@@ -55,5 +59,15 @@ describe("parseRenderProgress", () => {
     expect(parseRenderProgress('@hf-progress {"pct":"50"}')).toBeNull();
     expect(parseRenderProgress("@hf-progress null")).toBeNull();
     expect(parseRenderProgress("")).toBeNull();
+  });
+});
+
+describe("partProgress", () => {
+  it("maps one call's 0 to 100 onto its part of the step", () => {
+    const second = partProgress(parseCutoutProgress, 40, 100);
+    expect(second('@hf-progress {"index":0,"total":10,"pct":0}')).toBe(40);
+    expect(second('@hf-progress {"index":5,"total":10,"pct":50}')).toBe(70);
+    expect(second('@hf-progress {"index":10,"total":10,"pct":100}')).toBe(100);
+    expect(second("modnet: decoding failed")).toBeNull();
   });
 });
