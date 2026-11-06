@@ -50,18 +50,22 @@ export interface DoctorDeps {
   hyperframes: () => Promise<string>;
   // OPENROUTER_API_KEY as the worker reads it (checked set, never printed).
   openRouterKey: () => string | undefined;
-  // The AI runner the jobs use: each AI check makes one tiny real call.
+  // The AI runner the jobs use: each AI check (run only with `--ai`) makes one
+  // tiny real call.
   ai: () => AiRunner;
-  // The cut-out's mask tool (vseg): the platform, its build, one run on a
-  // 1-second sample (written to `output`), and ffprobe of a file.
+  // The cut-out's mask tool (MODNet): the installed model checked against
+  // its pinned hash, one run on a 1-second sample (written to `output`), and
+  // ffprobe of a file.
   maskTool: () => MaskToolDeps;
   // The scratch folder and whether it exists or can be created (never created).
   scratchDir: () => Promise<{ dir: string; state: "exists" | "can be created" }>;
 }
 
 export interface MaskToolDeps {
-  platform: NodeJS.Platform;
-  build: () => Promise<void>;
+  // Rejects with one line when the model is missing or has another hash.
+  verifyModel: () => Promise<void>;
+  // The pinned model's SHA-256, named on the line.
+  modelSha256: string;
   // The sample's first second masked into `output`.
   run: (output: string) => Promise<void>;
   probe: (file: string) => Promise<VideoProbe>;
@@ -76,15 +80,11 @@ export interface VideoProbe {
   frames: number;
 }
 
-// vseg built, run on one second of the sample, its mask checked: H.264 at the
-// sample's size, 30 frames give or take one. On another OS, one line.
+// The MODNet model present with its pinned hash, run on one second of the
+// sample, its mask checked: H.264 at the sample's size, 30 frames give or
+// take one. Any OS.
 async function maskToolCheck(deps: MaskToolDeps): Promise<string> {
-  if (deps.platform !== "darwin") {
-    throw new Error(
-      `the mask tool runs on macOS only (Apple Vision); this worker runs on ${deps.platform}`,
-    );
-  }
-  await deps.build();
+  await deps.verifyModel();
   const dir = await mkdtemp(join(tmpdir(), "doctor-mask-"));
   try {
     const output = join(dir, "mask.mp4");
@@ -99,7 +99,7 @@ async function maskToolCheck(deps: MaskToolDeps): Promise<string> {
       );
     }
     if (Math.abs(mask.frames - 30) > 1) throw new Error(`mask has ${mask.frames} frames, not 30`);
-    return `vseg built, 1 s masked in ${seconds.toFixed(1)} s`;
+    return `modnet ${deps.modelSha256.slice(0, 8)}, 1 s masked in ${seconds.toFixed(1)} s`;
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -224,9 +224,18 @@ async function check(name: string, run: () => Promise<string | void>): Promise<s
   }
 }
 
+export interface DoctorOptions {
+  // The two real, paid AI calls (`doctor --ai`); off by default, so a startup
+  // check costs nothing.
+  ai?: boolean;
+}
+
 // One line per check, never stopping at the first failure; exit code 1 when
 // any line failed.
-export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; exitCode: number }> {
+export async function runDoctor(
+  deps: DoctorDeps,
+  options: DoctorOptions = {},
+): Promise<{ lines: string[]; exitCode: number }> {
   const lines = [
     await check("supabase reachable", deps.supabase),
     await check("r2 bucket readable and writable", () => probeR2(deps.r2)),
@@ -262,6 +271,21 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
       }
       return "set";
     }),
+    ...(options.ai ? await aiChecks(deps) : []),
+    await check("mask tool", () => maskToolCheck(deps.maskTool())),
+    // Last, so the earlier lines keep their places.
+    await check("scratch dir", async () => {
+      const { dir, state } = await deps.scratchDir();
+      return `${dir} ${state}`;
+    }),
+  ];
+  return { lines, exitCode: lines.some((line) => line.startsWith("FAIL")) ? 1 : 0 };
+}
+
+// The two paid checks, after the key line: one tiny structured call and one
+// image call.
+async function aiChecks(deps: DoctorDeps): Promise<string[]> {
+  return [
     // One tiny real call with the real decide schema: the line names the
     // model that answered.
     await check("ai structured call", async () => {
@@ -277,12 +301,5 @@ export async function runDoctor(deps: DoctorDeps): Promise<{ lines: string[]; ex
       return result.usage.model ?? undefined;
     }),
     await check("ai image call", () => aiImageCall(deps.ai())),
-    await check("mask tool", () => maskToolCheck(deps.maskTool())),
-    // Last, so the earlier lines keep their places.
-    await check("scratch dir", async () => {
-      const { dir, state } = await deps.scratchDir();
-      return `${dir} ${state}`;
-    }),
   ];
-  return { lines, exitCode: lines.some((line) => line.startsWith("FAIL")) ? 1 : 0 };
 }
