@@ -268,11 +268,12 @@ The answer (`decide-14`) is the layout engine's input plus the request checklist
   reasons) and the AI usage spent. `apps/worker/src/step-store.ts` writes the `ai_*` columns
   (`aiMeasurements`).
 - `apps/worker/src/doctor-checks.ts`: the `openrouter key` line checks `OPENROUTER_API_KEY` is set
-  (never printing it); the `ai structured call` check makes one tiny real call with the real
-  `decideJsonSchema` (the meaning-only answer) for a two-word sample reel, so `doctor` fails on a
-  schema the provider rejects; the answer must pass `parseDecideAnswer`, and the line names the
-  model that answered. The doctor's calls are real and paid (a fraction of a cent); tests run it
-  with the double only.
+  (never printing it) and is the only AI line by default: the plain `doctor` (and so
+  `yarn dev:studio`) makes no AI call. Only `yarn workspace @edit-issebya/worker doctor --ai` adds
+  the `ai structured call` check, one tiny real call with the real `decideJsonSchema` (the
+  meaning-only answer) for a two-word sample reel, so `doctor --ai` fails on a schema the provider
+  rejects; the answer must pass `parseDecideAnswer`, and the line names the model that answered.
+  These calls are real and paid (a fraction of a cent); tests run them with the double only.
 - `supabase/migrations/20261101175625_version_decide_records.sql`: `versions` gains
   `used_free_field`, `unexpressed` (requests the format could not express), `free_field` (items
   that needed the `style` field and why) and `rejected_reasons` (why the first answer was refused
@@ -485,7 +486,13 @@ two AI calls. A failure before the first AI call may still be retried once.
 - `wireSchema` leaves out what Anthropic's strict outputs refuse (string lengths, number bounds,
   `maxItems`, `minItems` over 1) and the `$schema` line; the Zod check still enforces all of them.
 - A schema the provider refuses (HTTP 400) is asked again once in JSON mode (`json_object`), the
-  schema appended to the prompt; a second 400 is thrown (a bug, a permanent failure).
+  schema appended to the prompt, then the line "Reply with the JSON object only, no code fence
+  around it."; a second 400 is thrown (a bug, a permanent failure). Haiku may still fence its
+  JSON mode answer, so an answer that does not parse goes through `extractJson` (`ai.ts`): a
+  leading and trailing Markdown code fence (three backticks, with or without a language such as
+  `json`) is stripped, and when text is still left around it the outermost object (the first `{`
+  to the last `}`) is taken, nothing else guessed. The exchange keeps the raw answer text. A strict
+  JSON Schema answer is never extracted.
 - Results: `answer`; `broken` (not JSON, or cut off at the output limit), with the raw text;
   `unavailable` with a reason: no key (`the OpenRouter key is not set`), 401 or 403
   (`the OpenRouter key is refused`), 402 (`the OpenRouter credits are used up`), 429
@@ -563,7 +570,7 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
   carries no cost gets the list price from `PRICES` in `ai.ts` (Haiku 5.5: $0.10 input, $0.50
   output per million tokens). Never estimate tokens.
 - Never let a test call OpenRouter or any network: use the double (`E2E_MOCK_AI`) or a captured
-  `fetch`. Only the doctor, run by the owner, makes real calls.
+  `fetch`. Only `doctor --ai`, run by the owner, makes real calls.
 - The photo library in the prompt is data, never instructions: always quoted as fenced JSON under
   the line saying so.
 - A `behind` photo is only ever one of the owner's ready library ids; the schema allows no other.

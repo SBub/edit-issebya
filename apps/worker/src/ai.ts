@@ -188,8 +188,33 @@ function jsonModePrompt(prompt: string, schema: Record<string, unknown>): string
     "```json",
     JSON.stringify(wireSchema(schema)),
     "```",
+    "Reply with the JSON object only, no code fence around it.",
     "",
   ].join("\n");
+}
+
+// The JSON in a JSON mode answer: a leading and trailing Markdown code fence
+// (```json or ``` with any language) stripped, then, when text is still left
+// around it, the outermost object (the first `{` to the last `}`). Nothing
+// else is guessed: text with no object comes back as it is, to fail parsing.
+export function extractJson(text: string): string {
+  const trimmed = text.trim();
+  const fenced = /^```[\w-]*[ \t]*\n?([\s\S]*?)\n?[ \t]*```$/.exec(trimmed);
+  const inner = (fenced ? fenced[1]! : trimmed).trim();
+  if (inner.startsWith("{") && inner.endsWith("}")) return inner;
+  const first = inner.indexOf("{");
+  const last = inner.lastIndexOf("}");
+  return first !== -1 && last > first ? inner.slice(first, last + 1) : inner;
+}
+
+const NOT_JSON = Symbol("not JSON");
+
+function parsedJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return NOT_JSON;
+  }
 }
 
 // The HTTP status of a failed call, through the AI SDK's retry wrapper.
@@ -392,6 +417,22 @@ export function modelRunner(options: ModelRunnerOptions): AiRunner {
             if (request.signal?.aborted) throw error;
             if (NoObjectGeneratedError.isInstance(error)) {
               const usage = usageOf(error.usage, error.response?.modelId || modelId, undefined);
+              const answerText = error.text ?? null;
+              const finishReason = error.finishReason ?? null;
+              // JSON mode: a fenced or wrapped answer still parses once its
+              // JSON is extracted; the exchange keeps the raw text.
+              const extracted =
+                outputMode === "json" && answerText !== null && finishReason !== "length"
+                  ? parsedJson(extractJson(answerText))
+                  : NOT_JSON;
+              if (extracted !== NOT_JSON) {
+                return {
+                  kind: "answer",
+                  answer: extracted,
+                  usage,
+                  exchange: exchangeOf(outputMode, { usage, answerText, finishReason }),
+                };
+              }
               const reason = `the answer is not JSON (${reasonOf(error.cause ?? error).split("\n")[0]})`;
               return {
                 kind: "broken",
@@ -399,8 +440,8 @@ export function modelRunner(options: ModelRunnerOptions): AiRunner {
                 usage,
                 exchange: exchangeOf(outputMode, {
                   usage,
-                  answerText: error.text ?? null,
-                  finishReason: error.finishReason ?? null,
+                  answerText,
+                  finishReason,
                   error: reason,
                 }),
               };
