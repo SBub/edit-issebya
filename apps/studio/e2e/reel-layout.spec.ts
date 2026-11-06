@@ -13,7 +13,7 @@ import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixt
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
-import { ruler, rulerPoint } from "../test-support/ruler.ts";
+import { ruler, rulerPoint, seekOnRuler } from "../test-support/ruler.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds } from "../test-support/worker.ts";
 
@@ -783,7 +783,7 @@ async function settledTime(page: Page, seconds: number, held = false): Promise<n
         if (!stable || !onFrame || !close) return false;
         if (held) return true;
         const shown = Number(await page.getByTestId("playhead").getAttribute("data-seconds"));
-        return Math.abs(shown - t) <= 0.0005;
+        return shown === Number(t.toFixed(3));
       },
       { intervals: [100], timeout: 10_000 },
     )
@@ -805,8 +805,10 @@ async function pausedTime(page: Page): Promise<number> {
         reads.push(t);
         const last = reads.slice(-3);
         if (last.length < 3 || !last.every((read) => read === t)) return false;
+        // The playhead shows the time rounded to the millisecond; a half-millisecond
+        // tolerance fails on float error when the time sits on that rounding edge.
         const shown = Number(await page.getByTestId("playhead").getAttribute("data-seconds"));
-        return Math.abs(shown - t) <= 0.0005;
+        return shown === Number(t.toFixed(3));
       },
       { intervals: [100], timeout: 10_000 },
     )
@@ -1095,10 +1097,23 @@ for (const [size, viewport] of [
     await expect(page.locator('hyperframes-player[data-e2e-mount="first"]')).toHaveCount(1);
     await expectNoPageScroll(page);
 
-    // Paused stays paused through a toggle, at the same time.
+    // Paused stays paused through a toggle, at the same time. The fixture reel
+    // is under 3 s and the checks above can outlast it, so the pause does not
+    // wait for the reel's end (under load it can also run past it). Pause
+    // whatever the state, seek to the start on the ruler, play, and pause at
+    // once: the pause lands near the start, well before the end.
+    if ((await page.locator('[data-intent="playing"]').count()) > 0) await toggle.click();
+    await expect(page.locator('[data-intent="paused"]')).toBeVisible();
+    await seekOnRuler(page, 0);
+    await settledTime(page, 0);
+    await toggle.click();
+    await expect(page.locator('[data-intent="playing"]')).toBeVisible();
+    await expect(page.locator('[data-preview="ready"]')).toBeVisible({ timeout: 10_000 });
     await toggle.click();
     await expect(page.locator('[data-intent="paused"]')).toBeVisible();
     const paused = await pausedTime(page);
+    const duration = Number(await ruler(page).getAttribute("data-duration"));
+    expect(paused).toBeLessThan(duration - 0.5);
     await expand.click();
     await expect(page.locator('[data-intent="paused"]')).toBeVisible();
     await page.waitForTimeout(500);
