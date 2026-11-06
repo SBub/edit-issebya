@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { fingerprint } from "../pipeline/fingerprint.ts";
 import { MASK_TOOL_VERSION } from "./mask-tool.ts";
+import { MATTE_SETTINGS } from "./matte.ts";
 import { cutoutKey, maskFingerprint, plannedMasks, withMasks } from "./spans.ts";
 import { BEHIND_PHOTO, BEHIND_TRANSCRIPT, behindEdit } from "./test-support.ts";
 
@@ -16,8 +18,22 @@ describe("maskFingerprint", () => {
     expect(maskFingerprint({ ...FOOTAGE, fingerprint: "b".repeat(64) }, span)).not.toBe(fp);
   });
 
-  it("names the tool version", () => {
-    expect(MASK_TOOL_VERSION).toBe(1);
+  it("names the tool version and changes with every matte setting", () => {
+    expect(MASK_TOOL_VERSION).toBe(2);
+    const span = { start: 5.1, end: 7.967 };
+    const fp = maskFingerprint(FOOTAGE, span);
+    for (const [name, value] of Object.entries(MATTE_SETTINGS)) {
+      const changed = { ...MATTE_SETTINGS, [name]: `${value}-other` };
+      expect(
+        fingerprint({ inputs: [FOOTAGE], settings: { ...span, ...changed }, version: 2 }),
+      ).not.toBe(fp);
+    }
+    expect(
+      fingerprint({ inputs: [FOOTAGE], settings: { ...span, ...MATTE_SETTINGS }, version: 2 }),
+    ).toBe(fp);
+    expect(
+      fingerprint({ inputs: [FOOTAGE], settings: { ...span, ...MATTE_SETTINGS }, version: 1 }),
+    ).not.toBe(fp);
   });
 });
 

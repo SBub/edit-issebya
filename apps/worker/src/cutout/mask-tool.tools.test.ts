@@ -1,5 +1,6 @@
-// `test:tools` only, on the owner's Mac: vseg built from source and run on a
-// 3-second span of the committed person clip (read only, never modified).
+// `test:tools` only: the real MODNet entry (the installed model, ONNX Runtime
+// on the CPU, the real ffmpeg) on a 3-second span of the committed person clip
+// (read only, never modified). Needs `models:install` first; never downloads.
 import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,18 +10,18 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { REAL_TOOLS } from "../pipeline/tools-test-support.ts";
 import { maskToolCall } from "./mask-tool.ts";
+import { modnetModelPath, verifyModel } from "./modnet-model.ts";
 
 const run = promisify(execFile);
 const PERSON = fileURLToPath(
   new URL("../../../../fixtures/footage/short-person.mp4", import.meta.url),
 );
-const BUILD = fileURLToPath(new URL("../../scripts/build-vseg.sh", import.meta.url));
 
 let dir: string;
 
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), "mask-tool-"));
-  await run("bash", [BUILD]);
+  await verifyModel(modnetModelPath());
 });
 
 afterAll(async () => {
@@ -46,7 +47,7 @@ async function meanOf(file: string, box: string): Promise<number> {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-describe.runIf(process.platform === "darwin")("vseg", () => {
+describe("the MODNet mask tool", () => {
   it("masks 3 seconds of the person clip: H.264, its size, its frames, the person white", async () => {
     const output = join(dir, "mask.mp4");
     const call = maskToolCall(
@@ -54,27 +55,38 @@ describe.runIf(process.platform === "darwin")("vseg", () => {
       { tools: REAL_TOOLS, env: {} },
     );
     const started = performance.now();
-    await run(call.file, call.args);
-    expect(performance.now() - started).toBeLessThan(15_000);
+    const { stdout } = await run(call.file, call.args);
+    console.log(`3 s masked in ${((performance.now() - started) / 1000).toFixed(1)} s`);
+    expect(performance.now() - started).toBeLessThan(90_000);
+    const progress = stdout.split("\n").filter((line) => line.startsWith("@hf-progress "));
+    expect(progress).toHaveLength(90);
+    expect(progress.at(-1)).toBe('@hf-progress {"index":90,"total":90,"pct":100}');
 
-    const { stdout } = await run(REAL_TOOLS.ffprobe, [
+    const probed = await run(REAL_TOOLS.ffprobe, [
       "-v",
       "error",
       "-select_streams",
       "v:0",
       "-count_frames",
       "-show_entries",
-      "stream=codec_name,width,height,nb_read_frames",
+      "stream=codec_name,width,height,nb_read_frames,pix_fmt,color_range,color_space",
       "-of",
       "json",
       output,
     ]);
     const [stream] = (
-      JSON.parse(stdout) as {
+      JSON.parse(probed.stdout) as {
         streams: { codec_name: string; width: number; height: number; nb_read_frames: string }[];
       }
     ).streams;
-    expect(stream).toMatchObject({ codec_name: "h264", width: 1080, height: 1920 });
+    expect(stream).toMatchObject({
+      codec_name: "h264",
+      width: 1080,
+      height: 1920,
+      pix_fmt: "yuv420p",
+      color_range: "tv",
+      color_space: "bt709",
+    });
     expect(Number(stream!.nb_read_frames)).toBe(90);
     // The face (the head box of the clip) is person; the top-left corner is not.
     expect(await meanOf(output, "160:160:520:700")).toBeGreaterThan(200);

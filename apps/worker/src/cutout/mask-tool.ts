@@ -2,18 +2,17 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { ToolCall } from "../step-runner.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
+import { MODELS_INSTALL, modnetModelPath } from "./modnet-model.ts";
 
-// Bumped by hand with MASK_TOOL_SOURCE_SHA256 whenever vseg.swift changes:
-// every mask's fingerprint names it, so a new tool makes new masks.
-export const MASK_TOOL_VERSION = 1;
-// The SHA-256 of tools/vseg/vseg.swift this version was made from;
-// mask-tool.test.ts fails when the file and this hash differ.
-export const MASK_TOOL_SOURCE_SHA256 =
-  "e7fa9c7ace2a56932fc91c7e60317b0177dbd308c4814df6394a4202c415fc27";
+// The mask tool's code version, in every mask's fingerprint beside
+// MATTE_SETTINGS (the model's SHA-256 among them). Bump it whenever
+// modnet-entry.ts or matte.ts changes what a mask looks like. 1 was the
+// Apple Vision tool (vseg); masks stored under it stay with the versions
+// that name them.
+export const MASK_TOOL_VERSION = 2;
 
-export const VSEG_SOURCE = fileURLToPath(new URL("../../tools/vseg/vseg.swift", import.meta.url));
-// Built by `yarn workspace @edit-issebya/worker build:vseg`, gitignored.
-const VSEG_BINARY = fileURLToPath(new URL("../../tools/vseg/.build/vseg", import.meta.url));
+// The worker's own MODNet entry, run by this Node.
+export const MODNET_ENTRY = fileURLToPath(new URL("./modnet-entry.ts", import.meta.url));
 
 export interface MaskSpanCall {
   // The full-size footage on disk.
@@ -27,9 +26,30 @@ function seconds(n: number): string {
   return n.toFixed(3);
 }
 
-// `vseg`'s arguments, exactly.
-export function maskToolArgs({ input, start, end, output }: MaskSpanCall): string[] {
-  return ["--input", input, "--start", seconds(start), "--end", seconds(end), "--output", output];
+// The entry's arguments, exactly: the span to the millisecond, the model and
+// the two ffmpeg tools it runs.
+export function maskToolArgs(
+  { input, start, end, output }: MaskSpanCall,
+  model: string,
+  tools: Pick<ToolPaths, "ffmpeg" | "ffprobe">,
+): string[] {
+  return [
+    MODNET_ENTRY,
+    "--input",
+    input,
+    "--start",
+    seconds(start),
+    "--end",
+    seconds(end),
+    "--output",
+    output,
+    "--model",
+    model,
+    "--ffmpeg",
+    tools.ffmpeg,
+    "--ffprobe",
+    tools.ffprobe,
+  ];
 }
 
 // Every pixel black, in a format every player decodes.
@@ -61,37 +81,30 @@ export function maskDoubleArgs({ input, start, end, output }: MaskSpanCall): str
 export interface MaskToolOptions {
   tools: ToolPaths;
   env?: NodeJS.ProcessEnv;
-  platform?: NodeJS.Platform;
-  binary?: string;
+  model?: string;
+  node?: string;
   exists?: (path: string) => boolean;
 }
 
-// One span's mask as a tool call: `vseg` (Apple Vision person segmentation,
-// accurate), on macOS only and never with a fallback model. Under
-// E2E_MOCK_MASK set to exactly "true" it is the double, a black mask made by
-// ffmpeg through the same step runner, so specs run anywhere.
+// One span's mask as a tool call: MODNet portrait matting through ONNX
+// Runtime on the CPU (modnet-entry.ts), on any OS, never with a fallback
+// model. Under E2E_MOCK_MASK set to exactly "true" it is the double, a black
+// mask made by ffmpeg through the same step runner, so specs need no model.
 export function maskToolCall(
   span: MaskSpanCall,
   {
     tools,
     env = process.env,
-    platform = process.platform,
-    binary = VSEG_BINARY,
+    model = modnetModelPath(env),
+    node = process.execPath,
     exists = existsSync,
   }: MaskToolOptions,
 ): ToolCall {
   if (env.E2E_MOCK_MASK === "true") {
     return { file: tools.ffmpeg, args: maskDoubleArgs(span) };
   }
-  if (platform !== "darwin") {
-    throw new Error(
-      `cutout: the mask tool runs on macOS only (Apple Vision); this worker runs on ${platform}`,
-    );
+  if (!exists(model)) {
+    throw new Error(`cutout: MODNet model not installed at ${model}, run ${MODELS_INSTALL}`);
   }
-  if (!exists(binary)) {
-    throw new Error(
-      "cutout: mask tool not built, run yarn workspace @edit-issebya/worker build:vseg",
-    );
-  }
-  return { file: binary, args: maskToolArgs(span) };
+  return { file: node, args: maskToolArgs(span, model, tools) };
 }

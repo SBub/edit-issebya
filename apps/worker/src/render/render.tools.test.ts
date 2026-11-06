@@ -290,9 +290,10 @@ describe("the real render", () => {
 });
 
 // A photo, then a big word, behind the speaker over the whole reel's speech,
-// each with its real mask (vseg on the retimed source; the fixture clip has no
-// person, so the mask is black and the item shows whole).
-describe.runIf(process.platform === "darwin")("the real render behind the speaker", () => {
+// each with its real mask (MODNet on the retimed source, the model installed
+// by models:install; the fixture clip has no person, so the mask is black and
+// the item shows whole).
+describe("the real render behind the speaker", () => {
   const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
   const SAMPLE_PHOTO = fileURLToPath(
     new URL("../../../../fixtures/photos/sample.jpg", import.meta.url),
@@ -302,7 +303,6 @@ describe.runIf(process.platform === "darwin")("the real render behind the speake
   async function renderBehind(name: string, item: NonNullable<Edit["tracks"]["behind"]>[number]) {
     const { edit, transcript } = await fixtureEdit();
     const behind = withMasks({ ...edit, tracks: { ...edit.tracks, behind: [item] } }, transcript);
-    await run("bash", [fileURLToPath(new URL("../../scripts/build-vseg.sh", import.meta.url))]);
     const masks: Record<string, string> = {};
     for (const mask of behind.inputs.masks!) {
       const output = join(dir, `${name}-${mask.fingerprint}.mp4`);

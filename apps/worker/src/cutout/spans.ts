@@ -8,6 +8,7 @@ import {
 } from "@edit-issebya/edit";
 import { cacheKey, fingerprint } from "../pipeline/fingerprint.ts";
 import { MASK_TOOL_VERSION } from "./mask-tool.ts";
+import { MATTE_SETTINGS } from "./matte.ts";
 
 // The on-demand cut-out step and its one output: the person mask of one
 // padded span of a behind item.
@@ -15,12 +16,14 @@ export const MASK_STEP = "cutout";
 const MASK_FILE = "mask.mp4";
 
 // What a mask depends on: the footage (by its producer), the span and how it
-// is made. A new span, new footage or a new tool version is a new mask; the
-// same span of the same footage is reused by every later version.
+// is made (MODNet's model hash, working size, smoothing, provider, format,
+// and the tool's code version). A new span, new footage, a new setting or a
+// new tool version is a new mask; the same span of the same footage is reused
+// by every later version.
 export function maskFingerprint(footage: EditRef, span: { start: number; end: number }): string {
   return fingerprint({
     inputs: [{ step: footage.step, fingerprint: footage.fingerprint, file: footage.file }],
-    settings: { start: span.start, end: span.end, quality: "accurate", format: "h264-gray" },
+    settings: { start: span.start, end: span.end, ...MATTE_SETTINGS },
     version: MASK_TOOL_VERSION,
   });
 }
