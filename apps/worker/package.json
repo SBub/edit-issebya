@@ -9,6 +9,7 @@
     "once": "node --env-file-if-exists=.env.development src/once.ts",
     "doctor": "node --env-file-if-exists=.env.development src/doctor.ts",
     "dev:errors": "node --env-file-if-exists=.env.development src/dev-errors.ts",
+    "trace": "node --env-file-if-exists=.env.development src/trace.ts",
     "models:install": "node --env-file-if-exists=.env.development src/models-install.ts",
     "fixtures:pipeline": "node --env-file-if-exists=.env.development src/make-pipeline-fixtures.ts",
     "typecheck": "tsc --noEmit",
