@@ -77,7 +77,8 @@ const deps: DoctorDeps = {
     async run(output) {
       const call = maskToolCall(
         { input: MASK_SAMPLE, start: 0, end: 1, output },
-        { tools: toolPaths(), env: {} },
+        // No test switch (E2E_MOCK_MASK) from the environment, but its model folder.
+        { tools: toolPaths(), env: {}, model: modnetModelPath(process.env) },
       );
       await run(call.file, call.args);
     },

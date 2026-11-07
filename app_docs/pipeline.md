@@ -260,7 +260,9 @@ inputs name the old retime outputs) does not re-run retime.
 - `WORKER_MODELS_DIR` (default `~/.edit-issebya-worker/models`): where `models:install` puts the
   MODNet model and the `cutout` step and the doctor read it.
 - `yarn workspace @edit-issebya/worker models:install` downloads and verifies the model once per
-  machine (and once per container image or volume): run it after `yarn install` on a new worker.
+  machine: run it after `yarn install` on a new worker. The worker image bakes the same file in
+  at `/opt/edit-issebya/models` (a build stage checks its size and SHA-256), so the container needs
+  no install (`app_docs/worker-container.md`).
 
 ## Testing
 
