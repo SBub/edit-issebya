@@ -1,18 +1,21 @@
 // Checks this machine can run jobs, one line each: Supabase, R2 read and write
 // (a probe object put, read back and deleted under `<R2_KEY_PREFIX>doctor/`),
-// ffmpeg and ffprobe 7 or newer with the filters and codecs the pipeline needs, HyperFrames, one
-// structured Claude Code call, one image call, the cut-out's mask tool (built
-// and run on one second of a sample), and the scratch folder (exists or can be
-// created, never created here). Prints one line per check; exits 1 when any
-// failed.
+// ffmpeg and ffprobe 7 or newer with the filters and codecs the pipeline needs, HyperFrames,
+// OPENROUTER_API_KEY set (never printed), the cut-out's mask tool (the MODNet
+// model's hash checked, run on one second of a sample), and the scratch folder
+// (exists or can be created, never created here). With `--ai` it also makes one
+// tiny real structured AI call and one image call through OpenRouter (paid, a
+// fraction of a cent); without it no AI call is made. Prints one line per
+// check; exits 1 when any failed.
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { parseArgs, promisify } from "node:util";
 import { keyPrefix } from "@edit-issebya/storage";
 import { aiRunner } from "./ai.ts";
 import { scratchDirOf, workerConfig } from "./config.ts";
 import { maskToolCall } from "./cutout/mask-tool.ts";
-import { runDoctor } from "./doctor-checks.ts";
+import { MODNET_MODEL, modnetModelPath, verifyModel } from "./cutout/modnet-model.ts";
+import { type DoctorDeps, runDoctor } from "./doctor-checks.ts";
 import { hyperframesEnv, toolPaths } from "./pipeline/tools.ts";
 import { scratchDirState } from "./scratch.ts";
 import { workerStorage } from "./storage.ts";
@@ -24,9 +27,11 @@ const run = promisify(execFile);
 const MASK_SAMPLE = fileURLToPath(
   new URL("../../../fixtures/footage/short-speech.mp4", import.meta.url),
 );
-const BUILD_VSEG = fileURLToPath(new URL("../scripts/build-vseg.sh", import.meta.url));
 
-const { lines, exitCode } = await runDoctor({
+// `doctor --ai` adds the two paid AI calls; any other argument is refused.
+const { values: flags } = parseArgs({ options: { ai: { type: "boolean", default: false } } });
+
+const deps: DoctorDeps = {
   async supabase() {
     const { error } = await workerSupabase(workerConfig()).from("jobs").select("id").limit(1);
     if (error) throw new Error(error.message);
@@ -63,13 +68,12 @@ const { lines, exitCode } = await runDoctor({
     const { stdout } = await run(node, [entry, "--version"], { env: hyperframesEnv() });
     return stdout;
   },
+  openRouterKey: () => process.env.OPENROUTER_API_KEY,
   ai: () => aiRunner(process.env),
   maskTool: () => ({
-    platform: process.platform,
     sample: MASK_SAMPLE,
-    async build() {
-      await run("bash", [BUILD_VSEG]);
-    },
+    modelSha256: MODNET_MODEL.sha256,
+    verifyModel: () => verifyModel(modnetModelPath(process.env)),
     async run(output) {
       const call = maskToolCall(
         { input: MASK_SAMPLE, start: 0, end: 1, output },
@@ -108,7 +112,9 @@ const { lines, exitCode } = await runDoctor({
     const dir = scratchDirOf(process.env);
     return { dir, state: await scratchDirState(dir) };
   },
-});
+};
+
+const { lines, exitCode } = await runDoctor(deps, { ai: flags.ai });
 
 for (const line of lines) console.log(line);
 process.exit(exitCode);

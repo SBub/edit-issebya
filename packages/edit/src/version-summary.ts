@@ -20,7 +20,7 @@ export const summaryAnswerSchema = z.strictObject({
 
 export type SummaryAnswer = z.infer<typeof summaryAnswerSchema>;
 
-// The summary answer's JSON Schema for `--json-schema`: the same draft-07
+// The summary answer's JSON Schema for the AI's structured output: the same draft-07
 // settings as the decide answer's.
 export function summaryJsonSchema(): Record<string, unknown> {
   return z.toJSONSchema(summaryAnswerSchema, {

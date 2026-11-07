@@ -196,7 +196,9 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
   machine, never on Vercel. Scripts: `worker`, `worker:prod` (long-running), `once` (claim one job,
   used by specs) and `doctor` (checks Supabase, R2 read and write access through a probe it puts,
   reads back and deletes under `<R2_KEY_PREFIX>doctor/`, the scratch folder, which must exist or be
-  creatable and which it never creates, ffmpeg and one structured `claude -p` call). Each loads
+  creatable and which it never creates, ffmpeg, `OPENROUTER_API_KEY` set (never printed), and no
+  AI call; `doctor --ai` adds one tiny real structured AI call and one image call through
+  OpenRouter, paid, only when the owner runs it). Each loads
   `.env.development` or `.env.production` from `apps/worker/` when present. `worker`,
   `worker:prod` and `once` create the scratch folder (`WORKER_SCRATCH_DIR`) at start-up and exit 1
   when they cannot (see `app_docs/storage.md`).
@@ -220,7 +222,8 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
   passes its own keys.
 - `E2E_MOCK_STORAGE=true` (exactly) makes both use the gitignored `.e2e-storage/` folder at the
   repository root; the studio's `/studio/api/e2e-storage-mock/[...key]` route stands in for R2's
-  upload part `PUT` (part requests only, see `app_docs/upload.md`) and answers 404 otherwise. `E2E_MOCK_AI=true` replaces `claude -p` with a scripted answer.
+  upload part `PUT` (part requests only, see `app_docs/upload.md`) and answers 404 otherwise. `E2E_MOCK_AI=true` replaces the OpenRouter call with a scripted answer (the real runner over a
+  scripted model, never the network; `app_docs/decide-step.md`).
 - `E2E_MOCK_STEPS=true` (exactly) is the pipeline step double: a fixed step that must run copies
   its committed output from `fixtures/pipeline/` instead of running its tool, and
   `E2E_MOCK_STEP_FAULT` makes one step fail on purpose. See `app_docs/failures.md`.
@@ -235,8 +238,8 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
    `apps/worker/.env.development` from the matching `.env.example` files.
 2. Create the owner account in the local auth once: `yarn dev:studio add-owner <email>`.
 3. Run `yarn dev:studio` from the repository root (see the root `README.md`): it checks Docker,
-   starts the local Supabase stack if it is down, applies the migrations, runs the worker doctor,
-   then runs the web and studio dev servers and the worker together. Open
+   starts the local Supabase stack if it is down, applies the migrations, runs the worker doctor
+   (no AI call, so no cost), then runs the web and studio dev servers and the worker together. Open
    `http://localhost:3000/studio`. ADW runs use their own local stack (`edit-issebya-adw`, ports
    54450 to 54459, see `app_docs/adw-supabase-stack.md`), which the command never touches.
 4. Enter an address that already has an account, open the emailed link (local mail: Mailpit), and
@@ -258,11 +261,14 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
   `E2E_MOCK_STORAGE` (tests only).
 - Worker (`apps/worker/.env.development`): `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `WORKER_ID`,
   `R2_WORKER_ACCESS_KEY_ID`, `R2_WORKER_SECRET_ACCESS_KEY`, `WORKER_POLL_INTERVAL_SECONDS`
-  (default 120), `WORKER_MIN_FREE_DISK_GB` (default 10), `WORKER_SCRATCH_DIR`, `CLAUDE_CODE_PATH`,
+  (default 120), `WORKER_MIN_FREE_DISK_GB` (default 10), `WORKER_SCRATCH_DIR`, `OPENROUTER_API_KEY`
+  (secret, the AI calls),
   `FFMPEG_PATH`, `E2E_MOCK_AI`, `E2E_MOCK_STORAGE`, `E2E_MOCK_RENDER`, `E2E_MOCK_FREE_DISK_GB` (the
   last four tests only).
 - `SUPABASE_SECRET_KEY` is read only by the worker and by the test helpers in
   `apps/studio/test-support/`, from `apps/worker/.env.development`.
+- `OPENROUTER_API_KEY` is read only by the worker (`apps/worker/src/ai.ts`, and the doctor's key
+  line), never by the studio or a test: specs run the worker with `E2E_MOCK_AI=true`.
 - `SUPABASE_DB_URL`: test helpers only (`localDbUrl` in `apps/studio/test-support/local-supabase.ts`),
   the direct database URL the DB tests query; defaults to the shared stack's 54432 database. In ADW
   runs `.adw/worktree-env` sets it to the ADW stack's.

@@ -6,6 +6,7 @@ import type { Storage } from "@edit-issebya/storage";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
 import { type SpawnTool, type StepContext, recordHit, runToolsStep } from "../step-runner.ts";
+import { parseCutoutProgress, partProgress } from "../progress-parsers.ts";
 import { maskToolCall } from "./mask-tool.ts";
 import { MASK_STEP, cutoutKey, withMasks } from "./spans.ts";
 
@@ -23,7 +24,6 @@ export interface EnsureCutouts {
   tools: ToolPaths;
   spawnTool?: SpawnTool;
   env?: NodeJS.ProcessEnv;
-  platform?: NodeJS.Platform;
   // Records that the job's reel needs a mask found already stored (its HEAD
   // size); masks this step writes are recorded by the storage it is given.
   recordStored?: (key: string, bytes: number) => Promise<void>;
@@ -45,7 +45,8 @@ function plural(count: number, unit: string): string {
 // fingerprinted by footage, span and tool version (maskSpans gives the same
 // spans the builder draws). All stored: a hit row (`cut-out reused`). Else one
 // measured `cutout` step downloads the footage once, runs the mask tool for
-// each missing span and uploads it put-if-absent, so a stored mask is never
+// each missing span (its per-frame progress weighted by the span's length
+// across the step) and uploads it put-if-absent, so a stored mask is never
 // replaced. Returns the edit with `inputs.masks` (by start) and
 // `inputs.photos` (sorted) naming them; an edit without behind items comes
 // back without either, and one whose only items are photos in front of the
@@ -61,7 +62,6 @@ export async function ensureCutouts({
   tools,
   spawnTool,
   env = process.env,
-  platform = process.platform,
   recordStored,
   parent,
 }: EnsureCutouts): Promise<Edit> {
@@ -123,15 +123,17 @@ export async function ensureCutouts({
             if (!(await storage.getFile(footageKey, footagePath, { signal }))) {
               throw new Error(`${MASK_STEP}: input missing: ${footageKey}`);
             }
+            const total = missing.reduce((sum, span) => sum + (span.end - span.start), 0);
             let seconds = 0;
             for (const [index, span] of missing.entries()) {
               const output = outputs[index]!;
-              await tool(
-                maskToolCall(
-                  { input: footagePath, start: span.start, end: span.end, output },
-                  { tools, env, platform },
-                ),
+              const call = maskToolCall(
+                { input: footagePath, start: span.start, end: span.end, output },
+                { tools, env },
               );
+              const from = (100 * seconds) / total;
+              const to = (100 * (seconds + span.end - span.start)) / total;
+              await tool({ ...call, progress: partProgress(parseCutoutProgress, from, to) });
               signal.throwIfAborted();
               await storage.putFileIfAbsent(span.key, output, { contentType: "video/mp4" });
               seconds += span.end - span.start;

@@ -9,7 +9,7 @@
     "once": "node --env-file-if-exists=.env.development src/once.ts",
     "doctor": "node --env-file-if-exists=.env.development src/doctor.ts",
     "dev:errors": "node --env-file-if-exists=.env.development src/dev-errors.ts",
-    "build:vseg": "bash scripts/build-vseg.sh",
+    "models:install": "node --env-file-if-exists=.env.development src/models-install.ts",
     "fixtures:pipeline": "node --env-file-if-exists=.env.development src/make-pipeline-fixtures.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -23,6 +23,7 @@
   "dependencies": {
     "@edit-issebya/edit": "workspace:*",
     "@edit-issebya/storage": "workspace:*",
+    "@openrouter/ai-sdk-provider": "^3.0.0",
     "@opentelemetry/api": "^1.10.0",
     "@opentelemetry/api-logs": "^0.223.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.300.0",
@@ -31,8 +32,10 @@
     "@opentelemetry/sdk-logs": "^3.0.0",
     "@opentelemetry/sdk-trace": "^3.0.0",
     "@supabase/supabase-js": "^2.118.0",
+    "ai": "^7.0.0",
     "harfbuzzjs": "1.6.4",
     "hyperframes": "0.8.222",
+    "onnxruntime-node": "1.31.1",
     "posthog-node": "^5.61.1",
     "zod": "4.6.7"
   },

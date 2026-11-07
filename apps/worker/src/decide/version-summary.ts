@@ -10,27 +10,17 @@ import {
   summaryJsonSchema,
   summaryTemplate,
 } from "@edit-issebya/edit";
-import type { AiRequest, AiRunner } from "../ai.ts";
-import type { Tool } from "../step-runner.ts";
+import { type AiExchange, type AiRequest, type AiRunner, NO_USAGE } from "../ai.ts";
 import type { AiUsage } from "../step-store.ts";
 import { fenced } from "./prompt.ts";
 
-// The version title and summary: one short call on a small model, after
-// layout, from the saved difference. Bump with every change to summary.md.
-const SUMMARY_PROMPT_VERSION = "summary-7";
-export const SUMMARY_MODEL = "claude-haiku-5-5";
+// The version title and summary: one short call (the `summary` role's
+// model), after layout, from the saved difference. Bump with every change to
+// summary.md.
+export const SUMMARY_PROMPT_VERSION = "summary-7";
 
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed prompt
 const TEMPLATE = readFileSync(new URL("./summary.md", import.meta.url), "utf8");
-
-const NO_USAGE: AiUsage = {
-  inputTokens: null,
-  outputTokens: null,
-  costUsd: null,
-  model: null,
-  cacheReadTokens: null,
-  cacheWriteTokens: null,
-};
 
 export interface SummaryInput {
   request: string | null;
@@ -76,6 +66,8 @@ export interface VersionSummary {
   summary: string;
   source: "ai" | "template";
   usage: AiUsage;
+  // The call as sent and answered; null when no call was made or it threw.
+  exchange: AiExchange | null;
 }
 
 // The title and summary of a new version. An empty difference makes no call.
@@ -86,8 +78,6 @@ export interface VersionSummary {
 // (the aborted signal) is rethrown.
 export async function writeVersionSummary({
   ai,
-  tool,
-  cwd,
   request,
   checklist,
   diff,
@@ -100,8 +90,6 @@ export async function writeVersionSummary({
   trace,
 }: SummaryInput & {
   ai: AiRunner;
-  tool: Tool;
-  cwd: string;
   preset: Preset;
   reelId: string;
   signal?: AbortSignal;
@@ -109,47 +97,61 @@ export async function writeVersionSummary({
   // The call's `chat` span goes under this span; without it the call is not traced.
   trace?: AiRequest["trace"];
 }): Promise<VersionSummary> {
-  const template = (why: string, usage: AiUsage): VersionSummary => {
+  const template = (
+    why: string,
+    usage: AiUsage,
+    exchange: AiExchange | null = null,
+  ): VersionSummary => {
     log(`decide: summary from the template, reel ${reelId}: ${why} (${SUMMARY_PROMPT_VERSION})`);
-    return { ...summaryTemplate(diff, record, checklist, preset), source: "template", usage };
+    return {
+      ...summaryTemplate(diff, record, checklist, preset),
+      source: "template",
+      usage,
+      exchange,
+    };
   };
   if (diff.items.length === 0 && diff.rules.length === 0) {
     return {
       ...summaryTemplate(diff, record, checklist, preset),
       source: "template",
       usage: NO_USAGE,
+      exchange: null,
     };
   }
   let result;
   try {
-    result = await ai.call(tool, {
+    result = await ai.call({
+      role: "summary",
       prompt: summaryPrompt({ request, checklist, diff, record, ...(library ? { library } : {}) }),
       schema: summaryJsonSchema(),
-      cwd,
-      model: SUMMARY_MODEL,
+      ...(signal ? { signal } : {}),
       ...(trace ? { trace } : {}),
     });
   } catch (error) {
     if (signal?.aborted) throw error;
     return template("the call failed", NO_USAGE);
   }
-  if (result.kind === "unavailable") return template("unavailable", result.usage);
-  if (result.kind === "broken") return template("answer-json", result.usage);
+  const { exchange } = result;
+  if (result.kind === "unavailable") return template("unavailable", result.usage, exchange);
+  if (result.kind === "broken") return template("answer-json", result.usage, exchange);
   const parsed = parseSummaryAnswer(result.answer);
-  if (!parsed.ok) return template("answer-schema", result.usage);
+  if (!parsed.ok) return template("answer-schema", result.usage, exchange);
   const answer = {
     change_title: parsed.answer.change_title.trim(),
     change_summary: parsed.answer.change_summary.trim(),
   };
   const checked = checkSummary(answer, diff, preset, askedNotDone(record, checklist));
-  if (!checked.ok) return template(`safeguard: ${checked.reasons.join("; ")}`, result.usage);
+  if (!checked.ok) {
+    return template(`safeguard: ${checked.reasons.join("; ")}`, result.usage, exchange);
+  }
   if (answer.change_title === "" || answer.change_summary === "") {
-    return template("answer-schema", result.usage);
+    return template("answer-schema", result.usage, exchange);
   }
   return {
     title: answer.change_title,
     summary: answer.change_summary,
     source: "ai",
     usage: result.usage,
+    exchange,
   };
 }

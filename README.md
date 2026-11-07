@@ -39,12 +39,20 @@ yarn dev:studio add-owner <email>  # once: creates the owner account in the loca
 yarn dev:studio errors             # the worker's last failures in development, in plain words
 ```
 
+Once per machine, download the worker's cut-out model (MODNet, about 26 MB, checked against its
+pinned SHA-256; see [the pipeline doc](app_docs/pipeline.md)):
+
+```bash
+yarn workspace @edit-issebya/worker models:install
+```
+
 `scripts/dev-studio.sh` checks that Docker is running, starts the local Supabase stack
 (`edit-issebya`, `supabase/config.toml`) if it is down, applies pending migrations
 (`supabase migration up --local`), checks that `apps/web/.env.development`,
 `apps/studio/.env.development` and `apps/worker/.env.development` exist (fill each from its
-folder's `.env.example` with the values `supabase status` prints and the R2 worker keys), and runs
-the worker doctor. It stops at the first failure with a one-line reason. Once the studio answers it
+folder's `.env.example` with the values `supabase status` prints, the R2 worker keys and the
+worker's `OPENROUTER_API_KEY`), and runs the worker doctor (it checks the key is set and makes
+no AI call, so a startup costs nothing). It stops at the first failure with a one-line reason. Once the studio answers it
 prints:
 
 - Studio: `http://localhost:3000/studio` (reached through the landing page)
@@ -66,7 +74,9 @@ Manual fallback, each step by hand:
 ```bash
 supabase start                               # the shared local Supabase stack
 supabase migration up --local                # apply the migrations
+yarn workspace @edit-issebya/worker models:install   # once: the cut-out's MODNet model
 yarn workspace @edit-issebya/worker doctor   # checks the configuration and connections
+yarn workspace @edit-issebya/worker doctor --ai   # also two tiny real, paid OpenRouter calls
 STUDIO_PORT=3001 yarn turbo run dev --filter=./apps/web --filter=./apps/studio
 yarn workspace @edit-issebya/worker worker   # in a second terminal: keeps taking jobs until stopped
 yarn workspace @edit-issebya/worker once     # or: takes one job, then exits

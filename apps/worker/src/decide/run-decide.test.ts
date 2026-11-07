@@ -12,7 +12,13 @@ import {
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type AiRunner, type FakeAiRunner, fakeAiRunner, resultEnvelope } from "../ai.ts";
+import {
+  AI_MODEL,
+  type AiRunner,
+  type FakeAiRunner,
+  type ScriptedReply,
+  fakeAiRunner,
+} from "../ai.ts";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import {
   AiUnavailable,
@@ -33,7 +39,7 @@ import type { PhotoLibrary } from "../photos/photo-store.ts";
 import type { SpawnTool } from "../step-runner.ts";
 import type { ReelRules } from "./behind-rules.ts";
 import { runDecide } from "./run-decide.ts";
-import { SUMMARY_MODEL } from "./version-summary.ts";
+import { aiRecordKey } from "./ai-record.ts";
 
 const PREFIX = "dev/";
 const FIXTURES = new URL("../../../../fixtures/pipeline/", import.meta.url);
@@ -44,6 +50,13 @@ interface Manifest {
 }
 
 type Json = Record<string, unknown>;
+// A scripted reply carrying an answer, for the double.
+interface Answered {
+  answer: unknown;
+  usage?: { input_tokens?: number; output_tokens?: number; cost_usd?: number };
+  model?: string;
+}
+const answered = (answer: unknown): Answered => ({ answer });
 
 let root: string;
 let scratch: string;
@@ -53,8 +66,8 @@ let rows: Map<string, StoredVersion & NewVersion>;
 let current: string | null;
 let ids: number;
 let firstId: string;
-// The committed E2E script: one envelope whose structured_output passes.
-let scripted: Json;
+// The committed E2E script: one reply whose answer passes.
+let scripted: Answered & { answer: Json };
 
 function memoryRows(): VersionRows {
   return {
@@ -110,7 +123,7 @@ beforeEach(async () => {
   });
   firstId = current!;
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed script
-  scripted = JSON.parse(await readFile(ANSWER, "utf8")) as Json;
+  scripted = JSON.parse(await readFile(ANSWER, "utf8")) as Answered & { answer: Json };
 });
 
 afterEach(async () => {
@@ -122,7 +135,7 @@ type Answer = Json & { word_fixes: Json[]; photos: Json[] };
 
 // The good answer, changed by `change`.
 function answer(change: (answer: Answer) => void = () => {}) {
-  const copy = structuredClone(scripted.structured_output) as Answer;
+  const copy = structuredClone(scripted.answer) as Answer;
   change(copy);
   return copy;
 }
@@ -130,7 +143,7 @@ function answer(change: (answer: Answer) => void = () => {}) {
 // The schema accepts a word fix in any words, so the glossary check, not the
 // schema, refuses a heard form of a glossary term ("locking" for "lock-in").
 const heardForm = () =>
-  resultEnvelope(
+  answered(
     answer((a) => {
       a.word_fixes = [{ word: "w0003", text: "Locking" }];
     }),
@@ -154,12 +167,12 @@ async function decide(ai: AiRunner, telemetry?: Telemetry) {
 
 // The editor's calls (decide and editorial rounds), without the summary call.
 function editorCalls(ai: FakeAiRunner) {
-  return ai.calls.filter((call) => call.model !== SUMMARY_MODEL);
+  return ai.calls.filter((call) => call.role !== "summary");
 }
 
-// A summary answer envelope for the double.
+// A summary answer for the double.
 const summaryEnvelope = (change_title: string, change_summary: string) =>
-  resultEnvelope({ change_title, change_summary });
+  answered({ change_title, change_summary });
 
 function lastCall(calls: ReturnType<typeof recordingSteps>["calls"]) {
   return calls.at(-1)!;
@@ -174,9 +187,9 @@ describe("runDecide", () => {
     const { run, calls } = await decide(ai);
     await run;
     expect(ai.calls).toHaveLength(2);
-    expect(ai.calls[0]!.model).toBeUndefined();
-    // The summary call: the small model, the difference and the record.
-    expect(ai.calls[1]!.model).toBe("claude-haiku-5-5");
+    expect(ai.calls[0]!.role).toBe("decide");
+    // The summary call: its role, the difference and the record.
+    expect(ai.calls[1]!.role).toBe("summary");
     expect(ai.calls[1]!.prompt).toContain('"kind": "hook"');
     expect(ai.calls[1]!.prompt).toContain('"action": "added"');
     expect(ai.calls[1]!.prompt).toContain('"text": "A short test for the real studio"');
@@ -189,7 +202,7 @@ describe("runDecide", () => {
       number: 2,
       parent_id: firstId,
       request: null,
-      model: "claude-opus-5-5",
+      model: AI_MODEL,
       prompt_version: "decide-14",
       change_title: "Hook added",
       change_summary: 'The reel now opens on "A short test for the real studio".',
@@ -220,7 +233,32 @@ describe("runDecide", () => {
     );
     // The schema the AI got is this reel's, and the prompt carries its words.
     expect(JSON.stringify(ai.calls[0]!.schema)).toContain('"w0010"');
-    expect(ai.calls[0]!.cwd.startsWith(join(scratch, "decide-"))).toBe(true);
+    // The AI record beside the version: both calls, prompt, schema and raw answer.
+    const record = JSON.parse(
+      new TextDecoder().decode(
+        (await storage.get(aiRecordKey(PREFIX, TEST_JOB.reel_id!, current!)))!,
+      ),
+    ) as { version_id: string; prompt_version: string; calls: Json[] };
+    expect(record).toMatchObject({
+      format: 1,
+      reel_id: TEST_JOB.reel_id,
+      version_id: current,
+      prompt_version: "decide-14",
+      summary_prompt_version: "summary-7",
+    });
+    expect(record.calls.map((call) => [call.role, call.attempt])).toEqual([
+      ["decide", 1],
+      ["summary", 1],
+    ]);
+    expect(record.calls[0]).toMatchObject({
+      model: AI_MODEL,
+      prompt: ai.calls[0]!.prompt,
+      schema: ai.calls[0]!.schema,
+      outputMode: "json_schema",
+      answerText: JSON.stringify(scripted.answer),
+      usage: { inputTokens: 1500, outputTokens: 456, costUsd: 0.0123 },
+      error: null,
+    });
 
     const transcript = transcriptSchema.parse(
       JSON.parse(
@@ -247,7 +285,7 @@ describe("runDecide", () => {
   });
 
   it("saves exactly version 1's bytes for an answer with no choices (the E2E unchanged script)", async () => {
-    const empty = resultEnvelope(
+    const empty = answered(
       answer((a) => {
         a.accents = [];
         a.transitions = [];
@@ -297,7 +335,7 @@ describe("runDecide", () => {
   });
 
   it("saves nothing for a request whose edit is the current one byte for byte", async () => {
-    const empty = resultEnvelope(
+    const empty = answered(
       answer((a) => {
         a.accents = [];
         a.transitions = [];
@@ -347,7 +385,7 @@ describe("runDecide", () => {
   });
 
   it("saves a request that only switches photos off, titled from the rule", async () => {
-    const off = resultEnvelope(
+    const off = answered(
       answer((a) => {
         a.accents = [];
         a.transitions = [];
@@ -389,7 +427,7 @@ describe("runDecide", () => {
       number: 2,
       parent_id: firstId,
       checks: [],
-      model: "claude-opus-5-5",
+      model: AI_MODEL,
     });
     expect(v2.rejected_reasons).toHaveLength(1);
     expect(v2.rejected_reasons[0]).toMatch(/^glossary cw0003: caption cw0003 shows "Locking"/);
@@ -408,7 +446,7 @@ describe("runDecide", () => {
     ],
   ] as const) {
     it(`sends ${what} back once with the reasons, then saves`, async () => {
-      const first = resultEnvelope(
+      const first = answered(
         answer((a) => {
           a.hook = { text };
         }),
@@ -493,15 +531,10 @@ describe("runDecide", () => {
 
   it("writes the AI usage exactly as reported, summed over two rounds (verification 5)", async () => {
     const withUsage = (input: number, output: number, cost: number, model: string) => ({
-      ...resultEnvelope(answer()),
-      total_cost_usd: cost,
-      usage: {
-        input_tokens: input,
-        cache_creation_input_tokens: 300,
-        cache_read_input_tokens: 0,
-        output_tokens: output,
-      },
-      modelUsage: { [model]: { outputTokens: output } },
+      ...answered(answer()),
+      // The 300 cache-write tokens count as input.
+      usage: { input_tokens: input + 300, output_tokens: output, cost_usd: cost },
+      model,
     });
     const one = await decide(fakeAiRunner([withUsage(1200, 456, 0.0123, "claude-x")]));
     await one.run;
@@ -518,8 +551,7 @@ describe("runDecide", () => {
 
     const bad = {
       ...heardForm(),
-      total_cost_usd: 0.01,
-      usage: { input_tokens: 10, output_tokens: 5 },
+      usage: { input_tokens: 10, output_tokens: 5, cost_usd: 0.01 },
     };
     const two = await decide(fakeAiRunner([bad, withUsage(1200, 456, 0.0123, "claude-x")]));
     await two.run;
@@ -535,8 +567,7 @@ describe("runDecide", () => {
   it("records the usage on a failed decide too", async () => {
     const bad = {
       ...heardForm(),
-      total_cost_usd: 0.01,
-      usage: { input_tokens: 10, output_tokens: 5 },
+      usage: { input_tokens: 10, output_tokens: 5, cost_usd: 0.01 },
     };
     const { run, calls } = await decide(fakeAiRunner([bad, bad]));
     await expect(run).rejects.toThrow();
@@ -560,7 +591,7 @@ describe("runDecide", () => {
   });
 
   it("refuses an answer carrying a time or a position, as the schema's", async () => {
-    const placed = resultEnvelope(
+    const placed = answered(
       answer((a) => {
         (a.accents as Json[])[1]!.start = { time: 0.9 };
         (a.accents as Json[])[1]!.position = { x: 500, y: 400, align: "center" };
@@ -579,7 +610,7 @@ describe("runDecide", () => {
     // Without the hook, which would hold the 2.7 s clip's screen.
     const { run } = await decide(
       fakeAiRunner([
-        resultEnvelope(
+        answered(
           answer((a) => {
             a.hook = null;
           }),
@@ -615,7 +646,7 @@ describe("runDecide", () => {
   });
 
   it("never refuses an answer over layout: a title wider than the frame is fitted, recorded and logged", async () => {
-    const wide = resultEnvelope(
+    const wide = answered(
       answer((a) => {
         a.accents = [{ from: "w0001", to: "w0010", title: true }];
         // No transition (nothing else shows while one runs) and no hook (it
@@ -661,7 +692,7 @@ describe("runDecide", () => {
   });
 
   it("keeps the failure tail within 20 lines when there are many reasons", async () => {
-    const many = resultEnvelope(
+    const many = answered(
       answer((a) => {
         a.word_fixes = Array.from({ length: 10 }, (_, index) => ({
           word: `w${String(index + 1).padStart(4, "0")}`,
@@ -682,11 +713,11 @@ describe("runDecide", () => {
 });
 
 describe("runDecide when the AI is not available", () => {
-  const USAGE_LIMIT = new URL("./testdata/claude-usage-limit.json", import.meta.url);
+  const USAGE_LIMIT = new URL("./testdata/ai-credits-used-up.json", import.meta.url);
 
   it("throws AiUnavailable on the first call, writes the row waiting and saves nothing", async () => {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
-    const limit = JSON.parse(await readFile(USAGE_LIMIT, "utf8")) as Json;
+    const limit = JSON.parse(await readFile(USAGE_LIMIT, "utf8")) as ScriptedReply;
     const ai = fakeAiRunner([limit, scripted]);
     const { run, calls } = await decide(ai);
     const error = await run.catch((caught: unknown) => caught);
@@ -696,12 +727,12 @@ describe("runDecide when the AI is not available", () => {
     expect(rows.size).toBe(1);
     // The background map, reused before the AI call.
     expect(calls.map((c) => c.call)).toEqual(["start", "skipped", "waiting"]);
-    expect(lastCall(calls)).toMatchObject({ reason: "the usage limit is reached" });
+    expect(lastCall(calls)).toMatchObject({ reason: "the OpenRouter credits are used up" });
   });
 
   it("throws AiUnavailable on the second call too", async () => {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
-    const limit = JSON.parse(await readFile(USAGE_LIMIT, "utf8")) as Json;
+    const limit = JSON.parse(await readFile(USAGE_LIMIT, "utf8")) as ScriptedReply;
     const ai = fakeAiRunner([heardForm(), limit]);
     const { run, calls } = await decide(ai);
     await expect(run).rejects.toThrow();
@@ -752,7 +783,7 @@ describe("runDecide with a behind item", () => {
     items: Json[] = [photoItem()],
     rules: Json = { photos: "keep", big_word: "keep" },
   ) =>
-    resultEnvelope(
+    answered(
       answer((a) => {
         // No accents and no transition: on the 2.7 s clip the title or the
         // transition would hold the screen.
@@ -863,7 +894,7 @@ describe("runDecide with a behind item", () => {
       code: 1,
       exitSignal: null,
       report: "",
-      output: "vseg: segmentation failed\n",
+      output: "modnet: decoding failed: invalid data\n",
       stdout: "",
       groupPeakBytes: null,
     });
@@ -880,7 +911,7 @@ describe("runDecide with a behind item", () => {
   it("takes three photos with no count to refuse: the engine places one and records the rest", async () => {
     const three = behindAnswer([photoItem(), photoItem(), photoItem()]);
     // The editorial round's answer: both left out, skipped.
-    const skip = resultEnvelope({
+    const skip = answered({
       choices: ["photos[1]", "photos[2]"].map((item) => ({
         item,
         skip: true,
@@ -957,7 +988,7 @@ describe("runDecide with a behind item", () => {
 
   it("stores the request's checklist with the version, done when its photo is placed", async () => {
     const ai = fakeAiRunner([
-      resultEnvelope(
+      answered(
         answer((a) => {
           a.accents = [];
           a.hook = null;
@@ -987,7 +1018,7 @@ describe("runDecide with a behind item", () => {
 
   it('fulfils "add photos behind me" with a mood photo: done, stored with its reason, summary told', async () => {
     const ai = fakeAiRunner([
-      resultEnvelope(
+      answered(
         answer((a) => {
           a.accents = [];
           a.hook = null;
@@ -1012,7 +1043,7 @@ describe("runDecide with a behind item", () => {
       expect.objectContaining({ kind: "photo", photo_id: PHOTO, reason: "mood" }),
     ]);
     // The summary call sees the reason and the photo's description.
-    const summaryCall = ai.calls.find((call) => call.model === SUMMARY_MODEL)!;
+    const summaryCall = ai.calls.find((call) => call.role === "summary")!;
     expect(summaryCall.prompt).toContain('"reason": "mood"');
     expect(summaryCall.prompt).toContain('"description": "a sunlit kitchen.');
   });
@@ -1025,7 +1056,7 @@ describe("runDecide with a behind item", () => {
     };
     const why = "Your photo library is empty: upload photos first";
     const ai = fakeAiRunner([
-      resultEnvelope(
+      answered(
         answer((a) => {
           a.accents = [];
           a.checklist = [
@@ -1085,7 +1116,7 @@ describe("runDecide starting over", () => {
     );
     await first.run;
     const v2 = current!;
-    const empty = resultEnvelope(
+    const empty = answered(
       answer((a) => {
         a.accents = [];
         a.transitions = [];
@@ -1169,25 +1200,19 @@ describe("runDecide spans", () => {
     spans.filter((s) => s.parentSpanContext?.spanId === parent?.spanContext().spanId);
   const named = (spans: Spans, name: string) => spans.find((s) => s.name === name);
 
-  // A Claude Code envelope that reports its usage and model, for the spans.
-  const reported = (answer: unknown, model: string, output: number) => ({
-    ...resultEnvelope(answer),
-    usage: {
-      input_tokens: 1000,
-      cache_creation_input_tokens: 100,
-      cache_read_input_tokens: 50,
-      output_tokens: output,
-    },
-    total_cost_usd: 0.0123,
-    modelUsage: { [model]: { outputTokens: output } },
+  // A reply that reports its usage and model, for the spans.
+  const reported = (answer: unknown, model: string, output: number): Answered => ({
+    ...answered(answer),
+    usage: { input_tokens: 1150, output_tokens: output, cost_usd: 0.0123 },
+    model,
   });
 
   it("traces a normal run as the decide stages, in order, with their facts", async () => {
     const ai = fakeAiRunner([
-      reported(scripted.structured_output, "claude-opus-5-5", 200),
+      reported(scripted.answer, AI_MODEL, 200),
       reported(
         { change_title: "Hook added", change_summary: "The reel opens on the hook." },
-        SUMMARY_MODEL,
+        AI_MODEL,
         20,
       ),
     ]);
@@ -1206,36 +1231,41 @@ describe("runDecide spans", () => {
     ]);
     // The background map was reused: a hit row, under decide.
     expect(named(spans, "step backgrounds")?.attributes["step.cache_hit"]).toBe(true);
-    // The attempt's call is a `chat` span (no request model: Claude Code's
-    // default), then the layout engine's span under the attempt.
+    // The attempt's call is a `chat` span named with the model, then the
+    // layout engine's span under the attempt.
     const attempt = named(spans, "decide.attempt");
     expect(attempt?.attributes).toMatchObject({ "decide.attempt": 1, "decide.outcome": "ok" });
-    expect(childrenOf(spans, attempt).map((s) => s.name)).toEqual(["chat", "decide.engine"]);
-    const chat = childrenOf(spans, attempt).find((s) => s.name === "chat");
+    expect(childrenOf(spans, attempt).map((s) => s.name)).toEqual([
+      `chat ${AI_MODEL}`,
+      "decide.engine",
+    ]);
+    const chat = childrenOf(spans, attempt).find((s) => s.name === `chat ${AI_MODEL}`);
     expect(chat?.kind).toBe(SpanKind.CLIENT);
     expect(chat?.attributes).toEqual({
       "gen_ai.operation.name": "chat",
-      "gen_ai.provider.name": "anthropic",
-      "gen_ai.response.model": "claude-opus-5-5",
+      "gen_ai.provider.name": "openrouter",
+      "gen_ai.request.model": AI_MODEL,
+      "gen_ai.response.model": AI_MODEL,
       "gen_ai.usage.input_tokens": 1150,
       "gen_ai.usage.output_tokens": 200,
-      "gen_ai.usage.cache_read.input_tokens": 50,
-      "gen_ai.usage.cache_write.input_tokens": 100,
+      "gen_ai.response.finish_reasons": ["stop"],
+      "edit_issebya.ai.role": "decide",
+      "edit_issebya.ai.output_mode": "json_schema",
       "edit_issebya.ai.cost_usd": 0.0123,
     });
     expect(named(spans, "decide.engine")?.attributes).toMatchObject({
       "decide.dropped": 3,
       "decide.checks": 0,
     });
-    // The summary's call is a `chat` span under the version summary, named
-    // with its request model.
+    // The summary's call is a `chat` span under the version summary.
     const summary = named(spans, "decide.version_summary");
     expect(summary?.attributes).toEqual({ "decide.summary_source": "ai" });
     const summaryChat = childrenOf(spans, summary)[0];
-    expect(summaryChat?.name).toBe(`chat ${SUMMARY_MODEL}`);
+    expect(summaryChat?.name).toBe(`chat ${AI_MODEL}`);
     expect(summaryChat?.attributes).toMatchObject({
-      "gen_ai.request.model": SUMMARY_MODEL,
-      "gen_ai.response.model": SUMMARY_MODEL,
+      "gen_ai.request.model": AI_MODEL,
+      "gen_ai.response.model": AI_MODEL,
+      "edit_issebya.ai.role": "summary",
       "gen_ai.usage.output_tokens": 20,
     });
     for (const span of spans) {
@@ -1261,8 +1291,8 @@ describe("runDecide spans", () => {
     expect(attempts[0]!.attributes["decide.refused_by"]).toBe("glossary");
     // Both attempts made their call and ran the engine, under themselves.
     expect(attempts.map((s) => childrenOf(spans, s).map((c) => c.name))).toEqual([
-      ["chat", "decide.engine"],
-      ["chat", "decide.engine"],
+      [`chat ${AI_MODEL}`, "decide.engine"],
+      [`chat ${AI_MODEL}`, "decide.engine"],
     ]);
   });
 

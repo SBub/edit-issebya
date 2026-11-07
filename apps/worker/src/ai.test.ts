@@ -1,33 +1,35 @@
-import { readFileSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { ROOT_CONTEXT, SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  AI_MODEL,
+  AI_MODELS,
+  type AiRequest,
   EMPTY_DECIDE_ANSWER,
   aiRunner,
   aiUnavailableReason,
+  extractJson,
   fakeAiRunner,
-  parseClaudeResult,
-  resultEnvelope,
+  listPriceUsd,
+  modelRunner,
+  openRouterRunner,
+  scriptedAnswer,
+  wireSchema,
 } from "./ai.ts";
-import { type ChildRun, type Tool, runToolsStep } from "./step-runner.ts";
-import { recordingSteps, stepContext } from "./recording-steps.ts";
 import { createTelemetry } from "./telemetry.ts";
 
-// One real `claude -p --output-format json --json-schema` result, ids
-// replaced by placeholders (decide/testdata/claude-result.json).
-const captured: unknown = JSON.parse(
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed result
-  readFileSync(new URL("./decide/testdata/claude-result.json", import.meta.url), "utf8"),
-);
-const REQUEST = { prompt: "x", schema: {}, cwd: "/tmp" };
-const NEVER: Tool = () => Promise.reject(new Error("the double never spawns"));
-// A tool that runs nothing and fails the way a missing binary does.
-const MISSING: Tool = (call) => Promise.reject(new Error(`${call.file} exited with 127`));
+const SCHEMA = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  type: "object",
+  properties: { a: { type: "string", maxLength: 3 } },
+  required: ["a"],
+  additionalProperties: false,
+};
+const REQUEST: AiRequest = { role: "decide", prompt: "x", schema: SCHEMA };
 
 let dir: string;
 beforeEach(async () => {
@@ -37,311 +39,357 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-describe("aiRunner", () => {
-  it("is the double only for exactly 'true', answering an empty decide answer without a script", async () => {
-    expect(await aiRunner({ E2E_MOCK_AI: "true" }).call(NEVER, REQUEST)).toMatchObject({
+describe("the model", () => {
+  it("is Claude Haiku 5.5 on OpenRouter for every role", () => {
+    expect(AI_MODEL).toBe("anthropic/claude-haiku-5.5");
+    expect(new Set(Object.values(AI_MODELS))).toEqual(new Set([AI_MODEL]));
+    expect(Object.keys(AI_MODELS).sort()).toEqual(["decide", "describe", "editorial", "summary"]);
+  });
+
+  it("is priced at 0.10 and 0.50 dollars per million tokens when OpenRouter reports no cost", () => {
+    expect(listPriceUsd(AI_MODEL, 1_000_000, 1_000_000)).toBeCloseTo(0.6);
+    expect(listPriceUsd(AI_MODEL, 2000, 100)).toBeCloseTo(0.00025);
+    expect(listPriceUsd("other/model", 10, 10)).toBeNull();
+    expect(listPriceUsd(AI_MODEL, null, null)).toBeNull();
+  });
+});
+
+describe("wireSchema", () => {
+  it("leaves out $schema and the constraints strict outputs refuse, never a property's name", () => {
+    expect(
+      wireSchema({
+        $schema: "draft-07",
+        type: "object",
+        properties: {
+          maxLength: { type: "string", minLength: 1, maxLength: 60, pattern: "^a$" },
+          list: { type: "array", items: { enum: ["x"] }, minItems: 3, maxItems: 12 },
+          one: { type: "array", minItems: 1 },
+          n: { type: "number", minimum: 0, maximum: 9 },
+        },
+        additionalProperties: false,
+      }),
+    ).toEqual({
+      type: "object",
+      properties: {
+        maxLength: { type: "string", pattern: "^a$" },
+        list: { type: "array", items: { enum: ["x"] } },
+        one: { type: "array", minItems: 1 },
+        n: { type: "number" },
+      },
+      additionalProperties: false,
+    });
+  });
+});
+
+describe("the OpenRouter request", () => {
+  // The real provider over a captured fetch: what would go on the wire, and
+  // OpenRouter's response read back. No network.
+  function capturing(response: object) {
+    const bodies: Record<string, unknown>[] = [];
+    const urls: string[] = [];
+    const fetch = async (url: string | URL | Request, init?: RequestInit) => {
+      urls.push(String(url));
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    const openrouter = createOpenRouter({
+      apiKey: "test-key",
+      fetch: fetch as typeof globalThis.fetch,
+    });
+    const runner = modelRunner({
+      model: (id) =>
+        openrouter(id, { usage: { include: true }, provider: { require_parameters: true } }),
+    });
+    return { runner, bodies, urls };
+  }
+
+  const ANSWERED = {
+    id: "gen-1",
+    model: "anthropic/claude-haiku-5.5",
+    created: 1,
+    choices: [
+      { index: 0, message: { role: "assistant", content: '{"a":"z"}' }, finish_reason: "stop" },
+    ],
+    usage: { prompt_tokens: 100, completion_tokens: 7, total_tokens: 107, cost: 0.0042 },
+  };
+
+  it("asks for the strict JSON Schema, usage accounting and providers that take every parameter", async () => {
+    const { runner, bodies, urls } = capturing(ANSWERED);
+    const result = await runner.call(REQUEST);
+    expect(urls).toEqual(["https://openrouter.ai/api/v1/chat/completions"]);
+    expect(bodies[0]).toMatchObject({
+      model: "anthropic/claude-haiku-5.5",
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "decide", strict: true, schema: wireSchema(SCHEMA) },
+      },
+      messages: [{ role: "user", content: "x" }],
+      usage: { include: true },
+      provider: { require_parameters: true },
+    });
+    // Our prompt only: no system message.
+    expect(JSON.stringify(bodies[0]!.messages)).not.toContain('"system"');
+    // The tokens and the cost OpenRouter reported, the model that answered.
+    expect(result).toMatchObject({
       kind: "answer",
-      answer: EMPTY_DECIDE_ANSWER,
+      answer: { a: "z" },
+      usage: { inputTokens: 100, outputTokens: 7, costUsd: 0.0042, model: AI_MODEL },
     });
   });
 
-  it("is Claude Code otherwise, through the tool, prompt on stdin, no tools", async () => {
-    for (const flag of [undefined, "1", "TRUE", " true"]) {
-      const runner = aiRunner({ E2E_MOCK_AI: flag, CLAUDE_CODE_PATH: "/nonexistent/claude" });
-      await expect(runner.call(MISSING, REQUEST)).rejects.toThrow(/nonexistent\/claude/);
-    }
-    const seen: Parameters<Tool>[0][] = [];
-    const tool: Tool = async (call) => {
-      seen.push(call);
-      return JSON.stringify(captured);
-    };
-    await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(tool, {
-      prompt: "the prompt",
-      schema: { type: "object" },
-      cwd: "/scratch/decide-1",
+  it("sends describe_photo's image as a JPEG data URL beside the prompt", async () => {
+    const { runner, bodies } = capturing(ANSWERED);
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+    const result = await runner.call({
+      role: "describe",
+      prompt: "describe it",
+      schema: SCHEMA,
+      image: { data: jpeg, mediaType: "image/jpeg" },
     });
-    expect(seen).toEqual([
+    expect(bodies[0]!.messages).toEqual([
       {
-        file: "/opt/claude",
-        args: [
-          "-p",
-          "--output-format",
-          "json",
-          "--json-schema",
-          '{"type":"object"}',
-          "--tools",
-          "",
-          "--no-session-persistence",
+        role: "user",
+        content: [
+          { type: "text", text: "describe it" },
+          {
+            type: "image_url",
+            image_url: { url: `data:image/jpeg;base64,${Buffer.from(jpeg).toString("base64")}` },
+          },
         ],
-        stdin: "the prompt",
-        cwd: "/scratch/decide-1",
-        maxStdoutBytes: 16 * 1024 * 1024,
       },
     ]);
+    // The record names the image, never carries its bytes.
+    expect(result.exchange.image).toEqual({ mediaType: "image/jpeg", bytes: 4 });
   });
 
-  it("lets Claude Code read only the request's one file, with no permission prompts", async () => {
-    const seen: Parameters<Tool>[0][] = [];
-    const tool: Tool = async (call) => {
-      seen.push(call);
-      return JSON.stringify(captured);
-    };
-    await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(tool, {
-      prompt: "describe",
-      schema: { type: "object" },
-      cwd: "/scratch/describe",
-      readFile: "photo.jpg",
+  it("computes the cost from the list price when the response has none", async () => {
+    const { runner } = capturing({
+      ...ANSWERED,
+      usage: { prompt_tokens: 2000, completion_tokens: 100, total_tokens: 2100 },
     });
-    expect(seen[0]?.args).toEqual([
-      "-p",
-      "--output-format",
-      "json",
-      "--json-schema",
-      '{"type":"object"}',
-      "--tools",
-      "Read",
-      "--allowedTools",
-      "Read(photo.jpg)",
-      "--permission-prompts",
-      "none",
-      "--no-session-persistence",
-    ]);
-    expect(seen[0]?.cwd).toBe("/scratch/describe");
+    const result = await runner.call(REQUEST);
+    expect(result.usage.costUsd).toBeCloseTo(0.00025);
+  });
+});
+
+describe("aiRunner", () => {
+  it("is the double only for exactly 'true', answering an empty decide answer without a script", async () => {
+    const result = await aiRunner({ E2E_MOCK_AI: "true" }).call(REQUEST);
+    expect(result).toMatchObject({ kind: "answer", answer: EMPTY_DECIDE_ANSWER });
   });
 
-  it("refuses a readFile that is not a plain file name, before spawning", async () => {
-    for (const readFile of [
-      "../photo.jpg",
-      "a/photo.jpg",
-      "/etc/passwd",
-      "..",
-      "",
-      "*.jpg",
-      "a..b",
-    ]) {
-      await expect(
-        aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(NEVER, { ...REQUEST, readFile }),
-      ).rejects.toThrow(/plain file name/);
-      await expect(
-        fakeAiRunner([resultEnvelope({})]).call(NEVER, { ...REQUEST, readFile }),
-      ).rejects.toThrow(/plain file name/);
+  it("is OpenRouter otherwise: without a key every call is unavailable and nothing is sent", async () => {
+    for (const env of [{}, { E2E_MOCK_AI: "1", OPENROUTER_API_KEY: "  " }]) {
+      const result = await aiRunner(env).call(REQUEST);
+      expect(result).toMatchObject({
+        kind: "unavailable",
+        reason: "the OpenRouter key is not set",
+      });
     }
-  });
-
-  it("asks for the request's model with --model, and for none without one", async () => {
-    const seen: Parameters<Tool>[0][] = [];
-    const tool: Tool = async (call) => {
-      seen.push(call);
-      return JSON.stringify(captured);
-    };
-    const runner = aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" });
-    await runner.call(tool, { ...REQUEST, model: "claude-haiku-5-5" });
-    await runner.call(tool, REQUEST);
-    expect(seen[0]?.args.slice(-3)).toEqual([
-      "--model",
-      "claude-haiku-5-5",
-      "--no-session-persistence",
-    ]);
-    expect(seen[1]?.args).not.toContain("--model");
-    const fake = fakeAiRunner([resultEnvelope({})]);
-    await fake.call(NEVER, { ...REQUEST, model: "claude-haiku-5-5" });
-    expect(fake.calls[0]?.model).toBe("claude-haiku-5-5");
-  });
-
-  it("refuses a model that is not a plain model id, before spawning", async () => {
-    for (const model of ["claude haiku", 'claude"', "--help", "", "Claude-Haiku"]) {
-      await expect(
-        aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(NEVER, { ...REQUEST, model }),
-      ).rejects.toThrow(/plain model id/);
-      await expect(
-        fakeAiRunner([resultEnvelope({})]).call(NEVER, { ...REQUEST, model }),
-      ).rejects.toThrow(/plain model id/);
-    }
+    expect(await openRouterRunner(undefined).call(REQUEST)).toMatchObject({
+      kind: "unavailable",
+    });
   });
 
   it("replays E2E_MOCK_AI_SCRIPT, raw strings included, then the last entry", async () => {
     const path = join(dir, "script.json");
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
-    await writeFile(path, JSON.stringify(["not json", resultEnvelope({ n: 2 })]));
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder or committed fixture
+    await writeFile(path, JSON.stringify(["not json", scriptedAnswer({ a: "b" })]));
     const runner = aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: path });
-    const results = [
-      await runner.call(NEVER, REQUEST),
-      await runner.call(NEVER, REQUEST),
-      await runner.call(NEVER, REQUEST),
-    ];
-    expect(results.map((result) => result.kind)).toEqual(["broken", "answer", "answer"]);
-    expect(results[2]).toMatchObject({ answer: { n: 2 } });
+    expect(await runner.call(REQUEST)).toMatchObject({ kind: "broken" });
+    expect(await runner.call(REQUEST)).toMatchObject({ kind: "answer", answer: { a: "b" } });
+    expect(await runner.call(REQUEST)).toMatchObject({ kind: "answer", answer: { a: "b" } });
   });
 
-  it("loads the committed decide answer, one envelope, as a one-entry script", async () => {
-    const path = fileURLToPath(
-      new URL("./decide/testdata/short-speech-answer.json", import.meta.url),
-    );
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed answer
-    const envelope = JSON.parse(readFileSync(path, "utf8")) as { structured_output: unknown };
-    const runner = aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: path });
-    for (let i = 0; i < 2; i += 1) {
-      expect(await runner.call(NEVER, REQUEST)).toMatchObject({
-        kind: "answer",
-        answer: envelope.structured_output,
-        usage: {
-          inputTokens: 1500,
-          outputTokens: 456,
-          costUsd: 0.0123,
-          model: "claude-opus-5-5",
-        },
-      });
-    }
+  it("loads the committed decide answer, one reply object, as a one-entry script", async () => {
+    const path = new URL("./decide/testdata/short-speech-answer.json", import.meta.url).pathname;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder or committed fixture
+    const committed = JSON.parse(await readFile(path, "utf8")) as { answer: unknown };
+    const result = await aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: path }).call(REQUEST);
+    expect(result).toMatchObject({
+      kind: "answer",
+      answer: committed.answer,
+      usage: { inputTokens: 1500, outputTokens: 456, costUsd: 0.0123, model: AI_MODEL },
+    });
   });
 
   it("throws on a missing or malformed script file", async () => {
-    expect(() =>
-      aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: join(dir, "missing.json") }),
-    ).toThrow(/E2E_MOCK_AI_SCRIPT .* cannot be read/);
-    for (const [name, text, message] of [
-      [
-        "empty.json",
-        "[]",
-        /E2E_MOCK_AI_SCRIPT .* must be a non-empty JSON array or one result envelope/,
-      ],
-      [
-        "string.json",
-        '"text"',
-        /E2E_MOCK_AI_SCRIPT .* must be a non-empty JSON array or one result envelope/,
-      ],
-      ["broken.json", "not json", /E2E_MOCK_AI_SCRIPT .* is not JSON/],
-    ] as const) {
-      const path = join(dir, name);
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
-      await writeFile(path, text);
-      expect(() => aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: path })).toThrow(message);
+    const missing = join(dir, "missing.json");
+    expect(() => aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: missing })).toThrow(
+      /cannot be read/,
+    );
+    const bad = join(dir, "bad.json");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder or committed fixture
+    await writeFile(bad, "{");
+    expect(() => aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: bad })).toThrow(/not JSON/);
+    const empty = join(dir, "empty.json");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder or committed fixture
+    await writeFile(empty, "[]");
+    expect(() => aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: empty })).toThrow(
+      /non-empty JSON array/,
+    );
+  });
+});
+
+describe("extractJson", () => {
+  it("strips a code fence with or without a language tag", () => {
+    expect(extractJson('```json\n{"a":1}\n```')).toBe('{"a":1}');
+    expect(extractJson('  ```\n{"a":1}\n```  \n')).toBe('{"a":1}');
+    expect(extractJson('```JSON {"a":1} ```')).toBe('{"a":1}');
+  });
+
+  it("takes the outermost object out of leading or trailing prose", () => {
+    expect(extractJson('Here it is: {"a":{"b":1}}')).toBe('{"a":{"b":1}}');
+    expect(extractJson('{"a":[1]}\nHope this helps.')).toBe('{"a":[1]}');
+    expect(extractJson('Sure:\n```json\n{"a":1}\n```\nDone.')).toBe('{"a":1}');
+  });
+
+  it("leaves plain JSON as it is", () => {
+    expect(extractJson('{"a":"b"}')).toBe('{"a":"b"}');
+  });
+
+  it("leaves text with no object to fail parsing", () => {
+    for (const text of ["not json", "```json\nnot json\n```", "} nothing {", "{ not json }"]) {
+      expect(() => JSON.parse(extractJson(text))).toThrow();
     }
   });
 });
 
 describe("fakeAiRunner", () => {
-  it("records every request", async () => {
-    const runner = fakeAiRunner([resultEnvelope(1)]);
-    await runner.call(NEVER, { ...REQUEST, prompt: "a" });
-    await runner.call(NEVER, { ...REQUEST, prompt: "b" });
-    expect(runner.calls.map((call) => call.prompt)).toEqual(["a", "b"]);
-  });
-});
-
-describe("parseClaudeResult", () => {
-  it("reads the captured real result: answer, every input token, output, cost and model", () => {
-    expect(parseClaudeResult(JSON.stringify(captured))).toEqual({
-      kind: "answer",
-      answer: { ok: true },
+  it("records every request and its exchange: prompt, schema, raw answer and usage", async () => {
+    const runner = fakeAiRunner([
+      { answer: { a: "b" }, usage: { input_tokens: 10, output_tokens: 2, cost_usd: 0.5 } },
+    ]);
+    const result = await runner.call(REQUEST);
+    expect(runner.calls).toEqual([REQUEST]);
+    expect(result.exchange).toEqual({
+      role: "decide",
+      model: AI_MODEL,
+      prompt: "x",
+      schema: SCHEMA,
+      image: null,
+      outputMode: "json_schema",
+      answerText: '{"a":"b"}',
+      finishReason: "stop",
       usage: {
-        inputTokens: 2 + 145193 + 0,
-        outputTokens: 52,
-        costUsd: 1.1625919999999998,
-        model: "claude-opus-5-5",
-        cacheReadTokens: 0,
-        cacheWriteTokens: 145193,
-      },
-    });
-  });
-
-  it("falls back to parsing result", () => {
-    expect(parseClaudeResult(JSON.stringify({ is_error: false, result: '{"ok":true}' }))).toEqual({
-      kind: "answer",
-      answer: { ok: true },
-      usage: {
-        inputTokens: null,
-        outputTokens: null,
-        costUsd: null,
-        model: null,
+        inputTokens: 10,
+        outputTokens: 2,
+        costUsd: 0.5,
+        model: AI_MODEL,
         cacheReadTokens: null,
         cacheWriteTokens: null,
       },
+      error: null,
     });
   });
 
-  it("is broken on stdout that is not JSON", () => {
-    expect(parseClaudeResult("not json")).toMatchObject({ kind: "broken" });
+  it("is broken on text that is not JSON, keeping the raw text", async () => {
+    const result = await fakeAiRunner(["not json"]).call(REQUEST);
+    expect(result).toMatchObject({ kind: "broken", reason: /^the answer is not JSON/ });
+    expect(result.exchange.answerText).toBe("not json");
   });
 
-  it("is broken on an error envelope, keeping its usage", () => {
-    const result = parseClaudeResult(
-      JSON.stringify({ is_error: true, result: "quota", total_cost_usd: 0.5 }),
+  it("never validates the answer itself: the caller's Zod check does", async () => {
+    const result = await fakeAiRunner([scriptedAnswer({ a: "far too long", extra: 1 })]).call(
+      REQUEST,
     );
-    expect(result).toMatchObject({ kind: "broken", usage: { costUsd: 0.5 } });
-    expect(result.kind === "broken" && result.reason).toMatch(/quota/);
+    expect(result).toMatchObject({ kind: "answer", answer: { a: "far too long", extra: 1 } });
   });
 
-  it("is broken without structured_output or a JSON result", () => {
-    expect(parseClaudeResult(JSON.stringify({ is_error: false }))).toMatchObject({
-      kind: "broken",
-    });
-    expect(parseClaudeResult(JSON.stringify({ is_error: false, result: "hi" }))).toMatchObject({
-      kind: "broken",
-    });
+  it("asks again once in JSON mode, the schema in the prompt, when the schema is refused", async () => {
+    const runner = fakeAiRunner([
+      { error: { status: 400, message: "schema not supported" } },
+      scriptedAnswer({ a: "b" }),
+    ]);
+    const result = await runner.call(REQUEST);
+    expect(result).toMatchObject({ kind: "answer", answer: { a: "b" } });
+    expect(result.exchange.outputMode).toBe("json");
+    expect(result.exchange.prompt).toContain("matching this JSON Schema");
+    expect(result.exchange.prompt).toContain(JSON.stringify(wireSchema(SCHEMA)));
+    expect(runner.calls).toHaveLength(1);
+  });
+
+  it("asks for the object only, with no code fence, in JSON mode", async () => {
+    const runner = fakeAiRunner([{ error: { status: 400 } }, scriptedAnswer({ a: "b" })]);
+    const result = await runner.call(REQUEST);
+    expect(result.exchange.prompt).toContain(
+      "Reply with the JSON object only, no code fence around it.",
+    );
+  });
+
+  it("parses a fenced JSON mode answer, keeping the raw text in the exchange", async () => {
+    const fenced = '```json\n{"a":"b"}\n```';
+    const runner = fakeAiRunner([{ error: { status: 400 } }, fenced]);
+    const result = await runner.call(REQUEST);
+    expect(result).toMatchObject({ kind: "answer", answer: { a: "b" } });
+    expect(result.exchange).toMatchObject({ outputMode: "json", answerText: fenced, error: null });
+  });
+
+  it("is broken on a JSON mode answer with no JSON in it, keeping the raw text", async () => {
+    const runner = fakeAiRunner([{ error: { status: 400 } }, "```json\nnot json\n```"]);
+    const result = await runner.call(REQUEST);
+    expect(result).toMatchObject({ kind: "broken", reason: /^the answer is not JSON/ });
+    expect(result.exchange.answerText).toBe("```json\nnot json\n```");
+  });
+
+  it("never extracts from a strict JSON Schema answer", async () => {
+    const result = await fakeAiRunner(['```json\n{"a":"b"}\n```']).call(REQUEST);
+    expect(result).toMatchObject({ kind: "broken", reason: /^the answer is not JSON/ });
+  });
+
+  it("throws a bad request that JSON mode does not fix either", async () => {
+    const runner = fakeAiRunner([{ error: { status: 400, message: "bad request" } }]);
+    await expect(runner.call(REQUEST)).rejects.toThrow(/bad request/);
+  });
+
+  it("throws without a script", async () => {
+    await expect(fakeAiRunner([]).call(REQUEST)).rejects.toThrow(/no scripted answer/);
   });
 });
-
-function testdata(name: string): string {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a committed fixture
-  return readFileSync(new URL(`./decide/testdata/${name}`, import.meta.url), "utf8");
-}
 
 describe("an AI that is not available", () => {
-  it("parses the usage-limit and signed-out envelopes as unavailable", () => {
-    expect(parseClaudeResult(testdata("claude-usage-limit.json"))).toMatchObject({
-      kind: "unavailable",
-      reason: "the usage limit is reached",
-    });
-    expect(parseClaudeResult(testdata("claude-signed-out.json"))).toMatchObject({
-      kind: "unavailable",
-      reason: "Claude Code is signed out",
-    });
+  it("maps a refused key, used-up credits, a rate limit and a server error to a reason", async () => {
+    const cases: [number, string][] = [
+      [401, "the OpenRouter key is refused"],
+      [403, "the OpenRouter key is refused"],
+      [402, "the OpenRouter credits are used up"],
+      [429, "the rate limit is reached"],
+      [502, "OpenRouter is not answering"],
+      [408, "OpenRouter is not answering"],
+    ];
+    for (const [status, reason] of cases) {
+      const result = await fakeAiRunner([{ error: { status } }]).call(REQUEST);
+      expect(result).toMatchObject({ kind: "unavailable", reason });
+      expect(result.exchange.error).toBe(reason);
+    }
   });
 
-  it("keeps an unrelated error envelope broken", () => {
-    expect(
-      parseClaudeResult(JSON.stringify({ is_error: true, result: "the model overloaded" })),
-    ).toMatchObject({ kind: "broken" });
-  });
-
-  it("maps the known texts to a reason", () => {
-    expect(aiUnavailableReason("You've hit your limit, resets 5pm")).toBe(
-      "the usage limit is reached",
-    );
-    expect(aiUnavailableReason("Not logged in")).toBe("Claude Code is signed out");
-    expect(aiUnavailableReason("OAuth token has expired")).toBe("Claude Code is signed out");
-    expect(aiUnavailableReason("authentication_error")).toBe("Claude Code is signed out");
-    expect(aiUnavailableReason("Error: ECONNRESET")).toBeNull();
-  });
-
-  it("turns Claude Code's non-zero exit with the signed-out output into unavailable", async () => {
-    const stdout = testdata("claude-signed-out-stdout.txt");
-    const failing: Tool = (call) =>
-      Promise.reject(new Error(`decide exited with 1\n${stdout}`, { cause: call.file }));
-    expect(await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(failing, REQUEST)).toEqual({
+  it("is replayed by the double from the credits fixture", async () => {
+    const path = new URL("./decide/testdata/ai-credits-used-up.json", import.meta.url).pathname;
+    const result = await aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: path }).call(REQUEST);
+    expect(result).toMatchObject({
       kind: "unavailable",
-      reason: "Claude Code is signed out",
-      usage: {
-        inputTokens: null,
-        outputTokens: null,
-        costUsd: null,
-        model: null,
-        cacheReadTokens: null,
-        cacheWriteTokens: null,
-      },
+      reason: "the OpenRouter credits are used up",
     });
   });
 
-  it("rethrows any other non-zero exit", async () => {
-    const failing: Tool = () => Promise.reject(new Error("decide exited with 1\nsegfault"));
+  it("reads a network failure or a timeout as not answering, anything else as no reason", () => {
+    expect(aiUnavailableReason(new TypeError("fetch failed"))).toBe("OpenRouter is not answering");
+    const timeout = new Error("The operation timed out");
+    timeout.name = "TimeoutError";
+    expect(aiUnavailableReason(timeout)).toBe("OpenRouter is not answering");
+    expect(aiUnavailableReason(new Error("boom"))).toBeNull();
+  });
+
+  it("rethrows when the job's own signal stopped the call", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("lease lost"));
     await expect(
-      aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(failing, REQUEST),
-    ).rejects.toThrow("segfault");
-  });
-
-  it("is replayed by the double from the usage-limit fixture", async () => {
-    const runner = fakeAiRunner([JSON.parse(testdata("claude-usage-limit.json"))]);
-    expect(await runner.call(NEVER, REQUEST)).toMatchObject({ kind: "unavailable" });
+      fakeAiRunner([scriptedAnswer({ a: "b" })]).call({ ...REQUEST, signal: controller.signal }),
+    ).rejects.toThrow();
   });
 });
 
@@ -368,219 +416,59 @@ function tracing() {
 }
 
 describe("the chat span of a call", () => {
-  it("is one CLIENT span under the parent, named with the request model, with the GenAI attributes", async () => {
+  it("is one CLIENT span under the parent, named with the model, with the GenAI attributes", async () => {
     const { trace: traced, finish } = tracing();
-    const tool: Tool = async () => JSON.stringify(captured);
-    const result = await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(tool, {
-      ...REQUEST,
-      model: "claude-haiku-5-5",
-      trace: traced,
-    });
+    const result = await fakeAiRunner([
+      { answer: { a: "b" }, usage: { input_tokens: 100, output_tokens: 5, cost_usd: 0.001 } },
+    ]).call({ ...REQUEST, trace: traced });
     expect(result).toMatchObject({ kind: "answer" });
     const { spans, parent } = await finish();
-    const chat = spans.find((span) => span.name === "chat claude-haiku-5-5");
-    expect(chat?.kind).toBe(SpanKind.CLIENT);
-    expect(chat?.parentSpanContext?.spanId).toBe(parent.spanContext().spanId);
-    // The captured envelope: 2 fresh input tokens, 145193 cache writes, no
-    // cache reads (so none is recorded), 52 output tokens, its cost as reported.
-    expect(chat?.attributes).toEqual({
+    expect(spans.map((span) => span.name)).toEqual([`chat ${AI_MODEL}`, "decide.test"]);
+    const chat = spans[0]!;
+    expect(chat.kind).toBe(SpanKind.CLIENT);
+    expect(chat.parentSpanContext?.spanId).toBe(parent.spanContext().spanId);
+    expect(chat.attributes).toEqual({
       "gen_ai.operation.name": "chat",
-      "gen_ai.provider.name": "anthropic",
-      "gen_ai.request.model": "claude-haiku-5-5",
-      "gen_ai.response.model": "claude-opus-5-5",
-      "gen_ai.usage.input_tokens": 2 + 145193,
-      "gen_ai.usage.output_tokens": 52,
-      "gen_ai.usage.cache_write.input_tokens": 145193,
-      "edit_issebya.ai.cost_usd": 1.1625919999999998,
-      "edit_issebya.claude.duration_ms": 5207,
-      "edit_issebya.claude.duration_api_ms": 4999,
-      "edit_issebya.claude.num_turns": 2,
-      "edit_issebya.claude.overhead_ms": 208,
-    });
-    expect(chat?.status.code).not.toBe(SpanStatusCode.ERROR);
-  });
-
-  it("counts cache reads and writes into the input tokens, and names the call chat without a request model", async () => {
-    const { trace: traced, finish } = tracing();
-    const envelope = {
-      ...resultEnvelope({ ok: true }),
-      usage: {
-        input_tokens: 10,
-        cache_creation_input_tokens: 60,
-        cache_read_input_tokens: 30,
-        output_tokens: 5,
-      },
-      modelUsage: { "claude-opus-5-5": { outputTokens: 5 } },
-    };
-    await fakeAiRunner([envelope]).call(NEVER, { ...REQUEST, trace: traced });
-    const { spans } = await finish();
-    const chat = spans.find((span) => span.name === "chat");
-    expect(chat?.attributes).toMatchObject({
-      "gen_ai.response.model": "claude-opus-5-5",
+      "gen_ai.provider.name": "openrouter",
+      "gen_ai.request.model": AI_MODEL,
+      "gen_ai.response.model": AI_MODEL,
       "gen_ai.usage.input_tokens": 100,
       "gen_ai.usage.output_tokens": 5,
-      "gen_ai.usage.cache_read.input_tokens": 30,
-      "gen_ai.usage.cache_write.input_tokens": 60,
+      "gen_ai.response.finish_reasons": ["stop"],
+      "edit_issebya.ai.role": "decide",
+      "edit_issebya.ai.output_mode": "json_schema",
+      "edit_issebya.ai.cost_usd": 0.001,
     });
-    expect(chat?.attributes).not.toHaveProperty("gen_ai.request.model");
-    // The envelope reports a cost of 0, which is a reported value and kept.
-    expect(chat?.attributes["edit_issebya.ai.cost_usd"]).toBe(0);
+    expect(chat.status.code).not.toBe(SpanStatusCode.ERROR);
   });
 
-  it("marks a broken answer as an error with error.type broken", async () => {
-    const { trace: traced, finish } = tracing();
-    await fakeAiRunner(["not json"]).call(NEVER, { ...REQUEST, trace: traced });
-    const { spans } = await finish();
-    const chat = spans.find((span) => span.name === "chat");
-    expect(chat?.attributes["error.type"]).toBe("broken");
-    expect(chat?.status.code).toBe(SpanStatusCode.ERROR);
-  });
-
-  it("marks a thrown call as an error with error.type broken, records it and rethrows it", async () => {
-    const { trace: traced, finish } = tracing();
-    const failing: Tool = () => Promise.reject(new Error("decide exited with 1\nsegfault"));
-    await expect(
-      aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(failing, { ...REQUEST, trace: traced }),
-    ).rejects.toThrow("segfault");
-    const { spans } = await finish();
-    const chat = spans.find((span) => span.name === "chat");
-    expect(chat?.attributes["error.type"]).toBe("broken");
-    expect(chat?.status.code).toBe(SpanStatusCode.ERROR);
-    expect(chat?.events.map((event) => event.name)).toEqual(["exception"]);
-  });
-
-  it("marks an unavailable call with error.type unavailable and an error status", async () => {
-    const { trace: traced, finish } = tracing();
-    const stdout = testdata("claude-signed-out-stdout.txt");
-    const failing: Tool = () => Promise.reject(new Error(`decide exited with 1\n${stdout}`));
-    const result = await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(failing, {
-      ...REQUEST,
-      trace: traced,
-    });
-    expect(result).toMatchObject({ kind: "unavailable" });
-    const { spans } = await finish();
-    const chat = spans.find((span) => span.name === "chat");
-    expect(chat?.attributes["error.type"]).toBe("unavailable");
-    expect(chat?.status.code).toBe(SpanStatusCode.ERROR);
-  });
-
-  it("runs Claude Code as an exec span under the chat span, in the step's trace", async () => {
-    const { trace: traced, finish } = tracing();
-    const { steps } = recordingSteps();
-    const answer: ChildRun = {
-      code: 0,
-      exitSignal: null,
-      report: "",
-      output: "",
-      stdout: JSON.stringify(captured),
-      groupPeakBytes: null,
-    };
-    await runToolsStep(
-      stepContext(steps, { telemetry: traced.telemetry }),
-      {
-        name: "decide",
-        async work(tool) {
-          await aiRunner({ CLAUDE_CODE_PATH: "/opt/claude" }).call(tool, {
-            ...REQUEST,
-            model: "claude-haiku-5-5",
-            trace: traced,
-          });
-          return { what: "decided" };
-        },
-      },
-      () => Promise.resolve(answer),
-    );
-    const { spans } = await finish();
-    const chat = spans.find((span) => span.name === "chat claude-haiku-5-5");
-    const exec = spans.find((span) => span.name === "exec claude");
-    expect(exec?.parentSpanContext?.spanId).toBe(chat?.spanContext().spanId);
-    expect(exec?.attributes).toMatchObject({
-      "step.name": "decide",
-      "process.executable.name": "claude",
-      "process.exit.code": 0,
-    });
-  });
-
-  it("carries Claude Code's own timings from the captured result, and the overhead", async () => {
-    const { trace: traced, finish } = tracing();
-    await fakeAiRunner([captured]).call(NEVER, { ...REQUEST, trace: traced });
-    const { spans } = await finish();
-    const chat = spans.find((span) => span.name === "chat");
-    expect(chat?.attributes).toMatchObject({
-      "edit_issebya.claude.duration_ms": 5207,
-      "edit_issebya.claude.duration_api_ms": 4999,
-      "edit_issebya.claude.num_turns": 2,
-      "edit_issebya.claude.overhead_ms": 208,
-    });
-  });
-
-  it("carries the timings of an unavailable result too (the signed-out envelope)", async () => {
-    const { trace: traced, finish } = tracing();
-    await fakeAiRunner([JSON.parse(testdata("claude-signed-out.json"))]).call(NEVER, {
-      ...REQUEST,
-      trace: traced,
-    });
-    const { spans } = await finish();
-    const chat = spans.find((span) => span.name === "chat");
-    expect(chat?.attributes).toMatchObject({
-      "error.type": "unavailable",
-      "edit_issebya.claude.duration_ms": 412,
-      "edit_issebya.claude.duration_api_ms": 0,
-      "edit_issebya.claude.num_turns": 1,
-      "edit_issebya.claude.overhead_ms": 412,
-    });
-  });
-
-  it("leaves out each timing the JSON lacks, and the overhead unless both are there and it is not negative", async () => {
-    const { trace: traced, finish } = tracing();
-    const runner = fakeAiRunner([
-      { ...resultEnvelope({ ok: true }), duration_ms: 300 },
-      { ...resultEnvelope({ ok: true }), duration_ms: 100, duration_api_ms: 250 },
-      {
-        ...resultEnvelope({ ok: true }),
-        duration_ms: "fast",
-        duration_api_ms: 50,
-        num_turns: null,
-      },
-    ]);
-    for (let i = 0; i < 3; i += 1) await runner.call(NEVER, { ...REQUEST, trace: traced });
-    const { spans } = await finish();
-    const [first, second, third] = spans.filter((span) => span.name === "chat");
-    expect(first?.attributes).toEqual(
-      expect.objectContaining({ "edit_issebya.claude.duration_ms": 300 }),
-    );
-    for (const name of [
-      "edit_issebya.claude.duration_api_ms",
-      "edit_issebya.claude.num_turns",
-      "edit_issebya.claude.overhead_ms",
-    ]) {
-      expect(first?.attributes).not.toHaveProperty(name);
+  it("marks a broken answer and an unavailable AI as errors with their error.type", async () => {
+    for (const [reply, type] of [
+      ["not json", "broken"],
+      [{ error: { status: 402 } }, "unavailable"],
+    ] as const) {
+      const { trace: traced, finish } = tracing();
+      await fakeAiRunner([reply]).call({ ...REQUEST, trace: traced });
+      const { spans } = await finish();
+      const chat = spans.find((span) => span.name.startsWith("chat"));
+      expect(chat?.attributes["error.type"]).toBe(type);
+      expect(chat?.status.code).toBe(SpanStatusCode.ERROR);
     }
-    expect(second?.attributes).toMatchObject({
-      "edit_issebya.claude.duration_ms": 100,
-      "edit_issebya.claude.duration_api_ms": 250,
-    });
-    expect(second?.attributes).not.toHaveProperty("edit_issebya.claude.overhead_ms");
-    expect(third?.attributes).toMatchObject({ "edit_issebya.claude.duration_api_ms": 50 });
-    expect(third?.attributes).not.toHaveProperty("edit_issebya.claude.duration_ms");
-    expect(third?.attributes).not.toHaveProperty("edit_issebya.claude.num_turns");
-    expect(third?.attributes).not.toHaveProperty("edit_issebya.claude.overhead_ms");
   });
 
-  it("changes nothing untraced: the same result as the parser, and no span", async () => {
-    const { finish } = tracing();
-    const result = await fakeAiRunner([captured]).call(NEVER, REQUEST);
-    expect(result).toEqual(parseClaudeResult(JSON.stringify(captured)));
+  it("marks a thrown call as broken, records it and rethrows it", async () => {
+    const { trace: traced, finish } = tracing();
+    await expect(
+      fakeAiRunner([{ error: { status: 400 } }]).call({ ...REQUEST, trace: traced }),
+    ).rejects.toThrow();
     const { spans } = await finish();
-    expect(spans.map((span) => span.name)).toEqual(["decide.test"]);
+    const chat = spans.find((span) => span.name.startsWith("chat"));
+    expect(chat?.attributes["error.type"]).toBe("broken");
+    expect(chat?.events.some((event) => event.name === "exception")).toBe(true);
   });
 
-  it("is not made without a parent: the call runs, returns its answer, and starts no span", async () => {
-    const { finish } = tracing();
-    const result = await fakeAiRunner([resultEnvelope({ ok: true })]).call(NEVER, REQUEST);
-    expect(result).toMatchObject({ kind: "answer", answer: { ok: true } });
-    // Only the test's own parent span ended.
-    const { spans } = await finish();
-    expect(spans.map((span) => span.name)).toEqual(["decide.test"]);
+  it("is not made without a trace: the call runs and starts no span", async () => {
+    const result = await fakeAiRunner([scriptedAnswer({ a: "b" })]).call(REQUEST);
+    expect(result).toMatchObject({ kind: "answer" });
   });
 });

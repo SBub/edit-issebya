@@ -9,9 +9,8 @@ import {
 import { type Context, ROOT_CONTEXT, SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { describe, expect, it } from "vitest";
-import { fakeAiRunner, resultEnvelope } from "../ai.ts";
+import { AI_MODEL, type ScriptedReply, fakeAiRunner, scriptedAnswer } from "../ai.ts";
 import { AiUnavailable } from "../failure.ts";
-import type { Tool } from "../step-runner.ts";
 import { type InSpan, type Telemetry, createTelemetry, inSpan } from "../telemetry.ts";
 import {
   EDITORIAL_ROUNDS,
@@ -36,7 +35,6 @@ const transcript: Transcript = {
   ],
 };
 const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
-const tool: Tool = async () => "";
 const edit = {} as Edit;
 
 const ANSWER: DecideAnswer = {
@@ -77,7 +75,7 @@ const unplacedPass = (requested: boolean, free = FREE): Placed => ({
 });
 const placedPass: Placed = { edit, record: [], unplaced: [], free: [] };
 
-const move = resultEnvelope({
+const move = scriptedAnswer({
   choices: [{ item: "photos[0]", skip: false, from: "w0004", to: "w0007" }],
 });
 
@@ -91,7 +89,7 @@ function rounds({
   inRound,
   telemetry,
 }: {
-  script: unknown[];
+  script: ScriptedReply[];
   request?: string | null;
   placed?: Placed;
   place?: (answer: DecideAnswer, context: Context) => Placed | null;
@@ -103,8 +101,6 @@ function rounds({
   const ai = fakeAiRunner(script);
   const run = runEditorialRounds({
     ai,
-    tool,
-    cwd: "/tmp",
     transcript,
     preset: ISSEBYA_PRESET,
     library: [{ id: PHOTO, description: "a pot of pasta", tags: ["kitchen"] }],
@@ -184,7 +180,7 @@ describe("runEditorialRounds", () => {
       checklist: [{ ask: "add images behind me", wants: "1 photo", fulfilled_by: ["photos[0]"] }],
     };
     const { run } = rounds({
-      script: [resultEnvelope({ choices: [{ item: "photos[0]", skip: true, why }] })],
+      script: [scriptedAnswer({ choices: [{ item: "photos[0]", skip: true, why }] })],
       request: "add images behind me",
       answer,
       place: (merged) => {
@@ -205,7 +201,7 @@ describe("runEditorialRounds", () => {
     const before = unplacedPass(true);
     for (const script of [
       // The decide answer replayed into the round: not an editorial answer.
-      [resultEnvelope(ANSWER)],
+      [scriptedAnswer(ANSWER)],
       ["not json"],
     ]) {
       const { ai, run } = rounds({ script, request: "add images behind me", placed: before });
@@ -227,12 +223,7 @@ describe("runEditorialRounds", () => {
   });
 
   it("ends when the AI is not available on the automatic run, and waits on a request", async () => {
-    const limit = {
-      type: "result",
-      subtype: "error",
-      is_error: true,
-      result: "Claude AI usage limit reached",
-    };
+    const limit: ScriptedReply = { error: { status: 402 } };
     const automatic = await rounds({ script: [limit] }).run;
     expect(automatic.ended).toMatch(/^the AI is not available/);
     await expect(rounds({ script: [limit], request: "add images behind me" }).run).rejects.toThrow(
@@ -291,12 +282,12 @@ describe("runEditorialRounds spans", () => {
     const engine = spans.find((s) => s.name === "decide.engine");
     expect(engine?.parentSpanContext?.spanId).toBe(round?.spanContext().spanId);
     // The round's call is a `chat` span under the round, with its own facts.
-    const chat = spans.find((s) => s.name === "chat");
+    const chat = spans.find((s) => s.name === `chat ${AI_MODEL}`);
     expect(chat?.parentSpanContext?.spanId).toBe(round?.spanContext().spanId);
     expect(chat?.kind).toBe(SpanKind.CLIENT);
     expect(chat?.attributes).toMatchObject({
       "gen_ai.operation.name": "chat",
-      "gen_ai.provider.name": "anthropic",
+      "gen_ai.provider.name": "openrouter",
     });
     expect(chat?.status.code).not.toBe(SpanStatusCode.ERROR);
     expect(Object.keys(round!.attributes).filter((key) => key.startsWith("ai."))).toEqual([]);
@@ -309,12 +300,7 @@ describe("runEditorialRounds spans", () => {
       {},
       { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
     );
-    const unavailable = {
-      type: "result",
-      subtype: "success",
-      is_error: true,
-      result: "Claude AI usage limit reached",
-    };
+    const unavailable: ScriptedReply = { error: { status: 402 } };
     const { run } = rounds({
       script: [unavailable],
       telemetry,
@@ -326,7 +312,7 @@ describe("runEditorialRounds spans", () => {
     expect(spans.find((s) => s.name === "decide.editorial_round")?.attributes).toMatchObject({
       "decide.outcome": "unavailable",
     });
-    const chat = spans.find((s) => s.name === "chat");
+    const chat = spans.find((s) => s.name === `chat ${AI_MODEL}`);
     expect(chat?.attributes["error.type"]).toBe("unavailable");
     expect(chat?.status.code).toBe(SpanStatusCode.ERROR);
     await telemetry.shutdown();
