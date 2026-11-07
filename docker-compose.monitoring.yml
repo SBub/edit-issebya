@@ -1,4 +1,4 @@
-# Local monitoring for the worker, opt in with `MONITORING=1 yarn dev:studio`. One container
+# Local monitoring for the worker, started by `yarn dev:studio`. One container
 # holds Grafana (the UI), Tempo (traces), Loki (logs) and Prometheus (metrics) and takes
 # OpenTelemetry over OTLP/HTTP. The studio does not need it to run. Stop it with
 # `docker compose -f docker-compose.monitoring.yml down`.

@@ -181,6 +181,8 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
   `apps/worker/src/process-job.ts`) and kills it when the job ends, whatever the outcome. `-w` also
   ends it if the worker dies. Nothing is spawned on any other platform, and a missing `caffeinate`
   never fails the job.
+- The worker in its container (Linux) never spawns it. `yarn dev:studio` keeps the Mac awake instead,
+  with `caffeinate -i -w <script pid>` for the script's whole life (`app_docs/worker-container.md`).
 
 ## How to Use
 

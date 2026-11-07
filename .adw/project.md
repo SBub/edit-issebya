@@ -263,7 +263,7 @@ on every pull request and push to `develop` and `master`.
   reuse, probe, `lsof` or kill it.
 - `SERVICES_PORT` in `.ports.env` (9300 + slot) belongs to this run's WebKit server from
   `.adw/worktree-env`; the same never-write rule as the other `.ports.env` values applies.
-- Local monitoring is the developer's, opt-in (`MONITORING=1 yarn dev:studio`, `docker-compose.monitoring.yml`,
+- Local monitoring is the developer's (always started by `yarn dev:studio`, `docker-compose.monitoring.yml`,
   the `grafana/otel-lgtm` container): Grafana on host port 3300 (container 3000, bound to 127.0.0.1;
   3000 is the landing page) and OTLP over HTTP on 4318 (127.0.0.1). ADW never starts it.
 
@@ -297,6 +297,8 @@ on every pull request and push to `develop` and `master`.
 - Never run the worker's `doctor` in a run: it reaches the owner's Supabase and R2, and
   `doctor --ai` makes real, paid OpenRouter calls.
 - Never start the worker (`worker`, `worker:prod`) in a run; only a spec spawns its `once`.
+- Never build or start the worker container (`docker compose` with `compose.yaml` in the repository
+  root) in a run; it is the developer's, started by `yarn dev:studio` or by hand.
 - Never run `yarn dev:studio` or `yarn dev:studio:status` (`scripts/dev-studio.sh`) in a run: they
   are the owner's one command, run `supabase start` and `migration up` on the developer's stack and
   start the worker.
