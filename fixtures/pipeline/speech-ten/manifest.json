@@ -1,0 +1,48 @@
+{
+  "source": {
+    "etag": "591b3a527062128cedb0c852a1b94668",
+    "bytes": 1508775
+  },
+  "steps": [
+    {
+      "name": "convert",
+      "fingerprint": "2b27351ac21eddb3b5533e201ff0fea4b0aeabf0dc6f75524e69670e13688a57",
+      "files": [
+        "converted.mp4"
+      ]
+    },
+    {
+      "name": "transcribe",
+      "fingerprint": "589f28adc93b30a06de905c4d46996a753485156ad1f07401b21fdbaeccde2aa",
+      "files": [
+        "transcript.json"
+      ]
+    },
+    {
+      "name": "retime",
+      "fingerprint": "a9ee567636cbcf22f76fe6fb35abc223d7c7a083b235a0c75939cbc2f1415bac",
+      "files": [
+        "source.mp4",
+        "transcript.json",
+        "retime.json",
+        "envelope.json"
+      ]
+    },
+    {
+      "name": "head_track",
+      "fingerprint": "9ceb860070e05c37c8df288d013abeeb3ec2a5c989577ca347bf0da4863dd7c5",
+      "files": [
+        "head-track.json"
+      ]
+    },
+    {
+      "name": "preview_copies",
+      "fingerprint": "2b7441cd01f8740eb5b78560b85961a823f88923535ee28d790b57ad149258d0",
+      "files": [
+        "footage-preview.mp4",
+        "thumbnail.jpg",
+        "frames.jpg"
+      ]
+    }
+  ]
+}
