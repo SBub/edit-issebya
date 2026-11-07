@@ -1,0 +1,42 @@
+# The worker image's build context is the repository root (compose.yaml). Only what
+# apps/worker/Dockerfile copies is sent: never secrets, dependencies or build output.
+
+# Dependencies and build output, at any depth.
+**/node_modules
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+**/dist
+
+# Secrets and local env files: never in the image (only the .env.example files
+# would be safe, and the image does not need them).
+**/.env
+**/.env.*
+
+# Version control, ADW, specs, docs and the local scratch.
+.git
+.adw
+adws
+agents
+trees
+specs
+docs
+app_docs
+.playwright-mcp
+test-results
+playwright-report
+blob-report
+.e2e-storage
+scratch
+
+# Apps the worker does not run (its image needs only its own package manifest).
+apps/web/**
+!apps/web/package.json
+apps/studio/**
+!apps/studio/package.json
+supabase
+
+# Fixtures: the worker's doctor reads two committed samples; the rest stays out.
+fixtures/**
+!fixtures/footage/short-speech.mp4
+!fixtures/photos/sample.jpg

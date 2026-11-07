@@ -30,17 +30,20 @@ from the repository root.
 
 ### Run the studio locally
 
-One command from the repository root starts the landing page, the studio and the worker:
+One command from the repository root starts the landing page, the studio, the worker (in Docker,
+everything it needs inside the image) and local monitoring:
 
 ```bash
-yarn dev:studio                    # checks, then runs web + studio + worker; Ctrl-C stops all three
+yarn dev:studio                    # checks, then runs everything; Ctrl-C stops it all
 yarn dev:studio --check            # the checks only, no servers (same as yarn dev:studio:status)
 yarn dev:studio add-owner <email>  # once: creates the owner account in the local auth
 yarn dev:studio errors             # the worker's last failures in development, in plain words
 ```
 
-Once per machine, download the worker's cut-out model (MODNet, about 26 MB, checked against its
-pinned SHA-256; see [the pipeline doc](app_docs/pipeline.md)):
+The worker image carries the cut-out's MODNet model (see
+[the worker container doc](app_docs/worker-container.md)). Only for the manual fallback below (the
+worker run natively), download it once per machine (about 26 MB, checked against its pinned
+SHA-256; see [the pipeline doc](app_docs/pipeline.md)):
 
 ```bash
 yarn workspace @edit-issebya/worker models:install
@@ -51,8 +54,8 @@ yarn workspace @edit-issebya/worker models:install
 (`supabase migration up --local`), checks that `apps/web/.env.development`,
 `apps/studio/.env.development` and `apps/worker/.env.development` exist (fill each from its
 folder's `.env.example` with the values `supabase status` prints, the R2 worker keys and the
-worker's `OPENROUTER_API_KEY`), and runs the worker doctor (it checks the key is set and makes
-no AI call, so a startup costs nothing). It stops at the first failure with a one-line reason. Once the studio answers it
+worker's `OPENROUTER_API_KEY`), builds the worker image and runs the worker doctor inside it (it
+checks the key is set and makes no AI call, so a startup costs nothing). It stops at the first failure with a one-line reason. Once the studio answers it
 prints:
 
 - Studio: `http://localhost:3000/studio` (reached through the landing page)
