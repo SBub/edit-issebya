@@ -230,7 +230,8 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
   `E2E_MOCK_RENDER=true` (exactly) replaces the HyperFrames render with a copy of
   `fixtures/render/stub-export.mp4`.
 - `fixtures/footage/short-speech.mp4` is the committed short vertical clip with speech, made by
-  `scripts/make-test-clip.sh` (macOS only, run by hand).
+  `scripts/make-test-clip.sh` (macOS only, run by hand). `fixtures/footage/speech-ten.mp4` is the 10 s
+  clip with a person that the visual and transition specs seed (`app_docs/pipeline.md`).
 
 ## How to Use
 
@@ -263,9 +264,10 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
 - Worker (`apps/worker/.env.development`): `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `WORKER_ID`,
   `R2_WORKER_ACCESS_KEY_ID`, `R2_WORKER_SECRET_ACCESS_KEY`, `WORKER_POLL_INTERVAL_SECONDS`
   (default 120), `WORKER_MIN_FREE_DISK_GB` (default 10), `WORKER_SCRATCH_DIR`, `OPENROUTER_API_KEY`
-  (secret, the AI calls),
-  `FFMPEG_PATH`, `E2E_MOCK_AI`, `E2E_MOCK_STORAGE`, `E2E_MOCK_RENDER`, `E2E_MOCK_FREE_DISK_GB` (the
-  last four tests only).
+  (secret, the AI calls), `POSTHOG_PROJECT_ID`, `POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROMPT_LABEL` (the prompts,
+  `app_docs/decide-step.md`, "Prompts"),
+  `FFMPEG_PATH`, `E2E_MOCK_AI`, `E2E_MOCK_PROMPTS`, `E2E_MOCK_STORAGE`, `E2E_MOCK_RENDER`,
+  `E2E_MOCK_FREE_DISK_GB` (the last five tests only).
 - `SUPABASE_SECRET_KEY` is read only by the worker and by the test helpers in
   `apps/studio/test-support/`, from `apps/worker/.env.development`.
 - `OPENROUTER_API_KEY` is read only by the worker (`apps/worker/src/ai.ts`, and the doctor's key

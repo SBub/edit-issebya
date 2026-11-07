@@ -20,6 +20,8 @@ import {
   renewLease,
   waitJob,
 } from "./queue.ts";
+import { promptSourceOf } from "./prompts/select.ts";
+import type { PromptSource } from "./prompts/source.ts";
 import { runPipeline } from "./pipeline/run-pipeline.ts";
 import { previewCopiesRefs, recordPreviewCopies } from "./preview-copies-record.ts";
 import { stepDouble } from "./pipeline/step-double.ts";
@@ -43,12 +45,19 @@ import {
 import { type Telemetry, endJobSpan, startJobSpan } from "./telemetry.ts";
 import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 
+// One prompt source for the whole worker process: its cache serves every job
+// (created on first use, so a job that needs no prompt never reads the variables).
+let sharedPrompts: PromptSource | undefined;
+function promptsOf(): PromptSource {
+  sharedPrompts ??= promptSourceOf(process.env);
+  return sharedPrompts;
+}
+
 // Wires one claimed job to the database, storage and telemetry: the job span,
 // the job's work by kind under a kept lease, then the job's final write. A
 // `process` job checks the footage (a refusal refuses the reel), then runs the
 // fixed pipeline steps (the step double under E2E_MOCK_STEPS), the preview copies' location,
-// the first version and the decide step; a `change` job only the decide step
-// with the owner's request; a `restore` job only the restore step; a `render`
+// the first version and the decide step; a `restore` job only the restore step; a `render`
 // job the pipeline's hits (or a rebuilt output) and the render step, leaving
 // the reel's status alone, and stops within seconds once its owner cancels it; a
 // `start_over` job (a temporary testing control) only the decide step from version 1
@@ -117,7 +126,9 @@ export async function processJob(
               tools: toolPaths(),
               recordStored,
             };
-            const decide = (request: string | null, startFrom: string | null = null) =>
+            // The automatic decide and Start over: no request (the change box
+            // is removed), from the current version unless startFrom says otherwise.
+            const decide = (startFrom: string | null = null) =>
               runDecide({
                 ctx,
                 storage,
@@ -125,10 +136,9 @@ export async function processJob(
                 blobs,
                 keyPrefix: config.keyPrefix,
                 ai: aiRunner(process.env),
+                prompts: promptsOf(),
                 scratchDir,
-                request,
                 startFrom,
-                photos,
                 rules: supabaseReelRules(db),
                 tools: cutouts.tools,
                 recordStored,
@@ -161,11 +171,8 @@ export async function processJob(
                 });
                 // Never cached: a failed decide fails the job and version 1 stays
                 // current; a retried job decides again from the current version.
-                await decide(null);
+                await decide();
               },
-              // The owner's words: decide alone, from the current version. A
-              // second refusal fails the job and the current version stays.
-              change: (request) => decide(request),
               restore: (versionId) =>
                 runRestore({ ctx, rows, blobs, keyPrefix: config.keyPrefix, versionId, cutouts }),
               render: (versionId) =>
@@ -185,7 +192,7 @@ export async function processJob(
                 }),
               // Start over (temporary, for testing): decide alone, no
               // request, from version 1; saved as a new version.
-              start_over: async () => decide(null, await firstVersionId(db, reelOf(job))),
+              start_over: async () => decide(await firstVersionId(db, reelOf(job))),
               // A library photo: its two copies, then the AI's
               // description and tags; no reel is touched.
               describe_photo: (photoId) =>
@@ -194,6 +201,7 @@ export async function processJob(
                   storage,
                   store: supabasePhotoStore(db),
                   ai: aiRunner(process.env),
+                  prompts: promptsOf(),
                   tools: toolPaths(),
                   keyPrefix: config.keyPrefix,
                   scratchDir,

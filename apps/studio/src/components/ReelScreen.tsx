@@ -14,13 +14,10 @@ interface Props {
   header: ReactNode;
   // The preview, its controls and the tracks timeline.
   main: ReactNode;
-  // The correction field: pinned at the bottom on a phone, the bottom 32%
-  // of the right side (under Versions and the library) on desktop.
-  footer: ReactNode;
-  // The top 68% of the second column (desktop), the phone's Versions tab.
+  // The second column (desktop), the phone's Versions tab.
   versions: ReactNode;
-  // The owner's photo library: the top 68% of the third column on desktop,
-  // the phone's Library tab.
+  // The owner's photo library: the third column on desktop, the phone's
+  // Library tab.
   library: ReactNode;
 }
 
@@ -29,13 +26,10 @@ interface Props {
 // `min-h-0`, and only the list areas scroll (inside their own box).
 //
 // Desktop (`lg:`): the header; a main column (preview with its progress
-// overlay, controls, timeline) over the full height; on its right two rows
-// (68% and 32%): Versions and the photo library side by side in the top one,
-// the correction field across both in the bottom one. Phone: the same header,
-// the middle split into three tabs (Edit, Versions, Library), one shown, and
-// the correction field pinned at the bottom. The correction field is last in
-// the DOM, so the tab order follows the reading order on both.
-export function ReelScreen({ header, main, footer, versions, library }: Props) {
+// overlay, controls, timeline) and, on its right, Versions and the photo
+// library side by side, all over the full height. Phone: the same header,
+// the middle split into three tabs (Edit, Versions, Library), one shown.
+export function ReelScreen({ header, main, versions, library }: Props) {
   const [tab, setTab] = useState<TabKey>("edit");
   const tabRefs = useRef<Record<TabKey, HTMLButtonElement | null>>({
     edit: null,
@@ -100,11 +94,11 @@ export function ReelScreen({ header, main, footer, versions, library }: Props) {
           </button>
         ))}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_20rem_18rem] lg:grid-rows-[minmax(0,17fr)_minmax(0,8fr)] xl:grid-cols-[minmax(0,1fr)_24rem_22rem]">
+      <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_20rem_18rem] lg:grid-rows-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_24rem_22rem]">
         <div
           {...panel("edit")}
           data-testid="edit-area"
-          className={`${shown("edit")} min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain bg-surface p-3 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:px-5`}
+          className={`${shown("edit")} min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain bg-surface p-3 lg:col-start-1 lg:row-start-1 lg:px-5`}
         >
           {main}
         </div>
@@ -121,12 +115,6 @@ export function ReelScreen({ header, main, footer, versions, library }: Props) {
           className={`${shown("library")} min-h-0 flex-1 flex-col overflow-hidden lg:col-start-3 lg:row-start-1 lg:border-l lg:border-line`}
         >
           {library}
-        </div>
-        <div
-          data-testid="change-area"
-          className="flex flex-none flex-col border-t border-line p-3 lg:col-span-2 lg:col-start-2 lg:row-start-2 lg:min-h-0 lg:border-l"
-        >
-          {footer}
         </div>
       </div>
     </div>

@@ -4,10 +4,12 @@ import { join } from "node:path";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AI_MODEL, type AiRunner, type ScriptedReply, fakeAiRunner } from "../ai.ts";
-import { AiUnavailable, PermanentError, findCause } from "../failure.ts";
+import { AiUnavailable, PermanentError, findCause, isTransient } from "../failure.ts";
 import type { ClaimedJob } from "../queue.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
 import { type ChildRun, type SpawnTool, StepError } from "../step-runner.ts";
+import { fakePromptSource } from "../../test-support/fake-prompts.ts";
+import { type PromptSource, PromptUnavailable } from "../prompts/source.ts";
 import { runDescribePhotoJob } from "./describe-photo.ts";
 import type { PhotoStore, ReadyPhoto } from "./photo-store.ts";
 
@@ -99,13 +101,18 @@ afterEach(async () => {
   await rm(scratch, { recursive: true, force: true });
 });
 
-function run(ai: AiRunner, store: PhotoStore = memoryStore()) {
+function run(
+  ai: AiRunner,
+  store: PhotoStore = memoryStore(),
+  prompts: PromptSource = fakePromptSource(),
+) {
   const { steps, calls } = recordingSteps();
   const job = runDescribePhotoJob({
     ctx: stepContext(steps, { job: PHOTO_JOB }),
     storage,
     store,
     ai,
+    prompts,
     tools: TOOLS,
     keyPrefix: PREFIX,
     scratchDir: scratch,
@@ -145,7 +152,7 @@ describe("runDescribePhotoJob", () => {
           description: "A colourful test pattern with bars and a moving circle.",
           tags: ["test pattern", "colour bars", "abstract"],
           model: AI_MODEL,
-          promptVersion: "describe-photo-3",
+          promptVersion: "photo-describe@v1",
           width: 4032,
           height: 3024,
           thumbnailKey: `${PREFIX}library/${PHOTO}/thumbnail.jpg`,
@@ -173,6 +180,23 @@ describe("runDescribePhotoJob", () => {
     expect(await readdir(scratch)).toEqual(["photo"]);
   });
 
+  it("fails transiently, before any AI call, when the describe prompt cannot be fetched", async () => {
+    const ai = seeingAi([answer]);
+    const prompts: PromptSource = {
+      async get(name) {
+        throw new PromptUnavailable(name, "production", "PostHog did not answer");
+      },
+    };
+    const { job } = run(ai, memoryStore(), prompts);
+    const error = (await job.catch((caught: unknown) => caught)) as Error;
+    expect(ai.calls).toHaveLength(0);
+    expect(isTransient(error)).toBe(true);
+    expect(error.message).toContain(
+      "prompts: photo-describe (label production) could not be fetched: PostHog did not answer",
+    );
+    expect(readyWrites).toHaveLength(0);
+  });
+
   it("sends a refused answer back once with its reasons, then writes ready", async () => {
     const ai = seeingAi([refused, answer]);
     const { job } = run(ai);
@@ -180,6 +204,7 @@ describe("runDescribePhotoJob", () => {
     expect(ai.calls).toHaveLength(2);
     expect(ai.calls[1]!.prompt).toMatch(/Your previous answer was refused/);
     expect(ai.calls[1]!.prompt).toMatch(/- tags: /);
+    expect(ai.calls[1]!.promptVersion).toBe("photo-describe@v1");
     expect(readyWrites).toHaveLength(1);
   });
 

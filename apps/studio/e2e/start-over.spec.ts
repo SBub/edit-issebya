@@ -140,15 +140,20 @@ test("Start over sits by the Versions heading and is off while a job runs", asyn
   expect(button.x).toBeGreaterThan(heading.x + heading.width);
 
   await expect(startOver()).toBeDisabled();
-  await expect(page.getByTestId("change-queue-note")).toHaveText(
-    "Waiting: your reel is still being styled. Your change starts right after",
+  await expect(startOver()).toHaveAttribute(
+    "title",
+    "Waiting: your reel is still being styled. Start over starts right after",
   );
 
   await admin
     .from("jobs")
     .update({ status: "done", finished_at: new Date().toISOString(), lease_expires_at: null })
     .eq("id", running!.id);
-  await expect(page.getByTestId("change-queue-note")).toHaveCount(0, { timeout: 10_000 });
+  await expect(startOver()).toHaveAttribute(
+    "title",
+    "Rerun the first edit from version 1 and save it as a new version",
+    { timeout: 10_000 },
+  );
   await expect(startOver()).toBeEnabled();
 });
 
@@ -177,7 +182,8 @@ test("Start over decides again from version 1 and saves version 3", async () => 
     },
   ]);
 
-  // An answer with no choices: from version 1 it keeps version 1's bytes.
+  // An answer with no choices: from version 1 it is version 1 plus the hook,
+  // the one thing added (every reel has one now).
   const worker = await runWorkerOnce({
     R2_KEY_PREFIX: CACHE_PREFIX,
     E2E_MOCK_AI_SCRIPT: await unchangedAnswerScript(scriptDir),
@@ -188,7 +194,17 @@ test("Start over decides again from version 1 and saves version 3", async () => 
   expect(after.map((v) => v.number)).toEqual([1, 2, 3]);
   const v3 = after[2]!;
   expect(v3).toMatchObject({ parent_id: v2!.id, request: null });
-  expect(await bytesOf(v3.r2_key)).toBe(await bytesOf(v1!.r2_key));
+  const v1Edit = JSON.parse(await bytesOf(v1!.r2_key));
+  const v3Edit = JSON.parse(await bytesOf(v3.r2_key));
+  const hooks = (edit: typeof v1Edit) =>
+    edit.tracks.overlays.filter((item: { kind: string }) => item.kind === "hook");
+  expect(hooks(v1Edit)).toEqual([]);
+  expect(hooks(v3Edit)).toHaveLength(1);
+  expect(v3Edit.tracks.overlays.filter((item: { kind: string }) => item.kind !== "hook")).toEqual(
+    v1Edit.tracks.overlays,
+  );
+  expect(v3Edit.tracks.captions).toEqual(v1Edit.tracks.captions);
+  expect(v3Edit.tracks.transitions).toEqual(v1Edit.tracks.transitions);
   const { data: reelRow } = await admin
     .from("reels")
     .select("status, current_version_id")

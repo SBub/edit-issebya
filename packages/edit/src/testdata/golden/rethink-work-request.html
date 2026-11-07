@@ -15,26 +15,14 @@
       .text { position: absolute; line-height: 1; white-space: nowrap; opacity: 0; }
       .f-primary { font-family: "Raleway Light", sans-serif; font-weight: 300; }
       .f-secondary { font-family: "Golos Text", sans-serif; font-weight: 700; }
-      .cutout { position: absolute; inset: 0; isolation: isolate; }
-      .cutout-front { position: absolute; inset: 0; isolation: isolate; mix-blend-mode: plus-lighter; }
-      .mask-under { filter: invert(1); mix-blend-mode: multiply; }
-      .mask-front { mix-blend-mode: multiply; }
       .photo { position: absolute; object-fit: cover; }
-      .word { position: absolute; line-height: 1; white-space: nowrap; }
+      .visual { position: absolute; box-sizing: border-box; border: 8px solid #ffffff; background: transparent; }
     </style>
   </head>
   <body>
     <div id="root" data-composition-id="main" data-start="0" data-duration="47.526" data-width="1080" data-height="1920">
       <video id="footage" class="clip full" src="source.mp4" playsinline data-start="0.000" data-duration="47.526" data-track-index="1" data-has-audio="true"></video>
-      <div id="cut_1" class="cutout">
-        <video id="cut_1_footage" class="clip full" src="source.mp4" muted playsinline data-start="22.700" data-duration="2.233" data-media-start="22.700" data-track-index="20"></video>
-        <img id="photo-1" class="clip photo" src="photos/3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14.jpg" alt="" data-start="22.804" data-duration="2.000" data-track-index="21" style="left: 402px; top: 220px; width: 640px; height: 480px" />
-        <video id="cut_1_under" class="clip full mask-under" src="masks/3333333333333333333333333333333333333333333333333333333333333333.mp4" muted playsinline data-start="22.700" data-duration="2.233" data-track-index="22"></video>
-        <div class="cutout-front">
-          <video id="cut_1_person" class="clip full" src="source.mp4" muted playsinline data-start="22.700" data-duration="2.233" data-media-start="22.700" data-track-index="23"></video>
-          <video id="cut_1_mask" class="clip full mask-front" src="masks/3333333333333333333333333333333333333333333333333333333333333333.mp4" muted playsinline data-start="22.700" data-duration="2.233" data-track-index="24"></video>
-        </div>
-      </div>
+      <div id="visual-1" class="clip visual" alt="" data-start="22.804" data-duration="2.000" data-track-index="30" style="left: 645px; top: 260px; width: 360px; height: 450px"></div>
       <div id="text" class="clip" data-start="0.000" data-duration="47.526" data-track-index="50">
         <span id="cw0" class="text f-secondary" style="left: 432px; top: 522px; font-size: 50px; color: #FFFFFF">the</span>
         <span id="cw1" class="text f-secondary" style="left: 524px; top: 522px; font-size: 50px; color: #FFFFFF">time</span>
@@ -119,21 +107,21 @@
         <span id="cw81" class="text f-secondary" style="left: 319px; top: 710px; font-size: 50px; color: #FFFFFF">for</span>
         <span id="cw82" class="text f-secondary" style="left: 399px; top: 710px; font-size: 50px; color: #FFFFFF">your</span>
         <span id="cw83" class="text f-secondary" style="left: 520px; top: 710px; font-size: 50px; color: #FFFFFF">idea</span>
-        <span id="cw84" class="text f-secondary" style="left: 217px; top: 1290px; font-size: 50px; color: #FFFFFF">and</span>
-        <span id="cw85" class="text f-secondary" style="left: 319px; top: 1290px; font-size: 50px; color: #FFFFFF">if</span>
-        <span id="cw86" class="text f-secondary" style="left: 364px; top: 1290px; font-size: 50px; color: #FFFFFF">you</span>
-        <span id="cw87" class="text f-secondary" style="left: 465px; top: 1290px; font-size: 50px; color: #FFFFFF">look</span>
-        <span id="cw88" class="text f-secondary" style="left: 583px; top: 1290px; font-size: 50px; color: #FFFFFF">at</span>
-        <span id="cw89" class="text f-secondary" style="left: 644px; top: 1290px; font-size: 50px; color: #FFFFFF">gen z</span>
-        <span id="cw91" class="text f-secondary" style="left: 322px; top: 1290px; font-size: 50px; color: #FFFFFF">they</span>
-        <span id="cw92" class="text f-secondary" style="left: 443px; top: 1290px; font-size: 50px; color: #FFFFFF">don&#39;t</span>
-        <span id="cw93" class="text f-secondary" style="left: 579px; top: 1290px; font-size: 50px; color: #FFFFFF">live</span>
-        <span id="cw94" class="text f-secondary" style="left: 195px; top: 1290px; font-size: 50px; color: #FFFFFF">to</span>
-        <span id="cw95" class="text f-secondary" style="left: 258px; top: 1290px; font-size: 50px; color: #FFFFFF">work</span>
-        <span id="cw96" class="text f-secondary" style="left: 390px; top: 1290px; font-size: 50px; color: #FFFFFF">they</span>
-        <span id="cw97" class="text f-secondary" style="left: 511px; top: 1290px; font-size: 50px; color: #FFFFFF">work</span>
-        <span id="cw98" class="text f-secondary" style="left: 643px; top: 1290px; font-size: 50px; color: #FFFFFF">to</span>
-        <span id="cw99" class="text f-secondary" style="left: 706px; top: 1290px; font-size: 50px; color: #FFFFFF">live</span>
+        <span id="cw84" class="text f-secondary" style="left: 152px; top: 722px; font-size: 50px; color: #FFFFFF">and</span>
+        <span id="cw85" class="text f-secondary" style="left: 254px; top: 722px; font-size: 50px; color: #FFFFFF">if</span>
+        <span id="cw86" class="text f-secondary" style="left: 299px; top: 722px; font-size: 50px; color: #FFFFFF">you</span>
+        <span id="cw87" class="text f-secondary" style="left: 400px; top: 722px; font-size: 50px; color: #FFFFFF">look</span>
+        <span id="cw88" class="text f-secondary" style="left: 518px; top: 722px; font-size: 50px; color: #FFFFFF">at</span>
+        <span id="cw89" class="text f-secondary" style="left: 579px; top: 722px; font-size: 50px; color: #FFFFFF">gen z</span>
+        <span id="cw91" class="text f-secondary" style="left: 257px; top: 722px; font-size: 50px; color: #FFFFFF">they</span>
+        <span id="cw92" class="text f-secondary" style="left: 378px; top: 722px; font-size: 50px; color: #FFFFFF">don&#39;t</span>
+        <span id="cw93" class="text f-secondary" style="left: 514px; top: 722px; font-size: 50px; color: #FFFFFF">live</span>
+        <span id="cw94" class="text f-secondary" style="left: 130px; top: 722px; font-size: 50px; color: #FFFFFF">to</span>
+        <span id="cw95" class="text f-secondary" style="left: 193px; top: 722px; font-size: 50px; color: #FFFFFF">work</span>
+        <span id="cw96" class="text f-secondary" style="left: 325px; top: 722px; font-size: 50px; color: #FFFFFF">they</span>
+        <span id="cw97" class="text f-secondary" style="left: 446px; top: 722px; font-size: 50px; color: #FFFFFF">work</span>
+        <span id="cw98" class="text f-secondary" style="left: 578px; top: 722px; font-size: 50px; color: #FFFFFF">to</span>
+        <span id="cw99" class="text f-secondary" style="left: 641px; top: 722px; font-size: 50px; color: #FFFFFF">live</span>
         <span id="cw100" class="text f-secondary" style="left: 432px; top: 522px; font-size: 50px; color: #FFFFFF">they</span>
         <span id="cw101" class="text f-secondary" style="left: 553px; top: 522px; font-size: 50px; color: #FFFFFF">want</span>
         <span id="cw102" class="text f-secondary" style="left: 685px; top: 522px; font-size: 50px; color: #FFFFFF">fair</span>
@@ -196,7 +184,7 @@
         <span id="cw160" class="text f-secondary" style="left: 496px; top: 710px; font-size: 50px; color: #FFFFFF">really</span>
         <span id="cw161" class="text f-secondary" style="left: 649px; top: 710px; font-size: 50px; color: #FFFFFF">want</span>
       </div>
-      <audio id="click-photo-1" class="clip" src="assets/sounds/mouse-click-trimmed.wav" data-start="22.804" data-duration="0.230" data-track-index="60" data-volume="0.5012"></audio>
+      <audio id="click-visual-1" class="clip" src="assets/sounds/mouse-click-trimmed.wav" data-start="22.804" data-duration="0.230" data-track-index="60" data-volume="0.5012"></audio>
     </div>
     <script>
       const tl = gsap.timeline({ paused: true });

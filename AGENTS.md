@@ -46,6 +46,10 @@ Rules for working in this repository. What each feature does is not described he
 - Never create, read or commit a real `.env*` file. The `.env.example` files hold placeholder names
   only: `apps/web/.env.example` for the app (Next reads env files from `apps/web/`), the root one
   for the ADW toolkit's `.env.development`.
+- Prompt wording lives only in PostHog prompt management (the worker fetches each prompt
+  by name and label), never in the repository: no prompt file, test fixture, doc, comment
+  or snapshot holds it. Tests use the placeholder prompts in `apps/worker/test-support/`.
+  `apps/worker/src/prompts/no-prompt-files.test.ts` fails on a prompt file.
 - Create a migration with `supabase migration new <name>` (it stamps the current UTC time). Never
   hand-pick, copy, future-date or reuse a migration version, and never edit an applied migration.
   The studio unit test `apps/studio/test-support/migration-versions.test.ts` (run by `yarn test`, the pre-push

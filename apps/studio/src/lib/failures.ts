@@ -25,12 +25,12 @@ export function retryableJobIds(
 
 const LIVE_STATUSES: readonly JobRow["status"][] = ["queued", "running", "waiting_ai"];
 
-// What a change sent now waits for: the reel's processing or other jobs
-// before it, in one owner-facing line (the database runs one job per reel at a time, in order). Null
-// when nothing is ahead of it.
-export function changeQueueNote(jobs: readonly Pick<JobRow, "kind" | "status">[]): string | null {
+// What Start over waits for: the reel's processing or other jobs before it,
+// in one owner-facing line (the database runs one job per reel at a time, in
+// order). Null when nothing is live.
+export function startOverQueueNote(jobs: readonly Pick<JobRow, "status">[]): string | null {
   const live = jobs.filter((job) => LIVE_STATUSES.includes(job.status));
   return live.length > 0
-    ? "Waiting: your reel is still being styled. Your change starts right after"
+    ? "Waiting: your reel is still being styled. Start over starts right after"
     : null;
 }

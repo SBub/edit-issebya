@@ -1,6 +1,4 @@
 import { z } from "zod";
-import type { ChecklistOutcome } from "./editorial.ts";
-import type { EngineNote } from "./engine.ts";
 import type { Preset } from "./preset.ts";
 import { issueReasons } from "./schema.ts";
 import { DIFF_KINDS, type DiffEntry, type DiffKind, type EditDiff } from "./version-diff.ts";
@@ -44,6 +42,7 @@ const NAMES: Record<DiffKind, readonly string[]> = {
   hook: ["hook", "hooks"],
   accent: ["accent", "accents", "highlight", "highlights", "highlighted", "stands out", "emphasis"],
   photo: ["photo", "photos", "picture", "pictures", "image", "images"],
+  visual: ["visual", "visuals"],
   big_word: ["big word", "key word"],
   transition: ["transition", "transitions", "fade", "fades", "dim", "cut", "cuts"],
   caption: ["caption", "captions", "spelling", "word fixed", "words fixed", "misheard"],
@@ -82,15 +81,13 @@ const FORBIDDEN: readonly { pattern: RegExp; reason: string }[] = [
   },
 ];
 
-const NEGATION = /\b(?:did not|could not|didn't|couldn't|not|no room|left out)\b/i;
-
 function namedKinds(text: string): DiffKind[] {
   return DIFF_KINDS.filter((kind) => NAME_PATTERNS[kind].some((pattern) => pattern.test(text)));
 }
 
 function inDiff(kind: DiffKind, diff: EditDiff): boolean {
   if (diff.items.some((entry) => entry.kind === kind)) return true;
-  if (kind === "photo") return diff.rules.some((change) => change.rule === "photos");
+  if (isPicture(kind)) return diff.rules.some((change) => change.rule === "photos");
   if (kind === "big_word") return diff.rules.some((change) => change.rule === "big_word");
   return false;
 }
@@ -116,14 +113,11 @@ const label = (kind: DiffKind) => kind.replace("_", " ");
 
 // The safeguard: the text carries no word id, time, size, colour code, font
 // or internal name, and every kind of item it names is in the saved
-// difference (photos and the big word also when their rule switched). A
-// summary sentence may name a kind the owner asked for and the version does
-// not have (`notDone`) only to say it did not happen.
+// difference (photos and the big word also when their rule switched).
 export function checkSummary(
   answer: SummaryAnswer,
   diff: EditDiff,
   preset: Preset,
-  notDone: readonly DiffKind[] = [],
 ): { ok: true } | { ok: false; reasons: string[] } {
   const reasons: string[] = [];
   const both = `${answer.change_title}\n${answer.change_summary}`;
@@ -139,9 +133,7 @@ export function checkSummary(
   }
   for (const sentence of sentences(answer.change_summary)) {
     for (const kind of namedKinds(sentence)) {
-      if (inDiff(kind, diff)) continue;
-      if (notDone.includes(kind) && NEGATION.test(sentence)) continue;
-      missing.add(kind);
+      if (!inDiff(kind, diff)) missing.add(kind);
     }
   }
   for (const kind of DIFF_KINDS) {
@@ -151,75 +143,6 @@ export function checkSummary(
   }
   return reasons.length === 0 ? { ok: true } : { ok: false, reasons };
 }
-
-// The kind of an engine item by its id: `title`, `accent-2`, `photo-1`,
-// `big-word-1` (`big-word` in an older record), `transition-3`.
-function kindOfItem(id: string): DiffKind | null {
-  if (id === "title") return "title";
-  if (id === "hook") return "hook";
-  if (id === "big-word" || /^big-word-\d+$/.test(id)) return "big_word";
-  const prefix = /^([a-z]+)-\d+$/.exec(id)?.[1];
-  if (prefix === "accent" || prefix === "photo" || prefix === "transition") return prefix;
-  return null;
-}
-
-// The kinds an answer reference may be (`big_word` in an older checklist).
-function kindsOfRef(ref: string): DiffKind[] {
-  if (ref === "big_word" || ref.startsWith("big_words[")) return ["big_word"];
-  if (ref.startsWith("accents[")) return ["accent", "title"];
-  if (ref.startsWith("photos[")) return ["photo"];
-  if (ref.startsWith("transitions[")) return ["transition"];
-  if (ref === "hook") return ["hook"];
-  return [];
-}
-
-// The record's drops of items a not-done ask linked: what the owner asked for
-// and the version does not have.
-function askedDrops(
-  record: readonly EngineNote[],
-  checklist: readonly ChecklistOutcome[],
-): { kind: DiffKind; rule: string }[] {
-  const asked = new Set(
-    checklist
-      .filter((entry) => !entry.done)
-      .flatMap((entry) => entry.fulfilled_by.flatMap(kindsOfRef)),
-  );
-  const out: { kind: DiffKind; rule: string }[] = [];
-  for (const note of record) {
-    if (note.action !== "dropped") continue;
-    const kind = kindOfItem(note.item);
-    if (kind && asked.has(kind)) out.push({ kind, rule: note.rule });
-  }
-  return out;
-}
-
-// The kinds the owner asked for that the version left out: a summary
-// sentence may name them only to say so.
-export function askedNotDone(
-  record: readonly EngineNote[],
-  checklist: readonly ChecklistOutcome[],
-): DiffKind[] {
-  return [...new Set(askedDrops(record, checklist).map((drop) => drop.kind))];
-}
-
-// Why the engine dropped an item, in words that name no kind, time or size.
-const DROP_WORDS: Record<string, string> = {
-  "no-room": "there was no free room on screen",
-  "one-extra": "something else already shows at that moment",
-  "hidden-footage": "that part does not show in the reel",
-  "make-room": "there was no room even after making space",
-  wish: "the place you asked for was taken",
-  editorial: "the editor left it out",
-  "photo-time": "its sentence is too short",
-  "accent-time": "it comes too close to the end",
-  "big-word-time": "it comes too close to the end",
-  "transition-time": "the reel is too short for it",
-  "transition-rate": "the reel has room for only a few of them",
-  "transition-overlap": "another one shows at that moment",
-  // A transition in the first seconds, kept clear for the written line.
-  hook: "the first seconds are kept for the written line",
-  "hook-time": "the reel is too short for it",
-};
 
 const NUMBERS = [
   "Zero",
@@ -241,11 +164,18 @@ function counted(count: number): string {
   return NUMBERS[count] ?? "Many";
 }
 
+// A picture behind the speaker: a library photo (an older version's) or a
+// VISUAL frame. Both follow the photos switch and read as pictures.
+function isPicture(kind: DiffKind): boolean {
+  return kind === "photo" || kind === "visual";
+}
+
 const NOUN: Record<DiffKind, { one: string; many: string }> = {
   title: { one: "title", many: "titles" },
   hook: { one: "hook", many: "hooks" },
   accent: { one: "accent", many: "accents" },
   photo: { one: "photo", many: "photos" },
+  visual: { one: "visual", many: "visuals" },
   big_word: { one: "big word", many: "big words" },
   transition: { one: "transition", many: "transitions" },
   caption: { one: "caption", many: "captions" },
@@ -281,8 +211,13 @@ interface Group {
 function groupsOf(diff: EditDiff): Group[] {
   return DIFF_KINDS.flatMap((kind): Group[] => {
     const entries = diff.items.filter((entry) => entry.kind === kind);
-    const ruleName = kind === "photo" ? "photos" : kind === "big_word" ? "big_word" : null;
-    const rule = diff.rules.find((change) => change.rule === ruleName)?.to ?? null;
+    const ruleName = isPicture(kind) ? "photos" : kind === "big_word" ? "big_word" : null;
+    // The photos switch names the pictures once: a visual never has a group of
+    // its own for it.
+    const rule =
+      kind === "visual"
+        ? null
+        : (diff.rules.find((change) => change.rule === ruleName)?.to ?? null);
     return entries.length > 0 || rule !== null ? [{ kind, entries, rule }] : [];
   });
 }
@@ -296,7 +231,7 @@ function sharedAction(entries: readonly DiffEntry[]): DiffEntry["action"] | null
 function titleOf(group: Group): string {
   const { kind, entries, rule } = group;
   if (entries.length === 0 && rule !== null) {
-    return `${capital(kind === "photo" ? "photos" : "big word")} switched ${rule}`;
+    return `${capital(isPicture(kind) ? "photos" : "big word")} switched ${rule}`;
   }
   if (kind === "caption") {
     const fixed = entries.filter((entry) => entry.action === "changed").length;
@@ -323,7 +258,7 @@ function sentenceOf(group: Group, preset: Preset, quotes: boolean): string {
   const ruleSentence =
     rule === null
       ? null
-      : kind === "photo"
+      : isPicture(kind)
         ? rule === "off"
           ? "Photos are switched off for this reel."
           : "Photos are allowed again for this reel."
@@ -366,19 +301,19 @@ function sentenceOf(group: Group, preset: Preset, quotes: boolean): string {
     const { one, many } = NOUN[kind];
     // Behind the speaker, or in front of them when every photo is.
     const where =
-      kind === "photo" && entries.every((entry) => entry.front)
+      isPicture(kind) && entries.every((entry) => entry.front)
         ? " in front of you"
-        : kind === "photo" && entries.some((entry) => entry.front)
+        : isPicture(kind) && entries.some((entry) => entry.front)
           ? ""
-          : kind === "photo" || kind === "big_word"
+          : isPicture(kind) || kind === "big_word"
             ? " behind you"
             : "";
-    const on = quote ? (kind === "photo" ? ` while you say ${quote}` : ` on ${quote}`) : "";
+    const on = quote ? (isPicture(kind) ? ` while you say ${quote}` : ` on ${quote}`) : "";
     if (entries.length > 1 && action !== null && kind !== "footage") {
       const what = `${counted(entries.length)} ${many}`;
       const moods = entries.filter((entry) => entry.reason === "mood").length;
       const mood =
-        kind === "photo" && moods > 0
+        isPicture(kind) && moods > 0
           ? ` ${moods === entries.length ? "All" : counted(moods)} of them ${moods === 1 ? "is" : "are"} there for the mood and ${moods === 1 ? "does" : "do"} not show what you say.`
           : "";
       sentence = {
@@ -395,9 +330,9 @@ function sentenceOf(group: Group, preset: Preset, quotes: boolean): string {
       sentence = {
         // A mood photo is said to be one: it does not show what is said.
         added:
-          kind === "photo" && first.reason === "mood"
+          isPicture(kind) && first.reason === "mood"
             ? `${article} ${one} now shows${where}${on} for the mood: it does not show what you say.`
-            : kind === "photo" || kind === "big_word"
+            : isPicture(kind) || kind === "big_word"
               ? `${article} ${one} now shows${where}${on}.`
               : `${article} ${one} was added${on}.`,
         removed: `The ${one}${on} was taken out.`,
@@ -442,13 +377,10 @@ function joinSummary(parts: readonly string[], more: boolean): string {
   return [...parts.slice(0, -1), `${last}, and a few smaller changes.`].join(" ");
 }
 
-// The code template: a title and summary written from the difference and,
-// for an item the owner asked for that the engine dropped, why. Its own
-// output always passes `checkSummary` and the schema's lengths.
+// The code template: a title and summary written from the difference. Its
+// own output always passes `checkSummary` and the schema's lengths.
 export function summaryTemplate(
   diff: EditDiff,
-  record: readonly EngineNote[],
-  checklist: readonly ChecklistOutcome[],
   preset: Preset,
 ): { title: string; summary: string } {
   const groups = groupsOf(diff);
@@ -460,20 +392,13 @@ export function summaryTemplate(
         : groups.length === 2
           ? `${capital(pairNoun(groups[0]!.kind))} and ${pairNoun(groups[1]!.kind)} changed`
           : "Several things changed";
-  const drop = askedDrops(record, checklist).find((entry) => !inDiff(entry.kind, diff));
-  const dropSentence = drop
-    ? `The ${NOUN[drop.kind].one} you asked for did not fit: ${DROP_WORDS[drop.rule] ?? "there was no room for it"}.`
-    : null;
-  const candidates = [true, false].flatMap((quotes) =>
-    [true, false].map((withDrop) => {
-      const parts =
-        groups.length === 0
-          ? ["Nothing in the reel changed."]
-          : groups.slice(0, 2).map((group) => sentenceOf(group, preset, quotes));
-      const body = joinSummary(parts, groups.length > 2);
-      return withDrop && dropSentence ? `${body} ${dropSentence}` : body;
-    }),
-  );
+  const candidates = [true, false].map((quotes) => {
+    const parts =
+      groups.length === 0
+        ? ["Nothing in the reel changed."]
+        : groups.slice(0, 2).map((group) => sentenceOf(group, preset, quotes));
+    return joinSummary(parts, groups.length > 2);
+  });
   const summary =
     candidates.find((text) => text.length <= MAX_SUMMARY) ??
     candidates.at(-1)!.slice(0, MAX_SUMMARY);

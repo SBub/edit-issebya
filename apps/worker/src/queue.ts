@@ -9,8 +9,6 @@ export interface ClaimedJob {
   owner_id: string;
   kind: string;
   attempts: number;
-  // A `change` job's request (null for every other kind).
-  request: string | null;
   // The version a `restore` job goes back to (null for every other kind).
   restore_version_id: string | null;
   // The version a `render` job exports (null for every other kind).
@@ -106,7 +104,7 @@ async function endJob(
   db: SupabaseClient,
   config: QueueConfig,
   job: ClaimedJob,
-  // null: the reel's status stays as it is (a change, restore or render job).
+  // null: the reel's status stays as it is (a restore, render or start over job).
   outcome: {
     job: "done" | "failed";
     reel: "processed" | "failed" | null;
@@ -148,9 +146,9 @@ async function endJob(
   return true;
 }
 
-// Only a `process` job moves the reel's status. A change, restore or render
+// Only a `process` job moves the reel's status. A restore, start over or render
 // job runs on a processed reel and leaves it processed whatever happens: a
-// failed change keeps the reel usable and its current version untouched, a
+// failed restore keeps the reel usable and its current version untouched, a
 // failed render leaves the reel as it was. A `describe_photo` job has no reel:
 // its failure sets the photo `failed`, its success leaves the photo to the
 // step that wrote it `ready`.

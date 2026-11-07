@@ -126,8 +126,9 @@ export function runChecks(
     }
   }
 
+  // The pictures: a library photo or a visual frame, checked the same way.
   const photos = (edit.tracks.behind ?? []).flatMap((item) =>
-    item.kind === "photo" ? [{ item, span: resolved.get(item.id)! }] : [],
+    item.kind === "photo" || item.kind === "visual" ? [{ item, span: resolved.get(item.id)! }] : [],
   );
   // Where it is, in plain words: its spot (behind) or `in front`.
   const where = (item: (typeof photos)[number]["item"]) =>

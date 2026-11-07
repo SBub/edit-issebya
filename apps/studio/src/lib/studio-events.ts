@@ -1,9 +1,10 @@
-// Every studio event; names are never renamed once shipped. All are sent:
-// studio_footage_uploaded, studio_preview_opened, studio_change_requested
-// (reel_id only, never the request text), studio_export_requested and
-// studio_export_downloaded (ExportPanel, reel_id only). Dependency-free, so the
-// PostHog dashboard script (scripts/posthog-dashboard/) imports the names
-// without loading posthog-js.
+// Every studio event; names are never renamed once shipped. studio_footage_uploaded,
+// studio_preview_opened, studio_export_requested and studio_export_downloaded
+// are sent (ExportPanel, reel_id only). studio_change_requested stays listed for
+// the dashboard's history but is no longer sent: the change box is removed
+// (app_docs/change-requests.md). Dependency-free, so the PostHog dashboard
+// script (scripts/posthog-dashboard/) imports the names without loading
+// posthog-js.
 export const STUDIO_EVENTS = [
   "studio_footage_uploaded",
   "studio_preview_opened",

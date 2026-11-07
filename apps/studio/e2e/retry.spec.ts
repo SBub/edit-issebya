@@ -107,7 +107,7 @@ test("a step killed twice fails the job; Retry resumes at that step and finishes
     (window as unknown as { __noReload: string }).__noReload = "marker";
   });
   expect(await reelStatus(admin, reelId)).toBe("failed");
-  await expect(page.getByTestId("change-blocked-reason")).toHaveText(
+  await expect(page.locator("#versions-status")).toHaveText(
     "Processing failed; press Try again on the preview first",
   );
 
@@ -116,7 +116,6 @@ test("a step killed twice fails the job; Retry resumes at that step and finishes
   await expect(overlay.getByTestId("overlay-headline")).toHaveText(
     "Could not finish listening to your words",
   );
-  await expect(overlay.getByTestId("overlay-change-request")).toHaveCount(0);
   await overlay.getByTestId("overlay-try-again").click();
   await expect
     .poll(async () => (await jobsOf(admin, reelId)).map((job) => [job.status, job.retry_of_job_id]))

@@ -198,10 +198,9 @@ describe("overlayState", () => {
     });
   });
 
-  it("offers Change the request and Keep for a refused change, with the plain reason", () => {
+  it("offers Try again and Keep for a refused answer, with the plain reason", () => {
     const j = job({
-      kind: "change",
-      request: "add a photo",
+      kind: "start_over",
       status: "failed",
       failure_kind: "answer_refused",
       failure_rules: ["behind-caption", "safe-box"],
@@ -210,19 +209,18 @@ describe("overlayState", () => {
     expect(state).toEqual({
       kind: "failure",
       jobId: j.id,
-      jobKind: "change",
+      jobKind: "start_over",
       step: "decide",
       failureKind: "answer_refused",
       headline: "Could not finish styling",
       reason: "A photo would cover your captions and something would sit outside the safe area",
-      actions: ["change_request", "keep_current"],
+      actions: ["try_again", "keep_current"],
     });
   });
 
-  it("says Nothing changed for a change that would leave the reel as it is, with why", () => {
+  it("says Nothing changed for a refused answer that would leave the reel as it is, with why", () => {
     const j = job({
-      kind: "change",
-      request: "add a photo",
+      kind: "start_over",
       status: "failed",
       failure_kind: "answer_refused",
       failure_rules: ["no-change", "no-room"],
@@ -232,7 +230,7 @@ describe("overlayState", () => {
       kind: "failure",
       headline: "Nothing changed",
       reason: "Your reel would look the same and there was no free room on screen",
-      actions: ["change_request", "keep_current"],
+      actions: ["try_again", "keep_current"],
     });
   });
 

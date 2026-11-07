@@ -57,8 +57,11 @@ export type PhotoReason = (typeof PHOTO_REASONS)[number];
 // Where a library photo sits: `behind` the speaker (the cut-out composite,
 // the person on top) or in `front` of them (over the footage, no cut-out).
 // A photo without one (every version saved before it) is behind.
-export const PHOTO_LAYERS = ["behind", "front"] as const;
-export type PhotoLayer = (typeof PHOTO_LAYERS)[number];
+const PHOTO_LAYERS = ["behind", "front"] as const;
+
+// A VISUAL's description, as stored: plain text, at most this many characters
+// (the answer's own limit, in words, is stricter; see `decide.ts`).
+const VISUAL_DESCRIPTION_MAX = 120;
 
 // A big word behind the speaker: one word, nothing that could leave its tag.
 export const BEHIND_WORD = /^[^\s<>&]{1,24}$/;
@@ -197,6 +200,16 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
       : limits.photoIds.length > 0
         ? z.enum(limits.photoIds as [string, ...string[]])
         : z.never();
+  // A placed picture's box: where the layout engine set it (its top left
+  // corner, width and height in the frame).
+  const pictureBox = z
+    .object({
+      x: z.number().int().min(0).max(preset.frame.width),
+      y: z.number().int().min(0).max(preset.frame.height),
+      width: z.number().int().min(1).max(preset.frame.width),
+      height: z.number().int().min(1).max(preset.frame.height),
+    })
+    .optional();
   const behind = z.discriminatedUnion("kind", [
     z.object({
       ...base,
@@ -207,16 +220,19 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
       reason: z.enum(PHOTO_REASONS).optional(),
       // Behind or in front of the speaker; absent: behind.
       layer: z.enum(PHOTO_LAYERS).optional(),
-      // Where the layout engine set it (its top left corner, width and
-      // height in the frame); absent: it covers its spot exactly.
-      box: z
-        .object({
-          x: z.number().int().min(0).max(preset.frame.width),
-          y: z.number().int().min(0).max(preset.frame.height),
-          width: z.number().int().min(1).max(preset.frame.width),
-          height: z.number().int().min(1).max(preset.frame.height),
-        })
-        .optional(),
+      // Where the layout engine set it; absent: it covers its spot exactly.
+      box: pictureBox,
+    }),
+    // A VISUAL: an empty white stroke frame in a photo's place and size, with
+    // no photo behind it. `description` says what a visual would show; it is
+    // never shown on screen.
+    z.object({
+      ...base,
+      kind: z.literal("visual"),
+      description: z.string().min(1).max(VISUAL_DESCRIPTION_MAX).optional(),
+      spot: z.enum(BEHIND_SPOTS),
+      layer: z.enum(PHOTO_LAYERS).optional(),
+      box: pictureBox,
     }),
     z.object({
       ...base,
@@ -403,11 +419,12 @@ function refineBehind(
 // longer word holds longer; one cut short by the next extra stays above the
 // minimum).
 function behindLength(
-  item: { kind: "photo" | "word"; start: Anchor },
+  item: { kind: "photo" | "visual" | "word"; start: Anchor },
   words: ReadonlyMap<string, Word>,
   preset: Preset,
 ): [number, number] {
-  if (item.kind === "photo") return [preset.behind.minSeconds, preset.behind.maxSeconds];
+  if (item.kind === "photo" || item.kind === "visual")
+    return [preset.behind.minSeconds, preset.behind.maxSeconds];
   const { minSeconds, afterSeconds, leadSeconds } = preset.accent;
   const said = "word" in item.start ? words.get(item.start.word) : undefined;
   const longest = said ? leadSeconds + (said.end - said.start) + afterSeconds : minSeconds;
@@ -441,6 +458,9 @@ export type TransitionLevel = TransitionLevels["key"];
 export type SoundItem = Edit["tracks"]["sounds"][number];
 export type BehindItem = NonNullable<Edit["tracks"]["behind"]>[number];
 export type BehindPhotoItem = Extract<BehindItem, { kind: "photo" }>;
+export type BehindVisualItem = Extract<BehindItem, { kind: "visual" }>;
+// A placed picture: a library photo or a VISUAL frame, same spot, box and layer.
+export type BehindPictureItem = BehindPhotoItem | BehindVisualItem;
 export type BehindWordItem = Extract<BehindItem, { kind: "word" }>;
 export type EditMask = NonNullable<EditInputs["masks"]>[number];
 

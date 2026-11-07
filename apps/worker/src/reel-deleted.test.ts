@@ -26,7 +26,6 @@ const JOB: ClaimedJob = {
   owner_id: "o1",
   kind: "process",
   attempts: 1,
-  request: null,
   restore_version_id: null,
   version_id: null,
 };

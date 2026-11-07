@@ -117,9 +117,8 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   });
 
   seededKeys.push(...(await seedPipelineCache(storage, CACHE_PREFIX)));
-  // The AI double answers with the committed script: a title, one accent,
-  // one dim transition (its key phrase from w0007), one fixed word and the
-  // written hook.
+  // The AI double answers with the committed script: one accent, one fixed
+  // word and the written hook.
   const worker = await runWorkerOnce({
     R2_KEY_PREFIX: CACHE_PREFIX,
     E2E_MOCK_AI_SCRIPT: SHORT_SPEECH_ANSWER,
@@ -143,10 +142,10 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     expect.stringMatching(/^backgrounds: backgrounds of 5 frames, /),
     expect.stringMatching(/^first_version: version 1 saved, /),
     // On the 2.7 s clip the written hook holds the screen from 0.2 s to the
-    // end, so the layout engine drops the dim (no transition during the
-    // hook), the title and the accent (one extra at a time).
+    // end, so the layout engine drops the accent (one extra at a time, and
+    // nothing during the hook).
     expect.stringMatching(
-      /^decide: version 2: 0 accents, 0 transitions, no title, hook set, 1 word fixed, 3 dropped, /,
+      /^decide: version 2: 0 accents, 0 transitions, hook set, 1 word fixed, 1 dropped, /,
     ),
     "backgrounds: backgrounds reused",
   ]);
@@ -212,15 +211,16 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     .eq("reel_id", reelId)
     .eq("name", "decide")
     .single();
-  expect(decideRow).toEqual({
-    // The decide call and the summary call (the double replays the same
-    // reply, so the summary falls back to the template); the model stays
-    // the editor's.
-    ai_input_tokens: 3000,
-    ai_output_tokens: 912,
-    ai_cost_usd: 0.0246,
+  expect(decideRow).toMatchObject({
+    // The hook call (300 in, 40 out, 0.0015), the decide call and the summary
+    // call (the double replays the same decide reply, so the summary falls
+    // back to the template); the model stays the editor's.
+    ai_input_tokens: 3300,
+    ai_output_tokens: 952,
     ai_model: "anthropic/claude-haiku-5.5",
   });
+  // A float sum of the three calls' costs: compared to nine decimals.
+  expect(decideRow!.ai_cost_usd).toBeCloseTo(0.0261, 9);
 
   // Version 1: built from the preset alone; version 2: the AI's, its parent
   // version 1, now current. Both edits are in storage.
@@ -281,7 +281,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     model: "anthropic/claude-haiku-5.5",
     request: null,
     parent_id: v1!.id,
-    prompt_version: "decide-14",
+    prompt_version: "reel-components@v1",
     change_title: "Hook and captions changed",
     change_summary:
       'A hook now opens the reel: "A short test for the real studio". One word in the captions is fixed, it now reads "Studio".',
@@ -293,17 +293,24 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     r2_key: key(currentId),
   });
   versionKeys.push(v1!.r2_key as string, v2!.r2_key as string);
-  // Version 2's AI record beside its edit: the decide and summary calls, each
-  // with its prompt and raw answer.
+  // Version 2's AI record beside its edit: the hook call, the decide and the
+  // summary calls, each with its prompt and raw answer.
   const aiRecordKey = `${CACHE_PREFIX}reels/${reelId}/versions/${String(currentId)}.ai.json`;
   const aiRecord = JSON.parse(new TextDecoder().decode((await storage.get(aiRecordKey))!)) as {
     version_id: string;
-    calls: { role: string; prompt: string; answerText: string | null }[];
+    hook_prompt_version: string;
+    calls: { role: string; prompt: string; promptVersion: string; answerText: string | null }[];
   };
   expect(aiRecord.version_id).toBe(currentId);
-  expect(aiRecord.calls.map((call) => call.role)).toEqual(["decide", "summary"]);
-  expect(aiRecord.calls[0]!.prompt).toContain("w0010");
+  expect(aiRecord.hook_prompt_version).toBe("reel-hook@v1");
+  expect(aiRecord.calls.map((call) => call.role)).toEqual(["hook", "decide", "summary"]);
   expect(aiRecord.calls[0]!.answerText).toContain("A short test for the real studio");
+  expect(aiRecord.calls[1]!.prompt).toContain("w0010");
+  expect(aiRecord.calls.map((call) => call.promptVersion)).toEqual([
+    "reel-hook@v1",
+    "reel-components@v1",
+    "reel-version-summary@v1",
+  ]);
   const manifest = await pipelineManifest();
   const retime = manifest.steps.find((step) => step.name === "retime")!;
   const transcript = transcriptSchema.parse(
@@ -324,7 +331,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
     if (versionKey === v2!.r2_key && parsed.ok) {
       // The written hook is the one overlay (its own text, no words); the
-      // title, the accent and the dim are dropped.
+      // accent is dropped.
       expect(parsed.edit.tracks.overlays).toEqual([
         expect.objectContaining({
           id: "hook",

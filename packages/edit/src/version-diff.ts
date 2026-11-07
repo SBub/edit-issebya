@@ -17,7 +17,11 @@ export const DIFF_KINDS = [
   // The written hook at the start (one per reel): its own text.
   "hook",
   "accent",
+  // A library photo behind the speaker (an older version's; a new answer
+  // names none).
   "photo",
+  // A VISUAL: an empty frame in a photo's place (a new answer's picture).
+  "visual",
   "big_word",
   "transition",
   "caption",
@@ -44,8 +48,10 @@ export interface DiffEntry {
   reason?: PhotoReason;
   // A behind photo's spot before and after, when it changed.
   spot?: { from?: string; to?: string };
-  // A photo in front of the speaker (absent: behind them).
+  // A photo or visual in front of the speaker (absent: behind them).
   front?: true;
+  // A visual's description (what the frame would show); never on screen.
+  description?: string;
   // A transition now over other words: the words it was over.
   was?: string;
   // A transition's motion or hold changed, in plain words.
@@ -181,7 +187,9 @@ function keyedItems(edit: Edit, words: ReadonlyMap<string, Word>): Keyed[] {
   }
   for (const item of (tracks.behind ?? []) as AnyItem[]) {
     if (item.kind === "photo") push("photo", String(item.photo_id), item);
-    else push("big_word", String(item.text), item);
+    else if (item.kind === "visual") {
+      push("visual", "word" in item.start ? `at:${item.start.word}` : `id:${item.id}`, item);
+    } else push("big_word", String(item.text), item);
   }
   for (const item of tracks.transitions as AnyItem[]) {
     const list = item.words as string[] | undefined;
@@ -276,7 +284,10 @@ export function diffEdits(
     if (said !== undefined) value.text = said;
     if (typeof item.photo_id === "string") value.photo_id = item.photo_id;
     if (item.reason === "match" || item.reason === "mood") value.reason = item.reason;
-    if (kind === "photo" && item.layer === "front") value.front = true;
+    if ((kind === "photo" || kind === "visual") && item.layer === "front") value.front = true;
+    if (kind === "visual" && typeof item.description === "string") {
+      value.description = item.description;
+    }
     return { ...value, ...extra };
   };
   const foldCaption = (start: number) => {

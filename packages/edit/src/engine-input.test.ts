@@ -13,9 +13,8 @@ const transitions = FIXTURES.find((fixture) => fixture.name === "rethink-work-tr
 describe("choicesOf", () => {
   it("reads a stored version back as choices by words", () => {
     const choices = choicesOf(behind.edit, behind.transcript, ISSEBYA_PRESET);
-    expect(choices.photos).toEqual([
-      { photo_id: "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14", from: "w18", to: "w27" },
-    ]);
+    // A library photo of an older version reads back as a visual over its words.
+    expect(choices.visuals).toEqual([{ from: "w18", to: "w27" }]);
     // "WORK" is not spoken under it: the first word under it stands in.
     expect(choices.big_words).toEqual([{ word: "w76" }]);
     expect(choices.accents.map((accent) => accent.from)).toEqual(["w29", "w112"]);
@@ -29,12 +28,14 @@ describe("choicesOf", () => {
     ]);
   });
 
-  it("reads a photo back with its reason, an older photo without one", () => {
+  it("reads a visual back with its description, and no photo id", () => {
     const edit = structuredClone(behind.edit);
     const photo = edit.tracks.behind!.find((item) => item.kind === "photo")!;
-    if (photo.kind === "photo") photo.reason = "mood";
-    expect(choicesOf(edit, behind.transcript, ISSEBYA_PRESET).photos).toEqual([
-      { photo_id: "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14", from: "w18", to: "w27", reason: "mood" },
+    Object.assign(photo, { kind: "visual", id: "visual-1", description: "a messy desk at night" });
+    delete (photo as { photo_id?: string }).photo_id;
+    delete (photo as { reason?: string }).reason;
+    expect(choicesOf(edit, behind.transcript, ISSEBYA_PRESET).visuals).toEqual([
+      { from: "w18", to: "w27", description: "a messy desk at night" },
     ]);
   });
 

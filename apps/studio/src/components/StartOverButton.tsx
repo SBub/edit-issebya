@@ -10,7 +10,7 @@ import type { JobRow } from "@/lib/jobs";
 
 interface Props {
   reelId: string;
-  // Null when changes are open; otherwise why not (the change box's rule).
+  // Null when going back and Start over are open; otherwise why not.
   blockedReason: string | null;
   // The queue note (`Waiting: ...`) while any job of the reel is live.
   queueNote: string | null;
@@ -25,7 +25,7 @@ const FAILED = "Start over did not start. Try again";
 // Beside the Versions heading: queues a `start_over` job, which reruns the
 // first edit from version 1 (no request) and saves it as a new version. Off
 // while the reel is blocked, has no version yet, or any job of it is live;
-// its progress shows in the overlay like a change's.
+// its progress shows in the overlay.
 export function StartOverButton({ reelId, blockedReason, queueNote, jobs, hasVersion }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);

@@ -23,18 +23,8 @@
       "fingerprint": "rethink-work",
       "file": "head-track.json"
     },
-    "masks": [
-      {
-        "step": "cutout",
-        "fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
-        "file": "mask.mp4",
-        "start": 22.7,
-        "end": 24.933
-      }
-    ],
-    "photos": [
-      "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14"
-    ]
+    "masks": [],
+    "photos": []
   },
   "tracks": {
     "footage": [
@@ -1664,8 +1654,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 216.75,
-          "y": 1290,
+          "x": 151.75,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1683,8 +1673,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 319.25,
-          "y": 1290,
+          "x": 254.25,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1702,8 +1692,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 363.7,
-          "y": 1290,
+          "x": 298.7,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1721,8 +1711,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 464.95,
-          "y": 1290,
+          "x": 399.95,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1740,8 +1730,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 582.95,
-          "y": 1290,
+          "x": 517.95,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1760,8 +1750,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 644.45,
-          "y": 1290,
+          "x": 579.45,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1780,8 +1770,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 321.57,
-          "y": 1290,
+          "x": 256.57,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1800,8 +1790,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 442.82,
-          "y": 1290,
+          "x": 377.82,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1820,8 +1810,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 579.17,
-          "y": 1290,
+          "x": 514.17,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1839,8 +1829,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 195,
-          "y": 1290,
+          "x": 130,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1858,8 +1848,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 257.5,
-          "y": 1290,
+          "x": 192.5,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1877,8 +1867,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 389.75,
-          "y": 1290,
+          "x": 324.75,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1896,8 +1886,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 511,
-          "y": 1290,
+          "x": 446,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1915,8 +1905,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 643.25,
-          "y": 1290,
+          "x": 578.25,
+          "y": 722,
           "align": "left"
         }
       },
@@ -1934,8 +1924,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 705.75,
-          "y": 1290,
+          "x": 640.75,
+          "y": 722,
           "align": "left"
         }
       },
@@ -3111,7 +3101,7 @@
     "transitions": [],
     "sounds": [
       {
-        "id": "click-photo-1",
+        "id": "click-visual-1",
         "start": {
           "word": "w84"
         },
@@ -3125,7 +3115,7 @@
     ],
     "behind": [
       {
-        "id": "photo-1",
+        "id": "visual-1",
         "start": {
           "word": "w84"
         },
@@ -3134,15 +3124,15 @@
           "edge": "end",
           "offset": -0.083
         },
-        "kind": "photo",
-        "photo_id": "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14",
+        "kind": "visual",
+        "description": "a question mark on a wall",
         "spot": "top",
-        "layer": "behind",
+        "layer": "front",
         "box": {
-          "x": 402,
-          "y": 220,
-          "width": 640,
-          "height": 480
+          "x": 645,
+          "y": 260,
+          "width": 360,
+          "height": 450
         }
       }
     ]

@@ -1,30 +1,27 @@
-import { readFileSync } from "node:fs";
 import {
-  type ChecklistOutcome,
   type EditDiff,
   type EngineNote,
   type Preset,
-  askedNotDone,
   checkSummary,
   parseSummaryAnswer,
   summaryJsonSchema,
   summaryTemplate,
 } from "@edit-issebya/edit";
 import { type AiExchange, type AiRequest, type AiRunner, NO_USAGE } from "../ai.ts";
+import {
+  type PromptCall,
+  type PromptText,
+  promptIdentity,
+  renderPrompt,
+} from "../prompts/source.ts";
 import type { AiUsage } from "../step-store.ts";
 import { fenced } from "./prompt.ts";
 
 // The version title and summary: one short call (the `summary` role's
-// model), after layout, from the saved difference. Bump with every change to
-// summary.md.
-export const SUMMARY_PROMPT_VERSION = "summary-7";
-
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed prompt
-const TEMPLATE = readFileSync(new URL("./summary.md", import.meta.url), "utf8");
+// model), after layout, from the saved difference. Its prompt is the fetched
+// `reel-version-summary`.
 
 export interface SummaryInput {
-  request: string | null;
-  checklist: readonly ChecklistOutcome[];
   diff: EditDiff;
   record: readonly EngineNote[];
   // The owner's library photos, to name the photos in the difference by
@@ -36,15 +33,12 @@ export interface SummaryInput {
 // `shadowed`) is no change the viewer sees, so the summary never reads it.
 const NOT_A_CHANGE: ReadonlySet<string> = new Set(["low-contrast", "shadowed"]);
 
-// The summary prompt: the committed instructions with the request, the
-// checklist, the difference, the rules switched and the engine record (its
-// items, actions and reasons, without the low-contrast notes) quoted as
-// fenced JSON data, with the description of each library photo the
-// difference names.
-export function summaryPrompt(input: SummaryInput): string {
-  const values: Record<string, string> = {
-    request: fenced(input.request ?? "(none)"),
-    checklist: fenced(input.checklist),
+// The summary prompt: the fetched template with the difference, the rules
+// switched and the engine record (its items, actions and reasons, without the
+// low-contrast notes) as fenced JSON data, and the description of each library
+// photo the difference names.
+export function summaryPrompt(template: PromptText, input: SummaryInput): PromptCall {
+  return renderPrompt(template, {
     difference: fenced(input.diff.items),
     rules_changed: fenced(input.diff.rules),
     photos: fenced(
@@ -57,8 +51,7 @@ export function summaryPrompt(input: SummaryInput): string {
         .filter(({ action }) => !NOT_A_CHANGE.has(action))
         .map(({ item, action, reason }) => ({ item, action, reason })),
     ),
-  };
-  return TEMPLATE.replace(/\{\{(\w+)\}\}/g, (match, name: string) => values[name] ?? match);
+  });
 }
 
 export interface VersionSummary {
@@ -78,8 +71,6 @@ export interface VersionSummary {
 // (the aborted signal) is rethrown.
 export async function writeVersionSummary({
   ai,
-  request,
-  checklist,
   diff,
   record,
   library,
@@ -88,9 +79,12 @@ export async function writeVersionSummary({
   signal,
   log = console.log,
   trace,
+  prompt,
 }: SummaryInput & {
   ai: AiRunner;
   preset: Preset;
+  // The fetched `reel-version-summary` prompt.
+  prompt: PromptText;
   reelId: string;
   signal?: AbortSignal;
   log?: (line: string) => void;
@@ -102,9 +96,9 @@ export async function writeVersionSummary({
     usage: AiUsage,
     exchange: AiExchange | null = null,
   ): VersionSummary => {
-    log(`decide: summary from the template, reel ${reelId}: ${why} (${SUMMARY_PROMPT_VERSION})`);
+    log(`decide: summary from the template, reel ${reelId}: ${why} (${promptIdentity(prompt)})`);
     return {
-      ...summaryTemplate(diff, record, checklist, preset),
+      ...summaryTemplate(diff, preset),
       source: "template",
       usage,
       exchange,
@@ -112,7 +106,7 @@ export async function writeVersionSummary({
   };
   if (diff.items.length === 0 && diff.rules.length === 0) {
     return {
-      ...summaryTemplate(diff, record, checklist, preset),
+      ...summaryTemplate(diff, preset),
       source: "template",
       usage: NO_USAGE,
       exchange: null,
@@ -122,7 +116,7 @@ export async function writeVersionSummary({
   try {
     result = await ai.call({
       role: "summary",
-      prompt: summaryPrompt({ request, checklist, diff, record, ...(library ? { library } : {}) }),
+      ...summaryPrompt(prompt, { diff, record, ...(library ? { library } : {}) }),
       schema: summaryJsonSchema(),
       ...(signal ? { signal } : {}),
       ...(trace ? { trace } : {}),
@@ -140,7 +134,7 @@ export async function writeVersionSummary({
     change_title: parsed.answer.change_title.trim(),
     change_summary: parsed.answer.change_summary.trim(),
   };
-  const checked = checkSummary(answer, diff, preset, askedNotDone(record, checklist));
+  const checked = checkSummary(answer, diff, preset);
   if (!checked.ok) {
     return template(`safeguard: ${checked.reasons.join("; ")}`, result.usage, exchange);
   }

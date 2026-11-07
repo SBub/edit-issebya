@@ -48,25 +48,27 @@ export {
 } from "./schema.ts";
 export {
   type BehindForbid,
-  type BehindRule,
   type DecideAnswer,
   type DecideCounts,
   type DecideRules,
+  NEW_TRANSITION_KINDS,
   NO_RULES,
-  applyBehindRules,
   decideAnswerSchemaFor,
   decideCounts,
   decideJsonSchema,
   editFromAnswer,
+  hookAnswerSchemaFor,
+  hookJsonSchema,
   parseDecideAnswer,
+  parseHookAnswer,
   usedFreeField,
 } from "./decide.ts";
 export {
   type AccentChoice,
   type BigWordChoice,
   type EngineInput,
-  type PhotoChoice,
   type TransitionChoice,
+  type VisualChoice,
   type Wish,
   type WordFix,
   WISHES,
@@ -77,7 +79,6 @@ export {
   type EngineNote,
   type ExtraKind,
   type FreeSentence,
-  type PhotoLook,
   type UnplacedItem,
   type UnplacedWhy,
   placeEdit,
@@ -86,7 +87,6 @@ export {
   type ChecklistOutcome,
   type EditorialAnswer,
   WHY_WORDS,
-  checklistOutcome,
   editorialJsonSchema,
   mergeEditorial,
   parseEditorialAnswer,
@@ -99,7 +99,7 @@ export {
   backgroundSampler,
 } from "./background.ts";
 export { luminanceByte, rgbLuminance } from "./contrast.ts";
-export { glossaryChecks } from "./glossary.ts";
+export { glossaryChecks, heardTerms } from "./glossary.ts";
 export { type HarfBuzz, type Measurer, createMeasurer } from "./measure.ts";
 export { type ResolvedItem, resolveTimeline } from "./timeline.ts";
 export { type TextBox, layoutText, wordsText } from "./layout.ts";
@@ -146,7 +146,6 @@ export {
 } from "./version-diff.ts";
 export {
   type SummaryAnswer,
-  askedNotDone,
   checkSummary,
   parseSummaryAnswer,
   summaryJsonSchema,

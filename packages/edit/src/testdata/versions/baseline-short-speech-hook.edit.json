@@ -1,0 +1,254 @@
+{
+  "format": 1,
+  "preset": "issebya",
+  "duration": 2.69,
+  "inputs": {
+    "footage": {
+      "step": "retime",
+      "fingerprint": "7ab01e62528d8855f980fd499c16b3c229f9713034cbfc90cc88b3af00f59d08",
+      "file": "source.mp4"
+    },
+    "transcript": {
+      "step": "retime",
+      "fingerprint": "7ab01e62528d8855f980fd499c16b3c229f9713034cbfc90cc88b3af00f59d08",
+      "file": "transcript.json"
+    },
+    "head_track": {
+      "step": "head_track",
+      "fingerprint": "f9962111896c8f92a9393e88c094da6de0e2db4973b5fc430106f7a7817b1104",
+      "file": "head-track.json"
+    }
+  },
+  "tracks": {
+    "footage": [
+      {
+        "id": "footage",
+        "start": {
+          "reel": "start"
+        },
+        "end": {
+          "reel": "end"
+        }
+      }
+    ],
+    "captions": [
+      {
+        "id": "cw0001",
+        "start": {
+          "word": "w0001"
+        },
+        "end": {
+          "word": "w0004",
+          "edge": "end"
+        },
+        "words": [
+          "w0001"
+        ],
+        "size": 50,
+        "position": {
+          "x": 330.12,
+          "y": 1290,
+          "align": "left"
+        }
+      },
+      {
+        "id": "cw0002",
+        "start": {
+          "word": "w0002"
+        },
+        "end": {
+          "word": "w0004",
+          "edge": "end"
+        },
+        "words": [
+          "w0002"
+        ],
+        "size": 50,
+        "position": {
+          "x": 434.57,
+          "y": 1290,
+          "align": "left"
+        }
+      },
+      {
+        "id": "cw0003",
+        "start": {
+          "word": "w0003"
+        },
+        "end": {
+          "word": "w0004",
+          "edge": "end"
+        },
+        "words": [
+          "w0003"
+        ],
+        "size": 50,
+        "position": {
+          "x": 488.77,
+          "y": 1290,
+          "align": "left"
+        }
+      },
+      {
+        "id": "cw0004",
+        "start": {
+          "word": "w0004"
+        },
+        "end": {
+          "word": "w0004",
+          "edge": "end"
+        },
+        "words": [
+          "w0004"
+        ],
+        "size": 50,
+        "position": {
+          "x": 530.27,
+          "y": 1290,
+          "align": "left"
+        }
+      },
+      {
+        "id": "cw0005",
+        "start": {
+          "word": "w0005"
+        },
+        "end": {
+          "word": "w0005",
+          "edge": "end",
+          "offset": 0.05
+        },
+        "words": [
+          "w0005"
+        ],
+        "size": 50,
+        "position": {
+          "x": 445.95,
+          "y": 1290,
+          "align": "left"
+        }
+      },
+      {
+        "id": "cw0006",
+        "start": {
+          "word": "w0006"
+        },
+        "end": {
+          "word": "w0010",
+          "edge": "end"
+        },
+        "words": [
+          "w0006"
+        ],
+        "size": 50,
+        "position": {
+          "x": 228,
+          "y": 1290,
+          "align": "left"
+        }
+      },
+      {
+        "id": "cw0007",
+        "start": {
+          "word": "w0007"
+        },
+        "end": {
+          "word": "w0010",
+          "edge": "end"
+        },
+        "words": [
+          "w0007"
+        ],
+        "size": 50,
+        "position": {
+          "x": 330.45,
+          "y": 1290,
+          "align": "left"
+        }
+      },
+      {
+        "id": "cw0008",
+        "start": {
+          "word": "w0008"
+        },
+        "end": {
+          "word": "w0010",
+          "edge": "end"
+        },
+        "words": [
+          "w0008"
+        ],
+        "size": 50,
+        "position": {
+          "x": 410.45,
+          "y": 1290,
+          "align": "left"
+        }
+      },
+      {
+        "id": "cw0009",
+        "start": {
+          "word": "w0009"
+        },
+        "end": {
+          "word": "w0010",
+          "edge": "end"
+        },
+        "words": [
+          "w0009"
+        ],
+        "size": 50,
+        "position": {
+          "x": 502.7,
+          "y": 1290,
+          "align": "left"
+        }
+      },
+      {
+        "id": "cw0010",
+        "start": {
+          "word": "w0010"
+        },
+        "end": {
+          "word": "w0010",
+          "edge": "end"
+        },
+        "words": [
+          "w0010"
+        ],
+        "size": 50,
+        "position": {
+          "x": 609.2,
+          "y": 1290,
+          "align": "left"
+        }
+      }
+    ],
+    "overlays": [
+      {
+        "id": "hook",
+        "start": {
+          "word": "w0001",
+          "edge": "end",
+          "offset": -0.067
+        },
+        "end": {
+          "word": "w0010",
+          "edge": "end",
+          "offset": 0.085
+        },
+        "kind": "hook",
+        "text": "A short test for the real studio",
+        "size": 99,
+        "position": {
+          "x": 166,
+          "y": 260,
+          "align": "left"
+        },
+        "break_after": 4
+      }
+    ],
+    "transitions": [],
+    "sounds": []
+  }
+}

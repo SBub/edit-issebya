@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changeQueueNote, formatWaitingForAi, retryableJobIds } from "./failures";
+import { formatWaitingForAi, retryableJobIds, startOverQueueNote } from "./failures";
 import type { JobRow } from "./jobs";
 
 describe("formatWaitingForAi", () => {
@@ -38,27 +38,27 @@ describe("retryableJobIds", () => {
   });
 });
 
-describe("changeQueueNote", () => {
+describe("startOverQueueNote", () => {
   const job = (kind: string, status: JobRow["status"]) => ({ kind, status });
 
   it("waits for processing while a process job is live", () => {
     for (const status of ["queued", "running", "waiting_ai"] as const) {
-      expect(changeQueueNote([job("render", "queued"), job("process", status)])).toBe(
-        "Waiting: your reel is still being styled. Your change starts right after",
+      expect(startOverQueueNote([job("render", "queued"), job("process", status)])).toBe(
+        "Waiting: your reel is still being styled. Start over starts right after",
       );
     }
   });
 
   it("waits for the other live jobs", () => {
     for (const status of ["queued", "running", "waiting_ai"] as const) {
-      expect(changeQueueNote([job("process", "done"), job("change", status)])).toBe(
-        "Waiting: your reel is still being styled. Your change starts right after",
+      expect(startOverQueueNote([job("process", "done"), job("restore", status)])).toBe(
+        "Waiting: your reel is still being styled. Start over starts right after",
       );
     }
   });
 
   it("is null when nothing is ahead", () => {
-    expect(changeQueueNote([])).toBeNull();
-    expect(changeQueueNote([job("process", "failed"), job("change", "done")])).toBeNull();
+    expect(startOverQueueNote([])).toBeNull();
+    expect(startOverQueueNote([job("process", "failed"), job("restore", "done")])).toBeNull();
   });
 });

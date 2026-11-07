@@ -1,32 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { ChecklistOutcome } from "./editorial.ts";
-import type { EngineNote } from "./engine.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import type { DiffEntry, EditDiff } from "./version-diff.ts";
-import {
-  askedNotDone,
-  checkSummary,
-  parseSummaryAnswer,
-  summaryTemplate,
-} from "./version-summary.ts";
+import { checkSummary, parseSummaryAnswer, summaryTemplate } from "./version-summary.ts";
 
 const preset = ISSEBYA_PRESET;
 const diffOf = (items: DiffEntry[], rules: EditDiff["rules"] = []): EditDiff => ({ items, rules });
 const say = (change_title: string, change_summary: string) => ({ change_title, change_summary });
-
-const PHOTO_DROPPED: EngineNote = {
-  item: "photo-1",
-  action: "dropped",
-  rule: "no-room",
-  reason: "photo 1: every photo spot is under captions or the face from 1.00 s to 3.00 s",
-};
-const ASKED_PHOTO: ChecklistOutcome = {
-  ask: "a photo behind me",
-  wants: "one photo",
-  fulfilled_by: ["photos[0]"],
-  done: false,
-  reason: "photo 1: every photo spot is under captions or the face from 1.00 s to 3.00 s",
-};
 
 const TITLE: DiffEntry = { kind: "title", action: "added", id: "title", text: "Rethink work" };
 const TRANSITION: DiffEntry = { kind: "transition", action: "added", id: "transition-1" };
@@ -50,14 +29,12 @@ describe("parseSummaryAnswer", () => {
 });
 
 describe("checkSummary", () => {
-  it("refuses a summary naming a photo the engine dropped (2026-11-03 v4)", () => {
+  it("refuses a summary naming a photo the saved difference does not have", () => {
     const diff = diffOf([]);
-    const notDone = askedNotDone([PHOTO_DROPPED], [ASKED_PHOTO]);
     const result = checkSummary(
       say("Photo added behind you", "A photo now shows behind you."),
       diff,
       preset,
-      notDone,
     );
     expect(result).toEqual({
       ok: false,
@@ -100,11 +77,7 @@ describe("checkSummary", () => {
 });
 
 describe("summaryTemplate", () => {
-  const template = (
-    diff: EditDiff,
-    record: EngineNote[] = [],
-    checklist: ChecklistOutcome[] = [],
-  ) => summaryTemplate(diff, record, checklist, preset);
+  const template = (diff: EditDiff) => summaryTemplate(diff, preset);
 
   it("titles one kind by its change", () => {
     expect(template(diffOf([PHOTO])).title).toBe("Photo added");
@@ -198,14 +171,6 @@ describe("summaryTemplate", () => {
     });
   });
 
-  it("says a requested photo did not fit, in plain words", () => {
-    const result = template(diffOf([TITLE]), [PHOTO_DROPPED], [ASKED_PHOTO]);
-    expect(result.summary).toContain(
-      "The photo you asked for did not fit: there was no free room on screen.",
-    );
-    expect(result.summary).not.toMatch(/\d/);
-  });
-
   it("names the hook and quotes its words: added, changed, taken out", () => {
     const HOOK = {
       kind: "hook",
@@ -236,44 +201,28 @@ describe("summaryTemplate", () => {
   });
 
   it("always passes its own safeguard and the schema, with no em-dash", () => {
-    const cases: [EditDiff, EngineNote[], ChecklistOutcome[]][] = [
-      [diffOf([]), [], []],
-      [diffOf([PHOTO]), [], []],
-      [diffOf([TITLE, TRANSITION, FIX]), [], []],
-      [diffOf([TITLE]), [PHOTO_DROPPED], [ASKED_PHOTO]],
-      [diffOf([], [{ rule: "big_word", to: "off" }]), [], []],
-      [diffOf([{ kind: "footage", action: "changed", id: "footage" }]), [], []],
-      [
-        diffOf([{ kind: "transition", action: "retimed", id: "t1", text: "fair pay", was: "pay" }]),
-        [],
-        [],
-      ],
-      [
-        diffOf([
-          { kind: "transition", action: "changed", id: "t1", text: "x", change: "usual hold" },
-        ]),
-        [],
-        [],
-      ],
-      [diffOf([{ kind: "hook", action: "added", id: "hook", text: "Gen Z won't work" }]), [], []],
-      [diffOf([{ kind: "hook", action: "changed", id: "hook", text: "photo at 2 s" }]), [], []],
-      [
-        diffOf([
-          { kind: "accent", action: "added", id: "a1", text: "w0004 at 2 s" },
-          { kind: "accent", action: "added", id: "a2", text: "photo" },
-        ]),
-        [],
-        [],
-      ],
+    const cases: EditDiff[] = [
+      diffOf([]),
+      diffOf([PHOTO]),
+      diffOf([TITLE, TRANSITION, FIX]),
+      diffOf([], [{ rule: "big_word", to: "off" }]),
+      diffOf([{ kind: "footage", action: "changed", id: "footage" }]),
+      diffOf([{ kind: "transition", action: "retimed", id: "t1", text: "fair pay", was: "pay" }]),
+      diffOf([
+        { kind: "transition", action: "changed", id: "t1", text: "x", change: "usual hold" },
+      ]),
+      diffOf([{ kind: "hook", action: "added", id: "hook", text: "Gen Z won't work" }]),
+      diffOf([{ kind: "hook", action: "changed", id: "hook", text: "photo at 2 s" }]),
+      diffOf([
+        { kind: "accent", action: "added", id: "a1", text: "w0004 at 2 s" },
+        { kind: "accent", action: "added", id: "a2", text: "photo" },
+      ]),
     ];
-    for (const [diff, record, checklist] of cases) {
-      const { title, summary } = template(diff, record, checklist);
+    for (const diff of cases) {
+      const { title, summary } = template(diff);
       const answer = { change_title: title, change_summary: summary };
       expect(parseSummaryAnswer(answer).ok, title).toBe(true);
-      expect(
-        checkSummary(answer, diff, preset, askedNotDone(record, checklist)),
-        `${title}: ${summary}`,
-      ).toEqual({ ok: true });
+      expect(checkSummary(answer, diff, preset), `${title}: ${summary}`).toEqual({ ok: true });
       expect(title.split(" ").length).toBeGreaterThanOrEqual(2);
       expect(title.split(" ").length).toBeLessThanOrEqual(5);
       expect(`${title}${summary}`).not.toContain(String.fromCharCode(0x2014));

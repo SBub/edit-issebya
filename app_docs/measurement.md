@@ -121,7 +121,7 @@ client, identifies the signed-in user and sends `studio_*` events.
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `studio_footage_uploaded`  | after the multipart upload completes, once (`UploadForm.tsx`)                                                        | `reel_id`, `app`                                                         |
 | `studio_preview_opened`    | the live preview first reaches the player on a page open (`ReelPreview.tsx`)                                         | `reel_id`, `app`                                                         |
-| `studio_change_requested`  | the owner sends a change request (`ChangeRequestForm.tsx`)                                                           | `reel_id`, `app` (never the request text)                                |
+| `studio_change_requested`  | no longer sent: the change box is removed (`app_docs/change-requests.md`)                                            | `reel_id`, `app` (never the request text)                                |
 | `studio_export_requested`  | the Export button queues a render job (`ExportPanel.tsx`)                                                            | `reel_id`, `app`                                                         |
 | `studio_export_downloaded` | the export modal starts the download by itself, or the owner clicks its fallback `Download` link (`ExportPanel.tsx`) | `reel_id`, `app`                                                         |
 | `studio_failure_action`    | the owner presses one of the overlay's failure actions (`LiveReel.tsx`)                                              | `reel_id`, `job_id`, `action`, `failure_kind`, `step`, `job_kind`, `app` |
@@ -186,6 +186,7 @@ model, `chat anthropic/claude-haiku-5.5` today (`app_docs/decide-step.md`, "The 
 
 - `gen_ai.operation.name` = `chat`, `gen_ai.provider.name` = `openrouter`,
   `gen_ai.request.model`: always.
+- `gen_ai.request.temperature`: the temperature the prompt carries in PostHog (`config.temperature`).
 - `gen_ai.response.model`: the model that answered (`response.modelId`).
 - `gen_ai.usage.input_tokens`: every input token OpenRouter reports, cache reads and writes
   included.
@@ -194,8 +195,10 @@ model, `chat anthropic/claude-haiku-5.5` today (`app_docs/decide-step.md`, "The 
 - `gen_ai.response.finish_reasons`: the one finish reason (`stop`, `length`, ...).
 - `edit_issebya.ai.cost_usd`: the cost OpenRouter reports (usage accounting), else the list price
   of the call's tokens. A custom attribute, because the standard has none.
-- `edit_issebya.ai.role` (`decide`, `editorial`, `summary`, `describe`) and
-  `edit_issebya.ai.output_mode` (`json_schema`, or `json` after the fallback): custom attributes.
+- `edit_issebya.ai.role` (`hook`, `decide`, `editorial`, `summary`, `describe`),
+  `edit_issebya.ai.output_mode` (`json_schema`, or `json` after the fallback) and
+  `edit_issebya.ai.prompt_version` (the prompt's identity, `<name>@v<version>`, such as
+  `reel-components@v1`): custom attributes.
 - A value not known is left out.
 - `error.type` and an error status when the call does not succeed (the OpenTelemetry rule for a
   failed operation): `unavailable` (no key, a refused key, no credits, a rate limit, OpenRouter not
@@ -324,7 +327,7 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
 - Studio E2E: `e2e/upload.spec.ts` (the step rows' summaries read from the database,
   `studio_footage_uploaded` with the reel id and `app`, no PostHog request), `e2e/multipart-upload.spec.ts` (`studio_footage_uploaded` once with the
   reel id and `app` after completion, also after a retried part and after a resume, and never after
-  cancel) `e2e/retry.spec.ts` and `e2e/change-requests.spec.ts` (`studio_failure_action` with the
+  cancel) `e2e/retry.spec.ts` (`studio_failure_action` with the
   failed job's id).
 
 ## Rules

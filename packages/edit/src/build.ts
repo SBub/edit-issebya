@@ -47,6 +47,10 @@ export function photoPath(photoId: string): string {
 
 // A library photo's rule: behind the speaker or in front of them.
 const PHOTO_STYLE = "      .photo { position: absolute; object-fit: cover; }";
+// A VISUAL: an empty white stroke frame (transparent inside), a corner card of
+// the preset's stroke width.
+const visualStyle = (stroke: number) =>
+  `      .visual { position: absolute; box-sizing: border-box; border: ${stroke}px solid #ffffff; background: transparent; }`;
 
 // The extra rules a page with behind items needs: the composite's groups and
 // blends, the photo and the big word.
@@ -159,6 +163,10 @@ export function build(
       return `      .f-${key} { font-family: "${font.family}", sans-serif; font-weight: ${font.weight}; }`;
     }),
     ...(spans.length > 0 ? BEHIND_STYLE : frontPhotos.length > 0 ? [PHOTO_STYLE] : []),
+    // A visual's frame: only on a page that has one (older pages are unchanged).
+    ...(behindItems.some((item) => item.kind === "visual")
+      ? [visualStyle(preset.behind.card.stroke)]
+      : []),
     ...(levels.length > 0
       ? ["      .level { position: absolute; line-height: 1; white-space: nowrap; opacity: 0; }"]
       : []),
@@ -427,6 +435,24 @@ function behindElement(
     ["data-track-index", track],
   ] as const;
   const extra = item.style ? [inlineStyle(item.style)] : [];
+  if (item.kind === "visual") {
+    // An empty white stroke frame: no picture, no text, no fill.
+    const box = photoBox(item, preset);
+    const css = [
+      `left: ${px(box.left)}px`,
+      `top: ${px(box.top)}px`,
+      `width: ${px(box.right - box.left)}px`,
+      `height: ${px(box.bottom - box.top)}px`,
+      ...extra,
+    ].join("; ");
+    return `<div${attrs([
+      ["id", item.id],
+      ["class", "clip visual"],
+      ["alt", ""],
+      ...timing,
+      ["style", css],
+    ])}></div>`;
+  }
   if (item.kind === "photo") {
     const box = photoBox(item, preset);
     const css = [

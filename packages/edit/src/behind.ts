@@ -1,7 +1,7 @@
 import { type Box, type HeadTrack, faceBox } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
 import { BEHIND_SPOTS, type BehindSpot, type FontKey, type Preset } from "./preset.ts";
-import type { BehindItem, BehindPhotoItem, BehindWordItem, Edit } from "./schema.ts";
+import type { BehindItem, BehindPictureItem, BehindWordItem, Edit } from "./schema.ts";
 import { type Span, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
@@ -16,7 +16,7 @@ export function spotBox(spot: BehindSpot, preset: Preset): Box {
 
 // The rectangle a photo covers: the box the layout engine gave it, else (a
 // version saved before it) its spot exactly.
-export function photoBox(item: BehindPhotoItem, preset: Preset): Box {
+export function photoBox(item: BehindPictureItem, preset: Preset): Box {
   const { box } = item;
   if (!box) return spotBox(item.spot, preset);
   return { left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height };
@@ -66,7 +66,7 @@ export function spotFaceShare(spot: BehindSpot, face: Box | null, preset: Preset
 // The person in front of a big word or a photo behind them at one face: the
 // face box and, under it, the body (1.8 head widths wide, to the frame's
 // bottom), the same body the engine keeps accents off.
-export function personBoxes(face: Box, preset: Preset): Box[] {
+function personBoxes(face: Box, preset: Preset): Box[] {
   const width = face.right - face.left;
   return [
     face,

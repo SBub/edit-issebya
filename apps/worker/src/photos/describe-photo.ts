@@ -3,11 +3,17 @@ import type { Context } from "@opentelemetry/api";
 import type { Storage } from "@edit-issebya/storage";
 import { type AiRunner, NO_USAGE } from "../ai.ts";
 import { AiUnavailable, PermanentError, permanentAfterAiCall } from "../failure.ts";
+import {
+  PROMPT_NAMES,
+  type PromptSource,
+  type PromptText,
+  promptIdentity,
+} from "../prompts/source.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
 import { type SpawnTool, type StepContext, StepError, runToolsStep } from "../step-runner.ts";
 import { type AiUsage, addUsage } from "../step-store.ts";
 import { type DescribeAnswer, describeJsonSchema, parseDescribeAnswer } from "./describe-schema.ts";
-import { DESCRIBE_PROMPT_VERSION, describePrompt } from "./describe-prompt.ts";
+import { describePrompt } from "./describe-prompt.ts";
 import { largeCopyPath, runPhotoImages } from "./photo-images.ts";
 import type { PhotoStore } from "./photo-store.ts";
 
@@ -18,6 +24,8 @@ type Attempt = { ok: true; answer: DescribeAnswer } | { ok: false; reasons: stri
 export interface DescribeStepRun {
   ctx: StepContext;
   ai: AiRunner;
+  // The fetched `photo-describe` prompt.
+  template: PromptText;
   // The large JPEG copy `photo_images` made in this scratch.
   largePath: string;
   // Tests pass a fake; otherwise the real child process.
@@ -36,6 +44,7 @@ function roundLines(round: number, reasons: readonly string[]): string[] {
 async function describeStep({
   ctx,
   ai,
+  template,
   largePath,
   spawnTool,
 }: DescribeStepRun): Promise<{ answer: DescribeAnswer; usage: AiUsage }> {
@@ -51,7 +60,7 @@ async function describeStep({
         const attempt = async (previous?: string[]): Promise<Attempt> => {
           const answer = await ai.call({
             role: "describe",
-            prompt: describePrompt(previous),
+            ...describePrompt(template, previous),
             schema: describeJsonSchema,
             image,
             signal: ctx.signal,
@@ -93,6 +102,8 @@ export interface DescribePhotoJob {
   storage: Storage;
   store: PhotoStore;
   ai: AiRunner;
+  // The one prompt source of the worker process (its `photo-describe` is fetched here).
+  prompts: PromptSource;
   tools: Pick<ToolPaths, "ffmpeg" | "ffprobe">;
   keyPrefix: string;
   scratchDir: string;
@@ -109,6 +120,7 @@ export async function runDescribePhotoJob({
   storage,
   store,
   ai,
+  prompts,
   tools,
   keyPrefix,
   scratchDir,
@@ -117,6 +129,8 @@ export async function runDescribePhotoJob({
 }: DescribePhotoJob): Promise<void> {
   const photo = await store.read(photoId);
   if (!photo) throw new PermanentError("photo is gone");
+  // Before any work or AI call: a failed fetch costs nothing but this job's try.
+  const template = await prompts.get(PROMPT_NAMES.describe);
   const images = await runPhotoImages({
     ctx,
     storage,
@@ -130,6 +144,7 @@ export async function runDescribePhotoJob({
   const { answer, usage } = await describeStep({
     ctx,
     ai,
+    template,
     largePath: largeCopyPath(scratchDir),
     spawnTool,
   });
@@ -139,7 +154,7 @@ export async function runDescribePhotoJob({
       description: answer.description,
       tags: answer.tags,
       model: usage.model,
-      promptVersion: DESCRIBE_PROMPT_VERSION,
+      promptVersion: promptIdentity(template),
       width: images.width,
       height: images.height,
       thumbnailKey: images.thumbnailKey,

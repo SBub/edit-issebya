@@ -1,26 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { DecideAnswer } from "./decide.ts";
-import {
-  checklistOutcome,
-  editorialJsonSchema,
-  mergeEditorial,
-  parseEditorialAnswer,
-} from "./editorial.ts";
+import { editorialJsonSchema, mergeEditorial, parseEditorialAnswer } from "./editorial.ts";
 import type { UnplacedItem } from "./engine.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 
 const { transcript } = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
-const PHOTO = "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14";
-const OTHER = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
 
-const PHOTO_LEFT: UnplacedItem = {
-  ref: "photos[0]",
-  id: "photo-1",
-  kind: "photo",
+const VISUAL_LEFT: UnplacedItem = {
+  ref: "visuals[0]",
+  id: "visual-1",
+  kind: "visual",
   from: "w84",
   to: "w99",
-  photo_id: PHOTO,
   requested: true,
   why: "no-room",
 };
@@ -43,84 +35,87 @@ const BIG_LEFT: UnplacedItem = {
   why: "no-room",
 };
 
+const DESCRIPTION = "a messy desk at night";
+
 const ANSWER: DecideAnswer = {
   accents: [
-    { from: "w2", to: "w3", title: false },
-    { from: "w26", to: "w28", title: false },
+    { from: "w2", to: "w3" },
+    { from: "w26", to: "w28" },
   ],
   big_words: [],
-  photos: [
-    { photo_id: PHOTO, from: "w84", to: "w99", reason: "match" },
-    { photo_id: OTHER, from: "w117", to: "w133", reason: "mood" },
+  visuals: [
+    { from: "w84", to: "w99", description: DESCRIPTION },
+    { from: "w117", to: "w133", description: "a calm lake" },
   ],
   transitions: [],
   word_fixes: [],
-  hook: null,
-  checklist: [
-    { ask: "add images behind me", wants: "1 to 2 photos", fulfilled_by: ["photos[0]"] },
-    { ask: "more photos", wants: "another photo", fulfilled_by: ["photos[1]"] },
-  ],
-  behind_rules: { photos: "keep", big_word: "keep" },
-  unexpressed: [],
 };
 
-function reasons(json: unknown, unplaced: UnplacedItem[], photoIds = [PHOTO, OTHER]) {
-  const parsed = parseEditorialAnswer(json, transcript, unplaced, photoIds);
+function reasons(json: unknown, unplaced: UnplacedItem[]) {
+  const parsed = parseEditorialAnswer(json, transcript, unplaced);
   if (parsed.ok) throw new Error("expected a refusal");
   return parsed.reasons.join("\n");
 }
 
 describe("the editorial answer", () => {
   it("is one choice per left-out item: a missing or repeated item is refused", () => {
-    const one = { item: "photos[0]", skip: false, from: "w100", to: "w112" };
-    expect(parseEditorialAnswer({ choices: [one] }, transcript, [PHOTO_LEFT], [PHOTO]).ok).toBe(
-      true,
+    const one = { item: "visuals[0]", skip: false, from: "w100", to: "w112" };
+    expect(parseEditorialAnswer({ choices: [one] }, transcript, [VISUAL_LEFT]).ok).toBe(true);
+    expect(reasons({ choices: [] }, [VISUAL_LEFT])).toContain("no choice for visuals[0]");
+    expect(reasons({ choices: [one, one] }, [VISUAL_LEFT, ACCENT_LEFT])).toContain(
+      "visuals[0] is chosen twice",
     );
-    expect(reasons({ choices: [] }, [PHOTO_LEFT])).toContain("no choice for photos[0]");
-    expect(reasons({ choices: [one, one] }, [PHOTO_LEFT, ACCENT_LEFT])).toContain(
-      "photos[0] is chosen twice",
-    );
-    expect(reasons({ choices: [{ ...one, item: "photos[1]" }] }, [PHOTO_LEFT])).toMatch(
+    expect(reasons({ choices: [{ ...one, item: "visuals[1]" }] }, [VISUAL_LEFT])).toMatch(
       /choices\.0\.item/,
     );
   });
 
   it("needs a reason on a skip and no words with it", () => {
-    expect(reasons({ choices: [{ item: "photos[0]", skip: true }] }, [PHOTO_LEFT])).toContain(
+    expect(reasons({ choices: [{ item: "visuals[0]", skip: true }] }, [VISUAL_LEFT])).toContain(
       "a skip says why",
     );
     expect(
       reasons(
-        { choices: [{ item: "photos[0]", skip: true, why: "no match", from: "w1", to: "w2" }] },
-        [PHOTO_LEFT],
+        { choices: [{ item: "visuals[0]", skip: true, why: "no match", from: "w1", to: "w2" }] },
+        [VISUAL_LEFT],
       ),
-    ).toContain("a skip names no words and no photo");
+    ).toContain("a skip names no words");
   });
 
-  it("takes a photo id only on a photo, the big word on one word, words in order", () => {
+  it("names no picture: a photo id is refused, the big word is one word, words in order", () => {
     expect(
       reasons(
-        { choices: [{ item: "accents[0]", skip: false, from: "w26", to: "w27", photo_id: PHOTO }] },
-        [ACCENT_LEFT],
+        {
+          choices: [
+            {
+              item: "visuals[0]",
+              skip: false,
+              from: "w100",
+              to: "w112",
+              photo_id: "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c",
+            },
+          ],
+        },
+        [VISUAL_LEFT],
       ),
-    ).toContain("accents[0] is not a photo");
+    ).toContain('Unrecognized key: "photo_id"');
     expect(
       reasons({ choices: [{ item: "big_words[0]", skip: false, from: "w66", to: "w67" }] }, [
         BIG_LEFT,
       ]),
     ).toContain("a big word is one word");
     expect(
-      reasons({ choices: [{ item: "photos[0]", skip: false, from: "w112", to: "w100" }] }, [
-        PHOTO_LEFT,
+      reasons({ choices: [{ item: "visuals[0]", skip: false, from: "w112", to: "w100" }] }, [
+        VISUAL_LEFT,
       ]),
     ).toContain("ends on w100, before it starts on w112");
     expect(
-      reasons({ choices: [{ item: "photos[0]", skip: false, from: "w100" }] }, [PHOTO_LEFT]),
+      reasons({ choices: [{ item: "visuals[0]", skip: false, from: "w100" }] }, [VISUAL_LEFT]),
     ).toContain("names its words with from and to");
   });
 
   it("has meaning only and the decide answer's draft-07 settings", () => {
-    const schema = editorialJsonSchema(transcript, [PHOTO_LEFT], [PHOTO]);
+    const schema = editorialJsonSchema(transcript, [VISUAL_LEFT]);
     expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
     const text = JSON.stringify(schema);
     expect(text).toContain('"additionalProperties":false');
@@ -131,53 +126,41 @@ describe("the editorial answer", () => {
 });
 
 describe("mergeEditorial", () => {
-  it("replaces a chosen item's words (and photo) in place, with a note", () => {
+  it("replaces a chosen visual's words in place, keeping its description, with a note", () => {
     const { answer, notes } = mergeEditorial(
       ANSWER,
-      {
-        choices: [{ item: "photos[0]", skip: false, from: "w100", to: "w112", photo_id: OTHER }],
-      },
-      [PHOTO_LEFT],
+      { choices: [{ item: "visuals[0]", skip: false, from: "w100", to: "w112" }] },
+      [VISUAL_LEFT],
       transcript,
       ISSEBYA_PRESET,
     );
-    // The reason stays with the photo: the editor picks one that fits the same way.
-    expect(answer.photos[0]).toEqual({
-      photo_id: OTHER,
-      from: "w100",
-      to: "w112",
-      reason: "match",
-    });
-    expect(answer.photos[1]).toEqual(ANSWER.photos[1]);
-    expect(answer.checklist).toEqual(ANSWER.checklist);
+    expect(answer.visuals[0]).toEqual({ from: "w100", to: "w112", description: DESCRIPTION });
+    expect(answer.visuals[1]).toEqual(ANSWER.visuals[1]);
     expect(notes).toEqual([
-      expect.objectContaining({ item: "photo-1", action: "moved", rule: "editorial" }),
+      expect.objectContaining({ item: "visual-1", action: "moved", rule: "editorial" }),
     ]);
     expect(notes[0]!.reason).toMatch(
-      /^the editor moved photo 1 to ".+" \(w100 to w112\) with another photo: no room on its sentence$/,
+      /^the editor moved visual 1 to ".+" \(w100 to w112\): no room on its sentence$/,
     );
   });
 
-  it("removes a skipped item and re-indexes the checklist links", () => {
-    const why = "Nothing else in the reel matches this photo: add a photo of your team";
+  it("removes a skipped visual and keeps the others in order", () => {
+    const why =
+      "No other part of the reel has room for this visual: shorten the sentence before it";
     const { answer, notes } = mergeEditorial(
       ANSWER,
-      { choices: [{ item: "photos[0]", skip: true, why }] },
-      [PHOTO_LEFT],
+      { choices: [{ item: "visuals[0]", skip: true, why }] },
+      [VISUAL_LEFT],
       transcript,
       ISSEBYA_PRESET,
     );
-    expect(answer.photos).toEqual([ANSWER.photos[1]]);
-    expect(answer.checklist).toEqual([
-      { ask: "add images behind me", wants: "1 to 2 photos", fulfilled_by: [], why_not: why },
-      { ask: "more photos", wants: "another photo", fulfilled_by: ["photos[0]"] },
-    ]);
+    expect(answer.visuals).toEqual([ANSWER.visuals[1]]);
     expect(notes).toEqual([
       {
-        item: "photo-1",
+        item: "visual-1",
         action: "dropped",
         rule: "editorial",
-        reason: `the editor left out photo 1: ${why}`,
+        reason: `the editor left out visual 1: ${why}`,
       },
     ]);
   });
@@ -188,9 +171,6 @@ describe("mergeEditorial on big words", () => {
     const answer = {
       ...ANSWER,
       big_words: [{ word: "w76" }, { word: "w140" }, { word: "w76" }],
-      checklist: [
-        { ask: "big words", wants: "two", fulfilled_by: ["big_words[1]", "big_words[2]"] },
-      ],
     };
     const second: UnplacedItem = { ...BIG_LEFT, ref: "big_words[1]", id: "big-word-2" };
     const merged = mergeEditorial(
@@ -206,89 +186,9 @@ describe("mergeEditorial on big words", () => {
       ISSEBYA_PRESET,
     );
     expect(merged.answer.big_words).toEqual([{ word: "w66" }, { word: "w76" }]);
-    expect(merged.answer.checklist[0]!.fulfilled_by).toEqual(["big_words[1]"]);
     expect(merged.notes.map((note) => note.reason)).toEqual([
       expect.stringMatching(/^the editor moved big word 1 to /),
       "the editor left out big word 2: No other key word fits here",
-    ]);
-  });
-});
-
-describe("checklistOutcome", () => {
-  it("counts an ask linked to the hook as done: it is never left out", () => {
-    const asks = [
-      { ask: "change the hook to Work less", wants: "hook: Work less", fulfilled_by: ["hook"] },
-      { ask: "no hook", wants: "no hook", fulfilled_by: ["hook"] },
-    ];
-    expect(checklistOutcome(asks, { unplaced: [], record: [] })).toEqual(
-      asks.map((entry) => ({ ...entry, done: true, reason: null })),
-    );
-  });
-
-  const drop = {
-    item: "photo-1",
-    action: "dropped" as const,
-    rule: "no-room",
-    reason: "photo 1: every photo spot is under captions or the face from 22.80 s to 26.03 s",
-  };
-
-  it("marks a placed link done, a dropped one not done with the reason and what to do", () => {
-    expect(checklistOutcome(ANSWER.checklist, { unplaced: [PHOTO_LEFT], record: [drop] })).toEqual([
-      {
-        ask: "add images behind me",
-        wants: "1 to 2 photos",
-        fulfilled_by: ["photos[0]"],
-        done: false,
-        reason: `${drop.reason}; ask for it on another sentence or add a photo that matches another part`,
-      },
-      {
-        ask: "more photos",
-        wants: "another photo",
-        fulfilled_by: ["photos[1]"],
-        done: true,
-        reason: null,
-      },
-    ]);
-  });
-
-  it("marks a linked transition done only when the engine kept it", () => {
-    const ask = {
-      ask: "a transition on the list",
-      wants: "1 numbered",
-      fulfilled_by: ["transitions[0]"],
-    };
-    const rate = {
-      item: "transition-1",
-      action: "dropped" as const,
-      rule: "transition-rate",
-      reason:
-        'transition 1 (numbered) on "fair pay" dropped: about one transition per 9 s, this reel has room for 2',
-    };
-    expect(checklistOutcome([ask], { unplaced: [], record: [] })[0]).toMatchObject({
-      done: true,
-      reason: null,
-    });
-    expect(checklistOutcome([ask], { unplaced: [], record: [rate] })[0]).toMatchObject({
-      done: false,
-      reason: `${rate.reason}; ask for it on another phrase, or for fewer transitions`,
-    });
-  });
-
-  it("gives an ask with no link its why_not, else a plain default", () => {
-    const why = "Your photo library is empty: upload photos first";
-    expect(
-      checklistOutcome(
-        [
-          { ask: "photos", wants: "1 photo", fulfilled_by: [], why_not: why },
-          { ask: "music", wants: "a song", fulfilled_by: [] },
-          { ask: "keep the rules", wants: "no change", fulfilled_by: ["behind_rules"] },
-        ],
-        { unplaced: [], record: [] },
-      ).map(({ done, reason }) => ({ done, reason })),
-    ).toEqual([
-      { done: false, reason: why },
-      { done: false, reason: "nothing in this version does it" },
-      { done: true, reason: null },
     ]);
   });
 });

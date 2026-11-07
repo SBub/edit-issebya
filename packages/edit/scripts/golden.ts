@@ -4,7 +4,8 @@
 // choices over a synthetic light background, readable; the 2026-11-03
 // request placed with room made for its photo; the same choices with one
 // transition of each kind, two of them numbered list items; the same
-// choices with the written hook; and with the photo wished in front) and
+// choices with the written hook; and with every visual requested, as corner
+// cards) and
 // every fixture's
 // golden page and widths from the Node build: `yarn workspace @edit-issebya/edit golden`. Commit what it
 // writes; the Node and browser tests compare against it.
@@ -20,13 +21,13 @@ import { type Edit, parseEdit } from "../src/schema.ts";
 import { backgroundMapOf } from "../src/test-support/backgrounds.ts";
 import { goldenOf } from "../src/test-support/golden.ts";
 import { RETHINK_WORK, SHORT_SPEECH, baselineInputs } from "../src/test-support/inputs.ts";
-import { REQUEST_ANSWER, REQUEST_CASE } from "../src/test-support/request.ts";
+import { REQUEST_ANSWER, REQUEST_CASE, REQUEST_REQUESTED } from "../src/test-support/request.ts";
 import { nodeMeasurer } from "../src/test-support/measurer.node.ts";
 import { resolveTimeline } from "../src/timeline.ts";
 import { sentenceSpans } from "../src/transcript.ts";
 
 const testdata = new URL("../src/testdata/", import.meta.url);
-const NO_CHOICES = { accents: [], big_words: [], photos: [], transitions: [], word_fixes: [] };
+const NO_CHOICES = { accents: [], big_words: [], visuals: [], transitions: [], word_fixes: [] };
 
 const write = (name: string, value: unknown) =>
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
@@ -50,6 +51,21 @@ const placed = placeEdit(
   { backgrounds: backgroundSampler(shortSpeechMap, ISSEBYA_PRESET.frame) },
 );
 await write("baseline-short-speech", { ...baseline, tracks: placed.tracks });
+
+// Version 2 of the studio's preview spec: version 1 with only the committed
+// hook (the decide step's unchanged answer), placed the way the worker places
+// it: every reel has one.
+const hooked = editFromAnswer(
+  baseline,
+  { ...NO_CHOICES, hook: { text: "A short test for the real studio" } },
+  ISSEBYA_PRESET,
+  SHORT_SPEECH.transcript,
+  SHORT_SPEECH.headTrack,
+  await nodeMeasurer(),
+  backgroundSampler(shortSpeechMap, ISSEBYA_PRESET.frame),
+);
+if (!hooked.ok) throw new Error(hooked.reasons.join("; "));
+await write("baseline-short-speech-hook", hooked.edit);
 
 // The behind hand edit's choices placed by the engine, with placeholder masks
 // for its spans (the worker names real ones).
@@ -129,7 +145,7 @@ for (const note of readable.record.filter((entry) => entry.rule.startsWith("cont
 await write("rethink-work-readable", withPlaceholders(readable.edit));
 
 // The 2026-11-03 request "add images behind me" over the hand edit, placed
-// with the photo requested: the engine makes room for it.
+// with the visual requested: the engine makes room for it.
 const handJson: unknown = JSON.parse(
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
   await readFile(new URL("versions/rethink-work-hand.edit.json", testdata), "utf8"),
@@ -143,6 +159,8 @@ const request = editFromAnswer(
   REQUEST_CASE.transcript,
   REQUEST_CASE.headTrack,
   await nodeMeasurer(),
+  undefined,
+  { requested: REQUEST_REQUESTED },
 );
 if (!request.ok) throw new Error(request.reasons.join("; "));
 for (const note of request.record.filter((entry) => entry.rule === "make-room")) {
@@ -193,22 +211,21 @@ for (const note of withHook.record.filter((entry) => entry.item === "hook")) {
 }
 await write("rethink-work-hook", withPlaceholders(withHook.edit));
 
-// The engine's choices with the owner's wish for the photo in front of the
-// speaker: over the footage, clear of the face, no cut-out for it.
+// The engine's choices with every visual asked for: each placed first, given
+// room, as a corner card beside the face (never over it), no cut-out for a
+// visual.
 const front = editFromAnswer(
   behind.edit,
-  {
-    ...choices,
-    photos: choices.photos.map((photo) => ({ ...photo, wish: "front" as const })),
-    checklist: [{ fulfilled_by: choices.photos.map((_, index) => `photos[${index}]`) }],
-  },
+  choices,
   ISSEBYA_PRESET,
   RETHINK_WORK.transcript,
   RETHINK_WORK.headTrack,
   await nodeMeasurer(),
+  undefined,
+  { requested: choices.visuals.map((_, index) => `visuals[${index}]`) },
 );
 if (!front.ok) throw new Error(front.reasons.join("; "));
-for (const note of front.record.filter((entry) => entry.item.startsWith("photo-"))) {
+for (const note of front.record.filter((entry) => entry.item.startsWith("visual-"))) {
   console.log(`front: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
 }
 await write("rethink-work-front", withPlaceholders(front.edit));

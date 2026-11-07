@@ -51,7 +51,7 @@ export async function seedReadyPhoto({
     description: "A colourful test pattern of vertical bars.",
     tags: ["test pattern", "colour bars", "abstract"],
     model: "anthropic/claude-haiku-5.5",
-    prompt_version: "describe-1",
+    prompt_version: "photo-describe@v1",
     thumbnail_key: key("thumbnail.jpg"),
     large_key: key("large.jpg"),
   });

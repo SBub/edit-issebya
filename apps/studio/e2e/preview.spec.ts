@@ -1,4 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   type Edit,
   ISSEBYA_PRESET,
@@ -8,26 +10,30 @@ import {
 } from "@edit-issebya/edit";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { type Page, expect, test } from "@playwright/test";
+import { speechTenTransitionAnswerScript } from "../test-support/ai-script.ts";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
 import { seekOnRuler } from "../test-support/ruler.ts";
-import { withNumberedTransition } from "../test-support/transitions.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds } from "../test-support/worker.ts";
 import { eventsNamed, recordEvents } from "./events.ts";
 
 // This run's own cache folder: the worker reads it through R2_KEY_PREFIX.
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
-// The worker's Node build of version 1 over fixtures/pipeline/. The current
-// version is the AI's unchanged version 2 (seedProcessedReel's default
-// script), byte for byte version 1, so the golden still applies.
+// The worker's Node build of the current version: the AI's unchanged version 2
+// (seedProcessedReel's default script) is version 1 plus the committed hook and
+// nothing else, the golden of the baseline with that hook.
 const GOLDEN = new URL(
-  "../../../packages/edit/src/testdata/golden/baseline-short-speech.html",
+  "../../../packages/edit/src/testdata/golden/baseline-short-speech-hook.html",
   import.meta.url,
 );
 const TRANSCRIPT = new URL("../../../fixtures/pipeline/retime/transcript.json", import.meta.url);
+const SPEECH_TRANSCRIPT = new URL(
+  "../../../fixtures/pipeline/speech-ten/retime/transcript.json",
+  import.meta.url,
+);
 const admin = localSupabaseAdmin();
 const storage = fakeStorage({
   root: e2eStorageRoot(new URL(".", import.meta.url).pathname),
@@ -56,9 +62,9 @@ test.afterAll(async () => {
   if (owner) await deleteTestUser(admin, owner.id);
 });
 
-async function openReel(page: Page, baseURL: string) {
+async function openReel(page: Page, baseURL: string, reelId = reel!.reelId) {
   await page.goto(await signInLink(admin, owner.email, baseURL));
-  await page.goto(`/studio/reels/${reel!.reelId}`);
+  await page.goto(`/studio/reels/${reelId}`);
   // The first open compiles the page, the builder and harfbuzzjs under `next dev`.
   await expect(page.locator('[data-preview="ready"]')).toBeVisible({ timeout: 30_000 });
 }
@@ -92,6 +98,11 @@ async function clockFor2s(page: Page): Promise<number[]> {
   return samples;
 }
 
+async function speechTranscript() {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
+  return transcriptSchema.parse(JSON.parse(await readFile(SPEECH_TRANSCRIPT, "utf8")));
+}
+
 async function fixtureTranscript() {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
   return transcriptSchema.parse(JSON.parse(await readFile(TRANSCRIPT, "utf8")));
@@ -122,8 +133,8 @@ test("the reel opens with the player, the first caption, one open event and the 
       { event: "studio_preview_opened", properties: { app: "studio", reel_id: reel!.reelId } },
     ]);
 
-  // The browser build of the current version (the AI's unchanged version 2)
-  // is the worker's Node build of version 1, byte for byte.
+  // The browser build of the current version (the AI's unchanged version 2,
+  // version 1 with the hook) is the worker's Node build, byte for byte.
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed golden
   const golden = await readFile(GOLDEN, "utf8");
   expect(await page.evaluate(() => window.__previewBuild)).toBe(golden);
@@ -315,78 +326,118 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
   }
 });
 
-test("a transition shows its number, lead-in and key phrase inside its layer, never the phrase's captions", async ({
-  page,
-  baseURL,
-}) => {
-  await routePreviewCdn(page);
-  await openReel(page, baseURL!);
+// The numbered transition the decide step scripts on the speech clip
+// (speechTenTransitionAnswerScript): a LIST over w0028 to w0032, its lead-in
+// "they don't leave", its key phrase "to work," (from w0031) in accent text,
+// number 1. The layer runs until w0033 starts, the word after the phrase. It starts after the
+// hook (0.2 s to 3 s), so the layer shows.
+test.describe("a numbered transition on the speech clip", () => {
+  let speech: ProcessedReel;
 
-  // A version whose numbered transition carries "clip for the" (w0006 to
-  // w0008): its lead-in "clip" and its key phrase "for the" from w0007.
-  const transcript = await fixtureTranscript();
-  const stored = await storage.get(reel!.versionKey);
-  const parsed = parseEdit(
-    JSON.parse(new TextDecoder().decode(stored!)),
-    ISSEBYA_PRESET,
-    transcript,
-  );
-  expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
-  const edit = await withNumberedTransition((parsed as { ok: true; edit: Edit }).edit, transcript);
-  const saved = await saveTestVersion({
-    admin,
-    storage,
-    prefix: CACHE_PREFIX,
-    reelId: reel!.reelId,
-    edit,
-    changeSummary: "a numbered transition",
+  test.beforeAll(async () => {
+    test.setTimeout(120_000);
+    const scriptDir = await mkdtemp(join(tmpdir(), "preview-speech-"));
+    try {
+      speech = await seedProcessedReel({
+        admin,
+        storage,
+        ownerId: owner.id,
+        prefix: CACHE_PREFIX,
+        clip: "speech-ten",
+        aiScript: await speechTenTransitionAnswerScript(scriptDir),
+      });
+    } finally {
+      await rm(scriptDir, { recursive: true, force: true });
+    }
+    extraKeys.push(...speech.keys);
   });
-  extraKeys.push(saved.key);
-  await expect(
-    page.locator(`[data-preview-version="${saved.id}"][data-preview="ready"]`),
-  ).toBeVisible({ timeout: 30_000 });
 
-  const frame = composition(page);
-  const opacity = (selector: string) =>
-    frame.locator(selector).evaluate((el) => {
-      const style = getComputedStyle(el);
-      return style.visibility === "hidden" || style.display === "none" ? 0 : Number(style.opacity);
-    });
-  const resolved = resolveTimeline(edit, transcript);
-  const layer = resolved.get("transition-1")!;
-  const key = transcript.words.find((word) => word.id === "w0007")!;
+  test("a transition shows its number, lead-in and key phrase inside its layer, never the phrase's captions", async ({
+    page,
+    baseURL,
+  }) => {
+    await routePreviewCdn(page);
+    await openReel(page, baseURL!, speech.reelId);
 
-  // Inside the phrase, after its key phrase's first word.
-  await setPosition(page, key.start + 0.3);
-  await expect.poll(() => opacity("#transition-1")).toBeGreaterThan(0.9);
-  await expect(frame.locator("#transition-1 #transition-1-number")).toHaveText("1");
-  await expect(frame.locator("#transition-1 #transition-1-lead")).toHaveText("clip");
-  await expect(frame.locator("#transition-1 #transition-1-key")).toHaveText("for the");
-  await expect.poll(() => opacity("#transition-1-lead")).toBeGreaterThan(0.5);
-  await expect.poll(() => opacity("#transition-1-key")).toBeGreaterThan(0.5);
-  const color = (selector: string) =>
-    frame.locator(selector).evaluate((el) => getComputedStyle(el).color);
-  // The lead-in in caption text, the key phrase and the number in accent
-  // text: every text role is white for now.
-  expect(await color("#transition-1-lead")).toBe("rgb(255, 255, 255)");
-  expect(await color("#transition-1-key")).toBe("rgb(255, 255, 255)");
-  expect(await color("#transition-1-number")).toBe("rgb(255, 255, 255)");
-  // The phrase's captions show nowhere else.
-  for (const id of ["cw0006", "cw0007", "cw0008"]) {
-    await expect(frame.locator(`#${id}`)).toHaveCount(0);
-  }
+    // The version the decide step saved carries the LIST, placed by the layout engine.
+    const transcript = await speechTranscript();
+    const stored = await storage.get(speech.versionKey);
+    const parsed = parseEdit(
+      JSON.parse(new TextDecoder().decode(stored!)),
+      ISSEBYA_PRESET,
+      transcript,
+    );
+    expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
+    const edit = (parsed as { ok: true; edit: Edit }).edit;
+    expect(edit.tracks.transitions).toEqual([
+      expect.objectContaining({
+        type: "numbered",
+        words: ["w0028", "w0029", "w0030", "w0031", "w0032"],
+        start: expect.objectContaining({ word: "w0028" }),
+        end: { word: "w0033" },
+        key: "w0031",
+        number: 1,
+      }),
+    ]);
+    await expect(
+      page.locator(`[data-preview-version="${speech.versionId}"][data-preview="ready"]`),
+    ).toBeVisible({ timeout: 30_000 });
 
-  // After it has left, the next caption shows as usual.
-  // cw0010 ends with the reel's last word and fades out over
-  // caption.outSeconds, so the check has to land between the layer's end and
-  // that fade.
-  const nextSpan = resolved.get("cw0010")!;
-  const fadeOut = nextSpan.end - ISSEBYA_PRESET.caption.outSeconds;
-  expect(fadeOut).toBeGreaterThan(layer.end);
-  expect(layer.end + 0.001).toBeLessThan(fadeOut);
-  await setPosition(page, layer.end + 0.001);
-  await expect.poll(() => opacity("#transition-1")).toBeLessThan(0.05);
-  const next = frame.locator("#cw0010");
-  await expect(next).toHaveText("studio");
-  await expect.poll(() => opacity("#cw0010")).toBeGreaterThan(0.5);
+    const frame = composition(page);
+    const opacity = (selector: string) =>
+      frame.locator(selector).evaluate((el) => {
+        const style = getComputedStyle(el);
+        return style.visibility === "hidden" || style.display === "none"
+          ? 0
+          : Number(style.opacity);
+      });
+    const resolved = resolveTimeline(edit, transcript);
+    const layer = resolved.get("transition-1")!;
+    const keyFirst = transcript.words.find((word) => word.id === "w0031")!;
+    const keyLast = transcript.words.find((word) => word.id === "w0032")!;
+
+    // Inside the phrase, on its key phrase ("to work,").
+    await setPosition(page, (keyFirst.start + keyLast.end) / 2);
+    await expect.poll(() => opacity("#transition-1")).toBeGreaterThan(0.9);
+    await expect(frame.locator("#transition-1 #transition-1-number")).toHaveText("1");
+    // A level's lines are separated by <br />: the text nodes are the lines.
+    const lines = (selector: string) =>
+      frame
+        .locator(selector)
+        .evaluate((el) =>
+          [...el.childNodes]
+            .filter((node) => node.nodeType === Node.TEXT_NODE)
+            .map((node) => node.textContent),
+        );
+    expect(await lines("#transition-1-lead")).toEqual(["they don't", "leave"]);
+    expect(await lines("#transition-1-key")).toEqual(["to", "work"]);
+    await expect.poll(() => opacity("#transition-1-lead")).toBeGreaterThan(0.5);
+    await expect.poll(() => opacity("#transition-1-key")).toBeGreaterThan(0.5);
+    const color = (selector: string) =>
+      frame.locator(selector).evaluate((el) => getComputedStyle(el).color);
+    // The lead-in in caption text, the key phrase and the number in accent
+    // text: every text role is white for now.
+    expect(await color("#transition-1-lead")).toBe("rgb(255, 255, 255)");
+    expect(await color("#transition-1-key")).toBe("rgb(255, 255, 255)");
+    expect(await color("#transition-1-number")).toBe("rgb(255, 255, 255)");
+    // The phrase's captions show nowhere else.
+    for (const id of ["cw0028", "cw0029", "cw0030", "cw0031", "cw0032"]) {
+      await expect(frame.locator(`#${id}`)).toHaveCount(0);
+    }
+
+    // After it has left, the next caption shows as usual: caption cw0033
+    // (w0033) fades in over caption.inSeconds from its start and out over
+    // caption.outSeconds at its end, so the check lands after the fade-in and
+    // before the fade-out.
+    const nextSpan = resolved.get("cw0033")!;
+    const fadeOut = nextSpan.end - ISSEBYA_PRESET.caption.outSeconds;
+    expect(fadeOut).toBeGreaterThan(layer.end);
+    expect(layer.end + 0.001).toBeLessThan(fadeOut);
+    await setPosition(page, layer.end + 0.001);
+    await expect.poll(() => opacity("#transition-1")).toBeLessThan(0.05);
+    const next = frame.locator("#cw0033");
+    await expect(next).toHaveText("they");
+    await setPosition(page, nextSpan.start + ISSEBYA_PRESET.caption.inSeconds + 0.01);
+    await expect.poll(() => opacity("#cw0033")).toBeGreaterThan(0.5);
+  });
 });

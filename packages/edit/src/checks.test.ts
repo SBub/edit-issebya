@@ -153,7 +153,7 @@ describe("runChecks", () => {
 
   it("fails sound-gap for two clicks 0.2 s apart", async () => {
     const edit = structuredClone(hand.edit);
-    // The engine's click as photo 1 comes in (on w18), and a second one.
+    // The engine's click as visual 1 comes in (on w18), and a second one.
     edit.tracks.sounds.push({
       id: "s-second",
       sound: "click",
@@ -164,7 +164,7 @@ describe("runChecks", () => {
       {
         rule: "sound-gap",
         item: "s-second",
-        reason: "sound s-second is 0.200 s after click-photo-1, under 0.25 s",
+        reason: "sound s-second is 0.200 s after click-visual-1, under 0.25 s",
       },
     ]);
   });
@@ -177,7 +177,7 @@ describe("runChecks", () => {
     edit.tracks.sounds[0]!.end = { word: word.id, edge: "end" };
     const checks = await checksOf(edit);
     expect(checks.map((check) => [check.rule, check.item])).toEqual([
-      ["time-in-speech", "click-photo-1"],
+      ["time-in-speech", "click-visual-1"],
     ]);
     expect(checks[0]!.reason).toContain(`inside the word ${word.id}`);
   });

@@ -2,8 +2,8 @@ import {
   type BehindForbid,
   type Edit,
   type EngineInput,
+  NEW_TRANSITION_KINDS,
   type Preset,
-  TRANSITION_KINDS,
   type Transcript,
   choicesOf,
   sentenceSpans,
@@ -27,71 +27,78 @@ function sentences(transcript: Transcript, preset: Preset): SentenceChoice[] {
   }));
 }
 
-// What of the preset the AI decides with: the transition library (each kind
-// with the line saying what it is for), the pace (how often something new
-// shows, how often a transition comes), how long the hook may be and the
-// glossary. No count of photos
-// or big words: how many is the editor's choice. No frame, box, font size,
-// colour or spot: the layout owns every position, size and time.
+// What of the preset the AI decides with: the transition kinds a new answer
+// may pick (LIST, `numbered`), and the glossary. The hook's length is the hook
+// call's (`hook.ts`). No count of components and no pace: how many is the
+// editor's choice, and how often each shows is the layout engine's. No frame,
+// box, font size, colour, spot or time: the layout owns every position, size
+// and time.
 export function presetSummary(preset: Preset) {
   return {
-    transitions: TRANSITION_KINDS.map((kind) => ({
+    transitions: NEW_TRANSITION_KINDS.map((kind) => ({
       kind,
       description: preset.transitions[kind].description ?? "",
     })),
-    extra_every_seconds: preset.pace.extraEverySeconds,
-    transition_every_seconds: preset.pace.transitionEverySeconds,
-    // How long the written hook may be (never when or where it shows).
-    hook_length: { words: preset.pace.hook.maxWords, characters: preset.pace.hook.maxCharacters },
     glossary: preset.glossary,
   };
 }
 
-// A ready library photo as the AI sees it: its id and what describe_photo
-// wrote about it. Data, never instructions.
-export interface LibraryEntry {
-  id: string;
-  description: string;
-  tags: string[];
+// The current version's choices in the answer's own terms, for the prompt:
+// an older title shows as a plain accent, a transition of a kind a new answer
+// may not pick is left out, and no wish is shown. The answer's schema would
+// refuse any of those, so the model never sees them as something to copy. A
+// library photo is not a choice a new answer makes, so it is left out too. No
+// hook: the written hook is its own call's answer, shown as `hook` instead.
+export function currentChoices(choices: EngineInput): EngineInput {
+  return {
+    accents: choices.accents.map(({ from, to }) => ({ from, to })),
+    big_words: choices.big_words.map(({ word }) => ({ word })),
+    visuals: choices.visuals.map(({ from, to, description }) => ({
+      from,
+      to,
+      ...(description ? { description } : {}),
+    })),
+    transitions: choices.transitions
+      .filter((transition) => (NEW_TRANSITION_KINDS as readonly string[]).includes(transition.kind))
+      .map(({ kind, from, to, key_from }) => ({ kind, from, to, key_from })),
+    word_fixes: choices.word_fixes,
+  };
 }
 
 export interface DecideInput {
-  // The current version's choices, in the answer's own terms.
+  // The current version's choices, in the answer's own terms (`currentChoices`).
   current_choices: EngineInput;
   transcript: { id: string; text: string }[];
   sentences: SentenceChoice[];
   preset: ReturnType<typeof presetSummary>;
-  library: LibraryEntry[];
-  // What the owner switched off for this reel.
+  // What the owner switched off for this reel, earlier (data: the answer keeps it off).
   behind_rules: { photos_forbidden: boolean; big_word_forbidden: boolean };
-  request: string | null;
+  // The written hook the reel opens with (decided by its own call this run):
+  // words to show, shown as data; the components are chosen around it.
+  hook: { text: string };
 }
 
 export function decideInput({
   current,
   transcript,
   preset,
-  library = [],
   forbid = { photos: false, bigWord: false },
-  request,
+  hook,
 }: {
   current: Edit;
   transcript: Transcript;
   preset: Preset;
-  library?: readonly LibraryEntry[];
   // The reel's stored behind forbids.
   forbid?: BehindForbid;
-  request: string | null;
+  // The hook the reel opens with.
+  hook: { text: string };
 }): DecideInput {
-  // Photos switched off and no request to lift it: no photo to offer.
-  const offered = forbid.photos && request === null ? [] : library;
   return {
-    current_choices: choicesOf(current, transcript, preset),
+    current_choices: currentChoices(choicesOf(current, transcript, preset)),
     transcript: transcript.words.map(({ id, text }) => ({ id, text })),
     sentences: sentences(transcript, preset),
     preset: presetSummary(preset),
-    library: offered.map(({ id, description, tags }) => ({ id, description, tags: [...tags] })),
     behind_rules: { photos_forbidden: forbid.photos, big_word_forbidden: forbid.bigWord },
-    request,
+    hook: { text: hook.text },
   };
 }

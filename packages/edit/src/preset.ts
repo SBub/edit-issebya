@@ -71,9 +71,39 @@ export interface PresetSound {
 export type BehindSpot = "top" | "left" | "right";
 export const BEHIND_SPOTS = ["top", "left", "right"] as const satisfies readonly BehindSpot[];
 
-// The photo sizes the engine varies across a reel, largest first.
-export type PhotoSize = "large" | "medium" | "small";
-export const PHOTO_SIZES = ["large", "medium", "small"] as const satisfies readonly PhotoSize[];
+// A VISUAL is a small corner card (picture in picture): an empty white frame
+// over the footage, in one of these spots. Beside the face spots sit next to
+// the moment's face, the others in the platform safe zone's corners.
+type CardSpot =
+  "top-left" | "top-right" | "bottom-left" | "bottom-right" | "beside-left" | "beside-right";
+const CARD_SPOTS = [
+  "top-left",
+  "top-right",
+  "bottom-left",
+  "bottom-right",
+  "beside-left",
+  "beside-right",
+] as const satisfies readonly CardSpot[];
+
+interface PresetCard {
+  // Its width as a share of the frame's width (a third) and its ratio, width
+  // over height (4:5): 360 by 450 px.
+  widthShare: number;
+  aspect: number;
+  // The share of the card's size tried when no spot fits at the full size
+  // (252 by 315 px), before a visual is dropped: on the speech-ten clip the
+  // free strip beside the speaker is about 260 px wide, too narrow for 0.8.
+  smaller: number;
+  // The gap a corner card keeps from the edges of the platform safe zone.
+  inset: number;
+  // The frame's white stroke, in pixels (the builder's `.visual` rule).
+  stroke: number;
+  // The ring around a spot whose free space ranks the spots: the share of it
+  // no text, face or notch covers is the spot's free space, the most first.
+  ring: number;
+  // The spots a card may take; a tie in free space goes to the earlier one.
+  spots: readonly CardSpot[];
+}
 
 export interface PresetBehind {
   // Each spot's rectangle in frame pixels; the photo covers it exactly.
@@ -101,21 +131,16 @@ export interface PresetBehind {
   maxSeconds: number;
   // The largest share (0 to 1) of a photo's spot the face box may cover.
   maxFaceShare: number;
-  // A photo the layout engine places: behind the speaker (the cut-out, the
-  // person on top) only where the person covers at most `1 - minVisible` of
-  // its height in every column, else in front (over the footage, never over
-  // the face). Its long side is one of `sizes` (a different one from the
-  // photo shown just before or after it when that fits), its short side at
-  // least `minShortSide`, its ratio the library photo's (`aspect`, width over
-  // height, when the library gives none). Its edge needs `minContrast`
+  // A VISUAL's card (see `PresetCard`).
+  card: PresetCard;
+  // A library photo (an older version's). The layout engine places no photo
+  // now: a visual is a card (`card`). A stored photo behind the speaker is
+  // checked with `minVisible` (the person covers at most `1 - minVisible` of
+  // its height in every column); a card's white edge needs `minContrast`
   // against the footage within `ring` pixels around it, else it moves to a
-  // place nearby that has it, else stays, recorded `low-contrast`: never a
-  // frame, an edge or a shadow.
+  // place nearby that has it, else stays, recorded `low-contrast`.
   photo: {
     minVisible: number;
-    sizes: Record<PhotoSize, number>;
-    minShortSide: number;
-    aspect: number;
     minContrast: number;
     ring: number;
   };
@@ -435,11 +460,17 @@ export const ISSEBYA_PRESET: Preset = {
     maxFaceShare: 0.4,
     photo: {
       minVisible: 0.7,
-      sizes: { large: 860, medium: 640, small: 460 },
-      minShortSide: 280,
-      aspect: 4 / 3,
       minContrast: 1.5,
       ring: 30,
+    },
+    card: {
+      widthShare: 1 / 3,
+      aspect: 4 / 5,
+      smaller: 0.7,
+      inset: 40,
+      stroke: 8,
+      ring: 60,
+      spots: CARD_SPOTS,
     },
   },
   keepCaps: { i: "I", "i'm": "I'm", "i've": "I've", "i'll": "I'll", "i'd": "I'd", ai: "AI" },

@@ -11,8 +11,9 @@ const RECORD: AiRecord = {
   format: 1,
   reel_id: REEL,
   version_id: VERSION,
-  prompt_version: "decide-14",
-  summary_prompt_version: "summary-7",
+  prompt_version: "reel-components@v1",
+  hook_prompt_version: "reel-hook@v1",
+  summary_prompt_version: "reel-version-summary@v1",
   calls: [],
 };
 

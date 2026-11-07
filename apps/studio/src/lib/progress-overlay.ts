@@ -10,7 +10,7 @@ import { formatOfflineSince } from "./worker-offline";
 // in this order: a failure the owner has not handled, the "New version N"
 // notice, the oldest live job's progress, else nothing.
 
-export type FailureAction = "try_again" | "change_request" | "keep_current";
+export type FailureAction = "try_again" | "keep_current";
 
 export type OverlayState =
   | {
@@ -156,10 +156,7 @@ function failureState(input: OverlayInput): OverlayState | null {
   const headline = unchanged
     ? "Nothing changed"
     : wordsFor(step ?? "", newest, versionsById).failed;
-  const reword = newest.kind === "change" && refused && Boolean(newest.request);
-  const actions: FailureAction[] = reword
-    ? ["change_request", "keep_current"]
-    : ["try_again", "keep_current"];
+  const actions: FailureAction[] = ["try_again", "keep_current"];
   return {
     kind: "failure",
     jobId: newest.id,

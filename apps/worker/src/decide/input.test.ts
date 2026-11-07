@@ -1,7 +1,7 @@
 import { ISSEBYA_PRESET, type Transcript, parseEdit, sentenceSpans } from "@edit-issebya/edit";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { decideInput, presetSummary } from "./input.ts";
+import { currentChoices, decideInput, presetSummary } from "./input.ts";
 
 const word = (id: string, text: string, start: number, end: number) => ({ id, text, start, end });
 
@@ -33,23 +33,21 @@ describe("sentenceSpans", () => {
 });
 
 describe("presetSummary", () => {
-  it("gives the transition library with what each kind is for and how often, never a card", () => {
+  it("gives the one transition kind a new answer may pick (numbered, the list) and what it is for", () => {
     expect(presetSummary(ISSEBYA_PRESET)).toMatchObject({
       transitions: [
-        { kind: "dim", description: ISSEBYA_PRESET.transitions.dim.description },
-        { kind: "panel", description: ISSEBYA_PRESET.transitions.panel.description },
         { kind: "numbered", description: ISSEBYA_PRESET.transitions.numbered.description },
       ],
-      transition_every_seconds: 9,
     });
-    expect(JSON.stringify(presetSummary(ISSEBYA_PRESET))).not.toMatch(/card|#|rgb/);
+    expect(JSON.stringify(presetSummary(ISSEBYA_PRESET))).not.toMatch(/card|panel|#|rgb|"dim"/);
   });
 
-  it("gives the pace (an extra every 3 s) and no per-reel behind count", () => {
+  it("gives no pace, no rate and no per-reel count: the layout engine owns how often things show", () => {
     const summary = presetSummary(ISSEBYA_PRESET);
-    expect(summary.extra_every_seconds).toBe(ISSEBYA_PRESET.pace.extraEverySeconds);
-    expect(summary.transition_every_seconds).toBe(ISSEBYA_PRESET.pace.transitionEverySeconds);
+    expect(summary).not.toHaveProperty("transition_every_seconds");
+    expect(summary).not.toHaveProperty("extra_every_seconds");
     expect(summary).not.toHaveProperty("behind");
+    expect(JSON.stringify(summary)).not.toMatch(/seconds|pace|\d\s*s\b/);
   });
 });
 
@@ -65,7 +63,7 @@ describe("decideInput sentences", () => {
       },
       transcript,
       preset: ISSEBYA_PRESET,
-      request: null,
+      hook: { text: "Hi" },
     });
     expect(input.sentences).toEqual([
       { from: "w1", to: "w2", text: "photos help" },
@@ -77,7 +75,7 @@ describe("decideInput sentences", () => {
   });
 });
 
-describe("decideInput library", () => {
+describe("decideInput", () => {
   const read = (path: string): unknown =>
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- committed fixtures
     JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
@@ -88,26 +86,44 @@ describe("decideInput library", () => {
     real,
   );
   if (!parsed.ok) throw new Error(parsed.reasons.join("; "));
-  const library = [
-    { id: "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c", description: "a kitchen", tags: [] },
-  ];
-  const inputWith = (photos: boolean, request: string | null) =>
+  const input = (photos: boolean) =>
     decideInput({
       current: parsed.edit,
       transcript: real,
       preset: ISSEBYA_PRESET,
-      library,
       forbid: { photos, bigWord: false },
-      request,
+      hook: { text: "Hi" },
     });
 
-  it("is emptied only when photos are forbidden and there is no request", () => {
-    expect(inputWith(true, null).library).toEqual([]);
-    expect(inputWith(true, "photos again please").library).toHaveLength(1);
-    expect(inputWith(false, null).library).toHaveLength(1);
-    expect(inputWith(true, null).behind_rules).toEqual({
+  it("gives the behind rules as data and no photo library: the components never see one", () => {
+    expect(input(true).behind_rules).toEqual({
       photos_forbidden: true,
       big_word_forbidden: false,
+    });
+    expect(input(false)).not.toHaveProperty("library");
+  });
+});
+
+describe("currentChoices", () => {
+  it("shows an older title as a plain accent and leaves out a transition of another kind", () => {
+    const shown = currentChoices({
+      accents: [{ from: "w1", to: "w2", title: true, wish: "top" }],
+      big_words: [{ word: "w3", wish: "big" }],
+      visuals: [{ from: "w4", to: "w5", description: "a messy desk" }],
+      transitions: [
+        { kind: "dim", from: "w6", to: "w7", key_from: "w6", wish: "slow" },
+        { kind: "numbered", from: "w8", to: "w9", key_from: "w8" },
+      ],
+      word_fixes: [],
+      hook: { text: "Hi" },
+    });
+    // The hook is not a choice of the components: it is never shown as one.
+    expect(shown).toEqual({
+      accents: [{ from: "w1", to: "w2" }],
+      big_words: [{ word: "w3" }],
+      visuals: [{ from: "w4", to: "w5", description: "a messy desk" }],
+      transitions: [{ kind: "numbered", from: "w8", to: "w9", key_from: "w8" }],
+      word_fixes: [],
     });
   });
 });

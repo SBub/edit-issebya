@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
-import { changeBlockedReason, normalizeRequest } from "@/lib/change-requests";
+import { changeBlockedReason } from "@/lib/change-requests";
 import { type ReelDetail, isReelId } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -54,8 +54,7 @@ async function insertJob(
   { supabase, userId }: { supabase: SupabaseClient; userId: string },
   row: {
     reel_id: string;
-    kind: "change" | "restore" | "start_over";
-    request?: string;
+    kind: "restore" | "start_over";
     restore_version_id?: string;
   },
 ): Promise<ChangeActionResult> {
@@ -65,7 +64,7 @@ async function insertJob(
     id: string;
   }>();
   if (error || !data) {
-    // Logged and captured without the request text.
+    // Logged and captured with the reel id only.
     await reportFailure(serverErrorCapture(), {
       message: `studio: ${row.kind} job not queued`,
       error: error ?? undefined,
@@ -76,25 +75,6 @@ async function insertJob(
     return { status: "failed" };
   }
   return { status: "queued", jobId: data.id };
-}
-
-// Queues a `change` job carrying the owner's words; the worker runs only the
-// decide step with them.
-export async function requestChange(input: {
-  reelId: string;
-  text: string;
-}): Promise<ChangeActionResult> {
-  if (typeof input.reelId !== "string" || !isReelId(input.reelId)) return { status: "failed" };
-  const normalized = normalizeRequest(input.text);
-  if (!normalized.ok) return { status: "invalid", reason: normalized.reason };
-
-  const open = await openReel(input.reelId);
-  if (!open.ok) return open.result;
-  return insertJob(open, {
-    reel_id: input.reelId,
-    kind: "change",
-    request: normalized.request,
-  });
 }
 
 // Queues a `restore` job going back to an earlier version of the same reel;

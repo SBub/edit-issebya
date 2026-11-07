@@ -1,47 +1,39 @@
-{
-  "answer": {
-    "accents": [
-      {
-        "from": "w0001",
-        "to": "w0004",
-        "title": true
-      },
-      {
-        "from": "w0005",
-        "to": "w0005",
-        "title": false
-      }
-    ],
-    "big_words": [],
-    "photos": [],
-    "transitions": [
-      {
-        "kind": "dim",
-        "from": "w0006",
-        "to": "w0008",
-        "key_from": "w0007"
-      }
-    ],
-    "word_fixes": [
-      {
-        "word": "w0010",
-        "text": "Studio"
-      }
-    ],
-    "hook": {
+[
+  {
+    "role": "hook",
+    "answer": {
       "text": "A short test for the real studio"
     },
-    "checklist": [],
-    "behind_rules": {
-      "photos": "keep",
-      "big_word": "keep"
+    "usage": {
+      "input_tokens": 300,
+      "output_tokens": 40,
+      "cost_usd": 0.0015
     },
-    "unexpressed": []
+    "model": "anthropic/claude-haiku-5.5"
   },
-  "usage": {
-    "input_tokens": 1500,
-    "output_tokens": 456,
-    "cost_usd": 0.0123
-  },
-  "model": "anthropic/claude-haiku-5.5"
-}
+  {
+    "answer": {
+      "accents": [
+        {
+          "from": "w0005",
+          "to": "w0005"
+        }
+      ],
+      "big_words": [],
+      "visuals": [],
+      "transitions": [],
+      "word_fixes": [
+        {
+          "word": "w0010",
+          "text": "Studio"
+        }
+      ]
+    },
+    "usage": {
+      "input_tokens": 1500,
+      "output_tokens": 456,
+      "cost_usd": 0.0123
+    },
+    "model": "anthropic/claude-haiku-5.5"
+  }
+]

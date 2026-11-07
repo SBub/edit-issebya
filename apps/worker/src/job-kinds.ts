@@ -5,8 +5,6 @@ import type { ClaimedJob } from "./queue.ts";
 export interface KindRunners {
   // The fixed pipeline, the preview copies, the first version and decide.
   process: () => Promise<void>;
-  // Only the decide step, with the owner's request.
-  change: (request: string) => Promise<void>;
   // Only the restore step, going back to this version.
   restore: (versionId: string) => Promise<void>;
   // The pipeline's hits and the render step, exporting this version.
@@ -18,19 +16,18 @@ export interface KindRunners {
   start_over: () => Promise<void>;
 }
 
-// Runs the work of one claimed job by its kind. A change without a request,
-// a restore or a render without a version, a describe_photo without a photo
-// and any other kind fail the job.
+// Runs the work of one claimed job by its kind. A change job (the change box
+// is removed, app_docs/change-requests.md), a restore or a render without a
+// version, a describe_photo without a photo and any other kind fail the job.
 export function runJobKind(
-  job: Pick<ClaimedJob, "kind" | "request" | "restore_version_id" | "version_id" | "photo_id">,
+  job: Pick<ClaimedJob, "kind" | "restore_version_id" | "version_id" | "photo_id">,
   runners: KindRunners,
 ): Promise<void> {
   switch (job.kind) {
     case "process":
       return runners.process();
     case "change":
-      if (!job.request) throw new Error("change job has no request");
-      return runners.change(job.request);
+      throw new Error("change jobs are no longer run: the change box is removed");
     case "restore":
       if (!job.restore_version_id) throw new Error("restore job has no version to go back to");
       return runners.restore(job.restore_version_id);

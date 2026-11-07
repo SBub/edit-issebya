@@ -5,6 +5,7 @@ import { ISSEBYA_PRESET } from "../preset.ts";
 import { type Edit, parseEdit } from "../schema.ts";
 import type { Transcript } from "../transcript.ts";
 import baselineShortSpeech from "../testdata/versions/baseline-short-speech.edit.json" with { type: "json" };
+import baselineShortSpeechHook from "../testdata/versions/baseline-short-speech-hook.edit.json" with { type: "json" };
 import rethinkBehind from "../testdata/versions/rethink-work-behind.edit.json" with { type: "json" };
 import rethinkEngine from "../testdata/versions/rethink-work-engine.edit.json" with { type: "json" };
 import rethinkFront from "../testdata/versions/rethink-work-front.edit.json" with { type: "json" };
@@ -35,6 +36,9 @@ function fixture(
 
 export const FIXTURES: Fixture[] = [
   fixture("baseline-short-speech", baselineShortSpeech, SHORT_SPEECH),
+  // Version 1 with only the committed hook: what the studio's preview spec
+  // shows as version 2 (every reel has a hook).
+  fixture("baseline-short-speech-hook", baselineShortSpeechHook, SHORT_SPEECH),
   fixture("rethink-work-hand", rethinkHand, RETHINK_WORK),
   fixture("rethink-work-behind", rethinkBehind, RETHINK_WORK),
   // The behind edit's choices placed by the layout engine.
