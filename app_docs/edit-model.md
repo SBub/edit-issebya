@@ -319,7 +319,10 @@ word" is now "spoken words, plus one written hook at the start".
 ### The layout engine's input
 
 - `src/engine-input.ts`: `EngineInput` is what the decide answer hands the layout: `accents`
-  (word ranges; an older version's title is one with `title: true`, a new answer never sets it), `big_words` (a list of `{ from, to }` word ids: one word, or
+  (word ranges; an older version's title is one with `title: true`, a new answer never sets it), `questions`
+  (QUESTION: word ranges the engine places as accents, with the ACCENT's look and timing for now; an overlay
+  of kind `accent` with id `question-N`, read back as a question by `choicesOf`; left out in an answer saved
+  before it, which reads as none), `big_words` (a list of `{ from, to }` word ids: one word, or
   two consecutive ones, equal for one; an older `{ word }` reads as one word; the same word allowed
   again), `visuals` (a word range and an optional `description`; a new answer names no photo), `transitions` (a kind, a word range and `key_from`, where the key phrase starts; a new answer gives `numbered` only), `word_fixes` (a word id and its text), each
   with an optional `wish` from `WISHES` (an older version's: a new answer carries none) (`top`, `bottom`, `left`, `right`, `behind`, `beside_head`,

@@ -195,6 +195,24 @@ describe("the layout engine's timing", () => {
     expect(two.end).toBeCloseTo(byId.get("w87")!.end + 1, 3);
   });
 
+  it("shows a question as an accent on its words: question-1, the accent's timing and look", async () => {
+    const { edit, spans, record } = await place({ questions: [{ from: "w29", to: "w29" }] });
+    expect(edit.tracks.overlays).toEqual([
+      expect.objectContaining({
+        id: "question-1",
+        kind: "accent",
+        words: ["w29"],
+        start: { word: "w29", offset: -LEAD },
+      }),
+    ]);
+    const span = spans.get("question-1")!;
+    expect(span.start).toBe(leadOf("w29"));
+    expect(span.end - span.start).toBeGreaterThanOrEqual(1.5 - 1e-6);
+    expect(
+      record.filter((note) => note.item === "question-1" && note.action === "dropped"),
+    ).toEqual([]);
+  });
+
   it("cuts an accent short when the next one needs the space, and records it", async () => {
     const { spans, record } = await place({
       accents: [
@@ -2044,6 +2062,18 @@ describe("every pick shown: the all placement", () => {
       expect(span.start).toBeGreaterThanOrEqual(byId.get(from)!.start - 0.25);
       expect(span.end).toBeGreaterThanOrEqual(byId.get(to)!.end - 1e-6);
     }
+  });
+
+  it("shows a question with the other picks in the all placement: never dropped", async () => {
+    const { edit, record, unplaced, spans } = await place(
+      { ...DENSE_TEN, questions: [{ from: "w30", to: "w31" }] },
+      { headTrack: hand.headTrack, preset: ISSEBYA_PRESET },
+    );
+    expect(edit.tracks.overlays.map((item) => item.id)).toContain("question-1");
+    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(unplaced).toEqual([]);
+    expect(spans.get("question-1")!.start).toBeLessThanOrEqual(byId.get("w30")!.start + 1e-6);
+    expect(parseEdit(edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
   });
 
   it("keeps the overlaps and says so in the record", async () => {

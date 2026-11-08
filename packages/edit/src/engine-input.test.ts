@@ -82,6 +82,24 @@ describe("choicesOf", () => {
     ]);
   });
 
+  it("reads a question overlay back as a question, not an accent", () => {
+    const edit = structuredClone(hand.edit);
+    edit.tracks.overlays.push({
+      id: "question-1",
+      kind: "accent",
+      start: { word: "w9" },
+      end: { word: "w10", edge: "end" },
+      words: ["w9", "w10"],
+    });
+    const choices = choicesOf(edit, hand.transcript, ISSEBYA_PRESET);
+    expect(choices.questions).toEqual([{ from: "w9", to: "w10" }]);
+    expect(choices.accents.map((accent) => accent.from)).not.toContain("w9");
+  });
+
+  it("reads an older version without questions as none", () => {
+    expect(choicesOf(hand.edit, hand.transcript, ISSEBYA_PRESET).questions).toEqual([]);
+  });
+
   it("reads an older answer's { word } big word as one word", () => {
     expect(bigWordSpan({ word: "w9" })).toEqual({ from: "w9", to: "w9" });
     expect(bigWordSpan({ from: "w9", to: "w10" })).toEqual({ from: "w9", to: "w10" });

@@ -524,6 +524,7 @@ export function runDecide({
       const dropped = record.filter((note) => note.action === "dropped").length;
       const what = [
         `version ${saved.number}: ${plural(counts.accents, "accent")}`,
+        ...(counts.questions > 0 ? [plural(counts.questions, "question")] : []),
         plural(counts.transitions, "transition"),
         ...(counts.hook ? ["hook set"] : []),
         `${plural(counts.wordsFixed, "word")} fixed`,

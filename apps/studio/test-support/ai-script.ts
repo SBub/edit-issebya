@@ -50,6 +50,7 @@ export async function unchangedAnswerScript(dir: string): Promise<string> {
   const reply = {
     answer: {
       accents: [],
+      questions: [],
       big_words: [],
       visuals: [],
       transitions: [],
@@ -79,12 +80,14 @@ async function roundReply({ visuals = [], bigWord, transitions }: AnswerRound = 
   const reply = structuredClone(decide) as {
     answer: Record<string, unknown> & {
       accents: unknown[];
+      questions: unknown[];
       visuals: unknown[];
       big_words: { from: string; to: string }[];
       transitions: unknown[];
     };
   };
   reply.answer.visuals = visuals;
+  reply.answer.questions = [];
   reply.answer.big_words = bigWord ? [{ from: bigWord, to: bigWord }] : [];
   // On the 2.7 s fixture clip the accent holds the screen for most of it: a
   // round with a behind item leaves the accent out, so that round's expected
@@ -147,6 +150,7 @@ function speechTenReply(round: AnswerRound) {
   return {
     answer: {
       accents: [],
+      questions: [],
       big_words: round.bigWord ? [{ from: round.bigWord, to: round.bigWord }] : [],
       visuals: round.visuals ?? [],
       transitions: round.transitions ?? [],

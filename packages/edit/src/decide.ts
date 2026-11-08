@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Backgrounds } from "./background.ts";
 import { type EngineNote, type FreeSentence, type UnplacedItem, placeEdit } from "./engine.ts";
-import type { EngineInput } from "./engine-input.ts";
+import { type EngineInput, QUESTION_PREFIX } from "./engine-input.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { wordsText } from "./layout.ts";
 import type { Measurer } from "./measure.ts";
@@ -111,9 +111,9 @@ function visualDescriptionSchema() {
 // The decide step's answer, meaning only ("B strict"): Claude names words by
 // their transcript ids, never a time, a position, a size or a spot. It is the
 // layout engine's input (`EngineInput`) for the components: `accents`
-// (ACCENT), `big_words` (BIGWORD), `visuals` (VISUAL: over its words, with a
-// short description of what it would show), `transitions` (LIST, kind
-// `numbered` only) and `word_fixes`. The written hook is not in it: its own
+// (ACCENT), `questions` (QUESTION), `big_words` (BIGWORD), `visuals` (VISUAL:
+// over its words, with a short description of what it would show),
+// `transitions` (LIST, kind `numbered` only) and `word_fixes`. The written hook is not in it: its own
 // call answers it (`hookAnswerSchemaFor`), and the decide step puts the text
 // beside these components when it places them. Built per reel from its
 // transcript. The refinement (dropped from the JSON Schema) refuses a phrase
@@ -134,6 +134,9 @@ export function decideAnswerSchemaFor(
     .strictObject({
       // ACCENT: a phrase worth stressing.
       accents: z.array(z.strictObject(phrase)),
+      // QUESTION: a question the speaker puts to the viewer, over its words; an
+      // answer saved before it has none.
+      questions: z.array(z.strictObject(phrase)).default([]),
       // BIGWORD: one or two consecutive plain words shown large behind the
       // speaker, from the first spoken word to the last (equal for one word);
       // the same word may come back.
@@ -153,6 +156,7 @@ export function decideAnswerSchemaFor(
     .superRefine((answer, ctx) => {
       const lists = {
         accents: answer.accents,
+        questions: answer.questions,
         visuals: answer.visuals,
         transitions: answer.transitions,
       };
@@ -330,6 +334,7 @@ export function editFromAnswer(
 
 export interface DecideCounts {
   accents: number;
+  questions: number;
   transitions: number;
   hook: boolean;
   wordsFixed: number;
@@ -347,7 +352,11 @@ export function decideCounts(edit: Edit, transcript: Transcript, preset: Preset)
     behindPhotos: behind.filter((item) => item.kind === "photo").length,
     behindVisuals: behind.filter((item) => item.kind === "visual").length,
     behindWords: behind.filter((item) => item.kind === "word").length,
-    accents: overlays.filter((item) => item.kind === "accent" && item.id !== "title").length,
+    accents: overlays.filter(
+      (item) =>
+        item.kind === "accent" && item.id !== "title" && !item.id.startsWith(QUESTION_PREFIX),
+    ).length,
+    questions: overlays.filter((item) => item.id.startsWith(QUESTION_PREFIX)).length,
     transitions: transitions.length,
     hook: overlays.some((item) => item.kind === "hook"),
     wordsFixed: captions.filter(

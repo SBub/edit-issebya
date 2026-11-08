@@ -358,6 +358,7 @@ describe("runDoctor", () => {
     const schema = ai.calls[0]!.schema as { properties?: object };
     expect(Object.keys(schema.properties ?? {})).toEqual([
       "accents",
+      "questions",
       "big_words",
       "visuals",
       "transitions",

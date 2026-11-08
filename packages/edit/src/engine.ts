@@ -2,14 +2,15 @@ import type { Backgrounds } from "./background.ts";
 import { bigWordCoveredShare, nearestSpot, photoBox } from "./behind.ts";
 import { clicksFor } from "./clicks.ts";
 import { contrastRatio, relativeLuminance } from "./contrast.ts";
-import type {
-  AccentChoice,
-  BigWordChoice,
-  EngineInput,
-  HookChoice,
-  TransitionChoice,
-  VisualChoice,
-  Wish,
+import {
+  type AccentChoice,
+  type BigWordChoice,
+  type EngineInput,
+  type HookChoice,
+  QUESTION_PREFIX,
+  type TransitionChoice,
+  type VisualChoice,
+  type Wish,
 } from "./engine-input.ts";
 import { expand, overlaps, placeBox } from "./engine-space.ts";
 import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from "./head-track.ts";
@@ -184,6 +185,11 @@ function at(seconds: number): string {
 
 function quote(text: string): string {
   return JSON.stringify(text.length > 40 ? `${text.slice(0, 37)}...` : text);
+}
+
+// What a note calls an accent-look item: the title, a QUESTION or an accent.
+function accentNoun(accent: AccentChoice): string {
+  return accent.title ? "the title" : accent.question ? "question" : "accent";
 }
 
 // A contrast ratio in the record: one decimal, never rounded up to a
@@ -1126,13 +1132,15 @@ function placeOnce(
     return { start: ms(startAt), end };
   }
 
+  // An ACCENT (`accents[i]`) or a QUESTION (`questions[i]`, `ref`): the same
+  // placement, timing and look.
   function accentExtra(
     accent: AccentChoice,
     index: number,
     id: string,
     notes: EngineNote[] | null,
+    ref = `accents[${index}]`,
   ): Extra | null {
-    const ref = `accents[${index}]`;
     const shift = notes ? room.shift.get(ref) : undefined;
     const wordStart = word(shift?.word ?? accent.from).start;
     const own =
@@ -1160,7 +1168,7 @@ function placeOnce(
           item: id,
           action: "dropped",
           rule: "accent-time",
-          reason: `accent ${quote(accentText(accent))} starts too close to the end to show ${preset.accent.minSeconds} s`,
+          reason: `${accentNoun(accent)} ${quote(accentText(accent))} starts too close to the end to show ${preset.accent.minSeconds} s`,
         });
         return null;
       }
@@ -1170,7 +1178,7 @@ function placeOnce(
         item: id,
         action: "clamped-to-end",
         rule: "accent-time",
-        reason: `accent ${quote(accentText(accent))} shows from ${at(start)} to ${at(end)}: the reel ends too soon to start it at its word`,
+        reason: `${accentNoun(accent)} ${quote(accentText(accent))} shows from ${at(start)} to ${at(end)}: the reel ends too soon to start it at its word`,
       });
     }
     return {
@@ -1371,6 +1379,15 @@ function placeOnce(
     const extra = accentExtra(accent, index, accentIds[index]!, record);
     if (extra) extras.push(extra);
   });
+  // A QUESTION: an accent placed the same way, under its own id (`question-N`).
+  const questions = input.questions ?? [];
+  const questionIds = questions.map((_, index) => `${QUESTION_PREFIX}${index + 1}`);
+  questions.forEach((question, index) => {
+    if (room.removed.has(`questions[${index}]`)) return;
+    const accent = { ...question, question: true };
+    const extra = accentExtra(accent, index, questionIds[index]!, record, `questions[${index}]`);
+    if (extra) extras.push(extra);
+  });
   input.big_words.forEach((choice, index) => {
     if (room.removed.has(`big_words[${index}]`)) return;
     const extra = bigWordExtra(choice, index, bigWordId(index), record);
@@ -1391,7 +1408,7 @@ function placeOnce(
         item: accentIds[index]!,
         action: "wish-not-kept",
         rule: "wish",
-        reason: `${accent.title ? "the title" : "accent"} ${quote(wordsText(range(accent.from, accent.to), transcript, preset))} cannot move ${accent.wish === "slow" ? "slower" : "longer"}: only a transition can`,
+        reason: `${accentNoun(accent)} ${quote(wordsText(range(accent.from, accent.to), transcript, preset))} cannot move ${accent.wish === "slow" ? "slower" : "longer"}: only a transition can`,
       });
     }
   }
@@ -2340,7 +2357,7 @@ function placeOnce(
     if (extra.kind === "hook") return `the hook ${quote(extra.hook!.text)}`;
     if (extra.kind === "accent") {
       const accent = extra.accent!;
-      return `${accent.title ? "the title" : "accent"} ${quote(accentText(accent))}`;
+      return `${accentNoun(accent)} ${quote(accentText(accent))}`;
     }
     if (extra.kind === "big_word") {
       return `the big word ${quote(bigWordText(extra.word!, extra.wordTo!))}`;
@@ -2484,7 +2501,7 @@ function placeOnce(
               ? { x: safe.left, y: safe.top }
               : null);
           if (!spot) continue;
-          const label = `${accent.title ? "the title" : "accent"} ${quote(text)}`;
+          const label = `${accentNoun(accent)} ${quote(text)}`;
           // Measured once its place and size are known; the notes on the
           // place itself come first.
           const notes = record.length;
@@ -2566,7 +2583,7 @@ function placeOnce(
       item: extra.id,
       action: "dropped",
       rule: "no-room",
-      reason: `${accent.title ? "the title" : "accent"} ${quote(text)} found no free place from ${at(span.start)} to ${at(span.end)}, even at ${sizes.at(-1)} px in two lines`,
+      reason: `${accentNoun(accent)} ${quote(text)} found no free place from ${at(span.start)} to ${at(span.end)}, even at ${sizes.at(-1)} px in two lines`,
     });
     return false;
   }
@@ -3201,7 +3218,7 @@ function placeOnce(
   const outOverlays: OverlayItem[] = [];
   const hookItem = overlays.get(HOOK_ID);
   if (hookItem) outOverlays.push(hookItem);
-  for (const id of accentIds) {
+  for (const id of [...accentIds, ...questionIds]) {
     const item = overlays.get(id);
     if (!item) continue;
     const span = accepted.find((entry) => entry.extra.id === id)!;
@@ -3266,6 +3283,14 @@ function placeOnce(
       kind: "accent" as const,
       from: accent.from,
       to: accent.to,
+    })),
+    // A question is an accent-look item in the unplaced list too.
+    ...questions.map((question, index) => ({
+      ref: `questions[${index}]`,
+      id: questionIds[index]!,
+      kind: "accent" as const,
+      from: question.from,
+      to: question.to,
     })),
     ...input.big_words.map((choice, index) => ({
       ref: `big_words[${index}]`,

@@ -16,7 +16,8 @@ asks the model (Claude Haiku 5.5 through OpenRouter, the Vercel AI SDK, no tools
 below) twice, in order. First the written hook (HOOK), its own call (role `hook`, prompt `reel-hook`, see
 "Prompts"). Then the components: the accent
 phrases (ACCENT), the big words behind the speaker (BIGWORD), the VISUALS (empty frames, each with a short
-description of what it would show), the numbered list items (LIST), and the misheard words to fix,
+description of what it would show), the questions the speaker puts to the viewer (QUESTION), the numbered
+list items (LIST), and the misheard words to fix,
 with the hook text given to them as data (role `decide`). Claude answers in meaning only: word ids and
 short descriptions, never a time, a position, a size or a spot. The decide step reads no
 photo library (for now): a visual is a frame, not a photo choice. Each answer must match its JSON Schema made for this reel (the hook's
@@ -40,12 +41,13 @@ runs, and both take the same path.
 
 The model names each component by its answer list (prompt `reel-components`):
 
-| Component | Answer field  | What it is                                                                               |
-| --------- | ------------- | ---------------------------------------------------------------------------------------- |
-| ACCENT    | `accents`     | a phrase worth stressing, `{ "from", "to" }`                                             |
-| BIGWORD   | `big_words`   | one or two consecutive plain words shown large behind the speaker, `{ "from", "to" }`    |
-| VISUAL    | `visuals`     | an empty frame over its words, `{ "from", "to", "description" }` (8 words at most)       |
-| LIST      | `transitions` | a numbered list item over its phrase, `{ "kind": "numbered", "from", "to", "key_from" }` |
+| Component | Answer field  | What it is                                                                                                          |
+| --------- | ------------- | ------------------------------------------------------------------------------------------------------------------- |
+| ACCENT    | `accents`     | a phrase worth stressing, `{ "from", "to" }`                                                                        |
+| QUESTION  | `questions`   | a question the speaker puts to the viewer, often rhetorical, `{ "from", "to" }`; shown with the ACCENT look for now |
+| BIGWORD   | `big_words`   | one or two consecutive plain words shown large behind the speaker, `{ "from", "to" }`                               |
+| VISUAL    | `visuals`     | an empty frame over its words, `{ "from", "to", "description" }` (8 words at most)                                  |
+| LIST      | `transitions` | a numbered list item over its phrase, `{ "kind": "numbered", "from", "to", "key_from" }`                            |
 
 `word_fixes` (`{ "word", "text" }`) is not a component: it fixes a misheard word on its caption.
 HOOK is not one either: it is the hook call's answer (`{ "text" }`, below), never in the components'
@@ -68,6 +70,7 @@ placed first):
 ```json
 {
   "accents": [{ "from": "w0001", "to": "w0004" }],
+  "questions": [{ "from": "w0006", "to": "w0009" }],
   "big_words": [{ "from": "w0008", "to": "w0008" }],
   "visuals": [{ "from": "w0020", "to": "w0027", "description": "a messy desk at night" }],
   "transitions": [{ "kind": "numbered", "from": "w0010", "to": "w0011", "key_from": "w0011" }],
@@ -504,7 +507,7 @@ else after the last word that keeps it within 60 characters. The script column i
 sits on the line where its words start; a line with several picks prints one row per pick, the
 script on the first row and the rest with an empty script column. The picks
 use the owner's editor words: `HOOK` (an accent marked as the title), `ACCENT` (any other accent),
-`BIGWORD`, `VISUAL "<description>"` (a visual on its words, the words only when the span is not the whole line; an older answer's photo prints `VISUAL photo <name>`), `LIST` (numbered transitions, on single words of one
+`QUESTION "<words>"` (a question the speaker puts to the viewer), `BIGWORD`, `VISUAL "<description>"` (a visual on its words, the words only when the span is not the whole line; an older answer's photo prints `VISUAL photo <name>`), `LIST` (numbered transitions, on single words of one
 line grouped as one pick); a transition of any other kind (`dim`, `panel`, ...) is an accent
 printed with its kind in brackets, such as `ACCENT whole line (dim)`. `whole line` shows when a
 pick is exactly its line. With `--table` it prints instead, for every version with an AI record,
@@ -513,7 +516,7 @@ order, `big-word-N`, `visual-N` (an older answer's photo keeps `photo-N`), `tran
 not renamed), what Claude proposed in the same words (`hook "..."` for the title accent, `accent
 "..."`, `bigword "..."`, `visual "..." on "..."`, `list "..."` for numbered transitions,
 `accent "..." (dim)` for the others), `kept` (no engine note), `changed` (placed with notes) or
-`dropped` (its last note is `dropped` or `removed`) and the notes as `action (rule)`; then the counts, the word fixes and the notes on other items (captions)
+`dropped` (its last note is `dropped` or `removed`) and the notes as `action (rule)`; a question is `question "..."` with the engine id `question-N` (its own answer order, not the accents' count); then the counts, the word fixes and the notes on other items (captions)
 by action and rule. It reads the `versions` row, the AI record and the transcript with the
 worker's own variables and writes nothing (`src/trace.ts`, `src/decision-trace.ts`).
 
@@ -529,7 +532,7 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
 
 - At most two hook calls and two decide calls (one retry each); never an unbounded loop.
 - Claude never writes times, positions or sizes: the answer is meaning only (word ids, visual descriptions), every object closed; the layout places everything.
-- Claude writes only the new vocabulary: ACCENT (`accents`), BIGWORD (`big_words`), VISUAL (`visuals`, each with its description), LIST (`transitions`, kind `numbered` only) and `word_fixes` in the components' call;
+- Claude writes only the new vocabulary: ACCENT (`accents`), QUESTION (`questions`), BIGWORD (`big_words`), VISUAL (`visuals`, each with its description), LIST (`transitions`, kind `numbered` only) and `word_fixes` in the components' call;
   the hook (`text`) in its own call, never in the components'. A title,
   a `dim`, `panel` or `card` transition, a `wish`, a checklist, a behind rule or an unexpressed list is
   refused by the schema.
@@ -564,7 +567,7 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
   version writes `forbid` as null. A stored forbid is respected: no photo or big word it switches off.
 - Never propose a photo or big word the reel's stored forbids switch off.
 - Never save a version with a `behind` item before its masks are stored.
-- Never cap the components' answer lists (accents, big words, visuals, transitions, word fixes) or any per reel count (in the preset, the prompt or the answer schema): how many is the editor's choice. No list has a `max` or a `maxItems`. A limit is added only when a real case shows the need, derived from that case. A visual is a frame with a description of at most 8 words.
+- Never cap the components' answer lists (accents, questions, big words, visuals, transitions, word fixes) or any per reel count (in the preset, the prompt or the answer schema): how many is the editor's choice. No list has a `max` or a `maxItems`. A limit is added only when a real case shows the need, derived from that case. A visual is a frame with a description of at most 8 words.
 - Transitions never set the rhythm: a numbered list item is only ever a counted list, about one per
   `preset.pace.transitionEverySeconds` (the engine's pace, never sent to the model); in `clean` the engine
   drops the rest, and in `all` every transition the answer names shows.

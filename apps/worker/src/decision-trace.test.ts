@@ -262,6 +262,26 @@ describe("trace heading", () => {
   });
 });
 
+describe("decision trace of a QUESTION", () => {
+  it("prints the question in the table as question-N on its words, kept when the engine kept it", () => {
+    const trace = buildTrace({ questions: [{ from: "w1", to: "w2" }] }, [], words);
+    expect(trace.rows).toEqual([
+      expect.objectContaining({
+        ref: "questions[0]",
+        item: "question-1",
+        proposed: 'question "content is"',
+        outcome: "kept",
+      }),
+    ]);
+  });
+
+  it("prints QUESTION with its words in the script view, and an older answer has none", () => {
+    const text = formatScript("v4", { questions: [{ from: "w1", to: "w2" }] }, words);
+    expect(text).toContain('QUESTION "content is"');
+    expect(formatScript("v4", {}, words)).not.toContain("QUESTION");
+  });
+});
+
 describe("decision trace of a VISUAL", () => {
   it("prints the description in the table, on its words, with the engine id visual-N", () => {
     const trace = buildTrace(

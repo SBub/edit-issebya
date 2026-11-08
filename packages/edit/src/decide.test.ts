@@ -119,10 +119,11 @@ describe("decideJsonSchema", () => {
     });
   }
 
-  it("has the components only: ACCENT, BIGWORD, VISUAL, LIST and the word fixes (no hook)", () => {
+  it("has the components only: ACCENT, QUESTION, BIGWORD, VISUAL, LIST and the word fixes (no hook)", () => {
     const schema = decideJsonSchema(CLEAN_PRESET, hand.transcript);
     expect(Object.keys(schema.properties as Json)).toEqual([
       "accents",
+      "questions",
       "big_words",
       "visuals",
       "transitions",
@@ -130,6 +131,7 @@ describe("decideJsonSchema", () => {
     ]);
     expect(schema.required).toEqual([
       "accents",
+      "questions",
       "big_words",
       "visuals",
       "transitions",
@@ -520,6 +522,33 @@ describe("the visual and the stored forbids in the decide answer", () => {
   });
 });
 
+describe("QUESTION in the components answer", () => {
+  it("takes as many questions as the editor chooses, the same phrase again too", () => {
+    const many = answer((a) => {
+      a.questions = [
+        { from: "w0005", to: "w0005" },
+        { from: "w0009", to: "w0010" },
+        { from: "w0005", to: "w0005" },
+      ];
+    });
+    expect(parse(many).ok).toBe(true);
+    expect(parse(many)).toMatchObject({ ok: true, answer: { questions: many.questions } });
+  });
+
+  it("refuses a question that ends before it starts, with the path questions.N.to", () => {
+    expect(reasons(answer((a) => (a.questions = [{ from: "w0006", to: "w0005" }])))).toMatch(
+      /^questions\.0\.to: ends on w0005, before it starts on w0006$/m,
+    );
+  });
+
+  it("reads an answer saved before QUESTION as no questions", () => {
+    const old = answer();
+    expect(old).not.toHaveProperty("questions");
+    const parsed = parse(old);
+    expect(parsed).toMatchObject({ ok: true, answer: { questions: [] } });
+  });
+});
+
 describe("editFromAnswer", () => {
   const place = async (json: Json, current = short.edit) => {
     const parsed = parse(json);
@@ -640,9 +669,18 @@ describe("decideCounts and usedFreeField", () => {
       start: { word: "w0006" },
       end: { word: "w0008", edge: "end" },
     });
+    // A question is counted as a question, not an accent.
+    tracks.overlays.push({
+      id: "question-1",
+      kind: "accent",
+      start: { word: "w0003" },
+      end: { word: "w0003", edge: "end" },
+      words: ["w0003"],
+    });
     const edit = { ...short.edit, tracks };
     expect(decideCounts(edit, short.transcript, CLEAN_PRESET)).toEqual({
       accents: 1,
+      questions: 1,
       transitions: 1,
       hook: true,
       wordsFixed: 1,

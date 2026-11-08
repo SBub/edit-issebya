@@ -11,6 +11,8 @@ import { type EngineNote, bigWordSpan } from "@edit-issebya/edit";
 // the VISUAL list of a new answer.
 export interface TracedAnswer {
   accents?: { from: string; to: string; title?: boolean; wish?: string }[];
+  // A QUESTION: a question the speaker puts to the viewer (none in an older answer).
+  questions?: { from: string; to: string }[];
   // A BIGWORD: one or two words (`from` to `to`); an older answer's `word` is one word.
   big_words?: ({ from: string; to: string; wish?: string } | { word: string; wish?: string })[];
   visuals?: { from: string; to: string; description?: string }[];
@@ -72,6 +74,13 @@ function proposals(
       ref: `accents[${index}]`,
       item: accent.title ? "title" : `accent-${++accentCount}`,
       proposed: `${accent.title ? "hook" : "accent"} "${say(accent.from, accent.to)}"${wish(accent.wish)}`,
+    });
+  });
+  (answer.questions ?? []).forEach((question, index) => {
+    out.push({
+      ref: `questions[${index}]`,
+      item: `question-${index + 1}`,
+      proposed: `question "${say(question.from, question.to)}"`,
     });
   });
   (answer.big_words ?? []).forEach((big, index) => {
@@ -290,6 +299,9 @@ export function formatScript(
   const add = (from: string, pick: string) => picks[lineOf.get(from) ?? 0]?.push(pick);
   for (const accent of answer.accents ?? []) {
     add(accent.from, `${accent.title ? "HOOK" : "ACCENT"} ${span(accent.from, accent.to)}`);
+  }
+  for (const question of answer.questions ?? []) {
+    add(question.from, `QUESTION "${clean(wordsBetween(words, question.from, question.to, 40))}"`);
   }
   for (const big of answer.big_words ?? []) {
     const span = bigWordSpan(big);

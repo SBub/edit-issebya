@@ -5,10 +5,11 @@ import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
 // THE LAYOUT ENGINE'S INPUT. Claude (the decide step) answers in meaning only:
-// which words are accents, which words are big words behind, which words a
-// VISUAL sits on (an empty frame, with a short description of what it would
-// show), which phrase a transition carries, which misheard words to fix, and
-// one short written hook line for the start.
+// which words are accents, which words are questions the speaker puts to the
+// viewer, which words are big words behind, which words a VISUAL sits on (an
+// empty frame, with a short description of what it would show), which phrase
+// a transition carries, which misheard words to fix, and one short written
+// hook line for the start.
 // Everything refers to the transcript by word id; there
 // are no times, positions, sizes or spots. A `wish` is a placement word the
 // owner used in a request, forwarded from this fixed list; never invented.
@@ -39,6 +40,17 @@ export interface AccentChoice {
   // sets it, so it is left out.
   title?: boolean;
   wish?: Wish;
+  // Set by the engine on a QUESTION it places with the ACCENT's look and timing
+  // (its overlay id is `question-N`); never in an answer.
+  question?: boolean;
+}
+
+// A QUESTION: a question the speaker puts to the viewer over the words `from`
+// to `to`, often rhetorical. It is placed as an ACCENT (the same look and
+// timing), so it has no wish and no title.
+export interface QuestionChoice {
+  from: string;
+  to: string;
 }
 
 // A BIGWORD: one plain word, or two consecutive ones, shown large behind the
@@ -90,6 +102,8 @@ export interface HookChoice {
 
 export interface EngineInput {
   accents: AccentChoice[];
+  // Left out (or none) for an answer saved before QUESTION: no questions.
+  questions?: QuestionChoice[];
   big_words: BigWordChoice[];
   visuals: VisualChoice[];
   transitions: TransitionChoice[];
@@ -97,6 +111,9 @@ export interface EngineInput {
   // None (null or left out): no hook.
   hook?: HookChoice | null;
 }
+
+// The overlay id prefix of a QUESTION (`question-1`, ...): an accent overlay.
+export const QUESTION_PREFIX = "question-";
 
 // The ids from `from` to `to`, in transcript order.
 function range(from: string, to: string, transcript: Transcript): string[] {
@@ -128,6 +145,7 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
   const ends = (ids: readonly string[]) => ({ from: ids[0]!, to: ids.at(-1)! });
 
   const accents: AccentChoice[] = [];
+  const questions: QuestionChoice[] = [];
   let hook: HookChoice | null = null;
   for (const overlay of edit.tracks.overlays) {
     if (overlay.kind === "hook") {
@@ -135,7 +153,10 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
       continue;
     }
     const ids = overlay.words ?? under(overlay);
-    if (ids.length > 0) accents.push({ ...ends(ids), title: overlay.id === "title" });
+    if (ids.length === 0) continue;
+    // A QUESTION is an accent overlay with a `question-` id.
+    if (overlay.id.startsWith(QUESTION_PREFIX)) questions.push(ends(ids));
+    else accents.push({ ...ends(ids), title: overlay.id === "title" });
   }
   const transitions: TransitionChoice[] = [];
   for (const transition of edit.tracks.transitions) {
@@ -190,5 +211,5 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
       word_fixes.push({ word: caption.words[0]!, text: caption.text });
     }
   }
-  return { accents, big_words: bigWords, visuals, transitions, word_fixes, hook };
+  return { accents, questions, big_words: bigWords, visuals, transitions, word_fixes, hook };
 }
