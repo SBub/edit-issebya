@@ -28,7 +28,6 @@ interface Served {
   name: string;
   version: number;
   label?: string;
-  config?: { temperature?: unknown } | null;
 }
 
 function reasonOf(error: unknown): string {
@@ -83,9 +82,8 @@ async function ask(
 // network error, a timeout, a 5xx or a 429), the last copy this process fetched
 // is served for at most an hour after its fetch, with one warning line (name,
 // version, age; never the text). A copy never fetched fails. A 404, a 403, a
-// missing label, a malformed answer or a version with no temperature is not an
-// outage: it fails and drops the copy, so a deleted or relabelled prompt stops
-// running at once.
+// missing label or a malformed answer is not an outage: it fails and drops the
+// copy, so a deleted or relabelled prompt stops running at once.
 export function posthogPromptSource(
   env: Env = process.env,
   log: (line: string) => void = console.warn,
@@ -158,16 +156,11 @@ export function posthogPromptSource(
       if (served.label !== label) {
         return refuse(`the label is not on version ${served.version}`);
       }
-      const temperature = served.config?.temperature;
-      if (typeof temperature !== "number" || !Number.isFinite(temperature)) {
-        return refuse(`version ${served.version} has no temperature in its config`);
-      }
       const prompt: PromptText = {
         name,
         version: served.version,
         label,
         text: served.prompt,
-        temperature,
       };
       copies.set(name, { prompt, fetchedAt: Date.now() });
       return prompt;

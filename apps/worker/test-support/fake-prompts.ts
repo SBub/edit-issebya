@@ -4,27 +4,16 @@ import { type PromptSource, PromptUnavailable, type PromptText } from "../src/pr
 // wording (the owner's rule, AGENTS.md): each is one neutral line naming the
 // prompt, with the `{{variables}}` its call fills. Versions are 1; the label is
 // `production`, as the worker's default.
-const TEMPLATES: Record<string, { text: string; temperature: number }> = {
-  "reel-hook": {
-    text: "test prompt reel-hook {{transcript}} {{style}}",
-    temperature: 0.7,
-  },
+const TEMPLATES: Record<string, { text: string }> = {
+  "reel-hook": { text: "test prompt reel-hook {{transcript}} {{style}}" },
   "reel-components": {
     text: "test prompt reel-components {{current_choices}} {{transcript}} {{sentences}} {{preset}} {{behind_rules}} {{hook}}",
-    temperature: 0,
   },
-  "reel-editorial": {
-    text: "test prompt reel-editorial {{items}} {{free}}",
-    temperature: 0,
-  },
+  "reel-editorial": { text: "test prompt reel-editorial {{items}} {{free}}" },
   "reel-version-summary": {
     text: "test prompt reel-version-summary {{difference}} {{rules_changed}} {{photos}} {{engine_record}}",
-    temperature: 0,
   },
-  "photo-describe": {
-    text: "test prompt photo-describe",
-    temperature: 0,
-  },
+  "photo-describe": { text: "test prompt photo-describe" },
 };
 
 // The fake source: the placeholder for each known name, version 1, label

@@ -49,14 +49,13 @@ const MAX_RETRIES = 1;
 const MAX_OUTPUT_TOKENS = 16_000;
 
 // One structured call: the prompt (the one user message, no system prompt),
-// its identity (`<name>@v<version>`, from PostHog) and the temperature the
-// prompt carries, the JSON Schema the answer must match, and for describe_photo
-// the image.
+// its identity (`<name>@v<version>`, from PostHog), the JSON Schema the answer
+// must match, and for describe_photo the image. The model takes no temperature
+// setting, so a call sends none.
 export interface AiRequest {
   role: AiRole;
   prompt: string;
   promptVersion: string;
-  temperature: number;
   // Set when the prompt is a stale copy (PostHog did not answer): the span and the record say so.
   promptStale?: true;
   schema: Record<string, unknown>;
@@ -80,7 +79,6 @@ export interface AiExchange {
   model: string;
   prompt: string;
   promptVersion: string;
-  temperature: number;
   // Set only when the prompt was a stale copy.
   promptStale?: true;
   schema: Record<string, unknown>;
@@ -281,7 +279,6 @@ async function inChatSpan(
         "gen_ai.operation.name": "chat",
         "gen_ai.provider.name": "openrouter",
         "gen_ai.request.model": model,
-        "gen_ai.request.temperature": request.temperature,
         "edit_issebya.ai.role": request.role,
         "edit_issebya.ai.prompt_version": request.promptVersion,
         ...(request.promptStale ? { "edit_issebya.ai.prompt_stale": true } : {}),
@@ -362,7 +359,6 @@ export function modelRunner(options: ModelRunnerOptions): AiRunner {
           prompt:
             outputMode === "json" ? jsonModePrompt(request.prompt, request.schema) : request.prompt,
           promptVersion: request.promptVersion,
-          temperature: request.temperature,
           ...(request.promptStale ? { promptStale: true as const } : {}),
           schema: request.schema,
           image: request.image
@@ -411,7 +407,6 @@ export function modelRunner(options: ModelRunnerOptions): AiRunner {
                 : { prompt }),
               output,
               maxOutputTokens: MAX_OUTPUT_TOKENS,
-              temperature: request.temperature,
               maxRetries,
               timeout: timeoutMs,
               ...(request.signal ? { abortSignal: request.signal } : {}),

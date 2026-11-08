@@ -1057,7 +1057,6 @@ describe("runDecide spans", () => {
     expect(chat?.attributes).toEqual({
       "gen_ai.operation.name": "chat",
       "gen_ai.provider.name": "openrouter",
-      "gen_ai.request.temperature": 0,
       "edit_issebya.ai.prompt_version": "reel-components@v1",
       "gen_ai.request.model": AI_MODEL,
       "gen_ai.response.model": AI_MODEL,

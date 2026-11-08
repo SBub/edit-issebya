@@ -33,10 +33,9 @@ const input = decideInput({
 });
 
 describe("decidePrompt", () => {
-  it("names its prompt and carries the prompt's temperature", () => {
+  it("names its prompt", () => {
     const call = decidePrompt(TEMPLATE, input);
     expect(call.promptVersion).toBe("reel-components@v1");
-    expect(call.temperature).toBe(TEMPLATE.temperature);
   });
 
   it("is given the hook as data: the hook call's text, never in the current choices", () => {

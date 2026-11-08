@@ -6,11 +6,10 @@ import { describePrompt } from "./describe-prompt.ts";
 const TEMPLATE = await fakePromptSource().get(PROMPT_NAMES.describe);
 
 describe("describePrompt", () => {
-  it("sends the fetched prompt as it is, names its version and carries its temperature", () => {
+  it("sends the fetched prompt as it is and names its version", () => {
     const call = describePrompt(TEMPLATE);
     expect(call.prompt).toBe(TEMPLATE.text);
     expect(call.promptVersion).toBe("photo-describe@v1");
-    expect(call.temperature).toBe(TEMPLATE.temperature);
   });
 
   it("appends the refused answer's reasons on the retry, and only then", () => {

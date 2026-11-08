@@ -179,13 +179,13 @@ photoIds, behindLengths }`; without them stored versions keep parsing with the d
   `hookInput(transcript, preset)` gives the transcript's words in order (no ids, no times, no
   geometry) and the style (`hook_length` `{ words, characters }`, the glossary); `hookPrompt(template,
 input, reasons?)` fills them as fenced JSON and, on the retry, appends the refused reasons, and
-  returns the text with its identity and temperature (`PromptCall`). `hookGlossaryReasons` checks the
+  returns the text with its identity (`PromptCall`). `hookGlossaryReasons` checks the
   text for a heard form. The answer is `{ "text" }`; its length, its one line and its final stop are
   checked in code (`parseHookAnswer`).
 - `apps/worker/src/decide/prompt.ts`: the components' prompt (`reel-components`, fetched, see
   "Prompts"). `decidePrompt(template, input, reasons?)` fills the inputs as fenced JSON and, on the
   retry, appends the previous reasons, and returns the text with its identity (`prompt_version` on the
-  version row) and temperature.
+  version row).
 - `apps/worker/src/decide/input.ts`: the prompt input, with no time or geometry: `current_choices`
   (`currentChoices(choicesOf(...))`, in the answer's terms, no hook; a visual shows its description,
   a library photo of an older version is left out), the transcript as `{ id, text }`, `sentences`
@@ -233,7 +233,7 @@ round` after that when the editorial round ran, and `, started over from version
   `ai_*` columns (`aiMeasurements`).
 - `apps/worker/src/doctor-checks.ts`: the `openrouter key` line checks `OPENROUTER_API_KEY` is set (never
   printing it) and is the only AI line by default. The `posthog personal key` line and one `prompt` line
-  per prompt (`name@vN`, its label and temperature, never its text) come after it (see "Prompts"). Only `yarn workspace @edit-issebya/worker doctor --ai`
+  per prompt (`name@vN`, its label, never its text) come after it (see "Prompts"). Only `yarn workspace @edit-issebya/worker doctor --ai`
   adds the `ai structured call` check, one tiny real call with the real `decideJsonSchema` (the sample
   reply: empty lists), and the `ai hook call` check, one real call with the real `hookJsonSchema` and
   the fetched hook prompt (the sample transcript), so `doctor --ai` fails on a schema the provider rejects; the
@@ -331,23 +331,23 @@ prompt file exists (`apps/worker/src/prompts/no-prompt-files.test.ts`).
 - `reel-version-summary`: the version's title and summary from the saved difference (`version-summary.ts`).
 - `photo-describe`: a library photo's description and tags (`photos/describe-prompt.ts`).
 
-Each prompt is a template with its `{{variables}}` (the worker fills them as before) and a `config`
-object holding its `temperature`. The temperature is passed to every call of that prompt and recorded
-with the call (`temperature` in the AI record and on the `chat` span). The version is fetched with
+Each prompt is a template with its `{{variables}}` (the worker fills them as before) and nothing else
+the worker reads. The model takes no temperature setting (Haiku 5.5 on OpenRouter has none), so a
+prompt carries none and no call sends or records one. The version is fetched with
 the label, and its identity `<name>@v<version>` (for example `reel-components@v1`) is recorded in the
 version row (`prompt_version`, the components' identity), the AI record (`prompt_version`,
 `hook_prompt_version`, `summary_prompt_version`, and each call's `promptVersion`), a photo row
 (`prompt_version`) and the `chat` span (`edit_issebya.ai.prompt_version`).
 
-- `apps/worker/src/prompts/source.ts`: `PromptSource.get(name)` returns `{ name, version, label, text,
-temperature }`; `renderPrompt` fills a template and appends a retry's reasons, returning the call's
-  text, identity and temperature; `decidePrompts` fetches the four decide prompts together.
+- `apps/worker/src/prompts/source.ts`: `PromptSource.get(name)` returns `{ name, version, label, text }`;
+  `renderPrompt` fills a template and appends a retry's reasons, returning the call's text and
+  identity; `decidePrompts` fetches the four decide prompts together.
 - `apps/worker/src/prompts/posthog-source.ts`: the source, a plain `fetch` (no SDK) to
   `GET {POSTHOG_HOST}/api/projects/{POSTHOG_PROJECT_ID}/llm_prompts/name/{name}/?label={label}` with
   the header `Authorization: Bearer {POSTHOG_PERSONAL_API_KEY}`. The label is the query parameter of
   that route (the MCP `llma-prompt-get` takes `label` on the same prompt), so no resolve endpoint is
-  used. The answer's fields the worker reads are `prompt`, `name`, `version`, `label` and
-  `config.temperature`. It needs three settings: `POSTHOG_PERSONAL_API_KEY`, a personal API key with
+  used. The answer's fields the worker reads are `prompt`, `name`, `version` and `label`; a `config`
+  is ignored. It needs three settings: `POSTHOG_PERSONAL_API_KEY`, a personal API key with
   only the `llm_prompt:read` scope, restricted to this project (PostHog user settings, Personal API
   keys); `POSTHOG_PROJECT_ID`, the project's numeric id (PostHog project settings, General, not
   secret); and `POSTHOG_HOST`. No project token is sent or read: the URL carries none, and the source
@@ -361,14 +361,13 @@ temperature }`; `renderPrompt` fills a template and appends a retry's reasons, r
   (`prompts: <name>@v<n> served from the last copy, fetched <m> minutes ago; PostHog did not answer`),
   and `promptStale: true` on each call that uses it (the AI record's call, the `chat` span's
   `edit_issebya.ai.prompt_stale`). The copy lives in memory only: no disk, no log line beyond that
-  warning, no repository, and never its text. A prompt never fetched in this process fails. A 404, a
-  missing label or a version with no temperature is not an outage: it fails and drops the copy, so a
+  warning, no repository, and never its text. A prompt never fetched in this process fails. A 404 or a
+  missing label is not an outage: it fails and drops the copy, so a
   deleted or relabelled prompt stops running at once.
 - `apps/worker/src/prompts/select.ts`: `promptSourceOf(env)`, the placeholder source under
   `E2E_MOCK_PROMPTS=true`, else PostHog. One source per worker process (`process-job.ts`, `doctor.ts`).
 - Failure: a prompt that cannot be fetched (no key or token, PostHog unreachable with no copy from
-  the last 60 minutes, the prompt or its label missing, a label not on the version served, a version
-  with no temperature) is `PromptUnavailable`, a transient failure before any AI call, with the
+  the last 60 minutes, the prompt or its label missing, a label not on the version served) is `PromptUnavailable`, a transient failure before any AI call, with the
   message `prompts: <name> (label <label>) could not be fetched: <reason>` (`app_docs/failures.md`).
   There is no fallback text in code.
 - Tests: `apps/worker/test-support/fake-prompts.ts` holds placeholder templates (one neutral line each,
@@ -376,7 +375,7 @@ temperature }`; `renderPrompt` fills a template and appends a retry's reasons, r
   the E2E specs (`apps/studio/test-support/worker.ts`), so the E2E identities are `reel-*@v1` and
   `photo-describe@v1`.
 - `yarn workspace @edit-issebya/worker doctor` fetches each of the five prompts and prints its
-  identity, label and temperature (never its text), after the `posthog personal key` line.
+  identity and label (never its text), after the `posthog personal key` line.
 
 ## Configuration
 
@@ -418,7 +417,7 @@ word fixed, 1 dropped`; the AI record holding the hook, decide and summary calls
   `editorial.test.ts` (the one automatic round, a skip kept as the stored reason, the AI not available
   ending the round), `version-summary.test.ts` (the fill, the safeguard, the template) in `packages/edit`
   and in the worker. `prompts/posthog-source.test.ts` and `prompts/source.test.ts` (the fetch with a
-  stubbed `fetch`, the failures, the identity, the temperature; the last good copy within 60 minutes
+  stubbed `fetch`, the failures, the identity; the last good copy within 60 minutes
   on a network error or a 5xx, refused beyond it, never for a prompt never fetched or a 404; the source
   never reading `POSTHOG_PROJECT_TOKEN`), `prompts/no-prompt-files.test.ts`
   (no prompt file in the repository). `decision-trace.test.ts` (both old and new answers).
@@ -463,8 +462,8 @@ word fixed, 1 dropped`; the AI record holding the hook, decide and summary calls
   (the worker runs Node 24). The model is created with `usage: { include: true }` (OpenRouter's
   usage accounting: the response carries the cost) and `provider: { require_parameters: true }`
   (only endpoints that take every parameter sent, the structured output included).
-- `AiRunner.call({ role, prompt, promptVersion, temperature, schema, image?, signal?, trace? })`:
-  `generateText` at the prompt's temperature with the prompt as the one user message (the image beside it as a JPEG file part, sent as an `image_url` data
+- `AiRunner.call({ role, prompt, promptVersion, schema, image?, signal?, trace? })`:
+  `generateText` with no temperature (the model takes none) and the prompt as the one user message (the image beside it as a JPEG file part, sent as an `image_url` data
   URL), `Output.object` over `jsonSchema(wireSchema(schema))` (strict `json_schema`, named after
   the role), `maxOutputTokens` 16000, `maxRetries` 1 (the AI SDK's backoff: one more try on a
   network error, a 429 or a 5xx), `timeout` 180 s, and the job's signal. The SDK only parses the
@@ -490,11 +489,11 @@ word fixed, 1 dropped`; the AI record holding the hook, decide and summary calls
   cost OpenRouter reported (`providerMetadata.openrouter.usage.cost`), else the list price, and
   the model that answered (`response.modelId`). Summed per step into `steps.ai_*`; the version's
   `model` is the editor's (`usage.model`), never the summary's.
-- Every result carries its exchange (role, model, prompt as sent, its identity `promptVersion`, the
-  `temperature` it ran at, schema, image media type and size, output mode, raw answer text, finish
+- Every result carries its exchange (role, model, prompt as sent, its identity `promptVersion`,
+  schema, image media type and size, output mode, raw answer text, finish
   reason, usage, error).
 - The `chat` span (`app_docs/measurement.md`): `chat anthropic/claude-haiku-5.5`, provider
-  `openrouter`, with the prompt's identity and temperature.
+  `openrouter`, with the prompt's identity.
 
 ### The version's AI record
 
@@ -502,7 +501,7 @@ word fixed, 1 dropped`; the AI record holding the hook, decide and summary calls
 `<prefix>reels/<reel>/versions/<version id>.ai.json` (put-if-absent, under the id the version is
 then saved with): `{ format: 1, reel_id, version_id, prompt_version, hook_prompt_version,
 summary_prompt_version, calls }` (the three identities, `<name>@v<version>`), each call `{ attempt, role,
-model, prompt, promptVersion, temperature, schema, image, outputMode, answerText, finishReason, usage,
+model, prompt, promptVersion, schema, image, outputMode, answerText, finishReason, usage,
 error }` in order: the hook attempts first (role `hook`, attempt 1 and
 2), then the decide attempts (role `decide`, 1 and 2), the editorial rounds (1 on) and the summary. It is a `stored_files` row of kind `version`, step `decide` (`classifyKey`), so it is
 kept with the version and deleted with the reel. A decide that saves nothing (refused twice,

@@ -38,9 +38,8 @@ describe("the hook call's input", () => {
 describe("the hook prompt", () => {
   const call = hookPrompt(TEMPLATE, hookInput(transcript, ISSEBYA_PRESET));
 
-  it("names its prompt and carries the prompt's temperature", () => {
+  it("names its prompt", () => {
     expect(call.promptVersion).toBe("reel-hook@v1");
-    expect(call.temperature).toBe(TEMPLATE.temperature);
   });
 
   it("fills the transcript and the style as data, with no placeholder left", () => {

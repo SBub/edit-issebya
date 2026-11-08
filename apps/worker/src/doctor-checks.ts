@@ -330,7 +330,7 @@ async function promptChecks(deps: DoctorDeps): Promise<string[]> {
     lines.push(
       await check("prompt", async () => {
         const prompt = await deps.prompts().get(name);
-        return `${promptIdentity(prompt)} (label ${prompt.label}, temperature ${prompt.temperature})`;
+        return `${promptIdentity(prompt)} (label ${prompt.label})`;
       }),
     );
   }
@@ -348,7 +348,6 @@ async function aiChecks(deps: DoctorDeps): Promise<string[]> {
         role: "decide",
         prompt: "doctor probe: answer with the empty lists",
         promptVersion: "doctor-probe@v0",
-        temperature: 0,
         schema: doctorAiSchema(),
       });
       if (result.kind !== "answer") throw new Error(result.reason);

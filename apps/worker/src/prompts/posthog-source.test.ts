@@ -20,7 +20,6 @@ function served(overrides: Record<string, unknown> = {}) {
     name: "reel-hook",
     version: 2,
     label: "production",
-    config: { temperature: 0.7 },
     ...overrides,
   };
 }
@@ -64,7 +63,7 @@ describe("promptUrl", () => {
 });
 
 describe("the PostHog prompt source", () => {
-  it("fetches the prompt by name at the label, with the personal key as a bearer token, and returns its identity and temperature", async () => {
+  it("fetches the prompt by name at the label, with the personal key as a bearer token, and returns its identity", async () => {
     const { urls, headers } = answers(json(served()));
     const prompt = await posthogPromptSource(ENV).get("reel-hook");
     expect(prompt).toEqual({
@@ -72,7 +71,6 @@ describe("the PostHog prompt source", () => {
       version: 2,
       label: "production",
       text: "test prompt reel-hook {{transcript}} {{style}}",
-      temperature: 0.7,
     });
     expect(urls).toEqual([URL_OF_PROMPT]);
     expect(headers[0]?.Authorization).toBe("Bearer phx_test_personal");
@@ -136,10 +134,11 @@ describe("the PostHog prompt source", () => {
     );
   });
 
-  it("fails as unavailable when the version has no temperature", async () => {
-    answers(json(served({ config: { model: "x" } })));
-    const error = await failureOf(posthogPromptSource(ENV).get("reel-hook"));
-    expect(error.message).toContain("version 2 has no temperature in its config");
+  it("serves a version with no config, since a prompt carries no temperature", async () => {
+    answers(json(served()));
+    const prompt = await posthogPromptSource(ENV).get("reel-hook");
+    expect(prompt).toMatchObject({ version: 2, label: "production" });
+    expect(prompt).not.toHaveProperty("temperature");
   });
 
   it("fails as unavailable, not as an outage, on a malformed answer", async () => {
@@ -199,7 +198,6 @@ describe("the PostHog prompt source", () => {
       version: 2,
       label: "production",
       text: "test prompt reel-hook {{transcript}} {{style}}",
-      temperature: 0.7,
       stale: true,
     });
     vi.setSystemTime(Date.now() + 6 * 60_000);
@@ -269,7 +267,7 @@ describe("the PostHog prompt source", () => {
     expect(log).not.toHaveBeenCalled();
   });
 
-  it("fails a label that moved, and a version with no temperature, even with a copy held", async () => {
+  it("fails a label that moved, even with a copy held", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     answers(json(served()), json(served({ label: undefined })));
     const source = posthogPromptSource(ENV, vi.fn());

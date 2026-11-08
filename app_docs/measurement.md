@@ -186,7 +186,7 @@ model, `chat anthropic/claude-haiku-5.5` today (`app_docs/decide-step.md`, "The 
 
 - `gen_ai.operation.name` = `chat`, `gen_ai.provider.name` = `openrouter`,
   `gen_ai.request.model`: always.
-- `gen_ai.request.temperature`: the temperature the prompt carries in PostHog (`config.temperature`).
+- No temperature attribute: the model takes no temperature setting, so no call sends one (`app_docs/decide-step.md`, "The AI runner").
 - `gen_ai.response.model`: the model that answered (`response.modelId`).
 - `gen_ai.usage.input_tokens`: every input token OpenRouter reports, cache reads and writes
   included.

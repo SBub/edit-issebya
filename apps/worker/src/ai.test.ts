@@ -33,7 +33,6 @@ const REQUEST: AiRequest = {
   role: "decide",
   prompt: "x",
   promptVersion: "test-prompt@v1",
-  temperature: 0,
   schema: SCHEMA,
 };
 
@@ -152,11 +151,12 @@ describe("the OpenRouter request", () => {
     });
   });
 
-  it("sends the prompt's temperature with the call and records it with the prompt's identity", async () => {
+  it("sends no temperature: the request the model receives carries none, and the exchange records the prompt's identity only", async () => {
     const { runner, bodies } = capturing(ANSWERED);
-    const result = await runner.call({ ...REQUEST, temperature: 0.7 });
-    expect(bodies[0]!.temperature).toBe(0.7);
-    expect(result.exchange).toMatchObject({ promptVersion: "test-prompt@v1", temperature: 0.7 });
+    const result = await runner.call(REQUEST);
+    expect(bodies[0]).not.toHaveProperty("temperature");
+    expect(result.exchange).toMatchObject({ promptVersion: "test-prompt@v1" });
+    expect(result.exchange).not.toHaveProperty("temperature");
   });
 
   it("records a stale prompt copy on the exchange, and leaves the flag off a fresh one", async () => {
@@ -174,7 +174,6 @@ describe("the OpenRouter request", () => {
       role: "describe",
       prompt: "describe it",
       promptVersion: "test-prompt@v1",
-      temperature: 0,
       schema: SCHEMA,
       image: { data: jpeg, mediaType: "image/jpeg" },
     });
@@ -330,7 +329,6 @@ describe("fakeAiRunner", () => {
       model: AI_MODEL,
       prompt: "x",
       promptVersion: "test-prompt@v1",
-      temperature: 0,
       schema: SCHEMA,
       image: null,
       outputMode: "json_schema",
@@ -493,7 +491,6 @@ describe("the chat span of a call", () => {
       "gen_ai.operation.name": "chat",
       "gen_ai.provider.name": "openrouter",
       "gen_ai.request.model": AI_MODEL,
-      "gen_ai.request.temperature": 0,
       "edit_issebya.ai.prompt_version": "test-prompt@v1",
       "gen_ai.response.model": AI_MODEL,
       "gen_ai.usage.input_tokens": 100,

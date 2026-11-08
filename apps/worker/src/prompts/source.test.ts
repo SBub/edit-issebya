@@ -16,15 +16,13 @@ const TEMPLATE: PromptText = {
   version: 3,
   label: "production",
   text: "test prompt {{transcript}} and {{unknown}}",
-  temperature: 0.7,
 };
 
 describe("renderPrompt", () => {
-  it("fills the variables it is given, leaves the others, and names the version and temperature", () => {
+  it("fills the variables it is given, leaves the others, and names the version", () => {
     expect(renderPrompt(TEMPLATE, { transcript: "hello" })).toEqual({
       prompt: "test prompt hello and {{unknown}}",
       promptVersion: "reel-hook@v3",
-      temperature: 0.7,
     });
   });
 
@@ -47,7 +45,6 @@ describe("renderPrompt on a stale copy", () => {
     expect(renderPrompt({ ...TEMPLATE, stale: true }, { transcript: "x" })).toEqual({
       prompt: "test prompt x and {{unknown}}",
       promptVersion: "reel-hook@v3",
-      temperature: 0.7,
       promptStale: true,
     });
     expect(renderPrompt(TEMPLATE, { transcript: "x" })).not.toHaveProperty("promptStale");

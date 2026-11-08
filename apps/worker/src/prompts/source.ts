@@ -11,14 +11,13 @@ export const PROMPT_NAMES = {
   describe: "photo-describe",
 } as const;
 
-// One prompt as PostHog serves it: the template with its `{{variables}}`, the
-// version the label points to, and the temperature stored with that version.
+// One prompt as PostHog serves it: the template with its `{{variables}}` and
+// the version the label points to.
 export interface PromptText {
   name: string;
   version: number;
   label: string;
   text: string;
-  temperature: number;
   // Set only on a copy served after PostHog did not answer: the last copy this
   // process fetched, at most an hour old (app_docs/decide-step.md, "Prompts").
   stale?: true;
@@ -30,12 +29,11 @@ export interface PromptSource {
   get(name: string): Promise<PromptText>;
 }
 
-// A filled prompt as an AI call takes it: the text, the identity the call
-// records (`<name>@v<version>`) and the temperature the call runs at.
+// A filled prompt as an AI call takes it: the text and the identity the call
+// records (`<name>@v<version>`).
 export interface PromptCall {
   prompt: string;
   promptVersion: string;
-  temperature: number;
   // Set only when the prompt is a stale copy: the call records it.
   promptStale?: true;
 }
@@ -63,7 +61,7 @@ export function promptLabel(env: Record<string, string | undefined>): string {
 
 // Fills `{{name}}` placeholders with the values (a placeholder with no value is
 // left as it is), then, on a retry, appends the reasons the previous answer was
-// refused. The filled text, its identity and its temperature for the AI call.
+// refused. The filled text and its identity for the AI call.
 export function renderPrompt(
   template: PromptText,
   values: Record<string, string>,
@@ -86,7 +84,6 @@ export function renderPrompt(
   return {
     prompt,
     promptVersion: promptIdentity(template),
-    temperature: template.temperature,
     ...(template.stale ? { promptStale: true as const } : {}),
   };
 }

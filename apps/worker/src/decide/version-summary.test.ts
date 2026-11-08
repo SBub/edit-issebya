@@ -39,7 +39,6 @@ describe("summaryPrompt", () => {
   it("fills the difference and the record as fenced JSON data, and names its prompt", () => {
     const call = summaryPrompt(PROMPT, { diff: DIFF, record: RECORD });
     expect(call.promptVersion).toBe("reel-version-summary@v1");
-    expect(call.temperature).toBe(PROMPT.temperature);
     expect(call.prompt).toContain(JSON.stringify(DIFF.items, null, 2));
     expect(call.prompt).toContain(
       JSON.stringify(
