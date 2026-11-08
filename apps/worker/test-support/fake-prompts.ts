@@ -9,9 +9,6 @@ const TEMPLATES: Record<string, { text: string }> = {
   "reel-components": {
     text: "test prompt reel-components {{current_choices}} {{transcript}} {{sentences}} {{preset}} {{behind_rules}} {{hook}}",
   },
-  "reel-version-summary": {
-    text: "test prompt reel-version-summary {{difference}} {{rules_changed}} {{photos}} {{engine_record}}",
-  },
   "photo-describe": { text: "test prompt photo-describe" },
 };
 

@@ -16,7 +16,6 @@ import {
   build,
   decideCounts,
   decideJsonSchema,
-  diffEdits,
   editFromAnswer,
   glossaryChecks,
   headTrackSchema,
@@ -54,7 +53,6 @@ import type { ReelRules } from "./behind-rules.ts";
 import { decideInput } from "./input.ts";
 import { hookGlossaryReasons, hookInput, hookPrompt } from "./hook.ts";
 import { decidePrompt } from "./prompt.ts";
-import { writeVersionSummary } from "./version-summary.ts";
 
 export const STEP = "decide";
 // Reason lines per round in the failure tail (the "and k more" line
@@ -68,7 +66,7 @@ export interface DecideRun {
   blobs: VersionBlobs;
   keyPrefix: string;
   ai: AiRunner;
-  // The worker's prompt source: the three decide prompts are fetched at the
+  // The worker's prompt source: the two decide prompts are fetched at the
   // start of the step (before any AI call).
   prompts: PromptSource;
   scratchDir: string;
@@ -172,7 +170,7 @@ export function runDecide({
     name: STEP,
     async work(tool: Tool, stepContext: Context) {
       const reelId = reelOf(ctx.job);
-      // The four prompts, before anything is read or called: a PostHog failure
+      // The three prompts, before anything is read or called: a PostHog failure
       // is a transient step failure with no AI call made.
       const templates = await decidePrompts(prompts);
       // The current version and the inputs it reads (the first stage).
@@ -242,7 +240,7 @@ export function runDecide({
 
       let usage: AiUsage = NO_USAGE;
       // Every call as sent and answered, for the version's AI record: the hook
-      // calls first, then the decide attempts and the summary.
+      // calls first, then the decide attempts.
       const calls: AiRecordCall[] = [];
       // The written hook: its own call, before the components. Its answer is
       // refused only by its schema or the glossary, and it goes back once; a
@@ -475,32 +473,6 @@ export function runDecide({
         parent: stepContext,
       }).catch(permanentAfterAiCall);
       ctx.signal.throwIfAborted();
-      // The title and summary, written from what the saved edit changes.
-      const summary = await inSpan(
-        ctx.telemetry,
-        stepContext,
-        "decide.version_summary",
-        {},
-        async (span, context) => {
-          const made = await writeVersionSummary({
-            ai,
-            trace: { telemetry: ctx.telemetry, parent: context },
-            diff: { items: diffEdits(current, edit, transcript, preset), rules: [] },
-            record,
-            preset,
-            reelId,
-            signal: ctx.signal,
-            log,
-            prompt: templates.summary,
-          });
-          span.setAttribute("decide.summary_source", made.source);
-          return made;
-        },
-      );
-      ctx.signal.throwIfAborted();
-      // Its tokens and cost count, its model never replaces the editor's.
-      usage = addUsage(usage, { ...summary.usage, model: null });
-      if (summary.exchange) calls.push({ attempt: 1, ...summary.exchange });
       // The AI record first, under the new version's id: a version is never
       // saved without it.
       const versionId = newId();
@@ -510,7 +482,6 @@ export function runDecide({
         version_id: versionId,
         prompt_version: promptIdentity(templates.components),
         hook_prompt_version: promptIdentity(templates.hook),
-        summary_prompt_version: promptIdentity(templates.summary),
         calls,
       }).catch(permanentAfterAiCall);
       const saved = await inSpan(ctx.telemetry, stepContext, "decide.save_version", {}, () =>
@@ -523,8 +494,9 @@ export function runDecide({
             request: null,
             model: usage.model,
             promptVersion: promptIdentity(templates.components),
-            changeTitle: summary.title,
-            changeSummary: summary.summary,
+            // No title and no summary: a new version has no change box text.
+            changeTitle: null,
+            changeSummary: null,
             // The engine's build checks: empty unless the engine broke a rule.
             checks,
             // The answer has no free style field; a kept item may still carry one.

@@ -127,8 +127,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
 
   expect((await jobsOf(admin, reelId)).map((job) => job.status)).toEqual(["done"]);
   // The footage check runs first (ffprobe on the downloaded source); every
-  // fixed step's outputs were already stored: each is a hit, nothing ran. The
-  // summaries still matter (PostHog reads them), so they are checked in the rows.
+  // fixed step's outputs were already stored: each is a hit, nothing ran.
   const lines = (await stepLines(admin, reelId)).map((line) => `${line.name}: ${line.summary}`);
   expect(lines).toEqual([
     expect.stringMatching(/^check_footage: footage checked, /),
@@ -212,15 +211,14 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     .eq("name", "decide")
     .single();
   expect(decideRow).toMatchObject({
-    // The hook call (300 in, 40 out, 0.0015), the decide call and the summary
-    // call (the double replays the same decide reply, so the summary falls
-    // back to the template); the model stays the editor's.
-    ai_input_tokens: 3300,
-    ai_output_tokens: 952,
+    // The hook call (300 in, 40 out, 0.0015) and the decide call (1500 in,
+    // 456 out, 0.0123); the model stays the editor's.
+    ai_input_tokens: 1800,
+    ai_output_tokens: 496,
     ai_model: "anthropic/claude-haiku-5.5",
   });
-  // A float sum of the three calls' costs: compared to nine decimals.
-  expect(decideRow!.ai_cost_usd).toBeCloseTo(0.0261, 9);
+  // A float sum of the two calls' costs: compared to nine decimals.
+  expect(decideRow!.ai_cost_usd).toBeCloseTo(0.0138, 9);
 
   // Version 1: built from the preset alone; version 2: the AI's, its parent
   // version 1, now current. Both edits are in storage.
@@ -273,8 +271,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     rejected_reasons: [],
     r2_key: key(v1!.id),
   });
-  // The title and summary come from the code template over the saved
-  // difference (the hook added, captions moved, a word fixed).
+  // A new version saves no title and no summary: the change box is gone.
   expect(v2).toEqual({
     id: currentId,
     number: 2,
@@ -282,9 +279,8 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     request: null,
     parent_id: v1!.id,
     prompt_version: "reel-components@v1",
-    change_title: "Hook and captions changed",
-    change_summary:
-      'A hook now opens the reel: "A short test for the real studio". One word in the captions is fixed, it now reads "Studio".',
+    change_title: null,
+    change_summary: null,
     checks: [],
     used_free_field: false,
     unexpressed: [],
@@ -293,8 +289,8 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     r2_key: key(currentId),
   });
   versionKeys.push(v1!.r2_key as string, v2!.r2_key as string);
-  // Version 2's AI record beside its edit: the hook call, the decide and the
-  // summary calls, each with its prompt and raw answer.
+  // Version 2's AI record beside its edit: the hook call and the decide call,
+  // each with its prompt and raw answer.
   const aiRecordKey = `${CACHE_PREFIX}reels/${reelId}/versions/${String(currentId)}.ai.json`;
   const aiRecord = JSON.parse(new TextDecoder().decode((await storage.get(aiRecordKey))!)) as {
     version_id: string;
@@ -303,13 +299,12 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
   };
   expect(aiRecord.version_id).toBe(currentId);
   expect(aiRecord.hook_prompt_version).toBe("reel-hook@v1");
-  expect(aiRecord.calls.map((call) => call.role)).toEqual(["hook", "decide", "summary"]);
+  expect(aiRecord.calls.map((call) => call.role)).toEqual(["hook", "decide"]);
   expect(aiRecord.calls[0]!.answerText).toContain("A short test for the real studio");
   expect(aiRecord.calls[1]!.prompt).toContain("w0010");
   expect(aiRecord.calls.map((call) => call.promptVersion)).toEqual([
     "reel-hook@v1",
     "reel-components@v1",
-    "reel-version-summary@v1",
   ]);
   const manifest = await pipelineManifest();
   const retime = manifest.steps.find((step) => step.name === "retime")!;

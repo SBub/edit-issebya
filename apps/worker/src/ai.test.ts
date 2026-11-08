@@ -48,7 +48,7 @@ describe("the model", () => {
   it("is Claude Haiku 5.5 on OpenRouter for every role", () => {
     expect(AI_MODEL).toBe("anthropic/claude-haiku-5.5");
     expect(new Set(Object.values(AI_MODELS))).toEqual(new Set([AI_MODEL]));
-    expect(Object.keys(AI_MODELS).sort()).toEqual(["decide", "describe", "hook", "summary"]);
+    expect(Object.keys(AI_MODELS).sort()).toEqual(["decide", "describe", "hook"]);
   });
 
   it("is priced at 0.10 and 0.50 dollars per million tokens when OpenRouter reports no cost", () => {

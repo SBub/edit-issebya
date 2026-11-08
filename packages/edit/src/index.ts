@@ -128,19 +128,3 @@ export {
   saveVersion,
   versionKey,
 } from "./versions.ts";
-export {
-  type DiffAction,
-  type DiffEntry,
-  type DiffKind,
-  type EditDiff,
-  type RuleChange,
-  diffEdits,
-  ruleChanges,
-} from "./version-diff.ts";
-export {
-  type SummaryAnswer,
-  checkSummary,
-  parseSummaryAnswer,
-  summaryJsonSchema,
-  summaryTemplate,
-} from "./version-summary.ts";

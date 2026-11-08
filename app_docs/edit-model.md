@@ -19,9 +19,7 @@ every saved edit is an immutable version.
 HarfBuzz builder with its layout checks, and the version operations. It is TypeScript source with
 no build step and no platform API (no `fs`, no DOM, no clock, no randomness): the caller passes in
 everything that touches the platform (the HarfBuzz module and font bytes, storage, the database,
-new ids). It also holds `version-diff.ts` (`diffEdits` and `ruleChanges`, the structured
-difference between two edits) and `version-summary.ts` (the version summary's schema, safeguard
-and template), described in `app_docs/decide-step.md`. `apps/worker` consumes it now (the `first_version` step); `apps/studio` imports only its
+new ids). `apps/worker` consumes it now (the `first_version` step); `apps/studio` imports only its
 types until slice 9 brings the live preview.
 
 ## How it works
@@ -264,7 +262,6 @@ position, size, break_after?, start }`). The lead-in (words before `key_from`) i
   `text-overlap` skip hidden captions. `choicesOf` reads a transition with `words` back as its
   phrase, `key_from` and `wish`; an older one by its anchors with `key_from = from`; a stored `card`
   reads back as `dim`.
-- `src/version-diff.ts`, `src/version-summary.ts`: a changed phrase, motion speed or hold is named.
 
 ### The written hook
 
@@ -311,11 +308,8 @@ word" is now "spoken words, plus one written hook at the start".
   unreachable in practice).
 - Checks treat it as text: `safe-box`, `text-overlap`, `timing` (at least `accent.minSeconds`) and
   the glossary check (`glossaryChecks` reads every overlay's text).
-- `src/version-diff.ts` gives it its own kind (`hook`, keyed once per reel): added, changed (its
-  text), moved, retimed, removed. `src/version-summary.ts` names it (`hook`, `hooks`) and the
-  template writes `Hook added` / `A hook now opens the reel: "<its words>".`, `Hook changed` /
-  `The hook now reads "<its words>".` and `Hook removed` (a line naming a kind or carrying a time
-  is not quoted). The studio's tracks timeline shows it in its own `Hook` row
+- The written hook is an overlay with its own kind (`hook`, keyed once per reel). The studio's
+  tracks timeline shows it in its own `Hook` row
   (`app_docs/studio-reel-layout.md`).
 
 ### The layout engine's input
@@ -457,8 +451,7 @@ change`). Never a shadow or a colour change; recorded only, never a check. A car
   before. Example reason: `captions "the time we're living right now push ..." stay in place:
 contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an accent or big word:
   `stays in place`; for a caption over the face or the big word the reason ends with
-  `captions over the face are never moved` or `the big word is never moved`). The summary never
-  reads these notes (they are no change the viewer sees). Versions saved before the decision keep their stored `shadow`, and their
+  `captions over the face are never moved` or `the big word is never moved`). Versions saved before the decision keep their stored `shadow`, and their
   records the legacy rule `contrast-shadow`, action `shadowed`; both are left as they are. No text
   style anywhere (captions, accents, the title, big words, transition levels) adds a stroke or an
   outline (`-webkit-text-stroke`, `paint-order`, a text shadow).
@@ -469,9 +462,7 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
   it is dropped. Nothing else clicks: captions, accents, the hook and transitions stay silent. In
   time order, a click under the sound's gap (0.25 s) after the one kept before it is left out,
   with no note. The current version's sounds are never kept; a stored version's sounds are never
-  rewritten (it is never placed again). No switch to turn them off yet. `src/version-diff.ts`
-  never names a click on a photo or big word (`click-<id>` while that item is in the edit): it
-  comes and goes with its item, whose own entry says what changed.
+  rewritten (it is never placed again). No switch to turn them off yet.
 - Drops: an extra that fits nowhere is dropped and recorded. Captions are never dropped: with no
   free place even at the floor, they take the caption line over the face (recorded `covers-face`).
 - Record: a list of `EngineNote` `{ item, action, rule, reason }`, `action` one of `moved` (not its
@@ -485,7 +476,7 @@ is under captions or the face from 23.48 s to 26.23 s" }`. Rules: `caption-min`,
   (`photo-time`, `photo-layer`, `photo-size` and `photo-spot` in older records), `hidden-footage`, `one-extra`,
   `hook`, `hook-time`, `hook-spot`, `hook-size`, `hook-wrap`,
   `no-room`, `wish`, `contrast-spot`, `contrast-stay` (`contrast-shadow` in older records), `make-room`, and `editorial` in the records of versions decided before the editorial round was removed. Saved with the version (`versions.engine_record`) and logged by the worker in
-  one line per version; item 6 turns it into the summary.
+  one line per version.
 - Final checks: `runChecks` (below) runs on every placed edit. They must never fail on the engine's
   output; one that does is an engine bug, logged with the reel id while the version is still saved.
 
@@ -652,8 +643,7 @@ never fatal.
   the face covered last and never `as asked`, read back and placed the same again, dropped only on
   a reel too short for it. `src/decide.test.ts` (the answer field: required, null for none, the
   words and characters caps, one plain line, no wish or time, linked from the checklist, placed on
-  the fixture clip), `src/schema.test.ts` (the overlay kind), `src/version-diff.test.ts` and
-  `src/version-summary.test.ts` (added, changed, removed, quoted), `src/glossary.test.ts` (a heard
+  the fixture clip), `src/schema.test.ts` (the overlay kind), `src/glossary.test.ts` (a heard
   form in the hook). `src/checks.test.ts` also shows the new checks finding the old fixed-spot
   placement's faults in the hand-made versions.
 - Clicks: `src/clicks.test.ts` (one per photo and big word in time order, the first of two under
@@ -668,8 +658,7 @@ never fatal.
   and ratio kept across a reel; the white edge moved or kept with `low-contrast`; a requested card never
   covering the face (the `make-room` tail). `src/checks.test.ts` (a front photo over the face fails
   `behind-face`, `photo-hidden` over 30%, a stored spot photo never checked), `src/build.test.ts`
-  (a front-only page), `src/behind.test.ts`, `src/schema.test.ts`, `src/version-diff.test.ts` and
-  `src/version-summary.test.ts` (`front`, "in front of you"); the worker's
+  (a front-only page), `src/behind.test.ts`, `src/schema.test.ts` (`front`, "in front of you"); the worker's
   `cutout/spans.test.ts` and `cutout/ensure-cutouts.test.ts` (no mask for a front photo). The
   visual's own tests (`src/engine.test.ts`: a visual in front as a white frame, its contrast note,
   an old version's photo still rendered; `src/decide.test.ts`: the answer's schema).

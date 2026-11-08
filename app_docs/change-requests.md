@@ -56,7 +56,8 @@ first`, Try again being the progress overlay's, `app_docs/status.md`), `versionO
   going back, the owner's own words for an old change, `First version` (no parent), else `Styled
 automatically` (the decide run after the first version). `versionTitle`: `Back to vN` and `First
 version` as above; otherwise the version's `change_title`, falling back (versions saved before
-  titles) to the owner's request, else `Styled automatically`.
+  titles) to the owner's request, else the origin label. A version saved now has no title (null), so
+  it reads its origin label: `Styled automatically` for the automatic run and Start over.
 - `apps/studio/src/components/VersionList.tsx`: under the `Versions` heading, one muted intro line
   (`data-testid="versions-intro"`, `text-xs text-muted`, the heading's `px-3`), exactly
   `Your reel's history. Open a version to see what changed and bring it back` (no full stop),
@@ -70,17 +71,18 @@ version` as above; otherwise the version's `change_title`, falling back (version
   `aria-controls` naming the details, accessible name `Show details of vN`, Enter or Space toggles,
   the accent focus ring). The arrow opens the row's details in place (`version-details`, `hidden`
   while closed; several rows may be open): for an old change `What you asked` with the owner's words
-  (`version-origin`) and `What changed` with the summary (`version-summary`); for a going back
-  `Back to vN`; for the first version `First version` and its summary; then `Go back to this`,
+  (`version-origin`) and, only when the version has a stored summary, `What changed` with it
+  (`version-summary`); for a going back `Back to vN`; for the first version `First version`; then
+  `Go back to this`,
   never on the current version. The list scrolls inside the Versions area (desktop and the phone's
   Versions tab). The `Start over` button sits at the right of the heading (`StartOverButton.tsx`).
 - The rows run edge to edge of the Versions area (no box around the list, the area itself has no
   padding), separated by thin `divide-line` dividers, each with the area's `px-3` side padding; the
   heading and the status line carry the same `px-3`, so they line up with the row text.
 - No time or date shows in the list, in a row or its details: what changed matters, not when.
-- Texts: `change_title` and `change_summary` are written after layout from the saved difference,
-  by the summary call or its template (`app_docs/decide-step.md`); a going back saves the summary
-  `Back to how vN looked`. Old technical summaries stay as stored and show only inside the details.
+- Texts: a new version saves `change_title` and `change_summary` as null (owner decision 2026-11-08;
+  the summary call is removed, `app_docs/decide-step.md`). Versions saved before keep their stored
+  title and summary, which show as before; a going back saves the summary `Back to how vN looked`.
 - `apps/studio/src/components/LiveReel.tsx`: reads `versions` with the snapshot (`VERSION_LIST_COLUMNS`
   in `apps/studio/src/lib/versions.ts`, no edit metadata) and follows `INSERT` on `versions` over
   Realtime, filtered to the reel. The reel page shows no jobs list; what a job is doing shows in the
@@ -127,10 +129,9 @@ version is ready`.
   (convert, transcribe, retime, head_track, preview_copies, the background map, cut-outs) is reused
   from the cache; decide is never cached. Claude starts from version 1's choices (captions only),
   never the current version's; the reel's behind rules hold as on any run. The new version's
-  parent is the current version, it becomes current, and its title and summary describe the
-  difference from version 1 (a fresh first edit). In the list it reads like the automatic run
-  (`Styled automatically` when it has no title). The step summary ends with
-  `started over from version 1`.
+  parent is the current version and it becomes current; it saves no title and no summary (both
+  null). In the list it reads like the automatic run (`Styled automatically`). The step summary ends
+  with `started over from version 1`.
 - To remove: the button file and its `action` use in `LiveReel.tsx` (and the slot if unused), the
   action, `start_over` in `JOB_KINDS`, `JOB_STEPS` and `jobRequestLabel`, the worker's runner,
   `start-over.ts` and `startFrom` in `run-decide.ts`, their tests, `apps/studio/e2e/start-over.spec.ts`,
@@ -179,8 +180,7 @@ specs, see `app_docs/decide-step.md`).
 
 ## Rules
 
-- The version summary describes only the saved difference (for a Start over, the difference from
-  version 1, the version it decided from).
+- A new version has no title or summary text: `change_title` and `change_summary` are saved null.
 - A going back saves a new version copying the old one's bytes, never rewriting history.
 - The worker never runs a `change` job: it fails with the clear message (the change box is removed).
 - A Start over decides from version 1's choices, never the current version's.

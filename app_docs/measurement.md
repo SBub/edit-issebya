@@ -195,7 +195,7 @@ model, `chat anthropic/claude-haiku-5.5` today (`app_docs/decide-step.md`, "The 
 - `gen_ai.response.finish_reasons`: the one finish reason (`stop`, `length`, ...).
 - `edit_issebya.ai.cost_usd`: the cost OpenRouter reports (usage accounting), else the list price
   of the call's tokens. A custom attribute, because the standard has none.
-- `edit_issebya.ai.role` (`hook`, `decide`, `summary`, `describe`),
+- `edit_issebya.ai.role` (`hook`, `decide`, `describe`),
   `edit_issebya.ai.output_mode` (`json_schema`, or `json` after the fallback) and
   `edit_issebya.ai.prompt_version` (the prompt's identity, `<name>@v<version>`, such as
   `reel-components@v1`): custom attributes.
@@ -252,7 +252,7 @@ command.
 ### decide's spans
 
 The `step decide` span has one child per stage. On a normal run (automatic, one attempt, no
-behind item, the summary call made) the children run in this order; a retry adds a second
+behind item) the children run in this order; a retry adds a second
 `decide.attempt`:
 
 ```
@@ -265,8 +265,6 @@ step decide                        reel.tracks_items
 │  ├─ chat <model>                 gen_ai.* (the attempt's AI call)
 │  └─ decide.engine                decide.dropped, decide.checks
 ├─ step cutout                     (only with a behind item)
-├─ decide.version_summary          decide.summary_source
-│  └─ chat <model>                 gen_ai.* (the summary's AI call)
 └─ decide.save_version
 ```
 
@@ -275,7 +273,6 @@ step decide                        reel.tracks_items
   the rule names, comma-separated, when refused.
 - `decide.engine`: `decide.dropped` (items the engine left out) and `decide.checks` (layout checks
   that failed on its output).
-- `decide.version_summary`: `decide.summary_source` is `ai` or `template` (the code's fallback).
 - The stage spans carry no AI facts; the `chat` span under each stage does (see AI calls above).
   The step row keeps the summed totals.
 - A stage that throws marks its own span with error status and an `exception` event; the step

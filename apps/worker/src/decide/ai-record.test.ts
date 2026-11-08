@@ -13,7 +13,6 @@ const RECORD: AiRecord = {
   version_id: VERSION,
   prompt_version: "reel-components@v1",
   hook_prompt_version: "reel-hook@v1",
-  summary_prompt_version: "reel-version-summary@v1",
   calls: [],
 };
 

@@ -183,21 +183,16 @@ async function decide(
   return { run, calls };
 }
 
-// The decide step's answer calls (the decide attempts), without the hook and
-// the summary calls.
+// The decide step's answer calls (the decide attempts), without the hook calls.
 function editorCalls(ai: FakeAiRunner) {
-  return ai.calls.filter((call) => call.role !== "summary" && call.role !== "hook");
+  return ai.calls.filter((call) => call.role !== "hook");
 }
 
 // The double for a run: the hook calls' replies (by default the committed
-// hook) and the decide and summary calls' replies, each in its own order.
+// hook) and the decide calls' replies, each in its own order.
 function aiScript(replies: ScriptedReply[], hooks: ScriptedReply[] = [hookReply]): FakeAiRunner {
   return fakeAiRunner([...hooks, ...replies]);
 }
-
-// A summary answer for the double.
-const summaryEnvelope = (change_title: string, change_summary: string) =>
-  answered({ change_title, change_summary });
 
 function lastCall(calls: ReturnType<typeof recordingSteps>["calls"]) {
   return calls.at(-1)!;
@@ -205,26 +200,17 @@ function lastCall(calls: ReturnType<typeof recordingSteps>["calls"]) {
 
 describe("runDecide", () => {
   it("passes the committed E2E answer in one round, saving version 2", async () => {
-    const ai = aiScript([
-      scripted,
-      summaryEnvelope("Hook added", 'The reel now opens on "A short test for the real studio".'),
-    ]);
+    const ai = aiScript([scripted]);
     const { run, calls } = await decide(ai);
     await run;
-    // The hook call first, then the components, then the summary.
-    expect(ai.calls).toHaveLength(3);
+    // The hook call first, then the components.
+    expect(ai.calls).toHaveLength(2);
     expect(ai.calls[0]!.role).toBe("hook");
     expect(ai.calls[0]!.prompt).toContain("This is a short test clip");
     expect(ai.calls[1]!.role).toBe("decide");
     // The components' prompt carries the hook as data, and writes none.
     expect(ai.calls[1]!.prompt).toContain(`"text": "${HOOK_TEXT}"`);
     expect(ai.calls[1]!.prompt).not.toContain('"kind": "hook"');
-    // The summary call: its role, the difference and the record.
-    expect(ai.calls[2]!.role).toBe("summary");
-    expect(ai.calls[2]!.prompt).toContain('"kind": "hook"');
-    expect(ai.calls[2]!.prompt).toContain('"action": "added"');
-    expect(ai.calls[2]!.prompt).toContain(`"text": "${HOOK_TEXT}"`);
-    expect(ai.calls[2]!.prompt).toMatch(/"item": "accent-1",\s+"action": "dropped"/);
     expect(rows.size).toBe(2);
     const v2 = rows.get(current!)!;
     expect(v2).toMatchObject({
@@ -233,8 +219,9 @@ describe("runDecide", () => {
       request: null,
       model: AI_MODEL,
       prompt_version: "reel-components@v1",
-      change_title: "Hook added",
-      change_summary: 'The reel now opens on "A short test for the real studio".',
+      // A new version has no title and no summary.
+      change_title: null,
+      change_summary: null,
       checks: [],
       used_free_field: false,
       unexpressed: [],
@@ -266,17 +253,14 @@ describe("runDecide", () => {
       version_id: current,
       prompt_version: "reel-components@v1",
       hook_prompt_version: "reel-hook@v1",
-      summary_prompt_version: "reel-version-summary@v1",
     });
     expect(record.calls.map((call) => call.promptVersion)).toEqual([
       "reel-hook@v1",
       "reel-components@v1",
-      "reel-version-summary@v1",
     ]);
     expect(record.calls.map((call) => [call.role, call.attempt])).toEqual([
       ["hook", 1],
       ["decide", 1],
-      ["summary", 1],
     ]);
     expect(record.calls[0]).toMatchObject({
       model: AI_MODEL,
@@ -341,35 +325,8 @@ describe("runDecide", () => {
       ...(before.tracks as Json),
       overlays: [expect.objectContaining({ id: "hook", kind: "hook", text: HOOK_TEXT })],
     });
-    // The hook is the difference, so the summary call makes the template's title.
-    expect(rows.get(current!)).toMatchObject({ change_title: "Hook added" });
-  });
-
-  it("saves the template when the summary names a photo the saved edit does not have", async () => {
-    const ai = aiScript([
-      scripted,
-      summaryEnvelope("Photo added behind you", "A photo now shows behind you."),
-    ]);
-    const { run } = await decide(ai);
-    await run;
-    // The hook and the captions (a fixed word): the template's text.
-    expect(rows.get(current!)).toMatchObject({
-      change_title: "Hook and captions changed",
-    });
-    expect(rows.get(current!)!.change_summary).not.toMatch(/photo/i);
-  });
-
-  it("saves the template when the summary call gets a decide answer (the E2E double)", async () => {
-    const ai = aiScript([scripted]);
-    const { run, calls } = await decide(ai);
-    await run;
-    expect(ai.calls).toHaveLength(3);
-    expect(lastCall(calls).call).toBe("done");
-    expect(rows.get(current!)).toMatchObject({
-      change_title: "Hook and captions changed",
-      change_summary:
-        'A hook now opens the reel: "A short test for the real studio". One word in the captions is fixed, it now reads "Studio".',
-    });
+    // The hook is the only difference, and a new version saves no title or summary.
+    expect(rows.get(current!)).toMatchObject({ change_title: null, change_summary: null });
   });
 
   it("retries once with the first answer's reasons, then saves (verification 2)", async () => {
@@ -440,7 +397,7 @@ describe("runDecide", () => {
     const ai = aiScript([scripted], [{ role: "hook", answer: "not a hook" }, hookReply]);
     const { run } = await decide(ai);
     await run;
-    expect(ai.calls.map((call) => call.role)).toEqual(["hook", "hook", "decide", "summary"]);
+    expect(ai.calls.map((call) => call.role)).toEqual(["hook", "hook", "decide"]);
     expect(rows.get(current!)!.rejected_reasons).toEqual([]);
   });
 
@@ -523,15 +480,13 @@ describe("runDecide", () => {
     await one.run;
     const done = lastCall(one.calls);
     if (done.call !== "done") throw new Error("not done");
-    // The hook call (300 in, 40 out), the decide answer and the summary call
-    // (the same envelope again) add up; the summary counts its tokens and cost,
-    // never its model.
+    // The hook call (300 in, 40 out) and the decide answer add up.
     expect(done.measurements).toMatchObject({
-      ai_input_tokens: 3300,
-      ai_output_tokens: 952,
+      ai_input_tokens: 1800,
+      ai_output_tokens: 496,
       ai_model: "claude-x",
     });
-    expect(done.measurements.ai_cost_usd).toBeCloseTo(0.0261, 10);
+    expect(done.measurements.ai_cost_usd).toBeCloseTo(0.0138, 10);
 
     const bad = {
       ...heardForm(),
@@ -541,9 +496,8 @@ describe("runDecide", () => {
     await two.run;
     const second = lastCall(two.calls);
     if (second.call !== "done") throw new Error("not done");
-    // It decides from version 2: the same hook and choices, so the difference
-    // is empty and there is no summary call. The refused attempt's tokens count
-    // too: the hook, the refused answer and the retry.
+    // The refused attempt's tokens count too: the hook, the refused answer and
+    // the retry.
     expect(second.measurements.ai_input_tokens).toBe(1810);
     expect(second.measurements.ai_output_tokens).toBe(501);
     expect(second.measurements.ai_cost_usd).toBeCloseTo(0.0238, 10);
@@ -649,14 +603,10 @@ describe("runDecide", () => {
     expect(v2.engine_record).toContainEqual(
       expect.objectContaining({ item: "accent-1", action: "dropped", rule: "one-extra" }),
     );
-    // The summary call got a decide answer: the template, said in one line.
-    expect(lines[0]).toBe(
-      `decide: summary from the template, reel ${TEST_JOB.reel_id}: answer-schema (reel-version-summary@v1)`,
-    );
     // One engine record line per version, with the reel id; no engine bug line.
-    expect(lines).toHaveLength(2);
-    expect(lines[1]!.startsWith(`engine record, reel ${TEST_JOB.reel_id}, version 2: `)).toBe(true);
-    expect(lines[1]).toMatch(/accent-1 dropped \(one-extra\): /);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.startsWith(`engine record, reel ${TEST_JOB.reel_id}, version 2: `)).toBe(true);
+    expect(lines[0]).toMatch(/accent-1 dropped \(one-extra\): /);
   });
 
   it("asks at most twice, however many bad answers are scripted", async () => {
@@ -719,7 +669,7 @@ describe("runDecide when the AI is not available", () => {
     const ai = aiScript([scripted]);
     const prompts: PromptSource = {
       async get(name) {
-        if (name === "reel-version-summary") {
+        if (name === "reel-components") {
           throw new PromptUnavailable(name, "production", "PostHog did not answer");
         }
         return fakePromptSource().get(name);
@@ -730,7 +680,7 @@ describe("runDecide when the AI is not available", () => {
     expect(ai.calls).toHaveLength(0);
     expect(isTransient(error)).toBe(true);
     expect(error.message).toContain(
-      "prompts: reel-version-summary (label production) could not be fetched: PostHog did not answer",
+      "prompts: reel-components (label production) could not be fetched: PostHog did not answer",
     );
     expect(current).toBe(firstId);
     // Transient: the step runner's one automatic retry, then the failure.
@@ -914,9 +864,7 @@ describe("runDecide with a visual", () => {
 
 describe("runDecide starting over", () => {
   it("decides from version 1, saving a new version after the current one", async () => {
-    const first = await decide(
-      aiScript([scripted, summaryEnvelope("Fade added", "A soft fade now covers a few words.")]),
-    );
+    const first = await decide(aiScript([scripted]));
     await first.run;
     const v2 = current!;
     const empty = answered(
@@ -957,8 +905,8 @@ describe("runDecide starting over", () => {
       ...(from.tracks as Json),
       overlays: [expect.objectContaining({ id: "hook", kind: "hook", text: HOOK_TEXT })],
     });
-    expect(ai.calls.map((call) => call.role)).toEqual(["hook", "decide", "summary"]);
-    expect(v3.change_title).toBe("Hook added");
+    expect(ai.calls.map((call) => call.role)).toEqual(["hook", "decide"]);
+    expect(v3).toMatchObject({ change_title: null, change_summary: null });
     const done = lastCall(calls);
     if (done.call !== "done") throw new Error(JSON.stringify(calls));
     expect(done.summary).toMatch(/^version 3: .*started over from version 1/);
@@ -1017,14 +965,7 @@ describe("runDecide spans", () => {
   });
 
   it("traces a normal run as the decide stages, in order, with their facts", async () => {
-    const ai = aiScript([
-      reported(scripted.answer, AI_MODEL, 200),
-      reported(
-        { change_title: "Hook added", change_summary: "The reel opens on the hook." },
-        AI_MODEL,
-        20,
-      ),
-    ]);
+    const ai = aiScript([reported(scripted.answer, AI_MODEL, 200)]);
     const { spans, outcome } = await traced(ai);
     expect(outcome).toBeNull();
     const decideSpan = named(spans, "step decide");
@@ -1035,7 +976,6 @@ describe("runDecide spans", () => {
       "decide.prepare",
       "decide.hook",
       "decide.attempt",
-      "decide.version_summary",
       "decide.save_version",
     ]);
     // The hook's own call is a `chat` span under its attempt, before the components'.
@@ -1071,17 +1011,6 @@ describe("runDecide spans", () => {
       "decide.dropped": 1,
       "decide.checks": 0,
     });
-    // The summary's call is a `chat` span under the version summary.
-    const summary = named(spans, "decide.version_summary");
-    expect(summary?.attributes).toEqual({ "decide.summary_source": "ai" });
-    const summaryChat = childrenOf(spans, summary)[0];
-    expect(summaryChat?.name).toBe(`chat ${AI_MODEL}`);
-    expect(summaryChat?.attributes).toMatchObject({
-      "gen_ai.request.model": AI_MODEL,
-      "gen_ai.response.model": AI_MODEL,
-      "edit_issebya.ai.role": "summary",
-      "gen_ai.usage.output_tokens": 20,
-    });
     for (const span of spans) {
       expect(span.status.code).not.toBe(SpanStatusCode.ERROR);
       // No invented `ai.*` names anywhere: AI facts are `gen_ai.*` on the chat span.
@@ -1092,11 +1021,7 @@ describe("runDecide spans", () => {
   });
 
   it("traces a retry as two decide.attempt spans, numbered 1 and 2, the first refused", async () => {
-    const ai = aiScript([
-      heardForm(),
-      scripted,
-      summaryEnvelope("Hook added", "The reel opens on the hook."),
-    ]);
+    const ai = aiScript([heardForm(), scripted]);
     const { spans, outcome } = await traced(ai);
     expect(outcome).toBeNull();
     const attempts = spans.filter((s) => s.name === "decide.attempt");
@@ -1128,7 +1053,7 @@ describe("runDecide spans", () => {
   });
 
   it("decides and saves version 2 with telemetry that exports nothing", async () => {
-    const ai = aiScript([scripted, summaryEnvelope("Hook added", "The reel opens on the hook.")]);
+    const ai = aiScript([scripted]);
     const { run } = await decide(ai);
     await run;
     expect(rows.size).toBe(2);

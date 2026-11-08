@@ -51,8 +51,7 @@ const OVERLAY_KINDS = ["accent", "hook"] as const;
 // Why a library photo sits behind its sentence: `match`, it shows what the
 // sentence says; `mood`, it fits the reel's feel and catches the eye without
 // showing what is said (never contradicting it).
-export const PHOTO_REASONS = ["match", "mood"] as const;
-export type PhotoReason = (typeof PHOTO_REASONS)[number];
+const PHOTO_REASONS = ["match", "mood"] as const;
 
 // Where a library photo sits: `behind` the speaker (the cut-out composite,
 // the person on top) or in `front` of them (over the footage, no cut-out).

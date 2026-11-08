@@ -22,14 +22,13 @@ type Env = Record<string, string | undefined>;
 // answered.
 export const AI_MODEL = "anthropic/claude-haiku-5.5";
 
-// What a call is for: the written hook, the decide answer, the version title
-// and summary, a library photo's description.
-export type AiRole = "hook" | "decide" | "summary" | "describe";
+// What a call is for: the written hook, the decide answer, a library photo's
+// description.
+export type AiRole = "hook" | "decide" | "describe";
 
 export const AI_MODELS: Readonly<Record<AiRole, string>> = {
   hook: AI_MODEL,
   decide: AI_MODEL,
-  summary: AI_MODEL,
   describe: AI_MODEL,
 };
 

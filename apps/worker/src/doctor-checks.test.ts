@@ -105,7 +105,7 @@ function maskTool(change: Partial<MaskToolDeps> = {}): MaskToolDeps {
 
 describe("runDoctor's mask tool line", () => {
   const line = async (deps: MaskToolDeps) =>
-    (await runDoctor({ ...PASSING, maskTool: () => deps })).lines[13];
+    (await runDoctor({ ...PASSING, maskTool: () => deps })).lines[12];
 
   it("fails a missing or changed model with its one line, before running", async () => {
     let ran = false;
@@ -199,7 +199,6 @@ describe("runDoctor", () => {
         "ok   posthog project id set",
         "ok   prompt reel-hook@v1 (label production)",
         "ok   prompt reel-components@v1 (label production)",
-        "ok   prompt reel-version-summary@v1 (label production)",
         "ok   prompt photo-describe@v1 (label production)",
         "ok   mask tool modnet 07c308cf, 1 s masked in 0.0 s",
         "ok   scratch dir /scratch exists",
@@ -240,7 +239,6 @@ describe("runDoctor", () => {
         "ok   posthog project id set",
         "ok   prompt reel-hook@v1 (label production)",
         "ok   prompt reel-components@v1 (label production)",
-        "ok   prompt reel-version-summary@v1 (label production)",
         "ok   prompt photo-describe@v1 (label production)",
         "ok   ai structured call anthropic/claude-haiku-5.5",
         "ok   ai hook call anthropic/claude-haiku-5.5",
@@ -309,13 +307,13 @@ describe("runDoctor", () => {
       ...PASSING,
       scratchDir: async () => ({ dir: "/scratch/prod", state: "can be created" }),
     });
-    expect(creatable.lines[14]).toBe("ok   scratch dir /scratch/prod can be created");
+    expect(creatable.lines[13]).toBe("ok   scratch dir /scratch/prod can be created");
     expect(creatable.exitCode).toBe(0);
     const failing = await runDoctor({
       ...PASSING,
       scratchDir: async () => Promise.reject(new Error("/scratch is not a folder")),
     });
-    expect(failing.lines[14]).toBe("FAIL scratch dir: /scratch is not a folder");
+    expect(failing.lines[13]).toBe("FAIL scratch dir: /scratch is not a folder");
     expect(failing.exitCode).toBe(1);
   });
 
@@ -338,7 +336,7 @@ describe("runDoctor", () => {
       { ...PASSING, ai: () => answeringAi({ ...DESCRIBED, description }) },
       { ai: true },
     );
-    expect(lines[15]).toBe("ok   ai image call");
+    expect(lines[14]).toBe("ok   ai image call");
   });
 
   it("makes one hook call with the real hook schema and prompt", async () => {
@@ -412,9 +410,9 @@ describe("runDoctor", () => {
       ...PASSING,
       prompts: () => ({
         get: async (name) => {
-          if (name === "reel-version-summary") {
+          if (name === "reel-components") {
             throw new Error(
-              "prompts: reel-version-summary (label production) could not be fetched: not found",
+              "prompts: reel-components (label production) could not be fetched: not found",
             );
           }
           return fakePromptSource().get(name);
@@ -422,7 +420,7 @@ describe("runDoctor", () => {
       }),
     });
     expect(lines).toContain(
-      "FAIL prompt: prompts: reel-version-summary (label production) could not be fetched: not found",
+      "FAIL prompt: prompts: reel-components (label production) could not be fetched: not found",
     );
     expect(lines.join("\n")).not.toContain("test prompt");
     expect(exitCode).toBe(1);
@@ -455,10 +453,10 @@ describe("runDoctor", () => {
       [{ ffmpegCodecs: async () => "Encoders:\nDecoders:\n" }, 4],
       [{ hyperframes: async () => Promise.reject(new Error("ENOENT")) }, 5],
       [{ openRouterKey: () => undefined }, 6],
-      [{ ai: () => fakeAiRunner([scriptedAnswer({ ok: false })]) }, [13, 14, 15]],
-      [{ ai: () => fakeAiRunner(["not json"]) }, [13, 14, 15]],
-      [{ ai: () => fakeAiRunner([{ error: { status: 401 } }]) }, [13, 14, 15]],
-      [{ ai: () => fakeAiRunner([scriptedAnswer(EMPTY_DECIDE_ANSWER)]) }, [14, 15]],
+      [{ ai: () => fakeAiRunner([scriptedAnswer({ ok: false })]) }, [12, 13, 14]],
+      [{ ai: () => fakeAiRunner(["not json"]) }, [12, 13, 14]],
+      [{ ai: () => fakeAiRunner([{ error: { status: 401 } }]) }, [12, 13, 14]],
+      [{ ai: () => fakeAiRunner([scriptedAnswer(EMPTY_DECIDE_ANSWER)]) }, [13, 14]],
       // A hook over its word limit is refused by the same schema check the step uses.
       [
         {
@@ -468,13 +466,13 @@ describe("runDoctor", () => {
               scriptedAnswer(EMPTY_DECIDE_ANSWER),
             ]),
         },
-        [14, 15],
+        [13, 14],
       ],
       [
         { maskTool: () => maskTool({ verifyModel: async () => Promise.reject(new Error("x")) }) },
-        16,
+        15,
       ],
-      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 17],
+      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 16],
     ];
     for (const [override, failing] of cases) {
       const { lines, exitCode } = await runDoctor({ ...PASSING, ...override }, { ai: true });

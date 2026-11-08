@@ -28,7 +28,7 @@ refusal of the hook or of the components fails the step and leaves the current v
 Layout never refuses an answer: what fits nowhere is dropped and written to the engine record saved
 with the version. Nothing asks Claude again about what the engine left out: the decide step makes no
 call after the components' answer is placed. Every AI call a decided version made (the hook attempts,
-the decide attempts, the title and summary) is stored beside it with its prompt, schema and raw answer
+the decide attempts) is stored beside it with its prompt, schema and raw answer
 (the version's AI record), so a version can be replayed and diagnosed.
 
 There is no owner request any more: the change box is removed (`app_docs/change-requests.md`). The
@@ -78,8 +78,8 @@ placed first):
   an answer carrying any of them is refused as the schema's ("Unrecognized key").
 - The only transition kind a new answer may pick is `numbered` (`NEW_TRANSITION_KINDS`). A `dim`, a
   `panel` or a `card` is refused. Old versions keep the kinds they were saved with (below).
-- There is no title. The version's `change_title` and `change_summary` are written after layout from
-  the saved difference ("Version title and summary" below). `format`, `preset`, `duration` and
+- There is no title and no summary: a new version saves `change_title` and `change_summary` as null (the
+  summary call is gone, "Version title and summary" below). `format`, `preset`, `duration` and
   `inputs` come from the current version, so the result is always a full edit and the AI cannot
   touch the input fingerprints.
 - The hook (`hook`, `{ "text" }`, always, never null) is the hook call's answer, not a field of the
@@ -213,9 +213,9 @@ input, reasons?)` fills them as fenced JSON and, on the retry, appends the refus
   engine may make (captions it records `covers-face`, when nothing else is free) is not called a bug.
   With `behind` items, `ensureCutouts` (`apps/worker/src/cutout/ensure-cutouts.ts`) refuses a photo the library does not hold (the decide step names none, so a photo is refused) and makes sure each padded span's mask is stored (a `cutout` step row,
   `app_docs/pipeline.md`) before anything is saved; a failure there comes after the AI call, so it is
-  permanent, and no version is saved. It then writes the version summary (`writeVersionSummary`), then
-  the AI record, then `saveVersion` with `parentId` the current version, `request` null, model,
-  the components' identity as `promptVersion`, `changeTitle` and `changeSummary` from the summary, `checklist` empty,
+  permanent, and no version is saved. It then writes the AI record, then `saveVersion` with `parentId`
+  the current version, `request` null, model, the components' identity as `promptVersion`,
+  `changeTitle` and `changeSummary` null, `checklist` empty,
   `unexpressed` empty, `forbid` `{ photos: null, bigWord: null }` (the stored flags untouched), the
   records below (`free_field` is always empty: the answer has no free style; `used_free_field` reports
   a kept item's style) and the engine record (`engine_record`). After the save the worker logs the
@@ -243,39 +243,17 @@ from version <n>` for Start over.
 - The `versions` columns (`supabase/migrations/20261101175625_version_decide_records.sql`, `20261103192618_version_change_title.sql`,
   `20261103230327_version_engine_record.sql`, `20261104013645_version_checklist.sql`): `used_free_field`,
   `unexpressed`, `free_field`, `rejected_reasons`, `change_title`, `engine_record`, `checklist`. A new
-  version writes `unexpressed` and `checklist` empty; the columns stay for older rows (`NewVersion`,
+  version writes `unexpressed` and `checklist` empty and `change_title` and `change_summary` null; the
+  columns stay for older rows (`NewVersion`,
   `VersionMeta` in `packages/edit/src/versions.ts`, `supabaseVersionRows`).
 
-### Version title and summary
+### Version title and summary (retired)
 
-The title and summary the owner reads in the versions list (`app_docs/change-requests.md`) are written
-after layout, from what the saved edit changes, never from what the editor meant to do.
-
-- `packages/edit/src/version-diff.ts`: `diffEdits(current, edit, transcript, preset)` lists the items
-  added, removed, moved, retimed or changed between the current version and the new edit, per kind
-  (`title`, `hook`, `accent`, `photo`, `visual`, `big_word`, `transition`, `caption`, `sound`, `footage`), each with
-  the plain words it is over or its own text (never a word id) and, for a behind photo or visual, its spot before
-  and after. `ruleChanges(before, after)` gives the behind rules switched; a new version switches none,
-  so its difference carries no rules.
-- `apps/worker/src/decide/version-summary.ts`: `writeVersionSummary` makes one call (role `summary`, the
-  same Haiku 5.5 as every call) with the fetched prompt `reel-version-summary`, given the difference, the rules switched
-  and the engine record (items, actions and reasons, without the `low-contrast` notes and an older
-  record's `shadowed` ones), all quoted as fenced JSON, and the description of each library photo the
-  difference names (`summaryPrompt`). It is given no request and no checklist.
-- `packages/edit/src/version-summary.ts`: the answer schema (`change_title` 1 to 60 characters,
-  `change_summary` 1 to 300, closed), the safeguard `checkSummary(answer, diff, preset)` and the template
-  `summaryTemplate(diff, preset)`. The safeguard refuses a word id, a time, a size, a colour code, a font
-  name or an internal name (track, slot, preset, overlay, spot), and any kind of item the title or summary
-  names that is not in the difference (photos and big words also count when their rule switched). The
-  template writes the title and summary from the difference (`No changes` for an empty one, `Photos
-switched off` for a forbid-only change); its own output always passes the safeguard.
-- An empty difference makes no call. A refused, invalid or failed call (broken JSON, a schema refusal,
-  the safeguard, the AI unavailable, a thrown error) falls back to the template with the log line
-  `decide: summary from the template, reel <id>: <why> (reel-version-summary@v1)`; it is never retried,
-  never fails the step and never makes the job wait (only a cancel is rethrown).
-- The call's tokens and cost are added to the step's usage, but not its model: `steps.ai_model` and
-  `versions.model` stay the editor's. The summary's identity is logged with the template line, never
-  stored (its calls are in the AI record).
+The version summary call is removed (owner decision 2026-11-08): it cost a call on every version for a
+change box that is gone. No title or summary is written now, and nothing computes one: there is no
+call, no template and no safeguard. A new version saves `change_title` and `change_summary` as null.
+Versions saved earlier keep their stored title and summary, and the studio keeps showing them
+(`app_docs/change-requests.md`). The columns and the RPC parameters stay (no migration).
 
 ### Failure
 
@@ -283,7 +261,7 @@ A prompt the worker cannot fetch from PostHog fails the step before any AI call,
 (`PromptUnavailable`, "Prompts"). A transient retry (`app_docs/failures.md`) is the step runner's and never adds AI calls: from the first
 AI call on, `runDecide` wraps every failure but `AiUnavailable` in `PermanentError`
 (`permanentAfterAiCall`), so the step runner never runs the step again and the step makes at most two
-hook calls and two decide calls (the summary is a separate call, below). A failure
+hook calls and two decide calls. A failure
 before the first AI call may still be retried once.
 
 Two refused rounds throw `StepError` with the tail `decide: the answer failed twice, version <n> stays
@@ -312,7 +290,6 @@ prompt file exists (`apps/worker/src/prompts/no-prompt-files.test.ts`).
 
 - `reel-hook`: the written hook, one short line from what the speaker says (`hook.ts`).
 - `reel-components`: the components' answer, meaning only (`prompt.ts`).
-- `reel-version-summary`: the version's title and summary from the saved difference (`version-summary.ts`).
 - `photo-describe`: a library photo's description and tags (`photos/describe-prompt.ts`).
 
 Each prompt is a template with its `{{variables}}` (the worker fills them as before) and nothing else
@@ -320,12 +297,12 @@ the worker reads. The model takes no temperature setting (Haiku 5.5 on OpenRoute
 prompt carries none and no call sends or records one. The version is fetched with
 the label, and its identity `<name>@v<version>` (for example `reel-components@v1`) is recorded in the
 version row (`prompt_version`, the components' identity), the AI record (`prompt_version`,
-`hook_prompt_version`, `summary_prompt_version`, and each call's `promptVersion`), a photo row
+`hook_prompt_version`, and each call's `promptVersion`), a photo row
 (`prompt_version`) and the `chat` span (`edit_issebya.ai.prompt_version`).
 
 - `apps/worker/src/prompts/source.ts`: `PromptSource.get(name)` returns `{ name, version, label, text }`;
   `renderPrompt` fills a template and appends a retry's reasons, returning the call's text and
-  identity; `decidePrompts` fetches the three decide prompts together.
+  identity; `decidePrompts` fetches the two decide prompts together.
 - `apps/worker/src/prompts/posthog-source.ts`: the source, a plain `fetch` (no SDK) to
   `GET {POSTHOG_HOST}/api/projects/{POSTHOG_PROJECT_ID}/llm_prompts/name/{name}/?label={label}` with
   the header `Authorization: Bearer {POSTHOG_PERSONAL_API_KEY}`. The label is the query parameter of
@@ -367,7 +344,7 @@ version row (`prompt_version`, the components' identity), the AI record (`prompt
   `apps/worker/.env.example`). Without it every AI call is `unavailable` (`the OpenRouter key is not
 set`) and the job waits.
 - The model: `AI_MODEL` in `apps/worker/src/ai.ts` (`anthropic/claude-haiku-5.5`), one setting;
-  `AI_MODELS` maps each role (`hook`, `decide`, `summary`, `describe`) to it, the one place to give
+  `AI_MODELS` maps each role (`hook`, `decide`, `describe`) to it, the one place to give
   a role another model later.
 - `E2E_MOCK_AI` and `E2E_MOCK_AI_SCRIPT`: tests only; documented in `apps/worker/.env.example`.
 - `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `POSTHOG_PROMPT_LABEL` and
@@ -388,7 +365,7 @@ set`) and the job waits.
   behind count, `currentChoices` showing an older title as an accent, leaving out a non-numbered
   transition and never a hook), `run-decide.test.ts` (the hook call first, then the components with the
   hook text as data, the step saving version 2 with the step line `0 accents, 0 transitions, hook set, 1
-word fixed, 1 dropped`; the AI record holding the hook, decide and summary calls; the hook refused by its
+word fixed, 1 dropped`; the AI record holding the hook and decide calls; the hook refused by its
   schema or a heard form sent back once to the hook call; a hook refused twice fails the step with
   `the hook failed twice` and calls no components; one retry on the components, a second refusal failing
   the step, nothing written on failure; the usage of every call summed; a wide accent or an image on the
@@ -398,8 +375,7 @@ word fixed, 1 dropped`; the AI record holding the hook, decide and summary calls
   readable one, else an older record's decide `hook`). `packages/edit/src/engine.test.ts` ("the written
   hook": the fixed slot, an accent and an image asked for in its window never move or remove it). `run-decide.test.ts` builds its check-refused answer as a word fix
   writing the heard form "Locking" (the schema accepts any fix text, so only the glossary check refuses it).
-  `version-summary.test.ts` (the fill, the safeguard, the template) in `packages/edit`
-  and in the worker. `prompts/posthog-source.test.ts` and `prompts/source.test.ts` (the fetch with a
+  `prompts/posthog-source.test.ts` and `prompts/source.test.ts` (the fetch with a
   stubbed `fetch`, the failures, the identity; the last good copy within 60 minutes
   on a network error or a 5xx, refused beyond it, never for a prompt never fetched or a 404; the source
   never reading `POSTHOG_PROJECT_TOKEN`), `prompts/no-prompt-files.test.ts`
@@ -424,10 +400,10 @@ word fixed, 1 dropped`; the AI record holding the hook, decide and summary calls
 - `yarn turbo run test:db --filter=./apps/studio`: `versions.test.ts` covers the new columns, `checklist`
   included.
 - E2E: `apps/studio/e2e/upload.spec.ts` sets `E2E_MOCK_AI_SCRIPT` to the committed answer and checks the
-  decide line (`0 accents, 0 transitions, hook set, 1 word fixed, 1 dropped`), the `ai_*` columns (3300,
-  952, 0.0261 over the hook, decide and summary calls, `anthropic/claude-haiku-5.5`), version 2's row, its
-  AI record (`hook`, `decide` and `summary` calls, `hook_prompt_version` `reel-hook@v1`) and both R2 keys
-  (`reel-components@v1`, titled `Hook and captions changed`). The E2E run uses the placeholder prompts
+  decide line (`0 accents, 0 transitions, hook set, 1 word fixed, 1 dropped`), the `ai_*` columns (1800,
+  496, 0.0138 over the hook and decide calls, `anthropic/claude-haiku-5.5`), version 2's row (no title and
+  no summary, both null), its AI record (`hook` and `decide` calls, `hook_prompt_version` `reel-hook@v1`)
+  and both R2 keys (`reel-components@v1`). The E2E run uses the placeholder prompts
   (`E2E_MOCK_PROMPTS`), so every identity it asserts is a fake's.
   `preview.spec.ts` seeds through `test-support/ai-script.ts` (`unchangedAnswerScript`), whose decide
   answer makes no choice; version 2 is then version 1 plus the hook alone (every reel has one), so it no
@@ -471,7 +447,7 @@ word fixed, 1 dropped`; the AI record holding the hook, decide and summary calls
 - Usage per call: input tokens (all of them, cache reads and writes included), output tokens, the
   cost OpenRouter reported (`providerMetadata.openrouter.usage.cost`), else the list price, and
   the model that answered (`response.modelId`). Summed per step into `steps.ai_*`; the version's
-  `model` is the editor's (`usage.model`), never the summary's.
+  `model` is the editor's (`usage.model`).
 - Every result carries its exchange (role, model, prompt as sent, its identity `promptVersion`,
   schema, image media type and size, output mode, raw answer text, finish
   reason, usage, error).
@@ -482,11 +458,11 @@ word fixed, 1 dropped`; the AI record holding the hook, decide and summary calls
 
 `apps/worker/src/decide/ai-record.ts`: before `saveVersion`, `runDecide` writes
 `<prefix>reels/<reel>/versions/<version id>.ai.json` (put-if-absent, under the id the version is
-then saved with): `{ format: 1, reel_id, version_id, prompt_version, hook_prompt_version,
-summary_prompt_version, calls }` (the three identities, `<name>@v<version>`), each call `{ attempt, role,
+then saved with): `{ format: 1, reel_id, version_id, prompt_version, hook_prompt_version, calls }` (the
+two identities, `<name>@v<version>`), each call `{ attempt, role,
 model, prompt, promptVersion, schema, image, outputMode, answerText, finishReason, usage,
 error }` in order: the hook attempts first (role `hook`, attempt 1 and
-2), then the decide attempts (role `decide`, 1 and 2) and the summary. It is a `stored_files` row of kind `version`, step `decide` (`classifyKey`), so it is
+2), then the decide attempts (role `decide`, 1 and 2). It is a `stored_files` row of kind `version`, step `decide` (`classifyKey`), so it is
 kept with the version and deleted with the reel. A decide that saves nothing (refused twice,
 nothing changed, waiting) writes no record; its reasons are in the step's error tail. To replay a
 version, send each call's `prompt` with its `schema` to its `model`.
@@ -518,12 +494,11 @@ Before the AI call, `run-decide.ts` ensures the footage's background map (`ensur
 failure is an ordinary step failure) and passes `backgroundSampler(map, preset.frame)` to
 `editFromAnswer`, so the engine moves unreadable text to a nearby free place that reads, else
 leaves it in place, plain, and records it (never a shadow, never a colour change; see
-`edit-model.md`). The version summary leaves those `low-contrast` notes out.
+`edit-model.md`).
 
 ## Rules
 
-- At most two hook calls and two decide calls (one retry each), then the summary call; never an
-  unbounded loop.
+- At most two hook calls and two decide calls (one retry each); never an unbounded loop.
 - Claude never writes times, positions or sizes: the answer is meaning only (word ids, visual descriptions), every object closed; the layout places everything.
 - Claude writes only the new vocabulary: ACCENT (`accents`), BIGWORD (`big_words`), VISUAL (`visuals`, each with its description), LIST (`transitions`, kind `numbered` only) and `word_fixes` in the components' call;
   the hook (`text`) in its own call, never in the components'. A title,
@@ -564,10 +539,7 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
   `preset.pace.transitionEverySeconds` (the engine's pace, never sent to the model); the engine drops the rest.
 - A new answer names no photo: a visual is a frame, and the answer's schema has no photo id.
 - The decide step reads no photo library (for now), so none is sent to the model.
-- The version summary describes only the saved difference: every item it names is in the difference, else
-  the template replaces it.
-- The summary call is one call, never retried, never fails the step or makes the job wait.
-- Never print a word id, font, size or time in a title or summary.
+- Never write a title or a summary for a new version: `change_title` and `change_summary` are saved null.
 - Record the usage numbers as OpenRouter reports them, the cost included; only a call whose response carries
   no cost gets the list price from `PRICES` in `ai.ts` (Haiku 5.5: $0.10 input, $0.50 output per million
   tokens). Never estimate tokens.
@@ -590,3 +562,6 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
   exactly what the components' call picked and what the engine did with it, with no second call in
   between. Versions decided before the removal keep their editorial calls in the AI record and their
   `editorial` notes in the engine record; the trace skips those calls and reads the notes as stored.
+- The version summary call is removed (owner decision 2026-11-08): one AI call per version less, and the
+  change box it wrote for is gone. The difference module it read (`packages/edit/src/version-diff.ts`) went
+  with it. Versions saved before keep their stored title and summary.

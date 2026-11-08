@@ -65,8 +65,7 @@ export async function unchangedAnswerScript(dir: string): Promise<string> {
 // One round of a scripted decide: the visuals behind the speaker (none by
 // default), a big word (a word id; none by default), the transitions (none by
 // default) and the hook's text (the committed one by default). The version
-// title and summary are never scripted: the summary call gets the decide
-// answer too and falls back to the code template.
+// title and summary are never scripted: a new version saves neither.
 interface AnswerRound {
   visuals?: Record<string, unknown>[];
   bigWord?: string;

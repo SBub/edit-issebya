@@ -92,6 +92,14 @@ describe("labels", () => {
       );
       expect(versionTitle(base, byId)).toBe("Styled automatically");
     });
+
+    it("shows the origin label for a version saved with no title, a start-over included", () => {
+      // The decide step saves no title now: a start over (no request, a parent)
+      // and an automatic styling both show their origin label.
+      const startOver = { ...base, change_title: null };
+      expect(versionTitle(startOver, byId)).toBe("Styled automatically");
+      expect(versionTitle({ ...startOver, parent_id: null }, byId)).toBe("First version");
+    });
   });
 
   it("names what each job kind was asked to do", () => {
