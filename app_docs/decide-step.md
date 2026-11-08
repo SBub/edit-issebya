@@ -197,7 +197,10 @@ input, reasons?)` fills them as fenced JSON and, on the retry, appends the refus
   at `.`, `?`, `!` or a pause of 0.6 s, the word ids the answer names), `hook` (`{ text }`, the hook
   call's text), `intensity` (the preset's level), `target_picks` (`targetPicks`: the speech from its
   first word's start to its last word's end, over `preset.picksEverySeconds[level]`, rounded, at least
-  one). Nothing else is sent: no glossary, no current choices, no
+  one). `speechAfterHookSeconds` measures from the later of the first word's start and the hook's end
+  (`preset.pace.hook.untilSeconds`), so the hook window is not counted: ACCENT, BIGWORD and LIST cannot
+  go under the hook. A word of `script` that starts before the hook ends carries `under_hook: true`
+  (other words omit the field). Nothing else is sent: no glossary, no current choices, no
   transcript list, no preset summary, no transitions, no stored forbids (the answer's schema refuses
   what they rule out, and its retry says why). No photo library is read or sent. No head track, face
   box, `clear_spots`, safe box, font size or spot: the layout owns free space.
@@ -297,7 +300,8 @@ prompt file exists (`apps/worker/src/prompts/no-prompt-files.test.ts`).
 
 - `reel-hook`: the written hook, one short line from what the speaker says (`hook.ts`).
 - `reel-components`: the components' answer, meaning only (`prompt.ts`). Its variables, and nothing else:
-  `script` (the sentences with their word ids, fenced JSON), `hook` (the written hook's `{ text }`, fenced
+  `script` (the sentences with their word ids, fenced JSON; a word starting before the hook ends carries
+  `under_hook: true`, and the others omit it), `hook` (the written hook's `{ text }`, fenced
   JSON, as data), `intensity` (the reel's edit intensity as one lowercase word, `intense`, `medium` or
   `calm`, the preset's level, `preset.intensity`) and `target_picks` (the target count as a number, see
   `input.ts` above). No glossary is sent; `word_fixes` stays in the answer and is checked by the engine.
@@ -375,7 +379,7 @@ set`) and the job waits.
   ids or times, the hook prompt's fill and retry reasons, the closed one-text schema, the glossary
   reason), `prompt.test.ts` (the components prompt fills its five variables and no other, the script's
   word ids, the intensity and target line, no removed input or glossary sent, the retry reasons), `input.test.ts`
-  (the script with word ids and no times, the speech's length, the target at each level, at least one), `run-decide.test.ts` (the hook call first, then the components with the
+  (the script with word ids and no times, the speech after the hook window, the target at each level, at least one), `run-decide.test.ts` (the hook call first, then the components with the
   hook text as data, the step saving version 2 with the step line `1 accent, 0 transitions, hook set, 1
 word fixed`; the AI record holding the hook and decide calls; the hook refused by its
   schema or a heard form sent back once to the hook call; a hook refused twice fails the step with

@@ -1,7 +1,7 @@
 import { ISSEBYA_PRESET, type Transcript, sentenceSpans } from "@edit-issebya/edit";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { decideInput, scriptOf, speechSeconds, targetPicks } from "./input.ts";
+import { decideInput, scriptOf, speechAfterHookSeconds, targetPicks } from "./input.ts";
 
 const word = (id: string, text: string, start: number, end: number) => ({ id, text, start, end });
 
@@ -34,42 +34,81 @@ describe("sentenceSpans", () => {
 
 describe("scriptOf", () => {
   it("gives each sentence its text and its words with their ids, no times", () => {
+    // Every word of this clip starts before the hook ends, so each carries the flag.
     expect(scriptOf(transcript, ISSEBYA_PRESET)).toEqual([
       {
         sentence: "photos help",
         words: [
-          { id: "w1", text: "Photos" },
-          { id: "w2", text: "help." },
+          { id: "w1", text: "Photos", under_hook: true },
+          { id: "w2", text: "help.", under_hook: true },
         ],
       },
       {
         sentence: "do they",
         words: [
-          { id: "w3", text: "Do" },
-          { id: "w4", text: "they?" },
+          { id: "w3", text: "Do", under_hook: true },
+          { id: "w4", text: "they?", under_hook: true },
         ],
       },
-      { sentence: "yes", words: [{ id: "w5", text: "Yes" }] },
-      { sentence: "always", words: [{ id: "w6", text: "always" }] },
+      { sentence: "yes", words: [{ id: "w5", text: "Yes", under_hook: true }] },
+      { sentence: "always", words: [{ id: "w6", text: "always", under_hook: true }] },
     ]);
+  });
+
+  it("flags a word that starts before the hook ends, and only that word", () => {
+    const timed = {
+      words: [
+        word("a", "Look", 0.1, 0.4),
+        word("b", "closer", 2.5, 2.9),
+        word("c", "now", 2.99, 3.2),
+        word("d", "after", 3, 3.4),
+        word("e", "that.", 3.6, 4),
+      ],
+    } as unknown as Transcript;
+    const words = scriptOf(timed, ISSEBYA_PRESET).flatMap((sentence) => sentence.words);
+    expect(words.map((w) => w.id)).toEqual(["a", "b", "c", "d", "e"]);
+    expect(words.map((w) => w.under_hook)).toEqual([true, true, true, undefined, undefined]);
+    // The flag is omitted, not false, on the other words.
+    expect(words[3]).not.toHaveProperty("under_hook");
+    expect(words[4]).not.toHaveProperty("under_hook");
   });
 });
 
-describe("speechSeconds and targetPicks", () => {
-  it("measures the speech from the first word's start to the last word's end", () => {
-    expect(speechSeconds(transcript)).toBeCloseTo(3.2, 5);
-    expect(speechSeconds({ words: [] } as unknown as Transcript)).toBe(0);
+describe("speechAfterHookSeconds and targetPicks", () => {
+  it("measures the speech from the hook's end (or the first word, if later) to the last word's end", () => {
+    // Every word of the clip starts before the hook ends at 3 s; the last word ends at 3.2 s.
+    expect(speechAfterHookSeconds(transcript, ISSEBYA_PRESET)).toBeCloseTo(0.2, 5);
+    expect(speechAfterHookSeconds({ words: [] } as unknown as Transcript, ISSEBYA_PRESET)).toBe(0);
+    const late = {
+      words: [word("a", "Go", 4, 4.5), word("b", "on.", 5, 6)],
+    } as unknown as Transcript;
+    expect(speechAfterHookSeconds(late, ISSEBYA_PRESET)).toBeCloseTo(2, 5);
   });
 
-  it("divides the speech by the preset's seconds per pick at the reel's level", () => {
-    // 3.2 s at intense (2.5 s per pick) rounds to 1.
+  it("divides the speech after the hook by the preset's seconds per pick at the reel's level", () => {
+    // 0.2 s after the hook at intense (2.5 s per pick) rounds to 0, so at least 1.
     expect(targetPicks(transcript, ISSEBYA_PRESET)).toBe(1);
+    // 57 s after the hook (3 s to 60 s): 22.8 picks at intense, 12.7 at medium, 5.7 at calm.
     const long = {
       words: [word("a", "Go", 0, 0.5), word("b", "on.", 59, 60)],
     } as unknown as Transcript;
-    expect(targetPicks(long, ISSEBYA_PRESET)).toBe(24);
+    expect(targetPicks(long, ISSEBYA_PRESET)).toBe(23);
     expect(targetPicks(long, { ...ISSEBYA_PRESET, intensity: "medium" })).toBe(13);
     expect(targetPicks(long, { ...ISSEBYA_PRESET, intensity: "calm" })).toBe(6);
+  });
+
+  it("ignores the hook window: speech under the hook adds no picks", () => {
+    // Speech from 0 s to 3 s only: all of it is under the hook, so one pick.
+    const underHook = {
+      words: [word("a", "Go", 0, 1), word("b", "on.", 2, 2.9)],
+    } as unknown as Transcript;
+    expect(targetPicks(underHook, ISSEBYA_PRESET)).toBe(1);
+    // The same 57 s of speech, starting at 3 s, counts as it would starting at 0 s
+    // with the hook's 3 s removed: 4 to 60 s is 56 s, 22.4 picks at intense.
+    const lateStart = {
+      words: [word("a", "Go", 4, 4.5), word("b", "on.", 59, 60)],
+    } as unknown as Transcript;
+    expect(targetPicks(lateStart, ISSEBYA_PRESET)).toBe(22);
   });
 
   it("is at least one pick, also for an empty transcript", () => {
