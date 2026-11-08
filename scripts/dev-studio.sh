@@ -176,7 +176,13 @@ start_group() {
 
 # Starts the local otel-lgtm container. It is left running on exit, since it is cheap to
 # keep and its data survives; `docker compose -f docker-compose.monitoring.yml down` stops it.
+# One stack per machine: every checkout uses the same Compose project name, so a stack that
+# already answers on Grafana (from any checkout) is reused and not started again.
 start_monitoring() {
+  if curl -fsS -o /dev/null --max-time 2 "$MONITORING_UI_URL/api/health"; then
+    ok "Local monitoring is already running at $MONITORING_UI_URL (reused)"
+    return
+  fi
   docker compose -f "$MONITORING_COMPOSE" up -d ||
     fail "docker compose up for the monitoring stack failed (see the output above)"
   ok "Local monitoring is up (Grafana, Tempo, Loki, Prometheus)"

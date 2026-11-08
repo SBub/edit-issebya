@@ -164,6 +164,10 @@ also gets an empty `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_SERVICE_NAME=edit-isse
 `apps/worker/.env.development` never reaches the local container. The monitoring container keeps
 running when `yarn dev:studio` stops.
 
+There is one monitoring stack per machine: every checkout uses the Compose project
+`edit-issebya-monitoring`, and `yarn dev:studio` reuses it when Grafana already answers on 3300
+instead of starting a second one.
+
 - Grafana: `http://localhost:3300`. The host port is 3300 because the landing page owns 3000. Both
   published ports (3300 and 4318) are bound to 127.0.0.1.
 - A reel's trace: Explore, the Tempo data source, query type TraceID, the reel's uuid without dashes
