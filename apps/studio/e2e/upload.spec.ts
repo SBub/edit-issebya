@@ -141,11 +141,9 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     expect.stringMatching(/^backgrounds: backgrounds of 5 frames, /),
     expect.stringMatching(/^first_version: version 1 saved, /),
     // On the 2.7 s clip the written hook holds the screen from 0.2 s to the
-    // end, so the layout engine drops the accent (one extra at a time, and
-    // nothing during the hook).
-    expect.stringMatching(
-      /^decide: version 2: 0 accents, 0 transitions, hook set, 1 word fixed, 1 dropped, /,
-    ),
+    // end, and the accent shows over it: `all` placement drops nothing the
+    // answer picks.
+    expect.stringMatching(/^decide: version 2: 1 accent, 0 transitions, hook set, 1 word fixed, /),
     "backgrounds: backgrounds reused",
   ]);
   // A hit: wall time only, the other measurements null.
@@ -325,13 +323,18 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     );
     expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
     if (versionKey === v2!.r2_key && parsed.ok) {
-      // The written hook is the one overlay (its own text, no words); the
-      // accent is dropped.
+      // The written hook (its own text, no words), then the accent over it
+      // (its one word, w0005, shown from the lead before it).
       expect(parsed.edit.tracks.overlays).toEqual([
         expect.objectContaining({
           id: "hook",
           kind: "hook",
           text: "A short test for the real studio",
+        }),
+        expect.objectContaining({
+          id: "accent-1",
+          kind: "accent",
+          words: ["w0005"],
         }),
       ]);
       expect(parsed.edit.tracks.transitions).toEqual([]);

@@ -518,6 +518,12 @@ export const ISSEBYA_PRESET: Preset = {
   glossary: [{ term: "lock-in", heard: [["locking"], ["lock", "in"]] }],
 };
 
+// `all` placement: the shortest a pick shows, in seconds. A reel's end or a
+// cut can leave a pick under its kind's minimum; it then shows this long
+// (earlier where the reel ends), never dropped. Checks and the schema use it
+// in `all` mode only.
+export const ALL_SHOWN_SECONDS = 0.5;
+
 // The strict layout (`placement: "clean"`): the issebya preset with the
 // engine's drops, retimes and no overlaps. Tests and goldens that assert those
 // use it; the worker places with `ISSEBYA_PRESET`.

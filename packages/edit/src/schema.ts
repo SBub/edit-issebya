@@ -1,6 +1,13 @@
 import { z } from "zod";
 import type { Box } from "./head-track.ts";
-import { BEHIND_SPOTS, FONT_KEYS, type Preset, SOUND_KEYS, TRANSITION_TYPES } from "./preset.ts";
+import {
+  ALL_SHOWN_SECONDS,
+  BEHIND_SPOTS,
+  FONT_KEYS,
+  type Preset,
+  SOUND_KEYS,
+  TRANSITION_TYPES,
+} from "./preset.ts";
 import { resolveAnchor } from "./timeline.ts";
 import type { Transcript, Word } from "./transcript.ts";
 
@@ -428,12 +435,15 @@ function behindLength(
   words: ReadonlyMap<string, Word>,
   preset: Preset,
 ): [number, number] {
+  // `all`: a pick may be shorter than its kind's minimum, down to the shown
+  // floor, where the reel ends or a cut leaves less room.
+  const allFloor = preset.placement === "all" ? ALL_SHOWN_SECONDS : undefined;
   if (item.kind === "photo" || item.kind === "visual")
-    return [preset.behind.minSeconds, preset.behind.maxSeconds];
+    return [allFloor ?? preset.behind.minSeconds, preset.behind.maxSeconds];
   const { minSeconds, afterSeconds, leadSeconds } = preset.accent;
   const said = "word" in item.start ? words.get(item.start.word) : undefined;
   const longest = said ? leadSeconds + (said.end - said.start) + afterSeconds : minSeconds;
-  return [minSeconds, Math.max(minSeconds, longest)];
+  return [allFloor ?? minSeconds, Math.max(minSeconds, longest)];
 }
 
 // The whole edit, built per reel (see tracksSchemaFor). It stays

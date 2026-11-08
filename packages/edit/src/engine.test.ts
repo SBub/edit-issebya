@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type Backgrounds, backgroundSampler } from "./background.ts";
 import { bigWordCoveredShare, maskSpans } from "./behind.ts";
+import { baselineEdit } from "./baseline.ts";
 import { build } from "./build.ts";
 import { editFromAnswer } from "./decide.ts";
 import { placeEdit } from "./engine.ts";
@@ -17,6 +18,7 @@ import {
 import { MIN_TEXT_SIZE, type Edit, parseEdit } from "./schema.ts";
 import { backgroundMapOf } from "./test-support/backgrounds.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
+import { baselineInputs } from "./test-support/inputs.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 import { LEFT_HEAD, REQUEST_ANSWER, REQUEST_REQUESTED } from "./test-support/request.ts";
 import { resolveTimeline } from "./timeline.ts";
@@ -51,8 +53,8 @@ function steadyHead(sample: { head_top: number; cx: number; head_w: number }): H
 // x 434 to 726, y 452 to 846).
 const BIG_FACE = steadyHead({ head_top: 452, cx: 580, head_w: 292 });
 
-function withPlaceholderMasks(edit: Edit): Edit {
-  const masks = maskSpans(edit, transcript, CLEAN_PRESET).map((span, index) => ({
+function withPlaceholderMasks(edit: Edit, spoken: Transcript): Edit {
+  const masks = maskSpans(edit, spoken, CLEAN_PRESET).map((span, index) => ({
     step: "cutout" as const,
     fingerprint: String(index + 1).repeat(64),
     file: "mask.mp4",
@@ -96,7 +98,7 @@ async function place(
   );
   if (!made.ok) throw new Error(made.reasons.join("; "));
   const { checks, html } = build(
-    withPlaceholderMasks(made.edit),
+    withPlaceholderMasks(made.edit, spoken),
     spoken,
     headTrack,
     preset,
@@ -2073,5 +2075,110 @@ describe("every pick shown: the all placement", () => {
     expect(record.some((note) => note.action === "dropped" || note.action === "retimed")).toBe(
       true,
     );
+  });
+});
+
+// `all` mode drops nothing the answer picks: a 1 s reel (a number and its
+// unit, a last word at the reel's end), a footage cut over the second word.
+const ONE_SECOND: Transcript = {
+  words: [
+    { id: "w1", text: "Hello", start: 0.05, end: 0.3 },
+    { id: "w2", text: "there", start: 0.35, end: 0.6 },
+    { id: "w3", text: "5", start: 0.62, end: 0.7 },
+    { id: "w4", text: "years", start: 0.72, end: 0.85 },
+    { id: "w5", text: "friend", start: 0.9, end: 0.98 },
+  ],
+};
+
+function oneSecondReel(): Edit {
+  const base = baselineEdit(
+    ONE_SECOND,
+    { inputs: baselineInputs().inputs, duration: 1 },
+    ISSEBYA_PRESET,
+  );
+  return {
+    ...base,
+    tracks: {
+      ...base.tracks,
+      footage: [
+        {
+          id: "footage",
+          start: { reel: "start" },
+          end: { reel: "end" },
+          hidden: [{ start: { time: 0.2 }, end: { time: 0.45 } }],
+        },
+      ],
+    },
+  };
+}
+
+describe("nothing the answer picks is dropped in all mode", () => {
+  it("shows a pick at the reel's end, a pick over a cut, a transition with no text and a hook on a 1 s reel", async () => {
+    const { edit, record, unplaced } = await place(
+      {
+        accents: [{ from: "w5", to: "w5", title: false }],
+        big_words: [{ word: "w2" }],
+        transitions: [{ kind: "dim", from: "w4", to: "w4", key_from: "w4" }],
+        hook: { text: "Hello there" },
+      },
+      { current: oneSecondReel(), transcript: ONE_SECOND, preset: ISSEBYA_PRESET },
+    );
+    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(unplaced).toEqual([]);
+    expect(edit.tracks.overlays.map((item) => item.id)).toEqual(["hook", "accent-1"]);
+    expect(edit.tracks.transitions.map((item) => item.id)).toEqual(["transition-1"]);
+    expect(edit.tracks.behind?.map((item) => item.id)).toEqual(["big-word-1"]);
+    expect(parseEdit(edit, ISSEBYA_PRESET, ONE_SECOND).ok).toBe(true);
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "accent-1", action: "clamped-to-end" }),
+    );
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "big-word-1", action: "moved-off-cut" }),
+    );
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "transition-1", action: "text-from-words" }),
+    );
+  });
+
+  it("drops no pick for random sets of picks over the fixture transcript", async () => {
+    // A seeded generator: the same sets on every run.
+    let seed = 20261108;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) % 4294967296;
+      return seed / 4294967296;
+    };
+    const count = (most: number) => Math.floor(random() * (most + 1));
+    const pick = <T>(list: readonly T[]): T => list[Math.floor(random() * list.length)]!;
+    const ids = words.map((word) => word.id);
+    // A run of words: from a random word, up to `longest` words on.
+    const run = (longest: number): [string, string] => {
+      const at = Math.floor(random() * ids.length);
+      const to = Math.min(ids.length - 1, at + Math.floor(random() * (longest + 1)));
+      return [ids[at]!, ids[to]!];
+    };
+    for (let round = 0; round < 25; round += 1) {
+      const input: Partial<EngineInput> = {
+        accents: Array.from({ length: count(5) }, () => {
+          const [from, to] = run(6);
+          return { from, to, title: false };
+        }),
+        big_words: Array.from({ length: count(4) }, () => ({ word: pick(ids) })),
+        visuals: Array.from({ length: count(3) }, () => {
+          const [from, to] = run(12);
+          return { from, to };
+        }),
+        transitions: Array.from({ length: count(3) }, () => {
+          const [from, to] = run(8);
+          return { kind: pick(TRANSITION_KINDS), from, to, key_from: from };
+        }),
+        hook: random() < 0.5 ? { text: "Gen Z won't work like you did" } : null,
+      };
+      const { record, unplaced } = await place(input, { preset: ISSEBYA_PRESET });
+      expect(
+        record.filter((note) => note.action === "dropped"),
+        `round ${round}`,
+      ).toEqual([]);
+      expect(unplaced, `round ${round}`).toEqual([]);
+    }
   });
 });

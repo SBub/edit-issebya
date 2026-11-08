@@ -1,7 +1,14 @@
 import { type BigWordBox, bigWordCoveredShare, boxFaceShare, photoBox } from "./behind.ts";
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import type { TextBox } from "./layout.ts";
-import { PLATFORM_BUTTONS, PLATFORM_SAFE, type Preset, cleanWord, intersectBox } from "./preset.ts";
+import {
+  ALL_SHOWN_SECONDS,
+  PLATFORM_BUTTONS,
+  PLATFORM_SAFE,
+  type Preset,
+  cleanWord,
+  intersectBox,
+} from "./preset.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import type { ResolvedItem } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -242,7 +249,14 @@ export function runChecks(
   }
 
   for (const box of boxes) {
-    const min = box.kind === "caption" ? preset.caption.minSeconds : preset.accent.minSeconds;
+    // `all`: a pick shows at least the shown floor (a reel's end or a cut can
+    // leave less than the accent's minimum).
+    const min =
+      box.kind === "caption"
+        ? preset.caption.minSeconds
+        : keepOverlaps
+          ? ALL_SHOWN_SECONDS
+          : preset.accent.minSeconds;
     const span = resolved.get(box.itemId)!;
     if (span.end - span.start < min - SLACK) {
       checks.push({

@@ -162,7 +162,7 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   accent, big word and the hook shown in its span and of `PLATFORM_BUTTONS`; the spot with the most
   free space in the ring around it (`ring`, 60 px) wins. The full size is tried at every spot before
   the smaller step (`smaller`, 0.7: 252 by 315 px, one step only, recorded `shrunk`, rule
-  `visual-size`), and then the visual is dropped (`no-room`). 0.7, not 0.8 (288 px): on the speech-ten
+  `visual-size`), and then (`clean`) the visual is dropped (`no-room`); `all` puts it at the corner at the full size, overlap noted. 0.7, not 0.8 (288 px): on the speech-ten
   clip the free strip beside the speaker is about 260 px wide. A card never covers the face: no
   make-room step lets it. `stroke` (8 px) is the builder's border.
 - Photos (`behind.photo`): the engine places no photo now. An older version's photo keeps the place
@@ -279,7 +279,7 @@ word" is now "spoken words, plus one written hook at the start".
   after them) off the parsed answer's hook before it is placed and saved, the owner's exact words
   included; a dot inside stays, and a hook of nothing but dots is refused ("a hook needs words").
 - Timing: from `pace.hook.fromSeconds` (0.2 s) to `untilSeconds` (3 s), cut to the reel's end; on
-  a reel too short to show it `accent.minSeconds` (1.5 s) it is dropped (rule `hook-time`). Both
+  a reel too short to show it `accent.minSeconds` (1.5 s) it is dropped in `clean` (rule `hook-time`) and clamped to the reel in `all`. Both
   anchors are `anchorAt` (the nearest word end within a second, else a time where nobody speaks),
   so it follows its words through a re-time.
 - A fixed slot (owner decision 2026-11-07): every reel has one, and it is placed on every run, first.
@@ -288,8 +288,8 @@ word" is now "spoken words, plus one written hook at the start".
   other item moves it: nothing shifts, shrinks or cuts it short, and no make-room step removes it (it
   is not an extra the editor added). An accent, big word or photo whose words fall in its window is
   dropped (`one-extra`); one that starts after the hook has gone shows then. A transition that would
-  show during the hook is dropped (rule `hook`). Its only drop is a reel too short for it
-  (`hook-time`), recorded. Captions keep running below it; nobody says it, so no caption is ever left
+  show during the hook is dropped (rule `hook`). In `clean` its only drop is a reel too short for it
+  (`hook-time`), recorded; `all` clamps it to the reel instead. Captions keep running below it; nobody says it, so no caption is ever left
   out for it.
 - Reserved before the captions, on every run (owner decision 2026-11-07): the plain pass places the
   hook first, then the captions, so the captions in its window keep clear of it by the caption rules:
@@ -307,7 +307,7 @@ word" is now "spoken words, plus one written hook at the start".
   ever built). A long word or sentence that fits no place down to 8 px goes through the make-room
   ladder, which may cover the face as its last step (`make-room`, `covers-face`); the hook is then
   never dropped for its size. Notes: `hook-spot` (`moved`), `hook-size` (`shrunk`), `hook-wrap` (`wrapped`), `make-room`,
-  `no-room` (`dropped`, only when no size and place is left at all, which the schema's limits make
+  `no-room` (`clean`: `dropped`, only when no size and place is left at all, which the schema's limits make
   unreachable in practice).
 - Checks treat it as text: `safe-box`, `text-overlap`, `timing` (at least `accent.minSeconds`) and
   the glossary check (`glossaryChecks` reads every overlay's text).
@@ -408,7 +408,7 @@ record. `editFromAnswer` (decide) and the worker's `first_version` step (with no
     30% of its height (`bigWordCoveredShare` in `src/behind.ts`, shared with the check). Short of
     that the wanted centre moves up 10 px at a time to the top (recorded `moved`, rule
     `big-word-visible`), then the next smaller size is tried down to the floor (`shrunk`, rule
-    `big-word-visible`); with no place at all it is dropped (`big-word-visible`, the editor's
+    `big-word-visible`); with no place at all it is dropped in `clean` (`big-word-visible`, the editor's
     `no-room`).
   - Never the same word twice on screen: once the extras are placed, a caption whose words an
     accent or big word shows (never the hook: nobody says it) at some moment of the caption's own span is left out for that whole
@@ -468,28 +468,38 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
   rewritten (it is never placed again). No switch to turn them off yet.
 - Placement (`preset.placement`, the worker's preset is `all`; `CLEAN_PRESET` is `clean`). In `all`
   every pick the answer proposed is shown at its own words' times: an accent or big word from the
-  lead before its first word (0.2 s) to its last word's end (at least 1.5 s, inside the reel: one
-  too close to the end for that is dropped, `accent-time`, as the reel being too short); a
-  visual from its first word to its last word's end (1 to 2 s, the behind length); a transition at
-  its own timing. Nothing is dropped for room, for another extra, for the hook, for a transition's
-  rate or overlap, or for pace, and the make-room ladder never runs. Each pick takes its normal spot
-  when a free one exists; when none does, its default spot anyway (an accent or the transition text
-  at the head's upper place or the line, a big word at its head rule's centre, a visual at the
-  top-left corner), at the largest size that fits and never below `MIN_TEXT_SIZE`, and it is noted
-  `kept-overlapping` (rule `all-picks`) with what it sits over (the face, other text) or the picks it
-  shares its time with. Overlaps between picks are kept: the one-at-a-time rule of the behind track
-  and the checks `text-overlap`, `behind-caption`, `big-word-hidden` and `behind-face` (a card over
-  the face) are the `clean` layout's, not applied in `all`. Still dropped in `all`: a pick the reel
-  is too short for (`accent-time`, `big-word-time`, `visual-time`, `transition-time`, `hook-time`),
-  a big word or visual over hidden footage (`hidden-footage`), a transition with no text (`no-room`).
-  The hook keeps its fixed slot and its own drops in both.
+  lead before its first word (0.2 s) to its last word's end (at least 1.5 s, or the shown floor
+  below); a visual from its first word to its last word's end (up to 2 s, the behind length); a
+  transition at its own timing. Nothing is dropped for room, for another extra, for the hook, for a
+  transition's rate or overlap, or for pace, and the make-room ladder never runs. Each pick takes its
+  normal spot when a free one exists; when none does, its default spot anyway (an accent or the
+  transition text at the head's upper place or the line, a big word at its head rule's centre, a
+  visual at the top-left corner), at the largest size that fits and never below `MIN_TEXT_SIZE`, and
+  it is noted `kept-overlapping` (rule `all-picks`) with what it sits over (the face, other text) or
+  the picks it shares its time with. Overlaps between picks are kept: the one-at-a-time rule of the
+  behind track and the checks `text-overlap`, `behind-caption`, `big-word-hidden` and `behind-face`
+  (a card over the face) are the `clean` layout's, not applied in `all`.
+  No `dropped` note is ever written in `all` (a seeded property test checks it). The fallbacks, each noted:
+  - Too close to the reel's end for its minimum: the end is the reel's end and the start moves
+    earlier, so it shows at least `ALL_SHOWN_SECONDS` (0.5 s) (`clamped-to-end`). The schema and the
+    checks take the same 0.5 s in `all`.
+  - A big word or visual over hidden footage: the next visible moment, the first kept time after the
+    cut, else the last one before it (`moved-off-cut`). With no visible moment at all it stays over
+    the cut, and the schema then refuses that edit.
+  - A transition or list pick with no caption text of its own: the words of its phrase are its text
+    (`text-from-words`); a text over 300 characters is cut at a word, noted the same way.
+  - The hook: its start moves earlier when the reel is shorter than its floor (`clamped-to-end`); with
+    no free place at any size, its slot at the largest size that fits, overlap noted.
+  - An accent, big word or visual with no free place at all: its default spot at the smallest size
+    (an accent in two lines at the safe box's corner), overlap noted.
+    The hook keeps its fixed slot in both.
 - Drops (`clean` only; `all` drops nothing for room, see "Placement"): an extra that fits nowhere is
   dropped and recorded. Captions are never dropped: with no free place even at the floor, they take
   the caption line over the face (recorded `covers-face`).
 - Record: a list of `EngineNote` `{ item, action, rule, reason }`, `action` one of `moved` (not its
   kind's first place), `shrunk`, `wrapped`, `retimed`, `dropped`, `covers-face`, `wish-not-kept`, `low-contrast`, `removed` (and, in older
   records only, `shadowed`), `kept-overlapping` (`all` only: a pick kept over the face, other text or
-  another pick, rule `all-picks`),
+  another pick, rule `all-picks`), `clamped-to-end`, `moved-off-cut` and `text-from-words` (`all` only, see "Placement"),
   `reason` in plain words with the item's text and times, for example
   `{ "item": "photo-1", "action": "dropped", "rule": "no-room", "reason": "photo 1: every photo spot
 is under captions or the face from 23.48 s to 26.23 s" }`. Rules: `caption-min`, `caption-spot`,
@@ -708,8 +718,7 @@ never fatal.
   nothing on what is already placed, and `text-overlap` and `behind-caption` guard it. In `all` such an overlap is kept and noted
   (`kept-overlapping`), never silent.
 - Never drop a caption. In `clean`, only extras (accents, big words, visuals) are dropped for room, each with a
-  recorded reason. In `all`, no pick is dropped for room, another extra, the hook, a transition's rate or overlap, or
-  pace: only the reel being too short for it, or hidden footage. A caption left out while an extra shows its words is not dropped: its words
+  recorded reason. In `all`, no pick is dropped at all: the fallbacks in "Placement" show it. A caption left out while an extra shows its words is not dropped: its words
   are on screen.
 - Never read a single head-track sample for a placement or a check: always the robust faces
   (`facesOver`).
@@ -726,7 +735,7 @@ never fatal.
   run a transition during it.
 - Never move, shorten, remove or cut short the hook for another item: the hook is placed first, the other
   extras wait, are dropped or are cut short by it (never the reverse), and its window never shifts
-  (`shiftsOf`). Its only drop is `hook-time` (a reel too short for it).
+  (`shiftsOf`). In `clean` its only drop is `hook-time` (a reel too short for it); `all` clamps it to the reel and never drops it.
 - Never let a caption drop the hook: the hook is reserved before the captions on every run, and the
   captions in its window keep clear of it (move, shrink, or last, over the face).
 - Never drop the hook for its size: below the floor it shrinks until its words fit in one or two lines
@@ -755,7 +764,7 @@ never fatal.
 - Never remove a caption, set it below the floor, put it over the face or outside the safe zone to
   make room.
 - Never drop or remove an item the owner asked for to make room for another.
-- Never let an `all` edit fail the schema or the checks: its overlaps are the only ones allowed, and every pick is in the edit.
+- Never let an `all` edit fail the schema or the checks: its overlaps are the only ones allowed, and every pick is in the edit. The one exception: a big word or visual over footage hidden for the whole reel (no visible moment to move it to).
 - Cover the face for a requested item only after every other step; a visual's card never covers it.
 - Without a request the engine never makes room, except for the hook: with no hook its output is
   the plain pass's. In `all` the make-room ladder never runs: nothing is dropped to make room.

@@ -16,6 +16,7 @@ import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from
 import { wordsText } from "./layout.ts";
 import type { Measurer } from "./measure.ts";
 import {
+  ALL_SHOWN_SECONDS,
   type FontKey,
   PLATFORM_BUTTONS,
   PLATFORM_SAFE,
@@ -64,7 +65,8 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    and a caption whose words an accent or a big word shows is left out
 //    while it shows (never the same word twice on screen).
 // 5. An extra that fits nowhere is dropped; captions never are (in the worst
-//    case they take the caption line over the face).
+//    case they take the caption line over the face). `all` mode drops
+//    nothing: see `placement: "all"` in `preset.ts` and the notes it writes.
 // 6. Readable text: with a background map, each text placed is measured
 //    (WCAG contrast of its colour against the footage behind it, over its
 //    span). Below the preset's threshold it moves to the nearest free place
@@ -92,6 +94,14 @@ export type EngineAction =
   // `all` mode: a pick placed over the face or other text, or at the same
   // time as another pick, kept as it is (the reason says what it sits over).
   | "kept-overlapping"
+  // `all` mode: a pick too close to the reel's end for its minimum, shown
+  // from earlier so it still shows (its end is the reel's end).
+  | "clamped-to-end"
+  // `all` mode: a pick over hidden footage, shown at the next visible moment.
+  | "moved-off-cut"
+  // `all` mode: a transition or a list pick with no caption text of its own,
+  // shown with the words of its phrase as its text.
+  | "text-from-words"
   // An extra Claude added on its own, taken out to make room for an item the
   // owner asked for.
   | "removed";
@@ -846,17 +856,28 @@ function placeOnce(
     if (!choice) return null;
     const spec = preset.pace.hook;
     const text = hookText(choice);
-    const start = ms(Math.min(spec.fromSeconds, duration));
+    let start = ms(Math.min(spec.fromSeconds, duration));
     const end = ms(Math.min(duration, spec.untilSeconds));
-    const min = preset.accent.minSeconds;
+    const min = all ? ALL_SHOWN_SECONDS : preset.accent.minSeconds;
     if (end - start < min - SLACK) {
+      if (!all) {
+        record.push({
+          item: HOOK_ID,
+          action: "dropped",
+          rule: "hook-time",
+          reason: `the hook ${quote(text)} needs ${min} s on screen; the reel is too short`,
+        });
+        return null;
+      }
+      // `all`: the reel ends too soon after the hook's start, so it shows
+      // from earlier, to the reel's end.
+      start = ms(Math.max(0, end - min));
       record.push({
         item: HOOK_ID,
-        action: "dropped",
+        action: "clamped-to-end",
         rule: "hook-time",
-        reason: `the hook ${quote(text)} needs ${min} s on screen; the reel is too short`,
+        reason: `the hook ${quote(text)} shows from ${at(start)} to ${at(end)}: the reel is too short to start it at ${at(spec.fromSeconds)}`,
       });
-      return null;
     }
     return {
       ref: HOOK_REF,
@@ -907,13 +928,32 @@ function placeOnce(
         });
       }
       const kind = preset.transitions[choice.kind];
-      const timing = transitionTiming(
+      let timing = transitionTiming(
         { from: choice.from, to: choice.to, ...(wish ? { wish } : {}) },
         transcript.words,
         duration,
         preset,
         kind,
+        all ? ALL_SHOWN_SECONDS : undefined,
       );
+      if (!timing && all) {
+        // `all`: the reel is shorter than the shown floor, so the layer
+        // covers all of it.
+        timing = {
+          start: 0,
+          end: ms(duration),
+          seconds: kind.seconds,
+          lengthened: true,
+          startAnchor: { reel: "start" },
+          endAnchor: { reel: "end" },
+        };
+        record.push({
+          item: id,
+          action: "clamped-to-end",
+          rule: "transition-time",
+          reason: `${label} shows from 0 s to ${at(duration)}: the reel is too short for it to show ${rules.minSeconds} s`,
+        });
+      }
       if (!timing) {
         record.push({
           item: id,
@@ -1003,7 +1043,7 @@ function placeOnce(
           item: id,
           action: "retimed",
           rule: "transition-min",
-          reason: `${label} shows from ${at(timing.start)} to ${at(timing.end)}, at least ${rules.minSeconds} s`,
+          reason: `${label} shows from ${at(timing.start)} to ${at(timing.end)}, at least ${all ? ALL_SHOWN_SECONDS : rules.minSeconds} s`,
         });
       }
       kept.push({
@@ -1031,10 +1071,39 @@ function placeOnce(
   // The start anchor of an item coming in at `at`: its word, less the lead.
   const leadAnchor = (id: string, at: number): Anchor => {
     const offset = ms(at - word(id).start);
+    if (Math.abs(offset) > 1) return anchorAt(at, transcript.words);
     return offset === 0 ? { word: id } : { word: id, offset };
   };
   const crossesHidden = (span: { start: number; end: number }) =>
     hidden.some((range) => during(span, range));
+
+  // `all` mode, a pick over hidden footage: the next visible moment after the
+  // cut (from its end, as long as the pick lasts, up to the next cut), else
+  // the last one before it. Null when neither holds the shown floor.
+  function visibleSpan(span: {
+    start: number;
+    end: number;
+  }): { start: number; end: number } | null {
+    const length = span.end - span.start;
+    const cuts = hidden.filter((range) => during(span, range)).sort((a, b) => a.start - b.start);
+    for (const cut of cuts) {
+      const nextCut = hidden
+        .filter((range) => range.start >= cut.end - SLACK)
+        .reduce((best, range) => Math.min(best, range.start), duration);
+      const start = ms(cut.end);
+      const end = ms(Math.min(nextCut, duration, start + length));
+      if (end - start >= ALL_SHOWN_SECONDS - SLACK) return { start, end };
+    }
+    for (const cut of [...cuts].reverse()) {
+      const prevCut = hidden
+        .filter((range) => range.end <= cut.start + SLACK)
+        .reduce((best, range) => Math.max(best, range.end), 0);
+      const end = ms(cut.start);
+      const start = ms(Math.max(prevCut, cut.start - length));
+      if (end - start >= ALL_SHOWN_SECONDS - SLACK) return { start, end };
+    }
+    return null;
+  }
 
   // `all` mode: a pick's own span, from its start (the lead before its first
   // word) to its last word's end, at least `min` long and at most `max`,
@@ -1063,7 +1132,7 @@ function placeOnce(
       !shift && all
         ? ownSpan(leadStart(wordStart), word(accent.to).end, preset.accent.minSeconds, Infinity)
         : null;
-    const start = own?.start ?? leadStart(wordStart);
+    let start = own?.start ?? leadStart(wordStart);
     const end = shift
       ? shift.end
       : own
@@ -1077,14 +1146,25 @@ function placeOnce(
               ),
             ),
           );
-    if (end - start < preset.accent.minSeconds - SLACK) {
+    const floor = all ? ALL_SHOWN_SECONDS : preset.accent.minSeconds;
+    if (end - start < floor - SLACK) {
+      if (!all) {
+        notes?.push({
+          item: id,
+          action: "dropped",
+          rule: "accent-time",
+          reason: `accent ${quote(accentText(accent))} starts too close to the end to show ${preset.accent.minSeconds} s`,
+        });
+        return null;
+      }
+      // `all`: too close to the reel's end, so it shows from earlier.
+      start = ms(Math.max(0, end - floor));
       notes?.push({
         item: id,
-        action: "dropped",
+        action: "clamped-to-end",
         rule: "accent-time",
-        reason: `accent ${quote(accentText(accent))} starts too close to the end to show ${preset.accent.minSeconds} s`,
+        reason: `accent ${quote(accentText(accent))} shows from ${at(start)} to ${at(end)}: the reel ends too soon to start it at its word`,
       });
-      return null;
     }
     return {
       ref,
@@ -1117,30 +1197,53 @@ function placeOnce(
       !shift && all
         ? ownSpan(leadStart(first.start), first.end, preset.accent.minSeconds, Infinity)
         : null;
-    const start = own?.start ?? leadStart(first.start);
+    let start = own?.start ?? leadStart(first.start);
     const { minSeconds: min, afterSeconds } = preset.accent;
-    const end =
+    let end =
       shift?.end ??
       own?.end ??
       ms(Math.min(duration, Math.max(first.end + afterSeconds, start + min)));
     const text = cleanWord(first.text, preset);
-    if (end - start < min - SLACK) {
+    const floor = all ? ALL_SHOWN_SECONDS : min;
+    if (end - start < floor - SLACK) {
+      if (!all) {
+        notes?.push({
+          item: id,
+          action: "dropped",
+          rule: "big-word-time",
+          reason: `the big word ${quote(text)} is said too close to the end to show ${min} s`,
+        });
+        return null;
+      }
+      // `all`: too close to the reel's end, so it shows from earlier.
+      start = ms(Math.max(0, end - floor));
       notes?.push({
         item: id,
-        action: "dropped",
+        action: "clamped-to-end",
         rule: "big-word-time",
-        reason: `the big word ${quote(text)} is said too close to the end to show ${min} s`,
+        reason: `the big word ${quote(text)} shows from ${at(start)} to ${at(end)}: the reel ends too soon to start it at its word`,
       });
-      return null;
     }
     if (crossesHidden({ start, end })) {
-      notes?.push({
-        item: id,
-        action: "dropped",
-        rule: "hidden-footage",
-        reason: `the big word ${quote(text)} would show while the footage is hidden`,
-      });
-      return null;
+      if (!all) {
+        notes?.push({
+          item: id,
+          action: "dropped",
+          rule: "hidden-footage",
+          reason: `the big word ${quote(text)} would show while the footage is hidden`,
+        });
+        return null;
+      }
+      const moved = visibleSpan({ start, end });
+      if (moved) {
+        notes?.push({
+          item: id,
+          action: "moved-off-cut",
+          rule: "hidden-footage",
+          reason: `the big word ${quote(text)} would show while the footage is hidden: it shows from ${at(moved.start)} to ${at(moved.end)}, the next visible moment`,
+        });
+        ({ start, end } = moved);
+      }
     }
     return {
       ref,
@@ -1185,23 +1288,46 @@ function placeOnce(
     }
     start = ms(start);
     end = ms(end);
-    if (end - start < minSeconds - SLACK) {
+    const floor = all ? ALL_SHOWN_SECONDS : minSeconds;
+    if (end - start < floor - SLACK) {
+      if (!all) {
+        notes?.push({
+          item: id,
+          action: "dropped",
+          rule: "visual-time",
+          reason: `visual ${index + 1}: its sentence and the pauses around it last under ${minSeconds} s`,
+        });
+        return null;
+      }
+      // `all`: too close to the reel's end, so it shows from earlier.
+      start = ms(Math.max(0, end - floor));
       notes?.push({
         item: id,
-        action: "dropped",
+        action: "clamped-to-end",
         rule: "visual-time",
-        reason: `visual ${index + 1}: its sentence and the pauses around it last under ${minSeconds} s`,
+        reason: `visual ${index + 1} shows from ${at(start)} to ${at(end)}: the reel ends too soon to start it at its sentence`,
       });
-      return null;
     }
     if (crossesHidden({ start, end })) {
-      notes?.push({
-        item: id,
-        action: "dropped",
-        rule: "hidden-footage",
-        reason: `visual ${index + 1} would show while the footage is hidden`,
-      });
-      return null;
+      if (!all) {
+        notes?.push({
+          item: id,
+          action: "dropped",
+          rule: "hidden-footage",
+          reason: `visual ${index + 1} would show while the footage is hidden`,
+        });
+        return null;
+      }
+      const moved = visibleSpan({ start, end });
+      if (moved) {
+        notes?.push({
+          item: id,
+          action: "moved-off-cut",
+          rule: "hidden-footage",
+          reason: `visual ${index + 1} would show while the footage is hidden: it shows from ${at(moved.start)} to ${at(moved.end)}, the next visible moment`,
+        });
+        ({ start, end } = moved);
+      }
     }
     if (!shift && start < Math.min(sentence.start, first.start) - SLACK) {
       notes?.push({
@@ -1505,8 +1631,45 @@ function placeOnce(
       keyParts = leadParts.slice(-1);
       leadParts = leadParts.slice(0, -1);
     }
-    const lead = leadParts.map((part) => part.text).join(" ");
-    const key = keyParts.map((part) => part.text).join(" ");
+    let lead = leadParts.map((part) => part.text).join(" ");
+    let key = keyParts.map((part) => part.text).join(" ");
+    if (all) {
+      // `all`: a phrase whose captions all begin before it has no text of its
+      // own, so its words (as the captions would show them, after the fixes)
+      // are its text. A text over the level's cap is cut at a word.
+      if (!key) {
+        key =
+          ids
+            .map((id) => fixes.get(id) ?? wordsText([id], transcript, preset))
+            .join(" ")
+            .trim() || ids.map((id) => word(id).text.trim()).join(" ");
+        lead = "";
+        record.push({
+          item: plan.id,
+          action: "text-from-words",
+          rule: "transition-text",
+          reason: `${label} has no caption text of its own: it shows the words of its phrase, ${quote(key)}`,
+        });
+      }
+      const capped = (text: string) => {
+        if (text.length <= LEVEL_TEXT_MAX) return text;
+        let out = "";
+        for (const piece of text.split(" ")) {
+          const next = out ? `${out} ${piece}` : piece;
+          if (next.length > LEVEL_TEXT_MAX) break;
+          out = next;
+        }
+        record.push({
+          item: plan.id,
+          action: "text-from-words",
+          rule: "transition-text",
+          reason: `${label} shows its first ${out.length} characters: its text is longer than ${LEVEL_TEXT_MAX}`,
+        });
+        return out;
+      };
+      lead = lead.length > LEVEL_TEXT_MAX ? capped(lead) : lead;
+      key = key.length > LEVEL_TEXT_MAX ? capped(key) : key;
+    }
     const specs = [
       ...(number !== undefined
         ? [{ role: "number" as const, text: String(number), start: plan.startAnchor }]
@@ -1514,7 +1677,7 @@ function placeOnce(
       ...(lead ? [{ role: "lead" as const, text: lead, start: { word: choice.from } }] : []),
       { role: "key" as const, text: key, start: { word: choice.key_from } },
     ].map((spec) => ({ ...spec, ...levelStyle(spec.role, preset) }));
-    if (!key || specs.some((spec) => spec.text.length > 300)) {
+    if (!key || specs.some((spec) => spec.text.length > LEVEL_TEXT_MAX)) {
       record.push({
         item: plan.id,
         action: "dropped",
@@ -2303,13 +2466,13 @@ function placeOnce(
           const widths = lines.map((line) => measurer.width(font, size, line));
           const width = Math.max(...widths);
           const height = lines.length * size;
-          const spot = placeBox(
-            candidate.area,
-            obstacles,
-            width,
-            height,
-            candidate.want(width, height),
-          );
+          // `all`, last resort: the smallest size in two lines at the safe
+          // box's corner, past the box if the words must (never dropped).
+          const spot =
+            placeBox(candidate.area, obstacles, width, height, candidate.want(width, height)) ??
+            (overlapping && size === MIN_TEXT_SIZE && (lineCount === 2 || words.length === 1)
+              ? { x: safe.left, y: safe.top }
+              : null);
           if (!spot) continue;
           const label = `${accent.title ? "the title" : "accent"} ${quote(text)}`;
           // Measured once its place and size are known; the notes on the
@@ -2446,16 +2609,16 @@ function placeOnce(
     const sizes = sizesFrom(fullSize, preset);
     const label = `the hook ${quote(text)}`;
     // Places the hook at one size and line break; true once it is placed.
-    const tryAt = (candidate: Candidate, size: number, lines: string[]): boolean => {
+    const tryAt = (
+      candidate: Candidate,
+      size: number,
+      lines: string[],
+      forced?: { x: number; y: number },
+    ): boolean => {
       const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
       const height = lines.length * size;
-      const spot = placeBox(
-        candidate.area,
-        obstacles,
-        width,
-        height,
-        candidate.want(width, height),
-      );
+      const spot =
+        forced ?? placeBox(candidate.area, obstacles, width, height, candidate.want(width, height));
       if (!spot) return false;
       const notes = record.length;
       const place = keepReadable(
@@ -2469,6 +2632,15 @@ function placeOnce(
         `no free place nearby reaches ${readability.large.min}:1`,
       );
       const contrastNotes = record.splice(notes);
+      if (forced) {
+        noteOverlap(
+          extra.id,
+          label,
+          { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
+          span,
+          true,
+        );
+      }
       overlays.set(extra.id, {
         id: extra.id,
         kind: "hook",
@@ -2529,6 +2701,24 @@ function placeOnce(
       if (lines.some((line) => measurer.width(font, size, line) > maxWidth)) continue;
       for (const candidate of candidates) {
         if (tryAt(candidate, size, lines)) return true;
+      }
+    }
+    // `all`, nothing free at any size: the largest size whose words fit the
+    // safe box in one or two lines, at the upper part's place, over the face
+    // if it must (noted). At the smallest size it is set whatever its width.
+    if (all) {
+      const boxWidth = safe.right - safe.left;
+      for (let size = fullSize; size >= MIN_TEXT_SIZE; size -= 1) {
+        const options = words.length > 1 ? [[text], balancedBreak(words, font, size)] : [[text]];
+        for (const lines of options) {
+          const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
+          if (width > boxWidth && size > MIN_TEXT_SIZE) continue;
+          const forced = {
+            x: Math.max(safe.left, Math.min(safeCx - width / 2, safe.right - width)),
+            y: safe.top,
+          };
+          if (tryAt(candidates[0]!, size, lines, forced)) return true;
+        }
       }
     }
     record.push({
@@ -2607,6 +2797,8 @@ function placeOnce(
         }
         if (y <= area.top + size / 2) break;
       }
+      // `all`, last resort: the smallest size at the area's corner (never dropped).
+      if (!spot && all && size === sizes.at(-1)) spot = { x: area.left, y: area.top };
       if (!spot) {
         if (fits) hidden = true;
         continue;
@@ -2778,7 +2970,16 @@ function placeOnce(
     }));
     if (all) tried.push({ smaller: false, size: full, overlap: true });
     for (const { smaller, size, overlap } of tried) {
-      const found = cardSpots(span, size, overlap ? [] : obstacles)[0];
+      const found =
+        cardSpots(span, size, overlap ? [] : obstacles)[0] ??
+        (overlap
+          ? {
+              left: PLATFORM_SAFE.left,
+              right: PLATFORM_SAFE.left + size.width,
+              top: PLATFORM_SAFE.top,
+              bottom: PLATFORM_SAFE.top + size.height,
+            }
+          : undefined);
       if (!found) continue;
       const { width, height } = size;
       const boxAt = (spot: { x: number; y: number }): Box => ({
@@ -3175,6 +3376,9 @@ function placeOnce(
 
 // The id a probe places under, never an item's.
 const PROBE = "probe";
+
+// The longest text of a transition's level (the schema's cap).
+const LEVEL_TEXT_MAX = 300;
 
 // The hook's answer reference (in a checklist, `requested`) and item id.
 const HOOK_REF = "hook";

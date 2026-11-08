@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 // The worker's scripted AI replies for the fixture clip: the written hook
 // (role `hook`, "A short test for the real studio") and the decide answer (one
 // accent word, one fixed word). On the 2.7 s clip the hook holds the screen
-// from 0.2 s to the end, so the layout engine drops the accent (one extra at a
-// time, nothing during the hook).
+// from 0.2 s to the end, and the accent shows over it (`all` placement: the
+// layout engine drops nothing the answer picks).
 export const SHORT_SPEECH_ANSWER = fileURLToPath(
   new URL("../../worker/src/decide/testdata/short-speech-answer.json", import.meta.url),
 );
@@ -86,9 +86,9 @@ async function roundReply({ visuals = [], bigWord, transitions }: AnswerRound = 
   };
   reply.answer.visuals = visuals;
   reply.answer.big_words = bigWord ? [{ word: bigWord }] : [];
-  // On the 2.7 s fixture clip the accent holds the screen for most of it, and
-  // the layout engine shows one extra at a time: a behind item needs it gone
-  // (a round's own transitions stay as given).
+  // On the 2.7 s fixture clip the accent holds the screen for most of it: a
+  // round with a behind item leaves the accent out, so that round's expected
+  // overlays stay as they were (a round's own transitions stay as given).
   if (visuals.length > 0 || bigWord) {
     reply.answer.accents = [];
     reply.answer.transitions = [];

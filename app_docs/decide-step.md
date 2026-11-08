@@ -25,7 +25,7 @@ over the version by the layout engine together with the hook (`placeEdit`, `app_
 "Layout engine"), built and checked, and becomes a new version (version 2 on a fresh reel). Only an
 answer breaking the schema or the glossary is refused: it goes back once with the reasons; a second
 refusal of the hook or of the components fails the step and leaves the current version untouched.
-Layout never refuses an answer: in the worker's `all` placement every pick is shown (one with no free
+Layout never refuses an answer: in the worker's `all` placement nothing is dropped (a pick with no free
 place at its default spot, overlap noted), and in the strict `clean` layout what fits nowhere is
 dropped; either way it is written to the engine record saved with the version. Nothing asks Claude again about what the engine left out: the decide step makes no
 call after the components' answer is placed. Every AI call a decided version made (the hook attempts,
@@ -114,7 +114,7 @@ placed first):
   not); the components prompt is told the reel's intensity word, never a rate. In `clean` the engine keeps the rhythm: one extra at a time, transitions at their own
   slower pace (about one per `preset.pace.transitionEverySeconds`, 9), and drops what has no room. In
   `all` (the worker's placement) every pick shows at its own words' times, so the rhythm is the
-  answer's and only a reel too short for a pick drops it.
+  answer's, and a reel too short for a pick clamps it to the reel's end (nothing is dropped).
 - The stored forbids: `reels.no_photos` and `reels.no_big_word` are read at the start of the run. While one is set, the schema refuses the kind (visuals for photos, big words), and a visual or big word in the answer is refused. Nothing sets or lifts them now: a new version writes
   `forbid` as null (`save_version` keeps the stored flag). Those flags come only from the older
   request path (dormant, `app_docs/change-requests.md`).
@@ -227,7 +227,7 @@ input, reasons?)` fills them as fenced JSON and, on the retry, appends the refus
   record in one line (`apps/worker/src/engine-record.ts`, `engineRecordLine`):
   `engine record, reel <id>, version <n>: <item> <action> (<rule>): <reason>; ...`, or `nothing moved`.
   Step line: `version 2: 1 accent, 1 transition, hook set, 1 word fixed`, with `, <n> behind` after it
-  when the version has behind items, `, <n> dropped` when the engine dropped items, and `, started over
+  when the version has behind items, `, <n> dropped` when the engine dropped items (`clean` only), and `, started over
 from version <n>` for Start over.
   There is no title segment: a new answer has no title.
 - `apps/worker/src/process-job.ts`: runs `runDecide` after `saveFirstVersion`. Never cached: a retried
