@@ -387,7 +387,7 @@ describe("parseDecideAnswer", () => {
     });
     expect(reasons(slow)).toMatch(/transitions\.0: .*wish/);
     const bigWish = answer((a) => {
-      a.big_words = [{ word: "w0005", wish: "behind" }];
+      a.big_words = [{ from: "w0005", to: "w0005", wish: "behind" }];
     });
     expect(reasons(bigWish)).toMatch(/big_words\.0: .*wish/);
     const visual = answer((a) => {
@@ -458,9 +458,36 @@ describe("the visual and the stored forbids in the decide answer", () => {
   it("takes as many visuals and big words as the editor chooses, the same word again too", () => {
     const many = answer((a) => {
       a.visuals = [visual, { ...visual, from: "w0006", to: "w0010" }, visual];
-      a.big_words = [{ word: "w0005" }, { word: "w0009" }, { word: "w0005" }];
+      a.big_words = [
+        { from: "w0005", to: "w0005" },
+        { from: "w0009", to: "w0009" },
+        { from: "w0005", to: "w0005" },
+      ];
     });
     expect(parse(many).ok).toBe(true);
+  });
+
+  it("takes a big word of one or two consecutive words, and refuses a span of three or one ending first", () => {
+    expect(parse(answer((a) => (a.big_words = [{ from: "w0005", to: "w0006" }]))).ok).toBe(true);
+    expect(reasons(answer((a) => (a.big_words = [{ from: "w0006", to: "w0005" }])))).toMatch(
+      /^big_words\.0\.to: ends on w0005, before it starts on w0006$/m,
+    );
+    expect(reasons(answer((a) => (a.big_words = [{ from: "w0005", to: "w0007" }])))).toMatch(
+      /^big_words\.0\.to: w0005 to w0007 spans 3 words; a big word is one or two consecutive words$/m,
+    );
+  });
+
+  it("checks each word of a two-word big word as one plain word of at most 24 letters", () => {
+    const long = structuredClone(short.transcript);
+    long.words.find((word) => word.id === "w0006")!.text = "extraordinarilyunbelievablylongword";
+    const json = answer((a) => (a.big_words = [{ from: "w0005", to: "w0006" }]));
+    const result = parseDecideAnswer(json, CLEAN_PRESET, long, NO_RULES);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reasons.join("\n")).toMatch(
+        /^big_words\.0\.to: w0006 \("extraordinarilyunbelievablylongword"\) is not one plain word of at most 24 letters$/m,
+      );
+    }
   });
 
   it("has no count cap: 100 picks over a 162-word clip and 80 word fixes on distinct words", () => {
@@ -468,7 +495,7 @@ describe("the visual and the stored forbids in the decide answer", () => {
     const span = (start: number, count: number) => ids.slice(start, start + count);
     const json = {
       accents: span(0, 25).map((id) => ({ from: id, to: id })),
-      big_words: span(25, 25).map((id) => ({ word: id })),
+      big_words: span(25, 25).map((id) => ({ from: id, to: id })),
       visuals: span(50, 25).map((id) => ({ from: id, to: id, description: "a messy desk" })),
       transitions: span(75, 25).map((id) => ({ kind: "numbered", from: id, to: id, key_from: id })),
       word_fixes: ids.slice(0, 80).map((id) => ({ word: id, text: "Studio" })),
@@ -485,7 +512,7 @@ describe("the visual and the stored forbids in the decide answer", () => {
   });
 
   it("refuses big words while they are forbidden", () => {
-    const big = answer((a) => (a.big_words = [{ word: "w0005" }]));
+    const big = answer((a) => (a.big_words = [{ from: "w0005", to: "w0005" }]));
     expect(parse(big).ok).toBe(true);
     expect(reasons(big, stored(false, true))).toContain(
       "big_words: big words are switched off for this reel by the owner",
@@ -535,7 +562,7 @@ describe("editFromAnswer", () => {
         a.accents = [];
         a.visuals = [{ from: "w0001", to: "w0010", description: "a messy desk at night" }];
         // Said 0.64 s before the reel ends.
-        a.big_words = [{ word: "w0010" }];
+        a.big_words = [{ from: "w0010", to: "w0010" }];
       }),
     );
     if (!made.ok) throw new Error(made.reasons.join("; "));

@@ -212,7 +212,7 @@ describe("the layout engine's timing", () => {
   });
 
   it("shows a big word on the accent's timing: the lead before its word to a second after it", async () => {
-    const { spans, edit } = await place({ big_words: [{ word: "w76" }] });
+    const { spans, edit } = await place({ big_words: [{ from: "w76", to: "w76" }] });
     const span = spans.get("big-word-1")!;
     const said = byId.get("w76")!;
     expect(span.start).toBe(leadOf("w76"));
@@ -226,6 +226,19 @@ describe("the layout engine's timing", () => {
     });
   });
 
+  it("shows a two-word big word from its first word to its last, both words in it", async () => {
+    const { spans, edit, html } = await place({ big_words: [{ from: "w76", to: "w77" }] });
+    const span = spans.get("big-word-1")!;
+    expect(span.start).toBe(leadOf("w76"));
+    expect(span.end).toBeCloseTo(Math.max(byId.get("w77")!.end + 1, span.start + 1.5), 3);
+    expect(edit.tracks.behind![0]).toMatchObject({
+      kind: "word",
+      text: "distribution channel",
+      start: { word: "w76", offset: -LEAD },
+    });
+    expect(html).toContain("distribution channel");
+  });
+
   it("gives up the lead rather than cut the extra before it", async () => {
     // "AI has completely" leaves at 9.607 s, a second after "completely";
     // "work" is said at 9.789 s, so its lead would start at 9.589 s. The big
@@ -233,7 +246,7 @@ describe("the layout engine's timing", () => {
     // big word still shows 1.5 s.
     const { spans, record } = await place({
       accents: [{ from: "w26", to: "w28", title: false }],
-      big_words: [{ word: "w33" }],
+      big_words: [{ from: "w33", to: "w33" }],
     });
     const accent = spans.get("accent-1")!;
     const word = spans.get("big-word-1")!;
@@ -248,7 +261,11 @@ describe("the layout engine's timing", () => {
 
   it("shows several big words, the same word again too, each on the accent's timing", async () => {
     // "work" is said at w33 and again at w126.
-    const choices = [{ word: "w33" }, { word: "w76" }, { word: "w126" }];
+    const choices = [
+      { from: "w33", to: "w33" },
+      { from: "w76", to: "w76" },
+      { from: "w126", to: "w126" },
+    ];
     const { spans, edit, checks } = await place({ big_words: choices });
     const behind = edit.tracks.behind!;
     expect(behind.map((item) => item.id)).toEqual(["big-word-1", "big-word-2", "big-word-3"]);
@@ -259,7 +276,7 @@ describe("the layout engine's timing", () => {
     ]);
     behind.forEach((item, index) => {
       const span = spans.get(item.id)!;
-      const said = byId.get(choices[index]!.word)!;
+      const said = byId.get(choices[index]!.from)!;
       expect(span.start).toBe(leadOf(said.id));
       expect(span.end - span.start).toBeGreaterThanOrEqual(1.5 - 1e-6);
       expect(span.end).toBeLessThanOrEqual(Math.max(said.end + 1, span.start + 1.5) + 1e-6);
@@ -313,7 +330,7 @@ describe("the layout engine's timing", () => {
   it("shows at most one extra at a time, by priority", async () => {
     const { edit, spans, record } = await place({
       accents: [{ from: "w66", to: "w67", title: false }],
-      big_words: [{ word: "w66" }],
+      big_words: [{ from: "w66", to: "w66" }],
       visuals: [{ from: "w63", to: "w70" }],
     });
     const extras = extrasOf(edit).map((item) => spans.get(item.id)!);
@@ -334,7 +351,7 @@ describe("the layout engine's timing", () => {
     const input: EngineInput = {
       ...NOTHING,
       accents: [{ from: "w66", to: "w67", title: false }],
-      big_words: [{ word: "w66" }],
+      big_words: [{ from: "w66", to: "w66" }],
     };
     const asked = placeEdit(hand.edit, input, transcript, hand.headTrack, CLEAN_PRESET, measurer, {
       requested: ["big_words[0]"],
@@ -384,7 +401,7 @@ describe("never the same word twice on screen", () => {
   });
 
   it('leaves the big word out of its caption: "it to the world" reads "it to the"', async () => {
-    const { edit, spans, checks } = await place({ big_words: [{ word: "w62" }] });
+    const { edit, spans, checks } = await place({ big_words: [{ from: "w62", to: "w62" }] });
     expect(checks).toEqual([]);
     const world = edit.tracks.captions.find((item) => item.words.includes("w62"))!;
     expect(world).toMatchObject({ hidden_by: "big-word-1" });
@@ -428,7 +445,7 @@ describe("big words in view", () => {
   it("moves a short big word up so the head covers at most 30% of it", async () => {
     const measurer = await nodeMeasurer();
     const { edit, spans, checks, record } = await place(
-      { big_words: [{ word: "w116" }] },
+      { big_words: [{ from: "w116", to: "w116" }] },
       { headTrack: BIG_FACE },
     );
     expect(checks).toEqual([]);
@@ -456,7 +473,7 @@ describe("big words in view", () => {
     // A wide head right under the safe zone's top: no room above it.
     const high = steadyHead({ head_top: 270, cx: 540, head_w: 700 });
     const { edit, record, checks, unplaced } = await place(
-      { big_words: [{ word: "w116" }] },
+      { big_words: [{ from: "w116", to: "w116" }] },
       { headTrack: high },
     );
     expect(checks).toEqual([]);
@@ -479,7 +496,7 @@ describe("the layout engine's placement", () => {
       { from: "w117", to: "w120", title: false },
       { from: "w134", to: "w136", title: false },
     ],
-    big_words: [{ word: "w76" }],
+    big_words: [{ from: "w76", to: "w76" }],
     visuals: [
       { from: "w84", to: "w99" },
       { from: "w113", to: "w116" },
@@ -511,7 +528,7 @@ describe("the layout engine's placement", () => {
     if (index % 3 === 0) {
       RHYTHM.accents!.push({ from: ids[0]!, to: ids[Math.min(2, ids.length - 1)]!, title: false });
     } else if (index % 3 === 1) {
-      RHYTHM.big_words!.push({ word: longest });
+      RHYTHM.big_words!.push({ from: longest, to: longest });
     } else {
       RHYTHM.visuals!.push({ from: sentence.from, to: sentence.to });
     }
@@ -585,7 +602,7 @@ describe("the layout engine's placement", () => {
       sample && Math.abs(sample.t - at) < 0.13 ? { ...sample, head_top: 0 } : sample,
     );
     const { edit, spans, checks } = await place(
-      { big_words: [{ word: "w76" }] },
+      { big_words: [{ from: "w76", to: "w76" }] },
       { headTrack: glitch },
     );
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
@@ -661,7 +678,10 @@ describe("today's failures, placed by the engine", () => {
   });
 
   it("keeps the captions off the big word", async () => {
-    const { checks, edit } = await place({ big_words: [{ word: "w76" }] }, { headTrack: BIG_FACE });
+    const { checks, edit } = await place(
+      { big_words: [{ from: "w76", to: "w76" }] },
+      { headTrack: BIG_FACE },
+    );
     expect(edit.tracks.behind).toHaveLength(1);
     expect(checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
   });
@@ -930,7 +950,7 @@ describe("clicks on visuals and big words", () => {
     const { edit, spans, checks, html } = await place(
       {
         accents: [{ from: "w26", to: "w28", title: false }],
-        big_words: [{ word: "w116" }],
+        big_words: [{ from: "w116", to: "w116" }],
         visuals: [{ from: "w84", to: "w99" }],
         transitions: [{ kind: "panel", from: "w126", to: "w133", key_from: "w128" }],
       },
@@ -968,7 +988,7 @@ describe("clicks on visuals and big words", () => {
     // click sits on its own start.
     const { edit, spans } = await place(
       {
-        big_words: [{ word: "w85" }],
+        big_words: [{ from: "w85", to: "w85" }],
         visuals: [{ from: "w84", to: "w99" }],
       },
       { headTrack: LEFT_HEAD },
@@ -1092,7 +1112,7 @@ describe("readable text", () => {
   });
 
   it("leaves the big word in place, plain, on a light background and never moves it", async () => {
-    const input = { big_words: [{ word: "w76" }] };
+    const input = { big_words: [{ from: "w76", to: "w76" }] };
     const before = await place(input);
     const { edit, record } = await place(input, { backgrounds: mapOf(() => BEIGE) });
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
@@ -1116,7 +1136,7 @@ describe("readable text", () => {
   });
 
   it("changes nothing on a dark background: the same edit and record as with no map", async () => {
-    const input = { ...ACCENT, big_words: [{ word: "w76" }] };
+    const input = { ...ACCENT, big_words: [{ from: "w76", to: "w76" }] };
     const none = await place(input);
     const dark = await place(input, { backgrounds: mapOf(() => DARK) });
     expect(dark.edit).toEqual(none.edit);
@@ -1958,7 +1978,10 @@ describe("every pick shown: the all placement", () => {
       { from: "w5", to: "w6", title: false },
       { from: "w9", to: "w9", title: false },
     ],
-    big_words: [{ word: "w4" }, { word: "w9" }],
+    big_words: [
+      { from: "w4", to: "w4" },
+      { from: "w9", to: "w9" },
+    ],
     visuals: [
       { from: "w6", to: "w8" },
       { from: "w12", to: "w17" },
@@ -2035,7 +2058,7 @@ describe("every pick shown: the all placement", () => {
   it("places a big word the head hides at every height where it is, noted, never dropped", async () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
     const { edit, record } = await place(
-      { big_words: [{ word: "w76" }] },
+      { big_words: [{ from: "w76", to: "w76" }] },
       { headTrack: huge, preset: ISSEBYA_PRESET },
     );
     expect(edit.tracks.behind).toEqual([
@@ -2117,7 +2140,7 @@ describe("nothing the answer picks is dropped in all mode", () => {
     const { edit, record, unplaced } = await place(
       {
         accents: [{ from: "w5", to: "w5", title: false }],
-        big_words: [{ word: "w2" }],
+        big_words: [{ from: "w2", to: "w2" }],
         transitions: [{ kind: "dim", from: "w4", to: "w4", key_from: "w4" }],
         hook: { text: "Hello there" },
       },
@@ -2162,7 +2185,10 @@ describe("nothing the answer picks is dropped in all mode", () => {
           const [from, to] = run(6);
           return { from, to, title: false };
         }),
-        big_words: Array.from({ length: count(4) }, () => ({ word: pick(ids) })),
+        big_words: Array.from({ length: count(4) }, () => {
+          const id = pick(ids);
+          return { from: id, to: id };
+        }),
         visuals: Array.from({ length: count(3) }, () => {
           const [from, to] = run(12);
           return { from, to };

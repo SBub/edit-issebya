@@ -279,7 +279,7 @@ describe("the behind track", () => {
     expect(behindReasons(edit).join("\n")).toMatch(/behind p: overlaps a hidden span of footage/);
   });
 
-  it("refuses two words, markup, an unknown spot and a photo id that is not a UUID", () => {
+  it("refuses three words, markup, an unknown spot and a photo id that is not a UUID", () => {
     const word = (text: string) => ({
       id: "w",
       kind: "word",
@@ -287,7 +287,7 @@ describe("the behind track", () => {
       start: { time: 10 },
       end: { time: 13 },
     });
-    expect(behindReasons(withItems([word("big word")])).length).toBeGreaterThan(0);
+    expect(behindReasons(withItems([word("big word three")])).length).toBeGreaterThan(0);
     expect(behindReasons(withItems([word("<b>")])).length).toBeGreaterThan(0);
     expect(behindReasons(withItems([word("a".repeat(25))])).length).toBeGreaterThan(0);
     expect(behindReasons(withItems([{ ...photo(10, 13), spot: "middle" }])).length).toBeGreaterThan(

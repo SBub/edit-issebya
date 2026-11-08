@@ -46,11 +46,12 @@ types until slice 9 brings the live preview.
   (`{ x, y, width, height }`, whole pixels in the frame), both written by the layout engine from
   `decide-14` on: absent, the photo is behind the speaker and covers its spot exactly, as every
   older version renders; with a `box`, `spot` names the preset spot nearest it) or a big
-  word (`kind: "word"`, `text` a single word of 1 to 24 characters with no space, `<`, `>` or
-  `&`). It is anchored on words like a caption (a big word starts on its word with a negative
+  word (`kind: "word"`, `text` one or two words of 1 to 24 characters each, with no space inside a
+  word and no `<`, `>` or `&`, the two joined by one space: "distribution channel"). It is anchored
+  on words like a caption (a big word starts on its first word with a negative
   `offset`, the lead), cuts in and out with no animation, and only one is shown at a time. In a new
   version a photo lasts the preset's 1 to 2 s and a big word the accent's timing (at least 1.5 s,
-  at most from the lead before its word to a second after it); one saved before 2026-11-04 may
+  at most from the lead before its first word to a second after its last); one saved before 2026-11-04 may
   last 2 to 4 s, or 2 s from its word. A refinement refuses two overlapping items (`clean` placement
   only, see "Placement") and an item crossing a footage clip's `hidden` span; with the decide limit (`EditLimits.behindLengths`, new
   versions only) also an item outside its kind's length, so a stored version keeps parsing and
@@ -318,7 +319,8 @@ word" is now "spoken words, plus one written hook at the start".
 ### The layout engine's input
 
 - `src/engine-input.ts`: `EngineInput` is what the decide answer hands the layout: `accents`
-  (word ranges; an older version's title is one with `title: true`, a new answer never sets it), `big_words` (a list of word ids, the same word allowed
+  (word ranges; an older version's title is one with `title: true`, a new answer never sets it), `big_words` (a list of `{ from, to }` word ids: one word, or
+  two consecutive ones, equal for one; an older `{ word }` reads as one word; the same word allowed
   again), `visuals` (a word range and an optional `description`; a new answer names no photo), `transitions` (a kind, a word range and `key_from`, where the key phrase starts; a new answer gives `numbered` only), `word_fixes` (a word id and its text), each
   with an optional `wish` from `WISHES` (an older version's: a new answer carries none) (`top`, `bottom`, `left`, `right`, `behind`, `beside_head`,
   `big`, `small`, `slow`, `long`), and the optional `hook` (`{ text }` or null, no wish). No
@@ -333,7 +335,7 @@ word" is now "spoken words, plus one written hook at the start".
   title); a caption whose text differs from its words is a fix on its first word. A VISUAL reads back
   with its description; an older library photo reads back as a visual over the same words (with no
   description), so the choices placed again place a frame in its place. Every big word reads back
-  (an older version's one big word as a list of one). The hook reads back as its text, null when
+  (an older version's one big word as a list of one; a two-word one from its first word to its last). The hook reads back as its text, null when
   the version has none.
 
 ### Layout engine

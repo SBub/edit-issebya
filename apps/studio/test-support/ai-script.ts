@@ -80,12 +80,12 @@ async function roundReply({ visuals = [], bigWord, transitions }: AnswerRound = 
     answer: Record<string, unknown> & {
       accents: unknown[];
       visuals: unknown[];
-      big_words: { word: string }[];
+      big_words: { from: string; to: string }[];
       transitions: unknown[];
     };
   };
   reply.answer.visuals = visuals;
-  reply.answer.big_words = bigWord ? [{ word: bigWord }] : [];
+  reply.answer.big_words = bigWord ? [{ from: bigWord, to: bigWord }] : [];
   // On the 2.7 s fixture clip the accent holds the screen for most of it: a
   // round with a behind item leaves the accent out, so that round's expected
   // overlays stay as they were (a round's own transitions stay as given).
@@ -147,7 +147,7 @@ function speechTenReply(round: AnswerRound) {
   return {
     answer: {
       accents: [],
-      big_words: round.bigWord ? [{ word: round.bigWord }] : [],
+      big_words: round.bigWord ? [{ from: round.bigWord, to: round.bigWord }] : [],
       visuals: round.visuals ?? [],
       transitions: round.transitions ?? [],
       word_fixes: [],

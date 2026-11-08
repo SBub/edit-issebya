@@ -16,6 +16,14 @@ const words = ["Creating", "content", "is", "like", "exposure", "therapy"].map((
 }));
 
 describe("decision trace", () => {
+  it("traces a two-word big word as both words, and an older one-word answer too", () => {
+    const trace = buildTrace({ big_words: [{ from: "w4", to: "w5" }, { word: "w0" }] }, [], words);
+    expect(trace.rows.map((row) => row.proposed)).toEqual([
+      'bigword "exposure therapy"',
+      'bigword "Creating"',
+    ]);
+  });
+
   it("joins each proposal with what the engine did to it", () => {
     const trace = buildTrace(
       {
@@ -23,7 +31,7 @@ describe("decision trace", () => {
           { from: "w0", to: "w1", title: true },
           { from: "w4", to: "w5", title: false },
         ],
-        big_words: [{ word: "w4" }],
+        big_words: [{ from: "w4", to: "w4" }],
         photos: [{ photo_id: "abcdef123456", from: "w2", to: "w3", reason: "mood" }],
         hook: { text: "Be seen" },
       },
@@ -115,7 +123,7 @@ describe("script view", () => {
           { from: "s1", to: "s2", title: true },
           { from: "s9", to: "s15" },
         ],
-        big_words: [{ word: "s14" }],
+        big_words: [{ from: "s14", to: "s14" }],
         photos: [{ photo_id: "p1", from: "s19", to: "s22" }],
         transitions: [
           { kind: "numbered", from: "s16", to: "s16" },

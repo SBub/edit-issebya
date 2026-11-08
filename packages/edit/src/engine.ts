@@ -392,7 +392,9 @@ interface Extra {
   startWord?: string;
   accent?: AccentChoice;
   visual?: VisualChoice;
+  // A big word's first and last word (the same for one word).
   word?: string;
+  wordTo?: string;
   hook?: HookChoice;
 }
 
@@ -800,6 +802,11 @@ function placeOnce(
   const order = new Map(transcript.words.map((w, index) => [w.id, index]));
   const range = (from: string, to: string) =>
     transcript.words.slice(order.get(from)!, order.get(to)! + 1).map((w) => w.id);
+  // A big word's text: its one or two words, cleaned, joined by a space.
+  const bigWordText = (from: string, to: string) =>
+    range(from, to)
+      .map((id) => cleanWord(word(id).text, preset))
+      .join(" ");
   const sentences = sentenceSpans(transcript);
   const sentenceOf = (id: string): SentenceSpan | undefined => {
     const index = order.get(id)!;
@@ -1191,19 +1198,21 @@ function placeOnce(
     notes: EngineNote[] | null,
   ): Extra | null {
     const ref = `big_words[${index}]`;
-    const first = word(choice.word);
+    // Timed from its first word to its last (the same word for one word).
+    const first = word(choice.from);
+    const last = word(choice.to);
     const shift = notes ? room.shift.get(ref) : undefined;
     const own =
       !shift && all
-        ? ownSpan(leadStart(first.start), first.end, preset.accent.minSeconds, Infinity)
+        ? ownSpan(leadStart(first.start), last.end, preset.accent.minSeconds, Infinity)
         : null;
     let start = own?.start ?? leadStart(first.start);
     const { minSeconds: min, afterSeconds } = preset.accent;
     let end =
       shift?.end ??
       own?.end ??
-      ms(Math.min(duration, Math.max(first.end + afterSeconds, start + min)));
-    const text = cleanWord(first.text, preset);
+      ms(Math.min(duration, Math.max(last.end + afterSeconds, start + min)));
+    const text = bigWordText(choice.from, choice.to);
     const floor = all ? ALL_SHOWN_SECONDS : min;
     if (end - start < floor - SLACK) {
       if (!all) {
@@ -1256,6 +1265,7 @@ function placeOnce(
       ...(choice.wish ? { wish: choice.wish } : {}),
       index,
       word: first.id,
+      wordTo: last.id,
     };
   }
 
@@ -1392,7 +1402,7 @@ function placeOnce(
         item: bigWordId(index),
         action: "wish-not-kept",
         rule: "wish",
-        reason: `the big word ${quote(cleanWord(word(choice.word).text, preset))} cannot move ${choice.wish === "slow" ? "slower" : "longer"}: only a transition can`,
+        reason: `the big word ${quote(bigWordText(choice.from, choice.to))} cannot move ${choice.wish === "slow" ? "slower" : "longer"}: only a transition can`,
       });
     }
   }
@@ -2333,7 +2343,7 @@ function placeOnce(
       return `${accent.title ? "the title" : "accent"} ${quote(accentText(accent))}`;
     }
     if (extra.kind === "big_word") {
-      return `the big word ${quote(cleanWord(word(extra.word!).text, preset))}`;
+      return `the big word ${quote(bigWordText(extra.word!, extra.wordTo!))}`;
     }
     return `visual ${extra.index + 1}`;
   }
@@ -2746,7 +2756,7 @@ function placeOnce(
 
   function placeBigWord(extra: Extra, span: { start: number; end: number }): boolean {
     const first = word(extra.word!);
-    const text = cleanWord(first.text, preset);
+    const text = bigWordText(extra.word!, extra.wordTo!);
     const spec = preset.behind.word;
     const { width: frameWidth, height: frameHeight } = preset.frame;
     const perPx = measurer.width(spec.font, 1, text);
@@ -3126,7 +3136,7 @@ function placeOnce(
       return [{ id: extra.id, span, words: new Set(range(extra.accent!.from, extra.accent!.to)) }];
     }
     if (extra.kind === "big_word" && behind.has(extra.id)) {
-      return [{ id: extra.id, span, words: new Set([extra.word!]) }];
+      return [{ id: extra.id, span, words: new Set(range(extra.word!, extra.wordTo!)) }];
     }
     return [];
   });
@@ -3261,8 +3271,8 @@ function placeOnce(
       ref: `big_words[${index}]`,
       id: bigWordId(index),
       kind: "big_word" as const,
-      from: choice.word,
-      to: choice.word,
+      from: choice.from,
+      to: choice.to,
     })),
     ...input.visuals.map((visual, index) => ({
       ref: `visuals[${index}]`,
@@ -3336,7 +3346,7 @@ function placeOnce(
           if (!BEHIND_WORD.test(text) || !/^\p{L}+$/u.test(text)) continue;
           if (!longest || text.length > cleanWord(word(longest).text, preset).length) longest = id;
         }
-        if (longest && probe(bigWordExtra({ word: longest }, -1, PROBE, null))) {
+        if (longest && probe(bigWordExtra({ from: longest, to: longest }, -1, PROBE, null))) {
           roomFor.push("big_word");
         }
       }

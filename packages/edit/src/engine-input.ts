@@ -41,9 +41,21 @@ export interface AccentChoice {
   wish?: Wish;
 }
 
+// A BIGWORD: one plain word, or two consecutive ones, shown large behind the
+// speaker. `from` and `to` are word ids, equal for one word.
 export interface BigWordChoice {
-  word: string;
+  from: string;
+  to: string;
   wish?: Wish;
+}
+
+// A big word's span as stored: `{ from, to }`, or an older answer's
+// `{ word }` (one word), read as `{ from: word, to: word }`.
+export function bigWordSpan(item: { from: string; to: string } | { word: string }): {
+  from: string;
+  to: string;
+} {
+  return "word" in item ? { from: item.word, to: item.word } : { from: item.from, to: item.to };
 }
 
 // A VISUAL: an empty white stroke frame over the words `from` to `to`. The
@@ -155,10 +167,18 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
       const description = item.kind === "visual" ? item.description : undefined;
       visuals.push({ ...ends(ids), ...(description ? { description } : {}) });
     } else if (item.kind === "word") {
-      const said = ids.find(
-        (id) => cleanWord(byId.get(id)!.text, preset).toLowerCase() === item.text.toLowerCase(),
+      // The stored text is one or two words joined by a space; the span starts
+      // on the first word that reads as its first part, else on the first word.
+      const parts = item.text.toLowerCase().split(" ");
+      const readsAs = (index: number, part: string) =>
+        cleanWord(byId.get(ids[index]!)!.text, preset).toLowerCase() === part;
+      const found = ids.findIndex(
+        (_, index) =>
+          readsAs(index, parts[0]!) &&
+          (parts.length === 1 || (index + 1 < ids.length && readsAs(index + 1, parts[1]!))),
       );
-      bigWords.push({ word: said ?? ids[0]! });
+      const at = Math.max(0, found);
+      bigWords.push({ from: ids[at]!, to: ids[Math.min(at + parts.length - 1, ids.length - 1)]! });
     }
   }
   const word_fixes: WordFix[] = [];

@@ -77,6 +77,12 @@ export const MIN_TEXT_SIZE = 8;
 // A big word behind the speaker: one word, nothing that could leave its tag.
 export const BEHIND_WORD = /^[^\s<>&]{1,24}$/;
 
+// A big word as stored: one or two such words joined by one space.
+function isBehindText(text: string): boolean {
+  const parts = text.split(" ");
+  return parts.length <= 2 && parts.every((part) => BEHIND_WORD.test(part));
+}
+
 // The free custom-style field: CSS property to value, added to the element.
 const styleSchema = z.record(
   z.string().regex(STYLE_KEY),
@@ -248,7 +254,9 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     z.object({
       ...base,
       kind: z.literal("word"),
-      text: z.string().regex(BEHIND_WORD),
+      text: z.string().refine(isBehindText, {
+        message: "a big word is one or two plain words of at most 24 letters",
+      }),
       // Where the layout engine set it (its top left corner in the frame) and
       // at what size; a version saved before the engine has neither.
       position: z
@@ -383,7 +391,7 @@ function refineBehind(
   }));
   for (const span of limits.behindLengths ? spans : []) {
     const length = span.end - span.start;
-    const [min, max] = behindLength(span.item, words, preset);
+    const [min, max] = behindLength(span.item, transcript.words, preset);
     if (length < min - SLACK || length > max + SLACK) {
       ctx.addIssue({
         code: "custom",
@@ -427,12 +435,12 @@ function refineBehind(
 
 // The shortest and longest a new behind item may show, in seconds: a photo
 // the behind lengths; a big word the accent's timing, at least its minimum
-// and at most from the lead before its word to `afterSeconds` after it (a
-// longer word holds longer; one cut short by the next extra stays above the
-// minimum).
+// and at most from the lead before its first word to `afterSeconds` after its
+// last (a longer word holds longer; one cut short by the next extra stays
+// above the minimum).
 function behindLength(
-  item: { kind: "photo" | "visual" | "word"; start: Anchor },
-  words: ReadonlyMap<string, Word>,
+  item: { kind: "photo" | "visual" | "word"; start: Anchor; text?: string },
+  ordered: readonly Word[],
   preset: Preset,
 ): [number, number] {
   // `all`: a pick may be shorter than its kind's minimum, down to the shown
@@ -441,8 +449,13 @@ function behindLength(
   if (item.kind === "photo" || item.kind === "visual")
     return [allFloor ?? preset.behind.minSeconds, preset.behind.maxSeconds];
   const { minSeconds, afterSeconds, leadSeconds } = preset.accent;
-  const said = "word" in item.start ? words.get(item.start.word) : undefined;
-  const longest = said ? leadSeconds + (said.end - said.start) + afterSeconds : minSeconds;
+  const first = "word" in item.start ? item.start.word : undefined;
+  const at = ordered.findIndex((word) => word.id === first);
+  const said = at >= 0 ? ordered[at] : undefined;
+  // A two-word big word runs to its last word: the one after its first.
+  const count = item.text?.split(" ").length ?? 1;
+  const last = said ? (ordered[at + count - 1] ?? said) : undefined;
+  const longest = said && last ? leadSeconds + (last.end - said.start) + afterSeconds : minSeconds;
   return [allFloor ?? minSeconds, Math.max(minSeconds, longest)];
 }
 

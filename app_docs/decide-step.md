@@ -43,7 +43,7 @@ The model names each component by its answer list (prompt `reel-components`):
 | Component | Answer field  | What it is                                                                               |
 | --------- | ------------- | ---------------------------------------------------------------------------------------- |
 | ACCENT    | `accents`     | a phrase worth stressing, `{ "from", "to" }`                                             |
-| BIGWORD   | `big_words`   | one plain word shown large behind the speaker, `{ "word" }`                              |
+| BIGWORD   | `big_words`   | one or two consecutive plain words shown large behind the speaker, `{ "from", "to" }`    |
 | VISUAL    | `visuals`     | an empty frame over its words, `{ "from", "to", "description" }` (8 words at most)       |
 | LIST      | `transitions` | a numbered list item over its phrase, `{ "kind": "numbered", "from", "to", "key_from" }` |
 
@@ -68,7 +68,7 @@ placed first):
 ```json
 {
   "accents": [{ "from": "w0001", "to": "w0004" }],
-  "big_words": [{ "word": "w0008" }],
+  "big_words": [{ "from": "w0008", "to": "w0008" }],
   "visuals": [{ "from": "w0020", "to": "w0027", "description": "a messy desk at night" }],
   "transitions": [{ "kind": "numbered", "from": "w0010", "to": "w0011", "key_from": "w0011" }],
   "word_fixes": [{ "word": "w0010", "text": "Studio" }]
@@ -97,8 +97,10 @@ placed first):
   (`hookGlossaryReasons`, `heardTerms`), so a heard form goes back to the hook call. The text is data
   to show, never instructions. The layout engine places it from 0.2 s to 3 s, the one extra of that
   window (`app_docs/edit-model.md`, "The written hook").
-- `big_words` is a list of `{ word }`, the same word allowed again; each word must be one plain word
-  (`BEHIND_WORD`).
+- `big_words` is a list of `{ from, to }`: one word (equal ids) or two consecutive words, from the
+  first spoken word to the last; the same word allowed again. `to` is never before `from`, never
+  more than two words apart, and each word must be one plain word (`BEHIND_WORD`). An older answer's
+  `{ word }` reads as one word (`bigWordSpan`).
 - `visuals`: each VISUAL sits over its words, with a `description` of what a visual would show: a
   plain line of at most 8 words and 80 characters, with words in it. The description is data for the
   owner and the trace, never shown on screen. The layout puts the frame as a small corner card (a third
@@ -134,7 +136,7 @@ read and render every older version. What changed is only what a new answer may 
 - A `wish` on an older item is read back and rendered by the engine; `decideInput` never shows one.
 - An older version's `checklist`, `unexpressed` and version title and summary are read back as stored.
   `versions.checklist` stays empty for every version written now.
-- `choicesOf` reads every big word back as a list (an older version has at most one).
+- `choicesOf` reads every big word back as a list of `{ from, to }` (an older version has at most one).
 - An older version's library photo reads back as a VISUAL over the same words (no description), so a
   choice placed again places a frame in its place; the photo itself is not a choice a new answer makes.
 
@@ -159,7 +161,7 @@ options?)` (the answer placed by the layout engine and parsed with the decide li
   the worker names them again for the new `behind` track; a parse failure here is an engine bug,
   refused as `answer-edit`), `decideCounts` (the step line's counts) and `usedFreeField`. The Zod
   refinement refuses a range ending before it starts, a key phrase outside its phrase, a stored forbid
-  the answer breaks, a big word that is not one plain word and a word fixed twice, each with a
+  the answer breaks, a big word that is not one or two consecutive plain words and a word fixed twice, each with a
   readable reason for the retry.
 - `apps/worker/src/decide/input.ts`: `currentChoices` shows the current choices in the new terms (a title as an
   accent, non-numbered transitions left out, no wish). The engine input types (`packages/edit/src/engine-input.ts`)

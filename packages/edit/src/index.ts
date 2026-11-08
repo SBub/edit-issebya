@@ -74,6 +74,7 @@ export {
   type Wish,
   type WordFix,
   WISHES,
+  bigWordSpan,
   choicesOf,
 } from "./engine-input.ts";
 export {

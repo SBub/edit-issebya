@@ -118,8 +118,8 @@ function visualDescriptionSchema() {
 // beside these components when it places them. Built per reel from its
 // transcript. The refinement (dropped from the JSON Schema) refuses a phrase
 // ending before it starts, a transition's key phrase starting outside its
-// phrase, a big word that is not one plain word, a word fixed twice, and a
-// kind or item the reel's stored forbids rule out.
+// phrase, a big word that is not one or two plain words in a row, a word fixed
+// twice, and a kind or item the reel's stored forbids rule out.
 export function decideAnswerSchemaFor(
   preset: Preset,
   transcript: Transcript,
@@ -134,9 +134,10 @@ export function decideAnswerSchemaFor(
     .strictObject({
       // ACCENT: a phrase worth stressing.
       accents: z.array(z.strictObject(phrase)),
-      // BIGWORD: one plain word shown large behind the speaker, on its spoken
-      // word; the same word may come back.
-      big_words: z.array(z.strictObject({ word: wordId })),
+      // BIGWORD: one or two consecutive plain words shown large behind the
+      // speaker, from the first spoken word to the last (equal for one word);
+      // the same word may come back.
+      big_words: z.array(z.strictObject(phrase)),
       // VISUAL: an empty frame over its words, with what it would show.
       visuals: z.array(z.strictObject({ ...phrase, description: visualDescriptionSchema() })),
       // LIST: the numbered transitions only, each over its phrase.
@@ -193,14 +194,35 @@ export function decideAnswerSchemaFor(
         });
       }
       answer.big_words.forEach((big, index) => {
-        const text = cleanWord(words.get(big.word)?.text ?? "", preset);
-        if (!BEHIND_WORD.test(text)) {
+        const from = order.get(big.from)!;
+        const to = order.get(big.to)!;
+        if (to < from) {
           ctx.addIssue({
             code: "custom",
-            path: ["big_words", index, "word"],
-            message: `${big.word} (${JSON.stringify(text)}) is not one plain word of at most 24 letters`,
+            path: ["big_words", index, "to"],
+            message: `ends on ${big.to}, before it starts on ${big.from}`,
           });
+          return;
         }
+        if (to - from > 1) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["big_words", index, "to"],
+            message: `${big.from} to ${big.to} spans ${to - from + 1} words; a big word is one or two consecutive words`,
+          });
+          return;
+        }
+        // Each word is checked on its own: one plain word of at most 24 letters.
+        ids.slice(from, to + 1).forEach((id) => {
+          const text = cleanWord(words.get(id)?.text ?? "", preset);
+          if (!BEHIND_WORD.test(text)) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["big_words", index, "to"],
+              message: `${id} (${JSON.stringify(text)}) is not one plain word of at most 24 letters`,
+            });
+          }
+        });
       });
       const fixed = new Set<string>();
       for (const fix of answer.word_fixes) {

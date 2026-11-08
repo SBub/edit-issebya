@@ -1,4 +1,4 @@
-import type { EngineNote } from "@edit-issebya/edit";
+import { type EngineNote, bigWordSpan } from "@edit-issebya/edit";
 
 // THE DECISION TRACE: what Claude proposed for a version (its decide answer)
 // beside what the layout engine did to each item (the version's engine
@@ -11,7 +11,8 @@ import type { EngineNote } from "@edit-issebya/edit";
 // the VISUAL list of a new answer.
 export interface TracedAnswer {
   accents?: { from: string; to: string; title?: boolean; wish?: string }[];
-  big_words?: { word: string; wish?: string }[];
+  // A BIGWORD: one or two words (`from` to `to`); an older answer's `word` is one word.
+  big_words?: ({ from: string; to: string; wish?: string } | { word: string; wish?: string })[];
   visuals?: { from: string; to: string; description?: string }[];
   photos?: { photo_id: string; from: string; to: string; reason?: string; wish?: string }[];
   transitions?: { kind: string; from: string; to: string; wish?: string }[];
@@ -74,10 +75,11 @@ function proposals(
     });
   });
   (answer.big_words ?? []).forEach((big, index) => {
+    const span = bigWordSpan(big);
     out.push({
       ref: `big_words[${index}]`,
       item: `big-word-${index + 1}`,
-      proposed: `bigword "${say(big.word, big.word)}"${wish(big.wish)}`,
+      proposed: `bigword "${say(span.from, span.to)}"${wish(big.wish)}`,
     });
   });
   (answer.visuals ?? []).forEach((visual, index) => {
@@ -290,7 +292,8 @@ export function formatScript(
     add(accent.from, `${accent.title ? "HOOK" : "ACCENT"} ${span(accent.from, accent.to)}`);
   }
   for (const big of answer.big_words ?? []) {
-    add(big.word, `BIGWORD "${clean(wordsBetween(words, big.word, big.word))}"`);
+    const span = bigWordSpan(big);
+    add(span.from, `BIGWORD "${clean(wordsBetween(words, span.from, span.to))}"`);
   }
   // A VISUAL is its description on its words (the words only when the span is
   // not the whole line); the description is never shown on screen.

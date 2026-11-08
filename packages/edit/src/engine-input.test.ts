@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { editFromAnswer } from "./decide.ts";
-import { choicesOf } from "./engine-input.ts";
+import { bigWordSpan, choicesOf } from "./engine-input.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
@@ -16,7 +16,7 @@ describe("choicesOf", () => {
     // A library photo of an older version reads back as a visual over its words.
     expect(choices.visuals).toEqual([{ from: "w18", to: "w27" }]);
     // "WORK" is not spoken under it: the first word under it stands in.
-    expect(choices.big_words).toEqual([{ word: "w76" }]);
+    expect(choices.big_words).toEqual([{ from: "w76", to: "w76" }]);
     expect(choices.accents.map((accent) => accent.from)).toEqual(["w29", "w112"]);
     // Saved before the levels: its key phrase is the whole phrase.
     expect(choices.transitions).toEqual([
@@ -68,9 +68,23 @@ describe("choicesOf", () => {
       end: { word: "w142", edge: "end" },
     });
     expect(choicesOf(edit, behind.transcript, ISSEBYA_PRESET).big_words).toEqual([
-      { word: "w76" },
-      { word: "w140" },
+      { from: "w76", to: "w76" },
+      { from: "w140", to: "w140" },
     ]);
+  });
+
+  it("reads a two-word big word back as its first and last word", () => {
+    const edit = structuredClone(behind.edit);
+    const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
+    Object.assign(word, { text: "distribution channel", end: { word: "w77", edge: "end" } });
+    expect(choicesOf(edit, behind.transcript, ISSEBYA_PRESET).big_words).toEqual([
+      { from: "w76", to: "w77" },
+    ]);
+  });
+
+  it("reads an older answer's { word } big word as one word", () => {
+    expect(bigWordSpan({ word: "w9" })).toEqual({ from: "w9", to: "w9" });
+    expect(bigWordSpan({ from: "w9", to: "w10" })).toEqual({ from: "w9", to: "w10" });
   });
 
   it("reads a stored card back as a dim over its words", () => {
