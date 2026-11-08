@@ -239,6 +239,24 @@ describe("the layout engine's timing", () => {
     expect(html).toContain("distribution channel");
   });
 
+  it("sets a two-word big word on one line in spoken order: one element, first word first", async () => {
+    const tr = structuredClone(transcript);
+    tr.words.find((w) => w.id === "w76")!.text = "social";
+    tr.words.find((w) => w.id === "w77")!.text = "media";
+    const { html, edit } = await place(
+      { big_words: [{ from: "w76", to: "w77" }] },
+      { transcript: tr },
+    );
+    expect(edit.tracks.behind![0]).toMatchObject({ text: "social media" });
+    // One element holding both words in spoken order, on one line (nowrap), so
+    // "media" can never stack above "social".
+    const elements = html.match(/<div id="big-word-1"[^>]*>[^<]*<\/div>/g) ?? [];
+    expect(elements).toHaveLength(1);
+    expect(elements[0]).toMatch(/>social media<\/div>$/);
+    expect(html).toMatch(/\.word \{[^}]*white-space: nowrap;/);
+    expect(html).not.toMatch(/big-word-1"[^>]*>social<br/);
+  });
+
   it("gives up the lead rather than cut the extra before it", async () => {
     // "AI has completely" leaves at 9.607 s, a second after "completely";
     // "work" is said at 9.789 s, so its lead would start at 9.589 s. The big

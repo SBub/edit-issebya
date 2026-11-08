@@ -270,8 +270,10 @@ export function runChecks(
   for (const item of edit.tracks.behind ?? []) {
     if (item.kind !== "word") continue;
     const { start } = resolved.get(item.id)!;
+    // A two-word big word is timed from its first spoken word.
+    const first = item.text.split(" ")[0]!.toLowerCase();
     const said = transcript.words
-      .filter((word) => cleanWord(word.text, preset).toLowerCase() === item.text.toLowerCase())
+      .filter((word) => cleanWord(word.text, preset).toLowerCase() === first)
       .sort((a, b) => Math.abs(a.start - start) - Math.abs(b.start - start))[0];
     const lead = preset.accent.leadSeconds;
     if (said && start < said.start - lead - SLACK) {

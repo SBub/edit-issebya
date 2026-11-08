@@ -220,6 +220,17 @@ describe("runChecks on big words behind the speaker", () => {
     expect(checks.filter((check) => check.rule === "big-word-timing")).toEqual([]);
   });
 
+  it("times a two-word big word from its first spoken word", async () => {
+    const edit = structuredClone(hand.edit);
+    const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
+    // "work" is said at w95, a second after this big word starts.
+    if (word.kind === "word") Object.assign(word, { text: "work it" });
+    const checks = await checksOf(edit);
+    expect(checks.find((check) => check.rule === "big-word-timing")!.reason).toMatch(
+      /^big word big-word-1 \("work it"\) shows at \d+\.\d{3} s, more than 0\.2 s before w95 is said at 24\.887 s$/,
+    );
+  });
+
   it("fails big-word-hidden for a big word set at head height, mostly behind the person", async () => {
     const edit = structuredClone(hand.edit);
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
