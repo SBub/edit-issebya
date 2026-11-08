@@ -54,7 +54,8 @@ answer and never written by the components.
 Nothing asks for a density target or a count per sentence or per second. Claude picks as many as it
 finds, and the code decides how many show and when (the engine shows every pick at its own words'
 times in `all`, the worker's placement, overlaps kept and noted; the strict `clean` layout shows one
-extra at a time and drops what has no room; a later intensity knob will set the rate). The overlap limits between components
+extra at a time and drops what has no room). The model is told the reel's intensity (`{{intensity}}`,
+see "Prompts"), not a count, so how many it picks follows that level. The overlap limits between components
 are held by the prompt (see "Prompts"); the schema does not count them.
 
 ## How it works
@@ -110,7 +111,7 @@ placed first):
   the accent's timing (from `accent.leadSeconds`, 0.2 s, before its word to a second after it, at
   least 1.5 s). A big word only on a key word, a spoken word by construction.
 - Pace (`preset.pace`): the answer carries no rate (the transition kind is given as data, its pace is
-  not). In `clean` the engine keeps the rhythm: one extra at a time, transitions at their own
+  not); the components prompt is told the reel's intensity word, never a rate. In `clean` the engine keeps the rhythm: one extra at a time, transitions at their own
   slower pace (about one per `preset.pace.transitionEverySeconds`, 9), and drops what has no room. In
   `all` (the worker's placement) every pick shows at its own words' times, so the rhythm is the
   answer's and only a reel too short for a pick drops it.
@@ -293,7 +294,11 @@ management (project 312096), and the worker fetches each one by name at the labe
 prompt file exists (`apps/worker/src/prompts/no-prompt-files.test.ts`).
 
 - `reel-hook`: the written hook, one short line from what the speaker says (`hook.ts`).
-- `reel-components`: the components' answer, meaning only (`prompt.ts`).
+- `reel-components`: the components' answer, meaning only (`prompt.ts`). Its variables: `current_choices`,
+  `transcript`, `sentences`, `preset`, `behind_rules`, `hook` (the inputs as fenced JSON) and `intensity`,
+  the reel's edit intensity as one lowercase word (`intense`, the preset's level, `preset.intensity`): how
+  busy the edit is, the pros' level (about 2 to 6 extras per 10 s), so the model picks at that level. No
+  count is sent, and the word is the only thing the worker adds to the prompt for it.
 - `photo-describe`: a library photo's description and tags (`photos/describe-prompt.ts`).
 
 Each prompt is a template with its `{{variables}}` (the worker fills them as before) and nothing else
@@ -464,8 +469,9 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
 
 `apps/worker/src/decide/ai-record.ts`: before `saveVersion`, `runDecide` writes
 `<prefix>reels/<reel>/versions/<version id>.ai.json` (put-if-absent, under the id the version is
-then saved with): `{ format: 1, reel_id, version_id, prompt_version, hook_prompt_version, calls }` (the
-two identities, `<name>@v<version>`), each call `{ attempt, role,
+then saved with): `{ format: 1, reel_id, version_id, prompt_version, hook_prompt_version, intensity, calls }` (the
+two identities, `<name>@v<version>`, and the intensity the components prompt was filled with; absent in
+a record written before it was recorded), each call `{ attempt, role,
 model, prompt, promptVersion, schema, image, outputMode, answerText, finishReason, usage,
 error }` in order: the hook attempts first (role `hook`, attempt 1 and
 2), then the decide attempts (role `decide`, 1 and 2). It is a `stored_files` row of kind `version`, step `decide` (`classifyKey`), so it is
@@ -480,8 +486,8 @@ default, the script view of every version with an AI record: the hook (the text 
 `hook` call, else an older record's decide answer `hook`, `hookOf`), then the transcript in short
 lines (`scriptLines`), each line with Claude's picks on it in capitals and the word fixes; what the
 engine did is left out. The header names both prompt versions, the hook's (`hook_prompt_version`)
-and the components' (`prompt_version`), and the decide attempts when there were more than one
-(`traceHeading`). Lines: a sentence ends at `.`, `?` or `!`; a line over 50 characters splits at
+and the components' (`prompt_version`), the reel's intensity (`intensity intense`, when recorded), and
+the decide attempts when there were more than one (`traceHeading`). Lines: a sentence ends at `.`, `?` or `!`; a line over 50 characters splits at
 the comma nearest its middle; a line still over 60 characters (typical of speech with no
 punctuation) splits at its largest speech pause, a gap of 0.35 s or more between two words' timings,
 else after the last word that keeps it within 60 characters. The script column is 60 wide. A pick

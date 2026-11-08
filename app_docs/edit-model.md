@@ -169,8 +169,8 @@ fingerprint, file: "mask.mp4", start, end }` ref plus the span of the reel it co
   it was stored with (`box`, `layer`, `spot`) and renders as before; placed again, it reads back as a
   card. `minVisible` (0.7) is what a stored photo behind the speaker is checked against (`photo-hidden`),
   and a card's white edge needs `minContrast` (1.5:1) against the footage within `ring` (30 px) around it.
-- Pace (`pace`, one intensity level: Medium, the only one so far; a later Calm or Intense switch
-  swaps the block whole): something new besides captions at least every 3 s
+- Pace (`pace`, the preset's `intensity` names its level, `intense` (the pros' level); the pace block is
+  that level's; a later level, `calm` or `medium`, is one more name with its own block): something new besides captions at least every 3 s
   (`extraEverySeconds`; the decide prompt asks for no density, so the number is not sent to it)
   and about one transition per 9 s (`transitionEverySeconds`, the engine's cap, was
   `transition.perSeconds` 7), slower than the rhythm since a transition covers the speaker. The
@@ -646,7 +646,7 @@ never fatal.
   their word to a second after it, the lead giving way to the extra before, the same word again,
   photos 2 s from their sentence's start, drops under the minimum, one extra
   at a time, the request's items first, about one transition per 9 s), no check failing on a dense
-  reel (a title, four accents, a big word, two photos and a panel) and on the Medium rhythm (an
+  reel (a title, four accents, a big word, two photos and a panel) and on the Intense rhythm (an
   extra on every sentence and two transitions: one extra at a time, nothing during a transition,
   photos 1 to 2 s, big words on the accent's timing, no word twice on screen, every left-out
   item's drop recorded) with the real head and with a large

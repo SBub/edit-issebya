@@ -2,6 +2,7 @@ import {
   type BehindForbid,
   type Edit,
   type EngineInput,
+  type Intensity,
   NEW_TRANSITION_KINDS,
   type Preset,
   type Transcript,
@@ -73,6 +74,9 @@ export interface DecideInput {
   preset: ReturnType<typeof presetSummary>;
   // What the owner switched off for this reel, earlier (data: the answer keeps it off).
   behind_rules: { photos_forbidden: boolean; big_word_forbidden: boolean };
+  // The reel's edit intensity (the preset's level, e.g. `intense`), filled into
+  // the components prompt; never sent as data.
+  intensity: Intensity;
   // The written hook the reel opens with (decided by its own call this run):
   // words to show, shown as data; the components are chosen around it.
   hook: { text: string };
@@ -100,5 +104,6 @@ export function decideInput({
     preset: presetSummary(preset),
     behind_rules: { photos_forbidden: forbid.photos, big_word_forbidden: forbid.bigWord },
     hook: { text: hook.text },
+    intensity: preset.intensity,
   };
 }

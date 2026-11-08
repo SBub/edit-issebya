@@ -54,6 +54,18 @@ describe("decidePrompt", () => {
     expect(prompt).toContain('"term": "lock-in"');
   });
 
+  it("fills the edit intensity as the preset's level, a lowercase word", () => {
+    const { prompt } = decidePrompt(TEMPLATE, input);
+    expect(prompt.trimEnd().endsWith("intense")).toBe(true);
+    const calm = decideInput({
+      current,
+      transcript,
+      preset: { ...ISSEBYA_PRESET, intensity: "calm" },
+      hook: HOOK,
+    });
+    expect(decidePrompt(TEMPLATE, calm).prompt.trimEnd().endsWith("calm")).toBe(true);
+  });
+
   it("has no input left unfilled, and no photo library in its inputs", () => {
     const { prompt } = decidePrompt(TEMPLATE, input);
     expect(prompt).not.toMatch(/\{\{\w+\}\}/);

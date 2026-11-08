@@ -127,7 +127,7 @@ describe("the transition library", () => {
     });
   });
 
-  it("paces Medium: something new every 3 s, a transition only every 9 s, the hook to 3 s", () => {
+  it("paces Intense: something new every 3 s, a transition only every 9 s, the hook to 3 s", () => {
     const { pace, behind, transition, accent } = ISSEBYA_PRESET;
     expect(pace).toEqual({
       extraEverySeconds: 3,

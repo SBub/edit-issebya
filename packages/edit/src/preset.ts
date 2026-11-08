@@ -146,6 +146,11 @@ export interface PresetBehind {
   };
 }
 
+// How busy an edit is: the levels a preset may edit at. The preset names its
+// level (`intensity`), and its pace block is that level's; a later level (Calm,
+// Medium) is one more name here with its own pace block.
+export type Intensity = "calm" | "medium" | "intense";
+
 // One intensity level's pacing, in seconds of reel.
 export interface PresetPace {
   // Something new on screen besides the captions (an accent, a big word, a
@@ -254,8 +259,8 @@ export interface Preset {
     slowFactor: number;
     gap: number;
   };
-  // How busy the reel is: one intensity level (Medium, the only one so far).
-  // A later level (Calm, Intense) swaps this block whole.
+  // How busy the reel is: the level the preset edits at, and that level's pace.
+  intensity: Intensity;
   pace: PresetPace;
   sounds: Record<SoundKey, PresetSound>;
   behind: PresetBehind;
@@ -314,6 +319,7 @@ const STYLE_SAFE: Box = { left: 130, right: 860, top: 260, bottom: 1400 };
 export const ISSEBYA_PRESET: Preset = {
   id: "issebya",
   placement: "all",
+  intensity: "intense",
   frame: { width: 1080, height: 1920 },
   safe: intersectBox(STYLE_SAFE, PLATFORM_SAFE),
   fonts: {
@@ -428,7 +434,7 @@ export const ISSEBYA_PRESET: Preset = {
     slowFactor: 1.6,
     gap: 24,
   },
-  // Medium: something new about every 3 s, a transition about every 9 s, a
+  // Intense (the pros' level): something new about every 3 s, a transition about every 9 s, a
   // written hook from 0.2 s (the accent's lead) to 3 s, the first seconds
   // that decide whether people keep watching.
   pace: {

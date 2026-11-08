@@ -223,6 +223,20 @@ describe("trace heading", () => {
       "== version 4 == (prompts reel-hook@v1, reel-components@v1, 2 decide attempts)",
     );
   });
+
+  it("names the edit intensity the components prompt was filled with, when recorded", () => {
+    const prompts = {
+      hook_prompt_version: "reel-hook@v1",
+      prompt_version: "reel-components@v1",
+      intensity: "intense",
+    };
+    expect(traceHeading("== version 4 ==", prompts, 1)).toBe(
+      "== version 4 == (prompts reel-hook@v1, reel-components@v1, intensity intense)",
+    );
+    expect(traceHeading("== version 4 ==", prompts, 2)).toBe(
+      "== version 4 == (prompts reel-hook@v1, reel-components@v1, intensity intense, 2 decide attempts)",
+    );
+  });
 });
 
 describe("decision trace of a VISUAL", () => {

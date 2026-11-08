@@ -486,6 +486,7 @@ export function runDecide({
         version_id: versionId,
         prompt_version: promptIdentity(templates.components),
         hook_prompt_version: promptIdentity(templates.hook),
+        intensity: preset.intensity,
         calls,
       }).catch(permanentAfterAiCall);
       const saved = await inSpan(ctx.telemetry, stepContext, "decide.save_version", {}, () =>

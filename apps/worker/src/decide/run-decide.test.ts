@@ -255,6 +255,7 @@ describe("runDecide", () => {
       version_id: current,
       prompt_version: "reel-components@v1",
       hook_prompt_version: "reel-hook@v1",
+      intensity: "intense",
     });
     expect(record.calls.map((call) => call.promptVersion)).toEqual([
       "reel-hook@v1",

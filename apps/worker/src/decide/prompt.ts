@@ -22,6 +22,7 @@ export function decidePrompt(
       preset: fenced(input.preset),
       behind_rules: fenced(input.behind_rules),
       hook: fenced(input.hook),
+      intensity: input.intensity,
     },
     previousReasons,
   );

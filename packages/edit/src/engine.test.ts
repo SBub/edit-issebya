@@ -495,7 +495,7 @@ describe("the layout engine's placement", () => {
     });
   }
 
-  // The Medium rhythm: an extra on every sentence (accents, big words and
+  // The Intense rhythm: an extra on every sentence (accents, big words and
   // visuals in turn, several of each) and two
   // transitions, far more than fits.
   const RHYTHM: Partial<EngineInput> = { accents: [], big_words: [], visuals: [] };

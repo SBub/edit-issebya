@@ -1,3 +1,4 @@
+import type { Intensity } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import type { AiExchange } from "../ai.ts";
 
@@ -25,6 +26,9 @@ export interface AiRecord {
   version_id: string;
   prompt_version: string;
   hook_prompt_version: string;
+  // The edit intensity the components prompt was filled with. Absent in a
+  // record written before it was recorded.
+  intensity?: Intensity;
   calls: AiRecordCall[];
 }
 

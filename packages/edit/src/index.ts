@@ -14,6 +14,7 @@ export {
 } from "./head-track.ts";
 export {
   type FontKey,
+  type Intensity,
   type Preset,
   type PresetFont,
   type TransitionType,
