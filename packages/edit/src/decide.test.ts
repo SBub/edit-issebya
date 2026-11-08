@@ -170,21 +170,19 @@ describe("decideJsonSchema", () => {
 
   it("names a visual by its words and a short description: no photo id, no reason", () => {
     const schema = decideJsonSchema(CLEAN_PRESET, hand.transcript) as {
-      properties: {
-        visuals: { maxItems: number; items: { required: string[] } };
-        big_words: { maxItems: number };
-      };
+      properties: Record<string, { maxItems?: number; items: { required: string[] } }>;
     };
-    expect(schema.properties.visuals.items.required).toEqual(["from", "to", "description"]);
+    expect(schema.properties.visuals!.items.required).toEqual(["from", "to", "description"]);
     const keys = new Set<string>();
     walk(schema, (_node, key) => {
       if (key) keys.add(key);
     });
     expect(keys.has("photo_id")).toBe(false);
     expect(keys.has("reason")).toBe(false);
-    // Only a bound on the answer's size, like the accents'.
-    expect(schema.properties.visuals.maxItems).toBe(12);
-    expect(schema.properties.big_words.maxItems).toBe(12);
+    // No count cap on any list: the JSON Schema carries no maxItems.
+    for (const name of ["accents", "big_words", "visuals", "transitions", "word_fixes"]) {
+      expect(schema.properties[name]!.maxItems, name).toBeUndefined();
+    }
   });
 });
 
@@ -463,6 +461,20 @@ describe("the visual and the stored forbids in the decide answer", () => {
       a.big_words = [{ word: "w0005" }, { word: "w0009" }, { word: "w0005" }];
     });
     expect(parse(many).ok).toBe(true);
+  });
+
+  it("has no count cap: 100 picks over a 162-word clip and 80 word fixes on distinct words", () => {
+    const ids = hand.transcript.words.map((word) => word.id);
+    const span = (start: number, count: number) => ids.slice(start, start + count);
+    const json = {
+      accents: span(0, 25).map((id) => ({ from: id, to: id })),
+      big_words: span(25, 25).map((id) => ({ word: id })),
+      visuals: span(50, 25).map((id) => ({ from: id, to: id, description: "a messy desk" })),
+      transitions: span(75, 25).map((id) => ({ kind: "numbered", from: id, to: id, key_from: id })),
+      word_fixes: ids.slice(0, 80).map((id) => ({ word: id, text: "Studio" })),
+    };
+    const parsed = parseDecideAnswer(json, CLEAN_PRESET, hand.transcript, NO_RULES);
+    expect(parsed.ok ? "ok" : parsed.reasons.join("\n")).toBe("ok");
   });
 
   it("refuses a visual while the reel's stored forbid switches photos off", () => {

@@ -146,9 +146,10 @@ title, the wish and every transition kind; the test "reads and renders an old ve
   `hookAnswerSchemaFor(preset)` and `hookJsonSchema(preset)` (the hook call's schema),
   `parseHookAnswer(json, preset)` (`{ ok, text }`, the text through `stripHookStop`).
   `decideAnswerSchemaFor(preset, transcript, rules)` (word-id enums from the reel's transcript, the
-  list kind `numbered` only, `visuals` with their description rules; lists are bounded only as an
-  answer-size guard, 12 accents, big words, visuals and transitions each, never a per-reel count the
-  editor works to), `decideJsonSchema` (Zod 4
+  list kind `numbered` only, `visuals` with their description rules; no list has a count cap, no
+  `max` and no `maxItems` (how many of each is the editor's choice, never a per-reel count it works
+  to; a limit is added only when a real case shows the need, derived from that case)),
+  `decideJsonSchema` (Zod 4
   `z.toJSONSchema`, draft-07, real `enum` lists, every object closed, refs inlined),
   `parseDecideAnswer` (both take a `DecideRules` argument, `{ forbid }`, default `NO_RULES`),
   `editFromAnswer(current, answer, preset, transcript, headTrack, measurer, backgrounds?,
@@ -561,7 +562,7 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
   version writes `forbid` as null. A stored forbid is respected: no photo or big word it switches off.
 - Never propose a photo or big word the reel's stored forbids switch off.
 - Never save a version with a `behind` item before its masks are stored.
-- Never cap visuals or big words per reel (in the preset, the prompt or the answer schema): how many is the editor's choice; the answer's list bounds are a size guard only. A visual is a frame with a description of at most 8 words.
+- Never cap the components' answer lists (accents, big words, visuals, transitions, word fixes) or any per reel count (in the preset, the prompt or the answer schema): how many is the editor's choice. No list has a `max` or a `maxItems`. A limit is added only when a real case shows the need, derived from that case. A visual is a frame with a description of at most 8 words.
 - Transitions never set the rhythm: a numbered list item is only ever a counted list, about one per
   `preset.pace.transitionEverySeconds` (the engine's pace, never sent to the model); in `clean` the engine
   drops the rest, and in `all` every transition the answer names shows.

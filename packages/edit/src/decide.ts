@@ -30,13 +30,9 @@ export const NO_RULES: DecideRules = {
 // LIST component). Older versions keep the kinds they were saved with.
 export const NEW_TRANSITION_KINDS = ["numbered"] as const;
 
-// Bounds on the answer's size only, never a per-reel limit the editor works
-// to: how many of each it takes is the editor's choice.
-const MAX_ACCENTS = 12;
-const MAX_BIG_WORDS = 12;
-const MAX_VISUALS = 12;
-const MAX_TRANSITIONS = 12;
-const MAX_FIXES = 60;
+// No count cap on any list here: how many of each the editor picks is its
+// choice. A limit is added only when a real case shows the need, derived from
+// that case.
 // The hook's text: no line break and nothing that could leave its tag (a
 // plain pattern, so a provider's JSON Schema validator reads it as is). The
 // same plain-line rule for a visual's description.
@@ -137,31 +133,21 @@ export function decideAnswerSchemaFor(
   return z
     .strictObject({
       // ACCENT: a phrase worth stressing.
-      accents: z
-        .array(z.strictObject(phrase))
-        .max(MAX_ACCENTS, { message: `at most ${MAX_ACCENTS} accents` }),
+      accents: z.array(z.strictObject(phrase)),
       // BIGWORD: one plain word shown large behind the speaker, on its spoken
       // word; the same word may come back.
-      big_words: z
-        .array(z.strictObject({ word: wordId }))
-        .max(MAX_BIG_WORDS, { message: `at most ${MAX_BIG_WORDS} big words` }),
+      big_words: z.array(z.strictObject({ word: wordId })),
       // VISUAL: an empty frame over its words, with what it would show.
-      visuals: z
-        .array(z.strictObject({ ...phrase, description: visualDescriptionSchema() }))
-        .max(MAX_VISUALS, { message: `at most ${MAX_VISUALS} visuals` }),
+      visuals: z.array(z.strictObject({ ...phrase, description: visualDescriptionSchema() })),
       // LIST: the numbered transitions only, each over its phrase.
-      transitions: z
-        .array(
-          z.strictObject({
-            kind: z.enum(NEW_TRANSITION_KINDS),
-            ...phrase,
-            key_from: wordId,
-          }),
-        )
-        .max(MAX_TRANSITIONS, { message: `at most ${MAX_TRANSITIONS} transitions` }),
-      word_fixes: z
-        .array(z.strictObject({ word: wordId, text: z.string().min(1).max(60) }))
-        .max(MAX_FIXES),
+      transitions: z.array(
+        z.strictObject({
+          kind: z.enum(NEW_TRANSITION_KINDS),
+          ...phrase,
+          key_from: wordId,
+        }),
+      ),
+      word_fixes: z.array(z.strictObject({ word: wordId, text: z.string().min(1).max(60) })),
     })
     .superRefine((answer, ctx) => {
       const lists = {
