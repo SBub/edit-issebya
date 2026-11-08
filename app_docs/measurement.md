@@ -195,7 +195,7 @@ model, `chat anthropic/claude-haiku-5.5` today (`app_docs/decide-step.md`, "The 
 - `gen_ai.response.finish_reasons`: the one finish reason (`stop`, `length`, ...).
 - `edit_issebya.ai.cost_usd`: the cost OpenRouter reports (usage accounting), else the list price
   of the call's tokens. A custom attribute, because the standard has none.
-- `edit_issebya.ai.role` (`hook`, `decide`, `editorial`, `summary`, `describe`),
+- `edit_issebya.ai.role` (`hook`, `decide`, `summary`, `describe`),
   `edit_issebya.ai.output_mode` (`json_schema`, or `json` after the fallback) and
   `edit_issebya.ai.prompt_version` (the prompt's identity, `<name>@v<version>`, such as
   `reel-components@v1`): custom attributes.
@@ -253,7 +253,7 @@ command.
 
 The `step decide` span has one child per stage. On a normal run (automatic, one attempt, no
 behind item, the summary call made) the children run in this order; a retry adds a second
-`decide.attempt`, and a rounds run adds `decide.editorial_round` spans:
+`decide.attempt`:
 
 ```
 step decide                        reel.tracks_items
@@ -264,10 +264,6 @@ step decide                        reel.tracks_items
 ├─ decide.attempt                  decide.attempt 1, decide.outcome, decide.refused_by
 │  ├─ chat <model>                 gen_ai.* (the attempt's AI call)
 │  └─ decide.engine                decide.dropped, decide.checks
-├─ decide.editorial_round          decide.round, decide.outcome (only when a round runs)
-│  ├─ chat <model>                 gen_ai.* (the round's AI call)
-│  └─ decide.engine                decide.dropped (the merged answer placed again)
-├─ decide.engine                   decide.stage "editorial checks" (only when a round placed the answer again)
 ├─ step cutout                     (only with a behind item)
 ├─ decide.version_summary          decide.summary_source
 │  └─ chat <model>                 gen_ai.* (the summary's AI call)
@@ -277,10 +273,8 @@ step decide                        reel.tracks_items
 - `decide.attempt`: `decide.attempt` (1 or 2); `decide.outcome`: `ok`, `invalid` (the answer is
   not JSON), or `refused` (the schema, the placement or the glossary check); `decide.refused_by`
   the rule names, comma-separated, when refused.
-- `decide.editorial_round`: `decide.round` (1 to 3); `decide.outcome`: `placed`, `invalid`,
-  `refused`, `not_placed` (the engine could not place the merged answer) or `unavailable`.
 - `decide.engine`: `decide.dropped` (items the engine left out) and `decide.checks` (layout checks
-  that failed on its output; `decide.stage` marks the final rebuild after the rounds).
+  that failed on its output).
 - `decide.version_summary`: `decide.summary_source` is `ai` or `template` (the code's fallback).
 - The stage spans carry no AI facts; the `chat` span under each stage does (see AI calls above).
   The step row keeps the summed totals.
@@ -313,8 +307,7 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
 - Decide's spans: `telemetry.test.ts` (`inSpan`: the child's parent and attributes, an error marked
   and rethrown, telemetry that exports nothing), `run-decide.test.ts` (`runDecide spans`: a normal
   run's children in order with their facts, a retry as two attempts, a thrown error on the attempt's
-  span, no exporter; the cut-out under decide), `editorial.test.ts` (a round as its own span, its
-  `chat` span under it, an unavailable round).
+  span, no exporter; the cut-out under decide).
 - AI calls: `ai.test.ts` (`the chat span of a call`: name, kind, operation, provider, request and
   response model, the tokens, the cost, the finish reason, the role and output mode, the error
   types, no trace means no span).

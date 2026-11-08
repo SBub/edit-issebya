@@ -6,7 +6,6 @@ import { TransientError } from "../failure.ts";
 export const PROMPT_NAMES = {
   hook: "reel-hook",
   components: "reel-components",
-  editorial: "reel-editorial",
   summary: "reel-version-summary",
   describe: "photo-describe",
 } as const;
@@ -88,19 +87,17 @@ export function renderPrompt(
   };
 }
 
-// The four decide prompts, fetched together before the decide step's first AI
+// The three decide prompts, fetched together before the decide step's first AI
 // call, so a PostHog failure costs no AI call.
 export async function decidePrompts(source: PromptSource): Promise<{
   hook: PromptText;
   components: PromptText;
-  editorial: PromptText;
   summary: PromptText;
 }> {
-  const [hook, components, editorial, summary] = await Promise.all([
+  const [hook, components, summary] = await Promise.all([
     source.get(PROMPT_NAMES.hook),
     source.get(PROMPT_NAMES.components),
-    source.get(PROMPT_NAMES.editorial),
     source.get(PROMPT_NAMES.summary),
   ]);
-  return { hook, components, editorial, summary };
+  return { hook, components, summary };
 }

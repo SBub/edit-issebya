@@ -18,12 +18,10 @@ describe("decision trace", () => {
         photos: [{ photo_id: "abcdef123456", from: "w2", to: "w3", reason: "mood" }],
         hook: { text: "Be seen" },
       },
-      [[{ item: "photos[0]", skip: false, from: "w4", to: "w5" }]],
       [
         { item: "accent-1", action: "moved", rule: "no-room", reason: "" },
         { item: "big-word-1", action: "dropped", rule: "big-word-visible", reason: "" },
         { item: "photo-1", action: "dropped", rule: "no-room", reason: "" },
-        { item: "photo-1", action: "retimed", rule: "editorial", reason: "" },
         { item: "cw0", action: "low-contrast", rule: "contrast-stay", reason: "" },
       ],
       words,
@@ -32,16 +30,15 @@ describe("decision trace", () => {
       ["title", "kept"],
       ["accent-1", "changed"],
       ["big-word-1", "dropped"],
-      ["photo-1", "changed"],
+      ["photo-1", "dropped"],
       ["hook", "kept"],
     ]);
     expect(trace.rows[0]!.proposed).toBe('hook "Creating content"');
     expect(trace.rows[2]!.proposed).toBe('bigword "exposure"');
     expect(trace.rows[3]!.proposed).toBe('image abcdef12 (mood) on "is like"');
-    expect(trace.rows[3]!.editorial).toBe('r1 moved to "exposure therapy"');
     expect(trace.otherNotes).toEqual({ "low-contrast (contrast-stay)": 1 });
     const text = formatTrace("v2", trace);
-    expect(text).toContain("proposed 5: kept 2, changed 2, dropped 1");
+    expect(text).toContain("proposed 5: kept 2, changed 1, dropped 2");
     expect(text).toContain("other engine notes: 1x low-contrast (contrast-stay)");
   });
 
@@ -58,7 +55,6 @@ describe("decision trace", () => {
           { kind: "panel", from: "w3", to: "w4", wish: "bottom" },
         ],
       },
-      [],
       [],
       words,
     );
@@ -141,7 +137,6 @@ describe("decision trace of a VISUAL", () => {
       {
         visuals: [{ from: "w2", to: "w3", description: "a messy desk at night" }],
       },
-      [[{ item: "visuals[0]", skip: false, from: "w4", to: "w5" }]],
       [{ item: "visual-1", action: "shrunk", rule: "visual-size", reason: "" }],
       words,
     );

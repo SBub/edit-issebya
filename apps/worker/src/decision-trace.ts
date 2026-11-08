@@ -1,9 +1,9 @@
 import type { EngineNote } from "@edit-issebya/edit";
 
-// THE DECISION TRACE: what Claude proposed for a version (its final decide
-// answer and the editorial rounds) beside what the layout engine did to each
-// item (the version's engine record), one row per proposed item. Read-only:
-// it explains a saved version, it never changes one.
+// THE DECISION TRACE: what Claude proposed for a version (its decide answer)
+// beside what the layout engine did to each item (the version's engine
+// record), one row per proposed item. Read-only: it explains a saved version,
+// it never changes one.
 
 // The parts of a decide answer the trace reads. Loose on purpose: an older
 // version's answer may lack a list a newer prompt added. `photos` is an older
@@ -19,25 +19,12 @@ export interface TracedAnswer {
   hook?: { text: string } | null;
 }
 
-// One editorial choice: the item moved to other words (an older answer's
-// photo may also name another photo), or skipped.
-export interface TracedEditorialChoice {
-  item: string;
-  skip: boolean;
-  from?: string;
-  to?: string;
-  photo_id?: string;
-  why?: string;
-}
-
 export interface TraceRow {
   // The answer reference (`accents[0]`) and the engine's item id (`accent-1`).
   ref: string;
   item: string;
   // What Claude proposed, in words: the kind, the spoken words, its details.
   proposed: string;
-  // What the editorial rounds did to it, if anything.
-  editorial: string;
   // kept: no engine note; changed: placed with notes; dropped: left out.
   outcome: "kept" | "changed" | "dropped";
   // The engine's notes on it as `action (rule)`, in order.
@@ -125,10 +112,9 @@ function proposals(
   return out;
 }
 
-// Joins an answer, its editorial rounds and the engine record into rows.
+// Joins an answer and the engine record into rows.
 export function buildTrace(
   answer: TracedAnswer,
-  editorialRounds: readonly (readonly TracedEditorialChoice[])[],
   record: readonly EngineNote[],
   words: readonly { id: string; text: string }[],
 ): Trace {
@@ -137,18 +123,7 @@ export function buildTrace(
   const named = new Set(items.map((entry) => entry.item));
   const rows = items.map(({ ref, item, proposed }): TraceRow => {
     const notes = record.filter((note) => note.item === item);
-    const editorial = editorialRounds
-      .map((round, index) => {
-        const choice = round.find((entry) => entry.item === ref);
-        if (!choice) return null;
-        if (choice.skip) return `r${index + 1} skipped: ${choice.why ?? ""}`.trim();
-        const photo = choice.photo_id ? ` photo ${choice.photo_id.slice(0, 8)}` : "";
-        return `r${index + 1} moved to "${say(choice.from ?? "", choice.to ?? "")}"${photo}`;
-      })
-      .filter((entry): entry is string => entry !== null)
-      .join("; ");
-    // The last word is the engine's: a drop then a placement in a later
-    // round reads as changed.
+    // The last note decides: a drop then a placement reads as changed.
     const last = notes.at(-1);
     const outcome =
       notes.length === 0 ? "kept" : last && DROPPING.has(last.action) ? "dropped" : "changed";
@@ -156,7 +131,6 @@ export function buildTrace(
       ref,
       item,
       proposed,
-      editorial,
       outcome,
       engine: notes.map((note) => `${note.action} (${note.rule})`).join(", "),
     };
@@ -172,14 +146,8 @@ export function buildTrace(
 
 // The trace as plain text: a header, one aligned row per item, the counts.
 export function formatTrace(title: string, trace: Trace, fixes: string[] = []): string {
-  const head = ["item", "Claude proposed", "engine did", "notes", "editorial"];
-  const body = trace.rows.map((row) => [
-    row.item,
-    row.proposed,
-    row.outcome,
-    row.engine || "-",
-    row.editorial || "-",
-  ]);
+  const head = ["item", "Claude proposed", "engine did", "notes"];
+  const body = trace.rows.map((row) => [row.item, row.proposed, row.outcome, row.engine || "-"]);
   const widths = head.map((label, column) =>
     Math.min(70, Math.max(label.length, ...body.map((cells) => cells[column]!.length))),
   );

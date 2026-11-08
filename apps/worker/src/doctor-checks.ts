@@ -305,7 +305,7 @@ export async function runDoctor(
 
 // The PostHog prompts, each fetched by name at the configured label: the line
 // names `name@vN` and the label, never the text. Without the project id or the
-// personal key, its line says which one is missing and the five prompts are not
+// personal key, its line says which one is missing and the four prompts are not
 // fetched.
 async function promptChecks(deps: DoctorDeps): Promise<string[]> {
   const key = await check("posthog personal key", async () => {

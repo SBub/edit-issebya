@@ -84,14 +84,6 @@ export {
   placeEdit,
 } from "./engine.ts";
 export {
-  type ChecklistOutcome,
-  type EditorialAnswer,
-  WHY_WORDS,
-  editorialJsonSchema,
-  mergeEditorial,
-  parseEditorialAnswer,
-} from "./editorial.ts";
-export {
   type BackgroundMap,
   type Backgrounds,
   BACKGROUND_GRID,
@@ -122,6 +114,7 @@ export {
 } from "./behind.ts";
 export { baselineEdit } from "./baseline.ts";
 export {
+  type ChecklistOutcome,
   type FreeFieldUse,
   type NewVersion,
   type SavedVersion,

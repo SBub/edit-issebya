@@ -183,8 +183,8 @@ async function decide(
   return { run, calls };
 }
 
-// The decide step's answer calls (the decide attempts and the editorial
-// rounds), without the hook and the summary calls.
+// The decide step's answer calls (the decide attempts), without the hook and
+// the summary calls.
 function editorCalls(ai: FakeAiRunner) {
   return ai.calls.filter((call) => call.role !== "summary" && call.role !== "hook");
 }
@@ -719,7 +719,7 @@ describe("runDecide when the AI is not available", () => {
     const ai = aiScript([scripted]);
     const prompts: PromptSource = {
       async get(name) {
-        if (name === "reel-editorial") {
+        if (name === "reel-version-summary") {
           throw new PromptUnavailable(name, "production", "PostHog did not answer");
         }
         return fakePromptSource().get(name);
@@ -730,7 +730,7 @@ describe("runDecide when the AI is not available", () => {
     expect(ai.calls).toHaveLength(0);
     expect(isTransient(error)).toBe(true);
     expect(error.message).toContain(
-      "prompts: reel-editorial (label production) could not be fetched: PostHog did not answer",
+      "prompts: reel-version-summary (label production) could not be fetched: PostHog did not answer",
     );
     expect(current).toBe(firstId);
     // Transient: the step runner's one automatic retry, then the failure.

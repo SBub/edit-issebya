@@ -1,8 +1,19 @@
 import { canonicalJson } from "./canonical-json.ts";
 import type { Check } from "./checks.ts";
-import type { ChecklistOutcome } from "./editorial.ts";
 import type { EngineNote } from "./engine.ts";
 import type { Edit, EditInputs } from "./schema.ts";
+
+// One ask of a request as stored with a version written before the change
+// box was removed: what was asked, what would satisfy it, the items linked,
+// whether the version does it and, when not, the reason. Read back only;
+// no version is written with a checklist any more.
+export interface ChecklistOutcome {
+  ask: string;
+  wants: string;
+  fulfilled_by: string[];
+  done: boolean;
+  reason: string | null;
+}
 
 // Where a version's edit.json lives. Written once (put-if-absent), never
 // replaced.

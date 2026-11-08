@@ -51,7 +51,6 @@ import {
 import { type AiUsage, addUsage } from "../step-store.ts";
 import { type AiRecordCall, writeAiRecord } from "./ai-record.ts";
 import type { ReelRules } from "./behind-rules.ts";
-import { type Placed, runEditorialRounds } from "./editorial.ts";
 import { decideInput } from "./input.ts";
 import { hookGlossaryReasons, hookInput, hookPrompt } from "./hook.ts";
 import { decidePrompt } from "./prompt.ts";
@@ -69,7 +68,7 @@ export interface DecideRun {
   blobs: VersionBlobs;
   keyPrefix: string;
   ai: AiRunner;
-  // The worker's prompt source: the four decide prompts are fetched at the
+  // The worker's prompt source: the three decide prompts are fetched at the
   // start of the step (before any AI call).
   prompts: PromptSource;
   scratchDir: string;
@@ -94,14 +93,13 @@ export interface DecideRun {
 
 // A refused attempt carries its reasons (the tail's lines) and the names of
 // the rules it failed (data for the job and error tracking, never free text).
-// A placed one carries the engine's record and the layout checks of its build.
+// A placed one carries the engine's edit, its record and the layout checks of
+// its build.
 type Attempt =
   | {
       ok: true;
       edit: Edit;
-      answer: DecideAnswer;
       record: EngineNote[];
-      placed: Placed;
       checks: Check[];
       reasons: [];
     }
@@ -141,7 +139,9 @@ function roundLines(round: number, reasons: readonly string[]): string[] {
 // the reasons and writes nothing, so the current version stays. Layout never
 // refuses an answer: the layout engine (`editFromAnswer`) places every item,
 // the hook first, dropping what fits nowhere into its record, and the layout
-// checks are its final guard. A check failing on the engine's output is an engine bug: it is
+// checks are its final guard. Nothing asks Claude again about what the engine
+// left out: the components' answer is the one meaning the engine places.
+// A check failing on the engine's output is an engine bug: it is
 // logged with the reel id and stored on the row, and the version is still
 // saved. A placed answer becomes a new version, once the masks its behind
 // items need are stored (the `cutout` step); a failed cut-out saves nothing.
@@ -242,7 +242,7 @@ export function runDecide({
 
       let usage: AiUsage = NO_USAGE;
       // Every call as sent and answered, for the version's AI record: the hook
-      // calls first, then the decide attempts, the rounds and the summary.
+      // calls first, then the decide attempts and the summary.
       const calls: AiRecordCall[] = [];
       // The written hook: its own call, before the components. Its answer is
       // refused only by its schema or the glossary, and it goes back once; a
@@ -386,14 +386,7 @@ export function runDecide({
             return {
               ok: true,
               edit: composed.edit,
-              answer: answer.answer,
               record: composed.record,
-              placed: {
-                edit: composed.edit,
-                record: composed.record,
-                unplaced: composed.unplaced,
-                free: composed.free,
-              },
               checks,
               reasons: [],
             };
@@ -437,82 +430,9 @@ export function runDecide({
       }
 
       ctx.signal.throwIfAborted();
-      // The editorial round: what the engine left out goes back to the
-      // editor for another meaning choice, and the whole answer is placed
-      // again. A refused editorial answer only ends the rounds.
-      const editorial = await runEditorialRounds({
-        ai,
-        signal: ctx.signal,
-        transcript,
-        preset,
-        check: (json) => parseDecideAnswer(json, preset, transcript, decideRules),
-        // Each round is a `decide.editorial_round` span with its `chat`
-        // span and its placement (`decide.engine`) under it.
-        telemetry: ctx.telemetry,
-        inRound: (name, attributes, work) =>
-          inSpan(ctx.telemetry, stepContext, name, attributes, work),
-        place: async (merged, context) => {
-          const composed = await inSpan(
-            ctx.telemetry,
-            context,
-            "decide.engine",
-            {},
-            async (engine) => {
-              const result = editFromAnswer(
-                current,
-                engineAnswer(merged),
-                preset,
-                transcript,
-                headTrack,
-                measure,
-                backgrounds,
-              );
-              if (result.ok) {
-                engine.setAttribute(
-                  "decide.dropped",
-                  result.record.filter((note) => note.action === "dropped").length,
-                );
-              }
-              return result;
-            },
-          );
-          if (!composed.ok) {
-            log(`${STEP}: engine bug, reel ${reelId}: ${composed.reasons.join("; ")}`);
-            return null;
-          }
-          return {
-            edit: composed.edit,
-            record: composed.record,
-            unplaced: composed.unplaced,
-            free: composed.free,
-          };
-        },
-        editorial: templates.editorial,
-        answer: passed.answer,
-        placed: passed.placed,
-      }).catch(permanentAfterAiCall);
-      usage = addUsage(usage, editorial.usage);
-      calls.push(
-        ...editorial.exchanges.map((exchange, index) => ({ attempt: index + 1, ...exchange })),
-      );
-      if (editorial.ended)
-        log(`${STEP}: editorial round ended, reel ${reelId}: ${editorial.ended}`);
-      ctx.signal.throwIfAborted();
-      const final = editorial.placed;
-      const record = [...final.record, ...editorial.notes];
-      // Built again only when the editorial rounds changed the placement.
-      const checks =
-        editorial.placed === passed.placed
-          ? passed.checks
-          : await inSpan(
-              ctx.telemetry,
-              stepContext,
-              "decide.engine",
-              { "decide.stage": "editorial checks" },
-              async () =>
-                build(withMasks(final.edit, transcript), transcript, headTrack, preset, measure)
-                  .checks,
-            );
+      // The placed answer: its edit, the engine's record and the layout checks
+      // of its build (the engine's own output, never a second placement).
+      const { edit: placed, record, checks } = passed;
       // The engine's only allowed face covering: captions it put over the
       // face because nothing else was free, and an item the owner asked for
       // it let cover the face as its last step, each said so in its record.
@@ -544,7 +464,7 @@ export function runDecide({
         storage,
         keyPrefix,
         scratchDir,
-        edit: final.edit,
+        edit: placed,
         transcript,
         // No library photo is named any more: a new version has none.
         photoIds: [],
@@ -624,7 +544,7 @@ export function runDecide({
       log(engineRecordLine(reelId, saved.number, record));
       trace.getSpan(stepContext)?.setAttribute("reel.tracks_items", trackItems(edit));
       const counts = decideCounts(edit, transcript, preset);
-      const dropped = final.record.filter((note) => note.action === "dropped").length;
+      const dropped = record.filter((note) => note.action === "dropped").length;
       const what = [
         `version ${saved.number}: ${plural(counts.accents, "accent")}`,
         plural(counts.transitions, "transition"),
@@ -634,7 +554,6 @@ export function runDecide({
           ? [`${counts.behindPhotos + counts.behindVisuals + counts.behindWords} behind`]
           : []),
         ...(dropped > 0 ? [`${dropped} dropped`] : []),
-        ...(editorial.rounds > 0 ? [plural(editorial.rounds, "editorial round")] : []),
         ...(startFrom !== null ? [`started over from version ${row.number}`] : []),
       ].join(", ");
       return { what, ai: usage };

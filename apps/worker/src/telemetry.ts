@@ -178,13 +178,6 @@ export async function inSpan<T>(
   }
 }
 
-// The same helper, bound to a parent: `inSpan` for the spans under one Context.
-export type InSpan = <T>(
-  name: string,
-  attributes: Attributes,
-  work: (span: Span, context: Context) => Promise<T>,
-) => Promise<T>;
-
 export type StepStream = "stdout" | "stderr";
 
 // Emits each output line as a log record in the step span's context, so it

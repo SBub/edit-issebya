@@ -26,10 +26,10 @@ over the version by the layout engine together with the hook (`placeEdit`, `app_
 answer breaking the schema or the glossary is refused: it goes back once with the reasons; a second
 refusal of the hook or of the components fails the step and leaves the current version untouched.
 Layout never refuses an answer: what fits nowhere is dropped and written to the engine record saved
-with the version. After a placed answer, one editorial round gives the editor a second meaning choice
-for what the engine left out. Every AI call a decided version made (the hook attempts, the decide
-attempts, the editorial round, the title and summary) is stored beside it with its prompt, schema and
-raw answer (the version's AI record), so a version can be replayed and diagnosed.
+with the version. Nothing asks Claude again about what the engine left out: the decide step makes no
+call after the components' answer is placed. Every AI call a decided version made (the hook attempts,
+the decide attempts, the title and summary) is stored beside it with its prompt, schema and raw answer
+(the version's AI record), so a version can be replayed and diagnosed.
 
 There is no owner request any more: the change box is removed (`app_docs/change-requests.md`). The
 automatic run after version 1, and Start over (which decides again from version 1), are the only
@@ -201,7 +201,7 @@ input, reasons?)` fills them as fenced JSON and, on the retry, appends the refus
 - `apps/worker/src/decide/run-decide.ts`: `runDecide`, a `runToolsStep` named `decide`. It reads the
   current version and its inputs, builds the schemas, and makes the hook call first (`decide.hook`
   span, at most two attempts: a hook refused by its schema or its glossary goes back once with the
-  reasons), then the components' call (at most two attempts), never a loop. The four prompts are
+  reasons), then the components' call (at most two attempts), never a loop. The three prompts are
   fetched before the first call (`decidePrompts`); a fetch failure is a transient step failure. A hook that fails twice
   fails the step with `decide: the hook failed twice, version <n> stays current` and each round's
   reasons, nothing written, the same as a failed components answer.
@@ -222,8 +222,8 @@ input, reasons?)` fills them as fenced JSON and, on the retry, appends the refus
   record in one line (`apps/worker/src/engine-record.ts`, `engineRecordLine`):
   `engine record, reel <id>, version <n>: <item> <action> (<rule>): <reason>; ...`, or `nothing moved`.
   Step line: `version 2: 1 accent, 1 transition, hook set, 1 word fixed`, with `, <n> behind` after it
-  when the version has behind items, `, <n> dropped` when the engine dropped items, `, <n> editorial
-round` after that when the editorial round ran, and `, started over from version <n>` for Start over.
+  when the version has behind items, `, <n> dropped` when the engine dropped items, and `, started over
+from version <n>` for Start over.
   There is no title segment: a new answer has no title.
 - `apps/worker/src/process-job.ts`: runs `runDecide` after `saveFirstVersion`. Never cached: a retried
   job decides again from the then-current version.
@@ -245,21 +245,6 @@ round` after that when the editorial round ran, and `, started over from version
   `unexpressed`, `free_field`, `rejected_reasons`, `change_title`, `engine_record`, `checklist`. A new
   version writes `unexpressed` and `checklist` empty; the columns stay for older rows (`NewVersion`,
   `VersionMeta` in `packages/edit/src/versions.ts`, `supabaseVersionRows`).
-
-### Editorial round
-
-`packages/edit/src/editorial.ts`, `apps/worker/src/decide/editorial.ts` (prompt `reel-editorial`): the editorial
-round, one at most (`EDITORIAL_ROUNDS` 1), on the automatic run, after a placed answer. `placeEdit`
-returns `unplaced` (the answer's extras it dropped, each with its answer ref, kind, words, a reason code
-in editor terms) and `free` (the sentences, by word ids, with room for an accent, a visual or a big word, found by non-committing probes). The round runs only when a left-out item has a free sentence of its
-kind, so no call is paid for nothing. It sends the items and the sentences with room (the words they were
-on, why in words, no time, size or spot) ; Claude answers per item either new words (`from`, `to`) or a skip
-with a plain `why` for the owner. `editorialJsonSchema` and `parseEditorialAnswer` are built per round
-(word-id enums); `mergeEditorial` applies the choices (a skip removes the item) and the
-whole merged answer is checked by `parseDecideAnswer` and placed again. A broken, refused or unusable
-editorial answer, a merged answer the decide rules refuse, or the AI not available only ends the round
-(never a retry, never a failed step, never a wait); the version saves with what is placed. The rounds'
-notes (rule `editorial`) join the engine record and the step line gains `, <n> editorial round`.
 
 ### Version title and summary
 
@@ -298,7 +283,7 @@ A prompt the worker cannot fetch from PostHog fails the step before any AI call,
 (`PromptUnavailable`, "Prompts"). A transient retry (`app_docs/failures.md`) is the step runner's and never adds AI calls: from the first
 AI call on, `runDecide` wraps every failure but `AiUnavailable` in `PermanentError`
 (`permanentAfterAiCall`), so the step runner never runs the step again and the step makes at most two
-hook calls and two decide calls (the editorial round and the summary are separate, below). A failure
+hook calls and two decide calls (the summary is a separate call, below). A failure
 before the first AI call may still be retried once.
 
 Two refused rounds throw `StepError` with the tail `decide: the answer failed twice, version <n> stays
@@ -327,7 +312,6 @@ prompt file exists (`apps/worker/src/prompts/no-prompt-files.test.ts`).
 
 - `reel-hook`: the written hook, one short line from what the speaker says (`hook.ts`).
 - `reel-components`: the components' answer, meaning only (`prompt.ts`).
-- `reel-editorial`: the editorial round's choice for what was left out (`editorial.ts`).
 - `reel-version-summary`: the version's title and summary from the saved difference (`version-summary.ts`).
 - `photo-describe`: a library photo's description and tags (`photos/describe-prompt.ts`).
 
@@ -341,7 +325,7 @@ version row (`prompt_version`, the components' identity), the AI record (`prompt
 
 - `apps/worker/src/prompts/source.ts`: `PromptSource.get(name)` returns `{ name, version, label, text }`;
   `renderPrompt` fills a template and appends a retry's reasons, returning the call's text and
-  identity; `decidePrompts` fetches the four decide prompts together.
+  identity; `decidePrompts` fetches the three decide prompts together.
 - `apps/worker/src/prompts/posthog-source.ts`: the source, a plain `fetch` (no SDK) to
   `GET {POSTHOG_HOST}/api/projects/{POSTHOG_PROJECT_ID}/llm_prompts/name/{name}/?label={label}` with
   the header `Authorization: Bearer {POSTHOG_PERSONAL_API_KEY}`. The label is the query parameter of
@@ -374,7 +358,7 @@ version row (`prompt_version`, the components' identity), the AI record (`prompt
   with the variables the call fills, versions 1). `E2E_MOCK_PROMPTS=true` selects it for the worker in
   the E2E specs (`apps/studio/test-support/worker.ts`), so the E2E identities are `reel-*@v1` and
   `photo-describe@v1`.
-- `yarn workspace @edit-issebya/worker doctor` fetches each of the five prompts and prints its
+- `yarn workspace @edit-issebya/worker doctor` fetches each of the four prompts and prints its
   identity and label (never its text), after the `posthog personal key` line.
 
 ## Configuration
@@ -383,7 +367,7 @@ version row (`prompt_version`, the components' identity), the AI record (`prompt
   `apps/worker/.env.example`). Without it every AI call is `unavailable` (`the OpenRouter key is not
 set`) and the job waits.
 - The model: `AI_MODEL` in `apps/worker/src/ai.ts` (`anthropic/claude-haiku-5.5`), one setting;
-  `AI_MODELS` maps each role (`hook`, `decide`, `editorial`, `summary`, `describe`) to it, the one place to give
+  `AI_MODELS` maps each role (`hook`, `decide`, `summary`, `describe`) to it, the one place to give
   a role another model later.
 - `E2E_MOCK_AI` and `E2E_MOCK_AI_SCRIPT`: tests only; documented in `apps/worker/.env.example`.
 - `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `POSTHOG_PROMPT_LABEL` and
@@ -414,8 +398,7 @@ word fixed, 1 dropped`; the AI record holding the hook, decide and summary calls
   readable one, else an older record's decide `hook`). `packages/edit/src/engine.test.ts` ("the written
   hook": the fixed slot, an accent and an image asked for in its window never move or remove it). `run-decide.test.ts` builds its check-refused answer as a word fix
   writing the heard form "Locking" (the schema accepts any fix text, so only the glossary check refuses it).
-  `editorial.test.ts` (the one automatic round, a skip kept as the stored reason, the AI not available
-  ending the round), `version-summary.test.ts` (the fill, the safeguard, the template) in `packages/edit`
+  `version-summary.test.ts` (the fill, the safeguard, the template) in `packages/edit`
   and in the worker. `prompts/posthog-source.test.ts` and `prompts/source.test.ts` (the fetch with a
   stubbed `fetch`, the failures, the identity; the last good copy within 60 minutes
   on a network error or a 5xx, refused beyond it, never for a prompt never fetched or a 404; the source
@@ -503,7 +486,7 @@ then saved with): `{ format: 1, reel_id, version_id, prompt_version, hook_prompt
 summary_prompt_version, calls }` (the three identities, `<name>@v<version>`), each call `{ attempt, role,
 model, prompt, promptVersion, schema, image, outputMode, answerText, finishReason, usage,
 error }` in order: the hook attempts first (role `hook`, attempt 1 and
-2), then the decide attempts (role `decide`, 1 and 2), the editorial rounds (1 on) and the summary. It is a `stored_files` row of kind `version`, step `decide` (`classifyKey`), so it is
+2), then the decide attempts (role `decide`, 1 and 2) and the summary. It is a `stored_files` row of kind `version`, step `decide` (`classifyKey`), so it is
 kept with the version and deleted with the reel. A decide that saves nothing (refused twice,
 nothing changed, waiting) writes no record; its reasons are in the step's error tail. To replay a
 version, send each call's `prompt` with its `schema` to its `model`.
@@ -525,8 +508,7 @@ order, `big-word-N`, `visual-N` (an older answer's photo keeps `photo-N`), `tran
 not renamed), what Claude proposed in the same words (`hook "..."` for the title accent, `accent
 "..."`, `bigword "..."`, `visual "..." on "..."`, `list "..."` for numbered transitions,
 `accent "..." (dim)` for the others), `kept` (no engine note), `changed` (placed with notes) or
-`dropped` (its last note is `dropped` or `removed`), the notes as `action (rule)` and what the
-editorial rounds chose; then the counts, the word fixes and the notes on other items (captions)
+`dropped` (its last note is `dropped` or `removed`) and the notes as `action (rule)`; then the counts, the word fixes and the notes on other items (captions)
 by action and rule. It reads the `versions` row, the AI record and the transcript with the
 worker's own variables and writes nothing (`src/trace.ts`, `src/decision-trace.ts`).
 
@@ -540,8 +522,8 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
 
 ## Rules
 
-- At most two hook calls and two decide calls (one retry each), then at most one editorial round on the
-  automatic run; never an unbounded loop.
+- At most two hook calls and two decide calls (one retry each), then the summary call; never an
+  unbounded loop.
 - Claude never writes times, positions or sizes: the answer is meaning only (word ids, visual descriptions), every object closed; the layout places everything.
 - Claude writes only the new vocabulary: ACCENT (`accents`), BIGWORD (`big_words`), VISUAL (`visuals`, each with its description), LIST (`transitions`, kind `numbered` only) and `word_fixes` in the components' call;
   the hook (`text`) in its own call, never in the components'. A title,
@@ -582,8 +564,6 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
   `preset.pace.transitionEverySeconds` (the engine's pace, never sent to the model); the engine drops the rest.
 - A new answer names no photo: a visual is a frame, and the answer's schema has no photo id.
 - The decide step reads no photo library (for now), so none is sent to the model.
-- Claude never sees coordinates, sizes, spots or times in the editorial round either.
-- A refused editorial answer never fails the step, never waits and is never retried.
 - The version summary describes only the saved difference: every item it names is in the difference, else
   the template replaces it.
 - The summary call is one call, never retried, never fails the step or makes the job wait.
@@ -606,3 +586,7 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
   `app_docs/change-requests.md`.
 - The engine side (making room for a requested item) is in `app_docs/edit-model.md`, "Layout engine"; the
   engine keeps its requested-items option, the decide step passes none.
+- The editorial round is removed (owner decision 2026-11-08). The engine is tuned first, so the trace shows
+  exactly what the components' call picked and what the engine did with it, with no second call in
+  between. Versions decided before the removal keep their editorial calls in the AI record and their
+  `editorial` notes in the engine record; the trace skips those calls and reads the notes as stored.

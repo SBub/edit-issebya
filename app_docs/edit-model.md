@@ -484,7 +484,7 @@ is under captions or the face from 23.48 s to 26.23 s" }`. Rules: `caption-min`,
   `big-word-time`, `big-word-size`, `big-word-visible`, `visual-time`, `visual-size`,
   (`photo-time`, `photo-layer`, `photo-size` and `photo-spot` in older records), `hidden-footage`, `one-extra`,
   `hook`, `hook-time`, `hook-spot`, `hook-size`, `hook-wrap`,
-  `no-room`, `wish`, `contrast-spot`, `contrast-stay` (`contrast-shadow` in older records), `make-room`, `editorial`. Saved with the version (`versions.engine_record`) and logged by the worker in
+  `no-room`, `wish`, `contrast-spot`, `contrast-stay` (`contrast-shadow` in older records), `make-room`, and `editorial` in the records of versions decided before the editorial round was removed. Saved with the version (`versions.engine_record`) and logged by the worker in
   one line per version; item 6 turns it into the summary.
 - Final checks: `runChecks` (below) runs on every placed edit. They must never fail on the engine's
   output; one that does is an engine bug, logged with the reel id while the version is still saved.
@@ -503,8 +503,8 @@ taken only when the item is placed, every requested item placed before stays pla
 block goes over the face that did not already. Each step is recorded under the rule `make-room`
 (action `moved`, `shrunk`, `retimed`, `removed` or `covers-face`); an item for which nothing works
 keeps its `dropped` note with the steps tried. `placeEdit` also returns `unplaced` (extras dropped,
-with answer ref, kind and a reason code) and `free` (sentences with room for each kind), which feed
-the editorial round (`app_docs/decide-step.md`). A visual never takes that last step: its card never covers the face, so a requested visual with no
+with answer ref, kind and a reason code) and `free` (sentences with room for each kind), the engine's own
+report; no step asks Claude about them any more (`app_docs/decide-step.md`). A visual never takes that last step: its card never covers the face, so a requested visual with no
 spot free at either size is dropped with the steps tried (the `make-room` tail).
 
 ### Bottom edge in the old layout
@@ -672,7 +672,7 @@ never fatal.
   `src/version-summary.test.ts` (`front`, "in front of you"); the worker's
   `cutout/spans.test.ts` and `cutout/ensure-cutouts.test.ts` (no mask for a front photo). The
   visual's own tests (`src/engine.test.ts`: a visual in front as a white frame, its contrast note,
-  an old version's photo still rendered; `src/decide.test.ts`: the answer's schema; `src/editorial.test.ts`).
+  an old version's photo still rendered; `src/decide.test.ts`: the answer's schema).
 - `src/preset.test.ts` (the intersection, the preset's box, every moved value inside it, the
   no-head big word inside the guard vertically), `src/layout.test.ts` (low face, a fallback block moved
   up and large captions end at or above the safe box's bottom, 1400) and `src/checks.test.ts` (a

@@ -268,7 +268,8 @@ export function parseDecideAnswer(
 // refinement (ids used once, nothing ending before it starts, the behind
 // lengths), with the engine's record of what it moved, shrank, wrapped,
 // retimed or dropped. Also returned: the answer's extras left out and the
-// sentences with room for their kind (the editorial round's input). The
+// sentences with room for their kind (the engine's own report, for the trace
+// and tests; the worker no longer asks for a second answer on them). The
 // current version's masks and photos are not carried over: the worker's
 // cut-out step names them again for the new `behind` track. A parse failure
 // here is an engine bug, never the answer's.

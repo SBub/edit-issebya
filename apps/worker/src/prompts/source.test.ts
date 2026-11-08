@@ -74,7 +74,7 @@ describe("the prompt errors", () => {
 });
 
 describe("decidePrompts", () => {
-  it("fetches the four decide prompts by their names", async () => {
+  it("fetches the three decide prompts by their names", async () => {
     const asked: string[] = [];
     const source = {
       async get(name: string) {
@@ -84,12 +84,7 @@ describe("decidePrompts", () => {
     };
     const prompts = await decidePrompts(source);
     expect(asked.sort()).toEqual(
-      [
-        PROMPT_NAMES.hook,
-        PROMPT_NAMES.components,
-        PROMPT_NAMES.editorial,
-        PROMPT_NAMES.summary,
-      ].sort(),
+      [PROMPT_NAMES.hook, PROMPT_NAMES.components, PROMPT_NAMES.summary].sort(),
     );
     expect(prompts.components.name).toBe("reel-components");
   });

@@ -13,7 +13,6 @@ import {
   formatTrace,
   hookOf,
   type TracedAnswer,
-  type TracedEditorialChoice,
 } from "./decision-trace.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
 import { workerStorage } from "./storage.ts";
@@ -76,10 +75,6 @@ for (const version of versions) {
   }
   // The hook from its own call; an older record's hook is its decide answer's.
   const answer: TracedAnswer = { ...decided, hook: hookOf(record.calls, decided) };
-  const rounds = record.calls
-    .filter((call) => call.role === "editorial")
-    .map((call) => answerJson(call.answerText) as { choices?: TracedEditorialChoice[] } | null)
-    .map((round) => round?.choices ?? []);
   const ref = version.inputs.transcript as { step: string; fingerprint: string; file: string };
   const transcript = transcriptSchema.parse(
     await readJson(cacheKey(config.keyPrefix, ref.step, ref.fingerprint, ref.file)),
@@ -106,7 +101,7 @@ for (const version of versions) {
     continue;
   }
   const engine = version.engine_record as EngineNote[];
-  const trace = buildTrace(answer, rounds, engine, transcript.words);
+  const trace = buildTrace(answer, engine, transcript.words);
   const fixes = (answer.word_fixes ?? []).map((fix) => {
     const said = transcript.words.find((word) => word.id === fix.word)?.text.trim() ?? fix.word;
     return `"${said}" -> "${fix.text}"`;
