@@ -171,18 +171,25 @@ export function formatTrace(title: string, trace: Trace, fixes: string[] = []): 
   ].join("\n");
 }
 
-// THE SCRIPT VIEW (the default): the reel as spoken, one line per sentence
-// (a long sentence split at its middle comma), and beside each line what
-// Claude picked on it, in a few capital words. Only the picks: what the
-// engine did is the table's job.
+// THE SCRIPT VIEW (the default): the reel as spoken, in short lines, and
+// beside each line what Claude picked on it, in a few capital words, one pick
+// per row. Only the picks: what the engine did is the table's job.
 
 // The longest line before a sentence is split at a comma.
 const MAX_LINE = 50;
+// The widest a script line may be. A longer line splits at its speech pauses,
+// else at a word boundary. The script column is this wide.
+const LINE_MAX = 60;
+// A gap of this many seconds or more between two words is a speech pause.
+const PAUSE_SECONDS = 0.35;
 
-type Word = { id: string; text: string };
+// A word as spoken; the timings are optional (a transcript without them has no pauses).
+type Word = { id: string; text: string; start?: number; end?: number };
 
-// The transcript as lines of words: sentences, long ones split at the comma
-// nearest their middle until every part fits or has no comma.
+// The transcript as lines of words. Sentences first (a sentence ends at . ? !).
+// A line over MAX_LINE splits at the comma nearest its middle. A line over
+// LINE_MAX (a stretch with no comma) splits at its largest speech pause, then,
+// with no pause, after the last word that keeps it within LINE_MAX.
 export function scriptLines(words: readonly Word[]): Word[][] {
   const sentences: Word[][] = [];
   let current: Word[] = [];
@@ -195,8 +202,15 @@ export function scriptLines(words: readonly Word[]): Word[][] {
   }
   if (current.length > 0) sentences.push(current);
   const length = (line: Word[]) => line.map((word) => word.text.trim()).join(" ").length;
+  // The silence after line[index], in seconds (0 when the timings are unknown).
+  const pauseAfter = (line: Word[], index: number) => {
+    const word = line[index]!;
+    const next = line[index + 1];
+    if (word.end === undefined || next?.start === undefined) return 0;
+    return next.start - word.end;
+  };
   const split = (line: Word[]): Word[][] => {
-    if (length(line) <= MAX_LINE) return [line];
+    if (length(line) <= MAX_LINE || line.length < 2) return [line];
     const middle = length(line) / 2;
     let best = -1;
     let bestDistance = Infinity;
@@ -208,8 +222,23 @@ export function scriptLines(words: readonly Word[]): Word[][] {
         if (distance < bestDistance) [best, bestDistance] = [index, distance];
       }
     });
-    if (best < 0) return [line];
-    return [...split(line.slice(0, best + 1)), ...split(line.slice(best + 1))];
+    if (best >= 0) return [...split(line.slice(0, best + 1)), ...split(line.slice(best + 1))];
+    if (length(line) <= LINE_MAX) return [line];
+    // The longest pause decides the cut; the rest splits again the same way.
+    let pause = -1;
+    let longest = 0;
+    for (let index = 0; index < line.length - 1; index++) {
+      const gap = pauseAfter(line, index);
+      if (gap >= PAUSE_SECONDS && gap > longest) [pause, longest] = [index, gap];
+    }
+    if (pause >= 0) return [...split(line.slice(0, pause + 1)), ...split(line.slice(pause + 1))];
+    // No pause: the last word that keeps the first part within LINE_MAX.
+    let cut = 0;
+    for (let index = 1; index < line.length - 1; index++) {
+      if (length(line.slice(0, index + 1)) > LINE_MAX) break;
+      cut = index;
+    }
+    return [...split(line.slice(0, cut + 1)), ...split(line.slice(cut + 1))];
   };
   return sentences.flatMap(split);
 }
@@ -218,8 +247,20 @@ export function scriptLines(words: readonly Word[]): Word[][] {
 // kind (dim, panel, ...) is an ACCENT with its kind in brackets.
 const TRANSITION_LABEL: Record<string, string> = { numbered: "LIST" };
 
+// The header of a version's trace: both prompt versions (the hook's and the
+// components'), and the decide attempts when there were more than one.
+export function traceHeading(
+  title: string,
+  prompts: { hook_prompt_version: string; prompt_version: string },
+  attempts: number,
+): string {
+  const tried = attempts > 1 ? `, ${attempts} decide attempts` : "";
+  return `${title} (prompts ${prompts.hook_prompt_version}, ${prompts.prompt_version}${tried})`;
+}
+
 // The script view as plain text. `photoNames` names an older answer's library
 // photo by id (its first tag or a short description); an unnamed photo shows its id.
+// A line with several picks prints one row per pick; the script text is on the first.
 export function formatScript(
   title: string,
   answer: TracedAnswer,
@@ -278,18 +319,21 @@ export function formatScript(
     picks[Number(line)]!.push(`${label} ${names.join(" ")}`);
   }
   const texts = lines.map((line) => line.map((word) => word.text.trim()).join(" "));
-  const width = Math.max(0, ...texts.map((text) => text.length));
   const fixes = (answer.word_fixes ?? []).map((fix) => {
     const said = words.find((word) => word.id === fix.word)?.text.trim() ?? fix.word;
     return `"${said}" -> "${fix.text}"`;
+  });
+  const rows = texts.flatMap((text, index) => {
+    const list = picks[index]!.length > 0 ? picks[index]! : [""];
+    return list.map((pick, row) =>
+      `${(row === 0 ? text : "").padEnd(LINE_MAX)}  │ ${pick}`.trimEnd(),
+    );
   });
   return [
     title,
     `HOOK  ${answer.hook ? `"${answer.hook.text}"` : "none"}`,
     "",
-    ...texts.map((text, index) =>
-      `${text.padEnd(width)}  │ ${picks[index]!.join(" · ")}`.trimEnd(),
-    ),
+    ...rows,
     ...(fixes.length > 0 ? ["", `FIXES ${fixes.join(", ")}`] : []),
   ].join("\n");
 }

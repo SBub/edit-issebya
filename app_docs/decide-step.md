@@ -471,9 +471,16 @@ version, send each call's `prompt` with its `schema` to its `model`.
 
 `yarn workspace @edit-issebya/worker trace <reel id>` (no id: the latest 15 reels) prints, by
 default, the script view of every version with an AI record: the hook (the text of its last readable
-`hook` call, else an older record's decide answer `hook`, `hookOf`), then the transcript one line
-per sentence (a sentence over 50 characters split at the comma nearest its middle), each line with
-Claude's picks on it in capitals and the word fixes; what the engine did is left out. The picks
+`hook` call, else an older record's decide answer `hook`, `hookOf`), then the transcript in short
+lines (`scriptLines`), each line with Claude's picks on it in capitals and the word fixes; what the
+engine did is left out. The header names both prompt versions, the hook's (`hook_prompt_version`)
+and the components' (`prompt_version`), and the decide attempts when there were more than one
+(`traceHeading`). Lines: a sentence ends at `.`, `?` or `!`; a line over 50 characters splits at
+the comma nearest its middle; a line still over 60 characters (typical of speech with no
+punctuation) splits at its largest speech pause, a gap of 0.35 s or more between two words' timings,
+else after the last word that keeps it within 60 characters. The script column is 60 wide. A pick
+sits on the line where its words start; a line with several picks prints one row per pick, the
+script on the first row and the rest with an empty script column. The picks
 use the owner's editor words: `HOOK` (an accent marked as the title), `ACCENT` (any other accent),
 `BIGWORD`, `VISUAL "<description>"` (a visual on its words, the words only when the span is not the whole line; an older answer's photo prints `VISUAL photo <name>`), `LIST` (numbered transitions, on single words of one
 line grouped as one pick); a transition of any other kind (`dim`, `panel`, ...) is an accent

@@ -12,6 +12,7 @@ import {
   formatScript,
   formatTrace,
   hookOf,
+  traceHeading,
   type TracedAnswer,
 } from "./decision-trace.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
@@ -79,8 +80,7 @@ for (const version of versions) {
   const transcript = transcriptSchema.parse(
     await readJson(cacheKey(config.keyPrefix, ref.step, ref.fingerprint, ref.file)),
   );
-  const attempts = decide.length > 1 ? `, ${decide.length} decide attempts` : "";
-  const heading = `${title} (prompt ${record.prompt_version}${attempts})`;
+  const heading = traceHeading(title, record, decide.length);
   if (!table) {
     const wanted = (answer.photos ?? []).map((photo) => photo.photo_id);
     const missing = wanted.filter((id) => !photoIds.has(id));

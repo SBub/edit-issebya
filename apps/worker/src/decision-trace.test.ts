@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { answerJson, buildTrace, formatTrace, hookOf, wordsBetween } from "./decision-trace.ts";
+import {
+  answerJson,
+  buildTrace,
+  formatScript,
+  formatTrace,
+  hookOf,
+  scriptLines,
+  traceHeading,
+  wordsBetween,
+} from "./decision-trace.ts";
 
 const words = ["Creating", "content", "is", "like", "exposure", "therapy"].map((text, index) => ({
   id: `w${index}`,
@@ -123,11 +132,96 @@ describe("script view", () => {
       "v2",
       'HOOK  "Run more experiments"',
       "",
-      'The more experiments you run in your life,  │ HOOK "more experiments"',
-      'the closer you are to your dream life.      │ ACCENT "closer you are to your dream life" · BIGWORD "dream"',
-      'Relationship, taste, purpose.               │ LIST "Relationship" "taste"',
-      'A dream stays a dream.                      │ VISUAL photo bedroom · ACCENT whole line (dim) · ACCENT "dream" (panel)',
+      `${"The more experiments you run in your life,".padEnd(60)}  │ HOOK "more experiments"`,
+      `${"the closer you are to your dream life.".padEnd(60)}  │ ACCENT "closer you are to your dream life"`,
+      `${"".padEnd(60)}  │ BIGWORD "dream"`,
+      `${"Relationship, taste, purpose.".padEnd(60)}  │ LIST "Relationship" "taste"`,
+      `${"A dream stays a dream.".padEnd(60)}  │ VISUAL photo bedroom`,
+      `${"".padEnd(60)}  │ ACCENT whole line (dim)`,
+      `${"".padEnd(60)}  │ ACCENT "dream" (panel)`,
     ]);
+  });
+});
+
+// Unpunctuated speech: 80 six-letter words, 0.3 s each, with the gap after each
+// word given by `pauseAfter`. Eight words to a group is 55 characters.
+const GROUPS = ["garden", "window", "planet", "silver", "rocket", "forest", "candle", "bridge"];
+function spoken(count: number, pauseAfter: (index: number) => number | undefined) {
+  let at = 0;
+  return Array.from({ length: count }, (_, index) => {
+    const word = { id: `u${index}`, text: GROUPS[index % 8]!, start: at, end: at + 0.3 };
+    at = word.end + (pauseAfter(index) ?? 0.02);
+    return word;
+  });
+}
+const ids = (lines: { id: string }[][]) => lines.map((line) => line.map((word) => word.id));
+const group = (first: number, count: number) =>
+  Array.from({ length: count }, (_, index) => `u${first + index}`);
+
+describe("script view of unpunctuated speech", () => {
+  it("breaks at the biggest pauses into lines of at most 60 characters", () => {
+    // A pause of 0.8 s after every sixth word, and a shorter 0.4 s pause after the third.
+    // A line over 60 characters splits at the 0.8 s pauses, not at word 8 as a fixed width would.
+    const words = spoken(80, (index) =>
+      index % 6 === 5 ? 0.8 : index % 6 === 2 ? 0.4 : undefined,
+    );
+    const lines = scriptLines(words);
+    expect(ids(lines)).toEqual([
+      ...Array.from({ length: 12 }, (_, line) => group(line * 6, 6)),
+      group(72, 8),
+    ]);
+    for (const line of lines) {
+      expect(line.map((word) => word.text).join(" ").length).toBeLessThanOrEqual(60);
+    }
+  });
+
+  it("prefers a pause to a word boundary when a stretch over 60 characters has one", () => {
+    // Ten words (69 characters) with one 0.5 s pause after the fifth.
+    const words = spoken(10, (index) => (index === 4 ? 0.5 : undefined));
+    expect(ids(scriptLines(words))).toEqual([group(0, 5), group(5, 5)]);
+  });
+
+  it("breaks at word boundaries within 60 characters when there are no timings", () => {
+    const words = spoken(80, () => undefined).map(({ id, text }) => ({ id, text }));
+    expect(ids(scriptLines(words))).toEqual(
+      Array.from({ length: 10 }, (_, line) => group(line * 8, 8)),
+    );
+  });
+
+  it("prints one row per pick when a line has several, the script on the first row", () => {
+    const words = ["Quiet", "room", "again", "and", "more."].map((text, index) => ({
+      id: `q${index}`,
+      text,
+    }));
+    const text = formatScript(
+      "v4",
+      {
+        accents: [{ from: "q0", to: "q1" }],
+        big_words: [{ word: "q2" }],
+        visuals: [{ from: "q4", to: "q4", description: "a lamp" }],
+      },
+      words,
+    );
+    expect(text.split("\n")).toEqual([
+      "v4",
+      "HOOK  none",
+      "",
+      `${"Quiet room again and more.".padEnd(60)}  │ ACCENT "Quiet room"`,
+      `${"".padEnd(60)}  │ BIGWORD "again"`,
+      `${"".padEnd(60)}  │ VISUAL "a lamp" on "more"`,
+    ]);
+  });
+});
+
+describe("trace heading", () => {
+  it("names both prompt versions, and the decide attempts when there were more than one", () => {
+    const prompts = { hook_prompt_version: "reel-hook@v1", prompt_version: "reel-components@v1" };
+    expect(traceHeading("== version 4 ==", prompts, 1)).toBe(
+      "== version 4 == (prompts reel-hook@v1, reel-components@v1)",
+    );
+    expect(traceHeading("== version 4 ==", prompts, 2)).toBe(
+      "== version 4 == (prompts reel-hook@v1, reel-components@v1, 2 decide attempts)",
+    );
   });
 });
 
