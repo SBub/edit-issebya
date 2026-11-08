@@ -62,6 +62,11 @@ const PHOTO_LAYERS = ["behind", "front"] as const;
 // (the answer's own limit, in words, is stricter; see `decide.ts`).
 const VISUAL_DESCRIPTION_MAX = 120;
 
+// The smallest size any text overlay, caption, transition level or big word
+// is set at. The schema refuses a smaller one, so the layout engine never
+// places text below it.
+export const MIN_TEXT_SIZE = 8;
+
 // A big word behind the speaker: one word, nothing that could leave its tag.
 export const BEHIND_WORD = /^[^\s<>&]{1,24}$/;
 
@@ -125,7 +130,7 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
   const textProps = {
     text: z.string().min(1).max(200).optional(),
     font: z.enum(FONT_KEYS).optional(),
-    size: z.number().int().min(8).max(400).optional(),
+    size: z.number().int().min(MIN_TEXT_SIZE).max(400).optional(),
     color: z.string().regex(COLOR).optional(),
     position: z
       .object({
@@ -168,7 +173,7 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     text: z.string().min(1).max(300),
     start: anchor,
     position: textProps.position.unwrap(),
-    size: z.number().int().min(8).max(400),
+    size: z.number().int().min(MIN_TEXT_SIZE).max(400),
     break_after: textProps.break_after,
   });
   const transition = z.object({
@@ -245,7 +250,7 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
           y: z.number().min(0).max(preset.frame.height),
         })
         .optional(),
-      size: z.number().int().min(8).max(400).optional(),
+      size: z.number().int().min(MIN_TEXT_SIZE).max(400).optional(),
       shadow: shadowLevel.optional(),
     }),
   ]);

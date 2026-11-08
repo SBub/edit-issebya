@@ -7,7 +7,7 @@ import { placeEdit } from "./engine.ts";
 import { type EngineInput, choicesOf } from "./engine-input.ts";
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE, TRANSITION_KINDS } from "./preset.ts";
-import { type Edit, parseEdit } from "./schema.ts";
+import { MIN_TEXT_SIZE, type Edit, parseEdit } from "./schema.ts";
 import { backgroundMapOf } from "./test-support/backgrounds.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
@@ -1703,6 +1703,9 @@ describe("the written hook", () => {
   const { safe } = ISSEBYA_PRESET;
   const { fromSeconds, untilSeconds } = ISSEBYA_PRESET.pace.hook;
   const hookOf = (edit: Edit) => edit.tracks.overlays.find((item) => item.kind === "hook");
+  // A face at the top, narrow enough that the hook fits beside it only when
+  // set below the smallest size.
+  const NARROW_HEAD = steadyHead({ head_top: 100, cx: 540, head_w: 300 });
   const preset110 = ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.accent.font].size;
 
   it("shows from 0.2 s to 3 s in the upper part of the frame, off the face, inside the safe zone", async () => {
@@ -1911,6 +1914,19 @@ describe("the written hook", () => {
     expect(placed.record.filter((note) => note.action === "dropped")).toEqual([]);
     expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: untilSeconds });
     expect(placed.checks).toEqual([]);
+  });
+
+  it("never sets the hook below the schema minimum size, even for a very long word or sentence", async () => {
+    const texts = [
+      "Pneumonoultramicroscopicsilicovolcanoconiosisxxxxxxxxxxxxxxxxxxxxxxx",
+      "Nobody tells you that the way work feels now is shaped by the screens we carry and the feeds we scroll",
+    ];
+    for (const text of texts) {
+      const placed = await place({ hook: { text } }, { headTrack: NARROW_HEAD });
+      const item = hookOf(placed.edit)!;
+      expect(item.size).toBeGreaterThanOrEqual(MIN_TEXT_SIZE);
+      expect(parseEdit(placed.edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
+    }
   });
 
   it("is dropped, with the reason, only on a reel too short to show it", async () => {

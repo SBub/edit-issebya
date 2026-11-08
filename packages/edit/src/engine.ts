@@ -26,6 +26,7 @@ import {
 import {
   type Anchor,
   BEHIND_WORD,
+  MIN_TEXT_SIZE,
   type BehindItem,
   type CaptionItem,
   type Edit,
@@ -2388,10 +2389,10 @@ function placeOnce(
         }
       }
     }
-    // Below the floor: the smallest size its words fit the safe zone in one
+    // Below the floor, never below the schema minimum: the smallest size its words fit the safe zone in one
     // or two lines, so the hook is never dropped for its size.
     const maxWidth = safe.right - safe.left;
-    for (let size = sizes.at(-1)! - 1; size >= 1; size -= 1) {
+    for (let size = sizes.at(-1)! - 1; size >= MIN_TEXT_SIZE; size -= 1) {
       const oneLine = measurer.width(font, size, text) <= maxWidth;
       const lines = oneLine ? [text] : balancedBreak(words, font, size);
       if (lines.some((line) => measurer.width(font, size, line) > maxWidth)) continue;

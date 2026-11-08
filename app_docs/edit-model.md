@@ -302,8 +302,11 @@ word" is now "spoken words, plus one written hook at the start".
   it moves on. Contrast as for an accent. When nothing fits, the make-room ladder runs for it as
   for a request; its `make-room` notes never say `as asked` unless the owner's checklist linked it.
   Below the floor the hook shrinks further, to the smallest size at which its words fit the safe
-  zone in one or two lines (`hook-size`, `shrunk`), so a long word can make it small but never drops
-  it. Notes: `hook-spot` (`moved`), `hook-size` (`shrunk`), `hook-wrap` (`wrapped`), `make-room`,
+  zone in one or two lines (`hook-size`, `shrunk`), never below `MIN_TEXT_SIZE` (8 px, the schema
+  minimum for every text size: the schema refuses a smaller one, so no edit with a smaller size is
+  ever built). A long word or sentence that fits no place down to 8 px goes through the make-room
+  ladder, which may cover the face as its last step (`make-room`, `covers-face`); the hook is then
+  never dropped for its size. Notes: `hook-spot` (`moved`), `hook-size` (`shrunk`), `hook-wrap` (`wrapped`), `make-room`,
   `no-room` (`dropped`, only when no size and place is left at all, which the schema's limits make
   unreachable in practice).
 - Checks treat it as text: `safe-box`, `text-overlap`, `timing` (at least `accent.minSeconds`) and
