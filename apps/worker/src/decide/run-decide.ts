@@ -10,6 +10,7 @@ import {
   type EditRef,
   ISSEBYA_PRESET,
   type Measurer,
+  type Preset,
   backgroundSampler,
   type VersionBlobs,
   type VersionRows,
@@ -87,6 +88,9 @@ export interface DecideRun {
   recordStored?: (key: string, bytes: number) => Promise<void>;
   // Where the engine record and a layout check the engine broke are logged.
   log?: (line: string) => void;
+  // The preset the reel is placed with: the worker's (every pick shown) unless
+  // a test asks for the strict clean layout.
+  preset?: Preset;
 }
 
 // A refused attempt carries its reasons (the tail's lines) and the names of
@@ -147,6 +151,7 @@ function roundLines(round: number, reasons: readonly string[]): string[] {
 // AI call's prompt and raw answer is stored beside it (`ai-record.ts`).
 // Never cached: a retried job decides again from the then-current version.
 export function runDecide({
+  preset = ISSEBYA_PRESET,
   ctx,
   storage,
   rows,
@@ -165,7 +170,6 @@ export function runDecide({
   recordStored,
   log = console.log,
 }: DecideRun): Promise<void> {
-  const preset = ISSEBYA_PRESET;
   return runToolsStep(ctx, {
     name: STEP,
     async work(tool: Tool, stepContext: Context) {

@@ -175,6 +175,12 @@ export interface GlossaryTerm {
 
 export interface Preset {
   id: "issebya";
+  // How the layout engine places the picks. `all`: every pick the answer
+  // proposed is shown at its own words' times, never dropped for room, for
+  // another extra, for the hook or for pace; overlaps are kept (the engine
+  // notes them). `clean`: the strict layout, which drops, moves and retimes
+  // picks that do not fit and never overlaps. The worker uses `all`.
+  placement: "all" | "clean";
   frame: { width: number; height: number };
   // Text never leaves it; always inside `PLATFORM_SAFE`. A rectangle for the
   // placement code: the button-column notch (`PLATFORM_BUTTONS`) is left to
@@ -307,6 +313,7 @@ const STYLE_SAFE: Box = { left: 130, right: 860, top: 260, bottom: 1400 };
 // The issebya style: the values of the approved `rethink-work` reel.
 export const ISSEBYA_PRESET: Preset = {
   id: "issebya",
+  placement: "all",
   frame: { width: 1080, height: 1920 },
   safe: intersectBox(STYLE_SAFE, PLATFORM_SAFE),
   fonts: {
@@ -504,6 +511,11 @@ export const ISSEBYA_PRESET: Preset = {
   ],
   glossary: [{ term: "lock-in", heard: [["locking"], ["lock", "in"]] }],
 };
+
+// The strict layout (`placement: "clean"`): the issebya preset with the
+// engine's drops, retimes and no overlaps. Tests and goldens that assert those
+// use it; the worker places with `ISSEBYA_PRESET`.
+export const CLEAN_PRESET: Preset = { ...ISSEBYA_PRESET, placement: "clean" };
 
 // A spoken word as a caption shows it (build.py's `clean`): surrounding
 // spaces and punctuation stripped, lower-case except the preset's kept words.

@@ -16,7 +16,7 @@ import {
 } from "./decide.ts";
 import { build } from "./build.ts";
 import { choicesOf } from "./engine-input.ts";
-import { ISSEBYA_PRESET } from "./preset.ts";
+import { CLEAN_PRESET } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
@@ -71,7 +71,7 @@ function answer(change: (answer: Json) => void = () => {}): Json {
 }
 
 function parse(json: unknown, rules: DecideRules = NO_RULES) {
-  return parseDecideAnswer(json, ISSEBYA_PRESET, short.transcript, rules);
+  return parseDecideAnswer(json, CLEAN_PRESET, short.transcript, rules);
 }
 
 function reasons(json: unknown, rules: DecideRules = NO_RULES) {
@@ -83,7 +83,7 @@ function reasons(json: unknown, rules: DecideRules = NO_RULES) {
 describe("decideJsonSchema", () => {
   for (const fixture of [hand, short]) {
     it(`is generated for ${fixture.name}: its word ids, the list kind only, closed objects`, () => {
-      const schema = decideJsonSchema(ISSEBYA_PRESET, fixture.transcript);
+      const schema = decideJsonSchema(CLEAN_PRESET, fixture.transcript);
       const ids = fixture.transcript.words.map((word) => word.id);
       for (const key of ["from", "to", "word"]) {
         const lists = enumsUnder(schema, key);
@@ -108,11 +108,11 @@ describe("decideJsonSchema", () => {
     });
 
     it(`targets draft-07 for ${fixture.name}, with the same constraints as the 2020-12 output`, () => {
-      const schema = decideJsonSchema(ISSEBYA_PRESET, fixture.transcript);
+      const schema = decideJsonSchema(CLEAN_PRESET, fixture.transcript);
       expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
       expect(JSON.stringify(schema)).not.toContain("2020-12");
       const draft2020: Json = z.toJSONSchema(
-        decideAnswerSchemaFor(ISSEBYA_PRESET, fixture.transcript),
+        decideAnswerSchemaFor(CLEAN_PRESET, fixture.transcript),
         { target: "draft-2020-12", io: "output", reused: "inline" },
       );
       expect({ ...schema, $schema: null }).toEqual({ ...draft2020, $schema: null });
@@ -120,7 +120,7 @@ describe("decideJsonSchema", () => {
   }
 
   it("has the components only: ACCENT, BIGWORD, VISUAL, LIST and the word fixes (no hook)", () => {
-    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript);
+    const schema = decideJsonSchema(CLEAN_PRESET, hand.transcript);
     expect(Object.keys(schema.properties as Json)).toEqual([
       "accents",
       "big_words",
@@ -138,7 +138,7 @@ describe("decideJsonSchema", () => {
   });
 
   it("has meaning only: no time, position, size, font, colour, spot, style or title anywhere", () => {
-    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript);
+    const schema = decideJsonSchema(CLEAN_PRESET, hand.transcript);
     const keys = new Set<string>();
     walk(schema, (_node, key) => {
       if (key) keys.add(key);
@@ -169,7 +169,7 @@ describe("decideJsonSchema", () => {
   });
 
   it("names a visual by its words and a short description: no photo id, no reason", () => {
-    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript) as {
+    const schema = decideJsonSchema(CLEAN_PRESET, hand.transcript) as {
       properties: {
         visuals: { maxItems: number; items: { required: string[] } };
         big_words: { maxItems: number };
@@ -190,18 +190,18 @@ describe("decideJsonSchema", () => {
 
 describe("the hook", () => {
   const hookReasons = (json: unknown) => {
-    const parsed = parseHookAnswer(json, ISSEBYA_PRESET);
+    const parsed = parseHookAnswer(json, CLEAN_PRESET);
     if (parsed.ok) throw new Error("expected a refusal");
     return parsed.reasons.join("\n");
   };
   const hook = (text: string) => ({ text });
 
   it("is its own answer: one text, required, never null", () => {
-    expect(parseHookAnswer(hook("Gen Z won't work like you did"), ISSEBYA_PRESET)).toEqual({
+    expect(parseHookAnswer(hook("Gen Z won't work like you did"), CLEAN_PRESET)).toEqual({
       ok: true,
       text: "Gen Z won't work like you did",
     });
-    const schema = hookJsonSchema(ISSEBYA_PRESET) as {
+    const schema = hookJsonSchema(CLEAN_PRESET) as {
       properties: Json;
       required: string[];
       additionalProperties: boolean;
@@ -222,15 +222,15 @@ describe("the hook", () => {
   });
 
   it("refuses more than the preset's words or characters, with the reason for the retry", () => {
-    const { maxWords, maxCharacters } = ISSEBYA_PRESET.pace.hook;
+    const { maxWords, maxCharacters } = CLEAN_PRESET.pace.hook;
     expect([maxWords, maxCharacters]).toEqual([7, 45]);
     expect(hookReasons(hook("one two three four five six seven eight"))).toContain(
       "text: a hook has at most 7 words",
     );
     expect(hookReasons(hook("x".repeat(46)))).toContain("text: a hook has at most 45 characters");
-    expect(
-      parseHookAnswer(hook("one two three four five six seven"), ISSEBYA_PRESET),
-    ).toMatchObject({ ok: true });
+    expect(parseHookAnswer(hook("one two three four five six seven"), CLEAN_PRESET)).toMatchObject({
+      ok: true,
+    });
   });
 
   it("is one line of plain text: no line break, no tag, not empty", () => {
@@ -251,11 +251,11 @@ describe("the hook", () => {
   });
 
   it("is saved without its final full stop, and nothing but dots is refused", () => {
-    expect(parseHookAnswer(hook("Gen Z won't work like you did."), ISSEBYA_PRESET)).toEqual({
+    expect(parseHookAnswer(hook("Gen Z won't work like you did."), CLEAN_PRESET)).toEqual({
       ok: true,
       text: "Gen Z won't work like you did",
     });
-    expect(parseHookAnswer(hook("Would you work like this?"), ISSEBYA_PRESET)).toEqual({
+    expect(parseHookAnswer(hook("Would you work like this?"), CLEAN_PRESET)).toEqual({
       ok: true,
       text: "Would you work like this?",
     });
@@ -273,12 +273,12 @@ describe("the hook", () => {
   it("is placed by the engine beside the components: from 0.2 s, the one extra of its window", async () => {
     const parsed = parse(answer());
     if (!parsed.ok) throw new Error(parsed.reasons.join("; "));
-    const written = parseHookAnswer(hook("A short test for the real studio"), ISSEBYA_PRESET);
+    const written = parseHookAnswer(hook("A short test for the real studio"), CLEAN_PRESET);
     if (!written.ok) throw new Error(written.reasons.join("; "));
     const placed = editFromAnswer(
       short.edit,
       { ...parsed.answer, hook: { text: written.text } },
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       short.transcript,
       short.headTrack,
       await nodeMeasurer(),
@@ -488,7 +488,7 @@ describe("editFromAnswer", () => {
     return editFromAnswer(
       current,
       parsed.answer,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       short.transcript,
       [],
       await nodeMeasurer(),
@@ -553,7 +553,7 @@ describe("editFromAnswer", () => {
     const made = editFromAnswer(
       hand.edit,
       old,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       hand.transcript,
       hand.headTrack,
       await nodeMeasurer(),
@@ -563,10 +563,10 @@ describe("editFromAnswer", () => {
     expect(made.edit.tracks.transitions.map((item) => item.type)).toContain("dim");
     const measure = await nodeMeasurer();
     expect(() =>
-      build(made.edit, hand.transcript, hand.headTrack, ISSEBYA_PRESET, measure),
+      build(made.edit, hand.transcript, hand.headTrack, CLEAN_PRESET, measure),
     ).not.toThrow();
     // Read back as the same choices: the title as an accent with `title`, the dim as its kind.
-    const back = choicesOf(made.edit, hand.transcript, ISSEBYA_PRESET);
+    const back = choicesOf(made.edit, hand.transcript, CLEAN_PRESET);
     expect(back.accents).toContainEqual(expect.objectContaining({ title: true }));
     expect(back.transitions).toContainEqual(expect.objectContaining({ kind: "dim" }));
   });
@@ -602,7 +602,7 @@ describe("decideCounts and usedFreeField", () => {
       end: { word: "w0008", edge: "end" },
     });
     const edit = { ...short.edit, tracks };
-    expect(decideCounts(edit, short.transcript, ISSEBYA_PRESET)).toEqual({
+    expect(decideCounts(edit, short.transcript, CLEAN_PRESET)).toEqual({
       accents: 1,
       transitions: 1,
       hook: true,

@@ -2,6 +2,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  CLEAN_PRESET,
   ISSEBYA_PRESET,
   type NewVersion,
   type StoredVersion,
@@ -169,6 +170,7 @@ async function decide(
 ) {
   const { steps, calls } = recordingSteps();
   const run = runDecide({
+    preset: CLEAN_PRESET,
     ctx: stepContext(steps, telemetry ? { telemetry } : {}),
     storage,
     rows: memoryRows(),
@@ -438,6 +440,7 @@ describe("runDecide", () => {
     );
     const { steps } = recordingSteps();
     await runDecide({
+      preset: CLEAN_PRESET,
       ctx: stepContext(steps, { telemetry }),
       storage,
       rows: memoryRows(),
@@ -585,6 +588,7 @@ describe("runDecide", () => {
     const lines: string[] = [];
     const { steps } = recordingSteps();
     await runDecide({
+      preset: CLEAN_PRESET,
       ctx: stepContext(steps),
       storage,
       rows: memoryRows(),
@@ -607,6 +611,33 @@ describe("runDecide", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]!.startsWith(`engine record, reel ${TEST_JOB.reel_id}, version 2: `)).toBe(true);
     expect(lines[0]).toMatch(/accent-1 dropped \(one-extra\): /);
+  });
+
+  it("the worker's layout keeps the wide accent the clean layout drops: shown over the hook, noted", async () => {
+    const wide = answered(
+      answer((a) => {
+        a.accents = [{ from: "w0001", to: "w0010" }];
+        a.transitions = [];
+      }),
+    );
+    const ai = aiScript([wide]);
+    const { steps } = recordingSteps();
+    await runDecide({
+      ctx: stepContext(steps),
+      storage,
+      rows: memoryRows(),
+      blobs: storageVersionBlobs(storage),
+      keyPrefix: PREFIX,
+      ai,
+      prompts: fakePromptSource(),
+      scratchDir: scratch,
+      newId,
+    });
+    const v2 = rows.get(current!)!;
+    expect(v2.engine_record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(v2.engine_record).toContainEqual(
+      expect.objectContaining({ item: "accent-1", action: "kept-overlapping", rule: "all-picks" }),
+    );
   });
 
   it("asks at most twice, however many bad answers are scripted", async () => {
@@ -782,6 +813,7 @@ describe("runDecide with a visual", () => {
     await storage.put(footage, new Uint8Array(bytes));
     const { steps, calls } = recordingSteps();
     const run = runDecide({
+      preset: CLEAN_PRESET,
       ctx: stepContext(steps, telemetry ? { telemetry } : {}),
       storage,
       rows: memoryRows(),
@@ -877,6 +909,7 @@ describe("runDecide starting over", () => {
     const ai = aiScript([empty]);
     const { steps, calls } = recordingSteps();
     await runDecide({
+      preset: CLEAN_PRESET,
       ctx: stepContext(steps),
       storage,
       rows: memoryRows(),
@@ -916,6 +949,7 @@ describe("runDecide starting over", () => {
     rows.set("other", { ...rows.get(firstId)!, id: "other", reel_id: "another-reel" });
     const { steps } = recordingSteps();
     const run = runDecide({
+      preset: CLEAN_PRESET,
       ctx: stepContext(steps),
       storage,
       rows: memoryRows(),

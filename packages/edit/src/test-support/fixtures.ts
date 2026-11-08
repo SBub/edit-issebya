@@ -1,7 +1,7 @@
 // The stored fixture versions every build test runs, imported as JSON modules
 // so the Node and the browser runs build exactly the same inputs.
 import type { HeadTrack } from "../head-track.ts";
-import { ISSEBYA_PRESET } from "../preset.ts";
+import { CLEAN_PRESET } from "../preset.ts";
 import { type Edit, parseEdit } from "../schema.ts";
 import type { Transcript } from "../transcript.ts";
 import baselineShortSpeech from "../testdata/versions/baseline-short-speech.edit.json" with { type: "json" };
@@ -29,7 +29,7 @@ function fixture(
   edit: unknown,
   { transcript, headTrack }: { transcript: Transcript; headTrack: HeadTrack },
 ): Fixture {
-  const parsed = parseEdit(edit, ISSEBYA_PRESET, transcript);
+  const parsed = parseEdit(edit, CLEAN_PRESET, transcript);
   if (!parsed.ok) throw new Error(`${name}: ${parsed.reasons.join("; ")}`);
   return { name, edit: parsed.edit, transcript, headTrack };
 }

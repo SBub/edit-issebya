@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { ISSEBYA_PRESET } from "./preset.ts";
+import { CLEAN_PRESET } from "./preset.ts";
 import { editSchemaFor, parseEdit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 
@@ -15,7 +15,7 @@ function withCaption(change: (caption: Record<string, unknown>) => void): unknow
 }
 
 function reasons(json: unknown): string[] {
-  const result = parseEdit(json, ISSEBYA_PRESET, hand.transcript);
+  const result = parseEdit(json, CLEAN_PRESET, hand.transcript);
   if (result.ok) throw new Error("expected the edit to be refused");
   return result.reasons;
 }
@@ -37,7 +37,7 @@ describe("the hook overlay", () => {
   };
 
   it("parses a hook with its own text; a stored version without one parses as before", () => {
-    expect(parseEdit(withOverlays(HOOK), ISSEBYA_PRESET, hand.transcript)).toMatchObject({
+    expect(parseEdit(withOverlays(HOOK), CLEAN_PRESET, hand.transcript)).toMatchObject({
       ok: true,
     });
     expect(hand.edit.tracks.overlays.every((item) => item.kind === "accent")).toBe(true);
@@ -65,7 +65,7 @@ describe("the hook overlay", () => {
 describe("parseEdit", () => {
   it("accepts every stored fixture version", () => {
     for (const fixture of FIXTURES) {
-      expect(parseEdit(fixture.edit, ISSEBYA_PRESET, fixture.transcript)).toMatchObject({
+      expect(parseEdit(fixture.edit, CLEAN_PRESET, fixture.transcript)).toMatchObject({
         ok: true,
       });
     }
@@ -77,7 +77,7 @@ describe("parseEdit", () => {
         withCaption((caption) => {
           caption.shadow = 2;
         }),
-        ISSEBYA_PRESET,
+        CLEAN_PRESET,
         hand.transcript,
       ),
     ).toMatchObject({ ok: true });
@@ -92,11 +92,11 @@ describe("parseEdit", () => {
 
   it("accepts an edit with a cut-out (stored) and one without (new)", () => {
     expect(hand.edit.inputs.cutout).toBeDefined();
-    expect(parseEdit(hand.edit, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });
+    expect(parseEdit(hand.edit, CLEAN_PRESET, hand.transcript)).toMatchObject({ ok: true });
     const edit = structuredClone(hand.edit);
     delete edit.inputs.cutout;
     delete edit.tracks.cutout;
-    const result = parseEdit(edit, ISSEBYA_PRESET, hand.transcript);
+    const result = parseEdit(edit, CLEAN_PRESET, hand.transcript);
     expect(result).toMatchObject({ ok: true });
     expect(result.ok && result.edit.tracks).not.toHaveProperty("cutout");
   });
@@ -138,15 +138,15 @@ describe("parseEdit", () => {
 
   it("accepts a frame-wide position without limits, refuses it with the safe box", () => {
     const json = withCaption((caption) => (caption.position = { x: 900, y: 700, align: "left" }));
-    expect(parseEdit(json, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });
-    const bounded = parseEdit(json, ISSEBYA_PRESET, hand.transcript, {
-      bounds: ISSEBYA_PRESET.safe,
+    expect(parseEdit(json, CLEAN_PRESET, hand.transcript)).toMatchObject({ ok: true });
+    const bounded = parseEdit(json, CLEAN_PRESET, hand.transcript, {
+      bounds: CLEAN_PRESET.safe,
     });
     expect(bounded.ok).toBe(false);
   });
 
   it("converts to JSON Schema, listing the reel's word ids", () => {
-    const schema = z.toJSONSchema(editSchemaFor(ISSEBYA_PRESET, hand.transcript)) as object;
+    const schema = z.toJSONSchema(editSchemaFor(CLEAN_PRESET, hand.transcript)) as object;
     expect(JSON.stringify(schema)).toContain('"w161"');
   });
 });
@@ -158,7 +158,7 @@ describe("a transition item", () => {
       tracks: { transitions: Record<string, unknown>[] };
     };
     change(edit.tracks.transitions[1]!);
-    return parseEdit(edit, ISSEBYA_PRESET, transitions.transcript);
+    return parseEdit(edit, CLEAN_PRESET, transitions.transcript);
   };
 
   it("parses a stored card and an item without the engine's fields", () => {
@@ -166,7 +166,7 @@ describe("a transition item", () => {
     edit.tracks.transitions = [
       { id: "card-a", type: "card", start: { word: "w84" }, end: { word: "w99", edge: "end" } },
     ];
-    expect(parseEdit(edit, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });
+    expect(parseEdit(edit, CLEAN_PRESET, hand.transcript)).toMatchObject({ ok: true });
   });
 
   it("parses the engine's phrase, key, pace, hold, number and levels", () => {
@@ -206,7 +206,7 @@ describe("the behind track", () => {
   }
 
   function behindReasons(json: unknown): string[] {
-    const result = parseEdit(json, ISSEBYA_PRESET, behind.transcript);
+    const result = parseEdit(json, CLEAN_PRESET, behind.transcript);
     if (result.ok) throw new Error("expected the edit to be refused");
     return result.reasons;
   }
@@ -224,8 +224,8 @@ describe("the behind track", () => {
     const old = structuredClone(hand.edit);
     expect(old.tracks).not.toHaveProperty("behind");
     expect(old.inputs).not.toHaveProperty("masks");
-    expect(parseEdit(old, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });
-    const parsed = parseEdit(behind.edit, ISSEBYA_PRESET, behind.transcript);
+    expect(parseEdit(old, CLEAN_PRESET, hand.transcript)).toMatchObject({ ok: true });
+    const parsed = parseEdit(behind.edit, CLEAN_PRESET, behind.transcript);
     expect(parsed.ok && parsed.edit.tracks.behind?.map((item) => item.kind)).toEqual([
       "photo",
       "word",
@@ -234,7 +234,7 @@ describe("the behind track", () => {
   });
 
   it("parses a photo with its reason, an older one without it, and refuses another reason", () => {
-    const parse = (json: unknown) => parseEdit(json, ISSEBYA_PRESET, behind.transcript);
+    const parse = (json: unknown) => parseEdit(json, CLEAN_PRESET, behind.transcript);
     expect(parse(withItems([photo(10, 13)]))).toMatchObject({ ok: true });
     const mood = parse(withItems([{ ...photo(10, 13), reason: "mood" }]));
     expect(mood.ok && mood.edit.tracks.behind?.[0]).toMatchObject({ reason: "mood" });
@@ -244,7 +244,7 @@ describe("the behind track", () => {
   });
 
   it("parses a photo's layer and box, an older one without them, and refuses bad ones", () => {
-    const parse = (json: unknown) => parseEdit(json, ISSEBYA_PRESET, behind.transcript);
+    const parse = (json: unknown) => parseEdit(json, CLEAN_PRESET, behind.transcript);
     const box = { x: 110, y: 220, width: 640, height: 480 };
     const front = parse(withItems([{ ...photo(10, 13), layer: "front", box }]));
     expect(front.ok && front.edit.tracks.behind?.[0]).toMatchObject({ layer: "front", box });
@@ -303,7 +303,7 @@ describe("the behind track", () => {
     // A big word on the spoken word at `index`, from the lead before it to
     // `after` seconds after it (by default as the engine times it: a second
     // after, at least the accent's minimum).
-    const { leadSeconds, minSeconds: accentMin, afterSeconds } = ISSEBYA_PRESET.accent;
+    const { leadSeconds, minSeconds: accentMin, afterSeconds } = CLEAN_PRESET.accent;
     const spoken = (index: number, id = "w", after?: number) => {
       const said = behind.transcript.words[index]!;
       const length = said.end - said.start;
@@ -319,7 +319,7 @@ describe("the behind track", () => {
         },
       };
     };
-    const limited = (json: unknown) => parseEdit(json, ISSEBYA_PRESET, behind.transcript, lengths);
+    const limited = (json: unknown) => parseEdit(json, CLEAN_PRESET, behind.transcript, lengths);
 
     it("refuses a photo under 1 s or over 2 s", () => {
       const short = limited(withItems([photo(10, 10.5)]));
@@ -358,7 +358,7 @@ describe("the behind track", () => {
     });
 
     it("leaves the array uncapped in the JSON Schema", () => {
-      const schema = z.toJSONSchema(editSchemaFor(ISSEBYA_PRESET, behind.transcript, lengths), {
+      const schema = z.toJSONSchema(editSchemaFor(CLEAN_PRESET, behind.transcript, lengths), {
         io: "output",
         reused: "inline",
       }) as unknown as {
@@ -370,12 +370,12 @@ describe("the behind track", () => {
 
   it("parses any length without the limit (stored versions keep older lengths)", () => {
     const json = withItems([photo(1, 4, "a"), photo(10, 10.5, "b"), photo(20, 25, "c")]);
-    expect(parseEdit(json, ISSEBYA_PRESET, behind.transcript)).toMatchObject({ ok: true });
+    expect(parseEdit(json, CLEAN_PRESET, behind.transcript)).toMatchObject({ ok: true });
   });
 
   it("limits photos to the given library", () => {
     const json = withItems([photo(10, 13)]);
-    expect(parseEdit(json, ISSEBYA_PRESET, behind.transcript, { photoIds: [PHOTO] }).ok).toBe(true);
-    expect(parseEdit(json, ISSEBYA_PRESET, behind.transcript, { photoIds: [] }).ok).toBe(false);
+    expect(parseEdit(json, CLEAN_PRESET, behind.transcript, { photoIds: [PHOTO] }).ok).toBe(true);
+    expect(parseEdit(json, CLEAN_PRESET, behind.transcript, { photoIds: [] }).ok).toBe(false);
   });
 });

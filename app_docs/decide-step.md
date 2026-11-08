@@ -25,8 +25,9 @@ over the version by the layout engine together with the hook (`placeEdit`, `app_
 "Layout engine"), built and checked, and becomes a new version (version 2 on a fresh reel). Only an
 answer breaking the schema or the glossary is refused: it goes back once with the reasons; a second
 refusal of the hook or of the components fails the step and leaves the current version untouched.
-Layout never refuses an answer: what fits nowhere is dropped and written to the engine record saved
-with the version. Nothing asks Claude again about what the engine left out: the decide step makes no
+Layout never refuses an answer: in the worker's `all` placement every pick is shown (one with no free
+place at its default spot, overlap noted), and in the strict `clean` layout what fits nowhere is
+dropped; either way it is written to the engine record saved with the version. Nothing asks Claude again about what the engine left out: the decide step makes no
 call after the components' answer is placed. Every AI call a decided version made (the hook attempts,
 the decide attempts) is stored beside it with its prompt, schema and raw answer
 (the version's AI record), so a version can be replayed and diagnosed.
@@ -51,8 +52,9 @@ HOOK is not one either: it is the hook call's answer (`{ "text" }`, below), neve
 answer and never written by the components.
 
 Nothing asks for a density target or a count per sentence or per second. Claude picks as many as it
-finds, and the code decides how many show and when (the engine shows one extra at a time and drops
-what has no room; a later intensity knob will set the rate). The overlap limits between components
+finds, and the code decides how many show and when (the engine shows every pick at its own words'
+times in `all`, the worker's placement, overlaps kept and noted; the strict `clean` layout shows one
+extra at a time and drops what has no room; a later intensity knob will set the rate). The overlap limits between components
 are held by the prompt (see "Prompts"); the schema does not count them.
 
 ## How it works
@@ -108,8 +110,10 @@ placed first):
   the accent's timing (from `accent.leadSeconds`, 0.2 s, before its word to a second after it, at
   least 1.5 s). A big word only on a key word, a spoken word by construction.
 - Pace (`preset.pace`): the answer carries no rate (the transition kind is given as data, its pace is
-  not). The engine keeps the rhythm: one extra at a time, transitions at their own
-  slower pace (about one per `preset.pace.transitionEverySeconds`, 9), and drops what has no room.
+  not). In `clean` the engine keeps the rhythm: one extra at a time, transitions at their own
+  slower pace (about one per `preset.pace.transitionEverySeconds`, 9), and drops what has no room. In
+  `all` (the worker's placement) every pick shows at its own words' times, so the rhythm is the
+  answer's and only a reel too short for a pick drops it.
 - The stored forbids: `reels.no_photos` and `reels.no_big_word` are read at the start of the run. While one is set, the schema refuses the kind (visuals for photos, big words), and a visual or big word in the answer is refused. Nothing sets or lifts them now: a new version writes
   `forbid` as null (`save_version` keeps the stored flag). Those flags come only from the older
   request path (dormant, `app_docs/change-requests.md`).
@@ -364,12 +368,13 @@ set`) and the job waits.
   reason), `prompt.test.ts` (the components prompt's fill and retry reasons), `input.test.ts` (the transition kind and pace in the preset summary, no density or
   behind count, `currentChoices` showing an older title as an accent, leaving out a non-numbered
   transition and never a hook), `run-decide.test.ts` (the hook call first, then the components with the
-  hook text as data, the step saving version 2 with the step line `0 accents, 0 transitions, hook set, 1
-word fixed, 1 dropped`; the AI record holding the hook and decide calls; the hook refused by its
+  hook text as data, the step saving version 2 with the step line `1 accent, 0 transitions, hook set, 1
+word fixed`; the AI record holding the hook and decide calls; the hook refused by its
   schema or a heard form sent back once to the hook call; a hook refused twice fails the step with
   `the hook failed twice` and calls no components; one retry on the components, a second refusal failing
   the step, nothing written on failure; the usage of every call summed; a wide accent or an image on the
-  2.7 s clip waiting for the hook, and a transition in its window dropped; the two behind tests that need a
+  2.7 s clip over the hook in `all` (the worker's default, noted), and the clean-layout tests (`runDecide` takes
+  a `preset`; they pass `CLEAN_PRESET`) with a wide accent dropped for the hook and a transition in its window dropped; the two behind tests that need a
   placed photo run on the 47 s reel, see "Testing" below) and `step-runner.test.ts`. `ai.test.ts` also covers the
   double's hook lane. `apps/worker/src/decision-trace.test.ts` (`hookOf`: the hook call's text, the last
   readable one, else an older record's decide `hook`). `packages/edit/src/engine.test.ts` ("the written
@@ -395,12 +400,13 @@ word fixed, 1 dropped`; the AI record holding the hook and decide calls; the hoo
 - `decide/testdata/short-speech-answer.json` is the scripted AI replies for the fixture clip: the hook
   reply (role `hook`, "A short test for the real studio") and the decide answer (one accent word,
   w0005, and one fixed word, w0010 "Studio", no transition). On the 2.7 s clip the hook holds the screen
-  from 0.2 s to the end, so the engine drops the accent (rule `one-extra`): the step line reads
-  `0 accents, 0 transitions, hook set, 1 word fixed, 1 dropped`.
+  from 0.2 s to the end: in `all` the accent shows over it (noted `kept-overlapping`), and the step
+  line reads `1 accent, 0 transitions, hook set, 1 word fixed`. In `clean` the engine drops the accent
+  (rule `one-extra`) and the line ends `1 dropped`.
 - `yarn turbo run test:db --filter=./apps/studio`: `versions.test.ts` covers the new columns, `checklist`
   included.
 - E2E: `apps/studio/e2e/upload.spec.ts` sets `E2E_MOCK_AI_SCRIPT` to the committed answer and checks the
-  decide line (`0 accents, 0 transitions, hook set, 1 word fixed, 1 dropped`), the `ai_*` columns (1800,
+  decide line (`1 accent, 0 transitions, hook set, 1 word fixed`), the `ai_*` columns (1800,
   496, 0.0138 over the hook and decide calls, `anthropic/claude-haiku-5.5`), version 2's row (no title and
   no summary, both null), its AI record (`hook` and `decide` calls, `hook_prompt_version` `reel-hook@v1`)
   and both R2 keys (`reel-components@v1`). The E2E run uses the placeholder prompts
@@ -543,7 +549,8 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
 - Never save a version with a `behind` item before its masks are stored.
 - Never cap visuals or big words per reel (in the preset, the prompt or the answer schema): how many is the editor's choice; the answer's list bounds are a size guard only. A visual is a frame with a description of at most 8 words.
 - Transitions never set the rhythm: a numbered list item is only ever a counted list, about one per
-  `preset.pace.transitionEverySeconds` (the engine's pace, never sent to the model); the engine drops the rest.
+  `preset.pace.transitionEverySeconds` (the engine's pace, never sent to the model); in `clean` the engine
+  drops the rest, and in `all` every transition the answer names shows.
 - A new answer names no photo: a visual is a frame, and the answer's schema has no photo id.
 - The decide step reads no photo library (for now), so none is sent to the model.
 - Never write a title or a summary for a new version: `change_title` and `change_summary` are saved null.

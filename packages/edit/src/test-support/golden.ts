@@ -1,6 +1,6 @@
 import { build } from "../build.ts";
 import type { Measurer } from "../measure.ts";
-import { ISSEBYA_PRESET } from "../preset.ts";
+import { CLEAN_PRESET } from "../preset.ts";
 import type { Fixture } from "./fixtures.ts";
 
 // A fixture built with a fresh measurer: the page and the widths file, as the
@@ -10,7 +10,7 @@ export function goldenOf(fixture: Fixture, measurer: Measurer): { html: string; 
     fixture.edit,
     fixture.transcript,
     fixture.headTrack,
-    ISSEBYA_PRESET,
+    CLEAN_PRESET,
     measurer,
   );
   return { html, widths: `${JSON.stringify(measurer.widths(), null, 2)}\n` };

@@ -16,7 +16,7 @@ import { baselineEdit } from "../src/baseline.ts";
 import { editFromAnswer } from "../src/decide.ts";
 import { placeEdit } from "../src/engine.ts";
 import { choicesOf } from "../src/engine-input.ts";
-import { ISSEBYA_PRESET } from "../src/preset.ts";
+import { CLEAN_PRESET } from "../src/preset.ts";
 import { type Edit, parseEdit } from "../src/schema.ts";
 import { backgroundMapOf } from "../src/test-support/backgrounds.ts";
 import { goldenOf } from "../src/test-support/golden.ts";
@@ -40,15 +40,15 @@ const shortSpeechMap = backgroundMapSchema.parse(
     await readFile(new URL("backgrounds/short-speech.backgrounds.json", testdata), "utf8"),
   ),
 );
-const baseline = baselineEdit(SHORT_SPEECH.transcript, baselineInputs(), ISSEBYA_PRESET);
+const baseline = baselineEdit(SHORT_SPEECH.transcript, baselineInputs(), CLEAN_PRESET);
 const placed = placeEdit(
   baseline,
   NO_CHOICES,
   SHORT_SPEECH.transcript,
   SHORT_SPEECH.headTrack,
-  ISSEBYA_PRESET,
+  CLEAN_PRESET,
   await nodeMeasurer(),
-  { backgrounds: backgroundSampler(shortSpeechMap, ISSEBYA_PRESET.frame) },
+  { backgrounds: backgroundSampler(shortSpeechMap, CLEAN_PRESET.frame) },
 );
 await write("baseline-short-speech", { ...baseline, tracks: placed.tracks });
 
@@ -58,11 +58,11 @@ await write("baseline-short-speech", { ...baseline, tracks: placed.tracks });
 const hooked = editFromAnswer(
   baseline,
   { ...NO_CHOICES, hook: { text: "A short test for the real studio" } },
-  ISSEBYA_PRESET,
+  CLEAN_PRESET,
   SHORT_SPEECH.transcript,
   SHORT_SPEECH.headTrack,
   await nodeMeasurer(),
-  backgroundSampler(shortSpeechMap, ISSEBYA_PRESET.frame),
+  backgroundSampler(shortSpeechMap, CLEAN_PRESET.frame),
 );
 if (!hooked.ok) throw new Error(hooked.reasons.join("; "));
 await write("baseline-short-speech-hook", hooked.edit);
@@ -73,13 +73,13 @@ const behindJson: unknown = JSON.parse(
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
   await readFile(new URL("versions/rethink-work-behind.edit.json", testdata), "utf8"),
 );
-const behind = parseEdit(behindJson, ISSEBYA_PRESET, RETHINK_WORK.transcript);
+const behind = parseEdit(behindJson, CLEAN_PRESET, RETHINK_WORK.transcript);
 if (!behind.ok) throw new Error(behind.reasons.join("; "));
-const choices = choicesOf(behind.edit, RETHINK_WORK.transcript, ISSEBYA_PRESET);
+const choices = choicesOf(behind.edit, RETHINK_WORK.transcript, CLEAN_PRESET);
 const engine = editFromAnswer(
   behind.edit,
   choices,
-  ISSEBYA_PRESET,
+  CLEAN_PRESET,
   RETHINK_WORK.transcript,
   RETHINK_WORK.headTrack,
   await nodeMeasurer(),
@@ -88,7 +88,7 @@ if (!engine.ok) throw new Error(engine.reasons.join("; "));
 
 // The edit naming placeholder masks for its spans and its photos.
 function withPlaceholders(edit: Edit): Edit {
-  const masks = maskSpans(edit, RETHINK_WORK.transcript, ISSEBYA_PRESET).map((span, index) => ({
+  const masks = maskSpans(edit, RETHINK_WORK.transcript, CLEAN_PRESET).map((span, index) => ({
     step: "cutout" as const,
     fingerprint: String(index + 3).repeat(64),
     file: "mask.mp4",
@@ -120,7 +120,7 @@ const band = (item: { position?: { y: number }; size?: number }) => ({
 });
 const captionBand = band(firstCaption);
 const accentBand = band(firstAccent);
-const readableMap = backgroundMapOf(ISSEBYA_PRESET.frame, engine.edit.duration, (_x, y, t) => {
+const readableMap = backgroundMapOf(CLEAN_PRESET.frame, engine.edit.duration, (_x, y, t) => {
   const inCaption = t < firstSentence.end && y >= captionBand.top && y < captionBand.bottom;
   const inAccent =
     t >= accentSpan.start - 0.5 &&
@@ -132,11 +132,11 @@ const readableMap = backgroundMapOf(ISSEBYA_PRESET.frame, engine.edit.duration, 
 const readable = editFromAnswer(
   behind.edit,
   choices,
-  ISSEBYA_PRESET,
+  CLEAN_PRESET,
   RETHINK_WORK.transcript,
   RETHINK_WORK.headTrack,
   await nodeMeasurer(),
-  backgroundSampler(readableMap, ISSEBYA_PRESET.frame),
+  backgroundSampler(readableMap, CLEAN_PRESET.frame),
 );
 if (!readable.ok) throw new Error(readable.reasons.join("; "));
 for (const note of readable.record.filter((entry) => entry.rule.startsWith("contrast-"))) {
@@ -150,12 +150,12 @@ const handJson: unknown = JSON.parse(
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
   await readFile(new URL("versions/rethink-work-hand.edit.json", testdata), "utf8"),
 );
-const hand = parseEdit(handJson, ISSEBYA_PRESET, REQUEST_CASE.transcript);
+const hand = parseEdit(handJson, CLEAN_PRESET, REQUEST_CASE.transcript);
 if (!hand.ok) throw new Error(hand.reasons.join("; "));
 const request = editFromAnswer(
   hand.edit,
   REQUEST_ANSWER,
-  ISSEBYA_PRESET,
+  CLEAN_PRESET,
   REQUEST_CASE.transcript,
   REQUEST_CASE.headTrack,
   await nodeMeasurer(),
@@ -183,7 +183,7 @@ const withTransitions = editFromAnswer(
       { kind: "panel", from: "w126", to: "w133", key_from: "w128" },
     ],
   },
-  ISSEBYA_PRESET,
+  CLEAN_PRESET,
   RETHINK_WORK.transcript,
   RETHINK_WORK.headTrack,
   await nodeMeasurer(),
@@ -200,7 +200,7 @@ await write("rethink-work-transitions", withPlaceholders(withTransitions.edit));
 const withHook = editFromAnswer(
   behind.edit,
   { ...choices, hook: { text: "Gen Z won't work like you did" } },
-  ISSEBYA_PRESET,
+  CLEAN_PRESET,
   RETHINK_WORK.transcript,
   RETHINK_WORK.headTrack,
   await nodeMeasurer(),
@@ -217,7 +217,7 @@ await write("rethink-work-hook", withPlaceholders(withHook.edit));
 const front = editFromAnswer(
   behind.edit,
   choices,
-  ISSEBYA_PRESET,
+  CLEAN_PRESET,
   RETHINK_WORK.transcript,
   RETHINK_WORK.headTrack,
   await nodeMeasurer(),

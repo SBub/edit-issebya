@@ -385,7 +385,8 @@ function refineBehind(
     }
   }
   const sorted = [...spans].sort((a, b) => a.start - b.start);
-  for (let index = 1; index < sorted.length; index += 1) {
+  // One at a time is the clean layout's rule; `all` keeps overlapping picks.
+  for (let index = 1; index < sorted.length && preset.placement === "clean"; index += 1) {
     const before = sorted[index - 1]!;
     const span = sorted[index]!;
     if (span.start < before.end - SLACK) {

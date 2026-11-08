@@ -51,8 +51,8 @@ types until slice 9 brings the live preview.
   `offset`, the lead), cuts in and out with no animation, and only one is shown at a time. In a new
   version a photo lasts the preset's 1 to 2 s and a big word the accent's timing (at least 1.5 s,
   at most from the lead before its word to a second after it); one saved before 2026-11-04 may
-  last 2 to 4 s, or 2 s from its word. A refinement refuses two overlapping items and an item
-  crossing a footage clip's `hidden` span; with the decide limit (`EditLimits.behindLengths`, new
+  last 2 to 4 s, or 2 s from its word. A refinement refuses two overlapping items (`clean` placement
+  only, see "Placement") and an item crossing a footage clip's `hidden` span; with the decide limit (`EditLimits.behindLengths`, new
   versions only) also an item outside its kind's length, so a stored version keeps parsing and
   rendering. A version without the track parses, and the builder reads it as empty.
 - `inputs.masks` and `inputs.photos`, both optional, filled by the worker before a version with a
@@ -466,11 +466,30 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
   time order, a click under the sound's gap (0.25 s) after the one kept before it is left out,
   with no note. The current version's sounds are never kept; a stored version's sounds are never
   rewritten (it is never placed again). No switch to turn them off yet.
-- Drops: an extra that fits nowhere is dropped and recorded. Captions are never dropped: with no
-  free place even at the floor, they take the caption line over the face (recorded `covers-face`).
+- Placement (`preset.placement`, the worker's preset is `all`; `CLEAN_PRESET` is `clean`). In `all`
+  every pick the answer proposed is shown at its own words' times: an accent or big word from the
+  lead before its first word (0.2 s) to its last word's end (at least 1.5 s, inside the reel: one
+  too close to the end for that is dropped, `accent-time`, as the reel being too short); a
+  visual from its first word to its last word's end (1 to 2 s, the behind length); a transition at
+  its own timing. Nothing is dropped for room, for another extra, for the hook, for a transition's
+  rate or overlap, or for pace, and the make-room ladder never runs. Each pick takes its normal spot
+  when a free one exists; when none does, its default spot anyway (an accent or the transition text
+  at the head's upper place or the line, a big word at its head rule's centre, a visual at the
+  top-left corner), at the largest size that fits and never below `MIN_TEXT_SIZE`, and it is noted
+  `kept-overlapping` (rule `all-picks`) with what it sits over (the face, other text) or the picks it
+  shares its time with. Overlaps between picks are kept: the one-at-a-time rule of the behind track
+  and the checks `text-overlap`, `behind-caption`, `big-word-hidden` and `behind-face` (a card over
+  the face) are the `clean` layout's, not applied in `all`. Still dropped in `all`: a pick the reel
+  is too short for (`accent-time`, `big-word-time`, `visual-time`, `transition-time`, `hook-time`),
+  a big word or visual over hidden footage (`hidden-footage`), a transition with no text (`no-room`).
+  The hook keeps its fixed slot and its own drops in both.
+- Drops (`clean` only; `all` drops nothing for room, see "Placement"): an extra that fits nowhere is
+  dropped and recorded. Captions are never dropped: with no free place even at the floor, they take
+  the caption line over the face (recorded `covers-face`).
 - Record: a list of `EngineNote` `{ item, action, rule, reason }`, `action` one of `moved` (not its
   kind's first place), `shrunk`, `wrapped`, `retimed`, `dropped`, `covers-face`, `wish-not-kept`, `low-contrast`, `removed` (and, in older
-  records only, `shadowed`),
+  records only, `shadowed`), `kept-overlapping` (`all` only: a pick kept over the face, other text or
+  another pick, rule `all-picks`),
   `reason` in plain words with the item's text and times, for example
   `{ "item": "photo-1", "action": "dropped", "rule": "no-room", "reason": "photo 1: every photo spot
 is under captions or the face from 23.48 s to 26.23 s" }`. Rules: `caption-min`, `caption-spot`,
@@ -608,7 +627,7 @@ never fatal.
   measurer for canvas `measureText` with the same fonts loaded through `FontFace`; the browser
   comparison then failed, so the test detects a measurer that differs from HarfBuzz.
 - `scripts/golden.ts` (`yarn workspace @edit-issebya/edit golden`) rewrites the engine-placed
-  fixture versions (the hook one included) and every golden from the Node build. Commit what it writes. The hand-made
+  fixture versions (the hook one included) and every golden from the Node build, all with `CLEAN_PRESET` (the strict layout the goldens have always held). Commit what it writes. The hand-made
   versions keep their goldens: stored versions are never placed again.
 
 ## Testing
@@ -685,15 +704,18 @@ never fatal.
 - Anchors are words; seconds only where nobody speaks.
 - Claude never writes times, positions or sizes: every one in a decided version comes from the
   layout engine, never from the answer.
-- Never let text overlap text, or a photo or visual (behind or in front) sit under a caption or an accent: the engine places
-  nothing on what is already placed, and `text-overlap` and `behind-caption` guard it.
-- Never drop a caption; only extras (accents, big words, visuals) are dropped, each with a
-  recorded reason. A caption left out while an extra shows its words is not dropped: its words
+- In `clean`, never let text overlap text, or a photo or visual (behind or in front) sit under a caption or an accent: the engine places
+  nothing on what is already placed, and `text-overlap` and `behind-caption` guard it. In `all` such an overlap is kept and noted
+  (`kept-overlapping`), never silent.
+- Never drop a caption. In `clean`, only extras (accents, big words, visuals) are dropped for room, each with a
+  recorded reason. In `all`, no pick is dropped for room, another extra, the hook, a transition's rate or overlap, or
+  pace: only the reel being too short for it, or hidden footage. A caption left out while an extra shows its words is not dropped: its words
   are on screen.
 - Never read a single head-track sample for a placement or a check: always the robust faces
   (`facesOver`).
-- Never show more than one extra at a time on top of the captions, or an accent or big word
-  more than `accent.leadSeconds` before its word; never let the lead cut into the extra before.
+- In `clean`, never show more than one extra at a time on top of the captions. Always (both modes), an accent or big word is
+  never shown more than `accent.leadSeconds` before its word, and the lead never cuts into the extra before (`all` takes
+  the lead as its start and never moves it to fit).
 - Never show a spoken word twice at once: a caption whose words an accent or big word shows is
   left out while it shows, for its whole span (never blinking in or out of its group).
 - Every text on screen is a spoken word, except the one written hook at the start: never more than
@@ -709,19 +731,19 @@ never fatal.
   captions in its window keep clear of it (move, shrink, or last, over the face).
 - Never drop the hook for its size: below the floor it shrinks until its words fit in one or two lines
   (`hook-size`).
-- Never let the person cover more than the lower 30% of a big word (`behind.word.minVisible`)
-  in a new version; never place one above `PLATFORM_SAFE`'s top.
+- In `clean`, never let the person cover more than the lower 30% of a big word (`behind.word.minVisible`)
+  in a new version; in `all` a big word the person covers more of is kept and noted. Never place one above `PLATFORM_SAFE`'s top.
 - Never let a visual leave its card: it is a corner card in front of the speaker, never behind them,
   never over the face, a caption, an accent, the hook, a big word or the button column, always inside
   `PLATFORM_SAFE`; the only size below the full card is `card.smaller`, and a visual that fits at
-  neither is dropped with `no-room`. The engine, never Claude, chooses its place and size.
+  neither is dropped with `no-room` in `clean`; in `all` it takes the top-left corner at the full size, overlap noted. The engine, never Claude, chooses its place and size.
 - Never give a visual a fill, a text, a shadow or a colour change: its white stroke is its frame. Never
   give a photo a frame, an edge or a shadow: a card whose edge blends with the footage moves, else stays,
   recorded `low-contrast`.
 - Never cut out (no mask span, no mask) for a photo or a card in front of the speaker.
 - Never let Claude write a transition's time, position or size, nor a literal font or colour in a
   transition entry: they come from the words and the style roles.
-- Never show an accent, photo or big word during a running transition.
+- In `clean`, never show an accent, photo or big word during a running transition (`all` shows them, noted).
 - Never hold a photo past `behind.maxSeconds` (2 s), or a big word past a second after its word
   (the accent's timing), in a new version; never refuse a stored version for an older, longer
   one.
@@ -733,9 +755,10 @@ never fatal.
 - Never remove a caption, set it below the floor, put it over the face or outside the safe zone to
   make room.
 - Never drop or remove an item the owner asked for to make room for another.
+- Never let an `all` edit fail the schema or the checks: its overlaps are the only ones allowed, and every pick is in the edit.
 - Cover the face for a requested item only after every other step; a visual's card never covers it.
 - Without a request the engine never makes room, except for the hook: with no hook its output is
-  the plain pass's.
+  the plain pass's. In `all` the make-room ladder never runs: nothing is dropped to make room.
 - Never change a text colour to make it readable, and never add a shadow, a stroke or an outline
   to any text in a new version: move it, else leave it in place, plain, and record it.
 - Never move the big word for contrast.

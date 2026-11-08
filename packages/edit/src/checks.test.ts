@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { build } from "./build.ts";
 import { type HeadTrack, facesOver } from "./head-track.ts";
-import { ISSEBYA_PRESET, PLATFORM_BUTTONS } from "./preset.ts";
+import { CLEAN_PRESET, PLATFORM_BUTTONS } from "./preset.ts";
 import type { Edit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
@@ -10,7 +10,7 @@ import { nodeMeasurer } from "./test-support/measurer.node.ts";
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-engine")!;
 
 async function checksOf(edit: Edit, headTrack: HeadTrack = hand.headTrack) {
-  return build(edit, hand.transcript, headTrack, ISSEBYA_PRESET, await nodeMeasurer()).checks;
+  return build(edit, hand.transcript, headTrack, CLEAN_PRESET, await nodeMeasurer()).checks;
 }
 
 describe("runChecks", () => {
@@ -22,7 +22,7 @@ describe("runChecks", () => {
         fixture.edit,
         fixture.transcript,
         fixture.headTrack,
-        ISSEBYA_PRESET,
+        CLEAN_PRESET,
         await nodeMeasurer(),
       );
       expect(checks).toEqual([]);
@@ -36,7 +36,7 @@ describe("runChecks", () => {
         fixture.edit,
         fixture.transcript,
         fixture.headTrack,
-        ISSEBYA_PRESET,
+        CLEAN_PRESET,
         await nodeMeasurer(),
       );
       // Captions over a moving head, a last word shown under 0.25 s, accents
@@ -72,7 +72,7 @@ describe("runChecks", () => {
   });
 
   // A preset whose box is the whole frame: only the platform guard holds.
-  const loose = { ...ISSEBYA_PRESET, safe: { left: 0, right: 1080, top: 0, bottom: 1920 } };
+  const loose = { ...CLEAN_PRESET, safe: { left: 0, right: 1080, top: 0, bottom: 1920 } };
   async function looseSafeBox(position: { x: number; y: number; align: "right" }) {
     const edit = structuredClone(hand.edit);
     edit.tracks.captions[0]!.position = position;
@@ -120,13 +120,8 @@ describe("runChecks", () => {
   it("checks a transition's levels for the safe box and overlaps, never its hidden captions", async () => {
     const transitions = FIXTURES.find((f) => f.name === "rethink-work-transitions")!;
     const levelChecks = async (edit: Edit) =>
-      build(
-        edit,
-        transitions.transcript,
-        transitions.headTrack,
-        ISSEBYA_PRESET,
-        await nodeMeasurer(),
-      ).checks;
+      build(edit, transitions.transcript, transitions.headTrack, CLEAN_PRESET, await nodeMeasurer())
+        .checks;
     // Hidden captions with no place trip no timing, face or overlap check.
     expect(await levelChecks(transitions.edit)).toEqual([]);
     const low = structuredClone(transitions.edit);
@@ -191,7 +186,7 @@ describe("runChecks on big words behind the speaker", () => {
       hand.edit,
       hand.transcript,
       hand.headTrack,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       await nodeMeasurer(),
     );
     expect(html).toContain('id="big-word-1"');
@@ -208,7 +203,7 @@ describe("runChecks on big words behind the speaker", () => {
       edit,
       hand.transcript,
       hand.headTrack,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       await nodeMeasurer(),
     );
     const rules = [...new Set(checks.map((check) => check.rule))];
@@ -220,7 +215,7 @@ describe("runChecks on big words behind the speaker", () => {
 
   it("passes big-word-timing for a big word coming in the lead before its word", async () => {
     const word = hand.edit.tracks.behind!.find((item) => item.kind === "word")!;
-    expect(word.start).toMatchObject({ offset: -ISSEBYA_PRESET.accent.leadSeconds });
+    expect(word.start).toMatchObject({ offset: -CLEAN_PRESET.accent.leadSeconds });
     const checks = await checksOf(hand.edit);
     expect(checks.filter((check) => check.rule === "big-word-timing")).toEqual([]);
   });
@@ -256,7 +251,7 @@ describe("runChecks on big words behind the speaker", () => {
       behind.edit,
       behind.transcript,
       atTop,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       await nodeMeasurer(),
     );
     const frame = checks.filter((check) => check.rule === "frame");
@@ -278,7 +273,7 @@ describe("runChecks on photos behind the speaker", () => {
       edit,
       behind.transcript,
       headTrack,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       await nodeMeasurer(),
     );
     return checks.filter((check) => check.rule.startsWith("behind-"));
@@ -334,7 +329,7 @@ describe("runChecks on photos behind the speaker", () => {
       edit,
       behind.transcript,
       headTrack,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       await nodeMeasurer(),
     );
     return checks.filter(

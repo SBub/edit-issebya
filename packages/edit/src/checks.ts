@@ -81,6 +81,9 @@ export function runChecks(
 ): Check[] {
   const checks: Check[] = [];
   const safe = intersectBox(preset.safe, PLATFORM_SAFE);
+  // `all` keeps the picks that overlap (a card over the face, text on text, a
+  // big word over the person): those three checks are the clean layout's.
+  const keepOverlaps = preset.placement === "all";
 
   for (const box of [...boxes, ...levels]) {
     const right = box.x + box.width;
@@ -138,7 +141,7 @@ export function runChecks(
     const box = photoBox(item, preset);
     if (item.layer === "front") {
       // In front of the speaker it would hide the face: never over it.
-      if (faces.some((face) => overlaps(shrink(box, SLACK), face))) {
+      if (!keepOverlaps && faces.some((face) => overlaps(shrink(box, SLACK), face))) {
         checks.push({
           rule: "behind-face",
           item: item.id,
@@ -159,7 +162,7 @@ export function runChecks(
   }
   for (const { item, span } of photos) {
     const spot = photoBox(item, preset);
-    for (const box of boxes) {
+    for (const box of keepOverlaps ? [] : boxes) {
       if (!(box.start < span.end - SLACK && span.start < box.end - SLACK)) continue;
       const rect = {
         left: box.x,
@@ -229,7 +232,7 @@ export function runChecks(
     const text = texts[index]!;
     for (const other of texts.slice(0, index)) {
       if (!(text.start < other.end - SLACK && other.start < text.end - SLACK)) continue;
-      if (!overlaps(shrink(text.rect, SLACK), other.rect)) continue;
+      if (keepOverlaps || !overlaps(shrink(text.rect, SLACK), other.rect)) continue;
       checks.push({
         rule: "text-overlap",
         item: text.id,
@@ -279,7 +282,7 @@ export function runChecks(
       bottom: word.y + word.height,
     };
     const share = bigWordCoveredShare(box, facesOver(headTrack, span.start, span.end), preset);
-    if (share > maxCovered + SLACK) {
+    if (!keepOverlaps && share > maxCovered + SLACK) {
       checks.push({
         rule: "big-word-hidden",
         item: word.itemId,

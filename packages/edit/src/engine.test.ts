@@ -6,7 +6,14 @@ import { editFromAnswer } from "./decide.ts";
 import { placeEdit } from "./engine.ts";
 import { type EngineInput, choicesOf } from "./engine-input.ts";
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
-import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE, TRANSITION_KINDS } from "./preset.ts";
+import {
+  CLEAN_PRESET,
+  ISSEBYA_PRESET,
+  PLATFORM_BUTTONS,
+  PLATFORM_SAFE,
+  type Preset,
+  TRANSITION_KINDS,
+} from "./preset.ts";
 import { MIN_TEXT_SIZE, type Edit, parseEdit } from "./schema.ts";
 import { backgroundMapOf } from "./test-support/backgrounds.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
@@ -45,7 +52,7 @@ function steadyHead(sample: { head_top: number; cx: number; head_w: number }): H
 const BIG_FACE = steadyHead({ head_top: 452, cx: 580, head_w: 292 });
 
 function withPlaceholderMasks(edit: Edit): Edit {
-  const masks = maskSpans(edit, transcript, ISSEBYA_PRESET).map((span, index) => ({
+  const masks = maskSpans(edit, transcript, CLEAN_PRESET).map((span, index) => ({
     step: "cutout" as const,
     fingerprint: String(index + 1).repeat(64),
     file: "mask.mp4",
@@ -63,9 +70,12 @@ async function place(
     backgrounds,
     requested,
     transcript: spoken = transcript,
+    preset = CLEAN_PRESET,
   }: {
     headTrack?: HeadTrack;
     current?: Edit;
+    // The layout mode (the strict clean layout unless a test asks for `all`).
+    preset?: Preset;
     // Another transcript (the same ids), for a denser opening.
     transcript?: Transcript;
     backgrounds?: Backgrounds;
@@ -77,7 +87,7 @@ async function place(
   const made = editFromAnswer(
     current,
     { ...NOTHING, ...input },
-    ISSEBYA_PRESET,
+    preset,
     spoken,
     headTrack,
     measurer,
@@ -89,7 +99,7 @@ async function place(
     withPlaceholderMasks(made.edit),
     spoken,
     headTrack,
-    ISSEBYA_PRESET,
+    preset,
     measurer,
   );
   const spans = resolveTimeline(made.edit, spoken);
@@ -101,7 +111,7 @@ async function place(
     checks,
     html,
     spans,
-    levels: levelBoxes(made.edit, spans, byId, ISSEBYA_PRESET, measurer),
+    levels: levelBoxes(made.edit, spans, byId, preset, measurer),
   };
 }
 
@@ -142,7 +152,7 @@ function expectNoWordTwice(edit: Edit, spans: ReturnType<typeof resolveTimeline>
 }
 
 // An accent or a big word comes in this long before its first word.
-const LEAD = ISSEBYA_PRESET.accent.leadSeconds;
+const LEAD = CLEAN_PRESET.accent.leadSeconds;
 const leadOf = (id: string) => Math.round((byId.get(id)!.start - LEAD) * 1000) / 1000;
 
 describe("the layout engine's timing", () => {
@@ -152,9 +162,7 @@ describe("the layout engine's timing", () => {
     for (const [index, caption] of captions.entries()) {
       const span = spans.get(caption.id)!;
       expect(span.start).toBe(byId.get(caption.words[0]!)!.start);
-      expect(span.end - span.start).toBeGreaterThanOrEqual(
-        ISSEBYA_PRESET.caption.minSeconds - 1e-6,
-      );
+      expect(span.end - span.start).toBeGreaterThanOrEqual(CLEAN_PRESET.caption.minSeconds - 1e-6);
       const next = captions
         .slice(index + 1)
         .find((c) => JSON.stringify(c.end) !== JSON.stringify(caption.end));
@@ -326,17 +334,9 @@ describe("the layout engine's timing", () => {
       accents: [{ from: "w66", to: "w67", title: false }],
       big_words: [{ word: "w66" }],
     };
-    const asked = placeEdit(
-      hand.edit,
-      input,
-      transcript,
-      hand.headTrack,
-      ISSEBYA_PRESET,
-      measurer,
-      {
-        requested: ["big_words[0]"],
-      },
-    );
+    const asked = placeEdit(hand.edit, input, transcript, hand.headTrack, CLEAN_PRESET, measurer, {
+      requested: ["big_words[0]"],
+    });
     expect(asked.tracks.behind?.map((item) => item.id)).toEqual(["big-word-1"]);
     expect(asked.tracks.overlays).toEqual([]);
   });
@@ -408,7 +408,7 @@ describe("never the same word twice on screen", () => {
   it("builds a stored caption without the field as before, and refuses one hidden by nothing", async () => {
     const edit = structuredClone(hand.edit);
     edit.tracks.captions[3]!.hidden_by = "accent-9";
-    const parsed = parseEdit(edit, ISSEBYA_PRESET, transcript);
+    const parsed = parseEdit(edit, CLEAN_PRESET, transcript);
     expect(!parsed.ok && parsed.reasons.join("\n")).toMatch(
       /caption cw\d+: hidden by accent-9, which is no accent or big word/,
     );
@@ -416,7 +416,7 @@ describe("never the same word twice on screen", () => {
 });
 
 describe("big words in view", () => {
-  const maxCovered = 1 - ISSEBYA_PRESET.behind.word.minVisible;
+  const maxCovered = 1 - CLEAN_PRESET.behind.word.minVisible;
   const bigWordOf = (edit: Edit, spans: ReturnType<typeof resolveTimeline>) => {
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
     if (word.kind !== "word") throw new Error("not a word");
@@ -431,7 +431,7 @@ describe("big words in view", () => {
     );
     expect(checks).toEqual([]);
     const { word, span } = bigWordOf(edit, spans);
-    const width = measurer.width(ISSEBYA_PRESET.behind.word.font, word.size!, word.text);
+    const width = measurer.width(CLEAN_PRESET.behind.word.font, word.size!, word.text);
     const box = {
       left: word.position!.x,
       right: word.position!.x + width,
@@ -439,7 +439,7 @@ describe("big words in view", () => {
       bottom: word.position!.y + word.size!,
     };
     expect(
-      bigWordCoveredShare(box, facesOver(BIG_FACE, span.start, span.end), ISSEBYA_PRESET),
+      bigWordCoveredShare(box, facesOver(BIG_FACE, span.start, span.end), CLEAN_PRESET),
     ).toBeLessThanOrEqual(maxCovered + 1e-6);
     // Above the head's top, only its lower part behind it, never above the
     // platforms' safe top.
@@ -623,7 +623,7 @@ describe("the layout engine's placement", () => {
     const again = editFromAnswer(
       one.edit,
       { ...NOTHING, ...DENSE },
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       transcript,
       hand.headTrack,
       await nodeMeasurer(),
@@ -711,9 +711,9 @@ describe("today's failures, placed by the engine", () => {
 });
 
 describe("visuals: corner cards over the footage", () => {
-  const { card } = ISSEBYA_PRESET.behind;
+  const { card } = CLEAN_PRESET.behind;
   const HOOK = { text: "Gen Z won't work like you did" };
-  const gap = ISSEBYA_PRESET.layout.gap;
+  const gap = CLEAN_PRESET.layout.gap;
   // The card at its full size and at the smaller step: a third of the frame's
   // width, 4:5 (360 by 450), and 0.7 of that (252 by 315).
   const FULL = { width: 360, height: 450 };
@@ -765,7 +765,7 @@ describe("visuals: corner cards over the footage", () => {
       expect(atCorner || beside).toBe(true);
       // The frame: a white stroke at the preset's width, no picture, no words,
       // no cut-out, drawn at the card's size.
-      expect(maskSpans(edit, transcript, ISSEBYA_PRESET)).toEqual([]);
+      expect(maskSpans(edit, transcript, CLEAN_PRESET)).toEqual([]);
       expect(html).toMatch(/<div id="visual-1" class="clip visual"[^>]*data-track-index="30"/);
       expect(html).toContain(
         `.visual { position: absolute; box-sizing: border-box; border: ${card.stroke}px solid #ffffff; background: transparent; }`,
@@ -864,7 +864,7 @@ describe("visuals: corner cards over the footage", () => {
       old.edit,
       old.transcript,
       old.headTrack,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       await nodeMeasurer(),
     );
     expect(html).toMatch(/<img id="[^"]+" class="clip photo"/);
@@ -872,7 +872,7 @@ describe("visuals: corner cards over the footage", () => {
   });
 
   it("moves a visual whose white edge blends with the footage, else keeps it plain and records it", async () => {
-    const FRAME = ISSEBYA_PRESET.frame;
+    const FRAME = CLEAN_PRESET.frame;
     const input = { visuals: [{ from: "w84", to: "w99" }] };
     const plain = await place(input);
     const first = boxOf(cardsOf(plain.edit)[0]!);
@@ -984,7 +984,7 @@ describe("clicks on visuals and big words", () => {
 });
 
 describe("readable text", () => {
-  const FRAME = ISSEBYA_PRESET.frame;
+  const FRAME = CLEAN_PRESET.frame;
   const BEIGE = "#D8C3A5";
   const DARK = "#101010";
   // A sampled map of the whole reel: `paint` gives each cell's colour.
@@ -1172,7 +1172,7 @@ function withPause(after: string, seconds: number): { transcript: Transcript; ed
 }
 
 describe("transitions", () => {
-  const T = ISSEBYA_PRESET.transition;
+  const T = CLEAN_PRESET.transition;
   const DIM = { kind: "dim" as const, from: "w26", to: "w33", key_from: "w30" };
   const start = (id: string) => byId.get(id)!.start;
   const end = (id: string) => byId.get(id)!.end;
@@ -1182,7 +1182,7 @@ describe("transitions", () => {
     const { spans, levels, edit, html, checks } = await place({ transitions: [DIM] });
     const span = spans.get("transition-1")!;
     // The fade (0.3 s) finishes as w26 starts; gone as w34 starts.
-    expect(span.start).toBe(ms(start("w26") - ISSEBYA_PRESET.transitions.dim.seconds));
+    expect(span.start).toBe(ms(start("w26") - CLEAN_PRESET.transitions.dim.seconds));
     expect(span.end).toBe(start("w34"));
     expect(edit.tracks.transitions[0]).toMatchObject({
       type: "dim",
@@ -1213,7 +1213,7 @@ describe("transitions", () => {
       const made = editFromAnswer(
         paused.edit,
         { ...NOTHING, transitions: [{ ...DIM, ...(wish ? { wish } : {}) }] },
-        ISSEBYA_PRESET,
+        CLEAN_PRESET,
         paused.transcript,
         hand.headTrack,
         measurer,
@@ -1232,7 +1232,7 @@ describe("transitions", () => {
     // Slower: the motion 1.6 times as long, still finishing on the first word.
     const slow = await spanOf("slow");
     expect(slow.span.start).toBe(
-      ms(start("w26") - ISSEBYA_PRESET.transitions.dim.seconds * T.slowFactor),
+      ms(start("w26") - CLEAN_PRESET.transitions.dim.seconds * T.slowFactor),
     );
     expect(slow.item.pace).toBe("slow");
   });
@@ -1255,19 +1255,16 @@ describe("transitions", () => {
         { transitions: [{ ...DIM, kind }] },
         { headTrack: BIG_FACE },
       );
-      const area = ISSEBYA_PRESET.transitions[kind].area;
+      const area = CLEAN_PRESET.transitions[kind].area;
       const lead = levels.find((level) => level.role === "lead")!;
       const key = levels.find((level) => level.role === "key")!;
       expect([lead.font, lead.color]).toEqual([
-        ISSEBYA_PRESET.caption.font,
-        ISSEBYA_PRESET.caption.color,
+        CLEAN_PRESET.caption.font,
+        CLEAN_PRESET.caption.color,
       ]);
-      expect([key.font, key.color]).toEqual([
-        ISSEBYA_PRESET.accent.font,
-        ISSEBYA_PRESET.accent.color,
-      ]);
+      expect([key.font, key.color]).toEqual([CLEAN_PRESET.accent.font, CLEAN_PRESET.accent.color]);
       for (const level of levels) {
-        for (const box of [area, ISSEBYA_PRESET.safe, PLATFORM_SAFE]) {
+        for (const box of [area, CLEAN_PRESET.safe, PLATFORM_SAFE]) {
           expect(level.x).toBeGreaterThanOrEqual(box.left - 1e-6);
           expect(level.x + level.width).toBeLessThanOrEqual(box.right + 1e-6);
           expect(level.y).toBeGreaterThanOrEqual(box.top - 1e-6);
@@ -1323,7 +1320,7 @@ describe("transitions", () => {
     });
     const room = Math.max(
       1,
-      Math.round(hand.edit.duration / ISSEBYA_PRESET.pace.transitionEverySeconds),
+      Math.round(hand.edit.duration / CLEAN_PRESET.pace.transitionEverySeconds),
     );
     expect(room).toBe(5);
     // The same kind repeats.
@@ -1460,9 +1457,9 @@ describe("making room for a request", () => {
   };
   const HUGE = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
   const FLOOR = Math.ceil(
-    ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.caption.font].size * ISSEBYA_PRESET.layout.minScale,
+    CLEAN_PRESET.fonts[CLEAN_PRESET.caption.font].size * CLEAN_PRESET.layout.minScale,
   );
-  const { safe } = ISSEBYA_PRESET;
+  const { safe } = CLEAN_PRESET;
   const makeRoom = (record: { rule: string; action: string }[]) =>
     record.filter((note) => note.rule === "make-room").map((note) => note.action);
 
@@ -1535,7 +1532,7 @@ describe("making room for a request", () => {
     const made = editFromAnswer(
       hand.edit,
       REQUEST_ANSWER,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       transcript,
       LEFT_HEAD,
       await nodeMeasurer(),
@@ -1659,7 +1656,7 @@ describe("making room for a request", () => {
       { ...NOTHING, ...input },
       transcript,
       BIG_FACE,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       measurer,
     );
     expect(placed.record.filter((note) => note.rule === "make-room")).toEqual([]);
@@ -1682,7 +1679,7 @@ describe("making room for a request", () => {
       { ...NOTHING, ...input },
       transcript,
       BIG_FACE,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       measurer,
     );
     expect(again.tracks).toEqual(placed.tracks);
@@ -1700,13 +1697,13 @@ describe("making room for a request", () => {
 
 describe("the written hook", () => {
   const HOOK = { text: "Gen Z won't work like you did" };
-  const { safe } = ISSEBYA_PRESET;
-  const { fromSeconds, untilSeconds } = ISSEBYA_PRESET.pace.hook;
+  const { safe } = CLEAN_PRESET;
+  const { fromSeconds, untilSeconds } = CLEAN_PRESET.pace.hook;
   const hookOf = (edit: Edit) => edit.tracks.overlays.find((item) => item.kind === "hook");
   // A face at the top, narrow enough that the hook fits beside it only when
   // set below the smallest size.
   const NARROW_HEAD = steadyHead({ head_top: 100, cx: 540, head_w: 300 });
-  const preset110 = ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.accent.font].size;
+  const preset110 = CLEAN_PRESET.fonts[CLEAN_PRESET.accent.font].size;
 
   it("shows from 0.2 s to 3 s in the upper part of the frame, off the face, inside the safe zone", async () => {
     const placed = await place({ hook: HOOK });
@@ -1828,15 +1825,15 @@ describe("the written hook", () => {
   it("reads back as its text and places the same again; a version without one reads null", async () => {
     const measurer = await nodeMeasurer();
     const placed = await place({ hook: HOOK, accents: [{ from: "w12", to: "w14", title: false }] });
-    const choices = choicesOf(placed.edit, transcript, ISSEBYA_PRESET);
+    const choices = choicesOf(placed.edit, transcript, CLEAN_PRESET);
     expect(choices.hook).toEqual(HOOK);
-    expect(choicesOf(hand.edit, transcript, ISSEBYA_PRESET).hook).toBeNull();
+    expect(choicesOf(hand.edit, transcript, CLEAN_PRESET).hook).toBeNull();
     const again = placeEdit(
       { ...hand.edit, tracks: { ...hand.edit.tracks, ...placed.edit.tracks } },
       choices,
       transcript,
       hand.headTrack,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       measurer,
     );
     expect(again.tracks.overlays).toEqual(placed.edit.tracks.overlays);
@@ -1925,7 +1922,7 @@ describe("the written hook", () => {
       const placed = await place({ hook: { text } }, { headTrack: NARROW_HEAD });
       const item = hookOf(placed.edit)!;
       expect(item.size).toBeGreaterThanOrEqual(MIN_TEXT_SIZE);
-      expect(parseEdit(placed.edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
+      expect(parseEdit(placed.edit, CLEAN_PRESET, transcript).ok).toBe(true);
     }
   });
 
@@ -1938,12 +1935,143 @@ describe("the written hook", () => {
       { ...NOTHING, hook: HOOK },
       short.transcript,
       short.headTrack,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       measurer,
     );
     expect(placed.tracks.overlays).toEqual([]);
     expect(placed.record).toContainEqual(
       expect.objectContaining({ item: "hook", action: "dropped", rule: "hook-time" }),
+    );
+  });
+});
+
+describe("every pick shown: the all placement", () => {
+  // Eight picks in the first 9 s of the reel, overlapping: four accents (each
+  // at least 1.5 s on screen, so they overlap one another), two big words and
+  // two visuals.
+  const DENSE_TEN: Partial<EngineInput> = {
+    accents: [
+      { from: "w1", to: "w2", title: false },
+      { from: "w3", to: "w4", title: false },
+      { from: "w5", to: "w6", title: false },
+      { from: "w9", to: "w9", title: false },
+    ],
+    big_words: [{ word: "w4" }, { word: "w9" }],
+    visuals: [
+      { from: "w6", to: "w8" },
+      { from: "w12", to: "w17" },
+    ],
+  };
+  const PICKS: [string, string, string][] = [
+    ["accent-1", "w1", "w2"],
+    ["accent-2", "w3", "w4"],
+    ["accent-3", "w5", "w6"],
+    ["accent-4", "w9", "w9"],
+    ["big-word-1", "w4", "w4"],
+    ["big-word-2", "w9", "w9"],
+    ["visual-1", "w6", "w8"],
+    ["visual-2", "w12", "w17"],
+  ];
+
+  it("shows every pick from its first word to its last word's end, none dropped, and passes the schema", async () => {
+    const { edit, record, unplaced, spans } = await place(DENSE_TEN, {
+      headTrack: hand.headTrack,
+      preset: ISSEBYA_PRESET,
+    });
+    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(unplaced).toEqual([]);
+    expect(edit.tracks.overlays.map((item) => item.id)).toEqual([
+      "accent-1",
+      "accent-2",
+      "accent-3",
+      "accent-4",
+    ]);
+    expect(edit.tracks.behind?.map((item) => item.id).sort()).toEqual([
+      "big-word-1",
+      "big-word-2",
+      "visual-1",
+      "visual-2",
+    ]);
+    expect(parseEdit(edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
+    for (const [id, from, to] of PICKS) {
+      const span = spans.get(id)!;
+      // Its first word's start (an accent or a big word a lead earlier), and
+      // its last word's end.
+      expect(span.start).toBeLessThanOrEqual(byId.get(from)!.start + 1e-6);
+      expect(span.start).toBeGreaterThanOrEqual(byId.get(from)!.start - 0.25);
+      expect(span.end).toBeGreaterThanOrEqual(byId.get(to)!.end - 1e-6);
+    }
+  });
+
+  it("keeps the overlaps and says so in the record", async () => {
+    const { record, checks } = await place(DENSE_TEN, {
+      headTrack: hand.headTrack,
+      preset: ISSEBYA_PRESET,
+    });
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "accent-2", action: "kept-overlapping", rule: "all-picks" }),
+    );
+    expect(checks).toEqual([]);
+  });
+
+  it("places a visual the face leaves no corner for at the default corner, noted, never dropped", async () => {
+    const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
+    const { edit, record, unplaced } = await place(
+      { visuals: [{ from: "w84", to: "w99" }] },
+      { headTrack: huge, preset: ISSEBYA_PRESET },
+    );
+    expect(edit.tracks.behind).toEqual([
+      expect.objectContaining({ id: "visual-1", kind: "visual", layer: "front" }),
+    ]);
+    expect(unplaced).toEqual([]);
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "visual-1", action: "kept-overlapping", rule: "all-picks" }),
+    );
+    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
+  });
+
+  it("places a big word the head hides at every height where it is, noted, never dropped", async () => {
+    const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
+    const { edit, record } = await place(
+      { big_words: [{ word: "w76" }] },
+      { headTrack: huge, preset: ISSEBYA_PRESET },
+    );
+    expect(edit.tracks.behind).toEqual([
+      expect.objectContaining({ id: "big-word-1", kind: "word" }),
+    ]);
+    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(record).toContainEqual(
+      expect.objectContaining({
+        item: "big-word-1",
+        action: "kept-overlapping",
+        rule: "all-picks",
+      }),
+    );
+  });
+
+  it("shows a transition that runs during the hook: nothing is dropped for the hook", async () => {
+    const placed = await place(
+      {
+        hook: { text: "Gen Z won't work like you did" },
+        transitions: [
+          { kind: "dim", from: "w4", to: "w9", key_from: "w6" },
+          { kind: "panel", from: "w26", to: "w33", key_from: "w30" },
+        ],
+      },
+      { headTrack: hand.headTrack, preset: ISSEBYA_PRESET },
+    );
+    expect(placed.edit.tracks.transitions.map((item) => item.id)).toEqual([
+      "transition-1",
+      "transition-2",
+    ]);
+    expect(placed.record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(placed.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook"]);
+  });
+
+  it("the clean layout drops or retimes some of the same picks", async () => {
+    const { record } = await place(DENSE_TEN, { headTrack: hand.headTrack });
+    expect(record.some((note) => note.action === "dropped" || note.action === "retimed")).toBe(
+      true,
     );
   });
 });
