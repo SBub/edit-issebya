@@ -42,7 +42,7 @@ import {
   supabaseDiscardExport,
   supabaseStoredFiles,
 } from "./stored-files.ts";
-import { type Telemetry, endJobSpan, startJobSpan } from "./telemetry.ts";
+import { type Telemetry, emitFailureLog, endJobSpan, startJobSpan } from "./telemetry.ts";
 import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 
 // One prompt source for the whole worker process: its cache serves every job
@@ -100,6 +100,7 @@ export async function processJob(
           cancelCheckEveryMs: config.cancelCheckEveryMs,
           // Its reel (or photo) deleted, the job's row went with it.
           gone: () => jobGone(db, job.id),
+          failureLog: (input) => emitFailureLog(telemetry, jobContext, input),
           async work(signal, checkCancelled, checkGone) {
             const ctx = {
               steps,

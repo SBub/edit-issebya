@@ -34,13 +34,10 @@ services:
       # Empty on purpose: a PostHog token in the env file never goes to local Grafana.
       OTEL_EXPORTER_OTLP_HEADERS: ""
       OTEL_SERVICE_NAME: edit-issebya-worker-dev
-      # The development error log, in the same Mac folder `yarn dev:studio errors` reads.
-      WORKER_STATE_DIR: /home/node/.edit-issebya-worker/dev
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - scratch:/scratch
-      - ${HOME}/.edit-issebya-worker/dev:/home/node/.edit-issebya-worker/dev
       # Development: the worker's source from the working tree (rebuild not needed).
       - ./apps/worker/src:/repo/apps/worker/src:ro
       - ./packages/edit/src:/repo/packages/edit/src:ro

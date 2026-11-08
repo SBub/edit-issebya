@@ -97,27 +97,27 @@ Nothing is sent, and no client is built, without the PostHog variables.
 - The reel page's overlay actions (`studio_failure_action`, `app_docs/status.md`) carry the failed
   job's `job_id`, which links an action to the job's `worker: step failed` or `worker: job failed`.
 
-### Local development error log
+### Failure log records (development and production)
 
-- PostHog error tracking stays production only. With the worker's gate closed, `createErrorTracker`
-  returns `localErrorLogTracker` (`apps/worker/src/error-tracking.ts`), which sends nothing and
-  appends one JSON line per `stepFailed`, `jobFailed` and `crashed` to
-  `<WORKER_STATE_DIR or ~/.edit-issebya-worker/dev>/errors.jsonl` (`errorLogPath` in
-  `apps/worker/src/dev-error-log.ts`).
-- A line holds `time`, `job_id`, `job_kind`, `reel_id` or `photo_id`, `step` (null for a job failure
-  or a crash), `attempt`, `failure_kind` (`uncaught` for a crash), `message` (the tail's first
-  non-empty line, scrubbed, at most 300 characters) and, for a refused answer, `rules` and `rounds`.
-  Never a secret, an env value or the request text.
-- At 2 MiB (`MAX_LOG_BYTES`) the file is renamed to `errors.1.jsonl` (replacing the older one) before
-  the next line. A log that cannot be written prints one line (`worker: error log not written:
-<code>`) and never breaks the job.
-- `yarn dev:studio` prints the log's path; `yarn dev:studio errors` (the worker's `dev:errors`,
-  `apps/worker/src/dev-errors.ts`) prints the last failures in plain words (`formatLastFailures`,
-  both files, oldest first).
-- A job stopped because its reel or photo was deleted writes no line to `errors.jsonl`: it is not a
-  failure.
-- Specs set `WORKER_STATE_DIR` under `.e2e-storage/` (`apps/studio/test-support/worker.ts`), so a
-  spec never writes the owner's log.
+- Every failed step attempt, and every job failure outside a step, is exactly one ERROR log record
+  (`emitFailureLog` in `apps/worker/src/telemetry.ts`, called from `withStep` in `step-runner.ts` at
+  the same point as `stepFailed`, and from `runJob` in `run-job.ts` beside `jobFailed`). It goes
+  through the OpenTelemetry logger and its OTLP exporter, the same in development (local Grafana) and
+  production (PostHog). A retried first attempt is a record too, with `failure.retrying` true.
+- Attributes: `job.id`, `job.kind`, `reel.id` or `photo.id`, `step.name` and `step.attempt` (a job
+  failure has `job.attempt` instead), `failure.kind`, `failure.message` (the first line of the
+  reason, scrubbed, at most 500 characters), `failure.reasons` (the failed row's tail, scrubbed) and
+  `failure.retrying`. The record's trace and span ids are the failing step's or the job's span.
+- The failing step span carries a `failure` event with `failure.kind`, `failure.message` and
+  `failure.reasons`, so the trace view shows the reasons.
+- Captured tool output lines are INFO records with the `stream` attribute: nothing is an ERROR
+  because it went to stderr.
+- With the PostHog gate closed, `createErrorTracker` returns `DISABLED_TRACKER`: nothing is captured
+  or sent to PostHog, but the failure records above are still exported.
+- A job stopped because its reel or photo was deleted writes no failure record: it is not a failure.
+- A crash (`crashed`) is captured to PostHog only; it has no log record, and in development it shows
+  only in the worker's console.
+- How to read them in local Grafana: `app_docs/measurement.md`, "Failures in Grafana".
 
 ### Stable messages
 
@@ -181,8 +181,8 @@ Every row also carries `app`. A `reportFailure` row without a provider error sti
   `console.error(` left under `src/app/` and `src/lib/`), `apps/studio/src/lib/track.test.ts`
   (`captureException` and its test hook), `apps/studio/src/lib/upload-answers.test.ts`,
   `apps/web/src/lib/error-tracking.test.ts`, `apps/worker/src/error-tracking.test.ts` (including the
-  closed gate's local log), `apps/worker/src/dev-error-log.test.ts` and the capture test in
-  `apps/worker/src/step-runner.test.ts`.
+  closed gate), the failure log record and INFO stderr in `apps/worker/src/telemetry.test.ts`, and
+  the capture test in `apps/worker/src/step-runner.test.ts`.
 - E2E: the "Create fails" test in `apps/studio/e2e/multipart-upload.spec.ts` sees exactly one
   `$exception` with `status: 500` and `error_code: "failed"` through the test hook.
 - Every test uses a fake client; no test calls PostHog.
@@ -200,7 +200,10 @@ Every row also carries `app`. A `reportFailure` row without a provider error sti
 - A new handled server failure in the studio or the landing page goes through `reportFailure`, never
   a bare `console.error`.
 - Never rename a stable message once shipped: it is the PostHog issue's grouping key.
-- The local error log never holds a secret, an env value or a request's text, and never breaks a job.
+- The failure log record never holds a secret, an env value or a request's text, and never breaks a
+  job.
+- Never write a failure as an ERROR log record anywhere but `emitFailureLog`: a tool's stderr line is
+  INFO.
 
 ## Notes
 

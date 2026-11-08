@@ -1,6 +1,7 @@
 import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { SpanStatusCode, trace } from "@opentelemetry/api";
+import { SeverityNumber } from "@opentelemetry/api-logs";
 import { InMemoryLogRecordExporter, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -11,6 +12,7 @@ import { recordHit, runInProcessStep, runStep } from "./step-runner.ts";
 import {
   type Telemetry,
   createTelemetry,
+  emitFailureLog,
   endJobSpan,
   inSpan,
   startJobSpan,
@@ -34,6 +36,75 @@ async function runJobWithSteps(telemetry: Telemetry, job = TEST_JOB, names = ["o
   telemetry.logger.emit({ body: "a line", context: jobContext });
   endJobSpan(span, "done");
 }
+
+describe("failure log records", () => {
+  it("emits one ERROR record in the failing span's context, scrubbed", async () => {
+    const spans = new InMemorySpanExporter();
+    const logs = new InMemoryLogRecordExporter();
+    const telemetry = createTelemetry(
+      {},
+      {
+        spanProcessors: [new SimpleSpanProcessor({ exporter: spans })],
+        logProcessors: [new SimpleLogRecordProcessor({ exporter: logs })],
+      },
+    );
+    const { span, context: jobContext } = startJobSpan(telemetry, TEST_JOB);
+    emitFailureLog(telemetry, jobContext, {
+      job: TEST_JOB,
+      step: "render",
+      attempt: 2,
+      retrying: false,
+      failureKind: "failed",
+      message: "render exited with 1\nsecond line",
+      reasons: "GET https://example.com/k?sig=1 failed\nboom sb_secret_x",
+    });
+    endJobSpan(span, "failed");
+
+    const records = logs.getFinishedLogRecords();
+    expect(records).toHaveLength(1);
+    const [record] = records;
+    expect(record?.severityNumber).toBe(SeverityNumber.ERROR);
+    expect(record?.severityText).toBe("ERROR");
+    expect(record?.body).toBe("render failed: render exited with 1");
+    expect(record?.spanContext?.traceId).toBe(traceIdForReel(REEL));
+    expect(record?.spanContext?.spanId).toBe(span.spanContext().spanId);
+    expect(record?.attributes).toEqual({
+      "reel.id": REEL,
+      "job.id": TEST_JOB.id,
+      "job.kind": TEST_JOB.kind,
+      "step.name": "render",
+      "step.attempt": 2,
+      "failure.kind": "failed",
+      "failure.message": "render exited with 1",
+      "failure.reasons": "GET https://example.com/k?[redacted] failed\nboom [redacted]",
+      "failure.retrying": false,
+    });
+    await telemetry.shutdown();
+  });
+
+  it("emits a job failure outside any step with job.attempt and no step attributes", async () => {
+    const logs = new InMemoryLogRecordExporter();
+    const telemetry = createTelemetry(
+      {},
+      { logProcessors: [new SimpleLogRecordProcessor({ exporter: logs })] },
+    );
+    const { span, context: jobContext } = startJobSpan(telemetry, TEST_JOB);
+    emitFailureLog(telemetry, jobContext, {
+      job: TEST_JOB,
+      attempt: 1,
+      retrying: false,
+      failureKind: "transient",
+      message: "fetch failed",
+      reasons: "fetch failed",
+    });
+    endJobSpan(span, "failed");
+    const [record] = logs.getFinishedLogRecords();
+    expect(record?.body).toBe("job failed: fetch failed");
+    expect(record?.attributes).toMatchObject({ "job.attempt": 1, "failure.kind": "transient" });
+    expect(record?.attributes).not.toHaveProperty("step.name");
+    await telemetry.shutdown();
+  });
+});
 
 describe("traceIdForReel", () => {
   it("is the reel uuid without dashes, lowercased, and stable", () => {
@@ -136,10 +207,12 @@ describe("log records", () => {
 
       const step = spans.getFinishedSpans().find((s) => s.name === "step echo");
       const records = logs.getFinishedLogRecords();
+      // Stderr is progress as often as an error: both streams are INFO.
       expect(records.map((r) => [r.body, r.severityText, r.attributes.stream]).sort()).toEqual([
         ["first", "INFO", "stdout"],
-        ["second", "ERROR", "stderr"],
+        ["second", "INFO", "stderr"],
       ]);
+      expect(records.every((r) => r.severityNumber === SeverityNumber.INFO)).toBe(true);
       for (const record of records) {
         expect(record.spanContext?.traceId).toBe(traceIdForReel(REEL));
         expect(record.spanContext?.spanId).toBe(step?.spanContext().spanId);

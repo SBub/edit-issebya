@@ -20,6 +20,7 @@ import {
 import { BatchSpanProcessor, type SpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
 import type { ClaimedJob } from "./queue.ts";
 import { type ReelSizeHolder, reelSizeAttributes } from "./reel-size.ts";
+import { scrub } from "./scrub.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -180,8 +181,10 @@ export async function inSpan<T>(
 
 export type StepStream = "stdout" | "stderr";
 
-// Emits each output line as a log record in the step span's context, so it
-// carries the span's trace and span ids.
+// Emits each output line as an INFO log record in the step span's context, so
+// it carries the span's trace and span ids. The stream is an attribute only:
+// a tool's stderr is its progress as often as its errors, so no line is an
+// ERROR for going to stderr (a failure is one emitFailureLog record).
 export function stepLogger(
   telemetry: Telemetry,
   stepContext: Context,
@@ -190,10 +193,69 @@ export function stepLogger(
   return (line, stream) => {
     telemetry.logger.emit({
       body: line,
-      severityNumber: stream === "stderr" ? SeverityNumber.ERROR : SeverityNumber.INFO,
-      severityText: stream === "stderr" ? "ERROR" : "INFO",
+      severityNumber: SeverityNumber.INFO,
+      severityText: "INFO",
       context: stepContext,
       attributes: { ...attributes, stream },
     });
   };
+}
+
+// A job's failure, or one step's failed attempt: one ERROR log record and a
+// `failure` event on the failing span (see emitFailureLog).
+export interface FailureLogInput {
+  job: ClaimedJob;
+  // The failed step's name; absent for a failure outside any step.
+  step?: string;
+  // The step's attempt, or the job's attempts for a failure outside a step.
+  attempt: number;
+  // True when the step runs once more after this failure.
+  retrying: boolean;
+  failureKind: string;
+  // The error's reason, its first line is the message.
+  message: string;
+  // The reasons lines the failed row keeps (the tail), the full text.
+  reasons: string;
+}
+
+const MESSAGE_CHARS = 500;
+
+// The failure's attributes, scrubbed (app_docs/error-tracking.md): the reasons
+// as they are, the message as one line.
+export function failureAttributes(
+  input: Pick<FailureLogInput, "failureKind" | "message" | "reasons">,
+) {
+  const firstLine = input.message.split("\n").find((line) => line.trim() !== "") ?? "";
+  return {
+    "failure.kind": input.failureKind,
+    "failure.message": scrub(firstLine.trim()).slice(0, MESSAGE_CHARS),
+    "failure.reasons": scrub(input.reasons),
+  };
+}
+
+// Emits the failure as exactly one ERROR log record in `context` (the step's
+// span or the job's), so Grafana links it to the trace. Job, reel or photo,
+// step and attempt are attributes; the reasons are the full tail.
+export function emitFailureLog(
+  telemetry: Telemetry,
+  context: Context,
+  input: FailureLogInput,
+): void {
+  const { job, step, attempt, retrying } = input;
+  const attributes = failureAttributes(input);
+  const message = attributes["failure.message"];
+  telemetry.logger.emit({
+    body: step ? `${step} failed: ${message}` : `job failed: ${message}`,
+    severityNumber: SeverityNumber.ERROR,
+    severityText: "ERROR",
+    context,
+    attributes: {
+      ...targetAttributes(job),
+      "job.id": job.id,
+      "job.kind": job.kind,
+      ...(step ? { "step.name": step, "step.attempt": attempt } : { "job.attempt": attempt }),
+      ...attributes,
+      "failure.retrying": retrying,
+    },
+  });
 }

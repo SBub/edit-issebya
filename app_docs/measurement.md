@@ -68,8 +68,10 @@ client, identifies the signed-in user and sends `studio_*` events.
   id, never exported), so every job of a reel, at any time, lands in one trace. Each step is a child
   span `step <name>` with `reel.id`, `job.id`, `step.name` and `step.wall_ms`, `step.cpu_ms`,
   `step.peak_rss_bytes`, `step.bytes_in`, `step.bytes_out`. Output lines are log records emitted in the
-  step span's context (INFO for stdout, ERROR for stderr, attribute `stream`). The exec spans carry
-  no log records, so a step's log lookup is unchanged.
+  step span's context (INFO for both streams, attribute `stream`: a tool's stderr is progress as often
+  as errors, so no output line is an ERROR). A failed step attempt or job failure is one ERROR record
+  (`emitFailureLog`), see "Failures in Grafana". The exec spans carry no log records, so a step's log
+  lookup is unchanged.
 - The reel's size: the job span and every step span (cache hits included) carry `reel.source_seconds`,
   `reel.source_bytes`, `reel.width`, `reel.height`, `reel.footage_seconds` and `reel.word_count` when
   known (nulls skipped). `src/reel-size.ts`: `readReelSize` reads the reel's size columns once at job
@@ -184,6 +186,31 @@ traces and logs are not recorded until the stack is back.
 - Stop it with `docker compose -f docker-compose.monitoring.yml down`. The data lives in the named
   volume `otel-lgtm-data` (under `/data` in the container), so it survives a restart; add `-v` to
   delete it.
+
+### Failures in Grafana
+
+A failed step attempt, and a job failure outside any step, is one ERROR log record
+(`emitFailureLog` in `apps/worker/src/telemetry.ts`; production exports the same record through the
+same OTLP logs exporter). It is written at the point the failed row is written, in the step's or the job's span
+context.
+
+1. Grafana (`http://localhost:3300`), Explore, data source Loki.
+2. Query: `{service_name="edit-issebya-worker-dev"} | detected_level="error"`. Each line's body reads
+   `<step> failed: <message>` or `job failed: <message>`.
+3. Expand a line to read `job_id`, `job_kind`, `reel_id` (or `photo_id`), `step_name`, `step_attempt`
+   (`job_attempt` for a job failure), `failure_kind`, `failure_retrying` and `failure_reasons` (the
+   full output tail). Attribute names with dots show with underscores in Loki. To narrow to one job:
+   `{service_name="edit-issebya-worker-dev"} | detected_level="error" | job_id="<job uuid>"`.
+4. The line's `trace_id` links to Tempo: open the trace, and the failing `step <name>` span carries
+   a `failure` event with the same reasons. A reel's whole trace is found by its uuid without dashes
+   (`traceIdForReel`).
+5. Output lines (INFO, `stream` stderr or stdout) are in the same Loki data source: filter them out with
+   `| detected_level="info"` or look for `stream="stderr"` on the step's lines.
+
+The label names follow the OTLP export (`service.name` becomes `service_name`, severity becomes
+Loki's detected level). They were written from the exporter and Loki 3's OTLP mapping, and were not
+checked against a running stack; if the field shows as `level` in your Grafana, use `| level="error"`.
+A worker crash is not a log record in development: it reaches PostHog in production only.
 
 ### AI calls (`chat` spans)
 
