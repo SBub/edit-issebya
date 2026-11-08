@@ -2,25 +2,27 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   type DecideRules,
+  NEW_TRANSITION_KINDS,
   NO_RULES,
-  applyBehindRules,
   decideAnswerSchemaFor,
   decideCounts,
   decideJsonSchema,
   editFromAnswer,
+  hookJsonSchema,
   parseDecideAnswer,
+  parseHookAnswer,
   stripHookStop,
   usedFreeField,
 } from "./decide.ts";
-import { WISHES } from "./engine-input.ts";
-import { ISSEBYA_PRESET, TRANSITION_KINDS } from "./preset.ts";
+import { build } from "./build.ts";
+import { choicesOf } from "./engine-input.ts";
+import { CLEAN_PRESET } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
 const short = FIXTURES.find((fixture) => fixture.name === "baseline-short-speech")!;
 
-const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
 const OTHER = "1f2e3d4c-5b6a-4789-8a7b-6c5d4e3f2a1b";
 
 type Json = Record<string, unknown>;
@@ -54,55 +56,47 @@ function enumsUnder(schema: unknown, property: string): unknown[][] {
   return found;
 }
 
-// A valid answer over the fixture clip: a title, one accent, one dim
-// transition, one fixed word; `change` edits a copy.
+// A valid answer over the fixture clip, in the new vocabulary: one accent
+// word and one fixed word; `change` edits a copy.
 function answer(change: (answer: Json) => void = () => {}): Json {
   const value: Json = {
-    accents: [
-      { from: "w0001", to: "w0004", title: true },
-      { from: "w0005", to: "w0005", title: false },
-    ],
+    accents: [{ from: "w0005", to: "w0005" }],
     big_words: [],
-    photos: [],
-    transitions: [{ kind: "dim", from: "w0006", to: "w0008", key_from: "w0007" }],
+    visuals: [],
+    transitions: [],
     word_fixes: [{ word: "w0010", text: "Studio" }],
-    hook: null,
-    checklist: [],
-    behind_rules: { photos: "keep", big_word: "keep" },
-    unexpressed: [],
   };
   change(value);
   return value;
 }
 
-const REQUEST: DecideRules = { requested: true, forbid: { photos: false, bigWord: false } };
-
-function parse(json: unknown, photoIds: readonly string[] = [], rules: DecideRules = NO_RULES) {
-  return parseDecideAnswer(json, ISSEBYA_PRESET, short.transcript, photoIds, rules);
+function parse(json: unknown, rules: DecideRules = NO_RULES) {
+  return parseDecideAnswer(json, CLEAN_PRESET, short.transcript, rules);
 }
 
-function reasons(json: unknown, photoIds: readonly string[] = [], rules: DecideRules = NO_RULES) {
-  const parsed = parse(json, photoIds, rules);
+function reasons(json: unknown, rules: DecideRules = NO_RULES) {
+  const parsed = parse(json, rules);
   if (parsed.ok) throw new Error("expected a refusal");
   return parsed.reasons.join("\n");
 }
 
 describe("decideJsonSchema", () => {
   for (const fixture of [hand, short]) {
-    it(`is generated for ${fixture.name}: its word ids, the transition kinds, the wishes, closed objects`, () => {
-      const schema = decideJsonSchema(ISSEBYA_PRESET, fixture.transcript);
+    it(`is generated for ${fixture.name}: its word ids, the list kind only, closed objects`, () => {
+      const schema = decideJsonSchema(CLEAN_PRESET, fixture.transcript);
       const ids = fixture.transcript.words.map((word) => word.id);
       for (const key of ["from", "to", "word"]) {
         const lists = enumsUnder(schema, key);
         expect(lists.length).toBeGreaterThan(0);
         for (const list of lists) expect(list).toEqual(ids);
       }
-      // The library only: `card` is never offered.
-      expect(enumsUnder(schema, "kind")).toEqual([[...TRANSITION_KINDS]]);
+      // LIST only: `numbered` is the one kind a new answer may pick.
+      expect(enumsUnder(schema, "kind")).toEqual([["numbered"]]);
+      expect(NEW_TRANSITION_KINDS).toEqual(["numbered"]);
+      expect(JSON.stringify(schema)).not.toContain('"dim"');
       expect(JSON.stringify(schema)).not.toContain('"card"');
-      const wishes = enumsUnder(schema, "wish");
-      expect(wishes).toHaveLength(4);
-      for (const list of wishes) expect(list).toEqual([...WISHES]);
+      // No wish anywhere: a new answer has no request to forward.
+      expect(JSON.stringify(schema)).not.toContain('"wish"');
 
       let objects = 0;
       walk(schema, (node) => {
@@ -114,30 +108,39 @@ describe("decideJsonSchema", () => {
     });
 
     it(`targets draft-07 for ${fixture.name}, with the same constraints as the 2020-12 output`, () => {
-      const schema = decideJsonSchema(ISSEBYA_PRESET, fixture.transcript);
+      const schema = decideJsonSchema(CLEAN_PRESET, fixture.transcript);
       expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
       expect(JSON.stringify(schema)).not.toContain("2020-12");
       const draft2020: Json = z.toJSONSchema(
-        decideAnswerSchemaFor(ISSEBYA_PRESET, fixture.transcript),
+        decideAnswerSchemaFor(CLEAN_PRESET, fixture.transcript),
         { target: "draft-2020-12", io: "output", reused: "inline" },
       );
       expect({ ...schema, $schema: null }).toEqual({ ...draft2020, $schema: null });
     });
   }
 
-  it("has meaning only: no time, position, size, font, colour, spot or style anywhere", () => {
-    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, [PHOTO], REQUEST);
+  it("has the components only: ACCENT, QUESTION, BIGWORD, VISUAL, LIST and the word fixes (no hook)", () => {
+    const schema = decideJsonSchema(CLEAN_PRESET, hand.transcript);
     expect(Object.keys(schema.properties as Json)).toEqual([
       "accents",
+      "questions",
       "big_words",
-      "photos",
+      "visuals",
       "transitions",
       "word_fixes",
-      "hook",
-      "checklist",
-      "behind_rules",
-      "unexpressed",
     ]);
+    expect(schema.required).toEqual([
+      "accents",
+      "questions",
+      "big_words",
+      "visuals",
+      "transitions",
+      "word_fixes",
+    ]);
+  });
+
+  it("has meaning only: no time, position, size, font, colour, spot, style or title anywhere", () => {
+    const schema = decideJsonSchema(CLEAN_PRESET, hand.transcript);
     const keys = new Set<string>();
     walk(schema, (_node, key) => {
       if (key) keys.add(key);
@@ -157,63 +160,90 @@ describe("decideJsonSchema", () => {
       "style",
       "tracks",
       "free_field",
+      "title",
+      "wish",
+      "checklist",
+      "behind_rules",
+      "unexpressed",
     ]) {
       expect(keys.has(banned), banned).toBe(false);
     }
   });
 
-  it("names the library photos, with no per-reel count for photos or big words", () => {
-    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript, [PHOTO]) as {
-      properties: { photos: { maxItems: number }; big_words: { maxItems: number } };
+  it("names a visual by its words and a short description: no photo id, no reason", () => {
+    const schema = decideJsonSchema(CLEAN_PRESET, hand.transcript) as {
+      properties: Record<string, { maxItems?: number; items: { required: string[] } }>;
     };
-    expect(enumsUnder(schema, "photo_id")).toEqual([[PHOTO]]);
-    // Every photo says why it is there.
-    expect(enumsUnder(schema, "reason")).toEqual([["match", "mood"]]);
-    const item = (schema.properties.photos as unknown as { items: { required: string[] } }).items;
-    expect(item.required).toContain("reason");
-    // Only a bound on the answer's size, like the accents'.
-    expect(schema.properties.photos.maxItems).toBe(12);
-    expect(schema.properties.big_words.maxItems).toBe(12);
+    expect(schema.properties.visuals!.items.required).toEqual(["from", "to", "description"]);
+    const keys = new Set<string>();
+    walk(schema, (_node, key) => {
+      if (key) keys.add(key);
+    });
+    expect(keys.has("photo_id")).toBe(false);
+    expect(keys.has("reason")).toBe(false);
+    // No count cap on any list: the JSON Schema carries no maxItems.
+    for (const name of ["accents", "big_words", "visuals", "transitions", "word_fixes"]) {
+      expect(schema.properties[name]!.maxItems, name).toBeUndefined();
+    }
   });
 });
 
 describe("the hook", () => {
-  const hook = (text: string) => answer((a) => (a.hook = { text }));
+  const hookReasons = (json: unknown) => {
+    const parsed = parseHookAnswer(json, CLEAN_PRESET);
+    if (parsed.ok) throw new Error("expected a refusal");
+    return parsed.reasons.join("\n");
+  };
+  const hook = (text: string) => ({ text });
 
-  it("is a required field: a line of text, or null for none", () => {
-    expect(parse(hook("Gen Z won't work like you did"))).toMatchObject({ ok: true });
-    expect(parse(answer())).toMatchObject({ ok: true });
-    const missing = answer((a) => delete a.hook);
-    expect(reasons(missing)).toContain("hook:");
-    const schema = decideJsonSchema(ISSEBYA_PRESET, short.transcript) as {
-      properties: { hook: { anyOf: Json[] } };
+  it("is its own answer: one text, required, never null", () => {
+    expect(parseHookAnswer(hook("Gen Z won't work like you did"), CLEAN_PRESET)).toEqual({
+      ok: true,
+      text: "Gen Z won't work like you did",
+    });
+    const schema = hookJsonSchema(CLEAN_PRESET) as {
+      properties: Json;
+      required: string[];
+      additionalProperties: boolean;
     };
-    expect(schema.properties.hook.anyOf).toContainEqual({ type: "null" });
+    expect(Object.keys(schema.properties)).toEqual(["text"]);
+    expect(schema.required).toEqual(["text"]);
+    expect(schema.additionalProperties).toBe(false);
+    expect(JSON.stringify(schema)).not.toContain('"type":"null"');
+    expect(hookReasons({})).toContain("text:");
+    expect(hookReasons(null)).not.toBe("");
+  });
+
+  it("is not a component: the components answer refuses a hook", () => {
+    expect(reasons(answer((a) => (a.hook = { text: "Rethink work" })))).toContain(
+      'Unrecognized key: "hook"',
+    );
+    expect(reasons(answer((a) => (a.hook = null)))).toContain('Unrecognized key: "hook"');
   });
 
   it("refuses more than the preset's words or characters, with the reason for the retry", () => {
-    const { maxWords, maxCharacters } = ISSEBYA_PRESET.pace.hook;
+    const { maxWords, maxCharacters } = CLEAN_PRESET.pace.hook;
     expect([maxWords, maxCharacters]).toEqual([7, 45]);
-    expect(reasons(hook("one two three four five six seven eight"))).toContain(
-      "hook.text: a hook has at most 7 words",
+    expect(hookReasons(hook("one two three four five six seven eight"))).toContain(
+      "text: a hook has at most 7 words",
     );
-    expect(reasons(hook("x".repeat(46)))).toContain("hook.text: a hook has at most 45 characters");
-    expect(parse(hook("one two three four five six seven"))).toMatchObject({ ok: true });
+    expect(hookReasons(hook("x".repeat(46)))).toContain("text: a hook has at most 45 characters");
+    expect(parseHookAnswer(hook("one two three four five six seven"), CLEAN_PRESET)).toMatchObject({
+      ok: true,
+    });
   });
 
   it("is one line of plain text: no line break, no tag, not empty", () => {
-    expect(reasons(hook("first\nsecond"))).toContain("a hook is one line of plain text");
-    expect(reasons(hook("<b>bold</b>"))).toContain("a hook is one line of plain text");
-    expect(reasons(hook("!!!"))).toContain("a hook needs words");
-    expect(reasons(hook(""))).toContain("hook.text:");
+    expect(hookReasons(hook("first\nsecond"))).toContain("a hook is one line of plain text");
+    expect(hookReasons(hook("<b>bold</b>"))).toContain("a hook is one line of plain text");
+    expect(hookReasons(hook("!!!"))).toContain("a hook needs words");
+    expect(hookReasons(hook(""))).toContain("text:");
   });
 
   it("never ends with a full stop: final dots and ellipses are taken off, ? and ! stay", () => {
     expect(stripHookStop("Gen Z won't work like you did.")).toBe("Gen Z won't work like you did");
     expect(stripHookStop("Gen Z won't work like you did...")).toBe("Gen Z won't work like you did");
-    expect(stripHookStop("Gen Z won't work like you did\u2026 ")).toBe(
-      "Gen Z won't work like you did",
-    );
+    expect(stripHookStop("Gen Z won't work like you did… ")).toBe("Gen Z won't work like you did");
     expect(stripHookStop("Would you work like this?")).toBe("Would you work like this?");
     expect(stripHookStop("Stop working like this!")).toBe("Stop working like this!");
     expect(stripHookStop("Mr. Smith knows")).toBe("Mr. Smith knows");
@@ -221,44 +251,34 @@ describe("the hook", () => {
   });
 
   it("is saved without its final full stop, and nothing but dots is refused", () => {
-    expect(parse(hook("Gen Z won't work like you did."))).toMatchObject({
+    expect(parseHookAnswer(hook("Gen Z won't work like you did."), CLEAN_PRESET)).toEqual({
       ok: true,
-      answer: { hook: { text: "Gen Z won't work like you did" } },
+      text: "Gen Z won't work like you did",
     });
-    expect(parse(hook("Would you work like this?"))).toMatchObject({
+    expect(parseHookAnswer(hook("Would you work like this?"), CLEAN_PRESET)).toEqual({
       ok: true,
-      answer: { hook: { text: "Would you work like this?" } },
+      text: "Would you work like this?",
     });
-    expect(reasons(hook("..."))).toContain("a hook needs words");
-    expect(reasons(hook("\u2026"))).toContain("a hook needs words");
+    expect(hookReasons(hook("..."))).toContain("a hook needs words");
+    expect(hookReasons(hook("…"))).toContain("a hook needs words");
   });
 
   it("has no wish, time or place: only its text", () => {
-    expect(reasons(answer((a) => (a.hook = { text: "Rethink work", wish: "top" })))).toContain(
-      "hook:",
+    expect(hookReasons({ text: "Rethink work", wish: "top" })).toContain(
+      'Unrecognized key: "wish"',
     );
-    expect(reasons(answer((a) => (a.hook = { text: "Rethink work", start: 0 })))).toContain(
-      "hook:",
-    );
+    expect(hookReasons({ text: "Rethink work", start: 0 })).toContain('Unrecognized key: "start"');
   });
 
-  it("may be linked from the checklist, set or taken out", () => {
-    const linked = (value: Json | null) =>
-      answer((a) => {
-        a.hook = value;
-        a.checklist = [{ ask: "no hook", wants: "no hook", fulfilled_by: ["hook"] }];
-      });
-    expect(parse(linked(null), [], REQUEST)).toMatchObject({ ok: true });
-    expect(parse(linked({ text: "Work less" }), [], REQUEST)).toMatchObject({ ok: true });
-  });
-
-  it("is placed by the engine: from 0.2 s, the one extra of its window", async () => {
-    const parsed = parse(hook("A short test for the real studio"));
+  it("is placed by the engine beside the components: from 0.2 s, the one extra of its window", async () => {
+    const parsed = parse(answer());
     if (!parsed.ok) throw new Error(parsed.reasons.join("; "));
+    const written = parseHookAnswer(hook("A short test for the real studio"), CLEAN_PRESET);
+    if (!written.ok) throw new Error(written.reasons.join("; "));
     const placed = editFromAnswer(
       short.edit,
-      parsed.answer,
-      ISSEBYA_PRESET,
+      { ...parsed.answer, hook: { text: written.text } },
+      CLEAN_PRESET,
       short.transcript,
       short.headTrack,
       await nodeMeasurer(),
@@ -267,15 +287,11 @@ describe("the hook", () => {
     const item = placed.edit.tracks.overlays.find((overlay) => overlay.kind === "hook")!;
     expect(item).toMatchObject({ id: "hook", text: "A short test for the real studio" });
     expect(item.words).toBeUndefined();
-    // On the 2.7 s clip it holds the screen: the title, the accent and the dim
-    // wait for nothing and are dropped.
+    // On the 2.7 s clip it holds the screen: the accent waits for nothing and
+    // is dropped.
     expect(placed.edit.tracks.overlays.map((overlay) => overlay.id)).toEqual(["hook"]);
-    expect(placed.edit.tracks.transitions).toEqual([]);
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "transition-1", action: "dropped", rule: "hook" }),
-    );
-    expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "title", action: "dropped", rule: "one-extra" }),
+      expect.objectContaining({ item: "accent-1", action: "dropped", rule: "one-extra" }),
     );
   });
 });
@@ -296,34 +312,11 @@ describe("parseDecideAnswer", () => {
     expect(reasons(noBigWords)).toMatch(/^big_words: /m);
   });
 
-  it("refuses a wish not on the list", () => {
-    const loose = answer((a) => {
-      (a.accents as Json[])[1]!.wish = "upper-left";
-    });
-    expect(reasons(loose, [], REQUEST)).toMatch(/^accents\.1\.wish: /m);
-    const listed = answer((a) => {
-      (a.accents as Json[])[1]!.wish = "big";
-    });
-    expect(parse(listed, [], REQUEST).ok).toBe(true);
-  });
-
-  it("refuses a wish without a request: Claude never invents one", () => {
-    const wished = answer((a) => {
-      (a.accents as Json[])[1]!.wish = "big";
-      a.big_words = [{ word: "w0001" }, { word: "w0002", wish: "behind" }];
-    });
-    const text = reasons(wished);
-    expect(text).toContain(
-      "accents.1.wish: a wish only forwards the owner's request; there is none, leave it out",
-    );
-    expect(text).toMatch(/^big_words\.1\.wish: /m);
-  });
-
   it("refuses a word id not in the transcript", () => {
     const other = answer((a) => {
-      (a.accents as Json[])[1]!.from = "w9999";
+      (a.accents as Json[])[0]!.from = "w9999";
     });
-    expect(reasons(other)).toMatch(/^accents\.1\.from: /m);
+    expect(reasons(other)).toMatch(/^accents\.0\.from: /m);
     const fix = answer((a) => {
       a.word_fixes = [{ word: "w0", text: "x" }];
     });
@@ -336,68 +329,87 @@ describe("parseDecideAnswer", () => {
     });
     expect(reasons(timed)).toMatch(/accents\.0: .*start/);
     const sized = answer((a) => {
-      (a.transitions as Json[])[0]!.size = 80;
+      (a.accents as Json[])[0]!.size = 80;
     });
     expect(parse(sized).ok).toBe(false);
   });
 
-  it("refuses a phrase that ends before it starts, and a second title", () => {
+  it("refuses a phrase that ends before it starts", () => {
     const backwards = answer((a) => {
-      a.transitions = [{ kind: "dim", from: "w0008", to: "w0006", key_from: "w0008" }];
+      a.accents = [{ from: "w0008", to: "w0006" }];
     });
-    expect(reasons(backwards)).toContain(
-      "transitions.0.to: ends on w0006, before it starts on w0008",
-    );
-    const two = answer((a) => {
-      (a.accents as Json[])[1]!.title = true;
-    });
-    expect(reasons(two)).toContain("accents: only one accent is the title");
+    expect(reasons(backwards)).toContain("accents.0.to: ends on w0006, before it starts on w0008");
   });
 
-  it("refuses a card: the library is dim, panel and numbered", () => {
-    const card = answer((a) => {
-      (a.transitions as Json[])[0]!.kind = "card";
+  it("refuses a title: the written hook is the title now", () => {
+    const titled = answer((a) => {
+      (a.accents as Json[])[0]!.title = true;
     });
-    expect(reasons(card)).toMatch(/^transitions\.0\.kind: /m);
+    expect(reasons(titled)).toMatch(/accents\.0: .*title/);
+    expect(parse(titled).ok).toBe(false);
+  });
+
+  it("refuses a transition of any kind but numbered: no dim, panel or card", () => {
+    for (const kind of ["dim", "panel", "card"]) {
+      const old = answer((a) => {
+        a.transitions = [{ kind, from: "w0006", to: "w0008", key_from: "w0007" }];
+      });
+      expect(reasons(old), kind).toMatch(/^transitions\.0\.kind: /m);
+    }
     const numbered = answer((a) => {
-      (a.transitions as Json[])[0]!.kind = "numbered";
+      a.transitions = [{ kind: "numbered", from: "w0006", to: "w0008", key_from: "w0007" }];
     });
     expect(parse(numbered).ok).toBe(true);
   });
 
   it("refuses a transition without key_from, or with its key phrase outside its phrase", () => {
-    const missing = answer((a) => {
-      delete (a.transitions as Json[])[0]!.key_from;
-    });
-    expect(reasons(missing)).toMatch(/^transitions\.0\.key_from: /m);
-    const after = answer((a) => {
-      (a.transitions as Json[])[0]!.key_from = "w0009";
-    });
-    expect(reasons(after)).toContain(
+    const withList = (item: Json) => answer((a) => (a.transitions = [item]));
+    const base = { kind: "numbered", from: "w0006", to: "w0008", key_from: "w0007" };
+    expect(reasons(withList({ ...base, key_from: undefined }))).toMatch(
+      /^transitions\.0\.key_from: /m,
+    );
+    expect(reasons(withList({ ...base, key_from: "w0009" }))).toContain(
       "transitions.0.key_from: key phrase starts on w0009, outside w0006 to w0008",
     );
-    const before = answer((a) => {
-      (a.transitions as Json[])[0]!.key_from = "w0005";
-    });
-    expect(reasons(before)).toContain(
+    expect(reasons(withList({ ...base, key_from: "w0005" }))).toContain(
       "transitions.0.key_from: key phrase starts on w0005, outside w0006 to w0008",
     );
-    const whole = answer((a) => {
-      (a.transitions as Json[])[0]!.key_from = "w0006";
-    });
-    expect(parse(whole).ok).toBe(true);
+    expect(parse(withList({ ...base, key_from: "w0006" })).ok).toBe(true);
   });
 
-  it("takes slow and long only on a request", () => {
-    for (const wish of ["slow", "long"]) {
-      const asked = answer((a) => {
-        (a.transitions as Json[])[0]!.wish = wish;
-      });
-      expect(reasons(asked)).toContain(
-        "transitions.0.wish: a wish only forwards the owner's request; there is none, leave it out",
-      );
-      expect(parse(asked, [], REQUEST).ok).toBe(true);
-    }
+  it("refuses a wish: a new answer forwards none", () => {
+    const wished = answer((a) => {
+      (a.accents as Json[])[0]!.wish = "big";
+    });
+    expect(reasons(wished)).toMatch(/accents\.0: .*wish/);
+    const slow = answer((a) => {
+      a.transitions = [
+        { kind: "numbered", from: "w0006", to: "w0008", key_from: "w0007", wish: "slow" },
+      ];
+    });
+    expect(reasons(slow)).toMatch(/transitions\.0: .*wish/);
+    const bigWish = answer((a) => {
+      a.big_words = [{ from: "w0005", to: "w0005", wish: "behind" }];
+    });
+    expect(reasons(bigWish)).toMatch(/big_words\.0: .*wish/);
+    const visual = answer((a) => {
+      a.visuals = [{ from: "w0001", to: "w0010", description: "a desk", wish: "left" }];
+    });
+    expect(parse(visual).ok).toBe(false);
+  });
+
+  it("refuses a checklist, behind rules and unexpressed: a new answer has no request", () => {
+    expect(reasons(answer((a) => (a.checklist = [])))).toContain('Unrecognized key: "checklist"');
+    expect(
+      reasons(answer((a) => (a.behind_rules = { photos: "keep", big_word: "keep" }))),
+    ).toContain('Unrecognized key: "behind_rules"');
+    expect(reasons(answer((a) => (a.unexpressed = [])))).toContain(
+      'Unrecognized key: "unexpressed"',
+    );
+    const asked = answer((a) => {
+      a.checklist = [{ ask: "no hook", wants: "no hook", fulfilled_by: ["hook"] }];
+    });
+    expect(parse(asked).ok).toBe(false);
   });
 
   it("refuses a word fixed twice", () => {
@@ -416,154 +428,135 @@ describe("parseDecideAnswer", () => {
   });
 });
 
-describe("the request checklist", () => {
-  const withAsk = (fulfilledBy: string[]) =>
+describe("the visual and the stored forbids in the decide answer", () => {
+  const visual = { from: "w0001", to: "w0010", description: "a messy desk at night" };
+  const withVisuals = (visuals: Json[]) =>
     answer((a) => {
-      a.photos = [{ photo_id: PHOTO, from: "w0001", to: "w0010", reason: "match", wish: "left" }];
-      a.checklist = [
-        { ask: "photos behind", wants: "1 to 2, free choice", fulfilled_by: fulfilledBy },
+      a.visuals = visuals;
+    });
+  const stored = (photos: boolean, bigWord = false): DecideRules => ({
+    forbid: { photos, bigWord },
+  });
+
+  it("takes a visual over its words with a short description", () => {
+    expect(parse(withVisuals([visual])).ok).toBe(true);
+  });
+
+  it("refuses a photo id or a reason on a visual: a visual names no picture", () => {
+    expect(parse(withVisuals([{ ...visual, photo_id: OTHER }])).ok).toBe(false);
+    expect(parse(withVisuals([{ ...visual, reason: "mood" }])).ok).toBe(false);
+  });
+
+  it("refuses a description over its word or character limit, or with no words", () => {
+    const eight = "one two three four five six seven eight";
+    expect(parse(withVisuals([{ ...visual, description: eight }])).ok).toBe(true);
+    const nine = `${eight} nine`;
+    expect(reasons(withVisuals([{ ...visual, description: nine }]))).toMatch(/at most 8 words/);
+    expect(parse(withVisuals([{ ...visual, description: "a".repeat(81) }])).ok).toBe(false);
+    expect(parse(withVisuals([{ ...visual, description: "" }])).ok).toBe(false);
+    expect(parse(withVisuals([{ ...visual, description: "!!!" }])).ok).toBe(false);
+  });
+
+  it("takes as many visuals and big words as the editor chooses, the same word again too", () => {
+    const many = answer((a) => {
+      a.visuals = [visual, { ...visual, from: "w0006", to: "w0010" }, visual];
+      a.big_words = [
+        { from: "w0005", to: "w0005" },
+        { from: "w0009", to: "w0009" },
+        { from: "w0005", to: "w0005" },
       ];
     });
+    expect(parse(many).ok).toBe(true);
+  });
 
-  it("is empty on the first run", () => {
-    expect(reasons(withAsk(["photos[0]"]), [PHOTO])).toContain(
-      "checklist: the checklist stays empty without a request",
+  it("takes a big word of one or two consecutive words, and refuses a span of three or one ending first", () => {
+    expect(parse(answer((a) => (a.big_words = [{ from: "w0005", to: "w0006" }]))).ok).toBe(true);
+    expect(reasons(answer((a) => (a.big_words = [{ from: "w0006", to: "w0005" }])))).toMatch(
+      /^big_words\.0\.to: ends on w0005, before it starts on w0006$/m,
     );
-    const schema = decideJsonSchema(ISSEBYA_PRESET, short.transcript) as {
-      properties: { checklist: { maxItems: number } };
+    expect(reasons(answer((a) => (a.big_words = [{ from: "w0005", to: "w0007" }])))).toMatch(
+      /^big_words\.0\.to: w0005 to w0007 spans 3 words; a big word is one or two consecutive words$/m,
+    );
+  });
+
+  it("checks each word of a two-word big word as one plain word of at most 24 letters", () => {
+    const long = structuredClone(short.transcript);
+    long.words.find((word) => word.id === "w0006")!.text = "extraordinarilyunbelievablylongword";
+    const json = answer((a) => (a.big_words = [{ from: "w0005", to: "w0006" }]));
+    const result = parseDecideAnswer(json, CLEAN_PRESET, long, NO_RULES);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reasons.join("\n")).toMatch(
+        /^big_words\.0\.to: w0006 \("extraordinarilyunbelievablylongword"\) is not one plain word of at most 24 letters$/m,
+      );
+    }
+  });
+
+  it("has no count cap: 100 picks over a 162-word clip and 80 word fixes on distinct words", () => {
+    const ids = hand.transcript.words.map((word) => word.id);
+    const span = (start: number, count: number) => ids.slice(start, start + count);
+    const json = {
+      accents: span(0, 25).map((id) => ({ from: id, to: id })),
+      big_words: span(25, 25).map((id) => ({ from: id, to: id })),
+      visuals: span(50, 25).map((id) => ({ from: id, to: id, description: "a messy desk" })),
+      transitions: span(75, 25).map((id) => ({ kind: "numbered", from: id, to: id, key_from: id })),
+      word_fixes: ids.slice(0, 80).map((id) => ({ word: id, text: "Studio" })),
     };
-    expect(schema.properties.checklist.maxItems).toBe(0);
+    const parsed = parseDecideAnswer(json, CLEAN_PRESET, hand.transcript, NO_RULES);
+    expect(parsed.ok ? "ok" : parsed.reasons.join("\n")).toBe("ok");
   });
 
-  it("links each ask to answer items on a request", () => {
-    expect(parse(withAsk(["photos[0]", "behind_rules"]), [PHOTO], REQUEST).ok).toBe(true);
-    expect(parse(withAsk([]), [PHOTO], REQUEST).ok).toBe(true);
+  it("refuses a visual while the reel's stored forbid switches photos off", () => {
+    expect(reasons(withVisuals([visual]), stored(true))).toContain(
+      "visuals: photos and visuals are switched off for this reel by the owner; leave them out",
+    );
+    expect(parse(withVisuals([]), stored(true)).ok).toBe(true);
   });
 
-  it("carries an optional why_not in plain words for an ask nothing can do", () => {
-    const impossible = answer((a) => {
-      a.checklist = [
-        {
-          ask: "add images behind me",
-          wants: "1 photo",
-          fulfilled_by: [],
-          why_not: "Your photo library is empty: upload photos first",
-        },
-      ];
-    });
-    expect(parse(impossible, [], REQUEST).ok).toBe(true);
-    const tooLong = structuredClone(impossible);
-    (tooLong.checklist as Json[])[0]!.why_not = "x".repeat(301);
-    expect(reasons(tooLong, [], REQUEST)).toMatch(/^checklist\.0\.why_not: /m);
-    // Still a draft-07 schema with every object closed.
-    const schema = decideJsonSchema(ISSEBYA_PRESET, short.transcript, [], REQUEST) as {
-      $schema: string;
-      properties: {
-        checklist: {
-          items: { additionalProperties: boolean; properties: Json; required: string[] };
-        };
-      };
-    };
-    expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
-    const entry = schema.properties.checklist.items;
-    expect(entry.additionalProperties).toBe(false);
-    expect(Object.keys(entry.properties)).toContain("why_not");
-    expect(entry.required).not.toContain("why_not");
-  });
-
-  it("refuses a link to an item the answer does not have, or not an item at all", () => {
-    expect(reasons(withAsk(["photos[1]"]), [PHOTO], REQUEST)).toContain(
-      "checklist.0.fulfilled_by: photos[1] is not in the answer",
-    );
-    expect(reasons(withAsk(["big_words[0]"]), [PHOTO], REQUEST)).toContain(
-      "checklist.0.fulfilled_by: big_words[0] is not in the answer",
-    );
-    // The old single reference is no item now.
-    expect(reasons(withAsk(["big_word"]), [PHOTO], REQUEST)).toMatch(
-      /^checklist\.0\.fulfilled_by\.0: /m,
-    );
-    expect(reasons(withAsk(["the photo"]), [PHOTO], REQUEST)).toMatch(
-      /^checklist\.0\.fulfilled_by\.0: /m,
+  it("refuses big words while they are forbidden", () => {
+    const big = answer((a) => (a.big_words = [{ from: "w0005", to: "w0005" }]));
+    expect(parse(big).ok).toBe(true);
+    expect(reasons(big, stored(false, true))).toContain(
+      "big_words: big words are switched off for this reel by the owner",
     );
   });
 });
 
-describe("the behind limits and rules in the decide answer", () => {
-  const photo = { photo_id: PHOTO, from: "w0001", to: "w0010", reason: "match" };
-  const withPhotos = (photos: Json[], rules?: Json) =>
-    answer((a) => {
-      a.photos = photos;
-      if (rules) a.behind_rules = rules;
-    });
-  const stored = (photos: boolean, bigWord = false, requested = false): DecideRules => ({
-    requested,
-    forbid: { photos, bigWord },
-  });
-
-  it("refuses a photo outside the library, and every photo with an empty library", () => {
-    expect(parse(withPhotos([photo]), [PHOTO]).ok).toBe(true);
-    expect(parse(withPhotos([{ ...photo, photo_id: OTHER }]), [PHOTO]).ok).toBe(false);
-    expect(parse(withPhotos([photo])).ok).toBe(false);
-  });
-
-  it("needs each photo's reason, match or mood, on a new answer", () => {
-    const bare: Json = { ...photo };
-    delete bare.reason;
-    expect(reasons(withPhotos([bare]), [PHOTO])).toMatch(/^photos\.0\.reason: /m);
-    expect(parse(withPhotos([{ ...photo, reason: "loose" }]), [PHOTO]).ok).toBe(false);
-    expect(parse(withPhotos([{ ...photo, reason: "mood" }]), [PHOTO]).ok).toBe(true);
-  });
-
-  it("takes as many photos and big words as the editor chooses, the same word again too", () => {
+describe("QUESTION in the components answer", () => {
+  it("takes as many questions as the editor chooses, the same phrase again too", () => {
     const many = answer((a) => {
-      a.photos = [photo, { ...photo, from: "w0006", to: "w0010" }, photo];
-      a.big_words = [{ word: "w0005" }, { word: "w0009" }, { word: "w0005" }];
+      a.questions = [
+        { from: "w0005", to: "w0005" },
+        { from: "w0009", to: "w0010" },
+        { from: "w0005", to: "w0005" },
+      ];
     });
-    expect(parse(many, [PHOTO]).ok).toBe(true);
+    expect(parse(many).ok).toBe(true);
+    expect(parse(many)).toMatchObject({ ok: true, answer: { questions: many.questions } });
   });
 
-  it("refuses a photo under a stored forbid with keep, accepts it with allow on a request", () => {
-    expect(reasons(withPhotos([photo]), [PHOTO], stored(true, false, true))).toContain(
-      "photos: photos are switched off for this reel by the owner",
-    );
-    const allowed = withPhotos([photo], { photos: "allow", big_word: "keep" });
-    expect(parse(allowed, [PHOTO], stored(true, false, true)).ok).toBe(true);
-  });
-
-  it("refuses forbid and allow without a request, and a photo in the answer that forbids photos", () => {
-    const forbid = withPhotos([], { photos: "forbid", big_word: "keep" });
-    expect(parse(forbid, [PHOTO]).ok).toBe(false);
-    expect(parse(forbid, [PHOTO], REQUEST).ok).toBe(true);
-    const both = withPhotos([photo], { photos: "forbid", big_word: "keep" });
-    expect(parse(both, [PHOTO], REQUEST).ok).toBe(false);
-  });
-
-  it("refuses big words while they are forbidden", () => {
-    const big = answer((a) => (a.big_words = [{ word: "w0005" }]));
-    expect(parse(big).ok).toBe(true);
-    expect(reasons(big, [], stored(false, true))).toContain(
-      "big_words: big words are switched off for this reel by the owner",
+  it("refuses a question that ends before it starts, with the path questions.N.to", () => {
+    expect(reasons(answer((a) => (a.questions = [{ from: "w0006", to: "w0005" }])))).toMatch(
+      /^questions\.0\.to: ends on w0005, before it starts on w0006$/m,
     );
   });
 
-  it("applies the rules to the stored flags", () => {
-    const flags = { photos: true, bigWord: false };
-    expect(applyBehindRules(flags, { photos: "keep", big_word: "keep" })).toEqual(flags);
-    expect(applyBehindRules(flags, { photos: "allow", big_word: "forbid" })).toEqual({
-      photos: false,
-      bigWord: true,
-    });
+  it("reads an answer saved before QUESTION as no questions", () => {
+    const old = answer();
+    expect(old).not.toHaveProperty("questions");
+    const parsed = parse(old);
+    expect(parsed).toMatchObject({ ok: true, answer: { questions: [] } });
   });
 });
 
 describe("editFromAnswer", () => {
   const place = async (json: Json, current = short.edit) => {
-    const parsed = parse(json, [PHOTO], REQUEST);
+    const parsed = parse(json);
     if (!parsed.ok) throw new Error(parsed.reasons.join("; "));
     return editFromAnswer(
       current,
       parsed.answer,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       short.transcript,
       [],
       await nodeMeasurer(),
@@ -585,7 +578,7 @@ describe("editFromAnswer", () => {
     current.inputs.masks = [
       { step: "cutout", fingerprint: "f".repeat(64), file: "mask.mp4", start: 0, end: 2 },
     ];
-    current.inputs.photos = [PHOTO];
+    current.inputs.photos = ["8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c"];
     const made = await place(answer(), current);
     if (!made.ok) throw new Error(made.reasons.join("; "));
     expect(made.edit.inputs.masks).toBeUndefined();
@@ -596,37 +589,64 @@ describe("editFromAnswer", () => {
     const made = await place(
       answer((a) => {
         a.accents = [];
-        // No transition: nothing else shows while one runs.
-        a.transitions = [];
-        a.photos = [{ photo_id: PHOTO, from: "w0001", to: "w0010", reason: "mood" }];
+        a.visuals = [{ from: "w0001", to: "w0010", description: "a messy desk at night" }];
         // Said 0.64 s before the reel ends.
-        a.big_words = [{ word: "w0010" }];
+        a.big_words = [{ from: "w0010", to: "w0010" }];
       }),
     );
     if (!made.ok) throw new Error(made.reasons.join("; "));
-    expect(made.edit.tracks.behind?.map((item) => item.id)).toEqual(["photo-1"]);
-    // The placed photo keeps the answer's reason.
-    expect(made.edit.tracks.behind?.[0]).toMatchObject({ kind: "photo", reason: "mood" });
+    expect(made.edit.tracks.behind?.map((item) => item.id)).toEqual(["visual-1"]);
+    // The placed visual keeps the answer's description.
+    expect(made.edit.tracks.behind?.[0]).toMatchObject({
+      kind: "visual",
+      description: "a messy desk at night",
+    });
     expect(made.record).toContainEqual(
       expect.objectContaining({ item: "big-word-1", action: "dropped", rule: "big-word-time" }),
     );
   });
+
+  it("reads and renders an old version: a title and a dim transition still place and check", async () => {
+    // The choices an older version was saved with: the engine's input still
+    // takes a title and a dim, and the stored edit still parses and renders.
+    const ids = hand.transcript.words.map((word) => word.id);
+    const old = {
+      accents: [{ from: ids[0]!, to: ids[3]!, title: true }],
+      big_words: [],
+      visuals: [],
+      transitions: [{ kind: "dim" as const, from: ids[10]!, to: ids[13]!, key_from: ids[12]! }],
+      word_fixes: [],
+      hook: null,
+    };
+    const made = editFromAnswer(
+      hand.edit,
+      old,
+      CLEAN_PRESET,
+      hand.transcript,
+      hand.headTrack,
+      await nodeMeasurer(),
+    );
+    if (!made.ok) throw new Error(made.reasons.join("; "));
+    expect(made.edit.tracks.overlays.map((overlay) => overlay.id)).toContain("title");
+    expect(made.edit.tracks.transitions.map((item) => item.type)).toContain("dim");
+    const measure = await nodeMeasurer();
+    expect(() =>
+      build(made.edit, hand.transcript, hand.headTrack, CLEAN_PRESET, measure),
+    ).not.toThrow();
+    // Read back as the same choices: the title as an accent with `title`, the dim as its kind.
+    const back = choicesOf(made.edit, hand.transcript, CLEAN_PRESET);
+    expect(back.accents).toContainEqual(expect.objectContaining({ title: true }));
+    expect(back.transitions).toContainEqual(expect.objectContaining({ kind: "dim" }));
+  });
 });
 
 describe("decideCounts and usedFreeField", () => {
-  it("counts accents, transitions, the title, the hook and fixed words", () => {
+  it("counts accents, transitions, the hook and fixed words", () => {
     const tracks = structuredClone(short.edit.tracks);
     tracks.captions[9]!.text = "Studio";
     // Same as its default text: not a fix.
     tracks.captions[0]!.text = "this";
     tracks.overlays.push(
-      {
-        id: "title",
-        kind: "accent",
-        start: { reel: "start" },
-        end: { word: "w0004", edge: "end" },
-        text: "A test",
-      },
       {
         id: "accent-test",
         kind: "accent",
@@ -644,19 +664,28 @@ describe("decideCounts and usedFreeField", () => {
       },
     );
     tracks.transitions.push({
-      id: "dim-a",
-      type: "dim",
+      id: "list-a",
+      type: "numbered",
       start: { word: "w0006" },
       end: { word: "w0008", edge: "end" },
     });
+    // A question is counted as a question, not an accent.
+    tracks.overlays.push({
+      id: "question-1",
+      kind: "accent",
+      start: { word: "w0003" },
+      end: { word: "w0003", edge: "end" },
+      words: ["w0003"],
+    });
     const edit = { ...short.edit, tracks };
-    expect(decideCounts(edit, short.transcript, ISSEBYA_PRESET)).toEqual({
+    expect(decideCounts(edit, short.transcript, CLEAN_PRESET)).toEqual({
       accents: 1,
+      questions: 1,
       transitions: 1,
-      title: true,
       hook: true,
       wordsFixed: 1,
       behindPhotos: 0,
+      behindVisuals: 0,
       behindWords: 0,
     });
     expect(usedFreeField(edit)).toBe(false);

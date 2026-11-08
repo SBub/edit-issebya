@@ -73,8 +73,9 @@ test("a landscape clip is refused at once with its message, live, and nothing el
   // the only way on, and the red refusal box says why.
   await expect(page.getByTestId("overlay-try-again")).toHaveCount(0);
   await expect(page.locator('[data-overlay-kind="failure"]')).toHaveCount(0);
-  await expect(page.getByLabel("Ask for a change")).toBeDisabled();
-  await expect(page.getByTestId("change-blocked-reason")).toHaveText(
+  // Going back and Start over are off, and the Versions area says why.
+  await expect(page.getByTestId("start-over")).toBeDisabled();
+  await expect(page.locator("#versions-status")).toHaveText(
     "This clip was refused; upload another clip",
   );
   expect(await page.evaluate(() => (window as unknown as { __noReload?: string }).__noReload)).toBe(

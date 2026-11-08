@@ -140,11 +140,9 @@ jsdelivr.
   from 945/1080 across and 1164/1920 down to the right and bottom zones, no overlap). E2E: `preview.spec.ts` toggles Zones: the layer is absent, then shown with
   its zones at the guard's edges (the bottom at 1470, the right at 1045, the notch at 945 and
   1164), Play still works through it, and it hides again.
-- E2E: `apps/studio/e2e/behind.spec.ts`: a change puts a library photo behind the speaker; the
-  saved edit holds it behind the speaker in the `box` the layout engine set near the wished `left`
-  spot, and the preview shows the photo exactly over that box inside its span (from the signed `large` copy, two
-  mask videos from `cache/cutout/`) and not after it, and the timeline's Behind row shows
-  `photo left`.
+- E2E: `apps/studio/e2e/behind.spec.ts` is removed with the change box (`app_docs/change-requests.md`).
+  The export guardrail (`apps/studio/e2e-tools/export-matches-preview.spec.ts`) still compares a photo
+  and a big word behind the speaker, in preview and export, from start over answers.
 
 ## Rules
 

@@ -3,27 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { type Page, expect, test } from "@playwright/test";
-import {
-  answerRoundsScript,
-  behindPhotoAnswerScript,
-  behindPhotoItem,
-  forbidPhotosAnswerScript,
-} from "../test-support/ai-script.ts";
+import { speechTenVisualAnswerScript } from "../test-support/ai-script.ts";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
-import { type SeededPhoto, seedReadyPhoto } from "../test-support/photos.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
-import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
+import { claimableJobIds } from "../test-support/worker.ts";
 
-// The automatic decide proposes a library photo behind the speaker (version
-// 2, from the fresh reel's `process` job); "no photos in this one" removes it
-// and switches photos off for the reel (version 3, `reels.no_photos`); a later
-// change whose first answer puts the photo back is refused and its retry
-// saves version 4 without it, the forbid still in force.
+// The automatic decide proposes a VISUAL over the speaker's words (version 2,
+// from the fresh reel's `process` job), placed as a small corner card in front
+// of the speaker, and the preview shows its frame. The decide step reads no
+// photo library any more. The owner's requests (no
+// photos, and the rest) need the change box, which is removed for now
+// (app_docs/change-requests.md).
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
-const FORBID = "no photos in this one";
-const LATER = "make the title shorter";
 
 const admin = localSupabaseAdmin();
 const storage = fakeStorage({
@@ -32,7 +25,6 @@ const storage = fakeStorage({
 });
 let owner: { id: string; email: string };
 let reel: ProcessedReel | null = null;
-let photo: SeededPhoto | null = null;
 let scriptDir: string;
 const written = new Set<string>();
 
@@ -48,16 +40,16 @@ test.beforeAll(async () => {
     );
   }
   owner = await createTestUser(admin, "decide-behind");
-  // The photo first: the process job's decide offers the owner's ready library.
-  photo = await seedReadyPhoto({ admin, storage, ownerId: owner.id, prefix: CACHE_PREFIX });
-  for (const key of photo.keys) written.add(key);
   scriptDir = await mkdtemp(join(tmpdir(), "decide-behind-"));
+  // The speech-ten clip: its hook holds 0.2 s to 3 s, so the visual's words
+  // (w0021 to w0027) come after it.
   reel = await seedProcessedReel({
     admin,
     storage,
     ownerId: owner.id,
     prefix: CACHE_PREFIX,
-    aiScript: await behindPhotoAnswerScript(scriptDir, photo.id),
+    clip: "speech-ten",
+    aiScript: await speechTenVisualAnswerScript(scriptDir),
   });
   for (const key of reel.keys) written.add(key);
 });
@@ -71,7 +63,7 @@ test.afterAll(async () => {
   }
   for (const key of written) await storage.delete(key);
   if (scriptDir) await rm(scriptDir, { recursive: true, force: true });
-  // The cascade removes the reel, its jobs, versions, stored files and the photo.
+  // The cascade removes the reel, its jobs, versions and stored files.
   if (owner) await deleteTestUser(admin, owner.id);
 });
 
@@ -99,17 +91,16 @@ async function currentVersion() {
     .single<VersionRow>();
   const bytes = await storage.get(version!.r2_key);
   const edit = JSON.parse(new TextDecoder().decode(bytes!)) as {
-    tracks: { behind?: { kind: string; spot?: string; photo_id?: string }[] };
+    tracks: {
+      behind?: {
+        kind: string;
+        spot?: string;
+        layer?: string;
+        box?: { width: number; height: number };
+      }[];
+    };
   };
   return { reel: reelRow!, version: version!, behind: edit.tracks.behind ?? [] };
-}
-
-async function sendChange(page: Page, request: string, script: string) {
-  await page.getByLabel("Ask for a change").fill(request);
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByTestId("change-pending")).toHaveText(`Pending: ${request}`);
-  const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_AI_SCRIPT: script });
-  expect(worker.code, worker.output).toBe(0);
 }
 
 async function expectPreviewOf(page: Page, versionId: string) {
@@ -118,19 +109,25 @@ async function expectPreviewOf(page: Page, versionId: string) {
   ).toBeVisible({ timeout: 30_000 });
 }
 
-test("the automatic decide proposes a photo; no photos in this one removes it for good", async ({
+test("the automatic decide proposes a visual, and the preview shows its frame", async ({
   page,
   baseURL,
 }) => {
   test.setTimeout(240_000);
 
-  // Version 2: the process job's decide proposed the library photo, with no
-  // wish (no request), so the layout put it in the first spot clear of the face, `top`.
+  // Version 2: the process job's decide proposed a visual, and the layout put
+  // it as a card over the footage: the full card (360 by 450) or its smaller
+  // step (252 by 315), beside the speaker, never over the face.
   const v2 = await currentVersion();
   expect(v2.version.number).toBe(2);
-  expect(v2.behind).toEqual([expect.objectContaining({ kind: "photo", spot: "top" })]);
-  expect(v2.version.inputs.photos).toEqual([photo!.id]);
-  expect(v2.version.inputs.masks).toHaveLength(1);
+  expect(v2.behind).toEqual([expect.objectContaining({ kind: "visual", layer: "front" })]);
+  const [card] = v2.behind;
+  expect([
+    [360, 450],
+    [252, 315],
+  ]).toContainEqual([card!.box!.width, card!.box!.height]);
+  // No library photo is named by a new version.
+  expect(v2.version.inputs.photos ?? []).toEqual([]);
   expect(v2.reel).toMatchObject({ no_photos: false, no_big_word: false });
 
   await routePreviewCdn(page);
@@ -139,40 +136,5 @@ test("the automatic decide proposes a photo; no photos in this one removes it fo
   await expect(page.locator('[data-realtime="ready"]')).toBeVisible({ timeout: 30_000 });
   await expectPreviewOf(page, v2.version.id);
   const behindRow = page.getByTestId("tracks").locator('[data-track="behind"]');
-  await expect(behindRow.getByTestId("track-item")).toHaveText(["photo top"]);
-
-  // Version 3: the photo gone, photos switched off for the reel.
-  await sendChange(page, FORBID, await forbidPhotosAnswerScript(scriptDir));
-  const v3 = await currentVersion();
-  expect(v3.version.number).toBe(3);
-  expect(v3.behind).toEqual([]);
-  expect(v3.version.inputs.photos).toBeUndefined();
-  expect(v3.reel).toMatchObject({ no_photos: true, no_big_word: false });
-  await expectPreviewOf(page, v3.version.id);
-  await expect(behindRow.getByTestId("track-item")).toHaveCount(0);
-
-  // Version 4: a later change's first answer puts the photo back (refused),
-  // its retry leaves it out and takes the transition out (a retry identical
-  // to version 3 would save nothing); the forbid holds.
-  await sendChange(
-    page,
-    LATER,
-    await answerRoundsScript(scriptDir, [
-      { photos: [behindPhotoItem(photo!.id)] },
-      { transitions: [] },
-    ]),
-  );
-  const v4 = await currentVersion();
-  expect(v4.version.number).toBe(4);
-  // Written by the template from the saved difference: the transition taken
-  // out (the title it held off comes back, the captions take its room),
-  // never the photo.
-  expect(v4.version.change_title).toBe("Several things changed");
-  expect(v4.version.change_summary).toContain("The transition was taken out");
-  expect(v4.version.change_summary).not.toMatch(/photo/i);
-  expect(v4.behind).toEqual([]);
-  expect(v4.version.rejected_reasons.join("\n")).toContain("photos are switched off for this reel");
-  expect(v4.reel).toMatchObject({ no_photos: true, no_big_word: false });
-  await expectPreviewOf(page, v4.version.id);
-  await expect(behindRow.getByTestId("track-item")).toHaveCount(0);
+  await expect(behindRow.getByTestId("track-item")).toHaveText([/visual/]);
 });

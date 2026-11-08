@@ -2,22 +2,20 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// The worker's scripted decide answer for the fixture clip (one AI double
-// reply, meaning only): a title phrase, one accent word, one dim
-// transition (over w0006 to w0008, its key phrase from w0007), one fixed word
-// and the written hook ("A short test for the real studio"). On the 2.7 s
-// clip the hook holds the screen from 0.2 s to the end, so the layout engine
-// drops the title, the accent and the dim (one extra at a time, no
-// transition during the hook).
+// The worker's scripted AI replies for the fixture clip: the written hook
+// (role `hook`, "A short test for the real studio") and the decide answer (one
+// accent word, one fixed word). On the 2.7 s clip the hook holds the screen
+// from 0.2 s to the end, and the accent shows over it (`all` placement: the
+// layout engine drops nothing the answer picks).
 export const SHORT_SPEECH_ANSWER = fileURLToPath(
   new URL("../../worker/src/decide/testdata/short-speech-answer.json", import.meta.url),
 );
 
-// The worker's "not available" fixture: OpenRouter answering 402 (credits
-// used up), so the decide step waits for the AI (`the OpenRouter credits are
-// used up`).
+// The worker's "not available" script: OpenRouter answering 402 (credits used
+// up) to the hook call and to every other call, so the decide step waits for
+// the AI (`the OpenRouter credits are used up`).
 export const CREDITS_USED_UP_SCRIPT = fileURLToPath(
-  new URL("../../worker/src/decide/testdata/ai-credits-used-up.json", import.meta.url),
+  new URL("../../worker/src/decide/testdata/ai-credits-used-up-script.json", import.meta.url),
 );
 
 // The worker's scripted describe_photo answer for fixtures/photos/sample.jpg:
@@ -26,143 +24,114 @@ export const DESCRIBE_ANSWER = fileURLToPath(
   new URL("../../worker/src/photos/testdata/describe-answer.json", import.meta.url),
 );
 
-// What a decide answer does with the reel's behind rules.
-interface BehindRules {
-  photos: "keep" | "forbid" | "allow";
-  big_word: "keep" | "forbid" | "allow";
+// The committed replies from the fixture file: the hook reply (role `hook`)
+// and the decide reply (no role), as the double reads them.
+interface Reply {
+  role?: "hook";
+  answer: unknown;
+  usage?: unknown;
+  model?: string;
 }
 
-const KEEP_RULES: BehindRules = { photos: "keep", big_word: "keep" };
+async function committedReplies(): Promise<{ hook: Reply; decide: Reply }> {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed worker script
+  const replies = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as Reply[];
+  const hook = replies.find((reply) => reply.role === "hook");
+  const decide = replies.find((reply) => reply.role !== "hook");
+  if (!hook || !decide) throw new Error("the committed AI script names a hook and a decide reply");
+  return { hook, decide };
+}
 
-// A placement wish the owner's request forwards (a photo's spot, or its
-// layer: in front of or behind the speaker).
-type Wish = "top" | "left" | "right" | "front" | "behind";
-
-// Writes, into `dir`, a script whose one answer makes no choice at all. Version
-// 1 has none either (no accents, transitions, photos, fixes or hook), so the AI's
-// version 2 has exactly version 1's bytes. Returns its path.
+// Writes, into `dir`, a script whose decide answer makes no choice at all,
+// with the committed hook. Version 1 has no choice and no hook, so version 2
+// is version 1 plus the hook only (every reel has one now). Returns its path.
 export async function unchangedAnswerScript(dir: string): Promise<string> {
+  const { hook } = await committedReplies();
   const reply = {
     answer: {
       accents: [],
+      questions: [],
       big_words: [],
-      photos: [],
+      visuals: [],
       transitions: [],
       word_fixes: [],
-      hook: null,
-      checklist: [],
-      behind_rules: KEEP_RULES,
-      unexpressed: [],
     },
   };
   const path = join(dir, "unchanged-answer.json");
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
-  await writeFile(path, JSON.stringify([reply]));
+  await writeFile(path, JSON.stringify([hook, reply]));
   return path;
 }
 
-// Writes, into `dir`, a script whose one reply is text that is not JSON,
-// replayed for both calls, so the decide step refuses twice. Returns its path.
-export async function brokenAnswerScript(dir: string): Promise<string> {
-  const path = join(dir, "broken-answer.json");
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
-  await writeFile(path, JSON.stringify(["not json"]));
-  return path;
-}
-
-// One round of a scripted decide: the photos behind the speaker (none by
-// default), a big word (a word id; none by default), the transitions (the
-// committed answer's when not given), the hook (none by default: on the
-// 2.7 s clip it would hold the screen the behind items need) and the behind
-// rules (all `keep` by default). The version title and summary are never scripted: the summary
-// call gets this decide answer too and falls back to the code template.
+// One round of a scripted decide: the visuals behind the speaker (none by
+// default), a big word (a word id; none by default), the transitions (none by
+// default) and the hook's text (the committed one by default). The version
+// title and summary are never scripted: a new version saves neither.
 interface AnswerRound {
-  photos?: Record<string, unknown>[];
+  visuals?: Record<string, unknown>[];
   bigWord?: string;
   transitions?: Record<string, unknown>[];
-  hook?: { text: string } | null;
-  rules?: BehindRules;
+  hook?: { text: string };
 }
 
-// The committed decide answer with the round's behind choices, transitions and rules.
-async function roundReply({
-  photos = [],
-  bigWord,
-  transitions,
-  hook = null,
-  rules = KEEP_RULES,
-}: AnswerRound = {}) {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed worker script
-  const reply = JSON.parse(await readFile(SHORT_SPEECH_ANSWER, "utf8")) as {
-    answer: {
+// The committed decide reply with the round's visuals, big word and transitions.
+async function roundReply({ visuals = [], bigWord, transitions }: AnswerRound = {}) {
+  const { decide } = await committedReplies();
+  const reply = structuredClone(decide) as {
+    answer: Record<string, unknown> & {
       accents: unknown[];
-      photos: unknown[];
-      big_words: { word: string }[];
+      questions: unknown[];
+      visuals: unknown[];
+      big_words: { from: string; to: string }[];
       transitions: unknown[];
-      hook: unknown;
-      behind_rules: BehindRules;
     };
   };
-  reply.answer.photos = photos;
-  reply.answer.big_words = bigWord ? [{ word: bigWord }] : [];
-  // On the 2.7 s fixture clip the title or the dim holds the screen for most
-  // of it, and the layout engine shows one extra at a time and nothing during
-  // a transition: a behind item needs both gone (a round's own transitions
-  // stay as given).
-  if (photos.length > 0 || bigWord) {
+  reply.answer.visuals = visuals;
+  reply.answer.questions = [];
+  reply.answer.big_words = bigWord ? [{ from: bigWord, to: bigWord }] : [];
+  // On the 2.7 s fixture clip the accent holds the screen for most of it: a
+  // round with a behind item leaves the accent out, so that round's expected
+  // overlays stay as they were (a round's own transitions stay as given).
+  if (visuals.length > 0 || bigWord) {
     reply.answer.accents = [];
     reply.answer.transitions = [];
   }
   if (transitions) reply.answer.transitions = transitions;
-  reply.answer.hook = hook;
-  reply.answer.behind_rules = rules;
   return reply;
 }
 
 // Writes, into `dir`, a script of one reply per round, replayed in order
 // (the last repeating), for a first answer the decide step refuses and a
-// retry that passes. Returns its path.
-export async function answerRoundsScript(
+// retry that passes. Each round's hook reply comes first, in the hook lane.
+// Returns its path.
+async function answerRoundsScript(
   dir: string,
   rounds: readonly AnswerRound[],
+  decideOf: (round: AnswerRound) => unknown = roundReply,
 ): Promise<string> {
-  const replies = await Promise.all(rounds.map((round) => roundReply(round)));
+  const { hook } = await committedReplies();
+  const hooks = rounds.map((round) => ({
+    ...hook,
+    answer: round.hook ?? (hook.answer as { text: string }),
+  }));
+  const decides = await Promise.all(rounds.map((round) => decideOf(round)));
   const path = join(dir, `answer-rounds-${crypto.randomUUID()}.json`);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the caller's temp folder
-  await writeFile(path, JSON.stringify(replies));
+  await writeFile(path, JSON.stringify([...hooks, ...decides]));
   return path;
 }
 
-// Writes, into `dir`, a script whose one answer is the committed decide answer
-// with nothing behind the speaker and photos switched off for the reel (the
-// answer to "no photos in this one"). Returns its path.
-export function forbidPhotosAnswerScript(dir: string): Promise<string> {
-  return answerRoundsScript(dir, [{ rules: { photos: "forbid", big_word: "keep" } }]);
-}
-
-// One library photo over the fixture clip's one sentence, w0001 to w0010
-// (shown 2 s from its start), with the owner's wish for its spot or layer
-// when a request names one. Without a wish (and without a head in the
-// fixture) the layout puts it behind the speaker high in the frame, nearest
-// the `top` spot; with `front`, in front of them. Its reason is `match` (the photo
-// shows what is said) unless the test says `mood`.
-export function behindPhotoItem(
-  photoId: string,
-  wish?: Wish,
-  reason: "match" | "mood" = "match",
-): Record<string, unknown> {
-  return { photo_id: photoId, from: "w0001", to: "w0010", reason, ...(wish ? { wish } : {}) };
+// One VISUAL over the fixture clip's one sentence, w0001 to w0010, with a
+// short description (never shown on screen). The layout puts its frame in
+// front of the speaker when that is free.
+function behindVisualItem(): Record<string, unknown> {
+  return { from: "w0001", to: "w0010", description: "a messy desk at night" };
 }
 
 // Writes, into `dir`, a script whose one answer is the committed decide answer
-// plus one library photo behind the speaker, wished in `wish` (a change
-// request's answer; leave it out for the automatic decide). Returns its path.
-export async function behindPhotoAnswerScript(
-  dir: string,
-  photoId: string,
-  wish?: Wish,
-): Promise<string> {
-  return answerRoundsScript(dir, [{ photos: [behindPhotoItem(photoId, wish)] }]);
+// plus one VISUAL over the sentence. Returns its path.
+export async function behindVisualAnswerScript(dir: string): Promise<string> {
+  return answerRoundsScript(dir, [{ visuals: [behindVisualItem()] }]);
 }
 
 // Writes, into `dir`, a script whose one answer is the committed decide answer
@@ -170,4 +139,43 @@ export async function behindPhotoAnswerScript(
 // for at most 2 s. Returns its path.
 export async function behindWordAnswerScript(dir: string, word: string): Promise<string> {
   return answerRoundsScript(dir, [{ bigWord: word }]);
+}
+
+// The speech-ten clip (fixtures/footage/speech-ten.mp4, words w0001 to w0036).
+// Its hook holds the screen from 0.2 s to 3 s, so each choice here is on words
+// after it. The committed decide reply belongs to the short clip, whose word
+// ids mean other words on this clip, so these answers hold the round's own
+// choices and nothing else (no accent, no word fix).
+function speechTenReply(round: AnswerRound) {
+  return {
+    answer: {
+      accents: [],
+      questions: [],
+      big_words: round.bigWord ? [{ from: round.bigWord, to: round.bigWord }] : [],
+      visuals: round.visuals ?? [],
+      transitions: round.transitions ?? [],
+      word_fixes: [],
+    },
+  };
+}
+
+// Writes, into `dir`, a script whose one answer is a VISUAL over w0021 to
+// w0027 ("And if you look at Gen Z") and nothing else. Returns its path.
+export async function speechTenVisualAnswerScript(dir: string): Promise<string> {
+  return answerRoundsScript(
+    dir,
+    [{ visuals: [{ from: "w0021", to: "w0027", description: "a phone on a desk" }] }],
+    speechTenReply,
+  );
+}
+
+// Writes, into `dir`, a script whose one answer is a LIST (a numbered
+// transition) over w0028 to w0032, its key phrase from w0031 ("to work,") and
+// its lead-in "they don't leave". Returns its path.
+export async function speechTenTransitionAnswerScript(dir: string): Promise<string> {
+  return answerRoundsScript(
+    dir,
+    [{ transitions: [{ kind: "numbered", from: "w0028", to: "w0032", key_from: "w0031" }] }],
+    speechTenReply,
+  );
 }

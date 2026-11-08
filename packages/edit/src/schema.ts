@@ -1,6 +1,13 @@
 import { z } from "zod";
 import type { Box } from "./head-track.ts";
-import { BEHIND_SPOTS, FONT_KEYS, type Preset, SOUND_KEYS, TRANSITION_TYPES } from "./preset.ts";
+import {
+  ALL_SHOWN_SECONDS,
+  BEHIND_SPOTS,
+  FONT_KEYS,
+  type Preset,
+  SOUND_KEYS,
+  TRANSITION_TYPES,
+} from "./preset.ts";
 import { resolveAnchor } from "./timeline.ts";
 import type { Transcript, Word } from "./transcript.ts";
 
@@ -51,17 +58,30 @@ const OVERLAY_KINDS = ["accent", "hook"] as const;
 // Why a library photo sits behind its sentence: `match`, it shows what the
 // sentence says; `mood`, it fits the reel's feel and catches the eye without
 // showing what is said (never contradicting it).
-export const PHOTO_REASONS = ["match", "mood"] as const;
-export type PhotoReason = (typeof PHOTO_REASONS)[number];
+const PHOTO_REASONS = ["match", "mood"] as const;
 
 // Where a library photo sits: `behind` the speaker (the cut-out composite,
 // the person on top) or in `front` of them (over the footage, no cut-out).
 // A photo without one (every version saved before it) is behind.
-export const PHOTO_LAYERS = ["behind", "front"] as const;
-export type PhotoLayer = (typeof PHOTO_LAYERS)[number];
+const PHOTO_LAYERS = ["behind", "front"] as const;
+
+// A VISUAL's description, as stored: plain text, at most this many characters
+// (the answer's own limit, in words, is stricter; see `decide.ts`).
+const VISUAL_DESCRIPTION_MAX = 120;
+
+// The smallest size any text overlay, caption, transition level or big word
+// is set at. The schema refuses a smaller one, so the layout engine never
+// places text below it.
+export const MIN_TEXT_SIZE = 8;
 
 // A big word behind the speaker: one word, nothing that could leave its tag.
 export const BEHIND_WORD = /^[^\s<>&]{1,24}$/;
+
+// A big word as stored: one or two such words joined by one space.
+function isBehindText(text: string): boolean {
+  const parts = text.split(" ");
+  return parts.length <= 2 && parts.every((part) => BEHIND_WORD.test(part));
+}
 
 // The free custom-style field: CSS property to value, added to the element.
 const styleSchema = z.record(
@@ -123,7 +143,7 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
   const textProps = {
     text: z.string().min(1).max(200).optional(),
     font: z.enum(FONT_KEYS).optional(),
-    size: z.number().int().min(8).max(400).optional(),
+    size: z.number().int().min(MIN_TEXT_SIZE).max(400).optional(),
     color: z.string().regex(COLOR).optional(),
     position: z
       .object({
@@ -166,7 +186,7 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     text: z.string().min(1).max(300),
     start: anchor,
     position: textProps.position.unwrap(),
-    size: z.number().int().min(8).max(400),
+    size: z.number().int().min(MIN_TEXT_SIZE).max(400),
     break_after: textProps.break_after,
   });
   const transition = z.object({
@@ -197,6 +217,16 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
       : limits.photoIds.length > 0
         ? z.enum(limits.photoIds as [string, ...string[]])
         : z.never();
+  // A placed picture's box: where the layout engine set it (its top left
+  // corner, width and height in the frame).
+  const pictureBox = z
+    .object({
+      x: z.number().int().min(0).max(preset.frame.width),
+      y: z.number().int().min(0).max(preset.frame.height),
+      width: z.number().int().min(1).max(preset.frame.width),
+      height: z.number().int().min(1).max(preset.frame.height),
+    })
+    .optional();
   const behind = z.discriminatedUnion("kind", [
     z.object({
       ...base,
@@ -207,21 +237,26 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
       reason: z.enum(PHOTO_REASONS).optional(),
       // Behind or in front of the speaker; absent: behind.
       layer: z.enum(PHOTO_LAYERS).optional(),
-      // Where the layout engine set it (its top left corner, width and
-      // height in the frame); absent: it covers its spot exactly.
-      box: z
-        .object({
-          x: z.number().int().min(0).max(preset.frame.width),
-          y: z.number().int().min(0).max(preset.frame.height),
-          width: z.number().int().min(1).max(preset.frame.width),
-          height: z.number().int().min(1).max(preset.frame.height),
-        })
-        .optional(),
+      // Where the layout engine set it; absent: it covers its spot exactly.
+      box: pictureBox,
+    }),
+    // A VISUAL: an empty white stroke frame in a photo's place and size, with
+    // no photo behind it. `description` says what a visual would show; it is
+    // never shown on screen.
+    z.object({
+      ...base,
+      kind: z.literal("visual"),
+      description: z.string().min(1).max(VISUAL_DESCRIPTION_MAX).optional(),
+      spot: z.enum(BEHIND_SPOTS),
+      layer: z.enum(PHOTO_LAYERS).optional(),
+      box: pictureBox,
     }),
     z.object({
       ...base,
       kind: z.literal("word"),
-      text: z.string().regex(BEHIND_WORD),
+      text: z.string().refine(isBehindText, {
+        message: "a big word is one or two plain words of at most 24 letters",
+      }),
       // Where the layout engine set it (its top left corner in the frame) and
       // at what size; a version saved before the engine has neither.
       position: z
@@ -230,7 +265,7 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
           y: z.number().min(0).max(preset.frame.height),
         })
         .optional(),
-      size: z.number().int().min(8).max(400).optional(),
+      size: z.number().int().min(MIN_TEXT_SIZE).max(400).optional(),
       shadow: shadowLevel.optional(),
     }),
   ]);
@@ -356,7 +391,7 @@ function refineBehind(
   }));
   for (const span of limits.behindLengths ? spans : []) {
     const length = span.end - span.start;
-    const [min, max] = behindLength(span.item, words, preset);
+    const [min, max] = behindLength(span.item, transcript.words, preset);
     if (length < min - SLACK || length > max + SLACK) {
       ctx.addIssue({
         code: "custom",
@@ -365,7 +400,8 @@ function refineBehind(
     }
   }
   const sorted = [...spans].sort((a, b) => a.start - b.start);
-  for (let index = 1; index < sorted.length; index += 1) {
+  // One at a time is the clean layout's rule; `all` keeps overlapping picks.
+  for (let index = 1; index < sorted.length && preset.placement === "clean"; index += 1) {
     const before = sorted[index - 1]!;
     const span = sorted[index]!;
     if (span.start < before.end - SLACK) {
@@ -399,19 +435,28 @@ function refineBehind(
 
 // The shortest and longest a new behind item may show, in seconds: a photo
 // the behind lengths; a big word the accent's timing, at least its minimum
-// and at most from the lead before its word to `afterSeconds` after it (a
-// longer word holds longer; one cut short by the next extra stays above the
-// minimum).
+// and at most from the lead before its first word to `afterSeconds` after its
+// last (a longer word holds longer; one cut short by the next extra stays
+// above the minimum).
 function behindLength(
-  item: { kind: "photo" | "word"; start: Anchor },
-  words: ReadonlyMap<string, Word>,
+  item: { kind: "photo" | "visual" | "word"; start: Anchor; text?: string },
+  ordered: readonly Word[],
   preset: Preset,
 ): [number, number] {
-  if (item.kind === "photo") return [preset.behind.minSeconds, preset.behind.maxSeconds];
+  // `all`: a pick may be shorter than its kind's minimum, down to the shown
+  // floor, where the reel ends or a cut leaves less room.
+  const allFloor = preset.placement === "all" ? ALL_SHOWN_SECONDS : undefined;
+  if (item.kind === "photo" || item.kind === "visual")
+    return [allFloor ?? preset.behind.minSeconds, preset.behind.maxSeconds];
   const { minSeconds, afterSeconds, leadSeconds } = preset.accent;
-  const said = "word" in item.start ? words.get(item.start.word) : undefined;
-  const longest = said ? leadSeconds + (said.end - said.start) + afterSeconds : minSeconds;
-  return [minSeconds, Math.max(minSeconds, longest)];
+  const first = "word" in item.start ? item.start.word : undefined;
+  const at = ordered.findIndex((word) => word.id === first);
+  const said = at >= 0 ? ordered[at] : undefined;
+  // A two-word big word runs to its last word: the one after its first.
+  const count = item.text?.split(" ").length ?? 1;
+  const last = said ? (ordered[at + count - 1] ?? said) : undefined;
+  const longest = said && last ? leadSeconds + (last.end - said.start) + afterSeconds : minSeconds;
+  return [allFloor ?? minSeconds, Math.max(minSeconds, longest)];
 }
 
 // The whole edit, built per reel (see tracksSchemaFor). It stays
@@ -441,6 +486,9 @@ export type TransitionLevel = TransitionLevels["key"];
 export type SoundItem = Edit["tracks"]["sounds"][number];
 export type BehindItem = NonNullable<Edit["tracks"]["behind"]>[number];
 export type BehindPhotoItem = Extract<BehindItem, { kind: "photo" }>;
+export type BehindVisualItem = Extract<BehindItem, { kind: "visual" }>;
+// A placed picture: a library photo or a VISUAL frame, same spot, box and layer.
+export type BehindPictureItem = BehindPhotoItem | BehindVisualItem;
 export type BehindWordItem = Extract<BehindItem, { kind: "word" }>;
 export type EditMask = NonNullable<EditInputs["masks"]>[number];
 

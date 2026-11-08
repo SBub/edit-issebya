@@ -1,7 +1,14 @@
 import { type BigWordBox, bigWordCoveredShare, boxFaceShare, photoBox } from "./behind.ts";
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import type { TextBox } from "./layout.ts";
-import { PLATFORM_BUTTONS, PLATFORM_SAFE, type Preset, cleanWord, intersectBox } from "./preset.ts";
+import {
+  ALL_SHOWN_SECONDS,
+  PLATFORM_BUTTONS,
+  PLATFORM_SAFE,
+  type Preset,
+  cleanWord,
+  intersectBox,
+} from "./preset.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import type { ResolvedItem } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -81,6 +88,9 @@ export function runChecks(
 ): Check[] {
   const checks: Check[] = [];
   const safe = intersectBox(preset.safe, PLATFORM_SAFE);
+  // `all` keeps the picks that overlap (a card over the face, text on text, a
+  // big word over the person): those three checks are the clean layout's.
+  const keepOverlaps = preset.placement === "all";
 
   for (const box of [...boxes, ...levels]) {
     const right = box.x + box.width;
@@ -126,8 +136,9 @@ export function runChecks(
     }
   }
 
+  // The pictures: a library photo or a visual frame, checked the same way.
   const photos = (edit.tracks.behind ?? []).flatMap((item) =>
-    item.kind === "photo" ? [{ item, span: resolved.get(item.id)! }] : [],
+    item.kind === "photo" || item.kind === "visual" ? [{ item, span: resolved.get(item.id)! }] : [],
   );
   // Where it is, in plain words: its spot (behind) or `in front`.
   const where = (item: (typeof photos)[number]["item"]) =>
@@ -137,7 +148,7 @@ export function runChecks(
     const box = photoBox(item, preset);
     if (item.layer === "front") {
       // In front of the speaker it would hide the face: never over it.
-      if (faces.some((face) => overlaps(shrink(box, SLACK), face))) {
+      if (!keepOverlaps && faces.some((face) => overlaps(shrink(box, SLACK), face))) {
         checks.push({
           rule: "behind-face",
           item: item.id,
@@ -158,7 +169,7 @@ export function runChecks(
   }
   for (const { item, span } of photos) {
     const spot = photoBox(item, preset);
-    for (const box of boxes) {
+    for (const box of keepOverlaps ? [] : boxes) {
       if (!(box.start < span.end - SLACK && span.start < box.end - SLACK)) continue;
       const rect = {
         left: box.x,
@@ -228,7 +239,7 @@ export function runChecks(
     const text = texts[index]!;
     for (const other of texts.slice(0, index)) {
       if (!(text.start < other.end - SLACK && other.start < text.end - SLACK)) continue;
-      if (!overlaps(shrink(text.rect, SLACK), other.rect)) continue;
+      if (keepOverlaps || !overlaps(shrink(text.rect, SLACK), other.rect)) continue;
       checks.push({
         rule: "text-overlap",
         item: text.id,
@@ -238,7 +249,14 @@ export function runChecks(
   }
 
   for (const box of boxes) {
-    const min = box.kind === "caption" ? preset.caption.minSeconds : preset.accent.minSeconds;
+    // `all`: a pick shows at least the shown floor (a reel's end or a cut can
+    // leave less than the accent's minimum).
+    const min =
+      box.kind === "caption"
+        ? preset.caption.minSeconds
+        : keepOverlaps
+          ? ALL_SHOWN_SECONDS
+          : preset.accent.minSeconds;
     const span = resolved.get(box.itemId)!;
     if (span.end - span.start < min - SLACK) {
       checks.push({
@@ -252,8 +270,10 @@ export function runChecks(
   for (const item of edit.tracks.behind ?? []) {
     if (item.kind !== "word") continue;
     const { start } = resolved.get(item.id)!;
+    // A two-word big word is timed from its first spoken word.
+    const first = item.text.split(" ")[0]!.toLowerCase();
     const said = transcript.words
-      .filter((word) => cleanWord(word.text, preset).toLowerCase() === item.text.toLowerCase())
+      .filter((word) => cleanWord(word.text, preset).toLowerCase() === first)
       .sort((a, b) => Math.abs(a.start - start) - Math.abs(b.start - start))[0];
     const lead = preset.accent.leadSeconds;
     if (said && start < said.start - lead - SLACK) {
@@ -278,7 +298,7 @@ export function runChecks(
       bottom: word.y + word.height,
     };
     const share = bigWordCoveredShare(box, facesOver(headTrack, span.start, span.end), preset);
-    if (share > maxCovered + SLACK) {
+    if (!keepOverlaps && share > maxCovered + SLACK) {
       checks.push({
         rule: "big-word-hidden",
         item: word.itemId,

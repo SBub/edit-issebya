@@ -1,7 +1,10 @@
 // Checks this machine can run jobs, one line each: Supabase, R2 read and write
 // (a probe object put, read back and deleted under `<R2_KEY_PREFIX>doctor/`),
 // ffmpeg and ffprobe 7 or newer with the filters and codecs the pipeline needs, HyperFrames,
-// OPENROUTER_API_KEY set (never printed), the cut-out's mask tool (the MODNet
+// OPENROUTER_API_KEY set (never printed), the five PostHog prompts fetched by
+// name at POSTHOG_PROMPT_LABEL from POSTHOG_PROJECT_ID with
+// POSTHOG_PERSONAL_API_KEY (each line names name@vN, never the text), the
+// cut-out's mask tool (the MODNet
 // model's hash checked, run on one second of a sample), and the scratch folder
 // (exists or can be created, never created here). With `--ai` it also makes one
 // tiny real structured AI call and one image call through OpenRouter (paid, a
@@ -16,12 +19,17 @@ import { scratchDirOf, workerConfig } from "./config.ts";
 import { maskToolCall } from "./cutout/mask-tool.ts";
 import { MODNET_MODEL, modnetModelPath, verifyModel } from "./cutout/modnet-model.ts";
 import { type DoctorDeps, runDoctor } from "./doctor-checks.ts";
+import { promptSourceOf } from "./prompts/select.ts";
+import type { PromptSource } from "./prompts/source.ts";
 import { hyperframesEnv, toolPaths } from "./pipeline/tools.ts";
 import { scratchDirState } from "./scratch.ts";
 import { workerStorage } from "./storage.ts";
 import { workerSupabase } from "./supabase.ts";
 
 const run = promisify(execFile);
+
+// One prompt source for the doctor's checks (created on first use).
+let prompts: PromptSource | undefined;
 
 // The 1-second sample the mask tool check masks.
 const MASK_SAMPLE = fileURLToPath(
@@ -69,6 +77,9 @@ const deps: DoctorDeps = {
     return stdout;
   },
   openRouterKey: () => process.env.OPENROUTER_API_KEY,
+  posthogKey: () => process.env.POSTHOG_PERSONAL_API_KEY,
+  projectId: () => process.env.POSTHOG_PROJECT_ID,
+  prompts: () => (prompts ??= promptSourceOf(process.env)),
   ai: () => aiRunner(process.env),
   maskTool: () => ({
     sample: MASK_SAMPLE,

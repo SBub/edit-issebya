@@ -10,13 +10,11 @@
 
 The studio has a dark, editor-like look with the same layout on desktop and phone. The reel page fits
 one screen and never scrolls as a page: a large 9:16 preview with its controls and a tracks timeline
-whose ruler is the one scrubber (the rows are read only), all over the full height on the left. On
-desktop the right side splits in two rows (68% and 32% of the height): Versions and the photo library side by side in the
-top 68%, each scrolling inside itself, and the correction field across both in the bottom 32%,
-with a tall text field. On a phone the correction field stays pinned at the bottom. What the studio
-is doing shows in a small progress overlay over the preview.
+whose ruler is the one scrubber (the rows are read only), all over the full height on the left. On desktop the right side holds Versions and the photo library side by side, each over the full
+height and scrolling inside itself, with no change box under them. On a phone the same parts sit
+behind tabs. What the studio is doing shows in a small progress overlay over the preview.
 The reels list is a grid of thumbnails with a white, rounded **+** button that opens the upload in a dialog.
-The studio has one corner radius, on six elements only, and one exception: track items have a small 4px radius (see Corner radius).
+The studio has one corner radius, on four elements only, and one exception: track items have a small 4px radius (see Corner radius).
 The reel page also carries the owner's photo library: the top 68% of the third column on desktop and
 the third tab on a phone.
 
@@ -28,31 +26,21 @@ the third tab on a phone.
   breakpoint, 1024 px) plus a small tab state. The root is exactly the height it is given; every child
   that can grow is `min-h-0`, and only the list areas scroll inside their own box (no JavaScript
   measures the window). Desktop: header, then a grid of three columns
-  (`lg:grid-cols-[minmax(0,1fr)_20rem_18rem]`, wider at `xl:`) and two rows, 68% and 32%
-  (`lg:grid-rows-[minmax(0,17fr)_minmax(0,8fr)]`). The main column (preview, controls, timeline)
-  spans both rows (`lg:row-span-2`). Versions is the top 68% of column 2 (`lg:col-start-2
-lg:row-start-1`, `min-h-0 overflow-y-auto overscroll-contain`, no padding of its own, so its list
-  of fixed-height version rows (no time or date, edge to edge of the area),
-  each opened with its arrow, scrolls inside it; rows and texts in `app_docs/change-requests.md`;
-  the temporary Start over button sits at the right of the `Versions` heading), the
-  photo library (`id="reel-panel-library"`) the top 68% of column 3 (`lg:col-start-3
-lg:row-start-1`, its grid scrolling inside it, the add tile and drop target unchanged), and the
-  correction field the bottom 32% across both (`lg:col-span-2 lg:col-start-2 lg:row-start-2`,
-  `border-t` and `border-l`). In that area `ChangeRequestForm` grows (`lg:flex-1 lg:min-h-0` on the
-  form and the field's box), so the field is tall and Send stays in its bottom right corner. The
-  area has one padding on every side (`p-3`, desktop and phone), and the box is inset by exactly
-  that on all four sides: the reason and status lines under the box hide while empty
-  (`empty:hidden`), so the form's `gap-1` adds no space below the box unless a line has text;
-  behaviour (Send, disabled states, messages) is the same as on a phone. Phone:
-  the same header, the middle split into Edit, Versions and Library tabs (WAI-ARIA tabs: arrows,
-  Home and End wrap over the three) and the correction field pinned at the bottom, its usual two-row
-  height. The correction field is last in the DOM, after the three panels, so the tab order follows
-  the reading order on both (edit, Versions, library, correction field), with no CSS `order`. The
-  areas carry `data-testid` `edit-area`, `versions-area`, `library-area` and `change-area`.
-  `ReelScreen` takes the library as its `library` prop.
+  (`lg:grid-cols-[minmax(0,1fr)_20rem_18rem]`, wider at `xl:`) over one row of full height: the main
+  column (preview, controls, timeline) in column 1, and on its right Versions (`lg:col-start-2`,
+  `min-h-0 overflow-y-auto overscroll-contain`, no padding of its own, so its list of fixed-height
+  version rows (no time or date, edge to edge of the area), each opened with its arrow, scrolls
+  inside it; rows and texts in `app_docs/change-requests.md`; the temporary Start over button sits at
+  the right of the `Versions` heading) and the photo library (`id="reel-panel-library"`, column 3, its
+  grid scrolling inside it, the add tile and drop target unchanged). The change box is removed
+  (`app_docs/change-requests.md`), so nothing sits under the two columns. Phone: the same header, the
+  middle split into Edit, Versions and Library tabs (WAI-ARIA tabs: arrows, Home and End wrap over the
+  three), one shown. The areas carry `data-testid` `edit-area`, `versions-area` and `library-area`; the
+  DOM order is edit, Versions, library, so the tab order follows the reading order on both, with no CSS
+  `order`. `ReelScreen` takes the library as its `library` prop.
 - `apps/studio/src/components/LiveReel.tsx`: keeps the Realtime state as before and hands pieces to
   `ReelScreen`: header (back link, reel name,
-  Export), `ReelPreview` with the progress overlay over it, `ChangeRequestForm` and `VersionList`.
+  Export), `ReelPreview` with the progress overlay over it and `VersionList` (with Start over).
   Also holds the shown version (the owner's pick, remembered with the
   current version it was made for). It passes the `library` node through to `ReelScreen`;
   `apps/studio/src/app/reels/[id]/page.tsx` loads the library on the server and renders `PhotoLibrary`
@@ -114,12 +102,17 @@ sm:right-auto`) and could cover up to 320 px of the reel's top-left. Its bar is 
   open, never saved, kept across a version switch) and passes it to `BuiltPreview` and
   `PreviewPlayer` (`expanded`, `onExpandedChange`). Expanded, `BuiltPreview` does not render the
   tracks timeline (ruler included), so the player's `flex-1` box takes the whole edit area (the left
-  column on desktop, the Edit tab on a phone) and its 9:16 frame grows, centred; the control row keeps
+  column on desktop, the Edit tab on a phone) and its 9:16 frame grows, at the box's top edge and centred
+  horizontally (`items-start` plus `justify-center`, so the progress overlay, anchored to the box's top,
+  lines up with the frame's top whatever its height). The frame's height is
+  the smaller of that box's height and the height 9:16 gives its width (container units on the box in
+  `PreviewPlayer`), so the frame never clamps its width and stays 9:16 when the box is taller than that
+  (a tall phone without the change box); the control row keeps
   only Play or Pause, the clock (still centred by the grid) and the expand button, with Zones not
   rendered. Expanding switches the Zones layer off (the expand
   button's click handler sets `PreviewPlayer`'s `zones` state to false, since its button is
   hidden); collapsing does not switch it back on. The right side and the
-  phone's pinned correction field do not change. Toggling only changes the markup around
+  phone's tabs do not change. Toggling only changes the markup around
   `<hyperframes-player>`: the player is never remounted, paused or seeked, so playback goes on.
 - `apps/studio/src/app/preview-actions.ts`: `loadPreviewSources(reelId, versionId?)` signs the URLs
   for any version of that reel (a version id of another reel reads as nothing, under RLS) and returns
@@ -131,19 +124,19 @@ sm:right-auto`) and could cover up to 320 px of the reel's top-left. Its bar is 
 
 The studio is pitch black (owner, 2026-11-03). Tokens in `apps/studio/src/app/globals.css`:
 
-| Token                            | Value                | Use                                                                                                                                                                                                                  |
-| -------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--color-surface`                | `#000000`            | The page (`body`) and every area: the reels list and its grid, the reel page's edit area with the preview, Versions, Library, the correction area around the box, dialogs, the progress overlay (`bg-surface/85`)    |
-| `--color-chrome`                 | `#15171b`            | The lifted surfaces only: the header bars (reels list and reel page), the phone's tab bar, the tracks timeline panel (`data-testid="tracks"`) and the correction box (`change-field`; `bg-chrome/50` while disabled) |
-| `--color-raised`                 | `#1f2228`            | Hover, the selected version row, inputs, progress tracks, thumbnail placeholders                                                                                                                                     |
-| `--color-line`                   | `#2e323a`            | Borders and dividers (1.63:1 on black, subtle but visible); the preview frame has a `ring-line` edge                                                                                                                 |
-| `--color-ink`                    | `#eceef1`            | Text: 18.1:1 on black, 15.4:1 on chrome                                                                                                                                                                              |
-| `--color-muted`                  | `#a3a9b3`            | Secondary text: 8.9:1 on black, 7.6:1 on chrome, 6.7:1 on raised (WCAG AA for small text everywhere)                                                                                                                 |
-| `--color-accent`                 | `#7cc4ff`            | Current marks (tab underline, playhead, the current version mark), focus rings, links, drop outlines                                                                                                                 |
-| `--color-primary`                | `#ffffff`            | Filled primary buttons (`bg-primary`): Send, Export, Send sign-in link, Upload and the + button; progress fills                                                                                                      |
-| `--color-on-primary`             | `#000000`            | Text and icons on primary buttons (`text-on-primary`)                                                                                                                                                                |
-| `--color-danger`, `--color-warn` | `#ff8a80`, `#f5c451` | Errors and warnings                                                                                                                                                                                                  |
-| `--color-track-*`                | unchanged            | Track item colours                                                                                                                                                                                                   |
+| Token                            | Value                | Use                                                                                                                                                                           |
+| -------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--color-surface`                | `#000000`            | The page (`body`) and every area: the reels list and its grid, the reel page's edit area with the preview, Versions, Library, dialogs, the progress overlay (`bg-surface/85`) |
+| `--color-chrome`                 | `#15171b`            | The lifted surfaces only: the header bars (reels list and reel page), the phone's tab bar, the tracks timeline panel (`data-testid="tracks"`)                                 |
+| `--color-raised`                 | `#1f2228`            | Hover, the selected version row, inputs, progress tracks, thumbnail placeholders                                                                                              |
+| `--color-line`                   | `#2e323a`            | Borders and dividers (1.63:1 on black, subtle but visible); the preview frame has a `ring-line` edge                                                                          |
+| `--color-ink`                    | `#eceef1`            | Text: 18.1:1 on black, 15.4:1 on chrome                                                                                                                                       |
+| `--color-muted`                  | `#a3a9b3`            | Secondary text: 8.9:1 on black, 7.6:1 on chrome, 6.7:1 on raised (WCAG AA for small text everywhere)                                                                          |
+| `--color-accent`                 | `#7cc4ff`            | Current marks (tab underline, playhead, the current version mark), focus rings, links, drop outlines                                                                          |
+| `--color-primary`                | `#ffffff`            | Filled primary buttons (`bg-primary`): Export, Send sign-in link, Upload and the + button; progress fills                                                                     |
+| `--color-on-primary`             | `#000000`            | Text and icons on primary buttons (`text-on-primary`)                                                                                                                         |
+| `--color-danger`, `--color-warn` | `#ff8a80`, `#f5c451` | Errors and warnings                                                                                                                                                           |
+| `--color-track-*`                | unchanged            | Track item colours                                                                                                                                                            |
 
 Primary buttons are white with black content (owner, 2026-11-03): every filled button uses
 `bg-primary text-on-primary`, `enabled:hover:opacity-90` on hover and `disabled:opacity-50` while
@@ -170,15 +163,13 @@ elements only:
 1. the reel preview frame (`data-testid="preview-frame"` in `PreviewPlayer.tsx`, `overflow-hidden`
    with a `ring-1 ring-line` edge; the ring is a box shadow, so it follows the token; the
    `<hyperframes-player>` inside draws no rounding of its own and is clipped by the frame),
-2. the correction box (`change-field` in `ChangeRequestForm.tsx`; its focus ring follows it too),
-3. its Send button, with the same token, not the token minus its 8 px inset (that would be 0 and
-   read as a square in a rounded box),
-4. Export (`export-button` in `ExportPanel.tsx`),
-5. the reel cards in the reels list (owner, 2026-11-03): each card's thumbnail box
+2. Export (`export-button` in `ExportPanel.tsx`),
+
+3. the reel cards in the reels list (owner, 2026-11-03): each card's thumbnail box
    (`tile-thumbnail`, `overflow-hidden`, so the image is clipped to the corners) and the card's
    link, so its focus ring follows the same shape. `ThumbnailGrid` rounds only when its `rounded`
    prop is set, and only the reels list (`page.tsx`) sets it.
-6. the reels list's **+** upload button ("Upload a reel" in `UploadDialog.tsx`, owner, 2026-11-03),
+4. the reels list's **+** upload button ("Upload a reel" in `UploadDialog.tsx`, owner, 2026-11-03),
    white like every filled button.
 
 One exception (owner, 2026-11-03): track items have a small 4px radius (slightly
@@ -292,10 +283,9 @@ not a corner, and is unchanged.
 4. Open a version's details with its arrow in the Versions area and use "Go back to this" to make
    an older version current (it saves a new version copying the old one); the preview always shows
    the current version.
-5. On a phone, switch between the Edit, Versions and Library tabs and type a correction in the
-   field pinned at the bottom. On desktop the edit area is the left column, Versions and the
-   library sit side by side in the top right, and the correction field fills the bottom right.
-   Press Send; use Export in the header.
+5. On a phone, switch between the Edit, Versions and Library tabs. On desktop the edit area is the left
+   column, and Versions and the library sit side by side on the right. Start over is beside the
+   Versions heading; use Export in the header.
 
 ## Configuration
 
@@ -308,18 +298,12 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   clamping, Home and End, the Shift step; `trackItemClass`: slightly rounded except footage), `reels` (`formatAge`), `preview-sources` tests in
   `apps/studio/src/lib/`; the worker's `preview-copies.test.ts` and `preview-copies-record.test.ts`.
 - E2E: `apps/studio/e2e/reel-layout.spec.ts` seeds a processed reel with 14 versions and 48 steps and
-  checks at 1440x900 and 390x844 that the page never scrolls (Send and Export inside the root box, no
-  status area, no step log and no ready-notification control, the phone's Edit, Versions and Library
-  tabs with the correction field pinned at the bottom over the full width). On both it checks that
-  Send is a square icon button with no text (named by `aria-label` and `title`) inside the field's
-  box (`data-testid="change-field"`) at its bottom right, and that the textarea's right padding
-  clears it. At 1440x900, with no reason or status text, it checks that the four gaps between the
-  change area's inner edges and the box are equal within 1 px. At 1440x900, 1280x800
-  and 1024x768 (the `lg` breakpoint) it checks the desktop split within 1 px: the edit area over the
-  full height under the header, Versions and the library side by side each 68% of that height with
-  Versions' list scrolling inside it, the correction field below both and as wide as the two, its
-  field at least half the area's height, and the DOM order edit, Versions,
-  library, correction field (the tab order). At 1440x900 and 390x844 it checks the versions list:
+  checks at 1440x900 and 390x844 that the page never scrolls (Export inside the root box, no status
+  area, no step log and no ready-notification control, the phone's Edit, Versions and Library tabs,
+  with Start over on the Versions tab). At 1440x900, 1280x800 and 1024x768 (the `lg` breakpoint) it
+  checks the desktop split within 1 px: the edit area over the full height under the header, Versions
+  and the library side by side each over the full height, Versions' list scrolling inside it, and the
+  DOM order edit, Versions, library (the tab order). At 1440x900 and 390x844 it checks the versions list:
   every row one height within 1 px whatever its text, the details behind the arrow. It also checks the
   timeline's five rows in order (Footage, Behind, Hook, Accents, Transitions; no Captions or Sounds row,
   though the edit has captions), the items at `resolveTimeline`'s times with footage frames from the sprite and nothing in the rows focusable
@@ -340,7 +324,7 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   and End move the position. At both sizes it checks expand and collapse: the button at the row's
   right end after Zones, named `Expand preview`; expanding with Enter while playing
   removes `tracks` and the ruler and Zones, keeps Play or Pause and the clock (still
-  centred) and the button at the right end, makes the 9:16 frame taller and centred in the edit area,
+  centred) and the button at the right end, makes the 9:16 frame taller, its top on the edit area's top edge and centred across it horizontally,
   with no page scroll, and switches the name to `Collapse preview`; collapsing with Space brings
   everything back at the collapsed size; the same `<hyperframes-player>` keeps playing through both
   toggles, and a paused player stays paused at the same time. Collapsed, the `tracks` box equals
@@ -349,7 +333,7 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   collapsing leaves Zones off (`aria-pressed="false"`, no layer). Every read waits for the seek to settle (`settledTime`: on a frame,
   within one frame of the target, the same over three reads 100 ms apart), since the player first
   reads the asked-for time and the runtime moves it to a frame boundary later. The seeking
-  specs (`preview`, `behind`, `e2e-tools/export-matches-preview`) seek with a real click on the
+  specs (`preview`, `e2e-tools/export-matches-preview`) seek with a real click on the
   ruler (`test-support/ruler.ts`). `reels.spec.ts` checks the
   grid (age and size, status, thumbnail, three columns at 390 px, **+** opening the dialog). `preview`,
   `upload`, `multipart-upload` and `footage-refusal` specs were adjusted to the new markup.
@@ -360,8 +344,8 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   while collapsed) within 1 px, collapsed and expanded, at most 320 px wide, and its bar fill
   `rgb(255, 255, 255)`.
 - `reel-layout.spec.ts` also checks at 1440x900 that the page background and the edit area are
-  `rgb(0, 0, 0)` and the header, `tracks` and `change-field` are neither black nor transparent.
-- `reel-layout.spec.ts` checks at 1440x900 that `preview-frame`, `change-field`, Send and Export
+  `rgb(0, 0, 0)` and the header and `tracks` are neither black nor transparent.
+- `reel-layout.spec.ts` checks at 1440x900 that `preview-frame` and Export
   have the same non-zero `border-radius` on all four corners, and that the header, a version row,
   Zones, `play-toggle`, the library's add tile and `tracks` have `0px`; then, on the reels list, that
   a reel card's `tile-thumbnail` (with `overflow: hidden`) and its link have the preview frame's
@@ -374,9 +358,9 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 ## Rules
 
 - The reel page never scrolls as a page at any size; lists scroll inside their own area.
-- On desktop the edit area takes the full height; never put the correction field under it. The
-  correction field stays last in the DOM, so the tab order follows the reading order; do not
-  reorder it with CSS `order`.
+- On desktop the edit area takes the full height, and Versions and the library take the full height
+  beside it; never put a panel under them. The DOM order (edit, Versions, library) is the tab order; do
+  not reorder it with CSS `order`.
 - Do not measure the window in JavaScript to size the layout; keep it CSS, with `min-h-0` on growing
   children.
 - The ruler is the one scrubber: the only focusable and draggable element in the tracks timeline, and
@@ -411,11 +395,10 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   to the left, and never make it wider than `max-w-xs` or its parent.
 - Progress fills use `--color-primary`, never `--color-accent`.
 - The studio's background is pitch black (`--color-surface`, `#000`); only the navigation (header
-  bars, the phone's tab bar), the tracks timeline and the correction box are lifted
+  bars, the phone's tab bar), the tracks timeline are lifted
   (`--color-chrome`). Never give another area a lifted or tinted background; use tokens, never raw
   colours.
-- One corner radius (`--radius-reel`) and only on the reel preview, the correction box, its Send
-  button, Export, the reel cards in the reels list (thumbnail and focus ring, through
+- One corner radius (`--radius-reel`) and only on the reel preview, Export, the reel cards in the reels list (thumbnail and focus ring, through
   `ThumbnailGrid`'s `rounded`, set by the reels list only) and the reels list's **+** upload button. The one exception: track items in the
   Behind, Hook, Accents and Transitions rows have a small 4px radius (`rounded-track`, from
   `--radius-track`); Footage clips, lanes, the ruler,

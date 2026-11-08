@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { editFromAnswer } from "./decide.ts";
-import { choicesOf } from "./engine-input.ts";
+import { bigWordSpan, choicesOf } from "./engine-input.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
@@ -13,11 +13,10 @@ const transitions = FIXTURES.find((fixture) => fixture.name === "rethink-work-tr
 describe("choicesOf", () => {
   it("reads a stored version back as choices by words", () => {
     const choices = choicesOf(behind.edit, behind.transcript, ISSEBYA_PRESET);
-    expect(choices.photos).toEqual([
-      { photo_id: "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14", from: "w18", to: "w27" },
-    ]);
+    // A library photo of an older version reads back as a visual over its words.
+    expect(choices.visuals).toEqual([{ from: "w18", to: "w27" }]);
     // "WORK" is not spoken under it: the first word under it stands in.
-    expect(choices.big_words).toEqual([{ word: "w76" }]);
+    expect(choices.big_words).toEqual([{ from: "w76", to: "w76" }]);
     expect(choices.accents.map((accent) => accent.from)).toEqual(["w29", "w112"]);
     // Saved before the levels: its key phrase is the whole phrase.
     expect(choices.transitions).toEqual([
@@ -29,12 +28,14 @@ describe("choicesOf", () => {
     ]);
   });
 
-  it("reads a photo back with its reason, an older photo without one", () => {
+  it("reads a visual back with its description, and no photo id", () => {
     const edit = structuredClone(behind.edit);
     const photo = edit.tracks.behind!.find((item) => item.kind === "photo")!;
-    if (photo.kind === "photo") photo.reason = "mood";
-    expect(choicesOf(edit, behind.transcript, ISSEBYA_PRESET).photos).toEqual([
-      { photo_id: "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14", from: "w18", to: "w27", reason: "mood" },
+    Object.assign(photo, { kind: "visual", id: "visual-1", description: "a messy desk at night" });
+    delete (photo as { photo_id?: string }).photo_id;
+    delete (photo as { reason?: string }).reason;
+    expect(choicesOf(edit, behind.transcript, ISSEBYA_PRESET).visuals).toEqual([
+      { from: "w18", to: "w27", description: "a messy desk at night" },
     ]);
   });
 
@@ -67,9 +68,41 @@ describe("choicesOf", () => {
       end: { word: "w142", edge: "end" },
     });
     expect(choicesOf(edit, behind.transcript, ISSEBYA_PRESET).big_words).toEqual([
-      { word: "w76" },
-      { word: "w140" },
+      { from: "w76", to: "w76" },
+      { from: "w140", to: "w140" },
     ]);
+  });
+
+  it("reads a two-word big word back as its first and last word", () => {
+    const edit = structuredClone(behind.edit);
+    const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
+    Object.assign(word, { text: "distribution channel", end: { word: "w77", edge: "end" } });
+    expect(choicesOf(edit, behind.transcript, ISSEBYA_PRESET).big_words).toEqual([
+      { from: "w76", to: "w77" },
+    ]);
+  });
+
+  it("reads a question overlay back as a question, not an accent", () => {
+    const edit = structuredClone(hand.edit);
+    edit.tracks.overlays.push({
+      id: "question-1",
+      kind: "accent",
+      start: { word: "w9" },
+      end: { word: "w10", edge: "end" },
+      words: ["w9", "w10"],
+    });
+    const choices = choicesOf(edit, hand.transcript, ISSEBYA_PRESET);
+    expect(choices.questions).toEqual([{ from: "w9", to: "w10" }]);
+    expect(choices.accents.map((accent) => accent.from)).not.toContain("w9");
+  });
+
+  it("reads an older version without questions as none", () => {
+    expect(choicesOf(hand.edit, hand.transcript, ISSEBYA_PRESET).questions).toEqual([]);
+  });
+
+  it("reads an older answer's { word } big word as one word", () => {
+    expect(bigWordSpan({ word: "w9" })).toEqual({ from: "w9", to: "w9" });
+    expect(bigWordSpan({ from: "w9", to: "w10" })).toEqual({ from: "w9", to: "w10" });
   });
 
   it("reads a stored card back as a dim over its words", () => {

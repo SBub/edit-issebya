@@ -1,8 +1,9 @@
+import type { Intensity } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import type { AiExchange } from "../ai.ts";
 
 // THE VERSION'S AI RECORD: every AI call a decide made for a version (each
-// decide attempt, each editorial round, the title and summary), with the
+// hook attempt, each decide attempt), with the
 // prompt and schema sent and the raw answer, so the version can be replayed
 // and diagnosed. One JSON file next to the version's edit, written once,
 // kept like the version itself. Never a key, never an image.
@@ -15,7 +16,7 @@ export function aiRecordKey(prefix: string, reelId: string, versionId: string): 
 // One call in the record: what it was for, the attempt or round it belongs
 // to, and the exchange.
 export interface AiRecordCall extends AiExchange {
-  // The decide attempt (1 or 2), the editorial round (1 on), or 1 for the summary.
+  // The hook or decide attempt (1 or 2).
   attempt: number;
 }
 
@@ -24,7 +25,13 @@ export interface AiRecord {
   reel_id: string;
   version_id: string;
   prompt_version: string;
-  summary_prompt_version: string;
+  hook_prompt_version: string;
+  // The edit intensity the components prompt was filled with. Absent in a
+  // record written before it was recorded.
+  intensity?: Intensity;
+  // The number of picks the components prompt asked for (the speech's length
+  // over the preset's seconds per pick). Absent in a record written before it.
+  target_picks?: number;
   calls: AiRecordCall[];
 }
 

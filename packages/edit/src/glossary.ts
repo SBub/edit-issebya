@@ -13,6 +13,18 @@ function containsRun(words: readonly string[], run: readonly string[]): boolean 
   return false;
 }
 
+// The glossary terms whose heard form a text shows (`Locking` shows the heard
+// form of `lock-in`); a term written as the glossary writes it passes.
+export function heardTerms(shown: string, preset: Preset): string[] {
+  const words = shown
+    .split(/\s+/)
+    .map((word) => cleanWord(word, preset).toLowerCase())
+    .filter((word) => word.length > 0);
+  return preset.glossary
+    .filter((entry) => entry.heard.some((form) => containsRun(words, form)))
+    .map((entry) => entry.term);
+}
+
 // The glossary post-check: no caption or overlay shows a heard form of a
 // glossary term (`Locking` for `lock-in`); the term itself always passes.
 // The text checked is what the item shows: its `text`, else the default text
@@ -25,17 +37,11 @@ export function glossaryChecks(edit: Edit, transcript: Transcript, preset: Prese
   ];
   for (const [kind, item] of items) {
     const shown = item.text ?? wordsText(item.words ?? [], transcript, preset);
-    const words = shown
-      .split(/\s+/)
-      .map((word) => cleanWord(word, preset).toLowerCase())
-      .filter((word) => word.length > 0);
-    for (const entry of preset.glossary) {
-      const heard = entry.heard.find((form) => containsRun(words, form));
-      if (!heard) continue;
+    for (const term of heardTerms(shown, preset)) {
       checks.push({
         rule: "glossary",
         item: item.id,
-        reason: `${kind} ${item.id} shows ${JSON.stringify(shown)}: write the glossary term ${JSON.stringify(entry.term)}`,
+        reason: `${kind} ${item.id} shows ${JSON.stringify(shown)}: write the glossary term ${JSON.stringify(term)}`,
       });
     }
   }

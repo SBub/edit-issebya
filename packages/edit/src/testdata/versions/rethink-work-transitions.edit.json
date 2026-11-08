@@ -23,20 +23,11 @@
         "step": "cutout",
         "fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
         "file": "mask.mp4",
-        "start": 5.1,
-        "end": 7.333
-      },
-      {
-        "step": "cutout",
-        "fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
-        "file": "mask.mp4",
         "start": 19.767,
         "end": 21.833
       }
     ],
-    "photos": [
-      "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14"
-    ]
+    "photos": []
   },
   "tracks": {
     "footage": [
@@ -3217,7 +3208,7 @@
     ],
     "sounds": [
       {
-        "id": "click-photo-1",
+        "id": "click-visual-1",
         "start": {
           "word": "w18"
         },
@@ -3244,7 +3235,7 @@
     ],
     "behind": [
       {
-        "id": "photo-1",
+        "id": "visual-1",
         "start": {
           "word": "w18"
         },
@@ -3253,15 +3244,14 @@
           "edge": "end",
           "offset": -0.059
         },
-        "kind": "photo",
-        "photo_id": "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14",
+        "kind": "visual",
         "spot": "top",
-        "layer": "behind",
+        "layer": "front",
         "box": {
-          "x": 310,
-          "y": 220,
-          "width": 460,
-          "height": 345
+          "x": 75,
+          "y": 260,
+          "width": 252,
+          "height": 315
         }
       },
       {

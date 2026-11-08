@@ -21,7 +21,6 @@ function job(kind: string): ClaimedJob {
     owner_id: "o1",
     kind,
     attempts: 1,
-    request: kind === "change" ? "move the title lower" : null,
     restore_version_id: kind === "restore" ? "v1" : null,
     version_id: kind === "render" ? "v2" : null,
   };
@@ -73,7 +72,7 @@ describe("ending a job", () => {
   it("writes the failure kind and rules in the same update as the status", async () => {
     const failed = stubClient();
     expect(
-      await failJob(failed.db, CONFIG, job("change"), "decide: the answer failed twice", {
+      await failJob(failed.db, CONFIG, job("start_over"), "decide: the answer failed twice", {
         kind: "answer_refused",
         rules: ["behind-caption", "safe-box"],
       }),
@@ -121,7 +120,7 @@ describe("ending a job", () => {
     expect(waiting.updates.map((u) => u.table)).toEqual(["jobs"]);
   });
 
-  for (const kind of ["change", "restore", "render", "start_over"]) {
+  for (const kind of ["restore", "render", "start_over"]) {
     it(`never writes the reel's status for a ${kind} job, finished or failed`, async () => {
       const done = stubClient();
       expect(await finishJob(done.db, CONFIG, job(kind))).toBe(true);
@@ -171,7 +170,9 @@ describe("making a job wait for the AI", () => {
   it("sets waiting_ai, the reason and not_before 15 minutes ahead, giving up the lease", async () => {
     const { db, updates, filters } = stubClient();
     const now = new Date("2026-11-02T10:00:00.000Z");
-    expect(await waitJob(db, CONFIG, job("change"), "the usage limit is reached", now)).toBe(true);
+    expect(await waitJob(db, CONFIG, job("start_over"), "the usage limit is reached", now)).toBe(
+      true,
+    );
     expect(AI_RETRY_MINUTES).toBe(15);
     expect(updates).toEqual([
       {

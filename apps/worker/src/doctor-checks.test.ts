@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ISSEBYA_PRESET } from "@edit-issebya/edit";
 import { type FakeStorage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -10,6 +11,7 @@ import {
   fakeAiRunner,
   scriptedAnswer,
 } from "./ai.ts";
+import { fakePromptSource } from "../test-support/fake-prompts.ts";
 import { type DoctorDeps, type MaskToolDeps, ffmpegMajor, runDoctor } from "./doctor-checks.ts";
 
 let root: string;
@@ -29,10 +31,14 @@ const DESCRIBED = {
   tags: ["test pattern", "colour bars", "abstract"],
 };
 
-// Answers the image call (the one with an image) with a description and
-// every other call with the empty decide answer, noting each request.
+// Answers the image call (the one with an image) with a description, the hook
+// call with a hook and every other call with the empty decide answer, noting
+// each request.
 function answeringAi(described: object = DESCRIBED): AiRunner & { calls: AiRequest[] } {
-  const decide = fakeAiRunner([scriptedAnswer(EMPTY_DECIDE_ANSWER)]);
+  const decide = fakeAiRunner([
+    { answer: { text: "A short test hook" }, role: "hook" },
+    scriptedAnswer(EMPTY_DECIDE_ANSWER),
+  ]);
   const image = fakeAiRunner([scriptedAnswer(described)]);
   const calls: AiRequest[] = [];
   return {
@@ -73,6 +79,9 @@ const PASSING: DoctorDeps = {
     ].join("\n"),
   hyperframes: async () => "0.8.222\n",
   openRouterKey: () => "sk-or-test",
+  posthogKey: () => "phx-test-key",
+  projectId: () => "312096",
+  prompts: () => fakePromptSource(),
   ai: () => answeringAi(),
   maskTool: () => maskTool(),
   scratchDir: async () => ({ dir: "/scratch", state: "exists" }),
@@ -96,7 +105,7 @@ function maskTool(change: Partial<MaskToolDeps> = {}): MaskToolDeps {
 
 describe("runDoctor's mask tool line", () => {
   const line = async (deps: MaskToolDeps) =>
-    (await runDoctor({ ...PASSING, maskTool: () => deps })).lines[7];
+    (await runDoctor({ ...PASSING, maskTool: () => deps })).lines[12];
 
   it("fails a missing or changed model with its one line, before running", async () => {
     let ran = false;
@@ -186,6 +195,11 @@ describe("runDoctor", () => {
         "ok   ffmpeg codecs libx264, libvpx-vp9, libvpx-vp9 decoder",
         "ok   hyperframes 0.8.222",
         "ok   openrouter key set",
+        "ok   posthog personal key set",
+        "ok   posthog project id set",
+        "ok   prompt reel-hook@v1 (label production)",
+        "ok   prompt reel-components@v1 (label production)",
+        "ok   prompt photo-describe@v1 (label production)",
         "ok   mask tool modnet 07c308cf, 1 s masked in 0.0 s",
         "ok   scratch dir /scratch exists",
       ],
@@ -221,14 +235,20 @@ describe("runDoctor", () => {
         "ok   ffmpeg codecs libx264, libvpx-vp9, libvpx-vp9 decoder",
         "ok   hyperframes 0.8.222",
         "ok   openrouter key set",
+        "ok   posthog personal key set",
+        "ok   posthog project id set",
+        "ok   prompt reel-hook@v1 (label production)",
+        "ok   prompt reel-components@v1 (label production)",
+        "ok   prompt photo-describe@v1 (label production)",
         "ok   ai structured call anthropic/claude-haiku-5.5",
+        "ok   ai hook call anthropic/claude-haiku-5.5",
         "ok   ai image call",
         "ok   mask tool modnet 07c308cf, 1 s masked in 0.0 s",
         "ok   scratch dir /scratch exists",
       ],
       exitCode: 0,
     });
-    expect(ai.calls.map((call) => call.role)).toEqual(["decide", "describe"]);
+    expect(ai.calls.map((call) => call.role)).toEqual(["decide", "hook", "describe"]);
   });
 
   it("fails the r2 line naming the put when the key may only read", async () => {
@@ -287,13 +307,13 @@ describe("runDoctor", () => {
       ...PASSING,
       scratchDir: async () => ({ dir: "/scratch/prod", state: "can be created" }),
     });
-    expect(creatable.lines[8]).toBe("ok   scratch dir /scratch/prod can be created");
+    expect(creatable.lines[13]).toBe("ok   scratch dir /scratch/prod can be created");
     expect(creatable.exitCode).toBe(0);
     const failing = await runDoctor({
       ...PASSING,
       scratchDir: async () => Promise.reject(new Error("/scratch is not a folder")),
     });
-    expect(failing.lines[8]).toBe("FAIL scratch dir: /scratch is not a folder");
+    expect(failing.lines[13]).toBe("FAIL scratch dir: /scratch is not a folder");
     expect(failing.exitCode).toBe(1);
   });
 
@@ -316,26 +336,95 @@ describe("runDoctor", () => {
       { ...PASSING, ai: () => answeringAi({ ...DESCRIBED, description }) },
       { ai: true },
     );
-    expect(lines[8]).toBe("ok   ai image call");
+    expect(lines[14]).toBe("ok   ai image call");
+  });
+
+  it("makes one hook call with the real hook schema and prompt", async () => {
+    const ai = answeringAi();
+    await runDoctor({ ...PASSING, ai: () => ai }, { ai: true });
+    const hook = ai.calls.find((call) => call.role === "hook")!;
+    expect(hook.prompt).toContain("Hello there");
+    const schema = hook.schema as { properties?: object; required?: string[] };
+    expect(Object.keys(schema.properties ?? {})).toEqual(["text"]);
+    expect(JSON.stringify(schema)).toContain(
+      `"maxLength":${ISSEBYA_PRESET.pace.hook.maxCharacters}`,
+    );
   });
 
   it("makes one structured call with the real decide schema", async () => {
     const ai = answeringAi();
     await runDoctor({ ...PASSING, ai: () => ai }, { ai: true });
-    expect(ai.calls.map((call) => call.role)).toEqual(["decide", "describe"]);
+    expect(ai.calls.map((call) => call.role)).toEqual(["decide", "hook", "describe"]);
     const schema = ai.calls[0]!.schema as { properties?: object };
     expect(Object.keys(schema.properties ?? {})).toEqual([
       "accents",
+      "questions",
       "big_words",
-      "photos",
+      "visuals",
       "transitions",
       "word_fixes",
-      "hook",
-      "checklist",
-      "behind_rules",
-      "unexpressed",
     ]);
     expect(JSON.stringify(schema)).toContain('"enum":["w0001","w0002"]');
+    expect(JSON.stringify(schema)).toContain('"enum":["numbered"]');
+  });
+
+  it("fails the PostHog key line when the key is missing, names no prompt and fetches none", async () => {
+    let fetched = false;
+    const { lines, exitCode } = await runDoctor({
+      ...PASSING,
+      posthogKey: () => undefined,
+      prompts: () => {
+        fetched = true;
+        return fakePromptSource();
+      },
+    });
+    expect(lines).toContain(
+      "FAIL posthog personal key: POSTHOG_PERSONAL_API_KEY is not set (apps/worker/.env.development): the decide and describe_photo prompts come from PostHog, so those jobs cannot run",
+    );
+    expect(lines).toContain("ok   posthog project id set");
+    expect(lines.filter((line) => line.includes("prompt "))).toEqual([]);
+    expect(fetched).toBe(false);
+    expect(exitCode).toBe(1);
+  });
+
+  it("fails the project id line when POSTHOG_PROJECT_ID is missing, names the variable and fetches no prompt", async () => {
+    let fetched = false;
+    const { lines, exitCode } = await runDoctor({
+      ...PASSING,
+      projectId: () => " ",
+      prompts: () => {
+        fetched = true;
+        return fakePromptSource();
+      },
+    });
+    expect(lines).toContain(
+      "FAIL posthog project id: POSTHOG_PROJECT_ID is not set (apps/worker/.env.development): the prompts are fetched from that project, so those jobs cannot run",
+    );
+    expect(lines).toContain("ok   posthog personal key set");
+    expect(lines.filter((line) => line.includes("prompt "))).toEqual([]);
+    expect(fetched).toBe(false);
+    expect(exitCode).toBe(1);
+  });
+
+  it("fails each prompt line with its reason when a prompt cannot be fetched, printing no text", async () => {
+    const { lines, exitCode } = await runDoctor({
+      ...PASSING,
+      prompts: () => ({
+        get: async (name) => {
+          if (name === "reel-components") {
+            throw new Error(
+              "prompts: reel-components (label production) could not be fetched: not found",
+            );
+          }
+          return fakePromptSource().get(name);
+        },
+      }),
+    });
+    expect(lines).toContain(
+      "FAIL prompt: prompts: reel-components (label production) could not be fetched: not found",
+    );
+    expect(lines.join("\n")).not.toContain("test prompt");
+    expect(exitCode).toBe(1);
   });
 
   it("fails the key line on a missing or blank key, never printing a key", async () => {
@@ -365,15 +454,26 @@ describe("runDoctor", () => {
       [{ ffmpegCodecs: async () => "Encoders:\nDecoders:\n" }, 4],
       [{ hyperframes: async () => Promise.reject(new Error("ENOENT")) }, 5],
       [{ openRouterKey: () => undefined }, 6],
-      [{ ai: () => fakeAiRunner([scriptedAnswer({ ok: false })]) }, [7, 8]],
-      [{ ai: () => fakeAiRunner(["not json"]) }, [7, 8]],
-      [{ ai: () => fakeAiRunner([{ error: { status: 401 } }]) }, [7, 8]],
-      [{ ai: () => fakeAiRunner([scriptedAnswer(EMPTY_DECIDE_ANSWER)]) }, 8],
+      [{ ai: () => fakeAiRunner([scriptedAnswer({ ok: false })]) }, [12, 13, 14]],
+      [{ ai: () => fakeAiRunner(["not json"]) }, [12, 13, 14]],
+      [{ ai: () => fakeAiRunner([{ error: { status: 401 } }]) }, [12, 13, 14]],
+      [{ ai: () => fakeAiRunner([scriptedAnswer(EMPTY_DECIDE_ANSWER)]) }, [13, 14]],
+      // A hook over its word limit is refused by the same schema check the step uses.
+      [
+        {
+          ai: () =>
+            fakeAiRunner([
+              { answer: { text: "one two three four five six seven eight" }, role: "hook" },
+              scriptedAnswer(EMPTY_DECIDE_ANSWER),
+            ]),
+        },
+        [13, 14],
+      ],
       [
         { maskTool: () => maskTool({ verifyModel: async () => Promise.reject(new Error("x")) }) },
-        9,
+        15,
       ],
-      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 10],
+      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 16],
     ];
     for (const [override, failing] of cases) {
       const { lines, exitCode } = await runDoctor({ ...PASSING, ...override }, { ai: true });

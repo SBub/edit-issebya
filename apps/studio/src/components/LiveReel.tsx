@@ -3,7 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { requestRetry } from "@/app/retry-actions";
 import {
   JOB_COLUMNS,
@@ -13,7 +13,6 @@ import {
   pickColumns,
   upsertById,
 } from "@/lib/jobs";
-import { type ChangeRequestHandle, ChangeRequestForm } from "@/components/ChangeRequestForm";
 import { ExportPanel } from "@/components/ExportPanel";
 import { ProgressOverlay } from "@/components/ProgressOverlay";
 import { ReelPreview } from "@/components/ReelPreview";
@@ -22,7 +21,7 @@ import { StartOverButton } from "@/components/StartOverButton";
 import { VersionList } from "@/components/VersionList";
 import { changeBlockedReason } from "@/lib/change-requests";
 import type { ExportRef } from "@/lib/exports";
-import { changeQueueNote } from "@/lib/failures";
+import { startOverQueueNote } from "@/lib/failures";
 import { type FailureAction, overlayState } from "@/lib/progress-overlay";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, reelName } from "@/lib/reels";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
@@ -118,7 +117,7 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
 // current version's preview and tracks timeline, the progress
 // overlay over the preview (what the studio is doing in plain words, how far
 // along, the waiting and offline lines, "New version N", a failure with its
-// actions), the change box and the versions. A newly saved version replaces
+// actions), and the versions with Start over. A newly saved version replaces
 // the preview by itself, at the same time and play state. Read once on the
 // server, then followed through Realtime filtered to this reel (RLS decides
 // what arrives). One catch-up read each time the subscription becomes ready
@@ -163,7 +162,6 @@ export function LiveReel({
   const [retry, setRetry] = useState<{ jobId: string; busy: boolean; message: string } | null>(
     null,
   );
-  const changeForm = useRef<ChangeRequestHandle>(null);
   const router = useRouter();
   const id = initialReel.id;
   const offlineMoment = offlineAt(workerStatus)?.getTime() ?? null;
@@ -287,7 +285,7 @@ export function LiveReel({
   }, [id]);
 
   const blockedReason = changeBlockedReason(reel);
-  const queueNote = changeQueueNote(jobs);
+  const queueNote = startOverQueueNote(jobs);
   const versionsById = new Map(versions.map((version) => [version.id, version]));
   const waitingReason = waitingReasonOf(workerStatus);
   const offline = now === null ? null : offlineSince(workerStatus, new Date(now));
@@ -345,14 +343,6 @@ export function LiveReel({
     }
   }
 
-  function changeRequest() {
-    if (!failure) return;
-    const request = jobs.find((job) => job.id === failure.jobId)?.request ?? "";
-    recordAction("change_request");
-    dismiss(failure.jobId);
-    changeForm.current?.refill(request);
-  }
-
   function keepCurrent() {
     if (!failure) return;
     recordAction("keep_current");
@@ -400,22 +390,12 @@ export function LiveReel({
               <ProgressOverlay
                 state={overlay}
                 onTryAgain={() => void tryAgain()}
-                onChangeRequest={changeRequest}
                 onKeep={keepCurrent}
                 actionMessage={retryForFailure?.message ?? ""}
                 tryAgainBusy={retryForFailure?.busy ?? false}
               />
             </div>
           </>
-        }
-        footer={
-          <ChangeRequestForm
-            ref={changeForm}
-            reelId={reel.id}
-            blockedReason={blockedReason}
-            queueNote={queueNote}
-            jobs={jobs}
-          />
         }
         versions={
           <VersionList

@@ -56,11 +56,8 @@ version`), the `Working on it` / `Could not finish this step` fallback for an un
   joined with "and", from the rule names only. `RULE_WORDS` covers `no-change` ("your reel would
   look the same") and the layout engine's drop rules (`no-room`, `one-extra`, `hidden-footage`,
   `wish`, `make-room`), which an unchanged change carries after it.
-- Failure actions (`FailureAction`): a `change` job whose answer was refused (`failure_kind`
-  `answer_refused`, with a request) offers Change the request and Keep the current version; every
-  other retryable failure offers Try again and Keep the current version. Try again calls
-  `requestRetry` and shows its answer (`Queued again`, say). Change the request refills the change
-  box with the sent request and focuses it. Keep the current version dismisses the failure. Each
+- Failure actions (`FailureAction`): every retryable failure offers Try again and Keep the current version.
+  Try again calls `requestRetry` and shows its answer (`Queued again`, say). Keep the current version dismisses the failure. Each
   action captures `studio_failure_action` with `reel_id`, `job_id`, `action`, `failure_kind`,
   `step` and `job_kind` (the `job_id` links it to the job's error). A handled failure is dismissed
   in memory for the page load: a reload shows a still-unhandled one again.
@@ -71,7 +68,7 @@ version`), the `Working on it` / `Could not finish this step` fallback for an un
   `app_docs/studio-reel-layout.md`). The words sit in a polite live region (`role="status"
 aria-live="polite"`); the buttons stay outside it, so updates do not announce them again. Test ids:
   `progress-overlay` (with `data-overlay-kind`), `overlay-words`, `overlay-step`, `overlay-notice`,
-  `overlay-headline`, `overlay-reason`, `overlay-try-again`, `overlay-change-request`,
+  `overlay-headline`, `overlay-reason`, `overlay-try-again`,
   `overlay-keep`, `overlay-action-message`.
 
 ### New version notice and automatic switch
@@ -188,8 +185,7 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
 
 - On a reel's page, the overlay over the preview says what the studio is doing, step k of n. A
   running `head_track` or `render` step also shows its percentage and the time left. The first reels show `no estimate yet` until three earlier runs of that step exist.
-- When a job fails, the overlay offers Try again (or, for a refused change, Change the request) and
-  Keep the current version.
+- When a job fails, the overlay offers Try again and Keep the current version.
 - `Worker offline since HH:MM` in the overlay means the worker on the owner's machine has not
   beaten for 11 minutes: start it again.
 

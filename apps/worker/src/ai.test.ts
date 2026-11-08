@@ -29,7 +29,12 @@ const SCHEMA = {
   required: ["a"],
   additionalProperties: false,
 };
-const REQUEST: AiRequest = { role: "decide", prompt: "x", schema: SCHEMA };
+const REQUEST: AiRequest = {
+  role: "decide",
+  prompt: "x",
+  promptVersion: "test-prompt@v1",
+  schema: SCHEMA,
+};
 
 let dir: string;
 beforeEach(async () => {
@@ -43,7 +48,7 @@ describe("the model", () => {
   it("is Claude Haiku 5.5 on OpenRouter for every role", () => {
     expect(AI_MODEL).toBe("anthropic/claude-haiku-5.5");
     expect(new Set(Object.values(AI_MODELS))).toEqual(new Set([AI_MODEL]));
-    expect(Object.keys(AI_MODELS).sort()).toEqual(["decide", "describe", "editorial", "summary"]);
+    expect(Object.keys(AI_MODELS).sort()).toEqual(["decide", "describe", "hook"]);
   });
 
   it("is priced at 0.10 and 0.50 dollars per million tokens when OpenRouter reports no cost", () => {
@@ -140,12 +145,29 @@ describe("the OpenRouter request", () => {
     });
   });
 
+  it("sends no temperature: the request the model receives carries none, and the exchange records the prompt's identity only", async () => {
+    const { runner, bodies } = capturing(ANSWERED);
+    const result = await runner.call(REQUEST);
+    expect(bodies[0]).not.toHaveProperty("temperature");
+    expect(result.exchange).toMatchObject({ promptVersion: "test-prompt@v1" });
+    expect(result.exchange).not.toHaveProperty("temperature");
+  });
+
+  it("records a stale prompt copy on the exchange, and leaves the flag off a fresh one", async () => {
+    const { runner } = capturing(ANSWERED);
+    const stale = await runner.call({ ...REQUEST, promptStale: true });
+    expect(stale.exchange).toMatchObject({ promptVersion: "test-prompt@v1", promptStale: true });
+    const fresh = await runner.call(REQUEST);
+    expect(fresh.exchange).not.toHaveProperty("promptStale");
+  });
+
   it("sends describe_photo's image as a JPEG data URL beside the prompt", async () => {
     const { runner, bodies } = capturing(ANSWERED);
     const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
     const result = await runner.call({
       role: "describe",
       prompt: "describe it",
+      promptVersion: "test-prompt@v1",
       schema: SCHEMA,
       image: { data: jpeg, mediaType: "image/jpeg" },
     });
@@ -204,15 +226,25 @@ describe("aiRunner", () => {
     expect(await runner.call(REQUEST)).toMatchObject({ kind: "answer", answer: { a: "b" } });
   });
 
-  it("loads the committed decide answer, one reply object, as a one-entry script", async () => {
+  it("loads the committed script: the hook reply for hook calls, the decide answer for the rest", async () => {
     const path = new URL("./decide/testdata/short-speech-answer.json", import.meta.url).pathname;
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder or committed fixture
-    const committed = JSON.parse(await readFile(path, "utf8")) as { answer: unknown };
-    const result = await aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: path }).call(REQUEST);
-    expect(result).toMatchObject({
+    const committed = JSON.parse(await readFile(path, "utf8")) as {
+      role?: string;
+      answer: unknown;
+    }[];
+    const runner = aiRunner({ E2E_MOCK_AI: "true", E2E_MOCK_AI_SCRIPT: path });
+    const decide = await runner.call(REQUEST);
+    expect(decide).toMatchObject({
       kind: "answer",
-      answer: committed.answer,
+      answer: committed.find((reply) => reply.role !== "hook")!.answer,
       usage: { inputTokens: 1500, outputTokens: 456, costUsd: 0.0123, model: AI_MODEL },
+    });
+    const hook = await runner.call({ ...REQUEST, role: "hook" });
+    expect(hook).toMatchObject({
+      kind: "answer",
+      answer: { text: "A short test for the real studio" },
+      usage: { inputTokens: 300, outputTokens: 40, costUsd: 0.0015, model: AI_MODEL },
     });
   });
 
@@ -259,6 +291,27 @@ describe("extractJson", () => {
 });
 
 describe("fakeAiRunner", () => {
+  const HOOK: AiRequest = { ...REQUEST, role: "hook" };
+
+  it("answers the hook calls from the replies naming the hook role, the rest from the others", async () => {
+    const runner = fakeAiRunner([
+      { role: "hook", answer: { text: "A hook" } },
+      { answer: { a: "b" } },
+      { role: "hook", answer: { text: "Another" } },
+    ]);
+    expect(await runner.call(HOOK)).toMatchObject({ kind: "answer", answer: { text: "A hook" } });
+    expect(await runner.call(REQUEST)).toMatchObject({ kind: "answer", answer: { a: "b" } });
+    // The hook lane's last reply repeats for the next hook call.
+    expect(await runner.call(HOOK)).toMatchObject({ kind: "answer", answer: { text: "Another" } });
+    expect(await runner.call(HOOK)).toMatchObject({ kind: "answer", answer: { text: "Another" } });
+    expect(await runner.call(REQUEST)).toMatchObject({ kind: "answer", answer: { a: "b" } });
+  });
+
+  it("has no scripted hook answer when the script names none for the hook role", async () => {
+    const runner = fakeAiRunner([{ answer: { a: "b" } }]);
+    await expect(runner.call(HOOK)).rejects.toThrow(/no scripted hook answer/);
+  });
+
   it("records every request and its exchange: prompt, schema, raw answer and usage", async () => {
     const runner = fakeAiRunner([
       { answer: { a: "b" }, usage: { input_tokens: 10, output_tokens: 2, cost_usd: 0.5 } },
@@ -269,6 +322,7 @@ describe("fakeAiRunner", () => {
       role: "decide",
       model: AI_MODEL,
       prompt: "x",
+      promptVersion: "test-prompt@v1",
       schema: SCHEMA,
       image: null,
       outputMode: "json_schema",
@@ -431,6 +485,7 @@ describe("the chat span of a call", () => {
       "gen_ai.operation.name": "chat",
       "gen_ai.provider.name": "openrouter",
       "gen_ai.request.model": AI_MODEL,
+      "edit_issebya.ai.prompt_version": "test-prompt@v1",
       "gen_ai.response.model": AI_MODEL,
       "gen_ai.usage.input_tokens": 100,
       "gen_ai.usage.output_tokens": 5,

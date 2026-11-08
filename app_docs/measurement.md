@@ -121,7 +121,7 @@ client, identifies the signed-in user and sends `studio_*` events.
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `studio_footage_uploaded`  | after the multipart upload completes, once (`UploadForm.tsx`)                                                        | `reel_id`, `app`                                                         |
 | `studio_preview_opened`    | the live preview first reaches the player on a page open (`ReelPreview.tsx`)                                         | `reel_id`, `app`                                                         |
-| `studio_change_requested`  | the owner sends a change request (`ChangeRequestForm.tsx`)                                                           | `reel_id`, `app` (never the request text)                                |
+| `studio_change_requested`  | no longer sent: the change box is removed (`app_docs/change-requests.md`)                                            | `reel_id`, `app` (never the request text)                                |
 | `studio_export_requested`  | the Export button queues a render job (`ExportPanel.tsx`)                                                            | `reel_id`, `app`                                                         |
 | `studio_export_downloaded` | the export modal starts the download by itself, or the owner clicks its fallback `Download` link (`ExportPanel.tsx`) | `reel_id`, `app`                                                         |
 | `studio_failure_action`    | the owner presses one of the overlay's failure actions (`LiveReel.tsx`)                                              | `reel_id`, `job_id`, `action`, `failure_kind`, `step`, `job_kind`, `app` |
@@ -186,6 +186,7 @@ model, `chat anthropic/claude-haiku-5.5` today (`app_docs/decide-step.md`, "The 
 
 - `gen_ai.operation.name` = `chat`, `gen_ai.provider.name` = `openrouter`,
   `gen_ai.request.model`: always.
+- No temperature attribute: the model takes no temperature setting, so no call sends one (`app_docs/decide-step.md`, "The AI runner").
 - `gen_ai.response.model`: the model that answered (`response.modelId`).
 - `gen_ai.usage.input_tokens`: every input token OpenRouter reports, cache reads and writes
   included.
@@ -194,8 +195,10 @@ model, `chat anthropic/claude-haiku-5.5` today (`app_docs/decide-step.md`, "The 
 - `gen_ai.response.finish_reasons`: the one finish reason (`stop`, `length`, ...).
 - `edit_issebya.ai.cost_usd`: the cost OpenRouter reports (usage accounting), else the list price
   of the call's tokens. A custom attribute, because the standard has none.
-- `edit_issebya.ai.role` (`decide`, `editorial`, `summary`, `describe`) and
-  `edit_issebya.ai.output_mode` (`json_schema`, or `json` after the fallback): custom attributes.
+- `edit_issebya.ai.role` (`hook`, `decide`, `describe`),
+  `edit_issebya.ai.output_mode` (`json_schema`, or `json` after the fallback) and
+  `edit_issebya.ai.prompt_version` (the prompt's identity, `<name>@v<version>`, such as
+  `reel-components@v1`): custom attributes.
 - A value not known is left out.
 - `error.type` and an error status when the call does not succeed (the OpenTelemetry rule for a
   failed operation): `unavailable` (no key, a refused key, no credits, a rate limit, OpenRouter not
@@ -249,8 +252,8 @@ command.
 ### decide's spans
 
 The `step decide` span has one child per stage. On a normal run (automatic, one attempt, no
-behind item, the summary call made) the children run in this order; a retry adds a second
-`decide.attempt`, and a rounds run adds `decide.editorial_round` spans:
+behind item) the children run in this order; a retry adds a second
+`decide.attempt`:
 
 ```
 step decide                        reel.tracks_items
@@ -261,24 +264,15 @@ step decide                        reel.tracks_items
 ├─ decide.attempt                  decide.attempt 1, decide.outcome, decide.refused_by
 │  ├─ chat <model>                 gen_ai.* (the attempt's AI call)
 │  └─ decide.engine                decide.dropped, decide.checks
-├─ decide.editorial_round          decide.round, decide.outcome (only when a round runs)
-│  ├─ chat <model>                 gen_ai.* (the round's AI call)
-│  └─ decide.engine                decide.dropped (the merged answer placed again)
-├─ decide.engine                   decide.stage "editorial checks" (only when a round placed the answer again)
 ├─ step cutout                     (only with a behind item)
-├─ decide.version_summary          decide.summary_source
-│  └─ chat <model>                 gen_ai.* (the summary's AI call)
 └─ decide.save_version
 ```
 
 - `decide.attempt`: `decide.attempt` (1 or 2); `decide.outcome`: `ok`, `invalid` (the answer is
   not JSON), or `refused` (the schema, the placement or the glossary check); `decide.refused_by`
   the rule names, comma-separated, when refused.
-- `decide.editorial_round`: `decide.round` (1 to 3); `decide.outcome`: `placed`, `invalid`,
-  `refused`, `not_placed` (the engine could not place the merged answer) or `unavailable`.
 - `decide.engine`: `decide.dropped` (items the engine left out) and `decide.checks` (layout checks
-  that failed on its output; `decide.stage` marks the final rebuild after the rounds).
-- `decide.version_summary`: `decide.summary_source` is `ai` or `template` (the code's fallback).
+  that failed on its output).
 - The stage spans carry no AI facts; the `chat` span under each stage does (see AI calls above).
   The step row keeps the summed totals.
 - A stage that throws marks its own span with error status and an `exception` event; the step
@@ -310,8 +304,7 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
 - Decide's spans: `telemetry.test.ts` (`inSpan`: the child's parent and attributes, an error marked
   and rethrown, telemetry that exports nothing), `run-decide.test.ts` (`runDecide spans`: a normal
   run's children in order with their facts, a retry as two attempts, a thrown error on the attempt's
-  span, no exporter; the cut-out under decide), `editorial.test.ts` (a round as its own span, its
-  `chat` span under it, an unavailable round).
+  span, no exporter; the cut-out under decide).
 - AI calls: `ai.test.ts` (`the chat span of a call`: name, kind, operation, provider, request and
   response model, the tokens, the cost, the finish reason, the role and output mode, the error
   types, no trace means no span).
@@ -324,7 +317,7 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
 - Studio E2E: `e2e/upload.spec.ts` (the step rows' summaries read from the database,
   `studio_footage_uploaded` with the reel id and `app`, no PostHog request), `e2e/multipart-upload.spec.ts` (`studio_footage_uploaded` once with the
   reel id and `app` after completion, also after a retried part and after a resume, and never after
-  cancel) `e2e/retry.spec.ts` and `e2e/change-requests.spec.ts` (`studio_failure_action` with the
+  cancel) `e2e/retry.spec.ts` (`studio_failure_action` with the
   failed job's id).
 
 ## Rules

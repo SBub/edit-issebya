@@ -470,10 +470,16 @@ export function PreviewPlayer({
       data-intent={intent}
       className="flex min-h-0 w-full flex-1 flex-col gap-2"
     >
-      <div className="flex min-h-0 flex-1 justify-center">
+      {/* The frame's height is the smaller of this box's height and the height
+          its width gives at 9:16, so it never clamps its width (a width clamp
+          would leave the 9:16 frame distorted when the box is tall, as on a
+          phone's expanded preview). It starts at the box's top edge, where the
+          progress overlay (anchored to this box) starts too, so the two line up
+          whatever the frame's height; the frame is centred across the box. */}
+      <div className="flex min-h-0 flex-1 items-start justify-center [container-type:size]">
         <div
           data-testid="preview-frame"
-          className="relative aspect-[9/16] h-full max-h-full max-w-full overflow-hidden rounded-reel bg-black ring-1 ring-line"
+          className="relative aspect-[9/16] h-[min(100cqh,calc(100cqw*16/9))] overflow-hidden rounded-reel bg-black ring-1 ring-line"
         >
           {defined && (
             <hyperframes-player

@@ -45,6 +45,8 @@ function workerEnv(env: Record<string, string>): NodeJS.ProcessEnv {
     SUPABASE_URL: assertLocalUrl(process.env.SUPABASE_URL),
     E2E_MOCK_STORAGE: "true",
     E2E_MOCK_AI: "true",
+    // The placeholder prompts stand in for PostHog's (no key, no network).
+    E2E_MOCK_PROMPTS: "true",
     E2E_MOCK_RENDER: "true",
     E2E_MOCK_MASK: "true",
     E2E_MOCK_FREE_DISK_GB: "1000",

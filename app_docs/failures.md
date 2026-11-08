@@ -60,7 +60,7 @@ The issue's block E, and the rule each follows:
 | Double click on Try again                                                    | The unique index lets one job through; the second answer is `already`.            |
 | A transient failure during the retry attempt                                 | The job fails: no third run.                                                      |
 | A lease lost mid-step                                                        | Never retried, nothing written.                                                   |
-| A decide call that fails transiently after the AI answered                   | Not retried: at most two AI calls per decide step.                                |
+| A decide call that fails transiently after the AI answered                   | Not retried: at most two hook calls and two decide calls per decide step.         |
 | A waiting `process` job                                                      | Holds its reel's newer change job; other reels' jobs keep running.                |
 | A change sent while processing                                               | Waits, then decides from the processed reel's current version.                    |
 | A process job taken again after a crash                                      | Its abandoned `running` step rows end `failed`.                                   |
@@ -87,6 +87,16 @@ inner (at most ten links); the first link that decides wins:
 | `status` >= 500                                                                                                                                    | transient |
 
 A chain no link decides is permanent (a tool's non-zero exit with its message, for example).
+`PromptUnavailable` (`apps/worker/src/prompts/source.ts`) is a `TransientError`: a prompt the worker
+cannot fetch from PostHog (no project id or key, PostHog unreachable, the prompt or its label missing) fails
+the decide or describe_photo step before any AI call, and the step is retried once like any transient
+failure (`app_docs/decide-step.md`, "Prompts"). Its message names the prompt and the label:
+`prompts: <name> (label <label>) could not be fetched: <reason>`.
+The one exception is a stale copy: when PostHog does not answer (a network error, a timeout, a 5xx or
+a 429) and this process fetched the prompt less than 60 minutes ago, the step runs on that last copy
+instead, with a warning line and `promptStale` on the AI call. A prompt never fetched in this process
+still fails. A 404, a 403 (the key may not read the prompt), a missing label or a malformed answer is
+not an outage: it fails at once, even with a copy held, and the copy is dropped.
 `supabaseFailure(what, { error, status })` is what the stores throw for a failed Supabase call: a
 `TransientError` for a status of 500 or more or postgrest-js's network failure (status 0), a plain
 `Error` otherwise.
@@ -119,7 +129,7 @@ stored.
 - `apps/studio/src/lib/failures.ts`, `retryableJobIds`: a `failed` job is retryable while no other
   job names it in `retry_of_job_id`; none while the reel is `refused`. The progress overlay
   (`app_docs/status.md`) offers Try again (`data-testid="overlay-try-again"`) for the newest such
-  job, for every retryable failure except a refused change (which offers Change the request), and
+  job, for every retryable failure, and
   never on a refused reel. The old Retry button component is gone.
 - `LiveReel` calls the server action `requestRetry`
   (`apps/studio/src/app/retry-actions.ts`). It reads the reel and the job under RLS as the owner,
@@ -221,7 +231,7 @@ first output as its `.part` and waits up to 20 seconds for the spec to kill the 
 ## How to Use
 
 1. Upload a clip. While it is checked the reel reads `checking_footage`. A clip the studio cannot
-   take turns the reel `refused` and shows the reason in a red box; the change box says
+   take turns the reel `refused` and shows the reason in a red box; the Versions area says
    `This clip was refused; upload another clip` and nothing offers Try again. Upload another clip.
 2. A failed job shows its failure in the overlay over the preview with Try again. Pressing it
    queues a new job (`retry_of_job_id` set), which skips every step already done and runs from the
@@ -229,9 +239,9 @@ first output as its `.part` and waits up to 20 seconds for the spec to kill the 
 3. A job waiting for the AI shows `Waiting for the AI: <reason>. Next try at HH:MM`. Set or fix
    `OPENROUTER_API_KEY`, add OpenRouter credits, or wait for the rate limit or the outage; the
    worker takes the job again after that time.
-4. The change box stays open while the reel processes and shows
-   `Waiting: your reel is still being styled. Your change starts right after` (the same line
-   while other jobs are ahead); the change runs in its turn.
+4. Going back and Start over stay open while the reel processes and show
+   `Waiting: your reel is still being styled. Start over starts right after` (the same line
+   while other jobs are ahead); Start over runs in its turn.
 
 ## Configuration
 

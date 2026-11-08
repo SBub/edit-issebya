@@ -1,97 +1,84 @@
 import {
-  type BehindForbid,
-  type Edit,
-  type EngineInput,
+  type Intensity,
   type Preset,
-  TRANSITION_KINDS,
   type Transcript,
-  choicesOf,
   sentenceSpans,
   wordsText,
 } from "@edit-issebya/edit";
 
-// One spoken sentence: its first and last word ids and what is said.
-interface SentenceChoice {
-  from: string;
-  to: string;
-  text: string;
+// One spoken sentence as the components prompt sees it: its text, and its
+// words with the ids the answer names them by (no positions). A word that
+// starts before the hook ends carries `under_hook`; the other words omit it.
+export interface ScriptSentence {
+  sentence: string;
+  words: { id: string; text: string; under_hook?: true }[];
 }
 
-// The transcript's sentences as the AI sees them: word ids and words, no times.
-function sentences(transcript: Transcript, preset: Preset): SentenceChoice[] {
-  const ids = transcript.words.map((word) => word.id);
-  return sentenceSpans(transcript).map(({ from, to }) => ({
-    from,
-    to,
-    text: wordsText(ids.slice(ids.indexOf(from), ids.indexOf(to) + 1), transcript, preset),
-  }));
+// The reel's sentences, in order, each with its words and their ids.
+export function scriptOf(transcript: Transcript, preset: Preset): ScriptSentence[] {
+  const index = new Map(transcript.words.map((word, at) => [word.id, at]));
+  return sentenceSpans(transcript).map(({ from, to }) => {
+    const span = transcript.words.slice(index.get(from)!, index.get(to)! + 1);
+    return {
+      sentence: wordsText(
+        span.map((word) => word.id),
+        transcript,
+        preset,
+      ),
+      words: span.map((word) => ({
+        id: word.id,
+        text: word.text.trim(),
+        ...(word.start < preset.pace.hook.untilSeconds ? { under_hook: true as const } : {}),
+      })),
+    };
+  });
 }
 
-// What of the preset the AI decides with: the transition library (each kind
-// with the line saying what it is for), the pace (how often something new
-// shows, how often a transition comes), how long the hook may be and the
-// glossary. No count of photos
-// or big words: how many is the editor's choice. No frame, box, font size,
-// colour or spot: the layout owns every position, size and time.
-export function presetSummary(preset: Preset) {
-  return {
-    transitions: TRANSITION_KINDS.map((kind) => ({
-      kind,
-      description: preset.transitions[kind].description ?? "",
-    })),
-    extra_every_seconds: preset.pace.extraEverySeconds,
-    transition_every_seconds: preset.pace.transitionEverySeconds,
-    // How long the written hook may be (never when or where it shows).
-    hook_length: { words: preset.pace.hook.maxWords, characters: preset.pace.hook.maxCharacters },
-    glossary: preset.glossary,
-  };
+// The speech's length in seconds after the hook window: from the later of the
+// first word's start and the hook's end, to the last word's end (0 with no
+// words, or when all the speech ends under the hook).
+export function speechAfterHookSeconds(transcript: Transcript, preset: Preset): number {
+  const first = transcript.words[0];
+  const last = transcript.words.at(-1);
+  if (!first || !last) return 0;
+  const from = Math.max(first.start, preset.pace.hook.untilSeconds);
+  return Math.max(0, last.end - from);
 }
 
-// A ready library photo as the AI sees it: its id and what describe_photo
-// wrote about it. Data, never instructions.
-export interface LibraryEntry {
-  id: string;
-  description: string;
-  tags: string[];
+// How many picks the components prompt asks for: the speech after the hook
+// window over the preset's seconds per pick at the reel's level, at least one.
+// ACCENT, BIGWORD and LIST cannot go under the hook, so the hook's seconds are
+// not counted.
+export function targetPicks(transcript: Transcript, preset: Preset): number {
+  const every = preset.picksEverySeconds[preset.intensity];
+  return Math.max(1, Math.round(speechAfterHookSeconds(transcript, preset) / every));
 }
 
+// What the components prompt is filled with: the script, the written hook
+// (data, never a component), and the reel's intensity and target. Nothing else:
+// no current choices, no glossary, no preset layout, no stored rules; the
+// engine checks the answer against those.
 export interface DecideInput {
-  // The current version's choices, in the answer's own terms.
-  current_choices: EngineInput;
-  transcript: { id: string; text: string }[];
-  sentences: SentenceChoice[];
-  preset: ReturnType<typeof presetSummary>;
-  library: LibraryEntry[];
-  // What the owner switched off for this reel.
-  behind_rules: { photos_forbidden: boolean; big_word_forbidden: boolean };
-  request: string | null;
+  script: ScriptSentence[];
+  hook: { text: string };
+  intensity: Intensity;
+  target_picks: number;
 }
 
 export function decideInput({
-  current,
   transcript,
   preset,
-  library = [],
-  forbid = { photos: false, bigWord: false },
-  request,
+  hook,
 }: {
-  current: Edit;
   transcript: Transcript;
   preset: Preset;
-  library?: readonly LibraryEntry[];
-  // The reel's stored behind forbids.
-  forbid?: BehindForbid;
-  request: string | null;
+  // The written hook the reel opens with (decided by its own call this run).
+  hook: { text: string };
 }): DecideInput {
-  // Photos switched off and no request to lift it: no photo to offer.
-  const offered = forbid.photos && request === null ? [] : library;
   return {
-    current_choices: choicesOf(current, transcript, preset),
-    transcript: transcript.words.map(({ id, text }) => ({ id, text })),
-    sentences: sentences(transcript, preset),
-    preset: presetSummary(preset),
-    library: offered.map(({ id, description, tags }) => ({ id, description, tags: [...tags] })),
-    behind_rules: { photos_forbidden: forbid.photos, big_word_forbidden: forbid.bigWord },
-    request,
+    script: scriptOf(transcript, preset),
+    hook: { text: hook.text },
+    intensity: preset.intensity,
+    target_picks: targetPicks(transcript, preset),
   };
 }

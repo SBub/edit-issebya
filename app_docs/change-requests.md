@@ -1,64 +1,63 @@
-# Change requests, versions list and going back
+# Versions list, going back and Start over
 
 **Specifications:**
 
 - specs/issue-34-adw-87bca34b-sdlc_planner-change-requests-versions-list.md
 - Owner request, 2026-11-03: one-line version rows with details behind an arrow, plain titles.
 - Owner request, 2026-11-04: a temporary Start over button for testing the first edit.
+- Owner decision, 2026-11-07: the change box is removed until the product works end to end.
 - specs/issue-156-adw-ca502a36-sdlc_planner-honest-version-summary-from-diff.md
 
 ## Overview
 
-The owner of a processed reel can type a change in plain words, see every version of the reel, and
-go back to an earlier one. A change queues a `change` job whose worker run is the decide step alone,
-with the owner's words as the request; going back queues a `restore` job that saves a new version
-copying the old one. History is never rewritten: every outcome is a new version.
+The owner of a processed reel sees every version of the reel, goes back to an earlier one, and can
+Start over (rerun the first edit from version 1). Going back queues a `restore` job that saves a new
+version copying the old one; Start over queues a `start_over` job. History is never rewritten: every
+outcome is a new version.
+
+The change box (typing a change in plain words, which queued a `change` job) is removed for now. The
+product has no request input until it works end to end, so the decide step runs only on its own: the
+first automatic decide after version 1, and Start over.
+
+## The change box (removed 2026-11-07)
+
+- No UI sends a `change` job: `ChangeRequestForm.tsx` and `requestChange` are gone, and the reel page
+  has no request field. The versions list and Start over are the owner's only controls.
+- The worker fails a `change` job that is somehow claimed, with the message `change jobs are no
+longer run: the change box is removed` (`apps/worker/src/job-kinds.ts`). It never crashes the worker.
+- The database still accepts `change` jobs and their `request` text (`supabase/migrations/20261101184843_change_restore_jobs.sql`),
+  so old rows stay valid. No migration was made for the removal.
+- Versions made from an old change keep their owner's words in the list: `versionOrigin` and
+  `versionTitle` read them as before (`What you asked` in the details).
+- The decide answer's request path (the prompt's request, the checklist, the `no-change` refusal, the
+  hook kept unless asked) stays in the worker's decide code, unused by the live paths. The
+  `studio_change_requested` event is no longer sent (`app_docs/measurement.md`).
+- To bring the box back, see the owner's later decision; its files were `ChangeRequestForm.tsx`, the
+  `change` case in `change-actions.ts` and `job-kinds.ts`, and the overlay's Change the request action.
 
 ## How it works
 
 - `supabase/migrations/20261101184843_change_restore_jobs.sql`: `jobs.kind` accepts `process`,
-  `change` and `restore`. New columns `request` (a change carries 1 to 1000 trimmed characters, no
-  other kind carries any) and `restore_version_id` (a restore names a version, no other kind does;
-  `on delete cascade`). Owners insert through a column-limited grant (`request`,
+  `change` and `restore`. Columns `request` and `restore_version_id` (a restore names a version, no
+  other kind does; `on delete cascade`). Owners insert through a column-limited grant (`request`,
   `restore_version_id` on top of `reel_id`, `kind`) and the policy `jobs: owner inserts a change or
 restore job for own reel`: own reel, status `queued`, and for a restore a version of the same reel.
   Status, lease, attempt and error columns stay the worker's.
-- `apps/studio/src/app/change-actions.ts`: server actions `requestChange` and `requestRestore`. Both
+- `apps/studio/src/app/change-actions.ts`: server actions `requestRestore` and `requestStartOver`. Both
   use the owner's own client (RLS), re-read the reel, and refuse with `blocked` only when
   `changeBlockedReason` says so: the reel is `refused`, still `uploading`, or `failed` with no
-  current version. `requestRestore` refuses the already current version. Errors are logged
-  without the request text.
-- `apps/studio/src/lib/change-requests.ts`: `normalizeRequest` (trim, 1 to 1000 characters),
-  `changeBlockedReason` (null when open; otherwise `This clip was refused; upload another clip`,
+  current version. `requestRestore` refuses the already current version. Errors are logged without
+  the job's content.
+- `apps/studio/src/lib/change-requests.ts`: `changeBlockedReason` (null when open; otherwise `This clip was refused; upload another clip`,
   `Changes open once the upload finishes` or `Processing failed; press Try again on the preview
 first`, Try again being the progress overlay's, `app_docs/status.md`), `versionOrigin`,
   `versionTitle` and `jobRequestLabel` (the text shown beside a version or a job; a render job reads
   `export of vN`, or `export` when the version is unknown). `versionOrigin`: `Back to vN` for a
-  going back, the owner's own words for a change, `First version` (no parent), else `Styled
+  going back, the owner's own words for an old change, `First version` (no parent), else `Styled
 automatically` (the decide run after the first version). `versionTitle`: `Back to vN` and `First
 version` as above; otherwise the version's `change_title`, falling back (versions saved before
-  titles) to the owner's request, else `Styled automatically`.
-- `apps/studio/src/components/ChangeRequestForm.tsx`: the change box (on desktop the bottom 32% of the right
-  side, under Versions and the library; pinned at the bottom on a phone; placement in
-  `app_docs/studio-reel-layout.md`). Built like a chat composer: one box with the studio's one corner radius
-  (`rounded-reel`, `data-testid="change-field"`, `border-line`, `bg-chrome`, `bg-chrome/50` while disabled, an accent ring
-  while focused) holds the textarea and, in its bottom right corner, Send: a small square white
-  button (`bg-primary`, `rounded-reel` too) with a black up arrow icon (`text-on-primary`, inline SVG, `aria-hidden`) and no text, named by `aria-label="Send"`
-  and `title`, at half opacity while disabled. The textarea's right padding keeps text from running
-  under the button. No visible label: the textarea is named by `aria-label="Ask for a change"`, and
-  its placeholder says what to do ("What should change? For example: slower transitions, no photos
-  in this one, bigger captions"). Enter adds a new line; the button sends. Disabled with the blocked reason beside it, otherwise the queue note (`changeQueueNote` in
-  `apps/studio/src/lib/failures.ts`) when jobs are ahead; after sending it shows `Pending: <request>` until the job ends. These lines sit under the box: the
-  blocked reason or queue note (`change-blocked-reason`), then the status line (`change-status`,
-  `aria-live`, the pending line or a send error). Each hides while empty (`empty:hidden`), so with
-  no text the box keeps the area's even inset on all four sides; one shows only when it has text.
-  Its `refill(text)` handle puts a request back in the field and focuses it (the overlay's Change
-  the request).
-- A change refused twice (the job `failed` with `failure_kind` `answer_refused`) shows in the
-  progress overlay as `Could not finish styling`, a plain reason from the rule names
-  (`refusalReason` in `apps/studio/src/lib/step-words.ts`), Change the request (refills the field
-  with the sent request and focuses it) and Keep the current version; never Try again and never the
-  raw error tail.
+  titles) to the owner's request, else the origin label. A version saved now has no title (null), so
+  it reads its origin label: `Styled automatically` for the automatic run and Start over.
 - `apps/studio/src/components/VersionList.tsx`: under the `Versions` heading, one muted intro line
   (`data-testid="versions-intro"`, `text-xs text-muted`, the heading's `px-3`), exactly
   `Your reel's history. Open a version to see what changed and bring it back` (no full stop),
@@ -71,39 +70,36 @@ version` as above; otherwise the version's `change_title`, falling back (version
   an arrow button (`version-toggle`: a chevron that turns up when open, `aria-expanded`,
   `aria-controls` naming the details, accessible name `Show details of vN`, Enter or Space toggles,
   the accent focus ring). The arrow opens the row's details in place (`version-details`, `hidden`
-  while closed; several rows may be open): for a change `What you asked` with the owner's words
-  (`version-origin`) and `What changed` with the summary (`version-summary`); for a going back
-  `Back to vN`; for the first version `First version` and its summary; then `Go back to this`,
+  while closed; several rows may be open): for an old change `What you asked` with the owner's words
+  (`version-origin`) and, only when the version has a stored summary, `What changed` with it
+  (`version-summary`); for a going back `Back to vN`; for the first version `First version`; then
+  `Go back to this`,
   never on the current version. The list scrolls inside the Versions area (desktop and the phone's
-  Versions tab).
+  Versions tab). The `Start over` button sits at the right of the heading (`StartOverButton.tsx`).
 - The rows run edge to edge of the Versions area (no box around the list, the area itself has no
   padding), separated by thin `divide-line` dividers, each with the area's `px-3` side padding; the
   heading and the status line carry the same `px-3`, so they line up with the row text.
 - No time or date shows in the list, in a row or its details: what changed matters, not when.
-- Texts: `change_title` and `change_summary` are written after layout from the saved difference,
-  by the summary call or its template (`app_docs/decide-step.md`); a going back saves the summary
-  `Back to how vN looked`. Old technical summaries stay as stored and show only inside the details.
+- Texts: a new version saves `change_title` and `change_summary` as null (owner decision 2026-11-08;
+  the summary call is removed, `app_docs/decide-step.md`). Versions saved before keep their stored
+  title and summary, which show as before; a going back saves the summary `Back to how vN looked`.
 - `apps/studio/src/components/LiveReel.tsx`: reads `versions` with the snapshot (`VERSION_LIST_COLUMNS`
   in `apps/studio/src/lib/versions.ts`, no edit metadata) and follows `INSERT` on `versions` over
   Realtime, filtered to the reel. The reel page shows no jobs list; what a job is doing shows in the
   progress overlay.
-- `apps/worker/src/job-kinds.ts`: `runJobKind` dispatches a claimed job by kind. A change without a
-  request, a restore without a version and an unknown kind fail the job.
+- `apps/worker/src/job-kinds.ts`: `runJobKind` dispatches a claimed job by kind. A `change` job fails
+  (see above), a restore without a version, a render without a version and an unknown kind fail the job.
 - `apps/worker/src/process-job.ts`: `process` runs the pipeline, preview copies, first version and
-  decide (request null); `change` runs `runDecide` with `job.request`; `restore` runs `runRestore`.
+  the automatic decide (request null); `restore` runs `runRestore`; `start_over` runs `runDecide` from
+  version 1 (see Start over below).
 - `apps/worker/src/restore-step.ts`: the `restore` step. Calls `restoreVersion` from
   `@edit-issebya/edit`, which refuses a version of another reel before writing: a new version copies
   the old bytes, its parent is the current version, `restored_from_id` the old one, and it becomes
   current. The step summary reads `version N: restored from version M`.
-- `apps/worker/src/queue.ts`: `ClaimedJob` carries `request` and `restore_version_id`. Only a
-  `process` job moves the reel's status; a failed `change` or `restore` job fails the job and leaves
-  the reel `processed` with its current version untouched.
-- `apps/studio/src/lib/track.ts`: sends `studio_change_requested` (reel id and app, never the text).
-- A request about the written hook needs nothing of its own: Claude reads the current hook back
-  from `current_choices`, keeps it unless the request asks to change or remove it ("change the hook
-  to ...", "no hook"), uses the owner's exact words as written, and links the ask to `hook` in the
-  checklist (`app_docs/decide-step.md`). The version's title and summary then read `Hook changed`
-  or `Hook removed`.
+- `apps/worker/src/queue.ts`: `ClaimedJob` carries `restore_version_id`. Only a `process` job moves
+  the reel's status; a failed `restore` or `start_over` job fails the job and leaves the reel
+  `processed` with its current version untouched.
+- `apps/studio/src/lib/track.ts`: `studio_change_requested` is no longer sent (see the change box above).
 
 ### Start over (temporary testing control, to be removed)
 
@@ -115,27 +111,27 @@ as a new version beside the old ones, so first runs can be compared.
   request, no version and no photo (the existing checks refuse any), and the policy `jobs: owner
 inserts a start over job for own reel` (own reel, status `queued`) through the existing
   (`reel_id`, `kind`) grant. The restrictive retry policy applies, so Try again works as for a
-  change.
-- `apps/studio/src/app/change-actions.ts`: `requestStartOver` refuses like the other two
+  restore.
+- `apps/studio/src/app/change-actions.ts`: `requestStartOver` refuses like going back
   (`changeBlockedReason`) and, with no current version yet, says `Start over opens once the first
 version is ready`.
 - `apps/studio/src/components/StartOverButton.tsx`: `Start over` (`data-testid="start-over"`), a
   square secondary button like Go back to this (`border-line`, `text-xs`), beside the `Versions`
   heading (VersionList's `action` slot, passed by `LiveReel.tsx`). Disabled while the reel is
-  blocked, has no version, any job of the reel is queued, running or waiting for the AI (the
-  change box shows the queue note `Waiting: ...` then), and until its own job ends; its title says
-  why. A failure to queue shows beside it. Progress shows in the overlay like a change's
-  (`JOB_STEPS.start_over` is `decide`); a failure gets Try again and Keep the current version.
+  blocked, has no version, any job of the reel is queued, running or waiting for the AI, and until its
+  own job ends; its title says why (`startOverQueueNote` in `apps/studio/src/lib/failures.ts`:
+  `Waiting: your reel is still being styled. Start over starts right after`). A failure to queue
+  shows beside it. Progress shows in the overlay (`JOB_STEPS.start_over` is `decide`); a failure gets
+  Try again and Keep the current version.
 - `apps/worker/src/job-kinds.ts` dispatches `start_over`; `apps/worker/src/process-job.ts` reads the
   reel's version 1 (`firstVersionId` in `apps/worker/src/start-over.ts`; a reel without one fails
   the job) and runs `runDecide` with `request` null and `startFrom` that version. Every earlier step
   (convert, transcribe, retime, head_track, preview_copies, the background map, cut-outs) is reused
   from the cache; decide is never cached. Claude starts from version 1's choices (captions only),
   never the current version's; the reel's behind rules hold as on any run. The new version's
-  parent is the current version, it becomes current, and its title and summary describe the
-  difference from version 1 (a fresh first edit). In the list it reads like the automatic run
-  (`Styled automatically` when it has no title). The step summary ends with
-  `started over from version 1`.
+  parent is the current version and it becomes current; it saves no title and no summary (both
+  null). In the list it reads like the automatic run (`Styled automatically`). The step summary ends
+  with `started over from version 1`.
 - To remove: the button file and its `action` use in `LiveReel.tsx` (and the slot if unused), the
   action, `start_over` in `JOB_KINDS`, `JOB_STEPS` and `jobRequestLabel`, the worker's runner,
   `start-over.ts` and `startFrom` in `run-decide.ts`, their tests, `apps/studio/e2e/start-over.spec.ts`,
@@ -144,16 +140,16 @@ version is ready`.
 ## How to Use
 
 1. Open a processed reel in the studio.
-2. Type the change in the box and send it. The box shows `Pending: ...` while the job runs, then a
-   new version becomes current and the live preview follows.
-3. To go back, open an earlier version's details with its arrow in the Versions list and press Go
+2. To go back, open an earlier version's details with its arrow in the Versions list and press Go
    back to this. A new version, restored from the old one, becomes current; going back can itself
    be undone the same way.
-4. The change box stays open while the reel is processing and shows
-   `Waiting: your reel is still being styled. Your change starts right after` (the same line while
-   other jobs are ahead). Both controls are disabled, with the reason beside them,
-   only while the reel is `refused`, still `uploading`, or `failed` with no current version. The
-   order the jobs run in is `claim_job`'s, see `app_docs/failures.md`.
+3. To try the first edit again, press Start over beside the Versions heading. Its job shows in the
+   progress overlay, and the new version becomes current when it is saved.
+4. Going back and Start over stay open while the reel is processing and show
+   `Waiting: your reel is still being styled. Start over starts right after` (the same line while
+   other jobs are ahead). Both are disabled, with the reason as the title or beside them, only while the
+   reel is `refused`, still `uploading`, or `failed` with no current version. The order the jobs run
+   in is `claim_job`'s, see `app_docs/failures.md`.
 
 ## Configuration
 
@@ -162,19 +158,15 @@ specs, see `app_docs/decide-step.md`).
 
 ## Testing
 
-- `apps/studio/src/lib/change-requests.test.ts`, `apps/worker/src/job-kinds.test.ts`,
+- `apps/studio/src/lib/change-requests.test.ts`, `apps/studio/src/lib/failures.test.ts`,
+  `apps/worker/src/job-kinds.test.ts` (a `change` job fails with the clear message and runs nothing),
   `apps/worker/src/queue.test.ts`, `apps/worker/src/restore-step.test.ts` (unit).
-- `apps/studio/db-tests/change-jobs.test.ts`: the kind checks, the column grant and the insert policy.
-- `apps/studio/e2e/change-requests.spec.ts`: a change makes version 3, a change the AI refuses twice
-  (`brokenAnswerScript` in `apps/studio/test-support/ai-script.ts`) keeps version 3 and the reel
-  `processed`, with the overlay's `Could not finish styling`, its reason, Change the request (the
-  field refilled and focused, `studio_failure_action` sent) and Keep the current version, no Try
-  again, and going back makes versions 4 and 5. It checks version 3's stored and shown title
-  (`Hook and captions changed`: the committed answer's hook and word fix),
-  the intro line under the Versions heading (visible, exact text, `aria-describedby`),
-  details hidden until the arrow opens them (`aria-expanded`), What you asked, What changed, and
-  the `Back to vN` titles of the restores. A change that would leave the reel as it is saves
-  nothing and the overlay says `Nothing changed`.
+- `apps/studio/db-tests/change-jobs.test.ts`: the kind checks, the column grant and the insert policy
+  (the database is unchanged, so these still hold).
+- `apps/studio/e2e/change-requests.spec.ts`: Start over makes version 3, then going back makes
+  versions 4 and 5 (each a new version copying the old one, with the `Back to vN` titles and details),
+  the bytes and rows of older versions kept, the reel page never reloaded; another owner cannot queue
+  a going back, and a going back needs a version.
 - Start over: `apps/worker/src/job-kinds.test.ts`, `apps/worker/src/queue.test.ts` (never moves the
   reel's status), `apps/worker/src/decide/run-decide.test.ts` (`runDecide starting over`: decides
   from version 1, parent the current version, a version of another reel refused),
@@ -188,21 +180,18 @@ specs, see `app_docs/decide-step.md`).
 
 ## Rules
 
-- The version summary describes only the saved difference (for a Start over, the difference from
-  version 1, the version it decided from).
-- An unchanged edit is never saved as a change.
-- A change keeps the current hook unless the owner asks to change or remove it.
-- A request for photos is always fulfilled with library photos (a loose fit as a `mood` photo,
-  said so in the summary); only an empty library, or photos switched off and not lifted by the
-  request, leaves it undone (`app_docs/decide-step.md`).
+- A new version has no title or summary text: `change_title` and `change_summary` are saved null.
+- A going back saves a new version copying the old one's bytes, never rewriting history.
+- The worker never runs a `change` job: it fails with the clear message (the change box is removed).
+- A Start over decides from version 1's choices, never the current version's.
 
 ## Notes
 
 - Jobs are ordered per reel in the database: `claim_job` runs one job per reel at a time, oldest
   first (`app_docs/failures.md`). The Export button follows its own rule (`app_docs/export.md`).
-- A change whose edit would be identical to the current version saves nothing; the job fails as a
-  refused answer with rules starting `no-change` and the overlay says `Nothing changed` with the
-  reason and Change the request / Keep the current version (`app_docs/decide-step.md`).
-- Touches `app_docs/studio.md` (jobs kinds, policies), `app_docs/decide-step.md` (the request path),
-  `app_docs/measurement.md` (the `studio_change_requested` event) and `app_docs/edit-model.md`
-  (`restored_from_id`, `restoreVersion`).
+- The decide step's request path (the `no-change` refusal, the photo and hook rules that a request
+  lifts) is dormant: no live path passes a request. It stays in the decide code for the later decide
+  task (`app_docs/decide-step.md`).
+- Touches `app_docs/studio.md` (jobs kinds, policies), `app_docs/decide-step.md` (the Start over path),
+  `app_docs/measurement.md` (the `studio_change_requested` event, no longer sent) and
+  `app_docs/edit-model.md` (`restored_from_id`, `restoreVersion`).

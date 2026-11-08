@@ -1,39 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  MAX_REQUEST_LENGTH,
   changeBlockedReason,
   jobRequestLabel,
-  normalizeRequest,
   versionOrigin,
   versionTitle,
 } from "./change-requests";
 import { JOB_KINDS } from "./jobs";
-
-describe("normalizeRequest", () => {
-  it("trims the owner's words", () => {
-    expect(normalizeRequest("  move the title lower \n")).toEqual({
-      ok: true,
-      request: "move the title lower",
-    });
-  });
-
-  it("refuses an empty or whitespace-only request and a non-string", () => {
-    for (const text of ["", "   ", "\n\t", undefined, 3]) {
-      expect(normalizeRequest(text).ok).toBe(false);
-    }
-  });
-
-  it("accepts exactly 1000 characters and refuses 1001", () => {
-    expect(MAX_REQUEST_LENGTH).toBe(1000);
-    expect(normalizeRequest("a".repeat(1000))).toEqual({ ok: true, request: "a".repeat(1000) });
-    expect(normalizeRequest("a".repeat(1001))).toEqual({
-      ok: false,
-      reason: "Keep it to 1000 characters",
-    });
-    // Counted after trimming.
-    expect(normalizeRequest(` ${"a".repeat(1000)} `).ok).toBe(true);
-  });
-});
 
 describe("changeBlockedReason", () => {
   it("is open on a processed reel and while the reel is processing", () => {
@@ -120,13 +92,20 @@ describe("labels", () => {
       );
       expect(versionTitle(base, byId)).toBe("Styled automatically");
     });
+
+    it("shows the origin label for a version saved with no title, a start-over included", () => {
+      // The decide step saves no title now: a start over (no request, a parent)
+      // and an automatic styling both show their origin label.
+      const startOver = { ...base, change_title: null };
+      expect(versionTitle(startOver, byId)).toBe("Styled automatically");
+      expect(versionTitle({ ...startOver, parent_id: null }, byId)).toBe("First version");
+    });
   });
 
   it("names what each job kind was asked to do", () => {
     expect(JOB_KINDS).toEqual(["process", "change", "restore", "render", "start_over"]);
     const none = { request: null, restore_version_id: null, version_id: null };
     expect(jobRequestLabel({ kind: "process", ...none }, byId)).toBeNull();
-    expect(jobRequestLabel({ kind: "change", ...none, request: "lower" }, byId)).toBe('"lower"');
     expect(jobRequestLabel({ kind: "restore", ...none, restore_version_id: "v1" }, byId)).toBe(
       "go back to v1",
     );

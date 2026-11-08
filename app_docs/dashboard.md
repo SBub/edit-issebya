@@ -29,7 +29,8 @@ Metrics, as defined by the code:
 - Upload to first preview: minutes from upload to version 1 (`versions.created_at`, saved by
   `first_version`). Goal line 15 minutes. Sources: `jobs`, `versions`.
 - Change requests per exported reel, by week of the first export: `jobs` of kind `change` created
-  before the reel's first export.
+  before the reel's first export. No new ones are made since the change box was removed
+  (`app_docs/change-requests.md`).
 - Completion by week of upload: reels uploaded, reels of those exported, their ratio.
 - Funnel: the five studio events in order, per reel (`properties.reel_id`), 14-day window. Events
   are absent wherever PostHog is not initialised, so every other chart reads the database.

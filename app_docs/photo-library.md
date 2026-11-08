@@ -68,13 +68,14 @@ desktop and is a fourth tab, `Library`, on a phone.
   `app_docs/studio-reel-layout.md`.
 - `apps/worker/src/photos/photo-images.ts`: the `photo_images` step: ffprobe for width and height,
   ffmpeg for `thumbnail.jpg` (long side 480) and `large.jpg` (long side 1568), both `rebuildable`.
-- `apps/worker/src/photos/describe-photo.ts`, `describe-schema.ts`, `describe-prompt.md`,
-  `describe-prompt.ts`: the `describe_photo` step. The large copy's bytes go with the prompt as the
+- `apps/worker/src/photos/describe-photo.ts`, `describe-schema.ts`, `describe-prompt.ts`: the
+  `describe_photo` step. Its prompt is `photo-describe`, fetched from PostHog before the step's work
+  (`app_docs/decide-step.md`, "Prompts"); the repository holds no prompt text. The large copy's bytes go with the prompt as the
   one JPEG image of the call (role `describe`, Claude Haiku 5.5 through OpenRouter, an `image_url`
   data URL on the wire; `app_docs/decide-step.md`, "The AI runner"); the model reads no file and
   has no tools. The answer is checked against a draft-07 JSON Schema and Zod (description at most
-  200 characters, 3 to 8 tags). The runner sends no length limit (`wireSchema`), so the prompt asks
-  for one short sentence of at most 200 characters (about 30 words), and `parseDescribeAnswer`
+  200 characters, 3 to 8 tags). The runner sends no length limit (`wireSchema`), so the prompt keeps
+  the description short, and `parseDescribeAnswer`
   shortens what still runs long instead of refusing it, with no further call: a description over
   200 characters is cut by `shortenDescription` (at the last sentence end within the limit when it
   keeps at least half, else at the last word boundary with any trailing comma, colon, dash or space
@@ -83,15 +84,16 @@ desktop and is a fourth tab, `Library`, on a phone.
   drop) or a tag breaking the pattern is refused: a refused answer is sent back once with the
   reasons, a second refusal fails the job and the photo. The `ai image call` line of `doctor --ai` parses
   with the same function. An unavailable AI makes the job `waiting_ai` (`app_docs/failures.md`).
-  The prompt is versioned by `DESCRIBE_PROMPT_VERSION` (`describe-photo-3` since the prompt asks
-  for one short sentence of about 30 words); the photo row records it and the model that answered
-  (`photos.model`).
+  The photo row records the prompt's identity (`photos.prompt_version`, `photo-describe@v<n>` for the
+  version PostHog served at the label) and the model that answered (`photos.model`).
 - `apps/worker/src/photos/photo-store.ts`: the worker's writes to the `photos` row, and
   `supabasePhotoLibrary(db).readyPhotos(ownerId)`: the owner's `ready` photos (`id`,
   `description`, `tags`, `large_key`), oldest first, a row without `large_key` left out.
-- Ready photos are used behind the speaker (`app_docs/edit-model.md`, the `behind` track): the
-  decide step offers them to the AI by id, description and tags (`app_docs/decide-step.md`), the
-  live preview signs each shown photo's `large_key` read from its own row under RLS
+- Ready photos are used behind the speaker (`app_docs/edit-model.md`, the `behind` track). For now
+  the decide step reads no library: its components prompt gets no photo, and its answer names no
+  photo (a VISUAL is an empty frame, `app_docs/decide-step.md`), so no new version picks a library
+  photo. The library, its ready photos and `readyPhotos` stay as they are for the studio and the
+  older versions that hold a photo. The live preview signs each shown photo's `large_key` read from its own row under RLS
   (`app_docs/preview.md`), and the render downloads the same large copy into its project
   (`app_docs/export.md`). A version names a photo by id only (`inputs.photos`).
 - Deleting a photo a version uses leaves that version as it is (versions never change): its
@@ -177,7 +179,8 @@ only, run by hand; CI uses the committed files).
   but `ready`.
 - Never slim a photo's file; only the owner's Delete removes a photo's objects.
 - Quote a photo's description and tags as data in any later prompt, never as instructions.
-- Bump `DESCRIBE_PROMPT_VERSION` with every change to `describe-prompt.md`.
+- Never put the describe prompt's text in the repository: change it in PostHog (a new version, moved to
+  the label); the photo row records the identity the worker fetched (AGENTS.md).
 
 ## Notes
 

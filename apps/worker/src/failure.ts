@@ -41,31 +41,6 @@ export class AnswerRefused extends PermanentError {
   }
 }
 
-// A change request whose new edit is the current one byte for byte and
-// switches no rule: nothing is saved. Its rules are `no-change` and the
-// engine's drop rules (why what was asked did not make it in).
-export class NothingChanged extends AnswerRefused {
-  constructor(rules: string[], rounds: number) {
-    super(rules, rounds);
-    this.name = "NothingChanged";
-    this.message = "the answer changes nothing";
-  }
-}
-
-// The rules of an unchanged answer: `no-change`, then the distinct rules of
-// the record's drops and wishes not kept, sorted, at most twenty in all.
-export function nothingChangedRules(record: readonly { action: string; rule: string }[]): string[] {
-  const drops = [
-    ...new Set(
-      record
-        .filter((note) => note.action === "dropped" || note.action === "wish-not-kept")
-        .map((note) => note.rule)
-        .filter((rule) => rule !== "no-change"),
-    ),
-  ].sort();
-  return ["no-change", ...drops.slice(0, 19)];
-}
-
 // The AI is not available (no key, no credits, a rate limit, OpenRouter down): the job
 // waits and is taken again later.
 export class AiUnavailable extends Error {

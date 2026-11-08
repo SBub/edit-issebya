@@ -4,7 +4,6 @@ import { runJobKind } from "./job-kinds.ts";
 function runners() {
   return {
     process: vi.fn(async () => {}),
-    change: vi.fn<(request: string) => Promise<void>>(async () => {}),
     restore: vi.fn<(versionId: string) => Promise<void>>(async () => {}),
     render: vi.fn<(versionId: string) => Promise<void>>(async () => {}),
     describe_photo: vi.fn<(photoId: string) => Promise<void>>(async () => {}),
@@ -12,7 +11,7 @@ function runners() {
   };
 }
 
-const NONE = { request: null, restore_version_id: null, version_id: null, photo_id: null };
+const NONE = { restore_version_id: null, version_id: null, photo_id: null };
 
 function expectOnly(r: ReturnType<typeof runners>, kind: keyof ReturnType<typeof runners> | null) {
   for (const [name, fn] of Object.entries(r)) {
@@ -28,11 +27,12 @@ describe("runJobKind", () => {
     expectOnly(r, "process");
   });
 
-  it("runs only decide, with the request, for a change job", async () => {
+  it("fails a change job with a clear message and runs nothing", () => {
     const r = runners();
-    await runJobKind({ kind: "change", ...NONE, request: "no accent on 'work'" }, r);
-    expect(r.change).toHaveBeenCalledExactlyOnceWith("no accent on 'work'");
-    expectOnly(r, "change");
+    expect(() => runJobKind({ kind: "change", ...NONE }, r)).toThrow(
+      /change jobs are no longer run: the change box is removed/,
+    );
+    expectOnly(r, null);
   });
 
   it("runs only restore, with the version, for a restore job", async () => {
@@ -71,9 +71,8 @@ describe("runJobKind", () => {
     expectOnly(r, null);
   });
 
-  it("fails a change without a request, a restore or render without a version and an unknown kind", () => {
+  it("fails a restore or render without a version and an unknown kind", () => {
     const r = runners();
-    expect(() => runJobKind({ kind: "change", ...NONE }, r)).toThrow(/no request/);
     expect(() => runJobKind({ kind: "restore", ...NONE }, r)).toThrow(/no version/);
     expect(() => runJobKind({ kind: "render", ...NONE }, r)).toThrow(
       /render job has no version to export/,

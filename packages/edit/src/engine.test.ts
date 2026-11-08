@@ -1,17 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { type Backgrounds, backgroundSampler } from "./background.ts";
 import { bigWordCoveredShare, maskSpans } from "./behind.ts";
+import { baselineEdit } from "./baseline.ts";
 import { build } from "./build.ts";
 import { editFromAnswer } from "./decide.ts";
-import { type PhotoLook, placeEdit } from "./engine.ts";
+import { placeEdit } from "./engine.ts";
 import { type EngineInput, choicesOf } from "./engine-input.ts";
-import { type HeadTrack, facesOver } from "./head-track.ts";
-import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE, TRANSITION_KINDS } from "./preset.ts";
-import { type Edit, parseEdit } from "./schema.ts";
+import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
+import {
+  CLEAN_PRESET,
+  ISSEBYA_PRESET,
+  PLATFORM_BUTTONS,
+  PLATFORM_SAFE,
+  type Preset,
+  TRANSITION_KINDS,
+} from "./preset.ts";
+import { MIN_TEXT_SIZE, type Edit, parseEdit } from "./schema.ts";
 import { backgroundMapOf } from "./test-support/backgrounds.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
+import { baselineInputs } from "./test-support/inputs.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
-import { LEFT_HEAD, REQUEST_ANSWER, REQUEST_PHOTO } from "./test-support/request.ts";
+import { LEFT_HEAD, REQUEST_ANSWER, REQUEST_REQUESTED } from "./test-support/request.ts";
 import { resolveTimeline } from "./timeline.ts";
 import { type Transcript, sentenceSpans } from "./transcript.ts";
 import { levelBoxes } from "./transitions.ts";
@@ -21,13 +30,11 @@ const { transcript } = hand;
 const words = transcript.words;
 const byId = new Map(words.map((word) => [word.id, word]));
 const sentences = sentenceSpans(transcript);
-const PHOTO = "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14";
-const OTHER_PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
 
 const NOTHING: EngineInput = {
   accents: [],
   big_words: [],
-  photos: [],
+  visuals: [],
   transitions: [],
   word_fixes: [],
 };
@@ -46,8 +53,8 @@ function steadyHead(sample: { head_top: number; cx: number; head_w: number }): H
 // x 434 to 726, y 452 to 846).
 const BIG_FACE = steadyHead({ head_top: 452, cx: 580, head_w: 292 });
 
-function withPlaceholderMasks(edit: Edit): Edit {
-  const masks = maskSpans(edit, transcript, ISSEBYA_PRESET).map((span, index) => ({
+function withPlaceholderMasks(edit: Edit, spoken: Transcript): Edit {
+  const masks = maskSpans(edit, spoken, CLEAN_PRESET).map((span, index) => ({
     step: "cutout" as const,
     fingerprint: String(index + 1).repeat(64),
     file: "mask.mp4",
@@ -64,41 +71,40 @@ async function place(
     current = hand.edit,
     backgrounds,
     requested,
-    photos,
+    transcript: spoken = transcript,
+    preset = CLEAN_PRESET,
   }: {
     headTrack?: HeadTrack;
     current?: Edit;
+    // The layout mode (the strict clean layout unless a test asks for `all`).
+    preset?: Preset;
+    // Another transcript (the same ids), for a denser opening.
+    transcript?: Transcript;
     backgrounds?: Backgrounds;
-    // The library photos' ratios and edge luminances.
-    photos?: ReadonlyMap<string, PhotoLook>;
-    // The answer refs the request's checklist links.
+    // The answer items the request asked for (`visuals[0]` style refs).
     requested?: string[];
   } = {},
 ) {
   const measurer = await nodeMeasurer();
   const made = editFromAnswer(
     current,
-    {
-      ...NOTHING,
-      ...input,
-      ...(requested ? { checklist: [{ fulfilled_by: requested }] } : {}),
-    },
-    ISSEBYA_PRESET,
-    transcript,
+    { ...NOTHING, ...input },
+    preset,
+    spoken,
     headTrack,
     measurer,
     backgrounds,
-    photos,
+    requested ? { requested } : {},
   );
   if (!made.ok) throw new Error(made.reasons.join("; "));
   const { checks, html } = build(
-    withPlaceholderMasks(made.edit),
-    transcript,
+    withPlaceholderMasks(made.edit, spoken),
+    spoken,
     headTrack,
-    ISSEBYA_PRESET,
+    preset,
     measurer,
   );
-  const spans = resolveTimeline(made.edit, transcript);
+  const spans = resolveTimeline(made.edit, spoken);
   return {
     edit: made.edit,
     record: made.record,
@@ -107,7 +113,7 @@ async function place(
     checks,
     html,
     spans,
-    levels: levelBoxes(made.edit, spans, byId, ISSEBYA_PRESET, measurer),
+    levels: levelBoxes(made.edit, spans, byId, preset, measurer),
   };
 }
 
@@ -148,7 +154,7 @@ function expectNoWordTwice(edit: Edit, spans: ReturnType<typeof resolveTimeline>
 }
 
 // An accent or a big word comes in this long before its first word.
-const LEAD = ISSEBYA_PRESET.accent.leadSeconds;
+const LEAD = CLEAN_PRESET.accent.leadSeconds;
 const leadOf = (id: string) => Math.round((byId.get(id)!.start - LEAD) * 1000) / 1000;
 
 describe("the layout engine's timing", () => {
@@ -158,9 +164,7 @@ describe("the layout engine's timing", () => {
     for (const [index, caption] of captions.entries()) {
       const span = spans.get(caption.id)!;
       expect(span.start).toBe(byId.get(caption.words[0]!)!.start);
-      expect(span.end - span.start).toBeGreaterThanOrEqual(
-        ISSEBYA_PRESET.caption.minSeconds - 1e-6,
-      );
+      expect(span.end - span.start).toBeGreaterThanOrEqual(CLEAN_PRESET.caption.minSeconds - 1e-6);
       const next = captions
         .slice(index + 1)
         .find((c) => JSON.stringify(c.end) !== JSON.stringify(caption.end));
@@ -191,6 +195,24 @@ describe("the layout engine's timing", () => {
     expect(two.end).toBeCloseTo(byId.get("w87")!.end + 1, 3);
   });
 
+  it("shows a question as an accent on its words: question-1, the accent's timing and look", async () => {
+    const { edit, spans, record } = await place({ questions: [{ from: "w29", to: "w29" }] });
+    expect(edit.tracks.overlays).toEqual([
+      expect.objectContaining({
+        id: "question-1",
+        kind: "accent",
+        words: ["w29"],
+        start: { word: "w29", offset: -LEAD },
+      }),
+    ]);
+    const span = spans.get("question-1")!;
+    expect(span.start).toBe(leadOf("w29"));
+    expect(span.end - span.start).toBeGreaterThanOrEqual(1.5 - 1e-6);
+    expect(
+      record.filter((note) => note.item === "question-1" && note.action === "dropped"),
+    ).toEqual([]);
+  });
+
   it("cuts an accent short when the next one needs the space, and records it", async () => {
     const { spans, record } = await place({
       accents: [
@@ -208,7 +230,7 @@ describe("the layout engine's timing", () => {
   });
 
   it("shows a big word on the accent's timing: the lead before its word to a second after it", async () => {
-    const { spans, edit } = await place({ big_words: [{ word: "w76" }] });
+    const { spans, edit } = await place({ big_words: [{ from: "w76", to: "w76" }] });
     const span = spans.get("big-word-1")!;
     const said = byId.get("w76")!;
     expect(span.start).toBe(leadOf("w76"));
@@ -222,6 +244,37 @@ describe("the layout engine's timing", () => {
     });
   });
 
+  it("shows a two-word big word from its first word to its last, both words in it", async () => {
+    const { spans, edit, html } = await place({ big_words: [{ from: "w76", to: "w77" }] });
+    const span = spans.get("big-word-1")!;
+    expect(span.start).toBe(leadOf("w76"));
+    expect(span.end).toBeCloseTo(Math.max(byId.get("w77")!.end + 1, span.start + 1.5), 3);
+    expect(edit.tracks.behind![0]).toMatchObject({
+      kind: "word",
+      text: "distribution channel",
+      start: { word: "w76", offset: -LEAD },
+    });
+    expect(html).toContain("distribution channel");
+  });
+
+  it("sets a two-word big word on one line in spoken order: one element, first word first", async () => {
+    const tr = structuredClone(transcript);
+    tr.words.find((w) => w.id === "w76")!.text = "social";
+    tr.words.find((w) => w.id === "w77")!.text = "media";
+    const { html, edit } = await place(
+      { big_words: [{ from: "w76", to: "w77" }] },
+      { transcript: tr },
+    );
+    expect(edit.tracks.behind![0]).toMatchObject({ text: "social media" });
+    // One element holding both words in spoken order, on one line (nowrap), so
+    // "media" can never stack above "social".
+    const elements = html.match(/<div id="big-word-1"[^>]*>[^<]*<\/div>/g) ?? [];
+    expect(elements).toHaveLength(1);
+    expect(elements[0]).toMatch(/>social media<\/div>$/);
+    expect(html).toMatch(/\.word \{[^}]*white-space: nowrap;/);
+    expect(html).not.toMatch(/big-word-1"[^>]*>social<br/);
+  });
+
   it("gives up the lead rather than cut the extra before it", async () => {
     // "AI has completely" leaves at 9.607 s, a second after "completely";
     // "work" is said at 9.789 s, so its lead would start at 9.589 s. The big
@@ -229,7 +282,7 @@ describe("the layout engine's timing", () => {
     // big word still shows 1.5 s.
     const { spans, record } = await place({
       accents: [{ from: "w26", to: "w28", title: false }],
-      big_words: [{ word: "w33" }],
+      big_words: [{ from: "w33", to: "w33" }],
     });
     const accent = spans.get("accent-1")!;
     const word = spans.get("big-word-1")!;
@@ -244,7 +297,11 @@ describe("the layout engine's timing", () => {
 
   it("shows several big words, the same word again too, each on the accent's timing", async () => {
     // "work" is said at w33 and again at w126.
-    const choices = [{ word: "w33" }, { word: "w76" }, { word: "w126" }];
+    const choices = [
+      { from: "w33", to: "w33" },
+      { from: "w76", to: "w76" },
+      { from: "w126", to: "w126" },
+    ];
     const { spans, edit, checks } = await place({ big_words: choices });
     const behind = edit.tracks.behind!;
     expect(behind.map((item) => item.id)).toEqual(["big-word-1", "big-word-2", "big-word-3"]);
@@ -255,7 +312,7 @@ describe("the layout engine's timing", () => {
     ]);
     behind.forEach((item, index) => {
       const span = spans.get(item.id)!;
-      const said = byId.get(choices[index]!.word)!;
+      const said = byId.get(choices[index]!.from)!;
       expect(span.start).toBe(leadOf(said.id));
       expect(span.end - span.start).toBeGreaterThanOrEqual(1.5 - 1e-6);
       expect(span.end).toBeLessThanOrEqual(Math.max(said.end + 1, span.start + 1.5) + 1e-6);
@@ -266,20 +323,20 @@ describe("the layout engine's timing", () => {
   it("shows a photo from its sentence's start, 1 to 2 s, never into the next sentence", async () => {
     // "We have it all." and its pauses last 0.9 s: the photo would cross
     // into another sentence, so it is dropped.
-    const short = await place({ photos: [{ photo_id: PHOTO, from: "w113", to: "w116" }] });
+    const short = await place({ visuals: [{ from: "w113", to: "w116" }] });
     expect(short.edit.tracks.behind).toBeUndefined();
     expect(short.record).toContainEqual(
-      expect.objectContaining({ item: "photo-1", action: "dropped", rule: "photo-time" }),
+      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "visual-time" }),
     );
     // A sentence of 3.2 s: from its start, leaving after 2 s.
-    const whole = await place({ photos: [{ photo_id: PHOTO, from: "w84", to: "w99" }] });
-    const span = whole.spans.get("photo-1")!;
+    const whole = await place({ visuals: [{ from: "w84", to: "w99" }] });
+    const span = whole.spans.get("visual-1")!;
     const sentence = sentences.find((s) => s.from === "w84")!;
     expect(span.start).toBe(sentence.start);
     expect(span.end).toBeCloseTo(sentence.start + 2, 3);
     // A long sentence, photo words late in it: from its first word, 2 s.
-    const late = await place({ photos: [{ photo_id: PHOTO, from: "w18", to: "w25" }] });
-    const lateSpan = late.spans.get("photo-1")!;
+    const late = await place({ visuals: [{ from: "w18", to: "w25" }] });
+    const lateSpan = late.spans.get("visual-1")!;
     expect(lateSpan.start).toBe(byId.get("w18")!.start);
     expect(lateSpan.end).toBeLessThanOrEqual(sentences[0]!.end + 1e-6);
   });
@@ -309,8 +366,8 @@ describe("the layout engine's timing", () => {
   it("shows at most one extra at a time, by priority", async () => {
     const { edit, spans, record } = await place({
       accents: [{ from: "w66", to: "w67", title: false }],
-      big_words: [{ word: "w66" }],
-      photos: [{ photo_id: PHOTO, from: "w63", to: "w70" }],
+      big_words: [{ from: "w66", to: "w66" }],
+      visuals: [{ from: "w63", to: "w70" }],
     });
     const extras = extrasOf(edit).map((item) => spans.get(item.id)!);
     for (const [index, a] of extras.entries()) {
@@ -330,19 +387,11 @@ describe("the layout engine's timing", () => {
     const input: EngineInput = {
       ...NOTHING,
       accents: [{ from: "w66", to: "w67", title: false }],
-      big_words: [{ word: "w66" }],
+      big_words: [{ from: "w66", to: "w66" }],
     };
-    const asked = placeEdit(
-      hand.edit,
-      input,
-      transcript,
-      hand.headTrack,
-      ISSEBYA_PRESET,
-      measurer,
-      {
-        requested: ["big_words[0]"],
-      },
-    );
+    const asked = placeEdit(hand.edit, input, transcript, hand.headTrack, CLEAN_PRESET, measurer, {
+      requested: ["big_words[0]"],
+    });
     expect(asked.tracks.behind?.map((item) => item.id)).toEqual(["big-word-1"]);
     expect(asked.tracks.overlays).toEqual([]);
   });
@@ -388,7 +437,7 @@ describe("never the same word twice on screen", () => {
   });
 
   it('leaves the big word out of its caption: "it to the world" reads "it to the"', async () => {
-    const { edit, spans, checks } = await place({ big_words: [{ word: "w62" }] });
+    const { edit, spans, checks } = await place({ big_words: [{ from: "w62", to: "w62" }] });
     expect(checks).toEqual([]);
     const world = edit.tracks.captions.find((item) => item.words.includes("w62"))!;
     expect(world).toMatchObject({ hidden_by: "big-word-1" });
@@ -414,7 +463,7 @@ describe("never the same word twice on screen", () => {
   it("builds a stored caption without the field as before, and refuses one hidden by nothing", async () => {
     const edit = structuredClone(hand.edit);
     edit.tracks.captions[3]!.hidden_by = "accent-9";
-    const parsed = parseEdit(edit, ISSEBYA_PRESET, transcript);
+    const parsed = parseEdit(edit, CLEAN_PRESET, transcript);
     expect(!parsed.ok && parsed.reasons.join("\n")).toMatch(
       /caption cw\d+: hidden by accent-9, which is no accent or big word/,
     );
@@ -422,7 +471,7 @@ describe("never the same word twice on screen", () => {
 });
 
 describe("big words in view", () => {
-  const maxCovered = 1 - ISSEBYA_PRESET.behind.word.minVisible;
+  const maxCovered = 1 - CLEAN_PRESET.behind.word.minVisible;
   const bigWordOf = (edit: Edit, spans: ReturnType<typeof resolveTimeline>) => {
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
     if (word.kind !== "word") throw new Error("not a word");
@@ -432,12 +481,12 @@ describe("big words in view", () => {
   it("moves a short big word up so the head covers at most 30% of it", async () => {
     const measurer = await nodeMeasurer();
     const { edit, spans, checks, record } = await place(
-      { big_words: [{ word: "w116" }] },
+      { big_words: [{ from: "w116", to: "w116" }] },
       { headTrack: BIG_FACE },
     );
     expect(checks).toEqual([]);
     const { word, span } = bigWordOf(edit, spans);
-    const width = measurer.width(ISSEBYA_PRESET.behind.word.font, word.size!, word.text);
+    const width = measurer.width(CLEAN_PRESET.behind.word.font, word.size!, word.text);
     const box = {
       left: word.position!.x,
       right: word.position!.x + width,
@@ -445,7 +494,7 @@ describe("big words in view", () => {
       bottom: word.position!.y + word.size!,
     };
     expect(
-      bigWordCoveredShare(box, facesOver(BIG_FACE, span.start, span.end), ISSEBYA_PRESET),
+      bigWordCoveredShare(box, facesOver(BIG_FACE, span.start, span.end), CLEAN_PRESET),
     ).toBeLessThanOrEqual(maxCovered + 1e-6);
     // Above the head's top, only its lower part behind it, never above the
     // platforms' safe top.
@@ -460,7 +509,7 @@ describe("big words in view", () => {
     // A wide head right under the safe zone's top: no room above it.
     const high = steadyHead({ head_top: 270, cx: 540, head_w: 700 });
     const { edit, record, checks, unplaced } = await place(
-      { big_words: [{ word: "w116" }] },
+      { big_words: [{ from: "w116", to: "w116" }] },
       { headTrack: high },
     );
     expect(checks).toEqual([]);
@@ -473,7 +522,7 @@ describe("big words in view", () => {
 });
 
 describe("the layout engine's placement", () => {
-  // Every sentence's first words as an accent, one big word, two photos and a
+  // Every sentence's first words as an accent, one big word, two visuals and a
   // transition over one reel.
   const DENSE: Partial<EngineInput> = {
     accents: [
@@ -483,10 +532,10 @@ describe("the layout engine's placement", () => {
       { from: "w117", to: "w120", title: false },
       { from: "w134", to: "w136", title: false },
     ],
-    big_words: [{ word: "w76" }],
-    photos: [
-      { photo_id: PHOTO, from: "w84", to: "w99" },
-      { photo_id: OTHER_PHOTO, from: "w113", to: "w116" },
+    big_words: [{ from: "w76", to: "w76" }],
+    visuals: [
+      { from: "w84", to: "w99" },
+      { from: "w113", to: "w116" },
     ],
     transitions: [{ kind: "panel", from: "w126", to: "w133", key_from: "w128" }],
   };
@@ -501,10 +550,10 @@ describe("the layout engine's placement", () => {
     });
   }
 
-  // The Medium rhythm: an extra on every sentence (accents, big words and
-  // photos in turn, several of each, the same photo again) and two
+  // The Intense rhythm: an extra on every sentence (accents, big words and
+  // visuals in turn, several of each) and two
   // transitions, far more than fits.
-  const RHYTHM: Partial<EngineInput> = { accents: [], big_words: [], photos: [] };
+  const RHYTHM: Partial<EngineInput> = { accents: [], big_words: [], visuals: [] };
   sentences.forEach((sentence, index) => {
     const from = words.findIndex((word) => word.id === sentence.from);
     const to = words.findIndex((word) => word.id === sentence.to);
@@ -515,10 +564,9 @@ describe("the layout engine's placement", () => {
     if (index % 3 === 0) {
       RHYTHM.accents!.push({ from: ids[0]!, to: ids[Math.min(2, ids.length - 1)]!, title: false });
     } else if (index % 3 === 1) {
-      RHYTHM.big_words!.push({ word: longest });
+      RHYTHM.big_words!.push({ from: longest, to: longest });
     } else {
-      const photo = RHYTHM.photos!.length % 2 === 0 ? PHOTO : OTHER_PHOTO;
-      RHYTHM.photos!.push({ photo_id: photo, from: sentence.from, to: sentence.to });
+      RHYTHM.visuals!.push({ from: sentence.from, to: sentence.to });
     }
   });
   RHYTHM.transitions = [
@@ -545,7 +593,7 @@ describe("the layout engine's placement", () => {
       // 1.5 s and at most a second after their word.
       for (const item of edit.tracks.behind ?? []) {
         const span = spans.get(item.id)!;
-        if (item.kind === "photo") {
+        if (item.kind === "visual") {
           expect(span.end - span.start).toBeGreaterThanOrEqual(1 - 1e-6);
           expect(span.end - span.start).toBeLessThanOrEqual(2 + 1e-6);
         } else {
@@ -590,7 +638,7 @@ describe("the layout engine's placement", () => {
       sample && Math.abs(sample.t - at) < 0.13 ? { ...sample, head_top: 0 } : sample,
     );
     const { edit, spans, checks } = await place(
-      { big_words: [{ word: "w76" }] },
+      { big_words: [{ from: "w76", to: "w76" }] },
       { headTrack: glitch },
     );
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
@@ -630,7 +678,7 @@ describe("the layout engine's placement", () => {
     const again = editFromAnswer(
       one.edit,
       { ...NOTHING, ...DENSE },
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       transcript,
       hand.headTrack,
       await nodeMeasurer(),
@@ -666,7 +714,10 @@ describe("today's failures, placed by the engine", () => {
   });
 
   it("keeps the captions off the big word", async () => {
-    const { checks, edit } = await place({ big_words: [{ word: "w76" }] }, { headTrack: BIG_FACE });
+    const { checks, edit } = await place(
+      { big_words: [{ from: "w76", to: "w76" }] },
+      { headTrack: BIG_FACE },
+    );
     expect(edit.tracks.behind).toHaveLength(1);
     expect(checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
   });
@@ -694,10 +745,12 @@ describe("today's failures, placed by the engine", () => {
   it("keeps a photo spot free of captions on its sentence", async () => {
     // The question sentence the v4 photo was dropped from, on the large face.
     const { edit, checks, record } = await place(
-      { photos: [{ photo_id: PHOTO, from: "w84", to: "w99" }] },
+      { visuals: [{ from: "w84", to: "w99" }] },
       { headTrack: BIG_FACE },
     );
-    expect(edit.tracks.behind).toEqual([expect.objectContaining({ id: "photo-1", kind: "photo" })]);
+    expect(edit.tracks.behind).toEqual([
+      expect.objectContaining({ id: "visual-1", kind: "visual" }),
+    ]);
     expect(checks).toEqual([]);
     expect(record.filter((note) => note.action === "dropped")).toEqual([]);
   });
@@ -705,217 +758,246 @@ describe("today's failures, placed by the engine", () => {
   it("drops a photo with a recorded reason when the face takes every spot", async () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
     const { edit, record } = await place(
-      { photos: [{ photo_id: PHOTO, from: "w84", to: "w99" }] },
+      { visuals: [{ from: "w84", to: "w99" }] },
       { headTrack: huge },
     );
     expect(edit.tracks.behind).toBeUndefined();
     expect(record).toContainEqual(
-      expect.objectContaining({ item: "photo-1", action: "dropped", rule: "no-room" }),
+      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "no-room" }),
     );
   });
 });
 
-describe("photos behind or in front of the speaker", () => {
-  const spec = ISSEBYA_PRESET.behind.photo;
-  const maxCovered = 1 - spec.minVisible;
-  // A wide, high head: its body spans the frame's middle, so no box behind it
-  // keeps 70% in view; in front there is room below the face.
-  const WIDE = steadyHead({ head_top: 250, cx: 540, head_w: 420 });
-  const photosOf = (edit: Edit) =>
-    (edit.tracks.behind ?? []).flatMap((item) => (item.kind === "photo" ? [item] : []));
+describe("visuals: corner cards over the footage", () => {
+  const { card } = CLEAN_PRESET.behind;
+  const HOOK = { text: "Gen Z won't work like you did" };
+  const gap = CLEAN_PRESET.layout.gap;
+  // The card at its full size and at the smaller step: a third of the frame's
+  // width, 4:5 (360 by 450), and 0.7 of that (252 by 315).
+  const FULL = { width: 360, height: 450 };
+  const SMALLER = { width: 252, height: 315 };
+  // The speech-ten reel's speaker: a head about 336 px wide, its top near
+  // y 568 and its centre near x 600 (the median of its head track).
+  const SPEECH_TEN = steadyHead({ head_top: 568, cx: 600, head_w: 336 });
+  const cardsOf = (edit: Edit) =>
+    (edit.tracks.behind ?? []).flatMap((item) => (item.kind === "visual" ? [item] : []));
   const boxOf = (item: { box?: { x: number; y: number; width: number; height: number } }) => ({
     left: item.box!.x,
     right: item.box!.x + item.box!.width,
     top: item.box!.y,
     bottom: item.box!.y + item.box!.height,
   });
+  const meets = (a: Box, b: Box) =>
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-  it("puts a photo behind the speaker high in the frame, at most its lower 30% behind them", async () => {
-    const { edit, spans, checks, record, html } = await place({
-      photos: [{ photo_id: PHOTO, from: "w84", to: "w99", reason: "match" }],
-    });
-    expect(checks).toEqual([]);
-    const [photo] = photosOf(edit);
-    expect(photo).toMatchObject({ id: "photo-1", layer: "behind", spot: "top" });
-    const box = boxOf(photo!);
-    const span = spans.get("photo-1")!;
-    expect(
-      bigWordCoveredShare(box, facesOver(hand.headTrack, span.start, span.end), ISSEBYA_PRESET),
-    ).toBeLessThanOrEqual(maxCovered + 1e-6);
-    // Inside the platforms' safe zone, in its upper part.
-    expect(box.top).toBeGreaterThanOrEqual(PLATFORM_SAFE.top);
-    expect(box.left).toBeGreaterThanOrEqual(PLATFORM_SAFE.left);
-    expect(box.right).toBeLessThanOrEqual(PLATFORM_SAFE.right);
-    expect(box.top).toBeLessThan(ISSEBYA_PRESET.frame.height / 2);
-    // Its long side a preset size (the larger ones would go behind the head),
-    // the default ratio kept.
-    expect(Math.max(photo!.box!.width, photo!.box!.height)).toBe(spec.sizes.small);
-    expect(photo!.box!.width / photo!.box!.height).toBeCloseTo(spec.aspect, 2);
-    expect(record.filter((note) => note.item === "photo-1")).toEqual([
-      {
-        item: "photo-1",
-        action: "shrunk",
-        rule: "photo-size",
-        reason: `photo 1 set small (460 px) instead of large (860 px): no room for it larger from ${span.start.toFixed(2)} s to ${span.end.toFixed(2)} s`,
-      },
-    ]);
-    // Behind: drawn in the cut-out composite.
-    expect(maskSpans(edit, transcript, ISSEBYA_PRESET)).toHaveLength(1);
-    expect(html).toMatch(
-      /<div id="cut_1" class="cutout">\n {8}<video[^>]*><\/video>\n {8}<img id="photo-1"/,
-    );
-  });
-
-  it("puts it in front, clear of the face, when no place behind keeps 70% of it in view", async () => {
-    const { edit, spans, checks, record, html } = await place(
-      { photos: [{ photo_id: PHOTO, from: "w84", to: "w99", reason: "mood" }] },
-      { headTrack: WIDE },
-    );
-    expect(checks).toEqual([]);
-    const [photo] = photosOf(edit);
-    expect(photo).toMatchObject({ id: "photo-1", layer: "front" });
-    const span = spans.get("photo-1")!;
-    for (const face of facesOver(WIDE, span.start, span.end)) {
-      const box = boxOf(photo!);
-      expect(
-        box.left < face.right &&
-          face.left < box.right &&
-          box.top < face.bottom &&
-          face.top < box.bottom,
-      ).toBe(false);
+  it("places a visual as a corner card or beside the face, clear of it, as a white frame", async () => {
+    for (const headTrack of [SPEECH_TEN, LEFT_HEAD, BIG_FACE]) {
+      const { edit, spans, checks, html } = await place(
+        { visuals: [{ from: "w84", to: "w99" }] },
+        { headTrack },
+      );
+      expect(checks).toEqual([]);
+      const [visual] = cardsOf(edit);
+      expect(visual).toMatchObject({ id: "visual-1", kind: "visual", layer: "front" });
+      const box = boxOf(visual!);
+      const { width, height } = visual!.box!;
+      expect([FULL, SMALLER]).toContainEqual({ width, height });
+      expect(width / height).toBeCloseTo(card.aspect, 2);
+      // Inside the platform safe zone, and never over the face.
+      expect(box.left).toBeGreaterThanOrEqual(PLATFORM_SAFE.left);
+      expect(box.right).toBeLessThanOrEqual(PLATFORM_SAFE.right);
+      expect(box.top).toBeGreaterThanOrEqual(PLATFORM_SAFE.top);
+      expect(box.bottom).toBeLessThanOrEqual(PLATFORM_SAFE.bottom);
+      const span = spans.get("visual-1")!;
+      const faces = facesOver(headTrack, span.start, span.end);
+      for (const face of faces) expect(meets(box, face)).toBe(false);
+      // At a corner of the safe zone, or beside the face.
+      const atCorner =
+        (box.left === PLATFORM_SAFE.left + card.inset ||
+          box.right === PLATFORM_SAFE.right - card.inset) &&
+        (box.top === PLATFORM_SAFE.top + card.inset ||
+          box.bottom === PLATFORM_SAFE.bottom - card.inset);
+      const beside = faces.some(
+        (face) => box.right === face.left - gap || box.left === face.right + gap,
+      );
+      expect(atCorner || beside).toBe(true);
+      // The frame: a white stroke at the preset's width, no picture, no words,
+      // no cut-out, drawn at the card's size.
+      expect(maskSpans(edit, transcript, CLEAN_PRESET)).toEqual([]);
+      expect(html).toMatch(/<div id="visual-1" class="clip visual"[^>]*data-track-index="30"/);
+      expect(html).toContain(
+        `.visual { position: absolute; box-sizing: border-box; border: ${card.stroke}px solid #ffffff; background: transparent; }`,
+      );
+      expect(html).not.toMatch(/<img id="visual-1"/);
     }
-    expect(record).toContainEqual({
-      item: "photo-1",
-      action: "moved",
-      rule: "photo-layer",
-      reason: `photo 1 sits in front: no place behind you keeps 70% of it in view from ${span.start.toFixed(2)} s to ${span.end.toFixed(2)} s`,
+  });
+
+  it("takes the full card size where a corner or side is free, and the smaller step only before a drop", async () => {
+    const roomy = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: BIG_FACE });
+    const [full] = cardsOf(roomy.edit);
+    expect({ width: full!.box!.width, height: full!.box!.height }).toEqual(FULL);
+    expect(roomy.record.filter((note) => note.rule === "visual-size")).toEqual([]);
+    // The speech-ten head: no corner or side takes the full card, the 0.7 step does.
+    const tight = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: SPEECH_TEN });
+    const [smaller] = cardsOf(tight.edit);
+    expect({ width: smaller!.box!.width, height: smaller!.box!.height }).toEqual(SMALLER);
+    expect(tight.record).toContainEqual({
+      item: "visual-1",
+      action: "shrunk",
+      rule: "visual-size",
+      reason: expect.stringMatching(
+        /^visual 1 set at 252 by 315 px instead of 360 by 450: no corner or side of the face is free at full size from .+ to .+$/,
+      ),
     });
-    // In front: no cut-out at all, the photo over the footage.
-    expect(maskSpans(edit, transcript, ISSEBYA_PRESET)).toEqual([]);
-    expect(html).not.toContain('class="cutout"');
-    expect(html).toMatch(/<img id="photo-1" class="clip photo"[^>]*data-track-index="30"/);
+    expect(tight.checks).toEqual([]);
   });
 
-  it("keeps the owner's front wish, and says when a behind wish cannot be kept", async () => {
-    const front = await place(
-      { photos: [{ photo_id: PHOTO, from: "w84", to: "w99", wish: "front" }] },
-      { requested: ["photos[0]"] },
-    );
-    expect(front.checks).toEqual([]);
-    expect(photosOf(front.edit)).toEqual([expect.objectContaining({ layer: "front" })]);
-    expect(front.record.filter((note) => note.rule === "wish")).toEqual([]);
-    const behind = await place(
-      { photos: [{ photo_id: PHOTO, from: "w84", to: "w99", wish: "behind" }] },
-      { headTrack: WIDE, requested: ["photos[0]"] },
-    );
-    expect(photosOf(behind.edit)).toEqual([expect.objectContaining({ layer: "front" })]);
-    expect(behind.record).toContainEqual(
-      expect.objectContaining({
-        item: "photo-1",
-        action: "wish-not-kept",
-        rule: "wish",
-        reason: expect.stringMatching(
-          /^photo 1 sits in front, not behind you as asked: no place behind you keeps 70% of it in view from /,
-        ),
-      }),
-    );
+  it("never overlaps the face, the hook window or the captions, on a dense reel with a hook", async () => {
+    for (const headTrack of [SPEECH_TEN, LEFT_HEAD]) {
+      const { edit, spans, checks, record } = await place(
+        {
+          hook: HOOK,
+          accents: [{ from: "w26", to: "w28", title: false }],
+          visuals: [
+            { from: sentences[0]!.from, to: sentences[0]!.to },
+            { from: "w84", to: "w99" },
+            { from: "w113", to: "w116" },
+          ],
+        },
+        { headTrack },
+      );
+      // Every text, the hook included, is checked against every picture.
+      expect(checks).toEqual([]);
+      for (const visual of cardsOf(edit)) {
+        const span = spans.get(visual.id)!;
+        for (const face of facesOver(headTrack, span.start, span.end)) {
+          expect(meets(boxOf(visual), face)).toBe(false);
+        }
+      }
+      // A visual the engine leaves out says why.
+      for (const note of record.filter((entry) => entry.item.startsWith("visual-"))) {
+        if (note.action === "dropped") {
+          expect(["no-room", "one-extra", "visual-time"]).toContain(note.rule);
+        }
+      }
+    }
   });
 
-  it("varies the sizes across the reel and keeps each photo's ratio", async () => {
-    const looks = new Map([
-      [PHOTO, { aspect: 4 / 3 }],
-      [OTHER_PHOTO, { aspect: 3 / 4 }],
-    ]);
+  it("keeps the card's size and ratio across the reel", async () => {
     const { edit, checks } = await place(
       {
-        photos: [
-          { photo_id: PHOTO, from: sentences[0]!.from, to: sentences[0]!.to },
-          { photo_id: OTHER_PHOTO, from: sentences[1]!.from, to: sentences[1]!.to },
-          { photo_id: PHOTO, from: sentences[2]!.from, to: sentences[2]!.to },
+        visuals: [
+          { from: sentences[0]!.from, to: sentences[0]!.to },
+          { from: sentences[1]!.from, to: sentences[1]!.to },
+          { from: sentences[2]!.from, to: sentences[2]!.to },
         ],
       },
-      { headTrack: LEFT_HEAD, photos: looks },
+      { headTrack: LEFT_HEAD },
     );
     expect(checks).toEqual([]);
-    const placed = photosOf(edit);
+    const placed = cardsOf(edit);
     expect(placed.length).toBeGreaterThanOrEqual(2);
-    const sizes = Object.values(spec.sizes);
-    for (const photo of placed) {
-      const { width, height } = photo.box!;
-      expect(sizes).toContain(Math.max(width, height));
-      expect(Math.min(width, height)).toBeGreaterThanOrEqual(spec.minShortSide);
-      const aspect = looks.get(photo.photo_id)!.aspect;
-      expect(width / height).toBeCloseTo(aspect, 1);
-    }
-    for (let index = 1; index < placed.length; index += 1) {
-      expect(Math.max(placed[index]!.box!.width, placed[index]!.box!.height)).not.toBe(
-        Math.max(placed[index - 1]!.box!.width, placed[index - 1]!.box!.height),
-      );
+    for (const visual of placed) {
+      const { width, height } = visual.box!;
+      expect([FULL, SMALLER]).toContainEqual({ width, height });
+      expect(width / height).toBeCloseTo(card.aspect, 2);
     }
   });
 
-  it("moves a photo that blends with the footage, else keeps it plain and records it", async () => {
-    const FRAME = ISSEBYA_PRESET.frame;
-    const light = new Map([[PHOTO, { edge: 0.8 }]]);
-    const input = { photos: [{ photo_id: PHOTO, from: "w84", to: "w99" }] };
+  it("is dropped with the reason when no corner or side fits at either size", async () => {
+    const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
+    const { edit, record } = await place(
+      { visuals: [{ from: "w84", to: "w99" }] },
+      { headTrack: huge },
+    );
+    expect(edit.tracks.behind).toBeUndefined();
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "no-room" }),
+    );
+  });
+
+  it("renders an old version's library photo as a photo, as before", async () => {
+    const old = FIXTURES.find((fixture) => fixture.name === "rethink-work-behind")!;
+    const { html } = build(
+      old.edit,
+      old.transcript,
+      old.headTrack,
+      CLEAN_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(html).toMatch(/<img id="[^"]+" class="clip photo"/);
+    expect(html).not.toMatch(/class="clip visual"/);
+  });
+
+  it("moves a visual whose white edge blends with the footage, else keeps it plain and records it", async () => {
+    const FRAME = CLEAN_PRESET.frame;
+    const input = { visuals: [{ from: "w84", to: "w99" }] };
     const plain = await place(input);
-    const first = boxOf(photosOf(plain.edit)[0]!);
-    // A light wall around where it would sit, dark everywhere else.
+    const first = boxOf(cardsOf(plain.edit)[0]!);
+    // A light area just around where it would sit, dark everywhere else.
     const wall = backgroundSampler(
       backgroundMapOf(FRAME, hand.edit.duration, (x, y) =>
-        x >= first.left - 60 && x < first.right + 60 && y < first.bottom + 60
+        x >= first.left - 200 &&
+        x < first.right + 200 &&
+        y >= first.top - 200 &&
+        y < first.bottom + 200
           ? "#E8E8E8"
           : "#202020",
       ),
       FRAME,
     );
-    const moved = await place(input, { backgrounds: wall, photos: light });
-    expect(moved.checks).toEqual([]);
-    expect(moved.record).toContainEqual(
-      expect.objectContaining({ item: "photo-1", action: "moved", rule: "contrast-spot" }),
-    );
-    expect(boxOf(photosOf(moved.edit)[0]!)).not.toEqual(first);
-    // Light everywhere: it stays, with no frame, edge or shadow.
+    // Its white edge is measured against the light area around it: a note
+    // says whether it moved to a place that stands out or stays.
+    const measured = await place(input, { backgrounds: wall });
+    expect(measured.checks).toEqual([]);
+    expect(
+      measured.record.filter(
+        (note) => note.item === "visual-1" && note.rule.startsWith("contrast-"),
+      ),
+    ).toHaveLength(1);
+    // Light everywhere: it stays, a plain frame with no shadow or colour change.
     const allLight = backgroundSampler(
       backgroundMapOf(FRAME, hand.edit.duration, () => "#E8E8E8"),
       FRAME,
     );
-    const kept = await place(input, { backgrounds: allLight, photos: light });
-    expect(boxOf(photosOf(kept.edit)[0]!)).toEqual(first);
+    const kept = await place(input, { backgrounds: allLight });
+    expect(boxOf(cardsOf(kept.edit)[0]!)).toEqual(first);
     expect(kept.record).toContainEqual({
-      item: "photo-1",
+      item: "visual-1",
       action: "low-contrast",
       rule: "contrast-stay",
       reason: expect.stringMatching(
-        /^photo 1 stays in place: contrast 1\.\d:1 against the footage around it from .+, no free place nearby reaches 1\.5:1; a photo never gets a frame, an edge or a shadow$/,
+        /^visual 1 stays in place: contrast 1\.\d:1 against the footage around it from .+, no free place nearby reaches 1\.5:1; a visual never gets a shadow or a colour change$/,
       ),
     });
-    expect(kept.html).not.toMatch(/<img id="photo-1"[^>]*(shadow|border|outline)/);
-    // Without its edge luminance nothing is measured.
-    const unknown = await place(input, { backgrounds: allLight });
+    expect(kept.html).not.toMatch(/<div id="visual-1"[^>]*(shadow|filter)/);
+    // Without a background map nothing is measured.
+    const unknown = await place(input);
     expect(
-      unknown.record.filter((note) => note.item === "photo-1" && note.rule.startsWith("contrast-")),
+      unknown.record.filter(
+        (note) => note.item === "visual-1" && note.rule.startsWith("contrast-"),
+      ),
     ).toEqual([]);
   });
 });
 
-describe("clicks on photos and big words", () => {
-  it("clicks as each placed photo and big word comes in, and nothing else", async () => {
+describe("clicks on visuals and big words", () => {
+  it("clicks as each placed visual and big word comes in, and nothing else", async () => {
     const { edit, spans, checks, html } = await place(
       {
         accents: [{ from: "w26", to: "w28", title: false }],
-        big_words: [{ word: "w116" }],
-        photos: [{ photo_id: PHOTO, from: "w84", to: "w99" }],
+        big_words: [{ from: "w116", to: "w116" }],
+        visuals: [{ from: "w84", to: "w99" }],
         transitions: [{ kind: "panel", from: "w126", to: "w133", key_from: "w128" }],
       },
       { headTrack: LEFT_HEAD },
     );
     expect(checks).toEqual([]);
     const behind = edit.tracks.behind ?? [];
-    expect(behind.map((item) => item.id).sort()).toEqual(["big-word-1", "photo-1"]);
+    expect(behind.map((item) => item.id).sort()).toEqual(["big-word-1", "visual-1"]);
     // The hand edit's own click is not kept: the sounds are the engine's.
     expect(edit.tracks.sounds.map((sound) => sound.id)).toEqual([
-      "click-photo-1",
+      "click-visual-1",
       "click-big-word-1",
     ]);
     for (const sound of edit.tracks.sounds) {
@@ -925,15 +1007,12 @@ describe("clicks on photos and big words", () => {
     }
     // The big word's click on its lead, 0.2 s before its word.
     expect(spans.get("click-big-word-1")!.start).toBeCloseTo(byId.get("w116")!.start - 0.2, 3);
-    expect(html).toMatch(/<audio id="click-photo-1" class="clip" [^>]*data-volume="0\.5012">/);
+    expect(html).toMatch(/<audio id="click-visual-1" class="clip" [^>]*data-volume="0\.5012">/);
   });
 
   it("drops a click with its item, and has none without photos or big words", async () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
-    const dropped = await place(
-      { photos: [{ photo_id: PHOTO, from: "w84", to: "w99" }] },
-      { headTrack: huge },
-    );
+    const dropped = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: huge });
     expect(dropped.edit.tracks.behind).toBeUndefined();
     expect(dropped.edit.tracks.sounds).toEqual([]);
     const none = await place({ accents: [{ from: "w26", to: "w28", title: false }] });
@@ -945,8 +1024,8 @@ describe("clicks on photos and big words", () => {
     // click sits on its own start.
     const { edit, spans } = await place(
       {
-        big_words: [{ word: "w85" }],
-        photos: [{ photo_id: PHOTO, from: "w84", to: "w99" }],
+        big_words: [{ from: "w85", to: "w85" }],
+        visuals: [{ from: "w84", to: "w99" }],
       },
       { headTrack: LEFT_HEAD },
     );
@@ -963,7 +1042,7 @@ describe("clicks on photos and big words", () => {
 });
 
 describe("readable text", () => {
-  const FRAME = ISSEBYA_PRESET.frame;
+  const FRAME = CLEAN_PRESET.frame;
   const BEIGE = "#D8C3A5";
   const DARK = "#101010";
   // A sampled map of the whole reel: `paint` gives each cell's colour.
@@ -1069,7 +1148,7 @@ describe("readable text", () => {
   });
 
   it("leaves the big word in place, plain, on a light background and never moves it", async () => {
-    const input = { big_words: [{ word: "w76" }] };
+    const input = { big_words: [{ from: "w76", to: "w76" }] };
     const before = await place(input);
     const { edit, record } = await place(input, { backgrounds: mapOf(() => BEIGE) });
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
@@ -1093,7 +1172,7 @@ describe("readable text", () => {
   });
 
   it("changes nothing on a dark background: the same edit and record as with no map", async () => {
-    const input = { ...ACCENT, big_words: [{ word: "w76" }] };
+    const input = { ...ACCENT, big_words: [{ from: "w76", to: "w76" }] };
     const none = await place(input);
     const dark = await place(input, { backgrounds: mapOf(() => DARK) });
     expect(dark.edit).toEqual(none.edit);
@@ -1151,7 +1230,7 @@ function withPause(after: string, seconds: number): { transcript: Transcript; ed
 }
 
 describe("transitions", () => {
-  const T = ISSEBYA_PRESET.transition;
+  const T = CLEAN_PRESET.transition;
   const DIM = { kind: "dim" as const, from: "w26", to: "w33", key_from: "w30" };
   const start = (id: string) => byId.get(id)!.start;
   const end = (id: string) => byId.get(id)!.end;
@@ -1161,7 +1240,7 @@ describe("transitions", () => {
     const { spans, levels, edit, html, checks } = await place({ transitions: [DIM] });
     const span = spans.get("transition-1")!;
     // The fade (0.3 s) finishes as w26 starts; gone as w34 starts.
-    expect(span.start).toBe(ms(start("w26") - ISSEBYA_PRESET.transitions.dim.seconds));
+    expect(span.start).toBe(ms(start("w26") - CLEAN_PRESET.transitions.dim.seconds));
     expect(span.end).toBe(start("w34"));
     expect(edit.tracks.transitions[0]).toMatchObject({
       type: "dim",
@@ -1192,7 +1271,7 @@ describe("transitions", () => {
       const made = editFromAnswer(
         paused.edit,
         { ...NOTHING, transitions: [{ ...DIM, ...(wish ? { wish } : {}) }] },
-        ISSEBYA_PRESET,
+        CLEAN_PRESET,
         paused.transcript,
         hand.headTrack,
         measurer,
@@ -1211,7 +1290,7 @@ describe("transitions", () => {
     // Slower: the motion 1.6 times as long, still finishing on the first word.
     const slow = await spanOf("slow");
     expect(slow.span.start).toBe(
-      ms(start("w26") - ISSEBYA_PRESET.transitions.dim.seconds * T.slowFactor),
+      ms(start("w26") - CLEAN_PRESET.transitions.dim.seconds * T.slowFactor),
     );
     expect(slow.item.pace).toBe("slow");
   });
@@ -1234,19 +1313,16 @@ describe("transitions", () => {
         { transitions: [{ ...DIM, kind }] },
         { headTrack: BIG_FACE },
       );
-      const area = ISSEBYA_PRESET.transitions[kind].area;
+      const area = CLEAN_PRESET.transitions[kind].area;
       const lead = levels.find((level) => level.role === "lead")!;
       const key = levels.find((level) => level.role === "key")!;
       expect([lead.font, lead.color]).toEqual([
-        ISSEBYA_PRESET.caption.font,
-        ISSEBYA_PRESET.caption.color,
+        CLEAN_PRESET.caption.font,
+        CLEAN_PRESET.caption.color,
       ]);
-      expect([key.font, key.color]).toEqual([
-        ISSEBYA_PRESET.accent.font,
-        ISSEBYA_PRESET.accent.color,
-      ]);
+      expect([key.font, key.color]).toEqual([CLEAN_PRESET.accent.font, CLEAN_PRESET.accent.color]);
       for (const level of levels) {
-        for (const box of [area, ISSEBYA_PRESET.safe, PLATFORM_SAFE]) {
+        for (const box of [area, CLEAN_PRESET.safe, PLATFORM_SAFE]) {
           expect(level.x).toBeGreaterThanOrEqual(box.left - 1e-6);
           expect(level.x + level.width).toBeLessThanOrEqual(box.right + 1e-6);
           expect(level.y).toBeGreaterThanOrEqual(box.top - 1e-6);
@@ -1302,7 +1378,7 @@ describe("transitions", () => {
     });
     const room = Math.max(
       1,
-      Math.round(hand.edit.duration / ISSEBYA_PRESET.pace.transitionEverySeconds),
+      Math.round(hand.edit.duration / CLEAN_PRESET.pace.transitionEverySeconds),
     );
     expect(room).toBe(5);
     // The same kind repeats.
@@ -1434,14 +1510,14 @@ describe("transitions", () => {
 describe("making room for a request", () => {
   // The 2026-11-03 answer's items, without its checklist.
   const REQUEST_INPUT: Partial<EngineInput> = {
-    photos: REQUEST_ANSWER.photos,
+    visuals: REQUEST_ANSWER.visuals,
     transitions: REQUEST_ANSWER.transitions,
   };
   const HUGE = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
   const FLOOR = Math.ceil(
-    ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.caption.font].size * ISSEBYA_PRESET.layout.minScale,
+    CLEAN_PRESET.fonts[CLEAN_PRESET.caption.font].size * CLEAN_PRESET.layout.minScale,
   );
-  const { safe } = ISSEBYA_PRESET;
+  const { safe } = CLEAN_PRESET;
   const makeRoom = (record: { rule: string; action: string }[]) =>
     record.filter((note) => note.rule === "make-room").map((note) => note.action);
 
@@ -1476,16 +1552,12 @@ describe("making room for a request", () => {
     const plain = await place(input, { headTrack: LEFT_HEAD });
     expect(plain.edit.tracks.behind).toBeUndefined();
     expect(plain.record).toContainEqual(
-      expect.objectContaining({ item: "photo-1", action: "dropped", rule: "one-extra" }),
+      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "one-extra" }),
     );
 
-    const asked = await place(input, { headTrack: LEFT_HEAD, requested: ["photos[0]"] });
+    const asked = await place(input, { headTrack: LEFT_HEAD, requested: ["visuals[0]"] });
     expect(asked.edit.tracks.behind).toEqual([
-      expect.objectContaining({
-        id: "photo-1",
-        kind: "photo",
-        photo_id: REQUEST_PHOTO,
-      }),
+      expect.objectContaining({ id: "visual-1", kind: "visual" }),
     ]);
     expect(asked.checks).toEqual([]);
     expect(asked.edit.tracks.transitions).toEqual([]);
@@ -1493,7 +1565,7 @@ describe("making room for a request", () => {
       item: "transition-1",
       action: "removed",
       rule: "make-room",
-      reason: "transition 1 (dim) removed: it showed at the same time as photo 1, as asked",
+      reason: "transition 1 (dim) removed: it showed at the same time as visual 1, as asked",
     });
     // Removing it is enough: the captions stay where they were.
     expect(makeRoom(asked.record)).toEqual(["removed"]);
@@ -1501,16 +1573,14 @@ describe("making room for a request", () => {
     await expectCaptionsKept(asked.edit, input, LEFT_HEAD);
   });
 
-  it("places a requested mood photo (a loose fit) the same way, keeping its reason", async () => {
-    // "add photos behind me" with no photo that shows what is said: the
-    // editor picks the best one as `mood`, and the request still makes room.
-    const input = {
-      ...REQUEST_INPUT,
-      photos: REQUEST_INPUT.photos!.map((photo) => ({ ...photo, reason: "mood" as const })),
-    };
-    const asked = await place(input, { headTrack: LEFT_HEAD, requested: ["photos[0]"] });
+  it("places a requested visual over the words it is asked for, with its description kept", async () => {
+    const asked = await place(REQUEST_INPUT, { headTrack: LEFT_HEAD, requested: ["visuals[0]"] });
     expect(asked.edit.tracks.behind).toEqual([
-      expect.objectContaining({ id: "photo-1", photo_id: REQUEST_PHOTO, reason: "mood" }),
+      expect.objectContaining({
+        id: "visual-1",
+        kind: "visual",
+        description: REQUEST_ANSWER.visuals![0]!.description,
+      }),
     ]);
     expect(asked.unplaced).toEqual([]);
   });
@@ -1520,58 +1590,34 @@ describe("making room for a request", () => {
     const made = editFromAnswer(
       hand.edit,
       REQUEST_ANSWER,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       transcript,
       LEFT_HEAD,
       await nodeMeasurer(),
+      undefined,
+      { requested: REQUEST_REQUESTED },
     );
     if (!made.ok) throw new Error(made.reasons.join("; "));
     expect(made.edit.tracks).toEqual(fixture.edit.tracks);
     expect(fixture.edit.tracks.behind).toEqual([
-      expect.objectContaining({ id: "photo-1", kind: "photo" }),
+      expect.objectContaining({ id: "visual-1", kind: "visual" }),
     ]);
   });
 
   it("removes Claude's own panel over the photo's sentence: it shows at the same time", async () => {
     const headTrack = steadyHead({ head_top: 300, cx: 250, head_w: 420 });
     const input: Partial<EngineInput> = {
-      photos: [{ photo_id: PHOTO, from: "w0", to: "w25" }],
+      visuals: [{ from: "w0", to: "w25" }],
       transitions: [{ kind: "panel", from: "w0", to: "w5", key_from: "w3" }],
     };
     const plain = await place(input, { headTrack });
     expect(plain.edit.tracks.behind).toBeUndefined();
     expect(plain.edit.tracks.transitions).toHaveLength(1);
-    const asked = await place(input, { headTrack, requested: ["photos[0]"] });
+    const asked = await place(input, { headTrack, requested: ["visuals[0]"] });
     expect(asked.edit.tracks.behind).toHaveLength(1);
     expect(makeRoom(asked.record)).toEqual(["removed"]);
     expect(asked.edit.tracks.transitions).toEqual([]);
     expect(asked.checks).toEqual([]);
-    await expectCaptionsKept(asked.edit, input, headTrack);
-  });
-
-  it("hides a requested photo behind the person only as the last step, never below the floor", async () => {
-    // A wide face over the middle: no place keeps the photo in view behind
-    // the speaker, and in front it would take the captions' only line.
-    const headTrack = steadyHead({ head_top: 250, cx: 540, head_w: 600 });
-    const input: Partial<EngineInput> = {
-      photos: [{ photo_id: PHOTO, from: "w0", to: "w25" }],
-    };
-    const plain = await place(input, { headTrack });
-    expect(plain.edit.tracks.behind).toBeUndefined();
-    expect(plain.record).toContainEqual(
-      expect.objectContaining({ item: "photo-1", action: "dropped", rule: "no-room" }),
-    );
-    const asked = await place(input, { headTrack, requested: ["photos[0]"] });
-    expect(asked.edit.tracks.behind).toEqual([
-      expect.objectContaining({ id: "photo-1", layer: "behind" }),
-    ]);
-    expect(makeRoom(asked.record)).toEqual(["covers-face"]);
-    expect(
-      asked.checks.filter(
-        (check) =>
-          check.rule !== "behind-face" && check.rule !== "photo-hidden" && check.rule !== "face",
-      ),
-    ).toEqual([]);
     await expectCaptionsKept(asked.edit, input, headTrack);
   });
 
@@ -1582,7 +1628,7 @@ describe("making room for a request", () => {
       ...REQUEST_INPUT,
       accents: [{ from: "w84", to: "w85", title: false }],
     };
-    const asked = await place(input, { headTrack: LEFT_HEAD, requested: ["photos[0]"] });
+    const asked = await place(input, { headTrack: LEFT_HEAD, requested: ["visuals[0]"] });
     expect(asked.edit.tracks.behind).toHaveLength(1);
     const removed = asked.record.filter((note) => note.action === "removed");
     expect(removed.map((note) => note.item)).toEqual(["transition-1"]);
@@ -1594,56 +1640,51 @@ describe("making room for a request", () => {
     // sentence would show at the same time, so it starts later.
     const input: Partial<EngineInput> = {
       accents: [{ from: "w0", to: "w2", title: false }],
-      photos: [{ photo_id: PHOTO, from: "w0", to: "w25" }],
+      visuals: [{ from: "w0", to: "w25" }],
     };
     const plain = await place(input, { headTrack: BIG_FACE });
     expect(plain.record).toContainEqual(
-      expect.objectContaining({ item: "photo-1", action: "dropped", rule: "one-extra" }),
+      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "one-extra" }),
     );
     const asked = await place(input, {
       headTrack: BIG_FACE,
-      requested: ["accents[0]", "photos[0]"],
+      requested: ["accents[0]", "visuals[0]"],
     });
     expect(asked.edit.tracks.overlays.map((item) => item.id)).toEqual(["accent-1"]);
-    expect(asked.edit.tracks.behind?.map((item) => item.id)).toEqual(["photo-1"]);
+    expect(asked.edit.tracks.behind?.map((item) => item.id)).toEqual(["visual-1"]);
     expect(asked.record.filter((note) => note.action === "removed")).toEqual([]);
     const retimed = asked.record.find(
-      (note) => note.item === "photo-1" && note.rule === "make-room",
+      (note) => note.item === "visual-1" && note.rule === "make-room",
     )!;
     expect(retimed.action).toBe("retimed");
     expect(retimed.reason).toMatch(
-      /^photo 1 now shows from \d+\.\d\d s to \d+\.\d\d s, inside its sentence, to find room$/,
+      /^visual 1 now shows from \d+\.\d\d s to \d+\.\d\d s, inside its sentence, to find room$/,
     );
-    const photo = asked.spans.get("photo-1")!;
+    const photo = asked.spans.get("visual-1")!;
     const accent = asked.spans.get("accent-1")!;
     expect(accent.end).toBeLessThanOrEqual(photo.start + 1e-6);
     expect(photo.end).toBeLessThanOrEqual(sentences[0]!.end + 1e-6);
     expect(asked.checks).toEqual([]);
   });
 
-  it("covers the face only as the last step, and records it", async () => {
-    // A face over every spot: nothing else can place the photo.
-    const input = { photos: [{ photo_id: PHOTO, from: "w84", to: "w99" }] };
-    const asked = await place(input, { headTrack: HUGE, requested: ["photos[0]"] });
-    expect(asked.edit.tracks.behind).toHaveLength(1);
-    expect(asked.record).toContainEqual({
-      item: "photo-1",
-      action: "covers-face",
-      rule: "make-room",
-      reason:
-        "photo 1 sits behind you, where you hide more of it than usual: nothing else was free, as asked",
-    });
+  it("never covers the face to make room: a requested visual with no corner or side is dropped, with the steps tried", async () => {
+    // A face over every spot: nothing can place the card, and it never goes over the face.
+    const input = { visuals: [{ from: "w84", to: "w99" }] };
+    const asked = await place(input, { headTrack: HUGE, requested: ["visuals[0]"] });
+    expect(asked.edit.tracks.behind).toBeUndefined();
+    expect(asked.record).toContainEqual(
+      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "no-room" }),
+    );
+    expect(makeRoom(asked.record)).toEqual([]);
     expect(
-      asked.checks.filter(
-        (check) =>
-          check.rule !== "behind-face" && check.rule !== "photo-hidden" && check.rule !== "face",
-      ),
-    ).toEqual([]);
+      asked.record.find((note) => note.item === "visual-1" && note.action === "dropped")!.reason,
+    ).toMatch(
+      /, after moving and shrinking captions, removing extras, shifting it in its sentence and allowing the face$/,
+    );
+    // The face over every caption spot is the captions' own case (over the face
+    // when nothing else is free); the card itself adds no check.
+    expect(asked.checks.filter((check) => check.rule !== "face")).toEqual([]);
     await expectCaptionsKept(asked.edit, input, HUGE);
-    // A smaller face: removing the dim is enough.
-    const request = REQUEST_INPUT;
-    const left = await place(request, { headTrack: LEFT_HEAD, requested: ["photos[0]"] });
-    expect(left.record.filter((note) => note.action === "covers-face")).toEqual([]);
   });
 
   it("gives a requested accent its room before the captions", async () => {
@@ -1673,7 +1714,7 @@ describe("making room for a request", () => {
       { ...NOTHING, ...input },
       transcript,
       BIG_FACE,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       measurer,
     );
     expect(placed.record.filter((note) => note.rule === "make-room")).toEqual([]);
@@ -1696,7 +1737,7 @@ describe("making room for a request", () => {
       { ...NOTHING, ...input },
       transcript,
       BIG_FACE,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       measurer,
     );
     expect(again.tracks).toEqual(placed.tracks);
@@ -1705,8 +1746,8 @@ describe("making room for a request", () => {
 
   it("is deterministic: the same request gives the same tracks and record", async () => {
     const input = REQUEST_INPUT;
-    const one = await place(input, { headTrack: LEFT_HEAD, requested: ["photos[0]"] });
-    const two = await place(input, { headTrack: LEFT_HEAD, requested: ["photos[0]"] });
+    const one = await place(input, { headTrack: LEFT_HEAD, requested: ["visuals[0]"] });
+    const two = await place(input, { headTrack: LEFT_HEAD, requested: ["visuals[0]"] });
     expect(two.edit).toEqual(one.edit);
     expect(two.record).toEqual(one.record);
   });
@@ -1714,9 +1755,13 @@ describe("making room for a request", () => {
 
 describe("the written hook", () => {
   const HOOK = { text: "Gen Z won't work like you did" };
-  const { safe } = ISSEBYA_PRESET;
-  const { fromSeconds, untilSeconds } = ISSEBYA_PRESET.pace.hook;
+  const { safe } = CLEAN_PRESET;
+  const { fromSeconds, untilSeconds } = CLEAN_PRESET.pace.hook;
   const hookOf = (edit: Edit) => edit.tracks.overlays.find((item) => item.kind === "hook");
+  // A face at the top, narrow enough that the hook fits beside it only when
+  // set below the smallest size.
+  const NARROW_HEAD = steadyHead({ head_top: 100, cx: 540, head_w: 300 });
+  const preset110 = CLEAN_PRESET.fonts[CLEAN_PRESET.accent.font].size;
 
   it("shows from 0.2 s to 3 s in the upper part of the frame, off the face, inside the safe zone", async () => {
     const placed = await place({ hook: HOOK });
@@ -1773,6 +1818,30 @@ describe("the written hook", () => {
     );
   });
 
+  it("holds its slot when an accent and an image are asked for in its window: it never moves, shrinks or goes", async () => {
+    const hookOnly = await place({ hook: HOOK });
+    const crowded = await place({
+      hook: HOOK,
+      accents: [{ from: "w9", to: "w9", title: false }],
+      visuals: [{ from: "w2", to: "w5" }],
+    });
+    // The hook is the same item, at the same place and size, with the same notes.
+    expect(hookOf(crowded.edit)).toEqual(hookOf(hookOnly.edit));
+    expect(crowded.spans.get("hook")).toEqual(hookOnly.spans.get("hook"));
+    const notesOf = (placed: Awaited<ReturnType<typeof place>>) =>
+      placed.record.filter((note) => note.item === "hook");
+    expect(notesOf(crowded)).toEqual(notesOf(hookOnly));
+    // What asked for the window waits or is dropped, recorded as the one extra.
+    expect(crowded.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook"]);
+    expect(crowded.record).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ item: "accent-1", action: "dropped", rule: "one-extra" }),
+        expect.objectContaining({ item: "visual-1", action: "dropped", rule: "one-extra" }),
+      ]),
+    );
+    expect(crowded.checks).toEqual([]);
+  });
+
   it("never lets a transition run during it: one in its window is dropped, a later one kept", async () => {
     const placed = await place({
       hook: HOOK,
@@ -1814,18 +1883,105 @@ describe("the written hook", () => {
   it("reads back as its text and places the same again; a version without one reads null", async () => {
     const measurer = await nodeMeasurer();
     const placed = await place({ hook: HOOK, accents: [{ from: "w12", to: "w14", title: false }] });
-    const choices = choicesOf(placed.edit, transcript, ISSEBYA_PRESET);
+    const choices = choicesOf(placed.edit, transcript, CLEAN_PRESET);
     expect(choices.hook).toEqual(HOOK);
-    expect(choicesOf(hand.edit, transcript, ISSEBYA_PRESET).hook).toBeNull();
+    expect(choicesOf(hand.edit, transcript, CLEAN_PRESET).hook).toBeNull();
     const again = placeEdit(
       { ...hand.edit, tracks: { ...hand.edit.tracks, ...placed.edit.tracks } },
       choices,
       transcript,
       hand.headTrack,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       measurer,
     );
     expect(again.tracks.overlays).toEqual(placed.edit.tracks.overlays);
+  });
+
+  it("keeps its slot in a caption-heavy opening: the captions in its window keep clear of it", async () => {
+    // Sixty words in the first 3 s, a sentence every two words: a caption
+    // on every word, so the opening is all captions.
+    const dense = words.slice(0, 60).map((word, index) => ({
+      id: word.id,
+      text: (index + 1) % 2 === 0 ? `${word.text}.` : word.text,
+      start: 0.2 + index * 0.05,
+      end: 0.2 + index * 0.05 + 0.045,
+    }));
+    const spoken = {
+      words: [
+        ...dense,
+        ...words.slice(60).map((word) => ({ ...word, start: word.start + 3, end: word.end + 3 })),
+      ],
+    };
+    const current = {
+      ...hand.edit,
+      tracks: {
+        ...hand.edit.tracks,
+        captions: dense.map((word, index) => ({
+          id: `cw${index}`,
+          start: { word: word.id },
+          end: { word: word.id, edge: "end" as const },
+          words: [word.id],
+          size: 50,
+          position: { x: 100, y: 300, align: "left" as const },
+        })),
+        overlays: [],
+        transitions: [],
+        behind: [],
+        sounds: [],
+      },
+    };
+    const placed = await place(
+      { hook: { text: "Nobody tells you how work feels now" } },
+      { current, transcript: spoken },
+    );
+    // The hook shows its whole window, in the upper part, not dropped.
+    expect(hookOf(placed.edit)).toBeDefined();
+    expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: untilSeconds });
+    expect(
+      placed.record.filter((note) => note.item === "hook" && note.action === "dropped"),
+    ).toEqual([]);
+    // The captions in its window are placed around it: no text overlaps it.
+    const inWindow = placed.edit.tracks.captions.filter((caption) => {
+      const span = placed.spans.get(caption.id);
+      return span && span.start < untilSeconds && span.end > fromSeconds && caption.position;
+    });
+    expect(inWindow.length).toBeGreaterThan(0);
+    expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
+    // So many captions leave no free place beside the face: they go over it,
+    // by the caption fallback, recorded; every other check passes.
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({ action: "covers-face", rule: "caption-face" }),
+    );
+    expect(placed.checks.filter((check) => check.rule !== "face")).toEqual([]);
+    expectNoWordTwice(placed.edit, placed.spans);
+  });
+
+  it("is never dropped for its size: wide words shrink it until two lines fit the frame", async () => {
+    // Seven words of wide letters, the longest the schema allows: no size
+    // at the floor fits them in two lines, so it shrinks below the floor.
+    const WIDE = { text: "WWWWWW WWWWWW WWWWWW WWWWWW WWWWWW WWWWWW WWW" };
+    const placed = await place({ hook: WIDE });
+    const item = hookOf(placed.edit)!;
+    expect(item.size).toBeLessThan(preset110);
+    expect(placed.record.filter((note) => note.item === "hook").map((note) => note.rule)).toEqual(
+      expect.arrayContaining(["hook-size"]),
+    );
+    expect(placed.record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: untilSeconds });
+    expect(placed.checks).toEqual([]);
+  });
+
+  it("never sets the hook below the schema minimum size, even for a very long word or sentence", async () => {
+    const texts = [
+      "Pneumonoultramicroscopicsilicovolcanoconiosisxxxxxxxxxxxxxxxxxxxxxxx",
+      "Nobody tells you that the way work feels now is shaped by the screens we carry and the feeds we scroll",
+    ];
+    for (const text of texts) {
+      const placed = await place({ hook: { text } }, { headTrack: NARROW_HEAD });
+      const item = hookOf(placed.edit)!;
+      expect(item.size).toBeGreaterThanOrEqual(MIN_TEXT_SIZE);
+      expect(parseEdit(placed.edit, CLEAN_PRESET, transcript).ok).toBe(true);
+    }
   });
 
   it("is dropped, with the reason, only on a reel too short to show it", async () => {
@@ -1837,12 +1993,266 @@ describe("the written hook", () => {
       { ...NOTHING, hook: HOOK },
       short.transcript,
       short.headTrack,
-      ISSEBYA_PRESET,
+      CLEAN_PRESET,
       measurer,
     );
     expect(placed.tracks.overlays).toEqual([]);
     expect(placed.record).toContainEqual(
       expect.objectContaining({ item: "hook", action: "dropped", rule: "hook-time" }),
     );
+  });
+});
+
+describe("every pick shown: the all placement", () => {
+  // Eight picks in the first 9 s of the reel, overlapping: four accents (each
+  // at least 1.5 s on screen, so they overlap one another), two big words and
+  // two visuals.
+  const DENSE_TEN: Partial<EngineInput> = {
+    accents: [
+      { from: "w1", to: "w2", title: false },
+      { from: "w3", to: "w4", title: false },
+      { from: "w5", to: "w6", title: false },
+      { from: "w9", to: "w9", title: false },
+    ],
+    big_words: [
+      { from: "w4", to: "w4" },
+      { from: "w9", to: "w9" },
+    ],
+    visuals: [
+      { from: "w6", to: "w8" },
+      { from: "w12", to: "w17" },
+    ],
+  };
+  const PICKS: [string, string, string][] = [
+    ["accent-1", "w1", "w2"],
+    ["accent-2", "w3", "w4"],
+    ["accent-3", "w5", "w6"],
+    ["accent-4", "w9", "w9"],
+    ["big-word-1", "w4", "w4"],
+    ["big-word-2", "w9", "w9"],
+    ["visual-1", "w6", "w8"],
+    ["visual-2", "w12", "w17"],
+  ];
+
+  it("shows every pick from its first word to its last word's end, none dropped, and passes the schema", async () => {
+    const { edit, record, unplaced, spans } = await place(DENSE_TEN, {
+      headTrack: hand.headTrack,
+      preset: ISSEBYA_PRESET,
+    });
+    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(unplaced).toEqual([]);
+    expect(edit.tracks.overlays.map((item) => item.id)).toEqual([
+      "accent-1",
+      "accent-2",
+      "accent-3",
+      "accent-4",
+    ]);
+    expect(edit.tracks.behind?.map((item) => item.id).sort()).toEqual([
+      "big-word-1",
+      "big-word-2",
+      "visual-1",
+      "visual-2",
+    ]);
+    expect(parseEdit(edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
+    for (const [id, from, to] of PICKS) {
+      const span = spans.get(id)!;
+      // Its first word's start (an accent or a big word a lead earlier), and
+      // its last word's end.
+      expect(span.start).toBeLessThanOrEqual(byId.get(from)!.start + 1e-6);
+      expect(span.start).toBeGreaterThanOrEqual(byId.get(from)!.start - 0.25);
+      expect(span.end).toBeGreaterThanOrEqual(byId.get(to)!.end - 1e-6);
+    }
+  });
+
+  it("shows a question with the other picks in the all placement: never dropped", async () => {
+    const { edit, record, unplaced, spans } = await place(
+      { ...DENSE_TEN, questions: [{ from: "w30", to: "w31" }] },
+      { headTrack: hand.headTrack, preset: ISSEBYA_PRESET },
+    );
+    expect(edit.tracks.overlays.map((item) => item.id)).toContain("question-1");
+    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(unplaced).toEqual([]);
+    expect(spans.get("question-1")!.start).toBeLessThanOrEqual(byId.get("w30")!.start + 1e-6);
+    expect(parseEdit(edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
+  });
+
+  it("keeps the overlaps and says so in the record", async () => {
+    const { record, checks } = await place(DENSE_TEN, {
+      headTrack: hand.headTrack,
+      preset: ISSEBYA_PRESET,
+    });
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "accent-2", action: "kept-overlapping", rule: "all-picks" }),
+    );
+    expect(checks).toEqual([]);
+  });
+
+  it("places a visual the face leaves no corner for at the default corner, noted, never dropped", async () => {
+    const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
+    const { edit, record, unplaced } = await place(
+      { visuals: [{ from: "w84", to: "w99" }] },
+      { headTrack: huge, preset: ISSEBYA_PRESET },
+    );
+    expect(edit.tracks.behind).toEqual([
+      expect.objectContaining({ id: "visual-1", kind: "visual", layer: "front" }),
+    ]);
+    expect(unplaced).toEqual([]);
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "visual-1", action: "kept-overlapping", rule: "all-picks" }),
+    );
+    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
+  });
+
+  it("places a big word the head hides at every height where it is, noted, never dropped", async () => {
+    const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
+    const { edit, record } = await place(
+      { big_words: [{ from: "w76", to: "w76" }] },
+      { headTrack: huge, preset: ISSEBYA_PRESET },
+    );
+    expect(edit.tracks.behind).toEqual([
+      expect.objectContaining({ id: "big-word-1", kind: "word" }),
+    ]);
+    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(record).toContainEqual(
+      expect.objectContaining({
+        item: "big-word-1",
+        action: "kept-overlapping",
+        rule: "all-picks",
+      }),
+    );
+  });
+
+  it("shows a transition that runs during the hook: nothing is dropped for the hook", async () => {
+    const placed = await place(
+      {
+        hook: { text: "Gen Z won't work like you did" },
+        transitions: [
+          { kind: "dim", from: "w4", to: "w9", key_from: "w6" },
+          { kind: "panel", from: "w26", to: "w33", key_from: "w30" },
+        ],
+      },
+      { headTrack: hand.headTrack, preset: ISSEBYA_PRESET },
+    );
+    expect(placed.edit.tracks.transitions.map((item) => item.id)).toEqual([
+      "transition-1",
+      "transition-2",
+    ]);
+    expect(placed.record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(placed.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook"]);
+  });
+
+  it("the clean layout drops or retimes some of the same picks", async () => {
+    const { record } = await place(DENSE_TEN, { headTrack: hand.headTrack });
+    expect(record.some((note) => note.action === "dropped" || note.action === "retimed")).toBe(
+      true,
+    );
+  });
+});
+
+// `all` mode drops nothing the answer picks: a 1 s reel (a number and its
+// unit, a last word at the reel's end), a footage cut over the second word.
+const ONE_SECOND: Transcript = {
+  words: [
+    { id: "w1", text: "Hello", start: 0.05, end: 0.3 },
+    { id: "w2", text: "there", start: 0.35, end: 0.6 },
+    { id: "w3", text: "5", start: 0.62, end: 0.7 },
+    { id: "w4", text: "years", start: 0.72, end: 0.85 },
+    { id: "w5", text: "friend", start: 0.9, end: 0.98 },
+  ],
+};
+
+function oneSecondReel(): Edit {
+  const base = baselineEdit(
+    ONE_SECOND,
+    { inputs: baselineInputs().inputs, duration: 1 },
+    ISSEBYA_PRESET,
+  );
+  return {
+    ...base,
+    tracks: {
+      ...base.tracks,
+      footage: [
+        {
+          id: "footage",
+          start: { reel: "start" },
+          end: { reel: "end" },
+          hidden: [{ start: { time: 0.2 }, end: { time: 0.45 } }],
+        },
+      ],
+    },
+  };
+}
+
+describe("nothing the answer picks is dropped in all mode", () => {
+  it("shows a pick at the reel's end, a pick over a cut, a transition with no text and a hook on a 1 s reel", async () => {
+    const { edit, record, unplaced } = await place(
+      {
+        accents: [{ from: "w5", to: "w5", title: false }],
+        big_words: [{ from: "w2", to: "w2" }],
+        transitions: [{ kind: "dim", from: "w4", to: "w4", key_from: "w4" }],
+        hook: { text: "Hello there" },
+      },
+      { current: oneSecondReel(), transcript: ONE_SECOND, preset: ISSEBYA_PRESET },
+    );
+    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
+    expect(unplaced).toEqual([]);
+    expect(edit.tracks.overlays.map((item) => item.id)).toEqual(["hook", "accent-1"]);
+    expect(edit.tracks.transitions.map((item) => item.id)).toEqual(["transition-1"]);
+    expect(edit.tracks.behind?.map((item) => item.id)).toEqual(["big-word-1"]);
+    expect(parseEdit(edit, ISSEBYA_PRESET, ONE_SECOND).ok).toBe(true);
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "accent-1", action: "clamped-to-end" }),
+    );
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "big-word-1", action: "moved-off-cut" }),
+    );
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "transition-1", action: "text-from-words" }),
+    );
+  });
+
+  it("drops no pick for random sets of picks over the fixture transcript", async () => {
+    // A seeded generator: the same sets on every run.
+    let seed = 20261108;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) % 4294967296;
+      return seed / 4294967296;
+    };
+    const count = (most: number) => Math.floor(random() * (most + 1));
+    const pick = <T>(list: readonly T[]): T => list[Math.floor(random() * list.length)]!;
+    const ids = words.map((word) => word.id);
+    // A run of words: from a random word, up to `longest` words on.
+    const run = (longest: number): [string, string] => {
+      const at = Math.floor(random() * ids.length);
+      const to = Math.min(ids.length - 1, at + Math.floor(random() * (longest + 1)));
+      return [ids[at]!, ids[to]!];
+    };
+    for (let round = 0; round < 25; round += 1) {
+      const input: Partial<EngineInput> = {
+        accents: Array.from({ length: count(5) }, () => {
+          const [from, to] = run(6);
+          return { from, to, title: false };
+        }),
+        big_words: Array.from({ length: count(4) }, () => {
+          const id = pick(ids);
+          return { from: id, to: id };
+        }),
+        visuals: Array.from({ length: count(3) }, () => {
+          const [from, to] = run(12);
+          return { from, to };
+        }),
+        transitions: Array.from({ length: count(3) }, () => {
+          const [from, to] = run(8);
+          return { kind: pick(TRANSITION_KINDS), from, to, key_from: from };
+        }),
+        hook: random() < 0.5 ? { text: "Gen Z won't work like you did" } : null,
+      };
+      const { record, unplaced } = await place(input, { preset: ISSEBYA_PRESET });
+      expect(
+        record.filter((note) => note.action === "dropped"),
+        `round ${round}`,
+      ).toEqual([]);
+      expect(unplaced, `round ${round}`).toEqual([]);
+    }
   });
 });

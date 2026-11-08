@@ -235,35 +235,9 @@ async function expectNoNotifyControl(page: Page) {
   await expect(page.locator('[data-testid^="notify"]')).toHaveCount(0);
 }
 
-// Send sits inside the field's box, like a chat composer: a small square
-// icon button in its bottom right corner, no text, and the text never runs
-// under it (the textarea's right padding is at least the button's width).
-async function expectSendAtBottomRight(page: Page) {
-  const box = (await page.getByTestId("change-field").boundingBox())!;
-  const sendButton = page.getByRole("button", { name: "Send" });
-  await expect(sendButton).toHaveText("");
-  await expect(sendButton).toHaveAttribute("title", "Send");
-  const send = (await sendButton.boundingBox())!;
-  expect(send.x).toBeGreaterThanOrEqual(box.x);
-  expect(send.y).toBeGreaterThanOrEqual(box.y);
-  const right = box.x + box.width - (send.x + send.width);
-  const bottom = box.y + box.height - (send.y + send.height);
-  for (const gap of [right, bottom]) {
-    expect(gap).toBeGreaterThanOrEqual(0);
-    expect(gap).toBeLessThanOrEqual(16);
-  }
-  expect(Math.abs(send.width - send.height)).toBeLessThanOrEqual(1);
-  expect(send.width).toBeLessThanOrEqual(48);
-  const paddingRight = await page
-    .getByLabel("Ask for a change")
-    .evaluate((element) => parseFloat(getComputedStyle(element).paddingRight));
-  expect(paddingRight).toBeGreaterThanOrEqual(send.width + right);
-}
-
 // The desktop split, measured from the root box (never the window): the edit
 // area over the full height under the header; on its right Versions and the
-// library side by side, each the top 68%; the correction field the bottom
-// 32%, across both, with a tall field and Send in its bottom right corner.
+// photo library side by side, both over the full height.
 async function expectDesktopSplit(page: Page) {
   const column = await page.evaluate(() => {
     const header = document.querySelector("header")!.getBoundingClientRect();
@@ -277,35 +251,21 @@ async function expectDesktopSplit(page: Page) {
   const edit = (await page.getByTestId("edit-area").boundingBox())!;
   const versions = (await page.getByTestId("versions-area").boundingBox())!;
   const library = (await page.getByTestId("library-area").boundingBox())!;
-  const change = (await page.getByTestId("change-area").boundingBox())!;
 
   expect(Math.abs(edit.y - column.top)).toBeLessThanOrEqual(1);
   expect(Math.abs(edit.height - full)).toBeLessThanOrEqual(1);
 
   for (const box of [versions, library]) {
     expect(Math.abs(box.y - column.top)).toBeLessThanOrEqual(1);
-    expect(Math.abs(box.height - full * 0.68)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.height - full)).toBeLessThanOrEqual(1);
   }
   expect(versions.x).toBeGreaterThanOrEqual(edit.x + edit.width - 0.5);
   expect(Math.abs(library.x - (versions.x + versions.width))).toBeLessThanOrEqual(1);
 
-  expect(Math.abs(change.y - (versions.y + versions.height))).toBeLessThanOrEqual(1);
-  expect(Math.abs(change.y + change.height - column.bottom)).toBeLessThanOrEqual(1);
-  expect(Math.abs(change.x - versions.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(change.width - (versions.width + library.width))).toBeLessThanOrEqual(1);
-
-  // The field grows into the space; its box holds Send at the bottom right.
-  const field = (await page.getByLabel("Ask for a change").boundingBox())!;
-  expect(field.height).toBeGreaterThanOrEqual(change.height / 2);
-  const box = (await page.getByTestId("change-field").boundingBox())!;
-  expect(box.x).toBeGreaterThanOrEqual(change.x - 0.5);
-  expect(box.y + box.height).toBeLessThanOrEqual(change.y + change.height + 0.5);
-  await expectSendAtBottomRight(page);
-
-  // The DOM (and so the tab order) follows the reading order: edit,
-  // Versions, library, then the correction field.
+  // The DOM (and so the tab order) follows the reading order: edit, Versions,
+  // then the library.
   const order = await page.evaluate(() =>
-    ["edit-area", "versions-area", "library-area", "change-area"].map((id) =>
+    ["edit-area", "versions-area", "library-area"].map((id) =>
       Array.from(document.querySelectorAll("[data-testid]")).indexOf(
         document.querySelector(`[data-testid="${id}"]`)!,
       ),
@@ -314,36 +274,7 @@ async function expectDesktopSplit(page: Page) {
   expect([...order].sort((a, b) => a - b)).toEqual(order);
 }
 
-// The correction box is inset evenly: with no reason or status text showing,
-// the space between the change area's inner edges (inside its borders) and
-// the box is one value on all four sides, within 1 px.
-async function expectChangeBoxEvenlyInset(page: Page) {
-  await expect(page.getByTestId("change-blocked-reason")).toHaveText("");
-  await expect(page.locator("#change-status")).toHaveText("");
-  const gaps = await page.evaluate(() => {
-    const area = document.querySelector<HTMLElement>('[data-testid="change-area"]')!;
-    const outer = area.getBoundingClientRect();
-    const inner = {
-      top: outer.top + area.clientTop,
-      left: outer.left + area.clientLeft,
-      right: outer.left + area.clientLeft + area.clientWidth,
-      bottom: outer.top + area.clientTop + area.clientHeight,
-    };
-    const box = document.querySelector('[data-testid="change-field"]')!.getBoundingClientRect();
-    return [
-      box.top - inner.top,
-      inner.right - box.right,
-      inner.bottom - box.bottom,
-      box.left - inner.left,
-    ];
-  });
-  for (const gap of gaps) {
-    expect(gap).toBeGreaterThan(0);
-    expect(Math.abs(gap - gaps[0]!)).toBeLessThanOrEqual(1);
-  }
-}
-
-test("one screen at 1440x900: preview, timeline, change box and the side panel at once", async ({
+test("one screen at 1440x900: preview, timeline and the side panels at once", async ({
   page,
   baseURL,
 }) => {
@@ -354,7 +285,6 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
   await expect(page.getByTestId("step-line")).toHaveCount(0);
 
   await expectNoPageScroll(page);
-  await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
   await expectInsideRoot(page, page.getByTestId("export-button"));
   await expectInsideRoot(page, page.getByTestId("tracks"));
   await expectNoNotifyControl(page);
@@ -366,38 +296,29 @@ test("one screen at 1440x900: preview, timeline, change box and the side panel a
   await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
 
   await expectDesktopSplit(page);
-  await expectChangeBoxEvenlyInset(page);
   await expectOwnScroll(page, page.getByTestId("versions-area"));
   await expectNoPageScroll(page);
 
   // Pitch black theme: the page and the edit area are black; only the
-  // navigation, the tracks timeline and the change field are lifted.
+  // navigation and the tracks timeline are lifted.
   const background = (locator: Locator) =>
     locator.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(await background(page.locator("body"))).toBe("rgb(0, 0, 0)");
   expect(await background(page.getByTestId("edit-area"))).toBe("rgb(0, 0, 0)");
-  for (const lifted of [
-    page.locator("header"),
-    page.getByTestId("tracks"),
-    page.getByTestId("change-field"),
-  ]) {
+  for (const lifted of [page.locator("header"), page.getByTestId("tracks")]) {
     const colour = await background(lifted);
     expect(colour).not.toBe("rgb(0, 0, 0)");
     expect(colour).not.toBe("rgba(0, 0, 0, 0)");
   }
   // Filled primary buttons are white (--color-primary) with black content.
-  for (const primary of [
-    page.getByRole("button", { name: "Send" }),
-    page.getByTestId("export-button"),
-  ]) {
-    expect(await background(primary)).toBe("rgb(255, 255, 255)");
-    expect(await primary.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(0, 0, 0)");
-  }
+  const exportButton = page.getByTestId("export-button");
+  expect(await background(exportButton)).toBe("rgb(255, 255, 255)");
+  expect(await exportButton.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(0, 0, 0)");
 });
 
-// One corner radius (--radius-reel) in the studio, on five elements only;
+// One corner radius (--radius-reel) in the studio, on the preview, Export and the reel cards;
 // the one exception is the track items, which are slightly rounded (4px).
-test("one corner radius: the preview, the change box, Send, Export and the reel cards; track items are slightly rounded; nothing else", async ({
+test("one corner radius: the preview, Export and the reel cards; track items are slightly rounded; nothing else", async ({
   page,
   baseURL,
 }) => {
@@ -413,12 +334,7 @@ test("one corner radius: the preview, the change box, Send, Export and the reel 
         style.borderBottomLeftRadius,
       ].join(" ");
     });
-  const rounded = [
-    page.getByTestId("preview-frame"),
-    page.getByTestId("change-field"),
-    page.getByRole("button", { name: "Send" }),
-    page.getByTestId("export-button"),
-  ];
+  const rounded = [page.getByTestId("preview-frame"), page.getByTestId("export-button")];
   const reel = await radius(rounded[0]!);
   expect(reel).not.toBe("0px 0px 0px 0px");
   expect(new Set(reel.split(" ")).size).toBe(1);
@@ -571,8 +487,8 @@ for (const [size, viewport] of [
   });
 }
 
-// Other desktop sizes, down to the `lg` breakpoint: the same split, Send in
-// the root box, no page scroll.
+// Other desktop sizes, down to the `lg` breakpoint: the same split, the
+// buttons in the root box, no page scroll.
 for (const viewport of [
   { width: 1280, height: 800 },
   { width: 1024, height: 768 },
@@ -580,7 +496,6 @@ for (const viewport of [
   test(`the desktop split at ${viewport.width}x${viewport.height}`, async ({ page, baseURL }) => {
     await openReel(page, baseURL!, viewport);
     await expectNoPageScroll(page);
-    await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
     await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
     await expectDesktopSplit(page);
     await expectOwnScroll(page, page.getByTestId("versions-area"));
@@ -591,7 +506,6 @@ for (const viewport of [
 test("one screen at 390x844 with tabs Edit, Versions and Library", async ({ page, baseURL }) => {
   await openReel(page, baseURL!, PHONE);
   await expectNoPageScroll(page);
-  await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
   await expectInsideRoot(page, page.getByTestId("export-button"));
   await expectNoNotifyControl(page);
 
@@ -601,48 +515,24 @@ test("one screen at 390x844 with tabs Edit, Versions and Library", async ({ page
   await expect(tabs.getByRole("tab")).toHaveText(["Edit", "Versions", "Library"]);
   await expect(page.getByTestId("status-area")).toHaveCount(0);
   await expect(page.getByTestId("step-line")).toHaveCount(0);
-  const field = page.getByLabel("Ask for a change");
-
   await expect(tab("Edit")).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("hyperframes-player")).toBeVisible();
   await expect(page.getByTestId("tracks")).toBeVisible();
   await expect(page.getByTestId("version-item").first()).toBeHidden();
-  await expect(field).toBeVisible();
-  // No visible label: the field is named by aria-label, and its placeholder
-  // says what to ask for.
-  await expect(page.getByText("Ask for a change", { exact: true })).toHaveCount(0);
-  await expect(field).toHaveAttribute("placeholder", /^What should change\? For example:/);
-  // Unchanged on a phone: the correction field pinned at the bottom of the
-  // root box, the full width, under the Edit panel.
-  const root = await page.evaluate(() => ({
-    width: document.documentElement.clientWidth,
-    bottom: Math.min(
-      document.documentElement.getBoundingClientRect().bottom,
-      document.documentElement.clientHeight,
-    ),
-  }));
-  const change = (await page.getByTestId("change-area").boundingBox())!;
-  const editBox = (await page.getByTestId("edit-area").boundingBox())!;
-  expect(Math.abs(change.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(change.width - root.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(change.y + change.height - root.bottom)).toBeLessThanOrEqual(1);
-  expect(Math.abs(change.y - (editBox.y + editBox.height))).toBeLessThanOrEqual(1);
-  await expectSendAtBottomRight(page);
+  await expectNoPageScroll(page);
 
   await tab("Versions").click();
   await expect(tab("Versions")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("version-item").first()).toBeVisible();
   await expect(page.locator("hyperframes-player")).toBeHidden();
-  await expect(field).toBeVisible();
+  await expect(page.getByTestId("start-over")).toBeVisible();
   await expectNoPageScroll(page);
   await expectOwnScroll(page, page.getByTestId("versions-area"));
 
   await tab("Library").click();
   await expect(page.getByTestId("library-area")).toBeVisible();
   await expect(page.getByTestId("version-item").first()).toBeHidden();
-  await expect(field).toBeVisible();
   await expectNoPageScroll(page);
-  await expectInsideRoot(page, page.getByRole("button", { name: "Send" }));
 
   // Arrow keys move between the three tabs (WAI-ARIA tabs), wrapping at both ends.
   await tab("Library").focus();

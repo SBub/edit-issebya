@@ -7,10 +7,14 @@ import {
   ISSEBYA_PRESET,
   type Transcript,
   decideJsonSchema,
+  hookJsonSchema,
   parseDecideAnswer,
+  parseHookAnswer,
 } from "@edit-issebya/edit";
 import type { AiRunner } from "./ai.ts";
+import { hookInput, hookPrompt } from "./decide/hook.ts";
 import { describePrompt } from "./photos/describe-prompt.ts";
+import { PROMPT_NAMES, type PromptSource, promptIdentity } from "./prompts/source.ts";
 import { describeJsonSchema, parseDescribeAnswer } from "./photos/describe-schema.ts";
 
 // The committed sample photo the image check sends (scripts/make-test-photos.sh).
@@ -18,10 +22,10 @@ const SAMPLE_PHOTO = new URL("../../../fixtures/photos/sample.jpg", import.meta.
 
 // The describe_photo call on the sample photo, sent as the step sends it (one
 // JPEG image), answering the describe schema.
-async function aiImageCall(ai: AiRunner): Promise<void> {
+async function aiImageCall(ai: AiRunner, prompts: PromptSource): Promise<void> {
   const result = await ai.call({
     role: "describe",
-    prompt: describePrompt(),
+    ...describePrompt(await prompts.get(PROMPT_NAMES.describe)),
     schema: describeJsonSchema,
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed sample photo
     image: { data: await readFile(SAMPLE_PHOTO), mediaType: "image/jpeg" },
@@ -50,6 +54,13 @@ export interface DoctorDeps {
   hyperframes: () => Promise<string>;
   // OPENROUTER_API_KEY as the worker reads it (checked set, never printed).
   openRouterKey: () => string | undefined;
+  // POSTHOG_PERSONAL_API_KEY as the worker reads it (checked set, never printed).
+  posthogKey: () => string | undefined;
+  // POSTHOG_PROJECT_ID as the prompt source reads it (checked set; a project number, not secret).
+  projectId: () => string | undefined;
+  // The worker's prompt source: PostHog, or the placeholder double under
+  // E2E_MOCK_PROMPTS. Each prompt is fetched once by the check that names it.
+  prompts: () => PromptSource;
   // The AI runner the jobs use: each AI check (run only with `--ai`) makes one
   // tiny real call.
   ai: () => AiRunner;
@@ -174,6 +185,15 @@ function doctorAiSchema(): Record<string, unknown> {
   return decideJsonSchema(ISSEBYA_PRESET, AI_SAMPLE_TRANSCRIPT);
 }
 
+// The hook call the AI check sends, for the sample reel: the fetched hook
+// prompt, filled as the decide step fills it.
+async function doctorHookCall(prompts: PromptSource) {
+  return hookPrompt(
+    await prompts.get(PROMPT_NAMES.hook),
+    hookInput(AI_SAMPLE_TRANSCRIPT, ISSEBYA_PRESET),
+  );
+}
+
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -271,6 +291,7 @@ export async function runDoctor(
       }
       return "set";
     }),
+    ...(await promptChecks(deps)),
     ...(options.ai ? await aiChecks(deps) : []),
     await check("mask tool", () => maskToolCheck(deps.maskTool())),
     // Last, so the earlier lines keep their places.
@@ -282,17 +303,51 @@ export async function runDoctor(
   return { lines, exitCode: lines.some((line) => line.startsWith("FAIL")) ? 1 : 0 };
 }
 
-// The two paid checks, after the key line: one tiny structured call and one
-// image call.
+// The PostHog prompts, each fetched by name at the configured label: the line
+// names `name@vN` and the label, never the text. Without the project id or the
+// personal key, its line says which one is missing and the three prompts are not
+// fetched.
+async function promptChecks(deps: DoctorDeps): Promise<string[]> {
+  const key = await check("posthog personal key", async () => {
+    if (!deps.posthogKey()?.trim()) {
+      throw new Error(
+        "POSTHOG_PERSONAL_API_KEY is not set (apps/worker/.env.development): the decide and describe_photo prompts come from PostHog, so those jobs cannot run",
+      );
+    }
+    return "set";
+  });
+  const project = await check("posthog project id", async () => {
+    if (!deps.projectId()?.trim()) {
+      throw new Error(
+        "POSTHOG_PROJECT_ID is not set (apps/worker/.env.development): the prompts are fetched from that project, so those jobs cannot run",
+      );
+    }
+    return "set";
+  });
+  if (key.startsWith("FAIL") || project.startsWith("FAIL")) return [key, project];
+  const lines = [key, project];
+  for (const name of Object.values(PROMPT_NAMES)) {
+    lines.push(
+      await check("prompt", async () => {
+        const prompt = await deps.prompts().get(name);
+        return `${promptIdentity(prompt)} (label ${prompt.label})`;
+      }),
+    );
+  }
+  return lines;
+}
+
+// The three paid checks, after the key line: one tiny structured call with
+// the decide schema, one hook call with the hook schema and one image call.
 async function aiChecks(deps: DoctorDeps): Promise<string[]> {
   return [
     // One tiny real call with the real decide schema: the line names the
-    // model that answered.
+    // model that answered. Its prompt is a placeholder the doctor writes itself.
     await check("ai structured call", async () => {
       const result = await deps.ai().call({
         role: "decide",
-        prompt:
-          'Reply with accents, big_words, photos, transitions, word_fixes, checklist and unexpressed empty lists, hook null, and behind_rules photos and big_word "keep".',
+        prompt: "doctor probe: answer with the empty lists",
+        promptVersion: "doctor-probe@v0",
         schema: doctorAiSchema(),
       });
       if (result.kind !== "answer") throw new Error(result.reason);
@@ -300,6 +355,19 @@ async function aiChecks(deps: DoctorDeps): Promise<string[]> {
       if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
       return result.usage.model ?? undefined;
     }),
-    await check("ai image call", () => aiImageCall(deps.ai())),
+    // The hook call with the real hook schema and prompt, as the decide step
+    // sends it before the components.
+    await check("ai hook call", async () => {
+      const result = await deps.ai().call({
+        role: "hook",
+        ...(await doctorHookCall(deps.prompts())),
+        schema: hookJsonSchema(ISSEBYA_PRESET),
+      });
+      if (result.kind !== "answer") throw new Error(result.reason);
+      const parsed = parseHookAnswer(result.answer, ISSEBYA_PRESET);
+      if (!parsed.ok) throw new Error(`unexpected answer: ${parsed.reasons.join("; ")}`);
+      return result.usage.model ?? undefined;
+    }),
+    await check("ai image call", () => aiImageCall(deps.ai(), deps.prompts())),
   ];
 }

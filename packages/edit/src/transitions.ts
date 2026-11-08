@@ -40,6 +40,9 @@ export function transitionTiming(
   duration: number,
   preset: Preset,
   kind: PresetTransition,
+  // The shortest the layer may last (the preset's minimum unless `all` asks
+  // for the shorter shown floor, at a reel's end).
+  floor: number = preset.transition.minSeconds,
 ): TransitionTiming | null {
   const { transition } = preset;
   const index = new Map(words.map((word, at) => [word.id, at]));
@@ -53,13 +56,13 @@ export function transitionTiming(
   let start = ms(Math.max(0, first.start - seconds));
   let end = ms(Math.min(next?.start ?? reelEnd, last.end + hold, reelEnd));
   let lengthened = false;
-  if (end - start < transition.minSeconds - SLACK) {
+  if (end - start < floor - SLACK) {
     lengthened = true;
-    end = ms(Math.min(reelEnd, start + transition.minSeconds));
-    if (end - start < transition.minSeconds - SLACK) {
-      start = ms(Math.max(0, end - transition.minSeconds));
+    end = ms(Math.min(reelEnd, start + floor));
+    if (end - start < floor - SLACK) {
+      start = ms(Math.max(0, end - floor));
     }
-    if (end - start < transition.minSeconds - SLACK) return null;
+    if (end - start < floor - SLACK) return null;
   }
   const startAnchor: Anchor =
     start === 0

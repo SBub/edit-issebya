@@ -22,14 +22,13 @@ type Env = Record<string, string | undefined>;
 // answered.
 export const AI_MODEL = "anthropic/claude-haiku-5.5";
 
-// What a call is for: the decide answer, an editorial round, the version
-// title and summary, a library photo's description.
-export type AiRole = "decide" | "editorial" | "summary" | "describe";
+// What a call is for: the written hook, the decide answer, a library photo's
+// description.
+export type AiRole = "hook" | "decide" | "describe";
 
 export const AI_MODELS: Readonly<Record<AiRole, string>> = {
+  hook: AI_MODEL,
   decide: AI_MODEL,
-  editorial: AI_MODEL,
-  summary: AI_MODEL,
   describe: AI_MODEL,
 };
 
@@ -48,10 +47,15 @@ const MAX_RETRIES = 1;
 const MAX_OUTPUT_TOKENS = 16_000;
 
 // One structured call: the prompt (the one user message, no system prompt),
-// the JSON Schema the answer must match, and for describe_photo the image.
+// its identity (`<name>@v<version>`, from PostHog), the JSON Schema the answer
+// must match, and for describe_photo the image. The model takes no temperature
+// setting, so a call sends none.
 export interface AiRequest {
   role: AiRole;
   prompt: string;
+  promptVersion: string;
+  // Set when the prompt is a stale copy (PostHog did not answer): the span and the record say so.
+  promptStale?: true;
   schema: Record<string, unknown>;
   image?: { data: Uint8Array; mediaType: "image/jpeg" };
   // The job's signal: a lost lease or a cancel stops the call.
@@ -72,6 +76,9 @@ export interface AiExchange {
   role: AiRole;
   model: string;
   prompt: string;
+  promptVersion: string;
+  // Set only when the prompt was a stale copy.
+  promptStale?: true;
   schema: Record<string, unknown>;
   image: { mediaType: string; bytes: number } | null;
   outputMode: OutputMode;
@@ -271,6 +278,8 @@ async function inChatSpan(
         "gen_ai.provider.name": "openrouter",
         "gen_ai.request.model": model,
         "edit_issebya.ai.role": request.role,
+        "edit_issebya.ai.prompt_version": request.promptVersion,
+        ...(request.promptStale ? { "edit_issebya.ai.prompt_stale": true } : {}),
       },
     },
     parent,
@@ -347,6 +356,8 @@ export function modelRunner(options: ModelRunnerOptions): AiRunner {
           model: modelId,
           prompt:
             outputMode === "json" ? jsonModePrompt(request.prompt, request.schema) : request.prompt,
+          promptVersion: request.promptVersion,
+          ...(request.promptStale ? { promptStale: true as const } : {}),
           schema: request.schema,
           image: request.image
             ? { mediaType: request.image.mediaType, bytes: request.image.data.byteLength }
@@ -488,15 +499,18 @@ export function openRouterRunner(apiKey: string | undefined): AiRunner {
 
 // One scripted reply of the AI double: an answer (with the usage and model it
 // reports), raw text (not JSON: a broken answer), or an HTTP error (a 402 is
-// unavailable, a 400 a refused schema).
+// unavailable, a 400 a refused schema). A reply naming `"role": "hook"` answers
+// only the hook calls; a reply naming no role answers every other call.
 export type ScriptedReply =
   | string
-  | {
-      answer: unknown;
-      usage?: { input_tokens?: number; output_tokens?: number; cost_usd?: number };
-      model?: string;
-    }
-  | { error: { status: number; message?: string } };
+  | ((
+      | {
+          answer: unknown;
+          usage?: { input_tokens?: number; output_tokens?: number; cost_usd?: number };
+          model?: string;
+        }
+      | { error: { status: number; message?: string } }
+    ) & { role?: "hook" });
 
 // A scripted answer, for the double and the tests.
 export function scriptedAnswer(answer: unknown): ScriptedReply {
@@ -510,20 +524,40 @@ export interface FakeAiRunner extends AiRunner {
 
 const FAKE_URL = `${OPENROUTER_BASE_URL}/chat/completions`;
 
+// The replies that answer a role's calls: the hook calls take those naming
+// `hook`, every other call those naming no role; each lane is in order.
+function laneOf(script: readonly ScriptedReply[], hook: boolean): ScriptedReply[] {
+  return script.filter((reply) => {
+    const named = typeof reply === "object" && reply.role === "hook";
+    return named === hook;
+  });
+}
+
 // The AI double: the real runner over a scripted model. Each model call takes
-// the next reply, then the last again. It never touches the network and never
-// retries.
+// the next reply of its lane (the hook lane or the rest), then the lane's last
+// again. It never touches the network and never retries.
 export function fakeAiRunner(script: readonly ScriptedReply[]): FakeAiRunner {
   const calls: AiRequest[] = [];
-  let replies = 0;
+  const lanes = { hook: laneOf(script, true), other: laneOf(script, false) };
+  const replies = { hook: 0, other: 0 };
+  // The role of the call being made: `onCall` runs before the model does.
+  let role: AiRole = "decide";
   const model = (id: string) =>
     new MockLanguageModelV4({
       provider: "openrouter",
       modelId: id,
       async doGenerate() {
-        if (script.length === 0) throw new Error("fake AI runner has no scripted answer");
-        const reply = script[Math.min(replies, script.length - 1)]!;
-        replies += 1;
+        const lane = role === "hook" ? "hook" : "other";
+        const replyList = lanes[lane];
+        if (replyList.length === 0) {
+          throw new Error(
+            lane === "hook"
+              ? "fake AI runner has no scripted hook answer"
+              : "fake AI runner has no scripted answer",
+          );
+        }
+        const reply = replyList[Math.min(replies[lane], replyList.length - 1)]!;
+        replies[lane] += 1;
         if (typeof reply === "object" && "error" in reply) {
           const { status, message } = reply.error;
           throw new APICallError({
@@ -564,7 +598,14 @@ export function fakeAiRunner(script: readonly ScriptedReply[]): FakeAiRunner {
     });
   return {
     calls,
-    ...modelRunner({ model, maxRetries: 0, onCall: (request) => calls.push(request) }),
+    ...modelRunner({
+      model,
+      maxRetries: 0,
+      onCall: (request) => {
+        calls.push(request);
+        role = request.role;
+      },
+    }),
   };
 }
 
@@ -591,28 +632,32 @@ function scriptFrom(path: string): ScriptedReply[] {
   throw new Error(refusal);
 }
 
-// A decide answer with no items and no hook: what the double gives without a
-// script.
+// A decide answer with no items: what the double gives without a script.
 export const EMPTY_DECIDE_ANSWER = {
   accents: [],
+  questions: [],
   big_words: [],
-  photos: [],
+  visuals: [],
   transitions: [],
   word_fixes: [],
-  hook: null,
-  checklist: [],
-  behind_rules: { photos: "keep", big_word: "keep" },
-  unexpressed: [],
 };
+
+// The hook the double gives without a script: a plain line, nothing spoken.
+const DEFAULT_HOOK_ANSWER = { text: "A short test hook" };
 
 // The double only when E2E_MOCK_AI is exactly "true" (its script from
 // E2E_MOCK_AI_SCRIPT, a JSON array of replies replayed in order with the last
-// repeating, or one reply object used for every call; else the empty decide
-// answer); otherwise OpenRouter with OPENROUTER_API_KEY.
+// repeating, or one reply object used for every call; without a script the
+// empty decide answer and the default hook); otherwise OpenRouter with
+// OPENROUTER_API_KEY.
 export function aiRunner(env: Env = process.env): AiRunner {
   if (env.E2E_MOCK_AI === "true") {
     const path = env.E2E_MOCK_AI_SCRIPT?.trim();
-    return fakeAiRunner(path ? scriptFrom(path) : [scriptedAnswer(EMPTY_DECIDE_ANSWER)]);
+    return fakeAiRunner(
+      path
+        ? scriptFrom(path)
+        : [{ answer: DEFAULT_HOOK_ANSWER, role: "hook" }, scriptedAnswer(EMPTY_DECIDE_ANSWER)],
+    );
   }
   return openRouterRunner(env.OPENROUTER_API_KEY);
 }

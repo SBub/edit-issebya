@@ -14,6 +14,7 @@ export {
 } from "./head-track.ts";
 export {
   type FontKey,
+  type Intensity,
   type Preset,
   type PresetFont,
   type TransitionType,
@@ -22,6 +23,7 @@ export {
   type BehindSpot,
   BEHIND_SPOTS,
   FONT_KEYS,
+  CLEAN_PRESET,
   ISSEBYA_PRESET,
   PLATFORM_BUTTONS,
   PLATFORM_SAFE,
@@ -48,28 +50,31 @@ export {
 } from "./schema.ts";
 export {
   type BehindForbid,
-  type BehindRule,
   type DecideAnswer,
   type DecideCounts,
   type DecideRules,
+  NEW_TRANSITION_KINDS,
   NO_RULES,
-  applyBehindRules,
   decideAnswerSchemaFor,
   decideCounts,
   decideJsonSchema,
   editFromAnswer,
+  hookAnswerSchemaFor,
+  hookJsonSchema,
   parseDecideAnswer,
+  parseHookAnswer,
   usedFreeField,
 } from "./decide.ts";
 export {
   type AccentChoice,
   type BigWordChoice,
   type EngineInput,
-  type PhotoChoice,
   type TransitionChoice,
+  type VisualChoice,
   type Wish,
   type WordFix,
   WISHES,
+  bigWordSpan,
   choicesOf,
 } from "./engine-input.ts";
 export {
@@ -77,20 +82,10 @@ export {
   type EngineNote,
   type ExtraKind,
   type FreeSentence,
-  type PhotoLook,
   type UnplacedItem,
   type UnplacedWhy,
   placeEdit,
 } from "./engine.ts";
-export {
-  type ChecklistOutcome,
-  type EditorialAnswer,
-  WHY_WORDS,
-  checklistOutcome,
-  editorialJsonSchema,
-  mergeEditorial,
-  parseEditorialAnswer,
-} from "./editorial.ts";
 export {
   type BackgroundMap,
   type Backgrounds,
@@ -99,7 +94,7 @@ export {
   backgroundSampler,
 } from "./background.ts";
 export { luminanceByte, rgbLuminance } from "./contrast.ts";
-export { glossaryChecks } from "./glossary.ts";
+export { glossaryChecks, heardTerms } from "./glossary.ts";
 export { type HarfBuzz, type Measurer, createMeasurer } from "./measure.ts";
 export { type ResolvedItem, resolveTimeline } from "./timeline.ts";
 export { type TextBox, layoutText, wordsText } from "./layout.ts";
@@ -122,6 +117,7 @@ export {
 } from "./behind.ts";
 export { baselineEdit } from "./baseline.ts";
 export {
+  type ChecklistOutcome,
   type FreeFieldUse,
   type NewVersion,
   type SavedVersion,
@@ -135,20 +131,3 @@ export {
   saveVersion,
   versionKey,
 } from "./versions.ts";
-export {
-  type DiffAction,
-  type DiffEntry,
-  type DiffKind,
-  type EditDiff,
-  type RuleChange,
-  diffEdits,
-  ruleChanges,
-} from "./version-diff.ts";
-export {
-  type SummaryAnswer,
-  askedNotDone,
-  checkSummary,
-  parseSummaryAnswer,
-  summaryJsonSchema,
-  summaryTemplate,
-} from "./version-summary.ts";

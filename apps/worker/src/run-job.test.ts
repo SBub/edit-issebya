@@ -1,12 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ClaimedJob, JobFailure } from "./queue.ts";
-import {
-  AiUnavailable,
-  AnswerRefused,
-  FootageRefused,
-  NothingChanged,
-  TransientError,
-} from "./failure.ts";
+import { AiUnavailable, AnswerRefused, FootageRefused, TransientError } from "./failure.ts";
 import { runJob } from "./run-job.ts";
 import { recordingSteps, stepContext } from "./recording-steps.ts";
 import { StepError, runInProcessStep } from "./step-runner.ts";
@@ -18,7 +12,6 @@ const JOB: ClaimedJob = {
   owner_id: "o1",
   kind: "process",
   attempts: 1,
-  request: null,
   restore_version_id: null,
   version_id: null,
 };
@@ -90,24 +83,6 @@ describe("runJob", () => {
       rules: ["behind-caption", "safe-box"],
     });
     expect(lines).toEqual(["job j1: failed: StepError: decide: the answer failed twice"]);
-  });
-
-  it("fails an unchanged change as a refused answer, no-change first", async () => {
-    const d = deps(async () => {
-      throw new StepError(
-        "decide: nothing would change, version 3 stays current",
-        "tail",
-        undefined,
-        {
-          cause: new NothingChanged(["no-change", "no-room"], 1),
-        },
-      );
-    });
-    expect(await runJob(d)).toBe("failed");
-    expect(d.fail.mock.calls[0]?.[1]).toEqual({
-      kind: "answer_refused",
-      rules: ["no-change", "no-room"],
-    });
   });
 
   it("never captures a job failure for an error a step already captured", async () => {

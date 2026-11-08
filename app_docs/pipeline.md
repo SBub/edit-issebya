@@ -168,7 +168,7 @@ fingerprint. Tags are not part of a fingerprint.
   `BACKGROUND_SETTINGS` and a version, made by `ensureBackgrounds` before `first_version` and
   `decide`, a hit when stored) and the on-demand `cutout` step's
   `mask.mp4` (`ON_DEMAND_OUTPUTS` in `definition.ts`, read by `retentionOf`): the next export,
-  restore or change makes it again.
+  restore or Start over makes it again.
 - `kept`: `transcript.json` (transcribe and retime), `retime.json`, `envelope.json`,
   `head-track.json`, `footage-preview.mp4`.
 - Retired outputs (`remove_background`'s `subject.webm`, rebuildable, and `preview_copies`'
@@ -255,8 +255,9 @@ inputs name the old retime outputs) does not re-run retime.
   real entry and checks the mask is H.264 at the sample's size with 30 frames (give or take one),
   for example `modnet 07c308cf, 1 s masked in 9.4 s`; a missing model fails the line with
   `MODNet model not installed at <path>, run yarn workspace @edit-issebya/worker models:install`.
-  It checks only that `OPENROUTER_API_KEY` is set and makes no AI call; `doctor --ai` adds the
-  two paid OpenRouter calls (`app_docs/decide-step.md`).
+  It checks that `OPENROUTER_API_KEY` is set, fetches the five PostHog prompts by name (no AI call;
+  `POSTHOG_PERSONAL_API_KEY`, `app_docs/decide-step.md`, "Prompts"), and makes no AI call; `doctor --ai`
+  adds the two paid OpenRouter calls and the image call.
 - `WORKER_MODELS_DIR` (default `~/.edit-issebya-worker/models`): where `models:install` puts the
   MODNet model and the `cutout` step and the doctor read it.
 - `yarn workspace @edit-issebya/worker models:install` downloads and verifies the model once per
@@ -275,7 +276,8 @@ inputs name the old retime outputs) does not re-run retime.
   silence is 0.31 s, so the default cuts nothing there), `retime-encode.test.ts` (audio and video
   of every planned piece trimmed at the same frame), `head-track-step.test.ts` and `person-mask.test.ts`
   (the sample, mask and decode calls, the person mask's arguments and JSON result), and `pipeline-fixtures.test.ts`, which fails when a
-  version or setting change leaves `fixtures/pipeline/` stale.
+  version or setting change leaves either clip's outputs stale (`fixtures/pipeline/` and
+  `fixtures/pipeline/speech-ten/`).
 - `yarn workspace @edit-issebya/worker test:tools` (`*.tools.test.ts`): real ffmpeg and HyperFrames
   on `fixtures/footage/short-speech.mp4`; `head-track.tools.test.ts` runs `head_track` and
   `preview_copies` on `fixtures/footage/short-person.mp4` (the real HyperFrames mask with the
@@ -295,6 +297,10 @@ inputs name the old retime outputs) does not re-run retime.
   `steps` columns (`cache_hit`).
 - `apps/studio/e2e/upload.spec.ts` seeds `fixtures/pipeline/` under a per-run key prefix, so every
   step is a hit: five `skipped` rows, reel `processed`, no tool needed in CI.
+- `apps/studio/e2e/decide-behind.spec.ts` and the transition test in `apps/studio/e2e/preview.spec.ts`
+  seed `speech-ten` (`seedProcessedReel({ clip: "speech-ten" })`), with the scripted answers
+  `speechTenVisualAnswerScript` and `speechTenTransitionAnswerScript` (`apps/studio/test-support/ai-script.ts`):
+  a VISUAL over w0021 to w0027 and a LIST over w0028 to w0030, both after the hook window (0.2 s to 3 s).
 - Manual: run the original `rethink-work` phone file and compare with the old scripts' output
   (format, fps, keyframes, duration, words, segments). The committed reference `retime.json` is
   Draft 02 (1.10 / 1.15); the defaults match Draft 01 (1.05 / 1.1).
@@ -330,8 +336,19 @@ inputs name the old retime outputs) does not re-run retime.
   `head_track` change does not re-run `preview_copies`).
 - `device: auto` is fingerprinted as a value, not as the provider chosen (CoreML on the Mac, CPU
   elsewhere); outputs from different providers may differ slightly but share a key.
-- The fixtures stay on `short-speech.mp4` (no person): its head track is all `null`, enough for
-  cache hits. `fixtures/pipeline/` has no `remove_background/` and no `subject-preview.webm`.
+- The short-speech fixtures stay on `short-speech.mp4` (no person): its head track is all `null`,
+  enough for cache hits. `fixtures/pipeline/` has no `remove_background/` and no `subject-preview.webm`.
+- `fixtures/footage/speech-ten.mp4` is the second committed clip: 10 s, 720x1280, H.264 and AAC, about
+  1.5 MB, with a person speaking (its head track finds the face in every sample). It is cut from the
+  owner's own 52 s phone clip (not in the repo) from 18.76 s to 28.76 s, the words w0001 to w0036 of
+  its own transcript (two sentences, the first spoken from 0 s, the second ending at the clip's end).
+  Made by hand, once: transcribe the source with HyperFrames (whisper `small`, language `en`) to pick
+  a stretch that starts and ends on sentence boundaries, then cut it with ffmpeg (`scale=720:1280`,
+  `libx264` `-crf 26`, `aac` 96k), and keep the file. Its pipeline outputs are made by the same
+  `fixtures:pipeline` run as short-speech's, into `fixtures/pipeline/speech-ten/` with a `manifest.json`
+  of its own; the short-speech outputs stay byte-identical. Whisper hears the first word of the cut
+  as "Media" (the sentence starts with "Social media"), so its transcript differs from the owner's
+  words in places; the fixture's words are the pipeline's, not the speech's.
 - The ffmpeg build is in no fingerprint: after an ffmpeg upgrade that changes output, bump the
   affected versions by hand.
 - Single PUT only: an output above 5 GiB fails. The storage records (`app_docs/storage.md`) did not add multipart for outputs; it is still to come.

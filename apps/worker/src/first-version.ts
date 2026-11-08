@@ -23,7 +23,7 @@ import { type SpawnTool, type StepContext, recordHit, runInProcessStep } from ".
 
 export const STEP = "first_version";
 
-const NO_CHOICES = { accents: [], big_words: [], photos: [], transitions: [], word_fixes: [] };
+const NO_CHOICES = { accents: [], big_words: [], visuals: [], transitions: [], word_fixes: [] };
 
 export interface FirstVersionRun {
   ctx: StepContext;

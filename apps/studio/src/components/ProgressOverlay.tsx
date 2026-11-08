@@ -5,7 +5,6 @@ import type { OverlayState } from "@/lib/progress-overlay";
 interface Props {
   state: OverlayState;
   onTryAgain: () => void;
-  onChangeRequest: () => void;
   onKeep: () => void;
   // Try again's answer ("Queued again.", say); empty while none.
   actionMessage: string;
@@ -25,14 +24,7 @@ const BUTTON =
 // player: the card takes no pointer events, only its own buttons do. The words
 // sit in a polite live region; the buttons stay outside it, so they are not
 // announced again on each update.
-export function ProgressOverlay({
-  state,
-  onTryAgain,
-  onChangeRequest,
-  onKeep,
-  actionMessage,
-  tryAgainBusy,
-}: Props) {
+export function ProgressOverlay({ state, onTryAgain, onKeep, actionMessage, tryAgainBusy }: Props) {
   if (state.kind === "hidden") return null;
   return (
     <div
@@ -123,16 +115,6 @@ export function ProgressOverlay({
               className={BUTTON}
             >
               Try again
-            </button>
-          )}
-          {state.actions.includes("change_request") && (
-            <button
-              type="button"
-              data-testid="overlay-change-request"
-              onClick={onChangeRequest}
-              className={BUTTON}
-            >
-              Change the request
             </button>
           )}
           {state.actions.includes("keep_current") && (

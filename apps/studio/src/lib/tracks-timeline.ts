@@ -115,15 +115,16 @@ export function timelineRows(edit: Edit, transcript: Transcript): Timeline {
   const items: Record<TrackKey, TimelineItem[]> = {
     footage: tracks.footage.map((clip) => item(clip.id, (start, end) => formatClock(end - start))),
     // A photo behind the speaker by its spot, one in front as such (its
-    // reason in the tooltip), a big word by itself.
+    // reason in the tooltip), a visual the same as a frame, a big word by
+    // itself.
     behind: (tracks.behind ?? []).map((entry) => {
-      const shown = item(entry.id, () =>
-        entry.kind !== "photo"
-          ? entry.text
-          : entry.layer === "front"
-            ? "photo, in front"
-            : `photo ${entry.spot}`,
-      );
+      const shown = item(entry.id, () => {
+        if (entry.kind === "word") return entry.text;
+        if (entry.kind === "visual") {
+          return entry.layer === "front" ? "visual, in front" : `visual ${entry.spot}`;
+        }
+        return entry.layer === "front" ? "photo, in front" : `photo ${entry.spot}`;
+      });
       return entry.kind === "photo" && entry.reason
         ? { ...shown, note: PHOTO_NOTE[entry.reason] }
         : shown;

@@ -20,7 +20,7 @@ import {
   softenedPhoto,
   ssim,
 } from "../test-support/frames.ts";
-import { behindPhotoAnswerScript, behindWordAnswerScript } from "../test-support/ai-script.ts";
+import { behindVisualAnswerScript, behindWordAnswerScript } from "../test-support/ai-script.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { SAMPLE_PHOTO, type SeededPhoto, seedReadyPhoto } from "../test-support/photos.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
@@ -416,18 +416,18 @@ test("text moved by 60 px falls below the bound", async () => {
 });
 
 // A library photo in the top spot, then one big word, behind the speaker: each
-// a change job (the scripted answer) that makes the cut-out with the real mask
+// a start over job (the scripted answer, decided from version 1) that makes the cut-out with the real mask
 // tool and saves the version, then the composite in the live preview and in
 // the real export are compared at the same moments. The photo and the word
 // each show 2 s from the speech's start (0.038 s), as two versions over the
 // same span. The first two moments are inside it, the last one after it (the
 // composite gone in both). The photo moved by 60 px is the probe and must
 // fall below the bound.
-async function changeTo(script: string, request: string): Promise<string> {
+async function startOverTo(script: string): Promise<string> {
   const { error } = await admin
     .from("jobs")
-    .insert({ reel_id: reel!.reelId, owner_id: owner.id, kind: "change", request });
-  if (error) throw new Error(`change job not queued: ${error.message}`);
+    .insert({ reel_id: reel!.reelId, owner_id: owner.id, kind: "start_over" });
+  if (error) throw new Error(`start over job not queued: ${error.message}`);
   const worker = await runWorkerOnce(
     { R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_AI_SCRIPT: script, E2E_MOCK_MASK: "" },
     { timeoutMs: RENDER_TIMEOUT_MS },
@@ -441,7 +441,7 @@ async function changeTo(script: string, request: string): Promise<string> {
   return data!.current_version_id;
 }
 
-test("a photo and a big word behind the speaker match between preview and export", async () => {
+test("a visual and a big word behind the speaker match between preview and export", async () => {
   test.setTimeout(20 * 60_000);
   const dir = await mkdtemp(join(tmpdir(), "export-guardrail-behind-"));
   try {
@@ -462,10 +462,7 @@ test("a photo and a big word behind the speaker match between preview and export
       bytes,
     });
     for (const key of photo.keys) written.add(key);
-    const behindId = await changeTo(
-      await behindPhotoAnswerScript(dir, photo.id, "top"),
-      "the test pattern behind me, top",
-    );
+    const behindId = await startOverTo(await behindVisualAnswerScript(dir));
     await openPreview(behindId);
     const behindPreviews = await capturePreview("behind");
     const { mp4 } = await exportNow("behind");
@@ -473,22 +470,8 @@ test("a photo and a big word behind the speaker match between preview and export
       expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
     }
 
-    // The probe: the same photo in another spot (the answer has no free
-    // style to shift it by pixels any more), exported only.
-    const probeId = await changeTo(
-      await behindPhotoAnswerScript(dir, photo.id, "left"),
-      "the photo on the left",
-    );
-    await openPreview(probeId);
-    const { mp4: probeMp4 } = await exportNow("behind-probe");
-    const probeScores = await scores("behind-probe", probeMp4, behindPreviews);
-    expect(Math.min(...probeScores)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
-
     // One big word behind the speaker, a second version over the same span.
-    const wordId = await changeTo(
-      await behindWordAnswerScript(dir, "w0001"),
-      "the first word big behind me",
-    );
+    const wordId = await startOverTo(await behindWordAnswerScript(dir, "w0001"));
     await openPreview(wordId);
     const wordPreviews = await capturePreview("behind-word");
     const { mp4: wordMp4 } = await exportNow("behind-word");

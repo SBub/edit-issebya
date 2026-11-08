@@ -3,14 +3,12 @@ import {
   AiUnavailable,
   AnswerRefused,
   FootageRefused,
-  NothingChanged,
   PermanentError,
   TransientError,
   failureKind,
   findCause,
   isTransient,
   permanentAfterAiCall,
-  nothingChangedRules,
   supabaseFailure,
 } from "./failure.ts";
 import { StepError } from "./step-runner.ts";
@@ -162,21 +160,5 @@ describe("failureKind", () => {
     expect(refused.message).toBe("the answer failed the checks");
     expect(refused.rules).toEqual(["behind-caption"]);
     expect(refused.rounds).toBe(2);
-  });
-
-  it("reads an unchanged answer as a refused one, no-change first", () => {
-    const rules = nothingChangedRules([
-      { action: "dropped", rule: "one-extra" },
-      { action: "moved", rule: "caption-spot" },
-      { action: "dropped", rule: "no-room" },
-      { action: "wish-not-kept", rule: "wish" },
-      { action: "dropped", rule: "no-room" },
-    ]);
-    expect(rules).toEqual(["no-change", "no-room", "one-extra", "wish"]);
-    const unchanged = new NothingChanged(rules, 1);
-    expect(failureKind(unchanged)).toBe("answer_refused");
-    expect(unchanged).toBeInstanceOf(AnswerRefused);
-    expect(unchanged.message).toBe("the answer changes nothing");
-    expect(isTransient(unchanged)).toBe(false);
   });
 });

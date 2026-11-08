@@ -1,33 +1,24 @@
 import type { Backgrounds } from "./background.ts";
-import {
-  bigWordCoveredShare,
-  nearestSpot,
-  personBoxes,
-  photoBox,
-  spotBox,
-  spotFaceShare,
-} from "./behind.ts";
+import { bigWordCoveredShare, nearestSpot, photoBox } from "./behind.ts";
 import { clicksFor } from "./clicks.ts";
 import { contrastRatio, relativeLuminance } from "./contrast.ts";
-import type {
-  AccentChoice,
-  BigWordChoice,
-  EngineInput,
-  HookChoice,
-  PhotoChoice,
-  TransitionChoice,
-  Wish,
+import {
+  type AccentChoice,
+  type BigWordChoice,
+  type EngineInput,
+  type HookChoice,
+  QUESTION_PREFIX,
+  type TransitionChoice,
+  type VisualChoice,
+  type Wish,
 } from "./engine-input.ts";
 import { expand, overlaps, placeBox } from "./engine-space.ts";
 import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from "./head-track.ts";
 import { wordsText } from "./layout.ts";
 import type { Measurer } from "./measure.ts";
 import {
-  BEHIND_SPOTS,
-  type BehindSpot,
+  ALL_SHOWN_SECONDS,
   type FontKey,
-  PHOTO_SIZES,
-  type PhotoSize,
   PLATFORM_BUTTONS,
   PLATFORM_SAFE,
   type Preset,
@@ -37,12 +28,11 @@ import {
 import {
   type Anchor,
   BEHIND_WORD,
+  MIN_TEXT_SIZE,
   type BehindItem,
   type CaptionItem,
   type Edit,
   type OverlayItem,
-  type PhotoLayer,
-  type PhotoReason,
   type TransitionItem,
   type TransitionLevel,
 } from "./schema.ts";
@@ -58,9 +48,9 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    next word starts, at most a hold after the last, at least its minimum,
 //    about one per the pace's `transitionEverySeconds`, never two at once),
 //    an accent from the lead before its first word to a second after its
-//    last, a big word the same around its one word, a photo from its
+//    last, a big word the same around its one word, a visual from its
 //    sentence's start for at most the behind maximum, each at least its
-//    minimum.
+//    minimum (a visual the same).
 // 2. The scene: the reel cut into moments wherever an item starts or ends,
 //    each with its face (robust over the head track, never one reading).
 // 3. Free space: an area minus the face, the platform notch and the text
@@ -69,14 +59,15 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    captions, shown only there), captions (one spot per sentence), then the
 //    written hook (always first among the extras, room made for it like for
 //    an owner's request), the items the request is about, accents, big
-//    words, photos; at most one of these extras at a time, none during a
+//    words, visuals; at most one of these extras at a time, none during a
 //    transition, and no transition during the hook. Text shrinks to the
 //    preset's floor and wraps to two lines before it gives up a place.
 //    Nothing ever overlaps, a big word stays mostly in view above the head,
 //    and a caption whose words an accent or a big word shows is left out
 //    while it shows (never the same word twice on screen).
 // 5. An extra that fits nowhere is dropped; captions never are (in the worst
-//    case they take the caption line over the face).
+//    case they take the caption line over the face). `all` mode drops
+//    nothing: see `placement: "all"` in `preset.ts` and the notes it writes.
 // 6. Readable text: with a background map, each text placed is measured
 //    (WCAG contrast of its colour against the footage behind it, over its
 //    span). Below the preset's threshold it moves to the nearest free place
@@ -101,6 +92,17 @@ export type EngineAction =
   // Legacy: in the records of versions saved before 2026-11-04 only, when
   // the engine still added a soft shadow. Never written now.
   | "shadowed"
+  // `all` mode: a pick placed over the face or other text, or at the same
+  // time as another pick, kept as it is (the reason says what it sits over).
+  | "kept-overlapping"
+  // `all` mode: a pick too close to the reel's end for its minimum, shown
+  // from earlier so it still shows (its end is the reel's end).
+  | "clamped-to-end"
+  // `all` mode: a pick over hidden footage, shown at the next visible moment.
+  | "moved-off-cut"
+  // `all` mode: a transition or a list pick with no caption text of its own,
+  // shown with the words of its phrase as its text.
+  | "text-from-words"
   // An extra Claude added on its own, taken out to make room for an item the
   // owner asked for.
   | "removed";
@@ -115,7 +117,7 @@ export interface EngineNote {
 export type PlacedTracks = Omit<Edit["tracks"], "cutout">;
 
 // The kinds of extra the engine may leave out.
-export type ExtraKind = "accent" | "big_word" | "photo";
+export type ExtraKind = "accent" | "big_word" | "visual";
 
 // Why an extra was left out, as a code in editor terms (never a time or a
 // pixel): no free place, another extra shows then, its sentence is too short,
@@ -123,16 +125,13 @@ export type ExtraKind = "accent" | "big_word" | "photo";
 export type UnplacedWhy = "no-room" | "busy" | "too-short" | "hidden";
 
 // An answer item the placement left out: its answer reference, its item id,
-// the words it was on (a big word: its word twice) and, for a photo, which.
+// the words it was on (a big word: its word twice).
 export interface UnplacedItem {
   ref: string;
   id: string;
   kind: ExtraKind;
   from: string;
   to: string;
-  photo_id?: string;
-  // For a photo, why the editor chose it (an older version's photo has none).
-  reason?: PhotoReason;
   // Whether the owner's request asked for it.
   requested: boolean;
   why: UnplacedWhy;
@@ -157,22 +156,11 @@ export interface Placement {
 
 export interface PlaceOptions {
   // The answer items the owner's request asks for (`accents[0]`,
-  // `big_words[0]`, `photos[1]`): placed before every other extra.
+  // `big_words[0]`, `visuals[1]`): placed before every other extra.
   requested?: readonly string[];
   // What is behind the text (the footage's background map, sampled): with it
   // every text is kept readable; without it nothing is measured.
   backgrounds?: Backgrounds;
-  // What the engine knows of each library photo, by id: its ratio and its
-  // edge's luminance. A photo without one takes the preset's ratio and is not
-  // measured for contrast.
-  photos?: ReadonlyMap<string, PhotoLook>;
-}
-
-// A library photo as the layout sees it: `aspect` its width over its height,
-// `edge` the WCAG relative luminance (0 to 1) along its border.
-export interface PhotoLook {
-  aspect?: number;
-  edge?: number;
 }
 
 type Align = "left" | "right" | "center";
@@ -197,6 +185,11 @@ function at(seconds: number): string {
 
 function quote(text: string): string {
   return JSON.stringify(text.length > 40 ? `${text.slice(0, 37)}...` : text);
+}
+
+// What a note calls an accent-look item: the title, a QUESTION or an accent.
+function accentNoun(accent: AccentChoice): string {
+  return accent.title ? "the title" : accent.question ? "question" : "accent";
 }
 
 // A contrast ratio in the record: one decimal, never rounded up to a
@@ -404,8 +397,10 @@ interface Extra {
   // A start moved inside its sentence to make room: the word it starts on.
   startWord?: string;
   accent?: AccentChoice;
-  photo?: PhotoChoice;
+  visual?: VisualChoice;
+  // A big word's first and last word (the same for one word).
   word?: string;
+  wordTo?: string;
   hook?: HookChoice;
 }
 
@@ -434,9 +429,8 @@ interface Accepted {
 interface Room {
   // Requested items placed before the captions; the caption blocks sharing
   // their time keep clear of them, at the full size only (`move`) or down to
-  // the floor (`shrink`), never over the face. A photo's spot is pinned.
+  // the floor (`shrink`), never over the face. A visual's spot is pinned.
   reserve: ReadonlyMap<string, "move" | "shrink">;
-  spot: ReadonlyMap<string, BehindSpot>;
   // Extras Claude added on its own, left out (answer refs, transitions too).
   removed: ReadonlySet<string>;
   // A requested item's span moved inside its sentence.
@@ -450,7 +444,6 @@ interface Room {
 
 const PLAIN: Room = {
   reserve: new Map(),
-  spot: new Map(),
   removed: new Set(),
   shift: new Map(),
   faceOk: new Set(),
@@ -495,7 +488,7 @@ const MAKE_ROOM_TAIL =
 // Places every item of an answer over the current version: footage kept,
 // captions from the current version's words (each fix as the text of the
 // caption showing that word), every other item from its words, and a click
-// as each photo and big word comes in.
+// as each visual and big word comes in.
 // Without a request this is one plain pass. With one, each requested item
 // (in the checklist's order) that the plain pass leaves out gets room, step
 // by step until it is placed: the captions sharing its time move (full
@@ -523,9 +516,23 @@ export function placeEdit(
   const placeOptions = { ...options, requested };
   const run = (room: Room) =>
     placeOnce(current, input, transcript, headTrack, preset, measurer, placeOptions, room);
-  const plain = run(PLAIN);
+  // The hook's slot is reserved before any caption on every run: the
+  // captions in its window keep clear of it (by the caption rules), and
+  // nothing else moves it.
+  const base: Room = input.hook ? { ...PLAIN, reserve: new Map([[HOOK_REF, "shrink"]]) } : PLAIN;
+  const plain = run(base);
+  // `all`: the first pass places every pick (nothing is dropped, so there is
+  // no room to make).
+  if (preset.placement === "all") {
+    return {
+      tracks: plain.tracks,
+      record: plain.record,
+      unplaced: plain.unplaced,
+      free: plain.free(),
+    };
+  }
   let pass = plain;
-  let room: Room = { ...PLAIN, overFace: plain.facesCovered };
+  let room: Room = { ...base, overFace: plain.facesCovered };
   const notes: EngineNote[] = [];
   const done: string[] = [];
   const sentences = sentenceSpans(transcript);
@@ -562,43 +569,22 @@ export function placeEdit(
       return accept(tried) ? { room: next, pass: tried } : null;
     };
     const span = { start: extra.start, end: extra.end };
-    // A photo's wanted region (a preset spot) for each try: the wished one,
-    // the one it had, then every spot. The placement keeps it off the face
-    // (in front) or mostly in view (behind) wherever it lands.
-    const spotsFor = (): (BehindSpot | undefined)[] => {
-      if (extra.kind !== "photo") return [undefined];
-      const kept = (current.tracks.behind ?? []).find(
-        (item) => item.kind === "photo" && item.photo_id === extra.photo!.photo_id,
-      );
-      const wished = BEHIND_SPOTS.find((spot) => spot === extra.wish);
-      return [
-        ...new Set([
-          ...(wished ? [wished] : []),
-          ...(kept?.kind === "photo" ? [kept.spot] : []),
-          ...BEHIND_SPOTS,
-        ]),
-      ];
-    };
     const withRef = (
       base: Room,
       mode: "move" | "shrink",
-      spot: BehindSpot | undefined,
       more: Partial<Pick<Room, "removed" | "shift" | "faceOk">> = {},
     ): Room => ({
       reserve: new Map([...base.reserve, [ref, mode]]),
-      spot: spot ? new Map([...base.spot, [ref, spot]]) : base.spot,
       removed: more.removed ?? base.removed,
       shift: more.shift ?? base.shift,
       faceOk: more.faceOk ?? base.faceOk,
       overFace: base.overFace,
     });
-    // Move, then shrink, at every spot the face leaves clear.
+    // Move, then shrink.
     const moveOrShrink = (base: Room, removed: ReadonlySet<string>) => {
       for (const mode of ["move", "shrink"] as const) {
-        for (const spot of spotsFor()) {
-          const found = attempt(withRef(base, mode, spot, { removed }));
-          if (found) return found;
-        }
+        const found = attempt(withRef(base, mode, { removed }));
+        if (found) return found;
       }
       return null;
     };
@@ -637,26 +623,18 @@ export function placeEdit(
     // Its timing inside its own sentence.
     if (!found) {
       for (const shift of shiftsOf(extra)) {
-        for (const spot of spotsFor()) {
-          found = attempt(
-            withRef(room, "shrink", spot, {
-              removed,
-              shift: new Map([...room.shift, [ref, shift]]),
-            }),
-          );
-          if (found) break;
-        }
-        if (found) break;
-      }
-    }
-    // Last: over the face.
-    if (!found) {
-      for (const spot of spotsFor()) {
         found = attempt(
-          withRef(room, "shrink", spot, { removed, faceOk: new Set([...room.faceOk, ref]) }),
+          withRef(room, "shrink", {
+            removed,
+            shift: new Map([...room.shift, [ref, shift]]),
+          }),
         );
         if (found) break;
       }
+    }
+    // Last: over the face (never a visual's card, which stays clear of it).
+    if (!found && extra.kind !== "visual") {
+      found = attempt(withRef(room, "shrink", { removed, faceOk: new Set([...room.faceOk, ref]) }));
     }
     if (!found) {
       // The drop stands, with every step it took.
@@ -696,7 +674,7 @@ export function placeEdit(
       const end = ms(extra.start + extra.min);
       return end < extra.end - SLACK ? [{ end }] : [];
     }
-    const from = extra.kind === "accent" ? extra.accent!.from : extra.photo!.from;
+    const from = extra.kind === "accent" ? extra.accent!.from : extra.visual!.from;
     const sentence = sentenceOf(from);
     if (!sentence) return [];
     const at = sentences.indexOf(sentence);
@@ -713,7 +691,7 @@ export function placeEdit(
     for (const w of ids) {
       const start = w.start;
       let end: number;
-      if (extra.kind === "photo") {
+      if (extra.kind === "visual") {
         const { minSeconds, maxSeconds } = preset.behind;
         end = Math.min(start + maxSeconds, Math.max(sentence.end, start + minSeconds));
       } else {
@@ -799,13 +777,13 @@ function roomNotes(
     });
   }
   if (now.faceOk.has(ref) && !was.faceOk.has(ref)) {
-    const photo = after.tracks.behind?.find((item) => item.id === extra.id);
+    const picture = after.tracks.behind?.find((item) => item.id === extra.id);
     notes.push({
       item: extra.id,
       action: "covers-face",
       rule: "make-room",
       reason:
-        photo?.kind === "photo"
+        picture?.kind === "visual"
           ? `${label} sits behind you, where you hide more of it than usual: nothing else was free${asked}`
           : `${label} sits over part of the face: nothing else was free${asked}`,
     });
@@ -830,6 +808,11 @@ function placeOnce(
   const order = new Map(transcript.words.map((w, index) => [w.id, index]));
   const range = (from: string, to: string) =>
     transcript.words.slice(order.get(from)!, order.get(to)! + 1).map((w) => w.id);
+  // A big word's text: its one or two words, cleaned, joined by a space.
+  const bigWordText = (from: string, to: string) =>
+    range(from, to)
+      .map((id) => cleanWord(word(id).text, preset))
+      .join(" ");
   const sentences = sentenceSpans(transcript);
   const sentenceOf = (id: string): SentenceSpan | undefined => {
     const index = order.get(id)!;
@@ -837,6 +820,8 @@ function placeOnce(
   };
   const { safe, layout } = preset;
   const gap = layout.gap;
+  // `all`: every pick is placed at its own words' times, overlaps kept.
+  const all = preset.placement === "all";
   const notch = PLATFORM_BUTTONS;
   const safeCx = (safe.left + safe.right) / 2;
   const hidden = current.tracks.footage.flatMap((clip) =>
@@ -884,17 +869,28 @@ function placeOnce(
     if (!choice) return null;
     const spec = preset.pace.hook;
     const text = hookText(choice);
-    const start = ms(Math.min(spec.fromSeconds, duration));
+    let start = ms(Math.min(spec.fromSeconds, duration));
     const end = ms(Math.min(duration, spec.untilSeconds));
-    const min = preset.accent.minSeconds;
+    const min = all ? ALL_SHOWN_SECONDS : preset.accent.minSeconds;
     if (end - start < min - SLACK) {
+      if (!all) {
+        record.push({
+          item: HOOK_ID,
+          action: "dropped",
+          rule: "hook-time",
+          reason: `the hook ${quote(text)} needs ${min} s on screen; the reel is too short`,
+        });
+        return null;
+      }
+      // `all`: the reel ends too soon after the hook's start, so it shows
+      // from earlier, to the reel's end.
+      start = ms(Math.max(0, end - min));
       record.push({
         item: HOOK_ID,
-        action: "dropped",
+        action: "clamped-to-end",
         rule: "hook-time",
-        reason: `the hook ${quote(text)} needs ${min} s on screen; the reel is too short`,
+        reason: `the hook ${quote(text)} shows from ${at(start)} to ${at(end)}: the reel is too short to start it at ${at(spec.fromSeconds)}`,
       });
-      return null;
     }
     return {
       ref: HOOK_REF,
@@ -945,13 +941,32 @@ function placeOnce(
         });
       }
       const kind = preset.transitions[choice.kind];
-      const timing = transitionTiming(
+      let timing = transitionTiming(
         { from: choice.from, to: choice.to, ...(wish ? { wish } : {}) },
         transcript.words,
         duration,
         preset,
         kind,
+        all ? ALL_SHOWN_SECONDS : undefined,
       );
+      if (!timing && all) {
+        // `all`: the reel is shorter than the shown floor, so the layer
+        // covers all of it.
+        timing = {
+          start: 0,
+          end: ms(duration),
+          seconds: kind.seconds,
+          lengthened: true,
+          startAnchor: { reel: "start" },
+          endAnchor: { reel: "end" },
+        };
+        record.push({
+          item: id,
+          action: "clamped-to-end",
+          rule: "transition-time",
+          reason: `${label} shows from 0 s to ${at(duration)}: the reel is too short for it to show ${rules.minSeconds} s`,
+        });
+      }
       if (!timing) {
         record.push({
           item: id,
@@ -963,7 +978,7 @@ function placeOnce(
       }
       // The hook holds the first seconds: a transition covering any of them
       // is dropped (the hook is must-place, a transition is not).
-      if (hook && during(timing, hook)) {
+      if (!all && hook && during(timing, hook)) {
         record.push({
           item: id,
           action: "dropped",
@@ -972,7 +987,7 @@ function placeOnce(
         });
         continue;
       }
-      if (kept.length >= most) {
+      if (!all && kept.length >= most) {
         record.push({
           item: id,
           action: "dropped",
@@ -992,7 +1007,7 @@ function placeOnce(
       let endAnchor = timing.endAnchor;
       const trims: { plan: TransitionPlan; end: number }[] = [];
       let clash: TransitionPlan | null = null;
-      for (const other of [...kept].sort((a, b) => a.start - b.start)) {
+      for (const other of all ? [] : [...kept].sort((a, b) => a.start - b.start)) {
         if (!during({ start: timing.start, end }, other)) continue;
         if (other.start < timing.start - SLACK) {
           if (!holds(other, timing.start)) {
@@ -1041,7 +1056,7 @@ function placeOnce(
           item: id,
           action: "retimed",
           rule: "transition-min",
-          reason: `${label} shows from ${at(timing.start)} to ${at(timing.end)}, at least ${rules.minSeconds} s`,
+          reason: `${label} shows from ${at(timing.start)} to ${at(timing.end)}, at least ${all ? ALL_SHOWN_SECONDS : rules.minSeconds} s`,
         });
       }
       kept.push({
@@ -1069,40 +1084,102 @@ function placeOnce(
   // The start anchor of an item coming in at `at`: its word, less the lead.
   const leadAnchor = (id: string, at: number): Anchor => {
     const offset = ms(at - word(id).start);
+    if (Math.abs(offset) > 1) return anchorAt(at, transcript.words);
     return offset === 0 ? { word: id } : { word: id, offset };
   };
   const crossesHidden = (span: { start: number; end: number }) =>
     hidden.some((range) => during(span, range));
 
+  // `all` mode, a pick over hidden footage: the next visible moment after the
+  // cut (from its end, as long as the pick lasts, up to the next cut), else
+  // the last one before it. Null when neither holds the shown floor.
+  function visibleSpan(span: {
+    start: number;
+    end: number;
+  }): { start: number; end: number } | null {
+    const length = span.end - span.start;
+    const cuts = hidden.filter((range) => during(span, range)).sort((a, b) => a.start - b.start);
+    for (const cut of cuts) {
+      const nextCut = hidden
+        .filter((range) => range.start >= cut.end - SLACK)
+        .reduce((best, range) => Math.min(best, range.start), duration);
+      const start = ms(cut.end);
+      const end = ms(Math.min(nextCut, duration, start + length));
+      if (end - start >= ALL_SHOWN_SECONDS - SLACK) return { start, end };
+    }
+    for (const cut of [...cuts].reverse()) {
+      const prevCut = hidden
+        .filter((range) => range.end <= cut.start + SLACK)
+        .reduce((best, range) => Math.max(best, range.end), 0);
+      const end = ms(cut.start);
+      const start = ms(Math.max(prevCut, cut.start - length));
+      if (end - start >= ALL_SHOWN_SECONDS - SLACK) return { start, end };
+    }
+    return null;
+  }
+
+  // `all` mode: a pick's own span, from its start (the lead before its first
+  // word) to its last word's end, at least `min` long and at most `max`,
+  // inside the reel. One too close to the reel's end for its minimum is
+  // dropped by the caller (the reel is too short for it).
+  function ownSpan(
+    startAt: number,
+    lastEnd: number,
+    min: number,
+    max: number,
+  ): { start: number; end: number } {
+    const end = ms(Math.min(duration, Math.max(lastEnd, startAt + min), startAt + max));
+    return { start: ms(startAt), end };
+  }
+
+  // An ACCENT (`accents[i]`) or a QUESTION (`questions[i]`, `ref`): the same
+  // placement, timing and look.
   function accentExtra(
     accent: AccentChoice,
     index: number,
     id: string,
     notes: EngineNote[] | null,
+    ref = `accents[${index}]`,
   ): Extra | null {
-    const ref = `accents[${index}]`;
     const shift = notes ? room.shift.get(ref) : undefined;
     const wordStart = word(shift?.word ?? accent.from).start;
-    const start = leadStart(wordStart);
+    const own =
+      !shift && all
+        ? ownSpan(leadStart(wordStart), word(accent.to).end, preset.accent.minSeconds, Infinity)
+        : null;
+    let start = own?.start ?? leadStart(wordStart);
     const end = shift
       ? shift.end
-      : ms(
-          Math.min(
-            duration,
-            Math.max(
-              word(accent.to).end + preset.accent.afterSeconds,
-              start + preset.accent.minSeconds,
+      : own
+        ? own.end
+        : ms(
+            Math.min(
+              duration,
+              Math.max(
+                word(accent.to).end + preset.accent.afterSeconds,
+                start + preset.accent.minSeconds,
+              ),
             ),
-          ),
-        );
-    if (end - start < preset.accent.minSeconds - SLACK) {
+          );
+    const floor = all ? ALL_SHOWN_SECONDS : preset.accent.minSeconds;
+    if (end - start < floor - SLACK) {
+      if (!all) {
+        notes?.push({
+          item: id,
+          action: "dropped",
+          rule: "accent-time",
+          reason: `${accentNoun(accent)} ${quote(accentText(accent))} starts too close to the end to show ${preset.accent.minSeconds} s`,
+        });
+        return null;
+      }
+      // `all`: too close to the reel's end, so it shows from earlier.
+      start = ms(Math.max(0, end - floor));
       notes?.push({
         item: id,
-        action: "dropped",
+        action: "clamped-to-end",
         rule: "accent-time",
-        reason: `accent ${quote(accentText(accent))} starts too close to the end to show ${preset.accent.minSeconds} s`,
+        reason: `${accentNoun(accent)} ${quote(accentText(accent))} shows from ${at(start)} to ${at(end)}: the reel ends too soon to start it at its word`,
       });
-      return null;
     }
     return {
       ref,
@@ -1129,30 +1206,61 @@ function placeOnce(
     notes: EngineNote[] | null,
   ): Extra | null {
     const ref = `big_words[${index}]`;
-    const first = word(choice.word);
+    // Timed from its first word to its last (the same word for one word).
+    const first = word(choice.from);
+    const last = word(choice.to);
     const shift = notes ? room.shift.get(ref) : undefined;
-    const start = leadStart(first.start);
+    const own =
+      !shift && all
+        ? ownSpan(leadStart(first.start), last.end, preset.accent.minSeconds, Infinity)
+        : null;
+    let start = own?.start ?? leadStart(first.start);
     const { minSeconds: min, afterSeconds } = preset.accent;
-    const end =
-      shift?.end ?? ms(Math.min(duration, Math.max(first.end + afterSeconds, start + min)));
-    const text = cleanWord(first.text, preset);
-    if (end - start < min - SLACK) {
+    let end =
+      shift?.end ??
+      own?.end ??
+      ms(Math.min(duration, Math.max(last.end + afterSeconds, start + min)));
+    const text = bigWordText(choice.from, choice.to);
+    const floor = all ? ALL_SHOWN_SECONDS : min;
+    if (end - start < floor - SLACK) {
+      if (!all) {
+        notes?.push({
+          item: id,
+          action: "dropped",
+          rule: "big-word-time",
+          reason: `the big word ${quote(text)} is said too close to the end to show ${min} s`,
+        });
+        return null;
+      }
+      // `all`: too close to the reel's end, so it shows from earlier.
+      start = ms(Math.max(0, end - floor));
       notes?.push({
         item: id,
-        action: "dropped",
+        action: "clamped-to-end",
         rule: "big-word-time",
-        reason: `the big word ${quote(text)} is said too close to the end to show ${min} s`,
+        reason: `the big word ${quote(text)} shows from ${at(start)} to ${at(end)}: the reel ends too soon to start it at its word`,
       });
-      return null;
     }
     if (crossesHidden({ start, end })) {
-      notes?.push({
-        item: id,
-        action: "dropped",
-        rule: "hidden-footage",
-        reason: `the big word ${quote(text)} would show while the footage is hidden`,
-      });
-      return null;
+      if (!all) {
+        notes?.push({
+          item: id,
+          action: "dropped",
+          rule: "hidden-footage",
+          reason: `the big word ${quote(text)} would show while the footage is hidden`,
+        });
+        return null;
+      }
+      const moved = visibleSpan({ start, end });
+      if (moved) {
+        notes?.push({
+          item: id,
+          action: "moved-off-cut",
+          rule: "hidden-footage",
+          reason: `the big word ${quote(text)} would show while the footage is hidden: it shows from ${at(moved.start)} to ${at(moved.end)}, the next visible moment`,
+        });
+        ({ start, end } = moved);
+      }
     }
     return {
       ref,
@@ -1165,27 +1273,30 @@ function placeOnce(
       ...(choice.wish ? { wish: choice.wish } : {}),
       index,
       word: first.id,
+      wordTo: last.id,
     };
   }
 
-  function photoExtra(
-    photo: PhotoChoice,
+  function visualExtra(
+    visual: VisualChoice,
     index: number,
     id: string,
     notes: EngineNote[] | null,
   ): Extra | null {
-    const ref = `photos[${index}]`;
+    const ref = `visuals[${index}]`;
     const shift = notes ? room.shift.get(ref) : undefined;
-    const sentence = sentenceOf(photo.from)!;
+    const sentence = sentenceOf(visual.from)!;
     const at0 = sentences.indexOf(sentence);
     const lo = sentences[at0 - 1]?.end ?? 0;
     const hi = Math.min(duration, sentences[at0 + 1]?.start ?? duration);
-    // From the sentence's start; in a long sentence whose photo words come
-    // later, from its first word, so it still shows over its own words.
-    const first = word(photo.from);
+    // From the sentence's start; in a long sentence whose words come later,
+    // from its first word, so it still shows over its own words.
+    const first = word(visual.from);
     let start = first.start - sentence.start > 1 ? first.start : sentence.start;
     let end = Math.min(start + maxSeconds, Math.max(sentence.end, start + minSeconds));
-    if (end > hi + SLACK) {
+    if (all) {
+      ({ start, end } = ownSpan(first.start, word(visual.to).end, minSeconds, maxSeconds));
+    } else if (end > hi + SLACK) {
       end = hi;
       start = Math.max(lo, hi - minSeconds);
     }
@@ -1195,44 +1306,66 @@ function placeOnce(
     }
     start = ms(start);
     end = ms(end);
-    if (end - start < minSeconds - SLACK) {
+    const floor = all ? ALL_SHOWN_SECONDS : minSeconds;
+    if (end - start < floor - SLACK) {
+      if (!all) {
+        notes?.push({
+          item: id,
+          action: "dropped",
+          rule: "visual-time",
+          reason: `visual ${index + 1}: its sentence and the pauses around it last under ${minSeconds} s`,
+        });
+        return null;
+      }
+      // `all`: too close to the reel's end, so it shows from earlier.
+      start = ms(Math.max(0, end - floor));
       notes?.push({
         item: id,
-        action: "dropped",
-        rule: "photo-time",
-        reason: `photo ${index + 1}: its sentence and the pauses around it last under ${minSeconds} s`,
+        action: "clamped-to-end",
+        rule: "visual-time",
+        reason: `visual ${index + 1} shows from ${at(start)} to ${at(end)}: the reel ends too soon to start it at its sentence`,
       });
-      return null;
     }
     if (crossesHidden({ start, end })) {
-      notes?.push({
-        item: id,
-        action: "dropped",
-        rule: "hidden-footage",
-        reason: `photo ${index + 1} would show while the footage is hidden`,
-      });
-      return null;
+      if (!all) {
+        notes?.push({
+          item: id,
+          action: "dropped",
+          rule: "hidden-footage",
+          reason: `visual ${index + 1} would show while the footage is hidden`,
+        });
+        return null;
+      }
+      const moved = visibleSpan({ start, end });
+      if (moved) {
+        notes?.push({
+          item: id,
+          action: "moved-off-cut",
+          rule: "hidden-footage",
+          reason: `visual ${index + 1} would show while the footage is hidden: it shows from ${at(moved.start)} to ${at(moved.end)}, the next visible moment`,
+        });
+        ({ start, end } = moved);
+      }
     }
     if (!shift && start < Math.min(sentence.start, first.start) - SLACK) {
       notes?.push({
         item: id,
         action: "retimed",
-        rule: "photo-time",
-        reason: `photo ${index + 1} starts at ${at(start)}, before its short sentence, to show ${minSeconds} s`,
+        rule: "visual-time",
+        reason: `visual ${index + 1} starts at ${at(start)}, before its short sentence, to show ${minSeconds} s`,
       });
     }
     return {
       ref,
-      kind: "photo",
+      kind: "visual",
       id,
       start,
       end,
       min: minSeconds,
       wordStart: start,
-      ...(photo.wish ? { wish: photo.wish } : {}),
       index,
       ...(shift?.word ? { startWord: shift.word } : {}),
-      photo,
+      visual,
     };
   }
 
@@ -1246,14 +1379,23 @@ function placeOnce(
     const extra = accentExtra(accent, index, accentIds[index]!, record);
     if (extra) extras.push(extra);
   });
+  // A QUESTION: an accent placed the same way, under its own id (`question-N`).
+  const questions = input.questions ?? [];
+  const questionIds = questions.map((_, index) => `${QUESTION_PREFIX}${index + 1}`);
+  questions.forEach((question, index) => {
+    if (room.removed.has(`questions[${index}]`)) return;
+    const accent = { ...question, question: true };
+    const extra = accentExtra(accent, index, questionIds[index]!, record, `questions[${index}]`);
+    if (extra) extras.push(extra);
+  });
   input.big_words.forEach((choice, index) => {
     if (room.removed.has(`big_words[${index}]`)) return;
     const extra = bigWordExtra(choice, index, bigWordId(index), record);
     if (extra) extras.push(extra);
   });
-  input.photos.forEach((photo, index) => {
-    if (room.removed.has(`photos[${index}]`)) return;
-    const extra = photoExtra(photo, index, `photo-${index + 1}`, record);
+  input.visuals.forEach((visual, index) => {
+    if (room.removed.has(`visuals[${index}]`)) return;
+    const extra = visualExtra(visual, index, `visual-${index + 1}`, record);
     if (extra) extras.push(extra);
   });
 
@@ -1266,18 +1408,7 @@ function placeOnce(
         item: accentIds[index]!,
         action: "wish-not-kept",
         rule: "wish",
-        reason: `${accent.title ? "the title" : "accent"} ${quote(wordsText(range(accent.from, accent.to), transcript, preset))} cannot move ${accent.wish === "slow" ? "slower" : "longer"}: only a transition can`,
-      });
-    }
-  }
-  for (const [index, photo] of input.photos.entries()) {
-    if (room.removed.has(`photos[${index}]`)) continue;
-    if (photo.wish === "slow" || photo.wish === "long") {
-      record.push({
-        item: `photo-${index + 1}`,
-        action: "wish-not-kept",
-        rule: "wish",
-        reason: `photo ${index + 1} cannot move ${photo.wish === "slow" ? "slower" : "longer"}: only a transition can`,
+        reason: `${accentNoun(accent)} ${quote(wordsText(range(accent.from, accent.to), transcript, preset))} cannot move ${accent.wish === "slow" ? "slower" : "longer"}: only a transition can`,
       });
     }
   }
@@ -1288,7 +1419,7 @@ function placeOnce(
         item: bigWordId(index),
         action: "wish-not-kept",
         rule: "wish",
-        reason: `the big word ${quote(cleanWord(word(choice.word).text, preset))} cannot move ${choice.wish === "slow" ? "slower" : "longer"}: only a transition can`,
+        reason: `the big word ${quote(bigWordText(choice.from, choice.to))} cannot move ${choice.wish === "slow" ? "slower" : "longer"}: only a transition can`,
       });
     }
   }
@@ -1316,6 +1447,28 @@ function placeOnce(
   const shown: Shown[] = [];
   const textDuring = (span: { start: number; end: number }) =>
     shown.filter((item) => during(item, span)).map((item) => expand(item.box, gap));
+  // `all`: a pick placed over the face (when `face`) or other text on screen is
+  // noted with what it sits over.
+  function noteOverlap(
+    id: string,
+    label: string,
+    box: Box,
+    span: { start: number; end: number },
+    face: boolean,
+  ): void {
+    const over: string[] = [];
+    if (face && faceObstacles(span).some((obstacle) => overlaps(box, obstacle))) {
+      over.push("the face");
+    }
+    if (textDuring(span).some((obstacle) => overlaps(box, obstacle))) over.push("other text");
+    if (over.length === 0) return;
+    record.push({
+      item: id,
+      action: "kept-overlapping",
+      rule: "all-picks",
+      reason: `${label} sits over ${over.join(" and ")} from ${at(span.start)} to ${at(span.end)}; kept, every pick is shown`,
+    });
+  }
 
   // Readability: the worst contrast of a text's colours over a box and span.
   const { backgrounds } = options;
@@ -1505,8 +1658,45 @@ function placeOnce(
       keyParts = leadParts.slice(-1);
       leadParts = leadParts.slice(0, -1);
     }
-    const lead = leadParts.map((part) => part.text).join(" ");
-    const key = keyParts.map((part) => part.text).join(" ");
+    let lead = leadParts.map((part) => part.text).join(" ");
+    let key = keyParts.map((part) => part.text).join(" ");
+    if (all) {
+      // `all`: a phrase whose captions all begin before it has no text of its
+      // own, so its words (as the captions would show them, after the fixes)
+      // are its text. A text over the level's cap is cut at a word.
+      if (!key) {
+        key =
+          ids
+            .map((id) => fixes.get(id) ?? wordsText([id], transcript, preset))
+            .join(" ")
+            .trim() || ids.map((id) => word(id).text.trim()).join(" ");
+        lead = "";
+        record.push({
+          item: plan.id,
+          action: "text-from-words",
+          rule: "transition-text",
+          reason: `${label} has no caption text of its own: it shows the words of its phrase, ${quote(key)}`,
+        });
+      }
+      const capped = (text: string) => {
+        if (text.length <= LEVEL_TEXT_MAX) return text;
+        let out = "";
+        for (const piece of text.split(" ")) {
+          const next = out ? `${out} ${piece}` : piece;
+          if (next.length > LEVEL_TEXT_MAX) break;
+          out = next;
+        }
+        record.push({
+          item: plan.id,
+          action: "text-from-words",
+          rule: "transition-text",
+          reason: `${label} shows its first ${out.length} characters: its text is longer than ${LEVEL_TEXT_MAX}`,
+        });
+        return out;
+      };
+      lead = lead.length > LEVEL_TEXT_MAX ? capped(lead) : lead;
+      key = key.length > LEVEL_TEXT_MAX ? capped(key) : key;
+    }
     const specs = [
       ...(number !== undefined
         ? [{ role: "number" as const, text: String(number), start: plan.startAnchor }]
@@ -1514,7 +1704,7 @@ function placeOnce(
       ...(lead ? [{ role: "lead" as const, text: lead, start: { word: choice.from } }] : []),
       { role: "key" as const, text: key, start: { word: choice.key_from } },
     ].map((spec) => ({ ...spec, ...levelStyle(spec.role, preset) }));
-    if (!key || specs.some((spec) => spec.text.length > 300)) {
+    if (!key || specs.some((spec) => spec.text.length > LEVEL_TEXT_MAX)) {
       record.push({
         item: plan.id,
         action: "dropped",
@@ -1573,6 +1763,25 @@ function placeOnce(
         }
       }
       if (found) break;
+    }
+    if (!found && all) {
+      // `all`: the smallest size, wrapped as far as it goes, at the wanted
+      // place, over other text if it must (noted).
+      const step = steps - 1;
+      const wrapped = wraps.at(-1)!;
+      const stack = stackOf(step, wrapped);
+      const spot = placeBox(area, [], stack.width, stack.height, {
+        x: cx,
+        y: kind.want + stack.height / 2,
+      }) ?? { x: area.left, y: area.top };
+      noteOverlap(
+        plan.id,
+        label,
+        { left: spot.x, right: spot.x + stack.width, top: spot.y, bottom: spot.y + stack.height },
+        plan,
+        true,
+      );
+      found = { stack, spot, step, wrapped, overFace: false };
     }
     if (!found) {
       record.push({
@@ -1681,12 +1890,12 @@ function placeOnce(
   // Every caption block as placed, to set its groups again without the
   // words an extra shows.
   const laidBlocks: { block: CaptionBlock; laid: LaidBlock; layouts: Line[][] }[] = [];
-  const photoSpans = extras.filter((extra) => extra.kind === "photo");
+  const photoSpans = extras.filter((extra) => extra.kind === "visual");
 
   // The extras by priority, at most one at a time.
   const rank = (extra: Extra) => {
     const asked = requested.indexOf(extra.ref);
-    const kind = { transition: 0, hook: 0, accent: 1, big_word: 2, photo: 3 }[extra.kind];
+    const kind = { transition: 0, hook: 0, accent: 1, big_word: 2, visual: 3 }[extra.kind];
     return asked >= 0 ? asked - 1000 : kind * 100;
   };
   const queue = extras
@@ -1710,15 +1919,19 @@ function placeOnce(
   }));
   const overlays = new Map<string, OverlayItem>();
   const behind = new Map<string, BehindItem>();
-  // Each placed photo's size and start, so the reel varies them.
-  const photoSizes = new Map<string, { size: PhotoSize; start: number }>();
   const blockPlaces = new Map<string, BlockPlace>();
   const facesCovered = new Set<string>();
 
   // Making room: the reserved requested items first, before any caption;
   // the captions sharing their time keep clear of them (a photo's spot is
   // an obstacle to them).
-  const reservations: { mode: "move" | "shrink"; start: number; end: number; box?: Box }[] = [];
+  const reservations: {
+    mode: "move" | "shrink";
+    start: number;
+    end: number;
+    box?: Box;
+    hook: boolean;
+  }[] = [];
   const preplaced = new Set<string>();
   for (const extra of queue) {
     const mode = room.reserve.get(extra.ref);
@@ -1735,7 +1948,10 @@ function placeOnce(
       mode,
       start: span.start,
       end: span.end,
-      ...(photo?.kind === "photo" ? { box: photoBox(photo, preset) } : {}),
+      hook: extra.kind === "hook",
+      ...(photo?.kind === "photo" || photo?.kind === "visual"
+        ? { box: photoBox(photo, preset) }
+        : {}),
     });
   }
   const reservedDuring = (span: { start: number; end: number }) =>
@@ -1808,12 +2024,12 @@ function placeOnce(
   // Whether a caption box over a block leaves a photo of the same moment a spot.
   function leavesPhotoSpot(box: Box, span: { start: number; end: number }): boolean {
     const photos = photoSpans.filter((photo) => during(photo, span));
-    return photos.every((photo) =>
-      BEHIND_SPOTS.some(
-        (spot) =>
-          !overlaps(box, spotBox(spot, preset)) && spotClearOfFace(spot, photo, preset, headTrack),
-      ),
-    );
+    return photos.every((photo) => {
+      const obstacles = [...textDuring(photo), notch, ...faceObstacles(photo), expand(box, gap)];
+      return [cardSize(false), cardSize(true)].some(
+        (size) => cardSpots(photo, size, obstacles).length > 0,
+      );
+    });
   }
 
   function tryBlock(
@@ -1876,7 +2092,9 @@ function placeOnce(
     } | null = null;
     const holdsPhoto = photoSpans.some((photo) => during(photo, block));
     // Sharing time with a reserved item: at the full size only (`move`) or
-    // down to the floor (`shrink`), and never over the face for it.
+    // down to the floor (`shrink`), and never over the face for it. The
+    // hook is reserved on every run, so it never fails the pass: its window
+    // falls back like any caption (over the face last).
     const reserved = reservedDuring(block);
     const tried = reserved.some((reservation) => reservation.mode === "move")
       ? sizes.slice(0, 1)
@@ -1896,7 +2114,13 @@ function placeOnce(
       }
       if (chosen) break;
     }
-    if (!chosen && reserved.length > 0 && !room.overFace.has(first.caption.id)) failed = true;
+    if (
+      !chosen &&
+      reserved.some((reservation) => !reservation.hook) &&
+      !room.overFace.has(first.caption.id)
+    ) {
+      failed = true;
+    }
     if (!chosen) {
       const floor = sizes.at(-1)!;
       for (const area of [{ ...safe, top: preset.caption.fallbackY }, safe]) {
@@ -2048,7 +2272,16 @@ function placeOnce(
 
   // One extra by the one-at-a-time rule, then placed; true when placed.
   function tryExtra(extra: Extra): boolean {
-    const timed = fitTime(extra, accepted);
+    // `all`: the pick's own span, held by nothing (overlaps are kept).
+    const timed = all
+      ? {
+          ok: true as const,
+          start: extra.start,
+          end: extra.end,
+          trims: [] as { accepted: Accepted; end: number }[],
+          before: undefined as Accepted | undefined,
+        }
+      : fitTime(extra, accepted);
     if (!timed.ok) {
       const other = timed.with;
       record.push({
@@ -2080,7 +2313,7 @@ function placeOnce(
           ? placeAccent(extra, span)
           : extra.kind === "big_word"
             ? placeBigWord(extra, span)
-            : placePhoto(extra, span);
+            : placeVisual(extra, span);
     if (!placed) {
       cut.forEach(({ item }, index) => {
         if (item) item.end = kept[index]!;
@@ -2104,6 +2337,17 @@ function placeOnce(
         reason: `${describe(extra)} leaves at ${at(timed.end)}, before ${describe(timed.before!.extra)} comes in`,
       });
     }
+    if (all) {
+      const together = accepted.filter((entry) => during(span, entry));
+      if (together.length > 0) {
+        record.push({
+          item: extra.id,
+          action: "kept-overlapping",
+          rule: "all-picks",
+          reason: `${describe(extra)} (${at(span.start)} to ${at(span.end)}) shows at the same time as ${together.map((entry) => describe(entry.extra)).join(", ")}; both kept, every pick is shown`,
+        });
+      }
+    }
     accepted.push({ extra, start: span.start, end: span.end });
     return true;
   }
@@ -2113,12 +2357,12 @@ function placeOnce(
     if (extra.kind === "hook") return `the hook ${quote(extra.hook!.text)}`;
     if (extra.kind === "accent") {
       const accent = extra.accent!;
-      return `${accent.title ? "the title" : "accent"} ${quote(accentText(accent))}`;
+      return `${accentNoun(accent)} ${quote(accentText(accent))}`;
     }
     if (extra.kind === "big_word") {
-      return `the big word ${quote(cleanWord(word(extra.word!).text, preset))}`;
+      return `the big word ${quote(bigWordText(extra.word!, extra.wordTo!))}`;
     }
-    return `photo ${extra.index + 1}`;
+    return `visual ${extra.index + 1}`;
   }
 
   function accentText(accent: AccentChoice): string {
@@ -2215,7 +2459,7 @@ function placeOnce(
     const names = [...new Set([...wished, ...base])];
     const candidates = names.map((name) => areas[name]!);
     // A requested accent allowed over the face keeps clear of text only.
-    const obstacles = [
+    const clear = [
       ...(room.faceOk.has(extra.ref) ? [] : [...faceObstacles(span), ...bodies]),
       ...textDuring(span),
       notch,
@@ -2224,22 +2468,40 @@ function placeOnce(
     const sizes = sizesFrom(fullSize, preset).filter(
       (size) => extra.wish !== "small" || size <= Math.round(fullSize * 0.8),
     );
-    for (const candidate of candidates) {
-      for (const size of sizes) {
+    // `all`: when no candidate is free, the default spot anyway (the first
+    // candidate's wanted point, overlap allowed), at the largest size that
+    // fits, never below the schema minimum.
+    const anyway: Candidate | null = all
+      ? {
+          name: "at its default spot",
+          area: safe,
+          align: "center",
+          want: candidates[0]!.want,
+          maxLines: 2,
+        }
+      : null;
+    const anySizes = [...sizes];
+    for (let size = (sizes.at(-1) ?? fullSize) - 1; size >= MIN_TEXT_SIZE && anyway; size -= 1) {
+      anySizes.push(size);
+    }
+    for (const candidate of [...candidates, ...(anyway ? [anyway] : [])]) {
+      const overlapping = candidate === anyway;
+      const obstacles = overlapping ? [notch] : clear;
+      for (const size of overlapping ? anySizes : sizes) {
         for (const lineCount of words.length > 1 ? [1, 2] : [1]) {
           const lines = lineCount === 1 ? [text] : balancedBreak(words, font, size);
           const widths = lines.map((line) => measurer.width(font, size, line));
           const width = Math.max(...widths);
           const height = lines.length * size;
-          const spot = placeBox(
-            candidate.area,
-            obstacles,
-            width,
-            height,
-            candidate.want(width, height),
-          );
+          // `all`, last resort: the smallest size in two lines at the safe
+          // box's corner, past the box if the words must (never dropped).
+          const spot =
+            placeBox(candidate.area, obstacles, width, height, candidate.want(width, height)) ??
+            (overlapping && size === MIN_TEXT_SIZE && (lineCount === 2 || words.length === 1)
+              ? { x: safe.left, y: safe.top }
+              : null);
           if (!spot) continue;
-          const label = `${accent.title ? "the title" : "accent"} ${quote(text)}`;
+          const label = `${accentNoun(accent)} ${quote(text)}`;
           // Measured once its place and size are known; the notes on the
           // place itself come first.
           const notes = record.length;
@@ -2254,6 +2516,15 @@ function placeOnce(
             `no free place nearby reaches ${readability.large.min}:1`,
           );
           const contrastNotes = record.splice(notes);
+          if (all) {
+            noteOverlap(
+              extra.id,
+              label,
+              { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
+              span,
+              true,
+            );
+          }
           const item: OverlayItem = {
             id: extra.id,
             kind: "accent",
@@ -2271,7 +2542,7 @@ function placeOnce(
             end: span.end,
             box: { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
           });
-          if (candidate !== candidates[0]) {
+          if (candidate !== candidates[0] && !overlapping) {
             record.push({
               item: extra.id,
               action: "moved",
@@ -2279,7 +2550,7 @@ function placeOnce(
               reason: `${label} sits ${candidate.name}: no room ${candidates[0]!.name}`,
             });
           }
-          if (wished.length > 0 && candidate !== candidates[0]) {
+          if (wished.length > 0 && candidate !== candidates[0] && !overlapping) {
             record.push({
               item: extra.id,
               action: "wish-not-kept",
@@ -2312,7 +2583,7 @@ function placeOnce(
       item: extra.id,
       action: "dropped",
       rule: "no-room",
-      reason: `${accent.title ? "the title" : "accent"} ${quote(text)} found no free place from ${at(span.start)} to ${at(span.end)}, even at ${sizes.at(-1)} px in two lines`,
+      reason: `${accentNoun(accent)} ${quote(text)} found no free place from ${at(span.start)} to ${at(span.end)}, even at ${sizes.at(-1)} px in two lines`,
     });
     return false;
   }
@@ -2321,7 +2592,9 @@ function placeOnce(
   // the body under it), inside the safe zone, else in the free part of the
   // safe zone; in each place it wraps to two lines, then shrinks to the
   // floor, before it moves on. Only when room is made for it, as a late step,
-  // may it cover part of the face. The accent's font, size and colour.
+  // may it cover part of the face. The accent's font, size and colour. Never
+  // dropped for its size: when the floor does not fit its words in two lines
+  // it shrinks further, until they do (`hook-size`).
   function placeHook(extra: Extra, span: { start: number; end: number }): boolean {
     const text = extra.hook!.text;
     const font = preset.accent.font;
@@ -2362,74 +2635,116 @@ function placeOnce(
     const words = text.split(" ");
     const sizes = sizesFrom(fullSize, preset);
     const label = `the hook ${quote(text)}`;
+    // Places the hook at one size and line break; true once it is placed.
+    const tryAt = (
+      candidate: Candidate,
+      size: number,
+      lines: string[],
+      forced?: { x: number; y: number },
+    ): boolean => {
+      const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
+      const height = lines.length * size;
+      const spot =
+        forced ?? placeBox(candidate.area, obstacles, width, height, candidate.want(width, height));
+      if (!spot) return false;
+      const notes = record.length;
+      const place = keepReadable(
+        extra.id,
+        label,
+        { ...spot, width, height },
+        span,
+        [preset.accent.color],
+        readability.large,
+        { area: candidate.area, obstacles },
+        `no free place nearby reaches ${readability.large.min}:1`,
+      );
+      const contrastNotes = record.splice(notes);
+      if (forced) {
+        noteOverlap(
+          extra.id,
+          label,
+          { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
+          span,
+          true,
+        );
+      }
+      overlays.set(extra.id, {
+        id: extra.id,
+        kind: "hook",
+        text,
+        start: anchorAt(span.start, transcript.words),
+        end: anchorAt(span.end, transcript.words),
+        position: { x: place.x, y: place.y, align: "left" },
+        size,
+        ...(lines.length > 1 ? { break_after: lines[0]!.split(" ").length } : {}),
+      });
+      shown.push({
+        id: extra.id,
+        start: span.start,
+        end: span.end,
+        box: { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
+      });
+      if (candidate !== candidates[0]) {
+        record.push({
+          item: extra.id,
+          action: "moved",
+          rule: "hook-spot",
+          reason: `${label} sits ${candidate.name}: no room ${candidates[0]!.name}`,
+        });
+      }
+      if (size < fullSize) {
+        record.push({
+          item: extra.id,
+          action: "shrunk",
+          rule: "hook-size",
+          reason: `${label} set at ${size} px instead of ${fullSize} px to fit`,
+        });
+      }
+      if (lines.length > 1) {
+        record.push({
+          item: extra.id,
+          action: "wrapped",
+          rule: "hook-wrap",
+          reason: `${label} set in two lines to fit the frame`,
+        });
+      }
+      record.push(...contrastNotes);
+      return true;
+    };
     for (const candidate of candidates) {
       for (const size of sizes) {
         for (const lineCount of words.length > 1 ? [1, 2] : [1]) {
           const lines = lineCount === 1 ? [text] : balancedBreak(words, font, size);
+          if (tryAt(candidate, size, lines)) return true;
+        }
+      }
+    }
+    // Below the floor, never below the schema minimum: the smallest size its words fit the safe zone in one
+    // or two lines, so the hook is never dropped for its size.
+    const maxWidth = safe.right - safe.left;
+    for (let size = sizes.at(-1)! - 1; size >= MIN_TEXT_SIZE; size -= 1) {
+      const oneLine = measurer.width(font, size, text) <= maxWidth;
+      const lines = oneLine ? [text] : balancedBreak(words, font, size);
+      if (lines.some((line) => measurer.width(font, size, line) > maxWidth)) continue;
+      for (const candidate of candidates) {
+        if (tryAt(candidate, size, lines)) return true;
+      }
+    }
+    // `all`, nothing free at any size: the largest size whose words fit the
+    // safe box in one or two lines, at the upper part's place, over the face
+    // if it must (noted). At the smallest size it is set whatever its width.
+    if (all) {
+      const boxWidth = safe.right - safe.left;
+      for (let size = fullSize; size >= MIN_TEXT_SIZE; size -= 1) {
+        const options = words.length > 1 ? [[text], balancedBreak(words, font, size)] : [[text]];
+        for (const lines of options) {
           const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
-          const height = lines.length * size;
-          const spot = placeBox(
-            candidate.area,
-            obstacles,
-            width,
-            height,
-            candidate.want(width, height),
-          );
-          if (!spot) continue;
-          const notes = record.length;
-          const place = keepReadable(
-            extra.id,
-            label,
-            { ...spot, width, height },
-            span,
-            [preset.accent.color],
-            readability.large,
-            { area: candidate.area, obstacles },
-            `no free place nearby reaches ${readability.large.min}:1`,
-          );
-          const contrastNotes = record.splice(notes);
-          overlays.set(extra.id, {
-            id: extra.id,
-            kind: "hook",
-            text,
-            start: anchorAt(span.start, transcript.words),
-            end: anchorAt(span.end, transcript.words),
-            position: { x: place.x, y: place.y, align: "left" },
-            size,
-            ...(lines.length > 1 ? { break_after: lines[0]!.split(" ").length } : {}),
-          });
-          shown.push({
-            id: extra.id,
-            start: span.start,
-            end: span.end,
-            box: { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
-          });
-          if (candidate !== candidates[0]) {
-            record.push({
-              item: extra.id,
-              action: "moved",
-              rule: "hook-spot",
-              reason: `${label} sits ${candidate.name}: no room ${candidates[0]!.name}`,
-            });
-          }
-          if (size < fullSize) {
-            record.push({
-              item: extra.id,
-              action: "shrunk",
-              rule: "hook-size",
-              reason: `${label} set at ${size} px instead of ${fullSize} px to fit`,
-            });
-          }
-          if (lines.length > 1) {
-            record.push({
-              item: extra.id,
-              action: "wrapped",
-              rule: "hook-wrap",
-              reason: `${label} set in two lines to fit the frame`,
-            });
-          }
-          record.push(...contrastNotes);
-          return true;
+          if (width > boxWidth && size > MIN_TEXT_SIZE) continue;
+          const forced = {
+            x: Math.max(safe.left, Math.min(safeCx - width / 2, safe.right - width)),
+            y: safe.top,
+          };
+          if (tryAt(candidates[0]!, size, lines, forced)) return true;
         }
       }
     }
@@ -2458,7 +2773,7 @@ function placeOnce(
 
   function placeBigWord(extra: Extra, span: { start: number; end: number }): boolean {
     const first = word(extra.word!);
-    const text = cleanWord(first.text, preset);
+    const text = bigWordText(extra.word!, extra.wordTo!);
     const spec = preset.behind.word;
     const { width: frameWidth, height: frameHeight } = preset.frame;
     const perPx = measurer.width(spec.font, 1, text);
@@ -2477,7 +2792,8 @@ function placeOnce(
       top: Math.max(spec.margin, PLATFORM_SAFE.top),
       bottom: frameHeight - spec.margin,
     };
-    const obstacles = textDuring(span);
+    // `all`: no text is avoided, the word stays at its place (noted).
+    const obstacles = all ? [] : textDuring(span);
     // The person in front over its span: most of the word stays in view,
     // only its lower part behind the head.
     const faces = facesOver(headTrack, span.start, span.end);
@@ -2502,12 +2818,14 @@ function placeOnce(
         const found = placeBox(area, obstacles, width, size, { x: frameWidth / 2, y });
         if (atRule === undefined) atRule = found;
         if (found) fits = true;
-        if (found && covered(found, width, size) <= maxCovered + SLACK) {
+        if (found && (all || covered(found, width, size) <= maxCovered + SLACK)) {
           spot = found;
           break;
         }
         if (y <= area.top + size / 2) break;
       }
+      // `all`, last resort: the smallest size at the area's corner (never dropped).
+      if (!spot && all && size === sizes.at(-1)) spot = { x: area.left, y: area.top };
       if (!spot) {
         if (fits) hidden = true;
         continue;
@@ -2525,6 +2843,19 @@ function placeOnce(
         "the big word is never moved",
       );
       const contrastNotes = record.splice(notes);
+      if (all) {
+        const box = { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + size };
+        noteOverlap(extra.id, `the big word ${quote(text)}`, box, span, false);
+        const share = covered(spot, width, size);
+        if (share > maxCovered + SLACK) {
+          record.push({
+            item: extra.id,
+            action: "kept-overlapping",
+            rule: "all-picks",
+            reason: `the big word ${quote(text)} sits with the person covering ${Math.round(share * 100)}% of it from ${at(span.start)} to ${at(span.end)}; kept, every pick is shown`,
+          });
+        }
+      }
       if (atRule && spot.y < atRule.y) {
         record.push({
           item: extra.id,
@@ -2573,219 +2904,190 @@ function placeOnce(
     return false;
   }
 
-  // A photo's box: its long side the size's, its ratio the library photo's,
-  // its short side at least the preset's minimum.
-  function photoDims(size: PhotoSize, aspect: number): { width: number; height: number } {
-    const spec = preset.behind.photo;
-    const long = spec.sizes[size];
-    let width = aspect >= 1 ? long : long * aspect;
-    let height = aspect >= 1 ? long / aspect : long;
-    const short = Math.min(width, height);
-    if (short < spec.minShortSide) {
-      width *= spec.minShortSide / short;
-      height *= spec.minShortSide / short;
-    }
-    return { width: Math.round(width), height: Math.round(height) };
+  // A visual's card: an empty white stroke frame, a small corner card (picture
+  // in picture) over the footage. The full size first, then the smaller step;
+  // at each, the spot with the most free space around it (`card.spots`):
+  // inside the platform safe zone, clear of the face, the captions and the
+  // hook, and off the button column. Never over the face.
+  function cardSize(smaller: boolean): { width: number; height: number } {
+    const card = preset.behind.card;
+    const width = Math.round(preset.frame.width * card.widthShare * (smaller ? card.smaller : 1));
+    return { width, height: Math.round(width / card.aspect) };
   }
 
-  // A photo: behind the speaker where the person covers at most the lower
-  // `1 - minVisible` of it in every column, else in front, clear of the face
-  // (the owner's `front` or `behind` wish tried first). In each layer the
-  // sizes in turn (the photo shown just before or after it has its size
-  // tried last), each nearest the upper part of the frame (or the wished
-  // spot), inside the platforms' safe zone, clear of the captions and the
-  // button column. Its edge too close to the footage around it moves it to a
-  // place nearby that separates them, else it stays, recorded.
-  function placePhoto(extra: Extra, span: { start: number; end: number }): boolean {
+  // The card's spots at a size that the obstacles leave clear, ranked by free
+  // space around them, the most first.
+  function cardSpots(
+    span: { start: number; end: number },
+    size: { width: number; height: number },
+    obstacles: readonly Box[],
+  ): Box[] {
+    const card = preset.behind.card;
+    const area = PLATFORM_SAFE;
+    const { width, height } = size;
+    const face = boundingBox(facesDuring(scene, span));
+    const boxAt = (left: number, top: number): Box => ({
+      left,
+      right: left + width,
+      top,
+      bottom: top + height,
+    });
+    const boxes: Box[] = [];
+    for (const spot of card.spots) {
+      if (spot === "beside-left" || spot === "beside-right") {
+        if (!face) continue;
+        const top = Math.min(Math.max(face.top, area.top), area.bottom - height);
+        boxes.push(
+          spot === "beside-left"
+            ? boxAt(face.left - gap - width, top)
+            : boxAt(face.right + gap, top),
+        );
+        continue;
+      }
+      const left = spot.endsWith("left") ? area.left + card.inset : area.right - card.inset - width;
+      const top = spot.startsWith("top")
+        ? area.top + card.inset
+        : area.bottom - card.inset - height;
+      boxes.push(boxAt(left, top));
+    }
+    return boxes
+      .filter(
+        (box) =>
+          box.left >= area.left &&
+          box.right <= area.right &&
+          box.top >= area.top &&
+          box.bottom <= area.bottom &&
+          !obstacles.some((obstacle) => overlaps(box, obstacle)),
+      )
+      .map((box) => {
+        // The ring around the spot: the share no obstacle covers is its free space.
+        const around = expand(box, card.ring);
+        const ring = (around.right - around.left) * (around.bottom - around.top) - width * height;
+        const covered = obstacles.reduce((sum, obstacle) => {
+          const w = Math.min(obstacle.right, around.right) - Math.max(obstacle.left, around.left);
+          const h = Math.min(obstacle.bottom, around.bottom) - Math.max(obstacle.top, around.top);
+          return w > 0 && h > 0 ? sum + w * h : sum;
+        }, 0);
+        return { box, free: 1 - Math.min(1, covered / ring) };
+      })
+      .sort((a, b) => b.free - a.free)
+      .map(({ box }) => box);
+  }
+
+  // A visual: the first card spot it fits, at the full size, else at the
+  // smaller step; its white edge too close to the footage around it moves it
+  // to a place nearby that separates them, else it stays, recorded. Dropped
+  // (`no-room`) when no spot fits at either size.
+  function placeVisual(extra: Extra, span: { start: number; end: number }): boolean {
     const index = extra.index;
-    const photo = extra.photo!;
-    const label = `photo ${index + 1}`;
+    const visual = extra.visual!;
+    const label = `visual ${index + 1}`;
     const when = `from ${at(span.start)} to ${at(span.end)}`;
     const spec = preset.behind.photo;
-    const look = options.photos?.get(photo.photo_id);
-    const aspect = look?.aspect !== undefined && look.aspect > 0 ? look.aspect : spec.aspect;
-    const wishedLayer: PhotoLayer | undefined =
-      photo.wish === "front" ? "front" : photo.wish === "behind" ? "behind" : undefined;
-    const layers: PhotoLayer[] =
-      wishedLayer === "front" ? ["front", "behind"] : ["behind", "front"];
-    const wishedSpot = BEHIND_SPOTS.find((spot) => spot === photo.wish);
-    const target = room.spot.get(extra.ref) ?? wishedSpot;
-    const area = PLATFORM_SAFE;
-    const want = (height: number) => {
-      if (!target) return { x: preset.frame.width / 2, y: area.top + height / 2 };
-      const box = spotBox(target, preset);
-      return { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 };
-    };
-    // Sizes: largest first (smallest first when asked small); without a
-    // size wish, the sizes of the photos shown just before and after it last.
-    const sizeWish = photo.wish === "big" || photo.wish === "small";
-    const base: PhotoSize[] =
-      photo.wish === "small" ? [...PHOTO_SIZES].reverse() : [...PHOTO_SIZES];
-    const placed = [...photoSizes.values()];
-    const before = placed
-      .filter((other) => other.start < span.start)
-      .sort((a, b) => b.start - a.start)[0];
-    const after = placed
-      .filter((other) => other.start > span.start)
-      .sort((a, b) => a.start - b.start)[0];
-    const near = new Set([before?.size, after?.size]);
-    const sizes = sizeWish
-      ? base
-      : [...base.filter((size) => !near.has(size)), ...base.filter((size) => near.has(size))];
-    const faces = facesOver(headTrack, span.start, span.end);
-    const maxCovered = 1 - spec.minVisible;
-    const inView = `${Math.round(spec.minVisible * 100)}% of it in view`;
-    // Where a box of this height would be hidden by the person more than
-    // allowed: in each column of the face or body, from the person's top plus
-    // the share it may cover down.
-    const hiding = (height: number): Box[] =>
-      faces.flatMap((face) =>
-        personBoxes(face, preset).map((part) => ({
-          left: part.left,
-          right: part.right,
-          top: part.top + maxCovered * height,
-          bottom: preset.frame.height + height,
-        })),
-      );
-    const text = textDuring(span);
-    for (const layer of layers) {
-      // The last make-room step lets a requested photo behind the speaker be
-      // hidden more; one in front never goes over the face.
-      const hiddenOk = layer === "behind" && room.faceOk.has(extra.ref);
-      for (const size of sizes) {
-        const { width, height } = photoDims(size, aspect);
-        if (width > area.right - area.left || height > area.bottom - area.top) continue;
-        const obstacles = [
-          ...text,
-          notch,
-          ...(layer === "front" ? faceObstacles(span) : hiddenOk ? [] : hiding(height)),
-        ];
-        const found = placeBox(area, obstacles, width, height, want(height));
-        if (!found) continue;
-        const boxAt = (spot: { x: number; y: number }): Box => ({
-          left: spot.x,
-          right: spot.x + width,
-          top: spot.y,
-          bottom: spot.y + height,
-        });
-        const visible = (box: Box) =>
-          layer === "front" ||
-          hiddenOk ||
-          bigWordCoveredShare(box, faces, preset) <= maxCovered + SLACK;
-        if (!visible(boxAt(found))) continue;
-        let spot = found;
-        const notes: EngineNote[] = [];
-        if (backgrounds && look?.edge !== undefined) {
-          const edge = look.edge;
-          const around = (box: Box) => expand(box, spec.ring);
-          const ratio = contrastOf(backgrounds, around(boxAt(found)), span, [edge]);
-          if (ratio < spec.minContrast) {
-            const threshold = { min: spec.minContrast };
-            const moved = readablePlace(
-              backgrounds,
-              area,
-              obstacles,
-              width,
-              height,
-              found,
-              span,
-              [edge],
-              threshold,
-              visible,
-              around,
-            );
-            if (moved) {
-              spot = { x: moved.x, y: moved.y };
-              notes.push({
-                item: extra.id,
-                action: "moved",
-                rule: "contrast-spot",
-                reason: `${label} moves ${Math.round(moved.distance)} px to a place it stands out from: contrast ${ratioText(ratio)} against the footage around it ${when}, under ${spec.minContrast}:1, now ${ratioText(moved.ratio)}`,
-              });
-            } else {
-              notes.push({
-                item: extra.id,
-                action: "low-contrast",
-                rule: "contrast-stay",
-                reason: `${label} stays in place: contrast ${ratioText(ratio)} against the footage around it ${when}, no free place nearby reaches ${spec.minContrast}:1; a photo never gets a frame, an edge or a shadow`,
-              });
+    // The frame's white stroke is the edge the contrast check measures.
+    const edge = 1;
+    const obstacles = [...textDuring(span), notch, ...faceObstacles(span)];
+    const full = cardSize(false);
+    // `all`: after the full and the smaller size, the first corner at the full
+    // size, overlap allowed (noted).
+    const tried = [false, true].map((smaller) => ({
+      smaller,
+      size: cardSize(smaller),
+      overlap: false,
+    }));
+    if (all) tried.push({ smaller: false, size: full, overlap: true });
+    for (const { smaller, size, overlap } of tried) {
+      const found =
+        cardSpots(span, size, overlap ? [] : obstacles)[0] ??
+        (overlap
+          ? {
+              left: PLATFORM_SAFE.left,
+              right: PLATFORM_SAFE.left + size.width,
+              top: PLATFORM_SAFE.top,
+              bottom: PLATFORM_SAFE.top + size.height,
             }
+          : undefined);
+      if (!found) continue;
+      const { width, height } = size;
+      const boxAt = (spot: { x: number; y: number }): Box => ({
+        left: spot.x,
+        right: spot.x + width,
+        top: spot.y,
+        bottom: spot.y + height,
+      });
+      let spot = { x: found.left, y: found.top };
+      const notes: EngineNote[] = [];
+      if (backgrounds) {
+        const around = (box: Box) => expand(box, spec.ring);
+        const ratio = contrastOf(backgrounds, around(boxAt(spot)), span, [edge]);
+        if (ratio < spec.minContrast) {
+          const threshold = { min: spec.minContrast };
+          const moved = readablePlace(
+            backgrounds,
+            PLATFORM_SAFE,
+            obstacles,
+            width,
+            height,
+            spot,
+            span,
+            [edge],
+            threshold,
+            () => true,
+            around,
+          );
+          if (moved) {
+            spot = { x: moved.x, y: moved.y };
+            notes.push({
+              item: extra.id,
+              action: "moved",
+              rule: "contrast-spot",
+              reason: `${label} moves ${Math.round(moved.distance)} px to a place it stands out from: contrast ${ratioText(ratio)} against the footage around it ${when}, under ${spec.minContrast}:1, now ${ratioText(moved.ratio)}`,
+            });
+          } else {
+            notes.push({
+              item: extra.id,
+              action: "low-contrast",
+              rule: "contrast-stay",
+              reason: `${label} stays in place: contrast ${ratioText(ratio)} against the footage around it ${when}, no free place nearby reaches ${spec.minContrast}:1; a visual never gets a shadow or a colour change`,
+            });
           }
         }
-        const box = boxAt(spot);
-        const where = nearestSpot(box, preset);
-        const sentence = sentenceOf(photo.from)!;
-        behind.set(extra.id, {
-          id: extra.id,
-          kind: "photo",
-          photo_id: photo.photo_id,
-          spot: where,
-          ...(photo.reason ? { reason: photo.reason } : {}),
-          layer,
-          box: { x: spot.x, y: spot.y, width, height },
-          start: extra.startWord
-            ? { word: extra.startWord }
-            : Math.abs(span.start - sentence.start) < 0.0005
-              ? { word: sentence.from }
-              : Math.abs(span.start - word(photo.from).start) < 0.0005
-                ? { word: photo.from }
-                : anchorAt(span.start, transcript.words),
-          end: anchorAt(span.end, transcript.words),
-        });
-        photoSizes.set(extra.id, { size, start: span.start });
-        const side = layer === "front" ? "in front" : "behind you";
-        if (wishedLayer && layer !== wishedLayer) {
-          record.push({
-            item: extra.id,
-            action: "wish-not-kept",
-            rule: "wish",
-            reason:
-              wishedLayer === "front"
-                ? `${label} sits behind you, not in front as asked: every free place in front ${when} is over the face or the captions`
-                : `${label} sits in front, not behind you as asked: no place behind you keeps ${inView} ${when}`,
-          });
-        } else if (layer === "front" && !wishedLayer) {
-          record.push({
-            item: extra.id,
-            action: "moved",
-            rule: "photo-layer",
-            reason: `${label} sits in front: no place behind you keeps ${inView} ${when}`,
-          });
-        }
-        if (wishedSpot && where !== wishedSpot) {
-          record.push({
-            item: extra.id,
-            action: "wish-not-kept",
-            rule: "wish",
-            reason: `${label} sits ${side} near the ${where} spot, not the ${wishedSpot} as asked: that part of the frame is taken ${when}`,
-          });
-        }
-        if (PHOTO_SIZES.indexOf(size) > PHOTO_SIZES.indexOf(sizes[0]!)) {
-          record.push(
-            photo.wish === "big"
-              ? {
-                  item: extra.id,
-                  action: "wish-not-kept",
-                  rule: "wish",
-                  reason: `${label} is ${size}, not large as asked: no room for it larger ${when}`,
-                }
-              : {
-                  item: extra.id,
-                  action: "shrunk",
-                  rule: "photo-size",
-                  reason: `${label} set ${size} (${spec.sizes[size]} px) instead of ${sizes[0]} (${spec.sizes[sizes[0]!]} px): no room for it larger ${when}`,
-                },
-          );
-        }
-        record.push(...notes);
-        return true;
       }
+      const box = boxAt(spot);
+      if (all) noteOverlap(extra.id, label, box, span, true);
+      const sentence = sentenceOf(visual.from)!;
+      behind.set(extra.id, {
+        id: extra.id,
+        kind: "visual",
+        ...(visual.description ? { description: visual.description } : {}),
+        spot: nearestSpot(box, preset),
+        layer: "front",
+        box: { x: spot.x, y: spot.y, width, height },
+        start: extra.startWord
+          ? { word: extra.startWord }
+          : Math.abs(span.start - sentence.start) < 0.0005
+            ? { word: sentence.from }
+            : Math.abs(span.start - word(visual.from).start) < 0.0005
+              ? { word: visual.from }
+              : anchorAt(span.start, transcript.words),
+        end: anchorAt(span.end, transcript.words),
+      });
+      if (smaller) {
+        record.push({
+          item: extra.id,
+          action: "shrunk",
+          rule: "visual-size",
+          reason: `${label} set at ${width} by ${height} px instead of ${full.width} by ${full.height}: no corner or side of the face is free at full size ${when}`,
+        });
+      }
+      record.push(...notes);
+      return true;
     }
     record.push({
       item: extra.id,
       action: "dropped",
       rule: "no-room",
-      reason: `${label}: no free place ${when}, behind you with ${inView} or in front clear of the face, under no caption`,
+      reason: `${label}: no free corner or place beside the face ${when}, at full size or smaller, clear of the face, the captions and the hook`,
     });
     return false;
   }
@@ -2851,7 +3153,7 @@ function placeOnce(
       return [{ id: extra.id, span, words: new Set(range(extra.accent!.from, extra.accent!.to)) }];
     }
     if (extra.kind === "big_word" && behind.has(extra.id)) {
-      return [{ id: extra.id, span, words: new Set([extra.word!]) }];
+      return [{ id: extra.id, span, words: new Set(range(extra.word!, extra.wordTo!)) }];
     }
     return [];
   });
@@ -2916,7 +3218,7 @@ function placeOnce(
   const outOverlays: OverlayItem[] = [];
   const hookItem = overlays.get(HOOK_ID);
   if (hookItem) outOverlays.push(hookItem);
-  for (const id of accentIds) {
+  for (const id of [...accentIds, ...questionIds]) {
     const item = overlays.get(id);
     if (!item) continue;
     const span = accepted.find((entry) => entry.extra.id === id)!;
@@ -2944,8 +3246,8 @@ function placeOnce(
       ),
     });
   }
-  // Photos before the big words, each kind as the answer lists them.
-  outBehind.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "photo" ? -1 : 1));
+  // Pictures before the big words, each kind as the answer lists them.
+  outBehind.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "word" ? 1 : -1));
 
   // The sounds: a click as each placed photo and big word comes in
   // (`clicks.ts`); the current version's sounds are never kept.
@@ -2966,7 +3268,7 @@ function placeOnce(
     "accent-time": "too-short",
     "big-word-time": "too-short",
     "big-word-visible": "no-room",
-    "photo-time": "too-short",
+    "visual-time": "too-short",
     "hidden-footage": "hidden",
   };
   const whyOf = (ref: string, id: string): UnplacedWhy => {
@@ -2982,21 +3284,27 @@ function placeOnce(
       from: accent.from,
       to: accent.to,
     })),
+    // A question is an accent-look item in the unplaced list too.
+    ...questions.map((question, index) => ({
+      ref: `questions[${index}]`,
+      id: questionIds[index]!,
+      kind: "accent" as const,
+      from: question.from,
+      to: question.to,
+    })),
     ...input.big_words.map((choice, index) => ({
       ref: `big_words[${index}]`,
       id: bigWordId(index),
       kind: "big_word" as const,
-      from: choice.word,
-      to: choice.word,
+      from: choice.from,
+      to: choice.to,
     })),
-    ...input.photos.map((photo, index) => ({
-      ref: `photos[${index}]`,
-      id: `photo-${index + 1}`,
-      kind: "photo" as const,
-      from: photo.from,
-      to: photo.to,
-      photo_id: photo.photo_id,
-      ...(photo.reason ? { reason: photo.reason } : {}),
+    ...input.visuals.map((visual, index) => ({
+      ref: `visuals[${index}]`,
+      id: `visual-${index + 1}`,
+      kind: "visual" as const,
+      from: visual.from,
+      to: visual.to,
     })),
   ];
   const unplaced: UnplacedItem[] = items
@@ -3024,7 +3332,6 @@ function placeOnce(
     accepted.forEach((entry, index) => (entry.end = acceptedEnds[index]!));
     overlays.delete(PROBE);
     behind.delete(PROBE);
-    photoSizes.delete(PROBE);
     return fits;
   }
 
@@ -3034,7 +3341,6 @@ function placeOnce(
   function free(): FreeSentence[] {
     const kinds = new Set(unplaced.map((item) => item.kind));
     if (kinds.size === 0) return [];
-    const photoId = unplaced.find((item) => item.kind === "photo")?.photo_id;
     const out: FreeSentence[] = [];
     for (const sentence of sentences) {
       const ids = range(sentence.from, sentence.to);
@@ -3053,13 +3359,10 @@ function placeOnce(
         roomFor.push("accent");
       }
       if (
-        kinds.has("photo") &&
-        photoId !== undefined &&
-        probe(
-          photoExtra({ photo_id: photoId, from: sentence.from, to: sentence.to }, -1, PROBE, null),
-        )
+        kinds.has("visual") &&
+        probe(visualExtra({ from: sentence.from, to: sentence.to }, -1, PROBE, null))
       ) {
-        roomFor.push("photo");
+        roomFor.push("visual");
       }
       if (kinds.has("big_word")) {
         let longest: string | null = null;
@@ -3068,7 +3371,7 @@ function placeOnce(
           if (!BEHIND_WORD.test(text) || !/^\p{L}+$/u.test(text)) continue;
           if (!longest || text.length > cleanWord(word(longest).text, preset).length) longest = id;
         }
-        if (longest && probe(bigWordExtra({ word: longest }, -1, PROBE, null))) {
+        if (longest && probe(bigWordExtra({ from: longest, to: longest }, -1, PROBE, null))) {
           roomFor.push("big_word");
         }
       }
@@ -3109,6 +3412,9 @@ function placeOnce(
 // The id a probe places under, never an item's.
 const PROBE = "probe";
 
+// The longest text of a transition's level (the schema's cap).
+const LEVEL_TEXT_MAX = 300;
+
 // The hook's answer reference (in a checklist, `requested`) and item id.
 const HOOK_REF = "hook";
 const HOOK_ID = "hook";
@@ -3124,17 +3430,4 @@ const BIG_WORD_STEP = 10;
 // A big word's item id by its place in the answer: `big-word-1`, ...
 function bigWordId(index: number): string {
   return `big-word-${index + 1}`;
-}
-
-// Whether the face leaves a photo spot clear (within the preset's share) at
-// every moment of a span: the same faces the `behind-face` check reads.
-function spotClearOfFace(
-  spot: BehindSpot,
-  span: { start: number; end: number },
-  preset: Preset,
-  headTrack: HeadTrack,
-): boolean {
-  return facesOver(headTrack, span.start, span.end).every(
-    (face) => spotFaceShare(spot, face, preset) <= preset.behind.maxFaceShare + SLACK,
-  );
 }

@@ -1,20 +1,11 @@
-import { readFileSync } from "node:fs";
+import { type PromptCall, type PromptText, renderPrompt } from "../prompts/source.ts";
 
-// Bump with every change to describe-prompt.md: each photo row records it.
-export const DESCRIBE_PROMPT_VERSION = "describe-photo-3";
-
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed prompt
-const TEMPLATE = readFileSync(new URL("./describe-prompt.md", import.meta.url), "utf8");
-
-// The describe prompt: the committed instructions and, on the retry, the
-// reasons the first answer was refused.
-export function describePrompt(previousReasons?: readonly string[]): string {
-  if (!previousReasons || previousReasons.length === 0) return TEMPLATE;
-  return [
-    TEMPLATE.trimEnd(),
-    "",
-    "Your previous answer was refused for these reasons. Fix them and answer again:",
-    ...previousReasons.map((reason) => `- ${reason}`),
-    "",
-  ].join("\n");
+// The describe prompt: the fetched template (`photo-describe`) and, on the
+// retry, the reasons the first answer was refused. Nothing is filled in: the
+// image rides with the call, not in the text.
+export function describePrompt(
+  template: PromptText,
+  previousReasons?: readonly string[],
+): PromptCall {
+  return renderPrompt(template, {}, previousReasons);
 }
