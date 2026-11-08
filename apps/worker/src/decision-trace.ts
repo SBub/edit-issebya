@@ -251,12 +251,18 @@ const TRANSITION_LABEL: Record<string, string> = { numbered: "LIST" };
 // components'), and the decide attempts when there were more than one.
 export function traceHeading(
   title: string,
-  prompts: { hook_prompt_version: string; prompt_version: string; intensity?: string },
+  prompts: {
+    hook_prompt_version: string;
+    prompt_version: string;
+    intensity?: string;
+    target_picks?: number;
+  },
   attempts: number,
 ): string {
   const intensity = prompts.intensity ? `, intensity ${prompts.intensity}` : "";
+  const target = prompts.target_picks === undefined ? "" : `, target ${prompts.target_picks}`;
   const tried = attempts > 1 ? `, ${attempts} decide attempts` : "";
-  return `${title} (prompts ${prompts.hook_prompt_version}, ${prompts.prompt_version}${intensity}${tried})`;
+  return `${title} (prompts ${prompts.hook_prompt_version}, ${prompts.prompt_version}${intensity}${target}${tried})`;
 }
 
 // The script view as plain text. `photoNames` names an older answer's library

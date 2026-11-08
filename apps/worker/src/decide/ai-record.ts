@@ -29,6 +29,9 @@ export interface AiRecord {
   // The edit intensity the components prompt was filled with. Absent in a
   // record written before it was recorded.
   intensity?: Intensity;
+  // The number of picks the components prompt asked for (the speech's length
+  // over the preset's seconds per pick). Absent in a record written before it.
+  target_picks?: number;
   calls: AiRecordCall[];
 }
 

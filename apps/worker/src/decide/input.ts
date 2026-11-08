@@ -1,109 +1,75 @@
 import {
-  type BehindForbid,
-  type Edit,
-  type EngineInput,
   type Intensity,
-  NEW_TRANSITION_KINDS,
   type Preset,
   type Transcript,
-  choicesOf,
   sentenceSpans,
   wordsText,
 } from "@edit-issebya/edit";
 
-// One spoken sentence: its first and last word ids and what is said.
-interface SentenceChoice {
-  from: string;
-  to: string;
-  text: string;
+// One spoken sentence as the components prompt sees it: its text, and its
+// words with the ids the answer names them by (no times, no positions).
+export interface ScriptSentence {
+  sentence: string;
+  words: { id: string; text: string }[];
 }
 
-// The transcript's sentences as the AI sees them: word ids and words, no times.
-function sentences(transcript: Transcript, preset: Preset): SentenceChoice[] {
-  const ids = transcript.words.map((word) => word.id);
-  return sentenceSpans(transcript).map(({ from, to }) => ({
-    from,
-    to,
-    text: wordsText(ids.slice(ids.indexOf(from), ids.indexOf(to) + 1), transcript, preset),
-  }));
+// The reel's sentences, in order, each with its words and their ids.
+export function scriptOf(transcript: Transcript, preset: Preset): ScriptSentence[] {
+  const index = new Map(transcript.words.map((word, at) => [word.id, at]));
+  return sentenceSpans(transcript).map(({ from, to }) => {
+    const span = transcript.words.slice(index.get(from)!, index.get(to)! + 1);
+    return {
+      sentence: wordsText(
+        span.map((word) => word.id),
+        transcript,
+        preset,
+      ),
+      words: span.map((word) => ({ id: word.id, text: word.text.trim() })),
+    };
+  });
 }
 
-// What of the preset the AI decides with: the transition kinds a new answer
-// may pick (LIST, `numbered`), and the glossary. The hook's length is the hook
-// call's (`hook.ts`). No count of components and no pace: how many is the
-// editor's choice, and how often each shows is the layout engine's. No frame,
-// box, font size, colour, spot or time: the layout owns every position, size
-// and time.
-export function presetSummary(preset: Preset) {
-  return {
-    transitions: NEW_TRANSITION_KINDS.map((kind) => ({
-      kind,
-      description: preset.transitions[kind].description ?? "",
-    })),
-    glossary: preset.glossary,
-  };
+// The speech's length in seconds: the first word's start to the last word's end
+// (0 with no words).
+export function speechSeconds(transcript: Transcript): number {
+  const first = transcript.words[0];
+  const last = transcript.words.at(-1);
+  if (!first || !last) return 0;
+  return Math.max(0, last.end - first.start);
 }
 
-// The current version's choices in the answer's own terms, for the prompt:
-// an older title shows as a plain accent, a transition of a kind a new answer
-// may not pick is left out, and no wish is shown. The answer's schema would
-// refuse any of those, so the model never sees them as something to copy. A
-// library photo is not a choice a new answer makes, so it is left out too. No
-// hook: the written hook is its own call's answer, shown as `hook` instead.
-export function currentChoices(choices: EngineInput): EngineInput {
-  return {
-    accents: choices.accents.map(({ from, to }) => ({ from, to })),
-    big_words: choices.big_words.map(({ word }) => ({ word })),
-    visuals: choices.visuals.map(({ from, to, description }) => ({
-      from,
-      to,
-      ...(description ? { description } : {}),
-    })),
-    transitions: choices.transitions
-      .filter((transition) => (NEW_TRANSITION_KINDS as readonly string[]).includes(transition.kind))
-      .map(({ kind, from, to, key_from }) => ({ kind, from, to, key_from })),
-    word_fixes: choices.word_fixes,
-  };
+// How many picks the components prompt asks for: the speech over the preset's
+// seconds per pick at the reel's level, at least one.
+export function targetPicks(transcript: Transcript, preset: Preset): number {
+  const every = preset.picksEverySeconds[preset.intensity];
+  return Math.max(1, Math.round(speechSeconds(transcript) / every));
 }
 
+// What the components prompt is filled with: the script, the written hook
+// (data, never a component), and the reel's intensity and target. Nothing else:
+// no current choices, no glossary, no preset layout, no stored rules; the
+// engine checks the answer against those.
 export interface DecideInput {
-  // The current version's choices, in the answer's own terms (`currentChoices`).
-  current_choices: EngineInput;
-  transcript: { id: string; text: string }[];
-  sentences: SentenceChoice[];
-  preset: ReturnType<typeof presetSummary>;
-  // What the owner switched off for this reel, earlier (data: the answer keeps it off).
-  behind_rules: { photos_forbidden: boolean; big_word_forbidden: boolean };
-  // The reel's edit intensity (the preset's level, e.g. `intense`), filled into
-  // the components prompt; never sent as data.
-  intensity: Intensity;
-  // The written hook the reel opens with (decided by its own call this run):
-  // words to show, shown as data; the components are chosen around it.
+  script: ScriptSentence[];
   hook: { text: string };
+  intensity: Intensity;
+  target_picks: number;
 }
 
 export function decideInput({
-  current,
   transcript,
   preset,
-  forbid = { photos: false, bigWord: false },
   hook,
 }: {
-  current: Edit;
   transcript: Transcript;
   preset: Preset;
-  // The reel's stored behind forbids.
-  forbid?: BehindForbid;
-  // The hook the reel opens with.
+  // The written hook the reel opens with (decided by its own call this run).
   hook: { text: string };
 }): DecideInput {
   return {
-    current_choices: currentChoices(choicesOf(current, transcript, preset)),
-    transcript: transcript.words.map(({ id, text }) => ({ id, text })),
-    sentences: sentences(transcript, preset),
-    preset: presetSummary(preset),
-    behind_rules: { photos_forbidden: forbid.photos, big_word_forbidden: forbid.bigWord },
+    script: scriptOf(transcript, preset),
     hook: { text: hook.text },
     intensity: preset.intensity,
+    target_picks: targetPicks(transcript, preset),
   };
 }

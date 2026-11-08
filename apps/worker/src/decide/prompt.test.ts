@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
-import { ISSEBYA_PRESET, choicesOf, parseEdit, transcriptSchema } from "@edit-issebya/edit";
+import { ISSEBYA_PRESET, type Transcript, transcriptSchema } from "@edit-issebya/edit";
 import { describe, expect, it } from "vitest";
-import { currentChoices, decideInput } from "./input.ts";
+import { decideInput } from "./input.ts";
 import { fakePromptSource } from "../../test-support/fake-prompts.ts";
 import { PROMPT_NAMES, type PromptText } from "../prompts/source.ts";
 import { decidePrompt } from "./prompt.ts";
@@ -15,78 +15,70 @@ const read = (path: string): unknown =>
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- committed fixtures
   JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
 
-const transcript = transcriptSchema.parse(
+const transcript: Transcript = transcriptSchema.parse(
   read("../../../../fixtures/pipeline/retime/transcript.json"),
 );
-const parsed = parseEdit(
-  read("../../../../packages/edit/src/testdata/versions/baseline-short-speech.edit.json"),
-  ISSEBYA_PRESET,
-  transcript,
-);
-if (!parsed.ok) throw new Error(parsed.reasons.join("; "));
-const current = parsed.edit;
-const input = decideInput({
-  current,
-  transcript,
-  preset: ISSEBYA_PRESET,
-  hook: HOOK,
-});
+const input = decideInput({ transcript, preset: ISSEBYA_PRESET, hook: HOOK });
 
 describe("decidePrompt", () => {
   it("names its prompt", () => {
-    const call = decidePrompt(TEMPLATE, input);
-    expect(call.promptVersion).toBe("reel-components@v1");
+    expect(decidePrompt(TEMPLATE, input).promptVersion).toBe("reel-components@v1");
   });
 
-  it("is given the hook as data: the hook call's text, never in the current choices", () => {
+  it("fills every variable of the template, and no other", () => {
     const { prompt } = decidePrompt(TEMPLATE, input);
-    expect(prompt).toContain(JSON.stringify(HOOK, null, 2));
-    expect(input.current_choices).not.toHaveProperty("hook");
-    expect(input.hook).toEqual(HOOK);
+    expect(prompt).not.toMatch(/\{\{\w+\}\}/);
+    expect(TEMPLATE.text.match(/\{\{(\w+)\}\}/g)).toEqual([
+      "{{script}}",
+      "{{hook}}",
+      "{{intensity}}",
+      "{{target_picks}}",
+    ]);
   });
 
-  it("carries the current choices in the answer's terms, every word id and the glossary", () => {
+  it("fills the script with every sentence and every word id, in order", () => {
     const { prompt } = decidePrompt(TEMPLATE, input);
-    expect(prompt).toContain(
-      JSON.stringify(currentChoices(choicesOf(current, transcript, ISSEBYA_PRESET)), null, 2),
-    );
+    expect(prompt).toContain(JSON.stringify(input.script, null, 2));
     for (const word of transcript.words) expect(prompt).toContain(`"id": "${word.id}"`);
-    expect(prompt).toContain('"term": "lock-in"');
   });
 
-  it("fills the edit intensity as the preset's level, a lowercase word", () => {
+  it("fills the hook as data: the hook call's text", () => {
+    expect(decidePrompt(TEMPLATE, input).prompt).toContain(JSON.stringify(HOOK, null, 2));
+  });
+
+  it("sends no glossary: the components prompt never names one", () => {
     const { prompt } = decidePrompt(TEMPLATE, input);
-    expect(prompt.trimEnd().endsWith("intense")).toBe(true);
+    expect(prompt).not.toContain("glossary");
+    expect(prompt).not.toContain('"term"');
+  });
+
+  it("fills the intensity as a lowercase word and the target as a number, last", () => {
+    const { prompt } = decidePrompt(TEMPLATE, input);
+    expect(prompt.trimEnd().endsWith(`\`\`\` intense ${input.target_picks}`)).toBe(true);
     const calm = decideInput({
-      current,
       transcript,
       preset: { ...ISSEBYA_PRESET, intensity: "calm" },
       hook: HOOK,
     });
-    expect(decidePrompt(TEMPLATE, calm).prompt.trimEnd().endsWith("calm")).toBe(true);
+    expect(
+      decidePrompt(TEMPLATE, calm).prompt.trimEnd().endsWith(`\`\`\` calm ${calm.target_picks}`),
+    ).toBe(true);
   });
 
-  it("has no input left unfilled, and no photo library in its inputs", () => {
+  it("sends none of the removed inputs: no choices, no transcript, no preset, no stored rules", () => {
     const { prompt } = decidePrompt(TEMPLATE, input);
-    expect(prompt).not.toMatch(/\{\{\w+\}\}/);
-    expect(input).not.toHaveProperty("library");
-  });
-
-  it("fills the switched-off rules and the preset as fenced data", () => {
-    const { prompt } = decidePrompt(
-      TEMPLATE,
-      decideInput({
-        current,
-        transcript,
-        preset: ISSEBYA_PRESET,
-        forbid: { photos: true, bigWord: true },
-        hook: HOOK,
-      }),
-    );
-    expect(prompt).toContain(
-      ['"photos_forbidden": true,', '  "big_word_forbidden": true', "}"].join("\n"),
-    );
-    expect(prompt).toContain('"transitions": [');
+    for (const removed of [
+      "current_choices",
+      "behind_rules",
+      "photos_forbidden",
+      '"transitions"',
+      '"accents"',
+      '"preset"',
+      "glossary",
+      "sentences",
+    ]) {
+      expect(prompt).not.toContain(removed);
+    }
   });
 
   it("ends with every reason on the retry", () => {

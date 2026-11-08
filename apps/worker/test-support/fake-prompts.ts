@@ -7,7 +7,7 @@ import { type PromptSource, PromptUnavailable, type PromptText } from "../src/pr
 const TEMPLATES: Record<string, { text: string }> = {
   "reel-hook": { text: "test prompt reel-hook {{transcript}} {{style}}" },
   "reel-components": {
-    text: "test prompt reel-components {{current_choices}} {{transcript}} {{sentences}} {{preset}} {{behind_rules}} {{hook}} {{intensity}}",
+    text: "test prompt reel-components {{script}} {{hook}} {{intensity}} {{target_picks}}",
   },
   "photo-describe": { text: "test prompt photo-describe" },
 };

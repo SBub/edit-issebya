@@ -51,11 +51,12 @@ The model names each component by its answer list (prompt `reel-components`):
 HOOK is not one either: it is the hook call's answer (`{ "text" }`, below), never in the components'
 answer and never written by the components.
 
-Nothing asks for a density target or a count per sentence or per second. Claude picks as many as it
-finds, and the code decides how many show and when (the engine shows every pick at its own words'
+The components' prompt is told a target count (`{{target_picks}}`, the speech's length over the preset's
+seconds per pick at the reel's level, `preset.picksEverySeconds`), a guide and no cap: the schema does
+not count picks. Claude picks what the script's moments deserve, and the code decides how many show and when (the engine shows every pick at its own words'
 times in `all`, the worker's placement, overlaps kept and noted; the strict `clean` layout shows one
-extra at a time and drops what has no room). The model is told the reel's intensity (`{{intensity}}`,
-see "Prompts"), not a count, so how many it picks follows that level. The overlap limits between components
+extra at a time and drops what has no room). The model is told the reel's intensity (`{{intensity}}`)
+and the target count (`{{target_picks}}`), see "Prompts". The overlap limits between components
 are held by the prompt (see "Prompts"); the schema does not count them.
 
 ## How it works
@@ -111,7 +112,7 @@ placed first):
   the accent's timing (from `accent.leadSeconds`, 0.2 s, before its word to a second after it, at
   least 1.5 s). A big word only on a key word, a spoken word by construction.
 - Pace (`preset.pace`): the answer carries no rate (the transition kind is given as data, its pace is
-  not); the components prompt is told the reel's intensity word, never a rate. In `clean` the engine keeps the rhythm: one extra at a time, transitions at their own
+  not); the components prompt is told the reel's intensity word and the target count, never a rate. In `clean` the engine keeps the rhythm: one extra at a time, transitions at their own
   slower pace (about one per `preset.pace.transitionEverySeconds`, 9), and drops what has no room. In
   `all` (the worker's placement) every pick shows at its own words' times, so the rhythm is the
   answer's, and a reel too short for a pick clamps it to the reel's end (nothing is dropped).
@@ -191,14 +192,15 @@ input, reasons?)` fills them as fenced JSON and, on the retry, appends the refus
   "Prompts"). `decidePrompt(template, input, reasons?)` fills the inputs as fenced JSON and, on the
   retry, appends the previous reasons, and returns the text with its identity (`prompt_version` on the
   version row).
-- `apps/worker/src/decide/input.ts`: the prompt input, with no time or geometry: `current_choices`
-  (`currentChoices(choicesOf(...))`, in the answer's terms, no hook; a visual shows its description,
-  a library photo of an older version is left out), the transcript as `{ id, text }`, `sentences`
-  (`{ from, to, text }` by `sentenceSpans`, a sentence ending at `.`, `?`, `!` or a pause of 0.6 s),
-  the preset summary (the list kind `numbered` with what it is for, and the glossary; no pace or
-  rate of any kind, no hook length, and never when or where the hook shows), the `hook` (`{ text }`, the hook
-  call's text) and `behind_rules` (the reel's stored forbids, as data). No photo library is read or
-  sent. No head track, face box, `clear_spots`, safe box, font size or spot: the layout owns free space.
+- `apps/worker/src/decide/input.ts`: the components prompt's input, with no time, position or style:
+  `script` (`scriptOf`: one entry per sentence, `{ sentence, words: [{ id, text }] }`, a sentence ending
+  at `.`, `?`, `!` or a pause of 0.6 s, the word ids the answer names), `hook` (`{ text }`, the hook
+  call's text), `intensity` (the preset's level), `target_picks` (`targetPicks`: the speech from its
+  first word's start to its last word's end, over `preset.picksEverySeconds[level]`, rounded, at least
+  one). Nothing else is sent: no glossary, no current choices, no
+  transcript list, no preset summary, no transitions, no stored forbids (the answer's schema refuses
+  what they rule out, and its retry says why). No photo library is read or sent. No head track, face
+  box, `clear_spots`, safe box, font size or spot: the layout owns free space.
 - `apps/worker/src/decide/behind-rules.ts`: the `ReelRules` store (`supabaseReelRules(db)` reads
   `reels.no_photos` and `no_big_word` with the service role).
 - `packages/edit/src/checks.ts`, `behind.ts`: check rules `behind-face`, `behind-caption` and
@@ -294,11 +296,12 @@ management (project 312096), and the worker fetches each one by name at the labe
 prompt file exists (`apps/worker/src/prompts/no-prompt-files.test.ts`).
 
 - `reel-hook`: the written hook, one short line from what the speaker says (`hook.ts`).
-- `reel-components`: the components' answer, meaning only (`prompt.ts`). Its variables: `current_choices`,
-  `transcript`, `sentences`, `preset`, `behind_rules`, `hook` (the inputs as fenced JSON) and `intensity`,
-  the reel's edit intensity as one lowercase word (`intense`, the preset's level, `preset.intensity`): how
-  busy the edit is, the pros' level (about 2 to 6 extras per 10 s), so the model picks at that level. No
-  count is sent, and the word is the only thing the worker adds to the prompt for it.
+- `reel-components`: the components' answer, meaning only (`prompt.ts`). Its variables, and nothing else:
+  `script` (the sentences with their word ids, fenced JSON), `hook` (the written hook's `{ text }`, fenced
+  JSON, as data), `intensity` (the reel's edit intensity as one lowercase word, `intense`, `medium` or
+  `calm`, the preset's level, `preset.intensity`) and `target_picks` (the target count as a number, see
+  `input.ts` above). No glossary is sent; `word_fixes` stays in the answer and is checked by the engine.
+  The worker adds nothing else to the prompt; the retry's reasons are appended after it.
 - `photo-describe`: a library photo's description and tags (`photos/describe-prompt.ts`).
 
 Each prompt is a template with its `{{variables}}` (the worker fills them as before) and nothing else
@@ -370,9 +373,9 @@ set`) and the job waits.
   through the real provider over a captured `fetch`, no network; the double; the error mapping),
   `ai-record.test.ts` (the identities in the record), `hook.test.ts` (the hook call's input with no
   ids or times, the hook prompt's fill and retry reasons, the closed one-text schema, the glossary
-  reason), `prompt.test.ts` (the components prompt's fill and retry reasons), `input.test.ts` (the transition kind and pace in the preset summary, no density or
-  behind count, `currentChoices` showing an older title as an accent, leaving out a non-numbered
-  transition and never a hook), `run-decide.test.ts` (the hook call first, then the components with the
+  reason), `prompt.test.ts` (the components prompt fills its five variables and no other, the script's
+  word ids, the intensity and target line, no removed input or glossary sent, the retry reasons), `input.test.ts`
+  (the script with word ids and no times, the speech's length, the target at each level, at least one), `run-decide.test.ts` (the hook call first, then the components with the
   hook text as data, the step saving version 2 with the step line `1 accent, 0 transitions, hook set, 1
 word fixed`; the AI record holding the hook and decide calls; the hook refused by its
   schema or a heard form sent back once to the hook call; a hook refused twice fails the step with
@@ -469,9 +472,9 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
 
 `apps/worker/src/decide/ai-record.ts`: before `saveVersion`, `runDecide` writes
 `<prefix>reels/<reel>/versions/<version id>.ai.json` (put-if-absent, under the id the version is
-then saved with): `{ format: 1, reel_id, version_id, prompt_version, hook_prompt_version, intensity, calls }` (the
-two identities, `<name>@v<version>`, and the intensity the components prompt was filled with; absent in
-a record written before it was recorded), each call `{ attempt, role,
+then saved with): `{ format: 1, reel_id, version_id, prompt_version, hook_prompt_version, intensity, target_picks, calls }` (the
+two identities, `<name>@v<version>`, the intensity and the target count the components prompt was filled
+with; absent in a record written before they were recorded), each call `{ attempt, role,
 model, prompt, promptVersion, schema, image, outputMode, answerText, finishReason, usage,
 error }` in order: the hook attempts first (role `hook`, attempt 1 and
 2), then the decide attempts (role `decide`, 1 and 2). It is a `stored_files` row of kind `version`, step `decide` (`classifyKey`), so it is
@@ -486,7 +489,7 @@ default, the script view of every version with an AI record: the hook (the text 
 `hook` call, else an older record's decide answer `hook`, `hookOf`), then the transcript in short
 lines (`scriptLines`), each line with Claude's picks on it in capitals and the word fixes; what the
 engine did is left out. The header names both prompt versions, the hook's (`hook_prompt_version`)
-and the components' (`prompt_version`), the reel's intensity (`intensity intense`, when recorded), and
+and the components' (`prompt_version`), the reel's intensity and target (`intensity intense, target 24`, when recorded), and
 the decide attempts when there were more than one (`traceHeading`). Lines: a sentence ends at `.`, `?` or `!`; a line over 50 characters splits at
 the comma nearest its middle; a line still over 60 characters (typical of speech with no
 punctuation) splits at its largest speech pause, a gap of 0.35 s or more between two words' timings,
@@ -523,8 +526,9 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
   the hook (`text`) in its own call, never in the components'. A title,
   a `dim`, `panel` or `card` transition, a `wish`, a checklist, a behind rule or an unexpressed list is
   refused by the schema.
-- No density target in the schema or the code. The overlap limits are the prompt's (see "Prompts"); the
-  schema does not count them.
+- No density target in the schema. The target count is the prompt's input only, computed in code from
+  the speech and `preset.picksEverySeconds`; the schema does not count picks, and the overlap limits are
+  the prompt's (see "Prompts").
 - Never give Claude geometry or times to decide with (no face box, spots, safe box, font sizes or word
   times in the input; the hook's length, never its window).
 - The hook is the one text Claude writes itself, in its own call, on every reel: always one (never null),

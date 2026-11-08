@@ -262,6 +262,9 @@ export interface Preset {
   // How busy the reel is: the level the preset edits at, and that level's pace.
   intensity: Intensity;
   pace: PresetPace;
+  // The components' target: the speech's duration divided by this many seconds
+  // per pick, at each level (the decide step asks for that many picks).
+  picksEverySeconds: Record<Intensity, number>;
   sounds: Record<SoundKey, PresetSound>;
   behind: PresetBehind;
   // Words a caption keeps capitalised (lower-case key, shown value).
@@ -442,6 +445,8 @@ export const ISSEBYA_PRESET: Preset = {
     transitionEverySeconds: 9,
     hook: { fromSeconds: 0.2, untilSeconds: 3, maxWords: 7, maxCharacters: 45 },
   },
+  // One pick (a component) per this many seconds of speech, at each level.
+  picksEverySeconds: { intense: 2.5, medium: 4.5, calm: 10 },
   sounds: {
     click: {
       file: "assets/sounds/mouse-click-trimmed.wav",

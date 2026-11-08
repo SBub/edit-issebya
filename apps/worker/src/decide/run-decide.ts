@@ -133,9 +133,10 @@ function roundLines(round: number, reasons: readonly string[]): string[] {
 
 // The pipeline's AI step, two calls before the layout: first the written hook
 // (role `hook`, prompt `reel-hook`), the one text the reel opens with, then the
-// components (role `decide`), which start from the current version's choices
-// and the hook as data and answer in meaning only (word ids) with
-// a JSON Schema made for this reel. Each answer is checked again by Zod and
+// components (role `decide`), which see the reel's script, the hook as data and
+// the target count, and answer in meaning only (word ids) with a JSON Schema
+// made for this reel. The stored behind forbids are not in the prompt: the
+// schema refuses an answer that breaks them, and the retry says why. Each answer is checked again by Zod and
 // the glossary check; only an answer breaking those is refused. Each goes
 // back once with its reasons; a second refusal of either fails the step with
 // the reasons and writes nothing, so the current version stays. Layout never
@@ -305,12 +306,10 @@ export function runDecide({
         throw new StepError(tail, tail, usage, { cause: new AnswerRefused(failed, 2) });
       }
       const hookText = writtenHook.text;
-      // The components' prompt: the current choices and the hook as data.
+      // The components' prompt: the script, the hook as data and the target.
       const input = decideInput({
-        current,
         transcript,
         preset,
-        forbid: decideRules.forbid,
         hook: { text: hookText },
       });
       // The components' answer with the hook beside it: the layout engine's
@@ -487,6 +486,7 @@ export function runDecide({
         prompt_version: promptIdentity(templates.components),
         hook_prompt_version: promptIdentity(templates.hook),
         intensity: preset.intensity,
+        target_picks: input.target_picks,
         calls,
       }).catch(permanentAfterAiCall);
       const saved = await inSpan(ctx.telemetry, stepContext, "decide.save_version", {}, () =>

@@ -6,8 +6,9 @@ export function fenced(value: unknown): string {
 }
 
 // The decide (components) prompt: the fetched template (`reel-components`) with
-// the inputs filled in as fenced JSON and, on the retry, the reasons the first
-// answer was refused.
+// its four inputs filled in (the script and the hook as fenced JSON, the
+// intensity and the target as plain text) and, on the retry, the reasons the
+// first answer was refused.
 export function decidePrompt(
   template: PromptText,
   input: DecideInput,
@@ -16,13 +17,10 @@ export function decidePrompt(
   return renderPrompt(
     template,
     {
-      current_choices: fenced(input.current_choices),
-      transcript: fenced(input.transcript),
-      sentences: fenced(input.sentences),
-      preset: fenced(input.preset),
-      behind_rules: fenced(input.behind_rules),
+      script: fenced(input.script),
       hook: fenced(input.hook),
       intensity: input.intensity,
+      target_picks: String(input.target_picks),
     },
     previousReasons,
   );

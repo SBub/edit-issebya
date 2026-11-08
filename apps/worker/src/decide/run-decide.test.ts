@@ -256,6 +256,7 @@ describe("runDecide", () => {
       prompt_version: "reel-components@v1",
       hook_prompt_version: "reel-hook@v1",
       intensity: "intense",
+      target_picks: expect.any(Number),
     });
     expect(record.calls.map((call) => call.promptVersion)).toEqual([
       "reel-hook@v1",
@@ -887,7 +888,8 @@ describe("runDecide with a visual", () => {
     });
     await run;
     expect(editorCalls(ai)).toHaveLength(2);
-    expect(editorCalls(ai)[0]!.prompt).toContain('"photos_forbidden": true');
+    // The forbid is not in the prompt: the schema refuses the visual while it holds.
+    expect(editorCalls(ai)[0]!.prompt).not.toContain("photos_forbidden");
     const v2 = rows.get(current!)!;
     expect(v2.rejected_reasons.join("\n")).toMatch(/^visuals: /m);
     expect(v2).toMatchObject({ no_photos: null, no_big_word: null });
