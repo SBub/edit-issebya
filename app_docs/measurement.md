@@ -168,6 +168,12 @@ There is one monitoring stack per machine: every checkout uses the Compose proje
 `edit-issebya-monitoring`, and `yarn dev:studio` reuses it when Grafana already answers on 3300
 instead of starting a second one.
 
+After starting the stack, `yarn dev:studio` waits up to 60 seconds for Grafana to answer. If it does
+not (or the container has exited), it recreates the container once with `up -d --force-recreate`, which
+keeps the data volume, and waits again. If Grafana still does not answer, it prints a WARNING with the
+container's last log lines, and the banner shows Grafana as DOWN. The studio still runs, but worker
+traces and logs are not recorded until the stack is back.
+
 - Grafana: `http://localhost:3300`. The host port is 3300 because the landing page owns 3000. Both
   published ports (3300 and 4318) are bound to 127.0.0.1.
 - A reel's trace: Explore, the Tempo data source, query type TraceID, the reel's uuid without dashes
