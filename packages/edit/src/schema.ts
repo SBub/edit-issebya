@@ -218,6 +218,9 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
         })
         .optional(),
       size: z.number().int().min(MIN_TEXT_SIZE).max(400).optional(),
+      // The word ids it shows (one or two), written by the layout engine; the
+      // same-text check reads them. Stored versions without it still parse.
+      words: z.array(wordId).min(1).max(2).optional(),
     }),
   ]);
   return z.object({

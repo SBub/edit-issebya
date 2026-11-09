@@ -1687,54 +1687,79 @@ describe("the written hook", () => {
 describe("text picks one at a time", () => {
   const LIST_AT_W26 = { kind: "numbered" as const, from: "w26", to: "w33", key_from: "w30" };
 
-  it("cuts an accent that runs into a list where the list starts, noted, the list at its own times", async () => {
+  it("trims a list that starts on a word an accent before it shows: the accent keeps the word, the list shows its own", async () => {
     const placed = await place({
       accents: [{ from: "w24", to: "w26" }],
       transitions: [LIST_AT_W26],
     });
     const accent = placed.spans.get("accent-1")!;
     const list = placed.spans.get("transition-1")!;
-    // The list comes in as w26 starts (its entrance cut short by the accent before it).
-    expect(list.start).toBe(start("w26"));
+    // "w26" is shown by both: the accent, placed first, keeps it, and the list
+    // shows only its own words, from w27 on (it comes in as the accent ends).
+    expect(accent).toMatchObject({ start: start("w24"), end: end("w26") });
+    expect(list.start).toBeGreaterThanOrEqual(end("w26") - 1e-6);
+    expect(list.start).toBeLessThanOrEqual(start("w27") + 1e-6);
     expect(list.end).toBe(end("w33"));
-    expect(accent.start).toBe(start("w24"));
-    expect(accent.end).toBeCloseTo(start("w26"), 3);
     expect(placed.record).toContainEqual(
       expect.objectContaining({
-        item: "accent-1",
+        item: "transition-1",
         action: "retimed",
-        rule: "text-one-at-a-time",
+        rule: "same-text",
         reason: expect.stringMatching(
-          /^accent ".+" shows from \d+\.\d\d s to \d+\.\d\d s, not to \d+\.\d\d s: transition 1 \(numbered\) on ".+" starts at \d+\.\d\d s, and text picks show one at a time; the words it no longer shows show as captions$/,
+          /^transition 1 \(numbered\) on ".+" shows only ".+", not its shared ".+": accent ".+" shows that text first$/,
         ),
       }),
     );
     expect(placed.checks).toEqual([]);
   });
 
-  it("cuts a list where an accent starts inside its phrase, noted with what the list no longer shows", async () => {
+  it("drops an accent whose every word a list placed before it shows; the list keeps its own times", async () => {
     const placed = await place({
       accents: [{ from: "w30", to: "w31" }],
       transitions: [LIST_AT_W26],
     });
+    // The list starts first and shows "w30" and "w31": the accent has no word left.
+    expect(placed.spans.has("accent-1")).toBe(false);
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({
+        item: "accent-1",
+        action: "dropped",
+        rule: "same-text",
+        reason: expect.stringMatching(
+          /^accent ".+" is dropped: every word it shows, ".+", is already shown by transition 1 \(numbered\) on ".+", the earlier pick$/,
+        ),
+      }),
+    );
     const list = placed.spans.get("transition-1")!;
-    const accent = placed.spans.get("accent-1")!;
-    expect(accent.start).toBe(start("w30"));
     expect(list.start).toBe(ms(start("w26") - ENTRANCE));
-    expect(list.end).toBeCloseTo(start("w30"), 3);
-    // Its later words (from w30 on) show as captions, not as list text.
+    expect(list.end).toBe(end("w33"));
+    expect(placed.edit.tracks.captions.find((item) => item.id === "cw30")!.hidden_by).toBe(
+      "transition-1",
+    );
+    expect(placed.checks).toEqual([]);
+  });
+
+  it("shows a list's word as a caption again where a big word cuts the list before it", async () => {
+    // The big word "completely" starts inside "has" (w27), the list's last word:
+    // the list stops before it, so "has" is a caption; the words the list still
+    // shows are left out of the captions while it shows.
+    const placed = await place({
+      transitions: [{ kind: "numbered", from: "w22", to: "w27", key_from: "w24" }],
+      big_words: [{ from: "w28", to: "w28" }],
+    });
     expect(placed.record).toContainEqual(
       expect.objectContaining({
         item: "transition-1",
         action: "retimed",
         rule: "text-one-at-a-time",
-        reason: expect.stringMatching(/; the words it no longer shows show as captions$/),
       }),
     );
-    // The words the list no longer shows (w32, w33) are normal captions.
-    const after = placed.edit.tracks.captions.find((item) => item.words.includes("w32"))!;
-    expect(after.hidden_by).toBeUndefined();
-    expect(after.position).toBeDefined();
+    const has = placed.edit.tracks.captions.find((item) => item.id === "cw27")!;
+    expect(has.hidden_by).toBeUndefined();
+    expect(has.position).toBeDefined();
+    expect(placed.edit.tracks.captions.find((item) => item.id === "cw25")!.hidden_by).toBe(
+      "transition-1",
+    );
     expect(placed.checks).toEqual([]);
   });
 
@@ -1776,7 +1801,7 @@ describe("text picks one at a time", () => {
   });
 });
 
-describe("every pick shown", () => {
+describe("every pick shown, or dropped where another pick shows its text", () => {
   // Eight picks in the first 9 s of the reel, overlapping: four accents (each
   // at least 1.5 s on screen, so they overlap one another), two big words and
   // two visuals.
@@ -1801,13 +1826,11 @@ describe("every pick shown", () => {
     ["accent-2", "w3", "w4"],
     ["accent-3", "w5", "w6"],
     ["accent-4", "w9", "w9"],
-    ["big-word-1", "w4", "w4"],
-    ["big-word-2", "w9", "w9"],
     ["visual-1", "w6", "w8"],
     ["visual-2", "w12", "w17"],
   ];
 
-  it("shows every pick from its first word to its last word's end, and passes the schema", async () => {
+  it("shows every pick it keeps from its first word to its last word's end, and drops the big words whose word an accent shows", async () => {
     const { edit, spans, record } = await place(DENSE_TEN, {
       headTrack: hand.headTrack,
     });
@@ -1817,12 +1840,12 @@ describe("every pick shown", () => {
       "accent-3",
       "accent-4",
     ]);
-    expect(edit.tracks.behind?.map((item) => item.id).sort()).toEqual([
-      "big-word-1",
-      "big-word-2",
-      "visual-1",
-      "visual-2",
-    ]);
+    expect(edit.tracks.behind?.map((item) => item.id).sort()).toEqual(["visual-1", "visual-2"]);
+    for (const id of ["big-word-1", "big-word-2"]) {
+      expect(record).toContainEqual(
+        expect.objectContaining({ item: id, action: "dropped", rule: "same-text" }),
+      );
+    }
     expect(parseEdit(edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
     for (const [id, from, to] of PICKS) {
       const span = spans.get(id)!;
@@ -1832,33 +1855,12 @@ describe("every pick shown", () => {
         expect(span.start).toBeLessThanOrEqual(byId.get(from)!.start + 1e-6);
         expect(span.end).toBeGreaterThanOrEqual(byId.get(to)!.end - 1e-6);
       }
-      if (id === "big-word-1") {
-        // A big word keeps its lead before its word.
-        expect(span.start).toBeCloseTo(leadOf(from), 3);
-      }
-      if (id === "big-word-2") {
-        // It overlaps big-word-1, which keeps its minimum: it waits for that.
-        expect(span.start).toBeGreaterThanOrEqual(spans.get("big-word-1")!.end - 1e-6);
-      }
     }
-    // The text picks (accents and big words) show one at a time, in order.
-    const text = ["accent-1", "accent-2", "accent-3", "accent-4", "big-word-1", "big-word-2"]
+    // The accents show one at a time, in order.
+    const text = ["accent-1", "accent-2", "accent-3", "accent-4"]
       .map((id) => ({ id, ...spans.get(id)! }))
       .sort((a, b) => a.start - b.start);
-    // accent-4 and big-word-2 start on the same word: a tie, the answer's later
-    // pick (the big word) is the later one, so the accent is cut to no length,
-    // shows the shown floor over it, and says so.
     for (let index = 1; index < text.length; index += 1) {
-      if (Math.abs(text[index]!.start - text[index - 1]!.start) < 1e-6) {
-        expect(record).toContainEqual(
-          expect.objectContaining({
-            item: text[index - 1]!.id,
-            action: "retimed",
-            rule: "text-one-at-a-time",
-          }),
-        );
-        continue;
-      }
       expect(
         text[index]!.start,
         `${text[index - 1]!.id} and ${text[index]!.id}`,
@@ -1876,21 +1878,60 @@ describe("every pick shown", () => {
     expect(parseEdit(edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
   });
 
-  it("cuts or holds the overlapping text picks and says so in the record, nothing dropped", async () => {
-    const { record, checks, spans } = await place(DENSE_TEN, {
+  it("drops each big word whose word an accent shows, names both picks, and cuts nothing else", async () => {
+    const { record, checks } = await place(DENSE_TEN, {
       headTrack: hand.headTrack,
     });
-    // accent-2 is cut where big-word-1 starts (the big word keeps its lead).
     expect(record).toContainEqual(
       expect.objectContaining({
-        item: "accent-2",
-        action: "retimed",
-        rule: "text-one-at-a-time",
-        reason: expect.stringContaining("shows from"),
+        item: "big-word-1",
+        action: "dropped",
+        rule: "same-text",
+        reason: expect.stringMatching(
+          /^the big word ".+" is dropped: every word it shows, ".+", is already shown by accent ".+", the earlier pick$/,
+        ),
       }),
     );
-    expect(spans.get("accent-2")!.end).toBeCloseTo(spans.get("big-word-1")!.start, 3);
-    expect(checks).toEqual([]);
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "big-word-2", action: "dropped", rule: "same-text" }),
+    );
+    expect(checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
+    expect(checks.filter((check) => check.rule === "same-text")).toEqual([]);
+  });
+
+  it("drops a big word and an accent on one word alike: the earlier pick keeps it, the other is noted", async () => {
+    const placed = await place({
+      big_words: [{ from: "w40", to: "w40" }],
+      accents: [{ from: "w40", to: "w40" }],
+    });
+    // The big word takes its start from the accent that starts on its word, so
+    // the two start together and the answer's earlier pick (the accent) keeps it.
+    expect(placed.spans.has("big-word-1")).toBe(false);
+    expect(placed.spans.get("accent-1")).toMatchObject({ start: start("w40"), end: end("w40") });
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({
+        item: "big-word-1",
+        action: "dropped",
+        rule: "same-text",
+        reason:
+          'the big word "has" is dropped: every word it shows, "has", is already shown by accent "has", the earlier pick',
+      }),
+    );
+    expect(placed.checks).toEqual([]);
+  });
+
+  it("trims a big word's accent: an accent whose first word a big word before it shows keeps its own", async () => {
+    const placed = await place({
+      big_words: [{ from: "w5", to: "w6" }],
+      accents: [{ from: "w6", to: "w7" }],
+    });
+    // The big word comes in before "w6" and keeps it; the accent shows "w7" only.
+    expect(placed.spans.get("big-word-1")!.start).toBeCloseTo(leadOf("w5"), 3);
+    expect(placed.spans.get("accent-1")).toMatchObject({ start: start("w7"), end: end("w7") });
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({ item: "accent-1", action: "retimed", rule: "same-text" }),
+    );
+    expect(placed.checks).toEqual([]);
   });
 
   it("places a visual the face leaves no corner for over the face, noted covers-face", async () => {
@@ -2014,7 +2055,7 @@ describe("nothing the answer picks is dropped", () => {
     );
   });
 
-  it("drops no pick for random sets of picks over the fixture transcript", async () => {
+  it("drops a pick only where an earlier pick shows its words, for random sets of picks", async () => {
     // A seeded generator: the same sets on every run.
     let seed = 20261108;
     const random = () => {
@@ -2050,25 +2091,36 @@ describe("nothing the answer picks is dropped", () => {
         }),
         hook: random() < 0.5 ? { text: "Gen Z won't work like you did" } : null,
       };
-      const { edit } = await place(input);
+      const { edit, record, checks } = await place(input);
       const shown = [
         ...edit.tracks.overlays.map((item) => item.id),
         ...(edit.tracks.behind ?? []).map((item) => item.id),
       ];
-      (input.accents ?? []).forEach((_, index) =>
-        expect(shown, `round ${round}`).toContain(`accent-${index + 1}`),
-      );
-      (input.big_words ?? []).forEach((_, index) =>
-        expect(shown, `round ${round}`).toContain(`big-word-${index + 1}`),
-      );
+      // A text pick is shown, or dropped by the same-text rule (noted).
+      const dropped = (id: string) =>
+        record.some(
+          (note) => note.item === id && note.action === "dropped" && note.rule === "same-text",
+        );
+      const texts = [
+        ...(input.accents ?? []).map((_, index) => `accent-${index + 1}`),
+        ...(input.big_words ?? []).map((_, index) => `big-word-${index + 1}`),
+      ];
+      for (const id of texts) {
+        expect(shown.includes(id) !== dropped(id), `round ${round} ${id}`).toBe(true);
+      }
       (input.visuals ?? []).forEach((_, index) =>
         expect(shown, `round ${round}`).toContain(`visual-${index + 1}`),
       );
+      const transitions = (input.transitions ?? []).map((_, index) => `transition-${index + 1}`);
       expect(
         edit.tracks.transitions.map((item) => item.id),
         `round ${round}`,
-      ).toEqual((input.transitions ?? []).map((_, index) => `transition-${index + 1}`));
+      ).toEqual(transitions.filter((id) => !dropped(id)));
       expect(shown.includes("hook"), `round ${round}`).toBe(input.hook !== null);
+      expect(
+        checks.filter((check) => check.rule === "same-text"),
+        `round ${round}`,
+      ).toEqual([]);
     }
   });
 });
@@ -2177,6 +2229,29 @@ describe("texts never overlap on screen while a free spot exists", () => {
       const placed = await place(input, { current, transcript: spoken, headTrack: BIG_FACE });
       expect(
         placed.checks.filter((check) => check.rule === "text-overlap"),
+        `round ${round}`,
+      ).toEqual([]);
+    }
+  });
+
+  it("never shows one spoken word twice on screen in random picks over the fixture reel", async () => {
+    const ids = words.map((word) => word.id);
+    for (const [round, input] of seededPicks(20261112, ids, 30).entries()) {
+      const placed = await place(input);
+      expect(
+        placed.checks.filter((check) => check.rule === "same-text"),
+        `round ${round}`,
+      ).toEqual([]);
+    }
+  });
+
+  it("never shows one spoken word twice on screen in random picks over a caption-heavy opening", async () => {
+    const { current, transcript: spoken } = denseOpening(60);
+    const ids = spoken.words.map((word) => word.id);
+    for (const [round, input] of seededPicks(20261113, ids, 12).entries()) {
+      const placed = await place(input, { current, transcript: spoken, headTrack: BIG_FACE });
+      expect(
+        placed.checks.filter((check) => check.rule === "same-text"),
         `round ${round}`,
       ).toEqual([]);
     }

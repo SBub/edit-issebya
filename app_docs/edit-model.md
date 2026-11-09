@@ -66,7 +66,8 @@ start, end }` ref plus the span of the reel it covers, in seconds, by start). A 
 - Per-item properties: captions and overlays take `words`, `text`, `font` (`primary` or
   `secondary`), `size`, `color` (`#RRGGBB`), `position` (`{ x, y, align }` inside the frame) and
   `break_after` (set in two lines, this many words on the first); a big word behind the speaker
-  takes `position` (`{ x, y }`, its top left corner in the frame) and `size`. A caption
+  takes `position` (`{ x, y }`, its top left corner in the frame), `size` and `words` (the one or two word
+  ids it shows, written by the engine; the same-text check reads them). A caption
   takes an optional `hidden_by` (the id of the accent, big word or list showing its words while it is on
   screen; the builder leaves it out, and a refinement refuses an id that is none of those, the hook
   included).
@@ -326,11 +327,19 @@ what it did. Pure and deterministic: no randomness, no clock, no I/O; the same i
 tracks and record. `editFromAnswer` (decide, returning `{ ok, edit, record }`) and the worker's
 `first_version` step (with no choices) call it.
 
-One placement shows every pick the answer proposed. Nothing is dropped: not for room, not for
-another pick, not for the hook, not for a transition's rate and not for pace. Text picks never share
-the screen in time: they show one at a time, the earlier one cut where the later one starts (or the later
-one waiting, for the hook and a big word), noted (`text-one-at-a-time`). A visual may overlap any pick;
-each such overlap is kept and noted.
+One placement shows every pick the answer proposed. Nothing is dropped for room, for another pick's
+time, for the hook, for a transition's rate or for pace. The one drop is the same-text rule (rule
+`same-text`): a text pick (an accent, a question, a big word or a list) that shares a word id with another
+text pick never shows that word twice. Of the two, the one placed earlier (its start; on a tie the answer's
+order: the hook, the accents, the questions, the big words, the lists) keeps the shared words. The other
+shows its own words only: its range is trimmed to its largest contiguous part without a shared word, and
+when no word of its own is left it is dropped, noted (`dropped`), its reason naming both picks and the
+word. A trimmed or dropped pick is noted `retimed` (rule `same-text`). Each such change places the answer
+again (`placeEdit` runs `placeOnce` until no two picks share a word id), so the rule holds on the placed
+times; a dropped pick keeps its position in the answer, so the other picks keep their ids. Text picks never
+share the screen in time: they show one at a time, the earlier one cut where the later one starts (or the
+later one waiting, for the hook and a big word), noted (`text-one-at-a-time`). A visual may overlap any
+pick; each such overlap is kept and noted.
 
 - Inputs: the current version (footage and captions kept, never its sounds; each word fix becomes the text
   of the caption showing that word; old positions and sizes are removed), the answer's choices, the
@@ -418,7 +427,9 @@ each such overlap is kept and noted.
     text, on the caption line or at the top of the safe zone (`covers-face`, rule `caption-face`). Only
     when no place is clear of the text either, it sits over other text as the last resort, wrapped as far
     as it takes, each unit noted `kept-overlapping` with the texts it sits over.
-  - Never the same word twice on screen, by time: the captions are split in time against the texts on
+  - Never the same word twice on screen: the same-text rule above keeps two text picks from sharing a word
+    id, and the `same-text` check (below) fails any spoken word two items show at a shared moment.
+    By time: the captions are split in time against the texts on
     screen (the hook shows no word, so it never splits one). A caption's words that an accent, a big word
     or a list's phrase shows while that text is on screen are left out for that stretch (`hidden_by` the
     text, no position): a run of words all shown by one text is one caption, and the other runs stay
@@ -468,8 +479,8 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
   at the largest size that fits and never below `MIN_TEXT_SIZE` (8 px). The overlap is noted
   `kept-overlapping` (rule `all-picks`) with what it sits over (the face, other text, named) or the picks it
   shares its time with. Text never overlaps other text while a free spot exists (Rules): the default spot
-  over other text is the last resort for each text, after the face-only tier. The engine writes no `dropped` note (`src/engine.test.ts`, "nothing the answer
-  picks is dropped"). The fallbacks, each noted:
+  over other text is the last resort for each text, after the face-only tier. The only `dropped` note is the
+  same-text rule's (`src/engine.test.ts`, "every pick shown, or dropped where another pick shows its text"). The fallbacks, each noted:
   - A big word or a visual too close to the reel's end for its minimum: the end is the reel's end and the
     start moves earlier, so it shows at least `SHOWN_FLOOR_SECONDS` (0.5 s) (`clamped-to-end`). An accent,
     question or list has no minimum, so it is never shown from earlier; a pick with no length at all
@@ -547,6 +558,10 @@ readable reason string (an empty list means every rule passes):
   notes as `kept-overlapping` with the other in its `with` (either item's note may name the other). It
   needs the record: `build(edit, ..., { engineRecord })`, which the decide step and the first version pass.
   The engine's output never fails it.
+- `same-text` (`checks.ts`): no spoken word (by word id) is shown by two items at a shared moment. The items
+  are the captions shown (not those a text hides, `hidden_by`), the accents and questions, the lists and the
+  big words (their `words`). The reason names both items and the word. The engine's output never fails it:
+  the same-text rule (above) and the caption split keep it so.
 - `timing`: captions at least `caption.minSeconds` (0.25 s) on screen, the hook at least
   `SHOWN_FLOOR_SECONDS` (0.5 s), and every other text box (an accent, a question, a list's level) a length
   above zero, with no minimum.
@@ -744,7 +759,8 @@ never fatal.
   candidate and size, the face avoided first): a text is placed clear of every text it shares a moment with,
   and keeps its default spot over other text only when none exists. The note names the pair (`with`), and
   the `text-overlap` check excuses only that pair.
-- Never drop a pick, and never drop a caption: with no free place even at the floor, a caption takes
+- Never drop a pick except by the same-text rule (a text pick whose every word an earlier text pick shows,
+  noted `dropped`, rule `same-text`); never drop a caption: with no free place even at the floor, a caption takes
   the caption line over the face (`covers-face`). A caption left out while an extra shows its words is
   not dropped: its words are on screen.
 - Never read a single head-track sample for a placement or a check: always the robust faces
@@ -756,7 +772,9 @@ never fatal.
   floor the checks need (the hook, a big word), noted. A visual may overlap any pick; each overlap is noted.
 - Never show a spoken word twice at once: a caption's words that an accent, a big word or a list shows
   are left out while that text is on screen (the caption split in time, never blinking in or out of its
-  group); the words a cut text no longer shows stay on screen as captions.
+  group); the words a cut text no longer shows stay on screen as captions. Two text picks never share a word
+  id: of two that do, the earlier keeps it and the later shows its own words or is dropped (`same-text`).
+  The `same-text` check fails any version where two items show one spoken word at a shared moment.
 - Every text on screen is a spoken word, except the one written hook at the start: never more than
   one hook in a version, never a hook with words, and never a caption left out for it.
 - Never end the hook with a full stop or an ellipsis (`stripHookStop` takes them off; "?" and "!"
@@ -795,7 +813,9 @@ never fatal.
 - The engine is pure and deterministic: no randomness, no clock, no I/O.
 - Never remove a caption, set it below the floor, or put it outside the safe zone. A caption goes over
   the face only when nothing else is free (`covers-face`).
-- The engine never removes or shifts a pick to make room for another: there is one placement pass.
+- The engine never removes or shifts a pick to make room for another. Its only removal is the same-text
+  rule, and a text pick is never trimmed or dropped for anything else; each such change places the answer
+  again.
 - Never let a version fail the schema or the checks on the engine's output, except the `face` check
   for a caption recorded `covers-face` (a block's note names its other captions in `with`). The one refusal the engine cannot avoid is a big word or visual
   over footage hidden for the whole reel (no visible moment to move it to).
@@ -825,6 +845,6 @@ never fatal.
 - The studio imports only types from the package until slice 9.
 - The fixture clip has no person, so the face rule is proven with a synthetic head track
   (`src/checks.test.ts`) and the `rethink-work` data.
-- Records saved before the single placement can hold `dropped`, `removed`, `no-room`, `one-extra`,
+- Records saved before the single placement can hold `removed`, `no-room`, `one-extra`,
   `make-room`, `transition-overlap`, `transition-rate`, `hook` and `editorial` notes. They are read and
   shown as stored; no new record writes them.

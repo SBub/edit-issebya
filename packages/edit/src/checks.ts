@@ -19,6 +19,7 @@ export type CheckRule =
   | "frame"
   | "face"
   | "text-overlap"
+  | "same-text"
   | "timing"
   | "big-word-timing"
   | "sound-gap"
@@ -71,7 +72,9 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
 // never fails this check. `boxes` holds the captions shown in their place
 // (never those a transition or an extra shows), `levels` the transitions'
 // text levels (`transitionId` is the transition they belong to), checked for
-// the safe box and for overlaps.
+// the safe box and for overlaps. `same-text`: no spoken word (by word id) is
+// shown by two items at a shared moment, a caption shown in its place or a
+// text component (an accent, a big word, a list); the engine never fails it.
 export function runChecks(
   edit: Edit,
   boxes: readonly TextBox[],
@@ -198,6 +201,38 @@ export function runChecks(
         rule: "text-overlap",
         item: text.owner,
         reason: `${text.what} sits on ${other.what} while both are shown`,
+      });
+    }
+  }
+
+  // Every item showing spoken words, with its words and span: the captions
+  // shown (not those a text shows), the accents, the lists and the big words.
+  const showing: { id: string; words: readonly string[]; start: number; end: number }[] = [
+    ...edit.tracks.captions
+      .filter((caption) => caption.hidden_by === undefined)
+      .map((caption) => ({ id: caption.id, words: caption.words })),
+    ...edit.tracks.overlays.flatMap((item) =>
+      item.words ? [{ id: item.id, words: item.words }] : [],
+    ),
+    ...edit.tracks.transitions.map((item) => ({ id: item.id, words: item.words })),
+    ...(edit.tracks.behind ?? []).flatMap((item) =>
+      item.kind === "word" && item.words ? [{ id: item.id, words: item.words }] : [],
+    ),
+  ].map((item) => ({ ...item, ...resolved.get(item.id)! }));
+  const spoken = new Map(transcript.words.map((word) => [word.id, word.text]));
+  for (let index = 1; index < showing.length; index += 1) {
+    const later = showing[index]!;
+    for (const earlier of showing.slice(0, index)) {
+      const from = Math.max(earlier.start, later.start);
+      const to = Math.min(earlier.end, later.end);
+      if (to <= from + SLACK) continue;
+      const shared = later.words.filter((id) => earlier.words.includes(id));
+      if (shared.length === 0) continue;
+      const text = shared.map((id) => JSON.stringify(spoken.get(id) ?? id)).join(" ");
+      checks.push({
+        rule: "same-text",
+        item: later.id,
+        reason: `${earlier.id} and ${later.id} both show ${text} from ${from.toFixed(3)} to ${to.toFixed(3)} s`,
       });
     }
   }

@@ -69,8 +69,10 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    off the face and off other text first, then over the face but off other
 //    text (noted `covers-face`), then over other text (noted
 //    `kept-overlapping`). Big words are behind the speaker and ignore the face.
-//    The engine never drops a pick. A caption's words a text on screen shows are left out while
-//    it shows, the caption split in time (never the same word twice on screen).
+//    The engine drops no pick but one: a text pick whose every word an earlier
+//    text pick shows (`same-text`). It trims or drops the later of two picks
+//    that share a word id, then places the answer again. A caption's words a
+//    text on screen shows are left out while it shows, the caption split in time.
 // 5. Fallbacks, each noted: a pick too close to the reel's end shows from
 //    earlier (`clamped-to-end`); a pick over hidden footage moves to the next
 //    visible moment (`moved-off-cut`); a list with no caption text of its own
@@ -107,7 +109,10 @@ export type EngineAction =
   | "moved-off-cut"
   // A transition or a list pick with no caption text of its own, shown with
   // the words of its phrase as its text.
-  | "text-from-words";
+  | "text-from-words"
+  // A text pick every word of which another text pick (placed earlier) shows
+  // already: dropped (rule `same-text`, the reason names both picks).
+  | "dropped";
 
 export interface EngineNote {
   item: string;
@@ -392,11 +397,109 @@ interface Accepted {
   end: number;
 }
 
+// A text pick as placed: its answer reference (`accents[0]`, `big_words[1]`,
+// ...), what a note calls it, its span, its place in the answer order (the
+// one-at-a-time rank) and the word ids it shows, in transcript order.
+interface TextPick {
+  id: string;
+  ref: string;
+  name: string;
+  start: number;
+  end: number;
+  rank: number;
+  words: string[];
+}
+
+// The same text never shows twice (rule `same-text`). Of two text picks that
+// share a word id, the one placed earlier (its start; on a tie, the earlier in
+// the answer order) keeps the shared words. The other shows its own words only:
+// its range is trimmed to its largest contiguous part without a shared word, or
+// it is dropped when no word of its own is left. Null when no two picks share a
+// word id. Each change is noted. The answer keeps every position (a dropped
+// pick stays in it, skipped), so the other items keep their ids; `dropped`
+// lists the refs to skip from now on.
+function sameTextPass(
+  picks: readonly TextPick[],
+  answer: EngineInput,
+  transcript: Transcript,
+  preset: Preset,
+): { answer: EngineInput; dropped: string[]; notes: EngineNote[] } | null {
+  const order = [...picks].sort((a, b) => a.start - b.start || a.rank - b.rank);
+  const keeper = new Map<string, TextPick>();
+  const trimmed = new Map<string, string[]>();
+  const dropped: string[] = [];
+  const notes: EngineNote[] = [];
+  const position = new Map(transcript.words.map((word, slot) => [word.id, slot]));
+  for (const pick of order) {
+    const shared = pick.words.filter((id) => keeper.has(id));
+    if (shared.length === 0) {
+      for (const id of pick.words) keeper.set(id, pick);
+      continue;
+    }
+    const own = pick.words.filter((id) => !keeper.has(id));
+    const keepers = [...new Set(shared.map((id) => keeper.get(id)!))];
+    // Named without times: the keeper's span may still be cut by a later pick.
+    const named = keepers.map((other) => other.name);
+    const sharedText = quote(wordsText(shared, transcript, preset));
+    if (own.length === 0) {
+      dropped.push(pick.ref);
+      notes.push({
+        item: pick.id,
+        action: "dropped",
+        rule: "same-text",
+        reason: `${pick.name} is dropped: every word it shows, ${sharedText}, is already shown by ${named.join(" and ")}, the earlier pick`,
+      });
+      continue;
+    }
+    // The largest run of its own words that the transcript keeps together.
+    const runs: string[][] = [];
+    for (const id of own) {
+      const run = runs.at(-1);
+      if (run && position.get(id)! === position.get(run.at(-1)!)! + 1) run.push(id);
+      else runs.push([id]);
+    }
+    const kept = runs.reduce((best, run) => (run.length > best.length ? run : best));
+    for (const id of kept) keeper.set(id, pick);
+    trimmed.set(pick.ref, kept);
+    notes.push({
+      item: pick.id,
+      action: "retimed",
+      rule: "same-text",
+      reason: `${pick.name} shows only ${quote(wordsText(kept, transcript, preset))}, not its shared ${sharedText}: ${named.join(" and ")} shows that text first`,
+    });
+  }
+  if (trimmed.size === 0 && dropped.length === 0) return null;
+  // Each trimmed pick takes its kept run as its range (a list's key phrase
+  // stays on its first word when the run does not hold it).
+  const trim = <T extends { from: string; to: string }>(choice: T, ref: string): T => {
+    const kept = trimmed.get(ref);
+    if (!kept) return choice;
+    return { ...choice, from: kept[0]!, to: kept.at(-1)! };
+  };
+  return {
+    answer: {
+      ...answer,
+      accents: answer.accents.map((choice, slot) => trim(choice, `accents[${slot}]`)),
+      questions: answer.questions.map((choice, slot) => trim(choice, `questions[${slot}]`)),
+      big_words: answer.big_words.map((choice, slot) => trim(choice, `big_words[${slot}]`)),
+      transitions: answer.transitions.map((choice, slot) => {
+        const kept = trimmed.get(`transitions[${slot}]`);
+        if (!kept) return choice;
+        const key_from = kept.includes(choice.key_from) ? choice.key_from : kept[0]!;
+        return { ...choice, from: kept[0]!, to: kept.at(-1)!, key_from };
+      }),
+    },
+    dropped,
+    notes,
+  };
+}
+
 // Places every item of an answer over the current version: footage kept,
 // captions from the current version's words (each fix as the text of the
 // caption showing that word), every other item from its words, and a click
-// as each visual and big word comes in. Nothing is dropped: every pick is
-// placed, and an overlap is kept and noted.
+// as each visual and big word comes in. Every pick is placed, an overlap is
+// kept and noted, and a text pick whose words another text pick shows is
+// trimmed or dropped (`same-text`), the only drop there is.
 export function placeEdit(
   current: Edit,
   input: EngineInput,
@@ -406,6 +509,43 @@ export function placeEdit(
   measurer: Measurer,
   options: PlaceOptions = {},
 ): Placement {
+  // Each pass places the answer as it stands; a pass that trims or drops a
+  // pick is placed again, so the rule holds on the placed times. Every pass
+  // removes at least one word from a pick or a pick from the answer, so this
+  // ends.
+  let answer = input;
+  const skip = new Set<string>();
+  const notes: EngineNote[] = [];
+  for (;;) {
+    const placed = placeOnce(
+      current,
+      answer,
+      transcript,
+      headTrack,
+      preset,
+      measurer,
+      options,
+      skip,
+    );
+    const pass = sameTextPass(placed.picks, answer, transcript, preset);
+    if (!pass) return { tracks: placed.tracks, record: [...notes, ...placed.record] };
+    answer = pass.answer;
+    for (const ref of pass.dropped) skip.add(ref);
+    notes.push(...pass.notes);
+  }
+}
+
+function placeOnce(
+  current: Edit,
+  input: EngineInput,
+  transcript: Transcript,
+  headTrack: HeadTrack,
+  preset: Preset,
+  measurer: Measurer,
+  options: PlaceOptions,
+  // The refs of picks dropped by the same-text rule: placed as nothing.
+  skip: ReadonlySet<string>,
+): Placement & { picks: TextPick[] } {
   const record: EngineNote[] = [];
   const duration = current.duration;
   const byId = new Map(transcript.words.map((word) => [word.id, word]));
@@ -474,6 +614,7 @@ export function placeEdit(
     const kept: TransitionPlan[] = [];
     input.transitions.forEach((choice, index) => {
       const ref = `transitions[${index}]`;
+      if (skip.has(ref)) return;
       const id = `transition-${index + 1}`;
       const label = `transition ${index + 1} (${choice.kind}) on ${quote(transitionText(choice))}`;
       const kind = preset.transitions[choice.kind];
@@ -734,19 +875,23 @@ export function placeEdit(
   }
 
   const extras: Extra[] = hook ? [hook] : [];
-  let accentCount = 0;
-  const accentIds = input.accents.map(() => `accent-${++accentCount}`);
+  // Ids follow the answer's positions, so a pick the same-text rule drops
+  // leaves the others' ids as they are.
   input.accents.forEach((accent, index) => {
-    extras.push(accentExtra(accent, index, accentIds[index]!));
+    if (skip.has(`accents[${index}]`)) return;
+    extras.push(accentExtra(accent, index, `accent-${index + 1}`));
   });
   // A QUESTION: an accent placed the same way, under its own id (`question-N`).
   const { questions } = input;
-  const questionIds = questions.map((_, index) => `${QUESTION_PREFIX}${index + 1}`);
   questions.forEach((question, index) => {
+    if (skip.has(`questions[${index}]`)) return;
     const accent = { ...question, question: true };
-    extras.push(accentExtra(accent, index, questionIds[index]!, `questions[${index}]`));
+    extras.push(
+      accentExtra(accent, index, `${QUESTION_PREFIX}${index + 1}`, `questions[${index}]`),
+    );
   });
   input.big_words.forEach((choice, index) => {
+    if (skip.has(`big_words[${index}]`)) return;
     extras.push(bigWordExtra(choice, index, bigWordId(index)));
   });
   input.visuals.forEach((visual, index) => {
@@ -757,6 +902,10 @@ export function placeEdit(
   // after the other text picks, which they may not cut into.
   const transitionPlans = timeTransitions();
 
+  // A text pick's place in the answer order: the hook first, then the accents,
+  // the questions, the big words, the lists.
+  const rankOf = (extra: Extra) =>
+    extra.kind === "hook" ? 0 : extra.kind === "accent" ? (extra.accent!.question ? 2 : 1) : 3;
   oneTextAtATime();
 
   // Text components (the hook, accents, questions, big words, lists) one at a
@@ -767,8 +916,6 @@ export function placeEdit(
   // big word too short for its length, the same).
   function oneTextAtATime(): void {
     type Piece = { rank: number; name: string; pick: Extra | TransitionPlan };
-    const rankOf = (extra: Extra) =>
-      extra.kind === "hook" ? 0 : extra.kind === "accent" ? (extra.accent!.question ? 2 : 1) : 3;
     const pieces: Piece[] = [
       ...extras
         .filter(
@@ -2173,6 +2320,7 @@ export function placeEdit(
       ),
       position: spot,
       size,
+      words: range(extra.word!, extra.wordTo!),
     });
     shown.push({
       id: extra.id,
@@ -2398,10 +2546,11 @@ export function placeEdit(
   const outOverlays: OverlayItem[] = [];
   const hookItem = overlays.get(HOOK_ID);
   if (hookItem) outOverlays.push(hookItem);
-  for (const id of [...accentIds, ...questionIds]) {
-    const item = overlays.get(id);
+  for (const extra of extras) {
+    if (extra.kind !== "accent") continue;
+    const item = overlays.get(extra.id);
     if (!item) continue;
-    const span = accepted.find((entry) => entry.extra.id === id)!;
+    const span = accepted.find((entry) => entry.extra.id === extra.id)!;
     const from = byId.get((item.start as { word: string }).word)!;
     outOverlays.push({
       ...item,
@@ -2437,7 +2586,38 @@ export function placeEdit(
     preset,
   );
 
+  const picks: TextPick[] = [
+    ...extras.flatMap((extra) =>
+      extra.kind === "accent" || extra.kind === "big_word"
+        ? [
+            {
+              id: extra.id,
+              ref: extra.ref,
+              name: describe(extra),
+              start: extra.start,
+              end: extra.end,
+              rank: rankOf(extra) * 1000 + extra.index,
+              words:
+                extra.kind === "accent"
+                  ? range(extra.accent!.from, extra.accent!.to)
+                  : range(extra.word!, extra.wordTo!),
+            },
+          ]
+        : [],
+    ),
+    ...transitionPlans.map((plan) => ({
+      id: plan.id,
+      ref: plan.ref,
+      name: plan.label,
+      start: plan.start,
+      end: plan.end,
+      rank: 4000 + plan.index,
+      words: range(plan.choice.from, plan.choice.to),
+    })),
+  ];
+
   return {
+    picks,
     tracks: {
       footage: current.tracks.footage,
       captions: outCaptions,

@@ -268,3 +268,37 @@ describe("runChecks on text overlap", () => {
     expect(await buildWith(edit, [{ ...kept, action: "retimed" }])).not.toEqual([]);
   });
 });
+
+describe("runChecks on the same text", () => {
+  // The fixture's caption cw109 shows a word; a copy of an accent showing that
+  // same word at the same moment is the second item.
+  function sameWord(): Edit {
+    const edit = structuredClone(hand.edit);
+    const caption = edit.tracks.captions.find((item) => item.id === "cw109")!;
+    const word = caption.words[0]!;
+    const accent = structuredClone(edit.tracks.overlays.find((item) => item.kind === "accent")!);
+    Object.assign(accent, {
+      id: "accent-copy",
+      words: [word],
+      start: { word, edge: "start" },
+      end: { word, edge: "end" },
+    });
+    edit.tracks.overlays.push(accent);
+    return edit;
+  }
+
+  it("reports a spoken word two items show at a shared moment, naming both", async () => {
+    const same = (await checksOf(sameWord())).filter((check) => check.rule === "same-text");
+    expect(same).toHaveLength(1);
+    expect(same[0]!.item).toBe("accent-copy");
+    expect(same[0]!.reason).toMatch(
+      /^cw109 and accent-copy both show "[^"]+" from \d+\.\d{3} to \d+\.\d{3} s$/,
+    );
+  });
+
+  it("passes once the caption leaves the word out while the text shows it", async () => {
+    const edit = sameWord();
+    edit.tracks.captions.find((item) => item.id === "cw109")!.hidden_by = "accent-copy";
+    expect((await checksOf(edit)).filter((check) => check.rule === "same-text")).toEqual([]);
+  });
+});
