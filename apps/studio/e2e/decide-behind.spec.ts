@@ -114,17 +114,18 @@ test("the automatic decide proposes a visual, and the preview shows its frame", 
   test.setTimeout(240_000);
 
   // Version 2: the process job's decide proposed a visual, and the layout put
-  // it as a card over the footage: the full card (360 by 450) or its smaller
-  // step (252 by 315), off the face where a spot is free (over it only as a
+  // it as a card over the footage: the full card (360 by 450) where a corner
+  // or the strip beside the face holds it, else shrunk from it at 4:5 (the
+  // placer's 10% steps), off the face where a spot is free (over it only as a
   // noted last resort).
   const v2 = await currentVersion();
   expect(v2.version.number).toBe(2);
   expect(v2.behind).toEqual([expect.objectContaining({ kind: "visual" })]);
   const [card] = v2.behind;
-  expect([
-    [360, 450],
-    [252, 315],
-  ]).toContainEqual([card!.box!.width, card!.box!.height]);
+  const { width, height } = card!.box!;
+  expect(width).toBeGreaterThanOrEqual(30);
+  expect(width).toBeLessThanOrEqual(360);
+  expect(height).toBe(Math.floor(width / 0.8));
   // A version names no photo: the placed photo is gone from the edit.
   expect(v2.version.inputs).not.toHaveProperty("photos");
 

@@ -3204,9 +3204,9 @@
         "kind": "visual",
         "box": {
           "x": 75,
-          "y": 1115,
-          "width": 252,
-          "height": 315
+          "y": 1047,
+          "width": 307,
+          "height": 383
         }
       },
       {
@@ -3224,7 +3224,7 @@
         "text": "distribution",
         "position": {
           "x": 36,
-          "y": 379
+          "y": 388
         },
         "size": 199,
         "words": [

@@ -406,6 +406,8 @@ function centreWant(
 interface Candidate {
   rank: number; // the zone's index in the variant's ranking
   zone: ZoneName;
+  part: number; // the zone part's index (a corner, a side of the face)
+  distance: number; // from the box's centre to the centre the part's want asks for
   box: Box;
   size: number;
   shape: Shape;
@@ -611,14 +613,16 @@ function candidates(
   const behind = element.variant.layer === "behind";
   const passes: readonly Box[][] = F && !behind ? [[expand(F, GAP), ...fixed], fixed] : [fixed];
   element.variant.zones.forEach((zone, rank) => {
-    for (const part of zonesAt(zone, scene.safe, F)) {
+    zonesAt(zone, scene.safe, F).forEach((part, index) => {
       const area = areaOf(part);
-      if (!area) continue;
+      if (!area) return;
+      const want = (width: number, height: number) =>
+        centreWant(zone, part, area, F, width, height);
       for (const shape of shapes) {
         for (const obstacles of passes) {
           const found = fit(shape, {
             area,
-            want: (width, height) => centreWant(zone, part, area, F, width, height),
+            want,
             obstacles,
             faces: scene.faces,
             behind,
@@ -634,22 +638,47 @@ function candidates(
             rank * costs.zoneStep +
             shrinkSteps * costs.shrinkStep +
             shape.extraLines * costs.wrap;
-          out.push({ rank, zone, box, size, shape, coversFace, cost, shrinkSteps });
+          const aimed = want(box.right - box.left, box.bottom - box.top);
+          const distance = Math.hypot(
+            (box.left + box.right) / 2 - aimed.x,
+            (box.top + box.bottom) / 2 - aimed.y,
+          );
+          out.push({
+            rank,
+            zone,
+            part: index,
+            distance,
+            box,
+            size,
+            shape,
+            coversFace,
+            cost,
+            shrinkSteps,
+          });
         }
       }
-    }
+    });
   });
   return out;
 }
 
 // The spec's tie-break: cost, the earlier zone, the larger size, fewer lines,
-// the higher spot, the further left spot. Negative when `a` wins.
+// the higher spot, the further left spot. Negative when `a` wins. Settled (step
+// 9): a zone of several parts (the four corners, the two sides of the face) is
+// one zone to the ranking, so between its parts the spot nearest its part's
+// want wins (the spec's rule inside a zone: "of the spots that fit, the one
+// nearest it wins"), then the earlier part (the zone table's order: top-left
+// first, the wider side first), before the higher and the further left spot.
+// Without it a card pushed along the top edge by the face, far from the
+// top-left corner, beat the card sitting exactly in the top-right one.
 function compare(a: Candidate, b: Candidate): number {
   return (
     a.cost - b.cost ||
     a.rank - b.rank ||
     b.size - a.size ||
     a.shape.lines.length - b.shape.lines.length ||
+    a.distance - b.distance ||
+    a.part - b.part ||
     a.box.top - b.box.top ||
     a.box.left - b.box.left
   );

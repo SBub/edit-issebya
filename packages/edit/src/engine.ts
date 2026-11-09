@@ -19,6 +19,7 @@ import {
   toEngineRecord,
 } from "./engine-note.ts";
 import {
+  type BoxElement,
   type LevelRole,
   type Obstacle,
   type StackElement,
@@ -31,14 +32,8 @@ import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from
 import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
 import type { PickedVariants } from "./variant-picker.ts";
-import type { StackVariant, TextVariant, Variant } from "./variants.ts";
-import {
-  type FontKey,
-  PLATFORM_SAFE,
-  type Preset,
-  SHOWN_FLOOR_SECONDS,
-  cleanWord,
-} from "./preset.ts";
+import type { BoxVariant, StackVariant, TextVariant, Variant } from "./variants.ts";
+import { type FontKey, type Preset, SHOWN_FLOOR_SECONDS, cleanWord } from "./preset.ts";
 import {
   type Anchor,
   type BehindItem,
@@ -76,16 +71,18 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    it (`shown`), never the captions: captions are not placed yet. Then the
 //    captions last, in time order, one spot per sentence, in the free space
 //    the components leave at each moment; captions avoid every component and
-//    every other caption. The hook, accents, questions and LIST stacks (a
-//    number, a lead-in and a key phrase as one element) go through the placer
-//    (`engine-place.ts`, the spec's loop: zones, hard rules, costs; the style's
-//    base size as the cap, 10% shrink steps to 30 px, free wrapping; never over
-//    other text); the big word, the visual and the captions keep their own code
-//    for now, and both see each other as obstacles through `shown`. The old
-//    paths shrink text to the preset's floor and wrap to two lines before
-//    giving up a place. The face is a preference for every front element: a
-//    spot off the face and off other text first, then over the face but off
-//    other text (noted `covers-face`), then (old paths only) over other text
+//    every other caption. Every component goes through the placer
+//    (`engine-place.ts`, the spec's loop: zones, hard rules, costs): the hook,
+//    accents, questions and LIST stacks (a number, a lead-in and a key phrase
+//    as one element) at their style's base size as the cap, 10% shrink steps
+//    to 30 px, free wrapping, never over other text; the big word behind the
+//    speaker at its anchored largest fit; the visual's card as a box from its
+//    width share, text no obstacle to it and it none to text (a text may sit
+//    on a card). The captions keep their own code for now and see every text
+//    through `shown`; that path shrinks to the preset's floor and wraps to two
+//    lines before giving up a place. The face is a preference for every front
+//    element: a spot off the face first (a cost of 100 in the placer), then
+//    over the face (noted `covers-face`), then (captions only) over other text
 //    (noted `kept-overlapping`). Big words are behind the speaker and ignore
 //    the face. The engine drops no pick but two: a text pick whose every word
 //    another text pick on screen at the same moment shows (`same-text`), and a
@@ -103,7 +100,7 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    span). Below the preset's threshold it moves to the nearest free place
 //    in the same zone that reaches it, else stays where it is, plain (owner
 //    decision 2026-11-04: move first, never a shadow, never a colour
-//    change). A big word is never moved for it.
+//    change). A big word or a visual's card is never moved for it.
 // 7. Every move, shrink, wrap, retime, fallback, overlap and low contrast left
 //    in place is written to the record.
 
@@ -236,6 +233,13 @@ function stackVariantOf(picked: PickedVariants): StackVariant {
   if (!entry || entry.type !== "text" || entry.levels === undefined) {
     throw new Error("engine: no stack variant picked for LIST");
   }
+  return entry;
+}
+
+// The entry the VISUAL was picked with: a box.
+function boxVariantOf(picked: PickedVariants): BoxVariant {
+  const entry: Variant | undefined = picked.get("VISUAL");
+  if (!entry || entry.type !== "box") throw new Error("engine: no box variant picked for VISUAL");
   return entry;
 }
 
@@ -1117,37 +1121,6 @@ function placeOnce(
     with: [...new Set(texts.map((item) => item.id))],
     names: [...new Set(texts.map((item) => item.what))].join(" and "),
   });
-  // A front pick placed over the face (when `faceRule`) is noted `covers-face`
-  // under that rule: the face is a preference, so it is covered only when no
-  // spot off it was free. A pick placed over other text on screen is noted
-  // `kept-overlapping` with the texts it sits over.
-  function noteOverlap(
-    id: string,
-    label: string,
-    box: Box,
-    span: { start: number; end: number },
-    faceRule?: string,
-  ): void {
-    if (faceRule && faceObstacles(span).some((obstacle) => overlaps(box, obstacle))) {
-      record.push({
-        item: id,
-        action: "covers-face",
-        rule: faceRule,
-        reason: `${label} covers the face from ${at(span.start)} to ${at(span.end)}: no spot off the face was free, so it sits over part of it`,
-      });
-    }
-    const texts = textsOver(box, span);
-    if (texts.length === 0) return;
-    const named = overWith(texts);
-    record.push({
-      item: id,
-      action: "kept-overlapping",
-      rule: "all-picks",
-      reason: `${label} sits over ${named.names} from ${at(span.start)} to ${at(span.end)}; kept, every pick is shown`,
-      with: named.with,
-    });
-  }
-
   // Readability: the worst contrast of a text's colours over a box and span.
   const { backgrounds } = options;
   const { readability } = preset;
@@ -1784,20 +1757,21 @@ function placeOnce(
     }
   }
 
-  // One extra at its own span, placed by its kind. The old kind (the visual)
-  // is always placed (over the face or other text if it must, noted); a placer
-  // element (the hook, an accent, a question, the big word) it finds no legal
-  // spot for is left out, noted `no-spot`, and `placeEdit` places the answer
-  // again without it.
+  // One extra at its own span, placed by its kind, each through the placer. An
+  // element (the hook, an accent, a question, the big word, a visual's card) it
+  // finds no legal spot for is left out, noted `no-spot`, and `placeEdit`
+  // places the answer again without it.
   function tryExtra(extra: Extra): void {
     const span = { start: extra.start, end: extra.end };
-    if (extra.kind === "hook") {
-      if (!placeHook(extra, span)) noSpot.push(extra.ref);
-    } else if (extra.kind === "accent") {
-      if (!placeAccent(extra, span)) noSpot.push(extra.ref);
-    } else if (extra.kind === "big_word") {
-      if (!placeBigWord(extra, span)) noSpot.push(extra.ref);
-    } else placeVisual(extra, span);
+    const placed =
+      extra.kind === "hook"
+        ? placeHook(extra, span)
+        : extra.kind === "accent"
+          ? placeAccent(extra, span)
+          : extra.kind === "big_word"
+            ? placeBigWord(extra, span)
+            : placeVisual(extra, span);
+    if (!placed) noSpot.push(extra.ref);
   }
 
   // The placer's scene over a span: the unpadded robust faces of its moments
@@ -1951,186 +1925,50 @@ function placeOnce(
     return true;
   }
 
-  // A visual's card: an empty white stroke frame, a small corner card (picture
-  // in picture) over the footage. The full size first, then the smaller step;
-  // at each, the spot with the most free space around it (`card.spots`):
-  // inside the platform safe zone, clear of the face and the other text (the
-  // hook, accents, big words, lists; captions are placed after it), and off
-  // the button column.
-  function cardSize(smaller: boolean): { width: number; height: number } {
-    const card = preset.behind.card;
-    const width = Math.round(preset.frame.width * card.widthShare * (smaller ? card.smaller : 1));
-    return { width, height: Math.round(width / card.aspect) };
-  }
-
-  // The card's spots at a size that the obstacles leave clear, ranked by free
-  // space around them, the most first.
-  function cardSpots(
-    span: { start: number; end: number },
-    size: { width: number; height: number },
-    obstacles: readonly Box[],
-  ): Box[] {
-    const card = preset.behind.card;
-    const area = PLATFORM_SAFE;
-    const { width, height } = size;
-    const face = boundingBox(facesDuring(scene, span));
-    const boxAt = (left: number, top: number): Box => ({
-      left,
-      right: left + width,
-      top,
-      bottom: top + height,
-    });
-    const boxes: Box[] = [];
-    for (const spot of card.spots) {
-      if (spot === "beside-left" || spot === "beside-right") {
-        if (!face) continue;
-        const top = Math.min(Math.max(face.top, area.top), area.bottom - height);
-        boxes.push(
-          spot === "beside-left"
-            ? boxAt(face.left - gap - width, top)
-            : boxAt(face.right + gap, top),
-        );
-        continue;
-      }
-      const left = spot.endsWith("left") ? area.left + card.inset : area.right - card.inset - width;
-      const top = spot.startsWith("top")
-        ? area.top + card.inset
-        : area.bottom - card.inset - height;
-      boxes.push(boxAt(left, top));
-    }
-    return boxes
-      .filter(
-        (box) =>
-          box.left >= area.left &&
-          box.right <= area.right &&
-          box.top >= area.top &&
-          box.bottom <= area.bottom &&
-          !obstacles.some((obstacle) => overlaps(box, obstacle)),
-      )
-      .map((box) => {
-        // The ring around the spot: the share no obstacle covers is its free space.
-        const around = expand(box, card.ring);
-        const ring = (around.right - around.left) * (around.bottom - around.top) - width * height;
-        const covered = obstacles.reduce((sum, obstacle) => {
-          const w = Math.min(obstacle.right, around.right) - Math.max(obstacle.left, around.left);
-          const h = Math.min(obstacle.bottom, around.bottom) - Math.max(obstacle.top, around.top);
-          return w > 0 && h > 0 ? sum + w * h : sum;
-        }, 0);
-        return { box, free: 1 - Math.min(1, covered / ring) };
-      })
-      .sort((a, b) => b.free - a.free)
-      .map(({ box }) => box);
-  }
-
-  // A visual: the first card spot it fits, off the face and the other text, at
-  // the full size, then at the smaller step; only when no such spot is free,
-  // over the face (noted `covers-face`) at either size, off the other text;
-  // last, over other text at the full size (noted `kept-overlapping`), at the
-  // first spot in the safe zone, else the corner. Its white edge too close to
-  // the footage around it moves it to a place nearby that separates them, else
-  // it stays, recorded.
-  function placeVisual(extra: Extra, span: { start: number; end: number }): void {
-    const index = extra.index;
+  // A visual's card through the placer: the box element of the entry it was
+  // picked with (`visual/card`: a corner of S, then beside the face; its full
+  // size its `width` share of the frame at its `aspect`, 360 by 450 px, shrunk
+  // from there in 10% steps where the spot is smaller), an empty white stroke
+  // frame in front of the speaker, over the footage. The face is a cost (100),
+  // so the card covers it only as a last resort (noted `covers-face`). Text and
+  // the card are no obstacles to each other (decision 9: a text may sit on a
+  // card, the card draws under it), so the card sees nothing but the notch and
+  // the face, and never joins `shown`. Its box and the notes are the placer's.
+  // False when no candidate keeps the hard rules: the card is left out (see
+  // `tryExtra`).
+  function placeVisual(extra: Extra, span: { start: number; end: number }): boolean {
     const visual = extra.visual!;
-    const label = `visual ${index + 1}`;
-    const when = `from ${at(span.start)} to ${at(span.end)}`;
-    const spec = preset.behind.edge;
-    // The frame's white stroke is the edge the contrast check measures.
-    const edge = 1;
-    const textAndNotch = [...textDuring(span), notch];
-    const obstacles = [...textAndNotch, ...faceObstacles(span)];
-    const full = cardSize(false);
-    const smallSize = cardSize(true);
-    const tried = [
-      { smaller: false, size: full, avoid: obstacles, over: null },
-      { smaller: true, size: smallSize, avoid: obstacles, over: null },
-      { smaller: false, size: full, avoid: textAndNotch, over: null },
-      { smaller: true, size: smallSize, avoid: textAndNotch, over: null },
-      { smaller: false, size: full, avoid: [notch], over: "text" },
-    ];
-    for (const { smaller, size, avoid, over } of tried) {
-      const found =
-        cardSpots(span, size, avoid)[0] ??
-        (over
-          ? {
-              left: PLATFORM_SAFE.left,
-              right: PLATFORM_SAFE.left + size.width,
-              top: PLATFORM_SAFE.top,
-              bottom: PLATFORM_SAFE.top + size.height,
-            }
-          : undefined);
-      if (!found) continue;
-      const { width, height } = size;
-      const boxAt = (spot: { x: number; y: number }): Box => ({
-        left: spot.x,
-        right: spot.x + width,
-        top: spot.y,
-        bottom: spot.y + height,
-      });
-      let spot = { x: found.left, y: found.top };
-      const notes: PlaceNote[] = [];
-      if (backgrounds) {
-        const around = (box: Box) => expand(box, spec.ring);
-        const ratio = contrastOf(backgrounds, around(boxAt(spot)), span, [edge]);
-        if (ratio < spec.minContrast) {
-          const threshold = { min: spec.minContrast };
-          const moved = readablePlace(
-            backgrounds,
-            PLATFORM_SAFE,
-            avoid,
-            width,
-            height,
-            spot,
-            span,
-            [edge],
-            threshold,
-            around,
-          );
-          if (moved) {
-            spot = { x: moved.x, y: moved.y };
-            notes.push({
-              item: extra.id,
-              action: "moved",
-              rule: "contrast-spot",
-              reason: `${label} moves ${Math.round(moved.distance)} px to a place it stands out from: contrast ${ratioText(ratio)} against the footage around it ${when}, under ${spec.minContrast}:1, now ${ratioText(moved.ratio)}`,
-            });
-          } else {
-            notes.push({
-              item: extra.id,
-              action: "low-contrast",
-              rule: "contrast-stay",
-              reason: `${label} stays in place: contrast ${ratioText(ratio)} against the footage around it ${when}, no free place nearby reaches ${spec.minContrast}:1; a visual never gets a shadow or a colour change`,
-            });
-          }
-        }
-      }
-      const box = boxAt(spot);
-      noteOverlap(extra.id, label, box, span, "visual-face");
-      const sentence = sentenceOf(visual.from)!;
-      behind.set(extra.id, {
-        id: extra.id,
-        kind: "visual",
-        ...(visual.description ? { description: visual.description } : {}),
-        box: { x: spot.x, y: spot.y, width, height },
-        start:
-          Math.abs(span.start - sentence.start) < 0.0005
-            ? { word: sentence.from }
-            : Math.abs(span.start - word(visual.from).start) < 0.0005
-              ? { word: visual.from }
-              : anchorAt(span.start, transcript.words),
-        end: anchorAt(span.end, transcript.words),
-      });
-      if (smaller) {
-        record.push({
-          item: extra.id,
-          action: "shrunk",
-          rule: "visual-size",
-          reason: `${label} set at ${width} by ${height} px instead of ${full.width} by ${full.height}: no corner or side is free at full size ${when}`,
-        });
-      }
-      record.push(...notes);
-      return;
-    }
+    const element: BoxElement = {
+      type: "box",
+      id: extra.id,
+      variant: boxVariantOf(picked),
+      start: span.start,
+      end: span.end,
+    };
+    const result = placeElement(element, sceneFor(span), measurer);
+    record.push(...result.notes);
+    if (!result.placed) return false;
+    const { box } = result.placed;
+    const sentence = sentenceOf(visual.from)!;
+    behind.set(extra.id, {
+      id: extra.id,
+      kind: "visual",
+      ...(visual.description ? { description: visual.description } : {}),
+      box: {
+        x: box.left,
+        y: box.top,
+        width: box.right - box.left,
+        height: box.bottom - box.top,
+      },
+      start:
+        Math.abs(span.start - sentence.start) < 0.0005
+          ? { word: sentence.from }
+          : Math.abs(span.start - word(visual.from).start) < 0.0005
+            ? { word: visual.from }
+            : anchorAt(span.start, transcript.words),
+      end: anchorAt(span.end, transcript.words),
+    });
+    return true;
   }
 
   // The tracks, in the current version's caption order and the answer's order.

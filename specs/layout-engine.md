@@ -353,6 +353,36 @@ in `engine-place.ts`; unattended choices following the owner's head-top intent, 
 - The `frame` check is gone: a big word's box joins the `safe-box` check with the captions, overlays and
   levels (decision 2), and the studio's rule words lose `frame`.
 
+Details step 9 settled (the visual's card through the placer, `placeVisual` in `engine.ts` as a thin
+wrapper over `placeElement`, like the other components'; unattended choices, each the simplest reading):
+
+- The card is a `box` element from the `visual/card` entry: its full size the `width` share of the frame
+  (360 px) at its `aspect` (4:5), the largest card the spot holds up to it, whole pixels (the height
+  floored from the width), shrink steps counted from the full width. It sees nothing but the notch and
+  the face (rule 5: text is no obstacle to it) and never joins the texts' obstacles (`shown`), so a text
+  placed after it may sit on it and a caption may too; the builder's track order (the card at 30, every
+  text at 50, later in the page) keeps rule 2.
+- A zone of several parts (the four corners, the two sides of the face) is one zone to the ranking, so
+  between its parts the tie-break is: the spot nearest its part's want (the spec's rule inside a zone),
+  then the earlier part (the zone table's order), then the higher and the further left spot; after the
+  cost, the zone, the size and the line count as before. Without it a card the face pushed along the top
+  edge, far from the top-left corner, beat the card sitting exactly in the top-right one (both cost 0,
+  the further left won).
+- The face cost against the shrink steps: a card beside a large face shrinks rather than covers it as
+  long as a spot off the face holds a card of 34 px or more (9 shrink steps, 90, under the face's 100);
+  only a face that fills the safe zone gets a card over it. A tuning observation, not a change.
+- The card's contrast move and its stay note (`preset.behind.edge`, `contrast-spot` and `contrast-stay`
+  on a visual) served the old card placer alone, so they are gone with it; the captions' readability stays
+  for step 11. `behind.spots`, `BEHIND_SPOTS`, `BehindSpot`, `spotBox`, `spotFaceShare`, `boxFaceShare`,
+  `card.smaller`, `card.ring`, `card.spots` (`CARD_SPOTS`), `behind.maxFaceShare` and the old rule names
+  `visual-size` and `visual-face` are gone; `card.widthShare`, `aspect`, `inset` and `stroke` stay as the
+  values the entry and the zone table read back to (a test ties the entry's share and ratio to them),
+  for step 12 to settle.
+- Re-deriving the goldens moved the fixture reel's card from the old smaller step (252 by 315 at the
+  bottom-left corner) to the largest card that corner holds under the head (307 by 383, two shrink
+  steps), and the big word "distribution" from y 379 to y 388: step 8's goldens had been written before
+  its last by-the-pixel change, so y 388 is what the step 8 engine already placed.
+
 ## No legal spot
 
 Rare: a moment so crowded that a component has no candidate that keeps the hard rules at or above the

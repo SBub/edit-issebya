@@ -1,14 +1,9 @@
 import type { Box } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
-import type { BehindSpot, FontKey, Preset } from "./preset.ts";
+import type { FontKey, Preset } from "./preset.ts";
 import type { BehindItem, BehindVisualItem, BehindWordItem, Edit } from "./schema.ts";
 import { type Span, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
-
-// The rectangle a VISUAL in `spot` covers exactly (its spot's rectangle).
-export function spotBox(spot: BehindSpot, preset: Preset): Box {
-  return preset.behind.spots[spot];
-}
 
 // The rectangle a VISUAL covers: the box the layout engine gave it.
 export function visualBox(item: BehindVisualItem): Box {
@@ -21,22 +16,6 @@ export function visualBox(item: BehindVisualItem): Box {
 // needs none.
 export function needsCutout(item: BehindItem): boolean {
   return item.kind === "word";
-}
-
-// The share (0 to 1) of a box the face box covers; 0 without a face.
-function boxFaceShare(box: Box, face: Box | null): number {
-  if (!face) return 0;
-  const width = Math.max(0, Math.min(box.right, face.right) - Math.max(box.left, face.left));
-  const height = Math.max(0, Math.min(box.bottom, face.bottom) - Math.max(box.top, face.top));
-  const area = (box.right - box.left) * (box.bottom - box.top);
-  return area > 0 ? (width * height) / area : 0;
-}
-
-// The share (0 to 1) of a VISUAL's spot the face box covers; 0 without a face.
-// Shared by the decide prompt's clear spots and the layout engine's placement,
-// so the two never disagree.
-export function spotFaceShare(spot: BehindSpot, face: Box | null, preset: Preset): number {
-  return boxFaceShare(spotBox(spot, preset), face);
 }
 
 // The largest share (0 to 1) of a big word's height the face covers, in any of

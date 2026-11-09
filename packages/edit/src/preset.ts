@@ -39,48 +39,25 @@ export interface PresetSound {
   minGapSeconds: number;
 }
 
-// Where a VISUAL sits behind the speaker: three preset spots. A VISUAL the
-// layout engine places has its own box, not one of these.
-export type BehindSpot = "top" | "left" | "right";
-export const BEHIND_SPOTS = ["top", "left", "right"] as const satisfies readonly BehindSpot[];
-
 // A VISUAL is a small corner card (picture in picture): an empty white frame
-// over the footage, in one of these spots. Beside the face spots sit next to
-// the moment's face, the others in the platform safe zone's corners.
-type CardSpot =
-  "top-left" | "top-right" | "bottom-left" | "bottom-right" | "beside-left" | "beside-right";
-const CARD_SPOTS = [
-  "top-left",
-  "top-right",
-  "bottom-left",
-  "bottom-right",
-  "beside-left",
-  "beside-right",
-] as const satisfies readonly CardSpot[];
-
+// over the footage, in front of the speaker. The placer (`engine-place.ts`)
+// places it as a box from the `visual/card` entry of `variants.ts`, whose
+// `width` (1/3) and `aspect` (4/5) read back to the values here; its zones (a
+// corner of the safe zone inset `inset`, then beside the face) are the zone
+// table's (`engine-zones.ts`).
 interface PresetCard {
   // Its width as a share of the frame's width (a third) and its ratio, width
-  // over height (4:5): 360 by 450 px.
+  // over height (4:5): 360 by 450 px, the card's full size; the placer shrinks
+  // from it in 10% steps where the spot is smaller.
   widthShare: number;
   aspect: number;
-  // The share of the card's size tried when no spot fits at the full size
-  // (252 by 315 px), before a visual is dropped: on the speech-ten clip the
-  // free strip beside the speaker is about 260 px wide, too narrow for 0.8.
-  smaller: number;
   // The gap a corner card keeps from the edges of the platform safe zone.
   inset: number;
   // The frame's white stroke, in pixels (the builder's `.visual` rule).
   stroke: number;
-  // The ring around a spot whose free space ranks the spots: the share of it
-  // no text, face or notch covers is the spot's free space, the most first.
-  ring: number;
-  // The spots a card may take; a tie in free space goes to the earlier one.
-  spots: readonly CardSpot[];
 }
 
 export interface PresetBehind {
-  // Each spot's rectangle in frame pixels.
-  spots: Record<BehindSpot, Box>;
   // A big word: the placer's largest fit (`engine-place.ts`, the `bigWord`
   // style of `variants.ts`), centred, its vertical centre wanted
   // `belowHeadTop` below the head's top (or at `noHeadY` with no head in the
@@ -101,17 +78,8 @@ export interface PresetBehind {
   // A VISUAL lasts between these, in seconds.
   minSeconds: number;
   maxSeconds: number;
-  // The largest share (0 to 1) of a VISUAL's spot the face box may cover.
-  maxFaceShare: number;
   // A VISUAL's card (see `PresetCard`).
   card: PresetCard;
-  // A VISUAL's white edge needs `minContrast` against the footage within
-  // `ring` pixels around it, else it moves to a place nearby that has it, else
-  // stays, recorded `low-contrast`.
-  edge: {
-    minContrast: number;
-    ring: number;
-  };
 }
 
 // How busy an edit is: the levels a preset may edit at. The preset names its
@@ -333,11 +301,6 @@ export const ISSEBYA_PRESET: Preset = {
   },
   // Starting values; the owner tunes them by eye on a real reel.
   behind: {
-    spots: {
-      top: { left: 90, right: 990, top: 160, bottom: 760 },
-      left: { left: 40, right: 500, top: 560, bottom: 1180 },
-      right: { left: 580, right: 1040, top: 560, bottom: 1180 },
-    },
     word: {
       font: "primary",
       color: "#FFFFFF",
@@ -349,19 +312,11 @@ export const ISSEBYA_PRESET: Preset = {
     frameRate: 30,
     minSeconds: 1,
     maxSeconds: 2,
-    maxFaceShare: 0.4,
-    edge: {
-      minContrast: 1.5,
-      ring: 30,
-    },
     card: {
       widthShare: 1 / 3,
       aspect: 4 / 5,
-      smaller: 0.7,
       inset: 40,
       stroke: 8,
-      ring: 60,
-      spots: CARD_SPOTS,
     },
   },
   keepCaps: { i: "I", "i'm": "I'm", "i've": "I've", "i'll": "I'll", "i'd": "I'd", ai: "AI" },

@@ -140,9 +140,8 @@ start, end }] }`).
   louder than the -13 dB before; a stored click with no `gain_db` plays at it too, in the preview
   through `apps/studio/src/lib/sound-schedule.ts` and in the export through the page's
   `data-volume`, both from `gain_db ?? gainDb`), at least 0.25 s apart.
-- Behind (`behind`, starting values the owner tunes by eye): the spots `top` (left 90, right 990,
-  top 160, bottom 760), `left` (40 to 500, 560 to 1180) and `right` (580 to 1040, 560 to 1180); a
-  VISUAL's `box` is the place it is drawn in (the decide step reads the spots as clear places). The big word:
+- Behind (`behind`, starting values the owner tunes by eye): a VISUAL's `box` is the place the
+  placer gave it (there are no preset spots any more). The big word:
   `primary` font, `#FFFFFF`, its vertical centre wanted 60 px below the head's top (`belowHeadTop`) or
   at y 700 with no head (`noHeadY`; the zone table in `src/engine-zones.ts` holds the same offsets),
   the face may cover at most the lower 30% of its height (`minVisible` 0.7, the face only), a hard
@@ -154,23 +153,15 @@ start, end }] }`).
   own timing (its lead and 1.5 s minimum, see Accents). No count per reel.
 - Visuals (`decide-17`): the card (`behind.card`, owner decision 2026-11-07, a picture in picture
   card like the ones in talking-head reels): an empty white stroke frame over the footage, in front of
-  the speaker, no fill and no text. Its width is a third of the frame's width (`widthShare`, 360 px) at
-  4:5 (`aspect`, 360 by 450 px). Its spots (`CARD_SPOTS`, in this order for a tie): `top-left`,
-  `top-right`, `bottom-left` and `bottom-right` (each `inset` 40 px in from `PLATFORM_SAFE`) and
-  `beside-left` and `beside-right` (`layout.gap` from the moment's face, its top at the face's top). A
-  spot is taken only when it is inside `PLATFORM_SAFE`, off the moment's face (the first tier), of every accent,
-  big word, list level and the hook shown in its span and of `PLATFORM_BUTTONS` (captions are placed
-  after the cards, so they never count); the spot with the most
-  free space in the ring around it (`ring`, 60 px) wins. The full size is tried at every spot before
-  the smaller step (`smaller`, 0.7: 252 by 315 px, one step only, recorded `shrunk`, rule
-  `visual-size`), and then, with no spot off the face free, over the face at either size (noted
-  `covers-face`), and last the top-left corner of the safe zone at the full size, over other text, the
-  overlap noted (`all-picks`). 0.7, not 0.8 (288 px): on the speech-ten
-  clip the free strip beside the speaker is about 260 px wide. A card covers the face only when no corner
-  or side off it is free at either size (noted `covers-face`, rule `visual-face`); `stroke` (8 px) is the builder's border.
-- The VISUAL's white edge: `preset.behind.edge` (`minContrast` 1.5:1 against the footage within `ring`,
-  30 px around it), checked as the card's contrast in "Layout engine" below. No code reads `behind.maxFaceShare`
-  (0.4) now: a card's place against the face is the engine's spot rule, a preference (see Placement).
+  the speaker, no fill and no text. Its full width is a third of the frame's width (`widthShare`, 360 px)
+  at 4:5 (`aspect`, 360 by 450 px); the `visual/card` entry of `src/variants.ts` carries the same values
+  as its `width` (`1/3`) and `aspect` (`4/5`), and the placer places it from them (see Placement): a
+  corner of the safe zone (`inset` 40 px in; the zone table's `corner`), then the strip beside the face
+  (`beside-face`), the full card where the spot holds it, else shrunk from it at 4:5 in the placer's 10%
+  steps down to 30 px wide (noted `shrunk`, rule `size`), the face a cost (covered only as a last
+  resort, noted `covers-face`, rule `face`). `stroke` (8 px) is the builder's border. Nothing of the old
+  card code is left: no preset spots, no smaller step (0.7), no free-space ring, no edge contrast
+  (`behind.edge`, `maxFaceShare` are gone).
 - Pace (`pace`, the preset's `intensity` names its level, `intense` (the pros' level); the pace block is
   that level's; a later level, `calm` or `medium`, is one more name with its own block): something new besides captions at least every 3 s
   as the aim (`extraEverySeconds`, which no code reads: the engine caps and drops nothing by it, and the
@@ -202,9 +193,9 @@ start, end }] }`).
   `build: <kind> <id> has no position; place the edit first`, and a big word with no `position` or
   `size` throws the same way. `src/html.ts` escapes text and attributes and formats numbers.
 - `src/lines.ts`: `textLines(text, breaks)` (a text cut after each of its `breaks`, the builder and the transition levels share it) and `breaksOf(lines)` (the breaks the engine writes for its lines).
-- `src/behind.ts`: `spotBox(spot, preset)` (the spot's rectangle), `visualBox(item)` (a VISUAL's
+- `src/behind.ts`: `visualBox(item)` (a VISUAL's
   `box`), `needsCutout(item)` (a big word only: a VISUAL is in front, over the footage),
-  `boxFaceShare`, `spotFaceShare`, `bigWordCoveredShare`, `placedBigWord` (a big word at its stored
+  `bigWordCoveredShare`, `placedBigWord` (a big word at its stored
   `position` and `size`, its width from HarfBuzz at 1 px) and `maskSpans(edit, transcript, preset)`:
   the span of each big word (the items that need the cut-out) padded by `padFrames`, clamped
   to the reel, widened to whole frames, overlapping or touching spans merged, sorted, to the
@@ -356,12 +347,12 @@ tracks and record. `editFromAnswer` (decide, returning `{ ok, edit, record }`) a
 The zones (`src/engine-zones.ts`, `zonesAt(name, S, F)`) are the named areas the placement will use:
 each zone's areas inside the one safe zone `S` (the guard minus the notch) and its wanted point, from
 the moment's face `F` (null when no head is in the frame). The placer calls them for the hook, the
-accents and questions, the LIST stacks and the big word; the visual and the captions still use their own
-candidates (the build order of `specs/layout-engine.md`, steps 9 and 10).
+accents and questions, the LIST stacks, the big word and the visual's card; the captions still use their
+own candidates (the build order of `specs/layout-engine.md`, step 10).
 
 The placer (`src/engine-place.ts`, `placeElement(element, scene, measurer, costs?)`) places the hook,
-the accents and questions, the LIST stacks and the big word (steps 6 to 8; the visual and the captions
-follow): one element (a text with its entry, words, line gap and, for the big word, `maxLines` 1; a stack with its entry, the text of each
+the accents and questions, the LIST stacks, the big word and the visual's card (steps 6 to 9; the
+captions follow): one element (a text with its entry, words, line gap and, for the big word, `maxLines` 1; a stack with its entry, the text of each
 level it shows and the gap between them; or a box with its entry; its id and span) over a scene (the
 unpadded robust faces over its span, the obstacles already placed over it as
 `{ id, kind: "caption" | "text" | "box", box }`, the safe zone) and returns `{ placed, notes }`: the
@@ -443,8 +434,7 @@ and a big word whose lead reaches into an accent ending on its word trims the ac
 
 - Inputs: the current version (footage and captions kept, never its sounds; each word fix becomes the text
   of the caption showing that word; old positions and sizes are removed), the answer's choices, the
-  transcript with word times, the head track, the preset (fonts and sizes, behind spots as candidates)
-  and the HarfBuzz measurer. The safe zone is `SAFE_ZONE`, not a preset field.
+  transcript with word times, the head track, the preset (fonts and sizes) and the HarfBuzz measurer. The safe zone is `SAFE_ZONE`, not a preset field.
 - Timing first (owner decision 6):
   - Captions: each from its own word; a group (consecutive captions ending on the same anchor)
     leaves at its last word's end, held so its last caption shows at least 0.25 s, never past the
@@ -480,8 +470,9 @@ and a big word whose lead reaches into an accent ending on its word trims the ac
   - The components by their start time, ties by the answer's order (the hook, accents, questions, big
     words, visuals, lists), each avoiding the components placed before it that share a moment with it.
     They never avoid captions: captions are not placed yet, and the captions take the space left.
-  - Hook, accent, question, big word and LIST stack: the placer (above), never over other text (hard); the
-    face a cost (100; none for the big word), a zone step and a shrink step 10 each, wrapping free. The hook: the upper third, then
+  - Hook, accent, question, big word, LIST stack and the visual's card: the placer (above), a text never
+    over other text (hard); the face a cost (100; none for the big word), a zone step and a shrink step
+    10 each, wrapping free. The hook: the upper third, then
     anywhere in the safe zone, at most the `accent` base 110 px. Accent and question: zones above the
     head (its top 190 px above the head), the upper third, anywhere in the safe zone (with no head: the
     accent line at y 1130 first); at most 110 px, shrunk in 10% steps to 30 px. The stack: the upper
@@ -498,21 +489,26 @@ and a big word whose lead reaches into an accent ending on its word trims the ac
     the checks' reading of the faces), clear of the text on screen with it, inside `S` and off the notch.
     The face is no obstacle and costs nothing. Notes the placer's: `placed`, `shrunk` (a text took room
     at the head top), `no-spot` (nothing keeps the rules at 30 px or more: the word is left out, its
-    words stay captions). On the fixture reel "distribution" sits at x 36, y 379, 199 px (S's width),
+    words stay captions). On the fixture reel "distribution" sits at x 36, y 388, 199 px (S's width),
     23% of it behind the head.
-  - Visual (the card, owner decision 2026-11-07): the first card spot that fits, ranked by the free space
-    around it (see "Preset values"), at the full size, then at the smaller step (0.7, noted `shrunk`,
-    rule `visual-size`). Tiers, in order: off the face, the accents, the hook, the big words, the list
-    levels and the button column, at either size; then over the face but off those texts, at either size
-    (noted `covers-face`, rule `visual-face`); last, over other text at the full size, at the top-left
-    corner of the safe zone when no spot is free (noted `kept-overlapping`, rule `all-picks`). Written:
-    `box` (the card's place and size).
-  - Card contrast: with the background map, the WCAG ratio of the card's white edge against the footage
-    in and 30 px around it (`ring`) must reach `minContrast` (1.5); below it the card tries nearby places
-    (the readable-text grid, `readability.moveRadius`, inside `PLATFORM_SAFE`, clear of what the card's tier
-    avoids: the other text, the button column, and the face unless the card covers it) and moves to the nearest that reaches it (`contrast-spot`,
-    `moved`), else stays (`contrast-stay`, `low-contrast`, `... a visual never gets a shadow or a colour change`). Never a shadow or a colour change; recorded only, never a check. A card without a known
-    background is not measured.
+  - Visual (`visual/card`, a box): the placer's box element from the entry's `width` share (a third of
+    the frame, 360 px) at its `aspect` (4:5, 450 px), the full size and the size its shrink steps count
+    from. Zones: `corner` (the safe zone inset 40 px, the spot nearest each corner that holds the card:
+    top-left, top-right, bottom-left, bottom-right), then `beside-face` (the strips of `S` left and
+    right of the padded face, from the face's top to 120 px below it, the card's edge towards the face at
+    the mouth). The largest card the spot holds, at most the full one, shrunk from it in 10% steps
+    (`shrunk`, rule `size`, 10 a step) when the spot is smaller, never under 30 px wide; the face a cost
+    of 100, so the card covers it only when nothing off it holds a card at 30 px or more (`covers-face`,
+    rule `face`). Decision 9: text and the card are no obstacles to each other. The card sees nothing but
+    the notch and the face (an accent, the hook, a big word or a list under its spot does not move it),
+    joins no text's obstacles (a text placed after it may sit on it) and never joins the captions'
+    (a caption may sit on it too: the card draws under every text, track 30 under track 50, so rule 2
+    holds). Sizes are whole pixels: on the fixture reel the card sits at the bottom-left corner at 307 by
+    383 (the head's bottom leaves 383 px above the corner's inset); with the speech-ten head the strip
+    beside the face holds the full card (one zone step, 10, over two shrink steps, 20), its right edge
+    at the padded face box. Notes the placer's: `placed`, `moved`, `shrunk`, `covers-face`, `no-spot`
+    (a card that fits nowhere at 30 px, the safe zone and the notch alone in the way: never on today's
+    frame). Written: `box` (the card's place and size).
   - Captions last, in time order, in the space the components leave at each moment (see the order above),
     one spot per sentence (`sentenceSpans`): the sentence's groups all start at the same place, sized for
     its largest group (at most two lines per group); captions inside a transition take its text area as
@@ -571,11 +567,11 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (the h
   allows: an accent or question exactly its words; a big word from the lead before its first word (0.2 s)
   to its last word's end (at least 1.5 s, a target); a visual from its first word to its last word's end
   (1 to 2 s); a list from 0.3 s before its phrase's first word to its last word's end; the hook in its
-  window. No pick cuts another's time. Each pick takes its normal spot when a free one exists. When none
-  does, the old-path pick (a visual) takes its default spot anyway (the top-left corner of the safe
-  zone). The overlap is noted `kept-overlapping` (rule `all-picks`) with
-  what it sits over (the face, other text, named). Text never overlaps other text (Rules). The hook, an
-  accent, a question, a big word or a LIST stack is never set over other text: with no
+  window. No pick cuts another's time. Each pick takes its normal spot when a free one exists; a
+  caption with none sits over other text as the last resort, noted `kept-overlapping` (rule `all-picks`)
+  with what it sits over (named). Text never overlaps other text (Rules). The hook, an
+  accent, a question, a big word, a LIST stack or a visual's card is never set over other text (a card
+  may sit under text, decision 9): with no
   legal spot at 30 px or more it is left out (`no-spot`), its words shown as captions. The only `dropped`
   note is the
   same-text rule's (`src/engine.test.ts`, "every pick shown, or dropped where another pick shows its text"). The fallbacks, each noted:
@@ -608,15 +604,17 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (the h
   `end` are the placed span in seconds. `outcome` is one of `placed`, `moved` (not its kind's first
   place), `shrunk`, `wrapped`, `retimed` (a clamped or moved-off-cut span, a same-text trim), `covers-face`,
   `dropped` (same-text left no word of its own), `no-spot` (a placer element, the hook, an accent, a
-  question or a LIST stack, with no legal spot, left out) or `kept-overlapping` (an old-path text kept
-  over other text; a transitional value, see the layout spec). `blockers` names what took the space it
-  did not get: `{ kind: "item" | "caption", id }` for the texts a kept-overlapping text sits over,
-  `{ kind: "face" }` for a covers-face note; a placer note (the hook's, an accent's, a question's or a
-  stack's) carries the placer's own blockers, with `zone`, `size`, `lines` and `cost` set (a stack's
-  `size` is its key's, its `lines` every level's). Every shown element with no other note gets a
+  question, a big word, a LIST stack or a visual's card, with no legal spot, left out) or
+  `kept-overlapping` (a caption kept over other text; a transitional value, see the layout spec).
+  `blockers` names what took the space it
+  did not get: `{ kind: "item" | "caption", id }` for the texts a kept-overlapping caption sits over,
+  `{ kind: "face" }` for a caption's covers-face note; a placer note (the hook's, an accent's, a
+  question's, a big word's, a stack's or a card's) carries the placer's own blockers, with `zone`,
+  `size`, `lines` and `cost` set (a stack's `size` is its key's, its `lines` every level's; a card's
+  `size` is its width, its `lines` 0). Every shown element with no other note gets a
   `placed` note, so the record names every element. `reason` says in plain words what happened, with the
   item's text and times, for example
-  `{ "item": "visual-1", "component": "VISUAL", "variant": "visual/card", "start": 23.48, "end": 26.23, "rule": "text-overlap", "outcome": "kept-overlapping", "blockers": [{ "kind": "item", "id": "accent-1" }], "reason": "visual 1 sits over the face from 23.48 s to 26.23 s; kept, every pick is shown" }`.
+  `{ "item": "visual-1", "component": "VISUAL", "variant": "visual/card", "start": 5.206, "end": 7.206, "rule": "size", "outcome": "shrunk", "blockers": [{ "kind": "face" }, { "kind": "buttons" }], "zone": "corner", "size": 307, "lines": 0, "cost": 20, "reason": "visual visual-1 shrinks to 307 px from 360 px in a corner from 5.21 s to 7.21 s; the face, the buttons took the room" }`.
   The placer's notes are written in this shape and pass through as they are. The old code paths' rule
   names (the sections above) map to the record's vocabulary
   (`RULE_OF` in `engine-note.ts`): `*-time` and `*-min` are `timing`; `*-spot` is `zone`; `*-size` is
@@ -666,7 +664,8 @@ the platform button column below y 1164` with the right edge past x 945). A tran
 - `out-of-reel`: an anchor that resolved outside the reel and was clamped.
 
 The checks look at overlaps between texts only (`text-overlap`); a visual over the face is noted
-`covers-face` and a visual over a text `kept-overlapping`, like any pick. The glossary check is separate (`src/glossary.ts`, `glossaryChecks`).
+`covers-face` like any front pick, and a visual under a text is no overlap (decision 9: the card draws
+under the text). The glossary check is separate (`src/glossary.ts`, `glossaryChecks`).
 
 ### Versions and restore
 
@@ -743,8 +742,9 @@ never fatal.
 - `yarn turbo run test --filter=./packages/edit`: the `node` and `browser` Vitest projects
   (`vitest.config.ts`); the browser project needs Install step 3's chromium. `turbo.json` passes
   `PLAYWRIGHT_*` and `CI` through. Also the schema, timeline, checks, transitions, clicks, preset,
-  baseline and versions tests, a build of the 50-second edit under 200 ms (`src/build.test.ts`), and
-  `src/behind.test.ts` (spots, visual boxes, mask spans padded, clamped and merged, a visual left out
+  baseline and versions tests, a build of the 50-second edit under 200 ms and a caption drawn above a
+  card that overlaps it (the text track 50 after the visual track 30; `src/build.test.ts`), and
+  `src/behind.test.ts` (visual boxes, mask spans padded, clamped and merged, a visual left out
   of them). Each placed fixture's page and widths are compared with its golden in both projects
   (`src/build.test.ts`, `src/build.browser.test.ts`); the two engine inputs (`rethink-work-hand`,
   `rethink-work-behind`) have no golden, since their captions have no positions.
@@ -780,15 +780,17 @@ never fatal.
     only as noted; determinism; the engine placing its own output the same again.
   - "today's failures, placed by the engine": a transition's text levels kept off the face; a visual
     placed over its sentence, nothing dropped.
-  - "visuals: corner cards over the footage": a card at a corner or beside the face, inside
-    `PLATFORM_SAFE`, clear of the face with no failed check, drawn as a white frame; the full size
-    where a side is free and the smaller step where only it fits; a card over the face only when every
-    corner and side is taken, noted `covers-face`; the size and ratio kept across a
-    reel; a card whose white edge blends with the footage moved, else kept plain and noted
-    `low-contrast`.
+  - "visuals: corner cards over the footage": a card at a corner or beside the face, inside the safe
+    zone, clear of the face with no failed check, drawn as a white frame, never wider than 360 and at
+    4:5; the full card where a corner holds it (the large centred face: the bottom-left corner, `placed`),
+    the strip beside the face at full size where no corner does (the speech-ten head, `moved`, one zone
+    step), and the card shrunk in a corner where that is cheaper (the fixture head: 303 by 378, two
+    shrink steps); a card over the face only when nothing off it holds one (a face filling the safe
+    zone), noted `covers-face`; the ratio kept across a reel; decision 9, a card and an accent said while
+    it shows each placed as when alone, neither among the other's blockers, the card drawn under the text.
   - "clicks on visuals and big words": a click as each placed visual and big word comes in and
-    nothing else (at `data-volume="0.5012"`, the -6 dB click), a visual the face leaves no corner for
-    still clicking, and a stored version's sounds left as they are.
+    nothing else (at `data-volume="0.5012"`, the -6 dB click), a visual the face leaves no spot off it
+    for still clicking, and a stored version's sounds left as they are.
   - "readable text": a caption block moved to a darker free place in its zone, a place kept plain with
     only a note when none reads, an accent not measured (its place kept over a light sweater, no
     contrast note), a big word left in place on a light background, nothing changed on a dark
@@ -862,9 +864,9 @@ never fatal.
 - Anchors are words; seconds only where nobody speaks.
 - Claude never writes times, positions or sizes: every one in a decided version comes from the
   layout engine, never from the answer.
-- Never let an overlap pass silently: a front pick placed over the face is noted `covers-face` (its rule
-  per kind), and a pick placed over other text or another pick is kept and noted (`kept-overlapping`, rule
-  `all-picks`).
+- Never let an overlap pass silently: a front pick placed over the face is noted `covers-face` (rule
+  `face`; a caption's `caption-face`), and a caption placed over other text is kept and noted
+  (`kept-overlapping`, rule `all-picks`). A text over a visual's card is no overlap (decision 9).
 - Never overlap two texts on screen at a shared moment while a free spot exists for the later one (at any
   candidate and size, the face avoided first): a text is placed clear of every text it shares a moment with,
   and keeps its default spot over other text only when none exists. The note names the pair (`with`), and
@@ -906,13 +908,14 @@ never fatal.
 - Never move a big word up for the head: a big word the face covers more of than the lower 30%
   (`behind.word.minVisible`) is kept and noted. Never place one above `PLATFORM_SAFE`'s top.
 - Never let a visual leave its card: it is a corner card in front of the speaker, never behind them,
-  always inside `PLATFORM_SAFE`. It takes a free spot off the face, an accent, the hook, a big word, a
-  list level and the button column at the full size, else at `card.smaller`; only when neither is free
-  does it cover the face (noted `covers-face`, rule `visual-face`), and only when no spot off other text is
-  free does it sit over other text (noted `kept-overlapping`). The engine, never Claude, chooses its place
-  and size.
+  always inside the safe zone `S` and off the button column. The placer gives it a corner, then the strip
+  beside the face, the full card (360 by 450) where the spot holds it, else shrunk from it at 4:5 in 10%
+  steps, never under 30 px wide; only when nothing off the face holds a card does it cover the face
+  (noted `covers-face`, rule `face`). Text is no obstacle to the card and the card none to text: a text
+  may sit on a card, and the card always draws under it (track 30 under the text track 50). The engine,
+  never Claude, chooses its place and size.
 - Never give a visual a fill, a text, a shadow or a colour change: its white stroke is its frame. A
-  visual whose white edge blends with the footage moves, else stays, recorded `low-contrast`.
+  visual is never moved for contrast (readability is out, build step 11 removes the rest).
 - Never cut out (no mask span, no mask) for a visual: only a big word behind the speaker has a mask.
 - Never let Claude write a transition's time, position or size, nor a literal font or colour in a
   transition entry: they come from the words and the style roles.
@@ -933,10 +936,10 @@ never fatal.
   over footage hidden for the whole reel (no visible moment to move it to).
 - The face is a preference for every front element (the hook, accents, questions, list levels, visual
   cards and captions): a spot off the face and off other text first; then over the face but off other
-  text, only when no spot off the face is free at any candidate and size (`covers-face`); then, on the
-  old code paths only, over other text (`kept-overlapping`). A placer element (the hook, an accent, a
+  text, only when no spot off the face is free at any candidate and size (`covers-face`); then, for
+  captions only, over other text (`kept-overlapping`). A placer text (the hook, an accent, a
   question, a big word, a LIST stack) is never set over other text: with no legal spot it is left out
-  (`no-spot`). Never set a text above its style's
+  (`no-spot`); a visual's card is no obstacle to text and text none to it (decision 9). Never set a text above its style's
   base size (`accent` 110, `caption` 50): the placer only shrinks from it; the big word alone takes the
   largest fit, anchored at the head top (never a roomier spot elsewhere). The body under the face is no
   obstacle to any of them. A big word is behind

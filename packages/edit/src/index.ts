@@ -19,8 +19,6 @@ export {
   type PresetFont,
   type TransitionKind,
   type SoundKey,
-  type BehindSpot,
-  BEHIND_SPOTS,
   FONT_KEYS,
   ISSEBYA_PRESET,
   PLATFORM_BUTTONS,
@@ -106,7 +104,7 @@ export { type ResolvedItem, resolveTimeline } from "./timeline.ts";
 export { type TextBox } from "./engine-space.ts";
 export { type Check, type CheckRule, runChecks } from "./checks.ts";
 export { type AssetRole, type BuildAsset, type BuildResult, build, maskPath } from "./build.ts";
-export { type BigWordBox, type MaskSpan, maskSpans, spotBox, spotFaceShare } from "./behind.ts";
+export { type BigWordBox, type MaskSpan, maskSpans } from "./behind.ts";
 export { baselineEdit } from "./baseline.ts";
 export {
   type ChecklistOutcome,

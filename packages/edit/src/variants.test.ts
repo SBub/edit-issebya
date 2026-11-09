@@ -83,6 +83,21 @@ describe("the variant entries", () => {
       "visual/card",
     ]);
     expect(VARIANTS["visual/card"]).toMatchObject({ aspect: "4/5", width: "1/3" });
+    // Today's values: the card's share and ratio read back to the preset's
+    // (`behind.card.widthShare`, `aspect`), so the two agree while both exist.
+    const ratio = (text: string) =>
+      text
+        .split("/")
+        .map(Number)
+        .reduce((a, b) => a / b);
+    expect(ratio(VARIANTS["visual/card"].width)).toBeCloseTo(
+      ISSEBYA_PRESET.behind.card.widthShare,
+      12,
+    );
+    expect(ratio(VARIANTS["visual/card"].aspect)).toBeCloseTo(
+      ISSEBYA_PRESET.behind.card.aspect,
+      12,
+    );
     expect(VARIANTS["list/numbered"].levels.map((level) => level.role)).toEqual([
       "number",
       "lead",

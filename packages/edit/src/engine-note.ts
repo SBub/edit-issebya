@@ -139,9 +139,7 @@ const RULE_OF: Record<string, string> = {
   "big-word-spot": "zone",
   "caption-size": "size",
   "big-word-size": "size",
-  "visual-size": "size",
   "caption-face": "face",
-  "visual-face": "face",
 };
 
 const seconds = (t: number) => `${t.toFixed(2)} s`;

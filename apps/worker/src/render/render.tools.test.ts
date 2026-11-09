@@ -337,7 +337,8 @@ describe("the real render behind the speaker", () => {
   }
 
   it("renders a VISUAL in its box and a big word, each changing only its own part", async () => {
-    const left = ISSEBYA_PRESET.behind.spots.left;
+    // A card's box as the layout engine would set it beside the speaker.
+    const left = { left: 40, right: 400, top: 560, bottom: 1010 };
     const visual = await renderBehind("behind-visual", {
       id: "behind-visual",
       kind: "visual",

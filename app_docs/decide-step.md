@@ -104,9 +104,9 @@ placed first):
 - `visuals`: each VISUAL sits over its words, with a `description` of what a visual would show: a
   plain line of at most 8 words and 80 characters, with words in it. The description is data for the
   owner and the trace, never shown on screen. The layout puts the frame as a small corner card (a third
-  of the frame's width, in front of the speaker): a corner of the safe zone or beside the face, never
-  over the face, the smaller step before the corner fallback (`app_docs/edit-model.md`, "Preset values" and "Layout
-  engine"). A new answer names no photo: a `photo_id` is refused
+  of the frame's width, in front of the speaker): a corner of the safe zone or beside the face, shrunk
+  where the spot is smaller, over the face only as a noted last resort (`app_docs/edit-model.md`,
+  "Preset values" and "Layout engine"). A new answer names no photo: a `photo_id` is refused
   like any unknown key. The description is stored on the placed item (`tracks.behind[].description`, optional)
   and read back by `choicesOf`.
 - Behind lengths: a VISUAL shows 1 to 2 s (`behind.minSeconds`, `maxSeconds`), a big word

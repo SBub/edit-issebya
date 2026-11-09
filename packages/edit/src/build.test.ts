@@ -5,6 +5,7 @@ import { FIXTURES, PLACED_FIXTURES } from "./test-support/fixtures.ts";
 import { goldenOf } from "./test-support/golden.ts";
 import { GOLDENS } from "./test-support/goldens.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
+import { resolveTimeline } from "./timeline.ts";
 import {
   editTransitionLevels,
   TRANSITION_LEVELS,
@@ -127,6 +128,37 @@ describe("build", () => {
       '<div id="visual-1" class="clip visual" alt="" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 600px; top: 300px; width: 400px; height: 300px"></div>',
     );
     expect(assets.some((asset) => asset.role === "mask")).toBe(false);
+  });
+
+  it("draws a caption above a card that overlaps it: the card's track under the text track (decision 9)", async () => {
+    // A card may sit under a caption (text is no obstacle to a card and a card
+    // none to text); the caption stays visible because the text track (50)
+    // renders above the visual track (30), later in the page.
+    const edit = structuredClone(engine.edit);
+    const measurer = await nodeMeasurer();
+    const spans = resolveTimeline(edit, engine.transcript);
+    const card = edit.tracks.behind!.find((item) => item.kind === "visual")!;
+    const cardSpan = spans.get(card.id)!;
+    const caption = edit.tracks.captions.find((item) => {
+      const span = spans.get(item.id)!;
+      return item.position && span.start < cardSpan.end && cardSpan.start < span.end;
+    })!;
+    card.box = {
+      x: caption.position!.x - 20,
+      y: caption.position!.y - 20,
+      width: 360,
+      height: 450,
+    };
+    const { html } = build(edit, engine.transcript, engine.headTrack, ISSEBYA_PRESET, measurer);
+    const cardAt = html.indexOf(`<div id="${card.id}" class="clip visual"`);
+    const textAt = html.indexOf('<div id="text" class="clip" data-start="0.000"');
+    const captionAt = html.indexOf(`<span id="${caption.id}" class="text`);
+    expect(cardAt).toBeGreaterThan(-1);
+    expect(textAt).toBeGreaterThan(cardAt);
+    expect(captionAt).toBeGreaterThan(textAt);
+    const trackOf = (at: number) => Number(/data-track-index="(\d+)"/.exec(html.slice(at))![1]);
+    expect(trackOf(cardAt)).toBe(30);
+    expect(trackOf(textAt)).toBe(50);
   });
 
   it("renders a text with two breaks in three lines", async () => {

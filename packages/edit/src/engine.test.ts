@@ -847,10 +847,10 @@ describe("today's failures, placed by the engine", () => {
 describe("visuals: corner cards over the footage", () => {
   const { card } = ISSEBYA_PRESET.behind;
   const gap = ISSEBYA_PRESET.layout.gap;
-  // The card at its full size and at the smaller step: a third of the frame's
-  // width, 4:5 (360 by 450), and 0.7 of that (252 by 315).
+  // The card's full size, the `visual/card` entry's width share (a third of the
+  // frame's width) at 4:5: 360 by 450. The placer shrinks from it in 10% steps
+  // where the spot is smaller, so a card is never wider and keeps its ratio.
   const FULL = { width: 360, height: 450 };
-  const SMALLER = { width: 252, height: 315 };
   // The speech-ten reel's speaker: a head about 336 px wide, its top near
   // y 568 and its centre near x 600 (the median of its head track).
   const SPEECH_TEN = steadyHead({ head_top: 568, cx: 600, head_w: 336 });
@@ -864,6 +864,13 @@ describe("visuals: corner cards over the footage", () => {
   });
   const meets = (a: Box, b: Box) =>
     a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  // The card's size: at most the full card, its height from its width at 4:5.
+  const expectCardSize = (visual: { box?: { width: number; height: number } }) => {
+    const { width, height } = visual.box!;
+    expect(width).toBeLessThanOrEqual(FULL.width);
+    expect(width).toBeGreaterThanOrEqual(MIN_SIZE_PX);
+    expect(height).toBe(Math.floor(width / card.aspect));
+  };
 
   it("places a visual as a corner card or beside the face, clear of it, as a white frame", async () => {
     for (const headTrack of [SPEECH_TEN, LEFT_HEAD, BIG_FACE]) {
@@ -875,26 +882,30 @@ describe("visuals: corner cards over the footage", () => {
       const [visual] = cardsOf(edit);
       expect(visual).toMatchObject({ id: "visual-1", kind: "visual" });
       const box = boxOf(visual!);
-      const { width, height } = visual!.box!;
-      expect([FULL, SMALLER]).toContainEqual(expect.objectContaining({ width, height }));
-      expect(width / height).toBeCloseTo(card.aspect, 2);
-      // Inside the platform safe zone, and off the face (each of these heads
-      // leaves a corner or side free; see the cover test below).
-      expect(box.left).toBeGreaterThanOrEqual(PLATFORM_SAFE.left);
-      expect(box.right).toBeLessThanOrEqual(PLATFORM_SAFE.right);
-      expect(box.top).toBeGreaterThanOrEqual(PLATFORM_SAFE.top);
-      expect(box.bottom).toBeLessThanOrEqual(PLATFORM_SAFE.bottom);
+      expectCardSize(visual!);
+      // Inside the safe zone, and off the face (each of these heads leaves a
+      // corner or side free; see the cover test below).
+      expect(box.left).toBeGreaterThanOrEqual(SAFE_ZONE.box.left);
+      expect(box.right).toBeLessThanOrEqual(SAFE_ZONE.box.right);
+      expect(box.top).toBeGreaterThanOrEqual(SAFE_ZONE.box.top);
+      expect(box.bottom).toBeLessThanOrEqual(SAFE_ZONE.box.bottom);
       const span = spans.get("visual-1")!;
       const faces = facesOver(headTrack, span.start, span.end);
       for (const face of faces) expect(meets(box, face)).toBe(false);
-      // At a corner of the safe zone, or beside the face.
+      // At a corner of the safe zone (its own corner on the inset corner), or
+      // beside the face: its edge towards the face at the padded face box,
+      // within the strip from the face's top to 120 px below it.
       const atCorner =
-        (box.left === PLATFORM_SAFE.left + card.inset ||
-          box.right === PLATFORM_SAFE.right - card.inset) &&
-        (box.top === PLATFORM_SAFE.top + card.inset ||
-          box.bottom === PLATFORM_SAFE.bottom - card.inset);
+        (box.left === SAFE_ZONE.box.left + card.inset ||
+          box.right === SAFE_ZONE.box.right - card.inset) &&
+        (box.top === SAFE_ZONE.box.top + card.inset ||
+          box.bottom === SAFE_ZONE.box.bottom - card.inset);
       const beside = faces.some(
-        (face) => box.right === face.left - gap || box.left === face.right + gap,
+        (face) =>
+          (box.right <= face.left - LAYOUT_PADDING.left ||
+            box.left >= face.right + LAYOUT_PADDING.right) &&
+          box.top >= face.top - gap &&
+          box.bottom <= face.bottom + 120,
       );
       expect(atCorner || beside).toBe(true);
       // The frame: a white stroke at the preset's width, no picture, no words,
@@ -908,45 +919,84 @@ describe("visuals: corner cards over the footage", () => {
     }
   });
 
-  it("takes the full card size where a corner or side is free, and the smaller step before the corner overlap", async () => {
+  it("takes the full card where a corner or side holds it, and shrinks from it in 10% steps where none does", async () => {
+    // The large centred face: the bottom-left corner holds the full card.
     const roomy = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: BIG_FACE });
-    const [full] = cardsOf(roomy.edit);
-    expect({ width: full!.box!.width, height: full!.box!.height }).toEqual(FULL);
-    expect(roomy.record.filter((note) => note.rule === "size")).toEqual([]);
-    // The speech-ten head: no corner or side takes the full card, the 0.7 step does.
+    expect(cardsOf(roomy.edit)[0]!.box).toEqual({ x: 75, y: 980, ...FULL });
+    expect(roomy.record.filter((note) => note.item === "visual-1")).toEqual([
+      expect.objectContaining({ outcome: "placed", zone: "corner", size: 360, cost: 0 }),
+    ]);
+    // The speech-ten head: no corner holds the full card off the face, the
+    // strip beside it does: one zone step (10) beats two shrink steps (20),
+    // and the card sits at the face's padded edge, full size, noted `moved`.
     const tight = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: SPEECH_TEN });
-    const [smaller] = cardsOf(tight.edit);
-    expect({ width: smaller!.box!.width, height: smaller!.box!.height }).toEqual(SMALLER);
-    expect(tight.record).toContainEqual(
+    expect(cardsOf(tight.edit)[0]!.box).toEqual({ x: 37, y: 663, ...FULL });
+    expect(tight.record.filter((note) => note.item === "visual-1")).toEqual([
       expect.objectContaining({
-        item: "visual-1",
-        outcome: "shrunk",
-        rule: "size",
+        outcome: "moved",
+        rule: "zone",
+        zone: "beside-face",
+        size: 360,
+        cost: 10,
+        // The corner zone's inset box reaches the button column too.
+        blockers: [{ kind: "face" }, { kind: "buttons" }],
         reason: expect.stringMatching(
-          /^visual 1 set at 252 by 315 px instead of 360 by 450: no corner or side is free at full size from .+ to .+$/,
+          /^visual visual-1 moves beside the face from .+ to .+; the face, the buttons took a corner$/,
         ),
       }),
-    );
+    ]);
     expect(tight.checks).toEqual([]);
+    // The fixture reel's head (its bottom near y 1039): the bottom-left corner
+    // holds 378 px of height, so the card shrinks to 303 by 378 (two steps, 20),
+    // cheaper than the strip beside the face (a zone step and two shrink steps).
+    const low = await place({ visuals: [{ from: "w84", to: "w99" }] });
+    expect(cardsOf(low.edit)[0]!.box).toEqual({ x: 75, y: 1052, width: 303, height: 378 });
+    expect(low.record.filter((note) => note.item === "visual-1")).toEqual([
+      expect.objectContaining({
+        outcome: "shrunk",
+        rule: "size",
+        zone: "corner",
+        size: 303,
+        cost: 20,
+        blockers: [{ kind: "face" }, { kind: "buttons" }],
+        reason: expect.stringMatching(
+          /^visual visual-1 shrinks to 303 px from 360 px in a corner from .+ to .+; the face, the buttons took the room$/,
+        ),
+      }),
+    ]);
+    expect(low.checks).toEqual([]);
   });
 
-  it("covers the face with a card only when every corner and side is taken, noted covers-face", async () => {
+  it("covers the face with a card only when nothing off it holds one, noted covers-face", async () => {
     const covers = (record: { outcome: string }[]) =>
       record.filter((note) => note.outcome === "covers-face");
     // A corner or side is free at the full size: no cover, no note.
     const roomy = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: BIG_FACE });
     expect(covers(roomy.record)).toEqual([]);
-    // Only the smaller step fits off the face: still not over it.
+    // The strip beside the face holds it: still not over the face.
     const tight = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: SPEECH_TEN });
     expect(covers(tight.record)).toEqual([]);
-    // A face filling the safe zone takes every corner and side at both sizes.
+    // A face filling the safe zone leaves no spot off it at 30 px or more: the
+    // card covers it (the face cost, 100) at its first corner, full size.
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
     const covered = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: huge });
-    const card = covered.record.filter((note) => note.item === "visual-1");
-    expect(card).toEqual([expect.objectContaining({ outcome: "covers-face", rule: "face" })]);
+    expect(cardsOf(covered.edit)[0]!.box).toEqual({ x: 75, y: 260, ...FULL });
+    expect(covered.record.filter((note) => note.item === "visual-1")).toEqual([
+      expect.objectContaining({
+        outcome: "covers-face",
+        rule: "face",
+        zone: "corner",
+        size: 360,
+        cost: 100,
+        blockers: [{ kind: "face" }, { kind: "buttons" }],
+        reason: expect.stringMatching(
+          /^visual visual-1 covers the face in a corner from .+ to .+; no spot off the face was free$/,
+        ),
+      }),
+    ]);
   });
 
-  it("keeps the card's size and ratio across the reel", async () => {
+  it("keeps the card's ratio across the reel", async () => {
     const { edit, checks } = await place(
       {
         visuals: [
@@ -960,60 +1010,31 @@ describe("visuals: corner cards over the footage", () => {
     expect(checks).toEqual([]);
     const placed = cardsOf(edit);
     expect(placed.length).toBeGreaterThanOrEqual(2);
-    for (const visual of placed) {
-      const { width, height } = visual.box!;
-      expect([FULL, SMALLER]).toContainEqual(expect.objectContaining({ width, height }));
-      expect(width / height).toBeCloseTo(card.aspect, 2);
-    }
+    for (const visual of placed) expectCardSize(visual);
   });
 
-  it("moves a visual whose white edge blends with the footage, else keeps it plain and records it", async () => {
-    const FRAME = ISSEBYA_PRESET.frame;
-    const input = { visuals: [{ from: "w84", to: "w99" }] };
-    const plain = await place(input);
-    const first = boxOf(cardsOf(plain.edit)[0]!);
-    // A light area just around where it would sit, dark everywhere else.
-    const wall = backgroundSampler(
-      backgroundMapOf(FRAME, hand.edit.duration, (x, y) =>
-        x >= first.left - 200 &&
-        x < first.right + 200 &&
-        y >= first.top - 200 &&
-        y < first.bottom + 200
-          ? "#E8E8E8"
-          : "#202020",
-      ),
-      FRAME,
-    );
-    // Its white edge is measured against the light area around it: a note
-    // says whether it moved to a place that stands out or stays.
-    const measured = await place(input, { backgrounds: wall });
-    expect(measured.checks).toEqual([]);
-    expect(
-      measured.record.filter((note) => note.item === "visual-1" && note.rule === "contrast"),
-    ).toHaveLength(1);
-    // Light everywhere: it stays, a plain frame with no shadow or colour change.
-    const allLight = backgroundSampler(
-      backgroundMapOf(FRAME, hand.edit.duration, () => "#E8E8E8"),
-      FRAME,
-    );
-    const kept = await place(input, { backgrounds: allLight });
-    expect(boxOf(cardsOf(kept.edit)[0]!)).toEqual(first);
-    expect(kept.record).toContainEqual(
-      expect.objectContaining({
-        item: "visual-1",
-        outcome: "placed",
-        rule: "contrast",
-        reason: expect.stringMatching(
-          /^visual 1 stays in place: contrast 1\.\d:1 against the footage around it from .+, no free place nearby reaches 1\.5:1; a visual never gets a shadow or a colour change$/,
-        ),
-      }),
-    );
-    expect(kept.html).not.toMatch(/<div id="visual-1"[^>]*(shadow|filter)/);
-    // Without a background map nothing is measured.
-    const unknown = await place(input);
-    expect(
-      unknown.record.filter((note) => note.item === "visual-1" && note.rule === "contrast"),
-    ).toEqual([]);
+  it("is no obstacle to a text and sees none: a text may sit on a card (decision 9)", async () => {
+    // An accent said while the card shows, with the head at the left: the card
+    // alone takes the top-right corner; the accent alone sits above the head.
+    const input = {
+      accents: [{ from: "w84", to: "w86" }],
+      visuals: [{ from: "w84", to: "w99" }],
+    };
+    const both = await place(input, { headTrack: LEFT_HEAD });
+    const cardAlone = await place({ visuals: input.visuals }, { headTrack: LEFT_HEAD });
+    const accentAlone = await place({ accents: input.accents }, { headTrack: LEFT_HEAD });
+    expect(both.checks).toEqual([]);
+    // Neither moved for the other: the card's box and the accent's place are
+    // the same as when each is placed alone, and neither names the other.
+    expect(cardsOf(both.edit)[0]!.box).toEqual(cardsOf(cardAlone.edit)[0]!.box);
+    const [accent] = both.edit.tracks.overlays;
+    expect(accent!.position).toEqual(accentAlone.edit.tracks.overlays[0]!.position);
+    expect(accent!.size).toBe(accentAlone.edit.tracks.overlays[0]!.size);
+    const named = both.record.flatMap((note) => note.blockers.map((blocker) => blocker));
+    expect(named).not.toContainEqual({ kind: "item", id: "visual-1" });
+    expect(named).not.toContainEqual({ kind: "item", id: "accent-1" });
+    // The card is drawn under the text: its track (30) below the text track (50).
+    expect(both.html.indexOf('id="visual-1"')).toBeLessThan(both.html.indexOf('id="accent-1"'));
   });
 });
 
@@ -1046,7 +1067,7 @@ describe("clicks on visuals and big words", () => {
     expect(html).toMatch(/<audio id="click-visual-1" class="clip" [^>]*data-volume="0\.5012">/);
   });
 
-  it("clicks a visual the face leaves no corner for, and has no click without visuals or big words", async () => {
+  it("clicks a visual the face leaves no spot off it for, and has no click without visuals or big words", async () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
     const shown = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: huge });
     expect(shown.edit.tracks.behind).toEqual([expect.objectContaining({ id: "visual-1" })]);
@@ -2140,7 +2161,7 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
         outcome: "covers-face",
         rule: "face",
         reason: expect.stringMatching(
-          /^visual 1 covers the face from .+ to .+: no spot off the face/,
+          /^visual visual-1 covers the face in a corner from .+ to .+; no spot off the face was free$/,
         ),
       }),
     );

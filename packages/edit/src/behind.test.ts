@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { maskSpans, needsCutout, spotBox, spotFaceShare, visualBox } from "./behind.ts";
+import { maskSpans, needsCutout, visualBox } from "./behind.ts";
 import { build } from "./build.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import type { BehindItem, BehindWordItem, Edit } from "./schema.ts";
@@ -31,40 +31,6 @@ function withBehind(
   }));
   return edit;
 }
-
-describe("spotFaceShare", () => {
-  it("is 0 without a face", () => {
-    expect(spotFaceShare("left", null, ISSEBYA_PRESET)).toBe(0);
-  });
-
-  it("is the face's area over the spot's for a face inside the spot", () => {
-    const face = { left: 100, right: 300, top: 600, bottom: 900 };
-    expect(spotFaceShare("left", face, ISSEBYA_PRESET)).toBeCloseTo((200 * 300) / (460 * 620), 9);
-  });
-
-  it("is 0 for a face outside the spot", () => {
-    const face = { left: 600, right: 900, top: 600, bottom: 900 };
-    expect(spotFaceShare("left", face, ISSEBYA_PRESET)).toBe(0);
-  });
-});
-
-describe("spotBox", () => {
-  it("gives each spot's preset rectangle", () => {
-    expect(spotBox("top", ISSEBYA_PRESET)).toEqual({ left: 90, right: 990, top: 160, bottom: 760 });
-    expect(spotBox("left", ISSEBYA_PRESET)).toEqual({
-      left: 40,
-      right: 500,
-      top: 560,
-      bottom: 1180,
-    });
-    expect(spotBox("right", ISSEBYA_PRESET)).toEqual({
-      left: 580,
-      right: 1040,
-      top: 560,
-      bottom: 1180,
-    });
-  });
-});
 
 describe("visual boxes", () => {
   const item = (more: Partial<BehindItem> = {}) =>
@@ -171,7 +137,7 @@ describe("build with behind items", () => {
       await nodeMeasurer(),
     );
     expect(html).toContain(
-      `<div id="visual-1" class="clip visual" alt="" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 75px; top: 1115px; width: 252px; height: 315px"></div>`,
+      `<div id="visual-1" class="clip visual" alt="" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 75px; top: 1047px; width: 307px; height: 383px"></div>`,
     );
     expect(html).not.toContain("photo");
     expect(assets.filter((asset) => !["font", "sound"].includes(asset.role))).toEqual([
