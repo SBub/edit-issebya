@@ -46,7 +46,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 330.12,
+          "x": 375.12,
           "y": 1290,
           "align": "left"
         }
@@ -65,7 +65,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 434.57,
+          "x": 479.57,
           "y": 1290,
           "align": "left"
         }
@@ -84,7 +84,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 488.77,
+          "x": 533.77,
           "y": 1290,
           "align": "left"
         }
@@ -103,7 +103,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 530.27,
+          "x": 575.27,
           "y": 1290,
           "align": "left"
         }
@@ -123,7 +123,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 445.95,
+          "x": 490.95,
           "y": 1290,
           "align": "left"
         }
@@ -142,7 +142,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 228,
+          "x": 273,
           "y": 1290,
           "align": "left"
         }
@@ -161,7 +161,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 330.45,
+          "x": 375.45,
           "y": 1290,
           "align": "left"
         }
@@ -180,7 +180,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 410.45,
+          "x": 455.45,
           "y": 1290,
           "align": "left"
         }
@@ -199,7 +199,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 502.7,
+          "x": 547.7,
           "y": 1290,
           "align": "left"
         }
@@ -218,7 +218,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 609.2,
+          "x": 654.2,
           "y": 1290,
           "align": "left"
         }
@@ -239,10 +239,10 @@
         },
         "kind": "hook",
         "text": "A short test for the real studio",
-        "size": 99,
+        "size": 110,
         "position": {
-          "x": 166,
-          "y": 260,
+          "x": 174,
+          "y": 220,
           "align": "left"
         },
         "break_after": 4

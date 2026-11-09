@@ -3,6 +3,7 @@ import type { Backgrounds } from "./background.ts";
 import type { EngineNote } from "./engine-note.ts";
 import { placeEdit } from "./engine.ts";
 import { type EngineInput, QUESTION_PREFIX } from "./engine-input.ts";
+import { SAFE_ZONE } from "./engine-zones.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
@@ -275,7 +276,7 @@ export function editFromAnswer(
   };
   const parsed = parseEdit(json, preset, transcript, {
     duration: current.duration,
-    bounds: preset.safe,
+    bounds: SAFE_ZONE.box,
     behindLengths: true,
   });
   return parsed.ok ? { ok: true, edit: parsed.edit, record } : parsed;

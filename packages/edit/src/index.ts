@@ -71,6 +71,14 @@ export {
 export { type EngineNote } from "./engine-note.ts";
 export { placeEdit } from "./engine.ts";
 export {
+  type Point,
+  type SafeZone,
+  type ZoneName,
+  type ZonePart,
+  SAFE_ZONE,
+  zonesAt,
+} from "./engine-zones.ts";
+export {
   type BackgroundMap,
   type Backgrounds,
   BACKGROUND_GRID,

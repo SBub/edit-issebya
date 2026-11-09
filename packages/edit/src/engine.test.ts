@@ -6,6 +6,7 @@ import { build } from "./build.ts";
 import { editFromAnswer } from "./decide.ts";
 import { placeEdit } from "./engine.ts";
 import { type EngineInput, choicesOf } from "./engine-input.ts";
+import { SAFE_ZONE } from "./engine-zones.ts";
 import { wordsText } from "./glossary.ts";
 import { LAYOUT_PADDING, type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE, SHOWN_FLOOR_SECONDS } from "./preset.ts";
@@ -741,8 +742,9 @@ describe("the layout engine's placement", () => {
     expect(facesOver(glitch, at, at)[0]!.top).toBeGreaterThan(300);
   });
 
-  it("shrinks or wraps an accent wider than the frame to fit the safe zone", async () => {
+  it("wraps an accent wider than the frame to fit the safe zone", async () => {
     // "social media has given us" is about 1400 px at 110 px, the frame 1080.
+    // Two lines at full size fit the safe zone's width, so it keeps 110 px.
     const { edit, record, checks } = await place(
       { accents: [{ from: "w63", to: "w67" }] },
       { headTrack: BIG_FACE },
@@ -750,10 +752,10 @@ describe("the layout engine's placement", () => {
     const accent = edit.tracks.overlays[0]!;
     expect(accent.id).toBe("accent-1");
     expect(accent.break_after).toBeGreaterThan(0);
-    expect(accent.size).toBeLessThan(110);
-    expect(record.filter((note) => note.item === "accent-1").map((note) => note.outcome)).toEqual(
-      expect.arrayContaining(["shrunk", "wrapped"]),
-    );
+    expect(accent.size).toBe(110);
+    expect(record.filter((note) => note.item === "accent-1").map((note) => note.outcome)).toEqual([
+      "wrapped",
+    ]);
     expect(checks).toEqual([]);
   });
 
@@ -1293,9 +1295,9 @@ describe("transitions", () => {
     expect(checks).toEqual([]);
   });
 
-  it("sets the lead-in in caption text and the key phrase in accent text, inside its area and the safe zone", async () => {
+  it("sets the lead-in in caption text and the key phrase in accent text, inside the safe zone", async () => {
     const { levels, checks } = await place({ lists: [{ items: [LIST] }] }, { headTrack: BIG_FACE });
-    const area = ISSEBYA_PRESET.transitions.numbered.area;
+    const { box: safe } = SAFE_ZONE;
     const lead = levels.find((level) => level.role === "lead")!;
     const key = levels.find((level) => level.role === "key")!;
     expect([lead.font, lead.color]).toEqual([
@@ -1307,12 +1309,10 @@ describe("transitions", () => {
       ISSEBYA_PRESET.accent.color,
     ]);
     for (const level of levels) {
-      for (const box of [area, ISSEBYA_PRESET.safe, PLATFORM_SAFE]) {
-        expect(level.x).toBeGreaterThanOrEqual(box.left - 1e-6);
-        expect(level.x + level.width).toBeLessThanOrEqual(box.right + 1e-6);
-        expect(level.y).toBeGreaterThanOrEqual(box.top - 1e-6);
-        expect(level.y + level.height).toBeLessThanOrEqual(box.bottom + 1e-6);
-      }
+      expect(level.x).toBeGreaterThanOrEqual(safe.left - 1e-6);
+      expect(level.x + level.width).toBeLessThanOrEqual(safe.right + 1e-6);
+      expect(level.y).toBeGreaterThanOrEqual(safe.top - 1e-6);
+      expect(level.y + level.height).toBeLessThanOrEqual(safe.bottom + 1e-6);
       if (level.y + level.height > PLATFORM_BUTTONS.top) {
         expect(level.x + level.width).toBeLessThanOrEqual(PLATFORM_BUTTONS.left);
       }
@@ -1460,7 +1460,7 @@ describe("a request's visual", () => {
   const FLOOR = Math.ceil(
     ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.caption.font].size * ISSEBYA_PRESET.layout.minScale,
   );
-  const { safe } = ISSEBYA_PRESET;
+  const { box: safe } = SAFE_ZONE;
 
   // Never a caption removed for room: the same captions and words as the
   // plain pass, each placed inside the safe zone, never below the floor.
@@ -1538,7 +1538,7 @@ describe("a request's visual", () => {
 
 describe("the written hook", () => {
   const HOOK = { text: "Gen Z won't work like you did" };
-  const { safe } = ISSEBYA_PRESET;
+  const { box: safe } = SAFE_ZONE;
   const { fromSeconds, untilSeconds } = ISSEBYA_PRESET.pace.hook;
   const hookOf = (edit: Edit) => edit.tracks.overlays.find((item) => item.kind === "hook");
   // A face at the top, narrow enough that the hook fits beside it only when

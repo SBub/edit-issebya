@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { SAFE_ZONE } from "./engine-zones.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import { editSchemaFor, parseEdit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
@@ -116,10 +117,10 @@ describe("parseEdit", () => {
   });
 
   it("accepts a frame-wide position without limits, refuses it with the safe box", () => {
-    const json = withCaption((caption) => (caption.position = { x: 900, y: 700, align: "left" }));
+    const json = withCaption((caption) => (caption.position = { x: 1060, y: 700, align: "left" }));
     expect(parseEdit(json, ISSEBYA_PRESET, hand.transcript)).toMatchObject({ ok: true });
     const bounded = parseEdit(json, ISSEBYA_PRESET, hand.transcript, {
-      bounds: ISSEBYA_PRESET.safe,
+      bounds: SAFE_ZONE.box,
     });
     expect(bounded.ok).toBe(false);
   });

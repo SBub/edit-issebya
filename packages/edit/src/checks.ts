@@ -1,15 +1,9 @@
 import type { BigWordBox } from "./behind.ts";
 import type { EngineNote } from "./engine-note.ts";
 import type { TextBox } from "./engine-space.ts";
+import { SAFE_ZONE } from "./engine-zones.ts";
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
-import {
-  PLATFORM_BUTTONS,
-  PLATFORM_SAFE,
-  type Preset,
-  SHOWN_FLOOR_SECONDS,
-  cleanWord,
-  intersectBox,
-} from "./preset.ts";
+import { type Preset, SHOWN_FLOOR_SECONDS, cleanWord } from "./preset.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import type { ResolvedItem } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -58,8 +52,8 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
 
-// The layout checks, in a stable order: text inside the safe box, never past
-// the platform guard nor over its button column whatever the preset says, big
+// The layout checks, in a stable order: text inside the safe zone S (the
+// platform guard, never past it nor over its button column), big
 // words behind the speaker inside the frame (they cross the safe box by
 // design), captions clear of the face, no two texts on screen at a shared
 // moment overlapping (`text-overlap`), captions and accents at least their
@@ -89,7 +83,7 @@ export function runChecks(
   record: readonly EngineNote[] = [],
 ): Check[] {
   const checks: Check[] = [];
-  const safe = intersectBox(preset.safe, PLATFORM_SAFE);
+  const safe = SAFE_ZONE.box;
 
   for (const box of [...boxes, ...levels]) {
     const right = box.x + box.width;
@@ -106,9 +100,9 @@ export function runChecks(
         reason: `${label(box)} runs past the safe box: ${edges.join(", ")}`,
       });
     } else if (
-      overlaps({ left: box.x, right, top: box.y, bottom }, shrink(PLATFORM_BUTTONS, SLACK))
+      overlaps({ left: box.x, right, top: box.y, bottom }, shrink(SAFE_ZONE.notch, SLACK))
     ) {
-      const { left, top } = PLATFORM_BUTTONS;
+      const { left, top } = SAFE_ZONE.notch;
       checks.push({
         rule: "safe-box",
         item: box.itemId,

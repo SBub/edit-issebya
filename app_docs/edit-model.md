@@ -93,11 +93,10 @@ start, end }] }`).
 
 `src/preset.ts`, `ISSEBYA_PRESET`, the values of the approved `rethink-work` reel:
 
-- Frame 1080x1920; safe box left 130, right 860, top 260, bottom 1400. Text never leaves it. It is
-  the style's own box (130, 860, 260, 1400, `STYLE_SAFE`) cut to `PLATFORM_SAFE` with
-  `intersectBox`; with the current zone the style's box lies wholly inside the guard, so the cut
-  changes nothing. It stays a rectangle for the placement code; the button-column notch is left to
-  the `safe-box` check.
+- Frame 1080x1920. The one safe zone `S` (`SAFE_ZONE` in `src/engine-zones.ts`, `box` and `notch`)
+  is `PLATFORM_SAFE` minus the `PLATFORM_BUTTONS` notch: text never leaves `box` and never overlaps
+  `notch`. There is no style box of its own (`STYLE_SAFE` and `preset.safe` are gone: the preset
+  holds no safe box), so the style's text and the checks use the same zone.
 - `PLATFORM_SAFE` (left 35, right 1045, top 220, bottom 1470) and `PLATFORM_BUTTONS` (left 945,
   right 1045, top 1164, bottom 1470): where TikTok and Instagram Reels leave text visible at
   1080x1920 (owner decision 2026-11-03 from a TikTok and Instagram safe-zone reference, replacing
@@ -126,10 +125,9 @@ start, end }] }`).
   accent's default spot and the hook go down to `MIN_TEXT_SIZE`, 8 px), and keeps 12 px (`gap`) from the face
   and from other text.
 - Transitions (`transitions.numbered`, the LIST): the layer is the full frame, with no background; its
-  text levels come in with a fade of 0.3 s (`power2.out`) and are placed in the style's safe box
-  (`area`, 130 to 860 by 260 to 1400), the level stack wanted at y 640 (`want`), the number at 300 px
-  (`numberSize`). Stacked levels keep `transition.gap` (24 px) apart. Its text areas fit `STYLE_SAFE`,
-  `PLATFORM_SAFE` and stay left of `PLATFORM_BUTTONS`.
+  text levels come in with a fade of 0.3 s (`power2.out`) and are placed in the safe zone `S`, the
+  level stack wanted at y 640 (`want`), the number at 300 px (`numberSize`). Stacked levels keep
+  `transition.gap` (24 px) apart. Its text areas stay inside `S` and clear of the notch.
 - Click sound: `assets/sounds/mouse-click-trimmed.wav`, 0.23 s, -6 dB (owner decision 2026-11-04,
   louder than the -13 dB before; a stored click with no `gain_db` plays at it too, in the preview
   through `apps/studio/src/lib/sound-schedule.ts` and in the export through the page's
@@ -331,6 +329,11 @@ what it did. Pure and deterministic: no randomness, no clock, no I/O; the same i
 tracks and record. `editFromAnswer` (decide, returning `{ ok, edit, record }`) and the worker's
 `first_version` step (with no choices) call it.
 
+The zones (`src/engine-zones.ts`, `zonesAt(name, S, F)`) are the named areas the placement will use:
+each zone's areas inside the one safe zone `S` (the guard minus the notch) and its wanted point, from
+the moment's face `F` (null when no head is in the frame). The engine does not call them yet; the
+placement still uses its own candidates (the build order of `specs/layout-engine.md`, step 2).
+
 One placement shows every pick the answer proposed. Nothing is dropped for room, for another pick's
 time, for the hook, for a transition's rate or for pace. The one drop is the same-text rule (rule
 `same-text`): a text pick (an accent, a question, a big word or a list) that shares a word id with another
@@ -349,8 +352,8 @@ pick; each such overlap is kept and noted.
 
 - Inputs: the current version (footage and captions kept, never its sounds; each word fix becomes the text
   of the caption showing that word; old positions and sizes are removed), the answer's choices, the
-  transcript with word times, the head track, the preset (safe box, fonts and sizes, transition
-  text areas, behind spots as candidates) and the HarfBuzz measurer.
+  transcript with word times, the head track, the preset (fonts and sizes, behind spots as candidates)
+  and the HarfBuzz measurer. The safe zone is `SAFE_ZONE`, not a preset field.
 - Timing first (owner decision 6):
   - Captions: each from its own word; a group (consecutive captions ending on the same anchor)
     leaves at its last word's end, held so its last caption shows at least 0.25 s, never past the
@@ -550,10 +553,10 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
 `src/checks.ts`, `runChecks`, in a stable order, each failure `{ rule, item, reason }` with a
 readable reason string (an empty list means every rule passes):
 
-- `safe-box`: text inside `intersectBox(preset.safe, PLATFORM_SAFE)` and clear of
-  `PLATFORM_BUTTONS`, so it holds whatever a preset says (the edge and value that run past the box,
-  or `runs into the platform button column below y 1164` with the right edge past x 945). A
-  transition's text levels count as text.
+- `safe-box`: text inside `SAFE_ZONE.box` (`PLATFORM_SAFE`) and clear of `SAFE_ZONE.notch`
+  (`PLATFORM_BUTTONS`), the one safe zone (the edge and value that run past the box, or `runs into
+the platform button column below y 1164` with the right edge past x 945). A transition's text
+  levels count as text.
 - `frame`: a big word behind the speaker inside the frame (each edge that leaves it, and the
   word). It crosses the safe box by design, so it is never checked against it.
 - `face`: captions clear of the face (the robust faces, `facesOver`, at every moment of the
@@ -740,9 +743,11 @@ never fatal.
   platform guard whatever the preset's box; `face` fails for a caption over the head; `sound-gap` and
   `time-in-speech` fail as their rules say; `big-word-timing`, `frame` and the big word's own timing
   checks.
-- `src/preset.test.ts`: the intersection, the platform guard and the fallback lines inside the safe box,
-  each transition's level areas inside its layer, the safe box and the guard, the numbered kind only, the
-  Intense pace (something new every 3 s, the hook to 3 s), and the accent and big word timing.
+- `src/preset.test.ts`: the intersection, the platform guard and its notch (`SAFE_ZONE`), the fallback
+  lines inside the safe zone, the numbered kind only, the Intense pace (something new every 3 s, the hook
+  to 3 s), and the accent and big word timing.
+- `src/engine-zones.test.ts`: the zone table (`zonesAt`), each zone with a head and with none, and every
+  zone's areas inside `S` and clear of the notch.
 - `src/transitions.test.ts`: `transitionTiming` (in at the first word, out at the last word's end, no hold,
   a phrase with no length lengthened to the floor, a reel's start and end, a reel too short for the floor),
   the style roles, and `hiddenCaptionIds`.

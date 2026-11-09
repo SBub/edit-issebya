@@ -6,9 +6,10 @@ import {
   TRANSITION_KINDS,
   intersectBox,
 } from "./preset.ts";
+import { SAFE_ZONE } from "./engine-zones.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
-const safe = ISSEBYA_PRESET.safe;
+const safe = SAFE_ZONE.box;
 
 describe("intersectBox", () => {
   it("keeps the part both boxes share", () => {
@@ -31,10 +32,8 @@ describe("the platform guard", () => {
     expect(intersectBox(PLATFORM_BUTTONS, PLATFORM_SAFE)).toEqual(PLATFORM_BUTTONS);
   });
 
-  it("cuts the style's safe box, which lies inside the guard and clear of the buttons", () => {
-    expect(safe).toEqual({ left: 130, right: 860, top: 260, bottom: 1400 });
-    expect(intersectBox(safe, PLATFORM_SAFE)).toEqual(safe);
-    expect(safe.right).toBeLessThanOrEqual(PLATFORM_BUTTONS.left);
+  it("is the one safe zone: the guard, with the button column's notch as its own part", () => {
+    expect(SAFE_ZONE).toEqual({ box: PLATFORM_SAFE, notch: PLATFORM_BUTTONS });
   });
 
   it("keeps the caption fallback line inside the safe box", () => {
@@ -47,16 +46,6 @@ describe("the platform guard", () => {
     const { accent, fonts } = ISSEBYA_PRESET;
     expect(accent.noHeadY).toBeGreaterThanOrEqual(safe.top);
     expect(accent.noHeadY + fonts[accent.font].size).toBeLessThanOrEqual(safe.bottom);
-  });
-
-  it("keeps every transition's level area inside its layer, the safe box and the guard, left of the buttons", () => {
-    for (const type of TRANSITION_KINDS) {
-      const { area, layer } = ISSEBYA_PRESET.transitions[type];
-      for (const box of [layer, safe, PLATFORM_SAFE]) {
-        expect(intersectBox(area, box), type).toEqual(area);
-      }
-      expect(area.right, type).toBeLessThanOrEqual(PLATFORM_BUTTONS.left);
-    }
   });
 });
 
@@ -78,12 +67,12 @@ describe("the transition library", () => {
     }
   });
 
-  it("fits the number at its size inside the numbered area", async () => {
+  it("fits the number at its size inside the safe zone", async () => {
     const { numbered } = ISSEBYA_PRESET.transitions;
     const measurer = await nodeMeasurer();
     const width = measurer.width(ISSEBYA_PRESET.accent.font, numbered.numberSize!, "99");
-    expect(width).toBeLessThanOrEqual(numbered.area.right - numbered.area.left);
-    expect(numbered.numberSize!).toBeLessThanOrEqual(numbered.area.bottom - numbered.area.top);
+    expect(width).toBeLessThanOrEqual(safe.right - safe.left);
+    expect(numbered.numberSize!).toBeLessThanOrEqual(safe.bottom - safe.top);
   });
 
   it("gives a transition no hold after its phrase: it leaves at the last word's end", () => {

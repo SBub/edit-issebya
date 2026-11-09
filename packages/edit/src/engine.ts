@@ -19,17 +19,16 @@ import {
   toEngineRecord,
 } from "./engine-note.ts";
 import { expand, overlaps, placeBox } from "./engine-space.ts";
+import { SAFE_ZONE } from "./engine-zones.ts";
 import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from "./head-track.ts";
 import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
 import {
   type FontKey,
-  PLATFORM_BUTTONS,
   PLATFORM_SAFE,
   type Preset,
   SHOWN_FLOOR_SECONDS,
   cleanWord,
-  intersectBox,
 } from "./preset.ts";
 import {
   type Anchor,
@@ -612,9 +611,10 @@ function placeOnce(
     const index = order.get(id)!;
     return sentences.find((s) => order.get(s.from)! <= index && index <= order.get(s.to)!);
   };
-  const { safe, layout } = preset;
+  const { layout } = preset;
+  const safe = SAFE_ZONE.box;
   const gap = layout.gap;
-  const notch = PLATFORM_BUTTONS;
+  const notch = SAFE_ZONE.notch;
   const safeCx = (safe.left + safe.right) / 2;
   const hidden = current.tracks.footage.flatMap((clip) =>
     (clip.hidden ?? []).map((span) => ({
@@ -1402,7 +1402,7 @@ function placeOnce(
       ...(lead ? [{ role: "lead" as const, text: lead, start: { word: choice.from } }] : []),
       { role: "key" as const, text: key, start: { word: choice.key_from } },
     ].map((spec) => ({ ...spec, ...levelStyle(spec.role, preset) }));
-    const area = intersectBox(kind.area, safe);
+    const area = safe;
     const cx = (area.left + area.right) / 2;
     const sizes = specs.map((spec) => sizesFrom(spec.size, preset));
     const steps = Math.max(...sizes.map((list) => list.length));

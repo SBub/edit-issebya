@@ -24,9 +24,7 @@ export interface PresetTransition {
   motion: "fade" | "slide";
   seconds: number;
   ease: string;
-  // Where the transition's text levels may go: inside the layer and the
-  // safe zone. `want` is the wanted top of the level stack.
-  area: Box;
+  // The wanted top of the level stack (the safe zone is `SAFE_ZONE`).
   want: number;
   // The line Claude reads about the kind.
   description?: string;
@@ -153,10 +151,6 @@ export interface GlossaryTerm {
 export interface Preset {
   id: "issebya";
   frame: { width: number; height: number };
-  // Text never leaves it; always inside `PLATFORM_SAFE`. A rectangle for the
-  // placement code: the button-column notch (`PLATFORM_BUTTONS`) is left to
-  // the safe-box check.
-  safe: Box;
   fonts: Record<FontKey, PresetFont>;
   caption: {
     font: FontKey;
@@ -263,17 +257,11 @@ export const PLATFORM_BUTTONS: Box = {
   bottom: PLATFORM_SAFE.bottom,
 };
 
-// The `rethink-work` style's own box, before the platform guard cuts it. With
-// the 2026-11-03 zone it lies wholly inside `PLATFORM_SAFE` and clear of
-// `PLATFORM_BUTTONS`, so the preset's safe box is this box.
-const STYLE_SAFE: Box = { left: 130, right: 860, top: 260, bottom: 1400 };
-
 // The issebya style: the values of the approved `rethink-work` reel.
 export const ISSEBYA_PRESET: Preset = {
   id: "issebya",
   intensity: "intense",
   frame: { width: 1080, height: 1920 },
-  safe: intersectBox(STYLE_SAFE, PLATFORM_SAFE),
   fonts: {
     primary: {
       family: "Raleway Light",
@@ -324,7 +312,6 @@ export const ISSEBYA_PRESET: Preset = {
       motion: "fade",
       seconds: 0.3,
       ease: "power2.out",
-      area: STYLE_SAFE,
       want: 640,
       description:
         "a large number over the phrase, the phrase below: for each item of a list the speaker goes through, numbered in order",
