@@ -1103,12 +1103,13 @@ describe("readable text", () => {
     }
   });
 
-  it("moves the accent off a beige sweater when its zone has a darker free area", async () => {
-    // No head: the accent's zone is the whole safe zone, room to move.
+  it("does not measure an accent: on a beige sweater it keeps its place, with no contrast note", async () => {
+    // Accents go through the placer, which measures nothing (readability is
+    // out of the layout spec): the same place with and without a map, and the
+    // record says nothing about its contrast.
     const headTrack: HeadTrack = [];
     const before = await place(ACCENT, { headTrack });
     const accent = before.edit.tracks.overlays[0]!;
-    // The sweater: a beige band across the frame where the accent first sits.
     const band = {
       left: 0,
       right: FRAME.width,
@@ -1117,31 +1118,12 @@ describe("readable text", () => {
     };
     const backgrounds = mapOf((x, y) => (inside(x, y, band) ? BEIGE : DARK));
     const { edit, record, checks } = await place(ACCENT, { backgrounds, headTrack });
-    const moved = edit.tracks.overlays[0]!;
-    expect(moved.position).not.toEqual(accent.position);
-    expect(moved.color).toBeUndefined();
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", outcome: "moved", rule: "contrast" }),
+    expect(edit.tracks.overlays[0]).toEqual(accent);
+    expect(accent.color).toBeUndefined();
+    expect(record.filter((note) => note.item === "accent-1" && note.rule === "contrast")).toEqual(
+      [],
     );
     expect(checks).toEqual([]);
-  });
-
-  it("keeps the accent in place, plain, when beige is all around: never a colour", async () => {
-    const before = await place(ACCENT);
-    const { edit, record } = await place(ACCENT, { backgrounds: mapOf(() => BEIGE) });
-    const accent = edit.tracks.overlays[0]!;
-    expect(accent.position).toEqual(before.edit.tracks.overlays[0]!.position);
-    expect(accent.color).toBeUndefined();
-    expect(record).toContainEqual(
-      expect.objectContaining({
-        item: "accent-1",
-        outcome: "placed",
-        rule: "contrast",
-        reason: expect.stringMatching(
-          /^accent ".+" stays in place: contrast 1\.\d:1 from \d+\.\d\d s to \d+\.\d\d s, no free place nearby reaches 3:1$/,
-        ),
-      }),
-    );
   });
 
   it("leaves the big word in place, plain, on a light background and never moves it", async () => {

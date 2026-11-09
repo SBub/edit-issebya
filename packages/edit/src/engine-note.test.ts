@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   type EngineComponent,
   type EngineElement,
+  type EngineNote,
   type EngineOutcome,
   type PlaceAction,
   type PlaceNote,
+  type RecordNote,
   toEngineRecord,
 } from "./engine-note.ts";
 import type { PickedVariants } from "./variant-picker.ts";
@@ -41,7 +43,7 @@ const PICKED: PickedVariants = new Map<EngineComponent, Variant>([
   ["CAPTION", VARIANTS["caption/default"]],
 ]);
 const recordOf = (
-  notes: readonly PlaceNote[],
+  notes: readonly RecordNote[],
   els: ReadonlyMap<string, EngineElement>,
   shown: readonly string[],
   caps: ReadonlySet<string>,
@@ -50,7 +52,7 @@ const recordOf = (
 const note = (action: PlaceAction, extra: Partial<PlaceNote> = {}): PlaceNote => ({
   item: "accent-1",
   action,
-  rule: "accent-spot",
+  rule: "hook-spot",
   reason: `the ${action} note`,
   ...extra,
 });
@@ -81,7 +83,7 @@ describe("toEngineRecord", () => {
       ["hidden-footage", "hidden-footage"],
       ["same-text", "same-text"],
       ["caption-spot", "zone"],
-      ["accent-size", "size"],
+      ["hook-size", "size"],
       ["hook-wrap", "size"],
       ["visual-face", "face"],
       ["all-picks", "text-overlap"],
@@ -143,6 +145,29 @@ describe("toEngineRecord", () => {
     ]);
     expect(records[1]!.component).toBe("CAPTION");
     expect(records[1]!.variant).toBe("caption/default");
+  });
+
+  it("passes a note already in the record's shape through as it is, and writes no placed note for its item", () => {
+    const ready: EngineNote = {
+      item: "accent-1",
+      component: "ACCENT",
+      variant: "accent/above-head",
+      start: 3.2,
+      end: 4.1,
+      rule: "size",
+      outcome: "shrunk",
+      blockers: [{ kind: "item", id: "hook" }],
+      zone: "above-head",
+      size: 89,
+      lines: 3,
+      cost: 20,
+      reason: "the placer's own words",
+    };
+    const records = recordOf([ready], elements, ["accent-1", "accent-2"], captions);
+    expect(records).toEqual([
+      ready,
+      expect.objectContaining({ item: "accent-2", outcome: "placed" }),
+    ]);
   });
 
   it("gives every shown element with no note a placed note, and no other", () => {

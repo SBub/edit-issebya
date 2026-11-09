@@ -3,10 +3,12 @@
 // version (`versions.engine_record`) and read by the trace, the checks and the
 // worker's log line. Nothing reads any other shape.
 //
-// The engine still places with its own notes (`PlaceNote`, actions as they
-// were). `toEngineRecord` turns them into this shape at the end of `placeEdit`;
-// that adapter is the only writer until the placer replaces the per-kind code
-// (build steps 5 to 10 of the spec). A note's variant is the name of the entry
+// The placer (`engine-place.ts`) writes this shape itself for the components it
+// places (accents and questions, build step 6). The engine's other code paths
+// still place with their own notes (`PlaceNote`, actions as they were);
+// `toEngineRecord` turns those into this shape at the end of `placeEdit` and
+// passes the placer's through, until the placer replaces the per-kind code
+// (build steps 7 to 10 of the spec). A note's variant is the name of the entry
 // its component was picked with (`variant-picker.ts`).
 
 import type { PickedVariants } from "./variant-picker.ts";
@@ -90,6 +92,10 @@ export interface PlaceNote {
   with?: string[];
 }
 
+// A note of either shape in the engine's record while it places: the placer's
+// (already the record's shape) or an old code path's.
+export type RecordNote = PlaceNote | EngineNote;
+
 // What the adapter needs to know about an element to write its note.
 export interface EngineElement {
   component: EngineComponent;
@@ -133,32 +139,29 @@ const RULE_OF: Record<string, string> = {
   "contrast-stay": "contrast",
   "caption-spot": "zone",
   "transition-spot": "zone",
-  "accent-spot": "zone",
   "hook-spot": "zone",
   "big-word-spot": "zone",
   "caption-size": "size",
   "transition-size": "size",
-  "accent-size": "size",
   "hook-size": "size",
   "big-word-size": "size",
   "visual-size": "size",
   "transition-wrap": "size",
-  "accent-wrap": "size",
   "hook-wrap": "size",
   "caption-face": "face",
   "transition-face": "face",
-  "accent-face": "face",
   "hook-face": "face",
   "visual-face": "face",
 };
 
 const seconds = (t: number) => `${t.toFixed(2)} s`;
 
-// The record: one note per placer note (a covers-face note names each caption
-// it covers, one note each), then a `placed` note for every shown element that
-// no placer note names, so a reader sees what was placed, not only what moved.
+// The record: the placer's notes as they are; one note per old-shape note (a
+// covers-face note names each caption it covers, one note each); then a
+// `placed` note for every shown element that no note names, so a reader sees
+// what was placed, not only what moved.
 export function toEngineRecord(
-  notes: readonly PlaceNote[],
+  notes: readonly RecordNote[],
   elements: ReadonlyMap<string, EngineElement>,
   shown: readonly string[],
   captionIds: ReadonlySet<string>,
@@ -198,6 +201,11 @@ export function toEngineRecord(
     noted.add(id);
   };
   for (const note of notes) {
+    if ("outcome" in note) {
+      out.push(note);
+      noted.add(note.item);
+      continue;
+    }
     const rule = RULE_OF[note.rule];
     if (rule === undefined) throw new Error(`engine record: unknown rule ${note.rule}`);
     const outcome = OUTCOME_OF[note.action];

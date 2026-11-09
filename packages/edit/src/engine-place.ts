@@ -21,8 +21,8 @@ import type { BoxVariant, TextVariant } from "./variants.ts";
 // ranking, each line count, the face as an obstacle then allowed), drops the
 // ones that break a hard rule, scores the rest by the soft costs and takes the
 // cheapest, with the spec's tie-break. Pure and deterministic: the same input
-// gives the same result. Not yet called by the engine (`engine.ts`): build
-// steps 6 to 10 wire each component through it.
+// gives the same result. The engine (`engine.ts`) places accents and questions
+// through it (build step 6); steps 7 to 10 wire the other components.
 //
 // Where the spec leaves a detail open, this file takes the simplest reading
 // and says so in a comment marked "Settled:".
@@ -31,7 +31,7 @@ import type { BoxVariant, TextVariant } from "./variants.ts";
 export interface PlaceCosts {
   face: number; // the element's box overlaps F in any moment of its span (flat)
   zoneStep: number; // one step down the variant's zones
-  shrinkStep: number; // one step of 10% below the element's full size
+  shrinkStep: number; // one step of 10% below the element's full size (a text's style base)
   wrap: number; // one more line
 }
 
@@ -290,11 +290,35 @@ function largestFit(shape: Shape, area: Box, obstacles: readonly Box[], cap: num
   return Math.min(size, cap);
 }
 
-// The element's full size: the largest at which it fits its first zone with
-// no obstacles (the notch only, no face), over any line count; a box: its
-// `width` share of the frame. Settled: when the first zone has no room (none,
-// as above a face at the top; or less than the minimum size), the next zone of
-// the ranking with room gives it. 0 when no zone has room.
+// Whether some zone of the element's ranking holds it at the minimum size with
+// nothing but the notch in the way: the safe zone itself has room for it.
+function fitsEmpty(
+  element: PlaceElement,
+  shapes: readonly Shape[],
+  scene: PlaceScene,
+  F: Box | null,
+): boolean {
+  for (const zone of element.variant.zones) {
+    for (const part of zonesAt(zone, scene.safe, F)) {
+      const area = areaOf(part);
+      if (!area) continue;
+      for (const shape of shapes) {
+        if (largestFit(shape, area, [scene.safe.notch], Infinity) >= MIN_SIZE_PX) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// The element's full size, the cap on every candidate and the size the shrink
+// steps count from. A text: its style's base size (owner decision 2026-11-09:
+// the engine never sets a text above its style's base, it only shrinks from
+// it). A box: its `width` share of the frame. The big word's style is
+// `largest-fit`: the largest size at which it fits its first zone with no
+// obstacles (the notch only, no face), over any line count. Settled: when that
+// first zone has no room (none, as above a face at the top; or less than the
+// minimum size), the next zone of the ranking with room gives it. 0 when no
+// zone has room.
 function fullSizeOf(
   element: PlaceElement,
   shapes: readonly Shape[],
@@ -302,6 +326,8 @@ function fullSizeOf(
   F: Box | null,
 ): number {
   if (element.type === "box") return Math.floor(FRAME_WIDTH * ratio(element.variant.width));
+  const { base } = element.variant.style;
+  if (base !== "largest-fit") return base;
   for (const zone of element.variant.zones) {
     let full = 0;
     for (const part of zonesAt(zone, scene.safe, F)) {
@@ -324,7 +350,8 @@ function shrinkStepsOf(size: number, full: number): number {
 
 // Candidates in order: zone rank, part, line count, then the face as an
 // obstacle before the face allowed. A candidate is the largest size that fits
-// (capped at the full size) at the spot nearest the zone's want.
+// (capped at the full size: a text's base, so a short text never grows past
+// its style) at the spot nearest the zone's want.
 function candidates(
   element: PlaceElement,
   shapes: readonly Shape[],
@@ -498,7 +525,8 @@ export function placeElement(
     right: faces.right + LAYOUT_PADDING.right,
   };
   const shapes = shapesOf(element, measurer);
-  const full = fullSizeOf(element, shapes, scene, F);
+  const roomy = fitsEmpty(element, shapes, scene, F);
+  const full = roomy ? fullSizeOf(element, shapes, scene, F) : 0;
   const who = whoIs(element);
   const when = `from ${seconds(element.start)} to ${seconds(element.end)}`;
   const base = {
@@ -519,7 +547,7 @@ export function placeElement(
     // What took the space; the safe zone's edges when the element fits no zone
     // even with nothing in the way.
     const taken = blockersUpTo(element, scene, F, element.variant.zones.length);
-    const blockers = full > 0 && taken.length > 0 ? taken : safeZoneBlockers(shapes, scene.safe);
+    const blockers = roomy && taken.length > 0 ? taken : safeZoneBlockers(shapes, scene.safe);
     return {
       placed: null,
       notes: [

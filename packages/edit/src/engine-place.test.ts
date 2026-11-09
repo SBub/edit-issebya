@@ -14,11 +14,14 @@ import type { Box } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
 import { PLATFORM_BUTTONS, PLATFORM_SAFE } from "./preset.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
-import { VARIANTS, type TextVariant } from "./variants.ts";
+import { STYLES, VARIANTS, type TextVariant } from "./variants.ts";
 
 // Synthetic scenes for the placer: one element, a face or none, obstacles laid
 // by hand. Sizes come from HarfBuzz over the package's fonts, so the tests
 // check relations (which zone, which cost, which notes) over exact pixels.
+// Widths at size 1 (Raleway Light): "hi" 0.78, "start here" 4.32 ("start"
+// 2.00, "here" 2.06), "lock-in" 3.08, "AI" 0.91; Golos Bold: "one two" 3.88,
+// "one" 1.80.
 
 const S = PLATFORM_SAFE;
 // An unpadded robust face in the middle of the frame.
@@ -27,6 +30,13 @@ const FACE: Box = { left: 300, right: 700, top: 500, bottom: 1000 };
 const UPPER_THIRD: Box = { ...S, bottom: S.top + (S.bottom - S.top) / 3 };
 
 const span = { start: 3.2, end: 4.1 };
+// The base size of the accent style (the hook's, the accent's, the question's).
+const BASE = STYLES.accent.base as number;
+// A text with the big word's style (largest fit) and no face to keep clear of.
+const largestFit = (zones: TextVariant["zones"]): TextVariant => ({
+  ...VARIANTS["bigword/behind"],
+  zones,
+});
 
 function text(variant: TextVariant, words: string, id = "accent-1", lineGap = 0): PlaceElement {
   return { type: "text", id, variant, text: words, lineGap, ...span };
@@ -67,9 +77,10 @@ describe("an empty scene", () => {
   it("places the hook at the top centre of the upper third, full size, one note `placed`", () => {
     const result = placeElement(hook("start here"), scene([]), measurer);
     expect(result.placed).not.toBeNull();
-    const { box, zone, cost, lines, breaks } = result.placed!;
+    const { box, zone, cost, lines, breaks, size } = result.placed!;
     expect(zone).toBe("upper-third");
     expect(cost).toBe(0);
+    expect(size).toBe(BASE);
     expect(lines).toEqual(["start here"]);
     expect(breaks).toEqual([]);
     expect(box.top).toBe(S.top);
@@ -104,17 +115,47 @@ describe("an empty scene", () => {
     expect(outcomes(result)).toEqual(["placed"]);
   });
 
-  it("with no head, an accent aims at the accent line (y 1130) at the size S gives it", () => {
+  it("a short accent stays at its style's base size: it never grows into the room above the head", () => {
+    // The room above the face is 1010 px wide and 268 px high: "lock-in" would
+    // fit at 268 px. The style says 110.
+    const result = placeElement(accent("lock-in"), scene([FACE]), measurer);
+    const { box, size, cost } = result.placed!;
+    expect(size).toBe(BASE);
+    expect(box.bottom - box.top).toBe(BASE);
+    expect(cost).toBe(0);
+    expect(result.notes[0]!.size).toBe(BASE);
+  });
+
+  it("with no head, an accent sits on the accent line (y 1130) at its base size", () => {
     const result = placeElement(accent("lock-in"), scene([]), measurer);
     const { box, zone, size } = result.placed!;
     expect(zone).toBe("above-head");
-    // Its size is the room S has (its width), so the text is taller than the
-    // 34 px between the accent line and the button column; at full width it
-    // cannot cross the notch band, so it stops right above it.
-    expect(size).toBeGreaterThan(PLATFORM_BUTTONS.top - 1130);
-    expect(box.bottom).toBe(PLATFORM_BUTTONS.top);
-    expect(box.top).toBeLessThan(1130);
+    expect(size).toBe(BASE);
+    expect(box.top).toBe(1130);
+    expect((box.left + box.right) / 2).toBeCloseTo((S.left + S.right) / 2, 0);
+    // Centred at 110 px it is 339 px wide: nowhere near the button column.
     expect(overlaps(box, PLATFORM_BUTTONS)).toBe(false);
+  });
+
+  it("a long accent shrinks from the base when its zone is short, in 10% steps", () => {
+    // Above the face the zone is 268 px high: at 110 px the sentence needs
+    // three lines (330 px) or two lines wider than S. One zone only, so it
+    // shrinks rather than moves.
+    const aboveOnly: TextVariant = { ...VARIANTS["accent/above-head"], zones: ["above-head"] };
+    const result = placeElement(
+      text(aboveOnly, "the time we are living right now pushes everyone to rethink"),
+      scene([FACE]),
+      measurer,
+    );
+    const { size, lines, cost, box } = result.placed!;
+    expect(size).toBeLessThan(BASE);
+    expect(size).toBeGreaterThanOrEqual(MIN_SIZE_PX);
+    expect(lines.length).toBeGreaterThan(1);
+    expect(box.bottom).toBeLessThanOrEqual(FACE.top - 12);
+    const steps = Math.ceil((BASE - size) / (0.1 * BASE) - 1e-9);
+    expect(cost).toBe(steps * PLACE_COSTS.shrinkStep);
+    expect(outcomes(result)).toEqual(["shrunk", "wrapped"]);
+    expect(result.notes[0]!.reason).toContain(`shrinks to ${size} px from ${BASE} px`);
   });
 });
 
@@ -143,9 +184,9 @@ describe("a crowded upper third", () => {
   });
 
   it("a shrunk element notes `shrunk` with the size it gave up", () => {
-    // Two words in a column of 300 px: narrower than the text at its full size.
+    // One word in a column of 60 px: "hi" is 86 px at its base size.
     const column = [
-      textAt("accent-1", { left: 347, right: S.right, top: S.top, bottom: S.bottom }),
+      textAt("accent-1", { left: S.left + 60 + 12, right: S.right, top: S.top, bottom: S.bottom }),
     ];
     const clear = placeElement(hook("hi"), scene([]), measurer);
     const result = placeElement(hook("hi"), scene([], column), measurer);
@@ -192,16 +233,36 @@ describe("the face", () => {
     expect(result.notes[0]!.blockers).toEqual(expect.arrayContaining([{ kind: "face" }]));
   });
 
-  it("the behind big word pays no face cost and keeps 70% of its height clear of the face (rule 6)", () => {
+  it("the behind big word grows to the largest fit, pays no face cost and keeps 70% of its height clear of the face (rule 6)", () => {
     const result = placeElement(bigWord("AI"), scene([FACE]), measurer);
     expect(result.placed).not.toBeNull();
-    const { box, zone, cost, coversFace } = result.placed!;
+    const { box, zone, cost, coversFace, size } = result.placed!;
     expect(zone).toBe("head-top");
+    // Its style has no base: the largest room the face leaves (458 px below
+    // it) is its size, far over the accent's 110.
+    expect(size).toBeGreaterThan(BASE);
+    expect(size).toBe(S.bottom - (FACE.bottom + 12));
     expect(coversFace).toBe(false);
     expect(cost).toBeLessThan(PLACE_COSTS.face);
     expect(bigWordCoveredShare(box, [FACE])).toBeLessThanOrEqual(0.3);
     expect(inside(box, S)).toBe(true);
     expect(outcomes(result)).not.toContain("covers-face");
+  });
+
+  it("the 30% rule is a hard filter: a big word the face would hide most of at the largest fit takes a smaller spot clear of it", () => {
+    // A tall face through most of S: the largest fit (S's width, 1107 px) sits
+    // over the face, which would hide 90% of it, so rule 6 drops that
+    // candidate; the word takes the strip beside the face, still far over the
+    // accent's base, at a shrink cost.
+    const tall: Box = { left: 300, right: 700, top: 300, bottom: 1300 };
+    const result = placeElement(bigWord("AI"), scene([tall]), measurer);
+    const { box, size, cost } = result.placed!;
+    expect(bigWordCoveredShare(box, [tall])).toBeLessThanOrEqual(0.3);
+    expect(overlaps(box, tall)).toBe(false);
+    expect(size).toBeGreaterThan(BASE);
+    expect(inside(box, S)).toBe(true);
+    expect(cost).toBeGreaterThan(0);
+    expect(outcomes(result)).toEqual(["shrunk"]);
   });
 });
 
@@ -272,15 +333,17 @@ describe("the 30 px floor", () => {
 });
 
 describe("wrapping", () => {
-  // The right half of S taken by a text: a column 493 px wide is left.
-  const column = [textAt("accent-1", { left: 540, right: S.right, top: S.top, bottom: S.bottom })];
+  // A text over the right of S leaves a column `width` px wide on the left.
+  const columnOf = (width: number, bottom = S.bottom) => [
+    textAt("accent-1", { left: S.left + width + 12, right: S.right, top: S.top, bottom }),
+  ];
 
-  it("is free: in a tall zone two words take two lines at a larger size, at no cost", () => {
-    const anywhere: TextVariant = {
-      ...VARIANTS["hook/written-line"],
-      zones: ["anywhere-in-safe-zone"],
-    };
-    const result = placeElement(text(anywhere, "start here", "hook"), scene([]), measurer);
+  it("is free: a largest-fit text in a tall zone takes two lines at a larger size, at no cost", () => {
+    const result = placeElement(
+      text(largestFit(["anywhere-in-safe-zone"]), "start here", "big-word-1"),
+      scene([]),
+      measurer,
+    );
     const oneLine = Math.floor((S.right - S.left) / measurer.width("primary", 1, "start here"));
     expect(result.placed!.lines).toEqual(["start", "here"]);
     expect(result.placed!.breaks).toEqual([1]);
@@ -290,29 +353,51 @@ describe("wrapping", () => {
     expect(result.notes[0]!.blockers).toEqual([]);
   });
 
-  it("is preferred to shrinking: two lines two steps down beat one line six steps down", () => {
+  it("comes before shrinking: a capped text in a column narrower than its line wraps at its base size, at no cost", () => {
+    // "start here" is 475 px at 110; the column is 353. Two lines ("here",
+    // 227 px) fit at 110, so nothing is given up but a line.
     const upperOnly: TextVariant = { ...VARIANTS["hook/written-line"], zones: ["upper-third"] };
     const clear = placeElement(text(upperOnly, "start here", "hook"), scene([]), measurer);
-    const result = placeElement(text(upperOnly, "start here", "hook"), scene([], column), measurer);
+    const result = placeElement(
+      text(upperOnly, "start here", "hook"),
+      scene([], columnOf(353)),
+      measurer,
+    );
     expect(clear.placed!.lines).toHaveLength(1);
     expect(result.placed!.lines).toEqual(["start", "here"]);
-    // Two lines in 417 px: 208 px, two steps under 233; one line in the
-    // column would be 114 px, six steps.
-    expect(result.placed!.size).toBe(Math.floor((UPPER_THIRD.bottom - UPPER_THIRD.top) / 2));
-    expect(result.placed!.cost).toBe(2 * PLACE_COSTS.shrinkStep);
+    expect(result.placed!.size).toBe(BASE);
+    expect(result.placed!.cost).toBe(PLACE_COSTS.wrap);
+    expect(outcomes(result)).toEqual(["wrapped"]);
+  });
+
+  it("shrinks as little as it must: two lines four steps down beat one line seven steps down", () => {
+    // A column of 150 px: two lines fit at 72 px (four steps under 110), one
+    // line at 34 px (seven steps).
+    const upperOnly: TextVariant = { ...VARIANTS["hook/written-line"], zones: ["upper-third"] };
+    const result = placeElement(
+      text(upperOnly, "start here", "hook"),
+      scene([], columnOf(150)),
+      measurer,
+    );
+    expect(result.placed!.lines).toEqual(["start", "here"]);
+    expect(result.placed!.size).toBe(Math.floor(150 / measurer.width("primary", 1, "here")));
+    expect(result.placed!.cost).toBe(4 * PLACE_COSTS.shrinkStep);
     expect(outcomes(result)).toEqual(["shrunk", "wrapped"]);
   });
 
-  it("the hook: a zone step with two full lines (10) beats two shrink steps in the upper third (20)", () => {
-    // The upper third is 417 px high: two lines there mean 208 px, two steps
-    // under the one-line full size (233 px); the next zone holds both at full.
-    const clear = placeElement(hook("start here"), scene([]), measurer);
-    const result = placeElement(hook("start here"), scene([], column), measurer);
-    expect(result.placed!.lines).toEqual(["start", "here"]);
+  it("the hook: a zone step at the base size (10) beats four shrink steps in the upper third (40)", () => {
+    // The column covers the upper third only: there the hook would be two
+    // lines at 72 px; the next zone holds one line at 110.
+    const result = placeElement(
+      hook("start here"),
+      scene([], columnOf(150, UPPER_THIRD.bottom)),
+      measurer,
+    );
+    expect(result.placed!.lines).toEqual(["start here"]);
     expect(result.placed!.zone).toBe("anywhere-in-safe-zone");
-    expect(result.placed!.size).toBe(clear.placed!.size);
+    expect(result.placed!.size).toBe(BASE);
     expect(result.placed!.cost).toBe(PLACE_COSTS.zoneStep);
-    expect(outcomes(result)).toEqual(["moved", "wrapped"]);
+    expect(outcomes(result)).toEqual(["moved"]);
   });
 
   it("balances any number of lines: three words in a narrow column take three lines", () => {
@@ -326,12 +411,11 @@ describe("wrapping", () => {
   });
 
   it("caption lines keep the line gap between them", () => {
-    const column = [
-      textAt("accent-1", { left: 400, right: S.right, top: S.top, bottom: S.bottom }),
-    ];
-    const result = placeElement(caption("one two"), scene([], column), measurer);
+    // "one two" is 194 px at the caption base (50); a column of 150 px wraps it.
+    const result = placeElement(caption("one two"), scene([], columnOf(150)), measurer);
     const { box, size, lines } = result.placed!;
     expect(lines).toHaveLength(2);
+    expect(size).toBe(STYLES.caption.base);
     expect(box.bottom - box.top).toBe(2 * size + 14);
   });
 });

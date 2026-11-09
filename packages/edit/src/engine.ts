@@ -16,8 +16,10 @@ import {
   type EngineElement,
   type EngineNote,
   type PlaceNote,
+  type RecordNote,
   toEngineRecord,
 } from "./engine-note.ts";
+import { type Obstacle, type TextElement, placeElement } from "./engine-place.ts";
 import { expand, overlaps, placeBox } from "./engine-space.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from "./head-track.ts";
@@ -25,6 +27,7 @@ import { wordsText } from "./glossary.ts";
 import { breaksOf } from "./lines.ts";
 import type { Measurer } from "./measure.ts";
 import type { PickedVariants } from "./variant-picker.ts";
+import type { TextVariant, Variant } from "./variants.ts";
 import {
   type FontKey,
   PLATFORM_SAFE,
@@ -71,17 +74,23 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    never avoid captions: captions are not placed yet. Then the captions last,
 //    in time order, one spot per sentence, in the free space the components
 //    leave at each moment; captions avoid every component and every other
-//    caption. Text shrinks to the preset's floor and wraps to two lines before
-//    it gives up a place. The face is a preference for every front element
-//    (hook, accents, questions, list levels, visual cards, captions): a spot
-//    off the face and off other text first, then over the face but off other
-//    text (noted `covers-face`), then over other text (noted
-//    `kept-overlapping`). Big words are behind the speaker and ignore the face.
-//    The engine drops no pick but one: a text pick whose every word another
-//    text pick on screen at the same moment shows (`same-text`). Of two such
-//    picks a big word keeps the shared words, else the earlier one does. It
-//    trims or drops the other, then places the answer again. A caption's words a
-//    text on screen shows are left out while it shows, the caption split in time.
+//    caption. Accents and questions go through the placer (`engine-place.ts`,
+//    the spec's loop: zones, hard rules, costs; the style's base size as the
+//    cap, 10% shrink steps to 30 px, free wrapping; never over other text); the
+//    other components keep their own code for now, and both see each other as
+//    obstacles through `shown`. The old paths shrink text to the preset's floor
+//    and wrap to two lines before giving up a place. The face is a preference
+//    for every front element (hook, accents, questions, list levels, visual
+//    cards, captions): a spot off the face and off other text first, then over
+//    the face but off other text (noted `covers-face`), then (old paths only)
+//    over other text (noted `kept-overlapping`). Big words are behind the
+//    speaker and ignore the face. The engine drops no pick but two: a text pick
+//    whose every word another text pick on screen at the same moment shows
+//    (`same-text`), and an accent or question with no legal spot (`no-spot`:
+//    left out, its words stay captions). Of two same-text picks a big word
+//    keeps the shared words, else the earlier one does. It trims or drops the
+//    other, then places the answer again. A caption's words a text on screen
+//    shows are left out while it shows, the caption split in time.
 // 5. Fallbacks, each noted: a pick too close to the reel's end shows from
 //    earlier (`clamped-to-end`); a pick over hidden footage moves to the next
 //    visible moment (`moved-off-cut`); a list with no caption text of its own
@@ -169,7 +178,9 @@ function sizesFrom(size: number, preset: Preset): number[] {
 interface Moment {
   start: number;
   end: number;
-  // The face (padded for text) over the moment; null with no head.
+  // The robust faces around the moment, unpadded (the placer pads them itself).
+  faces: Box[];
+  // Their bounding box, padded for text (`LAYOUT_PADDING`); null with no head.
   face: Box | null;
 }
 
@@ -183,18 +194,38 @@ function sceneOf(edges: readonly number[], duration: number, headTrack: HeadTrac
   for (let index = 1; index < cuts.length; index += 1) {
     const start = cuts[index - 1]!;
     const end = cuts[index]!;
-    const face = boundingBox(facesOver(headTrack, start - 0.25, end + 0.25, LAYOUT_PADDING));
-    moments.push({ start, end, face });
+    const faces = facesOver(headTrack, start - 0.25, end + 0.25);
+    const bounds = boundingBox(faces);
+    const face = bounds && {
+      ...bounds,
+      left: bounds.left - LAYOUT_PADDING.left,
+      right: bounds.right + LAYOUT_PADDING.right,
+    };
+    moments.push({ start, end, faces, face });
   }
   return moments;
 }
 
+const momentsOver = (scene: readonly Moment[], span: { start: number; end: number }) =>
+  scene.filter((moment) => moment.start < span.end && span.start < moment.end);
+
+// The padded faces of the moments over a span.
 function facesDuring(scene: readonly Moment[], span: { start: number; end: number }): Box[] {
-  const out: Box[] = [];
-  for (const moment of scene) {
-    if (moment.face && moment.start < span.end && span.start < moment.end) out.push(moment.face);
+  return momentsOver(scene, span).flatMap((moment) => (moment.face ? [moment.face] : []));
+}
+
+// The unpadded robust faces of the moments over a span (the placer's scene).
+function rawFacesDuring(scene: readonly Moment[], span: { start: number; end: number }): Box[] {
+  return momentsOver(scene, span).flatMap((moment) => moment.faces);
+}
+
+// The entry a text component was picked with.
+function textVariantOf(picked: PickedVariants, component: EngineComponent): TextVariant {
+  const entry: Variant | undefined = picked.get(component);
+  if (!entry || entry.type !== "text" || entry.style === undefined) {
+    throw new Error(`engine: no text variant picked for ${component}`);
   }
-  return out;
+  return entry;
 }
 
 // ---------------------------------------------------------------- captions
@@ -224,7 +255,7 @@ function captionGroups(
   transcript: Transcript,
   duration: number,
   preset: Preset,
-  record: PlaceNote[],
+  record: RecordNote[],
 ): { groups: Unit[][]; ends: number[] } {
   const words = new Map(transcript.words.map((word) => [word.id, word]));
   const groups: Unit[][] = [];
@@ -497,8 +528,8 @@ function sameTextPass(
 export function placeEdit(
   current: Edit,
   input: EngineInput,
-  // The entry each component's pick was given (`variant-picker.ts`). Placement
-  // does not read it yet; the record names it.
+  // The entry each component's pick was given (`variant-picker.ts`): the placer
+  // reads an accent's or a question's; the record names every component's.
   picked: PickedVariants,
   transcript: Transcript,
   headTrack: HeadTrack,
@@ -506,13 +537,13 @@ export function placeEdit(
   measurer: Measurer,
   options: PlaceOptions = {},
 ): Placement {
-  // Each pass places the answer as it stands; a pass that trims or drops a
-  // pick is placed again, so the rule holds on the placed times. Every pass
-  // removes at least one word from a pick or a pick from the answer, so this
-  // ends.
+  // Each pass places the answer as it stands; a pass that leaves a pick out
+  // (no legal spot) or trims or drops one (same-text) is placed again, so the
+  // rules hold on the placed times. Every pass removes at least one word from a
+  // pick or a pick from the answer, so this ends.
   let answer = input;
   const skip = new Set<string>();
-  const notes: PlaceNote[] = [];
+  const notes: RecordNote[] = [];
   // Every pick of any pass by id: a pick the same-text rule drops is in no
   // track, but its note still names its span and component.
   const picks = new Map<string, TextPick>();
@@ -520,6 +551,7 @@ export function placeEdit(
     const placed = placeOnce(
       current,
       answer,
+      picked,
       transcript,
       headTrack,
       preset,
@@ -528,6 +560,16 @@ export function placeEdit(
       skip,
     );
     for (const pick of placed.picks) picks.set(pick.id, pick);
+    if (placed.noSpot.length > 0) {
+      // No legal spot (the spec's "No legal spot"): the element is left out of
+      // this version, the answer placed again without it so its words show as
+      // captions (rule 3); its `no-spot` note is the one kept from this pass.
+      for (const ref of placed.noSpot) skip.add(ref);
+      notes.push(
+        ...placed.record.filter((note) => "outcome" in note && note.outcome === "no-spot"),
+      );
+      continue;
+    }
     const pass = sameTextPass(placed.picks, answer, transcript, preset);
     if (!pass) {
       const all = [...notes, ...placed.record];
@@ -547,7 +589,7 @@ export function placeEdit(
 function engineRecord(
   current: Edit,
   tracks: PlacedTracks,
-  notes: readonly PlaceNote[],
+  notes: readonly RecordNote[],
   picks: ReadonlyMap<string, TextPick>,
   transcript: Transcript,
   picked: PickedVariants,
@@ -592,15 +634,19 @@ function engineRecord(
 function placeOnce(
   current: Edit,
   input: EngineInput,
+  picked: PickedVariants,
   transcript: Transcript,
   headTrack: HeadTrack,
   preset: Preset,
   measurer: Measurer,
   options: PlaceOptions,
-  // The refs of picks dropped by the same-text rule: placed as nothing.
+  // The refs of picks dropped by the same-text rule or left out for no legal
+  // spot: placed as nothing.
   skip: ReadonlySet<string>,
-): { tracks: PlacedTracks; record: PlaceNote[]; picks: TextPick[] } {
-  const record: PlaceNote[] = [];
+): { tracks: PlacedTracks; record: RecordNote[]; picks: TextPick[]; noSpot: string[] } {
+  const record: RecordNote[] = [];
+  // The refs of the picks this pass found no legal spot for.
+  const noSpot: string[] = [];
   const duration = current.duration;
   const byId = new Map(transcript.words.map((word) => [word.id, word]));
   const word = (id: string) => byId.get(id)!;
@@ -1903,13 +1949,19 @@ function placeOnce(
     }
   }
 
-  // One extra at its own span: placed by its kind (every kind is always
-  // placed, over the face or other text if it must, and noted), then kept.
+  // One extra at its own span: placed by its kind, then kept. The old kinds
+  // are always placed (over the face or other text if they must, noted); an
+  // accent or question the placer finds no legal spot for is left out, noted
+  // `no-spot`, and `placeEdit` places the answer again without it.
   function tryExtra(extra: Extra): void {
     const span = { start: extra.start, end: extra.end };
     if (extra.kind === "hook") placeHook(extra, span);
-    else if (extra.kind === "accent") placeAccent(extra, span);
-    else if (extra.kind === "big_word") placeBigWord(extra, span);
+    else if (extra.kind === "accent") {
+      if (!placeAccent(extra, span)) {
+        noSpot.push(extra.ref);
+        return;
+      }
+    } else if (extra.kind === "big_word") placeBigWord(extra, span);
     else placeVisual(extra, span);
     const together = accepted.filter((entry) => during(span, entry));
     if (together.length > 0) {
@@ -1941,166 +1993,56 @@ function placeOnce(
     return wordsText(range(accent.from, accent.to), transcript, preset);
   }
 
-  function placeAccent(extra: Extra, span: { start: number; end: number }): void {
+  // An accent or a question through the placer (`engine-place.ts`): the
+  // element from the entry its component was picked with (`accent/above-head`,
+  // `question/as-accent`), the scene from the moments of its span (the robust
+  // faces, unpadded; every text on screen with it as an obstacle: the hook and
+  // the lists' levels, placed before it; captions come last and are none yet).
+  // Its position, size and `breaks` are the placer's; the notes go to the
+  // record as they are. False when no candidate keeps the hard rules: the
+  // element is left out (see `tryExtra`).
+  function placeAccent(extra: Extra, span: { start: number; end: number }): boolean {
     const accent = extra.accent!;
     const ids = range(accent.from, accent.to);
     const text = wordsText(ids, transcript, preset);
-    const font = preset.accent.font;
-    const fullSize = preset.fonts[font].size;
-    const face = boundingBox(facesDuring(scene, span));
-    const mid = (safe.top + safe.bottom) / 2;
-    const areas: Record<string, Candidate> = {
-      above: {
-        name: "above the head",
-        area: { ...safe, bottom: face ? face.top - gap : safe.top },
-        align: "center",
-        want: (w, h) => ({
-          x: safeCx,
-          y: face ? Math.max(safe.top + h / 2, face.top - preset.accent.aboveHead + h / 2) : 0,
-        }),
-        maxLines: 2,
-      },
-      top: {
-        name: "in the upper part of the frame",
-        area: { ...safe, bottom: mid },
-        align: "center",
-        want: (w, h) => ({ x: safeCx, y: safe.top + h / 2 }),
-        maxLines: 2,
-      },
-      line: {
-        name: "on the accent line",
-        area: safe,
-        align: "center",
-        want: (w, h) => ({ x: safeCx, y: preset.accent.noHeadY + h / 2 }),
-        maxLines: 2,
-      },
-      anywhere: {
-        name: "in the free part of the safe zone",
-        area: safe,
-        align: "center",
-        want: (w, h) => ({ x: safeCx, y: face ? face.top - h : mid }),
-        maxLines: 2,
-      },
+    const element: TextElement = {
+      type: "text",
+      id: extra.id,
+      variant: textVariantOf(picked, accent.question ? "QUESTION" : "ACCENT"),
+      text,
+      lineGap: 0,
+      start: span.start,
+      end: span.end,
     };
-    const base = face ? ["above", "top", "anywhere"] : ["line", "anywhere"];
-    const candidates = base.map((name) => areas[name]!);
-    // Clear of the face, the other text and the notch (the chest is free: a
-    // spot there is as good as any other).
-    const clear = [...faceObstacles(span), ...textDuring(span), notch];
-    const words = text.split(" ");
-    const sizes = sizesFrom(fullSize, preset);
-    // Tiers: clear of the face, the text and the notch; then clear of the text
-    // and the notch only (the face covered, noted); only then the default spot
-    // anyway (the first candidate's wanted point, text overlap allowed), at the
-    // largest size that fits, never below the schema minimum.
-    const textOnly = [...textDuring(span), notch];
-    const anyway: Candidate = {
-      name: "at its default spot",
-      area: safe,
-      align: "center",
-      want: candidates[0]!.want,
-      maxLines: 2,
-    };
-    const anySizes = [...sizes];
-    for (let size = (sizes.at(-1) ?? fullSize) - 1; size >= MIN_TEXT_SIZE; size -= 1) {
-      anySizes.push(size);
-    }
-    const tiers = [
-      { list: candidates, obstacles: clear, sizes, overlapping: false },
-      { list: candidates, obstacles: textOnly, sizes, overlapping: false },
-      { list: [anyway], obstacles: [notch], sizes: anySizes, overlapping: true },
-    ];
-    for (const { list, obstacles, sizes: tierSizes, overlapping } of tiers) {
-      for (const candidate of list) {
-        for (const size of tierSizes) {
-          for (const lineCount of words.length > 1 ? [1, 2] : [1]) {
-            const lines = lineCount === 1 ? [text] : balancedBreak(words, font, size);
-            const widths = lines.map((line) => measurer.width(font, size, line));
-            const width = Math.max(...widths);
-            const height = lines.length * size;
-            // Last resort: the smallest size in two lines at the safe box's
-            // corner, past the box if the words must (never dropped).
-            const spot =
-              placeBox(candidate.area, obstacles, width, height, candidate.want(width, height)) ??
-              (overlapping && size === MIN_TEXT_SIZE && (lineCount === 2 || words.length === 1)
-                ? { x: safe.left, y: safe.top }
-                : null);
-            if (!spot) continue;
-            const label = `${accentNoun(accent)} ${quote(text)}`;
-            // Measured once its place and size are known; the notes on the
-            // place itself come first.
-            const notes = record.length;
-            const place = keepReadable(
-              extra.id,
-              label,
-              { ...spot, width, height },
-              span,
-              [preset.accent.color],
-              readability.large,
-              { area: candidate.area, obstacles },
-              `no free place nearby reaches ${readability.large.min}:1`,
-            );
-            const contrastNotes = record.splice(notes);
-            noteOverlap(
-              extra.id,
-              label,
-              { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
-              span,
-              "accent-face",
-            );
-            const item: OverlayItem = {
-              id: extra.id,
-              kind: "accent",
-              start: startAnchorOf(accent.from, span.start),
-              end: { word: accent.to, edge: "end" },
-              words: ids,
-              position: { x: place.x, y: place.y, align: "left" },
-              size,
-              ...(lines.length > 1 ? { breaks: breaksOf(lines) } : {}),
-            };
-            overlays.set(extra.id, item);
-            shown.push({
-              id: extra.id,
-              what: label,
-              start: span.start,
-              end: span.end,
-              box: {
-                left: place.x,
-                right: place.x + width,
-                top: place.y,
-                bottom: place.y + height,
-              },
-            });
-            if (candidate !== candidates[0] && !overlapping) {
-              record.push({
-                item: extra.id,
-                action: "moved",
-                rule: "accent-spot",
-                reason: `${label} sits ${candidate.name}: no room ${candidates[0]!.name}`,
-              });
-            }
-            if (size < fullSize) {
-              record.push({
-                item: extra.id,
-                action: "shrunk",
-                rule: "accent-size",
-                reason: `${label} set at ${size} px instead of ${fullSize} px to fit`,
-              });
-            }
-            if (lines.length > 1) {
-              record.push({
-                item: extra.id,
-                action: "wrapped",
-                rule: "accent-wrap",
-                reason: `${label} set in two lines to fit the frame`,
-              });
-            }
-            record.push(...contrastNotes);
-            return;
-          }
-        }
-      }
-    }
+    const obstacles: Obstacle[] = shown
+      .filter((item) => during(item, span))
+      .map((item) => ({ id: item.id, kind: "text", box: item.box }));
+    const result = placeElement(
+      element,
+      { faces: rawFacesDuring(scene, span), obstacles, safe: SAFE_ZONE },
+      measurer,
+    );
+    record.push(...result.notes);
+    if (!result.placed) return false;
+    const { box, size, lines, breaks } = result.placed;
+    overlays.set(extra.id, {
+      id: extra.id,
+      kind: "accent",
+      start: startAnchorOf(accent.from, span.start),
+      end: { word: accent.to, edge: "end" },
+      words: ids,
+      position: { x: box.left, y: box.top, align: "left" },
+      size,
+      ...(lines.length > 1 ? { breaks } : {}),
+    });
+    shown.push({
+      id: extra.id,
+      what: `${accentNoun(accent)} ${quote(text)}`,
+      start: span.start,
+      end: span.end,
+      box,
+    });
+    return true;
   }
 
   // The written hook: in the upper part of the frame clear of the face,
@@ -2694,6 +2636,7 @@ function placeOnce(
 
   return {
     picks,
+    noSpot,
     tracks: {
       footage: current.tracks.footage,
       captions: outCaptions,

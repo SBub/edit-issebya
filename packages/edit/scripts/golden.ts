@@ -109,8 +109,8 @@ await write("rethink-work-engine", withPlaceholders(engine.edit));
 // The same choices over a synthetic background: dark, with a beige band
 // across the frame where the first sentence's captions sit (while it is said)
 // and one where the first accent sits (while it shows), so the captions move
-// to a darker free place and the accent, with no room above the head, stays
-// where it is, plain (never a shadow).
+// to a darker free place; the accent is the placer's, which measures nothing,
+// so it stays where it is with no contrast note.
 const spans = resolveTimeline(engine.edit, RETHINK_WORK.transcript);
 const firstCaption = engine.edit.tracks.captions[0]!;
 const firstAccent = engine.edit.tracks.overlays.find((item) => item.id.startsWith("accent-"))!;
