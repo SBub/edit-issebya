@@ -69,9 +69,10 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    off the face and off other text first, then over the face but off other
 //    text (noted `covers-face`), then over other text (noted
 //    `kept-overlapping`). Big words are behind the speaker and ignore the face.
-//    The engine drops no pick but one: a text pick whose every word an earlier
-//    text pick shows (`same-text`). It trims or drops the later of two picks
-//    that share a word id, then places the answer again. A caption's words a
+//    The engine drops no pick but one: a text pick whose every word another
+//    text pick on screen at the same moment shows (`same-text`). Of two such
+//    picks a big word keeps the shared words, else the earlier one does. It
+//    trims or drops the other, then places the answer again. A caption's words a
 //    text on screen shows are left out while it shows, the caption split in time.
 // 5. Fallbacks, each noted: a pick too close to the reel's end shows from
 //    earlier (`clamped-to-end`); a pick over hidden footage moves to the next
@@ -399,7 +400,8 @@ interface Accepted {
 
 // A text pick as placed: its answer reference (`accents[0]`, `big_words[1]`,
 // ...), what a note calls it, its span, its place in the answer order (the
-// one-at-a-time rank) and the word ids it shows, in transcript order.
+// one-at-a-time rank), whether it is a big word, and the word ids it shows, in
+// transcript order.
 interface TextPick {
   id: string;
   ref: string;
@@ -407,39 +409,53 @@ interface TextPick {
   start: number;
   end: number;
   rank: number;
+  big: boolean;
   words: string[];
 }
 
-// The same text never shows twice (rule `same-text`). Of two text picks that
-// share a word id, the one placed earlier (its start; on a tie, the earlier in
-// the answer order) keeps the shared words. The other shows its own words only:
-// its range is trimmed to its largest contiguous part without a shared word, or
-// it is dropped when no word of its own is left. Null when no two picks share a
-// word id. Each change is noted. The answer keeps every position (a dropped
-// pick stays in it, skipped), so the other items keep their ids; `dropped`
-// lists the refs to skip from now on.
+// The same text never shows twice on screen (rule `same-text`). Of two text
+// picks that share a word id and are on screen at the same moment (their spans
+// overlap), a big word keeps the shared words over an accent, a question or a
+// list; between the others, the one placed earlier (its start; on a tie, the
+// rank) keeps them. Two picks that share a word but never show together both
+// keep it. The other pick shows its own words only: its range is trimmed to its
+// largest contiguous part without a shared word, or it is dropped when no word
+// of its own is left. Null when no such pair exists. Each change is noted. The
+// answer keeps every position (a dropped pick stays in it, skipped), so the
+// other items keep their ids; `dropped` lists the refs to skip from now on.
 function sameTextPass(
   picks: readonly TextPick[],
   answer: EngineInput,
   transcript: Transcript,
   preset: Preset,
 ): { answer: EngineInput; dropped: string[]; notes: EngineNote[] } | null {
-  const order = [...picks].sort((a, b) => a.start - b.start || a.rank - b.rank);
-  const keeper = new Map<string, TextPick>();
+  const onScreen = (a: TextPick, b: TextPick) =>
+    Math.min(a.end, b.end) - Math.max(a.start, b.start) > SLACK;
+  // Big words first, then the others in time order, as the earlier one keeps.
+  const order = [...picks].sort(
+    (a, b) => Number(b.big) - Number(a.big) || a.start - b.start || a.rank - b.rank,
+  );
+  // Each word id and the picks kept so far that show it.
+  const keepers = new Map<string, TextPick[]>();
   const trimmed = new Map<string, string[]>();
   const dropped: string[] = [];
   const notes: EngineNote[] = [];
   const position = new Map(transcript.words.map((word, slot) => [word.id, slot]));
   for (const pick of order) {
-    const shared = pick.words.filter((id) => keeper.has(id));
+    const clashing = (id: string) =>
+      (keepers.get(id) ?? []).filter((other) => onScreen(other, pick));
+    const shared = pick.words.filter((id) => clashing(id).length > 0);
     if (shared.length === 0) {
-      for (const id of pick.words) keeper.set(id, pick);
+      for (const id of pick.words) keepers.set(id, [...(keepers.get(id) ?? []), pick]);
       continue;
     }
-    const own = pick.words.filter((id) => !keeper.has(id));
-    const keepers = [...new Set(shared.map((id) => keeper.get(id)!))];
+    const own = pick.words.filter((id) => !shared.includes(id));
+    const keeperList = [...new Set(shared.flatMap(clashing))];
     // Named without times: the keeper's span may still be cut by a later pick.
-    const named = keepers.map((other) => other.name);
+    const named = keeperList.map((other) => other.name).join(" and ");
+    const why = keeperList.some((other) => other.big)
+      ? "a big word keeps the shared words first"
+      : "the earlier pick";
     const sharedText = quote(wordsText(shared, transcript, preset));
     if (own.length === 0) {
       dropped.push(pick.ref);
@@ -447,7 +463,7 @@ function sameTextPass(
         item: pick.id,
         action: "dropped",
         rule: "same-text",
-        reason: `${pick.name} is dropped: every word it shows, ${sharedText}, is already shown by ${named.join(" and ")}, the earlier pick`,
+        reason: `${pick.name} is dropped: every word it shows, ${sharedText}, is already shown by ${named}, ${why}`,
       });
       continue;
     }
@@ -459,13 +475,13 @@ function sameTextPass(
       else runs.push([id]);
     }
     const kept = runs.reduce((best, run) => (run.length > best.length ? run : best));
-    for (const id of kept) keeper.set(id, pick);
+    for (const id of kept) keepers.set(id, [...(keepers.get(id) ?? []), pick]);
     trimmed.set(pick.ref, kept);
     notes.push({
       item: pick.id,
       action: "retimed",
       rule: "same-text",
-      reason: `${pick.name} shows only ${quote(wordsText(kept, transcript, preset))}, not its shared ${sharedText}: ${named.join(" and ")} shows that text first`,
+      reason: `${pick.name} shows only ${quote(wordsText(kept, transcript, preset))}, not its shared ${sharedText}: ${named} shows that text, ${why}`,
     });
   }
   if (trimmed.size === 0 && dropped.length === 0) return null;
@@ -2597,6 +2613,7 @@ function placeOnce(
               start: extra.start,
               end: extra.end,
               rank: rankOf(extra) * 1000 + extra.index,
+              big: extra.kind === "big_word",
               words:
                 extra.kind === "accent"
                   ? range(extra.accent!.from, extra.accent!.to)
@@ -2612,6 +2629,7 @@ function placeOnce(
       start: plan.start,
       end: plan.end,
       rank: 4000 + plan.index,
+      big: false,
       words: range(plan.choice.from, plan.choice.to),
     })),
   ];

@@ -330,13 +330,15 @@ tracks and record. `editFromAnswer` (decide, returning `{ ok, edit, record }`) a
 One placement shows every pick the answer proposed. Nothing is dropped for room, for another pick's
 time, for the hook, for a transition's rate or for pace. The one drop is the same-text rule (rule
 `same-text`): a text pick (an accent, a question, a big word or a list) that shares a word id with another
-text pick never shows that word twice. Of the two, the one placed earlier (its start; on a tie the answer's
-order: the hook, the accents, the questions, the big words, the lists) keeps the shared words. The other
-shows its own words only: its range is trimmed to its largest contiguous part without a shared word, and
-when no word of its own is left it is dropped, noted (`dropped`), its reason naming both picks and the
-word. A trimmed or dropped pick is noted `retimed` (rule `same-text`). Each such change places the answer
-again (`placeEdit` runs `placeOnce` until no two picks share a word id), so the rule holds on the placed
-times; a dropped pick keeps its position in the answer, so the other picks keep their ids. Text picks never
+text pick never shows that word twice while both are on screen. The rule looks only at picks whose placed
+spans overlap in time: two picks that share a word but never show together both keep it. Of two that
+overlap, a big word keeps the shared words over an accent, a question or a list; between the others the one
+placed earlier (its start; on a tie the rank: the hook, the accents, the questions, the big words, the lists)
+keeps them. The other shows its own words only: its range is trimmed to its largest contiguous part without
+a shared word, and when no word of its own is left it is dropped, noted (`dropped`), its reason naming both
+picks and the word. A trimmed or dropped pick is noted `retimed` (rule `same-text`). Each such change places
+the answer again (`placeEdit` runs `placeOnce` until no two overlapping picks share a word id), so the rule
+holds on the placed times; a dropped pick keeps its position in the answer, so the other picks keep their ids. Text picks never
 share the screen in time: they show one at a time, the earlier one cut where the later one starts (or the
 later one waiting, for the hook and a big word), noted (`text-one-at-a-time`). A visual may overlap any
 pick; each such overlap is kept and noted.
@@ -427,8 +429,8 @@ pick; each such overlap is kept and noted.
     text, on the caption line or at the top of the safe zone (`covers-face`, rule `caption-face`). Only
     when no place is clear of the text either, it sits over other text as the last resort, wrapped as far
     as it takes, each unit noted `kept-overlapping` with the texts it sits over.
-  - Never the same word twice on screen: the same-text rule above keeps two text picks from sharing a word
-    id, and the `same-text` check (below) fails any spoken word two items show at a shared moment.
+  - Never the same word twice on screen: the same-text rule above keeps two text picks on screen together
+    from sharing a word id, and the `same-text` check (below) fails any spoken word two items show at a shared moment.
     By time: the captions are split in time against the texts on
     screen (the hook shows no word, so it never splits one). A caption's words that an accent, a big word
     or a list's phrase shows while that text is on screen are left out for that stretch (`hidden_by` the
@@ -759,8 +761,8 @@ never fatal.
   candidate and size, the face avoided first): a text is placed clear of every text it shares a moment with,
   and keeps its default spot over other text only when none exists. The note names the pair (`with`), and
   the `text-overlap` check excuses only that pair.
-- Never drop a pick except by the same-text rule (a text pick whose every word an earlier text pick shows,
-  noted `dropped`, rule `same-text`); never drop a caption: with no free place even at the floor, a caption takes
+- Never drop a pick except by the same-text rule (a text pick whose every word another text pick on screen
+  with it shows, noted `dropped`, rule `same-text`); never drop a caption: with no free place even at the floor, a caption takes
   the caption line over the face (`covers-face`). A caption left out while an extra shows its words is
   not dropped: its words are on screen.
 - Never read a single head-track sample for a placement or a check: always the robust faces
@@ -772,8 +774,9 @@ never fatal.
   floor the checks need (the hook, a big word), noted. A visual may overlap any pick; each overlap is noted.
 - Never show a spoken word twice at once: a caption's words that an accent, a big word or a list shows
   are left out while that text is on screen (the caption split in time, never blinking in or out of its
-  group); the words a cut text no longer shows stay on screen as captions. Two text picks never share a word
-  id: of two that do, the earlier keeps it and the later shows its own words or is dropped (`same-text`).
+  group); the words a cut text no longer shows stay on screen as captions. Two text picks on screen together
+  never share a word id: of two that do, a big word keeps it, else the earlier, and the other shows its own
+  words or is dropped (`same-text`). Two picks that never show together may share one.
   The `same-text` check fails any version where two items show one spoken word at a shared moment.
 - Every text on screen is a spoken word, except the one written hook at the start: never more than
   one hook in a version, never a hook with words, and never a caption left out for it.
@@ -814,8 +817,8 @@ never fatal.
 - Never remove a caption, set it below the floor, or put it outside the safe zone. A caption goes over
   the face only when nothing else is free (`covers-face`).
 - The engine never removes or shifts a pick to make room for another. Its only removal is the same-text
-  rule, and a text pick is never trimmed or dropped for anything else; each such change places the answer
-  again.
+  rule (two text picks on screen together sharing a word), and a text pick is never trimmed or dropped for
+  anything else; each such change places the answer again.
 - Never let a version fail the schema or the checks on the engine's output, except the `face` check
   for a caption recorded `covers-face` (a block's note names its other captions in `with`). The one refusal the engine cannot avoid is a big word or visual
   over footage hidden for the whole reel (no visible moment to move it to).

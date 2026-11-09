@@ -26,7 +26,7 @@ over the version by the layout engine together with the hook (`placeEdit`, `app_
 "Layout engine"), built and checked, and becomes a new version (version 2 on a fresh reel). Only an
 answer breaking the schema or the glossary is refused: it goes back once with the reasons; a second
 refusal of the hook or of the components fails the step and leaves the current version untouched.
-Layout never refuses an answer: nothing is dropped but by the same-text rule (a text pick whose every word an earlier text pick shows; its trim or drop is noted), a pick with no free place takes its default spot, its overlap noted, and a text never overlaps another text while a free spot exists. Every note is written to the engine record saved with the version. Nothing asks Claude again about what the engine left out: the decide step makes no
+Layout never refuses an answer: nothing is dropped but by the same-text rule (a text pick whose every word another text pick on screen with it shows, a big word keeping the shared words over an accent, a question or a list; its trim or drop is noted), a pick with no free place takes its default spot, its overlap noted, and a text never overlaps another text while a free spot exists. Every note is written to the engine record saved with the version. Nothing asks Claude again about what the engine left out: the decide step makes no
 call after the components' answer is placed. Every AI call a decided version made (the hook attempts,
 the decide attempts) is stored beside it with its prompt, schema and raw answer
 (the version's AI record), so a version can be replayed and diagnosed.
