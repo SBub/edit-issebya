@@ -346,6 +346,27 @@ each zone's areas inside the one safe zone `S` (the guard minus the notch) and i
 the moment's face `F` (null when no head is in the frame). The engine does not call them yet; the
 placement still uses its own candidates (the build order of `specs/layout-engine.md`, step 2).
 
+The placer (`src/engine-place.ts`, `placeElement(element, scene, measurer, costs?)`) is built and not
+yet used (step 5): it places one element (a text with its entry, words and line gap, or a box with its
+entry; its id and span) over a scene (the unpadded robust faces over its span, the obstacles already
+placed over it as `{ id, kind: "caption" | "text" | "box", box }`, the safe zone) and returns
+`{ placed, notes }`: the chosen `box`, `size` (a text's font size, a box's width), `lines`, `breaks`,
+`zone`, `cost` and `coversFace`, or `placed: null` for a `no-spot`, with the engine notes for it (one per
+outcome: `placed`, or each of `moved`, `shrunk`, `wrapped`, `covers-face` that applies; `no-spot`, their
+`blockers` the captions, items, face and buttons that took the zones before the one taken). Candidates:
+each zone of the entry's ranking x each line count (balanced breaks, widths at size 1 so the break is the
+same at every size) x the face as an obstacle then the face allowed; each is the largest size that fits a
+free rectangle of the zone (the zone's pieces as their bounding box, the notch and the obstacles the
+element sees grown by `layout.gap` as obstacles), at most the element's full size (a text: the largest fit
+in its first zone with room, no obstacles; a box: its `width` share of the frame), at the spot `placeBox`
+finds nearest the zone's want (anchored at the element's top centre; its centre for `head-top` and
+`anywhere-in-safe-zone`; its edge towards the face for `beside-face`; its own corner for `corner`). Hard:
+sizes under `MIN_SIZE_PX` (30 px, a box's width too), captions (block everything), text over text (a box
+blocks nothing and sees no text), and for a `behind` text rule 6 (`bigWordCoveredShare` over the faces at
+most 0.3). Soft (`PLACE_COSTS`): face 100 (a behind text pays none), zone step 10, shrink step 10 (10% of
+the full size, counted up), wrap 0; tie-break the earlier zone, the larger size, fewer lines, the higher,
+then the further left spot. A LIST stack is not an element yet (step 7).
+
 One placement shows every pick the answer proposed. Nothing is dropped for room, for another pick's
 time, for the hook, for a transition's rate or for pace. The one drop is the same-text rule (rule
 `same-text`): a text pick (an accent, a question, a big word or a list) that shares a word id with another
@@ -760,6 +781,12 @@ never fatal.
   to 3 s), and the accent and big word timing.
 - `src/engine-zones.test.ts`: the zone table (`zonesAt`), each zone with a head and with none, and every
   zone's areas inside `S` and clear of the notch.
+- `src/engine-place.test.ts`: the placer on synthetic scenes: an empty scene (`placed`, the top centre
+  of the upper third, above the head), a crowded upper third (one zone step, the crowd as blockers,
+  determinism, `shrunk`), the face (avoided at a zone step; covered only when nothing off it passes; the
+  behind big word's rule 6 at no face cost), no legal spot (a text that took S, a word too wide for S, a
+  caption blocking a card), the 30 px floor, wrapping (free in a tall zone, preferred to shrinking, three
+  lines, the caption line gap), a box under a text and a card over a text, and the notch.
 - `src/transitions.test.ts`: `transitionTiming` (in at the first word, out at the last word's end, no hold,
   a phrase with no length lengthened to the floor, a reel's start and end, a reel too short for the floor),
   the style roles, and `hiddenCaptionIds`.

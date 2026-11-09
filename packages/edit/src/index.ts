@@ -70,6 +70,19 @@ export {
 } from "./engine-input.ts";
 export { type EngineNote } from "./engine-note.ts";
 export { placeEdit } from "./engine.ts";
+export {
+  type BoxElement,
+  type Obstacle,
+  type PlaceCosts,
+  type PlaceElement,
+  type PlaceResult,
+  type PlaceScene,
+  type Placed,
+  type TextElement,
+  MIN_SIZE_PX,
+  PLACE_COSTS,
+  placeElement,
+} from "./engine-place.ts";
 export { pickVariants } from "./variant-picker.ts";
 export {
   type Point,

@@ -45,7 +45,7 @@ function contains(outer: Box, inner: Box): boolean {
 }
 
 // The largest rectangles of `area` no obstacle touches.
-function freeRects(area: Box, obstacles: readonly Box[]): Box[] {
+export function freeRects(area: Box, obstacles: readonly Box[]): Box[] {
   if (area.right <= area.left || area.bottom <= area.top) return [];
   let free: Box[] = [area];
   for (const obstacle of obstacles) {

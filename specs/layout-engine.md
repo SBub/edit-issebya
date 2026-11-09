@@ -256,6 +256,35 @@ linearly with size, so one measurement per line gives the fit).
 
 Deterministic: same input, same output. No clock, no randomness, no I/O (as today).
 
+Details the placer settled (build step 5, `engine-place.ts`; each the simplest reading, marked
+`Settled:` in the code; a real reel may move any of them):
+
+- A cell's size is capped at the element's full size, so a later zone with more room never makes an
+  element larger than its first zone would. The full size is over any line count (wrapping is free, so
+  a two-word text in a tall zone is full at two lines); the first zone with room at the minimum size
+  or more gives it when the first zone has none (above a face at the frame's top).
+- Shrink steps are counted up: any size under the full size is at least one step, 0.9 of it one step,
+  0.89 two. Sizes are whole pixels (floored), spots whole pixels (`placeBox`).
+- A box's size is the largest continuous fit at its aspect, capped at its `width` share, floored;
+  the 30 px minimum bounds a box's width too.
+- The face as an obstacle is `F` grown by `gap`, like the texts; the face cost charges an overlap with
+  `F` itself. `F` is the faces' bounding box padded 35 and 30 px horizontally only (the zone table
+  applies `gap` above and below). A behind text runs both passes, pays no face cost and never notes
+  `covers-face`; rule 6 is checked on the unpadded faces.
+- The wanted point anchors the element's top centre (above-head, upper-third, below-face,
+  caption-line), its centre (head-top, anywhere-in-safe-zone), its edge towards the face at the mouth
+  (beside-face) or its own corner (corner).
+- A zone part's disjoint pieces are searched as their bounding box with the notch as an obstacle, so a
+  spot that straddles the notch's top edge left of the column stays a candidate.
+- Balanced breaks on `n` lines keep the widest line narrowest, measured at size 1 (the break is the
+  same at every size); ties go to the earlier cuts.
+- Line height is the size; the element carries its line gap (a caption 14 px, every other text 0).
+- A note's `blockers` are the captions, items, face and buttons that touch the zones before the one
+  taken, plus the taken zone's own when the element shrank or covers the face there; a `no-spot` names
+  what touches every zone, or the safe zone's edges (left and right, or top and bottom) when the element
+  fits no zone at the minimum size even with nothing in the way.
+- A LIST stack is not an element of the placer yet (step 7 adds it).
+
 ## No legal spot
 
 Rare: a moment so crowded that a component has no candidate that keeps the hard rules at or above the
