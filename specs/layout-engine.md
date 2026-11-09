@@ -2,7 +2,8 @@
 
 Design spec for the rebuilt layout engine of the reel studio (owner decisions of 2026-11-09). Nothing
 here is built yet; `app_docs/edit-model.md` describes what the code does today. This file is the plan
-and the record of what was agreed, so a later reader can tell a decision from an open point.
+as decided; the "Decisions" log at the end keeps the history of the points that were open and how
+each was settled.
 
 Branch: `feat/engine-simplify`. Code: `packages/edit/src/engine.ts` (2689 lines today),
 `engine-space.ts`, `engine-input.ts`, `preset.ts`, `behind.ts`, `head-track.ts`, `checks.ts`,
@@ -40,9 +41,10 @@ curator LLM  ->  variant picker  ->  engine (timing, then placement)  ->  edit +
    today: HOOK (its own call), ACCENT, QUESTION, BIGWORD, VISUAL, LIST with `lists[].items[]`
    (`packages/edit/src/decide.ts`, `EngineInput` in `engine-input.ts`). Word ids only, never a time,
    position, size or spot.
-2. A variant picker, a new separate module, maps each pick to one variant entry. One variant per
-   component for now, so the picker is a lookup table; it is the one place a later picker (by
-   intensity, by reel, by the LLM) plugs in.
+2. The variant picker, `packages/edit/src/variant-picker.ts`, maps each pick to one variant entry.
+   One variant per component for now, so the picker is a lookup table; it is the one place a later
+   picker (by intensity, by reel, by the LLM) plugs in. `editFromAnswer` and the worker's
+   `first_version` step call it; the worker gains no module of its own for it.
 3. The engine: timing from the words, then placement in one loop over every element.
 4. Output: the edit's tracks (every caption, overlay, level and behind item with its position, size
    and times) and the engine record.
@@ -68,24 +70,27 @@ for now (see "Readability").
 
 A variant entry holds only what the engine cannot compute. No sizes, no pixel positions.
 
-| Field       | Meaning                                                                                              |
-| ----------- | ---------------------------------------------------------------------------------------------------- |
-| `component` | HOOK, ACCENT, QUESTION, BIGWORD, VISUAL, LIST, or CAPTION (the non-component element)                |
-| `variant`   | the entry's name                                                                                     |
-| `layer`     | `front` (over the footage, in front of the speaker) or `behind` (behind the speaker, needs the mask) |
-| `type`      | `text` or `box`                                                                                      |
-| `style`     | font role (`primary`, `secondary`) and colour; for a LIST, one per level. No size.                   |
-| `zones`     | the ranked list of named zones it may take, best first                                               |
-| `timing`    | how its span comes from its words                                                                    |
-| `hides`     | whether its words leave the captions while it shows (`hidden_by`)                                    |
-| `aspect`    | a box's width over height; text has none                                                             |
+| Field       | Meaning                                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| `component` | HOOK, ACCENT, QUESTION, BIGWORD, VISUAL, LIST, or CAPTION (the non-component element)                       |
+| `variant`   | the entry's name                                                                                            |
+| `layer`     | `front` (over the footage, in front of the speaker) or `behind` (behind the speaker, needs the mask)        |
+| `type`      | `text` or `box`                                                                                             |
+| `style`     | font role (`primary`, `secondary`) and colour; a box's stroke. No size.                                     |
+| `zones`     | the ranked list of named zones it may take, best first                                                      |
+| `timing`    | which timing option its span comes from (see "Timing first")                                                |
+| `hides`     | whether its words leave the captions while it shows (`hidden_by`)                                           |
+| `aspect`    | a box's width over height; text has none                                                                    |
+| `width`     | a box's full width as a share of the frame (the one size no text can give); text has none                   |
+| `levels`    | a stack (LIST) only: its level roles in order, each with its style, and the number's ratio to the key level |
 
 ### Zones
 
-A zone is a named area the engine computes per moment from the head track and the safe zone. Every
-zone is cut to the safe zone `S` (`PLATFORM_SAFE` minus the `PLATFORM_BUTTONS` notch), so hard rule 1
-holds by construction. `F` is the face over the element's span: the bounding box of the robust faces
-(`facesOver`, `head-track.ts`), padded 35 px left and 30 px right (`LAYOUT_PADDING`) and
+A zone is a named area the engine computes per moment from the head track and the safe zone. The
+safe zone `S` is `PLATFORM_SAFE` minus the `PLATFORM_BUTTONS` notch, one zone for everything (the
+style's tighter box `STYLE_SAFE`, 130..860 x 260..1400, goes). Every zone is cut to `S`, so hard rule
+1 holds by construction. `F` is the face over the element's span: the bounding box of the robust
+faces (`facesOver`, `head-track.ts`), padded 35 px left and 30 px right (`LAYOUT_PADDING`) and
 `layout.gap` (12 px) above and below. `gap` is 12 px. Each zone has a wanted point; of the spots that
 fit, the one nearest it wins (as `placeBox` in `engine-space.ts` does today: ties to the higher, then
 the further left).
@@ -93,66 +98,80 @@ the further left).
 | Zone                    | Area                                                                                                               | Wanted point                                                                    | No head in the moment                               |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `above-head`            | `S` above `F.top - gap`                                                                                            | centre x of `S`, 190 px above `F.top` (`accent.aboveHead`)                      | the accent line, y 1130 (`accent.noHeadY`), centred |
-| `upper-third`           | the top third of `S`                                                                                               | top centre of `S`                                                               | the same                                            |
+| `upper-third`           | the top third of `S` (220 to 637)                                                                                  | top centre of `S`                                                               | the same                                            |
 | `beside-face`           | the strips of `S` left and right of `F`, from `F.top` to `F.bottom + 120`                                          | towards the face, at the mouth (0.7 of the face's height); the wider side first | zone absent                                         |
 | `below-face`            | `S` below `F.bottom + gap`                                                                                         | under the face's centre, just below it                                          | zone absent                                         |
 | `caption-line`          | `S` from y 1290 (`caption.fallbackY`) down                                                                         | centre x, y 1290                                                                | the same                                            |
 | `corner`                | the four corners of `S`, inset 40 px (`card.inset`): top-left, top-right, bottom-left, bottom-right, in that order | the corner itself                                                               | the same                                            |
-| `head-top`              | the full width of `S` (today: the frame with a 40 px margin, see Open questions)                                   | centre x; vertical centre 60 px below `F.top` (`word.belowHeadTop`)             | y 700 (`word.noHeadY`)                              |
+| `head-top`              | the full width of `S`                                                                                              | centre x; vertical centre 60 px below `F.top` (`word.belowHeadTop`)             | y 700 (`word.noHeadY`)                              |
 | `anywhere-in-safe-zone` | all of `S`                                                                                                         | the centre of `S`                                                               | the same                                            |
 
-These are the zones the current variants need; a new variant that needs another zone adds it here
-with its derivation.
+These are the zones the current variants need. A zone is the engine's: adding one is an engine change
+(see "Writing a variant").
 
 ### Sizes and wrapping
 
 Sizes are not in the variant. For a text, the engine computes the largest size at which the text fits
-the spot, measured with HarfBuzz (`measurer.width(font, size, line)`), down to ONE global minimum text
-size (the value is an open question; today the schema's `MIN_TEXT_SIZE` is 8 px and the per-kind
-floors are 60% of 110 px and 50 px). Wrapping is free: any number of lines, balanced breaks
-(`balancedBreak` today), line height the size (plus `caption.lineGap` 14 px between caption lines).
-For a box, the entry gives the aspect; the size question is open (see Open questions).
+the spot, measured with HarfBuzz (`measurer.width(font, size, line)`), down to one global minimum
+text size: 30 px (today's caption floor, the smallest text shown today; the schema's `MIN_TEXT_SIZE`
+8 px stays the format's bound, never a layout value). Wrapping is free: any number of lines, balanced
+breaks (`balancedBreak` today), line height the size (plus `caption.lineGap` 14 px between caption
+lines). The lines are stored as `breaks: number[]` (the word index each line break falls after),
+which replaces `break_after` in the schema; nothing keeps `break_after`.
+
+A box's full size is its `width` share of the frame at its `aspect` (the card: 1/3 at 4:5, 360 x 450);
+the engine shrinks from it when the spot is smaller, at the same cost as a text's shrink.
+
+A LIST item's levels are one stacked element: number, lead, key, `transition.gap` (24 px) between,
+centred; placed once, as a whole. The key and lead take the computed size; the number is the key's
+size times the entry's ratio (300/110 to start, the two preset sizes of today), so a one-digit number
+never fills the zone. A stack that fits nowhere whole is a `no-spot`, never three placements.
 
 ### The entries
 
 One variant per component today. Values are the current preset's, named so they can be read back to
 `preset.ts`.
 
-| Entry                | `component` | `layer`  | `type` | `style`                                                                                       | `zones` (best first)                                                 | `timing`                                                                                                                                                | `hides`              | `aspect`                                      |
-| -------------------- | ----------- | -------- | ------ | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | --------------------------------------------- |
-| `hook/written-line`  | HOOK        | `front`  | text   | `primary`, `#FFFFFF`                                                                          | `upper-third`, `anywhere-in-safe-zone`                               | the pace window: 0.2 s to 3 s (`pace.hook`), cut to the reel's end                                                                                      | no (nobody says it)  | none                                          |
-| `accent/above-head`  | ACCENT      | `front`  | text   | `primary`, `#FFFFFF`                                                                          | `above-head`, `upper-third`, `anywhere-in-safe-zone`                 | first word's start to last word's end, no lead, no minimum                                                                                              | yes                  | none                                          |
-| `question/as-accent` | QUESTION    | `front`  | text   | `primary`, `#FFFFFF`                                                                          | `above-head`, `upper-third`, `anywhere-in-safe-zone`                 | as an accent                                                                                                                                            | yes                  | none                                          |
-| `bigword/behind`     | BIGWORD     | `behind` | text   | `primary`, `#FFFFFF`                                                                          | `head-top`                                                           | 0.2 s lead before its first word (`accent.leadSeconds`), to its last word's end, at least 1.5 s (`accent.minSeconds`)                                   | yes                  | none                                          |
-| `visual/card`        | VISUAL      | `front`  | box    | white stroke 8 px (`card.stroke`), no fill                                                    | `corner`, `beside-face`                                              | first word's start to last word's end, 1 to 2 s (`behind.minSeconds`, `maxSeconds`)                                                                     | no                   | 4:5 (360 x 450 at a third of the frame today) |
-| `list/numbered`      | LIST        | `front`  | text   | levels: `number` `primary` `#FFFFFF`, `lead` `secondary` `#FFFFFF`, `key` `primary` `#FFFFFF` | `upper-third`, `anywhere-in-safe-zone`                               | 0.3 s entrance (`transitions.numbered.seconds`) before the item's first word, to its last word's end; each level from its own first word                | yes                  | none                                          |
-| `caption/default`    | CAPTION     | `front`  | text   | `secondary`, `#FFFFFF`                                                                        | `beside-face`, `below-face`, `caption-line`, `anywhere-in-safe-zone` | caption groups as today: a group leaves at its last word's end, held so its last caption shows 0.25 s (`caption.minSeconds`), never past the next group | (they are the words) | none                                          |
+| Entry                | `component` | `layer`  | `type` | `style`                                                                                                                  | `zones` (best first)                                                 | `timing`                                                                                                                                                | `hides`              | `aspect`, `width` |
+| -------------------- | ----------- | -------- | ------ | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ----------------- |
+| `hook/written-line`  | HOOK        | `front`  | text   | `primary`, `#FFFFFF`                                                                                                     | `upper-third`, `anywhere-in-safe-zone`                               | window: 0.2 s to 3 s (`pace.hook`), cut to the reel's end                                                                                               | no (nobody says it)  | none              |
+| `accent/above-head`  | ACCENT      | `front`  | text   | `primary`, `#FFFFFF`                                                                                                     | `above-head`, `upper-third`, `anywhere-in-safe-zone`                 | words: first word's start to last word's end, no lead, no minimum                                                                                       | yes                  | none              |
+| `question/as-accent` | QUESTION    | `front`  | text   | `primary`, `#FFFFFF`                                                                                                     | `above-head`, `upper-third`, `anywhere-in-safe-zone`                 | words, as an accent                                                                                                                                     | yes                  | none              |
+| `bigword/behind`     | BIGWORD     | `behind` | text   | `primary`, `#FFFFFF`                                                                                                     | `head-top`                                                           | words with lead 0.2 s (`accent.leadSeconds`) and minimum 1.5 s (`accent.minSeconds`)                                                                    | yes                  | none              |
+| `visual/card`        | VISUAL      | `front`  | box    | white stroke 8 px (`card.stroke`), no fill                                                                               | `corner`, `beside-face`                                              | words with minimum 1 s and maximum 2 s (`behind.minSeconds`, `maxSeconds`)                                                                              | no                   | 4:5, 1/3          |
+| `list/numbered`      | LIST        | `front`  | text   | levels: `number` `primary` `#FFFFFF` (ratio 300/110 to the key), `lead` `secondary` `#FFFFFF`, `key` `primary` `#FFFFFF` | `upper-third`, `anywhere-in-safe-zone`                               | words with entrance 0.3 s (`transitions.numbered.seconds`) before the item's first word; each level from its own first word                             | yes                  | none              |
+| `caption/default`    | CAPTION     | `front`  | text   | `secondary`, `#FFFFFF`                                                                                                   | `beside-face`, `below-face`, `caption-line`, `anywhere-in-safe-zone` | caption groups as today: a group leaves at its last word's end, held so its last caption shows 0.25 s (`caption.minSeconds`), never past the next group | (they are the words) | none              |
 
 Notes on the entries:
 
 - QUESTION is the ACCENT entry under another component name. That is the point of variants as data:
   the engine has no QUESTION branch.
-- The hook's `timing` is its window, not words. Without the one-text-at-a-time rule (below) it runs
-  its full window; a text pick said inside it is placed around it, not instead of it.
-- The LIST entry places one item; its three levels are one stacked element (how they sit relative to
-  each other is an open question). The number shows only in a list of two or more items; numbering
-  restarts at 1 in each list (as today).
-- Captions are an element like the others, with their own entry, placed last.
+- The hook's `timing` is its window, not words. There is no one-text-at-a-time rule, so it runs its
+  full window whatever is said in it; a text pick said then is placed around it, not instead of it.
+- The LIST entry places one item as one stack (see "Sizes and wrapping"). The number shows only in a
+  list of two or more items; numbering restarts at 1 in each list (as today).
+- Captions are an element like the others, with their own entry, placed last. The element is the
+  sentence block: one spot per spoken sentence (`sentenceSpans`, a 0.6 s pause or `.?!`), so
+  captions do not jump mid-sentence; its size is the largest at which every group of the sentence
+  fits, its lines free.
 
 ## Hard rules
 
 Never broken. A candidate spot that breaks one is not a candidate. The element itself is never thrown
 away for a rule (see "No legal spot").
 
-1. Everything stays inside the safe zone (`PLATFORM_SAFE`) and off the buttons column
-   (`PLATFORM_BUTTONS`).
+1. Everything stays inside the safe zone `S` (`PLATFORM_SAFE` minus `PLATFORM_BUTTONS`). The behind
+   big word too: it no longer uses the frame with a 40 px margin (down to y 1880), and the `frame`
+   check is replaced by `safe-box` for it.
 2. Captions are always visible: nothing covers a caption.
 3. Everything spoken is on screen, as a caption or inside a component (the caption split in time by
    `hidden_by`, as today).
 4. The same text never shows twice at the same moment (the `same-text` pass and the `same-text`
    check, as today).
 5. Text never overlaps text: captions, HOOK, ACCENT, QUESTION, BIGWORD, LIST levels, with
-   `layout.gap` (12 px) between them. Text may sit on top of a VISUAL.
+   `layout.gap` (12 px) between them. Text may sit on top of a VISUAL: a text is no obstacle to a
+   card and a card no obstacle to a text, either way round; the card draws under the text, and the
+   captions, placed last, keep rule 2.
 6. BIGWORD (behind variant): the head hides at most 30% of its height (`word.minVisible` 0.7,
    `bigWordCoveredShare` in `behind.ts`, the face only, over the whole span).
 
@@ -160,33 +179,38 @@ away for a rule (see "No legal spot").
 
 Costs. The cheapest legal candidate wins; the most avoided first.
 
-| Cost                  | What it charges                                                                                                                                | Starting value (a tuning value)                                         |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| covers the face       | the element's box overlaps `F` in any moment of its span (the behind big word is exempt: it is behind the speaker by design, rule 6 bounds it) | 100                                                                     |
-| down the zone ranking | one step down the variant's `zones`                                                                                                            | 10 per step                                                             |
-| shrinking             | one step of 10% below the element's full size (the largest size that fits its first zone with no obstacles)                                    | 10 per step, so a step down the ranking and a shrink step cost the same |
-| wrapping              | more lines                                                                                                                                     | 0                                                                       |
+| Cost                  | What it charges                                                                                                                                                          | Starting value (a tuning value)                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| covers the face       | flat: the element's box overlaps `F` in any moment of its span, whatever the share (the behind big word is exempt: it is behind the speaker by design, rule 6 bounds it) | 100                                                                     |
+| down the zone ranking | one step down the variant's `zones`                                                                                                                                      | 10 per step                                                             |
+| shrinking             | one step of 10% below the element's full size (a text: the largest size that fits its first zone with no obstacles; a box: its `width` share)                            | 10 per step, so a step down the ranking and a shrink step cost the same |
+| wrapping              | more lines                                                                                                                                                               | 0                                                                       |
 
 Tie-break, in order: the earlier zone, the larger size, fewer lines, the higher spot, the further left
 spot. Deterministic by construction.
 
-These numbers are a proposal. They are tuned on real reels, never by reasoning alone.
+These numbers are tuning values: tuned on real reels, never by reasoning alone. The face cost becomes
+proportional to the covered share only if a real reel shows a small graze costing a good spot.
 
 ## The loop
 
 ### Timing first
 
-Each element's span comes from its words and its entry's `timing`:
+Each element's span comes from its words and its entry's `timing` option:
 
+- `words`: first word's start to last word's end (ACCENT, QUESTION). A pick with no length at all
+  shows the shown floor (`SHOWN_FLOOR_SECONDS`, 0.5 s) from its start, earlier where the reel ends
+  (`clamped-to-end`).
+- `words` with `lead` and `minimum`: the lead before the first word, never before 0, to the last
+  word's end, at least the minimum; at the reel's end the start moves earlier so it shows
+  (`clamped-to-end`). BIGWORD: 0.2 s and 1.5 s.
+- `words` with `minimum` and `maximum`: the first word's start, held or cut to the bounds,
+  `clamped-to-end` at the reel's end. VISUAL: 1 to 2 s.
+- `words` with `entrance`: the entrance before the first word (never before 0) to the last word's
+  end. LIST: 0.3 s.
+- `window`: fixed seconds of reel, cut to the reel's end (`hook-time`). HOOK: 0.2 s to 3 s.
 - Captions: groups as today (`captionGroups`), a group leaving at its last word's end, held to
   `caption.minSeconds`.
-- ACCENT, QUESTION: exactly their words. A pick with no length at all shows the shown floor
-  (`SHOWN_FLOOR_SECONDS`, 0.5 s) from its start, earlier where the reel ends (`clamped-to-end`).
-- BIGWORD: the 0.2 s lead, never before 0, to its last word's end, at least 1.5 s; at the reel's end
-  the start moves earlier so it shows (`clamped-to-end`).
-- VISUAL: its first word to its last word's end, 1 to 2 s, `clamped-to-end` at the reel's end.
-- LIST item: 0.3 s before its first word (never before 0) to its last word's end.
-- HOOK: 0.2 s to 3 s, cut to the reel's end (`hook-time`).
 - A behind item over a cut footage span moves to the next visible moment (`moved-off-cut`), as
   today.
 - Then the same-text pass (rule 4): of two text picks on screen together that share a word id, a big
@@ -206,23 +230,25 @@ faces around it, `facesOver`). An element's `F` is the bounding box of the faces
 
 ### Placement
 
-Order: components first, captions last in the space left. The order among the components is open
-(see Open questions).
+Order: components first, by their start time, ties by the answer's order (the hook comes first by its
+start); then the captions, in time order, in the space left.
 
 For each element:
 
 1. Enumerate candidates: for each zone in its ranking, for each line count (1 up to its word count,
    balanced breaks), twice (the face as an obstacle; the face allowed, at the face cost): the largest
    size at which the wrapped text fits a free rectangle of the zone, and the spot nearest the zone's
-   wanted point (`freeRects`, `placeBox`). Obstacles: the notch, and every element already placed
-   whose span shares a moment with this one, expanded by `gap`, except a VISUAL for a text (rule 5).
-   A box variant enumerates its zones the same way at its aspect.
+   wanted point (`freeRects`, `placeBox`). Obstacles: the notch, and every text already placed whose
+   span shares a moment with this one, expanded by `gap`. A VISUAL is no obstacle and sees none but
+   the notch and the face (rule 5). A box variant enumerates its zones the same way at its aspect,
+   from its full width down.
 2. Skip candidates that break a hard rule: below the global minimum size (none fits), over a caption
-   (rule 2, captions are placed last so this is a check on the caption's own candidates), text over
-   text (rule 5, the obstacles above), a big word the face hides more than 30% of (rule 6).
+   (rule 2; captions are placed last, so this is a check on a caption's own candidates against the
+   captions before it), text over text (rule 5, the obstacles above), a big word the face hides more
+   than 30% of (rule 6).
 3. Score the rest by the soft costs. Take the cheapest; tie-break as above.
-4. Write the element with its position, size, lines (`break_after` today holds one break: see Open
-   questions) and span, add its box to the obstacles over its moments, and record a note.
+4. Write the element with its position, size, `breaks` and span, add its box to the obstacles over
+   its moments, and record a note.
 
 Candidates per element are bounded: zones (at most 8) x line counts (the word count) x 2. The sizes
 need no ladder: each cell's size is the largest fit, found by the measurer (a text's width scales
@@ -233,10 +259,10 @@ Deterministic: same input, same output. No clock, no randomness, no I/O (as toda
 ## No legal spot
 
 Rare: a moment so crowded that a component has no candidate that keeps the hard rules at or above the
-global minimum size. Out of scope for now. The spoken words still show as captions (rule 3). The
-engine writes a structured note with outcome `no-spot` and the blockers that took the space. What
-happens to the element in that version is for the owner to decide on a real reel (see Open
-questions).
+global minimum size. The element is left out of that version; its spoken words still show as captions
+(rule 3). The engine writes a structured note with outcome `no-spot` and the blockers that took the
+space, so the owner sees it in the record and the trace. Any other behaviour (a smaller minimum, a
+later moment, a different variant) waits for a real reel that shows the case.
 
 ## What the engine records
 
@@ -282,8 +308,9 @@ type Blocker =
 - One note per outcome: an element shrunk and moved has two notes with the same `item`.
 - `reason` stays as today: `the accent "lock-in" moves to the upper third from 3.20 s to 4.10 s; the
 face took above the head`.
-- Records saved before this change keep their `{ item, action, rule, reason, with }` shape and are
-  read as stored (the trace already does this for older note kinds).
+- This is the one shape. The trace (`decision-trace.ts`) and the checks read it and nothing else;
+  today's `{ item, action, rule, reason, with }` is not read any more (no old-version support
+  anywhere, decision 15).
 - The checks read the record: the `face` check excuses a caption whose note has outcome
   `covers-face`; the `text-overlap` check no longer has a `kept-overlapping` pair to excuse (rule 5
   is hard), so it is strict.
@@ -292,47 +319,50 @@ face took above the head`.
 
 Out for now: no contrast measurement, no background map, no move for contrast. A shadow or a stroke
 may come later if a real reel needs it (today's rule "never a shadow" is lifted with it; it is not a
-rule of this design).
+rule of this design). A later shadow or stroke needs no map, so the map goes with the measurement.
 
 This removes, in `packages/edit`: `contrast.ts` and `background.ts` (`backgroundSampler`,
 `BackgroundMap`, `BACKGROUND_GRID`, their exports in `index.ts`), `PlaceOptions.backgrounds`,
 `keepReadable`, `readablePlace`, `contrastOf`, the notes `contrast-spot` and `contrast-stay`
 (`low-contrast`), `preset.readability` (4.5, 3, 300, 60) and `preset.behind.edge` (1.5, 30), and the
-"readable text" engine tests. In `apps/worker`: the `ensureBackgrounds` calls in `first-version.ts`
-and `decide/run-decide.ts` (the `backgrounds` step itself is an open question).
+"readable text" engine tests. In `apps/worker`: the `backgrounds` pipeline step and its module
+(`apps/worker/src/backgrounds/`, `backgrounds.json`, the `ensureBackgrounds` calls in
+`first-version.ts` and `decide/run-decide.ts`), with its lines in `app_docs/pipeline.md`.
 
 ## What changes from today
 
-| Today (`engine.ts` and friends)                                                                                                                                                                                                                                               | New model                                                                                         |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| **Deleted**                                                                                                                                                                                                                                                                   |                                                                                                   |
-| per-kind placers: `placeAccent`, `placeHook`, `placeBigWord`, `placeVisual`, `placeLevels`, `placeBlock`, `cardSpots`                                                                                                                                                         | one `place(element, variant)`                                                                     |
-| per-kind tier ladders (clear; over the face; default spot over text) and `noteOverlap`'s `all-picks`                                                                                                                                                                          | hard rules filter, soft costs rank                                                                |
-| `sizesFrom`, `layout.minScale` (0.6), the 8 px exceptions, `card.smaller` (0.7)                                                                                                                                                                                               | largest fit per spot, one global minimum                                                          |
-| two-line caps (`maxLines: 2`, `wraps`)                                                                                                                                                                                                                                        | any number of lines, cost 0                                                                       |
-| `oneTextAtATime`, `text-one-at-a-time`, `transition-entrance`, the hook cut by a later text                                                                                                                                                                                   | none: conflicts are screen overlaps                                                               |
-| `kept-overlapping` (text over text) and the `text-overlap` check's excuse                                                                                                                                                                                                     | rule 5 is hard; the check is strict                                                               |
-| readability (see above)                                                                                                                                                                                                                                                       | none                                                                                              |
-| hand-picked sizes and spots in `preset.ts`: `fonts[].size` as the start of a ladder, `behind.word.maxSize`, `behind.spots` (`top`, `left`, `right`), `spot` on a VISUAL, `transitions.numbered.want`, `numberSize` (see Open questions), `behind.maxFaceShare` (unread today) | zone derivations hold the pixel offsets (190, 60, 1290, 700, 40, 120); the variant holds the rest |
-| `EngineAction` and `EngineNote.with`                                                                                                                                                                                                                                          | the new note shape                                                                                |
-| **Kept**                                                                                                                                                                                                                                                                      |                                                                                                   |
-| the HarfBuzz measurer (`measure.ts`)                                                                                                                                                                                                                                          | the one source of text width                                                                      |
-| the robust face (`facesOver`, `boundingBox`, `LAYOUT_PADDING`)                                                                                                                                                                                                                | the zones' `F`                                                                                    |
-| `PLATFORM_SAFE`, `PLATFORM_BUTTONS`, `intersectBox`                                                                                                                                                                                                                           | the safe zone `S`                                                                                 |
-| free space (`freeRects`, `placeBox`, `overlaps`, `expand` in `engine-space.ts`)                                                                                                                                                                                               | the candidate enumerator's core                                                                   |
-| the same-text pass (`sameTextPass`) and check                                                                                                                                                                                                                                 | rule 4                                                                                            |
-| the caption split by time (`splitCaption`, `hidden_by`, `hiddenCaptionIds`)                                                                                                                                                                                                   | rule 3                                                                                            |
-| caption grouping (`captionGroups`), `sentenceSpans`                                                                                                                                                                                                                           | caption timing (the block question is open)                                                       |
-| timing helpers: `transitionTiming`, `ownSpan`, `floorSpan`, `visibleSpan` (`moved-off-cut`), `clamped-to-end`, `anchorAt`                                                                                                                                                     | the timing stage                                                                                  |
-| `bigWordCoveredShare`, `maskSpans`, `needsCutout`, `placedBigWord`                                                                                                                                                                                                            | rule 6 and the behind layer                                                                       |
-| `clicksFor` (`clicks.ts`)                                                                                                                                                                                                                                                     | unchanged: a click per VISUAL and BIGWORD                                                         |
-| `choicesOf`, the edit format (`schema.ts`), the builder, versions                                                                                                                                                                                                             | unchanged; `break_after` may need more than one break (open)                                      |
-| **New**                                                                                                                                                                                                                                                                       |                                                                                                   |
-| variant registry (`variants.ts`, data only)                                                                                                                                                                                                                                   | the entries above                                                                                 |
-| variant picker (`variant-picker.ts`, one variant per component)                                                                                                                                                                                                               | pick to entry                                                                                     |
-| zone computation (`engine-zones.ts`)                                                                                                                                                                                                                                          | the zone table                                                                                    |
-| candidate enumeration and scoring (`engine-place.ts`)                                                                                                                                                                                                                         | the loop                                                                                          |
-| the note shape with `component`, `variant`, `start`, `end`, `outcome`, `blockers`                                                                                                                                                                                             | the record                                                                                        |
+| Today (`engine.ts` and friends)                                                                                                                                                                                                                                                                     | New model                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Deleted**                                                                                                                                                                                                                                                                                         |                                                                                                   |
+| per-kind placers: `placeAccent`, `placeHook`, `placeBigWord`, `placeVisual`, `placeLevels`, `placeBlock`, `cardSpots`                                                                                                                                                                               | one `place(element, variant)`                                                                     |
+| per-kind tier ladders (clear; over the face; default spot over text) and `noteOverlap`'s `all-picks`                                                                                                                                                                                                | hard rules filter, soft costs rank                                                                |
+| `sizesFrom`, `layout.minScale` (0.6), the 8 px exceptions, `card.smaller` (0.7)                                                                                                                                                                                                                     | largest fit per spot, one global minimum of 30 px                                                 |
+| two-line caps (`maxLines: 2`, `wraps`), `break_after` in the schema and the builder                                                                                                                                                                                                                 | any number of lines, cost 0, stored as `breaks: number[]`                                         |
+| `oneTextAtATime`, `text-one-at-a-time`, `transition-entrance`, the hook cut by a later text                                                                                                                                                                                                         | none: conflicts are screen overlaps                                                               |
+| `kept-overlapping` (text over text) and the `text-overlap` check's excuse                                                                                                                                                                                                                           | rule 5 is hard; the check is strict                                                               |
+| `STYLE_SAFE`, `preset.safe`, `intersectBox` for the safe box; the `frame` check; the big word's frame-wide area and `word.margin`                                                                                                                                                                   | one safe zone `S` for everything; `safe-box` checks it all                                        |
+| readability (see above), the worker's `backgrounds` step                                                                                                                                                                                                                                            | none                                                                                              |
+| hand-picked sizes and spots in `preset.ts`: `fonts[].size` as the start of a ladder, `behind.word.maxSize`, `behind.spots` (`top`, `left`, `right`), `spot` on a VISUAL (schema and `nearestSpot`), `transitions.numbered.want`, `numberSize` (now the ratio), `behind.maxFaceShare` (unread today) | zone derivations hold the pixel offsets (190, 60, 1290, 700, 40, 120); the variant holds the rest |
+| `EngineAction` and `EngineNote.with`; reading today's note shape in the trace and the checks                                                                                                                                                                                                        | the new note shape, the only one read                                                             |
+| **Kept**                                                                                                                                                                                                                                                                                            |                                                                                                   |
+| the HarfBuzz measurer (`measure.ts`)                                                                                                                                                                                                                                                                | the one source of text width                                                                      |
+| the robust face (`facesOver`, `boundingBox`, `LAYOUT_PADDING`)                                                                                                                                                                                                                                      | the zones' `F`                                                                                    |
+| `PLATFORM_SAFE`, `PLATFORM_BUTTONS`                                                                                                                                                                                                                                                                 | the safe zone `S`                                                                                 |
+| free space (`freeRects`, `placeBox`, `overlaps`, `expand` in `engine-space.ts`)                                                                                                                                                                                                                     | the candidate enumerator's core                                                                   |
+| the same-text pass (`sameTextPass`) and check                                                                                                                                                                                                                                                       | rule 4                                                                                            |
+| the caption split by time (`splitCaption`, `hidden_by`, `hiddenCaptionIds`)                                                                                                                                                                                                                         | rule 3                                                                                            |
+| caption grouping (`captionGroups`), `sentenceSpans`                                                                                                                                                                                                                                                 | caption timing; the sentence block is the caption element                                         |
+| timing helpers: `transitionTiming`, `ownSpan`, `floorSpan`, `visibleSpan` (`moved-off-cut`), `clamped-to-end`, `anchorAt`                                                                                                                                                                           | the timing options                                                                                |
+| `bigWordCoveredShare`, `maskSpans`, `needsCutout`, `placedBigWord`                                                                                                                                                                                                                                  | rule 6 and the behind layer                                                                       |
+| `clicksFor` (`clicks.ts`)                                                                                                                                                                                                                                                                           | unchanged: a click per VISUAL and BIGWORD                                                         |
+| `choicesOf`, the edit format (`schema.ts`) but for `breaks` and `spot`, the builder, versions                                                                                                                                                                                                       | unchanged                                                                                         |
+| **New**                                                                                                                                                                                                                                                                                             |                                                                                                   |
+| variant registry (`variants.ts`, data only)                                                                                                                                                                                                                                                         | the entries above                                                                                 |
+| variant picker (`variant-picker.ts`, one variant per component)                                                                                                                                                                                                                                     | pick to entry                                                                                     |
+| zone computation (`engine-zones.ts`)                                                                                                                                                                                                                                                                | the zone table                                                                                    |
+| candidate enumeration and scoring (`engine-place.ts`)                                                                                                                                                                                                                                               | the loop                                                                                          |
+| the note shape with `component`, `variant`, `start`, `end`, `outcome`, `blockers`                                                                                                                                                                                                                   | the record                                                                                        |
+| `breaks: number[]` on every text item and level                                                                                                                                                                                                                                                     | free wrapping                                                                                     |
 
 ## Build order
 
@@ -341,75 +371,124 @@ Small steps. Each ends in one commit with its tests and the doc update (`app_doc
 (`yarn test` green, the goldens re-derived with `yarn workspace @edit-issebya/edit golden` and
 committed). Do not start building from this file; each step gets its own go-ahead.
 
-1. The note shape. Add `component`, `variant`, `start`, `end`, `outcome` and `blockers` to
-   `EngineNote` beside today's fields, written by the current engine; `engineRecordLine` prints them;
-   the checks read `outcome` and `blockers` instead of `action` and `with`. Old records read as
-   stored.
-2. Zones. `engine-zones.ts`: the zone table as code, `zonesAt(name, S, F)`; unit tests per zone with
-   and without a head. Not yet called by the engine.
+1. The note shape. `EngineNote` becomes the shape above, written by the current engine (an adapter
+   maps today's actions to outcomes and `with` to blockers until the loop replaces them);
+   `engineRecordLine`, the trace and the checks read the new shape only.
+2. Zones. `engine-zones.ts`: the zone table as code over `S`, `zonesAt(name, S, F)`; unit tests per
+   zone with and without a head. Not yet called by the engine. `STYLE_SAFE` and `preset.safe` go
+   with it: `S` is the one safe zone from here.
 3. Variants. `variants.ts` with the seven entries and `variant-picker.ts`; `placeEdit` takes the
    picked variants and ignores them for now; `editFromAnswer` and `first_version` call the picker.
    Tests: one entry per component, the picker total.
-4. The placer. `engine-place.ts`: candidates, hard filters, costs, tie-break, over a given obstacle
-   set; unit tests on synthetic scenes (a crowded upper third, a face filling the zone, a word that
-   fits nowhere). Not yet called.
-5. ACCENT and QUESTION through the placer; `placeAccent` deleted; goldens re-derived.
-6. HOOK and LIST levels through the placer; `oneTextAtATime` and `transition-entrance` deleted (the
-   hook runs its window); `placeHook` and `placeLevels` deleted.
-7. BIGWORD through the placer with rule 6 as a hard filter; `placeBigWord` deleted; the `frame` check
-   follows the safe-zone decision (open question 2).
-8. VISUAL through the placer as a box; `placeVisual`, `cardSpots`, `behind.spots`, `spot` deleted
-   (the schema keeps `spot` optional for stored versions).
-9. Captions through the placer; `placeBlock`, `captionCandidates`, `sizesFrom`, `layout.minScale`
-   deleted; the global minimum set (open question 3); `text-overlap` made strict.
-10. Readability removed (the list under "Readability"); the worker's `ensureBackgrounds` calls gone.
-11. Clean-up: `engine.ts` split into timing, scene and the loop; dead preset fields removed; the
+4. The schema: `breaks: number[]` replaces `break_after` on captions, overlays, levels; the builder
+   renders the lines from it; the fixtures and goldens re-derived. `spot` leaves the VISUAL item.
+5. The placer. `engine-place.ts`: candidates, hard filters, costs, tie-break, the 30 px minimum, over
+   a given obstacle set; unit tests on synthetic scenes (a crowded upper third, a face filling the
+   zone, a word that fits nowhere). Not yet called.
+6. ACCENT and QUESTION through the placer; `placeAccent` deleted; goldens re-derived.
+7. HOOK and LIST stacks through the placer, components placed by start time; `oneTextAtATime` and
+   `transition-entrance` deleted (the hook runs its window); `placeHook` and `placeLevels` deleted;
+   `numberSize` becomes the entry's ratio.
+8. BIGWORD through the placer with rule 6 as a hard filter, inside `S`; `placeBigWord`,
+   `word.margin`, `word.maxSize` and the `frame` check deleted.
+9. VISUAL through the placer as a box from its `width` share; `placeVisual`, `cardSpots`,
+   `behind.spots`, `nearestSpot`, `card.smaller` deleted.
+10. Captions through the placer as sentence blocks; `placeBlock`, `captionCandidates`, `sizesFrom`,
+    `layout.minScale` deleted; `no-spot` leaves an element out; `text-overlap` made strict.
+11. Readability removed (the list under "Readability"), the worker's `backgrounds` step and module
+    with it.
+12. Clean-up: `engine.ts` split into timing, scene and the loop; dead preset fields removed; the
     "Layout engine" section of `app_docs/edit-model.md` rewritten from this spec; `.adw/project.md`
     if a path changed.
 
-## Open questions
+## Writing a variant
 
-Each one line, with a recommendation. None is decided here.
+For whoever designs a new variant later. A variant is a data entry in `variants.ts` and a line in the
+picker; it never touches the engine.
 
-1. Which safe zone is the hard rule: `PLATFORM_SAFE` minus the notch, or the style's tighter box
-   `STYLE_SAFE` (130..860 x 260..1400) that text uses today? Recommendation: `PLATFORM_SAFE` minus
-   the notch, one zone for everything; the style box goes.
-2. Does the behind big word obey rule 1? Today it uses the frame with a 40 px margin (down to y
-   1880, checked by `frame`, "crosses the safe box by design"). Recommendation: yes, rule 1 says
-   everything; `head-top` is cut to `S` and the `frame` check becomes `safe-box` for it.
-3. The global minimum text size value. Today: the schema's 8 px, caption floor 30 px (60% of 50),
-   accent floor 66 px. Recommendation: 30 px (a caption's floor, the smallest text we show today);
-   the schema's 8 px stays the format's bound.
-4. Caption block versus sentence grouping: today one spot per sentence (`sentenceSpans`, a 0.6 s
-   pause or `.?!`), sized for the sentence's largest group, two lines at most. Recommendation: the
-   element is the sentence block (so captions do not jump mid-sentence), its lines free; the block's
-   size is the largest at which every group fits.
-5. How a LIST item's levels sit relative to each other. Recommendation: one stacked element (number,
-   lead, key, `transition.gap` 24 px between, centred), placed once; a stack that fits nowhere whole
-   is a `no-spot`, not three separate placements.
-6. The LIST number's size: computed "largest fit" would blow a one-digit number up to the zone; today
-   it is 300 px (`numberSize`). Recommendation: the number at a fixed ratio to the key level in the
-   entry's style (a ratio, not a size); starting ratio 300/110.
-7. A box's size: the entry gives only the aspect, and a corner zone with nothing in it would make a
-   huge card. Recommendation: a box entry carries its full width as a share of the frame
-   (`widthShare` 1/3, 360 x 450), the one size no text can give; shrinking from it costs as for text.
-8. The order the components are placed in (today: list levels, hook, then answer order).
-   Recommendation: by start time, ties by the answer's order; the hook comes first by its start.
-9. Is a text an obstacle to a VISUAL placed after it (today a card avoids every text)? Rule 5 lets
-   text sit on a VISUAL. Recommendation: no obstacle either way; the card draws under the text, and
-   captions placed last keep rule 2.
-10. What happens to a `no-spot` element in the version. Recommendation: left out of that version with
-    its words as captions, until a real reel shows a case; the note tells the owner.
-11. The face cost's shape: flat, or by the share of the element's box over the face. Recommendation:
-    flat 100 to start; by share only if a real reel shows a small graze costing a good spot.
-12. The worker's `backgrounds` pipeline step and `backgrounds.json`. Recommendation: remove the step
-    and the module (`apps/worker/src/backgrounds/`); a later shadow or stroke needs no map.
-13. The hook with no one-text-at-a-time rule runs 0.2 s to 3 s whatever is said in its window; a
-    text pick said then is placed around it. Recommendation: accept, it follows from the design.
-14. `upper-third` versus the hook's top half today (`mid`). Recommendation: the top third as named;
-    the second zone catches what does not fit.
-15. `break_after` holds one break (two lines); free wrapping needs several. Recommendation: a
-    `breaks: number[]` beside it in the schema, `break_after` kept for stored versions.
-16. Where the variant picker lives. Recommendation: `packages/edit/src/variant-picker.ts`, called by
-    `editFromAnswer` and `first_version`; the worker gains no module for it until a second app needs
-    one.
+### What a variant sets
+
+| Field       | Allowed values                                                                                                                                                                           |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `component` | one of HOOK, ACCENT, QUESTION, BIGWORD, VISUAL, LIST, CAPTION                                                                                                                            |
+| `variant`   | `<component>/<name>`, lower-case words and hyphens, unique                                                                                                                               |
+| `layer`     | `front` or `behind`. `behind` is text only and needs the person mask (the cut-out, `maskSpans`); rule 6 applies to it                                                                    |
+| `type`      | `text` or `box`                                                                                                                                                                          |
+| `style`     | text: a font role (`primary`, `secondary`) and a colour `#RRGGBB`; box: a stroke in px and no fill. Nothing else: no size, no shadow, no stroke on text                                  |
+| `zones`     | one or more names from the zone table, ranked best first. Only those names                                                                                                               |
+| `timing`    | one option: `words`; `words` + `lead` (s) + `minimum` (s); `words` + `minimum` + `maximum` (s); `words` + `entrance` (s); `window` (`from`, `to` in s). Captions keep their own grouping |
+| `hides`     | `yes` (its words leave the captions while it shows; text that shows spoken words) or `no` (a box, or a text nobody says)                                                                 |
+| `aspect`    | box only: width over height, such as `4/5`                                                                                                                                               |
+| `width`     | box only: the full width as a share of the frame, such as `1/3`                                                                                                                          |
+| `levels`    | a stack only: the level roles in order (`number`, `lead`, `key`), each with its style, and the number's ratio to the key level                                                           |
+
+A worked example, a hypothetical second ACCENT variant that sits low and large:
+
+```ts
+{
+  component: "ACCENT",
+  variant: "accent/bottom-large",
+  layer: "front",
+  type: "text",
+  style: { font: "primary", color: "#FFFFFF" },
+  zones: ["caption-line", "below-face", "anywhere-in-safe-zone"],
+  timing: { option: "words" },
+  hides: true,
+}
+```
+
+"Large" is not a field: the size comes from the room the first zone has. This entry gets a large size
+because `caption-line` is wide and, with the captions placed after it, usually empty. The picker then
+decides which accents take `accent/above-head` and which take `accent/bottom-large`.
+
+### What the engine decides and a variant cannot change
+
+- The hard rules, all six, and the safe zone `S` they run in.
+- The zone geometry: each zone's area, wanted point and no-head fallback, the face padding (35, 30, 12) and the gap (12 px). A variant ranks zones; it does not move or reshape them.
+- The size: the largest fit per spot, the global minimum of 30 px, the 10% shrink steps, a box's
+  shrink from its `width` share.
+- The line breaks: balanced, any count, stored as `breaks`.
+- The placement order: components by start time (ties by the answer's order), captions last.
+- The soft costs, their order and values (face 100, zone step 10, shrink step 10, wrap 0) and the
+  tie-break.
+- The face cost's shape (flat) and who is exempt (the behind text).
+- Time: no element cuts another's time; the timing options compute the span from the words, and the
+  same-text pass and the caption split are the only trims. A variant picks an option and its seconds,
+  not a new behaviour.
+- The `no-spot` behaviour: the element is left out, its words stay captions, the note is written.
+- The moments and `F`: how the reel is cut and how the robust face is read.
+- The clicks (`clicks.ts`): a click per VISUAL and BIGWORD, whatever their variant.
+- The record: every element gets its notes in the one shape; a variant adds no note kind.
+- The format: what the schema accepts (positions, sizes, `breaks`, anchors) is the format's, not the
+  variant's.
+
+### How to add a new zone or timing option
+
+That is an engine change, not a variant change: a new row in the zone table of this spec with its
+derivation (area, wanted point, no-head case) and its code in `engine-zones.ts` with tests for both
+cases; or a new timing option in the timing stage with its test, and a row under "Timing first". Each
+is its own commit with the doc update, and only then may an entry name it.
+
+## Decisions
+
+The points the first draft of this spec left open and how the owner settled them (2026-11-09: every
+recommendation taken, except 15, where the owner went further).
+
+| #   | Question                                 | Decision                                                                                                                                                        | Date       |
+| --- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 1   | which safe zone is the hard rule         | `PLATFORM_SAFE` minus the notch, one zone `S` for everything; `STYLE_SAFE` goes                                                                                 | 2026-11-09 |
+| 2   | does the behind big word obey rule 1     | yes; `head-top` is cut to `S`, the `frame` check becomes `safe-box`                                                                                             | 2026-11-09 |
+| 3   | the global minimum text size             | 30 px; the schema's 8 px stays the format's bound                                                                                                               | 2026-11-09 |
+| 4   | caption block versus sentence grouping   | the element is the sentence block, lines free, sized so every group fits                                                                                        | 2026-11-09 |
+| 5   | how a LIST item's levels sit             | one stacked element (number, lead, key, 24 px gap, centred), placed once; a stack that fits nowhere whole is a `no-spot`                                        | 2026-11-09 |
+| 6   | the LIST number's size                   | a ratio to the key level in the entry, 300/110 to start                                                                                                         | 2026-11-09 |
+| 7   | a box's size                             | the entry carries its full width as a share of the frame (1/3, 360 x 450); shrinking from it costs as for text                                                  | 2026-11-09 |
+| 8   | the order the components are placed in   | by start time, ties by the answer's order; the hook first by its start                                                                                          | 2026-11-09 |
+| 9   | is a text an obstacle to a VISUAL        | no obstacle either way; the card draws under the text; captions placed last keep rule 2                                                                         | 2026-11-09 |
+| 10  | what happens to a `no-spot` element      | left out of that version, its words as captions, the note tells the owner; more waits for a real reel                                                           | 2026-11-09 |
+| 11  | the face cost's shape                    | flat 100; by share only if a real reel shows a small graze costing a good spot                                                                                  | 2026-11-09 |
+| 12  | the worker's `backgrounds` step          | removed with its module and `backgrounds.json`                                                                                                                  | 2026-11-09 |
+| 13  | the hook with no one-text-at-a-time rule | runs its full window 0.2 s to 3 s; a text pick said then is placed around it                                                                                    | 2026-11-09 |
+| 14  | `upper-third` versus the hook's top half | the top third as named; the second zone catches what does not fit                                                                                               | 2026-11-09 |
+| 15  | `break_after` holds one break            | `breaks: number[]` replaces `break_after`; nothing kept for stored versions. No old-version support anywhere: the old note shape and `spot` are not read either | 2026-11-09 |
+| 16  | where the variant picker lives           | `packages/edit/src/variant-picker.ts`, called by `editFromAnswer` and `first_version`                                                                           | 2026-11-09 |
