@@ -47,7 +47,7 @@ types until slice 9 brings the live preview.
   hook, accents, questions, big words and lists) show one at a time (`text-one-at-a-time`). A VISUAL
   lasts 1 to 2 s (`behind.minSeconds`, `behind.maxSeconds`), less only at the reel's end or over a cut, is not
   text, and may show with any text. A big word lasts from the lead before its first word to its last word's
-  end, at least 1.5 s.
+  end, at least 1.5 s (a target: a text said later cuts it short).
   A refinement refuses an item crossing a footage clip's `hidden` span; with the decide limit
   (`EditLimits.behindLengths`, new versions only) also an item outside its kind's length (a VISUAL 0.5 to 2 s,
   a big word from 0.5 s to the lead, its words and `afterSeconds`), so a stored
@@ -67,9 +67,9 @@ start, end }` ref plus the span of the reel it covers, in seconds, by start). A 
   `secondary`), `size`, `color` (`#RRGGBB`), `position` (`{ x, y, align }` inside the frame) and
   `break_after` (set in two lines, this many words on the first); a big word behind the speaker
   takes `position` (`{ x, y }`, its top left corner in the frame) and `size`. A caption
-  takes an optional `hidden_by` (the id of the accent or big word showing its words while it would
-  show; the builder leaves it out, and a refinement refuses an id that is no accent or big word,
-  the hook included).
+  takes an optional `hidden_by` (the id of the accent, big word or list showing its words while it is on
+  screen; the builder leaves it out, and a refinement refuses an id that is none of those, the hook
+  included).
   The hook (`kind: "hook"`, id `hook`) takes `text` and never `words`: it is the one text on screen
   nobody says. A refinement refuses a hook with words or without text, and a second hook. Versions
   saved before it have none and parse as before.
@@ -198,8 +198,10 @@ start, end }] }`).
   to the reel, widened to whole frames, overlapping or touching spans merged, sorted, to the
   millisecond. The builder (one composite per span) and the worker (one mask per span) both call
   it, so they always agree.
-- A caption with `hidden_by` is left out like a transition's own captions (`hiddenCaptionIds` in
-  `src/transitions.ts`), so the page and the checks never see it.
+- A caption with `hidden_by` is left out (`hiddenCaptionIds(edit, resolved)` in `src/transitions.ts`: the
+  captions with `hidden_by`, and a stored list caption with none whose start falls inside its list's layer),
+  so the page and the checks never see it. The engine splits a caption in time so that `hidden_by` covers
+  only a stretch the text is on screen for (see Placement, "never the same word twice").
 - The hook renders like an accent (the primary font, white, the same rise in and fade out, no
   shadow) with its own class: `<span class="text hook f-primary">`, its lines centred by the
   `.hook { text-align: center; }` rule, written only on a page with a hook (so every stored page
@@ -218,21 +220,25 @@ start, end }] }`).
 
 ### Transitions tied to a phrase
 
-- `src/transitions.ts`: pure helpers shared by the engine and the builder. `transitionTiming`: the
-  layer shows exactly while its phrase is spoken: in as the phrase's first word starts (its entrance
-  `seconds` long), out at the phrase's last word's end. No hold after the phrase and no minimum; only a
-  phrase with no length at all is lengthened to the shown floor (`SHOWN_FLOOR_SECONDS`, 0.5 s, earlier where
-  the reel ends, `transition-min`). On a reel under the floor it gives null and the layer covers the whole
-  reel (`transition-time`). Its times may be cut or moved by the text rule (`text-one-at-a-time`).
+- `src/transitions.ts`: pure helpers shared by the engine and the builder. `transitionTiming`: the layer
+  comes in as its entrance (`seconds`, 0.3 s) ends on the phrase's first word, so it starts 0.3 s before
+  that word (never before 0; the fade is finished as the word starts), and goes out at the phrase's last
+  word's end. No hold after the phrase and no minimum; only a phrase with no length at all is lengthened
+  to the shown floor (`SHOWN_FLOOR_SECONDS`, 0.5 s, from its first word, earlier where the reel ends,
+  `transition-min`). On a reel under the floor it gives null and the layer covers the whole reel
+  (`transition-time`). The engine then starts it later, never after its first word, when a text picked
+  earlier is still on screen (`transition-entrance`: the entrance is shorter, down to none), and the text
+  rule (`text-one-at-a-time`) may cut its end.
 - Claude gives `{ kind, from, to, key_from }` for the LIST: `numbered`, the only kind
   (`TRANSITION_KINDS`, the LIST component). The engine writes the transition item's `words`, `key`,
   `number` and `levels` (`number`, `lead`, `key`, each `{ text, position, size, break_after?, start }`).
   The lead-in (words before `key_from`) is caption text and the key phrase accent text, from the style
   roles (`levelStyle`), never a literal font or colour. The layer has no background and no dim:
   `numbered` is its number and its text levels over the phrase.
-- Each level appears whole on its first word and stays until the layer leaves. The captions
-  inside the phrase are hidden (`hiddenCaptionIds`: no position, shown only through the levels), and
-  a visual may show during a running transition, while the other text picks keep off it (`text-one-at-a-time`). The engine places transitions'
+- Each level appears whole on its first word and stays until the layer leaves. The captions of the
+  phrase are hidden only while the layer is on screen (`hidden_by` the transition, no position, shown
+  through the levels); the words a cut list no longer shows are normal captions. A visual may show during
+  a running transition, while the other text picks keep off it (`text-one-at-a-time`). The engine places transitions'
   levels before the captions, in free space inside the layer and the safe zone, off the face where
   possible; every retime, move, shrink, wrap, fallback and overlap is an `EngineNote`.
 - The builder renders `levels` as children of the layer. `safe-box` includes levels; a hidden caption
@@ -262,10 +268,12 @@ word" is now "spoken words, plus one written hook at the start".
   so it follows its words through a re-time.
 - A fixed slot (owner decision 2026-11-07): every reel has one, and it is placed on every run, first.
   `placeEdit` places `hook` before the captions and every other extra. It shows from
-  `pace.hook.fromSeconds` (0.2 s) to `untilSeconds` (3 s), and no other item moves it: nothing shifts,
-  shrinks or cuts it short. A text pick (accent, question, big word, list) whose words fall in its window
-  waits for the hook to end (`text-one-at-a-time`); a visual keeps its own times and may show over it
-  (`kept-overlapping`, rule `all-picks`).
+  `pace.hook.fromSeconds` (0.2 s) to `untilSeconds` (3 s), and no other item moves it or shrinks it. A text
+  pick (accent, question, big word, list) said in its window cuts the hook where it starts
+  (`text-one-at-a-time`, noted): the hook then shows from 0.2 s to that start. If that leaves less than the
+  shown floor (`SHOWN_FLOOR_SECONDS`, 0.5 s), the hook keeps the floor from 0.2 s and the text pick shows
+  over it (`kept-overlapping`). A visual keeps its own times and may show over it (`kept-overlapping`, rule
+  `all-picks`).
   Captions keep running below it; nobody says it, so no caption is ever left out for it.
 - Reserved before the captions, on every run (owner decision 2026-11-07): the hook is placed first, then
   the captions, so the captions in its window keep clear of it by the caption rules: each block moves to
@@ -338,12 +346,12 @@ each such overlap is kept and noted.
     visual may run past its short sentence. A fallback that moves it earlier than its sentence is
     noted `retimed` (rule `visual-time`).
   - A big word's lead never starts before 0. Captions have no lead.
-  - The hook: from `pace.hook.fromSeconds` to `untilSeconds` ("The written hook" above), never cut short.
-  - Transitions (LIST): exactly while their phrase is spoken, from its first word's start to its last
-    word's end; no hold (`transitionTiming`, "Transitions tied to a phrase" above).
-  - The text picks are then cut or made to wait so that they show one at a time (see Placement,
-    `text-one-at-a-time`). A big word or visual over hidden footage moves to the next visible moment
-    (see Placement).
+  - The hook: from `pace.hook.fromSeconds` to `untilSeconds` ("The written hook" above), its start fixed.
+  - Transitions (LIST): from 0.3 s before their phrase's first word (the entrance) to its last word's end;
+    no hold (`transitionTiming`, "Transitions tied to a phrase" above).
+  - The text picks are then cut so that they show one at a time (see Placement, `text-one-at-a-time`):
+    the earlier one ends where the later one starts, and nothing waits. A big word or visual over hidden
+    footage moves to the next visible moment (see Placement).
 - Scene: the reel is cut into moments at every item edge; each moment's face is the bounding box
   of the robust faces around it (`facesOver` in `src/head-track.ts`: at each head-track sample, the
   samples within 0.5 s, `cx` their median, the width their upper quartile, the top their lower
@@ -396,13 +404,14 @@ each such overlap is kept and noted.
     captions, the hook and the button column) and moves to the nearest that reaches it (`contrast-spot`,
     `moved`), else stays (`contrast-stay`, `low-contrast`, `... a visual never gets a shadow or a colour change`). Never a shadow or a colour change; recorded only, never a check. A card without a known
     background is not measured.
-  - Never the same word twice on screen: once the extras are placed, a caption whose words an
-    accent or big word shows (never the hook: nobody says it) at some moment of the caption's own span is left out for that whole
-    span (`hidden_by`, no position), so no word blinks in or out of its group; a caption that
-    appears after the extra has left shows as usual. The rest of its group is set again at the
-    block's place, size and alignment, inside its old box (the sentence keeps its one spot, and
-    nothing else moves); a group with every caption hidden shows no caption then. Nothing is
-    recorded for it.
+  - Never the same word twice on screen, by time: the captions are split in time against the texts on
+    screen (the hook shows no word, so it never splits one). A caption's words that an accent, a big word
+    or a list's phrase shows while that text is on screen are left out for that stretch (`hidden_by` the
+    text, no position): a run of words all shown by one text is one caption, and the other runs stay
+    captions of their own (a cut list's later words, a caption's words after an accent), numbered `-2`,
+    `-3`, ... after the caption's id. A caption group with some captions left out keeps the rest, set
+    again at the block's place, size and alignment, inside its old box; a group with every caption left
+    out shows no caption then. Nothing is recorded for it.
 - Readability (`src/contrast.ts`, `src/background.ts`, `PlaceOptions.backgrounds`): the worker
   samples the footage into a background map (`BackgroundMap`: 2 frames a second, a 36 by 64 grid of
   30 px cells, each cell's WCAG relative luminance as a byte), and `backgroundSampler(map, frame)`
@@ -437,9 +446,9 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
   rewritten (it is never placed again). No switch to turn them off yet.
 - Placement: every pick the answer proposed is shown, at its own words' times where the text rule
   allows: an accent or question exactly its words; a big word from the lead before its first word (0.2 s)
-  to its last word's end (at least 1.5 s); a visual from its first word to its last word's end (1 to 2 s);
-  a list at its own phrase's times; the hook in its window. The text picks then run one at a time
-  (`text-one-at-a-time`, below), so a text may start later than its words. Each pick takes its normal spot when a free one exists. When none
+  to its last word's end (at least 1.5 s, a target); a visual from its first word to its last word's end
+  (1 to 2 s); a list from 0.3 s before its phrase's first word to its last word's end; the hook in its
+  window. The text picks then cut each other, never wait (`text-one-at-a-time`, below). Each pick takes its normal spot when a free one exists. When none
   does, it takes its default spot anyway (an accent or a transition's text at the head's upper place
   or the line, a big word at its head rule's centre, a visual at the top-left corner of the safe zone),
   at the largest size that fits and never below `MIN_TEXT_SIZE` (8 px). The overlap is noted
@@ -450,13 +459,20 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
     start moves earlier, so it shows at least `SHOWN_FLOOR_SECONDS` (0.5 s) (`clamped-to-end`). An accent,
     question or list has no minimum, so it is never shown from earlier; a pick with no length at all
     shows the floor from its start (`clamped-to-end`, rule `accent-time`).
-  - Text one at a time (`text-one-at-a-time`, `retimed`): the hook, accents, questions, big words and lists
-    never share the screen in time. Walking them in the order they start, a later one cuts an earlier one,
-    which then ends where the later one starts. Two exceptions: the hook keeps its fixed slot, so a text
-    starting in its window waits until the hook ends; a big word keeps its minimum, so a text that would
-    cut it waits until the big word ends. A text that waits shows from then until its own last word's end,
-    or the shown floor where its words are over. Visuals are not text and are never cut. Each note gives
-    both items and their times; a list cut says that its words after that show no list text.
+  - Text one at a time (`text-one-at-a-time`, `retimed`), and no text waits: the hook, accents,
+    questions, big words and lists never share the screen in time. Walking them in the order they start
+    (a tie going to the answer's order, the hook first), the earlier one ends where the later one starts.
+    So a text starting inside the hook's window ends the hook there, and a text starting before the hook
+    ends where the hook starts. A big word's minimum is a target: a text said later cuts it short. Each
+    text starts at its own start (an accent, question or list on its first word, a list's entrance 0.3 s
+    before it; a big word at its lead, never earlier than a text starting inside that lead; the hook at its
+    slot start), so no text lands after its own words. A text cut to no length, or a hook or big word cut
+    shorter than the shown floor (what the checks and the schema need), keeps its start and shows the shown
+    floor from there, over the text that cut it (noted, `kept-overlapping`); an accent, question or list
+    needs only a positive length. The words a cut text no longer shows are normal captions. A list's
+    entrance is never before the end of a text said earlier: it comes in later, the entrance shorter
+    (`transition-entrance`, `retimed`). Each note gives both items and their times in plain words. Visuals
+    are not text and are never cut.
   - A big word or visual over hidden footage: the next visible moment, the first kept time after the
     cut, else the last one before it (`moved-off-cut`, rule `hidden-footage`). With no visible moment
     at all it stays over the cut, and the schema then refuses that edit.
@@ -480,7 +496,8 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
   the word up; the current big word placement never does), `visual-time` (`clamped-to-end`, and
   `retimed` when a visual starts before its sentence), `visual-size` (`shrunk`), `hidden-footage`
   (`moved-off-cut`), `hook-time` (`clamped-to-end`), `hook-spot` (`moved`), `hook-size` (`shrunk`),
-  `hook-wrap` (`wrapped`), `transition-time` (`clamped-to-end`), `transition-min` (`retimed`, a phrase with no length at all),
+  `hook-wrap` (`wrapped`), `transition-time` (`clamped-to-end`), `transition-min` (`retimed`, a phrase with no length at all), `transition-entrance` (`retimed`, a list's
+  entrance cut short by a text said before it),
   `transition-spot` (`moved`), `transition-size` (`shrunk`), `transition-wrap` (`wrapped`),
   `transition-text` (`text-from-words`), `transition-face` (`covers-face`), `contrast-spot`
   (`moved`), `contrast-stay` (`low-contrast`), `text-one-at-a-time` (`retimed`) and `all-picks`
@@ -608,8 +625,10 @@ never fatal.
     question as an accent; a big word from the lead before its word, at least 1.5 s, one word or two in
     one element, the same word again; a visual from its first word, 1 to 2 s, shown even past its short
     sentence.
-  - "text picks one at a time": an accent cut where a list starts, a list cut by an accent with the cut
-    noted, a text waiting for a big word's minimum, a visual never cut for an accent.
+  - "text picks one at a time": an accent cut where a list starts, a list cut by an accent with its later
+    words shown as captions, a big word cut by an accent said in its minimum, a visual never cut for an
+    accent; no text lands after its own words and no two texts share the screen, on the dense reels.
+  - "the layout engine's timing" also: a list's layer starts 0.3 s before its first word, never before 0.
   - "never the same word twice on screen": the caption words an accent or big word shows are left out
     (`and sense of purpose` reads `and`, `it to the world` reads `it to the`), a whole group hidden,
     and a stored caption without the field builds as before.
@@ -641,8 +660,9 @@ never fatal.
   - "a request's visual": the visual of "add images behind me" placed over its sentence with the
     captions kept, its description kept, the committed request fixture matched, and determinism.
   - "the written hook": from 0.2 s to 3 s in the upper part of the frame, off the face, inside the safe
-    zone; an accent in its window kept beside it and noted; never cut short; the fixed slot held when
-    an accent and a visual are asked for in its window; read back and placed the same again; a
+    zone; cut where a text said in its window starts, the floor over it when that is too short, noted;
+    an accent said before the hook ends where the hook starts; its place and size kept when an accent and
+    a visual are asked for in its window; read back and placed the same again; a
     caption-heavy opening keeps the hook; never below the schema's minimum size, and wide words shrink
     it until two lines fit; a reel too short for its window shows it from earlier, to the reel's end,
     noted.
@@ -695,11 +715,13 @@ never fatal.
 - Never read a single head-track sample for a placement or a check: always the robust faces
   (`facesOver`).
 - Never show an accent or question before its first word, nor a big word more than `accent.leadSeconds`
-  before its word. Never show two text picks (the hook, accents, questions, big words, lists) at once: the
-  earlier is cut where the later starts, or the later waits (the hook's slot and a big word's minimum are
-  kept), each noted (`text-one-at-a-time`). A visual may overlap any pick; each overlap is noted.
-- Never show a spoken word twice at once: a caption whose words an accent or big word shows is
-  left out while it shows, for its whole span (never blinking in or out of its group).
+  before its word, nor a list more than its entrance before its first word. Never make a text wait: a text
+  pick never starts after its own words, and two text picks (the hook, accents, questions, big words, lists)
+  never share the screen in time, the earlier cut where the later starts (`text-one-at-a-time`), except a
+  floor the checks need (the hook, a big word), noted. A visual may overlap any pick; each overlap is noted.
+- Never show a spoken word twice at once: a caption's words that an accent, a big word or a list shows
+  are left out while that text is on screen (the caption split in time, never blinking in or out of its
+  group); the words a cut text no longer shows stay on screen as captions.
 - Every text on screen is a spoken word, except the one written hook at the start: never more than
   one hook in a version, never a hook with words, and never a caption left out for it.
 - Never end the hook with a full stop or an ellipsis (`stripHookStop` takes them off; "?" and "!"

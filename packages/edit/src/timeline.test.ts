@@ -47,11 +47,18 @@ describe("resolveTimeline", () => {
         const end = words.get((caption.end as { word: string }).word)!;
         expect(after.get(caption.id)).toEqual({ start: start.start, end: end.end, clamped: false });
       }
-      // A transition's anchors are words too: from its first word's start to
-      // its last word's end.
+      // A transition's anchors are words too: from its entrance before its first
+      // word to its last word's end.
       const transition = edit.tracks.transitions[0]!;
       const phrase = transition.words!;
-      expect(after.get(transition.id)!.start).toBe(words.get(phrase[0]!)!.start);
+      // Its layer comes in as its entrance ends on the first word (0.3 s before
+      // it): an anchor on a word, so it moves with that word.
+      const anchor = transition.start as { word: string; edge?: "end"; offset?: number };
+      const anchored = words.get(anchor.word)!;
+      expect(after.get(transition.id)!.start).toBeCloseTo(
+        (anchor.edge === "end" ? anchored.end : anchored.start) + (anchor.offset ?? 0),
+        6,
+      );
       expect(after.get(transition.id)!.end).toBe(words.get(phrase.at(-1)!)!.end);
       // A time anchor stays where it is; the reel's ends do not depend on words.
       expect(after.get("at-time")).toEqual(before.get("at-time"));

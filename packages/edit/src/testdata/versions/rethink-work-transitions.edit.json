@@ -1938,7 +1938,8 @@
         },
         "words": [
           "w100"
-        ]
+        ],
+        "hidden_by": "transition-1"
       },
       {
         "id": "cw101",
@@ -1951,7 +1952,8 @@
         },
         "words": [
           "w101"
-        ]
+        ],
+        "hidden_by": "transition-1"
       },
       {
         "id": "cw102",
@@ -1964,7 +1966,8 @@
         },
         "words": [
           "w102"
-        ]
+        ],
+        "hidden_by": "transition-1"
       },
       {
         "id": "cw103",
@@ -1977,7 +1980,8 @@
         },
         "words": [
           "w103"
-        ]
+        ],
+        "hidden_by": "transition-1"
       },
       {
         "id": "cw104",
@@ -2028,7 +2032,8 @@
         },
         "words": [
           "w106"
-        ]
+        ],
+        "hidden_by": "transition-2"
       },
       {
         "id": "cw107",
@@ -2041,7 +2046,8 @@
         },
         "words": [
           "w107"
-        ]
+        ],
+        "hidden_by": "transition-2"
       },
       {
         "id": "cw108",
@@ -2054,7 +2060,8 @@
         },
         "words": [
           "w108"
-        ]
+        ],
+        "hidden_by": "transition-2"
       },
       {
         "id": "cw109",
@@ -3100,7 +3107,9 @@
       {
         "id": "transition-1",
         "start": {
-          "word": "w100"
+          "word": "w98",
+          "edge": "end",
+          "offset": 0.127
         },
         "end": {
           "word": "w103",
@@ -3119,7 +3128,9 @@
           "number": {
             "text": "1",
             "start": {
-              "word": "w100"
+              "word": "w98",
+              "edge": "end",
+              "offset": 0.127
             },
             "position": {
               "x": 256.07,
@@ -3159,7 +3170,9 @@
       {
         "id": "transition-2",
         "start": {
-          "word": "w106"
+          "word": "w104",
+          "edge": "end",
+          "offset": -0.004
         },
         "end": {
           "word": "w108",
@@ -3177,7 +3190,9 @@
           "number": {
             "text": "2",
             "start": {
-              "word": "w106"
+              "word": "w104",
+              "edge": "end",
+              "offset": -0.004
             },
             "position": {
               "x": 494.65,

@@ -58,7 +58,9 @@ describe("the hook overlay", () => {
   it("never hides a caption: nobody says the hook", () => {
     const edit = withOverlays(HOOK);
     edit.tracks.captions[0]!.hidden_by = "hook";
-    expect(reasons(edit).join("\n")).toContain("hidden by hook, which is no accent or big word");
+    expect(reasons(edit).join("\n")).toContain(
+      "hidden by hook, which is no accent, big word or list",
+    );
   });
 });
 

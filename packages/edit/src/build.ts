@@ -67,8 +67,8 @@ export function build(
   measurer: Measurer,
 ): BuildResult {
   const resolved = resolveTimeline(edit, transcript);
-  // A transition's own captions show only as its levels, never in their place.
-  const hidden = hiddenCaptionIds(edit);
+  // A caption a text shows is left out only while that text is on screen.
+  const hidden = hiddenCaptionIds(edit, resolved);
   const shownEdit =
     hidden.size === 0
       ? edit

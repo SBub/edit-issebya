@@ -14,6 +14,7 @@ import {
 import { ISSEBYA_PRESET, TRANSITION_KINDS } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
+import { resolveTimeline } from "./timeline.ts";
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
 const short = FIXTURES.find((fixture) => fixture.name === "baseline-short-speech")!;
@@ -285,11 +286,14 @@ describe("the hook", () => {
     const item = placed.edit.tracks.overlays.find((overlay) => overlay.kind === "hook")!;
     expect(item).toMatchObject({ id: "hook", text: "A short test for the real studio" });
     expect(item.words).toBeUndefined();
-    // On the 2.7 s clip the accent in the hook's window is shown beside it,
-    // noted: every pick is shown.
+    // On the 2.7 s clip the accent said in the hook's window cuts the hook where
+    // it starts; the accent shows its own words, noted.
     expect(placed.edit.tracks.overlays.map((overlay) => overlay.id)).toEqual(["hook", "accent-1"]);
+    const hookSpan = resolveTimeline(placed.edit, short.transcript).get("hook")!;
+    const accentSpan = resolveTimeline(placed.edit, short.transcript).get("accent-1")!;
+    expect(hookSpan.end).toBeCloseTo(accentSpan.start, 3);
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "kept-overlapping", rule: "all-picks" }),
+      expect.objectContaining({ item: "hook", action: "retimed", rule: "text-one-at-a-time" }),
     );
   });
 });

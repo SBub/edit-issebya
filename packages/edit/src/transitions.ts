@@ -29,11 +29,13 @@ export interface TransitionTiming {
   endAnchor: Anchor;
 }
 
-// A LIST's layer shows exactly while its phrase is spoken, like a caption: in
-// as the phrase's first word starts (its entrance `kind.seconds` long), gone at
-// the phrase's last word's end. No minimum and no hold. Only a phrase with no
-// length at all is lengthened, to the shown floor (earlier where the reel
-// ends); a reel under the floor gives null.
+// A LIST's layer comes in as its phrase's first word starts: it starts
+// `kind.seconds` (its entrance) before that word, so the entrance is finished
+// as the word is spoken, never before 0. It goes out at the phrase's last
+// word's end, with no hold and no minimum. The engine may start it later (at
+// the end of a text before it) and cut it short (a text after it). Only a
+// phrase with no length at all is lengthened, to the shown floor from its
+// first word (earlier where the reel ends); a reel under the floor gives null.
 export function transitionTiming(
   choice: { from: string; to: string },
   words: readonly Word[],
@@ -46,12 +48,12 @@ export function transitionTiming(
   const last = words.find((word) => word.id === choice.to)!;
   const seconds = kind.seconds;
   const reelEnd = ms(duration);
-  let start = ms(first.start);
+  let start = ms(Math.max(0, first.start - seconds));
   let end = ms(Math.min(last.end, reelEnd));
   let lengthened = false;
-  if (end - start <= SLACK) {
+  if (end - ms(first.start) <= SLACK) {
     lengthened = true;
-    end = ms(Math.min(reelEnd, start + floor));
+    end = ms(Math.min(reelEnd, first.start + floor));
     if (end - start < floor - SLACK) {
       start = ms(Math.max(0, end - floor));
     }
@@ -72,18 +74,37 @@ export function transitionTiming(
   return { start, end, seconds, lengthened, startAnchor, endAnchor };
 }
 
-// The captions never shown in their own place: those shown only through a
-// transition's levels (their first word is in the phrase of a transition
-// carrying levels) and those whose words an accent or a big word shows
-// (`hidden_by`).
-export function hiddenCaptionIds(edit: Edit): Set<string> {
-  const words = new Set(
-    edit.tracks.transitions.flatMap((item) => (item.levels ? (item.words ?? []) : [])),
-  );
+// The captions a text component's layer or overlay hides: a caption is left
+// out only while the component is on screen. A caption whose words a transition
+// with levels shows (`hidden_by`, set by the engine per stretch of its own
+// words) is left out, and so is a stored caption in a list's phrase with no
+// `hidden_by` whose start falls inside the layer (a version made before
+// `hidden_by` named the list). Captions hidden by an accent or a big word
+// carry `hidden_by` too.
+export function hiddenCaptionIds(
+  edit: Edit,
+  resolved: ReadonlyMap<string, ResolvedItem>,
+): Set<string> {
+  const layers = edit.tracks.transitions.flatMap((item) => {
+    const span = resolved.get(item.id);
+    return item.levels && span ? [{ words: new Set(item.words ?? []), span }] : [];
+  });
   return new Set(
     edit.tracks.captions
-      .filter((caption) => caption.hidden_by !== undefined || words.has(caption.words[0]!))
-      .map((c) => c.id),
+      .filter((caption) => {
+        if (caption.hidden_by !== undefined) return true;
+        const span = resolved.get(caption.id);
+        return (
+          span !== undefined &&
+          layers.some(
+            (layer) =>
+              layer.words.has(caption.words[0]!) &&
+              span.start >= layer.span.start - SLACK &&
+              span.start < layer.span.end - SLACK,
+          )
+        );
+      })
+      .map((caption) => caption.id),
   );
 }
 

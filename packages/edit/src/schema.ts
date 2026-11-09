@@ -144,9 +144,9 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     ...base,
     words: z.array(wordId).min(1),
     ...textProps,
-    // The accent or big word (its id) showing this caption's words while it
-    // would show: the layout engine leaves the caption out then, so no word is
-    // on screen twice.
+    // The accent, big word or list (its id) showing this caption's words while
+    // it is on screen: the layout engine leaves the caption out then, so no word
+    // is on screen twice.
     hidden_by: z.string().regex(ITEM_ID).optional(),
   });
   // An accent (spoken words), or the written hook (Claude's own line at the
@@ -238,8 +238,8 @@ const SLACK = 1e-6;
 
 // What the JSON Schema cannot say: every id once, no item ending before it
 // starts, an overlay showing words or text, at most one hook, with its own
-// text and no words, a caption hidden only by an accent or a big word (never
-// the hook, which nobody says), and a behind item never at the
+// text and no words, a caption hidden only by an accent, a big word or a list
+// (never the hook, which nobody says), and a behind item never at the
 // same time as another one or as a hidden stretch of footage (and, with the
 // decide limit, lasting its kind's length).
 function refineEdit(
@@ -292,12 +292,13 @@ function refineEdit(
   const showers = new Set([
     ...edit.tracks.overlays.flatMap((item) => (item.kind === "accent" ? [item.id] : [])),
     ...(edit.tracks.behind ?? []).flatMap((item) => (item.kind === "word" ? [item.id] : [])),
+    ...edit.tracks.transitions.flatMap((item) => (item.levels ? [item.id] : [])),
   ]);
   for (const item of edit.tracks.captions) {
     if (item.hidden_by !== undefined && !showers.has(item.hidden_by)) {
       ctx.addIssue({
         code: "custom",
-        message: `caption ${item.id}: hidden by ${item.hidden_by}, which is no accent or big word`,
+        message: `caption ${item.id}: hidden by ${item.hidden_by}, which is no accent, big word or list`,
       });
     }
   }

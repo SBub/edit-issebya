@@ -25,6 +25,10 @@ import { type Transcript, sentenceSpans } from "./transcript.ts";
 import { levelBoxes } from "./transitions.ts";
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
+// Rounds a time to the millisecond, as the engine does.
+const ms = (t: number) => Math.round(t * 1000) / 1000;
+// A LIST's entrance: its layer starts this long before its first word.
+const ENTRANCE = ISSEBYA_PRESET.transitions.numbered.seconds;
 const { transcript } = hand;
 const words = transcript.words;
 const byId = new Map(words.map((word) => [word.id, word]));
@@ -119,6 +123,7 @@ function expectNoWordTwice(edit: Edit, spans: ReturnType<typeof resolveTimeline>
     ...(edit.tracks.behind ?? []).flatMap((item) =>
       item.kind === "word" ? [{ id: item.id, words: [(item.start as { word: string }).word] }] : [],
     ),
+    ...edit.tracks.transitions.map((item) => ({ id: item.id, words: item.words ?? [] })),
   ];
   const meet = (a: string, b: string) => {
     const x = spans.get(a)!;
@@ -365,7 +370,7 @@ describe("never the same word twice on screen", () => {
     edit.tracks.captions[3]!.hidden_by = "accent-9";
     const parsed = parseEdit(edit, ISSEBYA_PRESET, transcript);
     expect(!parsed.ok && parsed.reasons.join("\n")).toMatch(
-      /caption cw\d+: hidden by accent-9, which is no accent or big word/,
+      /caption cw\d+: hidden by accent-9, which is no accent, big word or list/,
     );
   });
 });
@@ -493,6 +498,92 @@ describe("the layout engine's placement", () => {
       expect(extras.length).toBeGreaterThanOrEqual(6);
     });
   }
+
+  // No text starts after its own words, and no two texts share the screen in
+  // time, on the dense reels: an earlier text ends where the later one starts.
+  // A text the checks need the floor for (a hook, a big word) may overlap the
+  // text that cut it; that overlap is noted.
+  const WRITTEN = { text: "Gen Z won't work like you did" };
+  for (const [name, input] of [
+    ["the dense reel", { ...DENSE, hook: WRITTEN }],
+    ["the rhythm reel", { ...RHYTHM, hook: WRITTEN }],
+  ] as const) {
+    for (const [headName, headTrack] of [
+      ["the real head", hand.headTrack],
+      ["a large centred face", BIG_FACE],
+    ] as const) {
+      it(`no text lands after its own words, and texts one at a time, on ${name} with ${headName}`, async () => {
+        const { edit, spans, record } = await place(input, { headTrack });
+        const texts = [
+          ...edit.tracks.overlays.map((item) => ({
+            id: item.id,
+            from: item.start,
+            own: item.words?.[0],
+          })),
+          ...(edit.tracks.behind ?? [])
+            .filter((item) => item.kind === "word")
+            .map((item) => ({
+              id: item.id,
+              from: item.start,
+              own: (item.start as { word: string }).word,
+            })),
+          ...edit.tracks.transitions.map((item) => ({
+            id: item.id,
+            from: item.start,
+            own: item.words![0],
+          })),
+        ];
+        for (const text of texts) {
+          if (text.id === "hook" || text.own === undefined) continue;
+          expect(spans.get(text.id)!.start, text.id).toBeLessThanOrEqual(
+            byId.get(text.own)!.start + 1e-6,
+          );
+        }
+        const shown = [...edit.tracks.overlays, ...(edit.tracks.behind ?? [])]
+          .filter((item) => item.kind !== "visual")
+          .map((item) => ({ id: item.id, ...spans.get(item.id)! }))
+          .concat(edit.tracks.transitions.map((item) => ({ id: item.id, ...spans.get(item.id)! })))
+          .sort((a, b) => a.start - b.start);
+        for (let index = 1; index < shown.length; index += 1) {
+          const earlier = shown[index - 1]!;
+          const later = shown[index]!;
+          if (later.start >= earlier.end - 1e-6) continue;
+          // Overlap: only the floor a cut text needs, noted.
+          expect(
+            record.some(
+              (note) =>
+                (note.item === earlier.id || note.item === later.id) &&
+                note.rule === "text-one-at-a-time",
+            ),
+            `${earlier.id} and ${later.id} overlap`,
+          ).toBe(true);
+        }
+      });
+    }
+  }
+
+  it("shows an accent said before the hook's start until the hook starts, and keeps the hook's place", async () => {
+    const { fromSeconds } = ISSEBYA_PRESET.pace.hook;
+    // The same transcript, its first word said before the hook starts.
+    const early = {
+      ...transcript,
+      words: transcript.words.map((word) =>
+        word.id === "w0" ? { ...word, start: 0.05, end: 0.3 } : word,
+      ),
+    };
+    const placed = await place(
+      { hook: { text: "Gen Z won't work like you did" }, accents: [{ from: "w0", to: "w0" }] },
+      { transcript: early },
+    );
+    const accent = placed.spans.get("accent-1")!;
+    expect(accent.start).toBeCloseTo(0.05, 3);
+    expect(accent.end).toBeCloseTo(fromSeconds, 3);
+    expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds });
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({ item: "accent-1", action: "retimed", rule: "text-one-at-a-time" }),
+    );
+    expect(placed.checks).toEqual([]);
+  });
 
   it("keeps one spot for a whole sentence: each group starts at the same place", async () => {
     const { edit, spans } = await place({}, { headTrack: BIG_FACE });
@@ -992,15 +1083,13 @@ function withPause(after: string, seconds: number): { transcript: Transcript; ed
 describe("transitions", () => {
   const T = ISSEBYA_PRESET.transition;
   const LIST = { kind: "numbered" as const, from: "w26", to: "w33", key_from: "w30" };
-  const ms = (t: number) => Math.round(t * 1000) / 1000;
 
-  it("shows exactly while its phrase is spoken: in as w26 starts, gone at w33's end", async () => {
+  it("comes in as its entrance ends on w26's start (0.3 s before), gone at w33's end", async () => {
     const { spans, levels, edit, html, checks } = await place({ transitions: [LIST] });
     const span = spans.get("transition-1")!;
-    expect(span.start).toBe(start("w26"));
+    expect(span.start).toBe(ms(start("w26") - ENTRANCE));
     expect(span.end).toBe(end("w33"));
     expect(edit.tracks.transitions[0]).toMatchObject({
-      start: { word: "w26" },
       end: { word: "w33", edge: "end" },
     });
     expect(edit.tracks.transitions[0]).toMatchObject({
@@ -1014,6 +1103,8 @@ describe("transitions", () => {
     expect(lead.start).toBe(start("w26"));
     expect(key.start).toBe(start("w30"));
     expect([lead.end, key.end]).toEqual([span.end, span.end]);
+    // The layer's fade ends as w26 starts.
+    expect(span.start + ENTRANCE).toBeCloseTo(start("w26"), 3);
     expect(lead.text).toBe("AI has completely disrupted");
     expect(key.text).toBe("the way we work");
     // Its phrase's captions show nowhere else.
@@ -1041,12 +1132,12 @@ describe("transitions", () => {
     expect(T).not.toHaveProperty("holdSeconds");
   });
 
-  it("has no minimum: a short phrase shows exactly its words, not lengthened", async () => {
+  it("has no minimum: a short phrase shows its words, from the entrance before them, not lengthened", async () => {
     const { spans, checks, record } = await place({
       transitions: [{ kind: "numbered", from: "w26", to: "w27", key_from: "w26" }],
     });
     const span = spans.get("transition-1")!;
-    expect([span.start, span.end]).toEqual([start("w26"), end("w27")]);
+    expect([span.start, span.end]).toEqual([ms(start("w26") - ENTRANCE), end("w27")]);
     expect(
       record.filter((note) => note.item === "transition-1" && note.action === "retimed"),
     ).toEqual([]);
@@ -1261,11 +1352,11 @@ describe("the written hook", () => {
     expectNoWordTwice(placed.edit, placed.spans);
   });
 
-  it("makes an accent said in the hook's window wait for the hook to end, noted: the hook keeps its slot", async () => {
+  it("cuts the hook where an accent said after its floor starts, noted: the accent shows at its own words", async () => {
     const placed = await place({
       hook: HOOK,
       accents: [
-        { from: "w2", to: "w3" },
+        { from: "w9", to: "w9" },
         { from: "w12", to: "w12" },
       ],
     });
@@ -1274,14 +1365,15 @@ describe("the written hook", () => {
       "accent-1",
       "accent-2",
     ]);
-    expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: untilSeconds });
-    expect(placed.spans.get("accent-1")!.start).toBe(untilSeconds);
+    // The hook keeps its start and place; the accent's own word ends it.
+    expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: start("w9") });
+    expect(placed.spans.get("accent-1")).toMatchObject({ start: start("w9"), end: end("w9") });
     expect(placed.record).toContainEqual({
-      item: "accent-1",
+      item: "hook",
       action: "retimed",
       rule: "text-one-at-a-time",
       reason: expect.stringMatching(
-        /^accent "[^"]+" waits from \d+\.\d\d s to 3\.00 s: the hook "Gen Z won't work like you did" shows until then, and text picks show one at a time$/,
+        /^the hook "Gen Z won't work like you did" shows from \d+\.\d\d s to \d+\.\d\d s, not to 3\.00 s: accent "[^"]+" starts at \d+\.\d\d s, and text picks show one at a time; the words it no longer shows show as captions$/,
       ),
     });
     // The accent said after the hook is not moved.
@@ -1289,34 +1381,43 @@ describe("the written hook", () => {
     expect(placed.checks).toEqual([]);
   });
 
-  it("is never cut short: an accent said in the hook's window waits for the hook, its own words over, it shows the floor", async () => {
-    const placed = await place({ hook: HOOK, accents: [{ from: "w9", to: "w9" }] });
-    expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: untilSeconds });
-    expect(placed.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook", "accent-1"]);
-    const span = placed.spans.get("accent-1")!;
-    expect(span.start).toBe(untilSeconds);
-    expect(span.end - span.start).toBeCloseTo(SHOWN_FLOOR_SECONDS, 3);
+  it("gives the hook its shown floor when an accent starts inside it, the floor over it, noted", async () => {
+    const placed = await place({ hook: HOOK, accents: [{ from: "w2", to: "w3" }] });
+    expect(placed.spans.get("hook")).toMatchObject({
+      start: fromSeconds,
+      end: ms(fromSeconds + SHOWN_FLOOR_SECONDS),
+    });
+    expect(placed.spans.get("accent-1")).toMatchObject({ start: start("w2"), end: end("w3") });
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "retimed", rule: "text-one-at-a-time" }),
+      expect.objectContaining({ item: "hook", action: "retimed", rule: "text-one-at-a-time" }),
+    );
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({ item: "accent-1", action: "kept-overlapping", rule: "all-picks" }),
     );
     expect(placed.checks).toEqual([]);
   });
 
-  it("holds its slot when an accent and an image are asked for in its window: it never moves, shrinks or goes", async () => {
+  it("the accent said in the hook's window keeps its own words, whatever the hook shows", async () => {
+    const placed = await place({ hook: HOOK, accents: [{ from: "w9", to: "w9" }] });
+    expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: start("w9") });
+    expect(placed.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook", "accent-1"]);
+    expect(placed.spans.get("accent-1")).toMatchObject({ start: start("w9"), end: end("w9") });
+    expect(placed.checks).toEqual([]);
+  });
+
+  it("keeps the hook's place and size when an accent and a visual are asked for in its window; the visual is not cut", async () => {
     const hookOnly = await place({ hook: HOOK });
     const crowded = await place({
       hook: HOOK,
       accents: [{ from: "w9", to: "w9" }],
       visuals: [{ from: "w2", to: "w5" }],
     });
-    // The hook is the same item, at the same place and size, with the same notes.
-    expect(hookOf(crowded.edit)).toEqual(hookOf(hookOnly.edit));
-    expect(crowded.spans.get("hook")).toEqual(hookOnly.spans.get("hook"));
-    const notesOf = (placed: Awaited<ReturnType<typeof place>>) =>
-      placed.record.filter((note) => note.item === "hook");
-    expect(notesOf(crowded)).toEqual(notesOf(hookOnly));
-    // What is asked for in its window is shown, noted: the accent waits for the
-    // hook (text picks one at a time), the visual is not text and is not cut.
+    // The hook is the same item in place and size; only its end is cut.
+    const placeOf = (edit: Edit) => ({ ...hookOf(edit)!, start: null, end: null });
+    expect(placeOf(crowded.edit)).toEqual(placeOf(hookOnly.edit));
+    expect(crowded.spans.get("hook")).toMatchObject({ start: fromSeconds, end: start("w9") });
+    // What is asked for in its window is shown, noted: the accent comes in at its
+    // own words (text picks one at a time), the visual is not text and is not cut.
     expect(crowded.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook", "accent-1"]);
     expect(crowded.edit.tracks.behind?.map((item) => item.id)).toEqual(["visual-1"]);
     const visualOnly = await place({ visuals: [{ from: "w2", to: "w5" }] });
@@ -1324,7 +1425,7 @@ describe("the written hook", () => {
     expect(crowded.record).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          item: "accent-1",
+          item: "hook",
           action: "retimed",
           rule: "text-one-at-a-time",
         }),
@@ -1459,13 +1560,14 @@ describe("the written hook", () => {
 describe("text picks one at a time", () => {
   const LIST_AT_W26 = { kind: "numbered" as const, from: "w26", to: "w33", key_from: "w30" };
 
-  it("cuts an accent that runs into a list where the list starts, noted, and keeps the list's times", async () => {
+  it("cuts an accent that runs into a list where the list starts, noted, the list at its own times", async () => {
     const placed = await place({
       accents: [{ from: "w24", to: "w26" }],
       transitions: [LIST_AT_W26],
     });
     const accent = placed.spans.get("accent-1")!;
     const list = placed.spans.get("transition-1")!;
+    // The list comes in as w26 starts (its entrance cut short by the accent before it).
     expect(list.start).toBe(start("w26"));
     expect(list.end).toBe(end("w33"));
     expect(accent.start).toBe(start("w24"));
@@ -1476,7 +1578,7 @@ describe("text picks one at a time", () => {
         action: "retimed",
         rule: "text-one-at-a-time",
         reason: expect.stringMatching(
-          /^accent ".+" shows from \d+\.\d\d s to \d+\.\d\d s, not to \d+\.\d\d s: transition 1 \(numbered\) on ".+" starts at \d+\.\d\d s, and text picks show one at a time$/,
+          /^accent ".+" shows from \d+\.\d\d s to \d+\.\d\d s, not to \d+\.\d\d s: transition 1 \(numbered\) on ".+" starts at \d+\.\d\d s, and text picks show one at a time; the words it no longer shows show as captions$/,
         ),
       }),
     );
@@ -1491,36 +1593,41 @@ describe("text picks one at a time", () => {
     const list = placed.spans.get("transition-1")!;
     const accent = placed.spans.get("accent-1")!;
     expect(accent.start).toBe(start("w30"));
-    expect(list.start).toBe(start("w26"));
+    expect(list.start).toBe(ms(start("w26") - ENTRANCE));
     expect(list.end).toBeCloseTo(start("w30"), 3);
+    // Its later words (from w30 on) show as captions, not as list text.
     expect(placed.record).toContainEqual(
       expect.objectContaining({
         item: "transition-1",
         action: "retimed",
         rule: "text-one-at-a-time",
-        reason: expect.stringMatching(/; the words of its list after that show no list text$/),
+        reason: expect.stringMatching(/; the words it no longer shows show as captions$/),
       }),
     );
+    // The words the list no longer shows (w32, w33) are normal captions.
+    const after = placed.edit.tracks.captions.find((item) => item.words.includes("w32"))!;
+    expect(after.hidden_by).toBeUndefined();
+    expect(after.position).toBeDefined();
     expect(placed.checks).toEqual([]);
   });
 
-  it("makes a text said while a big word shows wait until the big word's minimum is over", async () => {
+  it("cuts a big word where an accent said in its minimum starts; the accent keeps its own words", async () => {
     const placed = await place({
       big_words: [{ from: "w76", to: "w76" }],
       accents: [{ from: "w77", to: "w78" }],
     });
     const big = placed.spans.get("big-word-1")!;
     const accent = placed.spans.get("accent-1")!;
-    // The big word keeps its lead and its minimum.
+    // The big word starts at its lead; its minimum is a target, so the accent
+    // said inside it cuts it where it starts.
     expect(big.start).toBeCloseTo(leadOf("w76"), 3);
-    expect(big.end - big.start).toBeGreaterThanOrEqual(1.5 - 1e-6);
-    // It waits for the big word; its words are over by then, so it shows the
-    // shown floor from there.
-    expect(accent.start).toBeCloseTo(big.end, 3);
-    expect(accent.end - accent.start).toBeCloseTo(SHOWN_FLOOR_SECONDS, 3);
+    expect(big.end).toBeCloseTo(start("w77"), 3);
+    // The accent is not made to wait: it shows its own words.
+    expect(accent.start).toBeCloseTo(start("w77"), 3);
+    expect(accent.end).toBeCloseTo(end("w78"), 3);
     expect(placed.record).toContainEqual(
       expect.objectContaining({
-        item: "accent-1",
+        item: "big-word-1",
         action: "retimed",
         rule: "text-one-at-a-time",
       }),
@@ -1574,7 +1681,7 @@ describe("every pick shown", () => {
   ];
 
   it("shows every pick from its first word to its last word's end, and passes the schema", async () => {
-    const { edit, spans } = await place(DENSE_TEN, {
+    const { edit, spans, record } = await place(DENSE_TEN, {
       headTrack: hand.headTrack,
     });
     expect(edit.tracks.overlays.map((item) => item.id)).toEqual([
@@ -1611,7 +1718,20 @@ describe("every pick shown", () => {
     const text = ["accent-1", "accent-2", "accent-3", "accent-4", "big-word-1", "big-word-2"]
       .map((id) => ({ id, ...spans.get(id)! }))
       .sort((a, b) => a.start - b.start);
+    // accent-4 and big-word-2 start on the same word: a tie, the answer's later
+    // pick (the big word) is the later one, so the accent is cut to no length,
+    // shows the shown floor over it, and says so.
     for (let index = 1; index < text.length; index += 1) {
+      if (Math.abs(text[index]!.start - text[index - 1]!.start) < 1e-6) {
+        expect(record).toContainEqual(
+          expect.objectContaining({
+            item: text[index - 1]!.id,
+            action: "retimed",
+            rule: "text-one-at-a-time",
+          }),
+        );
+        continue;
+      }
       expect(
         text[index]!.start,
         `${text[index - 1]!.id} and ${text[index]!.id}`,
@@ -1753,8 +1873,10 @@ describe("nothing the answer picks is dropped", () => {
     expect(record).toContainEqual(
       expect.objectContaining({ item: "big-word-1", action: "moved-off-cut" }),
     );
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "transition-1", action: "text-from-words" }),
+    // The list's phrase is its own caption's word now: the key shows it.
+    expect(edit.tracks.transitions[0]!.levels?.key.text).toBeTruthy();
+    expect(record).not.toContainEqual(
+      expect.objectContaining({ item: "accent-1", action: "kept-overlapping" }),
     );
   });
 

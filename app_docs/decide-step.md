@@ -109,7 +109,7 @@ placed first):
   and read back by `choicesOf`.
 - Behind lengths: a VISUAL shows 1 to 2 s (`behind.minSeconds`, `maxSeconds`), a big word
   its own timing (from `accent.leadSeconds`, 0.2 s, before its first word to its last word's end, at
-  least 1.5 s). An accent or a question shows exactly its words (no lead, no minimum). A big word only on a key word, a spoken word by construction.
+  least 1.5 s, a target: a text said later in it cuts it short). An accent or a question shows exactly its words (no lead, no minimum). A big word only on a key word, a spoken word by construction.
 - Pace (`preset.pace`): the answer carries no rate (the transition kind is given as data, its pace is
   not); the components prompt is told the reel's intensity word and the target count, never a rate. Every pick shows at its own words' times, so the rhythm is the answer's, and a reel too short for a pick clamps it to the reel's end (nothing is dropped).
 
@@ -372,9 +372,9 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
   cached pass; both also hash `fixtures/pipeline/`.
 - `decide/testdata/short-speech-answer.json` is the scripted AI replies for the fixture clip: the hook
   reply (role `hook`, "A short test for the real studio") and the decide answer (one accent word,
-  w0005, and one fixed word, w0010 "Studio", no transition). On the 2.7 s clip the hook holds the screen
-  from 0.2 s to the end, so the accent cannot wait for it: it shows over it (noted `kept-overlapping`), and
-  the step line reads `1 accent, 0 transitions, hook set, 1 word fixed`.
+  w0005, and one fixed word, w0010 "Studio", no transition). The accent is said while the hook shows, so it
+  cuts the hook where it starts (noted `text-one-at-a-time`); the accent keeps its own words, and the step
+  line reads `1 accent, 0 transitions, hook set, 1 word fixed`.
 - `yarn turbo run test:db --filter=./apps/studio`: `versions.test.ts` covers the new columns, `checklist`
   included.
 - E2E: `apps/studio/e2e/upload.spec.ts` sets `E2E_MOCK_AI_SCRIPT` to the committed answer and checks the

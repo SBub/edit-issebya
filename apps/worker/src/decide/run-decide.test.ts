@@ -230,13 +230,13 @@ describe("runDecide", () => {
     });
     const done = lastCall(calls);
     if (done.call !== "done") throw new Error(JSON.stringify(calls));
-    // On the 2.7 s clip the hook holds the screen from 0.2 s to the end: the
-    // accent on w0005 shows over it, noted (every pick is shown).
+    // On the 2.7 s clip the accent on w0005 is said while the hook shows: it
+    // cuts the hook where it starts, noted, and the accent keeps its own words.
     expect(done.summary).toMatch(
       /^version 2: 1 accent, 0 transitions, hook set, 1 word fixed, under a second$/,
     );
     expect(v2.engine_record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "kept-overlapping", rule: "all-picks" }),
+      expect.objectContaining({ item: "hook", action: "retimed", rule: "text-one-at-a-time" }),
     );
     // The schema the AI got is this reel's, and the prompt carries its words.
     expect(JSON.stringify(ai.calls[1]!.schema)).toContain('"w0010"');
@@ -549,7 +549,7 @@ describe("runDecide", () => {
     expect(v2).toMatchObject({ used_free_field: false, free_field: [] });
   });
 
-  it("places the answer's words: the fix lands on its caption, and the hook holds the clip", async () => {
+  it("places the answer's words: the fix lands on its caption, and the accent cuts the hook", async () => {
     const { run } = await decide(
       aiScript([
         answered(
@@ -563,16 +563,16 @@ describe("runDecide", () => {
     const stored = JSON.parse(
       new TextDecoder().decode((await storage.get(rows.get(current!)!.r2_key))!),
     ) as { tracks: Record<string, Json[]> };
-    // The hook holds the whole 2.7 s clip from 0.2 s; the transition and the
-    // accent that run during it are shown beside it, noted.
+    // The accent and the transition said in the hook's window are shown, noted:
+    // the accent cuts the hook where it starts, the transition shows its own words.
     expect(stored.tracks.overlays!.map((item) => item.id)).toEqual(["hook", "accent-1"]);
     expect(stored.tracks.transitions!.map((item) => item.id)).toEqual(["transition-1"]);
     expect(rows.get(current!)!.engine_record).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          item: "accent-1",
-          action: "kept-overlapping",
-          rule: "all-picks",
+          item: "hook",
+          action: "retimed",
+          rule: "text-one-at-a-time",
         }),
       ]),
     );
@@ -604,7 +604,7 @@ describe("runDecide", () => {
     expect(editorCalls(ai)).toHaveLength(1);
     const v2 = rows.get(current!)!;
     expect(v2).toMatchObject({ number: 2, checks: [], rejected_reasons: [] });
-    // The hook holds its slot: the wide accent, said before it, ends where it starts, noted.
+    // The wide accent, said before the hook, ends where the hook starts, noted.
     expect(v2.engine_record).toContainEqual(
       expect.objectContaining({ item: "accent-1", action: "retimed", rule: "text-one-at-a-time" }),
     );
