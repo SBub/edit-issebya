@@ -379,10 +379,16 @@ interface Extra {
   hook?: HookChoice;
 }
 
-// A transition kept by the timing rules: its answer item and its layer's span.
+// A LIST item kept by the timing rules: its answer item and its layer's span.
+// `index` is its place among all LIST items of the answer (its id is
+// `transition-<index + 1>`), `list` its list's place among the answer's lists
+// (1, 2, ...), `number` its place in its list when the list kept more than one
+// item (none for a list of one).
 interface TransitionPlan {
   ref: string;
   index: number;
+  list: number;
+  number?: number;
   id: string;
   label: string;
   choice: TransitionChoice;
@@ -498,12 +504,14 @@ function sameTextPass(
       accents: answer.accents.map((choice, slot) => trim(choice, `accents[${slot}]`)),
       questions: answer.questions.map((choice, slot) => trim(choice, `questions[${slot}]`)),
       big_words: answer.big_words.map((choice, slot) => trim(choice, `big_words[${slot}]`)),
-      transitions: answer.transitions.map((choice, slot) => {
-        const kept = trimmed.get(`transitions[${slot}]`);
-        if (!kept) return choice;
-        const key_from = kept.includes(choice.key_from) ? choice.key_from : kept[0]!;
-        return { ...choice, from: kept[0]!, to: kept.at(-1)!, key_from };
-      }),
+      lists: answer.lists.map((list, listIndex) => ({
+        items: list.items.map((choice, slot) => {
+          const kept = trimmed.get(`lists[${listIndex}].items[${slot}]`);
+          if (!kept) return choice;
+          const key_from = kept.includes(choice.key_from) ? choice.key_from : kept[0]!;
+          return { ...choice, from: kept[0]!, to: kept.at(-1)!, key_from };
+        }),
+      })),
     },
     dropped,
     notes,
@@ -628,78 +636,95 @@ function placeOnce(
 
   function timeTransitions(): TransitionPlan[] {
     const kept: TransitionPlan[] = [];
-    input.transitions.forEach((choice, index) => {
-      const ref = `transitions[${index}]`;
-      if (skip.has(ref)) return;
-      const id = `transition-${index + 1}`;
-      const label = `transition ${index + 1} (${choice.kind}) on ${quote(transitionText(choice))}`;
-      const kind = preset.transitions[choice.kind];
-      const timing = transitionTiming(
-        { from: choice.from, to: choice.to },
-        transcript.words,
-        duration,
-        preset,
-        kind,
-      );
-      let start = timing?.start ?? 0;
-      let end = timing?.end ?? ms(duration);
-      let startAnchor: Anchor = timing?.startAnchor ?? { reel: "start" };
-      const endAnchor: Anchor = timing?.endAnchor ?? { reel: "end" };
-      const first = word(choice.from).start;
-      // The layer comes in as its first word starts, its entrance before it; but
-      // never before the text picks that started earlier have ended (it comes
-      // in later, the entrance shorter), and never after its first word.
-      const earlierEnd = Math.max(
-        0,
-        ...[...extras, ...kept]
-          .filter((pick) => pick.start < first - SLACK)
-          .map((pick) => pick.end),
-      );
-      if (timing && earlierEnd > start + SLACK) {
-        const was = start;
-        start = ms(Math.min(earlierEnd, first));
-        startAnchor =
-          Math.abs(start - first) < 0.0005
-            ? { word: choice.from }
-            : anchorAt(start, transcript.words);
-        record.push({
-          item: id,
-          action: "retimed",
-          rule: "transition-entrance",
-          reason: `${label} comes in from ${at(start)}, not from ${at(was)}: the text before it ends at ${at(earlierEnd)}, and text picks show one at a time`,
+    let index = 0;
+    input.lists.forEach((list, listIndex) =>
+      list.items.forEach((choice, position) => {
+        const flat = index++;
+        const ref = `lists[${listIndex}].items[${position}]`;
+        if (skip.has(ref)) return;
+        const id = `transition-${flat + 1}`;
+        const label = `list ${listIndex + 1} item ${position + 1} on ${quote(transitionText(choice))}`;
+        const kind = preset.transitions.numbered;
+        const timing = transitionTiming(
+          { from: choice.from, to: choice.to },
+          transcript.words,
+          duration,
+          preset,
+          kind,
+        );
+        let start = timing?.start ?? 0;
+        let end = timing?.end ?? ms(duration);
+        let startAnchor: Anchor = timing?.startAnchor ?? { reel: "start" };
+        const endAnchor: Anchor = timing?.endAnchor ?? { reel: "end" };
+        const first = word(choice.from).start;
+        // The layer comes in as its first word starts, its entrance before it; but
+        // never before the text picks that started earlier have ended (it comes
+        // in later, the entrance shorter), and never after its first word.
+        const earlierEnd = Math.max(
+          0,
+          ...[...extras, ...kept]
+            .filter((pick) => pick.start < first - SLACK)
+            .map((pick) => pick.end),
+        );
+        if (timing && earlierEnd > start + SLACK) {
+          const was = start;
+          start = ms(Math.min(earlierEnd, first));
+          startAnchor =
+            Math.abs(start - first) < 0.0005
+              ? { word: choice.from }
+              : anchorAt(start, transcript.words);
+          record.push({
+            item: id,
+            action: "retimed",
+            rule: "transition-entrance",
+            reason: `${label} comes in from ${at(start)}, not from ${at(was)}: the text before it ends at ${at(earlierEnd)}, and text picks show one at a time`,
+          });
+        }
+        if (!timing) {
+          // The reel is shorter than the shown floor, so the layer covers all of it.
+          start = 0;
+          end = ms(duration);
+          record.push({
+            item: id,
+            action: "clamped-to-end",
+            rule: "transition-time",
+            reason: `${label} shows from 0 s to ${at(duration)}: the reel is too short for it to show ${SHOWN_FLOOR_SECONDS} s`,
+          });
+        } else if (timing.lengthened) {
+          record.push({
+            item: id,
+            action: "retimed",
+            rule: "transition-min",
+            reason: `${label} shows from ${at(start)} to ${at(end)}, at least ${SHOWN_FLOOR_SECONDS} s`,
+          });
+        }
+        kept.push({
+          ref,
+          index: flat,
+          list: listIndex + 1,
+          id,
+          label,
+          choice,
+          start,
+          end,
+          startAnchor,
+          endAnchor,
         });
-      }
-      if (!timing) {
-        // The reel is shorter than the shown floor, so the layer covers all of it.
-        start = 0;
-        end = ms(duration);
-        record.push({
-          item: id,
-          action: "clamped-to-end",
-          rule: "transition-time",
-          reason: `${label} shows from 0 s to ${at(duration)}: the reel is too short for it to show ${SHOWN_FLOOR_SECONDS} s`,
-        });
-      } else if (timing.lengthened) {
-        record.push({
-          item: id,
-          action: "retimed",
-          rule: "transition-min",
-          reason: `${label} shows from ${at(start)} to ${at(end)}, at least ${SHOWN_FLOOR_SECONDS} s`,
-        });
-      }
-      kept.push({
-        ref,
-        index,
-        id,
-        label,
-        choice,
-        start,
-        end,
-        startAnchor,
-        endAnchor,
-      });
-    });
-    return kept.sort((a, b) => a.start - b.start);
+      }),
+    );
+    // A list's kept items number 1, 2, ... in reel order (as the speaker goes
+    // through them); a list left with one kept item shows no number.
+    const itemsOf = new Map<number, TransitionPlan[]>();
+    for (const plan of [...kept].sort((a, b) => a.start - b.start)) {
+      itemsOf.set(plan.list, [...(itemsOf.get(plan.list) ?? []), plan]);
+    }
+    const numberOf = new Map<string, number>();
+    for (const items of itemsOf.values()) {
+      if (items.length > 1) items.forEach((plan, position) => numberOf.set(plan.id, position + 1));
+    }
+    return kept
+      .map((plan) => ({ ...plan, number: numberOf.get(plan.id) }))
+      .sort((a, b) => a.start - b.start);
   }
 
   // The extras' own times. A pick's span is its own: from its start to its
@@ -1266,17 +1291,13 @@ function placeOnce(
   // inside its area, off the face where possible. The captions of a
   // transition's phrase show only as its levels.
   const transitionItems = new Map<string, { index: number; item: TransitionItem }>();
-  let numbered = 0;
   for (const plan of transitionPlans) {
-    const number = plan.choice.kind === "numbered" ? numbered + 1 : undefined;
-    const item = placeLevels(plan, number);
-    if (number !== undefined) numbered = number;
-    transitionItems.set(plan.id, { index: plan.index, item });
+    transitionItems.set(plan.id, { index: plan.index, item: placeLevels(plan) });
   }
 
-  function placeLevels(plan: TransitionPlan, number: number | undefined): TransitionItem {
-    const { choice, label } = plan;
-    const kind = preset.transitions[choice.kind];
+  function placeLevels(plan: TransitionPlan): TransitionItem {
+    const { choice, label, number } = plan;
+    const kind = preset.transitions.numbered;
     const ids = range(choice.from, choice.to);
     const phrase = new Set(ids);
     const keyAt = order.get(choice.key_from)!;
@@ -1488,11 +1509,12 @@ function placeOnce(
     }
     return {
       id: plan.id,
-      type: choice.kind,
+      type: "numbered",
       start: plan.startAnchor,
       end: plan.endAnchor,
       words: ids,
       key: choice.key_from,
+      list: plan.list,
       ...(number !== undefined ? { number } : {}),
       levels: { ...levels, key: levels.key! },
     };

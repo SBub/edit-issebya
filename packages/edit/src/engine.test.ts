@@ -8,13 +8,7 @@ import { placeEdit } from "./engine.ts";
 import { type EngineInput, choicesOf } from "./engine-input.ts";
 import { wordsText } from "./glossary.ts";
 import { LAYOUT_PADDING, type Box, type HeadTrack, facesOver } from "./head-track.ts";
-import {
-  ISSEBYA_PRESET,
-  PLATFORM_BUTTONS,
-  PLATFORM_SAFE,
-  SHOWN_FLOOR_SECONDS,
-  TRANSITION_KINDS,
-} from "./preset.ts";
+import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE, SHOWN_FLOOR_SECONDS } from "./preset.ts";
 import { MIN_TEXT_SIZE, type Edit, parseEdit } from "./schema.ts";
 import { backgroundMapOf } from "./test-support/backgrounds.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
@@ -40,7 +34,7 @@ const NOTHING: EngineInput = {
   questions: [],
   big_words: [],
   visuals: [],
-  transitions: [],
+  lists: [],
   word_fixes: [],
 };
 
@@ -447,7 +441,7 @@ describe("the layout engine's placement", () => {
       { from: "w84", to: "w99" },
       { from: "w113", to: "w116" },
     ],
-    transitions: [{ kind: "numbered", from: "w126", to: "w133", key_from: "w128" }],
+    lists: [{ items: [{ from: "w126", to: "w133", key_from: "w128" }] }],
   };
 
   for (const [name, headTrack] of [
@@ -497,9 +491,13 @@ describe("the layout engine's placement", () => {
       RHYTHM.visuals!.push({ from: sentence.from, to: sentence.to });
     }
   });
-  RHYTHM.transitions = [
-    { kind: "numbered", from: "w26", to: "w33", key_from: "w30" },
-    { kind: "numbered", from: "w126", to: "w133", key_from: "w128" },
+  RHYTHM.lists = [
+    {
+      items: [
+        { from: "w26", to: "w33", key_from: "w30" },
+        { from: "w126", to: "w133", key_from: "w128" },
+      ],
+    },
   ];
 
   for (const [name, headTrack] of [
@@ -790,11 +788,12 @@ describe("the layout engine's placement", () => {
 describe("today's failures, placed by the engine", () => {
   it("keeps a transition's text levels off the face", async () => {
     const { checks, edit, levels } = await place(
-      { transitions: [{ kind: "numbered", from: "w84", to: "w99", key_from: "w91" }] },
+      { lists: [{ items: [{ from: "w84", to: "w99", key_from: "w91" }] }] },
       { headTrack: BIG_FACE },
     );
     expect(edit.tracks.transitions).toHaveLength(1);
-    expect(levels.map((level) => level.role)).toEqual(["number", "lead", "key"]);
+    // A list of one item has no number: its lead-in and key phrase only.
+    expect(levels.map((level) => level.role)).toEqual(["lead", "key"]);
     for (const level of levels) {
       for (const face of facesOver(BIG_FACE, level.start, level.end)) {
         const clear =
@@ -1001,7 +1000,7 @@ describe("clicks on visuals and big words", () => {
         accents: [{ from: "w26", to: "w28" }],
         big_words: [{ from: "w116", to: "w116" }],
         visuals: [{ from: "w84", to: "w99" }],
-        transitions: [{ kind: "numbered", from: "w126", to: "w133", key_from: "w128" }],
+        lists: [{ items: [{ from: "w126", to: "w133", key_from: "w128" }] }],
       },
       { headTrack: LEFT_HEAD },
     );
@@ -1180,7 +1179,7 @@ describe("readable text", () => {
 
   it("never measures a transition's levels: they sit on its layer", async () => {
     const input: Partial<EngineInput> = {
-      transitions: [{ kind: "numbered", from: "w126", to: "w133", key_from: "w128" }],
+      lists: [{ items: [{ from: "w126", to: "w133", key_from: "w128" }] }],
     };
     const { edit, record } = await place(input, { backgrounds: mapOf(() => "#FFFFFF") });
     const [transition] = edit.tracks.transitions;
@@ -1219,10 +1218,10 @@ function withPause(after: string, seconds: number): { transcript: Transcript; ed
 
 describe("transitions", () => {
   const T = ISSEBYA_PRESET.transition;
-  const LIST = { kind: "numbered" as const, from: "w26", to: "w33", key_from: "w30" };
+  const LIST = { from: "w26", to: "w33", key_from: "w30" };
 
   it("comes in as its entrance ends on w26's start (0.3 s before), gone at w33's end", async () => {
-    const { spans, levels, edit, html, checks } = await place({ transitions: [LIST] });
+    const { spans, levels, edit, html, checks } = await place({ lists: [{ items: [LIST] }] });
     const span = spans.get("transition-1")!;
     expect(span.start).toBe(ms(start("w26") - ENTRANCE));
     expect(span.end).toBe(end("w33"));
@@ -1257,7 +1256,7 @@ describe("transitions", () => {
     const paused = withPause("w33", 3);
     const made = editFromAnswer(
       paused.edit,
-      { ...NOTHING, transitions: [LIST] },
+      { ...NOTHING, lists: [{ items: [LIST] }] },
       ISSEBYA_PRESET,
       paused.transcript,
       hand.headTrack,
@@ -1271,7 +1270,7 @@ describe("transitions", () => {
 
   it("has no minimum: a short phrase shows its words, from the entrance before them, not lengthened", async () => {
     const { spans, checks, record } = await place({
-      transitions: [{ kind: "numbered", from: "w26", to: "w27", key_from: "w26" }],
+      lists: [{ items: [{ from: "w26", to: "w27", key_from: "w26" }] }],
     });
     const span = spans.get("transition-1")!;
     expect([span.start, span.end]).toEqual([ms(start("w26") - ENTRANCE), end("w27")]);
@@ -1282,48 +1281,43 @@ describe("transitions", () => {
   });
 
   it("sets the lead-in in caption text and the key phrase in accent text, inside its area and the safe zone", async () => {
-    for (const kind of TRANSITION_KINDS) {
-      const { levels, checks } = await place(
-        { transitions: [{ ...LIST, kind }] },
-        { headTrack: BIG_FACE },
-      );
-      const area = ISSEBYA_PRESET.transitions[kind].area;
-      const lead = levels.find((level) => level.role === "lead")!;
-      const key = levels.find((level) => level.role === "key")!;
-      expect([lead.font, lead.color]).toEqual([
-        ISSEBYA_PRESET.caption.font,
-        ISSEBYA_PRESET.caption.color,
-      ]);
-      expect([key.font, key.color]).toEqual([
-        ISSEBYA_PRESET.accent.font,
-        ISSEBYA_PRESET.accent.color,
-      ]);
-      for (const level of levels) {
-        for (const box of [area, ISSEBYA_PRESET.safe, PLATFORM_SAFE]) {
-          expect(level.x).toBeGreaterThanOrEqual(box.left - 1e-6);
-          expect(level.x + level.width).toBeLessThanOrEqual(box.right + 1e-6);
-          expect(level.y).toBeGreaterThanOrEqual(box.top - 1e-6);
-          expect(level.y + level.height).toBeLessThanOrEqual(box.bottom + 1e-6);
-        }
-        if (level.y + level.height > PLATFORM_BUTTONS.top) {
-          expect(level.x + level.width).toBeLessThanOrEqual(PLATFORM_BUTTONS.left);
-        }
-        for (const face of facesOver(BIG_FACE, level.start, level.end)) {
-          const clear =
-            level.x + level.width <= face.left ||
-            level.x >= face.right ||
-            level.y + level.height <= face.top ||
-            level.y >= face.bottom;
-          expect(clear).toBe(true);
-        }
+    const { levels, checks } = await place({ lists: [{ items: [LIST] }] }, { headTrack: BIG_FACE });
+    const area = ISSEBYA_PRESET.transitions.numbered.area;
+    const lead = levels.find((level) => level.role === "lead")!;
+    const key = levels.find((level) => level.role === "key")!;
+    expect([lead.font, lead.color]).toEqual([
+      ISSEBYA_PRESET.caption.font,
+      ISSEBYA_PRESET.caption.color,
+    ]);
+    expect([key.font, key.color]).toEqual([
+      ISSEBYA_PRESET.accent.font,
+      ISSEBYA_PRESET.accent.color,
+    ]);
+    for (const level of levels) {
+      for (const box of [area, ISSEBYA_PRESET.safe, PLATFORM_SAFE]) {
+        expect(level.x).toBeGreaterThanOrEqual(box.left - 1e-6);
+        expect(level.x + level.width).toBeLessThanOrEqual(box.right + 1e-6);
+        expect(level.y).toBeGreaterThanOrEqual(box.top - 1e-6);
+        expect(level.y + level.height).toBeLessThanOrEqual(box.bottom + 1e-6);
       }
-      expect(checks).toEqual([]);
+      if (level.y + level.height > PLATFORM_BUTTONS.top) {
+        expect(level.x + level.width).toBeLessThanOrEqual(PLATFORM_BUTTONS.left);
+      }
+      for (const face of facesOver(BIG_FACE, level.start, level.end)) {
+        const clear =
+          level.x + level.width <= face.left ||
+          level.x >= face.right ||
+          level.y + level.height <= face.top ||
+          level.y >= face.bottom;
+        expect(clear).toBe(true);
+      }
     }
+    expect(checks).toEqual([]);
   });
 
   it("covers the face only when the face fills its area, and records it", async () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
-    const { record, edit } = await place({ transitions: [LIST] }, { headTrack: huge });
+    const { record, edit } = await place({ lists: [{ items: [LIST] }] }, { headTrack: huge });
     expect(edit.tracks.transitions).toHaveLength(1);
     expect(record).toContainEqual(
       expect.objectContaining({
@@ -1336,10 +1330,14 @@ describe("transitions", () => {
 
   it("numbers list items 1, 2, 3 in reel order, the number above the lead-in and the key phrase", async () => {
     const { edit, levels, checks } = await place({
-      transitions: [
-        { kind: "numbered", from: "w106", to: "w108", key_from: "w107" },
-        { kind: "numbered", from: "w100", to: "w103", key_from: "w102" },
-        { kind: "numbered", from: "w117", to: "w119", key_from: "w118" },
+      lists: [
+        {
+          items: [
+            { from: "w106", to: "w108", key_from: "w107" },
+            { from: "w100", to: "w103", key_from: "w102" },
+            { from: "w117", to: "w119", key_from: "w118" },
+          ],
+        },
       ],
     });
     expect(edit.tracks.transitions.map((item) => [item.id, item.number])).toEqual([
@@ -1358,12 +1356,80 @@ describe("transitions", () => {
     expect(checks).toEqual([]);
   });
 
+  it("numbers each list from 1: two lists in one reel count 1, 2, then 1, 2, 3", async () => {
+    const { edit, checks } = await place({
+      lists: [
+        {
+          items: [
+            { from: "w100", to: "w103", key_from: "w102" },
+            { from: "w106", to: "w108", key_from: "w107" },
+          ],
+        },
+        {
+          items: [
+            { from: "w117", to: "w119", key_from: "w118" },
+            { from: "w126", to: "w133", key_from: "w128" },
+            { from: "w140", to: "w142", key_from: "w141" },
+          ],
+        },
+      ],
+    });
+    expect(edit.tracks.transitions.map((item) => [item.id, item.list, item.number])).toEqual([
+      ["transition-1", 1, 1],
+      ["transition-2", 1, 2],
+      ["transition-3", 2, 1],
+      ["transition-4", 2, 2],
+      ["transition-5", 2, 3],
+    ]);
+    expect(checks).toEqual([]);
+  });
+
+  it("gives a list of one item no number: its text is its levels without one", async () => {
+    const { edit, levels, checks } = await place({
+      lists: [
+        { items: [{ from: "w126", to: "w133", key_from: "w128" }] },
+        {
+          items: [
+            { from: "w100", to: "w103", key_from: "w102" },
+            { from: "w106", to: "w108", key_from: "w107" },
+          ],
+        },
+      ],
+    });
+    expect(edit.tracks.transitions.map((item) => [item.id, item.list, item.number])).toEqual([
+      ["transition-1", 1, undefined],
+      ["transition-2", 2, 1],
+      ["transition-3", 2, 2],
+    ]);
+    expect(edit.tracks.transitions[0]!.levels!.number).toBeUndefined();
+    expect(
+      levels.some((level) => level.transitionId === "transition-1" && level.role === "number"),
+    ).toBe(false);
+    expect(checks).toEqual([]);
+  });
+
+  it("reads two placed lists back as the same lists, and places them again the same", async () => {
+    const input = {
+      lists: [
+        {
+          items: [
+            { from: "w100", to: "w103", key_from: "w102" },
+            { from: "w106", to: "w108", key_from: "w107" },
+          ],
+        },
+        { items: [{ from: "w126", to: "w133", key_from: "w128" }] },
+      ],
+    };
+    const { edit } = await place(input);
+    const read = choicesOf(edit, transcript, ISSEBYA_PRESET);
+    expect(read.lists).toEqual(input.lists);
+    const again = await place(read, { current: edit });
+    expect(again.edit.tracks).toEqual(edit.tracks);
+  });
+
   it("is deterministic", async () => {
     const input = {
-      transitions: [
-        LIST,
-        { kind: "numbered" as const, from: "w100", to: "w103", key_from: "w102" },
-      ],
+      lists: [{ items: [LIST, { from: "w100", to: "w103", key_from: "w102" }] }],
     };
     const one = await place(input, { headTrack: BIG_FACE });
     const two = await place(input, { headTrack: BIG_FACE });
@@ -1376,7 +1442,7 @@ describe("a request's visual", () => {
   // The 2026-11-03 answer's items, without its checklist.
   const REQUEST_INPUT: Partial<EngineInput> = {
     visuals: REQUEST_ANSWER.visuals,
-    transitions: REQUEST_ANSWER.transitions,
+    lists: REQUEST_ANSWER.lists,
   };
   const FLOOR = Math.ceil(
     ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.caption.font].size * ISSEBYA_PRESET.layout.minScale,
@@ -1621,7 +1687,7 @@ describe("the written hook", () => {
           position: { x: 100, y: 300, align: "left" as const },
         })),
         overlays: [],
-        transitions: [],
+        lists: [],
         behind: [],
         sounds: [],
       },
@@ -1695,12 +1761,12 @@ describe("the written hook", () => {
 });
 
 describe("text picks one at a time", () => {
-  const LIST_AT_W26 = { kind: "numbered" as const, from: "w26", to: "w33", key_from: "w30" };
+  const LIST_AT_W26 = { from: "w26", to: "w33", key_from: "w30" };
 
   it("keeps a word an accent shows just before a list that starts on it: they never show together, so both keep it", async () => {
     const placed = await place({
       accents: [{ from: "w24", to: "w26" }],
-      transitions: [LIST_AT_W26],
+      lists: [{ items: [LIST_AT_W26] }],
     });
     const accent = placed.spans.get("accent-1")!;
     const list = placed.spans.get("transition-1")!;
@@ -1717,7 +1783,7 @@ describe("text picks one at a time", () => {
   it("keeps an accent that shows a list's word only after the list ends: they never show together", async () => {
     const placed = await place({
       accents: [{ from: "w30", to: "w31" }],
-      transitions: [LIST_AT_W26],
+      lists: [{ items: [LIST_AT_W26] }],
     });
     const accent = placed.spans.get("accent-1")!;
     const list = placed.spans.get("transition-1")!;
@@ -1733,7 +1799,7 @@ describe("text picks one at a time", () => {
     // the list stops before it, so "has" is a caption; the words the list still
     // shows are left out of the captions while it shows.
     const placed = await place({
-      transitions: [{ kind: "numbered", from: "w22", to: "w27", key_from: "w24" }],
+      lists: [{ items: [{ from: "w22", to: "w27", key_from: "w24" }] }],
       big_words: [{ from: "w28", to: "w28" }],
     });
     expect(placed.record).toContainEqual(
@@ -1988,9 +2054,13 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
     const placed = await place(
       {
         hook: { text: "Gen Z won't work like you did" },
-        transitions: [
-          { kind: "numbered", from: "w4", to: "w9", key_from: "w6" },
-          { kind: "numbered", from: "w26", to: "w33", key_from: "w30" },
+        lists: [
+          {
+            items: [
+              { from: "w4", to: "w9", key_from: "w6" },
+              { from: "w26", to: "w33", key_from: "w30" },
+            ],
+          },
         ],
       },
       { headTrack: hand.headTrack },
@@ -2043,7 +2113,7 @@ describe("nothing the answer picks is dropped", () => {
       {
         accents: [{ from: "w5", to: "w5" }],
         big_words: [{ from: "w2", to: "w2" }],
-        transitions: [{ kind: "numbered", from: "w4", to: "w4", key_from: "w4" }],
+        lists: [{ items: [{ from: "w4", to: "w4", key_from: "w4" }] }],
         hook: { text: "Hello there" },
       },
       { current: oneSecondReel(), transcript: ONE_SECOND },
@@ -2096,10 +2166,14 @@ describe("nothing the answer picks is dropped", () => {
           const [from, to] = run(12);
           return { from, to };
         }),
-        transitions: Array.from({ length: count(3) }, () => {
-          const [from, to] = run(8);
-          return { kind: pick(TRANSITION_KINDS), from, to, key_from: from };
-        }),
+        lists: [
+          {
+            items: Array.from({ length: count(3) }, () => {
+              const [from, to] = run(8);
+              return { from, to, key_from: from };
+            }),
+          },
+        ],
         hook: random() < 0.5 ? { text: "Gen Z won't work like you did" } : null,
       };
       const { edit, record, checks } = await place(input);
@@ -2122,7 +2196,9 @@ describe("nothing the answer picks is dropped", () => {
       (input.visuals ?? []).forEach((_, index) =>
         expect(shown, `round ${round}`).toContain(`visual-${index + 1}`),
       );
-      const transitions = (input.transitions ?? []).map((_, index) => `transition-${index + 1}`);
+      const transitions = (input.lists ?? [])
+        .flatMap((list) => list.items)
+        .map((_, index) => `transition-${index + 1}`);
       expect(
         edit.tracks.transitions.map((item) => item.id),
         `round ${round}`,
@@ -2174,7 +2250,7 @@ function denseOpening(count: number): { current: Edit; transcript: Transcript } 
         position: { x: 100, y: 300, align: "left" as const },
       })),
       overlays: [],
-      transitions: [],
+      lists: [],
       behind: [],
       sounds: [],
     },
@@ -2210,10 +2286,14 @@ function seededPicks(seed: number, ids: readonly string[], rounds: number): Engi
       const [from, to] = run(12);
       return { from, to };
     }),
-    transitions: Array.from({ length: count(3) }, () => {
-      const [from, to] = run(8);
-      return { kind: pick(TRANSITION_KINDS), from, to, key_from: from };
-    }),
+    lists: [
+      {
+        items: Array.from({ length: count(3) }, () => {
+          const [from, to] = run(8);
+          return { from, to, key_from: from };
+        }),
+      },
+    ],
     hook: random() < 0.5 ? { text: "Gen Z won't work like you did" } : null,
   }));
 }
@@ -2326,7 +2406,7 @@ describe("captions take the space the components leave", () => {
   it("keeps a visual at its first card spot, as with no captions at all, and the captions go round it", async () => {
     const input: Partial<EngineInput> = {
       visuals: REQUEST_ANSWER.visuals,
-      transitions: REQUEST_ANSWER.transitions,
+      lists: REQUEST_ANSWER.lists,
     };
     const placed = await place(input, { headTrack: LEFT_HEAD });
     const alone = await place(input, {
@@ -2351,7 +2431,7 @@ describe("text kept over text only where no free spot exists", () => {
     // overlaps, nothing is noted for the accent.
     const input = {
       accents: [{ from: "w27", to: "w33" }],
-      transitions: [{ kind: "numbered" as const, from: "w52", to: "w53", key_from: "w52" }],
+      lists: [{ items: [{ from: "w52", to: "w53", key_from: "w52" }] }],
     };
     const placed = await place(input);
     const alone = await place(input, { current: withoutCaptions(hand.edit) });

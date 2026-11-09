@@ -30,7 +30,7 @@ const NO_CHOICES = {
   questions: [],
   big_words: [],
   visuals: [],
-  transitions: [],
+  lists: [],
   word_fixes: [],
 };
 
@@ -169,9 +169,13 @@ const withTransitions = editFromAnswer(
   behind.edit,
   {
     ...choices,
-    transitions: [
-      { kind: "numbered", from: "w100", to: "w103", key_from: "w102" },
-      { kind: "numbered", from: "w106", to: "w108", key_from: "w107" },
+    lists: [
+      {
+        items: [
+          { from: "w100", to: "w103", key_from: "w102" },
+          { from: "w106", to: "w108", key_from: "w107" },
+        ],
+      },
     ],
   },
   ISSEBYA_PRESET,

@@ -5,7 +5,7 @@ import { type EngineInput, QUESTION_PREFIX } from "./engine-input.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
-import { type Preset, TRANSITION_KINDS, cleanWord } from "./preset.ts";
+import { type Preset, cleanWord } from "./preset.ts";
 import { BEHIND_WORD, type Edit, issueReasons, parseEdit } from "./schema.ts";
 import type { Transcript } from "./transcript.ts";
 
@@ -92,11 +92,12 @@ function visualDescriptionSchema() {
 // layout engine's input (`EngineInput`) for the components: `accents`
 // (ACCENT), `questions` (QUESTION), `big_words` (BIGWORD), `visuals` (VISUAL:
 // over its words, with a short description of what it would show),
-// `transitions` (LIST, kind `numbered` only) and `word_fixes`. The written hook
+// `lists` (LIST: the items of each numbered list, each over its phrase) and
+// `word_fixes`. The written hook
 // is not in it: its own call answers it (`hookAnswerSchemaFor`), and the decide
 // step puts the text beside these components when it places them. Built per
 // reel from its transcript. The refinement (dropped from the JSON Schema)
-// refuses a phrase ending before it starts, a transition's key phrase starting
+// refuses a phrase ending before it starts, a LIST item's key phrase starting
 // outside its phrase, a big word that is not one or two plain words in a row,
 // and a word fixed twice.
 export function decideAnswerSchemaFor(preset: Preset, transcript: Transcript) {
@@ -118,12 +119,12 @@ export function decideAnswerSchemaFor(preset: Preset, transcript: Transcript) {
       big_words: z.array(z.strictObject(phrase)),
       // VISUAL: an empty frame over its words, with what it would show.
       visuals: z.array(z.strictObject({ ...phrase, description: visualDescriptionSchema() })),
-      // LIST: the numbered transitions only, each over its phrase.
-      transitions: z.array(
+      // LIST: the lists of the reel's numbered phrases, in reel order. Each
+      // list's items are numbered 1, 2, ... in order; a list of one item shows
+      // no number. A list has at least one item.
+      lists: z.array(
         z.strictObject({
-          kind: z.enum(TRANSITION_KINDS),
-          ...phrase,
-          key_from: wordId,
+          items: z.array(z.strictObject({ ...phrase, key_from: wordId })).min(1),
         }),
       ),
       word_fixes: z.array(z.strictObject({ word: wordId, text: z.string().min(1).max(60) })),
@@ -133,7 +134,6 @@ export function decideAnswerSchemaFor(preset: Preset, transcript: Transcript) {
         accents: answer.accents,
         questions: answer.questions,
         visuals: answer.visuals,
-        transitions: answer.transitions,
       };
       for (const [name, list] of Object.entries(lists)) {
         list.forEach((item, index) => {
@@ -146,15 +146,25 @@ export function decideAnswerSchemaFor(preset: Preset, transcript: Transcript) {
           }
         });
       }
-      answer.transitions.forEach((item, index) => {
-        const key = order.get(item.key_from)!;
-        if (key < order.get(item.from)! || key > order.get(item.to)!) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["transitions", index, "key_from"],
-            message: `key phrase starts on ${item.key_from}, outside ${item.from} to ${item.to}`,
-          });
-        }
+      answer.lists.forEach((list, listIndex) => {
+        list.items.forEach((item, index) => {
+          const path = ["lists", listIndex, "items", index];
+          if (order.get(item.to)! < order.get(item.from)!) {
+            ctx.addIssue({
+              code: "custom",
+              path: [...path, "to"],
+              message: `ends on ${item.to}, before it starts on ${item.from}`,
+            });
+          }
+          const key = order.get(item.key_from)!;
+          if (key < order.get(item.from)! || key > order.get(item.to)!) {
+            ctx.addIssue({
+              code: "custom",
+              path: [...path, "key_from"],
+              message: `key phrase starts on ${item.key_from}, outside ${item.from} to ${item.to}`,
+            });
+          }
+        });
       });
       answer.big_words.forEach((big, index) => {
         const from = order.get(big.from)!;

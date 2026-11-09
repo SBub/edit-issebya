@@ -311,7 +311,7 @@ describe("runDecide", () => {
     const empty = answered(
       answer((a) => {
         a.accents = [];
-        a.transitions = [];
+        a.lists = [];
         a.word_fixes = [];
       }),
     );
@@ -554,7 +554,7 @@ describe("runDecide", () => {
       aiScript([
         answered(
           answer((a) => {
-            a.transitions = [{ kind: "numbered", from: "w0006", to: "w0008", key_from: "w0007" }];
+            a.lists = [{ items: [{ from: "w0006", to: "w0008", key_from: "w0007" }] }];
           }),
         ),
       ]),
@@ -583,7 +583,7 @@ describe("runDecide", () => {
     const wide = answered(
       answer((a) => {
         a.accents = [{ from: "w0001", to: "w0010" }];
-        a.transitions = [];
+        a.lists = [];
       }),
     );
     const ai = aiScript([wide]);
@@ -722,7 +722,7 @@ describe("runDecide with a visual", () => {
         // No accents and no transition: on the 2.7 s clip the title or the
         // transition would hold the screen.
         a.accents = [];
-        a.transitions = [];
+        a.lists = [];
         a.visuals = items;
       }),
     );
@@ -734,7 +734,7 @@ describe("runDecide with a visual", () => {
     answered(
       answer((a) => {
         a.accents = [];
-        a.transitions = [];
+        a.lists = [];
         a.word_fixes = [];
         a.visuals = [{ from: "w18", to: "w25", description: "a messy desk at night" }];
       }),
@@ -844,7 +844,7 @@ describe("runDecide starting over", () => {
     const empty = answered(
       answer((a) => {
         a.accents = [];
-        a.transitions = [];
+        a.lists = [];
         a.word_fixes = [];
       }),
     );

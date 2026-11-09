@@ -152,8 +152,8 @@ async function storedEdit(key: string): Promise<Edit> {
   return parsed.edit;
 }
 
-// Version 2's choices with a numbered transition placed by the layout engine
-// (its layer crossing 1.5 s, carrying its number and its two text levels),
+// Version 2's choices with a LIST placed by the layout engine (its layer
+// crossing 1.5 s, carrying its two text levels),
 // plus one accent before it and one click: every kind of layer the export
 // must match.
 async function guardrailEdit(base: Edit): Promise<Edit> {

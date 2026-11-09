@@ -39,13 +39,13 @@ runs, and both take the same path.
 
 The model names each component by its answer list (prompt `reel-components`):
 
-| Component | Answer field  | What it is                                                                                                          |
-| --------- | ------------- | ------------------------------------------------------------------------------------------------------------------- |
-| ACCENT    | `accents`     | a phrase worth stressing, `{ "from", "to" }`                                                                        |
-| QUESTION  | `questions`   | a question the speaker puts to the viewer, often rhetorical, `{ "from", "to" }`; shown with the ACCENT look for now |
-| BIGWORD   | `big_words`   | one or two consecutive plain words shown large behind the speaker, `{ "from", "to" }`                               |
-| VISUAL    | `visuals`     | an empty frame over its words, `{ "from", "to", "description" }` (8 words at most)                                  |
-| LIST      | `transitions` | a numbered list item over its phrase, `{ "kind": "numbered", "from", "to", "key_from" }`                            |
+| Component | Answer field | What it is                                                                                                           |
+| --------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| ACCENT    | `accents`    | a phrase worth stressing, `{ "from", "to" }`                                                                         |
+| QUESTION  | `questions`  | a question the speaker puts to the viewer, often rhetorical, `{ "from", "to" }`; shown with the ACCENT look for now  |
+| BIGWORD   | `big_words`  | one or two consecutive plain words shown large behind the speaker, `{ "from", "to" }`                                |
+| VISUAL    | `visuals`    | an empty frame over its words, `{ "from", "to", "description" }` (8 words at most)                                   |
+| LIST      | `lists`      | the numbered lists: each `{ "items": [...] }` (one or more), an item over its phrase, `{ "from", "to", "key_from" }` |
 
 `word_fixes` (`{ "word", "text" }`) is not a component: it fixes a misheard word on its caption.
 HOOK is not one either: it is the hook call's answer (`{ "text" }`, below), never in the components'
@@ -70,7 +70,7 @@ placed first):
   "questions": [{ "from": "w0006", "to": "w0009" }],
   "big_words": [{ "from": "w0008", "to": "w0008" }],
   "visuals": [{ "from": "w0020", "to": "w0027", "description": "a messy desk at night" }],
-  "transitions": [{ "kind": "numbered", "from": "w0010", "to": "w0011", "key_from": "w0011" }],
+  "lists": [{ "items": [{ "from": "w0010", "to": "w0011", "key_from": "w0011" }] }],
   "word_fixes": [{ "word": "w0010", "text": "Studio" }]
 }
 ```
@@ -80,7 +80,9 @@ placed first):
   has a time, an anchor, a position, a size, a font, a colour, a spot, a `style`, a `wish`, a title
   or a checklist; every answer object is closed (`z.strictObject`, `additionalProperties: false`), so
   an answer carrying any of them is refused as the schema's ("Unrecognized key").
-- The only transition kind is `numbered` (`TRANSITION_KINDS`). A `dim`, a `panel` or a `card` is refused.
+- LIST is `lists`: each list holds one or more items and an item has no kind (every LIST item is numbered).
+  The engine numbers the items of each list 1, 2, ... in reel order, restarting at 1 in each list; a list
+  with one item shows no number. An empty list, or a `kind` on an item, is refused.
 - There is no title and no summary: a new version saves `change_title` and `change_summary` as null (the
   summary call is gone, "Version title and summary" below). `format`, `preset`, `duration` and
   `inputs` come from the current version, so the result is always a full edit and the AI cannot
@@ -124,7 +126,7 @@ every big word back as a `{ from, to }` list entry.
   `hookAnswerSchemaFor(preset)` and `hookJsonSchema(preset)` (the hook call's schema),
   `parseHookAnswer(json, preset)` (`{ ok, text }`, the text through `stripHookStop`).
   `decideAnswerSchemaFor(preset, transcript, rules)` (word-id enums from the reel's transcript, the
-  list kind `numbered` only, `visuals` with their description rules; no list has a count cap, no
+  LIST as `lists` (items with no kind), `visuals` with their description rules; no list has a count cap, no
   `max` and no `maxItems` (how many of each is the editor's choice, never a per-reel count it works
   to; a limit is added only when a real case shows the need, derived from that case)),
   `decideJsonSchema` (Zod 4
@@ -334,7 +336,7 @@ set`) and the job waits.
 ## Testing
 
 - `yarn turbo run test --filter=./packages/edit --filter=./apps/worker`: `decide.test.ts` (the
-  per-reel schema and its closed objects; the list kind `numbered` only and no `wish` anywhere; the
+  per-reel schema and its closed objects; LIST items with no kind and no `wish` anywhere; the
   refusals of a title, a `dim`, `panel` or `card`, a wish, a checklist, `behind_rules` and `unexpressed`;
   the hook, its final stop taken off; a visual's description limit, and no photo id; `questions` required), `glossary.test.ts`, `ai.test.ts` (the OpenRouter request
   through the real provider over a captured `fetch`, no network; the double; the error mapping),
@@ -462,11 +464,11 @@ sits on the line where its words start; a line with several picks prints one row
 script on the first row and the rest with an empty script column. The picks
 use the owner's editor words: `ACCENT` (an accent),
 `QUESTION "<words>"` (a question the speaker puts to the viewer), `BIGWORD`, `VISUAL "<description>"` (a visual on its words, the words only when the span is not the whole line), `LIST` (numbered transitions, on single words of one
-line grouped as one pick; a transition of any other kind is not traced). `whole line` shows when a
+line and list grouped as one pick, `LIST <list number>`; a list's item is `list <list>.<item>` in the table). `whole line` shows when a
 pick is exactly its line. With `--table` it prints instead, for every version with an AI record,
 one row per item of the last readable decide answer (and the hook): its engine id (`accent-N` in answer
 order, `big-word-N`, `visual-N`, `question-N`, `transition-N`, `hook`; these ids match the engine record and are
-not renamed), what Claude proposed in the same words (`accent "..."`, `question "..."`, `bigword "..."`, `visual "..." on "..."`, `list "..."` for numbered transitions, `hook "..."`), `kept` (no engine note) or `changed` (placed with notes), and the notes as `action (rule)`; a question is `question "..."` with the engine id `question-N` (its own answer order, not the accents' count); then the counts, the word fixes and the notes on other items (captions)
+not renamed), what Claude proposed in the same words (`accent "..."`, `question "..."`, `bigword "..."`, `visual "..." on "..."`, `list <list>.<item> "..."` for LIST items, `hook "..."`), `kept` (no engine note) or `changed` (placed with notes), and the notes as `action (rule)`; a question is `question "..."` with the engine id `question-N` (its own answer order, not the accents' count); then the counts, the word fixes and the notes on other items (captions)
 by action and rule. It reads the `versions` row, the AI record and the transcript with the
 worker's own variables and writes nothing (`src/trace.ts`, `src/decision-trace.ts`).
 
@@ -482,9 +484,9 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
 
 - At most two hook calls and two decide calls (one retry each); never an unbounded loop.
 - Claude never writes times, positions or sizes: the answer is meaning only (word ids, visual descriptions), every object closed; the layout places everything.
-- Claude writes only the new vocabulary: ACCENT (`accents`), QUESTION (`questions`), BIGWORD (`big_words`), VISUAL (`visuals`, each with its description), LIST (`transitions`, kind `numbered` only) and `word_fixes` in the components' call;
+- Claude writes only the new vocabulary: ACCENT (`accents`), QUESTION (`questions`), BIGWORD (`big_words`), VISUAL (`visuals`, each with its description), LIST (`lists`, each a list of items) and `word_fixes` in the components' call;
   the hook (`text`) in its own call, never in the components'. A title,
-  a `dim`, `panel` or `card` transition, a `wish`, a checklist, a behind rule or an unexpressed list is
+  a list with no items, a `kind` on a LIST item, a `wish`, a checklist, a behind rule or an unexpressed list is
   refused by the schema.
 - No density target in the schema. The target count is the prompt's input only, computed in code from
   the speech and `preset.picksEverySeconds`; the schema does not count picks, and the overlap limits are
@@ -512,7 +514,7 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
 - Prompt text is changed only in PostHog prompt management (a new version, moved to the label). The
   worker records the identity it fetched; a prompt never enters the repository (AGENTS.md).
 - Never save a version with a `behind` item before its masks are stored.
-- Never cap the components' answer lists (accents, questions, big words, visuals, transitions, word fixes) or any per reel count (in the preset, the prompt or the answer schema): how many is the editor's choice. No list has a `max` or a `maxItems`. A limit is added only when a real case shows the need, derived from that case. A visual is a frame with a description of at most 8 words.
+- Never cap the components' answer lists (accents, questions, big words, visuals, LIST lists and their items, word fixes) or any per reel count (in the preset, the prompt or the answer schema): how many is the editor's choice. No list has a `max` or a `maxItems`. A limit is added only when a real case shows the need, derived from that case. A visual is a frame with a description of at most 8 words.
 - Transitions never set the rhythm: a numbered list item is only ever a counted list, and the model is sent no rate. The engine shows every transition the answer names.
 - A new answer names no photo: a visual is a frame, and the answer's schema has no photo id.
 - The decide step reads no photo library (for now), so none is sent to the model.
@@ -531,7 +533,7 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
   a large per-reel schema (word-id enums repeated per field); the runner then asks once in JSON mode and the
   Zod check does the rest. Check `edit_issebya.ai.output_mode` on the `chat` spans after the first real runs.
 - The change box is removed (owner decision 2026-11-07): the answer has no checklist, no behind rule and
-  no unexpressed list, and its transitions are `numbered` only. The reasons are in
+  no unexpressed list, and its LIST is `lists` (numbered per list, no kind). The reasons are in
   `app_docs/change-requests.md`.
 - The engine's placement is in `app_docs/edit-model.md`, "Layout engine".
 - The editorial round is removed (owner decision 2026-11-08). The engine is tuned first, so the trace shows

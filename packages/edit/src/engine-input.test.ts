@@ -17,7 +17,7 @@ describe("choicesOf", () => {
     // "WORK" is not spoken under it: the first word under it stands in.
     expect(choices.big_words).toEqual([{ from: "w76", to: "w76" }]);
     expect(choices.accents.map((accent) => accent.from)).toEqual(["w29", "w112"]);
-    expect(choices.transitions).toEqual([]);
+    expect(choices.lists).toEqual([]);
     expect(choices.word_fixes).toEqual([
       { word: "w89", text: "Gen Z" },
       { word: "w161", text: "want?" },
@@ -33,11 +33,29 @@ describe("choicesOf", () => {
     ]);
   });
 
-  it("reads a transition back as its phrase and its key phrase", () => {
+  it("reads a list's items back as one list, each as its phrase and its key phrase", () => {
     const choices = choicesOf(transitions.edit, transitions.transcript, ISSEBYA_PRESET);
-    expect(choices.transitions).toEqual([
-      { kind: "numbered", from: "w100", to: "w103", key_from: "w102" },
-      { kind: "numbered", from: "w106", to: "w108", key_from: "w107" },
+    expect(choices.lists).toEqual([
+      {
+        items: [
+          { from: "w100", to: "w103", key_from: "w102" },
+          { from: "w106", to: "w108", key_from: "w107" },
+        ],
+      },
+    ]);
+  });
+
+  it("reads two lists back as two lists, in reel order, each with its items", () => {
+    const edit = structuredClone(transitions.edit);
+    const [first, second] = edit.tracks.transitions;
+    edit.tracks.transitions = [
+      { ...first!, list: 1, number: undefined },
+      { ...second!, list: 2, number: undefined },
+    ];
+    const choices = choicesOf(edit, transitions.transcript, ISSEBYA_PRESET);
+    expect(choices.lists.map((list) => list.items.map((item) => item.from))).toEqual([
+      ["w100"],
+      ["w106"],
     ]);
   });
 
@@ -103,7 +121,7 @@ describe("choicesOf", () => {
       // Accents and transitions keep their words; a visual reads back as the
       // words it now shows over.
       expect(read.accents).toEqual(choices.accents);
-      expect(read.transitions).toEqual(choices.transitions);
+      expect(read.lists).toEqual(choices.lists);
       expect(read.word_fixes).toEqual(choices.word_fixes);
       expect((await place(once, read)).tracks).toEqual(once.tracks);
     }

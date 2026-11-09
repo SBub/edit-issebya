@@ -28,7 +28,7 @@ const NO_CHOICES = {
   questions: [],
   big_words: [],
   visuals: [],
-  transitions: [],
+  lists: [],
   word_fixes: [],
 };
 

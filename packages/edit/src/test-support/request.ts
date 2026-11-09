@@ -23,6 +23,6 @@ export const REQUEST_ANSWER: EngineInput = {
   questions: [],
   big_words: [],
   visuals: [{ from: "w84", to: "w99", description: "a question mark on a wall" }],
-  transitions: [],
+  lists: [],
   word_fixes: [],
 };

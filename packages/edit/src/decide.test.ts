@@ -11,7 +11,7 @@ import {
   stripHookStop,
   usedFreeField,
 } from "./decide.ts";
-import { ISSEBYA_PRESET, TRANSITION_KINDS } from "./preset.ts";
+import { ISSEBYA_PRESET } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 import { resolveTimeline } from "./timeline.ts";
@@ -60,7 +60,7 @@ function answer(change: (answer: Json) => void = () => {}): Json {
     questions: [],
     big_words: [],
     visuals: [],
-    transitions: [],
+    lists: [],
     word_fixes: [{ word: "w0010", text: "Studio" }],
   };
   change(value);
@@ -87,9 +87,8 @@ describe("decideJsonSchema", () => {
         expect(lists.length).toBeGreaterThan(0);
         for (const list of lists) expect(list).toEqual(ids);
       }
-      // LIST only: `numbered` is the one kind a new answer may pick.
-      expect(enumsUnder(schema, "kind")).toEqual([["numbered"]]);
-      expect(TRANSITION_KINDS).toEqual(["numbered"]);
+      // LIST only: a list item has no kind (every LIST is numbered).
+      expect(enumsUnder(schema, "kind")).toEqual([]);
       expect(JSON.stringify(schema)).not.toContain('"dim"');
       expect(JSON.stringify(schema)).not.toContain('"card"');
       // No wish anywhere: a new answer has no request to forward.
@@ -123,7 +122,7 @@ describe("decideJsonSchema", () => {
       "questions",
       "big_words",
       "visuals",
-      "transitions",
+      "lists",
       "word_fixes",
     ]);
     expect(schema.required).toEqual([
@@ -131,7 +130,7 @@ describe("decideJsonSchema", () => {
       "questions",
       "big_words",
       "visuals",
-      "transitions",
+      "lists",
       "word_fixes",
     ]);
   });
@@ -179,7 +178,7 @@ describe("decideJsonSchema", () => {
     expect(keys.has("photo_id")).toBe(false);
     expect(keys.has("reason")).toBe(false);
     // No count cap on any list: the JSON Schema carries no maxItems.
-    for (const name of ["accents", "big_words", "visuals", "transitions", "word_fixes"]) {
+    for (const name of ["accents", "big_words", "visuals", "lists", "word_fixes"]) {
       expect(schema.properties[name]!.maxItems, name).toBeUndefined();
     }
   });
@@ -351,30 +350,52 @@ describe("parseDecideAnswer", () => {
     expect(parse(titled).ok).toBe(false);
   });
 
-  it("refuses a transition of any kind but numbered: no dim, panel or card", () => {
-    for (const kind of ["dim", "panel", "card"]) {
-      const old = answer((a) => {
-        a.transitions = [{ kind, from: "w0006", to: "w0008", key_from: "w0007" }];
-      });
-      expect(reasons(old), kind).toMatch(/^transitions\.0\.kind: /m);
-    }
-    const numbered = answer((a) => {
-      a.transitions = [{ kind: "numbered", from: "w0006", to: "w0008", key_from: "w0007" }];
+  it("takes the LIST as lists of items, each list of one or more items, and no kind", () => {
+    const one = answer((a) => {
+      a.lists = [{ items: [{ from: "w0006", to: "w0008", key_from: "w0007" }] }];
     });
-    expect(parse(numbered).ok).toBe(true);
+    expect(parse(one).ok).toBe(true);
+    const two = answer((a) => {
+      a.lists = [
+        { items: [{ from: "w0006", to: "w0008", key_from: "w0007" }] },
+        {
+          items: [
+            { from: "w0002", to: "w0003", key_from: "w0002" },
+            { from: "w0009", to: "w0010", key_from: "w0010" },
+          ],
+        },
+      ];
+    });
+    expect(parse(two).ok).toBe(true);
   });
 
-  it("refuses a transition without key_from, or with its key phrase outside its phrase", () => {
-    const withList = (item: Json) => answer((a) => (a.transitions = [item]));
-    const base = { kind: "numbered", from: "w0006", to: "w0008", key_from: "w0007" };
+  it("refuses a list with no items", () => {
+    const empty = answer((a) => {
+      a.lists = [{ items: [] }];
+    });
+    expect(reasons(empty)).toMatch(/^lists\.0\.items: /m);
+    expect(parse(empty).ok).toBe(false);
+  });
+
+  it("refuses a kind on a LIST item: the only kind is numbered, and the answer says no kind", () => {
+    const kinded = answer((a) => {
+      a.lists = [{ items: [{ kind: "numbered", from: "w0006", to: "w0008", key_from: "w0007" }] }];
+    });
+    expect(reasons(kinded)).toMatch(/^lists\.0\.items\.0/m);
+    expect(parse(kinded).ok).toBe(false);
+  });
+
+  it("refuses a LIST item without key_from, or with its key phrase outside its phrase", () => {
+    const withList = (item: Json) => answer((a) => (a.lists = [{ items: [item] }]));
+    const base = { from: "w0006", to: "w0008", key_from: "w0007" };
     expect(reasons(withList({ ...base, key_from: undefined }))).toMatch(
-      /^transitions\.0\.key_from: /m,
+      /^lists\.0\.items\.0\.key_from: /m,
     );
     expect(reasons(withList({ ...base, key_from: "w0009" }))).toContain(
-      "transitions.0.key_from: key phrase starts on w0009, outside w0006 to w0008",
+      "lists.0.items.0.key_from: key phrase starts on w0009, outside w0006 to w0008",
     );
     expect(reasons(withList({ ...base, key_from: "w0005" }))).toContain(
-      "transitions.0.key_from: key phrase starts on w0005, outside w0006 to w0008",
+      "lists.0.items.0.key_from: key phrase starts on w0005, outside w0006 to w0008",
     );
     expect(parse(withList({ ...base, key_from: "w0006" })).ok).toBe(true);
   });
@@ -385,11 +406,9 @@ describe("parseDecideAnswer", () => {
     });
     expect(reasons(wished)).toMatch(/accents\.0: .*wish/);
     const slow = answer((a) => {
-      a.transitions = [
-        { kind: "numbered", from: "w0006", to: "w0008", key_from: "w0007", wish: "slow" },
-      ];
+      a.lists = [{ items: [{ from: "w0006", to: "w0008", key_from: "w0007", wish: "slow" }] }];
     });
-    expect(reasons(slow)).toMatch(/transitions\.0: .*wish/);
+    expect(reasons(slow)).toMatch(/lists\.0\.items\.0: .*wish/);
     const bigWish = answer((a) => {
       a.big_words = [{ from: "w0005", to: "w0005", wish: "behind" }];
     });
@@ -499,7 +518,7 @@ describe("the visual in the decide answer", () => {
       questions: [],
       big_words: span(25, 25).map((id) => ({ from: id, to: id })),
       visuals: span(50, 25).map((id) => ({ from: id, to: id, description: "a messy desk" })),
-      transitions: span(75, 25).map((id) => ({ kind: "numbered", from: id, to: id, key_from: id })),
+      lists: [{ items: span(75, 25).map((id) => ({ from: id, to: id, key_from: id })) }],
       word_fixes: ids.slice(0, 80).map((id) => ({ word: id, text: "Studio" })),
     };
     const parsed = parseDecideAnswer(json, ISSEBYA_PRESET, hand.transcript);

@@ -29,7 +29,7 @@ types until slice 9 brings the live preview.
 - `src/schema.ts`: `edit.json`, format 1: `format`, `preset` (`"issebya"`), `duration`, `inputs`
   (the pipeline outputs it was made from, each `{ step, fingerprint, file }`: `footage`,
   `transcript`, `head_track`) and `tracks`: `footage`, `captions`, `overlays`
-  (`kind: "accent"`, or `kind: "hook"` for the written hook, below), `transitions` (`numbered`, the only kind), `sounds` (`click`) and the optional
+  (`kind: "accent"`, or `kind: "hook"` for the written hook, below), `transitions` (the LIST items, `numbered`, the only kind, each with its `list` and `number`), `sounds` (`click`) and the optional
   `behind` track. There is no whole-clip cut-out: the per-span masks in `inputs.masks` are the only cut-out.
 - `tracks.behind`: the big words (behind the speaker) and the VISUALs (over the footage, in front of the
   speaker), any number of items. A VISUAL (`kind: "visual"`, `decide-17`) is an empty white stroke frame,
@@ -232,12 +232,15 @@ start, end }] }`).
   (`transition-time`). The engine then starts it later, never after its first word, when a text picked
   earlier is still on screen (`transition-entrance`: the entrance is shorter, down to none), and the text
   rule (`text-one-at-a-time`) may cut its end.
-- Claude gives `{ kind, from, to, key_from }` for the LIST: `numbered`, the only kind
-  (`TRANSITION_KINDS`, the LIST component). The engine writes the transition item's `words`, `key`,
-  `number` and `levels` (`number`, `lead`, `key`, each `{ text, position, size, break_after?, start }`).
+- Claude gives the LIST as `lists: [{ items: [{ from, to, key_from }] }]`: each list has one or more
+  items, and no item has a kind (every LIST item is numbered; `TRANSITION_KINDS` is the stored type only).
+  The engine writes each item as a transition item with `words`, `key`, `list` (the list's place in the
+  reel, 1, 2, ...), `number` (the item's place in its list, in reel order, 1, 2, ...; left out when the
+  list keeps one item, so a one-item list shows no number) and `levels` (`number`, `lead`, `key`, each
+  `{ text, position, size, break_after?, start }`). Numbering restarts at 1 in each list.
   The lead-in (words before `key_from`) is caption text and the key phrase accent text, from the style
   roles (`levelStyle`), never a literal font or colour. The layer has no background and no dim:
-  `numbered` is its number and its text levels over the phrase.
+  its number (only in a list of two or more items) and its text levels over the phrase.
 - Each level appears whole on its first word and stays until the layer leaves. The captions of the
   phrase are hidden only while the layer is on screen (`hidden_by` the transition, no position, shown
   through the levels); the words a cut list no longer shows are normal captions. A visual may show during
@@ -246,8 +249,9 @@ start, end }] }`).
   possible; every retime, move, shrink, wrap, fallback and overlap is an `EngineNote`.
 - The builder renders `levels` as children of the layer. `safe-box` includes levels; a hidden caption
   has no position, so `face` and `timing` never see it. `choicesOf` reads a transition with `words`
-  back as its phrase, `key_from` and kind; one without `words` is read by its anchors, with `key_from`
-  its first word.
+  back as its phrase and `key_from`; the items with one `list` number read back as one list, in reel
+  order (an item without `list`, an older version's, reads back as a list of its own). One without
+  `words` is read by its anchors, with `key_from` its first word.
 
 ### The written hook
 
@@ -308,10 +312,10 @@ word" is now "spoken words, plus one written hook at the start".
   of kind `accent` with id `question-N`, read back as a question by `choicesOf`; left out in an answer saved
   before it, which reads as none), `big_words` (a list of `{ from, to }` word ids: one word, or
   two consecutive ones, equal for one; the same word allowed
-  again), `visuals` (a word range and an optional `description`), `transitions` (a kind, a word range and `key_from`, where the key phrase starts; `numbered` only), `word_fixes` (a word id and its text), and the optional `hook` (`{ text }` or null). No
+  again), `visuals` (a word range and an optional `description`), `lists` (LIST: each `{ items }` a non-empty list of word ranges, each with `key_from`, where its key phrase starts; no kind), `word_fixes` (a word id and its text), and the optional `hook` (`{ text }` or null). No
   times, positions, sizes or spots.
 - What a new answer may hold (`decide-17`): no title (the written hook is the one line at the start,
-  and the hook call writes it), transitions of kind `numbered` only (LIST), and no `wish`.
+  and the hook call writes it), LIST items in lists of one or more items (no kind), and no `wish`.
 - `choicesOf(edit, transcript, preset)` reads a version back as an `EngineInput` (what Claude is
   shown): each item by its anchor words, or the words spoken under it; a caption whose text differs
   from its words is a fix on its first word. A VISUAL reads back with its description. Every big word
@@ -700,7 +704,8 @@ never fatal.
   - "transitions": a transition shows exactly its phrase (in at its first word, out at its last word's
     end, no hold after a long pause), a short phrase keeps its words, the lead-in and
     the key phrase take the style roles inside their area, a face covered only where the face fills
-    the area and noted, numbers 1, 2, 3 in reel order, determinism.
+    the area and noted, numbers 1, 2, 3 in reel order, two lists in one reel numbered from 1 in each,
+    a one-item list with no number, a placed version read back by `choicesOf` as the same lists, determinism.
   - "a request's visual": the visual of "add images behind me" placed over its sentence with the
     captions kept, its description kept, the committed request fixture matched, and determinism.
   - "the written hook": from 0.2 s to 3 s in the upper part of the frame, off the face, inside the safe
@@ -723,8 +728,8 @@ never fatal.
 - `src/decide.test.ts`: the components' JSON schema (word ids, closed objects, no time, position,
   size, font, colour, spot, style or title anywhere, no hook); the hook's answer (one text, required,
   never null, refused above the word and character limits, one plain line, its final stop taken off,
-  no wish, time or place); `parseDecideAnswer` refusals (a title, a transition kind other than
-  `numbered`, a wish, a checklist, a word fixed twice, a key phrase outside its phrase); visuals and
+  no wish, time or place); `parseDecideAnswer` refusals (a title, a list with no items, a kind on a LIST
+  item, a wish, a checklist, a word fixed twice, a key phrase outside its phrase); visuals and
   big words (one or two plain words, no count cap); QUESTION; `editFromAnswer` keeping the current
   inputs and sounds, dropping the current masks, and placing a big word said just before the reel
   ends beside a visual.

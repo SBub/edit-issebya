@@ -15,8 +15,8 @@ export interface TracedAnswer {
   // A BIGWORD: one or two words (`from` to `to`); an older answer's `word` is one word.
   big_words?: { from: string; to: string }[];
   visuals?: { from: string; to: string; description?: string }[];
-  // Only `numbered` (a LIST) is a kind now; an older answer's other kinds are not traced.
-  transitions?: { kind: string; from: string; to: string }[];
+  // LIST: the lists of items, each item a numbered phrase (in list order).
+  lists?: { items: { from: string; to: string }[] }[];
   word_fixes?: { word: string; text: string }[];
   hook?: { text: string } | null;
 }
@@ -94,12 +94,17 @@ function proposals(
       proposed: `visual "${visual.description ?? ""}" on "${say(visual.from, visual.to)}"`,
     });
   });
-  (answer.transitions ?? []).forEach((transition, index) => {
-    if (transition.kind !== "numbered") return;
-    out.push({
-      ref: `transitions[${index}]`,
-      item: `transition-${index + 1}`,
-      proposed: `list "${say(transition.from, transition.to)}"`,
+  // A LIST item's engine id counts the items of every list in reel order; its
+  // proposal names its list and its place in it (`list 2.1`).
+  let transition = 0;
+  (answer.lists ?? []).forEach((list, listIndex) => {
+    list.items.forEach((item, position) => {
+      transition += 1;
+      out.push({
+        ref: `lists[${listIndex}].items[${position}]`,
+        item: `transition-${transition}`,
+        proposed: `list ${listIndex + 1}.${position + 1} "${say(item.from, item.to)}"`,
+      });
     });
   });
   if (answer.hook) {
@@ -286,22 +291,26 @@ export function formatScript(title: string, answer: TracedAnswer, words: readonl
     const on = where === "whole line" ? "" : ` on ${where}`;
     add(visual.from, `VISUAL "${visual.description ?? ""}"${on}`);
   }
-  // LIST transitions on single words of the same line read as one pick:
-  // LIST "Relationship" "taste".
-  const grouped = new Map<number, string[]>();
-  for (const transition of answer.transitions ?? []) {
-    if (transition.kind !== "numbered") continue;
-    if (transition.from === transition.to) {
-      const line = lineOf.get(transition.from) ?? 0;
-      grouped.set(line, [
-        ...(grouped.get(line) ?? []),
-        `"${clean(wordsBetween(words, transition.from, transition.to))}"`,
-      ]);
-    } else {
-      add(transition.from, `LIST ${span(transition.from, transition.to)}`);
+  // LIST items on single words of the same line and list read as one pick:
+  // LIST 1 "Relationship" "taste" (the number is the list's).
+  const grouped = new Map<string, string[]>();
+  (answer.lists ?? []).forEach((list, listIndex) => {
+    for (const item of list.items) {
+      if (item.from === item.to) {
+        const key = `${listIndex}:${lineOf.get(item.from) ?? 0}`;
+        grouped.set(key, [
+          ...(grouped.get(key) ?? []),
+          `"${clean(wordsBetween(words, item.from, item.to))}"`,
+        ]);
+      } else {
+        add(item.from, `LIST ${listIndex + 1} ${span(item.from, item.to)}`);
+      }
     }
+  });
+  for (const [key, names] of grouped) {
+    const [list, line] = key.split(":").map(Number);
+    picks[line!]!.push(`LIST ${list! + 1} ${names.join(" ")}`);
   }
-  for (const [line, names] of grouped) picks[line]!.push(`LIST ${names.join(" ")}`);
   const texts = lines.map((line) => line.map((word) => word.text.trim()).join(" "));
   const fixes = (answer.word_fixes ?? []).map((fix) => {
     const said = words.find((word) => word.id === fix.word)?.text.trim() ?? fix.word;

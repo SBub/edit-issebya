@@ -68,17 +68,21 @@ describe("decision trace", () => {
     expect(text).toContain("other engine notes: 1x low-contrast (contrast-stay)");
   });
 
-  it("names each proposal in the owner's words, and traces no kind but a LIST", () => {
+  it("names each proposal in the owner's words, each LIST item by its list and its place", () => {
     const trace = buildTrace(
       {
         accents: [
           { from: "w0", to: "w1" },
           { from: "w2", to: "w3" },
         ],
-        transitions: [
-          { kind: "numbered", from: "w0", to: "w0" },
-          { kind: "dim", from: "w1", to: "w2" },
-          { kind: "panel", from: "w3", to: "w4" },
+        lists: [
+          { items: [{ from: "w0", to: "w0" }] },
+          {
+            items: [
+              { from: "w3", to: "w3" },
+              { from: "w4", to: "w4" },
+            ],
+          },
         ],
       },
       [],
@@ -87,7 +91,9 @@ describe("decision trace", () => {
     expect(trace.rows.map((row) => [row.item, row.proposed])).toEqual([
       ["accent-1", 'accent "Creating content"'],
       ["accent-2", 'accent "is like"'],
-      ["transition-1", 'list "Creating"'],
+      ["transition-1", 'list 1.1 "Creating"'],
+      ["transition-2", 'list 2.1 "like"'],
+      ["transition-3", 'list 2.2 "exposure"'],
     ]);
   });
 
@@ -132,10 +138,13 @@ describe("script view", () => {
         ],
         big_words: [{ from: "s14", to: "s14" }],
         visuals: [{ from: "s19", to: "s22", description: "a bedroom" }],
-        transitions: [
-          { kind: "numbered", from: "s16", to: "s16" },
-          { kind: "numbered", from: "s17", to: "s17" },
-          { kind: "dim", from: "s19", to: "s23" },
+        lists: [
+          {
+            items: [
+              { from: "s16", to: "s16" },
+              { from: "s17", to: "s17" },
+            ],
+          },
         ],
         hook: { text: "Run more experiments" },
       },
@@ -148,7 +157,7 @@ describe("script view", () => {
       `${"The more experiments you run in your life,".padEnd(60)}  │ ACCENT "more experiments"`,
       `${"the closer you are to your dream life.".padEnd(60)}  │ ACCENT "closer you are to your dream life"`,
       `${"".padEnd(60)}  │ BIGWORD "dream"`,
-      `${"Relationship, taste, purpose.".padEnd(60)}  │ LIST "Relationship" "taste"`,
+      `${"Relationship, taste, purpose.".padEnd(60)}  │ LIST 1 "Relationship" "taste"`,
       `${"A dream stays a dream.".padEnd(60)}  │ VISUAL "a bedroom" on "A dream stays a"`,
     ]);
   });

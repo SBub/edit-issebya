@@ -326,12 +326,13 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
   }
 });
 
-// The numbered transition the decide step scripts on the speech clip
-// (speechTenTransitionAnswerScript): a LIST over w0028 to w0032, its lead-in
-// "they don't leave", its key phrase "to work," (from w0031) in accent text,
-// number 1. The layer runs until w0033 starts, the word after the phrase. It starts after the
-// hook (0.2 s to 3 s), so the layer shows.
-test.describe("a numbered transition on the speech clip", () => {
+// The LIST the decide step scripts on the speech clip
+// (speechTenTransitionAnswerScript): one item over w0028 to w0032, its lead-in
+// "they don't leave", its key phrase "to work," (from w0031) in accent text.
+// A list of one item shows no number. The layer runs until w0033 starts, the
+// word after the phrase. It starts after the hook (0.2 s to 3 s), so the layer
+// shows.
+test.describe("a LIST item on the speech clip", () => {
   let speech: ProcessedReel;
 
   test.beforeAll(async () => {
@@ -352,7 +353,7 @@ test.describe("a numbered transition on the speech clip", () => {
     extraKeys.push(...speech.keys);
   });
 
-  test("a transition shows its number, lead-in and key phrase inside its layer, never the phrase's captions", async ({
+  test("a transition shows its lead-in and key phrase inside its layer, with no number, never the phrase's captions", async ({
     page,
     baseURL,
   }) => {
@@ -376,7 +377,7 @@ test.describe("a numbered transition on the speech clip", () => {
         start: expect.objectContaining({ word: "w0028" }),
         end: { word: "w0033" },
         key: "w0031",
-        number: 1,
+        list: 1,
       }),
     ]);
     await expect(
@@ -399,7 +400,8 @@ test.describe("a numbered transition on the speech clip", () => {
     // Inside the phrase, on its key phrase ("to work,").
     await setPosition(page, (keyFirst.start + keyLast.end) / 2);
     await expect.poll(() => opacity("#transition-1")).toBeGreaterThan(0.9);
-    await expect(frame.locator("#transition-1 #transition-1-number")).toHaveText("1");
+    // A list of one item has no number level.
+    await expect(frame.locator("#transition-1 #transition-1-number")).toHaveCount(0);
     // A level's lines are separated by <br />: the text nodes are the lines.
     const lines = (selector: string) =>
       frame
@@ -415,11 +417,10 @@ test.describe("a numbered transition on the speech clip", () => {
     await expect.poll(() => opacity("#transition-1-key")).toBeGreaterThan(0.5);
     const color = (selector: string) =>
       frame.locator(selector).evaluate((el) => getComputedStyle(el).color);
-    // The lead-in in caption text, the key phrase and the number in accent
-    // text: every text role is white for now.
+    // The lead-in in caption text and the key phrase in accent text: every
+    // text role is white for now.
     expect(await color("#transition-1-lead")).toBe("rgb(255, 255, 255)");
     expect(await color("#transition-1-key")).toBe("rgb(255, 255, 255)");
-    expect(await color("#transition-1-number")).toBe("rgb(255, 255, 255)");
     // The phrase's captions show nowhere else.
     for (const id of ["cw0028", "cw0029", "cw0030", "cw0031", "cw0032"]) {
       await expect(frame.locator(`#${id}`)).toHaveCount(0);

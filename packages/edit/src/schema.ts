@@ -170,9 +170,12 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     ...base,
     type: z.enum(TRANSITION_KINDS),
     // Written by the layout engine. The phrase it carries (word ids), its key
-    // phrase's first word, its number in a list.
+    // phrase's first word, its list (1, 2, ..., in the reel's order of lists;
+    // none for a version placed before lists) and its number in the list (none
+    // when the list has one item).
     words: z.array(wordId).min(1),
     key: wordId.optional(),
+    list: z.number().int().min(1).optional(),
     number: z.number().int().min(1).max(99).optional(),
     // The phrase's text inside the layer: the number (`numbered`), the
     // lead-in in caption text, the key phrase in accent text.
