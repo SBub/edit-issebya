@@ -4,6 +4,7 @@ import { SAFE_ZONE } from "./engine-zones.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import { editSchemaFor, parseEdit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
+import { timingOf, VARIANTS } from "./variants.ts";
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
 
@@ -269,7 +270,11 @@ describe("the behind track", () => {
     // A big word on the spoken word at `index`, from the lead before it to
     // `after` seconds after it (by default as the engine times it: a second
     // after, at least the accent's minimum).
-    const { leadSeconds, minSeconds: accentMin, afterSeconds } = ISSEBYA_PRESET.accent;
+    const { lead: leadSeconds, minimum: accentMin } = timingOf(
+      VARIANTS["bigword/behind"],
+      "words-lead",
+    );
+    const { afterSeconds } = ISSEBYA_PRESET.accent;
     const spoken = (index: number, id = "w", after?: number) => {
       const said = behind.transcript.words[index]!;
       const length = said.end - said.start;

@@ -7,6 +7,7 @@ import {
   SOUND_KEYS,
   TRANSITION_KINDS,
 } from "./preset.ts";
+import { timingOf, VARIANTS } from "./variants.ts";
 import { resolveAnchor } from "./timeline.ts";
 import type { Transcript, Word } from "./transcript.ts";
 
@@ -385,8 +386,14 @@ function behindLength(
 ): [number, number] {
   // A pick may be shorter than its kind's minimum, down to the shown floor,
   // where the reel ends or a cut leaves less room.
-  if (item.kind === "visual") return [SHOWN_FLOOR_SECONDS, preset.behind.maxSeconds];
-  const { minSeconds, afterSeconds, leadSeconds } = preset.accent;
+  if (item.kind === "visual") {
+    return [SHOWN_FLOOR_SECONDS, timingOf(VARIANTS["visual/card"], "words-min-max").maximum];
+  }
+  const { lead: leadSeconds, minimum: minSeconds } = timingOf(
+    VARIANTS["bigword/behind"],
+    "words-lead",
+  );
+  const { afterSeconds } = preset.accent;
   const first = "word" in item.start ? item.start.word : undefined;
   const at = ordered.findIndex((word) => word.id === first);
   const said = at >= 0 ? ordered[at] : undefined;

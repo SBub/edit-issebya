@@ -5,6 +5,7 @@ import { type FontKey, type Preset, type PresetTransition, SHOWN_FLOOR_SECONDS }
 import type { Anchor, Edit } from "./schema.ts";
 import { type ResolvedItem, anchorAt, resolveAnchor } from "./timeline.ts";
 import type { Word } from "./transcript.ts";
+import { STYLES } from "./variants.ts";
 
 // TRANSITIONS tied to a phrase: their timing from the words, the captions
 // they show as their own text levels, the levels' style and the layer's
@@ -116,9 +117,9 @@ const LEVEL_ROLES = ["number", "lead", "key"] as const satisfies readonly LevelR
 // text, the key phrase and the number accent text. The sizes are the engine's
 // (the stack's entry in `variants.ts`: the styles' bases and the number's
 // ratio to the key), written on each level.
-export function levelStyle(role: LevelRole, preset: Preset): { font: FontKey; color: string } {
-  if (role === "lead") return { font: preset.caption.font, color: preset.caption.color };
-  return { font: preset.accent.font, color: preset.accent.color };
+export function levelStyle(role: LevelRole): { font: FontKey; color: string } {
+  const style = role === "lead" ? STYLES.caption : STYLES.accent;
+  return { font: style.font, color: style.color };
 }
 
 // Every transition's levels as text boxes, in frame pixels, each shown from
@@ -137,7 +138,7 @@ export function levelBoxes(
     for (const role of LEVEL_ROLES) {
       const level = item.levels[role];
       if (!level) continue;
-      const { font, color } = levelStyle(role, preset);
+      const { font, color } = levelStyle(role);
       const lines = textLines(level.text, level.breaks);
       const width = Math.max(...lines.map((line) => measurer.width(font, level.size, line)));
       const { x, y, align } = level.position;

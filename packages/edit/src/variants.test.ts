@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { EngineComponent } from "./engine-note.ts";
-import { ISSEBYA_PRESET } from "./preset.ts";
 import { STYLES, VARIANTS, type TextStyle, type Variant } from "./variants.ts";
 
 const COMPONENTS: EngineComponent[] = [
@@ -83,21 +82,13 @@ describe("the variant entries", () => {
       "visual/card",
     ]);
     expect(VARIANTS["visual/card"]).toMatchObject({ aspect: "4/5", width: "1/3" });
-    // Today's values: the card's share and ratio read back to the preset's
-    // (`behind.card.widthShare`, `aspect`), so the two agree while both exist.
     const ratio = (text: string) =>
       text
         .split("/")
         .map(Number)
-        .reduce((a, b) => a / b);
-    expect(ratio(VARIANTS["visual/card"].width)).toBeCloseTo(
-      ISSEBYA_PRESET.behind.card.widthShare,
-      12,
-    );
-    expect(ratio(VARIANTS["visual/card"].aspect)).toBeCloseTo(
-      ISSEBYA_PRESET.behind.card.aspect,
-      12,
-    );
+        .reduce((x, y) => x / y);
+    expect(ratio(VARIANTS["visual/card"].width)).toBeCloseTo(1 / 3, 12);
+    expect(ratio(VARIANTS["visual/card"].aspect)).toBeCloseTo(4 / 5, 12);
     expect(VARIANTS["list/numbered"].levels.map((level) => level.role)).toEqual([
       "number",
       "lead",
@@ -116,10 +107,8 @@ describe("the variant entries", () => {
     expect(VARIANTS["question/as-accent"].style).toBe(VARIANTS["accent/above-head"].style);
     expect(VARIANTS["list/numbered"].levels[2]!.style).toBe(STYLES.accent);
     expect(VARIANTS["list/numbered"].levels[1]!.style).toBe(STYLES.caption);
-    // Today's values: the bases are the preset's font sizes (110, 50), so the
-    // builder's fallback size and the style agree while both exist.
-    expect(STYLES.accent.base).toBe(ISSEBYA_PRESET.fonts.primary.size);
-    expect(STYLES.caption.base).toBe(ISSEBYA_PRESET.fonts.secondary.size);
+    // The bases the layout is built with: 110 for the accent style, 50 for the caption style.
+    expect([STYLES.accent.base, STYLES.caption.base]).toEqual([110, 50]);
     // The one largest-fit style is the big word's, and only the big word has it.
     expect(STYLES.bigWord.base).toBe("largest-fit");
     expect(

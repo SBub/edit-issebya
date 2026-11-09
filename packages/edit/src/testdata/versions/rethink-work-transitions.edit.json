@@ -3134,9 +3134,9 @@
               "offset": 0.127
             },
             "position": {
-              "x": 216.38,
+              "x": 155,
               "y": 536,
-              "align": "center"
+              "align": "left"
             },
             "size": 300
           },
@@ -3146,9 +3146,9 @@
               "word": "w100"
             },
             "position": {
-              "x": 216.38,
+              "x": 96,
               "y": 860,
-              "align": "center"
+              "align": "left"
             },
             "size": 50
           },
@@ -3158,9 +3158,9 @@
               "word": "w102"
             },
             "position": {
-              "x": 216.38,
+              "x": 124,
               "y": 934,
-              "align": "center"
+              "align": "left"
             },
             "size": 110,
             "breaks": [
@@ -3198,9 +3198,9 @@
               "offset": -0.004
             },
             "position": {
-              "x": 539.79,
+              "x": 477,
               "y": 1045,
-              "align": "center"
+              "align": "left"
             },
             "size": 245
           },
@@ -3210,9 +3210,9 @@
               "word": "w106"
             },
             "position": {
-              "x": 539.79,
+              "x": 444,
               "y": 1314,
-              "align": "center"
+              "align": "left"
             },
             "size": 40
           },
@@ -3222,9 +3222,9 @@
               "word": "w107"
             },
             "position": {
-              "x": 539.79,
+              "x": 258,
               "y": 1378,
-              "align": "center"
+              "align": "left"
             },
             "size": 90
           }

@@ -48,7 +48,7 @@ export interface TextStyle {
 
 const WHITE: Hex = "#FFFFFF";
 
-// The style table: today's values (`preset.fonts[].size`, 110 and 50). Two
+// The style table: the bases the layout is built with (110 and 50). Two
 // variants that name the same style get the same base by construction. A
 // variant that wants another size names another style here: that is a
 // typography decision, taken once, not a field of the entry.
@@ -98,6 +98,21 @@ export interface BoxVariant extends Common {
 }
 
 export type Variant = TextVariant | StackVariant | BoxVariant;
+
+// The timing option of an entry, narrowed to the one a reader needs (the engine
+// and the decide limits read a big word's lead and minimum, a visual's minimum
+// and maximum). An entry with another option is a bug.
+export function timingOf<O extends Timing["option"]>(
+  variant: Variant,
+  option: O,
+): Extract<Timing, { option: O }> {
+  if (variant.timing.option !== option) {
+    throw new Error(
+      `variants: ${variant.variant} has ${variant.timing.option} timing, not ${option}`,
+    );
+  }
+  return variant.timing as Extract<Timing, { option: O }>;
+}
 
 // The seven entries, keyed by their name. `satisfies` checks each one against
 // `Variant` (a wrong field or an unknown zone name fails typecheck).

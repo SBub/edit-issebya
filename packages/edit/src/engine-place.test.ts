@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { bigWordCoveredShare } from "./behind.ts";
 import {
+  stackPositions,
   MIN_SIZE_PX,
   PLACE_COSTS,
   type Obstacle,
@@ -863,5 +864,36 @@ describe("a caption block (a sentence's groups as one element)", () => {
       outcome: "no-spot",
     });
     expect(result.notes[0]!.blockers).toEqual([{ kind: "item", id: "hook" }, { kind: "buttons" }]);
+  });
+});
+
+describe("stack positions", () => {
+  it("puts every level of a stack at a whole pixel inside its box, the key centred", () => {
+    // The widest level is 997.005 px wide. A centre rounded to the hundredth
+    // (533.5) put the key's left edge at 34.9975 px, outside the box's 35 px.
+    const box = { left: 35, right: 35 + 997.005, top: 220, bottom: 900 };
+    const levels = [
+      { role: "number" as const, size: 240, lines: ["1"], breaks: [], width: 200.5, height: 240 },
+      {
+        role: "key" as const,
+        size: 110,
+        lines: ["a key"],
+        breaks: [],
+        width: 997.005,
+        height: 110,
+      },
+      { role: "lead" as const, size: 50, lines: ["a lead"], breaks: [], width: 401.25, height: 50 },
+    ];
+    const places = stackPositions(box, levels, 24);
+    expect(places).toEqual([
+      { role: "number", x: 35 + Math.floor((997.005 - 200.5) / 2), y: 220 },
+      { role: "key", x: 35, y: 220 + 240 + 24 },
+      { role: "lead", x: 35 + Math.floor((997.005 - 401.25) / 2), y: 220 + 240 + 24 + 110 + 24 },
+    ]);
+    for (const [index, place] of places.entries()) {
+      expect(Number.isInteger(place.x) && Number.isInteger(place.y), place.role).toBe(true);
+      expect(place.x, place.role).toBeGreaterThanOrEqual(box.left);
+      expect(place.x + levels[index]!.width, place.role).toBeLessThanOrEqual(box.right);
+    }
   });
 });

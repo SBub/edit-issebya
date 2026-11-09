@@ -1,5 +1,7 @@
 # Layout engine: variants as data, one placement loop
 
+Built on branch feat/engine-simplify, steps 1 to 12 (2026-11-10); app_docs/edit-model.md describes the code.
+
 Design spec for the rebuilt layout engine of the reel studio (owner decisions of 2026-11-09). Nothing
 here is built yet; `app_docs/edit-model.md` describes what the code does today. This file is the plan
 as decided; the "Decisions" log at the end keeps the history of the points that were open and how

@@ -1,6 +1,12 @@
 import type { EngineInput } from "./engine-input.ts";
 import type { EngineComponent } from "./engine-note.ts";
-import { VARIANTS, type Variant } from "./variants.ts";
+import {
+  type BoxVariant,
+  type StackVariant,
+  type TextVariant,
+  VARIANTS,
+  type Variant,
+} from "./variants.ts";
 
 // The variant picker (`specs/layout-engine.md`, "Writing a variant"): each pick
 // of the engine input gets its entry from `variants.ts`. One entry per
@@ -46,4 +52,29 @@ export function pickVariants(input: EngineInput): PickedVariants {
   if (input.lists.length > 0) pick("LIST");
   pick("CAPTION");
   return picked;
+}
+
+// The entry a text component was picked with.
+export function textVariantOf(picked: PickedVariants, component: EngineComponent): TextVariant {
+  const entry: Variant | undefined = picked.get(component);
+  if (!entry || entry.type !== "text" || entry.style === undefined) {
+    throw new Error(`engine: no text variant picked for ${component}`);
+  }
+  return entry;
+}
+
+// The entry the LIST was picked with: a stack.
+export function stackVariantOf(picked: PickedVariants): StackVariant {
+  const entry: Variant | undefined = picked.get("LIST");
+  if (!entry || entry.type !== "text" || entry.levels === undefined) {
+    throw new Error("engine: no stack variant picked for LIST");
+  }
+  return entry;
+}
+
+// The entry the VISUAL was picked with: a box.
+export function boxVariantOf(picked: PickedVariants): BoxVariant {
+  const entry: Variant | undefined = picked.get("VISUAL");
+  if (!entry || entry.type !== "box") throw new Error("engine: no box variant picked for VISUAL");
+  return entry;
 }

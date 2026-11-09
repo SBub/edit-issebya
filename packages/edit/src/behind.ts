@@ -4,6 +4,7 @@ import type { FontKey, Preset } from "./preset.ts";
 import type { BehindItem, BehindVisualItem, BehindWordItem, Edit } from "./schema.ts";
 import { type Span, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
+import { STYLES } from "./variants.ts";
 
 // The rectangle a VISUAL covers: the box the layout engine gave it.
 export function visualBox(item: BehindVisualItem): Box {
@@ -54,10 +55,9 @@ export function placedBigWord(
   item: BehindWordItem,
   position: { x: number; y: number },
   size: number,
-  preset: Preset,
   measurer: Measurer,
 ): BigWordBox {
-  const { word } = preset.behind;
+  const word = STYLES.bigWord;
   return {
     itemId: item.id,
     text: item.text,

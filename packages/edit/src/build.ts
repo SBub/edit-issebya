@@ -8,6 +8,7 @@ import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
 import { textLines } from "./lines.ts";
 import { FONT_KEYS, type Preset } from "./preset.ts";
+import { STYLES, VARIANTS } from "./variants.ts";
 import type { BehindItem, Edit, EditMask, EditRef } from "./schema.ts";
 import { resolveSpans, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -103,7 +104,7 @@ export function build(
     if (!item.position || !item.size) {
       throw new Error(`build: big word ${item.id} has no position; place the edit first`);
     }
-    bigWords.set(item.id, placedBigWord(item, item.position, item.size, preset, measurer));
+    bigWords.set(item.id, placedBigWord(item, item.position, item.size, measurer));
   }
   const checks = runChecks(
     edit,
@@ -151,7 +152,7 @@ export function build(
     ...(spans.length > 0 ? BEHIND_STYLE : []),
     // A visual's frame: only on a page that has one.
     ...(behindItems.some((item) => item.kind === "visual")
-      ? [visualStyle(preset.behind.card.stroke)]
+      ? [visualStyle(VARIANTS["visual/card"].style.stroke.px)]
       : []),
     ...(levels.length > 0
       ? ["      .level { position: absolute; line-height: 1; white-space: nowrap; opacity: 0; }"]
@@ -469,8 +470,9 @@ function placedText(
   return items.map(({ item, kind }): TextBox => {
     if (!item.position)
       throw new Error(`build: ${kind} ${item.id} has no position; place the edit first`);
-    const font = item.font ?? (kind === "caption" ? preset.caption.font : preset.accent.font);
-    const size = item.size ?? preset.fonts[font].size;
+    const font = item.font ?? (kind === "caption" ? STYLES.caption.font : STYLES.accent.font);
+    // An item with no size takes its font's style base.
+    const size = item.size ?? (font === "primary" ? STYLES.accent.base : STYLES.caption.base);
     const text = item.text ?? wordsText(item.words ?? [], transcript, preset);
     const lines = textLines(text, item.breaks);
     const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
@@ -484,7 +486,7 @@ function placedText(
       lines,
       font,
       size,
-      color: item.color ?? (kind === "caption" ? preset.caption.color : preset.accent.color),
+      color: item.color ?? (kind === "caption" ? STYLES.caption.color : STYLES.accent.color),
       style: item.style,
       start: span.start,
       end: span.end,

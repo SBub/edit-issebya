@@ -12,28 +12,30 @@ import {
   type EngineComponent,
   type EngineElement,
   type EngineNote,
-  type PlaceNote,
   type RecordNote,
   toEngineRecord,
 } from "./engine-note.ts";
 import {
-  type BlockElement,
-  type BoxElement,
-  type LevelRole,
-  MIN_SIZE_PX,
-  type Obstacle,
-  type StackElement,
-  type TextElement,
-  placeElement,
-} from "./engine-place.ts";
-import { overlaps } from "./engine-space.ts";
-import { SAFE_ZONE } from "./engine-zones.ts";
-import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from "./head-track.ts";
+  type Extra,
+  HOOK_ID,
+  HOOK_REF,
+  type Pass,
+  type TransitionPlan,
+  type Words,
+  accentNoun,
+  accentText,
+  bigWordText,
+  describe,
+  placeCaptions,
+  placeExtra,
+  placeStack,
+} from "./engine-elements.ts";
+import { type HeadTrack } from "./head-track.ts";
 import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
-import type { PickedVariants } from "./variant-picker.ts";
-import type { BoxVariant, StackVariant, TextVariant, Variant } from "./variants.ts";
-import { type Preset, SHOWN_FLOOR_SECONDS, cleanWord } from "./preset.ts";
+import { type PickedVariants, boxVariantOf, textVariantOf } from "./variant-picker.ts";
+import { timingOf } from "./variants.ts";
+import { type Preset, SHOWN_FLOOR_SECONDS } from "./preset.ts";
 import {
   type Anchor,
   type BehindItem,
@@ -41,401 +43,52 @@ import {
   type Edit,
   type OverlayItem,
   type TransitionItem,
-  type TransitionLevel,
 } from "./schema.ts";
 import { anchorAt, resolveAnchor, resolveTimeline } from "./timeline.ts";
 import { transitionTiming } from "./transitions.ts";
 import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./transcript.ts";
+import {
+  type CaptionBlock,
+  SLACK,
+  ms,
+  at,
+  quote,
+  during,
+  captionGroups,
+  floorSpan,
+  ownSpan,
+  visibleSpan,
+  sameTextPass,
+  type TextPick,
+} from "./engine-timing.ts";
+import { type Shown, sceneOf } from "./engine-scene.ts";
 
-// THE LAYOUT ENGINE. Claude's answer says what and on which words; this code
-// decides every time, position and size, with no randomness and no I/O:
+// THE LAYOUT ENGINE, the loop. Claude's answer says what and on which words;
+// this code decides every time, position, size and line break, with no
+// randomness and no I/O (`specs/layout-engine.md`):
 //
-// 1. Timing from the words: captions per spoken word; an accent and a question
-//    exactly while their words are spoken, from the first word's start to the
-//    last word's end, no minimum; a transition (LIST) from its entrance (0.3 s)
-//    before its first word to its last word's end; a big word from the lead
-//    before its one word to its word's end, at least 1.5 s; a visual from its
-//    first word for at most the behind maximum; the hook its window (0.2 s to
-//    3 s), cut to the reel. A pick with no length at all shows the shown floor
-//    (`SHOWN_FLOOR_SECONDS`). No element cuts another's time: two elements
-//    conflict only where they overlap on screen at the same moment, and the
-//    placer keeps them apart. A text pick said in the hook's window is placed
-//    around the hook, not instead of it.
-// 2. The scene: the reel cut into moments wherever an item starts or ends,
-//    each with its face (robust over the head track, never one reading).
-// 3. Free space: an area minus the face, the platform notch and the text
-//    already placed, as rectangles (`engine-space.ts`).
-// 4. Placement: the components in order of their start time (ties by the
-//    answer's order: the hook, accents, questions, big words, visuals, lists),
-//    each avoiding the components placed before it that share a moment with
-//    it (`shown`), never the captions: captions are not placed yet. Then the
-//    captions last, in time order, one element per sentence (a block of its
-//    caption groups), in the free space the components leave at each moment;
-//    captions avoid every component and every other caption. Every element
-//    goes through the placer (`engine-place.ts`, the spec's loop: zones, hard
-//    rules, costs): the hook, accents, questions, LIST stacks (a number, a
-//    lead-in and a key phrase as one element) and caption blocks at their
-//    style's base size as the cap, 10% shrink steps to 30 px, free wrapping,
-//    never over other text; the big word behind the speaker at its anchored
-//    largest fit; the visual's card as a box from its width share, text no
-//    obstacle to it and it none to text (a text may sit on a card). The face is
-//    a preference for every front element: a spot off the face first (a cost
-//    of 100), then over the face (noted `covers-face`). Big words are behind
-//    the speaker and ignore the face. The engine drops no pick but two: a text
-//    pick whose every word another text pick on screen at the same moment
-//    shows (`same-text`), and a placer component with no legal spot
-//    (`no-spot`: left out, its words stay captions). Of two same-text picks a
-//    big word keeps the shared words, else the earlier one does. It trims or
-//    drops the other, then places the answer again. A caption's words a text
-//    on screen shows are left out while it shows, the caption split in time.
-//    A caption block is never left out (rule 3): with no legal spot it is set
-//    over the texts on screen, inside the safe zone, noted `no-spot`.
-// 5. Fallbacks, each noted: a pick too close to the reel's end shows from
-//    earlier (`clamped-to-end`); a pick over hidden footage moves to the next
-//    visible moment (`moved-off-cut`); a list with no caption text of its own
-//    shows the words of its phrase (`text-from-words`).
-// 6. Every move, shrink, wrap, retime, fallback and overlap is written to the
-//    record.
+// 1. Each pick's entry (`variant-picker.ts`) says how it may look and where;
+//    the timing options (`engine-timing.ts`) give its span from its words.
+//    Same-text picks are trimmed or dropped, captions are split in time
+//    (`hidden_by`), and a pick over hidden footage moves to the next visible
+//    moment.
+// 2. The scene (`engine-scene.ts`): the reel cut at every element edge, each
+//    moment with its robust face.
+// 3. The placement: components in order of their start time (ties by the
+//    answer's order), each through the placer (`engine-place.ts`) over the
+//    texts placed before it on screen; then the captions as sentence blocks,
+//    last. The element writers (`engine-elements.ts`) write the tracks and the
+//    notes. A component with no legal spot is left out (`no-spot`); a pick that
+//    trims or drops another, or a left-out one, places the answer again.
+// 4. Output: the edit's tracks and the engine record (`engine-note.ts`).
+//
+// Every decision is written to the record; `placeEdit` is the one entry point.
 
 export type PlacedTracks = Edit["tracks"];
 
 export interface Placement {
   tracks: PlacedTracks;
   record: EngineNote[];
-}
-
-// A text on screen as placed: its id (a text level's transition id), what a
-// note calls it, its span and its box; `caption` for a caption (a `caption`
-// obstacle to the placer, rule 2).
-interface Shown {
-  id: string;
-  what: string;
-  start: number;
-  end: number;
-  box: Box;
-  caption?: boolean;
-}
-
-const SLACK = 1e-6;
-
-function ms(seconds: number): number {
-  const rounded = Math.round(seconds * 1000) / 1000;
-  return rounded === 0 ? 0 : rounded;
-}
-
-function at(seconds: number): string {
-  return `${seconds.toFixed(2)} s`;
-}
-
-function quote(text: string): string {
-  return JSON.stringify(text.length > 40 ? `${text.slice(0, 37)}...` : text);
-}
-
-// What a note calls an accent-look item: a QUESTION or an accent.
-function accentNoun(accent: AccentChoice): string {
-  return accent.question ? "question" : "accent";
-}
-
-function during(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
-  return a.start < b.end - SLACK && b.start < a.end - SLACK;
-}
-
-// ---------------------------------------------------------------- the scene
-
-interface Moment {
-  start: number;
-  end: number;
-  // The robust faces around the moment, unpadded (the placer pads them itself).
-  faces: Box[];
-  // Their bounding box, padded for text (`LAYOUT_PADDING`); null with no head.
-  face: Box | null;
-}
-
-// The reel cut at every item edge; each moment's face is the bounding box of
-// the robust faces around it.
-function sceneOf(edges: readonly number[], duration: number, headTrack: HeadTrack): Moment[] {
-  const cuts = [...new Set([0, ms(duration), ...edges.map(ms)])]
-    .filter((t) => t >= 0 && t <= duration)
-    .sort((a, b) => a - b);
-  const moments: Moment[] = [];
-  for (let index = 1; index < cuts.length; index += 1) {
-    const start = cuts[index - 1]!;
-    const end = cuts[index]!;
-    const faces = facesOver(headTrack, start - 0.25, end + 0.25);
-    const bounds = boundingBox(faces);
-    const face = bounds && {
-      ...bounds,
-      left: bounds.left - LAYOUT_PADDING.left,
-      right: bounds.right + LAYOUT_PADDING.right,
-    };
-    moments.push({ start, end, faces, face });
-  }
-  return moments;
-}
-
-const momentsOver = (scene: readonly Moment[], span: { start: number; end: number }) =>
-  scene.filter((moment) => moment.start < span.end && span.start < moment.end);
-
-// The unpadded robust faces of the moments over a span (the placer's scene).
-function rawFacesDuring(scene: readonly Moment[], span: { start: number; end: number }): Box[] {
-  return momentsOver(scene, span).flatMap((moment) => moment.faces);
-}
-
-// The entry a text component was picked with.
-function textVariantOf(picked: PickedVariants, component: EngineComponent): TextVariant {
-  const entry: Variant | undefined = picked.get(component);
-  if (!entry || entry.type !== "text" || entry.style === undefined) {
-    throw new Error(`engine: no text variant picked for ${component}`);
-  }
-  return entry;
-}
-
-// The entry the LIST was picked with: a stack.
-function stackVariantOf(picked: PickedVariants): StackVariant {
-  const entry: Variant | undefined = picked.get("LIST");
-  if (!entry || entry.type !== "text" || entry.levels === undefined) {
-    throw new Error("engine: no stack variant picked for LIST");
-  }
-  return entry;
-}
-
-// The entry the VISUAL was picked with: a box.
-function boxVariantOf(picked: PickedVariants): BoxVariant {
-  const entry: Variant | undefined = picked.get("VISUAL");
-  if (!entry || entry.type !== "box") throw new Error("engine: no box variant picked for VISUAL");
-  return entry;
-}
-
-// ---------------------------------------------------------------- captions
-
-interface Unit {
-  index: number;
-  caption: CaptionItem;
-  text: string;
-  start: number;
-  lastWord: Word;
-}
-
-interface CaptionBlock {
-  groups: Unit[][];
-  start: number;
-  end: number;
-}
-
-// The current captions as groups (one set of words on screen: consecutive
-// captions ending on the same anchor), re-timed: a group leaves at its last
-// word's end, held so its last caption shows at least the preset's minimum,
-// never past the next group's start; a last caption that cannot show that
-// long joins the next group.
-function captionGroups(
-  captions: readonly CaptionItem[],
-  texts: readonly string[],
-  transcript: Transcript,
-  duration: number,
-  preset: Preset,
-  record: RecordNote[],
-): { groups: Unit[][]; ends: number[] } {
-  const words = new Map(transcript.words.map((word) => [word.id, word]));
-  const groups: Unit[][] = [];
-  let key = "";
-  captions.forEach((caption, index) => {
-    const unit: Unit = {
-      index,
-      caption,
-      text: texts[index]!,
-      start: resolveAnchor(caption.start, words, duration),
-      lastWord: words.get(caption.words.at(-1)!)!,
-    };
-    const end = JSON.stringify(caption.end);
-    const last = groups.at(-1);
-    if (last && end === key) last.push(unit);
-    else groups.push([unit]);
-    key = end;
-  });
-  const min = preset.caption.minSeconds;
-  for (let index = groups.length - 2; index >= 0; index -= 1) {
-    const group = groups[index]!;
-    const next = groups[index + 1]!;
-    while (group.length > 0 && next[0]!.start - group.at(-1)!.start < min - SLACK) {
-      const moved = group.pop()!;
-      next.unshift(moved);
-      record.push({
-        item: moved.caption.id,
-        action: "retimed",
-        rule: "caption-min",
-        reason: `caption ${quote(moved.text)} joins the next group, so it shows at least ${min} s`,
-      });
-    }
-    if (group.length === 0) groups.splice(index, 1);
-  }
-  const ends = groups.map((group, index) => {
-    const lastWord = group.at(-1)!.lastWord;
-    const next = groups[index + 1]?.[0]?.start ?? duration;
-    const end = ms(Math.min(next, duration, Math.max(lastWord.end, group.at(-1)!.start + min)));
-    if (end > lastWord.end + 0.0005) {
-      record.push({
-        item: group.at(-1)!.caption.id,
-        action: "retimed",
-        rule: "caption-min",
-        reason: `caption ${quote(group.at(-1)!.text)} stays until ${at(end)}, at least ${min} s on screen`,
-      });
-    }
-    return end;
-  });
-  return { groups, ends };
-}
-
-// ---------------------------------------------------------------- the engine
-
-interface Extra {
-  ref: string;
-  // `hook`: the written hook, on its window.
-  kind: "accent" | "big_word" | "visual" | "hook";
-  id: string;
-  start: number;
-  end: number;
-  // Its place in the answer's list.
-  index: number;
-  accent?: AccentChoice;
-  visual?: VisualChoice;
-  // A big word's first and last word (the same for one word).
-  word?: string;
-  wordTo?: string;
-  hook?: HookChoice;
-}
-
-// A LIST item kept by the timing rules: its answer item and its layer's span.
-// `index` is its place among all LIST items of the answer (its id is
-// `transition-<index + 1>`), `list` its list's place among the answer's lists
-// (1, 2, ...), `number` its place in its list when the list kept more than one
-// item (none for a list of one).
-interface TransitionPlan {
-  ref: string;
-  index: number;
-  list: number;
-  number?: number;
-  id: string;
-  label: string;
-  choice: TransitionChoice;
-  start: number;
-  end: number;
-  startAnchor: Anchor;
-  endAnchor: Anchor;
-}
-
-// A text pick as placed: its answer reference (`accents[0]`, `big_words[1]`,
-// ...), what a note calls it, its span, its place in the answer order (the
-// same-text tie-break), whether it is a big word, and the word ids it shows, in
-// transcript order.
-interface TextPick {
-  id: string;
-  ref: string;
-  name: string;
-  component: EngineComponent;
-  start: number;
-  end: number;
-  rank: number;
-  big: boolean;
-  words: string[];
-}
-
-// The same text never shows twice on screen (rule `same-text`). Of two text
-// picks that share a word id and are on screen at the same moment (their spans
-// overlap), a big word keeps the shared words over an accent, a question or a
-// list; between the others, the one placed earlier (its start; on a tie, the
-// rank) keeps them. Two picks that share a word but never show together both
-// keep it. The other pick shows its own words only: its range is trimmed to its
-// largest contiguous part without a shared word, or it is dropped when no word
-// of its own is left. Null when no such pair exists. Each change is noted. The
-// answer keeps every position (a dropped pick stays in it, skipped), so the
-// other items keep their ids; `dropped` lists the refs to skip from now on.
-function sameTextPass(
-  picks: readonly TextPick[],
-  answer: EngineInput,
-  transcript: Transcript,
-  preset: Preset,
-): { answer: EngineInput; dropped: string[]; notes: PlaceNote[] } | null {
-  const onScreen = (a: TextPick, b: TextPick) =>
-    Math.min(a.end, b.end) - Math.max(a.start, b.start) > SLACK;
-  // Big words first, then the others in time order, as the earlier one keeps.
-  const order = [...picks].sort(
-    (a, b) => Number(b.big) - Number(a.big) || a.start - b.start || a.rank - b.rank,
-  );
-  // Each word id and the picks kept so far that show it.
-  const keepers = new Map<string, TextPick[]>();
-  const trimmed = new Map<string, string[]>();
-  const dropped: string[] = [];
-  const notes: PlaceNote[] = [];
-  const position = new Map(transcript.words.map((word, slot) => [word.id, slot]));
-  for (const pick of order) {
-    const clashing = (id: string) =>
-      (keepers.get(id) ?? []).filter((other) => onScreen(other, pick));
-    const shared = pick.words.filter((id) => clashing(id).length > 0);
-    if (shared.length === 0) {
-      for (const id of pick.words) keepers.set(id, [...(keepers.get(id) ?? []), pick]);
-      continue;
-    }
-    const own = pick.words.filter((id) => !shared.includes(id));
-    const keeperList = [...new Set(shared.flatMap(clashing))];
-    // Named without times: the keeper's span may still be cut by a later pick.
-    const named = keeperList.map((other) => other.name).join(" and ");
-    const why = keeperList.some((other) => other.big)
-      ? "a big word keeps the shared words first"
-      : "the earlier pick";
-    const sharedText = quote(wordsText(shared, transcript, preset));
-    if (own.length === 0) {
-      dropped.push(pick.ref);
-      notes.push({
-        item: pick.id,
-        action: "dropped",
-        rule: "same-text",
-        reason: `${pick.name} is dropped: every word it shows, ${sharedText}, is already shown by ${named}, ${why}`,
-      });
-      continue;
-    }
-    // The largest run of its own words that the transcript keeps together.
-    const runs: string[][] = [];
-    for (const id of own) {
-      const run = runs.at(-1);
-      if (run && position.get(id)! === position.get(run.at(-1)!)! + 1) run.push(id);
-      else runs.push([id]);
-    }
-    const kept = runs.reduce((best, run) => (run.length > best.length ? run : best));
-    for (const id of kept) keepers.set(id, [...(keepers.get(id) ?? []), pick]);
-    trimmed.set(pick.ref, kept);
-    notes.push({
-      item: pick.id,
-      action: "retimed",
-      rule: "same-text",
-      reason: `${pick.name} shows only ${quote(wordsText(kept, transcript, preset))}, not its shared ${sharedText}: ${named} shows that text, ${why}`,
-    });
-  }
-  if (trimmed.size === 0 && dropped.length === 0) return null;
-  // Each trimmed pick takes its kept run as its range (a list's key phrase
-  // stays on its first word when the run does not hold it).
-  const trim = <T extends { from: string; to: string }>(choice: T, ref: string): T => {
-    const kept = trimmed.get(ref);
-    if (!kept) return choice;
-    return { ...choice, from: kept[0]!, to: kept.at(-1)! };
-  };
-  return {
-    answer: {
-      ...answer,
-      accents: answer.accents.map((choice, slot) => trim(choice, `accents[${slot}]`)),
-      questions: answer.questions.map((choice, slot) => trim(choice, `questions[${slot}]`)),
-      big_words: answer.big_words.map((choice, slot) => trim(choice, `big_words[${slot}]`)),
-      lists: answer.lists.map((list, listIndex) => ({
-        items: list.items.map((choice, slot) => {
-          const kept = trimmed.get(`lists[${listIndex}].items[${slot}]`);
-          if (!kept) return choice;
-          const key_from = kept.includes(choice.key_from) ? choice.key_from : kept[0]!;
-          return { ...choice, from: kept[0]!, to: kept.at(-1)!, key_from };
-        }),
-      })),
-    },
-    dropped,
-    notes,
-  };
 }
 
 // Places every item of an answer over the current version: footage kept,
@@ -568,16 +221,13 @@ function placeOnce(
   const order = new Map(transcript.words.map((w, index) => [w.id, index]));
   const range = (from: string, to: string) =>
     transcript.words.slice(order.get(from)!, order.get(to)! + 1).map((w) => w.id);
-  // A big word's text: its one or two words, cleaned, joined by a space.
-  const bigWordText = (from: string, to: string) =>
-    range(from, to)
-      .map((id) => cleanWord(word(id).text, preset))
-      .join(" ");
   const sentences = sentenceSpans(transcript);
   const sentenceOf = (id: string): SentenceSpan | undefined => {
     const index = order.get(id)!;
     return sentences.find((s) => order.get(s.from)! <= index && index <= order.get(s.to)!);
   };
+  // The words the element writers read (`engine-elements.ts`).
+  const words: Words = { transcript, preset, word, range, sentenceOf, order };
   const hidden = current.tracks.footage.flatMap((clip) =>
     (clip.hidden ?? []).map((span) => ({
       start: resolveAnchor(span.start, byId, duration),
@@ -695,67 +345,13 @@ function placeOnce(
 
   // The extras' own times. A pick's span is its own: from its start to its
   // last word's end (a big word and a visual from the lead before it, below).
-  const { minSeconds, maxSeconds } = preset.behind;
   // A big word comes in the preset's lead before its word, so its entrance has
   // finished as the word is heard; never before the reel.
-  const leadStart = (wordStart: number) => ms(Math.max(0, wordStart - preset.accent.leadSeconds));
-  // A pick with no length at all (its words take no time) shows the shown
-  // floor from its start, earlier where the reel ends: the floor only guards
-  // against a zero-length pick, it is no minimum.
-  function floorSpan(start: number, end: number): { start: number; end: number } {
-    if (end - start > SLACK) return { start, end };
-    const from = ms(Math.max(0, Math.min(start, duration - SHOWN_FLOOR_SECONDS)));
-    return { start: from, end: ms(Math.min(duration, from + SHOWN_FLOOR_SECONDS)) };
-  }
+  const leadStart = (wordStart: number, lead: number) => ms(Math.max(0, wordStart - lead));
   // The start anchor of an item coming in at `at`: its word, plus the offset
   // from the word's start (none for an accent or a question).
-  const startAnchorOf = (id: string, at: number): Anchor => {
-    const offset = ms(at - word(id).start);
-    if (Math.abs(offset) > 1) return anchorAt(at, transcript.words);
-    return offset === 0 ? { word: id } : { word: id, offset };
-  };
   const crossesHidden = (span: { start: number; end: number }) =>
     hidden.some((range) => during(span, range));
-
-  // A pick over hidden footage: the next visible moment after the cut (from
-  // its end, as long as the pick lasts, up to the next cut), else the last one
-  // before it. Null when neither holds the shown floor.
-  function visibleSpan(span: {
-    start: number;
-    end: number;
-  }): { start: number; end: number } | null {
-    const length = span.end - span.start;
-    const cuts = hidden.filter((range) => during(span, range)).sort((a, b) => a.start - b.start);
-    for (const cut of cuts) {
-      const nextCut = hidden
-        .filter((range) => range.start >= cut.end - SLACK)
-        .reduce((best, range) => Math.min(best, range.start), duration);
-      const start = ms(cut.end);
-      const end = ms(Math.min(nextCut, duration, start + length));
-      if (end - start >= SHOWN_FLOOR_SECONDS - SLACK) return { start, end };
-    }
-    for (const cut of [...cuts].reverse()) {
-      const prevCut = hidden
-        .filter((range) => range.end <= cut.start + SLACK)
-        .reduce((best, range) => Math.max(best, range.end), 0);
-      const end = ms(cut.start);
-      const start = ms(Math.max(prevCut, cut.start - length));
-      if (end - start >= SHOWN_FLOOR_SECONDS - SLACK) return { start, end };
-    }
-    return null;
-  }
-
-  // A pick's own span, from its start (the lead before its first word) to its
-  // last word's end, at least `min` long and at most `max`, inside the reel.
-  function ownSpan(
-    startAt: number,
-    lastEnd: number,
-    min: number,
-    max: number,
-  ): { start: number; end: number } {
-    const end = ms(Math.min(duration, Math.max(lastEnd, startAt + min), startAt + max));
-    return { start: ms(startAt), end };
-  }
 
   // An ACCENT (`accents[i]`) or a QUESTION (`questions[i]`, `ref`): the same
   // placement, timing and look.
@@ -767,14 +363,14 @@ function placeOnce(
   ): Extra {
     // Exactly while its words are spoken, like a caption: from the first
     // word's start to the last word's end.
-    const own = ownSpan(word(accent.from).start, word(accent.to).end, 0, Infinity);
-    const span = floorSpan(own.start, own.end);
+    const own = ownSpan(word(accent.from).start, word(accent.to).end, 0, Infinity, duration);
+    const span = floorSpan(own.start, own.end, duration);
     if (span.start !== own.start || span.end !== own.end) {
       record.push({
         item: id,
         action: "clamped-to-end",
         rule: "accent-time",
-        reason: `${accentNoun(accent)} ${quote(accentText(accent))} shows from ${at(span.start)} to ${at(span.end)}: its words take no time, so it shows the shown floor`,
+        reason: `${accentNoun(accent)} ${quote(accentText(words, accent))} shows from ${at(span.start)} to ${at(span.end)}: its words take no time, so it shows the shown floor`,
       });
     }
     return { ref, kind: "accent", id, start: span.start, end: span.end, index, accent };
@@ -785,13 +381,15 @@ function placeOnce(
   // Its time comes from its words alone: no other text moves or cuts it.
   function bigWordExtra(choice: BigWordChoice, index: number, id: string): Extra {
     const ref = `big_words[${index}]`;
+    // Its entry's timing: the lead before its first word, at least the minimum.
+    const { lead, minimum } = timingOf(textVariantOf(picked, "BIGWORD"), "words-lead");
     // Timed from its first word to its last (the same word for one word).
     const first = word(choice.from);
     const last = word(choice.to);
-    const own = ownSpan(leadStart(first.start), last.end, preset.accent.minSeconds, Infinity);
+    const own = ownSpan(leadStart(first.start, lead), last.end, minimum, Infinity, duration);
     let start = own.start;
     let end = own.end;
-    const text = bigWordText(choice.from, choice.to);
+    const text = bigWordText(words, choice.from, choice.to);
     if (end - start < SHOWN_FLOOR_SECONDS - SLACK) {
       // Too close to the reel's end, so it shows from earlier.
       start = ms(Math.max(0, end - SHOWN_FLOOR_SECONDS));
@@ -803,7 +401,7 @@ function placeOnce(
       });
     }
     if (crossesHidden({ start, end })) {
-      const moved = visibleSpan({ start, end });
+      const moved = visibleSpan({ start, end }, hidden, duration);
       if (moved) {
         record.push({
           item: id,
@@ -827,11 +425,21 @@ function placeOnce(
   }
 
   function visualExtra(visual: VisualChoice, index: number, id: string): Extra {
+    const { minimum: minSeconds, maximum: maxSeconds } = timingOf(
+      boxVariantOf(picked),
+      "words-min-max",
+    );
     const ref = `visuals[${index}]`;
     const sentence = sentenceOf(visual.from)!;
     // From the visual's first word, so it shows over its own words.
     const first = word(visual.from);
-    let { start, end } = ownSpan(first.start, word(visual.to).end, minSeconds, maxSeconds);
+    let { start, end } = ownSpan(
+      first.start,
+      word(visual.to).end,
+      minSeconds,
+      maxSeconds,
+      duration,
+    );
     start = ms(start);
     end = ms(end);
     if (end - start < SHOWN_FLOOR_SECONDS - SLACK) {
@@ -845,7 +453,7 @@ function placeOnce(
       });
     }
     if (crossesHidden({ start, end })) {
-      const moved = visibleSpan({ start, end });
+      const moved = visibleSpan({ start, end }, hidden, duration);
       if (moved) {
         record.push({
           item: id,
@@ -1006,163 +614,7 @@ function placeOnce(
     return resolveAnchor(captions[index]!.start, byId, duration);
   }
   const shown: Shown[] = [];
-  // The texts on screen over `span` that a box overlaps.
-  const textsOver = (box: Box, span: { start: number; end: number }): Shown[] =>
-    shown.filter((item) => during(item, span) && overlaps(box, item.box));
-  // The LIST items as transition items, each placed as one stack in its turn
-  // among the components (below). The captions of a transition's phrase show
-  // only as its levels.
   const transitionItems = new Map<string, { index: number; item: TransitionItem }>();
-
-  // The text of a LIST item's levels: the number, the lead-in (the words before
-  // `key_from`) and the key phrase, as the captions show them.
-  function levelTexts(plan: TransitionPlan): { lead: string; key: string } {
-    const { choice, label } = plan;
-    const ids = range(choice.from, choice.to);
-    const phrase = new Set(ids);
-    const keyAt = order.get(choice.key_from)!;
-    // The phrase's text, after the word fixes: each word as the caption
-    // showing it (once per caption), a word no caption shows as itself. A
-    // caption goes to the lead-in or the key phrase by its first word; one
-    // starting before the phrase keeps its own place and is left out here.
-    const captionOf = new Map<string, number>();
-    captions.forEach((caption, index) => {
-      if (caption.hidden_by !== plan.id) return;
-      for (const id of caption.words) if (!captionOf.has(id)) captionOf.set(id, index);
-    });
-    const parts: { at: number; text: string }[] = [];
-    const used = new Set<number>();
-    for (const id of ids) {
-      const index = captionOf.get(id);
-      if (index === undefined) {
-        parts.push({
-          at: order.get(id)!,
-          text: fixes.get(id) ?? wordsText([id], transcript, preset),
-        });
-        continue;
-      }
-      if (used.has(index)) continue;
-      used.add(index);
-      const first = captions[index]!.words[0]!;
-      if (!phrase.has(first)) continue;
-      parts.push({ at: order.get(first)!, text: texts[index]! });
-    }
-    let leadParts = parts.filter((part) => part.at < keyAt);
-    let keyParts = parts.filter((part) => part.at >= keyAt);
-    if (keyParts.length === 0) {
-      keyParts = leadParts.slice(-1);
-      leadParts = leadParts.slice(0, -1);
-    }
-    let lead = leadParts.map((part) => part.text).join(" ");
-    let key = keyParts.map((part) => part.text).join(" ");
-    // A phrase whose captions all begin before it has no text of its own, so
-    // its words (as the captions would show them, after the fixes) are its
-    // text. A text over the level's cap is cut at a word.
-    if (!key) {
-      key =
-        ids
-          .map((id) => fixes.get(id) ?? wordsText([id], transcript, preset))
-          .join(" ")
-          .trim() || ids.map((id) => word(id).text.trim()).join(" ");
-      lead = "";
-      record.push({
-        item: plan.id,
-        action: "text-from-words",
-        rule: "transition-text",
-        reason: `${label} has no caption text of its own: it shows the words of its phrase, ${quote(key)}`,
-      });
-    }
-    const capped = (text: string) => {
-      if (text.length <= LEVEL_TEXT_MAX) return text;
-      let out = "";
-      for (const piece of text.split(" ")) {
-        const next = out ? `${out} ${piece}` : piece;
-        if (next.length > LEVEL_TEXT_MAX) break;
-        out = next;
-      }
-      record.push({
-        item: plan.id,
-        action: "text-from-words",
-        rule: "transition-text",
-        reason: `${label} shows its first ${out.length} characters: its text is longer than ${LEVEL_TEXT_MAX}`,
-      });
-      return out;
-    };
-    lead = lead.length > LEVEL_TEXT_MAX ? capped(lead) : lead;
-    key = key.length > LEVEL_TEXT_MAX ? capped(key) : key;
-    return { lead, key };
-  }
-
-  // A LIST item through the placer (`engine-place.ts`): one stack of its
-  // number (a list of two or more items), its lead-in (when it has one) and its
-  // key phrase, from the entry the LIST was picked with (`list/numbered`),
-  // placed once as a whole over the texts on screen with it. The stack's box
-  // becomes the levels' positions (each centred on the stack, `align` center),
-  // sizes and `breaks`, and joins `shown` for the item's whole span. False when
-  // no candidate keeps the hard rules: the item is left out (see the loop).
-  function placeStack(plan: TransitionPlan): boolean {
-    const { choice, label, number } = plan;
-    const ids = range(choice.from, choice.to);
-    const { lead, key } = levelTexts(plan);
-    const starts: Record<LevelRole, Anchor> = {
-      number: plan.startAnchor,
-      lead: { word: choice.from },
-      key: { word: choice.key_from },
-    };
-    const element: StackElement = {
-      type: "stack",
-      id: plan.id,
-      variant: stackVariantOf(picked),
-      levels: [
-        ...(number !== undefined ? [{ role: "number" as const, text: String(number) }] : []),
-        ...(lead ? [{ role: "lead" as const, text: lead }] : []),
-        { role: "key" as const, text: key },
-      ],
-      gap: preset.transition.gap,
-      start: plan.start,
-      end: plan.end,
-    };
-    const result = placeElement(element, sceneFor(plan), measurer);
-    record.push(...result.notes);
-    if (!result.placed) return false;
-    const { box } = result.placed;
-    const centre = Math.round(((box.left + box.right) / 2) * 100) / 100;
-    const levels: Partial<Record<LevelRole, TransitionLevel>> = {};
-    let y = box.top;
-    for (const level of result.placed.levels) {
-      const text = element.levels.find((entry) => entry.role === level.role)!.text;
-      levels[level.role] = {
-        text,
-        start: starts[level.role],
-        position: { x: centre, y, align: "center" },
-        size: level.size,
-        ...(level.lines.length > 1 ? { breaks: level.breaks } : {}),
-      };
-      y += level.height + preset.transition.gap;
-    }
-    shown.push({
-      id: plan.id,
-      what: `the text of ${label}`,
-      start: plan.start,
-      end: plan.end,
-      box,
-    });
-    transitionItems.set(plan.id, {
-      index: plan.index,
-      item: {
-        id: plan.id,
-        type: "numbered",
-        start: plan.startAnchor,
-        end: plan.endAnchor,
-        words: ids,
-        key: choice.key_from,
-        list: plan.list,
-        ...(number !== undefined ? { number } : {}),
-        levels: { ...levels, key: levels.key! },
-      },
-    });
-    return true;
-  }
 
   // Captions: blocks in time order, each a sentence's groups (one spot for the
   // whole sentence); a transition's own captions show only as its levels.
@@ -1187,7 +639,6 @@ function placeOnce(
   });
   blocks.sort((a, b) => a.start - b.start);
 
-  const captionFont = preset.caption.font;
   const placedCaptions = new Map<number, { x: number; y: number; size: number }>();
 
   const overlays = new Map<string, OverlayItem>();
@@ -1197,349 +648,41 @@ function placeOnce(
   // (`rankOf`, the lists last), each avoiding the ones placed before it that
   // share a moment with it. The captions come last, in the space the
   // components leave.
+  // What the element writers read and write (`engine-elements.ts`).
+  const pass: Pass = {
+    ...words,
+    picked,
+    measurer,
+    record,
+    shown,
+    scene,
+    overlays,
+    behind,
+    transitionItems,
+    placedCaptions,
+    captions,
+    texts,
+    fixes,
+    unitEnd,
+  };
   const components = [
     ...extras.map((extra) => ({
       start: extra.start,
       rank: rankOf(extra) * 1000 + extra.index,
-      place: () => tryExtra(extra),
+      place: () => {
+        if (!placeExtra(pass, extra)) noSpot.push(extra.ref);
+      },
     })),
     ...transitionPlans.map((plan) => ({
       start: plan.start,
       rank: LIST_RANK * 1000 + plan.index,
       place: () => {
-        if (!placeStack(plan)) noSpot.push(plan.ref);
+        if (!placeStack(pass, plan)) noSpot.push(plan.ref);
       },
     })),
   ].sort((a, b) => a.start - b.start || a.rank - b.rank);
   for (const component of components) component.place();
-  for (const block of blocks) placeCaptions(block);
-
-  // A caption block through the placer (`engine-place.ts`): the element of the
-  // entry captions were picked with (`caption/default`: beside the face, below
-  // it, the caption line, anywhere in the safe zone; the `caption` style, 50 px
-  // at most), its groups the captions left in each group of the sentence (a
-  // caption a text shows while it is on screen, `hidden_by`, has no place and
-  // takes no room), its id its first caption's, over the components and the
-  // captions placed before it (`shown`; a caption among them is a `caption`
-  // obstacle, rule 2). The block's size is the largest at which every group
-  // fits (decision 4), shrunk in 10% steps to 30 px; its lines are free; the
-  // face is a cost; text is never covered (rule 5, hard). Each caption's place
-  // is its line's, the lines centred in the block's box; every caption of the
-  // block gets the block's notes under its own id (the checks read them per
-  // caption). Captions are never left out (rule 3, decision 19): a block with
-  // no legal spot at 30 px or more is placed again with the texts on screen
-  // out of its way (rule 5 alone given up, never the safe zone; the face still
-  // a cost), noted `no-spot` with the texts that took the space and the ones it
-  // sits over as blockers; the `text-overlap` check excuses exactly those pairs.
-  // Settled: the fallback scene keeps nothing but the notch and the face as
-  // obstacles (captions never share a moment with another sentence's, so a
-  // caption obstacle is none in practice); a block that fits nowhere even then
-  // (a caption group wider or taller than the safe zone at 30 px) is an error,
-  // not a layout.
-  function placeCaptions(block: CaptionBlock): void {
-    const first = block.groups[0]![0]!;
-    const label = block.groups
-      .flat()
-      .map((unit) => unit.text)
-      .join(" ");
-    const element: BlockElement = {
-      type: "block",
-      id: first.caption.id,
-      variant: textVariantOf(picked, "CAPTION"),
-      groups: block.groups.map((group) =>
-        group.map((unit) => ({
-          id: unit.caption.id,
-          text: unit.text,
-          ...(unit.caption.font ? { font: unit.caption.font } : {}),
-        })),
-      ),
-      lineGap: preset.caption.lineGap,
-      start: block.start,
-      end: block.end,
-    };
-    const scene = sceneFor(block);
-    const legal = placeElement(element, scene, measurer);
-    let placed = legal.placed;
-    let notes = legal.notes;
-    if (!placed) {
-      const over = placeElement(element, { ...scene, obstacles: [] }, measurer);
-      if (!over.placed) {
-        throw new Error(
-          `engine: captions ${quote(label)} (${at(block.start)} to ${at(block.end)}) fit nowhere in the safe zone at ${MIN_SIZE_PX} px`,
-        );
-      }
-      placed = over.placed;
-      const under = textsOver(placed.box, block);
-      const named = [...new Set(under.map((item) => item.what))].join(" and ");
-      const taken = legal.notes.find((note) => note.outcome === "no-spot")!;
-      const blockers = [...taken.blockers];
-      for (const item of under) {
-        const blocker = item.caption
-          ? { kind: "caption" as const, id: item.id }
-          : { kind: "item" as const, id: item.id };
-        if (!blockers.some((known) => JSON.stringify(known) === JSON.stringify(blocker))) {
-          blockers.push(blocker);
-        }
-      }
-      notes = [
-        {
-          ...taken,
-          blockers,
-          zone: placed.zone,
-          size: placed.size,
-          lines: placed.lines.length,
-          cost: placed.cost,
-          reason: `${taken.reason}; every caption stays on screen, so it sits over ${named || "nothing"} at ${placed.size} px, inside the safe zone`,
-        },
-        ...over.notes.filter((note) => note.outcome !== "placed"),
-      ];
-    }
-    for (const unit of block.groups.flat()) {
-      for (const note of notes) record.push({ ...note, item: unit.caption.id });
-    }
-    const { box, size, groups } = placed;
-    const width = box.right - box.left;
-    // Each group's lines at their places inside the block: each caption's
-    // corner, and its box as shown (so the captions after it avoid it).
-    const space = measurer.width(captionFont, size, " ");
-    block.groups.forEach((group, index) => {
-      let next = 0;
-      let y = box.top;
-      for (const line of groups[index]!) {
-        let x = box.left + (width - line.width) / 2;
-        for (const { width: unitWidth } of line.units) {
-          const unit = group[next++]!;
-          const left = Math.floor(x * 100) / 100;
-          placedCaptions.set(unit.index, { x: left, y, size });
-          shown.push({
-            id: unit.caption.id,
-            what: `caption ${quote(unit.text)}`,
-            start: unit.start,
-            end: unitEnd.get(unit.index)!,
-            box: { left, right: left + unitWidth, top: y, bottom: y + size },
-            caption: true,
-          });
-          x += unitWidth + space;
-        }
-        y += size + preset.caption.lineGap;
-      }
-    });
-  }
-
-  // One extra at its own span, placed by its kind, each through the placer. An
-  // element (the hook, an accent, a question, the big word, a visual's card) it
-  // finds no legal spot for is left out, noted `no-spot`, and `placeEdit`
-  // places the answer again without it.
-  function tryExtra(extra: Extra): void {
-    const span = { start: extra.start, end: extra.end };
-    const placed =
-      extra.kind === "hook"
-        ? placeHook(extra, span)
-        : extra.kind === "accent"
-          ? placeAccent(extra, span)
-          : extra.kind === "big_word"
-            ? placeBigWord(extra, span)
-            : placeVisual(extra, span);
-    if (!placed) noSpot.push(extra.ref);
-  }
-
-  // The placer's scene over a span: the unpadded robust faces of its moments
-  // and every text on screen with it as an obstacle, a `text` for a component
-  // and a `caption` for a caption placed before it (captions come last, so a
-  // component sees none).
-  function sceneFor(span: { start: number; end: number }) {
-    const obstacles: Obstacle[] = shown
-      .filter((item) => during(item, span))
-      .map((item) => ({ id: item.id, kind: item.caption ? "caption" : "text", box: item.box }));
-    return { faces: rawFacesDuring(scene, span), obstacles, safe: SAFE_ZONE };
-  }
-
-  function describe(extra: Extra): string {
-    if (extra.kind === "hook") return `the hook ${quote(extra.hook!.text)}`;
-    if (extra.kind === "accent") {
-      const accent = extra.accent!;
-      return `${accentNoun(accent)} ${quote(accentText(accent))}`;
-    }
-    if (extra.kind === "big_word") {
-      return `the big word ${quote(bigWordText(extra.word!, extra.wordTo!))}`;
-    }
-    return `visual ${extra.index + 1}`;
-  }
-
-  function accentText(accent: AccentChoice): string {
-    return wordsText(range(accent.from, accent.to), transcript, preset);
-  }
-
-  // An accent or a question through the placer (`engine-place.ts`): the
-  // element from the entry its component was picked with (`accent/above-head`,
-  // `question/as-accent`), the scene from the moments of its span (the robust
-  // faces, unpadded; every component on screen with it placed before it as an
-  // obstacle; captions come last and are none yet). Its position, size and
-  // `breaks` are the placer's; the notes go to the record as they are. False
-  // when no candidate keeps the hard rules: the element is left out (see
-  // `tryExtra`).
-  function placeAccent(extra: Extra, span: { start: number; end: number }): boolean {
-    const accent = extra.accent!;
-    const ids = range(accent.from, accent.to);
-    const text = wordsText(ids, transcript, preset);
-    const element: TextElement = {
-      type: "text",
-      id: extra.id,
-      variant: textVariantOf(picked, accent.question ? "QUESTION" : "ACCENT"),
-      text,
-      lineGap: 0,
-      start: span.start,
-      end: span.end,
-    };
-    const result = placeElement(element, sceneFor(span), measurer);
-    record.push(...result.notes);
-    if (!result.placed) return false;
-    const { box, size, lines, breaks } = result.placed;
-    overlays.set(extra.id, {
-      id: extra.id,
-      kind: "accent",
-      start: startAnchorOf(accent.from, span.start),
-      end: { word: accent.to, edge: "end" },
-      words: ids,
-      position: { x: box.left, y: box.top, align: "left" },
-      size,
-      ...(lines.length > 1 ? { breaks } : {}),
-    });
-    shown.push({
-      id: extra.id,
-      what: `${accentNoun(accent)} ${quote(text)}`,
-      start: span.start,
-      end: span.end,
-      box,
-    });
-    return true;
-  }
-
-  // The written hook through the placer: the element of the entry it was
-  // picked with (`hook/written-line`: the upper third, then anywhere in the
-  // safe zone, the accent style), over its whole window, around whatever is
-  // on screen with it. Its position, size and `breaks` are the placer's. False
-  // when no candidate keeps the hard rules (settled: a hook that fits nowhere
-  // at 30 px or more is a `no-spot` like any element, left out of the version;
-  // nobody says it, so no caption stands in for it).
-  function placeHook(extra: Extra, span: { start: number; end: number }): boolean {
-    const text = extra.hook!.text;
-    const element: TextElement = {
-      type: "text",
-      id: extra.id,
-      variant: textVariantOf(picked, "HOOK"),
-      text,
-      lineGap: 0,
-      start: span.start,
-      end: span.end,
-    };
-    const result = placeElement(element, sceneFor(span), measurer);
-    record.push(...result.notes);
-    if (!result.placed) return false;
-    const { box, size, lines, breaks } = result.placed;
-    overlays.set(extra.id, {
-      id: extra.id,
-      kind: "hook",
-      text,
-      start: anchorAt(span.start, transcript.words),
-      end: anchorAt(span.end, transcript.words),
-      position: { x: box.left, y: box.top, align: "left" },
-      size,
-      ...(lines.length > 1 ? { breaks } : {}),
-    });
-    shown.push({ id: extra.id, what: describe(extra), start: span.start, end: span.end, box });
-    return true;
-  }
-
-  // The big word through the placer: the element of the entry it was picked
-  // with (`bigword/behind`: the `head-top` zone, the `bigWord` style, the
-  // largest fit anchored at the head top, the behind layer), on one line (the
-  // behind word item carries no `breaks`), over the texts on screen with it.
-  // The face is no obstacle to it (it sits behind the speaker by design); rule
-  // 6, the face hiding at most 30% of its height, is the placer's hard filter,
-  // and the word stays inside the safe zone S like every text (decision 2).
-  // Its position and size are the placer's; the notes go to the record as they
-  // are. False when no candidate keeps the hard rules: the word is left out
-  // (see `tryExtra`).
-  function placeBigWord(extra: Extra, span: { start: number; end: number }): boolean {
-    const first = word(extra.word!);
-    const text = bigWordText(extra.word!, extra.wordTo!);
-    const element: TextElement = {
-      type: "text",
-      id: extra.id,
-      variant: textVariantOf(picked, "BIGWORD"),
-      text,
-      lineGap: 0,
-      maxLines: 1,
-      start: span.start,
-      end: span.end,
-    };
-    const result = placeElement(element, sceneFor(span), measurer);
-    record.push(...result.notes);
-    if (!result.placed) return false;
-    const { box, size } = result.placed;
-    behind.set(extra.id, {
-      id: extra.id,
-      kind: "word",
-      text,
-      start: startAnchorOf(first.id, span.start),
-      end: anchorAt(
-        span.end,
-        transcript.words.filter((w) => w.start >= first.start),
-      ),
-      position: { x: box.left, y: box.top },
-      size,
-      words: range(extra.word!, extra.wordTo!),
-    });
-    shown.push({ id: extra.id, what: describe(extra), start: span.start, end: span.end, box });
-    return true;
-  }
-
-  // A visual's card through the placer: the box element of the entry it was
-  // picked with (`visual/card`: a corner of S, then beside the face; its full
-  // size its `width` share of the frame at its `aspect`, 360 by 450 px, shrunk
-  // from there in 10% steps where the spot is smaller), an empty white stroke
-  // frame in front of the speaker, over the footage. The face is a cost (100),
-  // so the card covers it only as a last resort (noted `covers-face`). Text and
-  // the card are no obstacles to each other (decision 9: a text may sit on a
-  // card, the card draws under it), so the card sees nothing but the notch and
-  // the face, and never joins `shown`. Its box and the notes are the placer's.
-  // False when no candidate keeps the hard rules: the card is left out (see
-  // `tryExtra`).
-  function placeVisual(extra: Extra, span: { start: number; end: number }): boolean {
-    const visual = extra.visual!;
-    const element: BoxElement = {
-      type: "box",
-      id: extra.id,
-      variant: boxVariantOf(picked),
-      start: span.start,
-      end: span.end,
-    };
-    const result = placeElement(element, sceneFor(span), measurer);
-    record.push(...result.notes);
-    if (!result.placed) return false;
-    const { box } = result.placed;
-    const sentence = sentenceOf(visual.from)!;
-    behind.set(extra.id, {
-      id: extra.id,
-      kind: "visual",
-      ...(visual.description ? { description: visual.description } : {}),
-      box: {
-        x: box.left,
-        y: box.top,
-        width: box.right - box.left,
-        height: box.bottom - box.top,
-      },
-      start:
-        Math.abs(span.start - sentence.start) < 0.0005
-          ? { word: sentence.from }
-          : Math.abs(span.start - word(visual.from).start) < 0.0005
-            ? { word: visual.from }
-            : anchorAt(span.start, transcript.words),
-      end: anchorAt(span.end, transcript.words),
-    });
-    return true;
-  }
+  for (const block of blocks) placeCaptions(pass, block);
 
   // The tracks, in the current version's caption order and the answer's order.
   // A caption a text shows while it is on screen has no place of its own.
@@ -1609,7 +752,7 @@ function placeOnce(
             {
               id: extra.id,
               ref: extra.ref,
-              name: describe(extra),
+              name: describe(words, extra),
               component:
                 extra.kind === "big_word"
                   ? ("BIGWORD" as const)
@@ -1657,13 +800,6 @@ function placeOnce(
     record,
   };
 }
-
-// The longest text of a transition's level (the schema's cap).
-const LEVEL_TEXT_MAX = 300;
-
-// The hook's answer reference (in a checklist) and item id.
-const HOOK_REF = "hook";
-const HOOK_ID = "hook";
 
 // The hook's text as shown: one space between words.
 function hookText(choice: HookChoice): string {

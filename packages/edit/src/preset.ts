@@ -8,7 +8,6 @@ export interface PresetFont {
   // Relative to packages/edit (and to the built page): `assets/fonts/...`.
   file: string;
   weight: number;
-  size: number;
 }
 
 // The transition kinds: the LIST (`numbered`), the one kind a transition takes.
@@ -24,8 +23,6 @@ export interface PresetTransition {
   motion: "fade" | "slide";
   seconds: number;
   ease: string;
-  // The line Claude reads about the kind.
-  description?: string;
 }
 
 export type SoundKey = "click";
@@ -39,47 +36,13 @@ export interface PresetSound {
   minGapSeconds: number;
 }
 
-// A VISUAL is a small corner card (picture in picture): an empty white frame
-// over the footage, in front of the speaker. The placer (`engine-place.ts`)
-// places it as a box from the `visual/card` entry of `variants.ts`, whose
-// `width` (1/3) and `aspect` (4/5) read back to the values here; its zones (a
-// corner of the safe zone inset `inset`, then beside the face) are the zone
-// table's (`engine-zones.ts`).
-interface PresetCard {
-  // Its width as a share of the frame's width (a third) and its ratio, width
-  // over height (4:5): 360 by 450 px, the card's full size; the placer shrinks
-  // from it in 10% steps where the spot is smaller.
-  widthShare: number;
-  aspect: number;
-  // The gap a corner card keeps from the edges of the platform safe zone.
-  inset: number;
-  // The frame's white stroke, in pixels (the builder's `.visual` rule).
-  stroke: number;
-}
-
+// The behind layer's cut-out and its frames. A VISUAL's card, a big word's style
+// and their timing are the variant entries' and the style table's
+// (`variants.ts`); the zones are the zone table's (`engine-zones.ts`).
 export interface PresetBehind {
-  // A big word: the placer's largest fit (`engine-place.ts`, the `bigWord`
-  // style of `variants.ts`), centred, its vertical centre wanted
-  // `belowHeadTop` below the head's top (or at `noHeadY` with no head in the
-  // frame; the zone table of `engine-zones.ts` holds the same offsets), moved
-  // up (never above the safe zone's top), then smaller, until the face covers
-  // at most `1 - minVisible` of its height: only its lower part behind the
-  // head. It takes the accent's timing.
-  word: {
-    font: FontKey;
-    color: string;
-    belowHeadTop: number;
-    noHeadY: number;
-    minVisible: number;
-  };
   // The cut-out covers each item plus this many frames on each side.
   padFrames: number;
   frameRate: number;
-  // A VISUAL lasts between these, in seconds.
-  minSeconds: number;
-  maxSeconds: number;
-  // A VISUAL's card (see `PresetCard`).
-  card: PresetCard;
 }
 
 // How busy an edit is: the levels a preset may edit at. The preset names its
@@ -89,9 +52,6 @@ export type Intensity = "calm" | "medium" | "intense";
 
 // One intensity level's pacing, in seconds of reel.
 export interface PresetPace {
-  // Something new on screen besides the captions (an accent, a big word, a
-  // visual or a transition) at least this often: what the editor aims for.
-  extraEverySeconds: number;
   // The written hook: one line Claude writes (never spoken) shown from
   // `fromSeconds` to `untilSeconds` of reel, the one extra of that window;
   // at most `maxWords` words and `maxCharacters` characters.
@@ -116,8 +76,6 @@ export interface Preset {
   frame: { width: number; height: number };
   fonts: Record<FontKey, PresetFont>;
   caption: {
-    font: FontKey;
-    color: string;
     // Appear: opacity 0 to 1 while rising `rise` pixels; disappear: a fade.
     rise: number;
     inSeconds: number;
@@ -129,22 +87,12 @@ export interface Preset {
     // after this many units.
     groupPauseSeconds: number;
     groupMaxUnits: number;
-    // The line captions use when no head is in the frame.
-    fallbackY: number;
     lineGap: number;
   };
-  // An accent or a question shows exactly while its words are spoken, like a
-  // caption (no lead, no minimum). A big word behind the speaker shows from
-  // `leadSeconds` before its one word (so its entrance has finished as the word
-  // is heard) to `afterSeconds` after it, at least `minSeconds`.
+  // The decide limit's slack after a big word's last word (`schema.ts`); a big
+  // word's lead and minimum are its entry's timing (`variants.ts`).
   accent: {
-    font: FontKey;
-    color: string;
-    aboveHead: number;
-    noHeadY: number;
-    minSeconds: number;
     afterSeconds: number;
-    leadSeconds: number;
   };
   // The layout engine: text keeps `gap` pixels from the face and from other
   // text (its sizes are the styles' and the placer's, `engine-place.ts`).
@@ -219,18 +167,14 @@ export const ISSEBYA_PRESET: Preset = {
       family: "Raleway Light",
       file: "assets/fonts/Raleway-Light.ttf",
       weight: 300,
-      size: 110,
     },
     secondary: {
       family: "Golos Text",
       file: "assets/fonts/GolosText-Bold.ttf",
       weight: 700,
-      size: 50,
     },
   },
   caption: {
-    font: "secondary",
-    color: "#FFFFFF",
     rise: 12,
     inSeconds: 0.18,
     inEase: "power2.out",
@@ -238,17 +182,10 @@ export const ISSEBYA_PRESET: Preset = {
     minSeconds: 0.25,
     groupPauseSeconds: 0.35,
     groupMaxUnits: 4,
-    fallbackY: 1290,
     lineGap: 14,
   },
   accent: {
-    font: "primary",
-    color: "#FFFFFF",
-    aboveHead: 190,
-    noHeadY: 1130,
-    minSeconds: 1.5,
     afterSeconds: 1,
-    leadSeconds: 0.2,
   },
   layout: { gap: 12 },
   // Starting values; the owner tunes them by eye on a real reel.
@@ -258,18 +195,14 @@ export const ISSEBYA_PRESET: Preset = {
       motion: "fade",
       seconds: 0.3,
       ease: "power2.out",
-      description:
-        "a large number over the phrase, the phrase below: for each item of a list the speaker goes through, numbered in order",
     },
   },
   transition: {
     gap: 24,
   },
-  // Intense (the pros' level): something new about every 3 s, a written hook
-  // from 0.2 s (the big word's lead) to 3 s, the first seconds that decide
-  // whether people keep watching.
+  // Intense (the pros' level): a written hook from 0.2 s to 3 s, the first
+  // seconds that decide whether people keep watching.
   pace: {
-    extraEverySeconds: 3,
     hook: { fromSeconds: 0.2, untilSeconds: 3, maxWords: 7, maxCharacters: 45 },
   },
   // One pick (a component) per this many seconds of speech, at each level.
@@ -284,23 +217,8 @@ export const ISSEBYA_PRESET: Preset = {
   },
   // Starting values; the owner tunes them by eye on a real reel.
   behind: {
-    word: {
-      font: "primary",
-      color: "#FFFFFF",
-      belowHeadTop: 60,
-      noHeadY: 700,
-      minVisible: 0.7,
-    },
     padFrames: 3,
     frameRate: 30,
-    minSeconds: 1,
-    maxSeconds: 2,
-    card: {
-      widthShare: 1 / 3,
-      aspect: 4 / 5,
-      inset: 40,
-      stroke: 8,
-    },
   },
   keepCaps: { i: "I", "i'm": "I'm", "i've": "I've", "i'll": "I'll", "i'd": "I'd", ai: "AI" },
   units: [

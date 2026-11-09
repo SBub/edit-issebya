@@ -48,7 +48,9 @@ const SHRINK_STEP = 0.1;
 const GAP = ISSEBYA_PRESET.layout.gap;
 const FRAME_WIDTH = ISSEBYA_PRESET.frame.width;
 // Rule 6: the face hides at most this share of a behind big word's height.
-const MAX_HIDDEN_SHARE = 1 - ISSEBYA_PRESET.behind.word.minVisible;
+// The share of a behind big word's height that stays visible (the face hides the rest).
+const MIN_VISIBLE_SHARE = 0.7;
+const MAX_HIDDEN_SHARE = 1 - MIN_VISIBLE_SHARE;
 const SLACK = 1e-9;
 // A whole-pixel size from a scaled one: floored, a float hair under a whole
 // number counted as that number (88 * 300/110 is 240).
@@ -84,6 +86,29 @@ export interface StackElement extends ElementBase {
   variant: StackVariant;
   levels: readonly { role: LevelRole; text: string }[];
   gap: number;
+}
+
+// Where each level of a placed stack goes, in the order given: each level at a
+// whole pixel, centred in the stack's box (the box is as wide as its widest
+// level, so every level's left edge is inside it), the levels stacked from the
+// box's top with `gap` between. Whole pixels matter: a centre rounded to the
+// hundredth put a level 0.0025 px outside the box (its left edge at 34.9975
+// against S's 35), which the `safe-box` check reads as outside the safe zone.
+export function stackPositions(
+  box: Box,
+  levels: readonly PlacedLevel[],
+  gap: number,
+): { role: LevelRole; x: number; y: number }[] {
+  // The widest level's width, not the box's (their difference is a float hair
+  // either way: the widest level's own offset must be 0, not -1 after a floor).
+  const widest = Math.max(...levels.map((level) => level.width));
+  let y = box.top;
+  return levels.map((level) => {
+    const x = box.left + Math.max(0, Math.floor((widest - level.width) / 2 + 1e-6));
+    const at = { role: level.role, x, y };
+    y += level.height + gap;
+    return at;
+  });
 }
 
 // A box: its entry gives its aspect and full width.

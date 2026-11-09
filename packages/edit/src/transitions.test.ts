@@ -4,6 +4,7 @@ import { FIXTURES } from "./test-support/fixtures.ts";
 import { resolveTimeline } from "./timeline.ts";
 import { hiddenCaptionIds, levelStyle, transitionTiming } from "./transitions.ts";
 import type { Word } from "./transcript.ts";
+import { STYLES } from "./variants.ts";
 
 const P = ISSEBYA_PRESET;
 const NUMBERED = P.transitions.numbered;
@@ -85,9 +86,9 @@ describe("transitionTiming", () => {
 
 describe("transition style roles", () => {
   it("sets the lead-in in caption text, the key phrase and the number in accent text; no size (the engine's)", () => {
-    expect(levelStyle("lead", P)).toEqual({ font: P.caption.font, color: P.caption.color });
-    expect(levelStyle("key", P)).toEqual({ font: P.accent.font, color: P.accent.color });
-    expect(levelStyle("number", P)).toEqual({ font: P.accent.font, color: P.accent.color });
+    expect(levelStyle("lead")).toEqual({ font: STYLES.caption.font, color: STYLES.caption.color });
+    expect(levelStyle("key")).toEqual({ font: STYLES.accent.font, color: STYLES.accent.color });
+    expect(levelStyle("number")).toEqual({ font: STYLES.accent.font, color: STYLES.accent.color });
   });
 });
 

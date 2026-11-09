@@ -6,7 +6,8 @@ import {
   TRANSITION_KINDS,
   intersectBox,
 } from "./preset.ts";
-import { SAFE_ZONE } from "./engine-zones.ts";
+import { SAFE_ZONE, zonesAt } from "./engine-zones.ts";
+import { STYLES, VARIANTS, timingOf } from "./variants.ts";
 
 const safe = SAFE_ZONE.box;
 
@@ -35,28 +36,19 @@ describe("the platform guard", () => {
     expect(SAFE_ZONE).toEqual({ box: PLATFORM_SAFE, notch: PLATFORM_BUTTONS });
   });
 
-  it("keeps the caption fallback line inside the safe box", () => {
-    const { caption, fonts } = ISSEBYA_PRESET;
-    expect(caption.fallbackY).toBeGreaterThanOrEqual(safe.top);
-    expect(caption.fallbackY + fonts[caption.font].size).toBeLessThanOrEqual(safe.bottom);
-  });
-
-  it("keeps the accent's no-head line inside the safe box", () => {
-    const { accent, fonts } = ISSEBYA_PRESET;
-    expect(accent.noHeadY).toBeGreaterThanOrEqual(safe.top);
-    expect(accent.noHeadY + fonts[accent.font].size).toBeLessThanOrEqual(safe.bottom);
+  it("keeps the caption line and the accent's no-head line inside the safe box", () => {
+    const captionLine = zonesAt("caption-line", SAFE_ZONE, null)[0]!.want.y;
+    expect(captionLine).toBeGreaterThanOrEqual(safe.top);
+    expect(captionLine + STYLES.caption.base).toBeLessThanOrEqual(safe.bottom);
+    const noHeadLine = zonesAt("above-head", SAFE_ZONE, null)[0]!.want.y;
+    expect(noHeadLine).toBeGreaterThanOrEqual(safe.top);
+    expect(noHeadLine + STYLES.accent.base).toBeLessThanOrEqual(safe.bottom);
   });
 });
 
 describe("the transition library", () => {
   it("offers numbered only: the LIST, the one kind a transition takes", () => {
     expect([...TRANSITION_KINDS]).toEqual(["numbered"]);
-  });
-
-  it("describes every kind Claude may pick", () => {
-    for (const kind of TRANSITION_KINDS) {
-      expect(ISSEBYA_PRESET.transitions[kind].description, kind).toMatch(/^\S.{20,}$/);
-    }
   });
 
   it("holds no colour and no font in a transition entry: they come from the style roles", () => {
@@ -78,32 +70,31 @@ describe("the transition library", () => {
     expect(ISSEBYA_PRESET.transition.gap).toBe(24);
   });
 
-  it("paces Intense: something new every 3 s, the hook to 3 s", () => {
-    const { pace, behind, accent } = ISSEBYA_PRESET;
+  it("paces Intense: the hook from 0.2 s to 3 s; a VISUAL shows 1 to 2 s", () => {
+    const { pace } = ISSEBYA_PRESET;
     expect(pace).toEqual({
-      extraEverySeconds: 3,
       hook: { fromSeconds: 0.2, untilSeconds: 3, maxWords: 7, maxCharacters: 45 },
     });
-    // The hook comes in on the accent's lead and holds the first beat.
-    expect(pace.hook.fromSeconds).toBe(accent.leadSeconds);
-    expect(pace.hook.untilSeconds - pace.hook.fromSeconds).toBeGreaterThan(accent.minSeconds);
-    // A VISUAL (1 to 2 s) fits inside one beat.
-    expect([behind.minSeconds, behind.maxSeconds]).toEqual([1, 2]);
-    expect(behind.maxSeconds).toBeLessThan(pace.extraEverySeconds);
+    // The hook comes in on the big word's lead and holds longer than its minimum.
+    const bigWord = timingOf(VARIANTS["bigword/behind"], "words-lead");
+    expect(pace.hook.fromSeconds).toBe(bigWord.lead);
+    expect(pace.hook.untilSeconds - pace.hook.fromSeconds).toBeGreaterThan(bigWord.minimum);
+    expect(timingOf(VARIANTS["visual/card"], "words-min-max")).toMatchObject({
+      minimum: 1,
+      maximum: 2,
+    });
   });
 
-  it("times accents and big words alike: 0.2 s before the word, at least 1.5 s", () => {
-    expect(ISSEBYA_PRESET.accent).toMatchObject({
-      minSeconds: 1.5,
-      afterSeconds: 1,
-      leadSeconds: 0.2,
-    });
+  it("times a big word 0.2 s before its word, at least 1.5 s; an accent by its words", () => {
+    expect(ISSEBYA_PRESET.accent).toEqual({ afterSeconds: 1 });
+    const bigWord = timingOf(VARIANTS["bigword/behind"], "words-lead");
+    expect(bigWord).toMatchObject({ lead: 0.2, minimum: 1.5 });
     // The lead fits a start anchor's offset (at most 1 s).
-    expect(ISSEBYA_PRESET.accent.leadSeconds).toBeLessThanOrEqual(1);
+    expect(bigWord.lead).toBeLessThanOrEqual(1);
   });
 
   it("sets captions in Golos Text Bold, accents and the big word in Raleway Light, all white", () => {
-    const { fonts, caption, accent, behind } = ISSEBYA_PRESET;
+    const { fonts } = ISSEBYA_PRESET;
     expect(fonts.primary).toMatchObject({
       family: "Raleway Light",
       file: "assets/fonts/Raleway-Light.ttf",
@@ -114,17 +105,15 @@ describe("the transition library", () => {
       file: "assets/fonts/GolosText-Bold.ttf",
       weight: 700,
     });
-    expect([caption.font, accent.font, behind.word.font]).toEqual([
+    expect([STYLES.caption.font, STYLES.accent.font, STYLES.bigWord.font]).toEqual([
       "secondary",
       "primary",
       "primary",
     ]);
-    expect([caption.color, accent.color, behind.word.color]).toEqual([
+    expect([STYLES.caption.color, STYLES.accent.color, STYLES.bigWord.color]).toEqual([
       "#FFFFFF",
       "#FFFFFF",
       "#FFFFFF",
     ]);
-    // Only the lower 30% of a big word may go behind the head.
-    expect(behind.word.minVisible).toBe(0.7);
   });
 });

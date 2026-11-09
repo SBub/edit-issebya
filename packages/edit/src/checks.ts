@@ -5,6 +5,7 @@ import { SAFE_ZONE } from "./engine-zones.ts";
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import { type Preset, SHOWN_FLOOR_SECONDS, cleanWord } from "./preset.ts";
 import type { Anchor, Edit } from "./schema.ts";
+import { timingOf, VARIANTS } from "./variants.ts";
 import type { ResolvedItem } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
@@ -255,7 +256,7 @@ export function runChecks(
     const said = transcript.words
       .filter((word) => cleanWord(word.text, preset).toLowerCase() === first)
       .sort((a, b) => Math.abs(a.start - start) - Math.abs(b.start - start))[0];
-    const lead = preset.accent.leadSeconds;
+    const lead = timingOf(VARIANTS["bigword/behind"], "words-lead").lead;
     if (said && start < said.start - lead - SLACK) {
       checks.push({
         rule: "big-word-timing",

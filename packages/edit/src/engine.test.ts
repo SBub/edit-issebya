@@ -20,6 +20,10 @@ import { resolveTimeline } from "./timeline.ts";
 import { type Transcript, sentenceSpans } from "./transcript.ts";
 import { levelBoxes } from "./transitions.ts";
 import { pickVariants } from "./variant-picker.ts";
+import { STYLES, VARIANTS, timingOf } from "./variants.ts";
+
+// The big word's lead and minimum, its entry's timing (`variants.ts`).
+const BIG_WORD = timingOf(VARIANTS["bigword/behind"], "words-lead");
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
 // Rounds a time to the millisecond, as the engine does.
@@ -145,7 +149,7 @@ function expectNoWordTwice(edit: Edit, spans: ReturnType<typeof resolveTimeline>
 }
 
 // An accent or a big word comes in this long before its first word.
-const LEAD = ISSEBYA_PRESET.accent.leadSeconds;
+const LEAD = BIG_WORD.lead;
 const leadOf = (id: string) => Math.round((byId.get(id)!.start - LEAD) * 1000) / 1000;
 // A word's start and end.
 const start = (id: string) => byId.get(id)!.start;
@@ -383,7 +387,8 @@ describe("never the same word twice on screen", () => {
 });
 
 describe("big words in view", () => {
-  const maxCovered = 1 - ISSEBYA_PRESET.behind.word.minVisible;
+  // Rule 6: the face hides at most 30% of a big word's height.
+  const maxCovered = 1 - 0.7;
   const bigWordOf = (edit: Edit, spans: ReturnType<typeof resolveTimeline>) => {
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
     if (word.kind !== "word") throw new Error("not a word");
@@ -412,7 +417,7 @@ describe("big words in view", () => {
     );
     expect(checks).toEqual([]);
     const { word, span } = bigWordOf(edit, spans);
-    const width = measurer.width(ISSEBYA_PRESET.behind.word.font, word.size!, word.text);
+    const width = measurer.width(STYLES.bigWord.font, word.size!, word.text);
     const box = {
       left: word.position!.x,
       right: word.position!.x + width,
@@ -437,7 +442,7 @@ describe("big words in view", () => {
     const faceTop = Math.min(...faces.map((face) => face.top));
     const byWidth = Math.floor(
       (PLATFORM_SAFE.right - PLATFORM_SAFE.left) /
-        measurer.width(ISSEBYA_PRESET.behind.word.font, 1, word.text),
+        measurer.width(STYLES.bigWord.font, 1, word.text),
     );
     const byHead = Math.floor(
       (faceTop - PLATFORM_SAFE.top) / maxCovered / (1 / maxCovered - 1) + 1e-6,
@@ -599,7 +604,7 @@ describe("the layout engine's placement", () => {
                 : wordsText(item.words!, transcript, ISSEBYA_PRESET);
             const broken = textLines(text, item.breaks);
             const width = Math.max(
-              ...broken.map((line) => measurer.width(ISSEBYA_PRESET.accent.font, item.size!, line)),
+              ...broken.map((line) => measurer.width(STYLES.accent.font, item.size!, line)),
             );
             const { x, y } = item.position!;
             return {
@@ -849,7 +854,8 @@ describe("today's failures, placed by the engine", () => {
 });
 
 describe("visuals: corner cards over the footage", () => {
-  const { card } = ISSEBYA_PRESET.behind;
+  // The card's entry: its stroke, its ratio, its inset from the zone table.
+  const card = { stroke: VARIANTS["visual/card"].style.stroke.px, aspect: 4 / 5, inset: 40 };
   const gap = ISSEBYA_PRESET.layout.gap;
   // The card's full size, the `visual/card` entry's width share (a third of the
   // frame's width) at 4:5: 360 by 450. The placer shrinks from it in 10% steps
@@ -1168,14 +1174,8 @@ describe("transitions", () => {
     const { box: safe } = SAFE_ZONE;
     const lead = levels.find((level) => level.role === "lead")!;
     const key = levels.find((level) => level.role === "key")!;
-    expect([lead.font, lead.color]).toEqual([
-      ISSEBYA_PRESET.caption.font,
-      ISSEBYA_PRESET.caption.color,
-    ]);
-    expect([key.font, key.color]).toEqual([
-      ISSEBYA_PRESET.accent.font,
-      ISSEBYA_PRESET.accent.color,
-    ]);
+    expect([lead.font, lead.color]).toEqual([STYLES.caption.font, STYLES.caption.color]);
+    expect([key.font, key.color]).toEqual([STYLES.accent.font, STYLES.accent.color]);
     for (const level of levels) {
       expect(level.x).toBeGreaterThanOrEqual(safe.left - 1e-6);
       expect(level.x + level.width).toBeLessThanOrEqual(safe.right + 1e-6);
@@ -1410,7 +1410,7 @@ describe("the written hook", () => {
   // A face at the top, narrow enough that the hook fits beside it only when
   // set below the smallest size.
   const NARROW_HEAD = steadyHead({ head_top: 100, cx: 540, head_w: 300 });
-  const preset110 = ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.accent.font].size;
+  const preset110 = STYLES.accent.base;
 
   it("shows from 0.2 s to 3 s in the upper part of the frame, off the face, inside the safe zone", async () => {
     const placed = await place({ hook: HOOK });
@@ -1731,7 +1731,7 @@ describe("text picks share the screen in time", () => {
     // The big word runs from its lead for at least 1.5 s; the accent said
     // inside that shows its own words beside it, above the head.
     expect(big.start).toBeCloseTo(leadOf("w76"), 3);
-    expect(big.end).toBeCloseTo(leadOf("w76") + ISSEBYA_PRESET.accent.minSeconds, 3);
+    expect(big.end).toBeCloseTo(leadOf("w76") + BIG_WORD.minimum, 3);
     expect(accent.start).toBeCloseTo(start("w77"), 3);
     expect(accent.end).toBeCloseTo(end("w78"), 3);
     expect(
@@ -1760,7 +1760,7 @@ describe("text picks share the screen in time", () => {
     const word = placed.spans.get("big-word-1")!;
     expect(item).toMatchObject({ start: ms(start("w23") - ENTRANCE), end: end("w25") });
     expect(word.start).toBeCloseTo(leadOf("w26"), 3);
-    expect(word.end).toBeCloseTo(leadOf("w26") + ISSEBYA_PRESET.accent.minSeconds, 3);
+    expect(word.end).toBeCloseTo(leadOf("w26") + BIG_WORD.minimum, 3);
     expect(word.start).toBeLessThan(item.end);
     expect(
       placed.record.filter(
@@ -1777,7 +1777,7 @@ describe("text picks share the screen in time", () => {
     const key = placed.levels.find((level) => level.role === "key")!;
     const big = placed.edit.tracks.behind!.find((entry) => entry.kind === "word")!;
     if (big.kind !== "word") throw new Error("not a word");
-    const bigWidth = measurer.width(ISSEBYA_PRESET.behind.word.font, big.size!, big.text);
+    const bigWidth = measurer.width(STYLES.bigWord.font, big.size!, big.text);
     const apart =
       key.y + key.height <= big.position!.y ||
       big.position!.y + big.size! <= key.y ||
@@ -2482,7 +2482,7 @@ describe("text kept over text only where no free spot exists", () => {
 });
 
 describe("captions through the placer, as sentence blocks", () => {
-  const CAPTION_BASE = ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.caption.font].size;
+  const CAPTION_BASE = STYLES.caption.base;
   // The captions of a placed edit by the block they were placed in: every
   // caption of a sentence takes one spot, so the captions of a block share
   // their notes' zone, size and line count.

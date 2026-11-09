@@ -7,6 +7,7 @@ import type { EngineNote } from "./engine-note.ts";
 import { FIXTURES, PLACED_FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 import { resolveTimeline } from "./timeline.ts";
+import { timingOf, VARIANTS } from "./variants.ts";
 
 // The behind edit's choices placed by the layout engine: every check passes.
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-engine")!;
@@ -192,7 +193,9 @@ describe("runChecks on big words behind the speaker", () => {
 
   it("passes big-word-timing for a big word coming in the lead before its word", async () => {
     const word = hand.edit.tracks.behind!.find((item) => item.kind === "word")!;
-    expect(word.start).toMatchObject({ offset: -ISSEBYA_PRESET.accent.leadSeconds });
+    expect(word.start).toMatchObject({
+      offset: -timingOf(VARIANTS["bigword/behind"], "words-lead").lead,
+    });
     const checks = await checksOf(hand.edit);
     expect(checks.filter((check) => check.rule === "big-word-timing")).toEqual([]);
   });
