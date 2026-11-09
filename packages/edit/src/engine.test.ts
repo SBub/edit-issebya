@@ -100,6 +100,7 @@ async function place(
     headTrack,
     ISSEBYA_PRESET,
     measurer,
+    { engineRecord: made.record },
   );
   const spans = resolveTimeline(made.edit, spoken);
   return {
@@ -1936,5 +1937,179 @@ describe("nothing the answer picks is dropped", () => {
       ).toEqual((input.transitions ?? []).map((_, index) => `transition-${index + 1}`));
       expect(shown.includes("hook"), `round ${round}`).toBe(input.hook !== null);
     }
+  });
+});
+
+// A caption-heavy opening: the first `count` words of the reel as a caption
+// each, in the first 3 s, and the rest of the reel after them.
+function denseOpening(count: number): { current: Edit; transcript: Transcript } {
+  const dense = words.slice(0, count).map((word, index) => ({
+    id: word.id,
+    text: (index + 1) % 2 === 0 ? `${word.text}.` : word.text,
+    start: 0.2 + index * 0.05,
+    end: 0.2 + index * 0.05 + 0.045,
+  }));
+  const spoken = {
+    words: [
+      ...dense,
+      ...words.slice(count).map((word) => ({ ...word, start: word.start + 3, end: word.end + 3 })),
+    ],
+  };
+  const current = {
+    ...hand.edit,
+    tracks: {
+      ...hand.edit.tracks,
+      captions: dense.map((word, index) => ({
+        id: `cw${index}`,
+        start: { word: word.id },
+        end: { word: word.id, edge: "end" as const },
+        words: [word.id],
+        size: 50,
+        position: { x: 100, y: 300, align: "left" as const },
+      })),
+      overlays: [],
+      transitions: [],
+      behind: [],
+      sounds: [],
+    },
+  };
+  return { current, transcript: spoken };
+}
+
+// Seeded random picks over a reel's word ids: the same sets on every run.
+function seededPicks(seed: number, ids: readonly string[], rounds: number): EngineInput[] {
+  let state = seed;
+  const random = () => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+  const count = (most: number) => Math.floor(random() * (most + 1));
+  const pick = <T>(list: readonly T[]): T => list[Math.floor(random() * list.length)]!;
+  const run = (longest: number): [string, string] => {
+    const at = Math.floor(random() * ids.length);
+    const to = Math.min(ids.length - 1, at + Math.floor(random() * (longest + 1)));
+    return [ids[at]!, ids[to]!];
+  };
+  return Array.from({ length: rounds }, () => ({
+    ...NOTHING,
+    accents: Array.from({ length: count(5) }, () => {
+      const [from, to] = run(6);
+      return { from, to };
+    }),
+    big_words: Array.from({ length: count(4) }, () => {
+      const id = pick(ids);
+      return { from: id, to: id };
+    }),
+    visuals: Array.from({ length: count(3) }, () => {
+      const [from, to] = run(12);
+      return { from, to };
+    }),
+    transitions: Array.from({ length: count(3) }, () => {
+      const [from, to] = run(8);
+      return { kind: pick(TRANSITION_KINDS), from, to, key_from: from };
+    }),
+    hook: random() < 0.5 ? { text: "Gen Z won't work like you did" } : null,
+  }));
+}
+
+describe("texts never overlap on screen while a free spot exists", () => {
+  // The rule's gaps, closed: a big word placed after the captions (it kept the
+  // place of the head rule over them), an accent and the hook kept over other
+  // text where the face was the only obstacle, a caption set over text.
+  it("never overlaps two texts in random picks over the fixture reel", async () => {
+    const ids = words.map((word) => word.id);
+    for (const [round, input] of seededPicks(20261109, ids, 30).entries()) {
+      const placed = await place(input);
+      expect(
+        placed.checks.filter((check) => check.rule === "text-overlap"),
+        `round ${round}`,
+      ).toEqual([]);
+    }
+  });
+
+  it("never overlaps two texts in random picks over a caption-heavy opening", async () => {
+    const { current, transcript: spoken } = denseOpening(60);
+    const ids = spoken.words.map((word) => word.id);
+    for (const [round, input] of seededPicks(20261110, ids, 12).entries()) {
+      const placed = await place(input, { current, transcript: spoken, headTrack: BIG_FACE });
+      expect(
+        placed.checks.filter((check) => check.rule === "text-overlap"),
+        `round ${round}`,
+      ).toEqual([]);
+    }
+  });
+
+  it("moves a big word off the captions it would sit on, to a free place at its size", async () => {
+    // Over the captions of the opening, the word would sit on about forty of
+    // them; a clear place at the same size exists.
+    const { current, transcript: spoken } = denseOpening(60);
+    const placed = await place(
+      { big_words: [{ from: "w20", to: "w20" }] },
+      { current, transcript: spoken, headTrack: BIG_FACE },
+    );
+    expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({ item: "big-word-1", action: "moved", rule: "big-word-spot" }),
+    );
+    expect(placed.record.some((note) => note.action === "kept-overlapping" && note.with)).toBe(
+      false,
+    );
+  });
+
+  it("keeps a big word clear of the captions of its own sentence, the word it shows left out of them", async () => {
+    // "we" in the fixture reel: its captions' rest sit clear of the word (the
+    // old place overlapped them by 8 px), its own word is left out of them.
+    const placed = await place({ big_words: [{ from: "w113", to: "w113" }] });
+    expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
+    expect(placed.edit.tracks.captions.find((caption) => caption.id === "cw113")!.hidden_by).toBe(
+      "big-word-1",
+    );
+    expectNoWordTwice(placed.edit, placed.spans);
+  });
+
+  it("notes a text starting inside a cut hook's floor as sharing its time with the hook", async () => {
+    // The accent starts with the hook, which the one-at-a-time rule cuts to no
+    // length: it shows the floor over the accent, and the accent's note names it.
+    const placed = await place({
+      hook: { text: "Gen Z won't work like you did" },
+      accents: [{ from: "w0", to: "w1" }],
+    });
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({
+        item: "hook",
+        action: "retimed",
+        rule: "text-one-at-a-time",
+      }),
+    );
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({ item: "accent-1", action: "kept-overlapping", with: ["hook"] }),
+    );
+    expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
+  });
+});
+
+describe("text kept over text only where no free spot exists", () => {
+  it("keeps an accent over the caption it has no free place beside down to its floor, noted with it", async () => {
+    // The numbered list's text shares the time of its sentence's captions, so
+    // the sentence can only go over the face (`covers-face`). The accent then
+    // has no place clear of that caption at its own size or any size down to
+    // its floor (60%): it is kept over the caption, noted with it, nothing dropped.
+    const placed = await place({
+      accents: [{ from: "w27", to: "w33" }],
+      transitions: [{ kind: "numbered", from: "w52", to: "w53", key_from: "w52" }],
+    });
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({ item: "cw26", action: "covers-face", rule: "caption-face" }),
+    );
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({
+        item: "accent-1",
+        action: "kept-overlapping",
+        rule: "all-picks",
+        with: ["cw26"],
+      }),
+    );
+    expect(placed.edit.tracks.overlays.map((item) => item.id)).toContain("accent-1");
+    expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
   });
 });

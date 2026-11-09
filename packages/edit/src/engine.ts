@@ -107,6 +107,9 @@ export interface EngineNote {
   action: EngineAction;
   rule: string;
   reason: string;
+  // A `kept-overlapping` note on a text: the ids of the other texts it sits
+  // over or shares its time with (the pairs the text-overlap check excuses).
+  with?: string[];
 }
 
 export type PlacedTracks = Edit["tracks"];
@@ -124,8 +127,11 @@ export interface PlaceOptions {
 
 type Align = "left" | "right" | "center";
 
+// A text on screen as placed: its id (a text level's transition id), what a
+// note calls it, its span and its box.
 interface Shown {
   id: string;
+  what: string;
   start: number;
   end: number;
   box: Box;
@@ -294,6 +300,8 @@ interface Candidate {
   maxLines: number;
   // The worst case: the face is no obstacle.
   overFace?: boolean;
+  // The last resort: text may be overlapped (each unit noted).
+  overText?: boolean;
 }
 
 interface Line {
@@ -914,6 +922,15 @@ export function placeEdit(
   const shown: Shown[] = [];
   const textDuring = (span: { start: number; end: number }) =>
     shown.filter((item) => during(item, span)).map((item) => expand(item.box, gap));
+  // The texts on screen over `span` that a box (with the gap around it) overlaps.
+  const textsOver = (box: Box, span: { start: number; end: number }): Shown[] =>
+    shown.filter((item) => during(item, span) && overlaps(box, expand(item.box, gap)));
+  // A kept-overlapping note on the texts a box sits over: its `with` (their
+  // ids) and their names for the reason.
+  const overWith = (texts: readonly Shown[]) => ({
+    with: [...new Set(texts.map((item) => item.id))],
+    names: [...new Set(texts.map((item) => item.what))].join(" and "),
+  });
   // A pick placed over the face (when `face`) or other text on screen is noted
   // with what it sits over.
   function noteOverlap(
@@ -927,13 +944,16 @@ export function placeEdit(
     if (face && faceObstacles(span).some((obstacle) => overlaps(box, obstacle))) {
       over.push("the face");
     }
-    if (textDuring(span).some((obstacle) => overlaps(box, obstacle))) over.push("other text");
+    const texts = textsOver(box, span);
+    const named = overWith(texts);
+    if (texts.length > 0) over.push(named.names);
     if (over.length === 0) return;
     record.push({
       item: id,
       action: "kept-overlapping",
       rule: "all-picks",
       reason: `${label} sits over ${over.join(" and ")} from ${at(span.start)} to ${at(span.end)}; kept, every pick is shown`,
+      ...(texts.length > 0 ? { with: named.with } : {}),
     });
   }
 
@@ -1072,13 +1092,6 @@ export function placeEdit(
   // inside its area, off the face where possible. The captions of a
   // transition's phrase show only as its levels.
   const transitionItems = new Map<string, { index: number; item: TransitionItem }>();
-  // The captions a list shows as its levels (while it is on screen): no place.
-  const transitionIds = new Set(transitionPlans.map((plan) => plan.id));
-  const hiddenUnits = new Set(
-    captions.flatMap((caption, index) =>
-      caption.hidden_by !== undefined && transitionIds.has(caption.hidden_by) ? [index] : [],
-    ),
-  );
   let numbered = 0;
   for (const plan of transitionPlans) {
     const number = plan.choice.kind === "numbered" ? numbered + 1 : undefined;
@@ -1291,7 +1304,8 @@ export function placeEdit(
         ...(level.lines.length > 1 ? { break_after: level.lines[0]!.split(" ").length } : {}),
       };
       shown.push({
-        id: `${plan.id}-${level.spec.role}`,
+        id: plan.id,
+        what: `the text of ${label}`,
         start: Math.max(plan.start, resolveAnchor(level.spec.start, byId, duration)),
         end: plan.end,
         box: { left, right: left + level.width, top: y, bottom: y + level.height },
@@ -1316,7 +1330,10 @@ export function placeEdit(
   const sentenceBlocks = new Map<SentenceSpan | undefined, CaptionBlock>();
   groups.forEach((group, index) => {
     const end = ends[index]!;
-    const outside = group.filter((unit) => !hiddenUnits.has(unit.index));
+    // A caption a text shows while it is on screen (`hidden_by`) has no place
+    // of its own: the captions left in a group are placed, and only they take
+    // room in the block.
+    const outside = group.filter((unit) => unit.caption.hidden_by === undefined);
     if (outside.length === 0) return;
     const sentence = sentenceOf(outside[0]!.caption.words[0]!);
     let block = sentenceBlocks.get(sentence);
@@ -1332,9 +1349,6 @@ export function placeEdit(
 
   const captionFont = preset.caption.font;
   const placedCaptions = new Map<number, { x: number; y: number; size: number }>();
-  // Every caption block as placed, to set its groups again without the
-  // words an extra shows.
-  const laidBlocks: { block: CaptionBlock; laid: LaidBlock; layouts: Line[][] }[] = [];
   const visualSpans = extras.filter((extra) => extra.kind === "visual");
 
   // A transition is kept as placed by its own timing; no other pick trims it.
@@ -1532,6 +1546,7 @@ export function placeEdit(
             want: () => ({ x: safe.left, y: safe.top }),
             maxLines: 99,
             overFace: true,
+            overText: true,
           },
           size: floor,
           fit: {
@@ -1599,13 +1614,19 @@ export function placeEdit(
       align: candidate.align,
       size,
     };
-    laidBlocks.push({ block, laid, layouts: fit.layouts });
-    for (const lines of fit.layouts) layLines(lines, laid, true);
+    for (const lines of fit.layouts) layLines(lines, laid, true, candidate.overText === true);
   }
 
   // One group's lines at their places inside its block: each unit's corner,
   // and (while placing) its box as shown.
-  function layLines(lines: readonly Line[], laid: LaidBlock, show: boolean): void {
+  // `noteOver`: the last resort, where a unit may sit over other text (noted
+  // with what it sits over, before its own box is shown).
+  function layLines(
+    lines: readonly Line[],
+    laid: LaidBlock,
+    show: boolean,
+    noteOver = false,
+  ): void {
     const { size } = laid;
     const space = measurer.width(captionFont, size, " ");
     let y = laid.y;
@@ -1624,11 +1645,25 @@ export function placeEdit(
           size,
         });
         if (show) {
+          const box = { left, right: left + width, top: y, bottom: y + size };
+          const span = { start: unit.start, end: unitEnd.get(unit.index)! };
+          const texts = textsOver(box, span);
+          if (noteOver && texts.length > 0) {
+            const named = overWith(texts);
+            record.push({
+              item: unit.caption.id,
+              action: "kept-overlapping",
+              rule: "all-picks",
+              reason: `caption ${quote(unit.text)} sits over ${named.names} from ${at(span.start)} to ${at(span.end)}; kept, every pick is shown`,
+              with: named.with,
+            });
+          }
           shown.push({
             id: unit.caption.id,
-            start: unit.start,
-            end: unitEnd.get(unit.index)!,
-            box: { left, right: left + width, top: y, bottom: y + size },
+            what: `caption ${quote(unit.text)}`,
+            start: span.start,
+            end: span.end,
+            box,
           });
         }
         x += width + space;
@@ -1652,6 +1687,7 @@ export function placeEdit(
         action: "kept-overlapping",
         rule: "all-picks",
         reason: `${describe(extra)} (${at(span.start)} to ${at(span.end)}) shows at the same time as ${together.map((entry) => describe(entry.extra)).join(", ")}; both kept, every pick is shown`,
+        with: [...new Set(together.map((entry) => entry.extra.id))],
       });
     }
     accepted.push({ extra, start: span.start, end: span.end });
@@ -1731,9 +1767,11 @@ export function placeEdit(
     const clear = [...faceObstacles(span), ...bodies, ...textDuring(span), notch];
     const words = text.split(" ");
     const sizes = sizesFrom(fullSize, preset);
-    // When no candidate is free, the default spot anyway (the first candidate's
-    // wanted point, overlap allowed), at the largest size that fits, never
-    // below the schema minimum.
+    // Tiers: clear of the face, the text and the notch; then clear of the text
+    // and the notch only (the face covered, noted); only then the default spot
+    // anyway (the first candidate's wanted point, text overlap allowed), at the
+    // largest size that fits, never below the schema minimum.
+    const textOnly = [...textDuring(span), notch];
     const anyway: Candidate = {
       name: "at its default spot",
       area: safe,
@@ -1745,88 +1783,99 @@ export function placeEdit(
     for (let size = (sizes.at(-1) ?? fullSize) - 1; size >= MIN_TEXT_SIZE; size -= 1) {
       anySizes.push(size);
     }
-    for (const candidate of [...candidates, anyway]) {
-      const overlapping = candidate === anyway;
-      const obstacles = overlapping ? [notch] : clear;
-      for (const size of overlapping ? anySizes : sizes) {
-        for (const lineCount of words.length > 1 ? [1, 2] : [1]) {
-          const lines = lineCount === 1 ? [text] : balancedBreak(words, font, size);
-          const widths = lines.map((line) => measurer.width(font, size, line));
-          const width = Math.max(...widths);
-          const height = lines.length * size;
-          // Last resort: the smallest size in two lines at the safe box's
-          // corner, past the box if the words must (never dropped).
-          const spot =
-            placeBox(candidate.area, obstacles, width, height, candidate.want(width, height)) ??
-            (overlapping && size === MIN_TEXT_SIZE && (lineCount === 2 || words.length === 1)
-              ? { x: safe.left, y: safe.top }
-              : null);
-          if (!spot) continue;
-          const label = `${accentNoun(accent)} ${quote(text)}`;
-          // Measured once its place and size are known; the notes on the
-          // place itself come first.
-          const notes = record.length;
-          const place = keepReadable(
-            extra.id,
-            label,
-            { ...spot, width, height },
-            span,
-            [preset.accent.color],
-            readability.large,
-            { area: candidate.area, obstacles },
-            `no free place nearby reaches ${readability.large.min}:1`,
-          );
-          const contrastNotes = record.splice(notes);
-          noteOverlap(
-            extra.id,
-            label,
-            { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
-            span,
-            true,
-          );
-          const item: OverlayItem = {
-            id: extra.id,
-            kind: "accent",
-            start: startAnchorOf(accent.from, span.start),
-            end: { word: accent.to, edge: "end" },
-            words: ids,
-            position: { x: place.x, y: place.y, align: "left" },
-            size,
-            ...(lines.length > 1 ? { break_after: lines[0]!.split(" ").length } : {}),
-          };
-          overlays.set(extra.id, item);
-          shown.push({
-            id: extra.id,
-            start: span.start,
-            end: span.end,
-            box: { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
-          });
-          if (candidate !== candidates[0] && !overlapping) {
-            record.push({
-              item: extra.id,
-              action: "moved",
-              rule: "accent-spot",
-              reason: `${label} sits ${candidate.name}: no room ${candidates[0]!.name}`,
+    const tiers = [
+      { list: candidates, obstacles: clear, sizes, overlapping: false },
+      { list: candidates, obstacles: textOnly, sizes, overlapping: false },
+      { list: [anyway], obstacles: [notch], sizes: anySizes, overlapping: true },
+    ];
+    for (const { list, obstacles, sizes: tierSizes, overlapping } of tiers) {
+      for (const candidate of list) {
+        for (const size of tierSizes) {
+          for (const lineCount of words.length > 1 ? [1, 2] : [1]) {
+            const lines = lineCount === 1 ? [text] : balancedBreak(words, font, size);
+            const widths = lines.map((line) => measurer.width(font, size, line));
+            const width = Math.max(...widths);
+            const height = lines.length * size;
+            // Last resort: the smallest size in two lines at the safe box's
+            // corner, past the box if the words must (never dropped).
+            const spot =
+              placeBox(candidate.area, obstacles, width, height, candidate.want(width, height)) ??
+              (overlapping && size === MIN_TEXT_SIZE && (lineCount === 2 || words.length === 1)
+                ? { x: safe.left, y: safe.top }
+                : null);
+            if (!spot) continue;
+            const label = `${accentNoun(accent)} ${quote(text)}`;
+            // Measured once its place and size are known; the notes on the
+            // place itself come first.
+            const notes = record.length;
+            const place = keepReadable(
+              extra.id,
+              label,
+              { ...spot, width, height },
+              span,
+              [preset.accent.color],
+              readability.large,
+              { area: candidate.area, obstacles },
+              `no free place nearby reaches ${readability.large.min}:1`,
+            );
+            const contrastNotes = record.splice(notes);
+            noteOverlap(
+              extra.id,
+              label,
+              { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
+              span,
+              true,
+            );
+            const item: OverlayItem = {
+              id: extra.id,
+              kind: "accent",
+              start: startAnchorOf(accent.from, span.start),
+              end: { word: accent.to, edge: "end" },
+              words: ids,
+              position: { x: place.x, y: place.y, align: "left" },
+              size,
+              ...(lines.length > 1 ? { break_after: lines[0]!.split(" ").length } : {}),
+            };
+            overlays.set(extra.id, item);
+            shown.push({
+              id: extra.id,
+              what: label,
+              start: span.start,
+              end: span.end,
+              box: {
+                left: place.x,
+                right: place.x + width,
+                top: place.y,
+                bottom: place.y + height,
+              },
             });
+            if (candidate !== candidates[0] && !overlapping) {
+              record.push({
+                item: extra.id,
+                action: "moved",
+                rule: "accent-spot",
+                reason: `${label} sits ${candidate.name}: no room ${candidates[0]!.name}`,
+              });
+            }
+            if (size < fullSize) {
+              record.push({
+                item: extra.id,
+                action: "shrunk",
+                rule: "accent-size",
+                reason: `${label} set at ${size} px instead of ${fullSize} px to fit`,
+              });
+            }
+            if (lines.length > 1) {
+              record.push({
+                item: extra.id,
+                action: "wrapped",
+                rule: "accent-wrap",
+                reason: `${label} set in two lines to fit the frame`,
+              });
+            }
+            record.push(...contrastNotes);
+            return;
           }
-          if (size < fullSize) {
-            record.push({
-              item: extra.id,
-              action: "shrunk",
-              rule: "accent-size",
-              reason: `${label} set at ${size} px instead of ${fullSize} px to fit`,
-            });
-          }
-          if (lines.length > 1) {
-            record.push({
-              item: extra.id,
-              action: "wrapped",
-              rule: "accent-wrap",
-              reason: `${label} set in two lines to fit the frame`,
-            });
-          }
-          record.push(...contrastNotes);
-          return;
         }
       }
     }
@@ -1875,17 +1924,19 @@ export function placeEdit(
     const words = text.split(" ");
     const sizes = sizesFrom(fullSize, preset);
     const label = `the hook ${quote(text)}`;
-    // Places the hook at one size and line break; true once it is placed.
+    // Places the hook at one size and line break, clear of `avoid`; true once
+    // it is placed. The forced spot ignores `avoid` (noted when it overlaps).
     const tryAt = (
       candidate: Candidate,
       size: number,
       lines: string[],
+      avoid: Box[],
       forced?: { x: number; y: number },
     ): boolean => {
       const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
       const height = lines.length * size;
       const spot =
-        forced ?? placeBox(candidate.area, obstacles, width, height, candidate.want(width, height));
+        forced ?? placeBox(candidate.area, avoid, width, height, candidate.want(width, height));
       if (!spot) return false;
       const notes = record.length;
       const place = keepReadable(
@@ -1895,19 +1946,17 @@ export function placeEdit(
         span,
         [preset.accent.color],
         readability.large,
-        { area: candidate.area, obstacles },
+        { area: candidate.area, obstacles: avoid },
         `no free place nearby reaches ${readability.large.min}:1`,
       );
       const contrastNotes = record.splice(notes);
-      if (forced) {
-        noteOverlap(
-          extra.id,
-          label,
-          { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
-          span,
-          true,
-        );
-      }
+      noteOverlap(
+        extra.id,
+        label,
+        { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
+        span,
+        true,
+      );
       overlays.set(extra.id, {
         id: extra.id,
         kind: "hook",
@@ -1920,6 +1969,7 @@ export function placeEdit(
       });
       shown.push({
         id: extra.id,
+        what: label,
         start: span.start,
         end: span.end,
         box: { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
@@ -1955,7 +2005,7 @@ export function placeEdit(
       for (const size of sizes) {
         for (const lineCount of words.length > 1 ? [1, 2] : [1]) {
           const lines = lineCount === 1 ? [text] : balancedBreak(words, font, size);
-          if (tryAt(candidate, size, lines)) return;
+          if (tryAt(candidate, size, lines, obstacles)) return;
         }
       }
     }
@@ -1963,17 +2013,31 @@ export function placeEdit(
     // words fit the safe zone in one or two lines, so the hook is never dropped
     // for its size.
     const maxWidth = safe.right - safe.left;
-    for (let size = sizes.at(-1)! - 1; size >= MIN_TEXT_SIZE; size -= 1) {
+    const belowFloor: number[] = [];
+    for (let size = sizes.at(-1)! - 1; size >= MIN_TEXT_SIZE; size -= 1) belowFloor.push(size);
+    for (const size of belowFloor) {
       const oneLine = measurer.width(font, size, text) <= maxWidth;
       const lines = oneLine ? [text] : balancedBreak(words, font, size);
       if (lines.some((line) => measurer.width(font, size, line) > maxWidth)) continue;
       for (const candidate of candidates) {
-        if (tryAt(candidate, size, lines)) return;
+        if (tryAt(candidate, size, lines, obstacles)) return;
+      }
+    }
+    // Clear of the other text but over the face (noted): a hook overlaps other
+    // text only when no size and place clear of it exists.
+    const textOnly = [...textDuring(span), notch];
+    for (const size of [...sizes, ...belowFloor]) {
+      const options = words.length > 1 ? [[text], balancedBreak(words, font, size)] : [[text]];
+      for (const lines of options) {
+        if (lines.some((line) => measurer.width(font, size, line) > maxWidth)) continue;
+        for (const candidate of candidates) {
+          if (tryAt(candidate, size, lines, textOnly)) return;
+        }
       }
     }
     // Nothing free at any size: the largest size whose words fit the safe box
-    // in one or two lines, at the upper part's place, over the face if it must
-    // (noted). At the smallest size it is set whatever its width.
+    // in one or two lines, at the upper part's place, over the face and other
+    // text if it must (noted). At the smallest size it is set whatever its width.
     const boxWidth = safe.right - safe.left;
     for (let size = fullSize; size >= MIN_TEXT_SIZE; size -= 1) {
       const options = words.length > 1 ? [[text], balancedBreak(words, font, size)] : [[text]];
@@ -1984,7 +2048,7 @@ export function placeEdit(
           x: Math.max(safe.left, Math.min(safeCx - width / 2, safe.right - width)),
           y: safe.top,
         };
-        if (tryAt(candidates[0]!, size, lines, forced)) return;
+        if (tryAt(candidates[0]!, size, lines, obstacles, forced)) return;
       }
     }
   }
@@ -2022,7 +2086,12 @@ export function placeEdit(
       top: Math.max(spec.margin, PLATFORM_SAFE.top),
       bottom: frameHeight - spec.margin,
     };
-    // No text is avoided: the word stays at its place (noted).
+    // The head rule's wanted centre at a size. The head is no obstacle (the
+    // word sits behind it by design); the text on screen is.
+    const wantedAt = (size: number) => ({
+      x: frameWidth / 2,
+      y: Math.max(area.top + size / 2, centre),
+    });
     // The person in front over its span: most of the word stays in view,
     // only its lower part behind the head.
     const faces = facesOver(headTrack, span.start, span.end);
@@ -2033,87 +2102,97 @@ export function placeEdit(
         faces,
         preset,
       );
-    const inView = `the head covers at most the lower ${Math.round(maxCovered * 100)}% of it`;
+    // The nearest place to the rule's centre clear of the text on screen, at
+    // the largest size that has one (`shrunk` below the largest). With none at
+    // any size, the default spot: the rule's place at the largest size that
+    // fits, the text overlap noted. The head is never moved for either.
+    let chosen: { spot: { x: number; y: number }; size: number; width: number } | null = null;
     for (const size of sizes) {
       const width = perPx * size;
-      // Wanted at the head rule's centre, then higher a step at a time up to
-      // the area's top, until the word fits.
-      let spot: { x: number; y: number } | null = null;
-      let atRule: { x: number; y: number } | null | undefined;
-      for (let want = centre; ; want -= BIG_WORD_STEP) {
-        const y = Math.max(area.top + size / 2, want);
-        const found = placeBox(area, [], width, size, { x: frameWidth / 2, y });
-        if (atRule === undefined) atRule = found;
-        if (found) {
-          spot = found;
+      const spot = placeBox(area, textDuring(span), width, size, wantedAt(size));
+      if (spot) {
+        chosen = { spot, size, width };
+        break;
+      }
+    }
+    if (!chosen) {
+      for (const size of sizes) {
+        const width = perPx * size;
+        const spot = placeBox(area, [], width, size, wantedAt(size));
+        if (spot) {
+          chosen = { spot, size, width };
           break;
         }
-        if (y <= area.top + size / 2) break;
       }
-      // Last resort: the smallest size at the area's corner (never dropped).
-      if (!spot && size === sizes.at(-1)) spot = { x: area.left, y: area.top };
-      if (!spot) continue;
-      const notes = record.length;
-      // The head overlapping it is the design: never moved for contrast.
-      keepReadable(
-        extra.id,
-        `the big word ${quote(text)}`,
-        { ...spot, width, height: size },
-        span,
-        [spec.color],
-        readability.large,
-        null,
-        "the big word is never moved",
-      );
-      const contrastNotes = record.splice(notes);
-      const box = { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + size };
-      noteOverlap(extra.id, `the big word ${quote(text)}`, box, span, false);
-      const share = covered(spot, width, size);
-      if (share > maxCovered + SLACK) {
-        record.push({
-          item: extra.id,
-          action: "kept-overlapping",
-          rule: "all-picks",
-          reason: `the big word ${quote(text)} sits with the person covering ${Math.round(share * 100)}% of it from ${at(span.start)} to ${at(span.end)}; kept, every pick is shown`,
-        });
-      }
-      if (atRule && spot.y < atRule.y) {
-        record.push({
-          item: extra.id,
-          action: "moved",
-          rule: "big-word-visible",
-          reason: `the big word ${quote(text)} moves up ${atRule.y - spot.y} px so ${inView}`,
-        });
-      }
-      behind.set(extra.id, {
-        id: extra.id,
-        kind: "word",
-        text,
-        start: startAnchorOf(first.id, span.start),
-        end: anchorAt(
-          span.end,
-          transcript.words.filter((w) => w.start >= first.start),
-        ),
-        position: spot,
-        size,
-      });
-      shown.push({
-        id: extra.id,
-        start: span.start,
-        end: span.end,
-        box: { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + size },
-      });
-      if (size < largest) {
-        record.push({
-          item: extra.id,
-          action: "shrunk",
-          rule: "big-word-size",
-          reason: `the big word ${quote(text)} set at ${size} px instead of ${largest} px, clear of the captions`,
-        });
-      }
-      record.push(...contrastNotes);
-      return;
     }
+    // Last resort: the smallest size at the area's corner (never dropped).
+    if (!chosen) {
+      const size = sizes.at(-1)!;
+      chosen = { spot: { x: area.left, y: area.top }, size, width: perPx * size };
+    }
+    const { spot, size, width } = chosen;
+    const notes = record.length;
+    // The head overlapping it is the design: never moved for contrast.
+    keepReadable(
+      extra.id,
+      `the big word ${quote(text)}`,
+      { ...spot, width, height: size },
+      span,
+      [spec.color],
+      readability.large,
+      null,
+      "the big word is never moved",
+    );
+    const contrastNotes = record.splice(notes);
+    const box = { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + size };
+    noteOverlap(extra.id, `the big word ${quote(text)}`, box, span, false);
+    const share = covered(spot, width, size);
+    if (share > maxCovered + SLACK) {
+      record.push({
+        item: extra.id,
+        action: "kept-overlapping",
+        rule: "all-picks",
+        reason: `the big word ${quote(text)} sits with the person covering ${Math.round(share * 100)}% of it from ${at(span.start)} to ${at(span.end)}; kept, every pick is shown`,
+      });
+    }
+    // Moved from the rule's own place for the text on screen.
+    const atRule = placeBox(area, [], width, size, wantedAt(size));
+    if (atRule && (spot.x !== atRule.x || spot.y !== atRule.y)) {
+      record.push({
+        item: extra.id,
+        action: "moved",
+        rule: "big-word-spot",
+        reason: `the big word ${quote(text)} moves ${Math.round(Math.hypot(spot.x - atRule.x, spot.y - atRule.y))} px to a place clear of the text on screen from ${at(span.start)} to ${at(span.end)}`,
+      });
+    }
+    behind.set(extra.id, {
+      id: extra.id,
+      kind: "word",
+      text,
+      start: startAnchorOf(first.id, span.start),
+      end: anchorAt(
+        span.end,
+        transcript.words.filter((w) => w.start >= first.start),
+      ),
+      position: spot,
+      size,
+    });
+    shown.push({
+      id: extra.id,
+      what: `the big word ${quote(text)}`,
+      start: span.start,
+      end: span.end,
+      box: { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + size },
+    });
+    if (size < largest) {
+      record.push({
+        item: extra.id,
+        action: "shrunk",
+        rule: "big-word-size",
+        reason: `the big word ${quote(text)} set at ${size} px instead of ${largest} px to fit`,
+      });
+    }
+    record.push(...contrastNotes);
   }
 
   // A visual's card: an empty white stroke frame, a small corner card (picture
@@ -2293,45 +2372,8 @@ export function placeEdit(
     }
   }
 
-  // Never the same word twice on screen: the pieces an accent or a big word
-  // shows are left out while it is on screen (`hidden_by`, set when the
-  // captions were split). Their group keeps the rest, set again at the block's
-  // place, size and alignment, inside its old box; a group with nothing left
-  // shows no caption then.
-  const hiddenBy = new Map<number, string>();
-  captions.forEach((caption, index) => {
-    if (caption.hidden_by !== undefined) hiddenBy.set(index, caption.hidden_by);
-  });
-  for (const { block, laid, layouts } of laidBlocks) {
-    block.groups.forEach((group, at) => {
-      if (!group.some((unit) => hiddenBy.has(unit.index))) return;
-      const rest = group.filter((unit) => !hiddenBy.has(unit.index));
-      for (const unit of group) if (hiddenBy.has(unit.index)) placedCaptions.delete(unit.index);
-      if (rest.length === 0) return;
-      const was = layouts[at]!;
-      // Fewer units never need more lines or a wider box than the group had.
-      const lines =
-        wrapUnits(rest, captionFont, laid.size, laid.width + SLACK, was.length, measurer) ??
-        keptLines(was, laid.size);
-      layLines(lines, laid, false);
-    });
-  }
-
-  // A group's own lines without its hidden units (never reached: the rest
-  // always wraps inside the group's box).
-  function keptLines(lines: readonly Line[], size: number): Line[] {
-    const space = measurer.width(captionFont, size, " ");
-    return lines.flatMap((line) => {
-      const units = line.units.filter(({ unit }) => !hiddenBy.has(unit.index));
-      if (units.length === 0) return [];
-      const width = units.reduce((sum, { width: w }) => sum + w, 0) + space * (units.length - 1);
-      return [{ units, width }];
-    });
-  }
-
   // The tracks, in the current version's caption order and the answer's order.
-  // A caption a transition shows as its levels, or whose words an extra
-  // shows, has no place of its own.
+  // A caption a text shows while it is on screen has no place of its own.
   const outCaptions: CaptionItem[] = captions.map((caption, index) => {
     const lastWord = unitEndWord.get(index)!;
     const end = unitEnd.get(index)!;
@@ -2341,8 +2383,7 @@ export function placeEdit(
         ? { word: lastWord.id, edge: "end" }
         : { word: lastWord.id, edge: "end", offset };
     const place = placedCaptions.get(index);
-    const by = hiddenBy.get(index);
-    if (by) return { ...caption, end: endAnchor, hidden_by: by };
+    if (caption.hidden_by !== undefined) return { ...caption, end: endAnchor };
     if (!place) return { ...caption, end: endAnchor };
     return {
       ...caption,
@@ -2419,9 +2460,6 @@ const HOOK_ID = "hook";
 function hookText(choice: HookChoice): string {
   return choice.text.trim().split(/\s+/).join(" ");
 }
-
-// How far a big word moves up at a time to get out from behind the head.
-const BIG_WORD_STEP = 10;
 
 // A big word's item id by its place in the answer: `big-word-1`, ...
 function bigWordId(index: number): string {

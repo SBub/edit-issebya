@@ -1,5 +1,6 @@
 import { type BigWordBox, maskSpans, placedBigWord, visualBox } from "./behind.ts";
 import { type Check, runChecks } from "./checks.ts";
+import type { EngineNote } from "./engine.ts";
 import { type TextBox } from "./engine-space.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
@@ -47,6 +48,12 @@ export interface BuildResult {
   checks: Check[];
 }
 
+export interface BuildOptions {
+  // The engine's record of the placement: its kept overlaps are the only
+  // text overlaps the checks excuse.
+  engineRecord?: readonly EngineNote[];
+}
+
 // The GSAP build the reference reel was made with, pinned: HyperFrames drives
 // its paused timeline.
 const GSAP = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js";
@@ -65,6 +72,7 @@ export function build(
   headTrack: HeadTrack,
   preset: Preset,
   measurer: Measurer,
+  options: BuildOptions = {},
 ): BuildResult {
   const resolved = resolveTimeline(edit, transcript);
   // A caption a text shows is left out only while that text is on screen.
@@ -105,6 +113,7 @@ export function build(
     preset,
     [...bigWords.values()],
     levels,
+    options.engineRecord,
   );
   const spans = maskSpans(edit, transcript, preset);
   const masks = spans.map((maskSpan) => {

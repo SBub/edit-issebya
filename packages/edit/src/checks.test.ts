@@ -3,8 +3,10 @@ import { build } from "./build.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { ISSEBYA_PRESET, PLATFORM_BUTTONS } from "./preset.ts";
 import type { Edit } from "./schema.ts";
+import type { EngineNote } from "./engine.ts";
 import { FIXTURES, PLACED_FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
+import { resolveTimeline } from "./timeline.ts";
 
 // The behind edit's choices placed by the layout engine: every check passes.
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-engine")!;
@@ -169,7 +171,11 @@ describe("runChecks on big words behind the speaker", () => {
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
-    const rules = [...new Set(checks.map((check) => check.rule))];
+    // The word also sits on the captions (a `text-overlap`, checked below):
+    // this test is about its timing only.
+    const rules = [...new Set(checks.map((check) => check.rule))].filter(
+      (rule) => rule !== "text-overlap",
+    );
     expect(rules).toEqual(["big-word-timing"]);
     expect(checks.find((check) => check.rule === "big-word-timing")!.reason).toMatch(
       /^big word big-word-1 \("work"\) shows at \d+\.\d{3} s, more than 0\.2 s before w95 is said at 24\.887 s$/,
@@ -210,5 +216,55 @@ describe("runChecks on big words behind the speaker", () => {
     expect(frame[0]!.reason).toBe(
       'big word big-word-1 ("distribution") leaves the frame: bottom edge 2097 > 1920',
     );
+  });
+});
+
+describe("runChecks on text overlap", () => {
+  // Two texts shown at a shared moment, the second moved onto the first's place.
+  function overlapping(): { edit: Edit; first: string; second: string } {
+    const edit = structuredClone(hand.edit);
+    const spans = resolveTimeline(edit, hand.transcript);
+    const texts = [
+      ...edit.tracks.captions.filter((caption) => caption.position && !caption.hidden_by),
+      ...edit.tracks.overlays.filter((item) => item.position),
+    ];
+    for (const [index, first] of texts.entries()) {
+      const a = spans.get(first.id)!;
+      const second = texts
+        .slice(index + 1)
+        .find((other) => spans.get(other.id)!.start < a.end && a.start < spans.get(other.id)!.end);
+      if (second) {
+        second.position = { ...first.position! };
+        return { edit, first: first.id, second: second.id };
+      }
+    }
+    throw new Error("no two texts share a moment in the fixture");
+  }
+
+  const buildWith = async (edit: Edit, engineRecord?: readonly EngineNote[]) =>
+    build(edit, hand.transcript, hand.headTrack, ISSEBYA_PRESET, await nodeMeasurer(), {
+      engineRecord,
+    }).checks.filter((check) => check.rule === "text-overlap");
+
+  it("reports a text on another text shown at the same moment, with no record", async () => {
+    const { edit, second } = overlapping();
+    const checks = await buildWith(edit);
+    expect(checks.map((check) => check.item)).toContain(second);
+  });
+
+  it("excuses the pair the engine record notes as kept-overlapping, and no other", async () => {
+    const { edit, first, second } = overlapping();
+    const kept: EngineNote = {
+      item: second,
+      action: "kept-overlapping",
+      rule: "all-picks",
+      reason: "kept",
+      with: [first],
+    };
+    expect(await buildWith(edit, [kept])).toEqual([]);
+    // The note names the other text: the same pair with its own name only is
+    // no excuse, nor a note on a third text.
+    expect(await buildWith(edit, [{ ...kept, with: ["nobody"] }])).not.toEqual([]);
+    expect(await buildWith(edit, [{ ...kept, action: "retimed" }])).not.toEqual([]);
   });
 });

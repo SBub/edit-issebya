@@ -284,7 +284,9 @@ word" is now "spoken words, plus one written hook at the start".
   tries one line, then two (the balanced break), at each size down to the floor before it moves on.
   Contrast as for an accent. When nothing fits at any size, its slot is used at the largest size whose
   words fit the safe box in one or two lines, at the upper part's place, over the face only as the last
-  resort (noted). Below the floor it shrinks further, to the smallest size at which its words fit the
+  resort (noted). Its tiers: the upper part and the free safe zone clear of the face and the text, at each
+  size down to the floor; then below the floor; then clear of the text only, over the face (noted, the
+  face); only then the slot. Below the floor it shrinks further, to the smallest size at which its words fit the
   safe zone in one or two lines (`hook-size`, `shrunk`), never below `MIN_TEXT_SIZE` (8 px, the schema
   minimum for every text size: the schema refuses a smaller one, so no edit with a smaller size is ever
   built). The hook is never dropped for its size. Notes: `hook-spot` (`moved`), `hook-size` (`shrunk`),
@@ -379,13 +381,19 @@ each such overlap is kept and noted.
   - Accent: above the head (its top about 190 px above the head), the upper part of the frame, the
     free part of the safe zone (with no head: the accent line at y 1130, then the safe zone). In
     each candidate it shrinks to the floor (60%) and wraps to two lines (the balanced break) before it
-    moves on. With no free place it is set at its default spot, at the largest size that fits down to
-    8 px (`MIN_TEXT_SIZE`), the overlap noted (`all-picks`).
+    moves on. Its tiers, each tried for every candidate and size before the next: clear of the face, the
+    text and the notch; clear of the text and the notch only (over the face, noted with the face); and last
+    its default spot, at the largest size that fits down to 8 px (`MIN_TEXT_SIZE`), the text it sits over
+    noted (`all-picks`, with what it sits over). A place only at a size under the floor does not count as
+    free: the candidate sizes end at the floor, so an accent can be kept over a caption while a clear place
+    exists at a smaller size.
   - Big word: as large as fits between the side margins (at most `maxSize`, 400 px), its centre
     wanted `belowHeadTop` below the robust head top at its span (or at `noHeadY`), at the nearest
-    place inside the frame (40 px margin, never above `PLATFORM_SAFE`'s top 220). Its place is not
-    moved for the head or for text: other text under it is noted as an overlap (`all-picks`). Most
-    of it stays in view: in every column the person (the robust faces over its span, `facesOver`,
+    place inside the frame (40 px margin, never above `PLATFORM_SAFE`'s top 220). The head never moves
+    it; the text on screen does: at the largest size that has a place clear of the text over its span,
+    the nearest such place to the wanted centre (moved, rule `big-word-spot`). With no clear place at any
+    size it keeps its rule's place at the largest size that fits, the text under it noted as an overlap
+    (`all-picks`, with the texts). Most of it stays in view: in every column the person (the robust faces over its span, `facesOver`,
     and the body under them, 1.8 head widths wide) covers at most the lower 30% of its height
     (`bigWordCoveredShare` in `src/behind.ts`, shared with the check). A larger cover is kept and
     noted (`all-picks`, "the person covering N% of it"). Where the word does not fit at its size, the
@@ -409,9 +417,9 @@ each such overlap is kept and noted.
     or a list's phrase shows while that text is on screen are left out for that stretch (`hidden_by` the
     text, no position): a run of words all shown by one text is one caption, and the other runs stay
     captions of their own (a cut list's later words, a caption's words after an accent), numbered `-2`,
-    `-3`, ... after the caption's id. A caption group with some captions left out keeps the rest, set
-    again at the block's place, size and alignment, inside its old box; a group with every caption left
-    out shows no caption then. Nothing is recorded for it.
+    `-3`, ... after the caption's id. Only the captions left in are placed: a group keeps its own rest, in
+    the block's place, size and alignment, and a group with every caption left out shows no caption then.
+    The captions left out take no room, so they block no other text. Nothing is recorded for it.
 - Readability (`src/contrast.ts`, `src/background.ts`, `PlaceOptions.backgrounds`): the worker
   samples the footage into a background map (`BackgroundMap`: 2 frames a second, a 36 by 64 grid of
   30 px cells, each cell's WCAG relative luminance as a byte), and `backgroundSampler(map, frame)`
@@ -452,8 +460,9 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
   does, it takes its default spot anyway (an accent or a transition's text at the head's upper place
   or the line, a big word at its head rule's centre, a visual at the top-left corner of the safe zone),
   at the largest size that fits and never below `MIN_TEXT_SIZE` (8 px). The overlap is noted
-  `kept-overlapping` (rule `all-picks`) with what it sits over (the face, other text) or the picks it
-  shares its time with. The engine writes no `dropped` note (`src/engine.test.ts`, "nothing the answer
+  `kept-overlapping` (rule `all-picks`) with what it sits over (the face, other text, named) or the picks it
+  shares its time with. Text never overlaps other text while a free spot exists (Rules): the default spot
+  over other text is the last resort for each text, after the face-only tier. The engine writes no `dropped` note (`src/engine.test.ts`, "nothing the answer
   picks is dropped"). The fallbacks, each noted:
   - A big word or a visual too close to the reel's end for its minimum: the end is the reel's end and the
     start moves earlier, so it shows at least `SHOWN_FLOOR_SECONDS` (0.5 s) (`clamped-to-end`). An accent,
@@ -482,18 +491,20 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
     `hook-time`); with no free place at any size, its slot at the largest size that fits, the overlap
     noted. The hook keeps its fixed slot in both cases.
 - Captions are never dropped: with no free place even at the floor, they take the caption line over
-  the face (recorded `covers-face`). A caption left out while an extra shows its words is not dropped:
+  the face (recorded `covers-face`); only with no free place there either do they sit over other text,
+  each caption noted `kept-overlapping` with the texts it sits over. A caption left out while an extra shows its words is not dropped:
   its words are on screen.
 - Record: a list of `EngineNote` `{ item, action, rule, reason }`, `action` one of `moved` (not its
   kind's first place), `shrunk`, `wrapped`, `retimed`, `covers-face`, `low-contrast`,
-  `kept-overlapping` (a pick kept over the face, other text or another pick, rule `all-picks`),
+  `kept-overlapping` (a pick kept over the face, other text or another pick, rule `all-picks`; a text's
+  note carries `with`, the ids of the texts it sits over or shares its time with),
   `clamped-to-end`, `moved-off-cut` and `text-from-words`. `reason` says in plain words what happened,
   with the item's text and times, for example
   `{ "item": "visual-1", "action": "kept-overlapping", "rule": "all-picks", "reason": "visual 1 sits over the face from 23.48 s to 26.23 s; kept, every pick is shown" }`.
   Rules: `caption-min` (`retimed`), `caption-spot`, `caption-size`, `caption-face` (`covers-face`),
   `accent-time` (`clamped-to-end`), `accent-spot`, `accent-size`, `accent-wrap`, `big-word-time`
-  (`clamped-to-end`), `big-word-size` (`shrunk`), `big-word-visible` (`moved`, only if a placement moves
-  the word up; the current big word placement never does), `visual-time` (`clamped-to-end`, and
+  (`clamped-to-end`), `big-word-size` (`shrunk`), `big-word-spot` (`moved`, clear of the text on screen),
+  `visual-time` (`clamped-to-end`, and
   `retimed` when a visual starts before its sentence), `visual-size` (`shrunk`), `hidden-footage`
   (`moved-off-cut`), `hook-time` (`clamped-to-end`), `hook-spot` (`moved`), `hook-size` (`shrunk`),
   `hook-wrap` (`wrapped`), `transition-time` (`clamped-to-end`), `transition-min` (`retimed`, a phrase with no length at all), `transition-entrance` (`retimed`, a list's
@@ -506,7 +517,8 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
   one line per version.
 - Final checks: `runChecks` (below) runs on every placed edit. They must never fail on the engine's
   output, except `face` for a caption over the face that the engine recorded as `covers-face`; any
-  other failure is an engine bug, logged with the reel id while the version is still saved.
+  other failure, `text-overlap` included, is an engine bug, logged with the reel id while the version is
+  still saved.
 
 ### Checks
 
@@ -523,6 +535,11 @@ readable reason string (an empty list means every rule passes):
   caption's span, the same ones the engine avoids). The one failure it allows is a caption the engine
   put over the face and recorded as `covers-face` (`apps/worker/src/decide/run-decide.ts` leaves it out
   of the refusal). A hidden caption has no position, so it is never checked.
+- `text-overlap` (`checks.ts`, the single mode's rule): two texts (captions, accents, questions, the hook,
+  big words, a list's levels) that share a moment never overlap on screen, except a pair the engine record
+  notes as `kept-overlapping` with the other in its `with` (either item's note may name the other). It
+  needs the record: `build(edit, ..., { engineRecord })`, which the decide step and the first version pass.
+  The engine's output never fails it.
 - `timing`: captions at least `caption.minSeconds` (0.25 s) on screen, the hook at least
   `SHOWN_FLOOR_SECONDS` (0.5 s), and every other text box (an accent, a question, a list's level) a length
   above zero, with no minimum.
@@ -532,8 +549,8 @@ readable reason string (an empty list means every rule passes):
 - `time-in-speech`: a time anchor outside speech (it names the word to anchor to instead).
 - `out-of-reel`: an anchor that resolved outside the reel and was clamped.
 
-The checks do not look at overlaps between picks, nor at a visual over the face: an overlap is a
-pick the engine kept and noted. The glossary check is separate (`src/glossary.ts`, `glossaryChecks`).
+The checks look at overlaps between texts only (`text-overlap`); a visual over the face or over a text is
+a pick the engine kept and noted. The glossary check is separate (`src/glossary.ts`, `glossaryChecks`).
 
 ### Versions and restore
 
@@ -670,6 +687,9 @@ never fatal.
     a question shown with the others; the cuts and overlaps said in the record; a visual the face leaves no
     corner for placed at the default corner, noted; a big word the head hides placed at every height
     where it is, noted; a transition that runs during the hook shown with the hook's window kept.
+  - "texts never overlap on screen while a free spot exists": random picks over the fixture reel and over a
+    caption-heavy opening never fail `text-overlap`; a big word over the captions of its sentence moved
+    clear of them (`big-word-spot`); a text that shares its time with a cut hook's floor noted with it.
   - "nothing the answer picks is dropped": a pick at the reel's end, a pick over a cut, a transition
     with no text of its own and a hook on a 1 s reel are all placed; random sets of picks over the
     fixture transcript drop none.
@@ -709,6 +729,10 @@ never fatal.
   layout engine, never from the answer.
 - Never let an overlap pass silently: a pick placed over the face, other text or another pick is kept
   and noted (`kept-overlapping`, rule `all-picks`).
+- Never overlap two texts on screen at a shared moment while a free spot exists for the later one (at any
+  candidate and size, the face avoided first): a text is placed clear of every text it shares a moment with,
+  and keeps its default spot over other text only when none exists. The note names the pair (`with`), and
+  the `text-overlap` check excuses only that pair.
 - Never drop a pick, and never drop a caption: with no free place even at the floor, a caption takes
   the caption line over the face (`covers-face`). A caption left out while an extra shows its words is
   not dropped: its words are on screen.

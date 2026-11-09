@@ -1,4 +1,5 @@
 import type { BigWordBox } from "./behind.ts";
+import type { EngineNote } from "./engine.ts";
 import type { TextBox } from "./engine-space.ts";
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import {
@@ -17,6 +18,7 @@ export type CheckRule =
   | "safe-box"
   | "frame"
   | "face"
+  | "text-overlap"
   | "timing"
   | "big-word-timing"
   | "sound-gap"
@@ -58,15 +60,18 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
 // The layout checks, in a stable order: text inside the safe box, never past
 // the platform guard nor over its button column whatever the preset says, big
 // words behind the speaker inside the frame (they cross the safe box by
-// design), captions clear of the face, captions and accents at least their
+// design), captions clear of the face, no two texts on screen at a shared
+// moment overlapping (`text-overlap`), captions and accents at least their
 // minimum on screen (a pick at least the shown floor), the big word never more
 // than the lead before its word is said, sounds at least the preset's gap
 // apart, time anchors outside speech, anchors inside the reel. The face is
-// the robust one (`facesOver`) the layout engine places around. Overlaps are
-// kept by the engine (`kept-overlapping`), so no check counts them. `boxes`
-// holds the captions shown in their place (never those a transition shows as
-// its levels), `levels` the transitions' text levels, checked for the safe box
-// only.
+// the robust one (`facesOver`) the layout engine places around. A text overlap
+// is excused only where the engine record notes the pair as `kept-overlapping`
+// (its `with`: the engine found no free place for the later text); the engine
+// never fails this check. `boxes` holds the captions shown in their place
+// (never those a transition or an extra shows), `levels` the transitions'
+// text levels (`transitionId` is the transition they belong to), checked for
+// the safe box and for overlaps.
 export function runChecks(
   edit: Edit,
   boxes: readonly TextBox[],
@@ -76,7 +81,9 @@ export function runChecks(
   preset: Preset,
   bigWords: readonly BigWordBox[] = [],
   // The transitions' text levels: inside the safe box and on no other text.
-  levels: readonly TextBox[] = [],
+  levels: readonly (TextBox & { transitionId: string })[] = [],
+  // The engine's record of the placement (its kept overlaps).
+  record: readonly EngineNote[] = [],
 ): Check[] {
   const checks: Check[] = [];
   const safe = intersectBox(preset.safe, PLATFORM_SAFE);
@@ -136,6 +143,61 @@ export function runChecks(
         rule: "face",
         item: box.itemId,
         reason: `${label(box)} covers the face (x ${px(face.left)} to ${px(face.right)}, y ${px(face.top)} to ${px(face.bottom)})`,
+      });
+    }
+  }
+
+  // Texts shown at a moment: each one's id (a level's transition), its name,
+  // box and span. Two that share a moment must not overlap on screen.
+  const texts: { owner: string; what: string; rect: Box; start: number; end: number }[] = [
+    ...boxes.map((box) => ({
+      owner: box.itemId,
+      what: label(box),
+      rect: { left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height },
+      start: box.start,
+      end: box.end,
+    })),
+    ...levels.map((box) => ({
+      owner: box.transitionId,
+      what: label(box),
+      rect: { left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height },
+      start: box.start,
+      end: box.end,
+    })),
+    ...bigWords.map((word) => {
+      const span = resolved.get(word.itemId)!;
+      return {
+        owner: word.itemId,
+        what: `big word ${word.itemId} (${JSON.stringify(word.text)})`,
+        rect: {
+          left: word.x,
+          right: word.x + word.width,
+          top: word.y,
+          bottom: word.y + word.height,
+        },
+        start: span.start,
+        end: span.end,
+      };
+    }),
+  ];
+  // The engine noted this pair as kept (either item's note naming the other).
+  const kept = (a: string, b: string) =>
+    record.some(
+      (note) =>
+        note.action === "kept-overlapping" &&
+        ((note.item === a && note.with?.includes(b) === true) ||
+          (note.item === b && note.with?.includes(a) === true)),
+    );
+  for (let index = 0; index < texts.length; index += 1) {
+    const text = texts[index]!;
+    for (const other of texts.slice(0, index)) {
+      if (!(text.start < other.end - SLACK && other.start < text.end - SLACK)) continue;
+      if (!overlaps(shrink(text.rect, SLACK), other.rect)) continue;
+      if (text.owner !== other.owner && kept(text.owner, other.owner)) continue;
+      checks.push({
+        rule: "text-overlap",
+        item: text.owner,
+        reason: `${text.what} sits on ${other.what} while both are shown`,
       });
     }
   }

@@ -367,6 +367,7 @@ export function runDecide({
               headTrack,
               preset,
               measure,
+              { engineRecord: composed.record },
             );
             engine.setAttribute("decide.checks", checks.length);
             return {

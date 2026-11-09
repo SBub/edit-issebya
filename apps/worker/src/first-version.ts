@@ -141,7 +141,9 @@ export async function saveFirstVersion({
         { backgrounds: backgroundSampler(map, ISSEBYA_PRESET.frame) },
       );
       const edit = { ...baseline, tracks };
-      const { checks } = build(edit, transcript, headTrack, ISSEBYA_PRESET, measurer);
+      const { checks } = build(edit, transcript, headTrack, ISSEBYA_PRESET, measurer, {
+        engineRecord: record,
+      });
       ctx.signal.throwIfAborted();
       const saved = await saveVersion(
         { rows, blobs, keyPrefix, newId },
