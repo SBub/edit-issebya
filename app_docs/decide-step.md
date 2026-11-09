@@ -26,7 +26,7 @@ over the version by the layout engine together with the hook (`placeEdit`, `app_
 "Layout engine"), built and checked, and becomes a new version (version 2 on a fresh reel). Only an
 answer breaking the schema or the glossary is refused: it goes back once with the reasons; a second
 refusal of the hook or of the components fails the step and leaves the current version untouched.
-Layout never refuses an answer: nothing is dropped (a pick with no free place takes its default spot, its overlap noted; a text never overlaps another text while a free spot exists), and every note is written to the engine record saved with the version. Nothing asks Claude again about what the engine left out: the decide step makes no
+Layout never refuses an answer: nothing is dropped but by the same-text rule (a text pick whose every word an earlier text pick shows; its trim or drop is noted), a pick with no free place takes its default spot, its overlap noted, and a text never overlaps another text while a free spot exists. Every note is written to the engine record saved with the version. Nothing asks Claude again about what the engine left out: the decide step makes no
 call after the components' answer is placed. Every AI call a decided version made (the hook attempts,
 the decide attempts) is stored beside it with its prompt, schema and raw answer
 (the version's AI record), so a version can be replayed and diagnosed.
@@ -111,7 +111,7 @@ placed first):
   its own timing (from `accent.leadSeconds`, 0.2 s, before its first word to its last word's end, at
   least 1.5 s, a target: a text said later in it cuts it short). An accent or a question shows exactly its words (no lead, no minimum). A big word only on a key word, a spoken word by construction.
 - Pace (`preset.pace`): the answer carries no rate (the transition kind is given as data, its pace is
-  not); the components prompt is told the reel's intensity word and the target count, never a rate. Every pick shows at its own words' times, so the rhythm is the answer's, and a reel too short for a pick clamps it to the reel's end (nothing is dropped).
+  not); the components prompt is told the reel's intensity word and the target count, never a rate. Every pick shows at its own words' times, so the rhythm is the answer's, and a reel too short for a pick clamps it to the reel's end (nothing is dropped for its length).
 
 ### Stored versions
 

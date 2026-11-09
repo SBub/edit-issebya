@@ -716,8 +716,8 @@ never fatal.
     caption-heavy opening never fail `text-overlap`; a big word over the captions of its sentence moved
     clear of them (`big-word-spot`); a text that shares its time with a cut hook's floor noted with it.
   - "nothing the answer picks is dropped": a pick at the reel's end, a pick over a cut, a transition
-    with no text of its own and a hook on a 1 s reel are all placed; random sets of picks over the
-    fixture transcript drop none.
+    with no text of its own and a hook on a 1 s reel are all placed. (Random sets of picks are checked in
+    "every pick shown, or dropped where another pick shows its text": a pick is dropped only by `same-text`.)
 - `src/decide.test.ts`: the components' JSON schema (word ids, closed objects, no time, position,
   size, font, colour, spot, style or title anywhere, no hook); the hook's answer (one text, required,
   never null, refused above the word and character limits, one plain line, its final stop taken off,

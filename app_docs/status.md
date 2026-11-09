@@ -53,16 +53,16 @@ machine from idle-sleeping while a job runs.
   words), `stepWords(name, { restoreNumber })` (`restore` names its version N, else `an earlier
 version`), the `Working on it` / `Could not finish this step` fallback for an unknown step, and
   `RULE_WORDS` with `refusalReason(rules)`: the first two distinct rule words of a refused answer,
-  joined with "and", from the rule names only. `RULE_WORDS` covers `no-change` ("your reel would
-  look the same") and the rules a refused answer carries: `answer-json`, `answer-schema`, `answer-edit`
-  and `glossary`.
+  joined with "and", from the rule names only. `RULE_WORDS` covers the check rules (`safe-box`, `frame`,
+  `face`, `text-overlap`, `same-text`, `timing`, `big-word-timing`, `sound-gap`, `time-in-speech`,
+  `out-of-reel`), the rules a refused answer carries (`answer-json`, `answer-schema`, `answer-edit` and
+  `glossary`) and the engine's `hidden-footage`. The engine's other notes never refuse, so they have no words.
 - Failure actions (`FailureAction`): every retryable failure offers Try again and Keep the current version.
   Try again calls `requestRetry` and shows its answer (`Queued again`, say). Keep the current version dismisses the failure. Each
   action captures `studio_failure_action` with `reel_id`, `job_id`, `action`, `failure_kind`,
   `step` and `job_kind` (the `job_id` links it to the job's error). A handled failure is dismissed
   in memory for the page load: a reload shows a still-unhandled one again.
-- The headline is `Nothing changed` for a refused job whose `failure_rules` include `no-change`
-  (a change that would leave the reel as it is), else the failed step's `failed` words; the reason line is `refusalReason` for a refused
+- The headline is the failed step's `failed` words; the reason line is `refusalReason` for a refused
   answer and nothing otherwise. No error tail, code or machine step name reaches the page.
 - `apps/studio/src/components/ProgressOverlay.tsx` renders it (layout in
   `app_docs/studio-reel-layout.md`). The words sit in a polite live region (`role="status"

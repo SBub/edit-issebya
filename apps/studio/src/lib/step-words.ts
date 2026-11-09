@@ -74,14 +74,19 @@ export const JOB_STEPS: Record<JobKind, readonly string[]> = {
   start_over: ["decide"],
 };
 
-// Plain words per check rule of a refused answer (rule names only reach the
-// page, never the AI's or the checks' free text).
+// Plain words per rule that can name a refused answer: the checks' rules (what
+// the layout would break), the answer's own refusals, and the engine's
+// hidden-footage rule. The rule names only reach the page, never the AI's or
+// the checks' free text. The engine's other notes never refuse an answer, so
+// they have no words here.
 export const RULE_WORDS: Record<string, string> = {
-  "behind-caption": "a photo would cover your captions",
-  "behind-face": "a photo would cover your face",
   "safe-box": "something would sit outside the safe area",
   frame: "something would leave the frame",
   face: "something would cover your face",
+  "text-overlap": "two texts would sit on top of each other",
+  "same-text": "the same word would show twice on screen",
+  timing: "something would show for too short a time",
+  "big-word-timing": "a big word would show before its word is said",
   "sound-gap": "two sounds would play too close together",
   "time-in-speech": "an accent would land outside your words",
   "out-of-reel": "something would run past the end",
@@ -89,13 +94,7 @@ export const RULE_WORDS: Record<string, string> = {
   "answer-json": "the AI's answer could not be used",
   "answer-schema": "the AI's answer could not be used",
   "answer-edit": "the AI's answer could not be used",
-  // A change that would leave the reel as it is, and why what was asked did
-  // not make it in (the layout engine's drop rules).
-  "no-change": "your reel would look the same",
-  "no-room": "there was no free room on screen",
-  "one-extra": "something else already shows at that moment",
   "hidden-footage": "that part of the clip is cut",
-  "make-room": "there was no room even after making space",
 };
 
 // The reason line of a refused answer: the first two distinct rule words

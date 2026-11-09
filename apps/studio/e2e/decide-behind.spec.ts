@@ -116,7 +116,8 @@ test("the automatic decide proposes a visual, and the preview shows its frame", 
 
   // Version 2: the process job's decide proposed a visual, and the layout put
   // it as a card over the footage: the full card (360 by 450) or its smaller
-  // step (252 by 315), beside the speaker, never over the face.
+  // step (252 by 315), off the face where a spot is free (over it only as a
+  // noted last resort).
   const v2 = await currentVersion();
   expect(v2.version.number).toBe(2);
   expect(v2.behind).toEqual([expect.objectContaining({ kind: "visual" })]);

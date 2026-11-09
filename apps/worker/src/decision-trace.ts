@@ -27,7 +27,8 @@ export interface TraceRow {
   item: string;
   // What Claude proposed, in words: the kind, the spoken words, its details.
   proposed: string;
-  // kept: no engine note; changed: placed with notes (the engine drops nothing).
+  // kept: no engine note; changed: placed with notes (a pick is dropped only by
+  // the same-text rule, its note says so).
   outcome: "kept" | "changed";
   // The engine's notes on it as `action (rule)`, in order.
   engine: string;

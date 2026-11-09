@@ -203,7 +203,7 @@ describe("overlayState", () => {
       kind: "start_over",
       status: "failed",
       failure_kind: "answer_refused",
-      failure_rules: ["behind-caption", "safe-box"],
+      failure_rules: ["same-text", "safe-box"],
     });
     const state = overlayState(input({ jobs: [j], steps: [step(j.id, "decide", "failed")] }));
     expect(state).toEqual({
@@ -213,23 +213,25 @@ describe("overlayState", () => {
       step: "decide",
       failureKind: "answer_refused",
       headline: "Could not finish styling",
-      reason: "A photo would cover your captions and something would sit outside the safe area",
+      reason:
+        "The same word would show twice on screen and something would sit outside the safe area",
       actions: ["try_again", "keep_current"],
     });
   });
 
-  it("says Nothing changed for a refused answer that would leave the reel as it is, with why", () => {
+  it("gives the failed step's headline and the refusal's reason for a refused answer", () => {
     const j = job({
       kind: "start_over",
       status: "failed",
       failure_kind: "answer_refused",
-      failure_rules: ["no-change", "no-room"],
+      failure_rules: ["answer-schema", "glossary"],
     });
     const state = overlayState(input({ jobs: [j], steps: [step(j.id, "decide", "failed")] }));
     expect(state).toMatchObject({
       kind: "failure",
-      headline: "Nothing changed",
-      reason: "Your reel would look the same and there was no free room on screen",
+      headline: "Could not finish styling",
+      reason:
+        "The AI's answer could not be used and a word would be spelled differently from your glossary",
       actions: ["try_again", "keep_current"],
     });
   });
