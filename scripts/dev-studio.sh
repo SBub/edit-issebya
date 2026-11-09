@@ -4,7 +4,6 @@
 #   yarn dev:studio                    checks, then runs web + studio + the worker in Docker until Ctrl-C
 #   yarn dev:studio --check            the checks only (also: yarn dev:studio:status)
 #   yarn dev:studio add-owner <email>  creates a confirmed user in the LOCAL auth
-#   yarn dev:studio errors             the worker's last failures in development, in plain words
 #
 # Works on the owner's local Supabase stack (project `edit-issebya`, supabase/config.toml), never
 # on the ADW stack (`edit-issebya-adw`) and never on the hosted project. Reads no `.env*` file: it
@@ -21,8 +20,6 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
 cd "$ROOT" || exit 1
 
 STUDIO_URL="http://localhost:3000/studio"
-# Where the worker writes its development error log (apps/worker/src/dev-error-log.ts).
-WORKER_ERRORS="${WORKER_STATE_DIR:-$HOME/.edit-issebya-worker/dev}/errors.jsonl"
 MAILPIT_URL="http://127.0.0.1:54434"
 SUPABASE_STUDIO_URL="http://127.0.0.1:54433"
 # Local monitoring, from docker-compose.monitoring.yml. Grafana is on 3300, not 3000,
@@ -292,7 +289,7 @@ start_all() {
   Studio:                http://localhost:3000/studio
   Magic link emails:     Mailpit $MAILPIT_URL
   Database:              Supabase Studio $SUPABASE_STUDIO_URL
-  Worker errors:         $WORKER_ERRORS (yarn dev:studio errors)
+  Worker errors:         Grafana $MONITORING_UI_URL (Explore, Loki, service edit-issebya-worker-dev, level error)
   Grafana (worker):      $grafana_line
   Sign in with the owner email; the link arrives in Mailpit.
   Ctrl-C stops web, studio and the worker container.
@@ -311,7 +308,6 @@ EOF
 case "${1:-}" in
   --check | check | status) run_checks && echo "All checks passed; yarn dev:studio starts the studio." ;;
   add-owner) add_owner "${2:-}" ;;
-  errors) yarn workspace @edit-issebya/worker dev:errors ;;
   "") check_ports && run_checks && start_all ;;
-  *) fail "unknown argument $1 (use --check, add-owner <email> or errors)" ;;
+  *) fail "unknown argument $1 (use --check or add-owner <email>)" ;;
 esac

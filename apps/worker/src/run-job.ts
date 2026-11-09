@@ -4,6 +4,7 @@ import { AiUnavailable, AnswerRefused, FootageRefused, failureKind, findCause } 
 import { isJobCancelled, isJobGone, keepLease } from "./lease.ts";
 import type { ClaimedJob, JobFailure } from "./queue.ts";
 import { isStepFailure } from "./step-runner.ts";
+import type { FailureLogInput } from "./telemetry.ts";
 
 export type JobOutcome =
   "done" | "failed" | "refused" | "waiting" | "lost" | "cancelled" | "deleted";
@@ -35,6 +36,8 @@ export interface RunJobDeps {
   wait: (reason: string) => Promise<boolean>;
   // A failure outside any step (no step row captured it) is captured here.
   errors: Pick<ErrorTracker, "jobFailed">;
+  // The same failure as one ERROR log record (telemetry.ts emitFailureLog).
+  failureLog?: (input: FailureLogInput) => void;
   log?: (message: string) => void;
 }
 
@@ -73,6 +76,7 @@ export async function runJob({
   refuse,
   wait,
   errors,
+  failureLog,
   log = console.log,
 }: RunJobDeps): Promise<JobOutcome> {
   const lease = keepLease({ renew, everyMs: renewEveryMs, cancelled, cancelCheckEveryMs, gone });
@@ -127,7 +131,17 @@ export async function runJob({
     const tail = carriesOutput ? reason : errorTail(error);
     log(`job ${job.id}: failed: ${reason}`);
     const failure = jobFailure(error);
-    if (!isStepFailure(error)) errors.jobFailed({ job, error, tail, failure });
+    if (!isStepFailure(error)) {
+      errors.jobFailed({ job, error, tail, failure });
+      failureLog?.({
+        job,
+        attempt: job.attempts,
+        retrying: false,
+        failureKind: failure.kind,
+        message: reason,
+        reasons: tail,
+      });
+    }
     return (await fail(tail, failure)) ? "failed" : unmatched("lost");
   } finally {
     lease.stop();

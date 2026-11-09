@@ -59,10 +59,9 @@ dependencies and the apps the worker does not run out of the context):
   `apps/worker/.env.development` (Supabase key, R2 keys, `OPENROUTER_API_KEY` and the rest). The
   environment overrides only what must differ inside the container: `WORKER_SCRATCH_DIR` (`/scratch`),
   `WORKER_MODELS_DIR` (the image's folder, so an env file line naming a Mac folder never applies),
-  `FFMPEG_PATH` (the env file's is the Mac's), `SUPABASE_URL`, `WORKER_STATE_DIR`, and
+  `FFMPEG_PATH` (the env file's is the Mac's), `SUPABASE_URL`, and
   `OTEL_EXPORTER_OTLP_ENDPOINT` from `WORKER_DOCKER_OTLP_ENDPOINT` (empty by default, so no export is
-  attempted). Mounts: the named volume `scratch` at `/scratch`, `~/.edit-issebya-worker/dev` (the
-  development error log `yarn dev:studio errors` reads), and the three packages' `src` read-only so an
+  attempted). Mounts: the named volume `scratch` at `/scratch`, and the three packages' `src` read-only so an
   edit needs no rebuild. The host-gateway entry makes `host.docker.internal` resolve on Linux hosts too.
 - `compose.prod.yaml` (production override, `docker compose -f compose.yaml -f compose.prod.yaml`):
   `env_file` = `apps/worker/.env.production`, the environment reset to the scratch folder, the model

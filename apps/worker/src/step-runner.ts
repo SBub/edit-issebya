@@ -13,8 +13,8 @@ import {
   trace,
 } from "@opentelemetry/api";
 import type { ErrorTracker } from "./error-tracking.ts";
-import { errorTail } from "./errors.ts";
-import { AiUnavailable, FootageRefused, findCause, isTransient } from "./failure.ts";
+import { errorTail, failureReason } from "./errors.ts";
+import { AiUnavailable, FootageRefused, failureKind, findCause, isTransient } from "./failure.ts";
 import { type ProgressThrottle, createProgressThrottle } from "./progress.ts";
 import type { ProgressParser } from "./progress-parsers.ts";
 import { sampleTreeRss } from "./process-tree.ts";
@@ -27,7 +27,14 @@ import {
   aiMeasurements,
 } from "./step-store.ts";
 import { outputTail, stepSummary } from "./summary.ts";
-import { type StepStream, type Telemetry, stepLogger, targetAttributes } from "./telemetry.ts";
+import {
+  type StepStream,
+  type Telemetry,
+  emitFailureLog,
+  failureAttributes,
+  stepLogger,
+  targetAttributes,
+} from "./telemetry.ts";
 import { parseTimeReport, reportedSignal, timeCommand } from "./time-report.ts";
 
 // What every step of a job shares.
@@ -268,6 +275,19 @@ async function withStep(
         measurements,
       );
       ctx.errors.stepFailed({ job: ctx.job, step: name, attempt, retrying: retry, error, tail });
+      // One ERROR log record for this failed attempt, in the step's context, and
+      // the reasons on the step span (the Tempo view shows them).
+      const failed = {
+        job: ctx.job,
+        step: name,
+        attempt,
+        retrying: retry,
+        failureKind: failureKind(error),
+        message: failureReason(error),
+        reasons: tail,
+      };
+      span.addEvent("failure", failureAttributes(failed));
+      emitFailureLog(ctx.telemetry, trace.setSpan(ctx.jobContext, span), failed);
       if (typeof error === "object" && error !== null) STEP_FAILURES.add(error);
       if (!retry) throw error;
     } finally {

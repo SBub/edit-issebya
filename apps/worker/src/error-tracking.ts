@@ -1,5 +1,4 @@
 import { PostHog } from "posthog-node";
-import { type ErrorLine, appendErrorLine, errorLogPath, logMessage } from "./dev-error-log.ts";
 import { AnswerRefused, failureKind, findCause } from "./failure.ts";
 import type { ClaimedJob, JobFailure } from "./queue.ts";
 import { scrub } from "./scrub.ts";
@@ -8,9 +7,9 @@ import { scrub } from "./scrub.ts";
 // step row and every uncaught error of the process go to PostHog error
 // tracking. Built per process in main.ts and once.ts and passed down like
 // telemetry, never at module load, never global. Without both
-// POSTHOG_PROJECT_TOKEN and POSTHOG_HOST no client is built at all: the same
-// failures go to the local development error log instead (dev-error-log.ts),
-// never to PostHog.
+// POSTHOG_PROJECT_TOKEN and POSTHOG_HOST no client is built at all and nothing
+// is captured. Failures are logged to the OpenTelemetry logger either way
+// (telemetry.ts emitFailureLog), so Grafana shows them in every mode.
 //
 // Checked against posthog-node 5.61.1 (dist/client.d.ts):
 // `captureException(error: unknown, distinctId?: string, additionalProperties?)`
@@ -49,7 +48,7 @@ export interface ErrorTracker {
   shutdown(timeoutMs?: number): Promise<void>;
 }
 
-/** The gate closed: every method a no-op. */
+/** The gate closed: every method a no-op, nothing is captured. */
 export const DISABLED_TRACKER: ErrorTracker = {
   enabled: false,
   stepFailed() {},
@@ -99,66 +98,6 @@ function refusal(error: unknown): { failed_rules: string[] | null; rounds: numbe
     : { failed_rules: null, rounds: null };
 }
 
-// The job's target, as the local line names it.
-function lineTarget(job: ClaimedJob): Pick<ErrorLine, "reel_id" | "photo_id"> {
-  return job.reel_id ? { reel_id: job.reel_id } : { photo_id: job.photo_id };
-}
-
-function refusalFields(error: unknown): Pick<ErrorLine, "rules" | "rounds"> {
-  const { failed_rules, rounds } = refusal(error);
-  return failed_rules && rounds !== null ? { rules: failed_rules, rounds } : {};
-}
-
-/**
- * The closed-gate tracker: sends nothing (`enabled` stays false) and appends
- * each failure as one JSON line to the development error log. Never the
- * request text, never an env value.
- */
-function localErrorLogTracker(path: string): ErrorTracker {
-  return {
-    enabled: false,
-    stepFailed({ job, step, attempt, error, tail }) {
-      appendErrorLine(path, {
-        time: new Date().toISOString(),
-        job_id: job.id,
-        job_kind: job.kind,
-        ...lineTarget(job),
-        step,
-        attempt,
-        failure_kind: failureKind(error),
-        message: logMessage(tail),
-        ...refusalFields(error),
-      });
-    },
-    jobFailed({ job, error, tail, failure }) {
-      appendErrorLine(path, {
-        time: new Date().toISOString(),
-        job_id: job.id,
-        job_kind: job.kind,
-        ...lineTarget(job),
-        step: null,
-        attempt: job.attempts,
-        failure_kind: failure.kind,
-        message: logMessage(tail),
-        ...refusalFields(error),
-      });
-    },
-    crashed(error) {
-      const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-      appendErrorLine(path, {
-        time: new Date().toISOString(),
-        job_id: null,
-        job_kind: null,
-        step: null,
-        attempt: null,
-        failure_kind: "uncaught",
-        message: logMessage(text),
-      });
-    },
-    async shutdown() {},
-  };
-}
-
 function scrubbedError(thrown: unknown): Error {
   const original = thrown instanceof Error ? thrown : null;
   const error = new Error(scrub(original ? original.message : String(thrown)).slice(0, 500));
@@ -174,7 +113,7 @@ export function createErrorTracker(
 ): ErrorTracker {
   const projectToken = env.POSTHOG_PROJECT_TOKEN?.trim();
   const host = env.POSTHOG_HOST?.trim();
-  if (!projectToken || !host) return localErrorLogTracker(errorLogPath(env));
+  if (!projectToken || !host) return DISABLED_TRACKER;
   const client = makeClient(projectToken, host);
   const workerId = env.WORKER_ID?.trim();
 

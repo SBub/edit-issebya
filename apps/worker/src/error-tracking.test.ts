@@ -1,8 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createErrorTracker, installCrashCapture, lastChars } from "./error-tracking.ts";
 import { AnswerRefused, FootageRefused } from "./failure.ts";
 import { TEST_JOB } from "./recording-steps.ts";
@@ -47,37 +44,28 @@ function refusedDecide() {
   };
 }
 
-let stateDir: string;
-beforeEach(() => {
-  stateDir = mkdtempSync(join(tmpdir(), "error-tracking-"));
-});
-afterEach(() => {
-  rmSync(stateDir, { recursive: true, force: true });
-});
-
-function logLines(): Record<string, unknown>[] {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
-  return readFileSync(join(stateDir, "errors.jsonl"), "utf8")
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
-}
-
 describe("createErrorTracker", () => {
   it.each([
     {},
     { POSTHOG_PROJECT_TOKEN: "token" },
     { POSTHOG_HOST: "https://eu.i.posthog.com" },
     { POSTHOG_PROJECT_TOKEN: " ", POSTHOG_HOST: "https://eu.i.posthog.com" },
-  ])("builds no client without both variables (%o), logging locally instead", async (env) => {
+  ])("builds no client without both variables (%o) and captures nothing", async (env) => {
     const factory = vi.fn();
-    const tracker = createErrorTracker({ ...env, WORKER_STATE_DIR: stateDir }, factory);
+    const tracker = createErrorTracker(env, factory);
     expect(tracker.enabled).toBe(false);
-    tracker.stepFailed(step(new Error("x")));
-    tracker.crashed(new Error("x"));
+    expect(() => {
+      tracker.stepFailed(step(new Error("x")));
+      tracker.jobFailed({
+        job: TEST_JOB,
+        error: new Error("x"),
+        tail: "x",
+        failure: { kind: "failed", rules: null },
+      });
+      tracker.crashed(new Error("x"));
+    }).not.toThrow();
     await expect(tracker.shutdown()).resolves.toBeUndefined();
     expect(factory).not.toHaveBeenCalled();
-    expect(logLines().map((line) => line.failure_kind)).toEqual(["failed", "uncaught"]);
   });
 
   it("captures a decide refusal with its rules and rounds, never the request", () => {
@@ -118,42 +106,6 @@ describe("createErrorTracker", () => {
       error_tail: "Error: unknown job kind",
     });
     expect(JSON.stringify(properties)).not.toContain(REQUEST);
-  });
-
-  it("writes one local line for a decide refusal with rules and rounds, no request, no client", () => {
-    const factory = vi.fn();
-    const tracker = createErrorTracker({ WORKER_STATE_DIR: stateDir }, factory);
-    tracker.stepFailed(refusedDecide());
-    expect(factory).not.toHaveBeenCalled();
-    const lines = logLines();
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatchObject({
-      job_id: TEST_JOB.id,
-      job_kind: "change",
-      reel_id: TEST_JOB.reel_id,
-      step: "decide",
-      attempt: 1,
-      failure_kind: "answer_refused",
-      message: "round 1: a photo covers captions",
-      rules: ["behind-caption", "safe-box"],
-      rounds: 2,
-    });
-    expect(JSON.stringify(lines[0])).not.toContain(REQUEST);
-  });
-
-  it("writes a local line for a job failure with no step, scrubbed", () => {
-    const tracker = createErrorTracker({ WORKER_STATE_DIR: stateDir });
-    tracker.jobFailed({
-      job: TEST_JOB,
-      error: new Error("x"),
-      tail: `GET ${SIGNED_URL} failed`,
-      failure: { kind: "transient", rules: null },
-    });
-    expect(logLines()[0]).toMatchObject({
-      step: null,
-      failure_kind: "transient",
-      message: `GET ${R2_OBJECT}?[redacted] failed`,
-    });
   });
 
   it("captures a failed step once with the job's owner and its properties", () => {

@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ROOT_CONTEXT, SpanStatusCode, trace } from "@opentelemetry/api";
+import { InMemoryLogRecordExporter, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
@@ -825,6 +826,40 @@ describe("the one automatic retry", () => {
         job: TEST_JOB,
       });
       expect(failed && failed.call === "failed" && failed.tail).toBe(failures[0]!.tail);
+    });
+
+    it("logs one ERROR record for the failed attempt, in the step's span, with the reasons", async () => {
+      const spans = new InMemorySpanExporter();
+      const logs = new InMemoryLogRecordExporter();
+      const telemetry = createTelemetry(
+        {},
+        {
+          spanProcessors: [new SimpleSpanProcessor({ exporter: spans })],
+          logProcessors: [new SimpleLogRecordProcessor({ exporter: logs })],
+        },
+      );
+      const { steps } = recordingSteps();
+      const { spawnTool } = sequence([exited(1)]);
+      await expect(
+        runToolsStep(stepContext(steps, { telemetry }), toolStep(), spawnTool),
+      ).rejects.toThrow();
+      const errors = logs.getFinishedLogRecords().filter((r) => r.severityText === "ERROR");
+      expect(errors).toHaveLength(1);
+      const step = spans.getFinishedSpans().find((s) => s.name === "step flaky");
+      expect(errors[0]?.spanContext?.spanId).toBe(step?.spanContext().spanId);
+      expect(errors[0]?.attributes).toMatchObject({
+        "step.name": "flaky",
+        "step.attempt": 1,
+        "failure.kind": "failed",
+        "failure.retrying": false,
+        "failure.reasons": "boom",
+      });
+      expect(step?.events.map((event) => event.name)).toEqual(["failure"]);
+      expect(step?.events[0]?.attributes).toMatchObject({
+        "failure.kind": "failed",
+        "failure.reasons": "boom",
+      });
+      await telemetry.shutdown();
     });
 
     it("writes no failed row and captures nothing when the job's row is gone", async () => {

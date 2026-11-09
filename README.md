@@ -37,7 +37,6 @@ everything it needs inside the image) and local monitoring:
 yarn dev:studio                    # checks, then runs everything; Ctrl-C stops it all
 yarn dev:studio --check            # the checks only, no servers (same as yarn dev:studio:status)
 yarn dev:studio add-owner <email>  # once: creates the owner account in the local auth
-yarn dev:studio errors             # the worker's last failures in development, in plain words
 ```
 
 The worker image carries the cut-out's MODNet model (see

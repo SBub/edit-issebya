@@ -67,6 +67,26 @@ describe("runJob", () => {
     });
   });
 
+  it("logs a failure outside any step as one failure record", async () => {
+    const failureLog = vi.fn();
+    const d = {
+      ...deps(async () => {
+        throw new TransientError("fetch failed");
+      }),
+      failureLog,
+    };
+    expect(await runJob(d)).toBe("failed");
+    expect(failureLog).toHaveBeenCalledOnce();
+    expect(failureLog.mock.calls[0]?.[0]).toMatchObject({
+      job: JOB,
+      attempt: JOB.attempts,
+      retrying: false,
+      failureKind: "transient",
+      message: expect.stringContaining("fetch failed"),
+      reasons: expect.any(String),
+    });
+  });
+
   it("passes a refused answer's rules and keeps the log line", async () => {
     const lines: string[] = [];
     const d = {
