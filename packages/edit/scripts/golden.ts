@@ -16,6 +16,7 @@ import { placeEdit } from "../src/engine.ts";
 import { choicesOf } from "../src/engine-input.ts";
 import { ISSEBYA_PRESET } from "../src/preset.ts";
 import { type Edit, parseEdit } from "../src/schema.ts";
+import { pickVariants } from "../src/variant-picker.ts";
 import { backgroundMapOf } from "../src/test-support/backgrounds.ts";
 import { goldenOf } from "../src/test-support/golden.ts";
 import { RETHINK_WORK, SHORT_SPEECH, baselineInputs } from "../src/test-support/inputs.ts";
@@ -49,6 +50,7 @@ const baseline = baselineEdit(SHORT_SPEECH.transcript, baselineInputs(), ISSEBYA
 const placed = placeEdit(
   baseline,
   NO_CHOICES,
+  pickVariants(NO_CHOICES),
   SHORT_SPEECH.transcript,
   SHORT_SPEECH.headTrack,
   ISSEBYA_PRESET,

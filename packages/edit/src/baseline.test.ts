@@ -3,6 +3,7 @@ import { baselineEdit } from "./baseline.ts";
 import { placeEdit } from "./engine.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
+import { pickVariants } from "./variant-picker.ts";
 import { parseEdit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { SHORT_SPEECH, baselineInputs } from "./test-support/inputs.ts";
@@ -27,9 +28,18 @@ describe("baselineEdit", () => {
   it("is the stored baseline of the fixture clip, once the layout engine placed it", async () => {
     const stored = FIXTURES.find((fixture) => fixture.name === "baseline-short-speech")!;
     const baseline = baselineEdit(SHORT_SPEECH.transcript, baselineInputs(), ISSEBYA_PRESET);
+    const choices = {
+      accents: [],
+      questions: [],
+      big_words: [],
+      visuals: [],
+      lists: [],
+      word_fixes: [],
+    };
     const { tracks } = placeEdit(
       baseline,
-      { accents: [], questions: [], big_words: [], visuals: [], lists: [], word_fixes: [] },
+      choices,
+      pickVariants(choices),
       SHORT_SPEECH.transcript,
       SHORT_SPEECH.headTrack,
       ISSEBYA_PRESET,

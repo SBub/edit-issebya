@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  type EngineComponent,
   type EngineElement,
   type EngineOutcome,
   type PlaceAction,
   type PlaceNote,
   toEngineRecord,
 } from "./engine-note.ts";
+import type { PickedVariants } from "./variant-picker.ts";
+import { VARIANTS, type Variant } from "./variants.ts";
 
 // Every placer action and the outcome it is recorded as. The type makes the
 // table total: a new action fails to compile until it is named here.
@@ -32,6 +35,17 @@ const elements = new Map<string, EngineElement>([
   ["cw1", { component: "CAPTION", start: 2.5, end: 3 }],
 ]);
 const captions = new Set(["cw0", "cw1"]);
+// The picked entries the notes name (one per component, as the picker gives).
+const PICKED: PickedVariants = new Map<EngineComponent, Variant>([
+  ["ACCENT", VARIANTS["accent/above-head"]],
+  ["CAPTION", VARIANTS["caption/default"]],
+]);
+const recordOf = (
+  notes: readonly PlaceNote[],
+  els: ReadonlyMap<string, EngineElement>,
+  shown: readonly string[],
+  caps: ReadonlySet<string>,
+) => toEngineRecord(notes, els, shown, caps, PICKED);
 
 const note = (action: PlaceAction, extra: Partial<PlaceNote> = {}): PlaceNote => ({
   item: "accent-1",
@@ -44,7 +58,7 @@ const note = (action: PlaceAction, extra: Partial<PlaceNote> = {}): PlaceNote =>
 describe("toEngineRecord", () => {
   for (const [action, outcome] of Object.entries(OUTCOME)) {
     it(`records the placer's ${action} as ${outcome}`, () => {
-      const [written] = toEngineRecord([note(action as PlaceAction)], elements, [], captions);
+      const [written] = recordOf([note(action as PlaceAction)], elements, [], captions);
       expect(written).toEqual({
         item: "accent-1",
         component: "ACCENT",
@@ -75,7 +89,7 @@ describe("toEngineRecord", () => {
       ["contrast-spot", "contrast"],
       ["contrast-stay", "contrast"],
     ];
-    const records = toEngineRecord(
+    const records = recordOf(
       rules.map(([rule]) => note("moved", { rule })),
       elements,
       [],
@@ -86,18 +100,18 @@ describe("toEngineRecord", () => {
 
   it("throws on a rule the record does not name", () => {
     expect(() =>
-      toEngineRecord([note("moved", { rule: "no-such-rule" })], elements, [], captions),
+      recordOf([note("moved", { rule: "no-such-rule" })], elements, [], captions),
     ).toThrow(/unknown rule no-such-rule/);
   });
 
   it("throws on a note for an element it does not know", () => {
-    expect(() =>
-      toEngineRecord([note("moved", { item: "nobody" })], elements, [], captions),
-    ).toThrow(/no element nobody/);
+    expect(() => recordOf([note("moved", { item: "nobody" })], elements, [], captions)).toThrow(
+      /no element nobody/,
+    );
   });
 
   it("writes the names a kept-overlapping note sits over as blockers, captions by kind", () => {
-    const [written] = toEngineRecord(
+    const [written] = recordOf(
       [note("kept-overlapping", { with: ["accent-2", "cw1"] })],
       elements,
       [],
@@ -110,7 +124,7 @@ describe("toEngineRecord", () => {
   });
 
   it("writes a covers-face note for each caption of its block, each blocked by the face", () => {
-    const records = toEngineRecord(
+    const records = recordOf(
       [
         note("covers-face", {
           item: "cw0",
@@ -132,7 +146,7 @@ describe("toEngineRecord", () => {
   });
 
   it("gives every shown element with no note a placed note, and no other", () => {
-    const records = toEngineRecord(
+    const records = recordOf(
       [note("moved", { item: "accent-1" })],
       elements,
       ["accent-1", "accent-2"],
@@ -152,12 +166,36 @@ describe("toEngineRecord", () => {
   });
 
   it("keeps the notes in the order the placer wrote them", () => {
-    const records = toEngineRecord(
+    const records = recordOf(
       [note("dropped", { item: "accent-2" }), note("retimed")],
       elements,
       [],
       captions,
     );
     expect(records.map((entry) => entry.outcome)).toEqual(["dropped", "retimed"]);
+  });
+
+  it("names each note's variant after the entry its component was picked with", () => {
+    const other = { ...VARIANTS["accent/above-head"], variant: "accent/other" } as const;
+    const [written] = toEngineRecord(
+      [note("moved")],
+      elements,
+      [],
+      captions,
+      new Map<EngineComponent, Variant>([["ACCENT", other]]),
+    );
+    expect(written!.variant).toBe("accent/other");
+  });
+
+  it("throws when a component has no picked entry", () => {
+    expect(() =>
+      toEngineRecord(
+        [note("moved")],
+        elements,
+        [],
+        captions,
+        new Map<EngineComponent, Variant>([["CAPTION", VARIANTS["caption/default"]]]),
+      ),
+    ).toThrow(/no picked variant for ACCENT/);
   });
 });

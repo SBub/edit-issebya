@@ -6,7 +6,10 @@
 // The engine still places with its own notes (`PlaceNote`, actions as they
 // were). `toEngineRecord` turns them into this shape at the end of `placeEdit`;
 // that adapter is the only writer until the placer replaces the per-kind code
-// (build steps 5 to 10 of the spec).
+// (build steps 5 to 10 of the spec). A note's variant is the name of the entry
+// its component was picked with (`variant-picker.ts`).
+
+import type { PickedVariants } from "./variant-picker.ts";
 
 export type EngineComponent =
   "HOOK" | "ACCENT" | "QUESTION" | "BIGWORD" | "VISUAL" | "LIST" | "CAPTION";
@@ -94,18 +97,6 @@ export interface EngineElement {
   end: number;
 }
 
-// The entry each component places with today: one variant per component
-// (`variant-picker.ts`, build step 3, names the same entries).
-const VARIANT_OF: Record<EngineComponent, string> = {
-  HOOK: "hook/written-line",
-  ACCENT: "accent/above-head",
-  QUESTION: "question/as-accent",
-  BIGWORD: "bigword/behind",
-  VISUAL: "visual/card",
-  LIST: "list/numbered",
-  CAPTION: "caption/default",
-};
-
 const OUTCOME_OF: Record<PlaceAction, EngineOutcome> = {
   moved: "moved",
   shrunk: "shrunk",
@@ -171,9 +162,16 @@ export function toEngineRecord(
   elements: ReadonlyMap<string, EngineElement>,
   shown: readonly string[],
   captionIds: ReadonlySet<string>,
+  picked: PickedVariants,
 ): EngineNote[] {
   const out: EngineNote[] = [];
   const noted = new Set<string>();
+  // The name of the entry the component was picked with.
+  const variantNameOf = (component: EngineComponent): string => {
+    const entry = picked.get(component);
+    if (!entry) throw new Error(`engine record: no picked variant for ${component}`);
+    return entry.variant;
+  };
   const elementOf = (id: string): EngineElement => {
     const found = elements.get(id);
     if (!found) throw new Error(`engine record: no element ${id}`);
@@ -189,7 +187,7 @@ export function toEngineRecord(
     out.push({
       item: id,
       component: at.component,
-      variant: VARIANT_OF[at.component],
+      variant: variantNameOf(at.component),
       start: at.start,
       end: at.end,
       rule: note.rule,
@@ -220,7 +218,7 @@ export function toEngineRecord(
     out.push({
       item: id,
       component: at.component,
-      variant: VARIANT_OF[at.component],
+      variant: variantNameOf(at.component),
       start: at.start,
       end: at.end,
       rule: "zone",

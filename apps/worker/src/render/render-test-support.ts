@@ -9,6 +9,7 @@ import {
   type Transcript,
   baselineEdit,
   headTrackSchema,
+  pickVariants,
   placeEdit,
   transcriptSchema,
 } from "@edit-issebya/edit";
@@ -68,6 +69,7 @@ export async function fixtureEdit(): Promise<{
   const { tracks } = placeEdit(
     baseline,
     NO_CHOICES,
+    pickVariants(NO_CHOICES),
     transcript,
     headTrack,
     ISSEBYA_PRESET,

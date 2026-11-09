@@ -70,6 +70,7 @@ export {
 } from "./engine-input.ts";
 export { type EngineNote } from "./engine-note.ts";
 export { placeEdit } from "./engine.ts";
+export { pickVariants } from "./variant-picker.ts";
 export {
   type Point,
   type SafeZone,

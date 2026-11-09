@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Backgrounds } from "./background.ts";
 import type { EngineNote } from "./engine-note.ts";
 import { placeEdit } from "./engine.ts";
+import { pickVariants } from "./variant-picker.ts";
 import { type EngineInput, QUESTION_PREFIX } from "./engine-input.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import type { HeadTrack } from "./head-track.ts";
@@ -264,9 +265,16 @@ export function editFromAnswer(
 ): { ok: true; edit: Edit; record: EngineNote[] } | { ok: false; reasons: string[] } {
   const inputs = { ...current.inputs };
   delete inputs.masks;
-  const { tracks, record } = placeEdit(current, answer, transcript, headTrack, preset, measurer, {
-    backgrounds,
-  });
+  const { tracks, record } = placeEdit(
+    current,
+    answer,
+    pickVariants(answer),
+    transcript,
+    headTrack,
+    preset,
+    measurer,
+    { backgrounds },
+  );
   const json = {
     format: 1,
     preset: preset.id,

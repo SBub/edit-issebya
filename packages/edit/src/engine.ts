@@ -23,6 +23,7 @@ import { SAFE_ZONE } from "./engine-zones.ts";
 import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from "./head-track.ts";
 import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
+import type { PickedVariants } from "./variant-picker.ts";
 import {
   type FontKey,
   PLATFORM_SAFE,
@@ -495,6 +496,9 @@ function sameTextPass(
 export function placeEdit(
   current: Edit,
   input: EngineInput,
+  // The entry each component's pick was given (`variant-picker.ts`). Placement
+  // does not read it yet; the record names it.
+  picked: PickedVariants,
   transcript: Transcript,
   headTrack: HeadTrack,
   preset: Preset,
@@ -528,7 +532,7 @@ export function placeEdit(
       const all = [...notes, ...placed.record];
       return {
         tracks: placed.tracks,
-        record: engineRecord(current, placed.tracks, all, picks, transcript),
+        record: engineRecord(current, placed.tracks, all, picks, transcript, picked),
       };
     }
     answer = pass.answer;
@@ -545,6 +549,7 @@ function engineRecord(
   notes: readonly PlaceNote[],
   picks: ReadonlyMap<string, TextPick>,
   transcript: Transcript,
+  picked: PickedVariants,
 ): EngineNote[] {
   const timeline = resolveTimeline({ ...current, tracks }, transcript);
   const elements = new Map<string, EngineElement>();
@@ -580,7 +585,7 @@ function engineRecord(
     elements.set(caption.id, { component: "CAPTION", start: at.start, end: at.end });
     if (caption.hidden_by === undefined) shown.push(caption.id);
   }
-  return toEngineRecord(notes, elements, shown, captionIds);
+  return toEngineRecord(notes, elements, shown, captionIds, picked);
 }
 
 function placeOnce(

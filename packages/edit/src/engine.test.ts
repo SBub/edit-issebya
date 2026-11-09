@@ -19,6 +19,7 @@ import { LEFT_HEAD, REQUEST_ANSWER } from "./test-support/request.ts";
 import { resolveTimeline } from "./timeline.ts";
 import { type Transcript, sentenceSpans } from "./transcript.ts";
 import { levelBoxes } from "./transitions.ts";
+import { pickVariants } from "./variant-picker.ts";
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
 // Rounds a time to the millisecond, as the engine does.
@@ -1670,6 +1671,7 @@ describe("the written hook", () => {
     const again = placeEdit(
       { ...hand.edit, tracks: { ...hand.edit.tracks, ...placed.edit.tracks } },
       choices,
+      pickVariants(choices),
       transcript,
       hand.headTrack,
       ISSEBYA_PRESET,
@@ -1764,9 +1766,11 @@ describe("the written hook", () => {
     const short = FIXTURES.find((fixture) => fixture.name === "baseline-short-speech")!;
     const measurer = await nodeMeasurer();
     const tiny = { ...short.edit, duration: 0.6 };
+    const choices = { ...NOTHING, hook: HOOK };
     const placed = placeEdit(
       tiny,
-      { ...NOTHING, hook: HOOK },
+      choices,
+      pickVariants(choices),
       short.transcript,
       short.headTrack,
       ISSEBYA_PRESET,

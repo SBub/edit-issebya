@@ -8,6 +8,7 @@ import {
   baselineEdit,
   build,
   headTrackSchema,
+  pickVariants,
   placeEdit,
   saveVersion,
   transcriptSchema,
@@ -134,6 +135,7 @@ export async function saveFirstVersion({
       const { tracks, record } = placeEdit(
         baseline,
         NO_CHOICES,
+        pickVariants(NO_CHOICES),
         transcript,
         headTrack,
         ISSEBYA_PRESET,

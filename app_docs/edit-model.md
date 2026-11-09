@@ -319,15 +319,26 @@ word" is now "spoken words, plus one written hook at the start".
   from its words is a fix on its first word. A VISUAL reads back with its description. Every big word
   reads back (a two-word one from its first word to its last). The hook reads back as its text, null
   when the version has none.
+- Variants (`src/variants.ts`): `VARIANTS` holds the seven entries, keyed by name (`hook/written-line`,
+  `accent/above-head`, `question/as-accent`, `bigword/behind`, `visual/card`, `list/numbered`,
+  `caption/default`). Each names its component, layer, type, style (a font role and colour; a box's
+  stroke), ranked zones (names of the zone table only), timing option, whether its words hide the
+  captions, and a box's aspect and width, or a stack's levels. No sizes, no positions. A wrong field or
+  an unknown zone fails typecheck.
+- The picker (`src/variant-picker.ts`): `pickVariants(input)` maps each pick of the input (a hook when
+  there is one, each kind of pick the answer holds, and the captions, always placed) to its entry, one
+  per component for now. `editFromAnswer` and the worker's `first_version` step call it and pass the
+  result to `placeEdit`. Placement does not read the entries yet; each engine note names its
+  component's picked entry as its `variant`.
 
 ### Layout engine
 
-`src/engine.ts`, `placeEdit(current, input, transcript, headTrack, preset, measurer, { backgrounds? })`
-returns `{ tracks, record }`: the edit's tracks as the builder consumes them (every caption, accent,
+`src/engine.ts`, `placeEdit(current, input, picked, transcript, headTrack, preset, measurer, { backgrounds? })`
+(`picked` is `pickVariants(input)`) returns `{ tracks, record }`: the edit's tracks as the builder consumes them (every caption, accent,
 hook and big word with `position` and `size`, every visual with a `box` and `spot`) and the record of
 what it did. Pure and deterministic: no randomness, no clock, no I/O; the same input gives the same
 tracks and record. `editFromAnswer` (decide, returning `{ ok, edit, record }`) and the worker's
-`first_version` step (with no choices) call it.
+`first_version` step (with no choices) call it, each with `pickVariants` of its input.
 
 The zones (`src/engine-zones.ts`, `zonesAt(name, S, F)`) are the named areas the placement will use:
 each zone's areas inside the one safe zone `S` (the guard minus the notch) and its wanted point, from
