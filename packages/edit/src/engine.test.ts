@@ -1942,6 +1942,16 @@ describe("nothing the answer picks is dropped", () => {
 
 // A caption-heavy opening: the first `count` words of the reel as a caption
 // each, in the first 3 s, and the rest of the reel after them.
+// The same edit with no captions: the components' first choices, placed alone.
+function withoutCaptions(edit: Edit): Edit {
+  return { ...edit, tracks: { ...edit.tracks, captions: [] } };
+}
+
+// The big word's place in a placed edit's behind track.
+function wordPosition(placed: { edit: Edit }) {
+  return placed.edit.tracks.behind?.find((item) => item.kind === "word")?.position;
+}
+
 function denseOpening(count: number): { current: Edit; transcript: Transcript } {
   const dense = words.slice(0, count).map((word, index) => ({
     id: word.id,
@@ -2039,17 +2049,22 @@ describe("texts never overlap on screen while a free spot exists", () => {
     }
   });
 
-  it("moves a big word off the captions it would sit on, to a free place at its size", async () => {
-    // Over the captions of the opening, the word would sit on about forty of
-    // them; a clear place at the same size exists.
+  it("places a big word at its first choice before the captions, and the captions move around it", async () => {
+    // Over the captions of the opening the word has a clear place at its size;
+    // the captions are placed after it now, so the word keeps the place it has
+    // with no captions at all, and none of the captions sits on it.
     const { current, transcript: spoken } = denseOpening(60);
-    const placed = await place(
-      { big_words: [{ from: "w20", to: "w20" }] },
-      { current, transcript: spoken, headTrack: BIG_FACE },
-    );
+    const input = { big_words: [{ from: "w20", to: "w20" }] };
+    const placed = await place(input, { current, transcript: spoken, headTrack: BIG_FACE });
+    const alone = await place(input, {
+      current: withoutCaptions(current),
+      transcript: spoken,
+      headTrack: BIG_FACE,
+    });
     expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
-    expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "big-word-1", action: "moved", rule: "big-word-spot" }),
+    expect(wordPosition(placed)).toEqual(wordPosition(alone));
+    expect(placed.record.filter((note) => note.item === "big-word-1")).not.toContainEqual(
+      expect.objectContaining({ action: "moved", rule: "big-word-spot" }),
     );
     expect(placed.record.some((note) => note.action === "kept-overlapping" && note.with)).toBe(
       false,
@@ -2088,28 +2103,45 @@ describe("texts never overlap on screen while a free spot exists", () => {
   });
 });
 
-describe("text kept over text only where no free spot exists", () => {
-  it("keeps an accent over the caption it has no free place beside down to its floor, noted with it", async () => {
-    // The numbered list's text shares the time of its sentence's captions, so
-    // the sentence can only go over the face (`covers-face`). The accent then
-    // has no place clear of that caption at its own size or any size down to
-    // its floor (60%): it is kept over the caption, noted with it, nothing dropped.
-    const placed = await place({
-      accents: [{ from: "w27", to: "w33" }],
-      transitions: [{ kind: "numbered", from: "w52", to: "w53", key_from: "w52" }],
+describe("captions take the space the components leave", () => {
+  it("keeps a visual at its first card spot, as with no captions at all, and the captions go round it", async () => {
+    const input: Partial<EngineInput> = {
+      visuals: REQUEST_ANSWER.visuals,
+      transitions: REQUEST_ANSWER.transitions,
+    };
+    const placed = await place(input, { headTrack: LEFT_HEAD });
+    const alone = await place(input, {
+      headTrack: LEFT_HEAD,
+      current: withoutCaptions(hand.edit),
     });
-    expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "cw26", action: "covers-face", rule: "caption-face" }),
+    expect(placed.edit.tracks.behind?.find((item) => item.kind === "visual")!.box).toEqual(
+      alone.edit.tracks.behind?.find((item) => item.kind === "visual")!.box,
     );
-    expect(placed.record).toContainEqual(
-      expect.objectContaining({
-        item: "accent-1",
-        action: "kept-overlapping",
-        rule: "all-picks",
-        with: ["cw26"],
-      }),
+    expect(placed.record).not.toContainEqual(
+      expect.objectContaining({ item: "visual-1", action: "moved", rule: "contrast-spot" }),
     );
-    expect(placed.edit.tracks.overlays.map((item) => item.id)).toContain("accent-1");
+    expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
+  });
+});
+
+describe("text kept over text only where no free spot exists", () => {
+  it("places an accent at its first choice before the captions: the caption it would sit on moves", async () => {
+    // The numbered list's text shares the time of its sentence's captions. The
+    // accent is placed before them, so it keeps the place it has with no
+    // captions at all, and the sentence's captions move around it: nothing
+    // overlaps, nothing is noted for the accent.
+    const input = {
+      accents: [{ from: "w27", to: "w33" }],
+      transitions: [{ kind: "numbered" as const, from: "w52", to: "w53", key_from: "w52" }],
+    };
+    const placed = await place(input);
+    const alone = await place(input, { current: withoutCaptions(hand.edit) });
+    expect(placed.edit.tracks.overlays.find((item) => item.id === "accent-1")!.position).toEqual(
+      alone.edit.tracks.overlays.find((item) => item.id === "accent-1")!.position,
+    );
+    expect(placed.record.filter((note) => note.item === "accent-1")).not.toContainEqual(
+      expect.objectContaining({ action: "kept-overlapping" }),
+    );
     expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
   });
 });

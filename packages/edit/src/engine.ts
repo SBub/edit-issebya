@@ -58,14 +58,16 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 // 3. Free space: an area minus the face, the platform notch and the text
 //    already placed, as rectangles (`engine-space.ts`).
 // 4. Placement: each transition's text levels (its phrase's captions, shown
-//    only there), then the written hook in its fixed slot (placed before any
-//    caption), then the captions (one spot per sentence), then the accents,
-//    big words and visuals. Text shrinks to the preset's floor and wraps to
-//    two lines before it gives up a place. A pick that fits nowhere free is
-//    placed anyway, over the face or other text, and noted
-//    (`kept-overlapping`): the engine never drops a pick. A caption's words a
-//    text on screen shows are left out while it shows, the caption split in
-//    time (never the same word twice on screen).
+//    only there), then the written hook in its fixed slot, then the other
+//    components in answer order (accents, questions, big words, visuals), which
+//    never avoid captions: captions are not placed yet. Then the captions last,
+//    in time order, one spot per sentence, in the free space the components
+//    leave at each moment; captions avoid every component and every other
+//    caption. Text shrinks to the preset's floor and wraps to two lines before
+//    it gives up a place. A pick that fits nowhere free is placed anyway, over
+//    the face or other text, and noted (`kept-overlapping`): the engine never
+//    drops a pick. A caption's words a text on screen shows are left out while
+//    it shows, the caption split in time (never the same word twice on screen).
 // 5. Fallbacks, each noted: a pick too close to the reel's end shows from
 //    earlier (`clamped-to-end`); a pick over hidden footage moves to the next
 //    visible moment (`moved-off-cut`); a list with no caption text of its own
@@ -989,7 +991,6 @@ export function placeEdit(
     span: { start: number; end: number },
     lights: readonly number[],
     threshold: Threshold,
-    accept: (box: Box) => boolean = () => true,
     measured: (box: Box) => Box = (box) => box,
   ): { x: number; y: number; ratio: number; distance: number } | null {
     const { moveRadius, moveStep } = readability;
@@ -1015,7 +1016,6 @@ export function placeEdit(
       const distance = Math.hypot(spot.x - from.x, spot.y - from.y);
       if (distance < 0.5 || distance > moveRadius + SLACK) continue;
       const box = { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + height };
-      if (!accept(box)) continue;
       const ratio = contrastOf(sampler, measured(box), span, lights);
       if (ratio < threshold.min) continue;
       if (
@@ -1040,7 +1040,7 @@ export function placeEdit(
     span: { start: number; end: number },
     colors: readonly string[],
     threshold: Threshold,
-    zone: { area: Box; obstacles: readonly Box[]; accept?: (box: Box) => boolean } | null,
+    zone: { area: Box; obstacles: readonly Box[] } | null,
     why: string,
   ): { x: number; y: number } {
     const from = { x: box.x, y: box.y };
@@ -1066,7 +1066,6 @@ export function placeEdit(
           span,
           lights,
           threshold,
-          zone.accept,
         )
       : null;
     if (moved) {
@@ -1349,7 +1348,6 @@ export function placeEdit(
 
   const captionFont = preset.caption.font;
   const placedCaptions = new Map<number, { x: number; y: number; size: number }>();
-  const visualSpans = extras.filter((extra) => extra.kind === "visual");
 
   // A transition is kept as placed by its own timing; no other pick trims it.
   const accepted: Accepted[] = transitionPlans.map((plan) => ({
@@ -1367,15 +1365,11 @@ export function placeEdit(
   const overlays = new Map<string, OverlayItem>();
   const behind = new Map<string, BehindItem>();
 
-  // The written hook is placed first, before any caption: its slot is fixed,
-  // and the captions in its window keep clear of it by the caption rules.
-  if (hook) tryExtra(hook);
-  for (const block of blocks) {
-    placeBlock(block);
-  }
-  for (const extra of extras) {
-    if (extra !== hook) tryExtra(extra);
-  }
+  // The components in their order: the written hook first (its slot is fixed),
+  // then the accents, questions, big words and visuals in answer order. The
+  // captions come last, in the space the components leave.
+  for (const extra of extras) tryExtra(extra);
+  for (const block of blocks) placeBlock(block);
 
   function captionCandidates(block: CaptionBlock): Candidate[] {
     const faces = facesDuring(scene, block);
@@ -1434,22 +1428,10 @@ export function placeEdit(
     return out;
   }
 
-  // Whether a caption box over a block leaves a visual of the same moment a spot.
-  function leavesVisualSpot(box: Box, span: { start: number; end: number }): boolean {
-    const visuals = visualSpans.filter((visual) => during(visual, span));
-    return visuals.every((visual) => {
-      const obstacles = [...textDuring(visual), notch, ...faceObstacles(visual), expand(box, gap)];
-      return [cardSize(false), cardSize(true)].some(
-        (size) => cardSpots(visual, size, obstacles).length > 0,
-      );
-    });
-  }
-
   function tryBlock(
     block: CaptionBlock,
     candidate: Candidate,
     size: number,
-    keepVisualSpot: boolean,
   ): { x: number; y: number; width: number; height: number; layouts: Line[][] } | null {
     const areaWidth = candidate.area.right - candidate.area.left;
     if (areaWidth <= 0) return null;
@@ -1471,15 +1453,18 @@ export function placeEdit(
       candidate.want(width, height),
     );
     if (!spot) return null;
-    const box = { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + height };
-    if (keepVisualSpot && !leavesVisualSpot(box, block)) return null;
     return { ...spot, width, height, layouts };
   }
 
   // What a caption block keeps clear of: the face (unless it is the worst
-  // case over it), the text shown with it and the notch.
+  // case over it), the text shown with it (unless it is the last resort over
+  // the text) and the notch.
   function blockObstacles(block: CaptionBlock, candidate: Candidate): Box[] {
-    return [...(candidate.overFace ? [] : faceObstacles(block)), ...textDuring(block), notch];
+    return [
+      ...(candidate.overFace ? [] : faceObstacles(block)),
+      ...(candidate.overText ? [] : textDuring(block)),
+      notch,
+    ];
   }
 
   function placeBlock(block: CaptionBlock): void {
@@ -1494,21 +1479,16 @@ export function placeEdit(
       candidate: Candidate;
       size: number;
       fit: NonNullable<ReturnType<typeof tryBlock>>;
-      keep: boolean;
     } | null = null;
-    const holdsVisual = visualSpans.some((visual) => during(visual, block));
     // Captions stay readable first: every place at the full size before any
     // smaller size.
-    for (const keep of holdsVisual ? [true, false] : [false]) {
-      for (const size of sizes) {
-        for (const candidate of candidates) {
-          const fit = tryBlock(block, candidate, size, keep);
-          if (fit) {
-            chosen = { candidate, size, fit, keep };
-            break;
-          }
+    for (const size of sizes) {
+      for (const candidate of candidates) {
+        const fit = tryBlock(block, candidate, size);
+        if (fit) {
+          chosen = { candidate, size, fit };
+          break;
         }
-        if (chosen) break;
       }
       if (chosen) break;
     }
@@ -1523,10 +1503,31 @@ export function placeEdit(
           maxLines: 20,
           overFace: true,
         };
-        const fit = tryBlock(block, worst, floor, false);
+        const fit = tryBlock(block, worst, floor);
         if (fit) {
-          chosen = { candidate: worst, size: floor, fit, keep: false };
+          chosen = { candidate: worst, size: floor, fit };
           break;
+        }
+      }
+      if (!chosen) {
+        // Over the face and other text (the last resort, each unit noted with
+        // the texts it sits over), wrapped as far as it takes: the caption line,
+        // else the top of the safe zone.
+        for (const area of [{ ...safe, top: preset.caption.fallbackY }, safe]) {
+          const over: Candidate = {
+            name: "over the face and other text",
+            area,
+            align: "center",
+            want: (w, h) => ({ x: safeCx, y: area.top + h / 2 }),
+            maxLines: 99,
+            overFace: true,
+            overText: true,
+          };
+          const fit = tryBlock(block, over, floor);
+          if (fit) {
+            chosen = { candidate: over, size: floor, fit };
+            break;
+          }
         }
       }
       if (!chosen) {
@@ -1560,7 +1561,6 @@ export function placeEdit(
             ),
             layouts,
           },
-          keep: false,
         };
       }
       record.push({
@@ -1577,7 +1577,7 @@ export function placeEdit(
         reason: `captions ${quote(label)} (${at(block.start)} to ${at(block.end)}) sit ${chosen.candidate.name}: no room ${candidates[0]!.name}`,
       });
     }
-    const { candidate, size, fit, keep } = chosen;
+    const { candidate, size, fit } = chosen;
     const fullSize = preset.fonts[captionFont].size;
     if (size < fullSize) {
       record.push({
@@ -1598,11 +1598,7 @@ export function placeEdit(
       readability.caption,
       candidate.overFace
         ? null
-        : {
-            area: candidate.area,
-            obstacles: blockObstacles(block, candidate),
-            ...(keep ? { accept: (box: Box) => leavesVisualSpot(box, block) } : {}),
-          },
+        : { area: candidate.area, obstacles: blockObstacles(block, candidate) },
       candidate.overFace
         ? "captions over the face are never moved"
         : `no free place nearby reaches ${readability.caption.min}:1`,
@@ -2198,8 +2194,9 @@ export function placeEdit(
   // A visual's card: an empty white stroke frame, a small corner card (picture
   // in picture) over the footage. The full size first, then the smaller step;
   // at each, the spot with the most free space around it (`card.spots`):
-  // inside the platform safe zone, clear of the face, the captions and the
-  // hook, and off the button column. Never over the face.
+  // inside the platform safe zone, clear of the face and the other text (the
+  // hook, accents, big words, lists; captions are placed after it), and off
+  // the button column. Never over the face.
   function cardSize(smaller: boolean): { width: number; height: number } {
     const card = preset.behind.card;
     const width = Math.round(preset.frame.width * card.widthShare * (smaller ? card.smaller : 1));
@@ -2321,7 +2318,6 @@ export function placeEdit(
             span,
             [edge],
             threshold,
-            () => true,
             around,
           );
           if (moved) {

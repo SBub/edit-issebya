@@ -149,8 +149,9 @@ start, end }] }`).
   4:5 (`aspect`, 360 by 450 px). Its spots (`CARD_SPOTS`, in this order for a tie): `top-left`,
   `top-right`, `bottom-left` and `bottom-right` (each `inset` 40 px in from `PLATFORM_SAFE`) and
   `beside-left` and `beside-right` (`layout.gap` from the moment's face, its top at the face's top). A
-  spot is taken only when it is inside `PLATFORM_SAFE`, clear of the moment's face, of every caption,
-  accent, big word and the hook shown in its span and of `PLATFORM_BUTTONS`; the spot with the most
+  spot is taken only when it is inside `PLATFORM_SAFE`, clear of the moment's face, of every accent,
+  big word, list level and the hook shown in its span and of `PLATFORM_BUTTONS` (captions are placed
+  after the cards, so they never count); the spot with the most
   free space in the ring around it (`ring`, 60 px) wins. The full size is tried at every spot before
   the smaller step (`smaller`, 0.7: 252 by 315 px, one step only, recorded `shrunk`, rule
   `visual-size`), and then the top-left corner of the safe zone at the full size, the overlap noted
@@ -267,7 +268,7 @@ word" is now "spoken words, plus one written hook at the start".
   anchors are `anchorAt` (the nearest word end within a second, else a time where nobody speaks),
   so it follows its words through a re-time.
 - A fixed slot (owner decision 2026-11-07): every reel has one, and it is placed on every run, first.
-  `placeEdit` places `hook` before the captions and every other extra. It shows from
+  `placeEdit` places `hook` first of the components, before every other extra and the captions. It shows from
   `pace.hook.fromSeconds` (0.2 s) to `untilSeconds` (3 s), and no other item moves it or shrinks it. A text
   pick (accent, question, big word, list) said in its window cuts the hook where it starts
   (`text-one-at-a-time`, noted): the hook then shows from 0.2 s to that start. If that leaves less than the
@@ -275,10 +276,10 @@ word" is now "spoken words, plus one written hook at the start".
   over it (`kept-overlapping`). A visual keeps its own times and may show over it (`kept-overlapping`, rule
   `all-picks`).
   Captions keep running below it; nobody says it, so no caption is ever left out for it.
-- Reserved before the captions, on every run (owner decision 2026-11-07): the hook is placed first, then
-  the captions, so the captions in its window keep clear of it by the caption rules: each block moves to
-  a free place, shrinks down to the floor, and only when nothing else is free goes on the caption line
-  over the face (`covers-face`, rule `caption-face`). A caption-heavy opening never pushes the hook out.
+- Placed first on every run (owner decision 2026-11-07): the captions come after it, so the captions in
+  its window keep clear of it by the caption rules: each block moves to a free place, shrinks down to the
+  floor, and only when nothing else is free goes over the face on the caption line (`covers-face`, rule
+  `caption-face`). A caption-heavy opening never pushes the hook out.
 - Placement: the accent's font, size and colour, in the upper part of the frame (the safe zone's top
   half, above the face and the body under it), else the free part of the safe zone; in each place it
   tries one line, then two (the balanced break), at each size down to the floor before it moves on.
@@ -368,16 +369,8 @@ each such overlap is kept and noted.
 - Placement by priority:
   - Transitions' text levels first, in their layer's free space (see "Transitions tied to a phrase").
     Then the written hook, in its fixed slot (see "The written hook").
-  - Captions first, in time order, one spot per sentence (`sentenceSpans`): the sentence's groups
-    all start at the same place, sized for its largest group (at most two lines per group);
-    captions inside a transition take its text area as one block instead. Candidates: beside the
-    head (the wider side first, aligned towards the face, near the mouth), below the face, the
-    caption line (`fallbackY` to the safe bottom); with no head, the caption line then the safe
-    zone. Every candidate is tried at the full size before a smaller one, down to the floor (60%),
-    so captions stay readable. A caption that fits no free place even at the floor goes on the
-    caption line over the face (`covers-face`, rule `caption-face`). A sentence that shares its time
-    with a planned visual first tries only places that leave a card spot free.
-  - Then the extras, each in answer order: accents (questions with them), big words, visuals.
+  - Then the other components, each in answer order: accents (questions with them), big words, visuals.
+    They never avoid captions: captions are not placed yet, and the captions take the space left.
   - Accent: above the head (its top about 190 px above the head), the upper part of the frame, the
     free part of the safe zone (with no head: the accent line at y 1130, then the safe zone). In
     each candidate it shrinks to the floor (60%) and wraps to two lines (the balanced break) before it
@@ -385,7 +378,7 @@ each such overlap is kept and noted.
     text and the notch; clear of the text and the notch only (over the face, noted with the face); and last
     its default spot, at the largest size that fits down to 8 px (`MIN_TEXT_SIZE`), the text it sits over
     noted (`all-picks`, with what it sits over). A place only at a size under the floor does not count as
-    free: the candidate sizes end at the floor, so an accent can be kept over a caption while a clear place
+    free: the candidate sizes end at the floor, so an accent can be kept over other text while a clear place
     exists at a smaller size.
   - Big word: as large as fits between the side margins (at most `maxSize`, 400 px), its centre
     wanted `belowHeadTop` below the robust head top at its span (or at `noHeadY`), at the nearest
@@ -401,17 +394,28 @@ each such overlap is kept and noted.
     at all it is set at the top-left corner of its area.
   - Visual (the card, owner decision 2026-11-07): the first card spot that fits, at the full size,
     then at the smaller step (0.7, noted `shrunk`, rule `visual-size`), ranked by the free space
-    around it (see "Preset values"). A spot must be clear of the face, the captions, the accents, the
-    hook, the big words and the button column. Only when no spot is free at either size does the card
+    around it (see "Preset values"). A spot must be clear of the face, the accents, the hook, the big
+    words, the list levels and the button column. Only when no spot is free at either size does the card
     take the top-left corner of the safe zone at the full size, the overlap noted (`all-picks`; it may
     then sit over the face). Written: `box` (the card's place and size), `spot` (the nearest preset
-    spot). Captions placed before it keep their spots clear of it.
+    spot).
   - Card contrast: with the background map, the WCAG ratio of the card's white edge against the footage
     in and 30 px around it (`ring`) must reach `minContrast` (1.5); below it the card tries nearby places
     (the readable-text grid, `readability.moveRadius`, inside `PLATFORM_SAFE`, clear of the face, the
-    captions, the hook and the button column) and moves to the nearest that reaches it (`contrast-spot`,
+    other text placed so far and the button column) and moves to the nearest that reaches it (`contrast-spot`,
     `moved`), else stays (`contrast-stay`, `low-contrast`, `... a visual never gets a shadow or a colour change`). Never a shadow or a colour change; recorded only, never a check. A card without a known
     background is not measured.
+  - Captions last, in time order, in the space the components leave at each moment (see the order above),
+    one spot per sentence (`sentenceSpans`): the sentence's groups all start at the same place, sized for
+    its largest group (at most two lines per group); captions inside a transition take its text area as
+    one block instead. They avoid the face, every component and every other caption. Candidates: beside
+    the head (the wider side first, aligned towards the face, near the mouth), below the face, the caption
+    line (`fallbackY` to the safe bottom); with no head, the caption line then the safe zone. Every
+    candidate is tried at the full size before a smaller one, down to the floor (60%), so captions stay
+    readable. A caption that fits no free place even at the floor goes over the face, clear of the other
+    text, on the caption line or at the top of the safe zone (`covers-face`, rule `caption-face`). Only
+    when no place is clear of the text either, it sits over other text as the last resort, wrapped as far
+    as it takes, each unit noted `kept-overlapping` with the texts it sits over.
   - Never the same word twice on screen, by time: the captions are split in time against the texts on
     screen (the hook shows no word, so it never splits one). A caption's words that an accent, a big word
     or a list's phrase shows while that text is on screen are left out for that stretch (`hidden_by` the
@@ -756,6 +760,10 @@ never fatal.
   short for its window).
 - Never let a caption drop the hook: the hook is placed before the captions, and the captions in its
   window keep clear of it (move, shrink, or last, over the face).
+- Captions take the space the components leave: no component is placed around a caption (the hook,
+  accents, questions, big words, visuals and list levels are placed first and never avoid captions), and
+  a caption avoids every component and every other caption. A caption over other text is the last resort
+  only, noted.
 - Never drop the hook for its size: below the floor it shrinks until its words fit in one or two lines
   (`hook-size`).
 - Never move a big word up for the head: a big word the person covers more of than the lower 30%

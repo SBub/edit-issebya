@@ -186,7 +186,7 @@ describe("build with behind items", () => {
       await nodeMeasurer(),
     );
     expect(html).toContain(
-      `<div id="visual-1" class="clip visual" alt="" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 75px; top: 260px; width: 252px; height: 315px"></div>`,
+      `<div id="visual-1" class="clip visual" alt="" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 75px; top: 1115px; width: 252px; height: 315px"></div>`,
     );
     expect(html).not.toContain("photo");
     expect(assets.filter((asset) => !["font", "sound"].includes(asset.role))).toEqual([
