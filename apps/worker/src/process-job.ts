@@ -163,9 +163,6 @@ export async function processJob(
                   blobs,
                   keyPrefix: config.keyPrefix,
                   fingerprints,
-                  scratchDir,
-                  tools: cutouts.tools,
-                  recordStored,
                 });
                 // Never cached: a failed decide fails the job and version 1 stays
                 // current; a retried job decides again from the current version.

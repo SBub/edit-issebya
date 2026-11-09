@@ -191,7 +191,7 @@ describe("overlayState", () => {
       waiting_reason: "the usage limit is reached",
       not_before: new Date(2026, 10, 3, 7, 5).toISOString(),
     });
-    const steps = [step(j.id, "decide", "waiting"), step(j.id, "backgrounds", "done")];
+    const steps = [step(j.id, "decide", "waiting"), step(j.id, "cutout", "done")];
     expect(overlayState(input({ jobs: [j], steps }))).toMatchObject({
       kind: "working",
       words: "Styling your reel",

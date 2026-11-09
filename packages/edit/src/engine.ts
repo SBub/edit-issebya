@@ -1,6 +1,4 @@
-import type { Backgrounds } from "./background.ts";
 import { clicksFor } from "./clicks.ts";
-import { contrastRatio, relativeLuminance } from "./contrast.ts";
 import {
   type AccentChoice,
   type BigWordChoice,
@@ -28,7 +26,7 @@ import {
   type TextElement,
   placeElement,
 } from "./engine-place.ts";
-import { expand, overlaps, placeBox } from "./engine-space.ts";
+import { overlaps } from "./engine-space.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from "./head-track.ts";
 import { wordsText } from "./glossary.ts";
@@ -96,26 +94,14 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    earlier (`clamped-to-end`); a pick over hidden footage moves to the next
 //    visible moment (`moved-off-cut`); a list with no caption text of its own
 //    shows the words of its phrase (`text-from-words`).
-// 6. Readable text: with a background map, each text placed is measured
-//    (WCAG contrast of its colour against the footage behind it, over its
-//    span). Below the preset's threshold it moves to the nearest free place
-//    in the same zone that reaches it, else stays where it is, plain (owner
-//    decision 2026-11-04: move first, never a shadow, never a colour
-//    change). A big word or a visual's card is never moved for it.
-// 7. Every move, shrink, wrap, retime, fallback, overlap and low contrast left
-//    in place is written to the record.
+// 6. Every move, shrink, wrap, retime, fallback and overlap is written to the
+//    record.
 
 export type PlacedTracks = Edit["tracks"];
 
 export interface Placement {
   tracks: PlacedTracks;
   record: EngineNote[];
-}
-
-export interface PlaceOptions {
-  // What is behind the text (the footage's background map, sampled): with it
-  // every text is kept readable; without it nothing is measured.
-  backgrounds?: Backgrounds;
 }
 
 // A text on screen as placed: its id (a text level's transition id), what a
@@ -148,12 +134,6 @@ function quote(text: string): string {
 // What a note calls an accent-look item: a QUESTION or an accent.
 function accentNoun(accent: AccentChoice): string {
   return accent.question ? "question" : "accent";
-}
-
-// A contrast ratio in the record: one decimal, never rounded up to a
-// threshold it does not reach.
-function ratioText(ratio: number): string {
-  return `${(Math.floor(ratio * 10 + 1e-9) / 10).toFixed(1)}:1`;
 }
 
 function during(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
@@ -195,11 +175,6 @@ function sceneOf(edges: readonly number[], duration: number, headTrack: HeadTrac
 
 const momentsOver = (scene: readonly Moment[], span: { start: number; end: number }) =>
   scene.filter((moment) => moment.start < span.end && span.start < moment.end);
-
-// The padded faces of the moments over a span.
-function facesDuring(scene: readonly Moment[], span: { start: number; end: number }): Box[] {
-  return momentsOver(scene, span).flatMap((moment) => (moment.face ? [moment.face] : []));
-}
 
 // The unpadded robust faces of the moments over a span (the placer's scene).
 function rawFacesDuring(scene: readonly Moment[], span: { start: number; end: number }): Box[] {
@@ -479,7 +454,6 @@ export function placeEdit(
   headTrack: HeadTrack,
   preset: Preset,
   measurer: Measurer,
-  options: PlaceOptions = {},
 ): Placement {
   // Each pass places the answer as it stands; a pass that leaves a pick out
   // (no legal spot) or trims or drops one (same-text) is placed again, so the
@@ -500,7 +474,6 @@ export function placeEdit(
       headTrack,
       preset,
       measurer,
-      options,
       skip,
     );
     for (const pick of placed.picks) picks.set(pick.id, pick);
@@ -582,7 +555,6 @@ function placeOnce(
   headTrack: HeadTrack,
   preset: Preset,
   measurer: Measurer,
-  options: PlaceOptions,
   // The refs of picks dropped by the same-text rule or left out for no legal
   // spot: placed as nothing.
   skip: ReadonlySet<string>,
@@ -606,10 +578,6 @@ function placeOnce(
     const index = order.get(id)!;
     return sentences.find((s) => order.get(s.from)! <= index && index <= order.get(s.to)!);
   };
-  const { layout } = preset;
-  const safe = SAFE_ZONE.box;
-  const gap = layout.gap;
-  const notch = SAFE_ZONE.notch;
   const hidden = current.tracks.footage.flatMap((clip) =>
     (clip.hidden ?? []).map((span) => ({
       start: resolveAnchor(span.start, byId, duration),
@@ -1037,145 +1005,10 @@ function placeOnce(
   function unitStart(index: number): number {
     return resolveAnchor(captions[index]!.start, byId, duration);
   }
-  const faceObstacles = (span: { start: number; end: number }) =>
-    facesDuring(scene, span).map((face) => ({
-      ...face,
-      top: face.top - gap,
-      bottom: face.bottom + gap,
-    }));
   const shown: Shown[] = [];
-  const textDuring = (span: { start: number; end: number }) =>
-    shown.filter((item) => during(item, span)).map((item) => expand(item.box, gap));
   // The texts on screen over `span` that a box overlaps.
   const textsOver = (box: Box, span: { start: number; end: number }): Shown[] =>
     shown.filter((item) => during(item, span) && overlaps(box, item.box));
-  // Readability: the worst contrast of a text's colours over a box and span.
-  const { backgrounds } = options;
-  const { readability } = preset;
-  type Threshold = { min: number };
-  function contrastOf(
-    sampler: Backgrounds,
-    box: Box,
-    span: { start: number; end: number },
-    lights: readonly number[],
-  ): number {
-    let worst = Infinity;
-    for (const light of lights) {
-      worst = Math.min(worst, contrastRatio(light, sampler.behind(box, span, light)));
-    }
-    return worst;
-  }
-
-  // The nearest free place in the same zone (the same area and obstacles,
-  // the same size) within the preset's radius whose contrast reaches the
-  // threshold. Wanted points: the original centre, then a grid every
-  // `moveStep` pixels, row by row from the top, left to right; ties go to
-  // the higher, then the further left place.
-  function readablePlace(
-    sampler: Backgrounds,
-    area: Box,
-    obstacles: readonly Box[],
-    width: number,
-    height: number,
-    from: { x: number; y: number },
-    span: { start: number; end: number },
-    lights: readonly number[],
-    threshold: Threshold,
-    measured: (box: Box) => Box = (box) => box,
-  ): { x: number; y: number; ratio: number; distance: number } | null {
-    const { moveRadius, moveStep } = readability;
-    const cx = from.x + width / 2;
-    const cy = from.y + height / 2;
-    const wants = [{ x: cx, y: cy }];
-    const steps = Math.floor(moveRadius / moveStep);
-    for (let dy = -steps; dy <= steps; dy += 1) {
-      for (let dx = -steps; dx <= steps; dx += 1) {
-        if (dx === 0 && dy === 0) continue;
-        if (Math.hypot(dx, dy) * moveStep > moveRadius + SLACK) continue;
-        wants.push({ x: cx + dx * moveStep, y: cy + dy * moveStep });
-      }
-    }
-    const seen = new Set<string>();
-    let best: { x: number; y: number; ratio: number; distance: number } | null = null;
-    for (const want of wants) {
-      const spot = placeBox(area, obstacles, width, height, want);
-      if (!spot) continue;
-      const key = `${spot.x},${spot.y}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const distance = Math.hypot(spot.x - from.x, spot.y - from.y);
-      if (distance < 0.5 || distance > moveRadius + SLACK) continue;
-      const box = { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + height };
-      const ratio = contrastOf(sampler, measured(box), span, lights);
-      if (ratio < threshold.min) continue;
-      if (
-        !best ||
-        distance < best.distance - 1e-9 ||
-        (Math.abs(distance - best.distance) <= 1e-9 &&
-          (spot.y < best.y || (spot.y === best.y && spot.x < best.x)))
-      ) {
-        best = { ...spot, ratio, distance };
-      }
-    }
-    return best;
-  }
-
-  // What a text placed at `from` does for contrast: stays (readable, or no
-  // map), moves to a readable free place, or stays plain where it is with a
-  // note (never a shadow, never a colour change).
-  function keepReadable(
-    item: string,
-    label: string,
-    box: { x: number; y: number; width: number; height: number },
-    span: { start: number; end: number },
-    colors: readonly string[],
-    threshold: Threshold,
-    zone: { area: Box; obstacles: readonly Box[] } | null,
-    why: string,
-  ): { x: number; y: number } {
-    const from = { x: box.x, y: box.y };
-    if (!backgrounds) return from;
-    const placed = {
-      left: box.x,
-      right: box.x + box.width,
-      top: box.y,
-      bottom: box.y + box.height,
-    };
-    const lights = colors.map(relativeLuminance);
-    const ratio = contrastOf(backgrounds, placed, span, lights);
-    if (ratio >= threshold.min) return from;
-    const when = `from ${at(span.start)} to ${at(span.end)}`;
-    const moved = zone
-      ? readablePlace(
-          backgrounds,
-          zone.area,
-          zone.obstacles,
-          box.width,
-          box.height,
-          from,
-          span,
-          lights,
-          threshold,
-        )
-      : null;
-    if (moved) {
-      record.push({
-        item,
-        action: "moved",
-        rule: "contrast-spot",
-        reason: `${label} moves ${Math.round(moved.distance)} px to a free place it reads on: contrast ${ratioText(ratio)} ${when}, under ${threshold.min}:1, now ${ratioText(moved.ratio)}`,
-      });
-      return { x: moved.x, y: moved.y };
-    }
-    record.push({
-      item,
-      action: "low-contrast",
-      rule: "contrast-stay",
-      reason: `${label} ${label.startsWith("captions ") ? "stay" : "stays"} in place: contrast ${ratioText(ratio)} ${when}, ${why}`,
-    });
-    return from;
-  }
-
   // The LIST items as transition items, each placed as one stack in its turn
   // among the components (below). The captions of a transition's phrase show
   // only as its levels.
@@ -1428,7 +1261,6 @@ function placeOnce(
     const legal = placeElement(element, scene, measurer);
     let placed = legal.placed;
     let notes = legal.notes;
-    let noSpot = false;
     if (!placed) {
       const over = placeElement(element, { ...scene, obstacles: [] }, measurer);
       if (!over.placed) {
@@ -1437,7 +1269,6 @@ function placeOnce(
         );
       }
       placed = over.placed;
-      noSpot = true;
       const under = textsOver(placed.box, block);
       const named = [...new Set(under.map((item) => item.what))].join(" and ");
       const taken = legal.notes.find((note) => note.outcome === "no-spot")!;
@@ -1466,33 +1297,16 @@ function placeOnce(
     for (const unit of block.groups.flat()) {
       for (const note of notes) record.push({ ...note, item: unit.caption.id });
     }
-    const { box, size, groups, coversFace } = placed;
+    const { box, size, groups } = placed;
     const width = box.right - box.left;
-    // Readable over the footage; captions over the face or over other text are
-    // never moved for it.
-    const stays = coversFace || noSpot;
-    const place = keepReadable(
-      first.caption.id,
-      `captions ${quote(label)}`,
-      { x: box.left, y: box.top, width, height: box.bottom - box.top },
-      block,
-      [...new Set(block.groups.flat().map((unit) => unit.caption.color ?? preset.caption.color))],
-      readability.caption,
-      stays
-        ? null
-        : { area: safe, obstacles: [...faceObstacles(block), ...textDuring(block), notch] },
-      stays
-        ? `captions over the ${coversFace ? "face" : "text"} are never moved`
-        : `no free place nearby reaches ${readability.caption.min}:1`,
-    );
     // Each group's lines at their places inside the block: each caption's
     // corner, and its box as shown (so the captions after it avoid it).
     const space = measurer.width(captionFont, size, " ");
     block.groups.forEach((group, index) => {
       let next = 0;
-      let y = place.y;
+      let y = box.top;
       for (const line of groups[index]!) {
-        let x = place.x + (width - line.width) / 2;
+        let x = box.left + (width - line.width) / 2;
         for (const { width: unitWidth } of line.units) {
           const unit = group[next++]!;
           const left = Math.floor(x * 100) / 100;

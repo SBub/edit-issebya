@@ -5,7 +5,6 @@
 - specs/issue-31-adw-7f81a19d-sdlc_planner-edit-model-builder-versions.md
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
 - specs/issue-114-adw-9049f8fd-sdlc_planner-platform-safe-zone-guard.md
-- specs/issue-154-adw-596f3b25-sdlc_planner-readable-text-contrast.md
 - specs/issue-155-adw-2a28c287-sdlc_planner-fulfil-change-requests-make-room.md
 - specs/issue-157-adw-3c1a1736-sdlc_planner-transitions-tied-to-phrases.md
 
@@ -337,7 +336,7 @@ word" is now "spoken words, plus one written hook at the start".
 
 ### Layout engine
 
-`src/engine.ts`, `placeEdit(current, input, picked, transcript, headTrack, preset, measurer, { backgrounds? })`
+`src/engine.ts`, `placeEdit(current, input, picked, transcript, headTrack, preset, measurer)`
 (`picked` is `pickVariants(input)`) returns `{ tracks, record }`: the edit's tracks as the builder consumes them (every caption, accent,
 hook and big word with `position` and `size`, every visual with a `box`) and the record of
 what it did. Pure and deterministic: no randomness, no clock, no I/O; the same input gives the same
@@ -547,31 +546,10 @@ and a big word whose lead reaches into an accent ending on its word trims the ac
     `-3`, ... after the caption's id. Only the captions left in are placed: a group keeps its own rest, in
     the block's place, size and alignment, and a group with every caption left out shows no caption then.
     The captions left out take no room, so they block no other text. Nothing is recorded for it.
-- Readability (`src/contrast.ts`, `src/background.ts`, `PlaceOptions.backgrounds`): the worker
-  samples the footage into a background map (`BackgroundMap`: 2 frames a second, a 36 by 64 grid of
-  30 px cells, each cell's WCAG relative luminance as a byte), and `backgroundSampler(map, frame)`
-  answers `behind(box, span, textLuminance)`: the luminance of every cell the box touches in every
-  sampled frame inside the span (the nearest frame when none is), at the 80th percentile towards
-  the text's own luminance (nearest-rank, integers, so a few cells never decide), memoised per box,
-  span and direction. Right after each caption block is placed, the engine measures the WCAG contrast
-  ratio of the text colour against that background: below `preset.readability` `caption.min` (4.5), it
-  first tries nearby places anywhere in the safe zone (the face, the texts on screen and the notch as
-  obstacles, the same size and line breaks; the original centre, then a
-  60 px grid within 300 px) and moves to the nearest that reaches the threshold (rule
-  `contrast-spot`, action `moved`); else the text stays where it is, plain white, with no shadow
-  and its colour kept, and the record says so (rule `contrast-stay`, action `low-contrast`). Owner
-  decision 2026-11-04: move first, never
-  a shadow, never a colour change. A caption block that
-  covers the face, or sits over text for want of a legal spot, is never moved for it. Low contrast is recorded only: it is no check failure and
-  no engine bug, and the version saves as usual. With no `backgrounds` given nothing is measured.
-  Example reason: `captions "the time we're living right now push ..." stay in place:
-contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (the hook:
-  `stays in place`; for a caption over the face the reason ends with
-  `captions over the face are never moved`, over text `captions over the text are never moved`). The
-  hook, accents, questions, LIST stacks, the big word and the card are not measured (readability
-  leaves with build step 11). No text
-  style anywhere (captions, accents, big words, transition levels) adds a stroke or an
-  outline (`-webkit-text-stroke`, `paint-order`, a text shadow).
+- No readability: the engine measures no contrast and moves no text for it. No background map and no
+  `backgrounds` option exist; every text is placed by its rules alone. No text style anywhere (captions,
+  accents, big words, transition levels) adds a stroke or an outline (`-webkit-text-stroke`,
+  `paint-order`, a text shadow).
 - Sounds (`src/clicks.ts`, `clicksFor`, owner decision 2026-11-04): the engine writes a new
   version's sound track. One `click` (`click-<item id>`) as each placed visual
   and each big word comes in, on the item's own start anchor (a big word's lead, 0.2 s before its
@@ -633,12 +611,11 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (the h
   item's text and times, for example
   `{ "item": "visual-1", "component": "VISUAL", "variant": "visual/card", "start": 5.206, "end": 7.206, "rule": "size", "outcome": "shrunk", "blockers": [{ "kind": "face" }, { "kind": "buttons" }], "zone": "corner", "size": 307, "lines": 0, "cost": 20, "reason": "visual visual-1 shrinks to 307 px from 360 px in a corner from 5.21 s to 7.21 s; the face, the buttons took the room" }`.
   The placer's notes are written in this shape and pass through as they are. The engine's other notes
-  (timing, readability, a text's words, the same-text rule) carry an action and a rule name that map to
+  (timing, a text's words, the same-text rule) carry an action and a rule name that map to
   the record's vocabulary
   (`RULE_OF` in `engine-note.ts`): `*-time` and `*-min` are `timing`;
-  `transition-text` is `text`; `contrast-spot` and `contrast-stay` are `contrast`
-  (readability is out with build step 11); `hidden-footage` and `same-text` keep their names. Their
-  actions map as: `low-contrast`, `text-from-words` to `placed`, `clamped-to-end` and
+  `transition-text` is `text`; `hidden-footage` and `same-text` keep their names. Their
+  actions map as: `text-from-words` to `placed`, `clamped-to-end` and
   `moved-off-cut` to `retimed`; `moved`, `retimed` and `dropped` keep their names. A rule the table does not name throws,
   so a new rule is named there on purpose. Saved with the version (`versions.engine_record`) and logged by the worker in
   one line per version. No old note shape is read anywhere.
@@ -809,10 +786,6 @@ never fatal.
   - "clicks on visuals and big words": a click as each placed visual and big word comes in and
     nothing else (at `data-volume="0.5012"`, the -6 dB click), a visual the face leaves no spot off it
     for still clicking, and a stored version's sounds left as they are.
-  - "readable text": a caption block moved to a darker free place in its zone, a place kept plain with
-    only a note when none reads, an accent not measured (its place kept over a light sweater, no
-    contrast note), a big word left in place on a light background, nothing changed on a dark
-    background, determinism over a map, and no measurement of a transition's levels.
   - "transitions": a transition shows exactly its phrase (in at its first word, out at its last word's
     end, no hold after a long pause), a short phrase keeps its words, the lead-in and
     the key phrase take the style roles inside their area, a face covered only where the face fills
@@ -938,8 +911,7 @@ never fatal.
   (noted `covers-face`, rule `face`). Text is no obstacle to the card and the card none to text: a text
   may sit on a card, and the card always draws under it (track 30 under the text track 50). The engine,
   never Claude, chooses its place and size.
-- Never give a visual a fill, a text, a shadow or a colour change: its white stroke is its frame. A
-  visual is never moved for contrast (readability is out, build step 11 removes the rest).
+- Never give a visual a fill, a text, a shadow or a colour change: its white stroke is its frame.
 - Never cut out (no mask span, no mask) for a visual: only a big word behind the speaker has a mask.
 - Never let Claude write a transition's time, position or size, nor a literal font or colour in a
   transition entry: they come from the words and the style roles.
@@ -969,10 +941,7 @@ never fatal.
   obstacle to any of them. A big word is behind
   the speaker: the face is no obstacle to it, and its 30% visibility rule is hard: it moves up and
   shrinks at the head top until the rule holds, and is left out when nothing does.
-- Never change a text colour to make it readable, and never add a shadow, a stroke or an outline
-  to any text: move it, else leave it in place, plain, and record it.
-- Never measure or move the big word for contrast: it is the placer's.
-- Never fail a check or a version on low contrast: it is recorded only.
+- Never add a shadow, a stroke or an outline to any text, and never change a text colour.
 - A version with a `behind` item is saved only once every mask it names exists; the builder never
   builds a behind item without its mask.
 - A big word is checked against the safe box `S` like every text (`safe-box`); there is no `frame`

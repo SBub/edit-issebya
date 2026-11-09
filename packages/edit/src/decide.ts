@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { Backgrounds } from "./background.ts";
 import type { EngineNote } from "./engine-note.ts";
 import { placeEdit } from "./engine.ts";
 import { pickVariants } from "./variant-picker.ts";
@@ -259,9 +258,6 @@ export function editFromAnswer(
   transcript: Transcript,
   headTrack: HeadTrack,
   measurer: Measurer,
-  // The footage's background map, sampled: the engine keeps every text
-  // readable over it. Without it nothing is measured.
-  backgrounds?: Backgrounds,
 ): { ok: true; edit: Edit; record: EngineNote[] } | { ok: false; reasons: string[] } {
   const inputs = { ...current.inputs };
   delete inputs.masks;
@@ -273,7 +269,6 @@ export function editFromAnswer(
     headTrack,
     preset,
     measurer,
-    { backgrounds },
   );
   const json = {
     format: 1,

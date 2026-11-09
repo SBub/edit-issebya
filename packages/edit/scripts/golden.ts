@@ -1,14 +1,11 @@
 // Writes the engine-placed fixture versions (the baseline as the worker's
-// first_version step saves it, over the fixture clip's background map; the
-// behind hand edit's choices placed by the layout engine; and the same
-// choices over a synthetic light background, readable; the 2026-11-03
-// request placed over the hand edit; the same choices with two numbered list
-// items; and the same choices with the written hook) and every fixture's
-// golden page and widths from the Node build:
+// first_version step saves it; the behind hand edit's choices placed by the
+// layout engine; the 2026-11-03 request placed over the hand edit; the same
+// choices with two numbered list items; and the same choices with the written
+// hook) and every fixture's golden page and widths from the Node build:
 // `yarn workspace @edit-issebya/edit golden`.
 // Commit what it writes; the Node and browser tests compare against it.
 import { readFile, writeFile } from "node:fs/promises";
-import { backgroundMapSchema, backgroundSampler } from "../src/background.ts";
 import { maskSpans } from "../src/behind.ts";
 import { baselineEdit } from "../src/baseline.ts";
 import { editFromAnswer } from "../src/decide.ts";
@@ -17,13 +14,10 @@ import { choicesOf } from "../src/engine-input.ts";
 import { ISSEBYA_PRESET } from "../src/preset.ts";
 import { type Edit, parseEdit } from "../src/schema.ts";
 import { pickVariants } from "../src/variant-picker.ts";
-import { backgroundMapOf } from "../src/test-support/backgrounds.ts";
 import { goldenOf } from "../src/test-support/golden.ts";
 import { RETHINK_WORK, SHORT_SPEECH, baselineInputs } from "../src/test-support/inputs.ts";
 import { REQUEST_ANSWER, REQUEST_CASE } from "../src/test-support/request.ts";
 import { nodeMeasurer } from "../src/test-support/measurer.node.ts";
-import { resolveTimeline } from "../src/timeline.ts";
-import { sentenceSpans } from "../src/transcript.ts";
 
 const testdata = new URL("../src/testdata/", import.meta.url);
 const NO_CHOICES = {
@@ -39,13 +33,6 @@ const write = (name: string, value: unknown) =>
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
   writeFile(new URL(`versions/${name}.edit.json`, testdata), `${JSON.stringify(value, null, 2)}\n`);
 
-// The map the worker's `backgrounds` step makes from the fixture clip.
-const shortSpeechMap = backgroundMapSchema.parse(
-  JSON.parse(
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
-    await readFile(new URL("backgrounds/short-speech.backgrounds.json", testdata), "utf8"),
-  ),
-);
 const baseline = baselineEdit(SHORT_SPEECH.transcript, baselineInputs(), ISSEBYA_PRESET);
 const placed = placeEdit(
   baseline,
@@ -55,7 +42,6 @@ const placed = placeEdit(
   SHORT_SPEECH.headTrack,
   ISSEBYA_PRESET,
   await nodeMeasurer(),
-  { backgrounds: backgroundSampler(shortSpeechMap, ISSEBYA_PRESET.frame) },
 );
 await write("baseline-short-speech", { ...baseline, tracks: placed.tracks });
 
@@ -69,7 +55,6 @@ const hooked = editFromAnswer(
   SHORT_SPEECH.transcript,
   SHORT_SPEECH.headTrack,
   await nodeMeasurer(),
-  backgroundSampler(shortSpeechMap, ISSEBYA_PRESET.frame),
 );
 if (!hooked.ok) throw new Error(hooked.reasons.join("; "));
 await write("baseline-short-speech-hook", hooked.edit);
@@ -105,46 +90,6 @@ function withPlaceholders(edit: Edit): Edit {
   return { ...edit, inputs: { ...edit.inputs, masks } };
 }
 await write("rethink-work-engine", withPlaceholders(engine.edit));
-
-// The same choices over a synthetic background: dark, with a beige band
-// across the frame where the first sentence's captions sit (while it is said)
-// and one where the first accent sits (while it shows), so the captions move
-// to a darker free place; the accent is the placer's, which measures nothing,
-// so it stays where it is with no contrast note.
-const spans = resolveTimeline(engine.edit, RETHINK_WORK.transcript);
-const firstCaption = engine.edit.tracks.captions[0]!;
-const firstAccent = engine.edit.tracks.overlays.find((item) => item.id.startsWith("accent-"))!;
-const accentSpan = spans.get(firstAccent.id)!;
-const firstSentence = sentenceSpans(RETHINK_WORK.transcript)[0]!;
-const band = (item: { position?: { y: number }; size?: number }) => ({
-  top: item.position!.y - 10,
-  bottom: item.position!.y + item.size! + 10,
-});
-const captionBand = band(firstCaption);
-const accentBand = band(firstAccent);
-const readableMap = backgroundMapOf(ISSEBYA_PRESET.frame, engine.edit.duration, (_x, y, t) => {
-  const inCaption = t < firstSentence.end && y >= captionBand.top && y < captionBand.bottom;
-  const inAccent =
-    t >= accentSpan.start - 0.5 &&
-    t < accentSpan.end + 0.5 &&
-    y >= accentBand.top &&
-    y < accentBand.bottom;
-  return inCaption || inAccent ? "#D8C3A5" : "#101010";
-});
-const readable = editFromAnswer(
-  behind.edit,
-  choices,
-  ISSEBYA_PRESET,
-  RETHINK_WORK.transcript,
-  RETHINK_WORK.headTrack,
-  await nodeMeasurer(),
-  backgroundSampler(readableMap, ISSEBYA_PRESET.frame),
-);
-if (!readable.ok) throw new Error(readable.reasons.join("; "));
-for (const note of readable.record.filter((entry) => /contrast/.test(entry.reason))) {
-  console.log(`readable: ${note.item} ${note.outcome} (${note.rule}): ${note.reason}`);
-}
-await write("rethink-work-readable", withPlaceholders(readable.edit));
 
 // The 2026-11-03 request "add images behind me" over the hand edit.
 const handJson: unknown = JSON.parse(

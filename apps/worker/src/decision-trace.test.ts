@@ -62,7 +62,7 @@ describe("decision trace", () => {
         note("accent-1", "moved", "no-room"),
         note("big-word-1", "shrunk", "size"),
         note("visual-1", "covers-face", "face"),
-        note("cw0", "placed", "contrast"),
+        note("cw0", "placed", "same-text"),
       ],
       words,
     );
@@ -76,10 +76,10 @@ describe("decision trace", () => {
     expect(trace.rows[0]!.proposed).toBe('accent "Creating content"');
     expect(trace.rows[2]!.proposed).toBe('bigword "exposure"');
     expect(trace.rows[3]!.proposed).toBe('visual "a lamp" on "is like"');
-    expect(trace.otherNotes).toEqual({ "placed (contrast)": 1 });
+    expect(trace.otherNotes).toEqual({ "placed (same-text)": 1 });
     const text = formatTrace("v2", trace);
     expect(text).toContain("proposed 5: kept 2, changed 3");
-    expect(text).toContain("other engine notes: 1x placed (contrast)");
+    expect(text).toContain("other engine notes: 1x placed (same-text)");
   });
 
   it("calls a proposal kept when the engine only placed it, changed on any other note", () => {

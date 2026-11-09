@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { type Backgrounds, backgroundSampler } from "./background.ts";
 import { bigWordCoveredShare, maskSpans } from "./behind.ts";
 import { baselineEdit } from "./baseline.ts";
 import { build } from "./build.ts";
@@ -13,7 +12,6 @@ import { LAYOUT_PADDING, type Box, type HeadTrack, facesOver } from "./head-trac
 import { MIN_SIZE_PX } from "./engine-place.ts";
 import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE } from "./preset.ts";
 import { type Edit, parseEdit } from "./schema.ts";
-import { backgroundMapOf } from "./test-support/backgrounds.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { baselineInputs } from "./test-support/inputs.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
@@ -72,14 +70,12 @@ async function place(
   {
     headTrack = hand.headTrack,
     current = hand.edit,
-    backgrounds,
     transcript: spoken = transcript,
   }: {
     headTrack?: HeadTrack;
     current?: Edit;
     // Another transcript (the same ids), for a denser opening.
     transcript?: Transcript;
-    backgrounds?: Backgrounds;
   } = {},
 ) {
   const measurer = await nodeMeasurer();
@@ -90,7 +86,6 @@ async function place(
     spoken,
     headTrack,
     measurer,
-    backgrounds,
   );
   if (!made.ok) throw new Error(made.reasons.join("; "));
   const { checks, html } = build(
@@ -1088,153 +1083,6 @@ describe("clicks on visuals and big words", () => {
   it("leaves a stored version's sounds as they are", () => {
     // The hand edit is never placed again: its one click builds as stored.
     expect(hand.edit.tracks.sounds.map((sound) => sound.id)).toEqual(["s-fund-life"]);
-  });
-});
-
-describe("readable text", () => {
-  const FRAME = ISSEBYA_PRESET.frame;
-  const BEIGE = "#D8C3A5";
-  const DARK = "#101010";
-  // A sampled map of the whole reel: `paint` gives each cell's colour.
-  const mapOf = (paint: (x: number, y: number, t: number) => string) =>
-    backgroundSampler(backgroundMapOf(FRAME, hand.edit.duration, paint), FRAME);
-  const inside = (
-    x: number,
-    y: number,
-    box: { left: number; right: number; top: number; bottom: number },
-  ) => x >= box.left && x < box.right && y >= box.top && y < box.bottom;
-  const ACCENT: Partial<EngineInput> = { accents: [{ from: "w84", to: "w87" }] };
-
-  it("moves a caption block on a light band to a darker free place in its zone", async () => {
-    const before = await place({});
-    const first = before.edit.tracks.captions[0]!;
-    // A light band across the frame where the first sentence's captions sit.
-    const band = {
-      left: 0,
-      right: FRAME.width,
-      top: first.position!.y - 10,
-      bottom: first.position!.y + first.size! + 10,
-    };
-    const backgrounds = mapOf((x, y) => (inside(x, y, band) ? BEIGE : DARK));
-    const { edit, record, checks } = await place({}, { backgrounds });
-    const moved = edit.tracks.captions[0]!;
-    expect(moved.position).not.toEqual(first.position);
-    expect(moved.color).toBeUndefined();
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: first.id, outcome: "moved", rule: "contrast" }),
-    );
-    const note = record.find((entry) => entry.rule === "contrast" && entry.outcome === "moved")!;
-    expect(note.reason).toMatch(
-      /^captions ".+" moves \d+ px to a free place it reads on: contrast 1\.\d:1 from \d+\.\d\d s to \d+\.\d\d s, under 4\.5:1, now \d+\.\d:1$/,
-    );
-    expect(
-      record.filter((entry) => entry.rule === "contrast" && entry.outcome === "placed"),
-    ).toEqual([]);
-    expect(checks).toEqual([]);
-  });
-
-  it("keeps the place, plain, when no free place nearby reads: only a note", async () => {
-    const before = await place({});
-    for (const color of [BEIGE, "#8A8A8A"]) {
-      const { edit, record, checks } = await place({}, { backgrounds: mapOf(() => color) });
-      expect(edit.tracks.captions.map((caption) => caption.position)).toEqual(
-        before.edit.tracks.captions.map((caption) => caption.position),
-      );
-      for (const caption of edit.tracks.captions) {
-        expect(caption.color).toBeUndefined();
-      }
-      const notes = record.filter((entry) => entry.rule === "contrast");
-      expect(notes.length).toBeGreaterThan(0);
-      expect(notes[0]!.outcome).toBe("placed");
-      expect(notes[0]!.reason).toMatch(
-        /^captions ".+" stay in place: contrast \d\.\d:1 from .* no free place nearby reaches 4\.5:1$/,
-      );
-      expect(
-        record.filter((entry) => entry.rule === "contrast" && entry.outcome === "moved"),
-      ).toEqual([]);
-      // Low contrast is recorded only: no check fails on it.
-      expect(checks).toEqual([]);
-    }
-  });
-
-  it("does not measure an accent: on a beige sweater it keeps its place, with no contrast note", async () => {
-    // Accents go through the placer, which measures nothing (readability is
-    // out of the layout spec): the same place with and without a map, and the
-    // record says nothing about its contrast.
-    const headTrack: HeadTrack = [];
-    const before = await place(ACCENT, { headTrack });
-    const accent = before.edit.tracks.overlays[0]!;
-    const band = {
-      left: 0,
-      right: FRAME.width,
-      top: accent.position!.y - 10,
-      bottom: accent.position!.y + accent.size! + 10,
-    };
-    const backgrounds = mapOf((x, y) => (inside(x, y, band) ? BEIGE : DARK));
-    const { edit, record, checks } = await place(ACCENT, { backgrounds, headTrack });
-    expect(edit.tracks.overlays[0]).toEqual(accent);
-    expect(accent.color).toBeUndefined();
-    expect(record.filter((note) => note.item === "accent-1" && note.rule === "contrast")).toEqual(
-      [],
-    );
-    expect(checks).toEqual([]);
-  });
-
-  it("does not measure the big word: on a light background it keeps its place, with no contrast note", async () => {
-    const input = { big_words: [{ from: "w76", to: "w76" }] };
-    const before = await place(input);
-    const { edit, record } = await place(input, { backgrounds: mapOf(() => BEIGE) });
-    const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
-    const was = before.edit.tracks.behind!.find((item) => item.kind === "word")!;
-    if (word.kind !== "word" || was.kind !== "word") throw new Error("not a word");
-    expect(word.position).toEqual(was.position);
-    expect(word.size).toBe(was.size);
-    expect(record.filter((note) => note.item === "big-word-1" && note.rule === "contrast")).toEqual(
-      [],
-    );
-  });
-
-  it("changes nothing on a dark background: the same edit and record as with no map", async () => {
-    const input = { ...ACCENT, big_words: [{ from: "w76", to: "w76" }] };
-    const none = await place(input);
-    const dark = await place(input, { backgrounds: mapOf(() => DARK) });
-    expect(dark.edit).toEqual(none.edit);
-    expect(dark.record).toEqual(none.record);
-  });
-
-  it("is deterministic over a map", async () => {
-    const backgrounds = mapOf((x, y) => (x < 540 === y < 960 ? BEIGE : DARK));
-    const one = await place(ACCENT, { backgrounds });
-    const two = await place(ACCENT, { backgrounds });
-    expect(two.edit).toEqual(one.edit);
-    expect(two.record).toEqual(one.record);
-  });
-
-  it("never measures a transition's levels: they sit on its layer", async () => {
-    const input: Partial<EngineInput> = {
-      lists: [{ items: [{ from: "w126", to: "w133", key_from: "w128" }] }],
-    };
-    const { edit, record } = await place(input, { backgrounds: mapOf(() => "#FFFFFF") });
-    const [transition] = edit.tracks.transitions;
-    expect(transition!.levels).toBeDefined();
-    // Its phrase's captions show only as its levels: no place, no note.
-    const phrase = new Set(transition!.words);
-    const inside = edit.tracks.captions.filter((caption) => phrase.has(caption.words[0]!));
-    expect(inside.length).toBeGreaterThan(0);
-    for (const caption of inside) {
-      expect(caption.position).toBeUndefined();
-    }
-    expect(
-      record.filter(
-        (note) =>
-          note.rule === "contrast" &&
-          note.outcome === "placed" &&
-          inside.some((caption) => caption.id === note.item),
-      ),
-    ).toEqual([]);
-    expect(
-      record.filter((note) => note.item === "transition-1" && note.rule === "contrast"),
-    ).toEqual([]);
   });
 });
 
@@ -2606,9 +2454,6 @@ describe("captions take the space the components leave", () => {
     });
     expect(placed.edit.tracks.behind?.find((item) => item.kind === "visual")!.box).toEqual(
       alone.edit.tracks.behind?.find((item) => item.kind === "visual")!.box,
-    );
-    expect(placed.record).not.toContainEqual(
-      expect.objectContaining({ item: "visual-1", outcome: "moved", rule: "contrast" }),
     );
     expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
   });

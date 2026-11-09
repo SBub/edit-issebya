@@ -125,7 +125,7 @@ version is ready`.
 - `apps/worker/src/job-kinds.ts` dispatches `start_over`; `apps/worker/src/process-job.ts` reads the
   reel's version 1 (`firstVersionId` in `apps/worker/src/start-over.ts`; a reel without one fails
   the job) and runs `runDecide` with `request` null and `startFrom` that version. Every earlier step
-  (convert, transcribe, retime, head_track, preview_copies, the background map, cut-outs) is reused
+  (convert, transcribe, retime, head_track, preview_copies, cut-outs) is reused
   from the cache; decide is never cached. Claude starts from version 1's choices (captions only),
   never the current version's; the reel's behind rules hold as on any run. The new version's
   parent is the current version and it becomes current; it saves no title and no summary (both

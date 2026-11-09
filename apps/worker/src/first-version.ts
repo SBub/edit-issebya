@@ -4,7 +4,6 @@ import {
   ISSEBYA_PRESET,
   type VersionBlobs,
   type VersionRows,
-  backgroundSampler,
   baselineEdit,
   build,
   headTrackSchema,
@@ -14,13 +13,11 @@ import {
   transcriptSchema,
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
-import { ensureBackgrounds } from "./backgrounds/ensure-backgrounds.ts";
 import { editMeasurer } from "./edit-measurer.ts";
 import { engineRecordLine } from "./engine-record.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
-import type { ToolPaths } from "./pipeline/tools.ts";
 import { reelOf } from "./queue.ts";
-import { type SpawnTool, type StepContext, recordHit, runInProcessStep } from "./step-runner.ts";
+import { type StepContext, recordHit, runInProcessStep } from "./step-runner.ts";
 
 export const STEP = "first_version";
 
@@ -41,12 +38,6 @@ export interface FirstVersionRun {
   keyPrefix: string;
   // Every pipeline step's fingerprint, from runPipeline.
   fingerprints: Record<string, string>;
-  // For the footage's background map (the `backgrounds` step) the engine
-  // keeps every caption readable over.
-  scratchDir: string;
-  tools: ToolPaths;
-  spawnTool?: SpawnTool;
-  recordStored?: (key: string, bytes: number) => Promise<void>;
   newId?: () => string;
   // Where the engine record is logged, one line per version.
   log?: (line: string) => void;
@@ -69,9 +60,7 @@ function firstVersionInputs(fingerprints: Record<string, string>): EditInputs {
 // After the fixed steps: the automatic version 1, built from the issebya
 // preset alone (no AI) and placed by the layout engine with no choices
 // (captions only), so the reel has something to play. A reel that already
-// has a version (a retried job) keeps it: a hit, nothing written. The
-// footage's background map comes first (made once, then reused), so the
-// engine keeps every caption readable over it. Failed
+// has a version (a retried job) keeps it: a hit, nothing written. Failed
 // layout checks are stored on the row, never fatal; the engine record is
 // saved with the version and logged in one line.
 export async function saveFirstVersion({
@@ -81,10 +70,6 @@ export async function saveFirstVersion({
   blobs,
   keyPrefix,
   fingerprints,
-  scratchDir,
-  tools,
-  spawnTool,
-  recordStored,
   newId = randomUUID,
   log = console.log,
 }: FirstVersionRun): Promise<void> {
@@ -99,16 +84,6 @@ export async function saveFirstVersion({
     return;
   }
   const inputs = firstVersionInputs(fingerprints);
-  const map = await ensureBackgrounds({
-    ctx,
-    storage,
-    keyPrefix,
-    scratchDir,
-    footage: inputs.footage,
-    tools,
-    spawnTool,
-    recordStored,
-  });
   await runInProcessStep(ctx, {
     name: STEP,
     async work() {
@@ -140,7 +115,6 @@ export async function saveFirstVersion({
         headTrack,
         ISSEBYA_PRESET,
         measurer,
-        { backgrounds: backgroundSampler(map, ISSEBYA_PRESET.frame) },
       );
       const edit = { ...baseline, tracks };
       const { checks } = build(edit, transcript, headTrack, ISSEBYA_PRESET, measurer, {

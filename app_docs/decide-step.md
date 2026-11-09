@@ -132,7 +132,7 @@ every big word back as a `{ from, to }` list entry.
   `decideJsonSchema` (Zod 4
   `z.toJSONSchema`, draft-07, real `enum` lists, every object closed, refs inlined),
   `parseDecideAnswer` (both take the answer, the preset and the transcript),
-  `editFromAnswer(current, answer, preset, transcript, headTrack, measurer, backgrounds?)` (the answer placed by the layout engine and parsed with the decide limits, returned as `{ ok, edit, record }`, the record being the engine's; the current version's `inputs.masks` is dropped, since
+  `editFromAnswer(current, answer, preset, transcript, headTrack, measurer)` (the answer placed by the layout engine and parsed with the decide limits, returned as `{ ok, edit, record }`, the record being the engine's; the current version's `inputs.masks` is dropped, since
   the worker names them again for the new `behind` track; a parse failure here is an engine bug,
   refused as `answer-edit`), `decideCounts` (the step line's counts) and `usedFreeField`. The Zod
   refinement refuses a range ending before it starts, a key phrase outside its phrase, a big word that is not one or two consecutive plain words and a word fixed twice, each with a
@@ -471,14 +471,6 @@ order, `big-word-N`, `visual-N`, `question-N`, `transition-N`, `hook`; these ids
 not renamed), what Claude proposed in the same words (`accent "..."`, `question "..."`, `bigword "..."`, `visual "..." on "..."`, `list <list>.<item> "..."` for LIST items, `hook "..."`), `kept` (no engine note) or `changed` (placed with notes), and the notes as `action (rule)`; a question is `question "..."` with the engine id `question-N` (its own answer order, not the accents' count); then the counts, the word fixes and the notes on other items (captions)
 by action and rule. It reads the `versions` row, the AI record and the transcript with the
 worker's own variables and writes nothing (`src/trace.ts`, `src/decision-trace.ts`).
-
-## Readable text
-
-Before the AI call, `run-decide.ts` ensures the footage's background map (`ensureBackgrounds`, a
-failure is an ordinary step failure) and passes `backgroundSampler(map, preset.frame)` to
-`editFromAnswer`, so the engine moves unreadable text to a nearby free place that reads, else
-leaves it in place, plain, and records it (never a shadow, never a colour change; see
-`edit-model.md`).
 
 ## Rules
 

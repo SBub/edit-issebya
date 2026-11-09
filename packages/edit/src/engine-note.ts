@@ -53,14 +53,11 @@ export interface EngineNote {
   reason: string; // plain words for people, with the text and times
 }
 
-// The engine's own action in a note outside the placer (timing, readability,
-// a text's words, the same-text rule).
+// The engine's own action in a note outside the placer (timing, a text's
+// words, the same-text rule).
 export type PlaceAction =
   | "moved"
   | "retimed"
-  // A text that stays in place, plain, below its contrast threshold: no free
-  // place nearby reads, and no shadow or colour is ever added for it.
-  | "low-contrast"
   // A pick too close to the reel's end for its minimum, shown from earlier so
   // it still shows (its end is the reel's end).
   | "clamped-to-end"
@@ -97,7 +94,6 @@ const OUTCOME_OF: Record<PlaceAction, EngineOutcome> = {
   retimed: "retimed",
   // The element stays where it was placed, nothing given up in its place: the
   // reason carries the warning.
-  "low-contrast": "placed",
   "clamped-to-end": "retimed",
   "moved-off-cut": "retimed",
   "text-from-words": "placed",
@@ -117,8 +113,6 @@ const RULE_OF: Record<string, string> = {
   "hidden-footage": "hidden-footage",
   "same-text": "same-text",
   "transition-text": "text",
-  "contrast-spot": "contrast",
-  "contrast-stay": "contrast",
 };
 
 const seconds = (t: number) => `${t.toFixed(2)} s`;

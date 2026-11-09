@@ -27,7 +27,6 @@ const STEP_WORDS: Record<string, { doing: string; failed?: string }> = {
   first_version: { doing: "First version", failed: "Could not make the first version" },
   decide: { doing: "Styling your reel", failed: "Could not finish styling" },
   cutout: { doing: "Cutting you out for the photo" },
-  backgrounds: { doing: "Reading the background" },
   restore: { doing: "Going back to version N", failed: "Could not go back to version N" },
   render: { doing: "Exporting" },
   describe_photo: { doing: "Describing your photo" },

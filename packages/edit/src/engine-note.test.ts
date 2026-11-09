@@ -18,7 +18,6 @@ import { VARIANTS, type Variant } from "./variants.ts";
 const OUTCOME: Record<PlaceAction, EngineOutcome> = {
   moved: "moved",
   retimed: "retimed",
-  "low-contrast": "placed",
   "clamped-to-end": "retimed",
   "moved-off-cut": "retimed",
   "text-from-words": "placed",
@@ -45,7 +44,7 @@ const recordOf = (
 const note = (action: PlaceAction, extra: Partial<PlaceNote> = {}): PlaceNote => ({
   item: "accent-1",
   action,
-  rule: "contrast-spot",
+  rule: "same-text",
   reason: `the ${action} note`,
   ...extra,
 });
@@ -60,7 +59,7 @@ describe("toEngineRecord", () => {
         variant: "accent/above-head",
         start: 3.2,
         end: 4.1,
-        rule: "contrast",
+        rule: "same-text",
         outcome,
         blockers: [],
         reason: `the ${action} note`,
@@ -77,8 +76,6 @@ describe("toEngineRecord", () => {
       ["hidden-footage", "hidden-footage"],
       ["same-text", "same-text"],
       ["transition-text", "text"],
-      ["contrast-spot", "contrast"],
-      ["contrast-stay", "contrast"],
     ];
     const records = recordOf(
       rules.map(([rule]) => note("moved", { rule })),

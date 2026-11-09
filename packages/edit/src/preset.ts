@@ -149,17 +149,6 @@ export interface Preset {
   // The layout engine: text keeps `gap` pixels from the face and from other
   // text (its sizes are the styles' and the placer's, `engine-place.ts`).
   layout: { gap: number };
-  // Readable text (WCAG contrast against the footage behind it): captions
-  // need `caption.min`, accents and the big word (large text) `large.min`.
-  // Below it a text moves to a free place within `moveRadius` (a grid every
-  // `moveStep` pixels) in the same zone, else stays where it is, plain: never
-  // a shadow, never a colour change (owner decision 2026-11-04).
-  readability: {
-    caption: { min: number };
-    large: { min: number };
-    moveRadius: number;
-    moveStep: number;
-  };
   transitions: Record<TransitionKind, PresetTransition>;
   // A LIST's layer shows exactly while its phrase is spoken (no hold).
   // `gap` pixels between stacked text levels.
@@ -262,12 +251,6 @@ export const ISSEBYA_PRESET: Preset = {
     leadSeconds: 0.2,
   },
   layout: { gap: 12 },
-  readability: {
-    caption: { min: 4.5 },
-    large: { min: 3 },
-    moveRadius: 300,
-    moveStep: 60,
-  },
   // Starting values; the owner tunes them by eye on a real reel.
   transitions: {
     numbered: {

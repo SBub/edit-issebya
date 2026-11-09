@@ -26,11 +26,7 @@ const seededKeys: string[] = [];
 const exportKeys: string[] = [];
 // The pipeline outputs tagged rebuildable (apps/worker's step definitions);
 // every other output is kept.
-const REBUILDABLE = new Set([
-  "convert/converted.mp4",
-  "retime/source.mp4",
-  "backgrounds/backgrounds.json",
-]);
+const REBUILDABLE = new Set(["convert/converted.mp4", "retime/source.mp4"]);
 
 interface StoredFileRecord {
   r2_key: string;
@@ -136,15 +132,11 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     "retime: retimed, reused",
     "head_track: head tracked, reused",
     "preview_copies: preview copies made, reused",
-    // The footage's background map, sampled once by ffmpeg before version 1
-    // (the engine keeps the captions readable over it), then reused by decide.
-    expect.stringMatching(/^backgrounds: backgrounds of 5 frames, /),
     expect.stringMatching(/^first_version: version 1 saved, /),
     // On the 2.7 s clip the written hook holds the screen from 0.2 s to the
     // end, and the accent shows over it: the layout engine drops nothing the
     // answer picks.
     expect.stringMatching(/^decide: version 2: 1 accent, 0 transitions, hook set, 1 word fixed, /),
-    "backgrounds: backgrounds reused",
   ]);
   // A hit: wall time only, the other measurements null.
   const { data: steps } = await admin
@@ -170,8 +162,6 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     hit("retime"),
     hit("head_track"),
     hit("preview_copies"),
-    // A tool step: ffmpeg ran.
-    expect.objectContaining({ name: "backgrounds", status: "done", cache_hit: false }),
     // In-process: wall time only.
     {
       name: "first_version",
@@ -194,8 +184,6 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
       bytes_in: null,
       bytes_out: null,
     },
-    // Inside decide: the map made before version 1.
-    hit("backgrounds"),
   ]);
   for (const step of steps!) expect(step.wall_ms).toBeGreaterThanOrEqual(0);
   // No background removal: no step row names it.
@@ -396,15 +384,6 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
       expect.objectContaining({ kind: "kept", step: "preview_copies" }),
     ]);
   }
-  // The background map: one object for the footage, rebuildable.
-  const backgroundKeys = objectKeys.filter((objectKey) =>
-    /\/cache\/backgrounds\/[0-9a-f]{64}\/backgrounds\.json$/.test(objectKey),
-  );
-  expect(backgroundKeys).toHaveLength(1);
-  seededKeys.push(...backgroundKeys);
-  expect(live.filter((row) => row.r2_key === backgroundKeys[0])).toEqual([
-    expect.objectContaining({ kind: "rebuildable", step: "backgrounds" }),
-  ]);
   for (const objectKey of objectKeys) {
     const rows = live.filter((row) => row.r2_key === objectKey);
     expect(rows, objectKey).toHaveLength(1);

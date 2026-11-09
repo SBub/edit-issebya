@@ -168,7 +168,6 @@ export async function seedProcessedReel({
     .single();
   if (first.error || !first.data) throw new Error(`version 1 not read: ${first.error?.message}`);
   const firstVersionKey = `${prefix}reels/${reelId}/versions/${(first.data as { id: string }).id}.json`;
-  // The footage's background map the worker made (one per footage).
-  keys.push(versionKey, firstVersionKey, ...(await storage.list(`${prefix}cache/backgrounds/`)));
+  keys.push(versionKey, firstVersionKey);
   return { reelId, versionId, versionKey, firstVersionKey, sourceKey, keys };
 }

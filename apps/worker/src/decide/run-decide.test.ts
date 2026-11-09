@@ -28,7 +28,6 @@ import {
   isTransient,
 } from "../failure.ts";
 import { type Telemetry, createTelemetry } from "../telemetry.ts";
-import { storeFixtureBackgrounds } from "../backgrounds/test-support.ts";
 import { saveFirstVersion } from "../first-version.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
@@ -112,7 +111,6 @@ beforeEach(async () => {
       await storage.put(cacheKey(PREFIX, step.name, step.fingerprint, file), new Uint8Array(bytes));
     }
   }
-  await storeFixtureBackgrounds(storage, PREFIX, fingerprints);
   rows = new Map();
   current = null;
   ids = 0;
@@ -123,8 +121,6 @@ beforeEach(async () => {
     blobs: storageVersionBlobs(storage),
     keyPrefix: PREFIX,
     fingerprints,
-    scratchDir: scratch,
-    tools: { ffmpeg: "ffmpeg", ffprobe: "ffprobe", hyperframes: ["node", "hf.mjs"] },
     newId,
     log: () => {},
   });
@@ -668,8 +664,7 @@ describe("runDecide when the AI is not available", () => {
     expect(editorCalls(ai)).toHaveLength(1);
     expect(current).toBe(firstId);
     expect(rows.size).toBe(1);
-    // The background map, reused before the AI call.
-    expect(calls.map((c) => c.call)).toEqual(["start", "skipped", "waiting"]);
+    expect(calls.map((c) => c.call)).toEqual(["start", "waiting"]);
     expect(lastCall(calls)).toMatchObject({ reason: "the OpenRouter credits are used up" });
   });
 
@@ -718,7 +713,7 @@ describe("runDecide when the AI is not available", () => {
     expect(made).toBe(1);
     expect(error.cause).toBeInstanceOf(PermanentError);
     expect(isTransient(error)).toBe(false);
-    expect(calls.map((c) => c.call)).toEqual(["start", "skipped", "failed"]);
+    expect(calls.map((c) => c.call)).toEqual(["start", "failed"]);
   });
 });
 
@@ -965,7 +960,6 @@ describe("runDecide spans", () => {
     expect(decideSpan?.status.code).not.toBe(SpanStatusCode.ERROR);
     expect(childrenOf(spans, decideSpan).map((s) => s.name)).toEqual([
       "decide.load",
-      "step backgrounds",
       "decide.prepare",
       "decide.hook",
       "decide.attempt",
@@ -975,8 +969,6 @@ describe("runDecide spans", () => {
     const hook = named(spans, "decide.hook");
     expect(hook?.attributes).toMatchObject({ "decide.attempt": 1, "decide.outcome": "ok" });
     expect(childrenOf(spans, hook).map((s) => s.name)).toEqual([`chat ${AI_MODEL}`]);
-    // The background map was reused: a hit row, under decide.
-    expect(named(spans, "step backgrounds")?.attributes["step.cache_hit"]).toBe(true);
     // The attempt's call is a `chat` span named with the model, then the
     // layout engine's span under the attempt.
     const attempt = named(spans, "decide.attempt");
@@ -1041,7 +1033,7 @@ describe("runDecide spans", () => {
     expect(attempt?.status.code).toBe(SpanStatusCode.ERROR);
     expect(attempt?.events.map((event) => event.name)).toEqual(["exception"]);
     expect(named(spans, "step decide")?.status.code).toBe(SpanStatusCode.ERROR);
-    expect(calls.map((c) => c.call)).toEqual(["start", "skipped", "failed"]);
+    expect(calls.map((c) => c.call)).toEqual(["start", "failed"]);
   });
 
   it("decides and saves version 2 with telemetry that exports nothing", async () => {

@@ -10,7 +10,6 @@ import {
   ISSEBYA_PRESET,
   type Measurer,
   type Preset,
-  backgroundSampler,
   type VersionBlobs,
   type VersionRows,
   build,
@@ -29,7 +28,6 @@ import {
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import { type AiRunner, NO_USAGE } from "../ai.ts";
-import { ensureBackgrounds } from "../backgrounds/ensure-backgrounds.ts";
 import { ensureCutouts } from "../cutout/ensure-cutouts.ts";
 import { withMasks } from "../cutout/spans.ts";
 import { editMeasurer } from "../edit-measurer.ts";
@@ -75,8 +73,7 @@ export interface DecideRun {
   startFrom?: string | null;
   measurer?: () => Promise<Measurer>;
   newId?: () => string;
-  // For the cut-out a behind item needs before the version is saved, and the
-  // footage's background map the engine keeps the text readable over.
+  // For the cut-out a behind item needs before the version is saved.
   tools?: ToolPaths;
   spawnTool?: SpawnTool;
   env?: NodeJS.ProcessEnv;
@@ -207,22 +204,6 @@ export function runDecide({
         };
       });
       const { currentId, currentNumber, row, transcript, headTrack, current } = loaded;
-      // Before the AI call, so a failure here is an ordinary step failure. The
-      // step is a child of decide's span.
-      const backgrounds = backgroundSampler(
-        await ensureBackgrounds({
-          ctx,
-          storage,
-          keyPrefix,
-          scratchDir,
-          footage: row.inputs.footage,
-          tools,
-          spawnTool,
-          recordStored,
-          parent: stepContext,
-        }),
-        preset.frame,
-      );
       const prepared = await inSpan(ctx.telemetry, stepContext, "decide.prepare", {}, async () => {
         const schema = decideJsonSchema(preset, transcript);
         return {
@@ -345,7 +326,6 @@ export function runDecide({
               transcript,
               headTrack,
               measure,
-              backgrounds,
             );
             if (!composed.ok) {
               return { ok: false, reasons: composed.reasons, rules: ["answer-edit"] };

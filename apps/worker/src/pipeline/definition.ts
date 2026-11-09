@@ -71,11 +71,13 @@ export function outputFiles(step: PipelineStep): string[] {
 
 // Outputs of steps the pipeline no longer has, still stored for old reels: the
 // whole-clip cut-out (`remove_background`, removed until #20 brings it back on
-// demand) and its preview copy. Classified so storage records and slimming
-// keep working on them; never written again.
+// demand), its preview copy, and the footage's background map (`backgrounds`,
+// removed with the readability it served). Classified so storage records and
+// slimming keep working on them; never written again.
 const RETIRED_OUTPUTS: readonly (StepOutput & { step: string })[] = [
   { step: "remove_background", file: "subject.webm", retention: "rebuildable" },
   { step: "preview_copies", file: "subject-preview.webm", retention: "kept" },
+  { step: "backgrounds", file: "backgrounds.json", retention: "rebuildable" },
 ];
 
 // Outputs made on demand outside the fixed pipeline: the person mask of one
@@ -83,7 +85,6 @@ const RETIRED_OUTPUTS: readonly (StepOutput & { step: string })[] = [
 // Rebuildable: the next export, restore or change makes it again.
 const ON_DEMAND_OUTPUTS: readonly (StepOutput & { step: string })[] = [
   { step: "cutout", file: "mask.mp4", retention: "rebuildable" },
-  { step: "backgrounds", file: "backgrounds.json", retention: "rebuildable" },
 ];
 
 // The retention tag of one step's output (a live step's, an on-demand one's,
