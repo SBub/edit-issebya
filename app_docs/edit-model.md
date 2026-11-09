@@ -126,10 +126,10 @@ start, end }] }`).
   takes the lead (`leadSeconds`, 0.2 s, so its entrance has finished as the word is heard) and the
   minimum (`minSeconds`, 1.5 s) from its word. `afterSeconds` (1 s) is not a shown time: it only bounds a
   big word's length in the decide limit.
-- Layout (`layout`): on the old code path (captions) text shrinks to 60% of its size (`minScale`)
-  before it gives up a place; the hook, accents, questions, LIST stacks and the big word are the
-  placer's and shrink in 10% steps from the full size (the style's base; the big word's largest fit) to
-  30 px. Every text keeps 12 px (`gap`) from the face and from other text.
+- Layout (`layout`): every text keeps 12 px (`gap`) from the face and from other text. Sizes are not
+  the preset's: every element is the placer's and shrinks in 10% steps from its full size (the style's
+  base; the big word's largest fit; a card's width share) to 30 px (`MIN_SIZE_PX`). There is no
+  `minScale` any more.
 - Transitions (`transitions.numbered`, the LIST): the layer is the full frame, with no background; its
   text levels come in with a fade of 0.3 s (`power2.out`; `seconds` is the entrance). The levels' sizes
   and spot are not the preset's: the stack's entry (`list/numbered` in `src/variants.ts`) names the
@@ -286,9 +286,9 @@ word" is now "spoken words, plus one written hook at the start".
   zones, noted `moved` with the hook among its blockers). A visual keeps its own times beside it.
   Captions keep running below it; nobody says it, so no caption is ever left out for it.
 - The captions come after every component (owner decision 2026-11-07), so the captions in its window
-  keep clear of it by the caption rules: each block moves to a free place, shrinks down to the floor, and
-  only when nothing else is free goes over the face on the caption line (`covers-face`, rule
-  `caption-face`). A caption-heavy opening never pushes the hook out.
+  keep clear of it: each sentence block goes through the placer with the hook as a text obstacle, wraps
+  freely, moves down its zones and shrinks to 30 px before it covers the face (`covers-face`, rule
+  `face`); it never sits on the hook. A caption-heavy opening never pushes the hook out.
 - Placement: the placer (`placeHook` in `src/engine.ts` builds the element of its entry,
   `hook/written-line`): the `accent` style (the primary font, white, 110 px, never larger), zones the
   upper third then anywhere in the safe zone, shrunk in 10% steps to 30 px, wrapped freely at cost 0
@@ -346,26 +346,27 @@ tracks and record. `editFromAnswer` (decide, returning `{ ok, edit, record }`) a
 
 The zones (`src/engine-zones.ts`, `zonesAt(name, S, F)`) are the named areas the placement will use:
 each zone's areas inside the one safe zone `S` (the guard minus the notch) and its wanted point, from
-the moment's face `F` (null when no head is in the frame). The placer calls them for the hook, the
-accents and questions, the LIST stacks, the big word and the visual's card; the captions still use their
-own candidates (the build order of `specs/layout-engine.md`, step 10).
+the moment's face `F` (null when no head is in the frame). The placer calls them for every element: the
+hook, the accents and questions, the LIST stacks, the big word, the visual's card and the caption blocks.
 
-The placer (`src/engine-place.ts`, `placeElement(element, scene, measurer, costs?)`) places the hook,
-the accents and questions, the LIST stacks, the big word and the visual's card (steps 6 to 9; the
-captions follow): one element (a text with its entry, words, line gap and, for the big word, `maxLines` 1; a stack with its entry, the text of each
-level it shows and the gap between them; or a box with its entry; its id and span) over a scene (the
+The placer (`src/engine-place.ts`, `placeElement(element, scene, measurer, costs?)`) places every
+element (build steps 6 to 10 of `specs/layout-engine.md`): one element (a text with its entry, words, line gap and, for the big word, `maxLines` 1; a stack with its entry, the text of each
+level it shows and the gap between them; a block with its entry, its groups of caption units (each
+`{ id, text, font? }`) and its line gap; or a box with its entry; its id and span) over a scene (the
 unpadded robust faces over its span, the obstacles already placed over it as
 `{ id, kind: "caption" | "text" | "box", box }`, the safe zone) and returns `{ placed, notes }`: the
-chosen `box`, `size` (a text's font size, a stack's key size, a box's width), `lines`, `breaks`, `levels`
-(a stack's: each level's role, size, lines, `breaks`, width and height; empty for a text or a box),
-`zone`, `cost` and `coversFace`, or `placed: null` for a `no-spot`, with the engine notes for it (one per
+chosen `box`, `size` (a text's or a block's font size, a stack's key size, a box's width), `lines`, `breaks`, `levels`
+(a stack's: each level's role, size, lines, `breaks`, width and height; empty otherwise), `groups` (a
+block's: each group's lines, each line its units with their widths at the size and the line's width;
+empty otherwise), `zone`, `cost` and `coversFace`, or `placed: null` for a `no-spot`, with the engine notes for it (one per
 outcome: `placed`, or each of `moved`, `shrunk`, `wrapped`, `covers-face` that applies; `no-spot`, their
 `blockers` the captions, items, face and buttons that took the zones before the one taken). Candidates:
 each zone of the entry's ranking x each line count (balanced breaks, widths at size 1 so the break is the
-same at every size; a stack: every combination of its levels' line counts) x the face as an obstacle then
+same at every size; a stack: every combination of its levels' line counts; a block: every group on at
+most `n` lines, balanced between whole captions, `n` 1 to its largest group's caption count) x the face as an obstacle then
 the face allowed; each is the largest size that fits a free rectangle of the zone (the zone's pieces as
 their bounding box, the notch and the obstacles the element sees grown by `layout.gap` as obstacles), at
-most the element's full size (a text: its style's base size, 110 for `accent`, 50 for `caption`, so a
+most the element's full size (a text or a block: its style's base size, 110 for `accent`, 50 for `caption`, so a
 short text never grows into the room it has; a stack: its key level's base, the lead-in at its own base
 over the key's and the number at the entry's ratio to the key, each floored to a whole pixel and all
 shrunk together; the big word's `largest-fit` style: the largest fit anchored at its first zone's want
@@ -397,22 +398,34 @@ the way, so `shrunk` means a text on screen took room. A behind text never sees 
 (rule 6 bounds it), pays no face cost and never notes `covers-face`; when no size keeps rule 6 even with
 no text in the way (the face's top at or above `S`'s top) it is a `no-spot` blamed on the face.
 
-In the engine (`placeHook`, `placeAccent`, `placeBigWord` and `placeStack` in `src/engine.ts`) the
-hook, an accent or question, the big word and a LIST item are the elements of the entries their
+In the engine (`placeHook`, `placeAccent`, `placeBigWord`, `placeStack`, `placeVisual` and
+`placeCaptions` in `src/engine.ts`) the hook, an accent or question, the big word, a LIST item, a visual
+and a sentence's captions are the elements of the entries their
 components were picked with (`hook/written-line`, `accent/above-head`, `question/as-accent`,
-`bigword/behind`, `list/numbered`): a text's words as the captions show them (the hook its own line; the
+`bigword/behind`, `list/numbered`, `visual/card`, `caption/default`): a text's words as the captions show them (the hook its own line; the
 big word its one or two cleaned words on one line, `maxLines` 1, since the behind word item has no
 `breaks`), line gap 0; a stack's levels the number (in a list of two or
-more items), the lead-in (when the phrase has one) and the key phrase, `transition.gap` between. The scene
-is the unpadded robust faces of the moments over its span and every component on screen with it that was
-placed before it (`shown`; captions come last and are none yet) as `text` obstacles. The placed box
+more items), the lead-in (when the phrase has one) and the key phrase, `transition.gap` between; a block's
+groups the captions left in each group of the sentence (a hidden caption is no unit), line gap
+`caption.lineGap`. The scene
+is the unpadded robust faces of the moments over its span and every text on screen with it that was
+placed before it (`shown`) as an obstacle: a component as `text`, a caption as `caption` (components come
+first and see no caption; a block sees the components and the captions before it). The placed box
 becomes the overlay's `position` (its top left, `align` left), `size` and `breaks`, the behind word's
-`position` (its top left) and `size`, or each level's
-`position` (centred on the stack, `align` center), `size` and `breaks`; the box (a stack's whole box,
-over the item's whole span) joins `shown`, so whatever is placed after it avoids it. The placer's notes
-go to the record as they are (`zone`, `size`, `lines`, `cost` and `blockers` set). With no legal spot the
-element is left out of the version: `placeEdit` places the answer again without it (its ref skipped,
+`position` (its top left) and `size`, each level's
+`position` (centred on the stack, `align` center), `size` and `breaks`, or each caption's `position`
+(its line's spot, the lines centred in the block, `align` left) and `size`; the box (a stack's whole box,
+over the item's whole span; a caption's own box over its own span) joins `shown`, so whatever is placed after it avoids it. The placer's notes
+go to the record as they are (`zone`, `size`, `lines`, `cost` and `blockers` set); a block's notes are
+written once per caption of the block, under each caption's id. With no legal spot a component
+is left out of the version: `placeEdit` places the answer again without it (its ref skipped,
 like a same-text drop), so its words show as captions (the hook has none), and the `no-spot` note is kept.
+A caption block is never left out (rule 3, decision 19): it is placed again with the texts on screen out
+of its way (the notch and the face stay, the face a cost), inside the safe zone, and noted `no-spot` on
+each caption with the texts that took the space and the ones it sits over as blockers; the strict
+`text-overlap` check excuses exactly those pairs. None in the goldens or in a seeded sweep over the
+fixture reel; it takes a synthetic opening (60 captions in one block, a face filling `S`, a hook and a
+list) to see one.
 
 One placement shows every pick the answer proposed. Nothing is dropped for room, for another pick's
 time, for the hook, for a transition's rate or for pace. The one drop is the same-text rule (rule
@@ -427,7 +440,7 @@ picks and the word. A trimmed or dropped pick is noted `retimed` (rule `same-tex
 the answer again (`placeEdit` runs `placeOnce` until no two overlapping picks share a word id), so the rule
 holds on the placed times; a dropped pick keeps its position in the answer, so the other picks keep their ids. Text picks share the
 screen in time: no pick cuts another's time, and two conflict only where they overlap on screen at the
-same moment, which the placer never allows (the old paths note it). So the same-text rule meets more
+same moment, which the placer never allows. So the same-text rule meets more
 pairs than before: a list that starts on an accent's last word gives that word up (trimmed to its own
 words, from the next word's entrance), an accent said inside a list whose words it repeats is dropped,
 and a big word whose lead reaches into an accent ending on its word trims the accent to its other words.
@@ -510,16 +523,20 @@ and a big word whose lead reaches into an accent ending on its word trims the ac
     (a card that fits nowhere at 30 px, the safe zone and the notch alone in the way: never on today's
     frame). Written: `box` (the card's place and size).
   - Captions last, in time order, in the space the components leave at each moment (see the order above),
-    one spot per sentence (`sentenceSpans`): the sentence's groups all start at the same place, sized for
-    its largest group (at most two lines per group); captions inside a transition take its text area as
-    one block instead. They prefer spots off the face, and avoid every component and every other caption. Candidates: beside
-    the head (the wider side first, aligned towards the face, near the mouth), below the face, the caption
-    line (`fallbackY` to the safe bottom); with no head, the caption line then the safe zone. Every
-    candidate is tried at the full size before a smaller one, down to the floor (60%), so captions stay
-    readable. A caption that fits no free place even at the floor goes over the face, clear of the other
-    text, on the caption line or at the top of the safe zone (`covers-face`, rule `caption-face`). Only
-    when no place is clear of the text either, it sits over other text as the last resort, wrapped as far
-    as it takes, each unit noted `kept-overlapping` with the texts it sits over.
+    through the placer as sentence blocks (`caption/default`): one element per sentence (`sentenceSpans`),
+    its groups the captions on screen together, each caption a unit set whole on one line, so captions
+    never jump mid-sentence. Zones: beside the face (the wider side first, the block's edge towards the
+    face at the mouth), below the face, the caption line (y 1290 down), anywhere in the safe zone (with no
+    head: the caption line, then the safe zone). The block's size is the largest at which every group fits
+    the spot, at most the `caption` base 50 px, shrunk in 10% steps to 30 px; its lines are free (balanced
+    between whole captions, cost 0, `caption.lineGap` 14 between them, centred in the block). Every
+    component and every caption before it is an obstacle (rules 2 and 5, hard); the face a cost of 100, so
+    a block covers it only when nothing off it holds the block at 30 px (`covers-face`, rule `face`). With
+    the wrap cost at 0, a sentence beside the face wrapped to three or four lines beats the same sentence
+    below the face on one line (a zone step, 10): on the fixture reel the captions sit beside the face at
+    50 px, wrapped, where the old two-line path put them below it. Notes the placer's, one set per caption
+    of the block: `placed`, `moved`, `shrunk`, `wrapped`, `covers-face`, `no-spot` (never left out, see
+    above). A caption's phrase a LIST shows has no caption of its own: its words show as the levels.
   - Never the same word twice on screen: the same-text rule above keeps two text picks on screen together
     from sharing a word id, and the `same-text` check (below) fails any spoken word two items show at a shared moment.
     By time: the captions are split in time against the texts on
@@ -536,23 +553,23 @@ and a big word whose lead reaches into an accent ending on its word trims the ac
   answers `behind(box, span, textLuminance)`: the luminance of every cell the box touches in every
   sampled frame inside the span (the nearest frame when none is), at the 80th percentile towards
   the text's own luminance (nearest-rank, integers, so a few cells never decide), memoised per box,
-  span and direction. Right after each caption block (not one inside a transition's text area) and
-  the hook is placed, the engine measures the WCAG contrast ratio of the
-  text colour against that background: below `preset.readability` `caption.min` (4.5) for captions
-  or `large.min` (3) for the hook, it first tries nearby places in the same zone (the
-  chosen candidate's area, the same obstacles, size and line breaks; the original centre, then a
+  span and direction. Right after each caption block is placed, the engine measures the WCAG contrast
+  ratio of the text colour against that background: below `preset.readability` `caption.min` (4.5), it
+  first tries nearby places anywhere in the safe zone (the face, the texts on screen and the notch as
+  obstacles, the same size and line breaks; the original centre, then a
   60 px grid within 300 px) and moves to the nearest that reaches the threshold (rule
   `contrast-spot`, action `moved`); else the text stays where it is, plain white, with no shadow
   and its colour kept, and the record says so (rule `contrast-stay`, action `low-contrast`). Owner
   decision 2026-11-04: move first, never
-  a shadow, never a colour change. A caption that already
-  covers the face is never moved for it. Low contrast is recorded only: it is no check failure and
+  a shadow, never a colour change. A caption block that
+  covers the face, or sits over text for want of a legal spot, is never moved for it. Low contrast is recorded only: it is no check failure and
   no engine bug, and the version saves as usual. With no `backgrounds` given nothing is measured.
   Example reason: `captions "the time we're living right now push ..." stay in place:
 contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (the hook:
   `stays in place`; for a caption over the face the reason ends with
-  `captions over the face are never moved`). Accents, questions, LIST stacks and the big word
-  are the placer's and are not measured (readability leaves with build step 11). No text
+  `captions over the face are never moved`, over text `captions over the text are never moved`). The
+  hook, accents, questions, LIST stacks, the big word and the card are not measured (readability
+  leaves with build step 11). No text
   style anywhere (captions, accents, big words, transition levels) adds a stroke or an
   outline (`-webkit-text-stroke`, `paint-order`, a text shadow).
 - Sounds (`src/clicks.ts`, `clicksFor`, owner decision 2026-11-04): the engine writes a new
@@ -567,12 +584,13 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (the h
   allows: an accent or question exactly its words; a big word from the lead before its first word (0.2 s)
   to its last word's end (at least 1.5 s, a target); a visual from its first word to its last word's end
   (1 to 2 s); a list from 0.3 s before its phrase's first word to its last word's end; the hook in its
-  window. No pick cuts another's time. Each pick takes its normal spot when a free one exists; a
-  caption with none sits over other text as the last resort, noted `kept-overlapping` (rule `all-picks`)
-  with what it sits over (named). Text never overlaps other text (Rules). The hook, an
+  window. No pick cuts another's time. Each pick takes its normal spot when a free one exists. Text
+  never overlaps other text (Rules). The hook, an
   accent, a question, a big word, a LIST stack or a visual's card is never set over other text (a card
   may sit under text, decision 9): with no
-  legal spot at 30 px or more it is left out (`no-spot`), its words shown as captions. The only `dropped`
+  legal spot at 30 px or more it is left out (`no-spot`), its words shown as captions. A caption block
+  with none is never left out: it sits over the texts on screen, inside the safe zone, noted `no-spot`
+  with what it sits over (decision 19). The only `dropped`
   note is the
   same-text rule's (`src/engine.test.ts`, "every pick shown, or dropped where another pick shows its text"). The fallbacks, each noted:
   - A big word or a visual too close to the reel's end for its minimum: the end is the reel's end and the
@@ -592,9 +610,9 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (the h
     (`text-from-words`); a text over 300 characters is cut at a word, noted the same way.
   - The hook: its start moves earlier when the reel is shorter than its window (`clamped-to-end`, rule
     `hook-time`); with no legal spot at 30 px or more it is a `no-spot`, left out (above).
-- Captions are never dropped: with no free place even at the floor, they take the caption line over
-  the face (recorded `covers-face`); only with no free place there either do they sit over other text,
-  each caption noted `kept-overlapping` with the texts it sits over. A caption left out while an extra shows its words is not dropped:
+- Captions are never dropped: a block with no spot off the face covers it (recorded `covers-face`);
+  a block with no legal spot at all sits over the texts on screen, inside the safe zone, each caption
+  noted `no-spot` with the texts it sits over (decision 19). A caption left out while an extra shows its words is not dropped:
   its words are on screen.
 - Record: a list of `EngineNote` (`packages/edit/src/engine-note.ts`, the shape of
   `specs/layout-engine.md`): `{ item, component, variant, start, end, rule, outcome, blockers, reason }`,
@@ -603,32 +621,31 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (the h
   `question/as-accent`, `bigword/behind`, `visual/card`, `list/numbered`, `caption/default`); `start` and
   `end` are the placed span in seconds. `outcome` is one of `placed`, `moved` (not its kind's first
   place), `shrunk`, `wrapped`, `retimed` (a clamped or moved-off-cut span, a same-text trim), `covers-face`,
-  `dropped` (same-text left no word of its own), `no-spot` (a placer element, the hook, an accent, a
-  question, a big word, a LIST stack or a visual's card, with no legal spot, left out) or
-  `kept-overlapping` (a caption kept over other text; a transitional value, see the layout spec).
-  `blockers` names what took the space it
-  did not get: `{ kind: "item" | "caption", id }` for the texts a kept-overlapping caption sits over,
-  `{ kind: "face" }` for a caption's covers-face note; a placer note (the hook's, an accent's, a
-  question's, a big word's, a stack's or a card's) carries the placer's own blockers, with `zone`,
-  `size`, `lines` and `cost` set (a stack's `size` is its key's, its `lines` every level's; a card's
-  `size` is its width, its `lines` 0). Every shown element with no other note gets a
+  `dropped` (same-text left no word of its own) or `no-spot` (a component with no legal spot, left out;
+  a caption block with none, set over the texts on screen, decision 19). There is no `kept-overlapping`.
+  `blockers` names what took the space it did not get (the placer's: the captions, items, face and
+  buttons that took the zones before the one taken; a caption's `no-spot` adds the texts it sits over),
+  with `zone`, `size`, `lines` and `cost` set (a stack's `size` is its key's, its `lines` every level's;
+  a block's `size` is every caption's, its `lines` its deepest group's; a card's `size` is its width,
+  its `lines` 0). A block's notes are written once per caption of the block, under each caption's id,
+  so the checks and the decide step read them per caption. Every shown element with no other note gets a
   `placed` note, so the record names every element. `reason` says in plain words what happened, with the
   item's text and times, for example
   `{ "item": "visual-1", "component": "VISUAL", "variant": "visual/card", "start": 5.206, "end": 7.206, "rule": "size", "outcome": "shrunk", "blockers": [{ "kind": "face" }, { "kind": "buttons" }], "zone": "corner", "size": 307, "lines": 0, "cost": 20, "reason": "visual visual-1 shrinks to 307 px from 360 px in a corner from 5.21 s to 7.21 s; the face, the buttons took the room" }`.
-  The placer's notes are written in this shape and pass through as they are. The old code paths' rule
-  names (the sections above) map to the record's vocabulary
-  (`RULE_OF` in `engine-note.ts`): `*-time` and `*-min` are `timing`; `*-spot` is `zone`; `*-size` is
-  `size`; `*-face` is `face`; `all-picks` is
-  `text-overlap`; `transition-text` is `text`; `contrast-spot` and `contrast-stay` are `contrast`
-  (readability is out with build step 11); `hidden-footage` and `same-text` keep their names. The
-  placer's outcomes map as: `low-contrast`, `text-from-words` to `placed`, `clamped-to-end` and
-  `moved-off-cut` to `retimed`; the rest keep their names. A placer rule the table does not name throws,
+  The placer's notes are written in this shape and pass through as they are. The engine's other notes
+  (timing, readability, a text's words, the same-text rule) carry an action and a rule name that map to
+  the record's vocabulary
+  (`RULE_OF` in `engine-note.ts`): `*-time` and `*-min` are `timing`;
+  `transition-text` is `text`; `contrast-spot` and `contrast-stay` are `contrast`
+  (readability is out with build step 11); `hidden-footage` and `same-text` keep their names. Their
+  actions map as: `low-contrast`, `text-from-words` to `placed`, `clamped-to-end` and
+  `moved-off-cut` to `retimed`; `moved`, `retimed` and `dropped` keep their names. A rule the table does not name throws,
   so a new rule is named there on purpose. Saved with the version (`versions.engine_record`) and logged by the worker in
   one line per version. No old note shape is read anywhere.
 - Final checks: `runChecks` (below) runs on every placed edit. They must never fail on the engine's
   output, except `face` for a caption over the face that the engine recorded as `covers-face`; any
-  other failure, `text-overlap` included, is an engine bug, logged with the reel id while the version is
-  still saved.
+  other failure, `text-overlap` included (a caption's noted `no-spot` pair is no failure), is an engine
+  bug, logged with the reel id while the version is still saved.
 
 ### Checks
 
@@ -643,11 +660,12 @@ the platform button column below y 1164` with the right edge past x 945). A tran
   no `frame` check.
 - `face`: captions clear of the face (the robust faces, `facesOver`, at every moment of the
   caption's span, the same ones the engine avoids). The one failure it allows is a caption the engine
-  put over the face and recorded as `covers-face` (its block's note names the other captions it sits with
-  in `with`; `apps/worker/src/decide/run-decide.ts` leaves them out of the refusal). A hidden caption has no position, so it is never checked.
+  put over the face and recorded as `covers-face` (a block's note is written for each of its captions;
+  `apps/worker/src/decide/run-decide.ts` leaves them out of the refusal). A hidden caption has no position, so it is never checked.
 - `text-overlap` (`checks.ts`, the single mode's rule): two texts (captions, accents, questions, the hook,
-  big words, a list's levels) that share a moment never overlap on screen, except a pair the engine record
-  notes as `kept-overlapping` with the other in its `with` (either item's note may name the other). It
+  big words, a list's levels) that share a moment never overlap on screen. Strict (rule 5 is hard); the
+  one excuse is a caption the engine record notes `no-spot` (component `CAPTION`) whose blockers name the
+  other text (decision 19: the caption had no legal spot and is never left out). It
   needs the record: `build(edit, ..., { engineRecord })`, which the decide step and the first version pass.
   The engine's output never fails it.
 - `same-text` (`checks.ts`): no spoken word (by word id) is shown by two items at a shared moment. The items
@@ -815,7 +833,12 @@ never fatal.
     where it is, noted; a transition that runs during the hook shown with the hook's window kept.
   - "texts never overlap on screen while a free spot exists": random picks over the fixture reel and over a
     caption-heavy opening never fail `text-overlap`; a big word over the captions of its sentence moved
-    clear of them (`big-word-spot`); a text that shares its time with a cut hook's floor noted with it.
+    clear of them; a text that shares its time with a cut hook's floor noted with it.
+  - "captions through the placer, as sentence blocks": every caption the caption entry's, in its zones,
+    never above 50 px nor under 30; a sentence's captions at one size, one spot; captions text to each
+    other and to every component; a block with no legal spot (a face filling `S`, a 60-caption opening, a
+    hook and a list) set over the texts inside the safe zone and noted `no-spot` on each caption, the
+    strict `text-overlap` check passing with the record and failing without it; deterministic.
   - "nothing the answer picks is dropped": a pick at the reel's end, a pick over a cut, a transition
     with no text of its own and a hook on a 1 s reel are all placed. (Random sets of picks are checked in
     "every pick shown, or dropped where another pick shows its text": a pick is dropped only by `same-text`.)
@@ -864,16 +887,17 @@ never fatal.
 - Anchors are words; seconds only where nobody speaks.
 - Claude never writes times, positions or sizes: every one in a decided version comes from the
   layout engine, never from the answer.
-- Never let an overlap pass silently: a front pick placed over the face is noted `covers-face` (rule
-  `face`; a caption's `caption-face`), and a caption placed over other text is kept and noted
-  (`kept-overlapping`, rule `all-picks`). A text over a visual's card is no overlap (decision 9).
-- Never overlap two texts on screen at a shared moment while a free spot exists for the later one (at any
-  candidate and size, the face avoided first): a text is placed clear of every text it shares a moment with,
-  and keeps its default spot over other text only when none exists. The note names the pair (`with`), and
-  the `text-overlap` check excuses only that pair.
+- Never let an overlap pass silently: a front pick or a caption block placed over the face is noted
+  `covers-face` (rule `face`), and a caption block set over other text for want of a legal spot is noted
+  `no-spot` with the texts it sits over. A text over a visual's card is no overlap (decision 9).
+- Never overlap two texts on screen at a shared moment (rule 5, hard): a component with no legal spot is
+  left out (`no-spot`); a caption block with none, never left out, alone sits over text, inside the safe
+  zone, and its `no-spot` note names the pair, the one pair the strict `text-overlap` check excuses
+  (decision 19).
 - Never drop a pick except by the same-text rule (a text pick whose every word another text pick on screen
-  with it shows, noted `dropped`, rule `same-text`); never drop a caption: with no free place even at the floor, a caption takes
-  the caption line over the face (`covers-face`). A caption left out while an extra shows its words is
+  with it shows, noted `dropped`, rule `same-text`); never drop a caption: a block with no spot off the face
+  covers it (`covers-face`); one with no legal spot at all sits over the texts (`no-spot`). A caption left
+  out while an extra shows its words is
   not dropped: its words are on screen.
 - Never read a single head-track sample for a placement or a check: always the robust faces
   (`facesOver`).
@@ -932,14 +956,14 @@ never fatal.
   rule (two text picks on screen together sharing a word), and a text pick is never trimmed or dropped for
   anything else; each such change places the answer again.
 - Never let a version fail the schema or the checks on the engine's output, except the `face` check
-  for a caption recorded `covers-face` (a block's note names its other captions in `with`). The one refusal the engine cannot avoid is a big word or visual
+  for a caption recorded `covers-face` (a block's note is written for each of its captions). The one refusal the engine cannot avoid is a big word or visual
   over footage hidden for the whole reel (no visible moment to move it to).
 - The face is a preference for every front element (the hook, accents, questions, list levels, visual
   cards and captions): a spot off the face and off other text first; then over the face but off other
-  text, only when no spot off the face is free at any candidate and size (`covers-face`); then, for
-  captions only, over other text (`kept-overlapping`). A placer text (the hook, an accent, a
-  question, a big word, a LIST stack) is never set over other text: with no legal spot it is left out
-  (`no-spot`); a visual's card is no obstacle to text and text none to it (decision 9). Never set a text above its style's
+  text, only when no spot off the face is free at any candidate and size (`covers-face`). A component
+  (the hook, an accent, a question, a big word, a LIST stack) is never set over other text: with no
+  legal spot it is left out (`no-spot`); a caption block alone, never left out, sits over text with no
+  legal spot (`no-spot`, decision 19); a visual's card is no obstacle to text and text none to it (decision 9). Never set a text above its style's
   base size (`accent` 110, `caption` 50): the placer only shrinks from it; the big word alone takes the
   largest fit, anchored at the head top (never a roomier spot elsewhere). The body under the face is no
   obstacle to any of them. A big word is behind

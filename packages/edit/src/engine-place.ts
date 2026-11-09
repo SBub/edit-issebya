@@ -10,7 +10,7 @@ import {
 import { type Box, LAYOUT_PADDING, boundingBox } from "./head-track.ts";
 import { breaksOf } from "./lines.ts";
 import type { Measurer } from "./measure.ts";
-import { ISSEBYA_PRESET } from "./preset.ts";
+import { type FontKey, ISSEBYA_PRESET } from "./preset.ts";
 import { bigWordCoveredShare } from "./behind.ts";
 import type { Span } from "./timeline.ts";
 import type { BoxVariant, Level, StackVariant, TextStyle, TextVariant } from "./variants.ts";
@@ -21,9 +21,9 @@ import type { BoxVariant, Level, StackVariant, TextStyle, TextVariant } from "./
 // ranking, each line count, the face as an obstacle then allowed), drops the
 // ones that break a hard rule, scores the rest by the soft costs and takes the
 // cheapest, with the spec's tie-break. Pure and deterministic: the same input
-// gives the same result. The engine (`engine.ts`) places the hook, accents,
-// questions, LIST stacks and the big word through it (build steps 6 to 8);
-// steps 9 and 10 wire the visual and the captions.
+// gives the same result. The engine (`engine.ts`) places every element through
+// it: the hook, accents, questions, LIST stacks, the big word, the visual's
+// card and, last, the captions as sentence blocks (build steps 6 to 10).
 //
 // Where the spec leaves a detail open, this file takes the simplest reading
 // and says so in a comment marked "Settled:".
@@ -92,7 +92,28 @@ export interface BoxElement extends ElementBase {
   variant: BoxVariant;
 }
 
-export type PlaceElement = TextElement | StackElement | BoxElement;
+// One caption of a block: set whole on one line, in its own font when the
+// caption names one (else the style's).
+export interface BlockUnit {
+  id: string;
+  text: string;
+  font?: FontKey;
+}
+
+// A caption block (owner decision 4): a sentence's captions as one element,
+// placed once, so captions never jump mid-sentence. Its groups are the sets of
+// captions on screen together, in time order, each unit one caption. The
+// block's size is the largest at which every group fits the spot; its lines
+// are free (balanced breaks between whole units), `lineGap` between them
+// (`caption.lineGap`).
+export interface BlockElement extends ElementBase {
+  type: "block";
+  variant: TextVariant;
+  groups: readonly (readonly BlockUnit[])[];
+  lineGap: number;
+}
+
+export type PlaceElement = TextElement | StackElement | BoxElement | BlockElement;
 
 // Something already placed over a moment of the element's span. A `caption`
 // blocks everything (rule 2); a `text` blocks text (rule 5); a `box` blocks
@@ -123,14 +144,23 @@ export interface PlacedLevel {
   height: number;
 }
 
+// One line of a placed block's group: its units (captions) in order with their
+// widths at the block's size, and the line's width (units and the spaces
+// between them). The engine lays the units along it.
+export interface PlacedLine {
+  units: { id: string; width: number }[];
+  width: number;
+}
+
 // The chosen candidate.
 export interface Placed {
   box: Box;
-  // A text: its font size. A stack: its key's font size. A box: its width.
+  // A text or a block: its font size. A stack: its key's font size. A box: its width.
   size: number;
-  lines: string[]; // a stack: every level's lines; a box: []
-  breaks: number[]; // a stack or a box: [] (a stack's levels carry their own)
-  levels: PlacedLevel[]; // a text or a box: []
+  lines: string[]; // a stack: every level's lines; a block: its deepest group's; a box: []
+  breaks: number[]; // a stack, a block or a box: [] (a stack's levels carry their own)
+  levels: PlacedLevel[]; // a stack's; else []
+  groups: PlacedLine[][]; // a block's: each group's lines; else []
   zone: ZoneName;
   cost: number;
   coversFace: boolean;
@@ -161,51 +191,67 @@ interface Shape {
   widthAt(size: number): number;
   heightAt(size: number): number;
   fit(rect: Box): number;
-  // A stack's levels at a size; a text or a box has none.
+  // A stack's levels at a size; a text, a block or a box has none.
   levelsAt?(size: number): PlacedLevel[];
+  // A block's groups at a size, each its lines; a text, a stack or a box has none.
+  groupsAt?(size: number): PlacedLine[][];
 }
 
-// The lines of `words` on `count` lines that keep the widest line narrowest
-// (the balanced break), widths measured at size 1 so the break is the same at
-// every size. Settled: ties go to the earlier cuts.
-function balancedLines(
-  words: readonly string[],
+// The cuts that set `length` items (words, or a block's captions) on `count`
+// lines keeping the widest line narrowest (the balanced break): each line as
+// `[from, to)`. `lineWidth(from, to)` is the width of those items on one line,
+// measured at size 1 so the break is the same at every size. Settled: ties go
+// to the earlier cuts.
+function balancedCuts(
+  length: number,
   count: number,
-  widthOf: (line: string) => number,
-): string[] {
+  lineWidth: (from: number, to: number) => number,
+): [number, number][] {
   const widths = new Map<string, number>();
-  const lineWidth = (from: number, to: number): number => {
+  const widthOf = (from: number, to: number): number => {
     const key = `${from}:${to}`;
     const known = widths.get(key);
     if (known !== undefined) return known;
-    const width = widthOf(words.slice(from, to).join(" "));
+    const width = lineWidth(from, to);
     widths.set(key, width);
     return width;
   };
-  // best[k][j]: the narrowest widest line of the first j words on k lines, and
+  // best[k][j]: the narrowest widest line of the first j items on k lines, and
   // where its last line starts.
   const best: { width: number; cut: number }[][] = [];
   best[1] = [];
-  for (let j = 1; j <= words.length; j += 1) best[1]![j] = { width: lineWidth(0, j), cut: 0 };
+  for (let j = 1; j <= length; j += 1) best[1]![j] = { width: widthOf(0, j), cut: 0 };
   for (let k = 2; k <= count; k += 1) {
     best[k] = [];
-    for (let j = k; j <= words.length; j += 1) {
+    for (let j = k; j <= length; j += 1) {
       let found: { width: number; cut: number } | undefined;
       for (let i = k - 1; i < j; i += 1) {
-        const width = Math.max(best[k - 1]![i]!.width, lineWidth(i, j));
+        const width = Math.max(best[k - 1]![i]!.width, widthOf(i, j));
         if (!found || width < found.width - SLACK) found = { width, cut: i };
       }
       best[k]![j] = found!;
     }
   }
-  const lines: string[] = [];
-  let end = words.length;
+  const lines: [number, number][] = [];
+  let end = length;
   for (let k = count; k >= 1; k -= 1) {
     const { cut } = best[k]![end]!;
-    lines.unshift(words.slice(cut, end).join(" "));
+    lines.unshift([cut, end]);
     end = cut;
   }
   return lines;
+}
+
+// The lines of `words` on `count` lines, balanced (above).
+function balancedLines(
+  words: readonly string[],
+  count: number,
+  widthOf: (line: string) => number,
+): string[] {
+  const line = (from: number, to: number) => words.slice(from, to).join(" ");
+  return balancedCuts(words.length, count, (from, to) => widthOf(line(from, to))).map(
+    ([from, to]) => line(from, to),
+  );
 }
 
 function textShape(element: TextElement, count: number, measurer: Measurer): Shape | null {
@@ -231,6 +277,56 @@ function textShape(element: TextElement, count: number, measurer: Measurer): Sha
   };
 }
 
+// A block at one line count: every group on at most `count` lines (a group of
+// fewer captions on one per caption), balanced between whole units, the line
+// width the units' widths at size 1 and a space between them. The block's
+// width is its widest line's, its height its deepest group's: the size that
+// fits is the largest at which every group fits (decision 4). Null when the
+// block has no text.
+function blockShape(element: BlockElement, count: number, measurer: Measurer): Shape | null {
+  const { font } = element.variant.style;
+  const space = measurer.width(font, 1, " ");
+  const groups = element.groups.map((units) => {
+    const widths = units.map((unit) => measurer.width(unit.font ?? font, 1, unit.text));
+    const lineWidth = (from: number, to: number): number =>
+      widths.slice(from, to).reduce((sum, width) => sum + width, 0) + (to - from - 1) * space;
+    const cuts = balancedCuts(units.length, Math.min(count, units.length), lineWidth);
+    return { units, widths, cuts, lineWidth };
+  });
+  const perPx = Math.max(
+    ...groups.flatMap((group) => group.cuts.map(([from, to]) => group.lineWidth(from, to))),
+  );
+  if (!(perPx > 0)) return null;
+  const deepest = Math.max(...groups.map((group) => group.cuts.length));
+  const deep = groups.find((group) => group.cuts.length === deepest)!;
+  const gaps = (deepest - 1) * element.lineGap;
+  return {
+    lines: deep.cuts.map(([from, to]) =>
+      deep.units
+        .slice(from, to)
+        .map((unit) => unit.text)
+        .join(" "),
+    ),
+    extraLines: deepest - 1,
+    min: MIN_SIZE_PX,
+    widthAt: (size) => size * perPx,
+    heightAt: (size) => size * deepest + gaps,
+    fit: (rect) =>
+      Math.floor(
+        Math.min((rect.right - rect.left) / perPx, (rect.bottom - rect.top - gaps) / deepest),
+      ),
+    groupsAt: (size) =>
+      groups.map((group) =>
+        group.cuts.map(([from, to]) => ({
+          units: group.units
+            .slice(from, to)
+            .map((unit, index) => ({ id: unit.id, width: group.widths[from + index]! * size })),
+          width: group.lineWidth(from, to) * size,
+        })),
+      ),
+  };
+}
+
 const ratio = (text: `${number}/${number}`): number => {
   const [a, b] = text.split("/").map(Number);
   return a! / b!;
@@ -248,11 +344,11 @@ function boxShape(element: BoxElement): Shape {
   };
 }
 
-// A stack level's style base. A stack is set from its styles' bases, so a
-// `largest-fit` style has no place in one.
+// A style's base size. A stack is set from its levels' bases and a block from
+// its style's, so a `largest-fit` style has no place in either.
 function baseOf(style: TextStyle): number {
   if (style.base === "largest-fit")
-    throw new Error("engine-place: a stack level needs a base size");
+    throw new Error("engine-place: a stack level or a block needs a base size");
   return style.base;
 }
 
@@ -340,14 +436,19 @@ function stackShapes(element: StackElement, measurer: Measurer): Shape[] {
 }
 
 // The shapes an element may take: a text on 1 to its word count lines, a stack
-// with each level on 1 to its word count lines, a box one.
+// with each level on 1 to its word count lines, a block with every group on 1
+// to its largest group's caption count lines, a box one.
 function shapesOf(element: PlaceElement, measurer: Measurer): Shape[] {
   if (element.type === "box") return [boxShape(element)];
   if (element.type === "stack") return stackShapes(element, measurer);
-  const count = Math.min(element.text.split(" ").length, element.maxLines ?? Infinity);
+  const count =
+    element.type === "block"
+      ? Math.max(0, ...element.groups.map((group) => group.length))
+      : Math.min(element.text.split(" ").length, element.maxLines ?? Infinity);
   const shapes: Shape[] = [];
   for (let n = 1; n <= count; n += 1) {
-    const shape = textShape(element, n, measurer);
+    const shape =
+      element.type === "block" ? blockShape(element, n, measurer) : textShape(element, n, measurer);
     if (shape) shapes.push(shape);
   }
   return shapes;
@@ -543,10 +644,10 @@ function fitsEmpty(
 }
 
 // The element's full size, the cap on every candidate and the size the shrink
-// steps count from. A text: its style's base size (owner decision 2026-11-09:
-// the engine never sets a text above its style's base, it only shrinks from
-// it). A stack: its key level's base (the lead-in and the number follow by
-// their factors). A box: its `width` share of the frame. The big word's style
+// steps count from. A text or a block: its style's base size (owner decision
+// 2026-11-09: the engine never sets a text above its style's base, it only
+// shrinks from it). A stack: its key level's base (the lead-in and the number
+// follow by their factors). A box: its `width` share of the frame. The big word's style
 // is `largest-fit`: the largest size at which it fits at its first zone's want
 // with no text in the way (the notch only; behind the speaker, rule 6 kept),
 // over any line count it may take. Settled: when that first zone has no room
@@ -560,6 +661,7 @@ function fullSizeOf(
 ): number {
   if (element.type === "box") return Math.floor(FRAME_WIDTH * ratio(element.variant.width));
   if (element.type === "stack") return baseOf(keyLevelOf(element.variant).style);
+  if (element.type === "block") return baseOf(element.variant.style);
   const { base } = element.variant.style;
   if (base !== "largest-fit") return base;
   const behind = element.variant.layer === "behind";
@@ -785,6 +887,11 @@ function whoIs(element: PlaceElement): string {
       return `${kind} ${element.id} "${element.text}"`;
     case "stack":
       return `${kind} ${element.id} "${element.levels.map((level) => level.text).join(" / ")}"`;
+    case "block":
+      return `${kind} block ${element.id} "${element.groups
+        .flat()
+        .map((unit) => unit.text)
+        .join(" ")}"`;
     case "box":
       return `${kind} ${element.id}`;
   }
@@ -854,6 +961,7 @@ export function placeElement(
 
   const lines = chosen.shape.lines;
   const levels = chosen.shape.levelsAt?.(chosen.size) ?? [];
+  const groups = chosen.shape.groupsAt?.(chosen.size) ?? [];
   const wrapped = chosen.shape.extraLines > 0;
   const taken = {
     zone: chosen.zone,
@@ -944,8 +1052,9 @@ export function placeElement(
       box: chosen.box,
       size: chosen.size,
       lines,
-      breaks: element.type === "stack" ? [] : breaksOf(lines),
+      breaks: element.type === "text" ? breaksOf(lines) : [],
       levels,
+      groups,
       zone: chosen.zone,
       cost: chosen.cost,
       coversFace: chosen.coversFace,

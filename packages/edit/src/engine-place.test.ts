@@ -723,3 +723,145 @@ describe("a LIST stack", () => {
     expect(result.notes[0]!.blockers).toEqual([{ kind: "face" }]);
   });
 });
+
+describe("a caption block (a sentence's groups as one element)", () => {
+  // Golos Bold at size 1: "one two" 3.88, "one" 1.80 (a space is the rest).
+  const CAPTION = VARIANTS["caption/default"];
+  const CAPTION_BASE = STYLES.caption.base as number;
+  const LINE_GAP = 14;
+  const unit = (id: string, text: string) => ({ id, text });
+  const block = (
+    groups: readonly (readonly { id: string; text: string }[])[],
+    variant: TextVariant = CAPTION,
+  ): PlaceElement => ({
+    type: "block",
+    id: groups[0]![0]!.id,
+    variant,
+    groups,
+    lineGap: LINE_GAP,
+    ...span,
+  });
+  // A long group: eight captions.
+  const EIGHT = ["one", "two", "three", "four", "five", "six", "seven", "eight"].map(
+    (word, index) => unit(`cw${index}`, word),
+  );
+  const widthOf = (text: string) => measurer.width("secondary", 1, text);
+
+  it("is placed once at its base size, each group on one line, its units whole and in order", () => {
+    const result = placeElement(
+      block([[unit("cw0", "one"), unit("cw1", "two")], [unit("cw2", "three")]]),
+      scene([]),
+      measurer,
+    );
+    const { size, box, groups, lines, levels, breaks, zone } = result.placed!;
+    expect(size).toBe(CAPTION_BASE);
+    // No head: beside-face and below-face are absent, so the caption line is its first zone with room.
+    expect(zone).toBe("caption-line");
+    expect(box.top).toBe(1290);
+    expect(outcomes(result)).toEqual(["moved"]);
+    expect(groups.map((group) => group.map((line) => line.units.map((u) => u.id)))).toEqual([
+      [["cw0", "cw1"]],
+      [["cw2"]],
+    ]);
+    // The block is as wide as its widest line: the two captions and a space.
+    const [first] = groups[0]!;
+    expect(first!.units.map((u) => u.width)).toEqual([
+      widthOf("one") * size,
+      widthOf("two") * size,
+    ]);
+    expect(first!.width).toBeCloseTo((widthOf("one") + widthOf(" ") + widthOf("two")) * size, 6);
+    expect(box.right - box.left).toBeCloseTo(first!.width, 6);
+    expect(box.bottom - box.top).toBe(size);
+    // A block's lines are its deepest group's; it carries no breaks or levels of its own.
+    expect(lines).toEqual(["one two"]);
+    expect(breaks).toEqual([]);
+    expect(levels).toEqual([]);
+    expect(result.notes[0]).toMatchObject({
+      item: "cw0",
+      component: "CAPTION",
+      variant: "caption/default",
+      zone: "caption-line",
+      size: CAPTION_BASE,
+      lines: 1,
+    });
+    expect(result.notes[0]!.reason).toMatch(
+      /^caption block cw0 "one two three" moves on the caption line/,
+    );
+  });
+
+  it("takes the largest size at which every group fits: the widest group sets it, the others follow", () => {
+    // A strip 300 px wide holds the long group only wrapped or shrunk; the
+    // short group fits at the base. The block is sized for the long one and the
+    // short one takes the same size.
+    const strip: Box = { ...S, left: S.right - 300 };
+    // The wall's box grown by the gap (12) ends at the strip's left edge.
+    const walls = [textAt("hook", { ...S, right: strip.left - 12 })];
+    const result = placeElement(block([[unit("cw0", "hi")], EIGHT]), scene([], walls), measurer);
+    const { size, groups, box } = result.placed!;
+    expect(size).toBeLessThanOrEqual(CAPTION_BASE);
+    expect(size).toBeGreaterThanOrEqual(MIN_SIZE_PX);
+    expect(box.left).toBeGreaterThanOrEqual(strip.left);
+    expect(box.right).toBeLessThanOrEqual(S.right + 1e-6);
+    // Every line of every group fits the block's width at the one size.
+    for (const group of groups) {
+      for (const line of group) expect(line.width).toBeLessThanOrEqual(box.right - box.left + 1e-6);
+    }
+    expect(groups[0]![0]!.units[0]!.width).toBeCloseTo(widthOf("hi") * size, 6);
+    // The long group's eight captions are all there, whole, in order, over its lines.
+    expect(groups[1]!.flatMap((line) => line.units.map((u) => u.id))).toEqual(
+      EIGHT.map((u) => u.id),
+    );
+    expect(groups[1]!.length).toBeGreaterThan(1);
+    expect(outcomes(result)).toContain("wrapped");
+    expect(result.notes.find((note) => note.outcome === "wrapped")!.lines).toBe(groups[1]!.length);
+  });
+
+  it("wraps for free before it shrinks, and its height counts its deepest group with the line gap", () => {
+    const result = placeElement(
+      block([EIGHT]),
+      scene([], [textAt("hook", { ...S, right: S.right - 300 - 12 })]),
+      measurer,
+    );
+    const { size, groups, box } = result.placed!;
+    const lines = groups[0]!.length;
+    expect(size).toBe(CAPTION_BASE);
+    expect(box.bottom - box.top).toBe(lines * size + (lines - 1) * LINE_GAP);
+    // No head: the caption line is two zone steps down (beside-face and
+    // below-face are absent), so the block is `moved` as well as `wrapped`.
+    expect(outcomes(result)).toEqual(["moved", "wrapped"]);
+  });
+
+  it("sees captions and texts as obstacles (rules 2 and 5) and a card as none (decision 9)", () => {
+    const captionLine: Box = { ...S, top: 1290 };
+    const walledIn = [
+      captionAt("cw9", captionLine),
+      textAt("accent-1", { ...S, bottom: 1290 - 12 - 1 }),
+    ];
+    expect(
+      placeElement(block([[unit("cw0", "one")]]), scene([], walledIn), measurer).placed,
+    ).toBeNull();
+    const card = placeElement(
+      block([[unit("cw0", "one")]]),
+      scene([], [boxAt("visual-1", S)]),
+      measurer,
+    );
+    expect(card.placed).not.toBeNull();
+    expect(card.placed!.zone).toBe("caption-line");
+  });
+
+  it("with no legal spot is a `no-spot` naming the texts that took the space, for the engine to set over them", () => {
+    const result = placeElement(
+      block([[unit("cw0", "one")]]),
+      scene([], [textAt("hook", S)]),
+      measurer,
+    );
+    expect(result.placed).toBeNull();
+    expect(result.notes).toHaveLength(1);
+    expect(result.notes[0]).toMatchObject({
+      item: "cw0",
+      component: "CAPTION",
+      outcome: "no-spot",
+    });
+    expect(result.notes[0]!.blockers).toEqual([{ kind: "item", id: "hook" }, { kind: "buttons" }]);
+  });
+});

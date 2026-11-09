@@ -60,7 +60,7 @@ describe("decision trace", () => {
       },
       [
         note("accent-1", "moved", "no-room"),
-        note("big-word-1", "kept-overlapping", "text-overlap"),
+        note("big-word-1", "shrunk", "size"),
         note("visual-1", "covers-face", "face"),
         note("cw0", "placed", "contrast"),
       ],

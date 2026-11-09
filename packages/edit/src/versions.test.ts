@@ -107,10 +107,11 @@ describe("versions", () => {
       variant: "visual/card",
       start: 1,
       end: 3,
-      rule: "text-overlap",
-      outcome: "kept-overlapping",
-      blockers: [{ kind: "item", id: "accent-1" }],
-      reason: "visual 1 sits over the face from 1.00 s to 3.00 s; kept, every pick is shown",
+      rule: "face",
+      outcome: "covers-face",
+      blockers: [{ kind: "face" }],
+      reason:
+        "visual visual-1 covers the face in a corner from 1.00 s to 3.00 s; no spot off the face was free",
     };
     const saved = await saveVersion(deps, { ...meta(null), engineRecord: [note], edit });
     expect(rows.get(saved.id)!.engine_record).toEqual([note]);

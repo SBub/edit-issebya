@@ -19,8 +19,10 @@ import {
   toEngineRecord,
 } from "./engine-note.ts";
 import {
+  type BlockElement,
   type BoxElement,
   type LevelRole,
+  MIN_SIZE_PX,
   type Obstacle,
   type StackElement,
   type TextElement,
@@ -33,7 +35,7 @@ import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
 import type { PickedVariants } from "./variant-picker.ts";
 import type { BoxVariant, StackVariant, TextVariant, Variant } from "./variants.ts";
-import { type FontKey, type Preset, SHOWN_FLOOR_SECONDS, cleanWord } from "./preset.ts";
+import { type Preset, SHOWN_FLOOR_SECONDS, cleanWord } from "./preset.ts";
 import {
   type Anchor,
   type BehindItem,
@@ -69,28 +71,27 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    answer's order: the hook, accents, questions, big words, visuals, lists),
 //    each avoiding the components placed before it that share a moment with
 //    it (`shown`), never the captions: captions are not placed yet. Then the
-//    captions last, in time order, one spot per sentence, in the free space
-//    the components leave at each moment; captions avoid every component and
-//    every other caption. Every component goes through the placer
-//    (`engine-place.ts`, the spec's loop: zones, hard rules, costs): the hook,
-//    accents, questions and LIST stacks (a number, a lead-in and a key phrase
-//    as one element) at their style's base size as the cap, 10% shrink steps
-//    to 30 px, free wrapping, never over other text; the big word behind the
-//    speaker at its anchored largest fit; the visual's card as a box from its
-//    width share, text no obstacle to it and it none to text (a text may sit
-//    on a card). The captions keep their own code for now and see every text
-//    through `shown`; that path shrinks to the preset's floor and wraps to two
-//    lines before giving up a place. The face is a preference for every front
-//    element: a spot off the face first (a cost of 100 in the placer), then
-//    over the face (noted `covers-face`), then (captions only) over other text
-//    (noted `kept-overlapping`). Big words are behind the speaker and ignore
-//    the face. The engine drops no pick but two: a text pick whose every word
-//    another text pick on screen at the same moment shows (`same-text`), and a
-//    placer element with no legal spot (`no-spot`: left out, its words stay
-//    captions). Of two same-text picks a big word keeps the shared words, else
-//    the earlier one does. It trims or drops the other, then places the answer
-//    again. A caption's words a text on screen shows are left out while it
-//    shows, the caption split in time.
+//    captions last, in time order, one element per sentence (a block of its
+//    caption groups), in the free space the components leave at each moment;
+//    captions avoid every component and every other caption. Every element
+//    goes through the placer (`engine-place.ts`, the spec's loop: zones, hard
+//    rules, costs): the hook, accents, questions, LIST stacks (a number, a
+//    lead-in and a key phrase as one element) and caption blocks at their
+//    style's base size as the cap, 10% shrink steps to 30 px, free wrapping,
+//    never over other text; the big word behind the speaker at its anchored
+//    largest fit; the visual's card as a box from its width share, text no
+//    obstacle to it and it none to text (a text may sit on a card). The face is
+//    a preference for every front element: a spot off the face first (a cost
+//    of 100), then over the face (noted `covers-face`). Big words are behind
+//    the speaker and ignore the face. The engine drops no pick but two: a text
+//    pick whose every word another text pick on screen at the same moment
+//    shows (`same-text`), and a placer component with no legal spot
+//    (`no-spot`: left out, its words stay captions). Of two same-text picks a
+//    big word keeps the shared words, else the earlier one does. It trims or
+//    drops the other, then places the answer again. A caption's words a text
+//    on screen shows are left out while it shows, the caption split in time.
+//    A caption block is never left out (rule 3): with no legal spot it is set
+//    over the texts on screen, inside the safe zone, noted `no-spot`.
 // 5. Fallbacks, each noted: a pick too close to the reel's end shows from
 //    earlier (`clamped-to-end`); a pick over hidden footage moves to the next
 //    visible moment (`moved-off-cut`); a list with no caption text of its own
@@ -117,16 +118,16 @@ export interface PlaceOptions {
   backgrounds?: Backgrounds;
 }
 
-type Align = "left" | "right" | "center";
-
 // A text on screen as placed: its id (a text level's transition id), what a
-// note calls it, its span and its box.
+// note calls it, its span and its box; `caption` for a caption (a `caption`
+// obstacle to the placer, rule 2).
 interface Shown {
   id: string;
   what: string;
   start: number;
   end: number;
   box: Box;
+  caption?: boolean;
 }
 
 const SLACK = 1e-6;
@@ -157,19 +158,6 @@ function ratioText(ratio: number): string {
 
 function during(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
   return a.start < b.end - SLACK && b.start < a.end - SLACK;
-}
-
-// The sizes a text tries, from its own down to the preset's floor.
-function sizesFrom(size: number, preset: Preset): number[] {
-  const floor = Math.ceil(size * preset.layout.minScale);
-  const out: number[] = [];
-  for (let step = 0; ; step += 1) {
-    const next = Math.round(size * (1 - step * 0.1));
-    if (next < floor) break;
-    if (!out.includes(next)) out.push(next);
-  }
-  if (!out.includes(floor)) out.push(floor);
-  return out;
 }
 
 // ---------------------------------------------------------------- the scene
@@ -320,58 +308,6 @@ function captionGroups(
     return end;
   });
   return { groups, ends };
-}
-
-interface Candidate {
-  name: string;
-  area: Box;
-  align: Align;
-  want: (width: number, height: number) => { x: number; y: number };
-  maxLines: number;
-  // The worst case: the face is no obstacle.
-  overFace?: boolean;
-  // The last resort: text may be overlapped (each unit noted).
-  overText?: boolean;
-}
-
-interface Line {
-  units: { unit: Unit; width: number }[];
-  width: number;
-}
-
-// A caption block's place: its top left corner, its width, how its lines
-// align in it and its size.
-interface LaidBlock {
-  x: number;
-  y: number;
-  width: number;
-  align: Align;
-  size: number;
-}
-
-function wrapUnits(
-  units: readonly Unit[],
-  font: FontKey,
-  size: number,
-  width: number,
-  maxLines: number,
-  measurer: Measurer,
-): Line[] | null {
-  const space = measurer.width(font, size, " ");
-  const lines: Line[] = [];
-  for (const unit of units) {
-    const w = measurer.width(unit.caption.font ?? font, size, unit.text);
-    if (w > width) return null;
-    const line = lines.at(-1);
-    if (line && line.width + space + w <= width) {
-      line.units.push({ unit, width: w });
-      line.width += space + w;
-    } else {
-      lines.push({ units: [{ unit, width: w }], width: w });
-      if (lines.length > maxLines) return null;
-    }
-  }
-  return lines;
 }
 
 // ---------------------------------------------------------------- the engine
@@ -629,14 +565,13 @@ function engineRecord(
   }
   // A caption a component shows is no element on screen (no `placed` note),
   // but its notes (a retime made before it was hidden) still name its span.
-  const captionIds = new Set(tracks.captions.map((caption) => caption.id));
   for (const caption of tracks.captions) {
     const at = timeline.get(caption.id);
     if (!at) throw new Error(`engine record: caption ${caption.id} has no span`);
     elements.set(caption.id, { component: "CAPTION", start: at.start, end: at.end });
     if (caption.hidden_by === undefined) shown.push(caption.id);
   }
-  return toEngineRecord(notes, elements, shown, captionIds, picked);
+  return toEngineRecord(notes, elements, shown, picked);
 }
 
 function placeOnce(
@@ -675,7 +610,6 @@ function placeOnce(
   const safe = SAFE_ZONE.box;
   const gap = layout.gap;
   const notch = SAFE_ZONE.notch;
-  const safeCx = (safe.left + safe.right) / 2;
   const hidden = current.tracks.footage.flatMap((clip) =>
     (clip.hidden ?? []).map((span) => ({
       start: resolveAnchor(span.start, byId, duration),
@@ -1112,15 +1046,9 @@ function placeOnce(
   const shown: Shown[] = [];
   const textDuring = (span: { start: number; end: number }) =>
     shown.filter((item) => during(item, span)).map((item) => expand(item.box, gap));
-  // The texts on screen over `span` that a box (with the gap around it) overlaps.
+  // The texts on screen over `span` that a box overlaps.
   const textsOver = (box: Box, span: { start: number; end: number }): Shown[] =>
-    shown.filter((item) => during(item, span) && overlaps(box, expand(item.box, gap)));
-  // A kept-overlapping note on the texts a box sits over: its `with` (their
-  // ids) and their names for the reason.
-  const overWith = (texts: readonly Shown[]) => ({
-    with: [...new Set(texts.map((item) => item.id))],
-    names: [...new Set(texts.map((item) => item.what))].join(" and "),
-  });
+    shown.filter((item) => during(item, span) && overlaps(box, item.box));
   // Readability: the worst contrast of a text's colours over a box and span.
   const { backgrounds } = options;
   const { readability } = preset;
@@ -1451,310 +1379,137 @@ function placeOnce(
     })),
   ].sort((a, b) => a.start - b.start || a.rank - b.rank);
   for (const component of components) component.place();
-  for (const block of blocks) placeBlock(block);
+  for (const block of blocks) placeCaptions(block);
 
-  function captionCandidates(block: CaptionBlock): Candidate[] {
-    const faces = facesDuring(scene, block);
-    const face = boundingBox(faces);
-    const out: Candidate[] = [];
-    const maxLines = 2;
-    const line: Candidate = {
-      name: "on the caption line",
-      area: { ...safe, top: preset.caption.fallbackY },
-      align: "center",
-      want: (w, h) => ({ x: safeCx, y: preset.caption.fallbackY + h / 2 }),
-      maxLines,
-    };
-    if (face) {
-      const top = Math.max(safe.top, face.top);
-      const bottom = Math.min(safe.bottom, face.bottom + 120);
-      const mouth = face.top + 0.7 * (face.bottom - face.top);
-      const left: Candidate = {
-        name: "beside the head on the left",
-        area: { left: safe.left, right: face.left, top, bottom },
-        align: "right",
-        want: (w) => ({ x: face.left - w / 2, y: mouth }),
-        maxLines,
-      };
-      const right: Candidate = {
-        name: "beside the head on the right",
-        area: { left: face.right, right: safe.right, top, bottom },
-        align: "left",
-        want: (w) => ({ x: face.right + w / 2, y: mouth }),
-        maxLines,
-      };
-      const sides = safe.right - face.right > face.left - safe.left ? [right, left] : [left, right];
-      out.push(...sides, {
-        name: "below the face",
-        area: { ...safe, top: face.bottom + gap },
-        align: "center",
-        want: (w, h) => ({
-          x: Math.min(
-            safe.right - w / 2,
-            Math.max(safe.left + w / 2, (face.left + face.right) / 2),
-          ),
-          y: face.bottom + gap + h / 2,
-        }),
-        maxLines,
-      });
-      out.push(line);
-    } else {
-      out.push(line, {
-        name: "in the safe zone",
-        area: safe,
-        align: "center",
-        want: (w, h) => ({ x: safeCx, y: preset.caption.fallbackY + h / 2 }),
-        maxLines,
-      });
-    }
-    return out;
-  }
-
-  function tryBlock(
-    block: CaptionBlock,
-    candidate: Candidate,
-    size: number,
-  ): { x: number; y: number; width: number; height: number; layouts: Line[][] } | null {
-    const areaWidth = candidate.area.right - candidate.area.left;
-    if (areaWidth <= 0) return null;
-    const layouts: Line[][] = [];
-    let width = 0;
-    let height = 0;
-    for (const group of block.groups) {
-      const lines = wrapUnits(group, captionFont, size, areaWidth, candidate.maxLines, measurer);
-      if (!lines) return null;
-      layouts.push(lines);
-      width = Math.max(width, ...lines.map((line) => line.width));
-      height = Math.max(height, lines.length * size + (lines.length - 1) * preset.caption.lineGap);
-    }
-    const spot = placeBox(
-      candidate.area,
-      blockObstacles(block, candidate),
-      width,
-      height,
-      candidate.want(width, height),
-    );
-    if (!spot) return null;
-    return { ...spot, width, height, layouts };
-  }
-
-  // What a caption block keeps clear of: the face (unless it is the worst
-  // case over it), the text shown with it (unless it is the last resort over
-  // the text) and the notch.
-  function blockObstacles(block: CaptionBlock, candidate: Candidate): Box[] {
-    return [
-      ...(candidate.overFace ? [] : faceObstacles(block)),
-      ...(candidate.overText ? [] : textDuring(block)),
-      notch,
-    ];
-  }
-
-  function placeBlock(block: CaptionBlock): void {
-    const candidates = captionCandidates(block);
-    const sizes = sizesFrom(preset.fonts[captionFont].size, preset);
+  // A caption block through the placer (`engine-place.ts`): the element of the
+  // entry captions were picked with (`caption/default`: beside the face, below
+  // it, the caption line, anywhere in the safe zone; the `caption` style, 50 px
+  // at most), its groups the captions left in each group of the sentence (a
+  // caption a text shows while it is on screen, `hidden_by`, has no place and
+  // takes no room), its id its first caption's, over the components and the
+  // captions placed before it (`shown`; a caption among them is a `caption`
+  // obstacle, rule 2). The block's size is the largest at which every group
+  // fits (decision 4), shrunk in 10% steps to 30 px; its lines are free; the
+  // face is a cost; text is never covered (rule 5, hard). Each caption's place
+  // is its line's, the lines centred in the block's box; every caption of the
+  // block gets the block's notes under its own id (the checks read them per
+  // caption). Captions are never left out (rule 3, decision 19): a block with
+  // no legal spot at 30 px or more is placed again with the texts on screen
+  // out of its way (rule 5 alone given up, never the safe zone; the face still
+  // a cost), noted `no-spot` with the texts that took the space and the ones it
+  // sits over as blockers; the `text-overlap` check excuses exactly those pairs.
+  // Settled: the fallback scene keeps nothing but the notch and the face as
+  // obstacles (captions never share a moment with another sentence's, so a
+  // caption obstacle is none in practice); a block that fits nowhere even then
+  // (a caption group wider or taller than the safe zone at 30 px) is an error,
+  // not a layout.
+  function placeCaptions(block: CaptionBlock): void {
     const first = block.groups[0]![0]!;
     const label = block.groups
       .flat()
       .map((unit) => unit.text)
       .join(" ");
-    let chosen: {
-      candidate: Candidate;
-      size: number;
-      fit: NonNullable<ReturnType<typeof tryBlock>>;
-    } | null = null;
-    // Captions stay readable first: every place at the full size before any
-    // smaller size.
-    for (const size of sizes) {
-      for (const candidate of candidates) {
-        const fit = tryBlock(block, candidate, size);
-        if (fit) {
-          chosen = { candidate, size, fit };
-          break;
-        }
-      }
-      if (chosen) break;
-    }
-    if (!chosen) {
-      const floor = sizes.at(-1)!;
-      for (const area of [{ ...safe, top: preset.caption.fallbackY }, safe]) {
-        const worst: Candidate = {
-          name: "on the caption line over the face",
-          area,
-          align: "center",
-          want: (w, h) => ({ x: safeCx, y: area.top + h / 2 }),
-          maxLines: 20,
-          overFace: true,
-        };
-        const fit = tryBlock(block, worst, floor);
-        if (fit) {
-          chosen = { candidate: worst, size: floor, fit };
-          break;
-        }
-      }
-      if (!chosen) {
-        // Over the face and other text (the last resort, each unit noted with
-        // the texts it sits over), wrapped as far as it takes: the caption line,
-        // else the top of the safe zone.
-        for (const area of [{ ...safe, top: preset.caption.fallbackY }, safe]) {
-          const over: Candidate = {
-            name: "over the face and other text",
-            area,
-            align: "center",
-            want: (w, h) => ({ x: safeCx, y: area.top + h / 2 }),
-            maxLines: 99,
-            overFace: true,
-            overText: true,
-          };
-          const fit = tryBlock(block, over, floor);
-          if (fit) {
-            chosen = { candidate: over, size: floor, fit };
-            break;
-          }
-        }
-      }
-      if (!chosen) {
-        // Larger than the safe zone at the floor: one unit per line from its
-        // top (never reached at the preset's sizes).
-        const layouts = block.groups.map((group) =>
-          group.map((unit) => {
-            const w = measurer.width(captionFont, floor, unit.text);
-            return { units: [{ unit, width: w }], width: w };
-          }),
+    const element: BlockElement = {
+      type: "block",
+      id: first.caption.id,
+      variant: textVariantOf(picked, "CAPTION"),
+      groups: block.groups.map((group) =>
+        group.map((unit) => ({
+          id: unit.caption.id,
+          text: unit.text,
+          ...(unit.caption.font ? { font: unit.caption.font } : {}),
+        })),
+      ),
+      lineGap: preset.caption.lineGap,
+      start: block.start,
+      end: block.end,
+    };
+    const scene = sceneFor(block);
+    const legal = placeElement(element, scene, measurer);
+    let placed = legal.placed;
+    let notes = legal.notes;
+    let noSpot = false;
+    if (!placed) {
+      const over = placeElement(element, { ...scene, obstacles: [] }, measurer);
+      if (!over.placed) {
+        throw new Error(
+          `engine: captions ${quote(label)} (${at(block.start)} to ${at(block.end)}) fit nowhere in the safe zone at ${MIN_SIZE_PX} px`,
         );
-        chosen = {
-          candidate: {
-            name: "at the top of the safe zone over everything",
-            area: safe,
-            align: "left",
-            want: () => ({ x: safe.left, y: safe.top }),
-            maxLines: 99,
-            overFace: true,
-            overText: true,
-          },
-          size: floor,
-          fit: {
-            x: safe.left,
-            y: safe.top,
-            width: safe.right - safe.left,
-            height: Math.max(
-              ...layouts.map(
-                (lines) => lines.length * floor + (lines.length - 1) * preset.caption.lineGap,
-              ),
-            ),
-            layouts,
-          },
-        };
       }
-      // One note for the block: its other captions sit over the face with it
-      // (`with`), and the face check passes each of them as noted.
-      const others = block.groups
-        .flat()
-        .map((unit) => unit.caption.id)
-        .filter((id) => id !== first.caption.id);
-      record.push({
-        item: first.caption.id,
-        action: "covers-face",
-        rule: "caption-face",
-        reason: `captions ${quote(label)} (${at(block.start)} to ${at(block.end)}) found no free place and sit ${chosen.candidate.name}`,
-        ...(others.length > 0 ? { with: others } : {}),
-      });
-    } else if (chosen.candidate !== candidates[0]) {
-      record.push({
-        item: first.caption.id,
-        action: "moved",
-        rule: "caption-spot",
-        reason: `captions ${quote(label)} (${at(block.start)} to ${at(block.end)}) sit ${chosen.candidate.name}: no room ${candidates[0]!.name}`,
-      });
+      placed = over.placed;
+      noSpot = true;
+      const under = textsOver(placed.box, block);
+      const named = [...new Set(under.map((item) => item.what))].join(" and ");
+      const taken = legal.notes.find((note) => note.outcome === "no-spot")!;
+      const blockers = [...taken.blockers];
+      for (const item of under) {
+        const blocker = item.caption
+          ? { kind: "caption" as const, id: item.id }
+          : { kind: "item" as const, id: item.id };
+        if (!blockers.some((known) => JSON.stringify(known) === JSON.stringify(blocker))) {
+          blockers.push(blocker);
+        }
+      }
+      notes = [
+        {
+          ...taken,
+          blockers,
+          zone: placed.zone,
+          size: placed.size,
+          lines: placed.lines.length,
+          cost: placed.cost,
+          reason: `${taken.reason}; every caption stays on screen, so it sits over ${named || "nothing"} at ${placed.size} px, inside the safe zone`,
+        },
+        ...over.notes.filter((note) => note.outcome !== "placed"),
+      ];
     }
-    const { candidate, size, fit } = chosen;
-    const fullSize = preset.fonts[captionFont].size;
-    if (size < fullSize) {
-      record.push({
-        item: first.caption.id,
-        action: "shrunk",
-        rule: "caption-size",
-        reason: `captions ${quote(label)} set at ${size} px instead of ${fullSize} px to fit`,
-      });
+    for (const unit of block.groups.flat()) {
+      for (const note of notes) record.push({ ...note, item: unit.caption.id });
     }
-    // Readable over the footage; captions over the face are never moved
-    // for it.
+    const { box, size, groups, coversFace } = placed;
+    const width = box.right - box.left;
+    // Readable over the footage; captions over the face or over other text are
+    // never moved for it.
+    const stays = coversFace || noSpot;
     const place = keepReadable(
       first.caption.id,
       `captions ${quote(label)}`,
-      fit,
+      { x: box.left, y: box.top, width, height: box.bottom - box.top },
       block,
       [...new Set(block.groups.flat().map((unit) => unit.caption.color ?? preset.caption.color))],
       readability.caption,
-      candidate.overFace
+      stays
         ? null
-        : { area: candidate.area, obstacles: blockObstacles(block, candidate) },
-      candidate.overFace
-        ? "captions over the face are never moved"
+        : { area: safe, obstacles: [...faceObstacles(block), ...textDuring(block), notch] },
+      stays
+        ? `captions over the ${coversFace ? "face" : "text"} are never moved`
         : `no free place nearby reaches ${readability.caption.min}:1`,
     );
-    const laid: LaidBlock = {
-      x: place.x,
-      y: place.y,
-      width: fit.width,
-      align: candidate.align,
-      size,
-    };
-    for (const lines of fit.layouts) layLines(lines, laid, true, candidate.overText === true);
-  }
-
-  // One group's lines at their places inside its block: each unit's corner,
-  // and (while placing) its box as shown.
-  // `noteOver`: the last resort, where a unit may sit over other text (noted
-  // with what it sits over, before its own box is shown).
-  function layLines(
-    lines: readonly Line[],
-    laid: LaidBlock,
-    show: boolean,
-    noteOver = false,
-  ): void {
-    const { size } = laid;
+    // Each group's lines at their places inside the block: each caption's
+    // corner, and its box as shown (so the captions after it avoid it).
     const space = measurer.width(captionFont, size, " ");
-    let y = laid.y;
-    for (const line of lines) {
-      let x =
-        laid.align === "left"
-          ? laid.x
-          : laid.align === "right"
-            ? laid.x + laid.width - line.width
-            : laid.x + (laid.width - line.width) / 2;
-      for (const { unit, width } of line.units) {
-        const left = Math.floor(x * 100) / 100;
-        placedCaptions.set(unit.index, {
-          x: left,
-          y,
-          size,
-        });
-        if (show) {
-          const box = { left, right: left + width, top: y, bottom: y + size };
-          const span = { start: unit.start, end: unitEnd.get(unit.index)! };
-          const texts = textsOver(box, span);
-          if (noteOver && texts.length > 0) {
-            const named = overWith(texts);
-            record.push({
-              item: unit.caption.id,
-              action: "kept-overlapping",
-              rule: "all-picks",
-              reason: `caption ${quote(unit.text)} sits over ${named.names} from ${at(span.start)} to ${at(span.end)}; kept, every pick is shown`,
-              with: named.with,
-            });
-          }
+    block.groups.forEach((group, index) => {
+      let next = 0;
+      let y = place.y;
+      for (const line of groups[index]!) {
+        let x = place.x + (width - line.width) / 2;
+        for (const { width: unitWidth } of line.units) {
+          const unit = group[next++]!;
+          const left = Math.floor(x * 100) / 100;
+          placedCaptions.set(unit.index, { x: left, y, size });
           shown.push({
             id: unit.caption.id,
             what: `caption ${quote(unit.text)}`,
-            start: span.start,
-            end: span.end,
-            box,
+            start: unit.start,
+            end: unitEnd.get(unit.index)!,
+            box: { left, right: left + unitWidth, top: y, bottom: y + size },
+            caption: true,
           });
+          x += unitWidth + space;
         }
-        x += width + space;
+        y += size + preset.caption.lineGap;
       }
-      y += size + preset.caption.lineGap;
-    }
+    });
   }
 
   // One extra at its own span, placed by its kind, each through the placer. An
@@ -1775,12 +1530,13 @@ function placeOnce(
   }
 
   // The placer's scene over a span: the unpadded robust faces of its moments
-  // and every text on screen with it as a `text` obstacle (captions come last
-  // and are none yet).
+  // and every text on screen with it as an obstacle, a `text` for a component
+  // and a `caption` for a caption placed before it (captions come last, so a
+  // component sees none).
   function sceneFor(span: { start: number; end: number }) {
     const obstacles: Obstacle[] = shown
       .filter((item) => during(item, span))
-      .map((item) => ({ id: item.id, kind: "text", box: item.box }));
+      .map((item) => ({ id: item.id, kind: item.caption ? "caption" : "text", box: item.box }));
     return { faces: rawFacesDuring(scene, span), obstacles, safe: SAFE_ZONE };
   }
 

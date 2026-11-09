@@ -261,25 +261,31 @@ describe("runChecks on text overlap", () => {
     expect(checks.map((check) => check.item)).toContain(second);
   });
 
-  it("excuses the pair the engine record notes as kept-overlapping, and no other", async () => {
+  it("excuses the pair a caption's no-spot note names (decision 19), and no other", async () => {
+    // `first` is a caption (the captions come first in the fixture's texts).
     const { edit, first, second } = overlapping();
-    const kept: EngineNote = {
-      item: second,
-      component: "ACCENT",
-      variant: "accent/above-head",
+    expect(first).toMatch(/^cw/);
+    const noSpot: EngineNote = {
+      item: first,
+      component: "CAPTION",
+      variant: "caption/default",
       start: 0,
       end: 1,
-      rule: "text-overlap",
-      outcome: "kept-overlapping",
-      blockers: [{ kind: "item", id: first }],
-      reason: "kept",
+      rule: "no-spot",
+      outcome: "no-spot",
+      blockers: [{ kind: "caption", id: second }],
+      reason: "no spot: set over the text",
     };
-    expect(await buildWith(edit, [kept])).toEqual([]);
+    expect(await buildWith(edit, [noSpot])).toEqual([]);
     // The note names the other text: a blocker naming a third text is no excuse,
-    // nor is a note of another outcome.
-    const named = (id: string) => ({ ...kept, blockers: [{ kind: "item" as const, id }] });
+    // nor is a note of another outcome, nor a component's no-spot (a component
+    // with no spot is left out, never set over text).
+    const named = (id: string) => ({ ...noSpot, blockers: [{ kind: "item" as const, id }] });
     expect(await buildWith(edit, [named("nobody")])).not.toEqual([]);
-    expect(await buildWith(edit, [{ ...kept, outcome: "retimed" }])).not.toEqual([]);
+    expect(await buildWith(edit, [{ ...noSpot, outcome: "covers-face" }])).not.toEqual([]);
+    expect(
+      await buildWith(edit, [{ ...noSpot, component: "ACCENT", variant: "accent/above-head" }]),
+    ).not.toEqual([]);
   });
 });
 

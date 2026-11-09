@@ -815,12 +815,12 @@ describe("runDecide with a visual", () => {
     expect(spawn.calls).toHaveLength(0);
     const v2 = rows.get(current!)!;
     // The visual shares the hook's time and is placed in its own spot: its
-    // note says so, and no note calls that an overlap.
+    // note says so, and nothing lacked a spot.
     const record = v2.engine_record as { item: string; outcome: string }[];
     expect(record).toContainEqual(
       expect.objectContaining({ item: "visual-1", component: "VISUAL", outcome: "placed" }),
     );
-    expect(record.filter((note) => note.outcome === "kept-overlapping")).toEqual([]);
+    expect(record.filter((note) => note.outcome === "no-spot")).toEqual([]);
   });
 
   it("places a visual over the footage on a long reel: its frame needs no cut-out", async () => {

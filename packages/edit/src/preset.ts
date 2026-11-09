@@ -146,9 +146,9 @@ export interface Preset {
     afterSeconds: number;
     leadSeconds: number;
   };
-  // The layout engine: text shrinks to `minScale` of its size before it gives
-  // up a place, and keeps `gap` pixels from the face and from other text.
-  layout: { minScale: number; gap: number };
+  // The layout engine: text keeps `gap` pixels from the face and from other
+  // text (its sizes are the styles' and the placer's, `engine-place.ts`).
+  layout: { gap: number };
   // Readable text (WCAG contrast against the footage behind it): captions
   // need `caption.min`, accents and the big word (large text) `large.min`.
   // Below it a text moves to a free place within `moveRadius` (a grid every
@@ -261,7 +261,7 @@ export const ISSEBYA_PRESET: Preset = {
     afterSeconds: 1,
     leadSeconds: 0.2,
   },
-  layout: { minScale: 0.6, gap: 12 },
+  layout: { gap: 12 },
   readability: {
     caption: { min: 4.5 },
     large: { min: 3 },

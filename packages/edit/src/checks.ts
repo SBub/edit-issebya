@@ -63,10 +63,12 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
 // minimum on screen (a pick at least the shown floor), the big word never more
 // than the lead before its word is said, sounds at least the preset's gap
 // apart, time anchors outside speech, anchors inside the reel. The face is
-// the robust one (`facesOver`) the layout engine places around. A text overlap
-// is excused only where the engine record notes the pair as `kept-overlapping`
-// (a blocker naming the other: the engine found no free place for the later text); the engine
-// never fails this check. `boxes` holds the captions shown in their place
+// the robust one (`facesOver`) the layout engine places around. Text over text
+// is a hard rule (rule 5 of `specs/layout-engine.md`), so the check is strict;
+// the one excuse is a caption the engine record notes `no-spot` (decision 19: a
+// caption is never left out, so with no legal spot it sits over the texts on
+// screen, its blockers naming them): the pair of that caption and a text its
+// note names. The engine never fails this check. `boxes` holds the captions shown in their place
 // (never those a transition or an extra shows), `levels` the transitions'
 // text levels (`transitionId` is the transition they belong to), checked for
 // the safe box and for overlaps. `same-text`: no spoken word (by word id) is
@@ -82,7 +84,7 @@ export function runChecks(
   bigWords: readonly BigWordBox[] = [],
   // The transitions' text levels: inside the safe box and on no other text.
   levels: readonly (TextBox & { transitionId: string })[] = [],
-  // The engine's record of the placement (its kept overlaps).
+  // The engine's record of the placement (the captions with no legal spot).
   record: readonly EngineNote[] = [],
 ): Check[] {
   const checks: Check[] = [];
@@ -168,14 +170,15 @@ export function runChecks(
       };
     }),
   ];
-  // The engine noted this pair as kept (either item's note naming the other as
-  // a blocker).
+  // One of the pair is a caption with no legal spot whose `no-spot` note names
+  // the other as a blocker (decision 19).
   const blocks = (note: EngineNote, id: string) =>
     note.blockers.some((blocker) => "id" in blocker && blocker.id === id);
-  const kept = (a: string, b: string) =>
+  const excused = (a: string, b: string) =>
     record.some(
       (note) =>
-        note.outcome === "kept-overlapping" &&
+        note.outcome === "no-spot" &&
+        note.component === "CAPTION" &&
         ((note.item === a && blocks(note, b)) || (note.item === b && blocks(note, a))),
     );
   for (let index = 0; index < texts.length; index += 1) {
@@ -183,7 +186,7 @@ export function runChecks(
     for (const other of texts.slice(0, index)) {
       if (!(text.start < other.end - SLACK && other.start < text.end - SLACK)) continue;
       if (!overlaps(shrink(text.rect, SLACK), other.rect)) continue;
-      if (text.owner !== other.owner && kept(text.owner, other.owner)) continue;
+      if (text.owner !== other.owner && excused(text.owner, other.owner)) continue;
       checks.push({
         rule: "text-overlap",
         item: text.owner,

@@ -336,10 +336,19 @@ describe("never the same word twice on screen", () => {
     expect(now.position!.x).toBeGreaterThanOrEqual(was.left);
     expect(now.position!.y).toBeGreaterThanOrEqual(was.top);
     expect(now.position!.y + now.size!).toBeLessThanOrEqual(was.bottom);
-    // Nothing noisy in the record: the captions' notes are the plain pass's.
-    // The captions' placer notes (`placed` aside, every caption has one).
-    const captionNotes = (notes: { item: string; outcome: string }[]) =>
-      notes.filter((note) => note.item.startsWith("cw") && note.outcome !== "placed");
+    // Nothing noisy in the record: the captions' notes are the plain pass's
+    // (`placed` aside, every caption has one), but for the hidden captions,
+    // which have none, and the block's text in each reason, which names the
+    // words left in.
+    const captionNotes = (notes: { item: string; outcome: string; reason: string }[]) =>
+      notes
+        .filter(
+          (note) =>
+            note.item.startsWith("cw") &&
+            note.outcome !== "placed" &&
+            !["cw110", "cw111"].includes(note.item),
+        )
+        .map((note) => ({ ...note, reason: "" }));
     expect(captionNotes(record)).toEqual(captionNotes(plain.record));
     expectNoWordTwice(edit, spans);
   });
@@ -1468,9 +1477,7 @@ describe("a request's visual", () => {
     visuals: REQUEST_ANSWER.visuals,
     lists: REQUEST_ANSWER.lists,
   };
-  const FLOOR = Math.ceil(
-    ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.caption.font].size * ISSEBYA_PRESET.layout.minScale,
-  );
+  const FLOOR = MIN_SIZE_PX;
   const { box: safe } = SAFE_ZONE;
 
   // Never a caption removed for room: the same captions and words as the
@@ -1622,7 +1629,7 @@ describe("the written hook", () => {
     expect(placed.record.filter((note) => note.outcome === "retimed")).toEqual(
       placed.record.filter((note) => note.outcome === "retimed" && note.component === "CAPTION"),
     );
-    expect(placed.record.filter((note) => note.outcome === "kept-overlapping")).toEqual([]);
+    expect(placed.record.filter((note) => note.outcome === "no-spot")).toEqual([]);
     expect(placed.checks).toEqual([]);
   });
 
@@ -1711,12 +1718,16 @@ describe("the written hook", () => {
       return span && span.start < untilSeconds && span.end > fromSeconds && caption.position;
     });
     expect(inWindow.length).toBeGreaterThan(0);
-    // So many captions leave no free place beside the face: they go over it,
-    // by the caption fallback, recorded; every other check passes.
-    expect(placed.record).toContainEqual(
-      expect.objectContaining({ outcome: "covers-face", rule: "face" }),
-    );
+    // The captions wrap freely around the hook (the old two-line cap sent them
+    // over the face); none sits on it, none lacks a spot, every check passes
+    // but a caption the placer set over the face, which it notes.
+    expect(placed.record.filter((note) => note.outcome === "no-spot")).toEqual([]);
     expect(placed.checks.filter((check) => check.rule !== "face")).toEqual([]);
+    for (const check of placed.checks) {
+      expect(placed.record).toContainEqual(
+        expect.objectContaining({ item: check.item, outcome: "covers-face" }),
+      );
+    }
     expectNoWordTwice(placed.edit, placed.spans);
   });
 
@@ -2302,7 +2313,7 @@ describe("nothing the answer picks is dropped", () => {
     // The list's phrase is its own caption's word now: the key shows it.
     expect(edit.tracks.transitions[0]!.levels?.key.text).toBeTruthy();
     expect(record).not.toContainEqual(
-      expect.objectContaining({ item: "accent-1", outcome: "kept-overlapping" }),
+      expect.objectContaining({ item: "accent-1", outcome: "no-spot" }),
     );
   });
 
@@ -2541,9 +2552,7 @@ describe("texts never overlap on screen while a free spot exists", () => {
     expect(placed.record.filter((note) => note.item === "big-word-1")).not.toContainEqual(
       expect.objectContaining({ outcome: "moved", rule: "zone" }),
     );
-    expect(
-      placed.record.some((note) => note.outcome === "kept-overlapping" && note.blockers.length > 0),
-    ).toBe(false);
+    expect(placed.record.some((note) => note.outcome === "no-spot")).toBe(false);
   });
 
   it("keeps a big word clear of the captions of its own sentence, the word it shows left out of them", async () => {
@@ -2579,7 +2588,7 @@ describe("texts never overlap on screen while a free spot exists", () => {
         blockers: expect.arrayContaining([{ kind: "item", id: "hook" }]),
       }),
     );
-    expect(placed.record.filter((note) => note.outcome === "kept-overlapping")).toEqual([]);
+    expect(placed.record.filter((note) => note.outcome === "no-spot")).toEqual([]);
     expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
   });
 });
@@ -2621,8 +2630,176 @@ describe("text kept over text only where no free spot exists", () => {
       alone.edit.tracks.overlays.find((item) => item.id === "accent-1")!.position,
     );
     expect(placed.record.filter((note) => note.item === "accent-1")).not.toContainEqual(
-      expect.objectContaining({ outcome: "kept-overlapping" }),
+      expect.objectContaining({ outcome: "no-spot" }),
     );
     expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
+  });
+});
+
+describe("captions through the placer, as sentence blocks", () => {
+  const CAPTION_BASE = ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.caption.font].size;
+  // The captions of a placed edit by the block they were placed in: every
+  // caption of a sentence takes one spot, so the captions of a block share
+  // their notes' zone, size and line count.
+  const blocksOf = (placed: Awaited<ReturnType<typeof place>>) => {
+    const byStart = new Map<string, (typeof placed.record)[number][]>();
+    for (const note of placed.record) {
+      if (note.component !== "CAPTION" || note.zone === undefined) continue;
+      const key = `${note.start}:${note.end}:${note.rule}:${note.outcome}`;
+      byStart.set(key, [...(byStart.get(key) ?? []), note]);
+    }
+    return [...byStart.values()];
+  };
+
+  it("places every caption through the placer: the caption entry, its zones, never above the base nor under 30 px", async () => {
+    const placed = await place({});
+    const shown = placed.edit.tracks.captions.filter((caption) => caption.hidden_by === undefined);
+    expect(shown.length).toBeGreaterThan(100);
+    for (const caption of shown) {
+      expect(caption.position).toBeDefined();
+      expect(caption.size).toBeLessThanOrEqual(CAPTION_BASE);
+      expect(caption.size).toBeGreaterThanOrEqual(MIN_SIZE_PX);
+      const notes = placed.record.filter(
+        (note) => note.item === caption.id && note.zone !== undefined,
+      );
+      expect(notes.length, caption.id).toBeGreaterThan(0);
+      for (const note of notes) {
+        expect(note).toMatchObject({ component: "CAPTION", variant: "caption/default" });
+        expect(["beside-face", "below-face", "caption-line", "anywhere-in-safe-zone"]).toContain(
+          note.zone,
+        );
+        expect(note.size).toBe(caption.size);
+      }
+    }
+    // One spot per sentence: the captions of a block share their notes.
+    for (const notes of blocksOf(placed)) {
+      expect(new Set(notes.map((note) => `${note.zone}:${note.size}:${note.lines}`)).size).toBe(1);
+    }
+    // No old-path note is left: every caption note is the placer's or a retime.
+    for (const note of placed.record.filter((note) => note.component === "CAPTION")) {
+      expect(["zone", "size", "face", "timing", "no-spot"]).toContain(note.rule);
+    }
+    expect(placed.record.filter((note) => note.outcome === "no-spot")).toEqual([]);
+    expect(placed.checks).toEqual([]);
+  });
+
+  it("keeps a sentence's captions at one size, the largest at which every group fits, each line centred in the block", async () => {
+    const placed = await place({});
+    const sentences = sentenceSpans(transcript);
+    for (const sentence of sentences) {
+      const from = words.findIndex((word) => word.id === sentence.from);
+      const to = words.findIndex((word) => word.id === sentence.to);
+      const ids = new Set(words.slice(from, to + 1).map((word) => word.id));
+      const inSentence = placed.edit.tracks.captions.filter(
+        (caption) => caption.position && ids.has(caption.words[0]!),
+      );
+      if (inSentence.length === 0) continue;
+      expect(new Set(inSentence.map((caption) => caption.size)).size, sentence.from).toBe(1);
+    }
+    // The placed line gap between a block's lines is the preset's.
+    const ys = [
+      ...new Set(placed.edit.tracks.captions.slice(0, 12).map((c) => c.position?.y)),
+    ].filter((y): y is number => y !== undefined);
+    const steps = ys.slice(1).map((y, index) => y - ys[index]!);
+    for (const step of steps) {
+      expect(step % (CAPTION_BASE + ISSEBYA_PRESET.caption.lineGap)).toBe(0);
+    }
+  });
+
+  it("captions are text to each other and to every component: never two texts on one spot (rule 5, strict)", async () => {
+    const placed = await place({
+      hook: { text: "Gen Z won't work like you did" },
+      accents: [{ from: "w24", to: "w29" }],
+      big_words: [{ from: "w76", to: "w76" }],
+      lists: [{ items: [{ from: "w100", to: "w103", key_from: "w102" }] }],
+    });
+    expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
+    expect(placed.record.filter((note) => note.outcome === "no-spot")).toEqual([]);
+  });
+
+  it("never leaves a caption out (rule 3, decision 19): with no legal spot the block sits over the texts, inside the safe zone, noted `no-spot`", async () => {
+    // A face filling the safe zone, a 60-caption opening in one block (every
+    // caption too short to show 0.25 s on its own) and a hook and a list over
+    // it: nothing legal is left for the block at 30 px or more.
+    const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
+    const { current, transcript: spoken } = denseOpening(60);
+    const input: Partial<EngineInput> = {
+      lists: [
+        {
+          items: [
+            { from: "w138", to: "w145", key_from: "w138" },
+            { from: "w57", to: "w64", key_from: "w57" },
+            { from: "w43", to: "w51", key_from: "w43" },
+          ],
+        },
+      ],
+      hook: { text: "Gen Z won't work like you did" },
+    };
+    const placed = await place(input, { current, transcript: spoken, headTrack: huge });
+    const noSpot = placed.record.filter(
+      (note) => note.component === "CAPTION" && note.outcome === "no-spot",
+    );
+    expect(noSpot.length).toBeGreaterThan(0);
+    // Every caption of the block has the note, with the spot it took and the
+    // texts that took the space and that it sits over as blockers.
+    const block = placed.edit.tracks.captions.filter((caption) =>
+      noSpot.some((note) => note.item === caption.id),
+    );
+    expect(block.length).toBe(noSpot.length);
+    for (const note of noSpot) {
+      expect(note).toMatchObject({ rule: "no-spot", variant: "caption/default" });
+      expect(note.zone).toBeDefined();
+      expect(note.size).toBeGreaterThanOrEqual(MIN_SIZE_PX);
+      expect(note.blockers.some((blocker) => blocker.kind === "item")).toBe(true);
+      expect(note.reason).toMatch(
+        /every caption stays on screen, so it sits over .* inside the safe zone$/,
+      );
+    }
+    // Shown, inside the safe zone (rule 1 kept), rule 5 alone given up.
+    const { box: safe } = SAFE_ZONE;
+    for (const caption of block) {
+      expect(caption.position).toBeDefined();
+      expect(caption.position!.x).toBeGreaterThanOrEqual(safe.left);
+      expect(caption.position!.y).toBeGreaterThanOrEqual(safe.top);
+      expect(caption.position!.y + caption.size!).toBeLessThanOrEqual(safe.bottom);
+    }
+    expect(placed.checks.filter((check) => check.rule === "safe-box")).toEqual([]);
+    // The strict text-overlap check excuses exactly the noted pairs: it passes
+    // with the record, and fails on the same edit without it.
+    expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
+    const measurer = await nodeMeasurer();
+    const blind = build(
+      withPlaceholderMasks(placed.edit, spoken),
+      spoken,
+      huge,
+      ISSEBYA_PRESET,
+      measurer,
+    ).checks.filter((check) => check.rule === "text-overlap");
+    expect(blind.length).toBeGreaterThan(0);
+    for (const check of blind) {
+      const [a, b] = [check.item, /sits on \S+ (\S+)/.exec(check.reason)?.[1]];
+      const named = (
+        note: { item: string; blockers: { kind: string; id?: string }[] },
+        id: string,
+      ) => note.blockers.some((blocker) => blocker.id === id);
+      expect(
+        noSpot.some(
+          (note) => (note.item === a && named(note, b!)) || (note.item === b && named(note, a)),
+        ),
+        check.reason,
+      ).toBe(true);
+    }
+    expectNoWordTwice(placed.edit, placed.spans);
+  });
+
+  it("is deterministic with captions in the loop: the same edit and record twice", async () => {
+    const input = {
+      accents: [{ from: "w84", to: "w87" }],
+      big_words: [{ from: "w113", to: "w113" }],
+    };
+    const one = await place(input);
+    const two = await place(input);
+    expect(two.edit).toEqual(one.edit);
+    expect(two.record).toEqual(one.record);
   });
 });

@@ -12,16 +12,13 @@ import {
 import type { PickedVariants } from "./variant-picker.ts";
 import { VARIANTS, type Variant } from "./variants.ts";
 
-// Every placer action and the outcome it is recorded as. The type makes the
-// table total: a new action fails to compile until it is named here.
+// Every engine action outside the placer and the outcome it is recorded as.
+// The type makes the table total: a new action fails to compile until it is
+// named here.
 const OUTCOME: Record<PlaceAction, EngineOutcome> = {
   moved: "moved",
-  shrunk: "shrunk",
-  wrapped: "wrapped",
   retimed: "retimed",
-  "covers-face": "covers-face",
   "low-contrast": "placed",
-  "kept-overlapping": "kept-overlapping",
   "clamped-to-end": "retimed",
   "moved-off-cut": "retimed",
   "text-from-words": "placed",
@@ -29,14 +26,11 @@ const OUTCOME: Record<PlaceAction, EngineOutcome> = {
 };
 
 const accent: EngineElement = { component: "ACCENT", start: 3.2, end: 4.1 };
-const caption: EngineElement = { component: "CAPTION", start: 2, end: 2.5 };
 const elements = new Map<string, EngineElement>([
   ["accent-1", accent],
   ["accent-2", { component: "ACCENT", start: 5, end: 6 }],
-  ["cw0", caption],
-  ["cw1", { component: "CAPTION", start: 2.5, end: 3 }],
+  ["cw0", { component: "CAPTION", start: 2, end: 2.5 }],
 ]);
-const captions = new Set(["cw0", "cw1"]);
 // The picked entries the notes name (one per component, as the picker gives).
 const PICKED: PickedVariants = new Map<EngineComponent, Variant>([
   ["ACCENT", VARIANTS["accent/above-head"]],
@@ -46,36 +40,35 @@ const recordOf = (
   notes: readonly RecordNote[],
   els: ReadonlyMap<string, EngineElement>,
   shown: readonly string[],
-  caps: ReadonlySet<string>,
-) => toEngineRecord(notes, els, shown, caps, PICKED);
+) => toEngineRecord(notes, els, shown, PICKED);
 
 const note = (action: PlaceAction, extra: Partial<PlaceNote> = {}): PlaceNote => ({
   item: "accent-1",
   action,
-  rule: "caption-spot",
+  rule: "contrast-spot",
   reason: `the ${action} note`,
   ...extra,
 });
 
 describe("toEngineRecord", () => {
   for (const [action, outcome] of Object.entries(OUTCOME)) {
-    it(`records the placer's ${action} as ${outcome}`, () => {
-      const [written] = recordOf([note(action as PlaceAction)], elements, [], captions);
+    it(`records the engine's ${action} as ${outcome}`, () => {
+      const [written] = recordOf([note(action as PlaceAction)], elements, []);
       expect(written).toEqual({
         item: "accent-1",
         component: "ACCENT",
         variant: "accent/above-head",
         start: 3.2,
         end: 4.1,
-        rule: "zone",
+        rule: "contrast",
         outcome,
-        blockers: action === "covers-face" ? [{ kind: "face" }] : [],
+        blockers: [],
         reason: `the ${action} note`,
       });
     });
   }
 
-  it("maps the placer's rule names to the record's vocabulary", () => {
+  it("maps the engine's rule names to the record's vocabulary", () => {
     const rules: [string, string][] = [
       ["caption-min", "timing"],
       ["visual-time", "timing"],
@@ -83,10 +76,6 @@ describe("toEngineRecord", () => {
       ["transition-min", "timing"],
       ["hidden-footage", "hidden-footage"],
       ["same-text", "same-text"],
-      ["caption-spot", "zone"],
-      ["big-word-size", "size"],
-      ["caption-face", "face"],
-      ["all-picks", "text-overlap"],
       ["transition-text", "text"],
       ["contrast-spot", "contrast"],
       ["contrast-stay", "contrast"],
@@ -95,56 +84,22 @@ describe("toEngineRecord", () => {
       rules.map(([rule]) => note("moved", { rule })),
       elements,
       [],
-      captions,
     );
     expect(records.map((entry) => entry.rule)).toEqual(rules.map(([, mapped]) => mapped));
   });
 
   it("throws on a rule the record does not name", () => {
-    expect(() =>
-      recordOf([note("moved", { rule: "no-such-rule" })], elements, [], captions),
-    ).toThrow(/unknown rule no-such-rule/);
+    for (const rule of ["no-such-rule", "all-picks", "caption-spot", "caption-face"]) {
+      expect(() => recordOf([note("moved", { rule })], elements, [])).toThrow(
+        `unknown rule ${rule}`,
+      );
+    }
   });
 
   it("throws on a note for an element it does not know", () => {
-    expect(() => recordOf([note("moved", { item: "nobody" })], elements, [], captions)).toThrow(
+    expect(() => recordOf([note("moved", { item: "nobody" })], elements, [])).toThrow(
       /no element nobody/,
     );
-  });
-
-  it("writes the names a kept-overlapping note sits over as blockers, captions by kind", () => {
-    const [written] = recordOf(
-      [note("kept-overlapping", { with: ["accent-2", "cw1"] })],
-      elements,
-      [],
-      captions,
-    );
-    expect(written!.blockers).toEqual([
-      { kind: "item", id: "accent-2" },
-      { kind: "caption", id: "cw1" },
-    ]);
-  });
-
-  it("writes a covers-face note for each caption of its block, each blocked by the face", () => {
-    const records = recordOf(
-      [
-        note("covers-face", {
-          item: "cw0",
-          rule: "caption-face",
-          reason: "the block",
-          with: ["cw1"],
-        }),
-      ],
-      elements,
-      [],
-      captions,
-    );
-    expect(records.map((entry) => [entry.item, entry.outcome, entry.blockers])).toEqual([
-      ["cw0", "covers-face", [{ kind: "face" }]],
-      ["cw1", "covers-face", [{ kind: "face" }]],
-    ]);
-    expect(records[1]!.component).toBe("CAPTION");
-    expect(records[1]!.variant).toBe("caption/default");
   });
 
   it("passes a note already in the record's shape through as it is, and writes no placed note for its item", () => {
@@ -163,7 +118,7 @@ describe("toEngineRecord", () => {
       cost: 20,
       reason: "the placer's own words",
     };
-    const records = recordOf([ready], elements, ["accent-1", "accent-2"], captions);
+    const records = recordOf([ready], elements, ["accent-1", "accent-2"]);
     expect(records).toEqual([
       ready,
       expect.objectContaining({ item: "accent-2", outcome: "placed" }),
@@ -171,12 +126,10 @@ describe("toEngineRecord", () => {
   });
 
   it("gives every shown element with no note a placed note, and no other", () => {
-    const records = recordOf(
-      [note("moved", { item: "accent-1" })],
-      elements,
-      ["accent-1", "accent-2"],
-      captions,
-    );
+    const records = recordOf([note("moved", { item: "accent-1" })], elements, [
+      "accent-1",
+      "accent-2",
+    ]);
     expect(records.map((entry) => [entry.item, entry.outcome])).toEqual([
       ["accent-1", "moved"],
       ["accent-2", "placed"],
@@ -195,7 +148,6 @@ describe("toEngineRecord", () => {
       [note("dropped", { item: "accent-2" }), note("retimed")],
       elements,
       [],
-      captions,
     );
     expect(records.map((entry) => entry.outcome)).toEqual(["dropped", "retimed"]);
   });
@@ -206,7 +158,6 @@ describe("toEngineRecord", () => {
       [note("moved")],
       elements,
       [],
-      captions,
       new Map<EngineComponent, Variant>([["ACCENT", other]]),
     );
     expect(written!.variant).toBe("accent/other");
@@ -218,7 +169,6 @@ describe("toEngineRecord", () => {
         [note("moved")],
         elements,
         [],
-        captions,
         new Map<EngineComponent, Variant>([["CAPTION", VARIANTS["caption/default"]]]),
       ),
     ).toThrow(/no picked variant for ACCENT/);
