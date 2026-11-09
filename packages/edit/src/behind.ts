@@ -57,9 +57,9 @@ export function spotFaceShare(spot: BehindSpot, face: Box | null, preset: Preset
   return boxFaceShare(spotBox(spot, preset), face);
 }
 
-// The person in front of a big word or a VISUAL behind them at one face: the
-// face box and, under it, the body (1.8 head widths wide, to the frame's
-// bottom), the same body the engine keeps accents off.
+// The person in front of a big word at one face: the face box and, under it,
+// the body (1.8 head widths wide, to the frame's bottom). The body counts for
+// this visibility rule only; the layout engine keeps no front element off it.
 function personBoxes(face: Box, preset: Preset): Box[] {
   const width = face.right - face.left;
   return [

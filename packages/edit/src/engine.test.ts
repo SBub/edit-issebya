@@ -6,7 +6,8 @@ import { build } from "./build.ts";
 import { editFromAnswer } from "./decide.ts";
 import { placeEdit } from "./engine.ts";
 import { type EngineInput, choicesOf } from "./engine-input.ts";
-import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
+import { wordsText } from "./glossary.ts";
+import { LAYOUT_PADDING, type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import {
   ISSEBYA_PRESET,
   PLATFORM_BUTTONS,
@@ -449,6 +450,24 @@ describe("the layout engine's placement", () => {
     });
   }
 
+  // The face high in the frame: no room above it or in its upper half, so the
+  // free part below it is the only place for a front element off the face.
+  const FACE_TOP = steadyHead({ head_top: 240, cx: 540, head_w: 500 });
+
+  it("puts an accent on the chest when that is its best spot, below the face", async () => {
+    const { edit, spans, record, checks } = await place(
+      { accents: [{ from: "w0", to: "w4" }] },
+      { headTrack: FACE_TOP },
+    );
+    const [accent] = edit.tracks.overlays;
+    const face = facesOver(FACE_TOP, spans.get(accent!.id)!.start, spans.get(accent!.id)!.end)[0]!;
+    expect(accent!.position!.y).toBeGreaterThanOrEqual(face.bottom + gap);
+    expect(
+      record.filter((note) => note.item === accent!.id && note.action === "covers-face"),
+    ).toEqual([]);
+    expect(checks).toEqual([]);
+  });
+
   // The Intense rhythm: an extra on every sentence (accents, big words and
   // visuals in turn, several of each) and two
   // transitions, far more than fits.
@@ -498,6 +517,96 @@ describe("the layout engine's placement", () => {
       // Many still show: every pick is placed.
       expect(extras.length).toBeGreaterThanOrEqual(6);
     });
+  }
+
+  // Every front element (an accent, a question, the hook, a list's level, a
+  // visual card) that covers the face at a moment it is shown is noted
+  // `covers-face`; a caption fails the face check only as noted. The face is a
+  // preference, so the record is the proof that it was the last resort.
+  const gap = ISSEBYA_PRESET.layout.gap;
+  const overlapsFace = (box: Box, face: Box) =>
+    box.left < face.right &&
+    face.left < box.right &&
+    box.top < face.bottom + gap &&
+    face.top - gap < box.bottom;
+  const faceDuring = (headTrack: HeadTrack, span: { start: number; end: number }): Box[] =>
+    headTrack.flatMap((sample) =>
+      sample && sample.t >= span.start && sample.t <= span.end
+        ? facesOver(headTrack, sample.t, sample.t, LAYOUT_PADDING)
+        : [],
+    );
+  for (const [name, input] of [
+    ["the dense reel", { ...DENSE, hook: { text: "Gen Z won't work like you did" } }],
+    ["the rhythm reel", { ...RHYTHM, hook: { text: "Gen Z won't work like you did" } }],
+  ] as const) {
+    for (const [headName, headTrack] of [
+      ["the real head", hand.headTrack],
+      ["a large centred face", BIG_FACE],
+      ["a face at the top", FACE_TOP],
+    ] as const) {
+      it(`covers the face only where the record notes it, on ${name} with ${headName}`, async () => {
+        const { edit, spans, record, checks, levels } = await place(input, { headTrack });
+        const measurer = await nodeMeasurer();
+        const noted = new Set(
+          record.filter((note) => note.action === "covers-face").map((note) => note.item),
+        );
+        const fronts: { id: string; box: Box; span: { start: number; end: number } }[] = [
+          ...edit.tracks.overlays.map((item) => {
+            const lines =
+              item.kind === "hook"
+                ? [item.text!]
+                : [wordsText(item.words!, transcript, ISSEBYA_PRESET)];
+            const words = lines[0]!.split(" ");
+            const broken = item.break_after
+              ? [
+                  words.slice(0, item.break_after).join(" "),
+                  words.slice(item.break_after).join(" "),
+                ]
+              : lines;
+            const width = Math.max(
+              ...broken.map((line) => measurer.width(ISSEBYA_PRESET.accent.font, item.size!, line)),
+            );
+            const { x, y } = item.position!;
+            return {
+              id: item.id,
+              box: { left: x, right: x + width, top: y, bottom: y + broken.length * item.size! },
+              span: spans.get(item.id)!,
+            };
+          }),
+          ...(edit.tracks.behind ?? []).flatMap((item) => {
+            if (item.kind !== "visual") return [];
+            const { x, y, width, height } = item.box!;
+            return [
+              {
+                id: item.id,
+                box: { left: x, right: x + width, top: y, bottom: y + height },
+                span: spans.get(item.id)!,
+              },
+            ];
+          }),
+          ...levels.map((level) => ({
+            id: level.transitionId,
+            box: {
+              left: level.x,
+              right: level.x + level.width,
+              top: level.y,
+              bottom: level.y + level.height,
+            },
+            span: spans.get(level.transitionId)!,
+          })),
+        ];
+        const uncovered = fronts
+          .filter((front) =>
+            faceDuring(headTrack, front.span).some((face) => overlapsFace(front.box, face)),
+          )
+          .filter((front) => !noted.has(front.id))
+          .map((front) => front.id);
+        expect(uncovered).toEqual([]);
+        expect(checks.filter((check) => check.rule === "face" && !noted.has(check.item))).toEqual(
+          [],
+        );
+      });
+    }
   }
 
   // No text starts after its own words, and no two texts share the screen in
@@ -736,7 +845,8 @@ describe("visuals: corner cards over the footage", () => {
       const { width, height } = visual!.box!;
       expect([FULL, SMALLER]).toContainEqual({ width, height });
       expect(width / height).toBeCloseTo(card.aspect, 2);
-      // Inside the platform safe zone, and never over the face.
+      // Inside the platform safe zone, and off the face (each of these heads
+      // leaves a corner or side free; see the cover test below).
       expect(box.left).toBeGreaterThanOrEqual(PLATFORM_SAFE.left);
       expect(box.right).toBeLessThanOrEqual(PLATFORM_SAFE.right);
       expect(box.top).toBeGreaterThanOrEqual(PLATFORM_SAFE.top);
@@ -779,10 +889,26 @@ describe("visuals: corner cards over the footage", () => {
       action: "shrunk",
       rule: "visual-size",
       reason: expect.stringMatching(
-        /^visual 1 set at 252 by 315 px instead of 360 by 450: no corner or side of the face is free at full size from .+ to .+$/,
+        /^visual 1 set at 252 by 315 px instead of 360 by 450: no corner or side is free at full size from .+ to .+$/,
       ),
     });
     expect(tight.checks).toEqual([]);
+  });
+
+  it("covers the face with a card only when every corner and side is taken, noted covers-face", async () => {
+    const covers = (record: { action: string }[]) =>
+      record.filter((note) => note.action === "covers-face");
+    // A corner or side is free at the full size: no cover, no note.
+    const roomy = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: BIG_FACE });
+    expect(covers(roomy.record)).toEqual([]);
+    // Only the smaller step fits off the face: still not over it.
+    const tight = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: SPEECH_TEN });
+    expect(covers(tight.record)).toEqual([]);
+    // A face filling the safe zone takes every corner and side at both sizes.
+    const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
+    const covered = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: huge });
+    const card = covered.record.filter((note) => note.item === "visual-1");
+    expect(card).toEqual([expect.objectContaining({ action: "covers-face", rule: "visual-face" })]);
   });
 
   it("keeps the card's size and ratio across the reel", async () => {
@@ -1767,7 +1893,7 @@ describe("every pick shown", () => {
     expect(checks).toEqual([]);
   });
 
-  it("places a visual the face leaves no corner for at the default corner, noted", async () => {
+  it("places a visual the face leaves no corner for over the face, noted covers-face", async () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
     const { edit, record } = await place(
       { visuals: [{ from: "w84", to: "w99" }] },
@@ -1777,7 +1903,14 @@ describe("every pick shown", () => {
       expect.objectContaining({ id: "visual-1", kind: "visual" }),
     ]);
     expect(record).toContainEqual(
-      expect.objectContaining({ item: "visual-1", action: "kept-overlapping", rule: "all-picks" }),
+      expect.objectContaining({
+        item: "visual-1",
+        action: "covers-face",
+        rule: "visual-face",
+        reason: expect.stringMatching(
+          /^visual 1 covers the face from .+ to .+: no spot off the face/,
+        ),
+      }),
     );
   });
 

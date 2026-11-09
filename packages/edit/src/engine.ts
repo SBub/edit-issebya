@@ -64,9 +64,12 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    in time order, one spot per sentence, in the free space the components
 //    leave at each moment; captions avoid every component and every other
 //    caption. Text shrinks to the preset's floor and wraps to two lines before
-//    it gives up a place. A pick that fits nowhere free is placed anyway, over
-//    the face or other text, and noted (`kept-overlapping`): the engine never
-//    drops a pick. A caption's words a text on screen shows are left out while
+//    it gives up a place. The face is a preference for every front element
+//    (hook, accents, questions, list levels, visual cards, captions): a spot
+//    off the face and off other text first, then over the face but off other
+//    text (noted `covers-face`), then over other text (noted
+//    `kept-overlapping`). Big words are behind the speaker and ignore the face.
+//    The engine never drops a pick. A caption's words a text on screen shows are left out while
 //    it shows, the caption split in time (never the same word twice on screen).
 // 5. Fallbacks, each noted: a pick too close to the reel's end shows from
 //    earlier (`clamped-to-end`); a pick over hidden footage moves to the next
@@ -88,12 +91,14 @@ export type EngineAction =
   | "shrunk"
   | "wrapped"
   | "retimed"
+  // A front pick or caption placed over the face because no spot off the face
+  // was free (the reason says so).
   | "covers-face"
   // A text that stays in place, plain, below its contrast threshold: no free
   // place nearby reads, and no shadow or colour is ever added for it.
   | "low-contrast"
-  // A pick placed over the face or other text, or at the same time as another
-  // pick, kept as it is (the reason says what it sits over).
+  // A pick placed over other text, or at the same time as another pick, kept
+  // as it is (the reason says what it sits over).
   | "kept-overlapping"
   // A pick too close to the reel's end for its minimum, shown from earlier so
   // it still shows (its end is the reel's end).
@@ -111,6 +116,8 @@ export interface EngineNote {
   reason: string;
   // A `kept-overlapping` note on a text: the ids of the other texts it sits
   // over or shares its time with (the pairs the text-overlap check excuses).
+  // A `covers-face` note on a caption block: the block's other captions, which
+  // sit over the face with it (the face check excuses each of them).
   with?: string[];
 }
 
@@ -933,29 +940,34 @@ export function placeEdit(
     with: [...new Set(texts.map((item) => item.id))],
     names: [...new Set(texts.map((item) => item.what))].join(" and "),
   });
-  // A pick placed over the face (when `face`) or other text on screen is noted
-  // with what it sits over.
+  // A front pick placed over the face (when `faceRule`) is noted `covers-face`
+  // under that rule: the face is a preference, so it is covered only when no
+  // spot off it was free. A pick placed over other text on screen is noted
+  // `kept-overlapping` with the texts it sits over.
   function noteOverlap(
     id: string,
     label: string,
     box: Box,
     span: { start: number; end: number },
-    face: boolean,
+    faceRule?: string,
   ): void {
-    const over: string[] = [];
-    if (face && faceObstacles(span).some((obstacle) => overlaps(box, obstacle))) {
-      over.push("the face");
+    if (faceRule && faceObstacles(span).some((obstacle) => overlaps(box, obstacle))) {
+      record.push({
+        item: id,
+        action: "covers-face",
+        rule: faceRule,
+        reason: `${label} covers the face from ${at(span.start)} to ${at(span.end)}: no spot off the face was free, so it sits over part of it`,
+      });
     }
     const texts = textsOver(box, span);
+    if (texts.length === 0) return;
     const named = overWith(texts);
-    if (texts.length > 0) over.push(named.names);
-    if (over.length === 0) return;
     record.push({
       item: id,
       action: "kept-overlapping",
       rule: "all-picks",
-      reason: `${label} sits over ${over.join(" and ")} from ${at(span.start)} to ${at(span.end)}; kept, every pick is shown`,
-      ...(texts.length > 0 ? { with: named.with } : {}),
+      reason: `${label} sits over ${named.names} from ${at(span.start)} to ${at(span.end)}; kept, every pick is shown`,
+      with: named.with,
     });
   }
 
@@ -1247,7 +1259,7 @@ export function placeEdit(
         label,
         { left: spot.x, right: spot.x + stack.width, top: spot.y, bottom: spot.y + stack.height },
         plan,
-        true,
+        "transition-face",
       );
       found = { stack, spot, step, wrapped, overFace: false };
     }
@@ -1563,11 +1575,18 @@ export function placeEdit(
           },
         };
       }
+      // One note for the block: its other captions sit over the face with it
+      // (`with`), and the face check passes each of them as noted.
+      const others = block.groups
+        .flat()
+        .map((unit) => unit.caption.id)
+        .filter((id) => id !== first.caption.id);
       record.push({
         item: first.caption.id,
         action: "covers-face",
         rule: "caption-face",
         reason: `captions ${quote(label)} (${at(block.start)} to ${at(block.end)}) found no free place and sit ${chosen.candidate.name}`,
+        ...(others.length > 0 ? { with: others } : {}),
       });
     } else if (chosen.candidate !== candidates[0]) {
       record.push({
@@ -1712,17 +1731,7 @@ export function placeEdit(
     const text = wordsText(ids, transcript, preset);
     const font = preset.accent.font;
     const fullSize = preset.fonts[font].size;
-    const faces = facesDuring(scene, span);
-    const face = boundingBox(faces);
-    const bodies = faces.map((f) => {
-      const width = f.right - f.left;
-      return {
-        left: f.left - width * 0.4,
-        right: f.right + width * 0.4,
-        top: f.bottom,
-        bottom: preset.frame.height,
-      };
-    });
+    const face = boundingBox(facesDuring(scene, span));
     const mid = (safe.top + safe.bottom) / 2;
     const areas: Record<string, Candidate> = {
       above: {
@@ -1759,8 +1768,9 @@ export function placeEdit(
     };
     const base = face ? ["above", "top", "anywhere"] : ["line", "anywhere"];
     const candidates = base.map((name) => areas[name]!);
-    // Clear of the face and the body under it, the other text and the notch.
-    const clear = [...faceObstacles(span), ...bodies, ...textDuring(span), notch];
+    // Clear of the face, the other text and the notch (the chest is free: a
+    // spot there is as good as any other).
+    const clear = [...faceObstacles(span), ...textDuring(span), notch];
     const words = text.split(" ");
     const sizes = sizesFrom(fullSize, preset);
     // Tiers: clear of the face, the text and the notch; then clear of the text
@@ -1820,7 +1830,7 @@ export function placeEdit(
               label,
               { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
               span,
-              true,
+              "accent-face",
             );
             const item: OverlayItem = {
               id: extra.id,
@@ -1877,28 +1887,19 @@ export function placeEdit(
     }
   }
 
-  // The written hook: in the upper part of the frame clear of the face (and
-  // the body under it), inside the safe zone, else in the free part of the
-  // safe zone; in each place it wraps to two lines, then shrinks to the
-  // floor, before it moves on. Its face may be covered only by the last
-  // resort. The accent's font, size and colour. Never dropped for its size:
+  // The written hook: in the upper part of the frame clear of the face,
+  // inside the safe zone, else in the free part of the safe zone; in each
+  // place it wraps to two lines, then shrinks to the floor, before it moves
+  // on. The face is a preference: over it only when no place off it is free
+  // (noted `covers-face`), then over other text as the last resort. The
+  // accent's font, size and colour. Never dropped for its size:
   // when the floor does not fit its words in two lines it shrinks further,
   // until they do (`hook-size`).
   function placeHook(extra: Extra, span: { start: number; end: number }): void {
     const text = extra.hook!.text;
     const font = preset.accent.font;
     const fullSize = preset.fonts[font].size;
-    const faces = facesDuring(scene, span);
-    const face = boundingBox(faces);
-    const bodies = faces.map((f) => {
-      const width = f.right - f.left;
-      return {
-        left: f.left - width * 0.4,
-        right: f.right + width * 0.4,
-        top: f.bottom,
-        bottom: preset.frame.height,
-      };
-    });
+    const face = boundingBox(facesDuring(scene, span));
     const mid = (safe.top + safe.bottom) / 2;
     const candidates: Candidate[] = [
       {
@@ -1916,7 +1917,7 @@ export function placeEdit(
         maxLines: 2,
       },
     ];
-    const obstacles = [...faceObstacles(span), ...bodies, ...textDuring(span), notch];
+    const obstacles = [...faceObstacles(span), ...textDuring(span), notch];
     const words = text.split(" ");
     const sizes = sizesFrom(fullSize, preset);
     const label = `the hook ${quote(text)}`;
@@ -1951,7 +1952,7 @@ export function placeEdit(
         label,
         { left: place.x, right: place.x + width, top: place.y, bottom: place.y + height },
         span,
-        true,
+        "hook-face",
       );
       overlays.set(extra.id, {
         id: extra.id,
@@ -2019,8 +2020,8 @@ export function placeEdit(
         if (tryAt(candidate, size, lines, obstacles)) return;
       }
     }
-    // Clear of the other text but over the face (noted): a hook overlaps other
-    // text only when no size and place clear of it exists.
+    // Over the face but clear of the other text (noted `covers-face`): a hook
+    // covers the face only when no size and place off it exists.
     const textOnly = [...textDuring(span), notch];
     for (const size of [...sizes, ...belowFloor]) {
       const options = words.length > 1 ? [[text], balancedBreak(words, font, size)] : [[text]];
@@ -2141,7 +2142,7 @@ export function placeEdit(
     );
     const contrastNotes = record.splice(notes);
     const box = { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + size };
-    noteOverlap(extra.id, `the big word ${quote(text)}`, box, span, false);
+    noteOverlap(extra.id, `the big word ${quote(text)}`, box, span);
     const share = covered(spot, width, size);
     if (share > maxCovered + SLACK) {
       record.push({
@@ -2196,7 +2197,7 @@ export function placeEdit(
   // at each, the spot with the most free space around it (`card.spots`):
   // inside the platform safe zone, clear of the face and the other text (the
   // hook, accents, big words, lists; captions are placed after it), and off
-  // the button column. Never over the face.
+  // the button column.
   function cardSize(smaller: boolean): { width: number; height: number } {
     const card = preset.behind.card;
     const width = Math.round(preset.frame.width * card.widthShare * (smaller ? card.smaller : 1));
@@ -2262,10 +2263,13 @@ export function placeEdit(
       .map(({ box }) => box);
   }
 
-  // A visual: the first card spot it fits, at the full size, else at the
-  // smaller step, else at the full size over the face's corner (noted). Its
-  // white edge too close to the footage around it moves it to a place nearby
-  // that separates them, else it stays, recorded.
+  // A visual: the first card spot it fits, off the face and the other text, at
+  // the full size, then at the smaller step; only when no such spot is free,
+  // over the face (noted `covers-face`) at either size, off the other text;
+  // last, over other text at the full size (noted `kept-overlapping`), at the
+  // first spot in the safe zone, else the corner. Its white edge too close to
+  // the footage around it moves it to a place nearby that separates them, else
+  // it stays, recorded.
   function placeVisual(extra: Extra, span: { start: number; end: number }): void {
     const index = extra.index;
     const visual = extra.visual!;
@@ -2274,18 +2278,21 @@ export function placeEdit(
     const spec = preset.behind.edge;
     // The frame's white stroke is the edge the contrast check measures.
     const edge = 1;
-    const obstacles = [...textDuring(span), notch, ...faceObstacles(span)];
+    const textAndNotch = [...textDuring(span), notch];
+    const obstacles = [...textAndNotch, ...faceObstacles(span)];
     const full = cardSize(false);
-    const tried = [false, true].map((smaller) => ({
-      smaller,
-      size: cardSize(smaller),
-      overlap: false,
-    }));
-    tried.push({ smaller: false, size: full, overlap: true });
-    for (const { smaller, size, overlap } of tried) {
+    const smallSize = cardSize(true);
+    const tried = [
+      { smaller: false, size: full, avoid: obstacles, over: null },
+      { smaller: true, size: smallSize, avoid: obstacles, over: null },
+      { smaller: false, size: full, avoid: textAndNotch, over: null },
+      { smaller: true, size: smallSize, avoid: textAndNotch, over: null },
+      { smaller: false, size: full, avoid: [notch], over: "text" },
+    ];
+    for (const { smaller, size, avoid, over } of tried) {
       const found =
-        cardSpots(span, size, overlap ? [] : obstacles)[0] ??
-        (overlap
+        cardSpots(span, size, avoid)[0] ??
+        (over
           ? {
               left: PLATFORM_SAFE.left,
               right: PLATFORM_SAFE.left + size.width,
@@ -2311,7 +2318,7 @@ export function placeEdit(
           const moved = readablePlace(
             backgrounds,
             PLATFORM_SAFE,
-            obstacles,
+            avoid,
             width,
             height,
             spot,
@@ -2339,7 +2346,7 @@ export function placeEdit(
         }
       }
       const box = boxAt(spot);
-      noteOverlap(extra.id, label, box, span, true);
+      noteOverlap(extra.id, label, box, span, "visual-face");
       const sentence = sentenceOf(visual.from)!;
       behind.set(extra.id, {
         id: extra.id,
@@ -2360,7 +2367,7 @@ export function placeEdit(
           item: extra.id,
           action: "shrunk",
           rule: "visual-size",
-          reason: `${label} set at ${width} by ${height} px instead of ${full.width} by ${full.height}: no corner or side of the face is free at full size ${when}`,
+          reason: `${label} set at ${width} by ${height} px instead of ${full.width} by ${full.height}: no corner or side is free at full size ${when}`,
         });
       }
       record.push(...notes);
