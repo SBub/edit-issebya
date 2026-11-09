@@ -138,8 +138,8 @@ start, end }] }`).
   top 160, bottom 760), `left` (40 to 500, 560 to 1180) and `right` (580 to 1040, 560 to 1180); a
   VISUAL's `spot` names the nearest of them, and its `box` is the place it is drawn in. The big word:
   `primary` font, at most 400 px, side margin 40, `#FFFFFF`, its vertical centre wanted 60 px below
-  the head's top (`belowHeadTop`) or at y 700 with no head (`noHeadY`), the person may cover at most
-  the lower 30% of its height (`minVisible` 0.7); the word is never moved up for the head, and a larger cover
+  the head's top (`belowHeadTop`) or at y 700 with no head (`noHeadY`), the face may cover at most
+  the lower 30% of its height (`minVisible` 0.7, the face only); the word is never moved up for the head, and a larger cover
   is kept and noted. The cut-out covers each big word
   plus 3 frames on each side (`padFrames` at `frameRate` 30); a VISUAL lasts 1 s
   (`minSeconds`) to 2 s (`maxSeconds`), a short beat rather than a backdrop, and a big word the
@@ -372,8 +372,8 @@ pick; each such overlap is kept and noted.
   samples within 0.5 s, `cx` their median, the width their upper quartile, the top their lower
   quartile, so one bad reading never moves it), padded by 35 px left, 30 px right
   plus `gap` above and below. There is no body rule: the body under the face is no obstacle to any front
-  element (captions, accents, the hook and cards may sit on the chest). The big word's visibility share
-  still counts the body (1.8 head widths wide, to the frame's bottom). The mask itself is not read (it is a video).
+  element (captions, accents, the hook and cards may sit on the chest), nor to a big word's visibility share,
+  which counts the face only. The mask itself is not read (it is a video).
 - Free space (`src/engine-space.ts`, with `TextBox`): an area minus its obstacles (the moment faces over the item's
   time, the text already placed over it, the `PLATFORM_BUTTONS` notch) as the largest free
   rectangles (each rectangle an obstacle cuts becomes its parts left, right, above and below), and
@@ -399,8 +399,8 @@ pick; each such overlap is kept and noted.
     it; the text on screen does: at the largest size that has a place clear of the text over its span,
     the nearest such place to the wanted centre (moved, rule `big-word-spot`). With no clear place at any
     size it keeps its rule's place at the largest size that fits, the text under it noted as an overlap
-    (`all-picks`, with the texts). Most of it stays in view: in every column the person (the robust faces over its span, `facesOver`,
-    and the body under them, 1.8 head widths wide) covers at most the lower 30% of its height
+    (`all-picks`, with the texts). Most of it stays in view: in every column the face (the robust faces over its span, `facesOver`)
+    covers at most the lower 30% of its height
     (`bigWordCoveredShare` in `src/behind.ts`, shared with the check). A larger cover is kept and
     noted (`all-picks`, "the person covering N% of it"). Where the word does not fit at its size, the
     next smaller size is tried down to the floor (60%, `shrunk`, rule `big-word-size`); with no place
@@ -794,7 +794,7 @@ never fatal.
   only, noted.
 - Never drop the hook for its size: below the floor it shrinks until its words fit in one or two lines
   (`hook-size`).
-- Never move a big word up for the head: a big word the person covers more of than the lower 30%
+- Never move a big word up for the head: a big word the face covers more of than the lower 30%
   (`behind.word.minVisible`) is kept and noted. Never place one above `PLATFORM_SAFE`'s top.
 - Never let a visual leave its card: it is a corner card in front of the speaker, never behind them,
   always inside `PLATFORM_SAFE`. It takes a free spot off the face, an accent, the hook, a big word, a

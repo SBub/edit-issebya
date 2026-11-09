@@ -2252,15 +2252,14 @@ function placeOnce(
       x: frameWidth / 2,
       y: Math.max(area.top + size / 2, centre),
     });
-    // The person in front over its span: most of the word stays in view,
-    // only its lower part behind the head.
+    // The face in front over its span: most of the word stays in view, only
+    // its lower part behind the head.
     const faces = facesOver(headTrack, span.start, span.end);
     const maxCovered = 1 - spec.minVisible;
     const covered = (spot: { x: number; y: number }, width: number, size: number) =>
       bigWordCoveredShare(
         { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + size },
         faces,
-        preset,
       );
     // The nearest place to the rule's centre clear of the text on screen, at
     // the largest size that has one (`shrunk` below the largest). With none at

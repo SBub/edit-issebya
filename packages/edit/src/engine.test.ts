@@ -385,6 +385,20 @@ describe("big words in view", () => {
     return { word, span: spans.get(word.id)! };
   };
 
+  it("counts the face only: the body under the face covers nothing, the face covers its share", () => {
+    const face: Box = { left: 400, right: 700, top: 300, bottom: 500 };
+    // A word wholly under the face's bottom: the body beneath it is not counted.
+    const under: Box = { left: 380, right: 720, top: 520, bottom: 720 };
+    expect(bigWordCoveredShare(under, [face])).toBe(0);
+    // Half of the word's height under the face's bottom edge.
+    const half: Box = { left: 380, right: 720, top: 400, bottom: 600 };
+    expect(bigWordCoveredShare(half, [face])).toBeCloseTo(0.5, 6);
+    // A word beside the face, out of its columns: nothing covered.
+    const beside: Box = { left: 0, right: 300, top: 300, bottom: 500 };
+    expect(bigWordCoveredShare(beside, [face])).toBe(0);
+    expect(bigWordCoveredShare(half, [])).toBe(0);
+  });
+
   it("keeps a short big word at the head's rule place, noted when the head covers more than 30% of it", async () => {
     const measurer = await nodeMeasurer();
     const { edit, spans, checks, record } = await place(
@@ -401,11 +415,7 @@ describe("big words in view", () => {
       bottom: word.position!.y + word.size!,
     };
     // The single mode never moves it for the head: the coverage is noted.
-    const share = bigWordCoveredShare(
-      box,
-      facesOver(BIG_FACE, span.start, span.end),
-      ISSEBYA_PRESET,
-    );
+    const share = bigWordCoveredShare(box, facesOver(BIG_FACE, span.start, span.end));
     expect(share).toBeGreaterThan(maxCovered);
     expect(box.top).toBeGreaterThanOrEqual(PLATFORM_SAFE.top);
     expect(record).toContainEqual(

@@ -57,38 +57,19 @@ export function spotFaceShare(spot: BehindSpot, face: Box | null, preset: Preset
   return boxFaceShare(spotBox(spot, preset), face);
 }
 
-// The person in front of a big word at one face: the face box and, under it,
-// the body (1.8 head widths wide, to the frame's bottom). The body counts for
-// this visibility rule only; the layout engine keeps no front element off it.
-function personBoxes(face: Box, preset: Preset): Box[] {
-  const width = face.right - face.left;
-  return [
-    face,
-    {
-      left: face.left - width * 0.4,
-      right: face.right + width * 0.4,
-      top: face.bottom,
-      bottom: preset.frame.height,
-    },
-  ];
-}
-
-// The largest share (0 to 1) of a big word's (or a behind VISUAL's) height
-// the person covers in any of its columns, at any of the faces (the robust
-// ones over its span, `facesOver`); 0 without a face. Where the person is in
-// front of it, the person runs from the face's (or the body's) top down to
-// the frame's bottom, so only its lower part may go behind the head. Shared
-// by the layout engine's placement and the decide prompt, so they never disagree.
-export function bigWordCoveredShare(box: Box, faces: readonly Box[], preset: Preset): number {
+// The largest share (0 to 1) of a big word's height the face covers, in any of
+// its columns, at any of the faces (the robust ones over its span, `facesOver`);
+// 0 without a face. Only the face counts: the body under it is no obstacle to
+// the word's visibility. Shared by the layout engine's placement and its check,
+// so they never disagree.
+export function bigWordCoveredShare(box: Box, faces: readonly Box[]): number {
   const height = box.bottom - box.top;
   if (height <= 0) return 0;
   let worst = 0;
   for (const face of faces) {
-    for (const part of personBoxes(face, preset)) {
-      if (!(part.left < box.right && box.left < part.right)) continue;
-      const covered = Math.min(box.bottom, part.bottom) - Math.max(box.top, part.top);
-      worst = Math.max(worst, Math.max(0, covered) / height);
-    }
+    if (!(face.left < box.right && box.left < face.right)) continue;
+    const covered = Math.min(box.bottom, face.bottom) - Math.max(box.top, face.top);
+    worst = Math.max(worst, Math.max(0, covered) / height);
   }
   return worst;
 }
