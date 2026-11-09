@@ -196,7 +196,7 @@ input, reasons?)` fills them as fenced JSON and, on the retry, appends the refus
   `unexpressed` empty, the records below (`free_field` is always empty: the answer has no free style; `used_free_field` reports
   a kept item's style) and the engine record (`engine_record`). After the save the worker logs the
   record in one line (`apps/worker/src/engine-record.ts`, `engineRecordLine`):
-  `engine record, reel <id>, version <n>: <item> <action> (<rule>): <reason>; ...`, or `nothing moved`.
+  `engine record, reel <id>, version <n>: <item> <outcome> (<rule>): <reason>; ...`, or `nothing moved`.
   Step line: `version 2: 1 accent, 1 transition, hook set, 1 word fixed`, with `, <n> behind` after it
   when the version has behind items, and `, started over
 from version <n>` for Start over.

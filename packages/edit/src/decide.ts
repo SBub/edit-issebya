@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Backgrounds } from "./background.ts";
-import { type EngineNote, placeEdit } from "./engine.ts";
+import type { EngineNote } from "./engine-note.ts";
+import { placeEdit } from "./engine.ts";
 import { type EngineInput, QUESTION_PREFIX } from "./engine-input.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { wordsText } from "./glossary.ts";

@@ -1,5 +1,5 @@
 import type { BigWordBox } from "./behind.ts";
-import type { EngineNote } from "./engine.ts";
+import type { EngineNote } from "./engine-note.ts";
 import type { TextBox } from "./engine-space.ts";
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import {
@@ -68,7 +68,7 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
 // apart, time anchors outside speech, anchors inside the reel. The face is
 // the robust one (`facesOver`) the layout engine places around. A text overlap
 // is excused only where the engine record notes the pair as `kept-overlapping`
-// (its `with`: the engine found no free place for the later text); the engine
+// (a blocker naming the other: the engine found no free place for the later text); the engine
 // never fails this check. `boxes` holds the captions shown in their place
 // (never those a transition or an extra shows), `levels` the transitions'
 // text levels (`transitionId` is the transition they belong to), checked for
@@ -183,13 +183,15 @@ export function runChecks(
       };
     }),
   ];
-  // The engine noted this pair as kept (either item's note naming the other).
+  // The engine noted this pair as kept (either item's note naming the other as
+  // a blocker).
+  const blocks = (note: EngineNote, id: string) =>
+    note.blockers.some((blocker) => "id" in blocker && blocker.id === id);
   const kept = (a: string, b: string) =>
     record.some(
       (note) =>
-        note.action === "kept-overlapping" &&
-        ((note.item === a && note.with?.includes(b) === true) ||
-          (note.item === b && note.with?.includes(a) === true)),
+        note.outcome === "kept-overlapping" &&
+        ((note.item === a && blocks(note, b)) || (note.item === b && blocks(note, a))),
     );
   for (let index = 0; index < texts.length; index += 1) {
     const text = texts[index]!;

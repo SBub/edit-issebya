@@ -139,8 +139,8 @@ const readable = editFromAnswer(
   backgroundSampler(readableMap, ISSEBYA_PRESET.frame),
 );
 if (!readable.ok) throw new Error(readable.reasons.join("; "));
-for (const note of readable.record.filter((entry) => entry.rule.startsWith("contrast-"))) {
-  console.log(`readable: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
+for (const note of readable.record.filter((entry) => /contrast/.test(entry.reason))) {
+  console.log(`readable: ${note.item} ${note.outcome} (${note.rule}): ${note.reason}`);
 }
 await write("rethink-work-readable", withPlaceholders(readable.edit));
 
@@ -185,7 +185,7 @@ const withTransitions = editFromAnswer(
 );
 if (!withTransitions.ok) throw new Error(withTransitions.reasons.join("; "));
 for (const note of withTransitions.record.filter((entry) => entry.item.startsWith("transition-"))) {
-  console.log(`transitions: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
+  console.log(`transitions: ${note.item} ${note.outcome} (${note.rule}): ${note.reason}`);
 }
 await write("rethink-work-transitions", withPlaceholders(withTransitions.edit));
 
@@ -202,7 +202,7 @@ const withHook = editFromAnswer(
 );
 if (!withHook.ok) throw new Error(withHook.reasons.join("; "));
 for (const note of withHook.record.filter((entry) => entry.item === "hook")) {
-  console.log(`hook: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
+  console.log(`hook: ${note.item} ${note.outcome} (${note.rule}): ${note.reason}`);
 }
 await write("rethink-work-hook", withPlaceholders(withHook.edit));
 

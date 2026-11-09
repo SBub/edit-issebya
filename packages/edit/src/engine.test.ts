@@ -168,12 +168,14 @@ describe("the layout engine's timing", () => {
       if (next) expect(span.end).toBeLessThanOrEqual(spans.get(next.id)!.start + 1e-6);
     }
     // "to" (0.09 s before the next group) joins the next group, recorded.
-    expect(record).toContainEqual({
-      item: "cw94",
-      action: "retimed",
-      rule: "caption-min",
-      reason: 'caption "to" joins the next group, so it shows at least 0.25 s',
-    });
+    expect(record).toContainEqual(
+      expect.objectContaining({
+        item: "cw94",
+        outcome: "retimed",
+        rule: "timing",
+        reason: 'caption "to" joins the next group, so it shows at least 0.25 s',
+      }),
+    );
   });
 
   it("shows an accent exactly while its words are spoken: its first word's start to its last word's end, no minimum", async () => {
@@ -189,7 +191,7 @@ describe("the layout engine's timing", () => {
     expect(one.end - one.start).toBeLessThan(1.5);
     const two = spans.get("accent-2")!;
     expect([two.start, two.end]).toEqual([start("w84"), end("w87")]);
-    expect(record.filter((note) => note.rule === "accent-time")).toEqual([]);
+    expect(record.filter((note) => note.item === "accent-1" && note.rule === "timing")).toEqual([]);
   });
 
   it("shows a question as an accent on its words: question-1, the accent's timing and look", async () => {
@@ -331,8 +333,9 @@ describe("never the same word twice on screen", () => {
     expect(now.position!.y).toBeGreaterThanOrEqual(was.top);
     expect(now.position!.y + now.size!).toBeLessThanOrEqual(was.bottom);
     // Nothing noisy in the record: the captions' notes are the plain pass's.
-    const captionNotes = (notes: { item: string }[]) =>
-      notes.filter((note) => note.item.startsWith("cw"));
+    // The captions' placer notes (`placed` aside, every caption has one).
+    const captionNotes = (notes: { item: string; outcome: string }[]) =>
+      notes.filter((note) => note.item.startsWith("cw") && note.outcome !== "placed");
     expect(captionNotes(record)).toEqual(captionNotes(plain.record));
     expectNoWordTwice(edit, spans);
   });
@@ -415,8 +418,8 @@ describe("big words in view", () => {
     expect(record).toContainEqual(
       expect.objectContaining({
         item: word.id,
-        action: "kept-overlapping",
-        rule: "all-picks",
+        outcome: "kept-overlapping",
+        rule: "text-overlap",
         reason: expect.stringMatching(
           /^the big word ".+" sits with the person covering \d+% of it/,
         ),
@@ -467,7 +470,7 @@ describe("the layout engine's placement", () => {
     const face = facesOver(FACE_TOP, spans.get(accent!.id)!.start, spans.get(accent!.id)!.end)[0]!;
     expect(accent!.position!.y).toBeGreaterThanOrEqual(face.bottom + gap);
     expect(
-      record.filter((note) => note.item === accent!.id && note.action === "covers-face"),
+      record.filter((note) => note.item === accent!.id && note.outcome === "covers-face"),
     ).toEqual([]);
     expect(checks).toEqual([]);
   });
@@ -556,7 +559,7 @@ describe("the layout engine's placement", () => {
         const { edit, spans, record, checks, levels } = await place(input, { headTrack });
         const measurer = await nodeMeasurer();
         const noted = new Set(
-          record.filter((note) => note.action === "covers-face").map((note) => note.item),
+          record.filter((note) => note.outcome === "covers-face").map((note) => note.item),
         );
         const fronts: { id: string; box: Box; span: { start: number; end: number } }[] = [
           ...edit.tracks.overlays.map((item) => {
@@ -670,8 +673,7 @@ describe("the layout engine's placement", () => {
           expect(
             record.some(
               (note) =>
-                (note.item === earlier.id || note.item === later.id) &&
-                note.rule === "text-one-at-a-time",
+                (note.item === earlier.id || note.item === later.id) && note.rule === "timing",
             ),
             `${earlier.id} and ${later.id} overlap`,
           ).toBe(true);
@@ -698,7 +700,7 @@ describe("the layout engine's placement", () => {
     expect(accent.end).toBeCloseTo(fromSeconds, 3);
     expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds });
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "retimed", rule: "text-one-at-a-time" }),
+      expect.objectContaining({ item: "accent-1", outcome: "retimed", rule: "timing" }),
     );
     expect(placed.checks).toEqual([]);
   });
@@ -749,7 +751,7 @@ describe("the layout engine's placement", () => {
     expect(accent.id).toBe("accent-1");
     expect(accent.break_after).toBeGreaterThan(0);
     expect(accent.size).toBeLessThan(110);
-    expect(record.filter((note) => note.item === "accent-1").map((note) => note.action)).toEqual(
+    expect(record.filter((note) => note.item === "accent-1").map((note) => note.outcome)).toEqual(
       expect.arrayContaining(["shrunk", "wrapped"]),
     );
     expect(checks).toEqual([]);
@@ -781,7 +783,7 @@ describe("the layout engine's placement", () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
     const { edit, record } = await place({}, { headTrack: huge });
     expect(edit.tracks.captions.every((caption) => caption.position !== undefined)).toBe(true);
-    expect(record.some((note) => note.action === "covers-face")).toBe(true);
+    expect(record.some((note) => note.outcome === "covers-face")).toBe(true);
   });
 });
 
@@ -852,7 +854,7 @@ describe("visuals: corner cards over the footage", () => {
       expect(visual).toMatchObject({ id: "visual-1", kind: "visual" });
       const box = boxOf(visual!);
       const { width, height } = visual!.box!;
-      expect([FULL, SMALLER]).toContainEqual({ width, height });
+      expect([FULL, SMALLER]).toContainEqual(expect.objectContaining({ width, height }));
       expect(width / height).toBeCloseTo(card.aspect, 2);
       // Inside the platform safe zone, and off the face (each of these heads
       // leaves a corner or side free; see the cover test below).
@@ -888,25 +890,27 @@ describe("visuals: corner cards over the footage", () => {
     const roomy = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: BIG_FACE });
     const [full] = cardsOf(roomy.edit);
     expect({ width: full!.box!.width, height: full!.box!.height }).toEqual(FULL);
-    expect(roomy.record.filter((note) => note.rule === "visual-size")).toEqual([]);
+    expect(roomy.record.filter((note) => note.rule === "size")).toEqual([]);
     // The speech-ten head: no corner or side takes the full card, the 0.7 step does.
     const tight = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: SPEECH_TEN });
     const [smaller] = cardsOf(tight.edit);
     expect({ width: smaller!.box!.width, height: smaller!.box!.height }).toEqual(SMALLER);
-    expect(tight.record).toContainEqual({
-      item: "visual-1",
-      action: "shrunk",
-      rule: "visual-size",
-      reason: expect.stringMatching(
-        /^visual 1 set at 252 by 315 px instead of 360 by 450: no corner or side is free at full size from .+ to .+$/,
-      ),
-    });
+    expect(tight.record).toContainEqual(
+      expect.objectContaining({
+        item: "visual-1",
+        outcome: "shrunk",
+        rule: "size",
+        reason: expect.stringMatching(
+          /^visual 1 set at 252 by 315 px instead of 360 by 450: no corner or side is free at full size from .+ to .+$/,
+        ),
+      }),
+    );
     expect(tight.checks).toEqual([]);
   });
 
   it("covers the face with a card only when every corner and side is taken, noted covers-face", async () => {
-    const covers = (record: { action: string }[]) =>
-      record.filter((note) => note.action === "covers-face");
+    const covers = (record: { outcome: string }[]) =>
+      record.filter((note) => note.outcome === "covers-face");
     // A corner or side is free at the full size: no cover, no note.
     const roomy = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: BIG_FACE });
     expect(covers(roomy.record)).toEqual([]);
@@ -917,7 +921,7 @@ describe("visuals: corner cards over the footage", () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
     const covered = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: huge });
     const card = covered.record.filter((note) => note.item === "visual-1");
-    expect(card).toEqual([expect.objectContaining({ action: "covers-face", rule: "visual-face" })]);
+    expect(card).toEqual([expect.objectContaining({ outcome: "covers-face", rule: "face" })]);
   });
 
   it("keeps the card's size and ratio across the reel", async () => {
@@ -936,7 +940,7 @@ describe("visuals: corner cards over the footage", () => {
     expect(placed.length).toBeGreaterThanOrEqual(2);
     for (const visual of placed) {
       const { width, height } = visual.box!;
-      expect([FULL, SMALLER]).toContainEqual({ width, height });
+      expect([FULL, SMALLER]).toContainEqual(expect.objectContaining({ width, height }));
       expect(width / height).toBeCloseTo(card.aspect, 2);
     }
   });
@@ -963,9 +967,7 @@ describe("visuals: corner cards over the footage", () => {
     const measured = await place(input, { backgrounds: wall });
     expect(measured.checks).toEqual([]);
     expect(
-      measured.record.filter(
-        (note) => note.item === "visual-1" && note.rule.startsWith("contrast-"),
-      ),
+      measured.record.filter((note) => note.item === "visual-1" && note.rule === "contrast"),
     ).toHaveLength(1);
     // Light everywhere: it stays, a plain frame with no shadow or colour change.
     const allLight = backgroundSampler(
@@ -974,21 +976,21 @@ describe("visuals: corner cards over the footage", () => {
     );
     const kept = await place(input, { backgrounds: allLight });
     expect(boxOf(cardsOf(kept.edit)[0]!)).toEqual(first);
-    expect(kept.record).toContainEqual({
-      item: "visual-1",
-      action: "low-contrast",
-      rule: "contrast-stay",
-      reason: expect.stringMatching(
-        /^visual 1 stays in place: contrast 1\.\d:1 against the footage around it from .+, no free place nearby reaches 1\.5:1; a visual never gets a shadow or a colour change$/,
-      ),
-    });
+    expect(kept.record).toContainEqual(
+      expect.objectContaining({
+        item: "visual-1",
+        outcome: "placed",
+        rule: "contrast",
+        reason: expect.stringMatching(
+          /^visual 1 stays in place: contrast 1\.\d:1 against the footage around it from .+, no free place nearby reaches 1\.5:1; a visual never gets a shadow or a colour change$/,
+        ),
+      }),
+    );
     expect(kept.html).not.toMatch(/<div id="visual-1"[^>]*(shadow|filter)/);
     // Without a background map nothing is measured.
     const unknown = await place(input);
     expect(
-      unknown.record.filter(
-        (note) => note.item === "visual-1" && note.rule.startsWith("contrast-"),
-      ),
+      unknown.record.filter((note) => note.item === "visual-1" && note.rule === "contrast"),
     ).toEqual([]);
   });
 });
@@ -1067,13 +1069,15 @@ describe("readable text", () => {
     expect(moved.position).not.toEqual(first.position);
     expect(moved.color).toBeUndefined();
     expect(record).toContainEqual(
-      expect.objectContaining({ item: first.id, action: "moved", rule: "contrast-spot" }),
+      expect.objectContaining({ item: first.id, outcome: "moved", rule: "contrast" }),
     );
-    const note = record.find((entry) => entry.rule === "contrast-spot")!;
+    const note = record.find((entry) => entry.rule === "contrast" && entry.outcome === "moved")!;
     expect(note.reason).toMatch(
       /^captions ".+" moves \d+ px to a free place it reads on: contrast 1\.\d:1 from \d+\.\d\d s to \d+\.\d\d s, under 4\.5:1, now \d+\.\d:1$/,
     );
-    expect(record.filter((entry) => entry.action === "low-contrast")).toEqual([]);
+    expect(
+      record.filter((entry) => entry.rule === "contrast" && entry.outcome === "placed"),
+    ).toEqual([]);
     expect(checks).toEqual([]);
   });
 
@@ -1087,13 +1091,15 @@ describe("readable text", () => {
       for (const caption of edit.tracks.captions) {
         expect(caption.color).toBeUndefined();
       }
-      const notes = record.filter((entry) => entry.rule === "contrast-stay");
+      const notes = record.filter((entry) => entry.rule === "contrast");
       expect(notes.length).toBeGreaterThan(0);
-      expect(notes[0]!.action).toBe("low-contrast");
+      expect(notes[0]!.outcome).toBe("placed");
       expect(notes[0]!.reason).toMatch(
         /^captions ".+" stay in place: contrast \d\.\d:1 from .* no free place nearby reaches 4\.5:1$/,
       );
-      expect(record.filter((entry) => entry.rule === "contrast-spot")).toEqual([]);
+      expect(
+        record.filter((entry) => entry.rule === "contrast" && entry.outcome === "moved"),
+      ).toEqual([]);
       // Low contrast is recorded only: no check fails on it.
       expect(checks).toEqual([]);
     }
@@ -1117,7 +1123,7 @@ describe("readable text", () => {
     expect(moved.position).not.toEqual(accent.position);
     expect(moved.color).toBeUndefined();
     expect(record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "moved", rule: "contrast-spot" }),
+      expect.objectContaining({ item: "accent-1", outcome: "moved", rule: "contrast" }),
     );
     expect(checks).toEqual([]);
   });
@@ -1128,14 +1134,16 @@ describe("readable text", () => {
     const accent = edit.tracks.overlays[0]!;
     expect(accent.position).toEqual(before.edit.tracks.overlays[0]!.position);
     expect(accent.color).toBeUndefined();
-    expect(record).toContainEqual({
-      item: "accent-1",
-      action: "low-contrast",
-      rule: "contrast-stay",
-      reason: expect.stringMatching(
-        /^accent ".+" stays in place: contrast 1\.\d:1 from \d+\.\d\d s to \d+\.\d\d s, no free place nearby reaches 3:1$/,
-      ),
-    });
+    expect(record).toContainEqual(
+      expect.objectContaining({
+        item: "accent-1",
+        outcome: "placed",
+        rule: "contrast",
+        reason: expect.stringMatching(
+          /^accent ".+" stays in place: contrast 1\.\d:1 from \d+\.\d\d s to \d+\.\d\d s, no free place nearby reaches 3:1$/,
+        ),
+      }),
+    );
   });
 
   it("leaves the big word in place, plain, on a light background and never moves it", async () => {
@@ -1149,15 +1157,18 @@ describe("readable text", () => {
     expect(record).toContainEqual(
       expect.objectContaining({
         item: "big-word-1",
-        action: "low-contrast",
-        rule: "contrast-stay",
+        outcome: "placed",
+        rule: "contrast",
         reason: expect.stringMatching(
           /^the big word ".+" stays in place: .*the big word is never moved$/,
         ),
       }),
     );
     expect(
-      record.filter((entry) => entry.item === "big-word-1" && entry.rule === "contrast-spot"),
+      record.filter(
+        (entry) =>
+          entry.item === "big-word-1" && entry.rule === "contrast" && entry.outcome === "moved",
+      ),
     ).toEqual([]);
   });
 
@@ -1194,11 +1205,13 @@ describe("readable text", () => {
     expect(
       record.filter(
         (note) =>
-          note.rule === "contrast-stay" && inside.some((caption) => caption.id === note.item),
+          note.rule === "contrast" &&
+          note.outcome === "placed" &&
+          inside.some((caption) => caption.id === note.item),
       ),
     ).toEqual([]);
     expect(
-      record.filter((note) => note.item === "transition-1" && note.rule.startsWith("contrast")),
+      record.filter((note) => note.item === "transition-1" && note.rule === "contrast"),
     ).toEqual([]);
   });
 });
@@ -1275,7 +1288,7 @@ describe("transitions", () => {
     const span = spans.get("transition-1")!;
     expect([span.start, span.end]).toEqual([ms(start("w26") - ENTRANCE), end("w27")]);
     expect(
-      record.filter((note) => note.item === "transition-1" && note.action === "retimed"),
+      record.filter((note) => note.item === "transition-1" && note.outcome === "retimed"),
     ).toEqual([]);
     expect(checks).toEqual([]);
   });
@@ -1322,8 +1335,8 @@ describe("transitions", () => {
     expect(record).toContainEqual(
       expect.objectContaining({
         item: "transition-1",
-        action: "covers-face",
-        rule: "transition-face",
+        outcome: "covers-face",
+        rule: "face",
       }),
     );
   });
@@ -1543,9 +1556,9 @@ describe("the written hook", () => {
     // Wrapped or shrunk to fit, recorded; always above the middle of the safe zone.
     expect(item.position!.y).toBeGreaterThanOrEqual(safe.top);
     expect(item.position!.y).toBeLessThan((safe.top + safe.bottom) / 2);
-    expect(placed.record.filter((note) => note.item === "hook").map((note) => note.rule)).toEqual(
-      expect.arrayContaining(["hook-wrap"]),
-    );
+    expect(
+      placed.record.filter((note) => note.item === "hook").map((note) => note.outcome),
+    ).toEqual(expect.arrayContaining(["wrapped"]));
     // Its own class, the accents' entrance.
     expect(placed.html).toContain('class="text hook f-primary"');
     expect(placed.html).toContain(".hook { text-align: center; }");
@@ -1571,14 +1584,16 @@ describe("the written hook", () => {
     // The hook keeps its start and place; the accent's own word ends it.
     expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: start("w9") });
     expect(placed.spans.get("accent-1")).toMatchObject({ start: start("w9"), end: end("w9") });
-    expect(placed.record).toContainEqual({
-      item: "hook",
-      action: "retimed",
-      rule: "text-one-at-a-time",
-      reason: expect.stringMatching(
-        /^the hook "Gen Z won't work like you did" shows from \d+\.\d\d s to \d+\.\d\d s, not to 3\.00 s: accent "[^"]+" starts at \d+\.\d\d s, and text picks show one at a time; the words it no longer shows show as captions$/,
-      ),
-    });
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({
+        item: "hook",
+        outcome: "retimed",
+        rule: "timing",
+        reason: expect.stringMatching(
+          /^the hook "Gen Z won't work like you did" shows from \d+\.\d\d s to \d+\.\d\d s, not to 3\.00 s: accent "[^"]+" starts at \d+\.\d\d s, and text picks show one at a time; the words it no longer shows show as captions$/,
+        ),
+      }),
+    );
     // The accent said after the hook is not moved.
     expect(placed.spans.get("accent-2")!.start).toBe(start("w12"));
     expect(placed.checks).toEqual([]);
@@ -1592,10 +1607,14 @@ describe("the written hook", () => {
     });
     expect(placed.spans.get("accent-1")).toMatchObject({ start: start("w2"), end: end("w3") });
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "hook", action: "retimed", rule: "text-one-at-a-time" }),
+      expect.objectContaining({ item: "hook", outcome: "retimed", rule: "timing" }),
     );
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "kept-overlapping", rule: "all-picks" }),
+      expect.objectContaining({
+        item: "accent-1",
+        outcome: "kept-overlapping",
+        rule: "text-overlap",
+      }),
     );
     expect(placed.checks).toEqual([]);
   });
@@ -1629,13 +1648,13 @@ describe("the written hook", () => {
       expect.arrayContaining([
         expect.objectContaining({
           item: "hook",
-          action: "retimed",
-          rule: "text-one-at-a-time",
+          outcome: "retimed",
+          rule: "timing",
         }),
         expect.objectContaining({
           item: "visual-1",
-          action: "kept-overlapping",
-          rule: "all-picks",
+          outcome: "kept-overlapping",
+          rule: "text-overlap",
         }),
       ]),
     );
@@ -1708,7 +1727,7 @@ describe("the written hook", () => {
     // So many captions leave no free place beside the face: they go over it,
     // by the caption fallback, recorded; every other check passes.
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ action: "covers-face", rule: "caption-face" }),
+      expect.objectContaining({ outcome: "covers-face", rule: "face" }),
     );
     expect(placed.checks.filter((check) => check.rule !== "face")).toEqual([]);
     expectNoWordTwice(placed.edit, placed.spans);
@@ -1721,9 +1740,9 @@ describe("the written hook", () => {
     const placed = await place({ hook: WIDE });
     const item = hookOf(placed.edit)!;
     expect(item.size).toBeLessThan(preset110);
-    expect(placed.record.filter((note) => note.item === "hook").map((note) => note.rule)).toEqual(
-      expect.arrayContaining(["hook-size"]),
-    );
+    expect(
+      placed.record.filter((note) => note.item === "hook").map((note) => note.outcome),
+    ).toEqual(expect.arrayContaining(["shrunk"]));
     expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: untilSeconds });
     expect(placed.checks).toEqual([]);
   });
@@ -1755,7 +1774,7 @@ describe("the written hook", () => {
     );
     expect(placed.tracks.overlays.map((item) => item.id)).toEqual(["hook"]);
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "hook", action: "clamped-to-end", rule: "hook-time" }),
+      expect.objectContaining({ item: "hook", outcome: "retimed", rule: "timing" }),
     );
   });
 });
@@ -1805,8 +1824,8 @@ describe("text picks one at a time", () => {
     expect(placed.record).toContainEqual(
       expect.objectContaining({
         item: "transition-1",
-        action: "retimed",
-        rule: "text-one-at-a-time",
+        outcome: "retimed",
+        rule: "timing",
       }),
     );
     const has = placed.edit.tracks.captions.find((item) => item.id === "cw27")!;
@@ -1835,8 +1854,8 @@ describe("text picks one at a time", () => {
     expect(placed.record).toContainEqual(
       expect.objectContaining({
         item: "big-word-1",
-        action: "retimed",
-        rule: "text-one-at-a-time",
+        outcome: "retimed",
+        rule: "timing",
       }),
     );
     expect(placed.checks).toEqual([]);
@@ -1851,7 +1870,7 @@ describe("text picks one at a time", () => {
     expect(placed.spans.get("accent-1")).toMatchObject({ start: start("w5"), end: end("w6") });
     expect(placed.spans.get("visual-1")).toMatchObject(visualOnly.spans.get("visual-1")!);
     expect(
-      placed.record.filter((note) => note.item === "visual-1" && note.action === "retimed"),
+      placed.record.filter((note) => note.item === "visual-1" && note.outcome === "retimed"),
     ).toEqual([]);
   });
 });
@@ -1902,7 +1921,7 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
       "visual-2",
     ]);
     expect(record).toContainEqual(
-      expect.objectContaining({ item: "accent-4", action: "dropped", rule: "same-text" }),
+      expect.objectContaining({ item: "accent-4", outcome: "dropped", rule: "same-text" }),
     );
     expect(parseEdit(edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
     for (const [id, from, to] of PICKS) {
@@ -1943,7 +1962,7 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
     expect(record).toContainEqual(
       expect.objectContaining({
         item: "accent-4",
-        action: "dropped",
+        outcome: "dropped",
         rule: "same-text",
         reason: expect.stringMatching(
           /^accent ".+" is dropped: every word it shows, ".+", is already shown by the big word ".+", a big word keeps the shared words first$/,
@@ -1951,7 +1970,7 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
       }),
     );
     expect(
-      record.filter((note) => note.rule === "same-text" && note.action === "dropped"),
+      record.filter((note) => note.rule === "same-text" && note.outcome === "dropped"),
     ).toHaveLength(1);
     expect(checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
     expect(checks.filter((check) => check.rule === "same-text")).toEqual([]);
@@ -1968,7 +1987,7 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
     expect(placed.record).toContainEqual(
       expect.objectContaining({
         item: "accent-1",
-        action: "dropped",
+        outcome: "dropped",
         rule: "same-text",
         reason:
           'accent "has" is dropped: every word it shows, "has", is already shown by the big word "has", a big word keeps the shared words first',
@@ -1989,7 +2008,7 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
     expect(placed.record).toContainEqual(
       expect.objectContaining({
         item: "accent-1",
-        action: "retimed",
+        outcome: "retimed",
         rule: "same-text",
         reason:
           'accent "has given" shows only "given", not its shared "has": the big word "has" shows that text, a big word keeps the shared words first',
@@ -2023,8 +2042,8 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
     expect(record).toContainEqual(
       expect.objectContaining({
         item: "visual-1",
-        action: "covers-face",
-        rule: "visual-face",
+        outcome: "covers-face",
+        rule: "face",
         reason: expect.stringMatching(
           /^visual 1 covers the face from .+ to .+: no spot off the face/,
         ),
@@ -2044,8 +2063,8 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
     expect(record).toContainEqual(
       expect.objectContaining({
         item: "big-word-1",
-        action: "kept-overlapping",
-        rule: "all-picks",
+        outcome: "kept-overlapping",
+        rule: "text-overlap",
       }),
     );
   });
@@ -2124,15 +2143,15 @@ describe("nothing the answer picks is dropped", () => {
     expect(parseEdit(edit, ISSEBYA_PRESET, ONE_SECOND).ok).toBe(true);
     // The accent shows exactly its word, so it is never shown from earlier.
     expect(record).not.toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "clamped-to-end" }),
+      expect.objectContaining({ item: "accent-1", outcome: "retimed" }),
     );
     expect(record).toContainEqual(
-      expect.objectContaining({ item: "big-word-1", action: "moved-off-cut" }),
+      expect.objectContaining({ item: "big-word-1", outcome: "retimed" }),
     );
     // The list's phrase is its own caption's word now: the key shows it.
     expect(edit.tracks.transitions[0]!.levels?.key.text).toBeTruthy();
     expect(record).not.toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "kept-overlapping" }),
+      expect.objectContaining({ item: "accent-1", outcome: "kept-overlapping" }),
     );
   });
 
@@ -2184,7 +2203,7 @@ describe("nothing the answer picks is dropped", () => {
       // A text pick is shown, or dropped by the same-text rule (noted).
       const dropped = (id: string) =>
         record.some(
-          (note) => note.item === id && note.action === "dropped" && note.rule === "same-text",
+          (note) => note.item === id && note.outcome === "dropped" && note.rule === "same-text",
         );
       const texts = [
         ...(input.accents ?? []).map((_, index) => `accent-${index + 1}`),
@@ -2363,11 +2382,11 @@ describe("texts never overlap on screen while a free spot exists", () => {
     expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
     expect(wordPosition(placed)).toEqual(wordPosition(alone));
     expect(placed.record.filter((note) => note.item === "big-word-1")).not.toContainEqual(
-      expect.objectContaining({ action: "moved", rule: "big-word-spot" }),
+      expect.objectContaining({ outcome: "moved", rule: "zone" }),
     );
-    expect(placed.record.some((note) => note.action === "kept-overlapping" && note.with)).toBe(
-      false,
-    );
+    expect(
+      placed.record.some((note) => note.outcome === "kept-overlapping" && note.blockers.length > 0),
+    ).toBe(false);
   });
 
   it("keeps a big word clear of the captions of its own sentence, the word it shows left out of them", async () => {
@@ -2391,12 +2410,16 @@ describe("texts never overlap on screen while a free spot exists", () => {
     expect(placed.record).toContainEqual(
       expect.objectContaining({
         item: "hook",
-        action: "retimed",
-        rule: "text-one-at-a-time",
+        outcome: "retimed",
+        rule: "timing",
       }),
     );
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "kept-overlapping", with: ["hook"] }),
+      expect.objectContaining({
+        item: "accent-1",
+        outcome: "kept-overlapping",
+        blockers: [{ kind: "item", id: "hook" }],
+      }),
     );
     expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
   });
@@ -2417,7 +2440,7 @@ describe("captions take the space the components leave", () => {
       alone.edit.tracks.behind?.find((item) => item.kind === "visual")!.box,
     );
     expect(placed.record).not.toContainEqual(
-      expect.objectContaining({ item: "visual-1", action: "moved", rule: "contrast-spot" }),
+      expect.objectContaining({ item: "visual-1", outcome: "moved", rule: "contrast" }),
     );
     expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
   });
@@ -2439,7 +2462,7 @@ describe("text kept over text only where no free spot exists", () => {
       alone.edit.tracks.overlays.find((item) => item.id === "accent-1")!.position,
     );
     expect(placed.record.filter((note) => note.item === "accent-1")).not.toContainEqual(
-      expect.objectContaining({ action: "kept-overlapping" }),
+      expect.objectContaining({ outcome: "kept-overlapping" }),
     );
     expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
   });

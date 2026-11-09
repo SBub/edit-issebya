@@ -292,7 +292,7 @@ describe("the hook", () => {
     const accentSpan = resolveTimeline(placed.edit, short.transcript).get("accent-1")!;
     expect(hookSpan.end).toBeCloseTo(accentSpan.start, 3);
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "hook", action: "retimed", rule: "text-one-at-a-time" }),
+      expect.objectContaining({ item: "hook", outcome: "retimed", rule: "timing" }),
     );
   });
 });
@@ -605,7 +605,9 @@ describe("editFromAnswer", () => {
       description: "a messy desk at night",
     });
     // Shown at its own words' times: no drop, no move, no note.
-    expect(made.record.filter((note) => note.item === "big-word-1")).toEqual([]);
+    expect(
+      made.record.filter((note) => note.item === "big-word-1" && note.outcome !== "placed"),
+    ).toEqual([]);
   });
 });
 

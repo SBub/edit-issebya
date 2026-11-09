@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { EngineNote } from "@edit-issebya/edit";
 import {
   answerJson,
   buildTrace,
@@ -9,6 +10,19 @@ import {
   traceHeading,
   wordsBetween,
 } from "./decision-trace.ts";
+
+// A note in the record's shape; the fields the trace does not read are fixed.
+const note = (item: string, outcome: EngineNote["outcome"], rule: string): EngineNote => ({
+  item,
+  component: "ACCENT",
+  variant: "accent/above-head",
+  start: 0,
+  end: 1,
+  rule,
+  outcome,
+  blockers: [],
+  reason: "",
+});
 
 const words = ["Creating", "content", "is", "like", "exposure", "therapy"].map((text, index) => ({
   id: `w${index}`,
@@ -45,10 +59,10 @@ describe("decision trace", () => {
         hook: { text: "Be seen" },
       },
       [
-        { item: "accent-1", action: "moved", rule: "no-room", reason: "" },
-        { item: "big-word-1", action: "kept-overlapping", rule: "all-picks", reason: "" },
-        { item: "visual-1", action: "covers-face", rule: "transition-face", reason: "" },
-        { item: "cw0", action: "low-contrast", rule: "contrast-stay", reason: "" },
+        note("accent-1", "moved", "no-room"),
+        note("big-word-1", "kept-overlapping", "text-overlap"),
+        note("visual-1", "covers-face", "face"),
+        note("cw0", "placed", "contrast"),
       ],
       words,
     );
@@ -62,10 +76,27 @@ describe("decision trace", () => {
     expect(trace.rows[0]!.proposed).toBe('accent "Creating content"');
     expect(trace.rows[2]!.proposed).toBe('bigword "exposure"');
     expect(trace.rows[3]!.proposed).toBe('visual "a lamp" on "is like"');
-    expect(trace.otherNotes).toEqual({ "low-contrast (contrast-stay)": 1 });
+    expect(trace.otherNotes).toEqual({ "placed (contrast)": 1 });
     const text = formatTrace("v2", trace);
     expect(text).toContain("proposed 5: kept 2, changed 3");
-    expect(text).toContain("other engine notes: 1x low-contrast (contrast-stay)");
+    expect(text).toContain("other engine notes: 1x placed (contrast)");
+  });
+
+  it("calls a proposal kept when the engine only placed it, changed on any other note", () => {
+    const trace = buildTrace(
+      {
+        accents: [
+          { from: "w0", to: "w1" },
+          { from: "w4", to: "w5" },
+        ],
+      },
+      [note("accent-1", "placed", "zone"), note("accent-2", "shrunk", "size")],
+      words,
+    );
+    expect(trace.rows.map((row) => [row.item, row.outcome, row.engine])).toEqual([
+      ["accent-1", "kept", "placed (zone)"],
+      ["accent-2", "changed", "shrunk (size)"],
+    ]);
   });
 
   it("names each proposal in the owner's words, each LIST item by its list and its place", () => {
@@ -300,7 +331,7 @@ describe("decision trace of a VISUAL", () => {
       {
         visuals: [{ from: "w2", to: "w3", description: "a messy desk at night" }],
       },
-      [{ item: "visual-1", action: "shrunk", rule: "visual-size", reason: "" }],
+      [note("visual-1", "shrunk", "size")],
       words,
     );
     expect(trace.rows).toEqual([
@@ -309,7 +340,7 @@ describe("decision trace of a VISUAL", () => {
         item: "visual-1",
         proposed: 'visual "a messy desk at night" on "is like"',
         outcome: "changed",
-        engine: "shrunk (visual-size)",
+        engine: "shrunk (size)",
       }),
     ]);
   });

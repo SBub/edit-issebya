@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import type { EngineNote } from "./engine-note.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import {
   type NewVersion,
@@ -100,10 +101,15 @@ describe("versions", () => {
   });
 
   it("stores the layout engine's record, empty when not given", async () => {
-    const note = {
+    const note: EngineNote = {
       item: "visual-1",
-      action: "kept-overlapping" as const,
-      rule: "all-picks",
+      component: "VISUAL",
+      variant: "visual/card",
+      start: 1,
+      end: 3,
+      rule: "text-overlap",
+      outcome: "kept-overlapping",
+      blockers: [{ kind: "item", id: "accent-1" }],
       reason: "visual 1 sits over the face from 1.00 s to 3.00 s; kept, every pick is shown",
     };
     const saved = await saveVersion(deps, { ...meta(null), engineRecord: [note], edit });

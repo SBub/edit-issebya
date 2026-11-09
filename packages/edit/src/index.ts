@@ -68,7 +68,8 @@ export {
   bigWordSpan,
   choicesOf,
 } from "./engine-input.ts";
-export { type EngineAction, type EngineNote, placeEdit } from "./engine.ts";
+export { type EngineNote } from "./engine-note.ts";
+export { placeEdit } from "./engine.ts";
 export {
   type BackgroundMap,
   type Backgrounds,

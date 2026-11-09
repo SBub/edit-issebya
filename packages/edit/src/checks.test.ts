@@ -3,7 +3,7 @@ import { build } from "./build.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { ISSEBYA_PRESET, PLATFORM_BUTTONS } from "./preset.ts";
 import type { Edit } from "./schema.ts";
-import type { EngineNote } from "./engine.ts";
+import type { EngineNote } from "./engine-note.ts";
 import { FIXTURES, PLACED_FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 import { resolveTimeline } from "./timeline.ts";
@@ -256,16 +256,21 @@ describe("runChecks on text overlap", () => {
     const { edit, first, second } = overlapping();
     const kept: EngineNote = {
       item: second,
-      action: "kept-overlapping",
-      rule: "all-picks",
+      component: "ACCENT",
+      variant: "accent/above-head",
+      start: 0,
+      end: 1,
+      rule: "text-overlap",
+      outcome: "kept-overlapping",
+      blockers: [{ kind: "item", id: first }],
       reason: "kept",
-      with: [first],
     };
     expect(await buildWith(edit, [kept])).toEqual([]);
-    // The note names the other text: the same pair with its own name only is
-    // no excuse, nor a note on a third text.
-    expect(await buildWith(edit, [{ ...kept, with: ["nobody"] }])).not.toEqual([]);
-    expect(await buildWith(edit, [{ ...kept, action: "retimed" }])).not.toEqual([]);
+    // The note names the other text: a blocker naming a third text is no excuse,
+    // nor is a note of another outcome.
+    const named = (id: string) => ({ ...kept, blockers: [{ kind: "item" as const, id }] });
+    expect(await buildWith(edit, [named("nobody")])).not.toEqual([]);
+    expect(await buildWith(edit, [{ ...kept, outcome: "retimed" }])).not.toEqual([]);
   });
 });
 

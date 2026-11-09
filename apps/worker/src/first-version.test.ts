@@ -165,7 +165,7 @@ describe("saveFirstVersion", () => {
     await run(recordingSteps().steps);
     const row = rows.get(VERSION_ID)!;
     expect(row.engine_record).toContainEqual(
-      expect.objectContaining({ action: "low-contrast", rule: "contrast-stay" }),
+      expect.objectContaining({ outcome: "placed", rule: "contrast" }),
     );
     const stored = JSON.parse(new TextDecoder().decode((await storage.get(row.r2_key))!)) as {
       tracks: { captions: { shadow?: number; color?: string }[] };

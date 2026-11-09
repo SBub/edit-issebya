@@ -517,28 +517,29 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (an ac
   the face (recorded `covers-face`); only with no free place there either do they sit over other text,
   each caption noted `kept-overlapping` with the texts it sits over. A caption left out while an extra shows its words is not dropped:
   its words are on screen.
-- Record: a list of `EngineNote` `{ item, action, rule, reason }`, `action` one of `moved` (not its
-  kind's first place), `shrunk`, `wrapped`, `retimed`, `covers-face`, `low-contrast`,
-  `kept-overlapping` (a pick kept over other text or another pick, rule `all-picks`; a text's
-  note carries `with`, the ids of the texts it sits over or shares its time with),
-  `clamped-to-end`, `moved-off-cut` and `text-from-words`. `reason` says in plain words what happened,
-  with the item's text and times, for example
-  `{ "item": "visual-1", "action": "kept-overlapping", "rule": "all-picks", "reason": "visual 1 sits over the face from 23.48 s to 26.23 s; kept, every pick is shown" }`.
-  Rules: `caption-min` (`retimed`), `caption-spot`, `caption-size`, `caption-face` (`covers-face`),
-  `accent-time` (`clamped-to-end`), `accent-spot`, `accent-size`, `accent-wrap`, `big-word-time`
-  (`clamped-to-end`), `big-word-size` (`shrunk`), `big-word-spot` (`moved`, clear of the text on screen),
-  `visual-time` (`clamped-to-end`, and
-  `retimed` when a visual starts before its sentence), `visual-size` (`shrunk`), `hidden-footage`
-  (`moved-off-cut`), `hook-time` (`clamped-to-end`), `hook-spot` (`moved`), `hook-size` (`shrunk`),
-  `hook-wrap` (`wrapped`), `transition-time` (`clamped-to-end`), `transition-min` (`retimed`, a phrase with no length at all), `transition-entrance` (`retimed`, a list's
-  entrance cut short by a text said before it),
-  `transition-spot` (`moved`), `transition-size` (`shrunk`), `transition-wrap` (`wrapped`),
-  `transition-text` (`text-from-words`), `transition-face` (`covers-face`), `accent-face`, `hook-face` and
-  `visual-face` (`covers-face`), `contrast-spot`
-  (`moved`), `contrast-stay` (`low-contrast`), `text-one-at-a-time` (`retimed`) and `all-picks`
-  (`kept-overlapping`). No note carries
-  the rule name `hook`. Saved with the version (`versions.engine_record`) and logged by the worker in
-  one line per version.
+- Record: a list of `EngineNote` (`packages/edit/src/engine-note.ts`, the shape of
+  `specs/layout-engine.md`): `{ item, component, variant, start, end, rule, outcome, blockers, reason }`,
+  with `zone`, `size`, `lines` and `cost` optional. `component` is HOOK, ACCENT, QUESTION, BIGWORD,
+  VISUAL, LIST or CAPTION; `variant` is that component's entry (`hook/written-line`, `accent/above-head`,
+  `question/as-accent`, `bigword/behind`, `visual/card`, `list/numbered`, `caption/default`); `start` and
+  `end` are the placed span in seconds. `outcome` is one of `placed`, `moved` (not its kind's first
+  place), `shrunk`, `wrapped`, `retimed` (a clamped or moved-off-cut span, a same-text trim), `covers-face`,
+  `dropped` (same-text left no word of its own), `no-spot` (not yet written) or `kept-overlapping` (a text
+  kept over other text or another pick; a transitional value, see the layout spec). `blockers` names what
+  took the space it did not get: `{ kind: "item" | "caption", id }` for the texts a kept-overlapping text
+  sits over, `{ kind: "face" }` for a covers-face note. Every shown element with no other note gets a
+  `placed` note, so the record names every element. `reason` says in plain words what happened, with the
+  item's text and times, for example
+  `{ "item": "visual-1", "component": "VISUAL", "variant": "visual/card", "start": 23.48, "end": 26.23, "rule": "text-overlap", "outcome": "kept-overlapping", "blockers": [{ "kind": "item", "id": "accent-1" }], "reason": "visual 1 sits over the face from 23.48 s to 26.23 s; kept, every pick is shown" }`.
+  The rules in the sections above are the placer's own names; the record's `rule` is the name each one
+  maps to (`RULE_OF` in `engine-note.ts`): `*-time`, `*-min`, `transition-entrance` and `text-one-at-a-time`
+  are `timing`; `*-spot` is `zone`; `*-size` and `*-wrap` are `size`; `*-face` is `face`; `all-picks` is
+  `text-overlap`; `transition-text` is `text`; `contrast-spot` and `contrast-stay` are `contrast`
+  (readability is out with build step 11); `hidden-footage` and `same-text` keep their names. The
+  placer's outcomes map as: `low-contrast`, `text-from-words` to `placed`, `clamped-to-end` and
+  `moved-off-cut` to `retimed`; the rest keep their names. A placer rule the table does not name throws,
+  so a new rule is named there on purpose. Saved with the version (`versions.engine_record`) and logged by the worker in
+  one line per version. No old note shape is read anywhere.
 - Final checks: `runChecks` (below) runs on every placed edit. They must never fail on the engine's
   output, except `face` for a caption over the face that the engine recorded as `covers-face`; any
   other failure, `text-overlap` included, is an engine bug, logged with the reel id while the version is

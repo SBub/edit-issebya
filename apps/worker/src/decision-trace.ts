@@ -27,10 +27,10 @@ export interface TraceRow {
   item: string;
   // What Claude proposed, in words: the kind, the spoken words, its details.
   proposed: string;
-  // kept: no engine note; changed: placed with notes (a pick is dropped only by
-  // the same-text rule, its note says so).
+  // kept: nothing given up (no note but `placed`); changed: any other note (a
+  // pick is dropped only by the same-text rule, its note says so).
   outcome: "kept" | "changed";
-  // The engine's notes on it as `action (rule)`, in order.
+  // The engine's notes on it as `outcome (rule)`, in order.
   engine: string;
 }
 
@@ -124,19 +124,19 @@ export function buildTrace(
   const named = new Set(items.map((entry) => entry.item));
   const rows = items.map(({ ref, item, proposed }): TraceRow => {
     const notes = record.filter((note) => note.item === item);
-    const outcome = notes.length === 0 ? "kept" : "changed";
+    const outcome = notes.every((note) => note.outcome === "placed") ? "kept" : "changed";
     return {
       ref,
       item,
       proposed,
       outcome,
-      engine: notes.map((note) => `${note.action} (${note.rule})`).join(", "),
+      engine: notes.map((note) => `${note.outcome} (${note.rule})`).join(", "),
     };
   });
   const otherNotes: Record<string, number> = {};
   for (const note of record) {
     if (named.has(note.item)) continue;
-    const key = `${note.action} (${note.rule})`;
+    const key = `${note.outcome} (${note.rule})`;
     otherNotes[key] = (otherNotes[key] ?? 0) + 1;
   }
   return { rows, otherNotes };

@@ -1,6 +1,6 @@
 import { type BigWordBox, maskSpans, placedBigWord, visualBox } from "./behind.ts";
 import { type Check, runChecks } from "./checks.ts";
-import type { EngineNote } from "./engine.ts";
+import type { EngineNote } from "./engine-note.ts";
 import { type TextBox } from "./engine-space.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";

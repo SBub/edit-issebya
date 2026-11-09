@@ -1,6 +1,6 @@
 import { canonicalJson } from "./canonical-json.ts";
 import type { Check } from "./checks.ts";
-import type { EngineNote } from "./engine.ts";
+import type { EngineNote } from "./engine-note.ts";
 import type { Edit, EditInputs } from "./schema.ts";
 
 // One ask of a request as stored with a version written before the change

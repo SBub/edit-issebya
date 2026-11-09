@@ -170,7 +170,17 @@ describe("save_version", () => {
       name: "engine.mov",
       status: "received",
     });
-    const note = { item: "photo-1", action: "dropped", rule: "no-room", reason: "no free spot" };
+    const note = {
+      item: "photo-1",
+      component: "VISUAL",
+      variant: "visual/card",
+      start: 1,
+      end: 2,
+      rule: "zone",
+      outcome: "dropped",
+      blockers: [],
+      reason: "no free spot",
+    };
     const placed = randomUUID();
     const { error } = await admin.rpc("save_version", {
       ...args(own, placed, null),

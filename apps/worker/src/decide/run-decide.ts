@@ -421,12 +421,9 @@ export function runDecide({
       // of its build (the engine's own output, never a second placement).
       const { edit: placed, record, checks } = passed;
       // The engine's only allowed face covering: captions it put over the
-      // face because nothing else was free, each said so in its record (a
-      // caption block's note names the other captions it sits with).
+      // face because nothing else was free, each said so in its record.
       const coversFace = new Set(
-        record
-          .filter((note) => note.action === "covers-face")
-          .flatMap((note) => [note.item, ...(note.with ?? [])]),
+        record.filter((note) => note.outcome === "covers-face").map((note) => note.item),
       );
       const broken = checks.filter(
         (check) => !(check.rule === "face" && coversFace.has(check.item)),

@@ -236,7 +236,7 @@ describe("runDecide", () => {
       /^version 2: 1 accent, 0 transitions, hook set, 1 word fixed, under a second$/,
     );
     expect(v2.engine_record).toContainEqual(
-      expect.objectContaining({ item: "hook", action: "retimed", rule: "text-one-at-a-time" }),
+      expect.objectContaining({ item: "hook", outcome: "retimed", rule: "timing" }),
     );
     // The schema the AI got is this reel's, and the prompt carries its words.
     expect(JSON.stringify(ai.calls[1]!.schema)).toContain('"w0010"');
@@ -571,8 +571,8 @@ describe("runDecide", () => {
       expect.arrayContaining([
         expect.objectContaining({
           item: "hook",
-          action: "retimed",
-          rule: "text-one-at-a-time",
+          outcome: "retimed",
+          rule: "timing",
         }),
       ]),
     );
@@ -606,12 +606,12 @@ describe("runDecide", () => {
     expect(v2).toMatchObject({ number: 2, checks: [], rejected_reasons: [] });
     // The wide accent, said before the hook, ends where the hook starts, noted.
     expect(v2.engine_record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "retimed", rule: "text-one-at-a-time" }),
+      expect.objectContaining({ item: "accent-1", outcome: "retimed", rule: "timing" }),
     );
     // One engine record line per version, with the reel id; no engine bug line.
     expect(lines).toHaveLength(1);
     expect(lines[0]!.startsWith(`engine record, reel ${TEST_JOB.reel_id}, version 2: `)).toBe(true);
-    expect(lines[0]).toMatch(/accent-1 retimed \(text-one-at-a-time\): /);
+    expect(lines[0]).toMatch(/accent-1 retimed \(timing\): /);
   });
 
   it("asks at most twice, however many bad answers are scripted", async () => {
@@ -802,7 +802,11 @@ describe("runDecide with a visual", () => {
     expect(spawn.calls).toHaveLength(0);
     const v2 = rows.get(current!)!;
     expect(v2.engine_record).toContainEqual(
-      expect.objectContaining({ item: "visual-1", action: "kept-overlapping", rule: "all-picks" }),
+      expect.objectContaining({
+        item: "visual-1",
+        outcome: "kept-overlapping",
+        rule: "text-overlap",
+      }),
     );
   });
 
@@ -830,7 +834,7 @@ describe("runDecide with a visual", () => {
     expect(v2.rejected_reasons).toEqual([]);
     for (const item of ["visual-1", "visual-2", "visual-3"]) {
       expect(v2.engine_record).toContainEqual(
-        expect.objectContaining({ item, action: "kept-overlapping", rule: "all-picks" }),
+        expect.objectContaining({ item, outcome: "kept-overlapping", rule: "text-overlap" }),
       );
     }
   });

@@ -11,6 +11,13 @@ import {
   type TransitionChoice,
   type VisualChoice,
 } from "./engine-input.ts";
+import {
+  type EngineComponent,
+  type EngineElement,
+  type EngineNote,
+  type PlaceNote,
+  toEngineRecord,
+} from "./engine-note.ts";
 import { expand, overlaps, placeBox } from "./engine-space.ts";
 import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from "./head-track.ts";
 import { wordsText } from "./glossary.ts";
@@ -34,7 +41,7 @@ import {
   type TransitionItem,
   type TransitionLevel,
 } from "./schema.ts";
-import { anchorAt, resolveAnchor } from "./timeline.ts";
+import { anchorAt, resolveAnchor, resolveTimeline } from "./timeline.ts";
 import { type LevelRole, levelStyle, transitionTiming } from "./transitions.ts";
 import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./transcript.ts";
 
@@ -87,45 +94,6 @@ import { type SentenceSpan, type Transcript, type Word, sentenceSpans } from "./
 //    change). A big word is never moved for it.
 // 7. Every move, shrink, wrap, retime, fallback, overlap and low contrast left
 //    in place is written to the record.
-
-// What the engine did to an item, in plain words.
-export type EngineAction =
-  | "moved"
-  | "shrunk"
-  | "wrapped"
-  | "retimed"
-  // A front pick or caption placed over the face because no spot off the face
-  // was free (the reason says so).
-  | "covers-face"
-  // A text that stays in place, plain, below its contrast threshold: no free
-  // place nearby reads, and no shadow or colour is ever added for it.
-  | "low-contrast"
-  // A pick placed over other text, or at the same time as another pick, kept
-  // as it is (the reason says what it sits over).
-  | "kept-overlapping"
-  // A pick too close to the reel's end for its minimum, shown from earlier so
-  // it still shows (its end is the reel's end).
-  | "clamped-to-end"
-  // A pick over hidden footage, shown at the next visible moment.
-  | "moved-off-cut"
-  // A transition or a list pick with no caption text of its own, shown with
-  // the words of its phrase as its text.
-  | "text-from-words"
-  // A text pick every word of which another text pick (placed earlier) shows
-  // already: dropped (rule `same-text`, the reason names both picks).
-  | "dropped";
-
-export interface EngineNote {
-  item: string;
-  action: EngineAction;
-  rule: string;
-  reason: string;
-  // A `kept-overlapping` note on a text: the ids of the other texts it sits
-  // over or shares its time with (the pairs the text-overlap check excuses).
-  // A `covers-face` note on a caption block: the block's other captions, which
-  // sit over the face with it (the face check excuses each of them).
-  with?: string[];
-}
 
 export type PlacedTracks = Edit["tracks"];
 
@@ -255,7 +223,7 @@ function captionGroups(
   transcript: Transcript,
   duration: number,
   preset: Preset,
-  record: EngineNote[],
+  record: PlaceNote[],
 ): { groups: Unit[][]; ends: number[] } {
   const words = new Map(transcript.words.map((word) => [word.id, word]));
   const groups: Unit[][] = [];
@@ -412,6 +380,7 @@ interface TextPick {
   id: string;
   ref: string;
   name: string;
+  component: EngineComponent;
   start: number;
   end: number;
   rank: number;
@@ -434,7 +403,7 @@ function sameTextPass(
   answer: EngineInput,
   transcript: Transcript,
   preset: Preset,
-): { answer: EngineInput; dropped: string[]; notes: EngineNote[] } | null {
+): { answer: EngineInput; dropped: string[]; notes: PlaceNote[] } | null {
   const onScreen = (a: TextPick, b: TextPick) =>
     Math.min(a.end, b.end) - Math.max(a.start, b.start) > SLACK;
   // Big words first, then the others in time order, as the earlier one keeps.
@@ -445,7 +414,7 @@ function sameTextPass(
   const keepers = new Map<string, TextPick[]>();
   const trimmed = new Map<string, string[]>();
   const dropped: string[] = [];
-  const notes: EngineNote[] = [];
+  const notes: PlaceNote[] = [];
   const position = new Map(transcript.words.map((word, slot) => [word.id, slot]));
   for (const pick of order) {
     const clashing = (id: string) =>
@@ -539,7 +508,10 @@ export function placeEdit(
   // ends.
   let answer = input;
   const skip = new Set<string>();
-  const notes: EngineNote[] = [];
+  const notes: PlaceNote[] = [];
+  // Every pick of any pass by id: a pick the same-text rule drops is in no
+  // track, but its note still names its span and component.
+  const picks = new Map<string, TextPick>();
   for (;;) {
     const placed = placeOnce(
       current,
@@ -551,12 +523,65 @@ export function placeEdit(
       options,
       skip,
     );
+    for (const pick of placed.picks) picks.set(pick.id, pick);
     const pass = sameTextPass(placed.picks, answer, transcript, preset);
-    if (!pass) return { tracks: placed.tracks, record: [...notes, ...placed.record] };
+    if (!pass) {
+      const all = [...notes, ...placed.record];
+      return {
+        tracks: placed.tracks,
+        record: engineRecord(current, placed.tracks, all, picks, transcript),
+      };
+    }
     answer = pass.answer;
     for (const ref of pass.dropped) skip.add(ref);
     notes.push(...pass.notes);
   }
+}
+
+// The engine record of a placement: each shown element's span from its track
+// (resolved through the transcript), the dropped picks' from their last pass.
+function engineRecord(
+  current: Edit,
+  tracks: PlacedTracks,
+  notes: readonly PlaceNote[],
+  picks: ReadonlyMap<string, TextPick>,
+  transcript: Transcript,
+): EngineNote[] {
+  const timeline = resolveTimeline({ ...current, tracks }, transcript);
+  const elements = new Map<string, EngineElement>();
+  for (const pick of picks.values()) {
+    elements.set(pick.id, { component: pick.component, start: pick.start, end: pick.end });
+  }
+  const shown: string[] = [];
+  const show = (id: string, component: EngineComponent) => {
+    const at = timeline.get(id);
+    if (!at) throw new Error(`engine record: ${id} has no span`);
+    elements.set(id, { component, start: at.start, end: at.end });
+    shown.push(id);
+  };
+  for (const item of tracks.overlays) {
+    if (item.id === HOOK_ID) {
+      show(item.id, "HOOK");
+      continue;
+    }
+    const pick = picks.get(item.id);
+    if (!pick) throw new Error(`engine record: overlay ${item.id} is no pick`);
+    show(item.id, pick.component);
+  }
+  for (const item of tracks.transitions) show(item.id, "LIST");
+  for (const item of tracks.behind ?? []) {
+    show(item.id, item.kind === "word" ? "BIGWORD" : "VISUAL");
+  }
+  // A caption a component shows is no element on screen (no `placed` note),
+  // but its notes (a retime made before it was hidden) still name its span.
+  const captionIds = new Set(tracks.captions.map((caption) => caption.id));
+  for (const caption of tracks.captions) {
+    const at = timeline.get(caption.id);
+    if (!at) throw new Error(`engine record: caption ${caption.id} has no span`);
+    elements.set(caption.id, { component: "CAPTION", start: at.start, end: at.end });
+    if (caption.hidden_by === undefined) shown.push(caption.id);
+  }
+  return toEngineRecord(notes, elements, shown, captionIds);
 }
 
 function placeOnce(
@@ -569,8 +594,8 @@ function placeOnce(
   options: PlaceOptions,
   // The refs of picks dropped by the same-text rule: placed as nothing.
   skip: ReadonlySet<string>,
-): Placement & { picks: TextPick[] } {
-  const record: EngineNote[] = [];
+): { tracks: PlacedTracks; record: PlaceNote[]; picks: TextPick[] } {
+  const record: PlaceNote[] = [];
   const duration = current.duration;
   const byId = new Map(transcript.words.map((word) => [word.id, word]));
   const word = (id: string) => byId.get(id)!;
@@ -2494,7 +2519,7 @@ function placeOnce(
         bottom: spot.y + height,
       });
       let spot = { x: found.left, y: found.top };
-      const notes: EngineNote[] = [];
+      const notes: PlaceNote[] = [];
       if (backgrounds) {
         const around = (box: Box) => expand(box, spec.ring);
         const ratio = contrastOf(backgrounds, around(boxAt(spot)), span, [edge]);
@@ -2631,6 +2656,12 @@ function placeOnce(
               id: extra.id,
               ref: extra.ref,
               name: describe(extra),
+              component:
+                extra.kind === "big_word"
+                  ? ("BIGWORD" as const)
+                  : extra.accent!.question
+                    ? ("QUESTION" as const)
+                    : ("ACCENT" as const),
               start: extra.start,
               end: extra.end,
               rank: rankOf(extra) * 1000 + extra.index,
@@ -2647,6 +2678,7 @@ function placeOnce(
       id: plan.id,
       ref: plan.ref,
       name: plan.label,
+      component: "LIST" as const,
       start: plan.start,
       end: plan.end,
       rank: 4000 + plan.index,
