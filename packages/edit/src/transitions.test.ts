@@ -84,22 +84,10 @@ describe("transitionTiming", () => {
 });
 
 describe("transition style roles", () => {
-  it("sets the lead-in in caption text, the key phrase and the number in accent text", () => {
-    expect(levelStyle("lead", P)).toEqual({
-      font: P.caption.font,
-      size: P.fonts[P.caption.font].size,
-      color: P.caption.color,
-    });
-    expect(levelStyle("key", P)).toEqual({
-      font: P.accent.font,
-      size: P.fonts[P.accent.font].size,
-      color: P.accent.color,
-    });
-    expect(levelStyle("number", P)).toEqual({
-      font: P.accent.font,
-      size: P.transitions.numbered.numberSize,
-      color: P.accent.color,
-    });
+  it("sets the lead-in in caption text, the key phrase and the number in accent text; no size (the engine's)", () => {
+    expect(levelStyle("lead", P)).toEqual({ font: P.caption.font, color: P.caption.color });
+    expect(levelStyle("key", P)).toEqual({ font: P.accent.font, color: P.accent.color });
+    expect(levelStyle("number", P)).toEqual({ font: P.accent.font, color: P.accent.color });
   });
 });
 

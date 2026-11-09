@@ -285,15 +285,18 @@ describe("the hook", () => {
     const item = placed.edit.tracks.overlays.find((overlay) => overlay.kind === "hook")!;
     expect(item).toMatchObject({ id: "hook", text: "A short test for the real studio" });
     expect(item.words).toBeUndefined();
-    // On the 2.7 s clip the accent said in the hook's window cuts the hook where
-    // it starts; the accent shows its own words, noted.
+    // On the 2.7 s clip the hook runs its window, cut to the reel's end; the
+    // accent said in it shows its own words beside it. Nothing cuts the hook.
     expect(placed.edit.tracks.overlays.map((overlay) => overlay.id)).toEqual(["hook", "accent-1"]);
     const hookSpan = resolveTimeline(placed.edit, short.transcript).get("hook")!;
     const accentSpan = resolveTimeline(placed.edit, short.transcript).get("accent-1")!;
-    expect(hookSpan.end).toBeCloseTo(accentSpan.start, 3);
-    expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "hook", outcome: "retimed", rule: "timing" }),
-    );
+    expect(hookSpan.start).toBe(ISSEBYA_PRESET.pace.hook.fromSeconds);
+    expect(hookSpan.end).toBeCloseTo(Math.min(short.edit.duration, 3), 3);
+    expect(accentSpan.start).toBeGreaterThan(hookSpan.start);
+    expect(accentSpan.end).toBeLessThanOrEqual(hookSpan.end + 1e-6);
+    expect(
+      placed.record.filter((note) => note.item === "hook" && note.outcome === "retimed"),
+    ).toEqual([]);
   });
 });
 

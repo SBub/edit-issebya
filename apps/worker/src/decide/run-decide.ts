@@ -302,7 +302,7 @@ export function runDecide({
         hook: { text: hookText },
       });
       // The components' answer with the hook beside it: the layout engine's
-      // input (the hook is placed first, see `placeEdit`).
+      // input (the components are placed by start time, see `placeEdit`).
       const engineAnswer = (components: DecideAnswer): EngineInput => ({
         ...components,
         hook: { text: hookText },

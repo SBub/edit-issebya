@@ -298,7 +298,33 @@ Details the placer settled (build step 5, `engine-place.ts`; each the simplest r
   taken, plus the taken zone's own when the element shrank or covers the face there; a `no-spot` names
   what touches every zone, or the safe zone's edges (left and right, or top and bottom) when the element
   fits no zone at the minimum size even with nothing in the way.
-- A LIST stack is not an element of the placer yet (step 7 adds it).
+
+Details step 7 settled (the hook and the LIST stacks through the placer, `placeHook` and `placeStack` in
+`engine.ts`; the `stack` element in `engine-place.ts`):
+
+- A stack's size is its key level's: the key at its style's base (110), the lead-in at its own base over
+  the key's (50/110 of the stack's size), the number at the entry's ratio (300/110), each floored to a
+  whole pixel; the shrink steps count from the key's base, and one step shrinks every level.
+- The global minimum holds for every level of a stack, so a stack shrinks only until its smallest level
+  (the lead-in) reaches 30 px: a key of 66 (the number 180). Below that it is a `no-spot`.
+- A stack's candidates are every combination of its levels' line counts; `wrapped` means some level has
+  more than one line, and the wrap cost counts the lines beyond one per level. The note's `lines` is the
+  stack's total.
+- A stack is one obstacle, its whole box over the item's whole span (its levels appear at their own
+  words, but the stack is placed once, as a whole).
+- A two-item stack at full size (300 + 24 + 50 + 24 + 110 = 508 px) is taller than the upper third
+  (416 px): one zone step (10) to `anywhere-in-safe-zone` at full size beats two shrink steps (20) in
+  the upper third, so a numbered stack takes the safe zone whole, nearest S's centre, the face pushing it
+  to the strip beside it or below it. A tuning observation, not a change: with the wrap cost at 0, a
+  narrow strip beside the face where the key phrase wraps costs the same as open room.
+- The hook is an element like any other: a hook that fits nowhere at 30 px or more is a `no-spot`, left
+  out of that version (nobody says it, so nothing stands in for it). Today's 8 px exceptions are gone.
+- No element's time depends on another's: the big word's lead is no longer held back by a text that
+  starts inside it, and the LIST entrance is no longer shortened by a text said before it. With no cut,
+  the same-text pass meets more pairs; its rule is unchanged (a big word keeps the shared word, else the
+  earlier pick), so a list starting on an accent's last word gives that word up (its range trimmed to
+  its own words), an accent said inside a list whose words it repeats is dropped, and a big word whose
+  lead reaches into an accent ending on its word trims the accent.
 
 ## No legal spot
 

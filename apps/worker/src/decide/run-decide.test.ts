@@ -230,13 +230,20 @@ describe("runDecide", () => {
     });
     const done = lastCall(calls);
     if (done.call !== "done") throw new Error(JSON.stringify(calls));
-    // On the 2.7 s clip the accent on w0005 is said while the hook shows: it
-    // cuts the hook where it starts, noted, and the accent keeps its own words.
+    // On the 2.7 s clip the accent on w0005 is said while the hook shows: the
+    // hook keeps its whole window (0.2 s to the reel's end) and the accent is
+    // placed around it on its own words.
     expect(done.summary).toMatch(
       /^version 2: 1 accent, 0 transitions, hook set, 1 word fixed, under a second$/,
     );
     expect(v2.engine_record).toContainEqual(
-      expect.objectContaining({ item: "hook", outcome: "retimed", rule: "timing" }),
+      expect.objectContaining({ item: "hook", component: "HOOK", start: 0.2 }),
+    );
+    expect(v2.engine_record).not.toContainEqual(
+      expect.objectContaining({ item: "hook", outcome: "retimed" }),
+    );
+    expect(v2.engine_record).toContainEqual(
+      expect.objectContaining({ item: "accent-1", component: "ACCENT" }),
     );
     // The schema the AI got is this reel's, and the prompt carries its words.
     expect(JSON.stringify(ai.calls[1]!.schema)).toContain('"w0010"');
@@ -549,7 +556,7 @@ describe("runDecide", () => {
     expect(v2).toMatchObject({ used_free_field: false, free_field: [] });
   });
 
-  it("places the answer's words: the fix lands on its caption, and the accent cuts the hook", async () => {
+  it("places the answer's words: the fix lands on its caption, and the hook keeps its window", async () => {
     const { run } = await decide(
       aiScript([
         answered(
@@ -563,23 +570,23 @@ describe("runDecide", () => {
     const stored = JSON.parse(
       new TextDecoder().decode((await storage.get(rows.get(current!)!.r2_key))!),
     ) as { tracks: Record<string, Json[]> };
-    // The accent and the transition said in the hook's window are shown, noted:
-    // the accent cuts the hook where it starts, the transition shows its own words.
+    // The accent and the transition said in the hook's window are shown with it,
+    // each noted; nothing cuts the hook.
     expect(stored.tracks.overlays!.map((item) => item.id)).toEqual(["hook", "accent-1"]);
     expect(stored.tracks.transitions!.map((item) => item.id)).toEqual(["transition-1"]);
-    expect(rows.get(current!)!.engine_record).toEqual(
+    const record = rows.get(current!)!.engine_record as { item: string; outcome: string }[];
+    expect(record).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          item: "hook",
-          outcome: "retimed",
-          rule: "timing",
-        }),
+        expect.objectContaining({ item: "hook", component: "HOOK", start: 0.2 }),
+        expect.objectContaining({ item: "accent-1", component: "ACCENT" }),
+        expect.objectContaining({ item: "transition-1", component: "LIST" }),
       ]),
     );
+    expect(record.filter((note) => note.item === "hook" && note.outcome === "retimed")).toEqual([]);
     expect(stored.tracks.captions!.find((item) => item.id === "cw0010")!.text).toBe("Studio");
   });
 
-  it("never refuses an answer over layout: a wide accent said before the hook is cut where the hook starts, noted and logged", async () => {
+  it("never refuses an answer over layout: a wide accent said through the hook is placed around it, noted and logged", async () => {
     const wide = answered(
       answer((a) => {
         a.accents = [{ from: "w0001", to: "w0010" }];
@@ -604,14 +611,20 @@ describe("runDecide", () => {
     expect(editorCalls(ai)).toHaveLength(1);
     const v2 = rows.get(current!)!;
     expect(v2).toMatchObject({ number: 2, checks: [], rejected_reasons: [] });
-    // The wide accent, said before the hook, ends where the hook starts, noted.
-    expect(v2.engine_record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", outcome: "retimed", rule: "timing" }),
-    );
+    // The wide accent runs through the hook's window on its own words; neither
+    // cuts the other, and the accent is placed off the hook (wrapped and, with
+    // the hook in the upper third, moved or shrunk), noted.
+    const record = v2.engine_record as { item: string; outcome: string }[];
+    const accentNotes = record.filter((note) => note.item === "accent-1");
+    expect(accentNotes.length).toBeGreaterThan(0);
+    for (const note of accentNotes) {
+      expect(["placed", "moved", "shrunk", "wrapped"]).toContain(note.outcome);
+    }
+    expect(record.filter((note) => note.item === "hook" && note.outcome === "retimed")).toEqual([]);
     // One engine record line per version, with the reel id; no engine bug line.
     expect(lines).toHaveLength(1);
     expect(lines[0]!.startsWith(`engine record, reel ${TEST_JOB.reel_id}, version 2: `)).toBe(true);
-    expect(lines[0]).toMatch(/accent-1 retimed \(timing\): /);
+    expect(lines[0]).toMatch(/accent-1 (placed|moved|shrunk|wrapped) \((zone|size)\): /);
   });
 
   it("asks at most twice, however many bad answers are scripted", async () => {
@@ -791,7 +804,7 @@ describe("runDecide with a visual", () => {
     return { run, calls };
   }
 
-  it("decides a visual: the schema names no photo, and the visual is shown beside the hook, noted", async () => {
+  it("decides a visual: the schema names no photo, and the visual is shown beside the hook, in the record", async () => {
     const ai = aiScript([behindAnswer()]);
     const spawn = fakeMaskSpawn();
     const { run } = await decideBehind(ai, spawn.spawnTool);
@@ -801,13 +814,13 @@ describe("runDecide with a visual", () => {
     // Nothing behind is placed, so no mask is made and nothing is cut out.
     expect(spawn.calls).toHaveLength(0);
     const v2 = rows.get(current!)!;
-    expect(v2.engine_record).toContainEqual(
-      expect.objectContaining({
-        item: "visual-1",
-        outcome: "kept-overlapping",
-        rule: "text-overlap",
-      }),
+    // The visual shares the hook's time and is placed in its own spot: its
+    // note says so, and no note calls that an overlap.
+    const record = v2.engine_record as { item: string; outcome: string }[];
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "visual-1", component: "VISUAL", outcome: "placed" }),
     );
+    expect(record.filter((note) => note.outcome === "kept-overlapping")).toEqual([]);
   });
 
   it("places a visual over the footage on a long reel: its frame needs no cut-out", async () => {
@@ -825,18 +838,20 @@ describe("runDecide with a visual", () => {
     expect(spawn.calls).toHaveLength(0);
   });
 
-  it("takes three visuals with no count to refuse: the hook holds the clip and every visual is shown, noted", async () => {
+  it("takes three visuals with no count to refuse: the hook holds the clip and every visual is shown, in the record", async () => {
     const three = behindAnswer([visualItem(), visualItem("a calm lake"), visualItem("a red door")]);
     const ai = aiScript([three]);
     const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool);
     await run;
     const v2 = rows.get(current!)!;
     expect(v2.rejected_reasons).toEqual([]);
+    const record = v2.engine_record as { item: string; component: string }[];
     for (const item of ["visual-1", "visual-2", "visual-3"]) {
-      expect(v2.engine_record).toContainEqual(
-        expect.objectContaining({ item, outcome: "kept-overlapping", rule: "text-overlap" }),
-      );
+      expect(record).toContainEqual(expect.objectContaining({ item, component: "VISUAL" }));
     }
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "hook", component: "HOOK", start: 0.2 }),
+    );
   });
 });
 

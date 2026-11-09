@@ -4,12 +4,12 @@
 // worker's log line. Nothing reads any other shape.
 //
 // The placer (`engine-place.ts`) writes this shape itself for the components it
-// places (accents and questions, build step 6). The engine's other code paths
-// still place with their own notes (`PlaceNote`, actions as they were);
-// `toEngineRecord` turns those into this shape at the end of `placeEdit` and
-// passes the placer's through, until the placer replaces the per-kind code
-// (build steps 7 to 10 of the spec). A note's variant is the name of the entry
-// its component was picked with (`variant-picker.ts`).
+// places (the hook, accents, questions and LIST stacks, build steps 6 and 7).
+// The engine's other code paths still place with their own notes (`PlaceNote`,
+// actions as they were); `toEngineRecord` turns those into this shape at the
+// end of `placeEdit` and passes the placer's through, until the placer replaces
+// the per-kind code (build steps 8 to 10 of the spec). A note's variant is the
+// name of the entry its component was picked with (`variant-picker.ts`).
 
 import type { PickedVariants } from "./variant-picker.ts";
 
@@ -125,8 +125,6 @@ const RULE_OF: Record<string, string> = {
   "caption-min": "timing",
   "transition-min": "timing",
   "transition-time": "timing",
-  "transition-entrance": "timing",
-  "text-one-at-a-time": "timing",
   "hook-time": "timing",
   "accent-time": "timing",
   "big-word-time": "timing",
@@ -138,19 +136,11 @@ const RULE_OF: Record<string, string> = {
   "contrast-spot": "contrast",
   "contrast-stay": "contrast",
   "caption-spot": "zone",
-  "transition-spot": "zone",
-  "hook-spot": "zone",
   "big-word-spot": "zone",
   "caption-size": "size",
-  "transition-size": "size",
-  "hook-size": "size",
   "big-word-size": "size",
   "visual-size": "size",
-  "transition-wrap": "size",
-  "hook-wrap": "size",
   "caption-face": "face",
-  "transition-face": "face",
-  "hook-face": "face",
   "visual-face": "face",
 };
 

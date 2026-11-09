@@ -33,10 +33,10 @@ export interface TransitionTiming {
 // A LIST's layer comes in as its phrase's first word starts: it starts
 // `kind.seconds` (its entrance) before that word, so the entrance is finished
 // as the word is spoken, never before 0. It goes out at the phrase's last
-// word's end, with no hold and no minimum. The engine may start it later (at
-// the end of a text before it) and cut it short (a text after it). Only a
-// phrase with no length at all is lengthened, to the shown floor from its
-// first word (earlier where the reel ends); a reel under the floor gives null.
+// word's end, with no hold and no minimum; no other text moves or cuts it.
+// Only a phrase with no length at all is lengthened, to the shown floor from
+// its first word (earlier where the reel ends); a reel under the floor gives
+// null.
 export function transitionTiming(
   choice: { from: string; to: string },
   words: readonly Word[],
@@ -112,22 +112,13 @@ export function hiddenCaptionIds(
 export type LevelRole = "number" | "lead" | "key";
 const LEVEL_ROLES = ["number", "lead", "key"] as const satisfies readonly LevelRole[];
 
-// A level's font, full size and colour, from the style roles: the lead-in is
-// caption text, the key phrase and the number accent text.
-export function levelStyle(
-  role: LevelRole,
-  preset: Preset,
-): { font: FontKey; size: number; color: string } {
-  if (role === "lead") {
-    const font = preset.caption.font;
-    return { font, size: preset.fonts[font].size, color: preset.caption.color };
-  }
-  const font = preset.accent.font;
-  const size =
-    role === "number"
-      ? (preset.transitions.numbered.numberSize ?? preset.fonts[font].size)
-      : preset.fonts[font].size;
-  return { font, size, color: preset.accent.color };
+// A level's font and colour, from the style roles: the lead-in is caption
+// text, the key phrase and the number accent text. The sizes are the engine's
+// (the stack's entry in `variants.ts`: the styles' bases and the number's
+// ratio to the key), written on each level.
+export function levelStyle(role: LevelRole, preset: Preset): { font: FontKey; color: string } {
+  if (role === "lead") return { font: preset.caption.font, color: preset.caption.color };
+  return { font: preset.accent.font, color: preset.accent.color };
 }
 
 // Every transition's levels as text boxes, in frame pixels, each shown from

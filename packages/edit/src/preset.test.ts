@@ -7,7 +7,6 @@ import {
   intersectBox,
 } from "./preset.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
-import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
 const safe = SAFE_ZONE.box;
 
@@ -67,12 +66,11 @@ describe("the transition library", () => {
     }
   });
 
-  it("fits the number at its size inside the safe zone", async () => {
-    const { numbered } = ISSEBYA_PRESET.transitions;
-    const measurer = await nodeMeasurer();
-    const width = measurer.width(ISSEBYA_PRESET.accent.font, numbered.numberSize!, "99");
-    expect(width).toBeLessThanOrEqual(safe.right - safe.left);
-    expect(numbered.numberSize!).toBeLessThanOrEqual(safe.bottom - safe.top);
+  it("holds no size and no spot for a transition's levels: the stack's entry and the zones have them", () => {
+    for (const type of TRANSITION_KINDS) {
+      expect(ISSEBYA_PRESET.transitions[type]).not.toHaveProperty("numberSize");
+      expect(ISSEBYA_PRESET.transitions[type]).not.toHaveProperty("want");
+    }
   });
 
   it("gives a transition no hold after its phrase: it leaves at the last word's end", () => {

@@ -13,7 +13,7 @@ import type { Measurer } from "./measure.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import { bigWordCoveredShare } from "./behind.ts";
 import type { Span } from "./timeline.ts";
-import type { BoxVariant, TextVariant } from "./variants.ts";
+import type { BoxVariant, Level, StackVariant, TextStyle, TextVariant } from "./variants.ts";
 
 // The placer (`specs/layout-engine.md`, "The loop" > "Placement", "Hard
 // rules", "Soft rules", "Sizes and wrapping"): one element over a given
@@ -21,8 +21,9 @@ import type { BoxVariant, TextVariant } from "./variants.ts";
 // ranking, each line count, the face as an obstacle then allowed), drops the
 // ones that break a hard rule, scores the rest by the soft costs and takes the
 // cheapest, with the spec's tie-break. Pure and deterministic: the same input
-// gives the same result. The engine (`engine.ts`) places accents and questions
-// through it (build step 6); steps 7 to 10 wire the other components.
+// gives the same result. The engine (`engine.ts`) places the hook, accents,
+// questions and LIST stacks through it (build steps 6 and 7); steps 8 to 10
+// wire the big word, the visual and the captions.
 //
 // Where the spec leaves a detail open, this file takes the simplest reading
 // and says so in a comment marked "Settled:".
@@ -49,6 +50,9 @@ const FRAME_WIDTH = ISSEBYA_PRESET.frame.width;
 // Rule 6: the face hides at most this share of a behind big word's height.
 const MAX_HIDDEN_SHARE = 1 - ISSEBYA_PRESET.behind.word.minVisible;
 const SLACK = 1e-9;
+// A whole-pixel size from a scaled one: floored, a float hair under a whole
+// number counted as that number (88 * 300/110 is 240).
+const wholePx = (size: number): number => Math.floor(size + 1e-6);
 
 interface ElementBase extends Span {
   id: string; // the item id, "accent-1", "hook", "w0012"
@@ -63,15 +67,28 @@ export interface TextElement extends ElementBase {
   lineGap: number;
 }
 
+export type LevelRole = Level["role"];
+
+// A stack (a LIST item): its entry, the text of each level it shows, in the
+// entry's order (a one-item list shows no number; a phrase may have no
+// lead-in; the key is always there) and the gap between the levels
+// (`transition.gap`). The spec's "Sizes and wrapping": one element, placed
+// once; its size is the key's, the lead at its own style's base over the
+// key's, the number at the entry's ratio to the key, all shrunk together.
+export interface StackElement extends ElementBase {
+  type: "stack";
+  variant: StackVariant;
+  levels: readonly { role: LevelRole; text: string }[];
+  gap: number;
+}
+
 // A box: its entry gives its aspect and full width.
 export interface BoxElement extends ElementBase {
   type: "box";
   variant: BoxVariant;
 }
 
-// Settled: a LIST stack (number, lead, key as one element) is not an element
-// here yet; step 7 of the build order adds it.
-export type PlaceElement = TextElement | BoxElement;
+export type PlaceElement = TextElement | StackElement | BoxElement;
 
 // Something already placed over a moment of the element's span. A `caption`
 // blocks everything (rule 2); a `text` blocks text (rule 5); a `box` blocks
@@ -91,13 +108,25 @@ export interface PlaceScene {
   safe: SafeZone;
 }
 
+// One level of a placed stack, at the stack's chosen size: its own size, its
+// lines and `breaks`, and its box's width and height (the stack centres it).
+export interface PlacedLevel {
+  role: LevelRole;
+  size: number;
+  lines: string[];
+  breaks: number[];
+  width: number;
+  height: number;
+}
+
 // The chosen candidate.
 export interface Placed {
   box: Box;
-  // A text: its font size. A box: its width.
+  // A text: its font size. A stack: its key's font size. A box: its width.
   size: number;
-  lines: string[]; // a box: []
-  breaks: number[]; // a box: []
+  lines: string[]; // a stack: every level's lines; a box: []
+  breaks: number[]; // a stack or a box: [] (a stack's levels carry their own)
+  levels: PlacedLevel[]; // a text or a box: []
   zone: ZoneName;
   cost: number;
   coversFace: boolean;
@@ -114,12 +143,22 @@ export interface PlaceResult {
 // ------------------------------------------------------------------ shapes
 
 // What a candidate measures at a size: its width and height in pixels, and the
-// largest size that fits a rectangle. A text at `n` lines, or a box at its aspect.
+// largest size that fits a rectangle. A text at `n` lines, a stack with each
+// level at its line count, or a box at its aspect.
 interface Shape {
   lines: string[];
+  // Lines beyond one per text: a text's line count less one, a stack's over
+  // its levels. The wrap cost and the `wrapped` outcome count these.
+  extraLines: number;
+  // The smallest size the shape may take so that every text in it is at least
+  // the global minimum: `MIN_SIZE_PX` for a text or a box; for a stack, the
+  // size at which its smallest level (the lead-in) reaches it.
+  min: number;
   widthAt(size: number): number;
   heightAt(size: number): number;
   fit(rect: Box): number;
+  // A stack's levels at a size; a text or a box has none.
+  levelsAt?(size: number): PlacedLevel[];
 }
 
 // The lines of `words` on `count` lines that keep the widest line narrowest
@@ -175,6 +214,8 @@ function textShape(element: TextElement, count: number, measurer: Measurer): Sha
   const gaps = (count - 1) * element.lineGap;
   return {
     lines,
+    extraLines: count - 1,
+    min: MIN_SIZE_PX,
     widthAt: (size) => size * perPx,
     heightAt: (size) => size * count + gaps,
     // Floored with no slack: a size rounded up by a float hair would overshoot
@@ -195,15 +236,110 @@ function boxShape(element: BoxElement): Shape {
   const aspect = ratio(element.variant.aspect);
   return {
     lines: [],
+    extraLines: 0,
+    min: MIN_SIZE_PX,
     widthAt: (size) => size,
     heightAt: (size) => Math.floor(size / aspect),
     fit: (rect) => Math.floor(Math.min(rect.right - rect.left, (rect.bottom - rect.top) * aspect)),
   };
 }
 
-// The shapes an element may take: a text on 1 to its word count lines, a box one.
+// A stack level's style base. A stack is set from its styles' bases, so a
+// `largest-fit` style has no place in one.
+function baseOf(style: TextStyle): number {
+  if (style.base === "largest-fit")
+    throw new Error("engine-place: a stack level needs a base size");
+  return style.base;
+}
+
+// One level of a stack at one line count: its share of the stack's size (the
+// key's: 1 for the key, its base over the key's for the lead-in, the entry's
+// ratio for the number), its lines and the widest line's width at size 1.
+interface LevelShape {
+  role: LevelRole;
+  factor: number;
+  lines: string[];
+  perPx: number;
+}
+
+// A stack at one line count per level. Every level's size is the stack's times
+// its factor, floored to a whole pixel; the fit is the linear estimate, which
+// the floors only ever come under.
+function stackShape(levels: readonly LevelShape[], gap: number): Shape {
+  const gaps = gap * (levels.length - 1);
+  const widthPerPx = Math.max(...levels.map((level) => level.perPx * level.factor));
+  const heightPerPx = levels.reduce((sum, level) => sum + level.factor * level.lines.length, 0);
+  const minFactor = Math.min(...levels.map((level) => level.factor));
+  const levelsAt = (size: number): PlacedLevel[] =>
+    levels.map((level) => {
+      const own = wholePx(size * level.factor);
+      return {
+        role: level.role,
+        size: own,
+        lines: level.lines,
+        breaks: breaksOf(level.lines),
+        width: own * level.perPx,
+        height: own * level.lines.length,
+      };
+    });
+  return {
+    lines: levels.flatMap((level) => level.lines),
+    extraLines: levels.reduce((sum, level) => sum + level.lines.length - 1, 0),
+    // Settled: the global minimum holds for every level of a stack, so the stack
+    // shrinks only until its smallest level (the lead-in, 50 over 110) is at it.
+    min: Math.ceil(MIN_SIZE_PX / minFactor - SLACK),
+    widthAt: (size) => Math.max(...levelsAt(size).map((level) => level.width)),
+    heightAt: (size) => levelsAt(size).reduce((sum, level) => sum + level.height, 0) + gaps,
+    fit: (rect) =>
+      Math.floor(
+        Math.min(
+          (rect.right - rect.left) / widthPerPx,
+          (rect.bottom - rect.top - gaps) / heightPerPx,
+        ),
+      ),
+    levelsAt,
+  };
+}
+
+// The key level's entry, the one a stack's size is measured by.
+function keyLevelOf(variant: StackVariant): Level {
+  const key = variant.levels.find((level) => level.role === "key");
+  if (!key) throw new Error(`engine-place: ${variant.variant} has no key level`);
+  return key;
+}
+
+// Every stack shape: each level on 1 to its word count lines (balanced breaks,
+// as a text), every combination.
+function stackShapes(element: StackElement, measurer: Measurer): Shape[] {
+  const keyBase = baseOf(keyLevelOf(element.variant).style);
+  const options = element.levels.map(({ role, text }): LevelShape[] => {
+    const entry = element.variant.levels.find((level) => level.role === role);
+    if (!entry) throw new Error(`engine-place: ${element.variant.variant} has no ${role} level`);
+    const factor = entry.role === "number" ? entry.ratio : baseOf(entry.style) / keyBase;
+    const widthOf = (line: string) => measurer.width(entry.style.font, 1, line);
+    const words = text.split(" ");
+    const shapes: LevelShape[] = [];
+    for (let count = 1; count <= words.length; count += 1) {
+      const lines = count === 1 ? [text] : balancedLines(words, count, widthOf);
+      const perPx = Math.max(...lines.map(widthOf));
+      if (perPx > 0) shapes.push({ role, factor, lines, perPx });
+    }
+    return shapes;
+  });
+  let combos: LevelShape[][] = [[]];
+  for (const levelOptions of options) {
+    combos = combos.flatMap((combo) => levelOptions.map((option) => [...combo, option]));
+  }
+  return combos
+    .filter((combo) => combo.length === element.levels.length)
+    .map((combo) => stackShape(combo, element.gap));
+}
+
+// The shapes an element may take: a text on 1 to its word count lines, a stack
+// with each level on 1 to its word count lines, a box one.
 function shapesOf(element: PlaceElement, measurer: Measurer): Shape[] {
   if (element.type === "box") return [boxShape(element)];
+  if (element.type === "stack") return stackShapes(element, measurer);
   const count = element.text.split(" ").length;
   const shapes: Shape[] = [];
   for (let n = 1; n <= count; n += 1) {
@@ -278,7 +414,7 @@ interface Candidate {
 // obstacle to anything), each grown by the gap.
 function obstacleBoxes(element: PlaceElement, obstacles: readonly Obstacle[]): Box[] {
   return obstacles
-    .filter((o) => o.kind === "caption" || (o.kind === "text" && element.type === "text"))
+    .filter((o) => o.kind === "caption" || (o.kind === "text" && element.type !== "box"))
     .map((o) => expand(o.box, GAP));
 }
 
@@ -290,7 +426,7 @@ function largestFit(shape: Shape, area: Box, obstacles: readonly Box[], cap: num
   return Math.min(size, cap);
 }
 
-// Whether some zone of the element's ranking holds it at the minimum size with
+// Whether some zone of the element's ranking holds it at its minimum size with
 // nothing but the notch in the way: the safe zone itself has room for it.
 function fitsEmpty(
   element: PlaceElement,
@@ -303,7 +439,7 @@ function fitsEmpty(
       const area = areaOf(part);
       if (!area) continue;
       for (const shape of shapes) {
-        if (largestFit(shape, area, [scene.safe.notch], Infinity) >= MIN_SIZE_PX) return true;
+        if (largestFit(shape, area, [scene.safe.notch], Infinity) >= shape.min) return true;
       }
     }
   }
@@ -313,8 +449,9 @@ function fitsEmpty(
 // The element's full size, the cap on every candidate and the size the shrink
 // steps count from. A text: its style's base size (owner decision 2026-11-09:
 // the engine never sets a text above its style's base, it only shrinks from
-// it). A box: its `width` share of the frame. The big word's style is
-// `largest-fit`: the largest size at which it fits its first zone with no
+// it). A stack: its key level's base (the lead-in and the number follow by
+// their factors). A box: its `width` share of the frame. The big word's style
+// is `largest-fit`: the largest size at which it fits its first zone with no
 // obstacles (the notch only, no face), over any line count. Settled: when that
 // first zone has no room (none, as above a face at the top; or less than the
 // minimum size), the next zone of the ranking with room gives it. 0 when no
@@ -326,6 +463,7 @@ function fullSizeOf(
   F: Box | null,
 ): number {
   if (element.type === "box") return Math.floor(FRAME_WIDTH * ratio(element.variant.width));
+  if (element.type === "stack") return baseOf(keyLevelOf(element.variant).style);
   const { base } = element.variant.style;
   if (base !== "largest-fit") return base;
   for (const zone of element.variant.zones) {
@@ -371,8 +509,9 @@ function candidates(
       for (const shape of shapes) {
         for (const obstacles of passes) {
           const size = largestFit(shape, area, obstacles, full);
-          // Hard: below the global minimum, nothing fits.
-          if (size < MIN_SIZE_PX) continue;
+          // Hard: below the global minimum (for every text in the shape),
+          // nothing fits.
+          if (size < shape.min) continue;
           const width = shape.widthAt(size);
           const height = shape.heightAt(size);
           const want = centreWant(zone, part, area, F, width, height);
@@ -389,7 +528,7 @@ function candidates(
             (coversFace ? costs.face : 0) +
             rank * costs.zoneStep +
             shrinkSteps * costs.shrinkStep +
-            (shape.lines.length - 1) * costs.wrap;
+            shape.extraLines * costs.wrap;
           out.push({ rank, zone, box, size, shape, coversFace, cost, shrinkSteps });
         }
       }
@@ -430,7 +569,7 @@ function blockersUpTo(
     seen.add(key);
     out.push(blocker);
   };
-  const seesText = element.type === "text";
+  const seesText = element.type !== "box";
   element.variant.zones.slice(0, rank + 1).forEach((zone) => {
     for (const part of zonesAt(zone, scene.safe, F)) {
       const area = areaOf(part);
@@ -447,12 +586,12 @@ function blockersUpTo(
   return out;
 }
 
-// The safe zone's own edges as blockers, when the element at the minimum size
+// The safe zone's own edges as blockers, when the element at its minimum size
 // fits nowhere in S even with no obstacle: too wide (left and right) or too
 // tall (top and bottom).
 function safeZoneBlockers(shapes: readonly Shape[], safe: SafeZone): Blocker[] {
   const s = safe.box;
-  const fitsWidth = shapes.some((shape) => shape.widthAt(MIN_SIZE_PX) <= s.right - s.left + SLACK);
+  const fitsWidth = shapes.some((shape) => shape.widthAt(shape.min) <= s.right - s.left + SLACK);
   if (!fitsWidth) {
     return [
       { kind: "safe-zone", edge: "left" },
@@ -501,10 +640,21 @@ function blockerWords(blockers: readonly Blocker[]): string {
 
 function whoIs(element: PlaceElement): string {
   const kind = element.variant.component.toLowerCase();
-  return element.type === "text"
-    ? `${kind} ${element.id} "${element.text}"`
-    : `${kind} ${element.id}`;
+  switch (element.type) {
+    case "text":
+      return `${kind} ${element.id} "${element.text}"`;
+    case "stack":
+      return `${kind} ${element.id} "${element.levels.map((level) => level.text).join(" / ")}"`;
+    case "box":
+      return `${kind} ${element.id}`;
+  }
 }
+
+const LEVEL_WORDS: Record<LevelRole, string> = {
+  number: "number",
+  lead: "lead-in",
+  key: "key phrase",
+};
 
 // --------------------------------------------------------------------- place
 
@@ -563,6 +713,8 @@ export function placeElement(
   }
 
   const lines = chosen.shape.lines;
+  const levels = chosen.shape.levelsAt?.(chosen.size) ?? [];
+  const wrapped = chosen.shape.extraLines > 0;
   const taken = {
     zone: chosen.zone,
     size: chosen.size,
@@ -571,8 +723,7 @@ export function placeElement(
   };
   const where = ZONE_WORDS[chosen.zone];
   const notes: EngineNote[] = [];
-  const givenUp =
-    chosen.rank > 0 || chosen.shrinkSteps > 0 || lines.length > 1 || chosen.coversFace;
+  const givenUp = chosen.rank > 0 || chosen.shrinkSteps > 0 || wrapped || chosen.coversFace;
   // Settled: the blockers of a note are what took the space of the zones
   // before the chosen one, plus the chosen zone's own when the element shrank
   // or covers the face there.
@@ -598,23 +749,34 @@ export function placeElement(
     });
   }
   if (chosen.shrinkSteps > 0) {
+    const what =
+      element.type === "stack"
+        ? `shrinks its key phrase to ${chosen.size} px from ${full} px, the other levels with it,`
+        : `shrinks to ${chosen.size} px from ${full} px`;
     notes.push({
       ...base,
       ...taken,
       rule: "size",
       outcome: "shrunk",
       blockers,
-      reason: `${who} shrinks to ${chosen.size} px from ${full} px ${where} ${when}; ${blockerWords(blockers)} took the room`,
+      reason: `${who} ${what} ${where} ${when}; ${blockerWords(blockers)} took the room`,
     });
   }
-  if (lines.length > 1) {
+  if (wrapped) {
+    const what =
+      element.type === "stack"
+        ? `wraps its ${levels
+            .filter((level) => level.lines.length > 1)
+            .map((level) => `${LEVEL_WORDS[level.role]} to ${level.lines.length} lines`)
+            .join(" and its ")}`
+        : `wraps to ${lines.length} lines`;
     notes.push({
       ...base,
       ...taken,
       rule: "size",
       outcome: "wrapped",
       blockers,
-      reason: `${who} wraps to ${lines.length} lines ${where} ${when}`,
+      reason: `${who} ${what} ${where} ${when}`,
     });
   }
   if (chosen.coversFace) {
@@ -642,7 +804,8 @@ export function placeElement(
       box: chosen.box,
       size: chosen.size,
       lines,
-      breaks: breaksOf(lines),
+      breaks: element.type === "stack" ? [] : breaksOf(lines),
+      levels,
       zone: chosen.zone,
       cost: chosen.cost,
       coversFace: chosen.coversFace,

@@ -56,7 +56,7 @@ const VISUAL_DESCRIPTION_MAX = 120;
 // The smallest size any text overlay, caption, transition level or big word
 // is set at. The schema refuses a smaller one, so the layout engine never
 // places text below it.
-export const MIN_TEXT_SIZE = 8;
+const MIN_TEXT_SIZE = 8;
 
 // A big word behind the speaker: one word, nothing that could leave its tag.
 export const BEHIND_WORD = /^[^\s<>&]{1,24}$/;

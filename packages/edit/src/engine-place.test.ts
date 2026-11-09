@@ -14,7 +14,7 @@ import type { Box } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
 import { PLATFORM_BUTTONS, PLATFORM_SAFE } from "./preset.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
-import { STYLES, VARIANTS, type TextVariant } from "./variants.ts";
+import { STYLES, type StackVariant, VARIANTS, type TextVariant } from "./variants.ts";
 
 // Synthetic scenes for the placer: one element, a face or none, obstacles laid
 // by hand. Sizes come from HarfBuzz over the package's fonts, so the tests
@@ -480,5 +480,181 @@ describe("the notch", () => {
     const { box } = result.placed!;
     expect(inside(box, S)).toBe(true);
     expect(overlaps(box, PLATFORM_BUTTONS)).toBe(false);
+  });
+});
+
+describe("a LIST stack", () => {
+  const LIST = VARIANTS["list/numbered"];
+  const GAP = 24;
+  const KEY_BASE = STYLES.accent.base as number;
+  const LEAD_BASE = STYLES.caption.base as number;
+  const RATIO = LIST.levels[0]!.role === "number" ? LIST.levels[0]!.ratio : NaN;
+  const stack = (
+    levels: { role: "number" | "lead" | "key"; text: string }[],
+    variant: StackVariant = LIST,
+  ): PlaceElement => ({ type: "stack", id: "transition-1", variant, levels, gap: GAP, ...span });
+  const NUMBERED_LEVELS: { role: "number" | "lead" | "key"; text: string }[] = [
+    { role: "number", text: "1" },
+    { role: "lead", text: "they want" },
+    { role: "key", text: "fair pay" },
+  ];
+  const numbered = stack(NUMBERED_LEVELS);
+
+  it("is one element: number, lead-in and key at their bases, the number by its ratio, 24 px between, centred", () => {
+    const result = placeElement(numbered, scene([]), measurer);
+    expect(result.placed).not.toBeNull();
+    const { box, size, levels, lines, breaks } = result.placed!;
+    expect(size).toBe(KEY_BASE);
+    expect(levels.map((level) => [level.role, level.size])).toEqual([
+      ["number", Math.floor(KEY_BASE * RATIO + 1e-6)],
+      ["lead", LEAD_BASE],
+      ["key", KEY_BASE],
+    ]);
+    expect(levels[0]!.size).toBe(300);
+    // The box is the widest level wide and the levels plus two gaps high.
+    expect(box.right - box.left).toBeCloseTo(Math.max(...levels.map((level) => level.width)), 6);
+    expect(box.bottom - box.top).toBe(300 + GAP + LEAD_BASE + GAP + KEY_BASE);
+    expect(lines).toEqual(["1", "they want", "fair pay"]);
+    expect(breaks).toEqual([]);
+    expect(levels.every((level) => level.lines.length === 1 && level.breaks.length === 0)).toBe(
+      true,
+    );
+    expect(inside(box, S)).toBe(true);
+    expect(result.notes[0]!.reason).toContain('list transition-1 "1 / they want / fair pay"');
+  });
+
+  it("falls through to the safe zone whole rather than shrinking into the upper third: 508 px does not fit 416", () => {
+    // The upper third of S is 416 px high; the stack at full size is 508. Two
+    // shrink steps there (20) cost more than one zone step (10) at full size.
+    const result = placeElement(numbered, scene([]), measurer);
+    const { zone, cost, size, box } = result.placed!;
+    expect(zone).toBe("anywhere-in-safe-zone");
+    expect(cost).toBe(PLACE_COSTS.zoneStep);
+    expect(size).toBe(KEY_BASE);
+    expect((box.top + box.bottom) / 2).toBeCloseTo((S.top + S.bottom) / 2, 0);
+    expect(outcomes(result)).toEqual(["moved"]);
+  });
+
+  it("a one-item list (no number) fits the upper third at full size: one note `placed`", () => {
+    const result = placeElement(
+      stack([
+        { role: "lead", text: "AI has completely disrupted" },
+        { role: "key", text: "the way we work" },
+      ]),
+      scene([]),
+      measurer,
+    );
+    const { zone, cost, size, box, levels } = result.placed!;
+    expect(zone).toBe("upper-third");
+    expect(cost).toBe(0);
+    expect(size).toBe(KEY_BASE);
+    expect(levels.map((level) => level.role)).toEqual(["lead", "key"]);
+    expect(box.top).toBe(S.top);
+    expect(inside(box, UPPER_THIRD)).toBe(true);
+    expect(outcomes(result)).toEqual(["placed"]);
+  });
+
+  it("shrinks the whole stack together, the levels keeping their ratios, in steps of the key's size", () => {
+    // One zone only, a strip 400 px high: the stack (508 at full) must shrink
+    // to fit; the key at 84 gives the number 229 and the lead-in 38.
+    const upperOnly: StackVariant = { ...LIST, zones: ["upper-third"] };
+    const strip = [textAt("accent-1", { ...S, top: S.top + 400 + 12 })];
+    const result = placeElement(stack(NUMBERED_LEVELS, upperOnly), scene([], strip), measurer);
+    expect(result.placed).not.toBeNull();
+    const { size, levels, box, cost } = result.placed!;
+    expect(size).toBe(84);
+    expect(box.bottom).toBeLessThanOrEqual(S.top + 400);
+    const [number, lead, key] = levels;
+    expect(key!.size).toBe(size);
+    expect(number!.size).toBe(Math.floor(size * RATIO + 1e-6));
+    expect(lead!.size).toBe(Math.floor((size * LEAD_BASE) / KEY_BASE + 1e-6));
+    expect(levels.map((level) => level.size)).toEqual([229, 38, 84]);
+    // 84 is under 110 by 26: three steps of 11.
+    expect(cost).toBe(3 * PLACE_COSTS.shrinkStep);
+    expect(outcomes(result)).toEqual(["shrunk"]);
+    expect(result.notes[0]!.reason).toContain(
+      `shrinks its key phrase to ${size} px from ${KEY_BASE} px, the other levels with it`,
+    );
+  });
+
+  it("wraps the lead-in and the key phrase freely, each on its own lines, at no cost", () => {
+    // A column 450 px wide: "the way we work" is 837 px at 110, the lead-in
+    // 684 px at 50; both take two lines, the stack stays at full size in the
+    // upper third (two lines each fit its 416 px: 100 + 24 + 220).
+    const column = [
+      textAt("accent-1", { left: S.left + 450 + 12, right: S.right, top: S.top, bottom: S.bottom }),
+    ];
+    const result = placeElement(
+      stack([
+        { role: "lead", text: "AI has completely disrupted" },
+        { role: "key", text: "the way we work" },
+      ]),
+      scene([], column),
+      measurer,
+    );
+    const { size, levels, box, cost, zone } = result.placed!;
+    expect(zone).toBe("upper-third");
+    expect(size).toBe(KEY_BASE);
+    expect(box.right).toBeLessThanOrEqual(S.left + 450);
+    const [lead, key] = levels;
+    expect(lead!.lines).toEqual(["AI has completely", "disrupted"]);
+    expect(key!.lines).toEqual(["the way", "we work"]);
+    expect(key!.breaks).toEqual([2]);
+    expect(lead!.breaks).toEqual([3]);
+    expect(cost).toBe(PLACE_COSTS.wrap);
+    expect(outcomes(result)).toEqual(["wrapped"]);
+    expect(result.notes[0]!.reason).toMatch(
+      /wraps its lead-in to \d lines and its key phrase to \d lines/,
+    );
+  });
+
+  it("the 30 px minimum holds for every level: the stack stops where its lead-in reaches it", () => {
+    // The lead-in is 50 over the key's 110: at a key of 66 px it is 30 px. A
+    // strip that fits the stack only below that is a no-spot.
+    const upperOnly: StackVariant = { ...LIST, zones: ["upper-third"] };
+    const floorKey = Math.ceil((MIN_SIZE_PX * KEY_BASE) / LEAD_BASE);
+    const heightAt = (key: number) =>
+      Math.floor(key * RATIO + 1e-6) +
+      GAP +
+      Math.floor((key * LEAD_BASE) / KEY_BASE + 1e-6) +
+      GAP +
+      key;
+    const fits = placeElement(
+      stack(NUMBERED_LEVELS, upperOnly),
+      scene([], [textAt("accent-1", { ...S, top: S.top + heightAt(floorKey) + 12 })]),
+      measurer,
+    );
+    expect(fits.placed!.size).toBe(floorKey);
+    expect(fits.placed!.levels.map((level) => level.size)).toEqual([180, 30, 66]);
+    const under = placeElement(
+      stack(NUMBERED_LEVELS, upperOnly),
+      scene([], [textAt("accent-1", { ...S, top: S.top + heightAt(floorKey) - 1 + 12 })]),
+      measurer,
+    );
+    expect(under.placed).toBeNull();
+    expect(outcomes(under)).toEqual(["no-spot"]);
+  });
+
+  it("that fits nowhere whole is a `no-spot`, never three placements", () => {
+    const result = placeElement(numbered, scene([], [textAt("hook", S)]), measurer);
+    expect(result.placed).toBeNull();
+    expect(outcomes(result)).toEqual(["no-spot"]);
+    expect(result.notes[0]).toMatchObject({
+      item: "transition-1",
+      component: "LIST",
+      variant: "list/numbered",
+      rule: "no-spot",
+    });
+    expect(result.notes[0]!.blockers).toEqual([{ kind: "item", id: "hook" }, { kind: "buttons" }]);
+  });
+
+  it("sees text as an obstacle and avoids the face at a zone step, like any text", () => {
+    const wide: Box = { left: 0, right: 1080, top: 150, bottom: 700 };
+    const result = placeElement(numbered, scene([wide]), measurer);
+    const { zone, coversFace, box } = result.placed!;
+    expect(zone).toBe("anywhere-in-safe-zone");
+    expect(coversFace).toBe(false);
+    expect(box.top).toBeGreaterThanOrEqual(wide.bottom + 12);
+    expect(result.notes[0]!.blockers).toEqual([{ kind: "face" }]);
   });
 });

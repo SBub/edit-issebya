@@ -44,10 +44,10 @@ types until slice 9 brings the live preview.
   word and no `<`, `>` or `&`, the two joined by one space: "distribution channel"). It is anchored
   on words like a caption (a big word starts on its first word with a negative
   `offset`, the lead), cuts in and out with no animation. A big word is a text pick: the text picks (the
-  hook, accents, questions, big words and lists) show one at a time (`text-one-at-a-time`). A VISUAL
+  hook, accents, questions, big words and lists) share the screen in time and keep apart on it. A VISUAL
   lasts 1 to 2 s (`behind.minSeconds`, `behind.maxSeconds`), less only at the reel's end or over a cut, is not
   text, and may show with any text. A big word lasts from the lead before its first word to its last word's
-  end, at least 1.5 s (a target: a text said later cuts it short).
+  end, at least 1.5 s; no text said later cuts it short.
   A refinement refuses an item crossing a footage clip's `hidden` span; with the decide limit
   (`EditLimits.behindLengths`, new versions only) also an item outside its kind's length (a VISUAL 0.5 to 2 s,
   a big word from 0.5 s to the lead, its words and `afterSeconds`), so a stored
@@ -126,14 +126,16 @@ start, end }] }`).
   takes the lead (`leadSeconds`, 0.2 s, so its entrance has finished as the word is heard) and the
   minimum (`minSeconds`, 1.5 s) from its word. `afterSeconds` (1 s) is not a shown time: it only bounds a
   big word's length in the decide limit.
-- Layout (`layout`): on the old code paths (the hook, big words, lists, captions) text shrinks to 60% of
-  its size (`minScale`) before it gives up a place (only the hook goes down to `MIN_TEXT_SIZE`, 8 px);
-  accents and questions are the placer's and shrink in 10% steps from the style's base to 30 px. Every
-  text keeps 12 px (`gap`) from the face and from other text.
+- Layout (`layout`): on the old code paths (big words, captions) text shrinks to 60% of its size
+  (`minScale`) before it gives up a place; the hook, accents, questions and LIST stacks are the placer's
+  and shrink in 10% steps from the style's base to 30 px. Every text keeps 12 px (`gap`) from the face
+  and from other text.
 - Transitions (`transitions.numbered`, the LIST): the layer is the full frame, with no background; its
-  text levels come in with a fade of 0.3 s (`power2.out`) and are placed in the safe zone `S`, the
-  level stack wanted at y 640 (`want`), the number at 300 px (`numberSize`). Stacked levels keep
-  `transition.gap` (24 px) apart. Its text areas stay inside `S` and clear of the notch.
+  text levels come in with a fade of 0.3 s (`power2.out`; `seconds` is the entrance). The levels' sizes
+  and spot are not the preset's: the stack's entry (`list/numbered` in `src/variants.ts`) names the
+  styles (the key phrase and the number `accent`, 110 px; the lead-in `caption`, 50 px) and the number's
+  ratio to the key (300/110), and the placer's zones give the spot. Stacked levels keep `transition.gap`
+  (24 px) apart. Its text stays inside `S` and clear of the notch.
 - Click sound: `assets/sounds/mouse-click-trimmed.wav`, 0.23 s, -6 dB (owner decision 2026-11-04,
   louder than the -13 dB before; a stored click with no `gain_db` plays at it too, in the preview
   through `apps/studio/src/lib/sound-schedule.ts` and in the export through the page's
@@ -234,9 +236,8 @@ start, end }] }`).
   word's end. No hold after the phrase and no minimum; only a phrase with no length at all is lengthened
   to the shown floor (`SHOWN_FLOOR_SECONDS`, 0.5 s, from its first word, earlier where the reel ends,
   `transition-min`). On a reel under the floor it gives null and the layer covers the whole reel
-  (`transition-time`). The engine then starts it later, never after its first word, when a text picked
-  earlier is still on screen (`transition-entrance`: the entrance is shorter, down to none), and the text
-  rule (`text-one-at-a-time`) may cut its end.
+  (`transition-time`). No other text moves or cuts it: a text said at the same time is placed around it,
+  and only the same-text rule trims a list that repeats a word another pick shows at that moment.
 - Claude gives the LIST as `lists: [{ items: [{ from, to, key_from }] }]`: each list has one or more
   items, and no item has a kind (every LIST item is numbered; `TRANSITION_KINDS` is the stored type only).
   The engine writes each item as a transition item with `words`, `key`, `list` (the list's place in the
@@ -248,10 +249,16 @@ start, end }] }`).
   its number (only in a list of two or more items) and its text levels over the phrase.
 - Each level appears whole on its first word and stays until the layer leaves. The captions of the
   phrase are hidden only while the layer is on screen (`hidden_by` the transition, no position, shown
-  through the levels); the words a cut list no longer shows are normal captions. A visual may show during
-  a running transition, while the other text picks keep off it (`text-one-at-a-time`). The engine places transitions'
-  levels before the captions, in free space inside the layer and the safe zone, off the face where
-  possible; every retime, move, shrink, wrap, fallback and overlap is an `EngineNote`.
+  through the levels); the words a trimmed list no longer shows are normal captions. Any component may
+  show during a running transition: they keep apart on screen, not in time. The engine places each item
+  as one stack (its number, lead-in and key phrase, `transition.gap` between, centred) through the
+  placer, in its turn among the components by start time, before the captions: zones the upper third
+  then anywhere in the safe zone; the stack's size is its key's (110 px, the number 300/110 of it, the
+  lead-in 50/110), shrunk together in 10% steps until its smallest level reaches 30 px (a key of 66);
+  each level's lines free (`breaks`); never over other text; the face a cost. An item that fits nowhere
+  whole is a `no-spot`: left out of the version, its words captions, never three placements. Every move,
+  shrink, wrap and retime is an `EngineNote` (`placed`, `moved`, `shrunk`, `wrapped`, `covers-face`,
+  `no-spot`, the timing notes).
 - The builder renders `levels` as children of the layer. `safe-box` includes levels; a hidden caption
   has no position, so `face` and `timing` never see it. `choicesOf` reads a transition with `words`
   back as its phrase and `key_from`; the items with one `list` number read back as one list, in reel
@@ -275,34 +282,29 @@ word" is now "spoken words, plus one written hook at the start".
   included; a dot inside stays, and a hook of nothing but dots is refused ("a hook needs words").
 - Timing: from `pace.hook.fromSeconds` (0.2 s) to `untilSeconds` (3 s), cut to the reel's end; on
   a reel too short for the shown floor (0.5 s) it starts as early as the reel allows, to the reel's end
-  (`clamped-to-end`, rule `hook-time`), and is never dropped. Both
+  (`clamped-to-end`, rule `hook-time`). Nothing else changes its time. Both
   anchors are `anchorAt` (the nearest word end within a second, else a time where nobody speaks),
   so it follows its words through a re-time.
-- A fixed slot (owner decision 2026-11-07): every reel has one, and it is placed on every run, first.
-  `placeEdit` places `hook` first of the components, before every other extra and the captions. It shows from
-  `pace.hook.fromSeconds` (0.2 s) to `untilSeconds` (3 s), and no other item moves it or shrinks it. A text
-  pick (accent, question, big word, list) said in its window cuts the hook where it starts
-  (`text-one-at-a-time`, noted): the hook then shows from 0.2 s to that start. If that leaves less than the
-  shown floor (`SHOWN_FLOOR_SECONDS`, 0.5 s), the hook keeps the floor from 0.2 s and the text pick shows
-  over it (`kept-overlapping`). A visual keeps its own times and may show over it (`kept-overlapping`, rule
-  `all-picks`).
+- A fixed window (owner decision 2026-11-07; spec decision 13): every reel has one, and it is placed on
+  every run. It runs its whole window whatever is said in it: no text pick cuts it, and it cuts none. A
+  text pick (accent, question, big word, list) said in its window is placed around it: the components
+  are placed in order of their start time, so the hook (0.2 s) comes before nearly everything, and a
+  pick said in its window sees it as an obstacle and takes a spot off it (an accent moves down its
+  zones, noted `moved` with the hook among its blockers). A visual keeps its own times beside it.
   Captions keep running below it; nobody says it, so no caption is ever left out for it.
-- Placed first on every run (owner decision 2026-11-07): the captions come after it, so the captions in
-  its window keep clear of it by the caption rules: each block moves to a free place, shrinks down to the
-  floor, and only when nothing else is free goes over the face on the caption line (`covers-face`, rule
+- The captions come after every component (owner decision 2026-11-07), so the captions in its window
+  keep clear of it by the caption rules: each block moves to a free place, shrinks down to the floor, and
+  only when nothing else is free goes over the face on the caption line (`covers-face`, rule
   `caption-face`). A caption-heavy opening never pushes the hook out.
-- Placement: the accent's font, size and colour, in the upper part of the frame (the safe zone's top
-  half, above the face), else the free part of the safe zone; in each place it
-  tries one line, then two (the balanced break), at each size down to the floor before it moves on.
-  Contrast as for an accent. When nothing fits at any size, its slot is used at the largest size whose
-  words fit the safe box in one or two lines, at the upper part's place, over the face only as the last
-  resort (noted). Its tiers: the upper part and the free safe zone clear of the face and the text, at each
-  size down to the floor; then below the floor; then clear of the text only, over the face (noted
-  `covers-face`, rule `hook-face`); only then the slot. Below the floor it shrinks further, to the smallest size at which its words fit the
-  safe zone in one or two lines (`hook-size`, `shrunk`), never below `MIN_TEXT_SIZE` (8 px, the schema
-  minimum for every text size: the schema refuses a smaller one, so no edit with a smaller size is ever
-  built). The hook is never dropped for its size. Notes: `hook-spot` (`moved`), `hook-size` (`shrunk`),
-  `hook-wrap` (`wrapped`), `all-picks` (`kept-overlapping`), and `hook-time` (`clamped-to-end`).
+- Placement: the placer (`placeHook` in `src/engine.ts` builds the element of its entry,
+  `hook/written-line`): the `accent` style (the primary font, white, 110 px, never larger), zones the
+  upper third then anywhere in the safe zone, shrunk in 10% steps to 30 px, wrapped freely at cost 0
+  (any number of lines, balanced breaks), the face a cost of 100, never over other text (hard). No
+  contrast measurement. Notes the placer's: `placed`, `moved` (rule `zone`), `shrunk` and `wrapped`
+  (rule `size`), `covers-face` (rule `face`), and `hook-time` (`clamped-to-end`, `retimed`). A hook that
+  fits nowhere at 30 px or more is a `no-spot` like any element: left out of that version, noted (nobody
+  says it, so nothing stands in for it); a 68-letter word still fits S at 30 px on one line, and a
+  twenty-word line wraps at 110 px. The old exceptions down to 8 px are gone.
 - Checks treat it as text: `safe-box`, `timing` (the hook at least `SHOWN_FLOOR_SECONDS`, 0.5 s; an accent,
   question or list level has a length, no minimum) and the glossary check (`glossaryChecks` reads every overlay's text).
 - The written hook is an overlay with its own kind (`hook`, keyed once per reel). The studio's
@@ -351,44 +353,54 @@ tracks and record. `editFromAnswer` (decide, returning `{ ok, edit, record }`) a
 
 The zones (`src/engine-zones.ts`, `zonesAt(name, S, F)`) are the named areas the placement will use:
 each zone's areas inside the one safe zone `S` (the guard minus the notch) and its wanted point, from
-the moment's face `F` (null when no head is in the frame). The placer calls them for the accents and
-questions; the other components still use their own candidates (the build order of
-`specs/layout-engine.md`, steps 7 to 10).
+the moment's face `F` (null when no head is in the frame). The placer calls them for the hook, the
+accents and questions and the LIST stacks; the big word, the visual and the captions still use their own
+candidates (the build order of `specs/layout-engine.md`, steps 8 to 10).
 
-The placer (`src/engine-place.ts`, `placeElement(element, scene, measurer, costs?)`) places the accents
-and questions (step 6; the other components follow): one element (a text with its entry, words and line
-gap, or a box with its entry; its id and span) over a scene (the unpadded robust faces over its span, the obstacles already
-placed over it as `{ id, kind: "caption" | "text" | "box", box }`, the safe zone) and returns
-`{ placed, notes }`: the chosen `box`, `size` (a text's font size, a box's width), `lines`, `breaks`,
+The placer (`src/engine-place.ts`, `placeElement(element, scene, measurer, costs?)`) places the hook,
+the accents and questions and the LIST stacks (steps 6 and 7; the big word, the visual and the captions
+follow): one element (a text with its entry, words and line gap; a stack with its entry, the text of each
+level it shows and the gap between them; or a box with its entry; its id and span) over a scene (the
+unpadded robust faces over its span, the obstacles already placed over it as
+`{ id, kind: "caption" | "text" | "box", box }`, the safe zone) and returns `{ placed, notes }`: the
+chosen `box`, `size` (a text's font size, a stack's key size, a box's width), `lines`, `breaks`, `levels`
+(a stack's: each level's role, size, lines, `breaks`, width and height; empty for a text or a box),
 `zone`, `cost` and `coversFace`, or `placed: null` for a `no-spot`, with the engine notes for it (one per
 outcome: `placed`, or each of `moved`, `shrunk`, `wrapped`, `covers-face` that applies; `no-spot`, their
 `blockers` the captions, items, face and buttons that took the zones before the one taken). Candidates:
 each zone of the entry's ranking x each line count (balanced breaks, widths at size 1 so the break is the
-same at every size) x the face as an obstacle then the face allowed; each is the largest size that fits a
-free rectangle of the zone (the zone's pieces as their bounding box, the notch and the obstacles the
-element sees grown by `layout.gap` as obstacles), at most the element's full size (a text: its style's
-base size, 110 for `accent`, 50 for `caption`, so a short text never grows into the room it has; the big
-word's `largest-fit` style: the largest fit in its first zone with room, no obstacles; a box: its `width`
-share of the frame), at the spot `placeBox`
-finds nearest the zone's want (anchored at the element's top centre; its centre for `head-top` and
-`anywhere-in-safe-zone`; its edge towards the face for `beside-face`; its own corner for `corner`). Hard:
-sizes under `MIN_SIZE_PX` (30 px, a box's width too), captions (block everything), text over text (a box
-blocks nothing and sees no text), and for a `behind` text rule 6 (`bigWordCoveredShare` over the faces at
-most 0.3). Soft (`PLACE_COSTS`): face 100 (a behind text pays none), zone step 10, shrink step 10 (10% of
-the full size, counted up), wrap 0; tie-break the earlier zone, the larger size, fewer lines, the higher,
-then the further left spot. An element that fits no zone at 30 px even with nothing but the notch in the
-way is a `no-spot` blamed on the safe zone's edges. A LIST stack is not an element yet (step 7).
+same at every size; a stack: every combination of its levels' line counts) x the face as an obstacle then
+the face allowed; each is the largest size that fits a free rectangle of the zone (the zone's pieces as
+their bounding box, the notch and the obstacles the element sees grown by `layout.gap` as obstacles), at
+most the element's full size (a text: its style's base size, 110 for `accent`, 50 for `caption`, so a
+short text never grows into the room it has; a stack: its key level's base, the lead-in at its own base
+over the key's and the number at the entry's ratio to the key, each floored to a whole pixel and all
+shrunk together; the big word's `largest-fit` style: the largest fit in its first zone with room, no
+obstacles; a box: its `width` share of the frame), at the spot `placeBox` finds nearest the zone's want
+(anchored at the element's top centre; its centre for `head-top` and `anywhere-in-safe-zone`; its edge
+towards the face for `beside-face`; its own corner for `corner`). Hard: sizes under `MIN_SIZE_PX` (30 px,
+a box's width too, and every level of a stack: a stack stops shrinking where its smallest level, the
+lead-in at 50 over 110, reaches 30 px, a key of 66), captions (block everything), text over text (a stack
+is text; a box blocks nothing and sees no text), and for a `behind` text rule 6 (`bigWordCoveredShare`
+over the faces at most 0.3). Soft (`PLACE_COSTS`): face 100 (a behind text pays none), zone step 10,
+shrink step 10 (10% of the full size, counted up), wrap 0 (a line beyond one per text: a stack's levels
+each have their own); tie-break the earlier zone, the larger size, fewer lines, the higher, then the
+further left spot. An element that fits no zone at its minimum even with nothing but the notch in the way
+is a `no-spot` blamed on the safe zone's edges.
 
-In the engine (`placeAccent` in `src/engine.ts`) an accent or question is the element of the entry its
-component was picked with (`accent/above-head`, `question/as-accent`), its text the words as the captions
-show them, line gap 0; the scene is the unpadded robust faces of the moments over its span and every text
-on screen with it (`shown`: the hook and the lists' levels, placed before it; captions come last and are
-none yet) as `text` obstacles. The placed box becomes the overlay's `position` (its top left, `align`
-left), `size` and `breaks`, and the box joins `shown`, so the big words, visuals and captions placed after
-it avoid it as before. The placer's notes go to the record as they are (`zone`, `size`, `lines`, `cost`
-and `blockers` set). With no legal spot the accent is left out of the version: `placeEdit` places the
-answer again without it (its ref skipped, like a same-text drop), so its words show as captions, and the
-`no-spot` note is kept.
+In the engine (`placeHook`, `placeAccent` and `placeStack` in `src/engine.ts`) the hook, an accent or
+question and a LIST item are the elements of the entries their components were picked with
+(`hook/written-line`, `accent/above-head`, `question/as-accent`, `list/numbered`): a text's words as the
+captions show them (the hook its own line), line gap 0; a stack's levels the number (in a list of two or
+more items), the lead-in (when the phrase has one) and the key phrase, `transition.gap` between. The scene
+is the unpadded robust faces of the moments over its span and every component on screen with it that was
+placed before it (`shown`; captions come last and are none yet) as `text` obstacles. The placed box
+becomes the overlay's `position` (its top left, `align` left), `size` and `breaks`, or each level's
+`position` (centred on the stack, `align` center), `size` and `breaks`; the box (a stack's whole box,
+over the item's whole span) joins `shown`, so whatever is placed after it avoids it. The placer's notes
+go to the record as they are (`zone`, `size`, `lines`, `cost` and `blockers` set). With no legal spot the
+element is left out of the version: `placeEdit` places the answer again without it (its ref skipped,
+like a same-text drop), so its words show as captions (the hook has none), and the `no-spot` note is kept.
 
 One placement shows every pick the answer proposed. Nothing is dropped for room, for another pick's
 time, for the hook, for a transition's rate or for pace. The one drop is the same-text rule (rule
@@ -401,10 +413,12 @@ keeps them. The other shows its own words only: its range is trimmed to its larg
 a shared word, and when no word of its own is left it is dropped, noted (`dropped`), its reason naming both
 picks and the word. A trimmed or dropped pick is noted `retimed` (rule `same-text`). Each such change places
 the answer again (`placeEdit` runs `placeOnce` until no two overlapping picks share a word id), so the rule
-holds on the placed times; a dropped pick keeps its position in the answer, so the other picks keep their ids. Text picks never
-share the screen in time: they show one at a time, the earlier one cut where the later one starts (or the
-later one waiting, for the hook and a big word), noted (`text-one-at-a-time`). A visual may overlap any
-pick; each such overlap is kept and noted.
+holds on the placed times; a dropped pick keeps its position in the answer, so the other picks keep their ids. Text picks share the
+screen in time: no pick cuts another's time, and two conflict only where they overlap on screen at the
+same moment, which the placer never allows (the old paths note it). So the same-text rule meets more
+pairs than before: a list that starts on an accent's last word gives that word up (trimmed to its own
+words, from the next word's entrance), an accent said inside a list whose words it repeats is dropped,
+and a big word whose lead reaches into an accent ending on its word trims the accent to its other words.
 
 - Inputs: the current version (footage and captions kept, never its sounds; each word fix becomes the text
   of the caption showing that word; old positions and sizes are removed), the answer's choices, the
@@ -424,12 +438,12 @@ pick; each such overlap is kept and noted.
     visual may run past its short sentence. A fallback that moves it earlier than its sentence is
     noted `retimed` (rule `visual-time`).
   - A big word's lead never starts before 0. Captions have no lead.
-  - The hook: from `pace.hook.fromSeconds` to `untilSeconds` ("The written hook" above), its start fixed.
+  - The hook: from `pace.hook.fromSeconds` to `untilSeconds` ("The written hook" above), its window.
   - Transitions (LIST): from 0.3 s before their phrase's first word (the entrance) to its last word's end;
     no hold (`transitionTiming`, "Transitions tied to a phrase" above).
-  - The text picks are then cut so that they show one at a time (see Placement, `text-one-at-a-time`):
-    the earlier one ends where the later one starts, and nothing waits. A big word or visual over hidden
-    footage moves to the next visible moment (see Placement).
+  - No element cuts another's time: each span comes from its words (or the hook's window) alone, and
+    two elements conflict only where they overlap on screen at the same moment. A big word or visual
+    over hidden footage moves to the next visible moment (see Placement).
 - Scene: the reel is cut into moments at every item edge; each moment's face is the bounding box
   of the robust faces around it (`facesOver` in `src/head-track.ts`: at each head-track sample, the
   samples within 0.5 s, `cx` their median, the width their upper quartile, the top their lower
@@ -441,16 +455,21 @@ pick; each such overlap is kept and noted.
   time, the text already placed over it, the `PLATFORM_BUTTONS` notch) as the largest free
   rectangles (each rectangle an obstacle cuts becomes its parts left, right, above and below), and
   `placeBox`: the whole-pixel place nearest a wanted point where a box fits.
-- Placement by priority:
-  - Transitions' text levels first, in their layer's free space (see "Transitions tied to a phrase").
-    Then the written hook, in its fixed slot (see "The written hook").
-  - Then the other components, each in answer order: accents (questions with them), big words, visuals.
+- Placement in order of start time (spec decision 8):
+  - The components by their start time, ties by the answer's order (the hook, accents, questions, big
+    words, visuals, lists), each avoiding the components placed before it that share a moment with it.
     They never avoid captions: captions are not placed yet, and the captions take the space left.
-  - Accent and question: the placer (above). Zones above the head (its top 190 px above the head), the
-    upper third, anywhere in the safe zone (with no head: the accent line at y 1130 first); at most the
-    `accent` base 110 px, shrunk in 10% steps to 30 px, wrapped freely at cost 0; the face a cost (100),
-    a zone step and a shrink step 10 each; never over other text (hard). Notes the placer's: `placed`, or
-    `moved` (rule `zone`), `shrunk` and `wrapped` (rule `size`), `covers-face` (rule `face`), `no-spot`.
+  - Hook, accent, question and LIST stack: the placer (above), never over other text (hard); the face a
+    cost (100), a zone step and a shrink step 10 each, wrapping free. The hook: the upper third, then
+    anywhere in the safe zone, at most the `accent` base 110 px. Accent and question: zones above the
+    head (its top 190 px above the head), the upper third, anywhere in the safe zone (with no head: the
+    accent line at y 1130 first); at most 110 px, shrunk in 10% steps to 30 px. The stack: the upper
+    third, then anywhere in the safe zone; at most its key's 110 px (the number 300, the lead-in 50),
+    shrunk together to a key of 66 (its lead-in at 30 px). A two-item stack at full size is 508 px high
+    and the upper third 416, so it takes the safe zone whole (one zone step, 10) rather than two shrink
+    steps (20) there; there the want is S's centre, and the face pushes it to the strip beside it or
+    below it. Notes the placer's: `placed`, or `moved` (rule `zone`), `shrunk` and `wrapped` (rule
+    `size`), `covers-face` (rule `face`), `no-spot`.
   - Big word: as large as fits between the side margins (at most `maxSize`, 400 px), its centre
     wanted `belowHeadTop` below the robust head top at its span (or at `noHeadY`), at the nearest
     place inside the frame (40 px margin, never above `PLATFORM_SAFE`'s top 220). The head never moves
@@ -534,42 +553,33 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (the h
   allows: an accent or question exactly its words; a big word from the lead before its first word (0.2 s)
   to its last word's end (at least 1.5 s, a target); a visual from its first word to its last word's end
   (1 to 2 s); a list from 0.3 s before its phrase's first word to its last word's end; the hook in its
-  window. The text picks then cut each other, never wait (`text-one-at-a-time`, below). Each pick takes its normal spot when a free one exists. When none
-  does, an old-path pick takes its default spot anyway (a transition's text at the head's upper place
-  or the line, a big word at its head rule's centre, a visual at the top-left corner of the safe zone),
-  at the largest size that fits and never below `MIN_TEXT_SIZE` (8 px). The overlap is noted
-  `kept-overlapping` (rule `all-picks`) with what it sits over (the face, other text, named) or the picks it
-  shares its time with. Text never overlaps other text while a free spot exists (Rules): the default spot
-  over other text is the last resort for each old-path text, after the face-only tier. An accent or
-  question is never set over other text: with no legal spot at 30 px or more it is left out (`no-spot`),
-  its words shown as captions. The only `dropped` note is the
+  window. No pick cuts another's time. Each pick takes its normal spot when a free one exists. When none
+  does, an old-path pick (a big word, a visual) takes its default spot anyway (a big word at its head
+  rule's centre, a visual at the top-left corner of the safe zone), at the largest size that fits and
+  never below `MIN_TEXT_SIZE` (8 px). The overlap is noted `kept-overlapping` (rule `all-picks`) with
+  what it sits over (the face, other text, named). Text never overlaps other text while a free spot
+  exists (Rules): the default spot over other text is the last resort for each old-path text, after the
+  face-only tier. The hook, an accent, a question or a LIST stack is never set over other text: with no
+  legal spot at 30 px or more it is left out (`no-spot`), its words shown as captions. The only `dropped`
+  note is the
   same-text rule's (`src/engine.test.ts`, "every pick shown, or dropped where another pick shows its text"). The fallbacks, each noted:
   - A big word or a visual too close to the reel's end for its minimum: the end is the reel's end and the
     start moves earlier, so it shows at least `SHOWN_FLOOR_SECONDS` (0.5 s) (`clamped-to-end`). An accent,
     question or list has no minimum, so it is never shown from earlier; a pick with no length at all
     shows the floor from its start (`clamped-to-end`, rule `accent-time`).
-  - Text one at a time (`text-one-at-a-time`, `retimed`), and no text waits: the hook, accents,
-    questions, big words and lists never share the screen in time. Walking them in the order they start
-    (a tie going to the answer's order, the hook first), the earlier one ends where the later one starts.
-    So a text starting inside the hook's window ends the hook there, and a text starting before the hook
-    ends where the hook starts. A big word's minimum is a target: a text said later cuts it short. Each
-    text starts at its own start (an accent, question or list on its first word, a list's entrance 0.3 s
-    before it; a big word at its lead, never earlier than a text starting inside that lead; the hook at its
-    slot start), so no text lands after its own words. A text cut to no length, or a hook or big word cut
-    shorter than the shown floor (what the checks and the schema need), keeps its start and shows the shown
-    floor from there, over the text that cut it (noted, `kept-overlapping`); an accent, question or list
-    needs only a positive length. The words a cut text no longer shows are normal captions. A list's
-    entrance is never before the end of a text said earlier: it comes in later, the entrance shorter
-    (`transition-entrance`, `retimed`). Each note gives both items and their times in plain words. Visuals
-    are not text and are never cut.
+  - No text cuts another's time (spec: there is no one-text-at-a-time rule). Each text starts at its own
+    start (an accent, question or list on its first word, a list's entrance 0.3 s before it; a big word
+    at its lead; the hook at its window's start), so no text lands after its own words, and each ends at
+    its own end (a big word's minimum is a minimum, not a target). Two texts on screen at the same moment
+    are kept apart on screen by the placer; the same-text rule alone trims a pick that repeats another's
+    word at that moment. Visuals are not text and are never cut.
   - A big word or visual over hidden footage: the next visible moment, the first kept time after the
     cut, else the last one before it (`moved-off-cut`, rule `hidden-footage`). With no visible moment
     at all it stays over the cut, and the schema then refuses that edit.
   - A transition or list pick with no caption text of its own: the words of its phrase are its text
     (`text-from-words`); a text over 300 characters is cut at a word, noted the same way.
   - The hook: its start moves earlier when the reel is shorter than its window (`clamped-to-end`, rule
-    `hook-time`); with no free place at any size, its slot at the largest size that fits, the overlap
-    noted. The hook keeps its fixed slot in both cases.
+    `hook-time`); with no legal spot at 30 px or more it is a `no-spot`, left out (above).
 - Captions are never dropped: with no free place even at the floor, they take the caption line over
   the face (recorded `covers-face`); only with no free place there either do they sit over other text,
   each caption noted `kept-overlapping` with the texts it sits over. A caption left out while an extra shows its words is not dropped:
@@ -581,19 +591,20 @@ contrast 1.8:1 from 0.28 s to 7.51 s, no free place nearby reaches 4.5:1` (the h
   `question/as-accent`, `bigword/behind`, `visual/card`, `list/numbered`, `caption/default`); `start` and
   `end` are the placed span in seconds. `outcome` is one of `placed`, `moved` (not its kind's first
   place), `shrunk`, `wrapped`, `retimed` (a clamped or moved-off-cut span, a same-text trim), `covers-face`,
-  `dropped` (same-text left no word of its own), `no-spot` (an accent or question with no legal spot, left
-  out) or `kept-overlapping` (an old-path text kept over other text or another pick; a transitional value,
-  see the layout spec). `blockers` names what took the space it did not get: `{ kind: "item" | "caption", id }`
-  for the texts a kept-overlapping text sits over, `{ kind: "face" }` for a covers-face note; a placer note
-  (an accent's or question's) carries the placer's own blockers, with `zone`, `size`, `lines` and `cost`
-  set. Every shown element with no other note gets a
+  `dropped` (same-text left no word of its own), `no-spot` (a placer element, the hook, an accent, a
+  question or a LIST stack, with no legal spot, left out) or `kept-overlapping` (an old-path text kept
+  over other text; a transitional value, see the layout spec). `blockers` names what took the space it
+  did not get: `{ kind: "item" | "caption", id }` for the texts a kept-overlapping text sits over,
+  `{ kind: "face" }` for a covers-face note; a placer note (the hook's, an accent's, a question's or a
+  stack's) carries the placer's own blockers, with `zone`, `size`, `lines` and `cost` set (a stack's
+  `size` is its key's, its `lines` every level's). Every shown element with no other note gets a
   `placed` note, so the record names every element. `reason` says in plain words what happened, with the
   item's text and times, for example
   `{ "item": "visual-1", "component": "VISUAL", "variant": "visual/card", "start": 23.48, "end": 26.23, "rule": "text-overlap", "outcome": "kept-overlapping", "blockers": [{ "kind": "item", "id": "accent-1" }], "reason": "visual 1 sits over the face from 23.48 s to 26.23 s; kept, every pick is shown" }`.
   The placer's notes are written in this shape and pass through as they are. The old code paths' rule
   names (the sections above) map to the record's vocabulary
-  (`RULE_OF` in `engine-note.ts`): `*-time`, `*-min`, `transition-entrance` and `text-one-at-a-time`
-  are `timing`; `*-spot` is `zone`; `*-size` and `*-wrap` are `size`; `*-face` is `face`; `all-picks` is
+  (`RULE_OF` in `engine-note.ts`): `*-time` and `*-min` are `timing`; `*-spot` is `zone`; `*-size` is
+  `size`; `*-face` is `face`; `all-picks` is
   `text-overlap`; `transition-text` is `text`; `contrast-spot` and `contrast-stay` are `contrast`
   (readability is out with build step 11); `hidden-footage` and `same-text` keep their names. The
   placer's outcomes map as: `low-contrast`, `text-from-words` to `placed`, `clamped-to-end` and
@@ -731,9 +742,13 @@ never fatal.
     question as an accent; a big word from the lead before its word, at least 1.5 s, one word or two in
     one element, the same word again; a visual from its first word, 1 to 2 s, shown even past its short
     sentence.
-  - "text picks one at a time": an accent cut where a list starts, a list cut by an accent with its later
-    words shown as captions, a big word cut by an accent said in its minimum, a visual never cut for an
-    accent; no text lands after its own words and no two texts share the screen, on the dense reels.
+  - "text picks share the screen in time": a list starting on an accent's last word trimmed to its own
+    words (the earlier accent keeps the word), an accent said inside a list whose words it repeats
+    dropped, a list kept whole where a big word starts inside its last word, a big word's minimum kept
+    with an accent said inside it, a visual never cut; the real-reel case, a LIST item "what we do" and
+    the big word "AI" far apart on screen both kept for their full spans; a key phrase wider than the
+    safe zone wrapped inside it; no text lands after its own words and no text cuts another's time, on
+    the dense reels.
   - "the layout engine's timing" also: a list's layer starts 0.3 s before its first word, never before 0.
   - "never the same word twice on screen": the caption words an accent or big word shows are left out
     (`and sense of purpose` reads `and`, `it to the world` reads `it to the`), a whole group hidden,
@@ -773,10 +788,10 @@ never fatal.
     zone; cut where a text said in its window starts, the floor over it when that is too short, noted;
     an accent said before the hook ends where the hook starts; its place and size kept when an accent and
     a visual are asked for in its window; read back and placed the same again; a
-    caption-heavy opening keeps the hook; never below the schema's minimum size, and wide words shrink
-    it until two lines fit; a reel too short for its window shows it from earlier, to the reel's end,
-    noted.
-  - "every pick shown": every pick passes the schema; the text picks one at a time, noted; a visual exact;
+    caption-heavy opening keeps the hook; never under the placer's 30 px (a very long word shrinks to
+    it on one line, a long sentence wraps at the base), and wide words shrink and wrap freely; a reel
+    too short for its window shows it from earlier, to the reel's end, noted.
+  - "every pick shown": every pick passes the schema; no accent cut in time; a visual exact;
     a question shown with the others; the cuts and overlaps said in the record; a visual the face leaves no
     corner for placed over the face, noted `covers-face`; a big word the head hides placed at every height
     where it is, noted; a transition that runs during the hook shown with the hook's window kept.
@@ -845,10 +860,10 @@ never fatal.
 - Never read a single head-track sample for a placement or a check: always the robust faces
   (`facesOver`).
 - Never show an accent or question before its first word, nor a big word more than `accent.leadSeconds`
-  before its word, nor a list more than its entrance before its first word. Never make a text wait: a text
-  pick never starts after its own words, and two text picks (the hook, accents, questions, big words, lists)
-  never share the screen in time, the earlier cut where the later starts (`text-one-at-a-time`), except a
-  floor the checks need (the hook, a big word), noted. A visual may overlap any pick; each overlap is noted.
+  before its word, nor a list more than its entrance before its first word. Never make a text wait and
+  never cut a text's time for another: a text pick never starts after its own words, and two picks (the
+  hook, accents, questions, big words, lists, visuals) may share the screen in time; they conflict only
+  where they overlap on screen at the same moment, and the placer keeps them apart.
 - Never show a spoken word twice at once: a caption's words that an accent, a big word or a list shows
   are left out while that text is on screen (the caption split in time, never blinking in or out of its
   group); the words a cut text no longer shows stay on screen as captions. Two text picks on screen together
@@ -859,18 +874,19 @@ never fatal.
   one hook in a version, never a hook with words, and never a caption left out for it.
 - Never end the hook with a full stop or an ellipsis (`stripHookStop` takes them off; "?" and "!"
   stay).
-- Never drop the hook, never cut it short, and never let another pick move or shrink it. A transition
-  or any other pick may show during it (noted).
-- The hook's window never shifts: it is placed first, and its only clamp is `hook-time` (a reel too
-  short for its window).
+- Never cut the hook's time and never drop it for another pick: it runs its whole window, and a pick
+  said in that window is placed around it. Its spot is the placer's, like any element's (a pick said
+  before 0.2 s is placed before it, by start time, and the hook then avoids it).
+- The hook's window never shifts: its only clamp is `hook-time` (a reel too short for its window).
 - Never let a caption drop the hook: the hook is placed before the captions, and the captions in its
   window keep clear of it (move, shrink, or last, over the face).
 - Captions take the space the components leave: no component is placed around a caption (the hook,
   accents, questions, big words, visuals and list levels are placed first and never avoid captions), and
   a caption avoids every component and every other caption. A caption over other text is the last resort
   only, noted.
-- Never drop the hook for its size: below the floor it shrinks until its words fit in one or two lines
-  (`hook-size`).
+- The hook shrinks to the placer's 30 px and wraps freely before it gives anything up; a hook that fits
+  nowhere at 30 px or more is a `no-spot` like any element, left out of that version and noted (never
+  set under 30 px, never over other text).
 - Never move a big word up for the head: a big word the face covers more of than the lower 30%
   (`behind.word.minVisible`) is kept and noted. Never place one above `PLATFORM_SAFE`'s top.
 - Never let a visual leave its card: it is a corner card in front of the speaker, never behind them,

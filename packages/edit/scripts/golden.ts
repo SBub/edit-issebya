@@ -164,9 +164,9 @@ const request = editFromAnswer(
 if (!request.ok) throw new Error(request.reasons.join("; "));
 await write("rethink-work-request", withPlaceholders(request.edit));
 
-// The engine's choices with two numbered transitions: the first two items of
-// the list "fair pay, ..., protected mental health" (w104 is too close to the
-// first item for both to show, so the second is w106 to w108).
+// The engine's choices with two numbered transitions: the first and third
+// items of the list "fair pay, flexible time, protected mental health", each
+// placed as one stack (its number, lead-in and key phrase).
 const withTransitions = editFromAnswer(
   behind.edit,
   {
@@ -192,8 +192,8 @@ for (const note of withTransitions.record.filter((entry) => entry.item.startsWit
 await write("rethink-work-transitions", withPlaceholders(withTransitions.edit));
 
 // The engine's choices with the written hook the owner liked on her reel:
-// from 0.2 s to 3 s, the one extra of that window (the accent there waits for
-// nothing and is dropped), wrapped and shrunk in the upper part of the frame.
+// from 0.2 s to 3 s, its whole window, wrapped in the upper third; an accent
+// said in that window is placed around it.
 const withHook = editFromAnswer(
   behind.edit,
   { ...choices, hook: { text: "Gen Z won't work like you did" } },

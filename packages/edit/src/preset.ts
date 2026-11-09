@@ -24,12 +24,8 @@ export interface PresetTransition {
   motion: "fade" | "slide";
   seconds: number;
   ease: string;
-  // The wanted top of the level stack (the safe zone is `SAFE_ZONE`).
-  want: number;
   // The line Claude reads about the kind.
   description?: string;
-  // `numbered`: the number's font size.
-  numberSize?: number;
 }
 
 export type SoundKey = "click";
@@ -312,10 +308,8 @@ export const ISSEBYA_PRESET: Preset = {
       motion: "fade",
       seconds: 0.3,
       ease: "power2.out",
-      want: 640,
       description:
         "a large number over the phrase, the phrase below: for each item of a list the speaker goes through, numbered in order",
-      numberSize: 300,
     },
   },
   transition: {

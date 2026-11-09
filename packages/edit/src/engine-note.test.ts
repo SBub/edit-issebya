@@ -52,7 +52,7 @@ const recordOf = (
 const note = (action: PlaceAction, extra: Partial<PlaceNote> = {}): PlaceNote => ({
   item: "accent-1",
   action,
-  rule: "hook-spot",
+  rule: "caption-spot",
   reason: `the ${action} note`,
   ...extra,
 });
@@ -79,12 +79,13 @@ describe("toEngineRecord", () => {
     const rules: [string, string][] = [
       ["caption-min", "timing"],
       ["visual-time", "timing"],
-      ["text-one-at-a-time", "timing"],
+      ["hook-time", "timing"],
+      ["transition-min", "timing"],
       ["hidden-footage", "hidden-footage"],
       ["same-text", "same-text"],
       ["caption-spot", "zone"],
-      ["hook-size", "size"],
-      ["hook-wrap", "size"],
+      ["big-word-size", "size"],
+      ["visual-size", "size"],
       ["visual-face", "face"],
       ["all-picks", "text-overlap"],
       ["transition-text", "text"],
