@@ -1,7 +1,8 @@
 import type { TextBox } from "./engine-space.ts";
 import type { Measurer } from "./measure.ts";
+import { textLines } from "./lines.ts";
 import { type FontKey, type Preset, type PresetTransition, SHOWN_FLOOR_SECONDS } from "./preset.ts";
-import type { Anchor, Edit, TransitionLevel } from "./schema.ts";
+import type { Anchor, Edit } from "./schema.ts";
 import { type ResolvedItem, anchorAt, resolveAnchor } from "./timeline.ts";
 import type { Word } from "./transcript.ts";
 
@@ -129,14 +130,6 @@ export function levelStyle(
   return { font, size, color: preset.accent.color };
 }
 
-// A level's lines: split after `break_after` words when set.
-function levelLines(level: Pick<TransitionLevel, "text" | "break_after">): string[] {
-  const words = level.text.split(" ");
-  const cut = level.break_after;
-  if (cut === undefined || cut >= words.length) return [level.text];
-  return [words.slice(0, cut).join(" "), words.slice(cut).join(" ")];
-}
-
 // Every transition's levels as text boxes, in frame pixels, each shown from
 // its own start until its layer leaves. Ids are `<transition>-<role>`.
 export function levelBoxes(
@@ -154,7 +147,7 @@ export function levelBoxes(
       const level = item.levels[role];
       if (!level) continue;
       const { font, color } = levelStyle(role, preset);
-      const lines = levelLines(level);
+      const lines = textLines(level.text, level.breaks);
       const width = Math.max(...lines.map((line) => measurer.width(font, level.size, line)));
       const { x, y, align } = level.position;
       const left = align === "left" ? x : align === "right" ? x - width : x - width / 2;

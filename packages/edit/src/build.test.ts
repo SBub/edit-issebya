@@ -129,6 +129,21 @@ describe("build", () => {
     expect(assets.some((asset) => asset.role === "mask")).toBe(false);
   });
 
+  it("renders a text with two breaks in three lines", async () => {
+    const edit = structuredClone(engine.edit);
+    const accent = edit.tracks.overlays.find((item) => item.kind === "accent")!;
+    accent.text = "one two three four";
+    accent.breaks = [1, 2];
+    const { html } = build(
+      edit,
+      engine.transcript,
+      engine.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(html).toContain("one<br />two<br />three four");
+  });
+
   it("escapes text and style values", async () => {
     const edit = structuredClone(engine.edit);
     edit.tracks.captions[0]!.text = `<b>"Tom" & 'Jerry'</b>`;

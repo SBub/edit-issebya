@@ -65,7 +65,6 @@ describe("withMasks", () => {
     const visual: BehindItem = {
       id: "visual-1",
       kind: "visual",
-      spot: "top",
       box: { x: 0, y: 0, width: 10, height: 10 },
       start: { time: 5.1 },
       end: { time: 7.967 },

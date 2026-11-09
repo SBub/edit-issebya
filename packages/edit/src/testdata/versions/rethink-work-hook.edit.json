@@ -3117,7 +3117,9 @@
           "y": 220,
           "align": "left"
         },
-        "break_after": 3
+        "breaks": [
+          3
+        ]
       },
       {
         "id": "accent-1",
@@ -3200,7 +3202,6 @@
           "offset": -0.059
         },
         "kind": "visual",
-        "spot": "left",
         "box": {
           "x": 75,
           "y": 1115,

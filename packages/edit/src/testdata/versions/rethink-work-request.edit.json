@@ -3120,7 +3120,6 @@
         },
         "kind": "visual",
         "description": "a question mark on a wall",
-        "spot": "top",
         "box": {
           "x": 645,
           "y": 260,

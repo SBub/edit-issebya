@@ -6,6 +6,7 @@ import type { HeadTrack } from "./head-track.ts";
 import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
 import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
+import { textLines } from "./lines.ts";
 import { FONT_KEYS, type Preset } from "./preset.ts";
 import type { BehindItem, Edit, EditMask, EditRef } from "./schema.ts";
 import { resolveSpans, resolveTimeline } from "./timeline.ts";
@@ -451,13 +452,6 @@ function behindElement(
   ])}>${escapeHtml(box.text)}</div>`;
 }
 
-// A text's lines: split after `break_after` words when set.
-function textLines(text: string, breakAfter: number | undefined): string[] {
-  const words = text.split(" ");
-  if (breakAfter === undefined || breakAfter >= words.length) return [text];
-  return [words.slice(0, breakAfter).join(" "), words.slice(breakAfter).join(" ")];
-}
-
 // The text the page shows in its own place, each at the position the layout
 // engine set: every caption shown there and every overlay (an accent or the
 // hook). Its width is HarfBuzz's. A shown text with no position is an error.
@@ -478,7 +472,7 @@ function placedText(
     const font = item.font ?? (kind === "caption" ? preset.caption.font : preset.accent.font);
     const size = item.size ?? preset.fonts[font].size;
     const text = item.text ?? wordsText(item.words ?? [], transcript, preset);
-    const lines = textLines(text, item.break_after);
+    const lines = textLines(text, item.breaks);
     const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
     const { x, y, align } = item.position;
     const left = align === "left" ? x : align === "right" ? x - width : x - width / 2;

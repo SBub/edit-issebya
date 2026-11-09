@@ -3163,7 +3163,9 @@
               "align": "center"
             },
             "size": 110,
-            "break_after": 1
+            "breaks": [
+              1
+            ]
           }
         }
       },
@@ -3268,7 +3270,6 @@
           "offset": -0.059
         },
         "kind": "visual",
-        "spot": "left",
         "box": {
           "x": 75,
           "y": 1115,

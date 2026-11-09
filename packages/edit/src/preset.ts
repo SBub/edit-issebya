@@ -44,7 +44,7 @@ export interface PresetSound {
 }
 
 // Where a VISUAL sits behind the speaker: three preset spots. A VISUAL the
-// layout engine places has its own box; its spot names the preset spot nearest it.
+// layout engine places has its own box, not one of these.
 export type BehindSpot = "top" | "left" | "right";
 export const BEHIND_SPOTS = ["top", "left", "right"] as const satisfies readonly BehindSpot[];
 

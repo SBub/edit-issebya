@@ -8,6 +8,7 @@ import { placeEdit } from "./engine.ts";
 import { type EngineInput, choicesOf } from "./engine-input.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import { wordsText } from "./glossary.ts";
+import { textLines } from "./lines.ts";
 import { LAYOUT_PADDING, type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE, SHOWN_FLOOR_SECONDS } from "./preset.ts";
 import { MIN_TEXT_SIZE, type Edit, parseEdit } from "./schema.ts";
@@ -565,17 +566,11 @@ describe("the layout engine's placement", () => {
         );
         const fronts: { id: string; box: Box; span: { start: number; end: number } }[] = [
           ...edit.tracks.overlays.map((item) => {
-            const lines =
+            const text =
               item.kind === "hook"
-                ? [item.text!]
-                : [wordsText(item.words!, transcript, ISSEBYA_PRESET)];
-            const words = lines[0]!.split(" ");
-            const broken = item.break_after
-              ? [
-                  words.slice(0, item.break_after).join(" "),
-                  words.slice(item.break_after).join(" "),
-                ]
-              : lines;
+                ? item.text!
+                : wordsText(item.words!, transcript, ISSEBYA_PRESET);
+            const broken = textLines(text, item.breaks);
             const width = Math.max(
               ...broken.map((line) => measurer.width(ISSEBYA_PRESET.accent.font, item.size!, line)),
             );
@@ -752,7 +747,7 @@ describe("the layout engine's placement", () => {
     );
     const accent = edit.tracks.overlays[0]!;
     expect(accent.id).toBe("accent-1");
-    expect(accent.break_after).toBeGreaterThan(0);
+    expect(accent.breaks?.[0]).toBeGreaterThan(0);
     expect(accent.size).toBe(110);
     expect(record.filter((note) => note.item === "accent-1").map((note) => note.outcome)).toEqual([
       "wrapped",

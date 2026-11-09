@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  maskSpans,
-  nearestSpot,
-  needsCutout,
-  spotBox,
-  spotFaceShare,
-  visualBox,
-} from "./behind.ts";
+import { maskSpans, needsCutout, spotBox, spotFaceShare, visualBox } from "./behind.ts";
 import { build } from "./build.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import type { BehindItem, BehindWordItem, Edit } from "./schema.ts";
@@ -78,7 +71,6 @@ describe("visual boxes", () => {
     ({
       id: "v",
       kind: "visual",
-      spot: "left",
       box: { x: 40, y: 560, width: 460, height: 620 },
       start: { time: 0 },
       end: { time: 2 },
@@ -95,13 +87,7 @@ describe("visual boxes", () => {
     });
   });
 
-  it("names the nearest spot, and only what sits behind needs the cut-out", () => {
-    expect(nearestSpot({ left: 220, right: 860, top: 220, bottom: 700 }, ISSEBYA_PRESET)).toBe(
-      "top",
-    );
-    expect(nearestSpot({ left: 600, right: 1000, top: 700, bottom: 1000 }, ISSEBYA_PRESET)).toBe(
-      "right",
-    );
+  it("only what sits behind needs the cut-out", () => {
     expect(needsCutout(item())).toBe(false);
     expect(needsCutout(word("WORK"))).toBe(true);
   });
@@ -125,7 +111,6 @@ describe("maskSpans", () => {
     edit.tracks.behind![0] = {
       id: "b0",
       kind: "visual",
-      spot: "top",
       box: { x: 90, y: 160, width: 900, height: 600 },
       start: { time: 5 },
       end: { time: 7 },

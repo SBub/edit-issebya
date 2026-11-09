@@ -1,5 +1,5 @@
 import type { Backgrounds } from "./background.ts";
-import { bigWordCoveredShare, nearestSpot } from "./behind.ts";
+import { bigWordCoveredShare } from "./behind.ts";
 import { clicksFor } from "./clicks.ts";
 import { contrastRatio, relativeLuminance } from "./contrast.ts";
 import {
@@ -22,6 +22,7 @@ import { expand, overlaps, placeBox } from "./engine-space.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import { type Box, type HeadTrack, LAYOUT_PADDING, boundingBox, facesOver } from "./head-track.ts";
 import { wordsText } from "./glossary.ts";
+import { breaksOf } from "./lines.ts";
 import type { Measurer } from "./measure.ts";
 import type { PickedVariants } from "./variant-picker.ts";
 import {
@@ -1105,7 +1106,7 @@ function placeOnce(
       delete rest.text;
       delete rest.position;
       delete rest.size;
-      delete rest.break_after;
+      delete rest.breaks;
       delete rest.hidden_by;
       return splitCaption(rest);
     })
@@ -1526,7 +1527,7 @@ function placeOnce(
         start: level.spec.start,
         position: { x: centre, y, align: "center" },
         size: level.size,
-        ...(level.lines.length > 1 ? { break_after: level.lines[0]!.split(" ").length } : {}),
+        ...(level.lines.length > 1 ? { breaks: breaksOf(level.lines) } : {}),
       };
       shown.push({
         id: plan.id,
@@ -2055,7 +2056,7 @@ function placeOnce(
               words: ids,
               position: { x: place.x, y: place.y, align: "left" },
               size,
-              ...(lines.length > 1 ? { break_after: lines[0]!.split(" ").length } : {}),
+              ...(lines.length > 1 ? { breaks: breaksOf(lines) } : {}),
             };
             overlays.set(extra.id, item);
             shown.push({
@@ -2177,7 +2178,7 @@ function placeOnce(
         end: anchorAt(span.end, transcript.words),
         position: { x: place.x, y: place.y, align: "left" },
         size,
-        ...(lines.length > 1 ? { break_after: lines[0]!.split(" ").length } : {}),
+        ...(lines.length > 1 ? { breaks: breaksOf(lines) } : {}),
       });
       shown.push({
         id: extra.id,
@@ -2567,7 +2568,6 @@ function placeOnce(
         id: extra.id,
         kind: "visual",
         ...(visual.description ? { description: visual.description } : {}),
-        spot: nearestSpot(box, preset),
         box: { x: spot.x, y: spot.y, width, height },
         start:
           Math.abs(span.start - sentence.start) < 0.0005

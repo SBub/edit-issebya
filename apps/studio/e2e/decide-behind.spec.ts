@@ -94,7 +94,6 @@ async function currentVersion() {
     tracks: {
       behind?: {
         kind: string;
-        spot?: string;
         box?: { width: number; height: number };
       }[];
     };

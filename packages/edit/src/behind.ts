@@ -1,6 +1,6 @@
 import type { Box } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
-import { BEHIND_SPOTS, type BehindSpot, type FontKey, type Preset } from "./preset.ts";
+import type { BehindSpot, FontKey, Preset } from "./preset.ts";
 import type { BehindItem, BehindVisualItem, BehindWordItem, Edit } from "./schema.ts";
 import { type Span, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -21,24 +21,6 @@ export function visualBox(item: BehindVisualItem): Box {
 // needs none.
 export function needsCutout(item: BehindItem): boolean {
   return item.kind === "word";
-}
-
-// The preset spot nearest a VISUAL's box (by their centres, ties in spot
-// order): what a placed VISUAL's `spot` names.
-export function nearestSpot(box: Box, preset: Preset): BehindSpot {
-  const cx = (box.left + box.right) / 2;
-  const cy = (box.top + box.bottom) / 2;
-  let best: BehindSpot = BEHIND_SPOTS[0];
-  let distance = Infinity;
-  for (const spot of BEHIND_SPOTS) {
-    const at = spotBox(spot, preset);
-    const d = Math.hypot((at.left + at.right) / 2 - cx, (at.top + at.bottom) / 2 - cy);
-    if (d < distance - 1e-9) {
-      best = spot;
-      distance = d;
-    }
-  }
-  return best;
 }
 
 // The share (0 to 1) of a box the face box covers; 0 without a face.

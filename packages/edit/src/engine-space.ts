@@ -10,7 +10,7 @@ export interface TextBox extends Span {
   // hook (Claude's own line, nobody says it).
   kind: "caption" | "accent" | "hook" | "level";
   text: string;
-  // The text's lines: one, or two for a text set with `break_after`.
+  // The text's lines: one, or more for a text set with `breaks`.
   lines: string[];
   font: FontKey;
   size: number;

@@ -34,7 +34,7 @@ types until slice 9 brings the live preview.
 - `tracks.behind`: the big words (behind the speaker) and the VISUALs (over the footage, in front of the
   speaker), any number of items. A VISUAL (`kind: "visual"`, `decide-17`) is an empty white stroke frame,
   a corner card (`behind.card`), always in front: `box` its place and size, which the layout engine always
-  writes, and `spot` the preset spot nearest it, with no picture and no asset.
+  writes, with no picture and no asset.
   It may carry an optional
   `description` (a short plain phrase of what the frame would show, at most 120 characters, the
   decide answer's own limit is 8 words), which is never shown on screen; the builder draws a
@@ -65,7 +65,7 @@ start, end }` ref plus the span of the reel it covers, in seconds, by start). A 
   re-time.
 - Per-item properties: captions and overlays take `words`, `text`, `font` (`primary` or
   `secondary`), `size`, `color` (`#RRGGBB`), `position` (`{ x, y, align }` inside the frame) and
-  `break_after` (set in two lines, this many words on the first); a big word behind the speaker
+  `breaks` (set in lines: each break is the number of words on the lines before it, ascending, so the builder cuts after each); a big word behind the speaker
   takes `position` (`{ x, y }`, its top left corner in the frame), `size` and `words` (the one or two word
   ids it shows, written by the engine; the same-text check reads them). A caption
   takes an optional `hidden_by` (the id of the accent, big word or list showing its words while it is on
@@ -75,7 +75,7 @@ start, end }` ref plus the span of the reel it covers, in seconds, by start). A 
   nobody says. A refinement refuses a hook with words or without text, and a second hook. Versions
   saved before it have none and parse as before.
   The layout engine writes `position` and `size` on every caption, accent, hook and big word it
-  places, and a VISUAL's `box` and `spot`. Positions remain optional in the format because the
+  places, and a VISUAL's `box`. Positions remain optional in the format because the
   engine's input (the baseline first version, and `placeEdit`'s `current`) has none; a placed version
   has them all.
   Footage clips take `hidden` spans; sounds `gain_db` (-60 to 12). Unset properties come from the
@@ -134,7 +134,7 @@ start, end }] }`).
   `data-volume`, both from `gain_db ?? gainDb`), at least 0.25 s apart.
 - Behind (`behind`, starting values the owner tunes by eye): the spots `top` (left 90, right 990,
   top 160, bottom 760), `left` (40 to 500, 560 to 1180) and `right` (580 to 1040, 560 to 1180); a
-  VISUAL's `spot` names the nearest of them, and its `box` is the place it is drawn in. The big word:
+  VISUAL's `box` is the place it is drawn in (the decide step reads the spots as clear places). The big word:
   `primary` font, at most 400 px, side margin 40, `#FFFFFF`, its vertical centre wanted 60 px below
   the head's top (`belowHeadTop`) or at y 700 with no head (`noHeadY`), the face may cover at most
   the lower 30% of its height (`minVisible` 0.7, the face only); the word is never moved up for the head, and a larger cover
@@ -187,12 +187,13 @@ start, end }] }`).
   (`sum(x_advance) * size / upem`) and records every width it measured (`widths()`, what the
   goldens compare). The same wasm on the same font bytes gives identical widths everywhere.
 - The builder places each caption, accent, hook and big word at the `position` the layout engine set
-  on it (`placedText`, `src/build.ts`), with its `size` and, when it has `break_after`, its two lines
-  (rendered `first<br />second`, centred). A shown caption or overlay with no position throws
+  on it (`placedText`, `src/build.ts`), with its `size` and, when it has `breaks`, its lines
+  (rendered joined by `<br />`, centred). A shown caption or overlay with no position throws
   `build: <kind> <id> has no position; place the edit first`, and a big word with no `position` or
   `size` throws the same way. `src/html.ts` escapes text and attributes and formats numbers.
+- `src/lines.ts`: `textLines(text, breaks)` (a text cut after each of its `breaks`, the builder and the transition levels share it) and `breaksOf(lines)` (the breaks the engine writes for its lines).
 - `src/behind.ts`: `spotBox(spot, preset)` (the spot's rectangle), `visualBox(item)` (a VISUAL's
-  `box`), `needsCutout(item)` (a big word only: a VISUAL is in front, over the footage), `nearestSpot(box, preset)`,
+  `box`), `needsCutout(item)` (a big word only: a VISUAL is in front, over the footage),
   `boxFaceShare`, `spotFaceShare`, `bigWordCoveredShare`, `placedBigWord` (a big word at its stored
   `position` and `size`, its width from HarfBuzz at 1 px) and `maskSpans(edit, transcript, preset)`:
   the span of each big word (the items that need the cut-out) padded by `padFrames`, clamped
@@ -235,7 +236,7 @@ start, end }] }`).
   The engine writes each item as a transition item with `words`, `key`, `list` (the list's place in the
   reel, 1, 2, ...), `number` (the item's place in its list, in reel order, 1, 2, ...; left out when the
   list keeps one item, so a one-item list shows no number) and `levels` (`number`, `lead`, `key`, each
-  `{ text, position, size, break_after?, start }`). Numbering restarts at 1 in each list.
+  `{ text, position, size, breaks?, start }`). Numbering restarts at 1 in each list.
   The lead-in (words before `key_from`) is caption text and the key phrase accent text, from the style
   roles (`levelStyle`), never a literal font or colour. The layer has no background and no dim:
   its number (only in a list of two or more items) and its text levels over the phrase.
@@ -335,7 +336,7 @@ word" is now "spoken words, plus one written hook at the start".
 
 `src/engine.ts`, `placeEdit(current, input, picked, transcript, headTrack, preset, measurer, { backgrounds? })`
 (`picked` is `pickVariants(input)`) returns `{ tracks, record }`: the edit's tracks as the builder consumes them (every caption, accent,
-hook and big word with `position` and `size`, every visual with a `box` and `spot`) and the record of
+hook and big word with `position` and `size`, every visual with a `box`) and the record of
 what it did. Pure and deterministic: no randomness, no clock, no I/O; the same input gives the same
 tracks and record. `editFromAnswer` (decide, returning `{ ok, edit, record }`) and the worker's
 `first_version` step (with no choices) call it, each with `pickVariants` of its input.
@@ -429,7 +430,7 @@ pick; each such overlap is kept and noted.
     levels and the button column, at either size; then over the face but off those texts, at either size
     (noted `covers-face`, rule `visual-face`); last, over other text at the full size, at the top-left
     corner of the safe zone when no spot is free (noted `kept-overlapping`, rule `all-picks`). Written:
-    `box` (the card's place and size), `spot` (the nearest preset spot).
+    `box` (the card's place and size).
   - Card contrast: with the background map, the WCAG ratio of the card's white edge against the footage
     in and 30 px around it (`ring`) must reach `minContrast` (1.5); below it the card tries nearby places
     (the readable-text grid, `readability.moveRadius`, inside `PLATFORM_SAFE`, clear of what the card's tier

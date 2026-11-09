@@ -6,7 +6,6 @@ import type { BehindItem } from "./schema.ts";
 const visual = (id: string, at: number): BehindItem => ({
   id,
   kind: "visual",
-  spot: "top",
   box: { x: 90, y: 160, width: 900, height: 600 },
   start: { time: at },
   end: { time: at + 1 },

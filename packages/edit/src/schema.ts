@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { Box } from "./head-track.ts";
 import {
   SHOWN_FLOOR_SECONDS,
-  BEHIND_SPOTS,
   FONT_KEYS,
   type Preset,
   SOUND_KEYS,
@@ -133,8 +132,15 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     size: z.number().int().min(MIN_TEXT_SIZE).max(400).optional(),
     color: z.string().regex(COLOR).optional(),
     position: position.optional(),
-    // Set in two lines: this many words of the text on the first.
-    break_after: z.number().int().min(1).max(60).optional(),
+    // Set in lines: each break is the number of words on the lines before it, so
+    // the text is cut after each (ascending, 1 to 60).
+    breaks: z
+      .array(z.number().int().min(1).max(60))
+      .min(1)
+      .refine((cuts) => cuts.every((cut, i) => i === 0 || cut > cuts[i - 1]!), {
+        message: "breaks ascend",
+      })
+      .optional(),
   };
   const clip = z.object({
     ...base,
@@ -164,7 +170,7 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     start: anchor,
     position,
     size: z.number().int().min(MIN_TEXT_SIZE).max(400),
-    break_after: textProps.break_after,
+    breaks: textProps.breaks,
   });
   const transition = z.object({
     ...base,
@@ -203,7 +209,6 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
       ...base,
       kind: z.literal("visual"),
       description: z.string().min(1).max(VISUAL_DESCRIPTION_MAX).optional(),
-      spot: z.enum(BEHIND_SPOTS),
       box: visualBox,
     }),
     z.object({

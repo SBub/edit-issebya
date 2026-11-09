@@ -245,7 +245,9 @@
           "y": 220,
           "align": "left"
         },
-        "break_after": 4
+        "breaks": [
+          4
+        ]
       }
     ],
     "transitions": [],

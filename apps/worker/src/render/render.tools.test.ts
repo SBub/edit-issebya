@@ -336,13 +336,12 @@ describe("the real render behind the speaker", () => {
     return Number(match[1]);
   }
 
-  it("renders a VISUAL in its spot and a big word, each changing only its own part", async () => {
+  it("renders a VISUAL in its box and a big word, each changing only its own part", async () => {
     const left = ISSEBYA_PRESET.behind.spots.left;
     const visual = await renderBehind("behind-visual", {
       id: "behind-visual",
       kind: "visual",
       description: "a kitchen",
-      spot: "left",
       box: {
         x: left.left,
         y: left.top,

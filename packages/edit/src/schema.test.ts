@@ -21,6 +21,24 @@ function reasons(json: unknown): string[] {
   return result.reasons;
 }
 
+describe("line breaks", () => {
+  const parsed = (breaks: number[]) =>
+    parseEdit(
+      withCaption((caption) => (caption.breaks = breaks)),
+      ISSEBYA_PRESET,
+      hand.transcript,
+    );
+
+  it("parses breaks that ascend, and refuses breaks that do not or are below one", () => {
+    expect(parsed([3, 7])).toMatchObject({ ok: true });
+    expect(parsed([3])).toMatchObject({ ok: true });
+    expect(reasons(withCaption((caption) => (caption.breaks = [7, 3]))).join("\n")).toContain(
+      "breaks ascend",
+    );
+    expect(reasons(withCaption((caption) => (caption.breaks = [0]))).length).toBeGreaterThan(0);
+  });
+});
+
 describe("the hook overlay", () => {
   const HOOK = {
     id: "hook",
@@ -184,11 +202,10 @@ describe("the behind track", () => {
     return result.reasons;
   }
 
-  // A VISUAL in the left spot, behind the speaker unless it says front.
+  // A VISUAL with its box, over the footage.
   const visual = (start: number, end: number, id = "p") => ({
     id,
     kind: "visual",
-    spot: "left",
     box: { x: 40, y: 560, width: 460, height: 620 },
     start: { time: start },
     end: { time: end },
@@ -234,7 +251,7 @@ describe("the behind track", () => {
     expect(behindReasons(edit).join("\n")).toMatch(/behind p: overlaps a hidden span of footage/);
   });
 
-  it("refuses three words, markup, a long word and an unknown spot", () => {
+  it("refuses three words, markup and a long word", () => {
     const word = (text: string) => ({
       id: "w",
       kind: "word",
@@ -245,9 +262,6 @@ describe("the behind track", () => {
     expect(behindReasons(withItems([word("big word three")])).length).toBeGreaterThan(0);
     expect(behindReasons(withItems([word("<b>")])).length).toBeGreaterThan(0);
     expect(behindReasons(withItems([word("a".repeat(25))])).length).toBeGreaterThan(0);
-    expect(
-      behindReasons(withItems([{ ...visual(10, 13), spot: "middle" }])).length,
-    ).toBeGreaterThan(0);
   });
 
   describe("with the decide limit on lengths", () => {
