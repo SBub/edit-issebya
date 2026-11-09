@@ -176,10 +176,63 @@ start_group() {
 
 # Starts the local otel-lgtm container. It is left running on exit, since it is cheap to
 # keep and its data survives; `docker compose -f docker-compose.monitoring.yml down` stops it.
+# One stack per machine: every checkout uses the same Compose project name, so a stack that
+# already answers on Grafana (from any checkout) is reused and not started again.
+# Up is not the same as working: the image can exit seconds after it starts (one of its programs
+# failing at start). So the script waits for Grafana to answer, recreates the container once when it
+# does not (the data volume is kept), and otherwise warns: the studio runs without monitoring, but
+# the worker's traces and logs are not recorded while it is down.
+monitoring_down=0
+
+monitoring_answers() { curl -fsS -o /dev/null --max-time 2 "$MONITORING_UI_URL/api/health"; }
+
+# True when the container is not running (exited, restarting or missing).
+monitoring_not_running() {
+  local states
+  states="$(docker compose -f "$MONITORING_COMPOSE" ps -a --format '{{.State}}' 2>/dev/null)" || return 0
+  [ "$states" = running ] && return 1
+  return 0
+}
+
+# Up to 60 seconds, polling every 2 seconds. Stops early when the container has exited.
+wait_for_monitoring() {
+  local i
+  for i in $(seq 1 30); do
+    monitoring_answers && return 0
+    monitoring_not_running && return 1
+    sleep 2
+  done
+  return 1
+}
+
+warn_monitoring_down() {
+  monitoring_down=1
+  echo "WARNING: local monitoring is DOWN at $MONITORING_UI_URL. Worker traces and logs are not recorded" >&2
+  echo "         until it runs again. The studio runs without it. Last lines of its log:" >&2
+  docker compose -f "$MONITORING_COMPOSE" logs --tail 10 2>&1 | sed 's/^/         | /' >&2
+  echo "         Fix: docker compose -f docker-compose.monitoring.yml up -d --force-recreate" >&2
+  echo "         (recreates the container and keeps its data volume)" >&2
+}
+
 start_monitoring() {
+  if monitoring_answers; then
+    ok "Local monitoring is already running at $MONITORING_UI_URL (reused)"
+    return
+  fi
   docker compose -f "$MONITORING_COMPOSE" up -d ||
     fail "docker compose up for the monitoring stack failed (see the output above)"
-  ok "Local monitoring is up (Grafana, Tempo, Loki, Prometheus)"
+  if wait_for_monitoring; then
+    ok "Local monitoring is up (Grafana, Tempo, Loki, Prometheus)"
+    return
+  fi
+  echo "..  Local monitoring did not answer: recreating its container once"
+  docker compose -f "$MONITORING_COMPOSE" up -d --force-recreate >/dev/null 2>&1 ||
+    echo "..  The recreate failed too (docker compose -f docker-compose.monitoring.yml logs)" >&2
+  if wait_for_monitoring; then
+    ok "Local monitoring is up after a recreate (Grafana, Tempo, Loki, Prometheus)"
+    return
+  fi
+  warn_monitoring_down
 }
 
 # Every process this script starts is stopped on Ctrl-C, on kill, on a closed terminal (HUP) and on
@@ -230,13 +283,17 @@ start_all() {
   done
   [ "$ready" = 1 ] || fail "$STUDIO_URL did not answer within 3 minutes"
 
+  local grafana_line="$MONITORING_UI_URL"
+  [ "$monitoring_down" = 1 ] &&
+    grafana_line="DOWN: $MONITORING_UI_URL does not answer, worker traces and logs are not recorded (see the warning above)"
+
   cat <<EOF
 
   Studio:                http://localhost:3000/studio
   Magic link emails:     Mailpit $MAILPIT_URL
   Database:              Supabase Studio $SUPABASE_STUDIO_URL
   Worker errors:         $WORKER_ERRORS (yarn dev:studio errors)
-  Grafana (worker):      $MONITORING_UI_URL
+  Grafana (worker):      $grafana_line
   Sign in with the owner email; the link arrives in Mailpit.
   Ctrl-C stops web, studio and the worker container.
   Monitoring keeps running: docker compose -f docker-compose.monitoring.yml down

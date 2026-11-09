@@ -2,6 +2,9 @@
 # holds Grafana (the UI), Tempo (traces), Loki (logs) and Prometheus (metrics) and takes
 # OpenTelemetry over OTLP/HTTP. The studio does not need it to run. Stop it with
 # `docker compose -f docker-compose.monitoring.yml down`.
+# One Compose project name for every checkout of the repo: a checkout in another folder would
+# otherwise start a second stack and fight over ports 3300 and 4318. One stack per machine.
+name: edit-issebya-monitoring
 services:
   otel-lgtm:
     # A pinned release, never latest (checked on Docker Hub, `docker manifest inspect`).
