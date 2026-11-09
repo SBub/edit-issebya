@@ -68,7 +68,6 @@ export function resolveTimeline(edit: Edit, transcript: Transcript): Map<string,
   const { tracks } = edit;
   for (const item of [
     ...tracks.footage,
-    ...(tracks.cutout ?? []),
     ...tracks.transitions,
     ...tracks.captions,
     ...tracks.overlays,

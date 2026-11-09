@@ -29,7 +29,7 @@ describe("baselineEdit", () => {
     const baseline = baselineEdit(SHORT_SPEECH.transcript, baselineInputs(), ISSEBYA_PRESET);
     const { tracks } = placeEdit(
       baseline,
-      { accents: [], big_words: [], visuals: [], transitions: [], word_fixes: [] },
+      { accents: [], questions: [], big_words: [], visuals: [], transitions: [], word_fixes: [] },
       SHORT_SPEECH.transcript,
       SHORT_SPEECH.headTrack,
       ISSEBYA_PRESET,
@@ -78,8 +78,6 @@ describe("baselineEdit", () => {
     const edit = baselineEdit({ words: [] }, baselineInputs(), ISSEBYA_PRESET);
     expect(edit.tracks.captions).toEqual([]);
     expect(edit.tracks.footage).toHaveLength(1);
-    expect(edit.tracks).not.toHaveProperty("cutout");
-    expect(edit.inputs).not.toHaveProperty("cutout");
     expect(parseEdit(edit, ISSEBYA_PRESET, { words: [] })).toMatchObject({ ok: true });
   });
 });

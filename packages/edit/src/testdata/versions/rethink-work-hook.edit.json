@@ -24,10 +24,9 @@
         "fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
         "file": "mask.mp4",
         "start": 19.767,
-        "end": 21.833
+        "end": 21.5
       }
-    ],
-    "photos": []
+    ]
   },
   "tracks": {
     "footage": [
@@ -2249,7 +2248,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 442.57,
+          "x": 380.35,
           "y": 1084,
           "align": "left"
         }
@@ -2268,7 +2267,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 556.07,
+          "x": 493.85,
           "y": 1084,
           "align": "left"
         }
@@ -2287,7 +2286,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 350.32,
+          "x": 288.1,
           "y": 1084,
           "align": "left"
         }
@@ -2306,7 +2305,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 463.82,
+          "x": 401.6,
           "y": 1084,
           "align": "left"
         }
@@ -2325,7 +2324,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 602.32,
+          "x": 540.1,
           "y": 1084,
           "align": "left"
         }
@@ -2344,7 +2343,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 664.82,
+          "x": 602.6,
           "y": 1084,
           "align": "left"
         }
@@ -2363,7 +2362,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 264,
+          "x": 201.77,
           "y": 1084,
           "align": "left"
         }
@@ -2382,7 +2381,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 424.25,
+          "x": 362.02,
           "y": 1084,
           "align": "left"
         }
@@ -2401,7 +2400,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 698.45,
+          "x": 636.22,
           "y": 1084,
           "align": "left"
         }
@@ -2417,7 +2416,13 @@
         },
         "words": [
           "w126"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 139,
+          "y": 1084,
+          "align": "left"
+        }
       },
       {
         "id": "cw127",
@@ -2430,7 +2435,13 @@
         },
         "words": [
           "w127"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 271.25,
+          "y": 1084,
+          "align": "left"
+        }
       },
       {
         "id": "cw128",
@@ -2443,7 +2454,13 @@
         },
         "words": [
           "w128"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 449,
+          "y": 1084,
+          "align": "left"
+        }
       },
       {
         "id": "cw129",
@@ -2456,7 +2473,13 @@
         },
         "words": [
           "w129"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 570.5,
+          "y": 1084,
+          "align": "left"
+        }
       },
       {
         "id": "cw130",
@@ -2469,7 +2492,13 @@
         },
         "words": [
           "w130"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 660.95,
+          "y": 1084,
+          "align": "left"
+        }
       },
       {
         "id": "cw131",
@@ -2482,7 +2511,13 @@
         },
         "words": [
           "w131"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 753.45,
+          "y": 1084,
+          "align": "left"
+        }
       },
       {
         "id": "cw132",
@@ -2495,7 +2530,13 @@
         },
         "words": [
           "w132"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 422.87,
+          "y": 1148,
+          "align": "left"
+        }
       },
       {
         "id": "cw133",
@@ -2508,7 +2549,13 @@
         },
         "words": [
           "w133"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 469.07,
+          "y": 1148,
+          "align": "left"
+        }
       },
       {
         "id": "cw134",
@@ -3075,13 +3122,11 @@
       {
         "id": "accent-1",
         "start": {
-          "word": "w29",
-          "offset": -0.2
+          "word": "w29"
         },
         "end": {
-          "word": "w33",
-          "edge": "end",
-          "offset": -0.074
+          "word": "w29",
+          "edge": "end"
         },
         "kind": "accent",
         "words": [
@@ -3097,13 +3142,11 @@
       {
         "id": "accent-2",
         "start": {
-          "word": "w112",
-          "offset": -0.2
+          "word": "w112"
         },
         "end": {
-          "word": "w117",
-          "edge": "end",
-          "offset": -0.072
+          "word": "w112",
+          "edge": "end"
         },
         "kind": "accent",
         "words": [
@@ -3112,50 +3155,12 @@
         "size": 110,
         "position": {
           "x": 286,
-          "y": 374,
+          "y": 378,
           "align": "left"
         }
       }
     ],
-    "transitions": [
-      {
-        "id": "transition-1",
-        "start": {
-          "word": "w126",
-          "offset": -0.5
-        },
-        "end": {
-          "word": "w134"
-        },
-        "type": "panel",
-        "words": [
-          "w126",
-          "w127",
-          "w128",
-          "w129",
-          "w130",
-          "w131",
-          "w132",
-          "w133"
-        ],
-        "key": "w126",
-        "levels": {
-          "key": {
-            "text": "work should fund life not take it over",
-            "start": {
-              "word": "w126"
-            },
-            "position": {
-              "x": 494.51,
-              "y": 1180,
-              "align": "center"
-            },
-            "size": 77,
-            "break_after": 3
-          }
-        }
-      }
-    ],
+    "transitions": [],
     "sounds": [
       {
         "id": "click-visual-1",
@@ -3176,9 +3181,9 @@
           "offset": -0.2
         },
         "end": {
-          "word": "w79",
+          "word": "w78",
           "edge": "end",
-          "offset": 0.219
+          "offset": 0.036
         },
         "sound": "click"
       }
@@ -3196,7 +3201,6 @@
         },
         "kind": "visual",
         "spot": "top",
-        "layer": "front",
         "box": {
           "x": 75,
           "y": 260,
@@ -3211,15 +3215,15 @@
           "offset": -0.2
         },
         "end": {
-          "word": "w79",
+          "word": "w78",
           "edge": "end",
-          "offset": 0.219
+          "offset": 0.036
         },
         "kind": "word",
         "text": "distribution",
         "position": {
           "x": 41,
-          "y": 390
+          "y": 490
         },
         "size": 197
       }

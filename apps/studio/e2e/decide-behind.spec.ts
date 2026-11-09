@@ -70,7 +70,7 @@ test.afterAll(async () => {
 interface VersionRow {
   id: string;
   number: number;
-  inputs: { masks?: unknown[]; photos?: string[] };
+  inputs: { masks?: unknown[] };
   rejected_reasons: string[];
   change_title: string | null;
   change_summary: string | null;
@@ -81,9 +81,9 @@ interface VersionRow {
 async function currentVersion() {
   const { data: reelRow } = await admin
     .from("reels")
-    .select("current_version_id, no_photos, no_big_word")
+    .select("current_version_id")
     .eq("id", reel!.reelId)
-    .single<{ current_version_id: string; no_photos: boolean; no_big_word: boolean }>();
+    .single<{ current_version_id: string }>();
   const { data: version } = await admin
     .from("versions")
     .select("id, number, inputs, rejected_reasons, change_title, change_summary, r2_key")
@@ -95,7 +95,6 @@ async function currentVersion() {
       behind?: {
         kind: string;
         spot?: string;
-        layer?: string;
         box?: { width: number; height: number };
       }[];
     };
@@ -120,15 +119,14 @@ test("the automatic decide proposes a visual, and the preview shows its frame", 
   // step (252 by 315), beside the speaker, never over the face.
   const v2 = await currentVersion();
   expect(v2.version.number).toBe(2);
-  expect(v2.behind).toEqual([expect.objectContaining({ kind: "visual", layer: "front" })]);
+  expect(v2.behind).toEqual([expect.objectContaining({ kind: "visual" })]);
   const [card] = v2.behind;
   expect([
     [360, 450],
     [252, 315],
   ]).toContainEqual([card!.box!.width, card!.box!.height]);
-  // No library photo is named by a new version.
-  expect(v2.version.inputs.photos ?? []).toEqual([]);
-  expect(v2.reel).toMatchObject({ no_photos: false, no_big_word: false });
+  // A version names no photo: the placed photo is gone from the edit.
+  expect(v2.version.inputs).not.toHaveProperty("photos");
 
   await routePreviewCdn(page);
   await page.goto(await signInLink(admin, owner.email, baseURL!));

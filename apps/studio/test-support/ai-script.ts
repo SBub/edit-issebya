@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 // The worker's scripted AI replies for the fixture clip: the written hook
 // (role `hook`, "A short test for the real studio") and the decide answer (one
 // accent word, one fixed word). On the 2.7 s clip the hook holds the screen
-// from 0.2 s to the end, and the accent shows over it (`all` placement: the
-// layout engine drops nothing the answer picks).
+// from 0.2 s to the end, and the accent shows over it (the layout engine drops
+// nothing the answer picks).
 export const SHORT_SPEECH_ANSWER = fileURLToPath(
   new URL("../../worker/src/decide/testdata/short-speech-answer.json", import.meta.url),
 );

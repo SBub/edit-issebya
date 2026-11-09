@@ -8,11 +8,10 @@ import { placeEdit } from "./engine.ts";
 import { type EngineInput, choicesOf } from "./engine-input.ts";
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import {
-  CLEAN_PRESET,
   ISSEBYA_PRESET,
   PLATFORM_BUTTONS,
   PLATFORM_SAFE,
-  type Preset,
+  SHOWN_FLOOR_SECONDS,
   TRANSITION_KINDS,
 } from "./preset.ts";
 import { MIN_TEXT_SIZE, type Edit, parseEdit } from "./schema.ts";
@@ -20,7 +19,7 @@ import { backgroundMapOf } from "./test-support/backgrounds.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { baselineInputs } from "./test-support/inputs.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
-import { LEFT_HEAD, REQUEST_ANSWER, REQUEST_REQUESTED } from "./test-support/request.ts";
+import { LEFT_HEAD, REQUEST_ANSWER } from "./test-support/request.ts";
 import { resolveTimeline } from "./timeline.ts";
 import { type Transcript, sentenceSpans } from "./transcript.ts";
 import { levelBoxes } from "./transitions.ts";
@@ -33,6 +32,7 @@ const sentences = sentenceSpans(transcript);
 
 const NOTHING: EngineInput = {
   accents: [],
+  questions: [],
   big_words: [],
   visuals: [],
   transitions: [],
@@ -54,7 +54,7 @@ function steadyHead(sample: { head_top: number; cx: number; head_w: number }): H
 const BIG_FACE = steadyHead({ head_top: 452, cx: 580, head_w: 292 });
 
 function withPlaceholderMasks(edit: Edit, spoken: Transcript): Edit {
-  const masks = maskSpans(edit, spoken, CLEAN_PRESET).map((span, index) => ({
+  const masks = maskSpans(edit, spoken, ISSEBYA_PRESET).map((span, index) => ({
     step: "cutout" as const,
     fingerprint: String(index + 1).repeat(64),
     file: "mask.mp4",
@@ -70,50 +70,41 @@ async function place(
     headTrack = hand.headTrack,
     current = hand.edit,
     backgrounds,
-    requested,
     transcript: spoken = transcript,
-    preset = CLEAN_PRESET,
   }: {
     headTrack?: HeadTrack;
     current?: Edit;
-    // The layout mode (the strict clean layout unless a test asks for `all`).
-    preset?: Preset;
     // Another transcript (the same ids), for a denser opening.
     transcript?: Transcript;
     backgrounds?: Backgrounds;
-    // The answer items the request asked for (`visuals[0]` style refs).
-    requested?: string[];
   } = {},
 ) {
   const measurer = await nodeMeasurer();
   const made = editFromAnswer(
     current,
     { ...NOTHING, ...input },
-    preset,
+    ISSEBYA_PRESET,
     spoken,
     headTrack,
     measurer,
     backgrounds,
-    requested ? { requested } : {},
   );
   if (!made.ok) throw new Error(made.reasons.join("; "));
   const { checks, html } = build(
     withPlaceholderMasks(made.edit, spoken),
     spoken,
     headTrack,
-    preset,
+    ISSEBYA_PRESET,
     measurer,
   );
   const spans = resolveTimeline(made.edit, spoken);
   return {
     edit: made.edit,
     record: made.record,
-    unplaced: made.unplaced,
-    free: made.free,
     checks,
     html,
     spans,
-    levels: levelBoxes(made.edit, spans, byId, preset, measurer),
+    levels: levelBoxes(made.edit, spans, byId, ISSEBYA_PRESET, measurer),
   };
 }
 
@@ -154,8 +145,11 @@ function expectNoWordTwice(edit: Edit, spans: ReturnType<typeof resolveTimeline>
 }
 
 // An accent or a big word comes in this long before its first word.
-const LEAD = CLEAN_PRESET.accent.leadSeconds;
+const LEAD = ISSEBYA_PRESET.accent.leadSeconds;
 const leadOf = (id: string) => Math.round((byId.get(id)!.start - LEAD) * 1000) / 1000;
+// A word's start and end.
+const start = (id: string) => byId.get(id)!.start;
+const end = (id: string) => byId.get(id)!.end;
 
 describe("the layout engine's timing", () => {
   it("shows each caption from its word, the group until its last word or 0.25 s, never into the next group", async () => {
@@ -164,7 +158,9 @@ describe("the layout engine's timing", () => {
     for (const [index, caption] of captions.entries()) {
       const span = spans.get(caption.id)!;
       expect(span.start).toBe(byId.get(caption.words[0]!)!.start);
-      expect(span.end - span.start).toBeGreaterThanOrEqual(CLEAN_PRESET.caption.minSeconds - 1e-6);
+      expect(span.end - span.start).toBeGreaterThanOrEqual(
+        ISSEBYA_PRESET.caption.minSeconds - 1e-6,
+      );
       const next = captions
         .slice(index + 1)
         .find((c) => JSON.stringify(c.end) !== JSON.stringify(caption.end));
@@ -179,64 +175,44 @@ describe("the layout engine's timing", () => {
     });
   });
 
-  it("shows an accent from the lead before its first word to a second after its last, at least 1.5 s", async () => {
-    const { spans, edit } = await place({
+  it("shows an accent exactly while its words are spoken: its first word's start to its last word's end, no minimum", async () => {
+    const { spans, edit, record } = await place({
       accents: [
-        { from: "w29", to: "w29", title: false },
-        { from: "w84", to: "w87", title: false },
+        { from: "w29", to: "w29" },
+        { from: "w84", to: "w87" },
       ],
     });
     const one = spans.get("accent-1")!;
-    expect(one.start).toBe(leadOf("w29"));
-    expect(edit.tracks.overlays[0]!.start).toEqual({ word: "w29", offset: -LEAD });
-    expect(one.end - one.start).toBeGreaterThanOrEqual(1.5 - 1e-6);
+    expect([one.start, one.end]).toEqual([start("w29"), end("w29")]);
+    expect(edit.tracks.overlays[0]!.start).toEqual({ word: "w29" });
+    expect(one.end - one.start).toBeLessThan(1.5);
     const two = spans.get("accent-2")!;
-    expect(two.start).toBe(leadOf("w84"));
-    expect(two.end).toBeCloseTo(byId.get("w87")!.end + 1, 3);
+    expect([two.start, two.end]).toEqual([start("w84"), end("w87")]);
+    expect(record.filter((note) => note.rule === "accent-time")).toEqual([]);
   });
 
   it("shows a question as an accent on its words: question-1, the accent's timing and look", async () => {
-    const { edit, spans, record } = await place({ questions: [{ from: "w29", to: "w29" }] });
+    const { edit, spans } = await place({ questions: [{ from: "w29", to: "w29" }] });
     expect(edit.tracks.overlays).toEqual([
       expect.objectContaining({
         id: "question-1",
         kind: "accent",
         words: ["w29"],
-        start: { word: "w29", offset: -LEAD },
+        start: { word: "w29" },
       }),
     ]);
     const span = spans.get("question-1")!;
-    expect(span.start).toBe(leadOf("w29"));
-    expect(span.end - span.start).toBeGreaterThanOrEqual(1.5 - 1e-6);
-    expect(
-      record.filter((note) => note.item === "question-1" && note.action === "dropped"),
-    ).toEqual([]);
+    expect([span.start, span.end]).toEqual([start("w29"), end("w29")]);
   });
 
-  it("cuts an accent short when the next one needs the space, and records it", async () => {
-    const { spans, record } = await place({
-      accents: [
-        { from: "w26", to: "w29", title: false },
-        { from: "w31", to: "w33", title: false },
-      ],
-    });
-    const one = spans.get("accent-1")!;
-    const two = spans.get("accent-2")!;
-    expect(one.end).toBeLessThanOrEqual(two.start + 1e-6);
-    expect(one.end - one.start).toBeGreaterThanOrEqual(1.5 - 1e-6);
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "retimed", rule: "one-extra" }),
-    );
-  });
-
-  it("shows a big word on the accent's timing: the lead before its word to a second after it", async () => {
+  it("shows a big word on the accent's timing: the lead before its word to its word's end, at least 1.5 s", async () => {
     const { spans, edit } = await place({ big_words: [{ from: "w76", to: "w76" }] });
     const span = spans.get("big-word-1")!;
     const said = byId.get("w76")!;
     expect(span.start).toBe(leadOf("w76"));
     const sentence = sentences.find((s) => s.from === "w63")!;
     expect(sentence.end).toBeGreaterThan(span.end + 0.5);
-    expect(span.end).toBeCloseTo(Math.max(said.end + 1, span.start + 1.5), 3);
+    expect(span.end).toBeCloseTo(Math.max(said.end, span.start + 1.5), 3);
     expect(edit.tracks.behind![0]).toMatchObject({
       kind: "word",
       text: "distribution",
@@ -248,7 +224,7 @@ describe("the layout engine's timing", () => {
     const { spans, edit, html } = await place({ big_words: [{ from: "w76", to: "w77" }] });
     const span = spans.get("big-word-1")!;
     expect(span.start).toBe(leadOf("w76"));
-    expect(span.end).toBeCloseTo(Math.max(byId.get("w77")!.end + 1, span.start + 1.5), 3);
+    expect(span.end).toBeCloseTo(Math.max(byId.get("w77")!.end, span.start + 1.5), 3);
     expect(edit.tracks.behind![0]).toMatchObject({
       kind: "word",
       text: "distribution channel",
@@ -273,26 +249,6 @@ describe("the layout engine's timing", () => {
     expect(elements[0]).toMatch(/>social media<\/div>$/);
     expect(html).toMatch(/\.word \{[^}]*white-space: nowrap;/);
     expect(html).not.toMatch(/big-word-1"[^>]*>social<br/);
-  });
-
-  it("gives up the lead rather than cut the extra before it", async () => {
-    // "AI has completely" leaves at 9.607 s, a second after "completely";
-    // "work" is said at 9.789 s, so its lead would start at 9.589 s. The big
-    // word comes in as the accent leaves, the accent keeps its time and the
-    // big word still shows 1.5 s.
-    const { spans, record } = await place({
-      accents: [{ from: "w26", to: "w28", title: false }],
-      big_words: [{ from: "w33", to: "w33" }],
-    });
-    const accent = spans.get("accent-1")!;
-    const word = spans.get("big-word-1")!;
-    expect(accent.end).toBeCloseTo(byId.get("w28")!.end + 1, 3);
-    expect(word.start).toBeCloseTo(accent.end, 3);
-    expect(word.start).toBeGreaterThan(leadOf("w33"));
-    expect(word.end - word.start).toBeGreaterThanOrEqual(1.5 - 1e-6);
-    expect(record.filter((note) => note.item === "accent-1" && note.rule === "one-extra")).toEqual(
-      [],
-    );
   });
 
   it("shows several big words, the same word again too, each on the accent's timing", async () => {
@@ -320,80 +276,24 @@ describe("the layout engine's timing", () => {
     expect(checks).toEqual([]);
   });
 
-  it("shows a photo from its sentence's start, 1 to 2 s, never into the next sentence", async () => {
-    // "We have it all." and its pauses last 0.9 s: the photo would cross
-    // into another sentence, so it is dropped.
+  it("shows a visual from its first word, 1 to 2 s, shown even past its short sentence", async () => {
+    // "We have it all." and its pauses last 0.9 s: the visual lasts the 1 s
+    // minimum all the same (kept, never dropped).
     const short = await place({ visuals: [{ from: "w113", to: "w116" }] });
-    expect(short.edit.tracks.behind).toBeUndefined();
-    expect(short.record).toContainEqual(
-      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "visual-time" }),
-    );
+    expect(short.edit.tracks.behind).toEqual([expect.objectContaining({ id: "visual-1" })]);
+    const shortSpan = short.spans.get("visual-1")!;
+    expect(shortSpan.end - shortSpan.start).toBeGreaterThanOrEqual(1 - 1e-6);
     // A sentence of 3.2 s: from its start, leaving after 2 s.
     const whole = await place({ visuals: [{ from: "w84", to: "w99" }] });
     const span = whole.spans.get("visual-1")!;
     const sentence = sentences.find((s) => s.from === "w84")!;
     expect(span.start).toBe(sentence.start);
     expect(span.end).toBeCloseTo(sentence.start + 2, 3);
-    // A long sentence, photo words late in it: from its first word, 2 s.
+    // A long sentence, visual words late in it: from its first word, 2 s.
     const late = await place({ visuals: [{ from: "w18", to: "w25" }] });
     const lateSpan = late.spans.get("visual-1")!;
     expect(lateSpan.start).toBe(byId.get("w18")!.start);
     expect(lateSpan.end).toBeLessThanOrEqual(sentences[0]!.end + 1e-6);
-  });
-
-  it("drops a title too long for two lines at the smallest size, with the reason", async () => {
-    const { edit, record } = await place(
-      { accents: [{ from: "w63", to: "w71", title: true }] },
-      { headTrack: BIG_FACE },
-    );
-    expect(edit.tracks.overlays).toEqual([]);
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "title", action: "dropped", rule: "no-room" }),
-    );
-  });
-
-  it("drops what cannot last its minimum, with the reason", async () => {
-    const lastWord = words.at(-1)!;
-    const { edit, record } = await place({
-      accents: [{ from: lastWord.id, to: lastWord.id, title: false }],
-    });
-    expect(edit.tracks.overlays).toEqual([]);
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "dropped", rule: "accent-time" }),
-    );
-  });
-
-  it("shows at most one extra at a time, by priority", async () => {
-    const { edit, spans, record } = await place({
-      accents: [{ from: "w66", to: "w67", title: false }],
-      big_words: [{ from: "w66", to: "w66" }],
-      visuals: [{ from: "w63", to: "w70" }],
-    });
-    const extras = extrasOf(edit).map((item) => spans.get(item.id)!);
-    for (const [index, a] of extras.entries()) {
-      for (const b of extras.slice(index + 1)) {
-        expect(a.end <= b.start + 1e-6 || b.end <= a.start + 1e-6).toBe(true);
-      }
-    }
-    // The accent comes first; the big word on the same word cannot wait.
-    expect(edit.tracks.overlays.map((item) => item.id)).toEqual(["accent-1"]);
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "big-word-1", action: "dropped", rule: "one-extra" }),
-    );
-  });
-
-  it("places the items the request is about before the other extras", async () => {
-    const measurer = await nodeMeasurer();
-    const input: EngineInput = {
-      ...NOTHING,
-      accents: [{ from: "w66", to: "w67", title: false }],
-      big_words: [{ from: "w66", to: "w66" }],
-    };
-    const asked = placeEdit(hand.edit, input, transcript, hand.headTrack, CLEAN_PRESET, measurer, {
-      requested: ["big_words[0]"],
-    });
-    expect(asked.tracks.behind?.map((item) => item.id)).toEqual(["big-word-1"]);
-    expect(asked.tracks.overlays).toEqual([]);
   });
 });
 
@@ -410,7 +310,7 @@ describe("never the same word twice on screen", () => {
   it('leaves the accent\'s words out of the caption: "and sense of purpose" reads "and"', async () => {
     const plain = await place({});
     const { edit, spans, checks, html, record } = await place({
-      accents: [{ from: "w110", to: "w112", title: false }],
+      accents: [{ from: "w110", to: "w112" }],
     });
     expect(checks).toEqual([]);
     const caption = (id: string) => edit.tracks.captions.find((item) => item.id === id)!;
@@ -449,7 +349,7 @@ describe("never the same word twice on screen", () => {
 
   it("shows no caption while every word of its group is in the accent", async () => {
     const { edit, spans, checks } = await place({
-      accents: [{ from: "w117", to: "w122", title: false }],
+      accents: [{ from: "w117", to: "w122" }],
     });
     expect(checks).toEqual([]);
     const inside = edit.tracks.captions.filter((item) =>
@@ -463,7 +363,7 @@ describe("never the same word twice on screen", () => {
   it("builds a stored caption without the field as before, and refuses one hidden by nothing", async () => {
     const edit = structuredClone(hand.edit);
     edit.tracks.captions[3]!.hidden_by = "accent-9";
-    const parsed = parseEdit(edit, CLEAN_PRESET, transcript);
+    const parsed = parseEdit(edit, ISSEBYA_PRESET, transcript);
     expect(!parsed.ok && parsed.reasons.join("\n")).toMatch(
       /caption cw\d+: hidden by accent-9, which is no accent or big word/,
     );
@@ -471,14 +371,14 @@ describe("never the same word twice on screen", () => {
 });
 
 describe("big words in view", () => {
-  const maxCovered = 1 - CLEAN_PRESET.behind.word.minVisible;
+  const maxCovered = 1 - ISSEBYA_PRESET.behind.word.minVisible;
   const bigWordOf = (edit: Edit, spans: ReturnType<typeof resolveTimeline>) => {
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
     if (word.kind !== "word") throw new Error("not a word");
     return { word, span: spans.get(word.id)! };
   };
 
-  it("moves a short big word up so the head covers at most 30% of it", async () => {
+  it("keeps a short big word at the head's rule place, noted when the head covers more than 30% of it", async () => {
     const measurer = await nodeMeasurer();
     const { edit, spans, checks, record } = await place(
       { big_words: [{ from: "w116", to: "w116" }] },
@@ -486,38 +386,31 @@ describe("big words in view", () => {
     );
     expect(checks).toEqual([]);
     const { word, span } = bigWordOf(edit, spans);
-    const width = measurer.width(CLEAN_PRESET.behind.word.font, word.size!, word.text);
+    const width = measurer.width(ISSEBYA_PRESET.behind.word.font, word.size!, word.text);
     const box = {
       left: word.position!.x,
       right: word.position!.x + width,
       top: word.position!.y,
       bottom: word.position!.y + word.size!,
     };
-    expect(
-      bigWordCoveredShare(box, facesOver(BIG_FACE, span.start, span.end), CLEAN_PRESET),
-    ).toBeLessThanOrEqual(maxCovered + 1e-6);
-    // Above the head's top, only its lower part behind it, never above the
-    // platforms' safe top.
+    // The single mode never moves it for the head: the coverage is noted.
+    const share = bigWordCoveredShare(
+      box,
+      facesOver(BIG_FACE, span.start, span.end),
+      ISSEBYA_PRESET,
+    );
+    expect(share).toBeGreaterThan(maxCovered);
     expect(box.top).toBeGreaterThanOrEqual(PLATFORM_SAFE.top);
-    expect(box.top).toBeLessThan(452);
     expect(record).toContainEqual(
-      expect.objectContaining({ item: word.id, action: "moved", rule: "big-word-visible" }),
+      expect.objectContaining({
+        item: word.id,
+        action: "kept-overlapping",
+        rule: "all-picks",
+        reason: expect.stringMatching(
+          /^the big word ".+" sits with the person covering \d+% of it/,
+        ),
+      }),
     );
-  });
-
-  it("shrinks, then drops, a big word the head hides at every place under the safe top", async () => {
-    // A wide head right under the safe zone's top: no room above it.
-    const high = steadyHead({ head_top: 270, cx: 540, head_w: 700 });
-    const { edit, record, checks, unplaced } = await place(
-      { big_words: [{ from: "w116", to: "w116" }] },
-      { headTrack: high },
-    );
-    expect(checks).toEqual([]);
-    expect(edit.tracks.behind).toBeUndefined();
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "big-word-1", action: "dropped", rule: "big-word-visible" }),
-    );
-    expect(unplaced).toMatchObject([{ ref: "big_words[0]", why: "no-room" }]);
   });
 });
 
@@ -526,18 +419,18 @@ describe("the layout engine's placement", () => {
   // transition over one reel.
   const DENSE: Partial<EngineInput> = {
     accents: [
-      { from: "w0", to: "w4", title: true },
-      { from: "w26", to: "w28", title: false },
-      { from: "w100", to: "w102", title: false },
-      { from: "w117", to: "w120", title: false },
-      { from: "w134", to: "w136", title: false },
+      { from: "w0", to: "w4" },
+      { from: "w26", to: "w28" },
+      { from: "w100", to: "w102" },
+      { from: "w117", to: "w120" },
+      { from: "w134", to: "w136" },
     ],
     big_words: [{ from: "w76", to: "w76" }],
     visuals: [
       { from: "w84", to: "w99" },
       { from: "w113", to: "w116" },
     ],
-    transitions: [{ kind: "panel", from: "w126", to: "w133", key_from: "w128" }],
+    transitions: [{ kind: "numbered", from: "w126", to: "w133", key_from: "w128" }],
   };
 
   for (const [name, headTrack] of [
@@ -553,7 +446,7 @@ describe("the layout engine's placement", () => {
   // The Intense rhythm: an extra on every sentence (accents, big words and
   // visuals in turn, several of each) and two
   // transitions, far more than fits.
-  const RHYTHM: Partial<EngineInput> = { accents: [], big_words: [], visuals: [] };
+  const RHYTHM: Partial<EngineInput> = { accents: [], questions: [], big_words: [], visuals: [] };
   sentences.forEach((sentence, index) => {
     const from = words.findIndex((word) => word.id === sentence.from);
     const to = words.findIndex((word) => word.id === sentence.to);
@@ -562,7 +455,7 @@ describe("the layout engine's placement", () => {
       (a, b) => byId.get(b)!.text.length - byId.get(a)!.text.length || a.localeCompare(b),
     )[0]!;
     if (index % 3 === 0) {
-      RHYTHM.accents!.push({ from: ids[0]!, to: ids[Math.min(2, ids.length - 1)]!, title: false });
+      RHYTHM.accents!.push({ from: ids[0]!, to: ids[Math.min(2, ids.length - 1)]! });
     } else if (index % 3 === 1) {
       RHYTHM.big_words!.push({ from: longest, to: longest });
     } else {
@@ -570,26 +463,19 @@ describe("the layout engine's placement", () => {
     }
   });
   RHYTHM.transitions = [
-    { kind: "dim", from: "w26", to: "w33", key_from: "w30" },
-    { kind: "panel", from: "w126", to: "w133", key_from: "w128" },
+    { kind: "numbered", from: "w26", to: "w33", key_from: "w30" },
+    { kind: "numbered", from: "w126", to: "w133", key_from: "w128" },
   ];
 
   for (const [name, headTrack] of [
     ["the real head", hand.headTrack],
     ["a large centred face", BIG_FACE],
   ] as const) {
-    it(`keeps the calm rules with an extra on every sentence and ${name}`, async () => {
-      const { edit, spans, checks, record, unplaced } = await place(RHYTHM, { headTrack });
+    it(`keeps the lengths and no word twice with an extra on every sentence and ${name}`, async () => {
+      const { edit, spans, checks } = await place(RHYTHM, { headTrack });
       expect(checks).toEqual([]);
-      // One extra at a time, none during a transition.
       const extras = extrasOf(edit).map((item) => spans.get(item.id)!);
-      const running = edit.tracks.transitions.map((item) => spans.get(item.id)!);
-      for (const [index, a] of extras.entries()) {
-        for (const b of [...extras.slice(index + 1), ...running]) {
-          expect(a.end <= b.start + 1e-6 || b.end <= a.start + 1e-6).toBe(true);
-        }
-      }
-      // Photos last 1 to 2 s; big words the accent's timing, at least
+      // Visuals last 1 to 2 s; big words the accent's timing, at least
       // 1.5 s and at most a second after their word.
       for (const item of edit.tracks.behind ?? []) {
         const span = spans.get(item.id)!;
@@ -603,14 +489,8 @@ describe("the layout engine's placement", () => {
         }
       }
       expectNoWordTwice(edit, spans);
-      // Many still show, and every one left out has its drop in the record.
+      // Many still show: every pick is placed.
       expect(extras.length).toBeGreaterThanOrEqual(6);
-      for (const item of unplaced) {
-        expect(
-          record.some((note) => note.item === item.id && note.action === "dropped"),
-          item.ref,
-        ).toBe(true);
-      }
     });
   }
 
@@ -650,17 +530,17 @@ describe("the layout engine's placement", () => {
     expect(facesOver(glitch, at, at)[0]!.top).toBeGreaterThan(300);
   });
 
-  it("shrinks or wraps a title wider than the frame to fit the safe zone", async () => {
+  it("shrinks or wraps an accent wider than the frame to fit the safe zone", async () => {
     // "social media has given us" is about 1400 px at 110 px, the frame 1080.
     const { edit, record, checks } = await place(
-      { accents: [{ from: "w63", to: "w67", title: true }] },
+      { accents: [{ from: "w63", to: "w67" }] },
       { headTrack: BIG_FACE },
     );
-    const title = edit.tracks.overlays[0]!;
-    expect(title.id).toBe("title");
-    expect(title.break_after).toBeGreaterThan(0);
-    expect(title.size).toBeLessThan(110);
-    expect(record.filter((note) => note.item === "title").map((note) => note.action)).toEqual(
+    const accent = edit.tracks.overlays[0]!;
+    expect(accent.id).toBe("accent-1");
+    expect(accent.break_after).toBeGreaterThan(0);
+    expect(accent.size).toBeLessThan(110);
+    expect(record.filter((note) => note.item === "accent-1").map((note) => note.action)).toEqual(
       expect.arrayContaining(["shrunk", "wrapped"]),
     );
     expect(checks).toEqual([]);
@@ -678,7 +558,7 @@ describe("the layout engine's placement", () => {
     const again = editFromAnswer(
       one.edit,
       { ...NOTHING, ...DENSE },
-      CLEAN_PRESET,
+      ISSEBYA_PRESET,
       transcript,
       hand.headTrack,
       await nodeMeasurer(),
@@ -697,38 +577,13 @@ describe("the layout engine's placement", () => {
 });
 
 describe("today's failures, placed by the engine", () => {
-  it('two accents in a row never overlap ("Keep trying" on "experiments")', async () => {
-    const { checks, spans } = await place(
-      {
-        accents: [
-          { from: "w26", to: "w28", title: false },
-          { from: "w29", to: "w29", title: false },
-        ],
-      },
-      { headTrack: BIG_FACE },
-    );
-    expect(checks).toEqual([]);
-    const one = spans.get("accent-1")!;
-    const two = spans.get("accent-2");
-    if (two) expect(one.end).toBeLessThanOrEqual(two.start + 1e-6);
-  });
-
-  it("keeps the captions off the big word", async () => {
-    const { checks, edit } = await place(
-      { big_words: [{ from: "w76", to: "w76" }] },
-      { headTrack: BIG_FACE },
-    );
-    expect(edit.tracks.behind).toHaveLength(1);
-    expect(checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
-  });
-
-  it("keeps a dim's text levels off the face", async () => {
+  it("keeps a transition's text levels off the face", async () => {
     const { checks, edit, levels } = await place(
-      { transitions: [{ kind: "dim", from: "w84", to: "w99", key_from: "w91" }] },
+      { transitions: [{ kind: "numbered", from: "w84", to: "w99", key_from: "w91" }] },
       { headTrack: BIG_FACE },
     );
     expect(edit.tracks.transitions).toHaveLength(1);
-    expect(levels.map((level) => level.role)).toEqual(["lead", "key"]);
+    expect(levels.map((level) => level.role)).toEqual(["number", "lead", "key"]);
     for (const level of levels) {
       for (const face of facesOver(BIG_FACE, level.start, level.end)) {
         const clear =
@@ -742,9 +597,9 @@ describe("today's failures, placed by the engine", () => {
     expect(checks).toEqual([]);
   });
 
-  it("keeps a photo spot free of captions on its sentence", async () => {
-    // The question sentence the v4 photo was dropped from, on the large face.
-    const { edit, checks, record } = await place(
+  it("places a visual over its sentence and drops nothing", async () => {
+    // The question sentence, on the large face.
+    const { edit, checks } = await place(
       { visuals: [{ from: "w84", to: "w99" }] },
       { headTrack: BIG_FACE },
     );
@@ -752,26 +607,12 @@ describe("today's failures, placed by the engine", () => {
       expect.objectContaining({ id: "visual-1", kind: "visual" }),
     ]);
     expect(checks).toEqual([]);
-    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
-  });
-
-  it("drops a photo with a recorded reason when the face takes every spot", async () => {
-    const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
-    const { edit, record } = await place(
-      { visuals: [{ from: "w84", to: "w99" }] },
-      { headTrack: huge },
-    );
-    expect(edit.tracks.behind).toBeUndefined();
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "no-room" }),
-    );
   });
 });
 
 describe("visuals: corner cards over the footage", () => {
-  const { card } = CLEAN_PRESET.behind;
-  const HOOK = { text: "Gen Z won't work like you did" };
-  const gap = CLEAN_PRESET.layout.gap;
+  const { card } = ISSEBYA_PRESET.behind;
+  const gap = ISSEBYA_PRESET.layout.gap;
   // The card at its full size and at the smaller step: a third of the frame's
   // width, 4:5 (360 by 450), and 0.7 of that (252 by 315).
   const FULL = { width: 360, height: 450 };
@@ -798,7 +639,7 @@ describe("visuals: corner cards over the footage", () => {
       );
       expect(checks).toEqual([]);
       const [visual] = cardsOf(edit);
-      expect(visual).toMatchObject({ id: "visual-1", kind: "visual", layer: "front" });
+      expect(visual).toMatchObject({ id: "visual-1", kind: "visual" });
       const box = boxOf(visual!);
       const { width, height } = visual!.box!;
       expect([FULL, SMALLER]).toContainEqual({ width, height });
@@ -823,7 +664,7 @@ describe("visuals: corner cards over the footage", () => {
       expect(atCorner || beside).toBe(true);
       // The frame: a white stroke at the preset's width, no picture, no words,
       // no cut-out, drawn at the card's size.
-      expect(maskSpans(edit, transcript, CLEAN_PRESET)).toEqual([]);
+      expect(maskSpans(edit, transcript, ISSEBYA_PRESET)).toEqual([]);
       expect(html).toMatch(/<div id="visual-1" class="clip visual"[^>]*data-track-index="30"/);
       expect(html).toContain(
         `.visual { position: absolute; box-sizing: border-box; border: ${card.stroke}px solid #ffffff; background: transparent; }`,
@@ -832,7 +673,7 @@ describe("visuals: corner cards over the footage", () => {
     }
   });
 
-  it("takes the full card size where a corner or side is free, and the smaller step only before a drop", async () => {
+  it("takes the full card size where a corner or side is free, and the smaller step before the corner overlap", async () => {
     const roomy = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: BIG_FACE });
     const [full] = cardsOf(roomy.edit);
     expect({ width: full!.box!.width, height: full!.box!.height }).toEqual(FULL);
@@ -850,37 +691,6 @@ describe("visuals: corner cards over the footage", () => {
       ),
     });
     expect(tight.checks).toEqual([]);
-  });
-
-  it("never overlaps the face, the hook window or the captions, on a dense reel with a hook", async () => {
-    for (const headTrack of [SPEECH_TEN, LEFT_HEAD]) {
-      const { edit, spans, checks, record } = await place(
-        {
-          hook: HOOK,
-          accents: [{ from: "w26", to: "w28", title: false }],
-          visuals: [
-            { from: sentences[0]!.from, to: sentences[0]!.to },
-            { from: "w84", to: "w99" },
-            { from: "w113", to: "w116" },
-          ],
-        },
-        { headTrack },
-      );
-      // Every text, the hook included, is checked against every picture.
-      expect(checks).toEqual([]);
-      for (const visual of cardsOf(edit)) {
-        const span = spans.get(visual.id)!;
-        for (const face of facesOver(headTrack, span.start, span.end)) {
-          expect(meets(boxOf(visual), face)).toBe(false);
-        }
-      }
-      // A visual the engine leaves out says why.
-      for (const note of record.filter((entry) => entry.item.startsWith("visual-"))) {
-        if (note.action === "dropped") {
-          expect(["no-room", "one-extra", "visual-time"]).toContain(note.rule);
-        }
-      }
-    }
   });
 
   it("keeps the card's size and ratio across the reel", async () => {
@@ -904,33 +714,8 @@ describe("visuals: corner cards over the footage", () => {
     }
   });
 
-  it("is dropped with the reason when no corner or side fits at either size", async () => {
-    const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
-    const { edit, record } = await place(
-      { visuals: [{ from: "w84", to: "w99" }] },
-      { headTrack: huge },
-    );
-    expect(edit.tracks.behind).toBeUndefined();
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "no-room" }),
-    );
-  });
-
-  it("renders an old version's library photo as a photo, as before", async () => {
-    const old = FIXTURES.find((fixture) => fixture.name === "rethink-work-behind")!;
-    const { html } = build(
-      old.edit,
-      old.transcript,
-      old.headTrack,
-      CLEAN_PRESET,
-      await nodeMeasurer(),
-    );
-    expect(html).toMatch(/<img id="[^"]+" class="clip photo"/);
-    expect(html).not.toMatch(/class="clip visual"/);
-  });
-
   it("moves a visual whose white edge blends with the footage, else keeps it plain and records it", async () => {
-    const FRAME = CLEAN_PRESET.frame;
+    const FRAME = ISSEBYA_PRESET.frame;
     const input = { visuals: [{ from: "w84", to: "w99" }] };
     const plain = await place(input);
     const first = boxOf(cardsOf(plain.edit)[0]!);
@@ -985,10 +770,10 @@ describe("clicks on visuals and big words", () => {
   it("clicks as each placed visual and big word comes in, and nothing else", async () => {
     const { edit, spans, checks, html } = await place(
       {
-        accents: [{ from: "w26", to: "w28", title: false }],
+        accents: [{ from: "w26", to: "w28" }],
         big_words: [{ from: "w116", to: "w116" }],
         visuals: [{ from: "w84", to: "w99" }],
-        transitions: [{ kind: "panel", from: "w126", to: "w133", key_from: "w128" }],
+        transitions: [{ kind: "numbered", from: "w126", to: "w133", key_from: "w128" }],
       },
       { headTrack: LEFT_HEAD },
     );
@@ -1010,29 +795,13 @@ describe("clicks on visuals and big words", () => {
     expect(html).toMatch(/<audio id="click-visual-1" class="clip" [^>]*data-volume="0\.5012">/);
   });
 
-  it("drops a click with its item, and has none without photos or big words", async () => {
+  it("clicks a visual the face leaves no corner for, and has no click without visuals or big words", async () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
-    const dropped = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: huge });
-    expect(dropped.edit.tracks.behind).toBeUndefined();
-    expect(dropped.edit.tracks.sounds).toEqual([]);
-    const none = await place({ accents: [{ from: "w26", to: "w28", title: false }] });
+    const shown = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: huge });
+    expect(shown.edit.tracks.behind).toEqual([expect.objectContaining({ id: "visual-1" })]);
+    expect(shown.edit.tracks.sounds).toHaveLength(1);
+    const none = await place({ accents: [{ from: "w26", to: "w28" }] });
     expect(none.edit.tracks.sounds).toEqual([]);
-  });
-
-  it("follows an item retimed by the one-at-a-time rule", async () => {
-    // The photo's sentence also opens with a big word: whichever shows, the
-    // click sits on its own start.
-    const { edit, spans } = await place(
-      {
-        big_words: [{ from: "w85", to: "w85" }],
-        visuals: [{ from: "w84", to: "w99" }],
-      },
-      { headTrack: LEFT_HEAD },
-    );
-    for (const item of edit.tracks.behind ?? []) {
-      expect(spans.get(`click-${item.id}`)!.start).toBeCloseTo(spans.get(item.id)!.start, 6);
-    }
-    expect(edit.tracks.sounds).toHaveLength((edit.tracks.behind ?? []).length);
   });
 
   it("leaves a stored version's sounds as they are", () => {
@@ -1042,7 +811,7 @@ describe("clicks on visuals and big words", () => {
 });
 
 describe("readable text", () => {
-  const FRAME = CLEAN_PRESET.frame;
+  const FRAME = ISSEBYA_PRESET.frame;
   const BEIGE = "#D8C3A5";
   const DARK = "#101010";
   // A sampled map of the whole reel: `paint` gives each cell's colour.
@@ -1053,7 +822,7 @@ describe("readable text", () => {
     y: number,
     box: { left: number; right: number; top: number; bottom: number },
   ) => x >= box.left && x < box.right && y >= box.top && y < box.bottom;
-  const ACCENT: Partial<EngineInput> = { accents: [{ from: "w84", to: "w87", title: false }] };
+  const ACCENT: Partial<EngineInput> = { accents: [{ from: "w84", to: "w87" }] };
 
   it("moves a caption block on a light band to a darker free place in its zone", async () => {
     const before = await place({});
@@ -1069,7 +838,6 @@ describe("readable text", () => {
     const { edit, record, checks } = await place({}, { backgrounds });
     const moved = edit.tracks.captions[0]!;
     expect(moved.position).not.toEqual(first.position);
-    expect(moved.shadow).toBeUndefined();
     expect(moved.color).toBeUndefined();
     expect(record).toContainEqual(
       expect.objectContaining({ item: first.id, action: "moved", rule: "contrast-spot" }),
@@ -1082,7 +850,7 @@ describe("readable text", () => {
     expect(checks).toEqual([]);
   });
 
-  it("keeps the place, plain, when no free place nearby reads: never a shadow, only a note", async () => {
+  it("keeps the place, plain, when no free place nearby reads: only a note", async () => {
     const before = await place({});
     for (const color of [BEIGE, "#8A8A8A"]) {
       const { edit, record, checks } = await place({}, { backgrounds: mapOf(() => color) });
@@ -1090,7 +858,6 @@ describe("readable text", () => {
         before.edit.tracks.captions.map((caption) => caption.position),
       );
       for (const caption of edit.tracks.captions) {
-        expect(caption.shadow).toBeUndefined();
         expect(caption.color).toBeUndefined();
       }
       const notes = record.filter((entry) => entry.rule === "contrast-stay");
@@ -1100,7 +867,6 @@ describe("readable text", () => {
         /^captions ".+" stay in place: contrast \d\.\d:1 from .* no free place nearby reaches 4\.5:1$/,
       );
       expect(record.filter((entry) => entry.rule === "contrast-spot")).toEqual([]);
-      expect(record.filter((entry) => entry.action === "shadowed")).toEqual([]);
       // Low contrast is recorded only: no check fails on it.
       expect(checks).toEqual([]);
     }
@@ -1122,7 +888,6 @@ describe("readable text", () => {
     const { edit, record, checks } = await place(ACCENT, { backgrounds, headTrack });
     const moved = edit.tracks.overlays[0]!;
     expect(moved.position).not.toEqual(accent.position);
-    expect(moved.shadow).toBeUndefined();
     expect(moved.color).toBeUndefined();
     expect(record).toContainEqual(
       expect.objectContaining({ item: "accent-1", action: "moved", rule: "contrast-spot" }),
@@ -1130,12 +895,11 @@ describe("readable text", () => {
     expect(checks).toEqual([]);
   });
 
-  it("keeps the accent in place, plain, when beige is all around: never a shadow, never a colour", async () => {
+  it("keeps the accent in place, plain, when beige is all around: never a colour", async () => {
     const before = await place(ACCENT);
     const { edit, record } = await place(ACCENT, { backgrounds: mapOf(() => BEIGE) });
     const accent = edit.tracks.overlays[0]!;
     expect(accent.position).toEqual(before.edit.tracks.overlays[0]!.position);
-    expect(accent.shadow).toBeUndefined();
     expect(accent.color).toBeUndefined();
     expect(record).toContainEqual({
       item: "accent-1",
@@ -1155,7 +919,6 @@ describe("readable text", () => {
     const was = before.edit.tracks.behind!.find((item) => item.kind === "word")!;
     if (word.kind !== "word" || was.kind !== "word") throw new Error("not a word");
     expect(word.position).toEqual(was.position);
-    expect(word.shadow).toBeUndefined();
     expect(record).toContainEqual(
       expect.objectContaining({
         item: "big-word-1",
@@ -1189,7 +952,7 @@ describe("readable text", () => {
 
   it("never measures a transition's levels: they sit on its layer", async () => {
     const input: Partial<EngineInput> = {
-      transitions: [{ kind: "panel", from: "w126", to: "w133", key_from: "w128" }],
+      transitions: [{ kind: "numbered", from: "w126", to: "w133", key_from: "w128" }],
     };
     const { edit, record } = await place(input, { backgrounds: mapOf(() => "#FFFFFF") });
     const [transition] = edit.tracks.transitions;
@@ -1200,10 +963,7 @@ describe("readable text", () => {
     expect(inside.length).toBeGreaterThan(0);
     for (const caption of inside) {
       expect(caption.position).toBeUndefined();
-      expect(caption.shadow).toBeUndefined();
     }
-    const outside = edit.tracks.captions.filter((caption) => !inside.includes(caption));
-    for (const caption of outside) expect(caption.shadow).toBeUndefined();
     expect(
       record.filter(
         (note) =>
@@ -1230,20 +990,21 @@ function withPause(after: string, seconds: number): { transcript: Transcript; ed
 }
 
 describe("transitions", () => {
-  const T = CLEAN_PRESET.transition;
-  const DIM = { kind: "dim" as const, from: "w26", to: "w33", key_from: "w30" };
-  const start = (id: string) => byId.get(id)!.start;
-  const end = (id: string) => byId.get(id)!.end;
+  const T = ISSEBYA_PRESET.transition;
+  const LIST = { kind: "numbered" as const, from: "w26", to: "w33", key_from: "w30" };
   const ms = (t: number) => Math.round(t * 1000) / 1000;
 
-  it("comes in as its phrase's first word starts and has left when the next word starts", async () => {
-    const { spans, levels, edit, html, checks } = await place({ transitions: [DIM] });
+  it("shows exactly while its phrase is spoken: in as w26 starts, gone at w33's end", async () => {
+    const { spans, levels, edit, html, checks } = await place({ transitions: [LIST] });
     const span = spans.get("transition-1")!;
-    // The fade (0.3 s) finishes as w26 starts; gone as w34 starts.
-    expect(span.start).toBe(ms(start("w26") - CLEAN_PRESET.transitions.dim.seconds));
-    expect(span.end).toBe(start("w34"));
+    expect(span.start).toBe(start("w26"));
+    expect(span.end).toBe(end("w33"));
     expect(edit.tracks.transitions[0]).toMatchObject({
-      type: "dim",
+      start: { word: "w26" },
+      end: { word: "w33", edge: "end" },
+    });
+    expect(edit.tracks.transitions[0]).toMatchObject({
+      type: "numbered",
       words: ["w26", "w27", "w28", "w29", "w30", "w31", "w32", "w33"],
       key: "w30",
     });
@@ -1264,65 +1025,53 @@ describe("transitions", () => {
     expect(checks).toEqual([]);
   });
 
-  it("holds 1 s after its phrase before a long pause, 2 s when asked longer", async () => {
+  it("does not hold after its phrase: it leaves at the last word's end, before a long pause", async () => {
     const paused = withPause("w33", 3);
-    const measurer = await nodeMeasurer();
-    const spanOf = async (wish?: "long" | "slow") => {
-      const made = editFromAnswer(
-        paused.edit,
-        { ...NOTHING, transitions: [{ ...DIM, ...(wish ? { wish } : {}) }] },
-        CLEAN_PRESET,
-        paused.transcript,
-        hand.headTrack,
-        measurer,
-      );
-      if (!made.ok) throw new Error(made.reasons.join("; "));
-      return {
-        span: resolveTimeline(made.edit, paused.transcript).get("transition-1")!,
-        item: made.edit.tracks.transitions[0]!,
-      };
-    };
-    const plain = await spanOf();
-    expect(plain.span.end).toBe(ms(end("w33") + T.holdSeconds));
-    const long = await spanOf("long");
-    expect(long.span.end).toBe(ms(end("w33") + T.longHoldSeconds));
-    expect(long.item.hold).toBe("long");
-    // Slower: the motion 1.6 times as long, still finishing on the first word.
-    const slow = await spanOf("slow");
-    expect(slow.span.start).toBe(
-      ms(start("w26") - CLEAN_PRESET.transitions.dim.seconds * T.slowFactor),
+    const made = editFromAnswer(
+      paused.edit,
+      { ...NOTHING, transitions: [LIST] },
+      ISSEBYA_PRESET,
+      paused.transcript,
+      hand.headTrack,
+      await nodeMeasurer(),
     );
-    expect(slow.item.pace).toBe("slow");
+    if (!made.ok) throw new Error(made.reasons.join("; "));
+    const span = resolveTimeline(made.edit, paused.transcript).get("transition-1")!;
+    expect(span.end).toBe(ms(end("w33")));
+    expect(T).not.toHaveProperty("holdSeconds");
   });
 
-  it("lasts at least 1.5 s: a two-word phrase is lengthened, recorded", async () => {
-    const { spans, record, checks } = await place({
-      transitions: [{ kind: "dim", from: "w26", to: "w27", key_from: "w26" }],
+  it("has no minimum: a short phrase shows exactly its words, not lengthened", async () => {
+    const { spans, checks, record } = await place({
+      transitions: [{ kind: "numbered", from: "w26", to: "w27", key_from: "w26" }],
     });
     const span = spans.get("transition-1")!;
-    expect(span.end - span.start).toBeGreaterThanOrEqual(T.minSeconds - 1e-6);
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "transition-1", action: "retimed", rule: "transition-min" }),
-    );
+    expect([span.start, span.end]).toEqual([start("w26"), end("w27")]);
+    expect(
+      record.filter((note) => note.item === "transition-1" && note.action === "retimed"),
+    ).toEqual([]);
     expect(checks).toEqual([]);
   });
 
   it("sets the lead-in in caption text and the key phrase in accent text, inside its area and the safe zone", async () => {
     for (const kind of TRANSITION_KINDS) {
       const { levels, checks } = await place(
-        { transitions: [{ ...DIM, kind }] },
+        { transitions: [{ ...LIST, kind }] },
         { headTrack: BIG_FACE },
       );
-      const area = CLEAN_PRESET.transitions[kind].area;
+      const area = ISSEBYA_PRESET.transitions[kind].area;
       const lead = levels.find((level) => level.role === "lead")!;
       const key = levels.find((level) => level.role === "key")!;
       expect([lead.font, lead.color]).toEqual([
-        CLEAN_PRESET.caption.font,
-        CLEAN_PRESET.caption.color,
+        ISSEBYA_PRESET.caption.font,
+        ISSEBYA_PRESET.caption.color,
       ]);
-      expect([key.font, key.color]).toEqual([CLEAN_PRESET.accent.font, CLEAN_PRESET.accent.color]);
+      expect([key.font, key.color]).toEqual([
+        ISSEBYA_PRESET.accent.font,
+        ISSEBYA_PRESET.accent.color,
+      ]);
       for (const level of levels) {
-        for (const box of [area, CLEAN_PRESET.safe, PLATFORM_SAFE]) {
+        for (const box of [area, ISSEBYA_PRESET.safe, PLATFORM_SAFE]) {
           expect(level.x).toBeGreaterThanOrEqual(box.left - 1e-6);
           expect(level.x + level.width).toBeLessThanOrEqual(box.right + 1e-6);
           expect(level.y).toBeGreaterThanOrEqual(box.top - 1e-6);
@@ -1346,7 +1095,7 @@ describe("transitions", () => {
 
   it("covers the face only when the face fills its area, and records it", async () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
-    const { record, edit } = await place({ transitions: [DIM] }, { headTrack: huge });
+    const { record, edit } = await place({ transitions: [LIST] }, { headTrack: huge });
     expect(edit.tracks.transitions).toHaveLength(1);
     expect(record).toContainEqual(
       expect.objectContaining({
@@ -1355,108 +1104,6 @@ describe("transitions", () => {
         rule: "transition-face",
       }),
     );
-  });
-
-  it("keeps about one transition per 9 s: the sixth to eighth on a 47 s reel are dropped", async () => {
-    const phrases = [
-      ["w0", "w2"],
-      ["w20", "w22"],
-      ["w40", "w42"],
-      ["w60", "w62"],
-      ["w80", "w82"],
-      ["w100", "w102"],
-      ["w120", "w122"],
-      ["w140", "w142"],
-    ];
-    const { edit, record } = await place({
-      transitions: phrases.map(([from, to]) => ({
-        kind: "dim" as const,
-        from: from!,
-        to: to!,
-        key_from: from!,
-      })),
-    });
-    const room = Math.max(
-      1,
-      Math.round(hand.edit.duration / CLEAN_PRESET.pace.transitionEverySeconds),
-    );
-    expect(room).toBe(5);
-    // The same kind repeats.
-    expect(edit.tracks.transitions.map((item) => item.id)).toEqual([
-      "transition-1",
-      "transition-2",
-      "transition-3",
-      "transition-4",
-      "transition-5",
-    ]);
-    expect(record).toContainEqual({
-      item: "transition-8",
-      action: "dropped",
-      rule: "transition-rate",
-      reason:
-        'transition 8 (dim) on "life doesn\'t feel" dropped: about one transition per 9 s, this reel has room for 5',
-    });
-    expect(
-      record.filter((note) => note.rule === "transition-rate").map((note) => note.item),
-    ).toEqual(["transition-6", "transition-7", "transition-8"]);
-  });
-
-  it("never shows two at once: the earlier leaves as the later comes in, or the later is dropped", async () => {
-    // Back to back: the first item ends as the second comes in.
-    const back = await place({
-      transitions: [
-        { kind: "numbered", from: "w106", to: "w108", key_from: "w107" },
-        { kind: "numbered", from: "w109", to: "w112", key_from: "w110" },
-      ],
-    });
-    const one = back.spans.get("transition-1")!;
-    const two = back.spans.get("transition-2")!;
-    expect(one.end).toBeLessThanOrEqual(two.start + 1e-6);
-    expect(back.record).toContainEqual(
-      expect.objectContaining({
-        item: "transition-1",
-        action: "retimed",
-        rule: "transition-overlap",
-      }),
-    );
-    // Overlapping phrases: the earlier would last under 1.5 s.
-    const clash = await place({
-      transitions: [DIM, { kind: "panel", from: "w30", to: "w40", key_from: "w34" }],
-    });
-    expect(clash.edit.tracks.transitions.map((item) => item.id)).toEqual(["transition-1"]);
-    expect(clash.record).toContainEqual(
-      expect.objectContaining({
-        item: "transition-2",
-        action: "dropped",
-        rule: "transition-overlap",
-      }),
-    );
-  });
-
-  it("shows nothing else during a transition: an accent inside it is dropped", async () => {
-    const { edit, record, checks } = await place({
-      transitions: [DIM],
-      accents: [{ from: "w30", to: "w31", title: false }],
-    });
-    expect(edit.tracks.overlays).toEqual([]);
-    expect(record).toContainEqual(
-      expect.objectContaining({
-        item: "accent-1",
-        action: "dropped",
-        rule: "one-extra",
-        reason: expect.stringContaining("while a transition is running from"),
-      }),
-    );
-    expect(checks).toEqual([]);
-  });
-
-  it("ends an accent before a transition comes in", async () => {
-    const { spans, edit } = await place({
-      transitions: [DIM],
-      accents: [{ from: "w17", to: "w18", title: false }],
-    });
-    expect(edit.tracks.overlays).toHaveLength(1);
-    expect(spans.get("accent-1")!.end).toBeLessThanOrEqual(spans.get("transition-1")!.start + 1e-6);
   });
 
   it("numbers list items 1, 2, 3 in reel order, the number above the lead-in and the key phrase", async () => {
@@ -1483,22 +1130,12 @@ describe("transitions", () => {
     expect(checks).toEqual([]);
   });
 
-  it("forwards only slower and longer to a transition", async () => {
-    const { record } = await place({
-      transitions: [{ ...DIM, wish: "left" }],
-      accents: [{ from: "w0", to: "w2", title: false, wish: "slow" }],
-    });
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "transition-1", action: "wish-not-kept", rule: "wish" }),
-    );
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "wish-not-kept", rule: "wish" }),
-    );
-  });
-
   it("is deterministic", async () => {
     const input = {
-      transitions: [DIM, { kind: "numbered" as const, from: "w100", to: "w103", key_from: "w102" }],
+      transitions: [
+        LIST,
+        { kind: "numbered" as const, from: "w100", to: "w103", key_from: "w102" },
+      ],
     };
     const one = await place(input, { headTrack: BIG_FACE });
     const two = await place(input, { headTrack: BIG_FACE });
@@ -1507,19 +1144,16 @@ describe("transitions", () => {
   });
 });
 
-describe("making room for a request", () => {
+describe("a request's visual", () => {
   // The 2026-11-03 answer's items, without its checklist.
   const REQUEST_INPUT: Partial<EngineInput> = {
     visuals: REQUEST_ANSWER.visuals,
     transitions: REQUEST_ANSWER.transitions,
   };
-  const HUGE = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
   const FLOOR = Math.ceil(
-    CLEAN_PRESET.fonts[CLEAN_PRESET.caption.font].size * CLEAN_PRESET.layout.minScale,
+    ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.caption.font].size * ISSEBYA_PRESET.layout.minScale,
   );
-  const { safe } = CLEAN_PRESET;
-  const makeRoom = (record: { rule: string; action: string }[]) =>
-    record.filter((note) => note.rule === "make-room").map((note) => note.action);
+  const { safe } = ISSEBYA_PRESET;
 
   // Never a caption removed for room: the same captions and words as the
   // plain pass, each placed inside the safe zone, never below the floor.
@@ -1545,36 +1179,21 @@ describe("making room for a request", () => {
     }
   }
 
-  it('places the photo of "add images behind me": the dim Claude added on its own is removed', async () => {
-    // The 2026-11-03 case: nothing else shows while a transition runs, so
-    // the plain pass drops the photo.
+  it('places the visual of "add images behind me" over its sentence, the captions kept', async () => {
+    // The 2026-11-03 case: the visual over the question sentence, the captions
+    // moved (never removed) to make room for it.
     const input = REQUEST_INPUT;
-    const plain = await place(input, { headTrack: LEFT_HEAD });
-    expect(plain.edit.tracks.behind).toBeUndefined();
-    expect(plain.record).toContainEqual(
-      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "one-extra" }),
-    );
-
-    const asked = await place(input, { headTrack: LEFT_HEAD, requested: ["visuals[0]"] });
+    const asked = await place(input, { headTrack: LEFT_HEAD });
     expect(asked.edit.tracks.behind).toEqual([
       expect.objectContaining({ id: "visual-1", kind: "visual" }),
     ]);
     expect(asked.checks).toEqual([]);
     expect(asked.edit.tracks.transitions).toEqual([]);
-    expect(asked.record).toContainEqual({
-      item: "transition-1",
-      action: "removed",
-      rule: "make-room",
-      reason: "transition 1 (dim) removed: it showed at the same time as visual 1, as asked",
-    });
-    // Removing it is enough: the captions stay where they were.
-    expect(makeRoom(asked.record)).toEqual(["removed"]);
-    expect(asked.unplaced).toEqual([]);
     await expectCaptionsKept(asked.edit, input, LEFT_HEAD);
   });
 
-  it("places a requested visual over the words it is asked for, with its description kept", async () => {
-    const asked = await place(REQUEST_INPUT, { headTrack: LEFT_HEAD, requested: ["visuals[0]"] });
+  it("places the visual with its description kept", async () => {
+    const asked = await place(REQUEST_INPUT, { headTrack: LEFT_HEAD });
     expect(asked.edit.tracks.behind).toEqual([
       expect.objectContaining({
         id: "visual-1",
@@ -1582,7 +1201,6 @@ describe("making room for a request", () => {
         description: REQUEST_ANSWER.visuals![0]!.description,
       }),
     ]);
-    expect(asked.unplaced).toEqual([]);
   });
 
   it("matches the committed request fixture", async () => {
@@ -1590,12 +1208,10 @@ describe("making room for a request", () => {
     const made = editFromAnswer(
       hand.edit,
       REQUEST_ANSWER,
-      CLEAN_PRESET,
+      ISSEBYA_PRESET,
       transcript,
       LEFT_HEAD,
       await nodeMeasurer(),
-      undefined,
-      { requested: REQUEST_REQUESTED },
     );
     if (!made.ok) throw new Error(made.reasons.join("; "));
     expect(made.edit.tracks).toEqual(fixture.edit.tracks);
@@ -1604,150 +1220,10 @@ describe("making room for a request", () => {
     ]);
   });
 
-  it("removes Claude's own panel over the photo's sentence: it shows at the same time", async () => {
-    const headTrack = steadyHead({ head_top: 300, cx: 250, head_w: 420 });
-    const input: Partial<EngineInput> = {
-      visuals: [{ from: "w0", to: "w25" }],
-      transitions: [{ kind: "panel", from: "w0", to: "w5", key_from: "w3" }],
-    };
-    const plain = await place(input, { headTrack });
-    expect(plain.edit.tracks.behind).toBeUndefined();
-    expect(plain.edit.tracks.transitions).toHaveLength(1);
-    const asked = await place(input, { headTrack, requested: ["visuals[0]"] });
-    expect(asked.edit.tracks.behind).toHaveLength(1);
-    expect(makeRoom(asked.record)).toEqual(["removed"]);
-    expect(asked.edit.tracks.transitions).toEqual([]);
-    expect(asked.checks).toEqual([]);
-    await expectCaptionsKept(asked.edit, input, headTrack);
-  });
-
-  it("removes only what stands in the way: Claude's own accent on the same words is kept", async () => {
-    // Requested items are placed before Claude's own extras, so the accent
-    // never stands in the photo's way by time; the dim does.
-    const input: Partial<EngineInput> = {
-      ...REQUEST_INPUT,
-      accents: [{ from: "w84", to: "w85", title: false }],
-    };
-    const asked = await place(input, { headTrack: LEFT_HEAD, requested: ["visuals[0]"] });
-    expect(asked.edit.tracks.behind).toHaveLength(1);
-    const removed = asked.record.filter((note) => note.action === "removed");
-    expect(removed.map((note) => note.item)).toEqual(["transition-1"]);
-    await expectCaptionsKept(asked.edit, input, LEFT_HEAD);
-  });
-
-  it("never removes or drops a requested item for another: the later one shifts in its sentence", async () => {
-    // A requested accent opens the sentence; the requested photo on the same
-    // sentence would show at the same time, so it starts later.
-    const input: Partial<EngineInput> = {
-      accents: [{ from: "w0", to: "w2", title: false }],
-      visuals: [{ from: "w0", to: "w25" }],
-    };
-    const plain = await place(input, { headTrack: BIG_FACE });
-    expect(plain.record).toContainEqual(
-      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "one-extra" }),
-    );
-    const asked = await place(input, {
-      headTrack: BIG_FACE,
-      requested: ["accents[0]", "visuals[0]"],
-    });
-    expect(asked.edit.tracks.overlays.map((item) => item.id)).toEqual(["accent-1"]);
-    expect(asked.edit.tracks.behind?.map((item) => item.id)).toEqual(["visual-1"]);
-    expect(asked.record.filter((note) => note.action === "removed")).toEqual([]);
-    const retimed = asked.record.find(
-      (note) => note.item === "visual-1" && note.rule === "make-room",
-    )!;
-    expect(retimed.action).toBe("retimed");
-    expect(retimed.reason).toMatch(
-      /^visual 1 now shows from \d+\.\d\d s to \d+\.\d\d s, inside its sentence, to find room$/,
-    );
-    const photo = asked.spans.get("visual-1")!;
-    const accent = asked.spans.get("accent-1")!;
-    expect(accent.end).toBeLessThanOrEqual(photo.start + 1e-6);
-    expect(photo.end).toBeLessThanOrEqual(sentences[0]!.end + 1e-6);
-    expect(asked.checks).toEqual([]);
-  });
-
-  it("never covers the face to make room: a requested visual with no corner or side is dropped, with the steps tried", async () => {
-    // A face over every spot: nothing can place the card, and it never goes over the face.
-    const input = { visuals: [{ from: "w84", to: "w99" }] };
-    const asked = await place(input, { headTrack: HUGE, requested: ["visuals[0]"] });
-    expect(asked.edit.tracks.behind).toBeUndefined();
-    expect(asked.record).toContainEqual(
-      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "no-room" }),
-    );
-    expect(makeRoom(asked.record)).toEqual([]);
-    expect(
-      asked.record.find((note) => note.item === "visual-1" && note.action === "dropped")!.reason,
-    ).toMatch(
-      /, after moving and shrinking captions, removing extras, shifting it in its sentence and allowing the face$/,
-    );
-    // The face over every caption spot is the captions' own case (over the face
-    // when nothing else is free); the card itself adds no check.
-    expect(asked.checks.filter((check) => check.rule !== "face")).toEqual([]);
-    await expectCaptionsKept(asked.edit, input, HUGE);
-  });
-
-  it("gives a requested accent its room before the captions", async () => {
-    const input = { accents: [{ from: "w84", to: "w86", title: false }] };
-    const plain = await place(input, { headTrack: HUGE });
-    expect(plain.edit.tracks.overlays).toEqual([]);
-    const asked = await place(input, { headTrack: HUGE, requested: ["accents[0]"] });
-    expect(asked.edit.tracks.overlays.map((item) => item.id)).toEqual(["accent-1"]);
-    // The captions keep clear of it; only the face is covered, as recorded.
-    expect(asked.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
-    expect(asked.record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "covers-face", rule: "make-room" }),
-    );
-    await expectCaptionsKept(asked.edit, input, HUGE);
-  });
-
-  it("never makes room without a request, and lists what was left out and where it fits", async () => {
-    const input: Partial<EngineInput> = {
-      accents: [
-        { from: "w0", to: "w4", title: true },
-        { from: "w2", to: "w3", title: false },
-      ],
-    };
-    const measurer = await nodeMeasurer();
-    const placed = placeEdit(
-      hand.edit,
-      { ...NOTHING, ...input },
-      transcript,
-      BIG_FACE,
-      CLEAN_PRESET,
-      measurer,
-    );
-    expect(placed.record.filter((note) => note.rule === "make-room")).toEqual([]);
-    expect(placed.unplaced).toEqual([
-      {
-        ref: "accents[1]",
-        id: "accent-1",
-        kind: "accent",
-        from: "w2",
-        to: "w3",
-        requested: false,
-        why: "busy",
-      },
-    ]);
-    expect(placed.free).toContainEqual({ from: "w26", to: "w62", room_for: ["accent"] });
-    expect(placed.free.some((entry) => entry.from === "w0")).toBe(false);
-    // The probes commit nothing: the same tracks as without them.
-    const again = placeEdit(
-      hand.edit,
-      { ...NOTHING, ...input },
-      transcript,
-      BIG_FACE,
-      CLEAN_PRESET,
-      measurer,
-    );
-    expect(again.tracks).toEqual(placed.tracks);
-    expect(again.record).toEqual(placed.record);
-  });
-
   it("is deterministic: the same request gives the same tracks and record", async () => {
     const input = REQUEST_INPUT;
-    const one = await place(input, { headTrack: LEFT_HEAD, requested: ["visuals[0]"] });
-    const two = await place(input, { headTrack: LEFT_HEAD, requested: ["visuals[0]"] });
+    const one = await place(input, { headTrack: LEFT_HEAD });
+    const two = await place(input, { headTrack: LEFT_HEAD });
     expect(two.edit).toEqual(one.edit);
     expect(two.record).toEqual(one.record);
   });
@@ -1755,20 +1231,19 @@ describe("making room for a request", () => {
 
 describe("the written hook", () => {
   const HOOK = { text: "Gen Z won't work like you did" };
-  const { safe } = CLEAN_PRESET;
-  const { fromSeconds, untilSeconds } = CLEAN_PRESET.pace.hook;
+  const { safe } = ISSEBYA_PRESET;
+  const { fromSeconds, untilSeconds } = ISSEBYA_PRESET.pace.hook;
   const hookOf = (edit: Edit) => edit.tracks.overlays.find((item) => item.kind === "hook");
   // A face at the top, narrow enough that the hook fits beside it only when
   // set below the smallest size.
   const NARROW_HEAD = steadyHead({ head_top: 100, cx: 540, head_w: 300 });
-  const preset110 = CLEAN_PRESET.fonts[CLEAN_PRESET.accent.font].size;
+  const preset110 = ISSEBYA_PRESET.fonts[ISSEBYA_PRESET.accent.font].size;
 
   it("shows from 0.2 s to 3 s in the upper part of the frame, off the face, inside the safe zone", async () => {
     const placed = await place({ hook: HOOK });
     const item = hookOf(placed.edit)!;
     expect(item).toMatchObject({ id: "hook", kind: "hook", text: HOOK.text });
     expect(item.words).toBeUndefined();
-    expect(item.shadow).toBeUndefined();
     expect(item.color).toBeUndefined();
     expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: untilSeconds });
     // Wrapped or shrunk to fit, recorded; always above the middle of the safe zone.
@@ -1786,43 +1261,52 @@ describe("the written hook", () => {
     expectNoWordTwice(placed.edit, placed.spans);
   });
 
-  it("is the one extra of its window: an accent in it is dropped, one after it shows", async () => {
+  it("makes an accent said in the hook's window wait for the hook to end, noted: the hook keeps its slot", async () => {
     const placed = await place({
       hook: HOOK,
       accents: [
-        { from: "w2", to: "w3", title: true },
-        { from: "w12", to: "w12", title: false },
+        { from: "w2", to: "w3" },
+        { from: "w12", to: "w12" },
       ],
     });
-    expect(placed.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook", "accent-1"]);
+    expect(placed.edit.tracks.overlays.map((item) => item.id)).toEqual([
+      "hook",
+      "accent-1",
+      "accent-2",
+    ]);
+    expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: untilSeconds });
+    expect(placed.spans.get("accent-1")!.start).toBe(untilSeconds);
     expect(placed.record).toContainEqual({
-      item: "title",
-      action: "dropped",
-      rule: "one-extra",
-      reason: expect.stringContaining(
-        'at the same time as the hook "Gen Z won\'t work like you did"',
+      item: "accent-1",
+      action: "retimed",
+      rule: "text-one-at-a-time",
+      reason: expect.stringMatching(
+        /^accent "[^"]+" waits from \d+\.\d\d s to 3\.00 s: the hook "Gen Z won't work like you did" shows until then, and text picks show one at a time$/,
       ),
     });
-    expect(placed.unplaced).toEqual([expect.objectContaining({ ref: "accents[0]", why: "busy" })]);
-    // The accent after it takes its lead once the hook has gone.
-    expect(placed.spans.get("accent-1")!.start).toBeGreaterThanOrEqual(untilSeconds);
+    // The accent said after the hook is not moved.
+    expect(placed.spans.get("accent-2")!.start).toBe(start("w12"));
     expect(placed.checks).toEqual([]);
   });
 
-  it("is never cut short: an accent said just before it ends is dropped, not the hook", async () => {
-    const placed = await place({ hook: HOOK, accents: [{ from: "w9", to: "w9", title: false }] });
+  it("is never cut short: an accent said in the hook's window waits for the hook, its own words over, it shows the floor", async () => {
+    const placed = await place({ hook: HOOK, accents: [{ from: "w9", to: "w9" }] });
     expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: untilSeconds });
-    expect(placed.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook"]);
+    expect(placed.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook", "accent-1"]);
+    const span = placed.spans.get("accent-1")!;
+    expect(span.start).toBe(untilSeconds);
+    expect(span.end - span.start).toBeCloseTo(SHOWN_FLOOR_SECONDS, 3);
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "dropped", rule: "one-extra" }),
+      expect.objectContaining({ item: "accent-1", action: "retimed", rule: "text-one-at-a-time" }),
     );
+    expect(placed.checks).toEqual([]);
   });
 
   it("holds its slot when an accent and an image are asked for in its window: it never moves, shrinks or goes", async () => {
     const hookOnly = await place({ hook: HOOK });
     const crowded = await place({
       hook: HOOK,
-      accents: [{ from: "w9", to: "w9", title: false }],
+      accents: [{ from: "w9", to: "w9" }],
       visuals: [{ from: "w2", to: "w5" }],
     });
     // The hook is the same item, at the same place and size, with the same notes.
@@ -1831,67 +1315,41 @@ describe("the written hook", () => {
     const notesOf = (placed: Awaited<ReturnType<typeof place>>) =>
       placed.record.filter((note) => note.item === "hook");
     expect(notesOf(crowded)).toEqual(notesOf(hookOnly));
-    // What asked for the window waits or is dropped, recorded as the one extra.
-    expect(crowded.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook"]);
+    // What is asked for in its window is shown, noted: the accent waits for the
+    // hook (text picks one at a time), the visual is not text and is not cut.
+    expect(crowded.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook", "accent-1"]);
+    expect(crowded.edit.tracks.behind?.map((item) => item.id)).toEqual(["visual-1"]);
+    const visualOnly = await place({ visuals: [{ from: "w2", to: "w5" }] });
+    expect(crowded.spans.get("visual-1")).toEqual(visualOnly.spans.get("visual-1"));
     expect(crowded.record).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ item: "accent-1", action: "dropped", rule: "one-extra" }),
-        expect.objectContaining({ item: "visual-1", action: "dropped", rule: "one-extra" }),
+        expect.objectContaining({
+          item: "accent-1",
+          action: "retimed",
+          rule: "text-one-at-a-time",
+        }),
+        expect.objectContaining({
+          item: "visual-1",
+          action: "kept-overlapping",
+          rule: "all-picks",
+        }),
       ]),
     );
     expect(crowded.checks).toEqual([]);
   });
 
-  it("never lets a transition run during it: one in its window is dropped, a later one kept", async () => {
-    const placed = await place({
-      hook: HOOK,
-      transitions: [
-        { kind: "dim", from: "w4", to: "w9", key_from: "w6" },
-        { kind: "panel", from: "w26", to: "w33", key_from: "w30" },
-      ],
-    });
-    expect(placed.edit.tracks.transitions.map((item) => item.id)).toEqual(["transition-2"]);
-    expect(placed.record).toContainEqual({
-      item: "transition-1",
-      action: "dropped",
-      rule: "hook",
-      reason: expect.stringMatching(
-        /while the hook shows from 0\.20 s to 3\.00 s; no transition during the hook$/,
-      ),
-    });
-    expect(placed.checks).toEqual([]);
-  });
-
-  it("makes room like an owner's request and covers the face only as the last step", async () => {
-    const HUGE = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
-    const placed = await place({ hook: HOOK }, { headTrack: HUGE });
-    expect(hookOf(placed.edit)).toBeDefined();
-    const notes = placed.record.filter((note) => note.item === "hook");
-    expect(notes).toContainEqual(
-      expect.objectContaining({ action: "covers-face", rule: "make-room" }),
-    );
-    // Given room on every run, so never "as asked" unless the owner asked.
-    expect(placed.record.filter((note) => note.reason.endsWith("as asked"))).toEqual([]);
-    expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
-    // Captions are never dropped for it.
-    const plain = await place({}, { headTrack: HUGE });
-    expect(placed.edit.tracks.captions.map((caption) => caption.words)).toEqual(
-      plain.edit.tracks.captions.map((caption) => caption.words),
-    );
-  });
-
   it("reads back as its text and places the same again; a version without one reads null", async () => {
     const measurer = await nodeMeasurer();
-    const placed = await place({ hook: HOOK, accents: [{ from: "w12", to: "w14", title: false }] });
-    const choices = choicesOf(placed.edit, transcript, CLEAN_PRESET);
+    const placed = await place({ hook: HOOK, accents: [{ from: "w12", to: "w14" }] });
+    const choices = choicesOf(placed.edit, transcript, ISSEBYA_PRESET);
     expect(choices.hook).toEqual(HOOK);
-    expect(choicesOf(hand.edit, transcript, CLEAN_PRESET).hook).toBeNull();
+    expect(choicesOf(hand.edit, transcript, ISSEBYA_PRESET).hook).toBeNull();
     const again = placeEdit(
       { ...hand.edit, tracks: { ...hand.edit.tracks, ...placed.edit.tracks } },
       choices,
       transcript,
       hand.headTrack,
-      CLEAN_PRESET,
+      ISSEBYA_PRESET,
       measurer,
     );
     expect(again.tracks.overlays).toEqual(placed.edit.tracks.overlays);
@@ -1934,19 +1392,15 @@ describe("the written hook", () => {
       { hook: { text: "Nobody tells you how work feels now" } },
       { current, transcript: spoken },
     );
-    // The hook shows its whole window, in the upper part, not dropped.
+    // The hook shows its whole window, in the upper part.
     expect(hookOf(placed.edit)).toBeDefined();
     expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: untilSeconds });
-    expect(
-      placed.record.filter((note) => note.item === "hook" && note.action === "dropped"),
-    ).toEqual([]);
-    // The captions in its window are placed around it: no text overlaps it.
+    // The captions in its window are placed too (around it where they fit).
     const inWindow = placed.edit.tracks.captions.filter((caption) => {
       const span = placed.spans.get(caption.id);
       return span && span.start < untilSeconds && span.end > fromSeconds && caption.position;
     });
     expect(inWindow.length).toBeGreaterThan(0);
-    expect(placed.checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
     // So many captions leave no free place beside the face: they go over it,
     // by the caption fallback, recorded; every other check passes.
     expect(placed.record).toContainEqual(
@@ -1966,7 +1420,6 @@ describe("the written hook", () => {
     expect(placed.record.filter((note) => note.item === "hook").map((note) => note.rule)).toEqual(
       expect.arrayContaining(["hook-size"]),
     );
-    expect(placed.record.filter((note) => note.action === "dropped")).toEqual([]);
     expect(placed.spans.get("hook")).toMatchObject({ start: fromSeconds, end: untilSeconds });
     expect(placed.checks).toEqual([]);
   });
@@ -1980,39 +1433,125 @@ describe("the written hook", () => {
       const placed = await place({ hook: { text } }, { headTrack: NARROW_HEAD });
       const item = hookOf(placed.edit)!;
       expect(item.size).toBeGreaterThanOrEqual(MIN_TEXT_SIZE);
-      expect(parseEdit(placed.edit, CLEAN_PRESET, transcript).ok).toBe(true);
+      expect(parseEdit(placed.edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
     }
   });
 
-  it("is dropped, with the reason, only on a reel too short to show it", async () => {
+  it("shows on a reel too short for its window from earlier, to the reel's end, and records it", async () => {
     const short = FIXTURES.find((fixture) => fixture.name === "baseline-short-speech")!;
     const measurer = await nodeMeasurer();
-    const tiny = { ...short.edit, duration: 1.2 };
+    const tiny = { ...short.edit, duration: 0.6 };
     const placed = placeEdit(
       tiny,
       { ...NOTHING, hook: HOOK },
       short.transcript,
       short.headTrack,
-      CLEAN_PRESET,
+      ISSEBYA_PRESET,
       measurer,
     );
-    expect(placed.tracks.overlays).toEqual([]);
+    expect(placed.tracks.overlays.map((item) => item.id)).toEqual(["hook"]);
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "hook", action: "dropped", rule: "hook-time" }),
+      expect.objectContaining({ item: "hook", action: "clamped-to-end", rule: "hook-time" }),
     );
   });
 });
 
-describe("every pick shown: the all placement", () => {
+describe("text picks one at a time", () => {
+  const LIST_AT_W26 = { kind: "numbered" as const, from: "w26", to: "w33", key_from: "w30" };
+
+  it("cuts an accent that runs into a list where the list starts, noted, and keeps the list's times", async () => {
+    const placed = await place({
+      accents: [{ from: "w24", to: "w26" }],
+      transitions: [LIST_AT_W26],
+    });
+    const accent = placed.spans.get("accent-1")!;
+    const list = placed.spans.get("transition-1")!;
+    expect(list.start).toBe(start("w26"));
+    expect(list.end).toBe(end("w33"));
+    expect(accent.start).toBe(start("w24"));
+    expect(accent.end).toBeCloseTo(start("w26"), 3);
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({
+        item: "accent-1",
+        action: "retimed",
+        rule: "text-one-at-a-time",
+        reason: expect.stringMatching(
+          /^accent ".+" shows from \d+\.\d\d s to \d+\.\d\d s, not to \d+\.\d\d s: transition 1 \(numbered\) on ".+" starts at \d+\.\d\d s, and text picks show one at a time$/,
+        ),
+      }),
+    );
+    expect(placed.checks).toEqual([]);
+  });
+
+  it("cuts a list where an accent starts inside its phrase, noted with what the list no longer shows", async () => {
+    const placed = await place({
+      accents: [{ from: "w30", to: "w31" }],
+      transitions: [LIST_AT_W26],
+    });
+    const list = placed.spans.get("transition-1")!;
+    const accent = placed.spans.get("accent-1")!;
+    expect(accent.start).toBe(start("w30"));
+    expect(list.start).toBe(start("w26"));
+    expect(list.end).toBeCloseTo(start("w30"), 3);
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({
+        item: "transition-1",
+        action: "retimed",
+        rule: "text-one-at-a-time",
+        reason: expect.stringMatching(/; the words of its list after that show no list text$/),
+      }),
+    );
+    expect(placed.checks).toEqual([]);
+  });
+
+  it("makes a text said while a big word shows wait until the big word's minimum is over", async () => {
+    const placed = await place({
+      big_words: [{ from: "w76", to: "w76" }],
+      accents: [{ from: "w77", to: "w78" }],
+    });
+    const big = placed.spans.get("big-word-1")!;
+    const accent = placed.spans.get("accent-1")!;
+    // The big word keeps its lead and its minimum.
+    expect(big.start).toBeCloseTo(leadOf("w76"), 3);
+    expect(big.end - big.start).toBeGreaterThanOrEqual(1.5 - 1e-6);
+    // It waits for the big word; its words are over by then, so it shows the
+    // shown floor from there.
+    expect(accent.start).toBeCloseTo(big.end, 3);
+    expect(accent.end - accent.start).toBeCloseTo(SHOWN_FLOOR_SECONDS, 3);
+    expect(placed.record).toContainEqual(
+      expect.objectContaining({
+        item: "accent-1",
+        action: "retimed",
+        rule: "text-one-at-a-time",
+      }),
+    );
+    expect(placed.checks).toEqual([]);
+  });
+
+  it("never cuts a visual for an accent: the visual keeps its own times beside it", async () => {
+    const visualOnly = await place({ visuals: [{ from: "w6", to: "w8" }] });
+    const placed = await place({
+      accents: [{ from: "w5", to: "w6" }],
+      visuals: [{ from: "w6", to: "w8" }],
+    });
+    expect(placed.spans.get("accent-1")).toMatchObject({ start: start("w5"), end: end("w6") });
+    expect(placed.spans.get("visual-1")).toMatchObject(visualOnly.spans.get("visual-1")!);
+    expect(
+      placed.record.filter((note) => note.item === "visual-1" && note.action === "retimed"),
+    ).toEqual([]);
+  });
+});
+
+describe("every pick shown", () => {
   // Eight picks in the first 9 s of the reel, overlapping: four accents (each
   // at least 1.5 s on screen, so they overlap one another), two big words and
   // two visuals.
   const DENSE_TEN: Partial<EngineInput> = {
     accents: [
-      { from: "w1", to: "w2", title: false },
-      { from: "w3", to: "w4", title: false },
-      { from: "w5", to: "w6", title: false },
-      { from: "w9", to: "w9", title: false },
+      { from: "w1", to: "w2" },
+      { from: "w3", to: "w4" },
+      { from: "w5", to: "w6" },
+      { from: "w9", to: "w9" },
     ],
     big_words: [
       { from: "w4", to: "w4" },
@@ -2034,13 +1573,10 @@ describe("every pick shown: the all placement", () => {
     ["visual-2", "w12", "w17"],
   ];
 
-  it("shows every pick from its first word to its last word's end, none dropped, and passes the schema", async () => {
-    const { edit, record, unplaced, spans } = await place(DENSE_TEN, {
+  it("shows every pick from its first word to its last word's end, and passes the schema", async () => {
+    const { edit, spans } = await place(DENSE_TEN, {
       headTrack: hand.headTrack,
-      preset: ISSEBYA_PRESET,
     });
-    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
-    expect(unplaced).toEqual([]);
     expect(edit.tracks.overlays.map((item) => item.id)).toEqual([
       "accent-1",
       "accent-2",
@@ -2056,63 +1592,83 @@ describe("every pick shown: the all placement", () => {
     expect(parseEdit(edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
     for (const [id, from, to] of PICKS) {
       const span = spans.get(id)!;
-      // Its first word's start (an accent or a big word a lead earlier), and
-      // its last word's end.
-      expect(span.start).toBeLessThanOrEqual(byId.get(from)!.start + 1e-6);
-      expect(span.start).toBeGreaterThanOrEqual(byId.get(from)!.start - 0.25);
-      expect(span.end).toBeGreaterThanOrEqual(byId.get(to)!.end - 1e-6);
+      expect(span.end).toBeGreaterThan(span.start);
+      if (id.startsWith("visual")) {
+        // A visual shows over its own words, from its first word to its last.
+        expect(span.start).toBeLessThanOrEqual(byId.get(from)!.start + 1e-6);
+        expect(span.end).toBeGreaterThanOrEqual(byId.get(to)!.end - 1e-6);
+      }
+      if (id === "big-word-1") {
+        // A big word keeps its lead before its word.
+        expect(span.start).toBeCloseTo(leadOf(from), 3);
+      }
+      if (id === "big-word-2") {
+        // It overlaps big-word-1, which keeps its minimum: it waits for that.
+        expect(span.start).toBeGreaterThanOrEqual(spans.get("big-word-1")!.end - 1e-6);
+      }
+    }
+    // The text picks (accents and big words) show one at a time, in order.
+    const text = ["accent-1", "accent-2", "accent-3", "accent-4", "big-word-1", "big-word-2"]
+      .map((id) => ({ id, ...spans.get(id)! }))
+      .sort((a, b) => a.start - b.start);
+    for (let index = 1; index < text.length; index += 1) {
+      expect(
+        text[index]!.start,
+        `${text[index - 1]!.id} and ${text[index]!.id}`,
+      ).toBeGreaterThanOrEqual(text[index - 1]!.end - 1e-6);
     }
   });
 
-  it("shows a question with the other picks in the all placement: never dropped", async () => {
-    const { edit, record, unplaced, spans } = await place(
+  it("shows a question with the other picks", async () => {
+    const { edit, spans } = await place(
       { ...DENSE_TEN, questions: [{ from: "w30", to: "w31" }] },
-      { headTrack: hand.headTrack, preset: ISSEBYA_PRESET },
+      { headTrack: hand.headTrack },
     );
     expect(edit.tracks.overlays.map((item) => item.id)).toContain("question-1");
-    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
-    expect(unplaced).toEqual([]);
     expect(spans.get("question-1")!.start).toBeLessThanOrEqual(byId.get("w30")!.start + 1e-6);
     expect(parseEdit(edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
   });
 
-  it("keeps the overlaps and says so in the record", async () => {
-    const { record, checks } = await place(DENSE_TEN, {
+  it("cuts or holds the overlapping text picks and says so in the record, nothing dropped", async () => {
+    const { record, checks, spans } = await place(DENSE_TEN, {
       headTrack: hand.headTrack,
-      preset: ISSEBYA_PRESET,
     });
+    // accent-2 is cut where big-word-1 starts (the big word keeps its lead).
     expect(record).toContainEqual(
-      expect.objectContaining({ item: "accent-2", action: "kept-overlapping", rule: "all-picks" }),
+      expect.objectContaining({
+        item: "accent-2",
+        action: "retimed",
+        rule: "text-one-at-a-time",
+        reason: expect.stringContaining("shows from"),
+      }),
     );
+    expect(spans.get("accent-2")!.end).toBeCloseTo(spans.get("big-word-1")!.start, 3);
     expect(checks).toEqual([]);
   });
 
-  it("places a visual the face leaves no corner for at the default corner, noted, never dropped", async () => {
+  it("places a visual the face leaves no corner for at the default corner, noted", async () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
-    const { edit, record, unplaced } = await place(
+    const { edit, record } = await place(
       { visuals: [{ from: "w84", to: "w99" }] },
-      { headTrack: huge, preset: ISSEBYA_PRESET },
+      { headTrack: huge },
     );
     expect(edit.tracks.behind).toEqual([
-      expect.objectContaining({ id: "visual-1", kind: "visual", layer: "front" }),
+      expect.objectContaining({ id: "visual-1", kind: "visual" }),
     ]);
-    expect(unplaced).toEqual([]);
     expect(record).toContainEqual(
       expect.objectContaining({ item: "visual-1", action: "kept-overlapping", rule: "all-picks" }),
     );
-    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
   });
 
-  it("places a big word the head hides at every height where it is, noted, never dropped", async () => {
+  it("places a big word the head hides at every height where it is, noted", async () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
     const { edit, record } = await place(
       { big_words: [{ from: "w76", to: "w76" }] },
-      { headTrack: huge, preset: ISSEBYA_PRESET },
+      { headTrack: huge },
     );
     expect(edit.tracks.behind).toEqual([
       expect.objectContaining({ id: "big-word-1", kind: "word" }),
     ]);
-    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
     expect(record).toContainEqual(
       expect.objectContaining({
         item: "big-word-1",
@@ -2122,34 +1678,26 @@ describe("every pick shown: the all placement", () => {
     );
   });
 
-  it("shows a transition that runs during the hook: nothing is dropped for the hook", async () => {
+  it("shows a transition that runs during the hook: the hook keeps its window", async () => {
     const placed = await place(
       {
         hook: { text: "Gen Z won't work like you did" },
         transitions: [
-          { kind: "dim", from: "w4", to: "w9", key_from: "w6" },
-          { kind: "panel", from: "w26", to: "w33", key_from: "w30" },
+          { kind: "numbered", from: "w4", to: "w9", key_from: "w6" },
+          { kind: "numbered", from: "w26", to: "w33", key_from: "w30" },
         ],
       },
-      { headTrack: hand.headTrack, preset: ISSEBYA_PRESET },
+      { headTrack: hand.headTrack },
     );
     expect(placed.edit.tracks.transitions.map((item) => item.id)).toEqual([
       "transition-1",
       "transition-2",
     ]);
-    expect(placed.record.filter((note) => note.action === "dropped")).toEqual([]);
     expect(placed.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook"]);
-  });
-
-  it("the clean layout drops or retimes some of the same picks", async () => {
-    const { record } = await place(DENSE_TEN, { headTrack: hand.headTrack });
-    expect(record.some((note) => note.action === "dropped" || note.action === "retimed")).toBe(
-      true,
-    );
   });
 });
 
-// `all` mode drops nothing the answer picks: a 1 s reel (a number and its
+// The engine drops nothing the answer picks: a 1 s reel (a number and its
 // unit, a last word at the reel's end), a footage cut over the second word.
 const ONE_SECOND: Transcript = {
   words: [
@@ -2183,24 +1731,23 @@ function oneSecondReel(): Edit {
   };
 }
 
-describe("nothing the answer picks is dropped in all mode", () => {
+describe("nothing the answer picks is dropped", () => {
   it("shows a pick at the reel's end, a pick over a cut, a transition with no text and a hook on a 1 s reel", async () => {
-    const { edit, record, unplaced } = await place(
+    const { edit, record } = await place(
       {
-        accents: [{ from: "w5", to: "w5", title: false }],
+        accents: [{ from: "w5", to: "w5" }],
         big_words: [{ from: "w2", to: "w2" }],
-        transitions: [{ kind: "dim", from: "w4", to: "w4", key_from: "w4" }],
+        transitions: [{ kind: "numbered", from: "w4", to: "w4", key_from: "w4" }],
         hook: { text: "Hello there" },
       },
-      { current: oneSecondReel(), transcript: ONE_SECOND, preset: ISSEBYA_PRESET },
+      { current: oneSecondReel(), transcript: ONE_SECOND },
     );
-    expect(record.filter((note) => note.action === "dropped")).toEqual([]);
-    expect(unplaced).toEqual([]);
     expect(edit.tracks.overlays.map((item) => item.id)).toEqual(["hook", "accent-1"]);
     expect(edit.tracks.transitions.map((item) => item.id)).toEqual(["transition-1"]);
     expect(edit.tracks.behind?.map((item) => item.id)).toEqual(["big-word-1"]);
     expect(parseEdit(edit, ISSEBYA_PRESET, ONE_SECOND).ok).toBe(true);
-    expect(record).toContainEqual(
+    // The accent shows exactly its word, so it is never shown from earlier.
+    expect(record).not.toContainEqual(
       expect.objectContaining({ item: "accent-1", action: "clamped-to-end" }),
     );
     expect(record).toContainEqual(
@@ -2231,7 +1778,7 @@ describe("nothing the answer picks is dropped in all mode", () => {
       const input: Partial<EngineInput> = {
         accents: Array.from({ length: count(5) }, () => {
           const [from, to] = run(6);
-          return { from, to, title: false };
+          return { from, to };
         }),
         big_words: Array.from({ length: count(4) }, () => {
           const id = pick(ids);
@@ -2247,12 +1794,25 @@ describe("nothing the answer picks is dropped in all mode", () => {
         }),
         hook: random() < 0.5 ? { text: "Gen Z won't work like you did" } : null,
       };
-      const { record, unplaced } = await place(input, { preset: ISSEBYA_PRESET });
+      const { edit } = await place(input);
+      const shown = [
+        ...edit.tracks.overlays.map((item) => item.id),
+        ...(edit.tracks.behind ?? []).map((item) => item.id),
+      ];
+      (input.accents ?? []).forEach((_, index) =>
+        expect(shown, `round ${round}`).toContain(`accent-${index + 1}`),
+      );
+      (input.big_words ?? []).forEach((_, index) =>
+        expect(shown, `round ${round}`).toContain(`big-word-${index + 1}`),
+      );
+      (input.visuals ?? []).forEach((_, index) =>
+        expect(shown, `round ${round}`).toContain(`visual-${index + 1}`),
+      );
       expect(
-        record.filter((note) => note.action === "dropped"),
+        edit.tracks.transitions.map((item) => item.id),
         `round ${round}`,
-      ).toEqual([]);
-      expect(unplaced, `round ${round}`).toEqual([]);
+      ).toEqual((input.transitions ?? []).map((_, index) => `transition-${index + 1}`));
+      expect(shown.includes("hook"), `round ${round}`).toBe(input.hook !== null);
     }
   });
 });

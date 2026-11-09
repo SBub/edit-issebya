@@ -415,14 +415,14 @@ test("text moved by 60 px falls below the bound", async () => {
   expect(Math.min(...probeScores)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
 });
 
-// A library photo in the top spot, then one big word, behind the speaker: each
-// a start over job (the scripted answer, decided from version 1) that makes the cut-out with the real mask
-// tool and saves the version, then the composite in the live preview and in
-// the real export are compared at the same moments. The photo and the word
-// each show 2 s from the speech's start (0.038 s), as two versions over the
-// same span. The first two moments are inside it, the last one after it (the
-// composite gone in both). The photo moved by 60 px is the probe and must
-// fall below the bound.
+// A VISUAL over the speaker, then one big word, behind the speaker: each a
+// start over job (the scripted answer, decided from version 1) that makes the
+// cut-out with the real mask tool and saves the version, then the composite in
+// the live preview and in the real export are compared at the same moments.
+// The visual and the word each show 2 s from the speech's start (0.038 s), as
+// two versions over the same span. The first two moments are inside it, the
+// last one after it (the composite gone in both). A ready library photo is
+// seeded beside them; no version places it (the placed photo is gone).
 async function startOverTo(script: string): Promise<string> {
   const { error } = await admin
     .from("jobs")

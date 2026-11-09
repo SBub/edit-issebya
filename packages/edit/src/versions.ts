@@ -64,10 +64,6 @@ export interface NewVersion {
   // does it and, when not, why and what the owner can do; empty without a
   // request, for the first version and for a going back.
   checklist: ChecklistOutcome[];
-  // The reel's behind forbids to write with the version; null (or absent)
-  // leaves the stored flag as it is.
-  no_photos?: boolean | null;
-  no_big_word?: boolean | null;
 }
 
 export interface FreeFieldUse {
@@ -126,8 +122,6 @@ export interface VersionMeta {
   engineRecord?: EngineNote[];
   // The request checklist's outcome; empty when not given.
   checklist?: ChecklistOutcome[];
-  // The reel's behind forbids written with the version; null leaves a flag.
-  forbid?: { photos: boolean | null; bigWord: boolean | null };
 }
 
 // The canonical bytes of an edit: what a version's blob holds.
@@ -165,8 +159,6 @@ async function saveBytes(
     rejected_reasons: meta.rejectedReasons ?? [],
     engine_record: meta.engineRecord ?? [],
     checklist: meta.checklist ?? [],
-    no_photos: meta.forbid?.photos ?? null,
-    no_big_word: meta.forbid?.bigWord ?? null,
   });
   return { id, number, key, bytes: bytes.byteLength };
 }

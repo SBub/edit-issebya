@@ -6,6 +6,7 @@ import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
+const transitions = FIXTURES.find((fixture) => fixture.name === "rethink-work-transitions")!;
 
 function retimed(map: (t: number) => number): Transcript {
   return {
@@ -26,6 +27,8 @@ describe("resolveTimeline", () => {
   ] as const) {
     it(`items follow their words through a ${name} transcript`, () => {
       const edit = structuredClone(hand.edit);
+      // A numbered transition on the phrase "they want fair pay" (w100 to w103).
+      edit.tracks.transitions = structuredClone(transitions.edit.tracks.transitions.slice(0, 1));
       // The re-timed reel's length.
       edit.duration = ms(Math.max(...transcript.words.map((word) => word.end)) + 0.2);
       edit.tracks.overlays.push({
@@ -44,9 +47,12 @@ describe("resolveTimeline", () => {
         const end = words.get((caption.end as { word: string }).word)!;
         expect(after.get(caption.id)).toEqual({ start: start.start, end: end.end, clamped: false });
       }
+      // A transition's anchors are words too: from its first word's start to
+      // its last word's end.
       const transition = edit.tracks.transitions[0]!;
-      expect(after.get(transition.id)!.start).toBe(ms(words.get("w126")!.start - 0.03));
-      expect(after.get(transition.id)!.end).toBe(words.get("w133")!.end);
+      const phrase = transition.words!;
+      expect(after.get(transition.id)!.start).toBe(words.get(phrase[0]!)!.start);
+      expect(after.get(transition.id)!.end).toBe(words.get(phrase.at(-1)!)!.end);
       // A time anchor stays where it is; the reel's ends do not depend on words.
       expect(after.get("at-time")).toEqual(before.get("at-time"));
       expect(after.get("footage")).toEqual({ start: 0, end: edit.duration, clamped: false });
@@ -73,7 +79,7 @@ describe("resolveTimeline with behind items", () => {
   it("resolves the behind track like any other", () => {
     const behind = FIXTURES.find((fixture) => fixture.name === "rethink-work-behind")!;
     const resolved = resolveTimeline(behind.edit, behind.transcript);
-    expect(resolved.get("behind-photo")).toEqual({ start: 5.206, end: 7.838, clamped: false });
+    expect(resolved.get("visual-1")).toEqual({ start: 5.206, end: 7.838, clamped: false });
     expect(resolved.get("behind-word")).toEqual({ start: 20.068, end: 22.613, clamped: false });
   });
 });

@@ -13,18 +13,12 @@
       "fingerprint": "rethink-work",
       "file": "transcript.json"
     },
-    "cutout": {
-      "step": "remove_background",
-      "fingerprint": "rethink-work",
-      "file": "subject.webm"
-    },
     "head_track": {
       "step": "head_track",
       "fingerprint": "rethink-work",
       "file": "head-track.json"
     },
-    "masks": [],
-    "photos": []
+    "masks": []
   },
   "tracks": {
     "footage": [
@@ -1654,8 +1648,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 151.75,
-          "y": 722,
+          "x": 432,
+          "y": 522,
           "align": "left"
         }
       },
@@ -1673,8 +1667,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 254.25,
-          "y": 722,
+          "x": 534.5,
+          "y": 522,
           "align": "left"
         }
       },
@@ -1692,8 +1686,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 298.7,
-          "y": 722,
+          "x": 578.95,
+          "y": 522,
           "align": "left"
         }
       },
@@ -1711,8 +1705,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 399.95,
-          "y": 722,
+          "x": 680.2,
+          "y": 522,
           "align": "left"
         }
       },
@@ -1730,8 +1724,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 517.95,
-          "y": 722,
+          "x": 798.2,
+          "y": 522,
           "align": "left"
         }
       },
@@ -1750,8 +1744,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 579.45,
-          "y": 722,
+          "x": 432,
+          "y": 586,
           "align": "left"
         }
       },
@@ -1770,8 +1764,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 256.57,
-          "y": 722,
+          "x": 432,
+          "y": 522,
           "align": "left"
         }
       },
@@ -1790,8 +1784,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 377.82,
-          "y": 722,
+          "x": 553.25,
+          "y": 522,
           "align": "left"
         }
       },
@@ -1810,8 +1804,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 514.17,
-          "y": 722,
+          "x": 689.6,
+          "y": 522,
           "align": "left"
         }
       },
@@ -1829,8 +1823,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 130,
-          "y": 722,
+          "x": 432,
+          "y": 522,
           "align": "left"
         }
       },
@@ -1848,8 +1842,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 192.5,
-          "y": 722,
+          "x": 494.5,
+          "y": 522,
           "align": "left"
         }
       },
@@ -1867,8 +1861,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 324.75,
-          "y": 722,
+          "x": 626.75,
+          "y": 522,
           "align": "left"
         }
       },
@@ -1886,8 +1880,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 446,
-          "y": 722,
+          "x": 432,
+          "y": 586,
           "align": "left"
         }
       },
@@ -1905,8 +1899,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 578.25,
-          "y": 722,
+          "x": 564.25,
+          "y": 586,
           "align": "left"
         }
       },
@@ -1924,8 +1918,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 640.75,
-          "y": 722,
+          "x": 626.75,
+          "y": 586,
           "align": "left"
         }
       },
@@ -3126,11 +3120,10 @@
         },
         "kind": "visual",
         "description": "a question mark on a wall",
-        "spot": "top",
-        "layer": "front",
+        "spot": "left",
         "box": {
-          "x": 645,
-          "y": 260,
+          "x": 75,
+          "y": 980,
           "width": 360,
           "height": 450
         }

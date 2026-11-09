@@ -51,11 +51,6 @@ const { data: versions, error } = await db
 if (error) throw new Error(`trace: ${error.message}`);
 if (versions.length === 0) console.log(`No versions for reel ${reelId}.`);
 
-// Each library photo by a short name: its first tag, else its description's
-// first words.
-const photoIds = new Set<string>();
-const photoNames = new Map<string, string>();
-
 for (const version of versions) {
   const title = `\n== reel ${reelId}, version ${version.number} ==`;
   const record = (await readJson(
@@ -82,22 +77,7 @@ for (const version of versions) {
   );
   const heading = traceHeading(title, record, decide.length);
   if (!table) {
-    const wanted = (answer.photos ?? []).map((photo) => photo.photo_id);
-    const missing = wanted.filter((id) => !photoIds.has(id));
-    if (missing.length > 0) {
-      const { data: photos } = await db
-        .from("photos")
-        .select("id, description, tags")
-        .in("id", missing);
-      for (const id of missing) photoIds.add(id);
-      for (const photo of photos ?? []) {
-        const tags = photo.tags as string[];
-        const short = (photo.description as string | null)?.split(/\s+/).slice(0, 4).join(" ");
-        const name = tags[0] ?? short;
-        if (name) photoNames.set(photo.id as string, name);
-      }
-    }
-    console.log(formatScript(heading, answer, transcript.words, photoNames));
+    console.log(formatScript(heading, answer, transcript.words));
     continue;
   }
   const engine = version.engine_record as EngineNote[];

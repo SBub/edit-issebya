@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FIXTURES } from "./test-support/fixtures.ts";
+import { PLACED_FIXTURES } from "./test-support/fixtures.ts";
 import { goldenOf } from "./test-support/golden.ts";
 import { GOLDENS } from "./test-support/goldens.ts";
 import { browserMeasurer } from "./test-support/measurer.browser.ts";
@@ -12,7 +12,7 @@ import {
 // The studio's environment: the same builder in Chromium must give the very
 // page and widths the Node build committed.
 describe("build in the browser", () => {
-  for (const fixture of FIXTURES) {
+  for (const fixture of PLACED_FIXTURES) {
     it(`${fixture.name} equals its golden byte for byte`, async () => {
       const built = goldenOf(fixture, await browserMeasurer());
       expect(built.widths).toBe(GOLDENS[fixture.name]!.widths);
@@ -20,23 +20,16 @@ describe("build in the browser", () => {
     });
   }
 
-  it("rethink-work-transitions holds one layer per kind with its level texts", async () => {
-    const fixture = FIXTURES.find((item) => item.name === "rethink-work-transitions")!;
+  it("rethink-work-transitions holds one layer per numbered transition with its level texts", async () => {
+    const fixture = PLACED_FIXTURES.find((item) => item.name === "rethink-work-transitions")!;
     const transitions = fixture.edit.tracks.transitions;
-    expect(transitions.map((transition) => transition.type)).toEqual([
-      "dim",
-      "numbered",
-      "numbered",
-      "panel",
-    ]);
+    expect(transitions.map((transition) => transition.type)).toEqual(["numbered", "numbered"]);
     for (const transition of transitions) {
-      if (transition.type === "numbered") {
-        expect(transition.levels?.number?.text).toBe(String(transition.number));
-      }
+      expect(transition.levels?.number?.text).toBe(String(transition.number));
     }
     const built = goldenOf(fixture, await browserMeasurer());
     for (const html of [built.html, GOLDENS["rethink-work-transitions"]!.html]) {
-      expect(html.match(/class="clip layer"/g)).toHaveLength(4);
+      expect(html.match(/class="clip layer"/g)).toHaveLength(2);
       const layers = transitionLayers(html);
       expect(layers).toEqual(TRANSITION_LEVELS);
       expect(layers).toEqual(transitions.map(editTransitionLevels));

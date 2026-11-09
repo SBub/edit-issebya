@@ -50,7 +50,7 @@ async function readVersionEdit(
 
 // Makes sure a stored version's masks exist (a slimmed one is rebuilt; all
 // stored is a hit; no behind items, nothing at all), before it is restored or
-// rendered. Its photos are not checked here.
+// rendered.
 export async function ensureVersionCutouts(
   ctx: StepContext,
   deps: CutoutDeps,

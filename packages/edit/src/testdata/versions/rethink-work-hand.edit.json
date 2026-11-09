@@ -13,11 +13,6 @@
       "fingerprint": "rethink-work",
       "file": "transcript.json"
     },
-    "cutout": {
-      "step": "remove_background",
-      "fingerprint": "rethink-work",
-      "file": "subject.webm"
-    },
     "head_track": {
       "step": "head_track",
       "fingerprint": "rethink-work",
@@ -36,17 +31,6 @@
         }
       }
     ],
-    "cutout": [
-      {
-        "id": "cutout",
-        "start": {
-          "reel": "start"
-        },
-        "end": {
-          "reel": "end"
-        }
-      }
-    ],
     "captions": [
       {
         "id": "cw0",
@@ -57,7 +41,9 @@
           "word": "w3",
           "edge": "end"
         },
-        "words": ["w0"]
+        "words": [
+          "w0"
+        ]
       },
       {
         "id": "cw1",
@@ -68,7 +54,9 @@
           "word": "w3",
           "edge": "end"
         },
-        "words": ["w1"]
+        "words": [
+          "w1"
+        ]
       },
       {
         "id": "cw2",
@@ -79,7 +67,9 @@
           "word": "w3",
           "edge": "end"
         },
-        "words": ["w2"]
+        "words": [
+          "w2"
+        ]
       },
       {
         "id": "cw3",
@@ -90,7 +80,9 @@
           "word": "w3",
           "edge": "end"
         },
-        "words": ["w3"]
+        "words": [
+          "w3"
+        ]
       },
       {
         "id": "cw4",
@@ -101,7 +93,9 @@
           "word": "w9",
           "edge": "end"
         },
-        "words": ["w4"]
+        "words": [
+          "w4"
+        ]
       },
       {
         "id": "cw5",
@@ -112,7 +106,9 @@
           "word": "w9",
           "edge": "end"
         },
-        "words": ["w5"]
+        "words": [
+          "w5"
+        ]
       },
       {
         "id": "cw6",
@@ -123,7 +119,9 @@
           "word": "w9",
           "edge": "end"
         },
-        "words": ["w6"]
+        "words": [
+          "w6"
+        ]
       },
       {
         "id": "cw7",
@@ -134,7 +132,9 @@
           "word": "w9",
           "edge": "end"
         },
-        "words": ["w7"]
+        "words": [
+          "w7"
+        ]
       },
       {
         "id": "cw8",
@@ -145,7 +145,9 @@
           "word": "w9",
           "edge": "end"
         },
-        "words": ["w8"]
+        "words": [
+          "w8"
+        ]
       },
       {
         "id": "cw9",
@@ -156,7 +158,9 @@
           "word": "w9",
           "edge": "end"
         },
-        "words": ["w9"]
+        "words": [
+          "w9"
+        ]
       },
       {
         "id": "cw10",
@@ -167,7 +171,9 @@
           "word": "w12",
           "edge": "end"
         },
-        "words": ["w10"]
+        "words": [
+          "w10"
+        ]
       },
       {
         "id": "cw11",
@@ -178,7 +184,9 @@
           "word": "w12",
           "edge": "end"
         },
-        "words": ["w11"]
+        "words": [
+          "w11"
+        ]
       },
       {
         "id": "cw12",
@@ -189,7 +197,9 @@
           "word": "w12",
           "edge": "end"
         },
-        "words": ["w12"]
+        "words": [
+          "w12"
+        ]
       },
       {
         "id": "cw13",
@@ -200,7 +210,9 @@
           "word": "w17",
           "edge": "end"
         },
-        "words": ["w13"]
+        "words": [
+          "w13"
+        ]
       },
       {
         "id": "cw14",
@@ -211,7 +223,9 @@
           "word": "w17",
           "edge": "end"
         },
-        "words": ["w14"]
+        "words": [
+          "w14"
+        ]
       },
       {
         "id": "cw15",
@@ -222,7 +236,9 @@
           "word": "w17",
           "edge": "end"
         },
-        "words": ["w15"]
+        "words": [
+          "w15"
+        ]
       },
       {
         "id": "cw16",
@@ -233,7 +249,9 @@
           "word": "w17",
           "edge": "end"
         },
-        "words": ["w16"]
+        "words": [
+          "w16"
+        ]
       },
       {
         "id": "cw17",
@@ -244,7 +262,9 @@
           "word": "w17",
           "edge": "end"
         },
-        "words": ["w17"]
+        "words": [
+          "w17"
+        ]
       },
       {
         "id": "cw18",
@@ -255,7 +275,9 @@
           "word": "w20",
           "edge": "end"
         },
-        "words": ["w18"]
+        "words": [
+          "w18"
+        ]
       },
       {
         "id": "cw19",
@@ -266,7 +288,9 @@
           "word": "w20",
           "edge": "end"
         },
-        "words": ["w19"]
+        "words": [
+          "w19"
+        ]
       },
       {
         "id": "cw20",
@@ -277,7 +301,9 @@
           "word": "w20",
           "edge": "end"
         },
-        "words": ["w20"]
+        "words": [
+          "w20"
+        ]
       },
       {
         "id": "cw21",
@@ -288,7 +314,9 @@
           "word": "w22",
           "edge": "end"
         },
-        "words": ["w21"]
+        "words": [
+          "w21"
+        ]
       },
       {
         "id": "cw22",
@@ -299,7 +327,9 @@
           "word": "w22",
           "edge": "end"
         },
-        "words": ["w22"]
+        "words": [
+          "w22"
+        ]
       },
       {
         "id": "cw23",
@@ -310,7 +340,9 @@
           "word": "w25",
           "edge": "end"
         },
-        "words": ["w23"]
+        "words": [
+          "w23"
+        ]
       },
       {
         "id": "cw24",
@@ -321,7 +353,9 @@
           "word": "w25",
           "edge": "end"
         },
-        "words": ["w24"]
+        "words": [
+          "w24"
+        ]
       },
       {
         "id": "cw25",
@@ -332,7 +366,9 @@
           "word": "w25",
           "edge": "end"
         },
-        "words": ["w25"]
+        "words": [
+          "w25"
+        ]
       },
       {
         "id": "cw26",
@@ -343,7 +379,9 @@
           "word": "w28",
           "edge": "end"
         },
-        "words": ["w26"]
+        "words": [
+          "w26"
+        ]
       },
       {
         "id": "cw27",
@@ -354,7 +392,9 @@
           "word": "w28",
           "edge": "end"
         },
-        "words": ["w27"]
+        "words": [
+          "w27"
+        ]
       },
       {
         "id": "cw28",
@@ -365,7 +405,9 @@
           "word": "w28",
           "edge": "end"
         },
-        "words": ["w28"]
+        "words": [
+          "w28"
+        ]
       },
       {
         "id": "cw30",
@@ -376,7 +418,9 @@
           "word": "w33",
           "edge": "end"
         },
-        "words": ["w30"]
+        "words": [
+          "w30"
+        ]
       },
       {
         "id": "cw31",
@@ -387,7 +431,9 @@
           "word": "w33",
           "edge": "end"
         },
-        "words": ["w31"]
+        "words": [
+          "w31"
+        ]
       },
       {
         "id": "cw32",
@@ -398,7 +444,9 @@
           "word": "w33",
           "edge": "end"
         },
-        "words": ["w32"]
+        "words": [
+          "w32"
+        ]
       },
       {
         "id": "cw33",
@@ -409,7 +457,9 @@
           "word": "w33",
           "edge": "end"
         },
-        "words": ["w33"]
+        "words": [
+          "w33"
+        ]
       },
       {
         "id": "cw34",
@@ -420,7 +470,9 @@
           "word": "w38",
           "edge": "end"
         },
-        "words": ["w34"]
+        "words": [
+          "w34"
+        ]
       },
       {
         "id": "cw35",
@@ -431,7 +483,9 @@
           "word": "w38",
           "edge": "end"
         },
-        "words": ["w35"]
+        "words": [
+          "w35"
+        ]
       },
       {
         "id": "cw36",
@@ -442,7 +496,9 @@
           "word": "w38",
           "edge": "end"
         },
-        "words": ["w36"]
+        "words": [
+          "w36"
+        ]
       },
       {
         "id": "cw37",
@@ -453,7 +509,9 @@
           "word": "w38",
           "edge": "end"
         },
-        "words": ["w37"]
+        "words": [
+          "w37"
+        ]
       },
       {
         "id": "cw38",
@@ -464,7 +522,9 @@
           "word": "w38",
           "edge": "end"
         },
-        "words": ["w38"]
+        "words": [
+          "w38"
+        ]
       },
       {
         "id": "cw39",
@@ -475,7 +535,9 @@
           "word": "w44",
           "edge": "end"
         },
-        "words": ["w39"]
+        "words": [
+          "w39"
+        ]
       },
       {
         "id": "cw40",
@@ -486,7 +548,9 @@
           "word": "w44",
           "edge": "end"
         },
-        "words": ["w40"]
+        "words": [
+          "w40"
+        ]
       },
       {
         "id": "cw41",
@@ -497,7 +561,9 @@
           "word": "w44",
           "edge": "end"
         },
-        "words": ["w41"]
+        "words": [
+          "w41"
+        ]
       },
       {
         "id": "cw42",
@@ -508,7 +574,9 @@
           "word": "w44",
           "edge": "end"
         },
-        "words": ["w42"]
+        "words": [
+          "w42"
+        ]
       },
       {
         "id": "cw43",
@@ -519,7 +587,9 @@
           "word": "w44",
           "edge": "end"
         },
-        "words": ["w43"]
+        "words": [
+          "w43"
+        ]
       },
       {
         "id": "cw44",
@@ -530,7 +600,9 @@
           "word": "w44",
           "edge": "end"
         },
-        "words": ["w44"]
+        "words": [
+          "w44"
+        ]
       },
       {
         "id": "cw45",
@@ -541,7 +613,9 @@
           "word": "w48",
           "edge": "end"
         },
-        "words": ["w45"]
+        "words": [
+          "w45"
+        ]
       },
       {
         "id": "cw46",
@@ -552,7 +626,9 @@
           "word": "w48",
           "edge": "end"
         },
-        "words": ["w46"]
+        "words": [
+          "w46"
+        ]
       },
       {
         "id": "cw47",
@@ -563,7 +639,9 @@
           "word": "w48",
           "edge": "end"
         },
-        "words": ["w47"]
+        "words": [
+          "w47"
+        ]
       },
       {
         "id": "cw48",
@@ -574,7 +652,9 @@
           "word": "w48",
           "edge": "end"
         },
-        "words": ["w48"]
+        "words": [
+          "w48"
+        ]
       },
       {
         "id": "cw49",
@@ -585,7 +665,9 @@
           "word": "w50",
           "edge": "end"
         },
-        "words": ["w49"]
+        "words": [
+          "w49"
+        ]
       },
       {
         "id": "cw50",
@@ -596,7 +678,9 @@
           "word": "w50",
           "edge": "end"
         },
-        "words": ["w50"]
+        "words": [
+          "w50"
+        ]
       },
       {
         "id": "cw51",
@@ -607,7 +691,9 @@
           "word": "w53",
           "edge": "end"
         },
-        "words": ["w51"]
+        "words": [
+          "w51"
+        ]
       },
       {
         "id": "cw52",
@@ -618,7 +704,9 @@
           "word": "w53",
           "edge": "end"
         },
-        "words": ["w52"]
+        "words": [
+          "w52"
+        ]
       },
       {
         "id": "cw53",
@@ -629,7 +717,9 @@
           "word": "w53",
           "edge": "end"
         },
-        "words": ["w53"]
+        "words": [
+          "w53"
+        ]
       },
       {
         "id": "cw54",
@@ -640,7 +730,9 @@
           "word": "w57",
           "edge": "end"
         },
-        "words": ["w54"]
+        "words": [
+          "w54"
+        ]
       },
       {
         "id": "cw55",
@@ -651,7 +743,9 @@
           "word": "w57",
           "edge": "end"
         },
-        "words": ["w55"]
+        "words": [
+          "w55"
+        ]
       },
       {
         "id": "cw56",
@@ -662,7 +756,9 @@
           "word": "w57",
           "edge": "end"
         },
-        "words": ["w56"]
+        "words": [
+          "w56"
+        ]
       },
       {
         "id": "cw57",
@@ -673,7 +769,9 @@
           "word": "w57",
           "edge": "end"
         },
-        "words": ["w57"]
+        "words": [
+          "w57"
+        ]
       },
       {
         "id": "cw58",
@@ -684,7 +782,9 @@
           "word": "w62",
           "edge": "end"
         },
-        "words": ["w58"]
+        "words": [
+          "w58"
+        ]
       },
       {
         "id": "cw59",
@@ -695,7 +795,9 @@
           "word": "w62",
           "edge": "end"
         },
-        "words": ["w59"]
+        "words": [
+          "w59"
+        ]
       },
       {
         "id": "cw60",
@@ -706,7 +808,9 @@
           "word": "w62",
           "edge": "end"
         },
-        "words": ["w60"]
+        "words": [
+          "w60"
+        ]
       },
       {
         "id": "cw61",
@@ -717,7 +821,9 @@
           "word": "w62",
           "edge": "end"
         },
-        "words": ["w61"]
+        "words": [
+          "w61"
+        ]
       },
       {
         "id": "cw62",
@@ -728,7 +834,9 @@
           "word": "w62",
           "edge": "end"
         },
-        "words": ["w62"]
+        "words": [
+          "w62"
+        ]
       },
       {
         "id": "cw63",
@@ -739,7 +847,9 @@
           "word": "w67",
           "edge": "end"
         },
-        "words": ["w63"]
+        "words": [
+          "w63"
+        ]
       },
       {
         "id": "cw64",
@@ -750,7 +860,9 @@
           "word": "w67",
           "edge": "end"
         },
-        "words": ["w64"]
+        "words": [
+          "w64"
+        ]
       },
       {
         "id": "cw65",
@@ -761,7 +873,9 @@
           "word": "w67",
           "edge": "end"
         },
-        "words": ["w65"]
+        "words": [
+          "w65"
+        ]
       },
       {
         "id": "cw66",
@@ -772,7 +886,9 @@
           "word": "w67",
           "edge": "end"
         },
-        "words": ["w66"]
+        "words": [
+          "w66"
+        ]
       },
       {
         "id": "cw67",
@@ -783,7 +899,9 @@
           "word": "w67",
           "edge": "end"
         },
-        "words": ["w67"]
+        "words": [
+          "w67"
+        ]
       },
       {
         "id": "cw68",
@@ -794,7 +912,9 @@
           "word": "w71",
           "edge": "end"
         },
-        "words": ["w68"]
+        "words": [
+          "w68"
+        ]
       },
       {
         "id": "cw69",
@@ -805,7 +925,9 @@
           "word": "w71",
           "edge": "end"
         },
-        "words": ["w69"]
+        "words": [
+          "w69"
+        ]
       },
       {
         "id": "cw70",
@@ -816,7 +938,9 @@
           "word": "w71",
           "edge": "end"
         },
-        "words": ["w70"]
+        "words": [
+          "w70"
+        ]
       },
       {
         "id": "cw71",
@@ -827,7 +951,9 @@
           "word": "w71",
           "edge": "end"
         },
-        "words": ["w71"]
+        "words": [
+          "w71"
+        ]
       },
       {
         "id": "cw72",
@@ -838,7 +964,9 @@
           "word": "w75",
           "edge": "end"
         },
-        "words": ["w72"]
+        "words": [
+          "w72"
+        ]
       },
       {
         "id": "cw73",
@@ -849,7 +977,9 @@
           "word": "w75",
           "edge": "end"
         },
-        "words": ["w73"]
+        "words": [
+          "w73"
+        ]
       },
       {
         "id": "cw74",
@@ -860,7 +990,9 @@
           "word": "w75",
           "edge": "end"
         },
-        "words": ["w74"]
+        "words": [
+          "w74"
+        ]
       },
       {
         "id": "cw75",
@@ -871,7 +1003,9 @@
           "word": "w75",
           "edge": "end"
         },
-        "words": ["w75"]
+        "words": [
+          "w75"
+        ]
       },
       {
         "id": "cw76",
@@ -882,7 +1016,9 @@
           "word": "w77",
           "edge": "end"
         },
-        "words": ["w76"]
+        "words": [
+          "w76"
+        ]
       },
       {
         "id": "cw77",
@@ -893,7 +1029,9 @@
           "word": "w77",
           "edge": "end"
         },
-        "words": ["w77"]
+        "words": [
+          "w77"
+        ]
       },
       {
         "id": "cw78",
@@ -904,7 +1042,9 @@
           "word": "w80",
           "edge": "end"
         },
-        "words": ["w78"]
+        "words": [
+          "w78"
+        ]
       },
       {
         "id": "cw79",
@@ -915,7 +1055,9 @@
           "word": "w80",
           "edge": "end"
         },
-        "words": ["w79"]
+        "words": [
+          "w79"
+        ]
       },
       {
         "id": "cw80",
@@ -926,7 +1068,9 @@
           "word": "w80",
           "edge": "end"
         },
-        "words": ["w80"]
+        "words": [
+          "w80"
+        ]
       },
       {
         "id": "cw81",
@@ -937,7 +1081,9 @@
           "word": "w83",
           "edge": "end"
         },
-        "words": ["w81"]
+        "words": [
+          "w81"
+        ]
       },
       {
         "id": "cw82",
@@ -948,7 +1094,9 @@
           "word": "w83",
           "edge": "end"
         },
-        "words": ["w82"]
+        "words": [
+          "w82"
+        ]
       },
       {
         "id": "cw83",
@@ -959,7 +1107,9 @@
           "word": "w83",
           "edge": "end"
         },
-        "words": ["w83"]
+        "words": [
+          "w83"
+        ]
       },
       {
         "id": "cw84",
@@ -970,7 +1120,9 @@
           "word": "w90",
           "edge": "end"
         },
-        "words": ["w84"]
+        "words": [
+          "w84"
+        ]
       },
       {
         "id": "cw85",
@@ -981,7 +1133,9 @@
           "word": "w90",
           "edge": "end"
         },
-        "words": ["w85"]
+        "words": [
+          "w85"
+        ]
       },
       {
         "id": "cw86",
@@ -992,7 +1146,9 @@
           "word": "w90",
           "edge": "end"
         },
-        "words": ["w86"]
+        "words": [
+          "w86"
+        ]
       },
       {
         "id": "cw87",
@@ -1003,7 +1159,9 @@
           "word": "w90",
           "edge": "end"
         },
-        "words": ["w87"]
+        "words": [
+          "w87"
+        ]
       },
       {
         "id": "cw88",
@@ -1014,7 +1172,9 @@
           "word": "w90",
           "edge": "end"
         },
-        "words": ["w88"]
+        "words": [
+          "w88"
+        ]
       },
       {
         "id": "cw89",
@@ -1025,7 +1185,10 @@
           "word": "w90",
           "edge": "end"
         },
-        "words": ["w89", "w90"],
+        "words": [
+          "w89",
+          "w90"
+        ],
         "text": "Gen Z"
       },
       {
@@ -1037,7 +1200,9 @@
           "word": "w94",
           "edge": "end"
         },
-        "words": ["w91"]
+        "words": [
+          "w91"
+        ]
       },
       {
         "id": "cw92",
@@ -1048,7 +1213,9 @@
           "word": "w94",
           "edge": "end"
         },
-        "words": ["w92"]
+        "words": [
+          "w92"
+        ]
       },
       {
         "id": "cw93",
@@ -1059,7 +1226,9 @@
           "word": "w94",
           "edge": "end"
         },
-        "words": ["w93"]
+        "words": [
+          "w93"
+        ]
       },
       {
         "id": "cw94",
@@ -1070,7 +1239,9 @@
           "word": "w94",
           "edge": "end"
         },
-        "words": ["w94"]
+        "words": [
+          "w94"
+        ]
       },
       {
         "id": "cw95",
@@ -1081,7 +1252,9 @@
           "word": "w99",
           "edge": "end"
         },
-        "words": ["w95"]
+        "words": [
+          "w95"
+        ]
       },
       {
         "id": "cw96",
@@ -1092,7 +1265,9 @@
           "word": "w99",
           "edge": "end"
         },
-        "words": ["w96"]
+        "words": [
+          "w96"
+        ]
       },
       {
         "id": "cw97",
@@ -1103,7 +1278,9 @@
           "word": "w99",
           "edge": "end"
         },
-        "words": ["w97"]
+        "words": [
+          "w97"
+        ]
       },
       {
         "id": "cw98",
@@ -1114,7 +1291,9 @@
           "word": "w99",
           "edge": "end"
         },
-        "words": ["w98"]
+        "words": [
+          "w98"
+        ]
       },
       {
         "id": "cw99",
@@ -1125,7 +1304,9 @@
           "word": "w99",
           "edge": "end"
         },
-        "words": ["w99"]
+        "words": [
+          "w99"
+        ]
       },
       {
         "id": "cw100",
@@ -1136,7 +1317,9 @@
           "word": "w103",
           "edge": "end"
         },
-        "words": ["w100"]
+        "words": [
+          "w100"
+        ]
       },
       {
         "id": "cw101",
@@ -1147,7 +1330,9 @@
           "word": "w103",
           "edge": "end"
         },
-        "words": ["w101"]
+        "words": [
+          "w101"
+        ]
       },
       {
         "id": "cw102",
@@ -1158,7 +1343,9 @@
           "word": "w103",
           "edge": "end"
         },
-        "words": ["w102"]
+        "words": [
+          "w102"
+        ]
       },
       {
         "id": "cw103",
@@ -1169,7 +1356,9 @@
           "word": "w103",
           "edge": "end"
         },
-        "words": ["w103"]
+        "words": [
+          "w103"
+        ]
       },
       {
         "id": "cw104",
@@ -1180,7 +1369,9 @@
           "word": "w105",
           "edge": "end"
         },
-        "words": ["w104"]
+        "words": [
+          "w104"
+        ]
       },
       {
         "id": "cw105",
@@ -1191,7 +1382,9 @@
           "word": "w105",
           "edge": "end"
         },
-        "words": ["w105"]
+        "words": [
+          "w105"
+        ]
       },
       {
         "id": "cw106",
@@ -1202,7 +1395,9 @@
           "word": "w108",
           "edge": "end"
         },
-        "words": ["w106"]
+        "words": [
+          "w106"
+        ]
       },
       {
         "id": "cw107",
@@ -1213,7 +1408,9 @@
           "word": "w108",
           "edge": "end"
         },
-        "words": ["w107"]
+        "words": [
+          "w107"
+        ]
       },
       {
         "id": "cw108",
@@ -1224,7 +1421,9 @@
           "word": "w108",
           "edge": "end"
         },
-        "words": ["w108"]
+        "words": [
+          "w108"
+        ]
       },
       {
         "id": "cw109",
@@ -1235,7 +1434,9 @@
           "word": "w112",
           "edge": "end"
         },
-        "words": ["w109"]
+        "words": [
+          "w109"
+        ]
       },
       {
         "id": "cw110",
@@ -1246,7 +1447,9 @@
           "word": "w112",
           "edge": "end"
         },
-        "words": ["w110"]
+        "words": [
+          "w110"
+        ]
       },
       {
         "id": "cw111",
@@ -1257,7 +1460,9 @@
           "word": "w112",
           "edge": "end"
         },
-        "words": ["w111"]
+        "words": [
+          "w111"
+        ]
       },
       {
         "id": "cw113",
@@ -1268,7 +1473,9 @@
           "word": "w116",
           "edge": "end"
         },
-        "words": ["w113"]
+        "words": [
+          "w113"
+        ]
       },
       {
         "id": "cw114",
@@ -1279,7 +1486,9 @@
           "word": "w116",
           "edge": "end"
         },
-        "words": ["w114"]
+        "words": [
+          "w114"
+        ]
       },
       {
         "id": "cw115",
@@ -1290,7 +1499,9 @@
           "word": "w116",
           "edge": "end"
         },
-        "words": ["w115"]
+        "words": [
+          "w115"
+        ]
       },
       {
         "id": "cw116",
@@ -1301,7 +1512,9 @@
           "word": "w116",
           "edge": "end"
         },
-        "words": ["w116"]
+        "words": [
+          "w116"
+        ]
       },
       {
         "id": "cw117",
@@ -1312,7 +1525,9 @@
           "word": "w118",
           "edge": "end"
         },
-        "words": ["w117"]
+        "words": [
+          "w117"
+        ]
       },
       {
         "id": "cw118",
@@ -1323,7 +1538,9 @@
           "word": "w118",
           "edge": "end"
         },
-        "words": ["w118"]
+        "words": [
+          "w118"
+        ]
       },
       {
         "id": "cw119",
@@ -1334,7 +1551,9 @@
           "word": "w122",
           "edge": "end"
         },
-        "words": ["w119"]
+        "words": [
+          "w119"
+        ]
       },
       {
         "id": "cw120",
@@ -1345,7 +1564,9 @@
           "word": "w122",
           "edge": "end"
         },
-        "words": ["w120"]
+        "words": [
+          "w120"
+        ]
       },
       {
         "id": "cw121",
@@ -1356,7 +1577,9 @@
           "word": "w122",
           "edge": "end"
         },
-        "words": ["w121"]
+        "words": [
+          "w121"
+        ]
       },
       {
         "id": "cw122",
@@ -1367,7 +1590,9 @@
           "word": "w122",
           "edge": "end"
         },
-        "words": ["w122"]
+        "words": [
+          "w122"
+        ]
       },
       {
         "id": "cw123",
@@ -1378,7 +1603,9 @@
           "word": "w125",
           "edge": "end"
         },
-        "words": ["w123"]
+        "words": [
+          "w123"
+        ]
       },
       {
         "id": "cw124",
@@ -1389,7 +1616,9 @@
           "word": "w125",
           "edge": "end"
         },
-        "words": ["w124"]
+        "words": [
+          "w124"
+        ]
       },
       {
         "id": "cw125",
@@ -1400,7 +1629,9 @@
           "word": "w125",
           "edge": "end"
         },
-        "words": ["w125"]
+        "words": [
+          "w125"
+        ]
       },
       {
         "id": "cw126",
@@ -1411,7 +1642,9 @@
           "word": "w133",
           "edge": "end"
         },
-        "words": ["w126"]
+        "words": [
+          "w126"
+        ]
       },
       {
         "id": "cw127",
@@ -1422,7 +1655,9 @@
           "word": "w133",
           "edge": "end"
         },
-        "words": ["w127"]
+        "words": [
+          "w127"
+        ]
       },
       {
         "id": "cw128",
@@ -1433,7 +1668,9 @@
           "word": "w133",
           "edge": "end"
         },
-        "words": ["w128"]
+        "words": [
+          "w128"
+        ]
       },
       {
         "id": "cw129",
@@ -1444,7 +1681,9 @@
           "word": "w133",
           "edge": "end"
         },
-        "words": ["w129"]
+        "words": [
+          "w129"
+        ]
       },
       {
         "id": "cw130",
@@ -1455,7 +1694,9 @@
           "word": "w133",
           "edge": "end"
         },
-        "words": ["w130"]
+        "words": [
+          "w130"
+        ]
       },
       {
         "id": "cw131",
@@ -1466,7 +1707,9 @@
           "word": "w133",
           "edge": "end"
         },
-        "words": ["w131"]
+        "words": [
+          "w131"
+        ]
       },
       {
         "id": "cw132",
@@ -1477,7 +1720,9 @@
           "word": "w133",
           "edge": "end"
         },
-        "words": ["w132"]
+        "words": [
+          "w132"
+        ]
       },
       {
         "id": "cw133",
@@ -1488,7 +1733,9 @@
           "word": "w133",
           "edge": "end"
         },
-        "words": ["w133"]
+        "words": [
+          "w133"
+        ]
       },
       {
         "id": "cw134",
@@ -1499,7 +1746,9 @@
           "word": "w139",
           "edge": "end"
         },
-        "words": ["w134"]
+        "words": [
+          "w134"
+        ]
       },
       {
         "id": "cw135",
@@ -1510,7 +1759,9 @@
           "word": "w139",
           "edge": "end"
         },
-        "words": ["w135"]
+        "words": [
+          "w135"
+        ]
       },
       {
         "id": "cw136",
@@ -1521,7 +1772,9 @@
           "word": "w139",
           "edge": "end"
         },
-        "words": ["w136"]
+        "words": [
+          "w136"
+        ]
       },
       {
         "id": "cw137",
@@ -1532,7 +1785,9 @@
           "word": "w139",
           "edge": "end"
         },
-        "words": ["w137"]
+        "words": [
+          "w137"
+        ]
       },
       {
         "id": "cw138",
@@ -1543,7 +1798,9 @@
           "word": "w139",
           "edge": "end"
         },
-        "words": ["w138"]
+        "words": [
+          "w138"
+        ]
       },
       {
         "id": "cw139",
@@ -1554,7 +1811,9 @@
           "word": "w139",
           "edge": "end"
         },
-        "words": ["w139"]
+        "words": [
+          "w139"
+        ]
       },
       {
         "id": "cw140",
@@ -1565,7 +1824,9 @@
           "word": "w144",
           "edge": "end"
         },
-        "words": ["w140"]
+        "words": [
+          "w140"
+        ]
       },
       {
         "id": "cw141",
@@ -1576,7 +1837,9 @@
           "word": "w144",
           "edge": "end"
         },
-        "words": ["w141"]
+        "words": [
+          "w141"
+        ]
       },
       {
         "id": "cw142",
@@ -1587,7 +1850,9 @@
           "word": "w144",
           "edge": "end"
         },
-        "words": ["w142"]
+        "words": [
+          "w142"
+        ]
       },
       {
         "id": "cw143",
@@ -1598,7 +1863,9 @@
           "word": "w144",
           "edge": "end"
         },
-        "words": ["w143"]
+        "words": [
+          "w143"
+        ]
       },
       {
         "id": "cw144",
@@ -1609,7 +1876,9 @@
           "word": "w144",
           "edge": "end"
         },
-        "words": ["w144"]
+        "words": [
+          "w144"
+        ]
       },
       {
         "id": "cw145",
@@ -1620,7 +1889,9 @@
           "word": "w148",
           "edge": "end"
         },
-        "words": ["w145"]
+        "words": [
+          "w145"
+        ]
       },
       {
         "id": "cw146",
@@ -1631,7 +1902,9 @@
           "word": "w148",
           "edge": "end"
         },
-        "words": ["w146"]
+        "words": [
+          "w146"
+        ]
       },
       {
         "id": "cw147",
@@ -1642,7 +1915,9 @@
           "word": "w148",
           "edge": "end"
         },
-        "words": ["w147"]
+        "words": [
+          "w147"
+        ]
       },
       {
         "id": "cw148",
@@ -1653,7 +1928,9 @@
           "word": "w148",
           "edge": "end"
         },
-        "words": ["w148"]
+        "words": [
+          "w148"
+        ]
       },
       {
         "id": "cw149",
@@ -1664,7 +1941,9 @@
           "word": "w152",
           "edge": "end"
         },
-        "words": ["w149"]
+        "words": [
+          "w149"
+        ]
       },
       {
         "id": "cw150",
@@ -1675,7 +1954,9 @@
           "word": "w152",
           "edge": "end"
         },
-        "words": ["w150"]
+        "words": [
+          "w150"
+        ]
       },
       {
         "id": "cw151",
@@ -1686,7 +1967,9 @@
           "word": "w152",
           "edge": "end"
         },
-        "words": ["w151"]
+        "words": [
+          "w151"
+        ]
       },
       {
         "id": "cw152",
@@ -1697,7 +1980,9 @@
           "word": "w152",
           "edge": "end"
         },
-        "words": ["w152"]
+        "words": [
+          "w152"
+        ]
       },
       {
         "id": "cw153",
@@ -1708,7 +1993,9 @@
           "word": "w156",
           "edge": "end"
         },
-        "words": ["w153"]
+        "words": [
+          "w153"
+        ]
       },
       {
         "id": "cw154",
@@ -1719,7 +2006,9 @@
           "word": "w156",
           "edge": "end"
         },
-        "words": ["w154"]
+        "words": [
+          "w154"
+        ]
       },
       {
         "id": "cw155",
@@ -1730,7 +2019,9 @@
           "word": "w156",
           "edge": "end"
         },
-        "words": ["w155"]
+        "words": [
+          "w155"
+        ]
       },
       {
         "id": "cw156",
@@ -1741,7 +2032,9 @@
           "word": "w156",
           "edge": "end"
         },
-        "words": ["w156"]
+        "words": [
+          "w156"
+        ]
       },
       {
         "id": "cw157",
@@ -1752,7 +2045,9 @@
           "word": "w161",
           "edge": "end"
         },
-        "words": ["w157"]
+        "words": [
+          "w157"
+        ]
       },
       {
         "id": "cw158",
@@ -1763,7 +2058,9 @@
           "word": "w161",
           "edge": "end"
         },
-        "words": ["w158"]
+        "words": [
+          "w158"
+        ]
       },
       {
         "id": "cw159",
@@ -1774,7 +2071,9 @@
           "word": "w161",
           "edge": "end"
         },
-        "words": ["w159"]
+        "words": [
+          "w159"
+        ]
       },
       {
         "id": "cw160",
@@ -1785,7 +2084,9 @@
           "word": "w161",
           "edge": "end"
         },
-        "words": ["w160"]
+        "words": [
+          "w160"
+        ]
       },
       {
         "id": "cw161",
@@ -1796,7 +2097,9 @@
           "word": "w161",
           "edge": "end"
         },
-        "words": ["w161"],
+        "words": [
+          "w161"
+        ],
         "text": "want?"
       }
     ],
@@ -1811,7 +2114,9 @@
           "word": "w33",
           "edge": "end"
         },
-        "words": ["w29"],
+        "words": [
+          "w29"
+        ],
         "font": "primary",
         "color": "#B3E6FF"
       },
@@ -1825,25 +2130,14 @@
           "word": "w112",
           "edge": "end"
         },
-        "words": ["w112"],
+        "words": [
+          "w112"
+        ],
         "font": "primary",
         "color": "#B3E6FF"
       }
     ],
-    "transitions": [
-      {
-        "id": "t-fund-life",
-        "type": "panel",
-        "start": {
-          "word": "w126",
-          "offset": -0.03
-        },
-        "end": {
-          "word": "w133",
-          "edge": "end"
-        }
-      }
-    ],
+    "transitions": [],
     "sounds": [
       {
         "id": "s-fund-life",

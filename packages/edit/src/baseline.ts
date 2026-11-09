@@ -56,7 +56,7 @@ function groups(list: Word[][], preset: Preset): Word[][][] {
 // The automatic first version, from the preset alone (no AI): the footage
 // over the whole reel (no cut-out), one caption per word or unit, starting
 // on its own word and ending on the last word of its group. No positions
-// (the builder fills them), no accents, transitions or sounds.
+// (the layout engine sets them: `placeEdit`), no accents, transitions or sounds.
 export function baselineEdit(
   transcript: Transcript,
   { inputs, duration }: { inputs: EditInputs; duration: number },

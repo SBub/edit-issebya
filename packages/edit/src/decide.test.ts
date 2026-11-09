@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  type DecideRules,
-  NEW_TRANSITION_KINDS,
-  NO_RULES,
   decideAnswerSchemaFor,
   decideCounts,
   decideJsonSchema,
@@ -14,9 +11,7 @@ import {
   stripHookStop,
   usedFreeField,
 } from "./decide.ts";
-import { build } from "./build.ts";
-import { choicesOf } from "./engine-input.ts";
-import { CLEAN_PRESET } from "./preset.ts";
+import { ISSEBYA_PRESET, TRANSITION_KINDS } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
@@ -61,6 +56,7 @@ function enumsUnder(schema: unknown, property: string): unknown[][] {
 function answer(change: (answer: Json) => void = () => {}): Json {
   const value: Json = {
     accents: [{ from: "w0005", to: "w0005" }],
+    questions: [],
     big_words: [],
     visuals: [],
     transitions: [],
@@ -70,12 +66,12 @@ function answer(change: (answer: Json) => void = () => {}): Json {
   return value;
 }
 
-function parse(json: unknown, rules: DecideRules = NO_RULES) {
-  return parseDecideAnswer(json, CLEAN_PRESET, short.transcript, rules);
+function parse(json: unknown) {
+  return parseDecideAnswer(json, ISSEBYA_PRESET, short.transcript);
 }
 
-function reasons(json: unknown, rules: DecideRules = NO_RULES) {
-  const parsed = parse(json, rules);
+function reasons(json: unknown) {
+  const parsed = parse(json);
   if (parsed.ok) throw new Error("expected a refusal");
   return parsed.reasons.join("\n");
 }
@@ -83,7 +79,7 @@ function reasons(json: unknown, rules: DecideRules = NO_RULES) {
 describe("decideJsonSchema", () => {
   for (const fixture of [hand, short]) {
     it(`is generated for ${fixture.name}: its word ids, the list kind only, closed objects`, () => {
-      const schema = decideJsonSchema(CLEAN_PRESET, fixture.transcript);
+      const schema = decideJsonSchema(ISSEBYA_PRESET, fixture.transcript);
       const ids = fixture.transcript.words.map((word) => word.id);
       for (const key of ["from", "to", "word"]) {
         const lists = enumsUnder(schema, key);
@@ -92,7 +88,7 @@ describe("decideJsonSchema", () => {
       }
       // LIST only: `numbered` is the one kind a new answer may pick.
       expect(enumsUnder(schema, "kind")).toEqual([["numbered"]]);
-      expect(NEW_TRANSITION_KINDS).toEqual(["numbered"]);
+      expect(TRANSITION_KINDS).toEqual(["numbered"]);
       expect(JSON.stringify(schema)).not.toContain('"dim"');
       expect(JSON.stringify(schema)).not.toContain('"card"');
       // No wish anywhere: a new answer has no request to forward.
@@ -108,11 +104,11 @@ describe("decideJsonSchema", () => {
     });
 
     it(`targets draft-07 for ${fixture.name}, with the same constraints as the 2020-12 output`, () => {
-      const schema = decideJsonSchema(CLEAN_PRESET, fixture.transcript);
+      const schema = decideJsonSchema(ISSEBYA_PRESET, fixture.transcript);
       expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
       expect(JSON.stringify(schema)).not.toContain("2020-12");
       const draft2020: Json = z.toJSONSchema(
-        decideAnswerSchemaFor(CLEAN_PRESET, fixture.transcript),
+        decideAnswerSchemaFor(ISSEBYA_PRESET, fixture.transcript),
         { target: "draft-2020-12", io: "output", reused: "inline" },
       );
       expect({ ...schema, $schema: null }).toEqual({ ...draft2020, $schema: null });
@@ -120,7 +116,7 @@ describe("decideJsonSchema", () => {
   }
 
   it("has the components only: ACCENT, QUESTION, BIGWORD, VISUAL, LIST and the word fixes (no hook)", () => {
-    const schema = decideJsonSchema(CLEAN_PRESET, hand.transcript);
+    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript);
     expect(Object.keys(schema.properties as Json)).toEqual([
       "accents",
       "questions",
@@ -140,7 +136,7 @@ describe("decideJsonSchema", () => {
   });
 
   it("has meaning only: no time, position, size, font, colour, spot, style or title anywhere", () => {
-    const schema = decideJsonSchema(CLEAN_PRESET, hand.transcript);
+    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript);
     const keys = new Set<string>();
     walk(schema, (_node, key) => {
       if (key) keys.add(key);
@@ -171,7 +167,7 @@ describe("decideJsonSchema", () => {
   });
 
   it("names a visual by its words and a short description: no photo id, no reason", () => {
-    const schema = decideJsonSchema(CLEAN_PRESET, hand.transcript) as {
+    const schema = decideJsonSchema(ISSEBYA_PRESET, hand.transcript) as {
       properties: Record<string, { maxItems?: number; items: { required: string[] } }>;
     };
     expect(schema.properties.visuals!.items.required).toEqual(["from", "to", "description"]);
@@ -190,18 +186,18 @@ describe("decideJsonSchema", () => {
 
 describe("the hook", () => {
   const hookReasons = (json: unknown) => {
-    const parsed = parseHookAnswer(json, CLEAN_PRESET);
+    const parsed = parseHookAnswer(json, ISSEBYA_PRESET);
     if (parsed.ok) throw new Error("expected a refusal");
     return parsed.reasons.join("\n");
   };
   const hook = (text: string) => ({ text });
 
   it("is its own answer: one text, required, never null", () => {
-    expect(parseHookAnswer(hook("Gen Z won't work like you did"), CLEAN_PRESET)).toEqual({
+    expect(parseHookAnswer(hook("Gen Z won't work like you did"), ISSEBYA_PRESET)).toEqual({
       ok: true,
       text: "Gen Z won't work like you did",
     });
-    const schema = hookJsonSchema(CLEAN_PRESET) as {
+    const schema = hookJsonSchema(ISSEBYA_PRESET) as {
       properties: Json;
       required: string[];
       additionalProperties: boolean;
@@ -222,13 +218,15 @@ describe("the hook", () => {
   });
 
   it("refuses more than the preset's words or characters, with the reason for the retry", () => {
-    const { maxWords, maxCharacters } = CLEAN_PRESET.pace.hook;
+    const { maxWords, maxCharacters } = ISSEBYA_PRESET.pace.hook;
     expect([maxWords, maxCharacters]).toEqual([7, 45]);
     expect(hookReasons(hook("one two three four five six seven eight"))).toContain(
       "text: a hook has at most 7 words",
     );
     expect(hookReasons(hook("x".repeat(46)))).toContain("text: a hook has at most 45 characters");
-    expect(parseHookAnswer(hook("one two three four five six seven"), CLEAN_PRESET)).toMatchObject({
+    expect(
+      parseHookAnswer(hook("one two three four five six seven"), ISSEBYA_PRESET),
+    ).toMatchObject({
       ok: true,
     });
   });
@@ -251,11 +249,11 @@ describe("the hook", () => {
   });
 
   it("is saved without its final full stop, and nothing but dots is refused", () => {
-    expect(parseHookAnswer(hook("Gen Z won't work like you did."), CLEAN_PRESET)).toEqual({
+    expect(parseHookAnswer(hook("Gen Z won't work like you did."), ISSEBYA_PRESET)).toEqual({
       ok: true,
       text: "Gen Z won't work like you did",
     });
-    expect(parseHookAnswer(hook("Would you work like this?"), CLEAN_PRESET)).toEqual({
+    expect(parseHookAnswer(hook("Would you work like this?"), ISSEBYA_PRESET)).toEqual({
       ok: true,
       text: "Would you work like this?",
     });
@@ -270,15 +268,15 @@ describe("the hook", () => {
     expect(hookReasons({ text: "Rethink work", start: 0 })).toContain('Unrecognized key: "start"');
   });
 
-  it("is placed by the engine beside the components: from 0.2 s, the one extra of its window", async () => {
+  it("is placed by the engine beside the components: from 0.2 s, an accent in its window kept beside it", async () => {
     const parsed = parse(answer());
     if (!parsed.ok) throw new Error(parsed.reasons.join("; "));
-    const written = parseHookAnswer(hook("A short test for the real studio"), CLEAN_PRESET);
+    const written = parseHookAnswer(hook("A short test for the real studio"), ISSEBYA_PRESET);
     if (!written.ok) throw new Error(written.reasons.join("; "));
     const placed = editFromAnswer(
       short.edit,
       { ...parsed.answer, hook: { text: written.text } },
-      CLEAN_PRESET,
+      ISSEBYA_PRESET,
       short.transcript,
       short.headTrack,
       await nodeMeasurer(),
@@ -287,11 +285,11 @@ describe("the hook", () => {
     const item = placed.edit.tracks.overlays.find((overlay) => overlay.kind === "hook")!;
     expect(item).toMatchObject({ id: "hook", text: "A short test for the real studio" });
     expect(item.words).toBeUndefined();
-    // On the 2.7 s clip it holds the screen: the accent waits for nothing and
-    // is dropped.
-    expect(placed.edit.tracks.overlays.map((overlay) => overlay.id)).toEqual(["hook"]);
+    // On the 2.7 s clip the accent in the hook's window is shown beside it,
+    // noted: every pick is shown.
+    expect(placed.edit.tracks.overlays.map((overlay) => overlay.id)).toEqual(["hook", "accent-1"]);
     expect(placed.record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "dropped", rule: "one-extra" }),
+      expect.objectContaining({ item: "accent-1", action: "kept-overlapping", rule: "all-picks" }),
     );
   });
 });
@@ -428,15 +426,12 @@ describe("parseDecideAnswer", () => {
   });
 });
 
-describe("the visual and the stored forbids in the decide answer", () => {
+describe("the visual in the decide answer", () => {
   const visual = { from: "w0001", to: "w0010", description: "a messy desk at night" };
   const withVisuals = (visuals: Json[]) =>
     answer((a) => {
       a.visuals = visuals;
     });
-  const stored = (photos: boolean, bigWord = false): DecideRules => ({
-    forbid: { photos, bigWord },
-  });
 
   it("takes a visual over its words with a short description", () => {
     expect(parse(withVisuals([visual])).ok).toBe(true);
@@ -483,7 +478,7 @@ describe("the visual and the stored forbids in the decide answer", () => {
     const long = structuredClone(short.transcript);
     long.words.find((word) => word.id === "w0006")!.text = "extraordinarilyunbelievablylongword";
     const json = answer((a) => (a.big_words = [{ from: "w0005", to: "w0006" }]));
-    const result = parseDecideAnswer(json, CLEAN_PRESET, long, NO_RULES);
+    const result = parseDecideAnswer(json, ISSEBYA_PRESET, long);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.reasons.join("\n")).toMatch(
@@ -497,28 +492,14 @@ describe("the visual and the stored forbids in the decide answer", () => {
     const span = (start: number, count: number) => ids.slice(start, start + count);
     const json = {
       accents: span(0, 25).map((id) => ({ from: id, to: id })),
+      questions: [],
       big_words: span(25, 25).map((id) => ({ from: id, to: id })),
       visuals: span(50, 25).map((id) => ({ from: id, to: id, description: "a messy desk" })),
       transitions: span(75, 25).map((id) => ({ kind: "numbered", from: id, to: id, key_from: id })),
       word_fixes: ids.slice(0, 80).map((id) => ({ word: id, text: "Studio" })),
     };
-    const parsed = parseDecideAnswer(json, CLEAN_PRESET, hand.transcript, NO_RULES);
+    const parsed = parseDecideAnswer(json, ISSEBYA_PRESET, hand.transcript);
     expect(parsed.ok ? "ok" : parsed.reasons.join("\n")).toBe("ok");
-  });
-
-  it("refuses a visual while the reel's stored forbid switches photos off", () => {
-    expect(reasons(withVisuals([visual]), stored(true))).toContain(
-      "visuals: photos and visuals are switched off for this reel by the owner; leave them out",
-    );
-    expect(parse(withVisuals([]), stored(true)).ok).toBe(true);
-  });
-
-  it("refuses big words while they are forbidden", () => {
-    const big = answer((a) => (a.big_words = [{ from: "w0005", to: "w0005" }]));
-    expect(parse(big).ok).toBe(true);
-    expect(reasons(big, stored(false, true))).toContain(
-      "big_words: big words are switched off for this reel by the owner",
-    );
   });
 });
 
@@ -541,11 +522,12 @@ describe("QUESTION in the components answer", () => {
     );
   });
 
-  it("reads an answer saved before QUESTION as no questions", () => {
-    const old = answer();
-    expect(old).not.toHaveProperty("questions");
-    const parsed = parse(old);
-    expect(parsed).toMatchObject({ ok: true, answer: { questions: [] } });
+  it("needs the questions field: none is an empty list", () => {
+    const missing = answer((a) => {
+      delete a.questions;
+    });
+    expect(reasons(missing)).toMatch(/^questions: /m);
+    expect(parse(answer((a) => (a.questions = []))).ok).toBe(true);
   });
 });
 
@@ -556,7 +538,7 @@ describe("editFromAnswer", () => {
     return editFromAnswer(
       current,
       parsed.answer,
-      CLEAN_PRESET,
+      ISSEBYA_PRESET,
       short.transcript,
       [],
       await nodeMeasurer(),
@@ -573,19 +555,17 @@ describe("editFromAnswer", () => {
     expect(made.edit.tracks.sounds).toEqual(short.edit.tracks.sounds);
   });
 
-  it("drops the current masks and photos", async () => {
+  it("drops the current masks", async () => {
     const current = structuredClone(short.edit);
     current.inputs.masks = [
       { step: "cutout", fingerprint: "f".repeat(64), file: "mask.mp4", start: 0, end: 2 },
     ];
-    current.inputs.photos = ["8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c"];
     const made = await place(answer(), current);
     if (!made.ok) throw new Error(made.reasons.join("; "));
     expect(made.edit.inputs.masks).toBeUndefined();
-    expect(made.edit.inputs.photos).toBeUndefined();
   });
 
-  it("drops a behind item that cannot last 1 s before the reel ends, with the reason", async () => {
+  it("shows a big word said just before the reel ends, beside the visual, both kept", async () => {
     const made = await place(
       answer((a) => {
         a.accents = [];
@@ -595,48 +575,14 @@ describe("editFromAnswer", () => {
       }),
     );
     if (!made.ok) throw new Error(made.reasons.join("; "));
-    expect(made.edit.tracks.behind?.map((item) => item.id)).toEqual(["visual-1"]);
+    expect(made.edit.tracks.behind?.map((item) => item.id)).toEqual(["visual-1", "big-word-1"]);
     // The placed visual keeps the answer's description.
     expect(made.edit.tracks.behind?.[0]).toMatchObject({
       kind: "visual",
       description: "a messy desk at night",
     });
-    expect(made.record).toContainEqual(
-      expect.objectContaining({ item: "big-word-1", action: "dropped", rule: "big-word-time" }),
-    );
-  });
-
-  it("reads and renders an old version: a title and a dim transition still place and check", async () => {
-    // The choices an older version was saved with: the engine's input still
-    // takes a title and a dim, and the stored edit still parses and renders.
-    const ids = hand.transcript.words.map((word) => word.id);
-    const old = {
-      accents: [{ from: ids[0]!, to: ids[3]!, title: true }],
-      big_words: [],
-      visuals: [],
-      transitions: [{ kind: "dim" as const, from: ids[10]!, to: ids[13]!, key_from: ids[12]! }],
-      word_fixes: [],
-      hook: null,
-    };
-    const made = editFromAnswer(
-      hand.edit,
-      old,
-      CLEAN_PRESET,
-      hand.transcript,
-      hand.headTrack,
-      await nodeMeasurer(),
-    );
-    if (!made.ok) throw new Error(made.reasons.join("; "));
-    expect(made.edit.tracks.overlays.map((overlay) => overlay.id)).toContain("title");
-    expect(made.edit.tracks.transitions.map((item) => item.type)).toContain("dim");
-    const measure = await nodeMeasurer();
-    expect(() =>
-      build(made.edit, hand.transcript, hand.headTrack, CLEAN_PRESET, measure),
-    ).not.toThrow();
-    // Read back as the same choices: the title as an accent with `title`, the dim as its kind.
-    const back = choicesOf(made.edit, hand.transcript, CLEAN_PRESET);
-    expect(back.accents).toContainEqual(expect.objectContaining({ title: true }));
-    expect(back.transitions).toContainEqual(expect.objectContaining({ kind: "dim" }));
+    // Shown at its own words' times: no drop, no move, no note.
+    expect(made.record.filter((note) => note.item === "big-word-1")).toEqual([]);
   });
 });
 
@@ -668,6 +614,7 @@ describe("decideCounts and usedFreeField", () => {
       type: "numbered",
       start: { word: "w0006" },
       end: { word: "w0008", edge: "end" },
+      words: ["w0006", "w0007", "w0008"],
     });
     // A question is counted as a question, not an accent.
     tracks.overlays.push({
@@ -678,13 +625,12 @@ describe("decideCounts and usedFreeField", () => {
       words: ["w0003"],
     });
     const edit = { ...short.edit, tracks };
-    expect(decideCounts(edit, short.transcript, CLEAN_PRESET)).toEqual({
+    expect(decideCounts(edit, short.transcript, ISSEBYA_PRESET)).toEqual({
       accents: 1,
       questions: 1,
       transitions: 1,
       hook: true,
       wordsFixed: 1,
-      behindPhotos: 0,
       behindVisuals: 0,
       behindWords: 0,
     });

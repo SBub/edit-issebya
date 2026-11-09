@@ -6,18 +6,17 @@ import { type EngineNote, bigWordSpan } from "@edit-issebya/edit";
 // it never changes one.
 
 // The parts of a decide answer the trace reads. Loose on purpose: an older
-// version's answer may lack a list a newer prompt added. `photos` is an older
-// answer's library photos (kept so those versions still trace); `visuals` is
-// the VISUAL list of a new answer.
+// version's answer may lack a list a newer prompt added. `visuals` is the
+// VISUAL list of an answer.
 export interface TracedAnswer {
-  accents?: { from: string; to: string; title?: boolean; wish?: string }[];
+  accents?: { from: string; to: string }[];
   // A QUESTION: a question the speaker puts to the viewer (none in an older answer).
   questions?: { from: string; to: string }[];
   // A BIGWORD: one or two words (`from` to `to`); an older answer's `word` is one word.
-  big_words?: ({ from: string; to: string; wish?: string } | { word: string; wish?: string })[];
+  big_words?: { from: string; to: string }[];
   visuals?: { from: string; to: string; description?: string }[];
-  photos?: { photo_id: string; from: string; to: string; reason?: string; wish?: string }[];
-  transitions?: { kind: string; from: string; to: string; wish?: string }[];
+  // Only `numbered` (a LIST) is a kind now; an older answer's other kinds are not traced.
+  transitions?: { kind: string; from: string; to: string }[];
   word_fixes?: { word: string; text: string }[];
   hook?: { text: string } | null;
 }
@@ -28,8 +27,8 @@ export interface TraceRow {
   item: string;
   // What Claude proposed, in words: the kind, the spoken words, its details.
   proposed: string;
-  // kept: no engine note; changed: placed with notes; dropped: left out.
-  outcome: "kept" | "changed" | "dropped";
+  // kept: no engine note; changed: placed with notes (the engine drops nothing).
+  outcome: "kept" | "changed";
   // The engine's notes on it as `action (rule)`, in order.
   engine: string;
 }
@@ -39,8 +38,6 @@ export interface Trace {
   // Notes on items no proposal names (captions, mostly), counted by action and rule.
   otherNotes: Record<string, number>;
 }
-
-const DROPPING = new Set(["dropped", "removed"]);
 
 // The words from one id to another, as spoken, shortened past `max` characters.
 export function wordsBetween(
@@ -60,20 +57,18 @@ export function wordsBetween(
 }
 
 // The answer's items in order, each with its reference and the engine id it
-// is placed under: the title accent is `title`, other accents `accent-N` in
-// answer order, the rest `<kind>-N` by index.
+// is placed under: accents `accent-N` in answer order, the rest `<kind>-N` by
+// index.
 function proposals(
   answer: TracedAnswer,
   say: (from: string, to: string) => string,
 ): { ref: string; item: string; proposed: string }[] {
   const out: { ref: string; item: string; proposed: string }[] = [];
-  const wish = (value?: string) => (value ? `, wish ${value}` : "");
-  let accentCount = 0;
   (answer.accents ?? []).forEach((accent, index) => {
     out.push({
       ref: `accents[${index}]`,
-      item: accent.title ? "title" : `accent-${++accentCount}`,
-      proposed: `${accent.title ? "hook" : "accent"} "${say(accent.from, accent.to)}"${wish(accent.wish)}`,
+      item: `accent-${index + 1}`,
+      proposed: `accent "${say(accent.from, accent.to)}"`,
     });
   });
   (answer.questions ?? []).forEach((question, index) => {
@@ -88,7 +83,7 @@ function proposals(
     out.push({
       ref: `big_words[${index}]`,
       item: `big-word-${index + 1}`,
-      proposed: `bigword "${say(span.from, span.to)}"${wish(big.wish)}`,
+      proposed: `bigword "${say(span.from, span.to)}"`,
     });
   });
   (answer.visuals ?? []).forEach((visual, index) => {
@@ -98,23 +93,12 @@ function proposals(
       proposed: `visual "${visual.description ?? ""}" on "${say(visual.from, visual.to)}"`,
     });
   });
-  // An older answer's library photos (their engine ids stay `photo-N`).
-  (answer.photos ?? []).forEach((photo, index) => {
-    out.push({
-      ref: `photos[${index}]`,
-      item: `photo-${index + 1}`,
-      proposed: `image ${photo.photo_id.slice(0, 8)} (${photo.reason ?? "?"}) on "${say(photo.from, photo.to)}"${wish(photo.wish)}`,
-    });
-  });
   (answer.transitions ?? []).forEach((transition, index) => {
-    // A numbered transition is a list; any other kind is an accent (dim, panel).
-    const said = say(transition.from, transition.to);
-    const proposed =
-      transition.kind === "numbered" ? `list "${said}"` : `accent "${said}" (${transition.kind})`;
+    if (transition.kind !== "numbered") return;
     out.push({
       ref: `transitions[${index}]`,
       item: `transition-${index + 1}`,
-      proposed: `${proposed}${wish(transition.wish)}`,
+      proposed: `list "${say(transition.from, transition.to)}"`,
     });
   });
   if (answer.hook) {
@@ -134,10 +118,7 @@ export function buildTrace(
   const named = new Set(items.map((entry) => entry.item));
   const rows = items.map(({ ref, item, proposed }): TraceRow => {
     const notes = record.filter((note) => note.item === item);
-    // The last note decides: a drop then a placement reads as changed.
-    const last = notes.at(-1);
-    const outcome =
-      notes.length === 0 ? "kept" : last && DROPPING.has(last.action) ? "dropped" : "changed";
+    const outcome = notes.length === 0 ? "kept" : "changed";
     return {
       ref,
       item,
@@ -176,7 +157,7 @@ export function formatTrace(title: string, trace: Trace, fixes: string[] = []): 
     title,
     line(head),
     ...body.map(line),
-    `proposed ${trace.rows.length}: kept ${count("kept")}, changed ${count("changed")}, dropped ${count("dropped")}`,
+    `proposed ${trace.rows.length}: kept ${count("kept")}, changed ${count("changed")}`,
     ...(fixes.length > 0 ? [`word fixes: ${fixes.join(", ")}`] : []),
     ...(others ? [`other engine notes: ${others}`] : []),
   ].join("\n");
@@ -254,10 +235,6 @@ export function scriptLines(words: readonly Word[]): Word[][] {
   return sentences.flatMap(split);
 }
 
-// A transition kind as the owner reads it: numbered is a LIST. Every other
-// kind (dim, panel, ...) is an ACCENT with its kind in brackets.
-const TRANSITION_LABEL: Record<string, string> = { numbered: "LIST" };
-
 // The header of a version's trace: both prompt versions (the hook's and the
 // components'), and the decide attempts when there were more than one.
 export function traceHeading(
@@ -276,15 +253,9 @@ export function traceHeading(
   return `${title} (prompts ${prompts.hook_prompt_version}, ${prompts.prompt_version}${intensity}${target}${tried})`;
 }
 
-// The script view as plain text. `photoNames` names an older answer's library
-// photo by id (its first tag or a short description); an unnamed photo shows its id.
-// A line with several picks prints one row per pick; the script text is on the first.
-export function formatScript(
-  title: string,
-  answer: TracedAnswer,
-  words: readonly Word[],
-  photoNames: ReadonlyMap<string, string> = new Map(),
-): string {
+// The script view as plain text. A line with several picks prints one row per
+// pick; the script text is on the first.
+export function formatScript(title: string, answer: TracedAnswer, words: readonly Word[]): string {
   const lines = scriptLines(words);
   const lineOf = new Map<string, number>();
   lines.forEach((line, index) => line.forEach((word) => lineOf.set(word.id, index)));
@@ -298,7 +269,7 @@ export function formatScript(
   };
   const add = (from: string, pick: string) => picks[lineOf.get(from) ?? 0]?.push(pick);
   for (const accent of answer.accents ?? []) {
-    add(accent.from, `${accent.title ? "HOOK" : "ACCENT"} ${span(accent.from, accent.to)}`);
+    add(accent.from, `ACCENT ${span(accent.from, accent.to)}`);
   }
   for (const question of answer.questions ?? []) {
     add(question.from, `QUESTION "${clean(wordsBetween(words, question.from, question.to, 40))}"`);
@@ -314,32 +285,22 @@ export function formatScript(
     const on = where === "whole line" ? "" : ` on ${where}`;
     add(visual.from, `VISUAL "${visual.description ?? ""}"${on}`);
   }
-  // An older answer's library photo, shown as the VISUAL it was.
-  for (const photo of answer.photos ?? []) {
-    const name = photoNames.get(photo.photo_id) ?? photo.photo_id.slice(0, 8);
-    add(photo.from, `VISUAL photo ${name}`);
-  }
   // LIST transitions on single words of the same line read as one pick:
   // LIST "Relationship" "taste".
-  const grouped = new Map<string, string[]>();
+  const grouped = new Map<number, string[]>();
   for (const transition of answer.transitions ?? []) {
-    const label = TRANSITION_LABEL[transition.kind];
-    if (label && transition.from === transition.to) {
-      const key = `${lineOf.get(transition.from) ?? 0}|${label}`;
-      grouped.set(key, [
-        ...(grouped.get(key) ?? []),
+    if (transition.kind !== "numbered") continue;
+    if (transition.from === transition.to) {
+      const line = lineOf.get(transition.from) ?? 0;
+      grouped.set(line, [
+        ...(grouped.get(line) ?? []),
         `"${clean(wordsBetween(words, transition.from, transition.to))}"`,
       ]);
-    } else if (label) {
-      add(transition.from, `${label} ${span(transition.from, transition.to)}`);
     } else {
-      add(transition.from, `ACCENT ${span(transition.from, transition.to)} (${transition.kind})`);
+      add(transition.from, `LIST ${span(transition.from, transition.to)}`);
     }
   }
-  for (const [key, names] of grouped) {
-    const [line, label] = key.split("|");
-    picks[Number(line)]!.push(`${label} ${names.join(" ")}`);
-  }
+  for (const [line, names] of grouped) picks[line]!.push(`LIST ${names.join(" ")}`);
   const texts = lines.map((line) => line.map((word) => word.text.trim()).join(" "));
   const fixes = (answer.word_fixes ?? []).map((fix) => {
     const said = words.find((word) => word.id === fix.word)?.text.trim() ?? fix.word;

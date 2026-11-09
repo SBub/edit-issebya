@@ -96,31 +96,20 @@ describe("versions", () => {
       unexpressed: ["a slow zoom"],
       free_field: [{ item: "title", reason: "letter spacing" }],
       rejected_reasons: ["safe-box title: runs past the safe box"],
-      no_photos: null,
-      no_big_word: null,
     });
   });
 
   it("stores the layout engine's record, empty when not given", async () => {
     const note = {
-      item: "photo-1",
-      action: "dropped" as const,
-      rule: "no-room",
-      reason: "photo 1: every photo spot is under captions or the face from 1.00 s to 3.00 s",
+      item: "visual-1",
+      action: "kept-overlapping" as const,
+      rule: "all-picks",
+      reason: "visual 1 sits over the face from 1.00 s to 3.00 s; kept, every pick is shown",
     };
     const saved = await saveVersion(deps, { ...meta(null), engineRecord: [note], edit });
     expect(rows.get(saved.id)!.engine_record).toEqual([note]);
     const plain = await saveVersion(deps, { ...meta(saved.id), edit });
     expect(rows.get(plain.id)!.engine_record).toEqual([]);
-  });
-
-  it("passes the reel's behind forbids to the row, null where unchanged", async () => {
-    const saved = await saveVersion(deps, {
-      ...meta(null),
-      forbid: { photos: true, bigWord: null },
-      edit,
-    });
-    expect(rows.get(saved.id)).toMatchObject({ no_photos: true, no_big_word: null });
   });
 
   it("refuses to write a version key twice and keeps the stored bytes", async () => {
@@ -150,8 +139,6 @@ describe("versions", () => {
       change_summary: "Back to how v1 looked",
       inputs: edit.inputs,
       checks: [],
-      no_photos: null,
-      no_big_word: null,
       used_free_field: false,
       unexpressed: [],
       free_field: [],

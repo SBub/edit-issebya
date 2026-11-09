@@ -3,7 +3,6 @@ import { type Context, trace } from "@opentelemetry/api";
 import {
   type Check,
   type DecideAnswer,
-  type DecideRules,
   type Edit,
   type EngineInput,
   type EngineNote,
@@ -50,7 +49,6 @@ import {
 } from "../step-runner.ts";
 import { type AiUsage, addUsage } from "../step-store.ts";
 import { type AiRecordCall, writeAiRecord } from "./ai-record.ts";
-import type { ReelRules } from "./behind-rules.ts";
 import { decideInput } from "./input.ts";
 import { hookGlossaryReasons, hookInput, hookPrompt } from "./hook.ts";
 import { decidePrompt } from "./prompt.ts";
@@ -73,13 +71,10 @@ export interface DecideRun {
   scratchDir: string;
   // Start over (temporary, for testing): the version to decide from instead
   // of the current one (the reel's version 1); the new version's parent is
-  // still the current one. The reel's behind rules hold as on any run. Null
-  // or absent: from the current version.
+  // still the current one. Null or absent: from the current version.
   startFrom?: string | null;
   measurer?: () => Promise<Measurer>;
   newId?: () => string;
-  // The reel's behind rules ("no photos in this one"); none: nothing forbidden.
-  rules?: ReelRules;
   // For the cut-out a behind item needs before the version is saved, and the
   // footage's background map the engine keeps the text readable over.
   tools?: ToolPaths;
@@ -88,8 +83,7 @@ export interface DecideRun {
   recordStored?: (key: string, bytes: number) => Promise<void>;
   // Where the engine record and a layout check the engine broke are logged.
   log?: (line: string) => void;
-  // The preset the reel is placed with: the worker's (every pick shown) unless
-  // a test asks for the strict clean layout.
+  // The preset the reel is placed with (the worker's by default).
   preset?: Preset;
 }
 
@@ -135,9 +129,8 @@ function roundLines(round: number, reasons: readonly string[]): string[] {
 // (role `hook`, prompt `reel-hook`), the one text the reel opens with, then the
 // components (role `decide`), which see the reel's script, the hook as data and
 // the target count, and answer in meaning only (word ids) with a JSON Schema
-// made for this reel. The stored behind forbids are not in the prompt: the
-// schema refuses an answer that breaks them, and the retry says why. Each answer is checked again by Zod and
-// the glossary check; only an answer breaking those is refused. Each goes
+// made for this reel. Each answer is checked again by Zod and the glossary
+// check; only an answer breaking those is refused. Each goes
 // back once with its reasons; a second refusal of either fails the step with
 // the reasons and writes nothing, so the current version stays. Layout never
 // refuses an answer: the layout engine (`editFromAnswer`) places every item,
@@ -164,7 +157,6 @@ export function runDecide({
   startFrom = null,
   measurer = editMeasurer,
   newId = randomUUID,
-  rules,
   tools = toolPaths(),
   spawnTool,
   env = process.env,
@@ -232,16 +224,13 @@ export function runDecide({
         preset.frame,
       );
       const prepared = await inSpan(ctx.telemetry, stepContext, "decide.prepare", {}, async () => {
-        const forbid = rules ? await rules.read(reelId) : { photos: false, bigWord: false };
-        const decideRules: DecideRules = { forbid };
-        const schema = decideJsonSchema(preset, transcript, decideRules);
+        const schema = decideJsonSchema(preset, transcript);
         return {
-          decideRules,
           schema,
           measure: await measurer(),
         };
       });
-      const { decideRules, schema, measure } = prepared;
+      const { schema, measure } = prepared;
 
       let usage: AiUsage = NO_USAGE;
       // Every call as sent and answered, for the version's AI record: the hook
@@ -340,7 +329,7 @@ export function runDecide({
             rules: ["answer-json"],
           };
         }
-        const answer = parseDecideAnswer(result.answer, preset, transcript, decideRules);
+        const answer = parseDecideAnswer(result.answer, preset, transcript);
         if (!answer.ok) return { ok: false, reasons: answer.reasons, rules: ["answer-schema"] };
         return inSpan(
           ctx.telemetry,
@@ -361,10 +350,6 @@ export function runDecide({
             if (!composed.ok) {
               return { ok: false, reasons: composed.reasons, rules: ["answer-edit"] };
             }
-            engine.setAttribute(
-              "decide.dropped",
-              composed.record.filter((note) => note.action === "dropped").length,
-            );
             // What the answer wrote: a fix showing a glossary word's heard form.
             const glossary = glossaryChecks(composed.edit, transcript, preset);
             if (glossary.length > 0) {
@@ -435,23 +420,12 @@ export function runDecide({
       // of its build (the engine's own output, never a second placement).
       const { edit: placed, record, checks } = passed;
       // The engine's only allowed face covering: captions it put over the
-      // face because nothing else was free, and an item the owner asked for
-      // it let cover the face as its last step, each said so in its record.
+      // face because nothing else was free, each said so in its record.
       const coversFace = new Set(
         record.filter((note) => note.action === "covers-face").map((note) => note.item),
       );
-      const madeRoom = new Set(
-        record
-          .filter((note) => note.action === "covers-face" && note.rule === "make-room")
-          .map((note) => note.item),
-      );
       const broken = checks.filter(
-        (check) =>
-          !(check.rule === "face" && coversFace.has(check.item)) &&
-          !(
-            (check.rule === "behind-face" || check.rule === "photo-hidden") &&
-            madeRoom.has(check.item)
-          ),
+        (check) => !(check.rule === "face" && coversFace.has(check.item)),
       );
       if (broken.length > 0) {
         log(
@@ -467,8 +441,6 @@ export function runDecide({
         scratchDir,
         edit: placed,
         transcript,
-        // No library photo is named any more: a new version has none.
-        photoIds: [],
         tools,
         spawnTool,
         env,
@@ -506,14 +478,12 @@ export function runDecide({
             checks,
             // The answer has no free style field; a kept item may still carry one.
             usedFreeField: usedFreeField(edit),
-            // A new answer asks for nothing and sets no rule: no unexpressed
-            // request, no checklist, the stored forbids untouched (null).
+            // A new answer asks for nothing: no unexpressed request, no checklist.
             unexpressed: [],
             freeField: [],
             rejectedReasons: first.ok ? [] : first.reasons,
             engineRecord: record,
             checklist: [],
-            forbid: { photos: null, bigWord: null },
             edit,
           },
         ),
@@ -521,17 +491,15 @@ export function runDecide({
       log(engineRecordLine(reelId, saved.number, record));
       trace.getSpan(stepContext)?.setAttribute("reel.tracks_items", trackItems(edit));
       const counts = decideCounts(edit, transcript, preset);
-      const dropped = record.filter((note) => note.action === "dropped").length;
       const what = [
         `version ${saved.number}: ${plural(counts.accents, "accent")}`,
         ...(counts.questions > 0 ? [plural(counts.questions, "question")] : []),
         plural(counts.transitions, "transition"),
         ...(counts.hook ? ["hook set"] : []),
         `${plural(counts.wordsFixed, "word")} fixed`,
-        ...(counts.behindPhotos + counts.behindVisuals + counts.behindWords > 0
-          ? [`${counts.behindPhotos + counts.behindVisuals + counts.behindWords} behind`]
+        ...(counts.behindVisuals + counts.behindWords > 0
+          ? [`${counts.behindVisuals + counts.behindWords} behind`]
           : []),
-        ...(dropped > 0 ? [`${dropped} dropped`] : []),
         ...(startFrom !== null ? [`started over from version ${row.number}`] : []),
       ].join(", ");
       return { what, ai: usage };

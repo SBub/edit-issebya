@@ -2,13 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Storage } from "@edit-issebya/storage";
 import { aiRunner } from "./ai.ts";
 import type { WorkerConfig } from "./config.ts";
-import { supabaseReelRules } from "./decide/behind-rules.ts";
 import { runDecide } from "./decide/run-decide.ts";
 import type { ErrorTracker } from "./error-tracking.ts";
 import { saveFirstVersion } from "./first-version.ts";
 import { runJobKind } from "./job-kinds.ts";
 import { runDescribePhotoJob } from "./photos/describe-photo.ts";
-import { supabasePhotoLibrary, supabasePhotoStore } from "./photos/photo-store.ts";
+import { supabasePhotoStore } from "./photos/photo-store.ts";
 import {
   type ClaimedJob,
   failJob,
@@ -118,7 +117,6 @@ export async function processJob(
             if (job.attempts > 1) await steps.abandonRunning(job.id);
             const rows = supabaseVersionRows(db);
             const blobs = storageVersionBlobs(storage);
-            const photos = supabasePhotoLibrary(db);
             // The masks behind items need (E2E_MOCK_MASK makes black ones).
             const cutouts = {
               storage,
@@ -140,7 +138,6 @@ export async function processJob(
                 prompts: promptsOf(),
                 scratchDir,
                 startFrom,
-                rules: supabaseReelRules(db),
                 tools: cutouts.tools,
                 recordStored,
               });
@@ -187,7 +184,6 @@ export async function processJob(
                   tools: toolPaths(),
                   recordStored,
                   versionId,
-                  photos,
                   cutouts,
                   discardExport: supabaseDiscardExport(db, rawStorage),
                 }),

@@ -16,8 +16,17 @@ const words = ["Creating", "content", "is", "like", "exposure", "therapy"].map((
 }));
 
 describe("decision trace", () => {
-  it("traces a two-word big word as both words, and an older one-word answer too", () => {
-    const trace = buildTrace({ big_words: [{ from: "w4", to: "w5" }, { word: "w0" }] }, [], words);
+  it("traces a two-word big word as both words, and a one-word big word as its word", () => {
+    const trace = buildTrace(
+      {
+        big_words: [
+          { from: "w4", to: "w5" },
+          { from: "w0", to: "w0" },
+        ],
+      },
+      [],
+      words,
+    );
     expect(trace.rows.map((row) => row.proposed)).toEqual([
       'bigword "exposure therapy"',
       'bigword "Creating"',
@@ -28,59 +37,57 @@ describe("decision trace", () => {
     const trace = buildTrace(
       {
         accents: [
-          { from: "w0", to: "w1", title: true },
-          { from: "w4", to: "w5", title: false },
+          { from: "w0", to: "w1" },
+          { from: "w4", to: "w5" },
         ],
         big_words: [{ from: "w4", to: "w4" }],
-        photos: [{ photo_id: "abcdef123456", from: "w2", to: "w3", reason: "mood" }],
+        visuals: [{ from: "w2", to: "w3", description: "a lamp" }],
         hook: { text: "Be seen" },
       },
       [
         { item: "accent-1", action: "moved", rule: "no-room", reason: "" },
-        { item: "big-word-1", action: "dropped", rule: "big-word-visible", reason: "" },
-        { item: "photo-1", action: "dropped", rule: "no-room", reason: "" },
+        { item: "big-word-1", action: "kept-overlapping", rule: "all-picks", reason: "" },
+        { item: "visual-1", action: "covers-face", rule: "transition-face", reason: "" },
         { item: "cw0", action: "low-contrast", rule: "contrast-stay", reason: "" },
       ],
       words,
     );
     expect(trace.rows.map((row) => [row.item, row.outcome])).toEqual([
-      ["title", "kept"],
       ["accent-1", "changed"],
-      ["big-word-1", "dropped"],
-      ["photo-1", "dropped"],
+      ["accent-2", "kept"],
+      ["big-word-1", "changed"],
+      ["visual-1", "changed"],
       ["hook", "kept"],
     ]);
-    expect(trace.rows[0]!.proposed).toBe('hook "Creating content"');
+    expect(trace.rows[0]!.proposed).toBe('accent "Creating content"');
     expect(trace.rows[2]!.proposed).toBe('bigword "exposure"');
-    expect(trace.rows[3]!.proposed).toBe('image abcdef12 (mood) on "is like"');
+    expect(trace.rows[3]!.proposed).toBe('visual "a lamp" on "is like"');
     expect(trace.otherNotes).toEqual({ "low-contrast (contrast-stay)": 1 });
     const text = formatTrace("v2", trace);
-    expect(text).toContain("proposed 5: kept 2, changed 1, dropped 2");
+    expect(text).toContain("proposed 5: kept 2, changed 3");
     expect(text).toContain("other engine notes: 1x low-contrast (contrast-stay)");
   });
 
-  it("names each proposal in the owner's words", () => {
+  it("names each proposal in the owner's words, and traces no kind but a LIST", () => {
     const trace = buildTrace(
       {
         accents: [
-          { from: "w0", to: "w1", title: true },
-          { from: "w2", to: "w3", wish: "top" },
+          { from: "w0", to: "w1" },
+          { from: "w2", to: "w3" },
         ],
         transitions: [
           { kind: "numbered", from: "w0", to: "w0" },
           { kind: "dim", from: "w1", to: "w2" },
-          { kind: "panel", from: "w3", to: "w4", wish: "bottom" },
+          { kind: "panel", from: "w3", to: "w4" },
         ],
       },
       [],
       words,
     );
     expect(trace.rows.map((row) => [row.item, row.proposed])).toEqual([
-      ["title", 'hook "Creating content"'],
-      ["accent-1", 'accent "is like", wish top'],
+      ["accent-1", 'accent "Creating content"'],
+      ["accent-2", 'accent "is like"'],
       ["transition-1", 'list "Creating"'],
-      ["transition-2", 'accent "content is" (dim)'],
-      ["transition-3", 'accent "like exposure" (panel), wish bottom'],
     ]);
   });
 
@@ -120,33 +127,29 @@ describe("script view", () => {
       "v2",
       {
         accents: [
-          { from: "s1", to: "s2", title: true },
+          { from: "s1", to: "s2" },
           { from: "s9", to: "s15" },
         ],
         big_words: [{ from: "s14", to: "s14" }],
-        photos: [{ photo_id: "p1", from: "s19", to: "s22" }],
+        visuals: [{ from: "s19", to: "s22", description: "a bedroom" }],
         transitions: [
           { kind: "numbered", from: "s16", to: "s16" },
           { kind: "numbered", from: "s17", to: "s17" },
           { kind: "dim", from: "s19", to: "s23" },
-          { kind: "panel", from: "s20", to: "s20" },
         ],
         hook: { text: "Run more experiments" },
       },
       script,
-      new Map([["p1", "bedroom"]]),
     );
     expect(text.split("\n")).toEqual([
       "v2",
       'HOOK  "Run more experiments"',
       "",
-      `${"The more experiments you run in your life,".padEnd(60)}  │ HOOK "more experiments"`,
+      `${"The more experiments you run in your life,".padEnd(60)}  │ ACCENT "more experiments"`,
       `${"the closer you are to your dream life.".padEnd(60)}  │ ACCENT "closer you are to your dream life"`,
       `${"".padEnd(60)}  │ BIGWORD "dream"`,
       `${"Relationship, taste, purpose.".padEnd(60)}  │ LIST "Relationship" "taste"`,
-      `${"A dream stays a dream.".padEnd(60)}  │ VISUAL photo bedroom`,
-      `${"".padEnd(60)}  │ ACCENT whole line (dim)`,
-      `${"".padEnd(60)}  │ ACCENT "dream" (panel)`,
+      `${"A dream stays a dream.".padEnd(60)}  │ VISUAL "a bedroom" on "A dream stays a"`,
     ]);
   });
 });
@@ -205,7 +208,7 @@ describe("script view of unpunctuated speech", () => {
       "v4",
       {
         accents: [{ from: "q0", to: "q1" }],
-        big_words: [{ word: "q2" }],
+        big_words: [{ from: "q2", to: "q2" }],
         visuals: [{ from: "q4", to: "q4", description: "a lamp" }],
       },
       words,

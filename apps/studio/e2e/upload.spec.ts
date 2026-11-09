@@ -141,7 +141,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     expect.stringMatching(/^backgrounds: backgrounds of 5 frames, /),
     expect.stringMatching(/^first_version: version 1 saved, /),
     // On the 2.7 s clip the written hook holds the screen from 0.2 s to the
-    // end, and the accent shows over it: `all` placement drops nothing the
+    // end, and the accent shows over it: the layout engine drops nothing the
     // answer picks.
     expect.stringMatching(/^decide: version 2: 1 accent, 0 transitions, hook set, 1 word fixed, /),
     "backgrounds: backgrounds reused",

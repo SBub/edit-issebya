@@ -54,8 +54,8 @@ machine from idle-sleeping while a job runs.
 version`), the `Working on it` / `Could not finish this step` fallback for an unknown step, and
   `RULE_WORDS` with `refusalReason(rules)`: the first two distinct rule words of a refused answer,
   joined with "and", from the rule names only. `RULE_WORDS` covers `no-change` ("your reel would
-  look the same") and the layout engine's drop rules (`no-room`, `one-extra`, `hidden-footage`,
-  `wish`, `make-room`), which an unchanged change carries after it.
+  look the same") and the rules a refused answer carries: `answer-json`, `answer-schema`, `answer-edit`
+  and `glossary`.
 - Failure actions (`FailureAction`): every retryable failure offers Try again and Keep the current version.
   Try again calls `requestRetry` and shows its answer (`Queued again`, say). Keep the current version dismisses the failure. Each
   action captures `studio_failure_action` with `reel_id`, `job_id`, `action`, `failure_kind`,

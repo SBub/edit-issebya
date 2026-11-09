@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { BehindItem } from "@edit-issebya/edit";
 import { fingerprint } from "../pipeline/fingerprint.ts";
 import { MASK_TOOL_VERSION } from "./mask-tool.ts";
 import { MATTE_SETTINGS } from "./matte.ts";
 import { cutoutKey, maskFingerprint, plannedMasks, withMasks } from "./spans.ts";
-import { BEHIND_PHOTO, BEHIND_TRANSCRIPT, behindEdit } from "./test-support.ts";
+import { BEHIND_TRANSCRIPT, behindEdit } from "./test-support.ts";
 
 const FOOTAGE = { step: "retime", fingerprint: "a".repeat(64), file: "source.mp4" };
 
@@ -44,7 +45,7 @@ describe("cutoutKey", () => {
 });
 
 describe("withMasks", () => {
-  it("names one planned mask per padded span and the photos", () => {
+  it("names one planned mask per padded span", () => {
     const edit = behindEdit();
     const named = withMasks(edit, BEHIND_TRANSCRIPT);
     expect(named.inputs.masks).toEqual(plannedMasks(edit, BEHIND_TRANSCRIPT));
@@ -56,29 +57,32 @@ describe("withMasks", () => {
     expect(named.inputs.masks?.[0]?.fingerprint).toBe(
       maskFingerprint(edit.inputs.footage, { start: 5.1, end: 7.967 }),
     );
-    expect(named.inputs.photos).toEqual([BEHIND_PHOTO]);
   });
 
-  it("names no mask for a photo in front of the speaker, only for what sits behind", () => {
+  it("names no mask for a VISUAL, which sits over the footage: only a big word gets one", () => {
     const edit = behindEdit();
-    const photo = edit.tracks.behind!.find((item) => item.kind === "photo")!;
-    if (photo.kind !== "photo") throw new Error("not a photo");
-    photo.layer = "front";
+    const big = edit.tracks.behind!.at(-1)!;
+    const visual: BehindItem = {
+      id: "visual-1",
+      kind: "visual",
+      spot: "top",
+      box: { x: 0, y: 0, width: 10, height: 10 },
+      start: { time: 5.1 },
+      end: { time: 7.967 },
+    };
+    edit.tracks.behind = [visual, big];
     const named = withMasks(edit, BEHIND_TRANSCRIPT);
-    // The big word keeps its span; the photo's is gone.
+    // The big word keeps its span; the VISUAL's is gone.
     expect(named.inputs.masks?.map(({ start, end }) => [start, end])).toEqual([[19.967, 22.733]]);
-    expect(named.inputs.photos).toEqual([BEHIND_PHOTO]);
-    edit.tracks.behind = [photo];
+    edit.tracks.behind = [visual];
     const front = withMasks(edit, BEHIND_TRANSCRIPT);
     expect(front.inputs).not.toHaveProperty("masks");
-    expect(front.inputs.photos).toEqual([BEHIND_PHOTO]);
   });
 
-  it("drops masks and photos from an edit without behind items", () => {
+  it("drops masks from an edit without behind items", () => {
     const edit = withMasks(behindEdit(), BEHIND_TRANSCRIPT);
     delete edit.tracks.behind;
     const named = withMasks(edit, BEHIND_TRANSCRIPT);
     expect(named.inputs).not.toHaveProperty("masks");
-    expect(named.inputs).not.toHaveProperty("photos");
   });
 });

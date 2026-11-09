@@ -33,8 +33,6 @@ export function editTransitionLevels(transition: TransitionItem): Layer {
 
 // What the rethink-work-transitions golden holds, apart from its edit file.
 export const TRANSITION_LEVELS: Layer[] = [
-  { id: "transition-1", levels: { lead: "AI has completely disrupted", key: "the way we work" } },
-  { id: "transition-2", levels: { number: "1", lead: "they want", key: "fair pay" } },
-  { id: "transition-3", levels: { number: "2", lead: "protected", key: "mental health" } },
-  { id: "transition-4", levels: { lead: "work should", key: "fund life not take it over" } },
+  { id: "transition-1", levels: { number: "1", lead: "they want", key: "fair pay" } },
+  { id: "transition-2", levels: { number: "2", lead: "protected", key: "mental health" } },
 ];

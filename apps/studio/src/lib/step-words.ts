@@ -95,7 +95,6 @@ export const RULE_WORDS: Record<string, string> = {
   "no-room": "there was no free room on screen",
   "one-extra": "something else already shows at that moment",
   "hidden-footage": "that part of the clip is cut",
-  wish: "the place you asked for was taken",
   "make-room": "there was no room even after making space",
 };
 

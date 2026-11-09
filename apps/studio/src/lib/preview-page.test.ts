@@ -19,13 +19,18 @@ const URLS = {
 };
 
 let baseline: string;
-let hand: string;
+// A page with one footage video and one sound clip (`click-visual-1`).
+let request: string;
+// A behind page: the footage's cut-out copies and two mask videos.
+let behind: string;
 
 beforeAll(async () => {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed goldens
   baseline = await readFile(new URL("baseline-short-speech.html", GOLDEN), "utf8");
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed goldens
-  hand = await readFile(new URL("rethink-work-hand.html", GOLDEN), "utf8");
+  request = await readFile(new URL("rethink-work-request.html", GOLDEN), "utf8");
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed goldens
+  behind = await readFile(new URL("rethink-work-engine.html", GOLDEN), "utf8");
 });
 
 // The input's lines the transform must leave alone, and the output's.
@@ -49,7 +54,7 @@ describe("previewPage", () => {
   });
 
   it("plays one video for a page built from a stored version naming a cut-out", () => {
-    const page = previewPage(hand, [...CLIPS, ...FONTS, SOUND], URLS, ["s-fund-life"]);
+    const page = previewPage(request, [...CLIPS, ...FONTS, SOUND], URLS, ["click-visual-1"]);
     expect(page.match(/<video /g)).toHaveLength(1);
     expect(page).not.toContain("subject");
   });
@@ -63,11 +68,11 @@ describe("previewPage", () => {
   });
 
   it("drops the sound clips and changes nothing else", () => {
-    const page = previewPage(hand, [...CLIPS, ...FONTS, SOUND], URLS, ["s-fund-life"]);
+    const page = previewPage(request, [...CLIPS, ...FONTS, SOUND], URLS, ["click-visual-1"]);
     expect(page).not.toContain('data-track-index="60"');
     expect(page).not.toContain("<audio");
-    expect(page.split("\n")).toHaveLength(hand.split("\n").length - 1);
-    expect(untouched(page.split("\n"))).toEqual(untouched(hand.split("\n")));
+    expect(page.split("\n")).toHaveLength(request.split("\n").length - 1);
+    expect(untouched(page.split("\n"))).toEqual(untouched(request.split("\n")));
   });
 
   it("leaves every other line of the baseline as built", () => {
@@ -82,46 +87,26 @@ describe("previewPage", () => {
     expect(() => previewPage(baseline, FONTS, URLS, ["click-a"])).toThrow(/no single <audio>/);
   });
 
-  it("swaps every footage copy, each mask and each photo of a behind page", async () => {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed goldens
-    const behind = await readFile(new URL("rethink-work-behind.html", GOLDEN), "utf8");
-    const photo = "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14";
-    const maskA = `masks/${"1".repeat(64)}.mp4`;
-    const maskB = `masks/${"2".repeat(64)}.mp4`;
-    const assets: BuildAsset[] = [
-      ...CLIPS,
-      ...FONTS,
-      { path: maskA, role: "mask", ref: null },
-      { path: maskB, role: "mask", ref: null },
-      { path: `photos/${photo}.jpg`, role: "photo", ref: null, photoId: photo },
-    ];
+  it("swaps every footage copy and each mask of a behind page", () => {
+    const mask = `masks/${"3".repeat(64)}.mp4`;
+    const assets: BuildAsset[] = [...CLIPS, ...FONTS, { path: mask, role: "mask", ref: null }];
     const urls = {
       ...URLS,
-      masks: [
-        { path: maskA, url: "https://r2.example/a.mp4?s=1&t=2" },
-        { path: maskB, url: "https://r2.example/b.mp4" },
-      ],
-      photos: [{ path: `photos/${photo}.jpg`, url: "https://r2.example/large.jpg?s=1" }],
+      masks: [{ path: mask, url: "https://r2.example/a.mp4?s=1&t=2" }],
     };
-    const page = previewPage(behind, assets, urls, ["s-fund-life"]);
-    expect(page).not.toMatch(/src="(masks|photos)\//);
+    const page = previewPage(behind, assets, urls, ["click-visual-1", "click-big-word-1"]);
+    expect(page).not.toMatch(/src="masks\//);
     expect(page).not.toContain('"source.mp4"');
-    // The footage clip and the four footage copies, then the four mask videos.
-    expect(page.match(/footage-preview\.mp4[^"]*" preload="auto"/g)).toHaveLength(5);
+    expect(page).not.toContain("<audio");
+    // The footage clip and its two cut-out copies, then the two mask videos.
+    expect(page.match(/footage-preview\.mp4[^"]*" preload="auto"/g)).toHaveLength(3);
     expect(
       page.match(/src="https:\/\/r2\.example\/a\.mp4\?s=1&amp;t=2" preload="auto"/g),
     ).toHaveLength(2);
-    expect(page).toContain(' src="https://r2.example/large.jpg?s=1" alt=""');
   });
 
-  it("throws for a mask or a photo without a URL, or one the page does not show", async () => {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed goldens
-    const behind = await readFile(new URL("rethink-work-behind.html", GOLDEN), "utf8");
-    const mask: BuildAsset = { path: `masks/${"1".repeat(64)}.mp4`, role: "mask", ref: null };
+  it("throws for a mask without a URL", () => {
+    const mask: BuildAsset = { path: `masks/${"3".repeat(64)}.mp4`, role: "mask", ref: null };
     expect(() => previewPage(behind, [mask], URLS, [])).toThrow(`preview: no URL for ${mask.path}`);
-    const absent: BuildAsset = { path: "photos/none.jpg", role: "photo", ref: null };
-    expect(() =>
-      previewPage(behind, [absent], { ...URLS, photos: [{ path: absent.path, url: "u" }] }, []),
-    ).toThrow("preview: no <img> plays photos/none.jpg");
   });
 });

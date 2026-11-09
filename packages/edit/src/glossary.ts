@@ -1,8 +1,19 @@
 import type { Check } from "./checks.ts";
-import { wordsText } from "./layout.ts";
 import { type Preset, cleanWord } from "./preset.ts";
 import type { Edit } from "./schema.ts";
 import type { Transcript } from "./transcript.ts";
+
+// The caption text the words show by default: each word cleaned, a glossary
+// term when the words are one of its heard forms.
+export function wordsText(ids: readonly string[], transcript: Transcript, preset: Preset): string {
+  const byId = new Map(transcript.words.map((word) => [word.id, word]));
+  const cleaned = ids.map((id) => cleanWord(byId.get(id)?.text ?? "", preset));
+  const lower = cleaned.map((text) => text.toLowerCase());
+  for (const entry of preset.glossary) {
+    if (entry.heard.some((form) => form.join(" ") === lower.join(" "))) return entry.term;
+  }
+  return cleaned.join(" ");
+}
 
 // True when `run` appears in `words` as consecutive whole words.
 function containsRun(words: readonly string[], run: readonly string[]): boolean {

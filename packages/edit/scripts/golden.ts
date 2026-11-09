@@ -2,13 +2,11 @@
 // first_version step saves it, over the fixture clip's background map; the
 // behind hand edit's choices placed by the layout engine; and the same
 // choices over a synthetic light background, readable; the 2026-11-03
-// request placed with room made for its photo; the same choices with one
-// transition of each kind, two of them numbered list items; the same
-// choices with the written hook; and with every visual requested, as corner
-// cards) and
-// every fixture's
-// golden page and widths from the Node build: `yarn workspace @edit-issebya/edit golden`. Commit what it
-// writes; the Node and browser tests compare against it.
+// request placed over the hand edit; the same choices with two numbered list
+// items; and the same choices with the written hook) and every fixture's
+// golden page and widths from the Node build:
+// `yarn workspace @edit-issebya/edit golden`.
+// Commit what it writes; the Node and browser tests compare against it.
 import { readFile, writeFile } from "node:fs/promises";
 import { backgroundMapSchema, backgroundSampler } from "../src/background.ts";
 import { maskSpans } from "../src/behind.ts";
@@ -16,18 +14,25 @@ import { baselineEdit } from "../src/baseline.ts";
 import { editFromAnswer } from "../src/decide.ts";
 import { placeEdit } from "../src/engine.ts";
 import { choicesOf } from "../src/engine-input.ts";
-import { CLEAN_PRESET } from "../src/preset.ts";
+import { ISSEBYA_PRESET } from "../src/preset.ts";
 import { type Edit, parseEdit } from "../src/schema.ts";
 import { backgroundMapOf } from "../src/test-support/backgrounds.ts";
 import { goldenOf } from "../src/test-support/golden.ts";
 import { RETHINK_WORK, SHORT_SPEECH, baselineInputs } from "../src/test-support/inputs.ts";
-import { REQUEST_ANSWER, REQUEST_CASE, REQUEST_REQUESTED } from "../src/test-support/request.ts";
+import { REQUEST_ANSWER, REQUEST_CASE } from "../src/test-support/request.ts";
 import { nodeMeasurer } from "../src/test-support/measurer.node.ts";
 import { resolveTimeline } from "../src/timeline.ts";
 import { sentenceSpans } from "../src/transcript.ts";
 
 const testdata = new URL("../src/testdata/", import.meta.url);
-const NO_CHOICES = { accents: [], big_words: [], visuals: [], transitions: [], word_fixes: [] };
+const NO_CHOICES = {
+  accents: [],
+  questions: [],
+  big_words: [],
+  visuals: [],
+  transitions: [],
+  word_fixes: [],
+};
 
 const write = (name: string, value: unknown) =>
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
@@ -40,15 +45,15 @@ const shortSpeechMap = backgroundMapSchema.parse(
     await readFile(new URL("backgrounds/short-speech.backgrounds.json", testdata), "utf8"),
   ),
 );
-const baseline = baselineEdit(SHORT_SPEECH.transcript, baselineInputs(), CLEAN_PRESET);
+const baseline = baselineEdit(SHORT_SPEECH.transcript, baselineInputs(), ISSEBYA_PRESET);
 const placed = placeEdit(
   baseline,
   NO_CHOICES,
   SHORT_SPEECH.transcript,
   SHORT_SPEECH.headTrack,
-  CLEAN_PRESET,
+  ISSEBYA_PRESET,
   await nodeMeasurer(),
-  { backgrounds: backgroundSampler(shortSpeechMap, CLEAN_PRESET.frame) },
+  { backgrounds: backgroundSampler(shortSpeechMap, ISSEBYA_PRESET.frame) },
 );
 await write("baseline-short-speech", { ...baseline, tracks: placed.tracks });
 
@@ -58,11 +63,11 @@ await write("baseline-short-speech", { ...baseline, tracks: placed.tracks });
 const hooked = editFromAnswer(
   baseline,
   { ...NO_CHOICES, hook: { text: "A short test for the real studio" } },
-  CLEAN_PRESET,
+  ISSEBYA_PRESET,
   SHORT_SPEECH.transcript,
   SHORT_SPEECH.headTrack,
   await nodeMeasurer(),
-  backgroundSampler(shortSpeechMap, CLEAN_PRESET.frame),
+  backgroundSampler(shortSpeechMap, ISSEBYA_PRESET.frame),
 );
 if (!hooked.ok) throw new Error(hooked.reasons.join("; "));
 await write("baseline-short-speech-hook", hooked.edit);
@@ -73,34 +78,29 @@ const behindJson: unknown = JSON.parse(
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
   await readFile(new URL("versions/rethink-work-behind.edit.json", testdata), "utf8"),
 );
-const behind = parseEdit(behindJson, CLEAN_PRESET, RETHINK_WORK.transcript);
+const behind = parseEdit(behindJson, ISSEBYA_PRESET, RETHINK_WORK.transcript);
 if (!behind.ok) throw new Error(behind.reasons.join("; "));
-const choices = choicesOf(behind.edit, RETHINK_WORK.transcript, CLEAN_PRESET);
+const choices = choicesOf(behind.edit, RETHINK_WORK.transcript, ISSEBYA_PRESET);
 const engine = editFromAnswer(
   behind.edit,
   choices,
-  CLEAN_PRESET,
+  ISSEBYA_PRESET,
   RETHINK_WORK.transcript,
   RETHINK_WORK.headTrack,
   await nodeMeasurer(),
 );
 if (!engine.ok) throw new Error(engine.reasons.join("; "));
 
-// The edit naming placeholder masks for its spans and its photos.
+// The edit naming placeholder masks for its spans.
 function withPlaceholders(edit: Edit): Edit {
-  const masks = maskSpans(edit, RETHINK_WORK.transcript, CLEAN_PRESET).map((span, index) => ({
+  const masks = maskSpans(edit, RETHINK_WORK.transcript, ISSEBYA_PRESET).map((span, index) => ({
     step: "cutout" as const,
     fingerprint: String(index + 3).repeat(64),
     file: "mask.mp4",
     start: span.start,
     end: span.end,
   }));
-  const photos = [
-    ...new Set(
-      (edit.tracks.behind ?? []).flatMap((item) => (item.kind === "photo" ? [item.photo_id] : [])),
-    ),
-  ].sort();
-  return { ...edit, inputs: { ...edit.inputs, masks, photos } };
+  return { ...edit, inputs: { ...edit.inputs, masks } };
 }
 await write("rethink-work-engine", withPlaceholders(engine.edit));
 
@@ -120,7 +120,7 @@ const band = (item: { position?: { y: number }; size?: number }) => ({
 });
 const captionBand = band(firstCaption);
 const accentBand = band(firstAccent);
-const readableMap = backgroundMapOf(CLEAN_PRESET.frame, engine.edit.duration, (_x, y, t) => {
+const readableMap = backgroundMapOf(ISSEBYA_PRESET.frame, engine.edit.duration, (_x, y, t) => {
   const inCaption = t < firstSentence.end && y >= captionBand.top && y < captionBand.bottom;
   const inAccent =
     t >= accentSpan.start - 0.5 &&
@@ -132,11 +132,11 @@ const readableMap = backgroundMapOf(CLEAN_PRESET.frame, engine.edit.duration, (_
 const readable = editFromAnswer(
   behind.edit,
   choices,
-  CLEAN_PRESET,
+  ISSEBYA_PRESET,
   RETHINK_WORK.transcript,
   RETHINK_WORK.headTrack,
   await nodeMeasurer(),
-  backgroundSampler(readableMap, CLEAN_PRESET.frame),
+  backgroundSampler(readableMap, ISSEBYA_PRESET.frame),
 );
 if (!readable.ok) throw new Error(readable.reasons.join("; "));
 for (const note of readable.record.filter((entry) => entry.rule.startsWith("contrast-"))) {
@@ -144,46 +144,37 @@ for (const note of readable.record.filter((entry) => entry.rule.startsWith("cont
 }
 await write("rethink-work-readable", withPlaceholders(readable.edit));
 
-// The 2026-11-03 request "add images behind me" over the hand edit, placed
-// with the visual requested: the engine makes room for it.
+// The 2026-11-03 request "add images behind me" over the hand edit.
 const handJson: unknown = JSON.parse(
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
   await readFile(new URL("versions/rethink-work-hand.edit.json", testdata), "utf8"),
 );
-const hand = parseEdit(handJson, CLEAN_PRESET, REQUEST_CASE.transcript);
+const hand = parseEdit(handJson, ISSEBYA_PRESET, REQUEST_CASE.transcript);
 if (!hand.ok) throw new Error(hand.reasons.join("; "));
 const request = editFromAnswer(
   hand.edit,
   REQUEST_ANSWER,
-  CLEAN_PRESET,
+  ISSEBYA_PRESET,
   REQUEST_CASE.transcript,
   REQUEST_CASE.headTrack,
   await nodeMeasurer(),
-  undefined,
-  { requested: REQUEST_REQUESTED },
 );
 if (!request.ok) throw new Error(request.reasons.join("; "));
-for (const note of request.record.filter((entry) => entry.rule === "make-room")) {
-  console.log(`request: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
-}
 await write("rethink-work-request", withPlaceholders(request.edit));
 
-// The engine's choices with a transition of each kind: a dim, two numbered
-// items of the list "fair pay, ..., protected mental health" (w104 is too
-// close to the first item for both to show, so the second is w106 to w108)
-// and a panel.
+// The engine's choices with two numbered transitions: the first two items of
+// the list "fair pay, ..., protected mental health" (w104 is too close to the
+// first item for both to show, so the second is w106 to w108).
 const withTransitions = editFromAnswer(
   behind.edit,
   {
     ...choices,
     transitions: [
-      { kind: "dim", from: "w26", to: "w33", key_from: "w30" },
       { kind: "numbered", from: "w100", to: "w103", key_from: "w102" },
       { kind: "numbered", from: "w106", to: "w108", key_from: "w107" },
-      { kind: "panel", from: "w126", to: "w133", key_from: "w128" },
     ],
   },
-  CLEAN_PRESET,
+  ISSEBYA_PRESET,
   RETHINK_WORK.transcript,
   RETHINK_WORK.headTrack,
   await nodeMeasurer(),
@@ -200,7 +191,7 @@ await write("rethink-work-transitions", withPlaceholders(withTransitions.edit));
 const withHook = editFromAnswer(
   behind.edit,
   { ...choices, hook: { text: "Gen Z won't work like you did" } },
-  CLEAN_PRESET,
+  ISSEBYA_PRESET,
   RETHINK_WORK.transcript,
   RETHINK_WORK.headTrack,
   await nodeMeasurer(),
@@ -211,28 +202,9 @@ for (const note of withHook.record.filter((entry) => entry.item === "hook")) {
 }
 await write("rethink-work-hook", withPlaceholders(withHook.edit));
 
-// The engine's choices with every visual asked for: each placed first, given
-// room, as a corner card beside the face (never over it), no cut-out for a
-// visual.
-const front = editFromAnswer(
-  behind.edit,
-  choices,
-  CLEAN_PRESET,
-  RETHINK_WORK.transcript,
-  RETHINK_WORK.headTrack,
-  await nodeMeasurer(),
-  undefined,
-  { requested: choices.visuals.map((_, index) => `visuals[${index}]`) },
-);
-if (!front.ok) throw new Error(front.reasons.join("; "));
-for (const note of front.record.filter((entry) => entry.item.startsWith("visual-"))) {
-  console.log(`front: ${note.item} ${note.action} (${note.rule}): ${note.reason}`);
-}
-await write("rethink-work-front", withPlaceholders(front.edit));
-
 // Re-imported after the baseline is written, so the goldens build the new one.
-const { FIXTURES } = await import("../src/test-support/fixtures.ts");
-for (const fixture of FIXTURES) {
+const { PLACED_FIXTURES } = await import("../src/test-support/fixtures.ts");
+for (const fixture of PLACED_FIXTURES) {
   const { html, widths } = goldenOf(fixture, await nodeMeasurer());
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the package's testdata
   await writeFile(new URL(`golden/${fixture.name}.html`, testdata), html);

@@ -1,7 +1,7 @@
-import type { TextBox } from "./layout.ts";
+import type { TextBox } from "./engine-space.ts";
 import type { Measurer } from "./measure.ts";
-import type { FontKey, Preset, PresetTransition } from "./preset.ts";
-import type { Anchor, Edit, TransitionItem, TransitionLevel } from "./schema.ts";
+import { type FontKey, type Preset, type PresetTransition, SHOWN_FLOOR_SECONDS } from "./preset.ts";
+import type { Anchor, Edit, TransitionLevel } from "./schema.ts";
 import { type ResolvedItem, anchorAt, resolveAnchor } from "./timeline.ts";
 import type { Word } from "./transcript.ts";
 
@@ -23,40 +23,33 @@ export interface TransitionTiming {
   end: number;
   // How long the layer takes to come in and to go out.
   seconds: number;
-  // Made longer (or started earlier) to last the preset's minimum.
+  // Made longer (or started earlier) to last the shown floor.
   lengthened: boolean;
   startAnchor: Anchor;
   endAnchor: Anchor;
 }
 
-// The layer's entrance finishes as the phrase's first word starts; it has
-// left when the word after the phrase starts, holding at most `holdSeconds`
-// (`longHoldSeconds` with the wish `long`) after the phrase's last word. Under
-// `minSeconds` it leaves later (within the reel), then comes in earlier (from
-// the reel's start); still under, it is too short: null.
+// A LIST's layer shows exactly while its phrase is spoken, like a caption: in
+// as the phrase's first word starts (its entrance `kind.seconds` long), gone at
+// the phrase's last word's end. No minimum and no hold. Only a phrase with no
+// length at all is lengthened, to the shown floor (earlier where the reel
+// ends); a reel under the floor gives null.
 export function transitionTiming(
-  choice: { from: string; to: string; wish?: string },
+  choice: { from: string; to: string },
   words: readonly Word[],
   duration: number,
   preset: Preset,
   kind: PresetTransition,
-  // The shortest the layer may last (the preset's minimum unless `all` asks
-  // for the shorter shown floor, at a reel's end).
-  floor: number = preset.transition.minSeconds,
 ): TransitionTiming | null {
-  const { transition } = preset;
-  const index = new Map(words.map((word, at) => [word.id, at]));
-  const first = words[index.get(choice.from)!]!;
-  const lastAt = index.get(choice.to)!;
-  const last = words[lastAt]!;
-  const next = words[lastAt + 1];
-  const seconds = ms(kind.seconds * (choice.wish === "slow" ? transition.slowFactor : 1));
-  const hold = choice.wish === "long" ? transition.longHoldSeconds : transition.holdSeconds;
+  const floor = SHOWN_FLOOR_SECONDS;
+  const first = words.find((word) => word.id === choice.from)!;
+  const last = words.find((word) => word.id === choice.to)!;
+  const seconds = kind.seconds;
   const reelEnd = ms(duration);
-  let start = ms(Math.max(0, first.start - seconds));
-  let end = ms(Math.min(next?.start ?? reelEnd, last.end + hold, reelEnd));
+  let start = ms(first.start);
+  let end = ms(Math.min(last.end, reelEnd));
   let lengthened = false;
-  if (end - start < floor - SLACK) {
+  if (end - start <= SLACK) {
     lengthened = true;
     end = ms(Math.min(reelEnd, start + floor));
     if (end - start < floor - SLACK) {
@@ -67,22 +60,16 @@ export function transitionTiming(
   const startAnchor: Anchor =
     start === 0
       ? { reel: "start" }
-      : Math.abs(start - (first.start - seconds)) < 0.0005
-        ? { word: first.id, offset: -seconds }
+      : Math.abs(start - first.start) < 0.0005
+        ? { word: first.id }
         : anchorAt(start, words);
   const endAnchor: Anchor =
     end === reelEnd
       ? { reel: "end" }
-      : next && Math.abs(end - next.start) < 0.0005
-        ? { word: next.id }
+      : Math.abs(end - last.end) < 0.0005
+        ? { word: last.id, edge: "end" }
         : anchorAt(end, words);
   return { start, end, seconds, lengthened, startAnchor, endAnchor };
-}
-
-// How long a transition item's layer takes to come in and go out.
-export function motionSeconds(item: TransitionItem, preset: Preset): number {
-  const { seconds } = preset.transitions[item.type];
-  return item.pace === "slow" ? ms(seconds * preset.transition.slowFactor) : seconds;
 }
 
 // The captions never shown in their own place: those shown only through a
@@ -119,20 +106,6 @@ export function levelStyle(
       ? (preset.transitions.numbered.numberSize ?? preset.fonts[font].size)
       : preset.fonts[font].size;
   return { font, size, color: preset.accent.color };
-}
-
-// The layer's background: the item's own colour, else the background role at
-// the kind's shade (the role itself when the shade is 1).
-export function transitionBackground(
-  kind: PresetTransition,
-  preset: Preset,
-  color?: string,
-): string {
-  if (color) return color;
-  if (kind.shade >= 1) return preset.background;
-  const hex = preset.background.replace("#", "");
-  const [r, g, b] = [0, 2, 4].map((at) => Number.parseInt(hex.slice(at, at + 2), 16));
-  return `rgba(${r}, ${g}, ${b}, ${kind.shade})`;
 }
 
 // A level's lines: split after `break_after` words when set.
@@ -178,7 +151,6 @@ export function levelBoxes(
         font,
         size: level.size,
         color,
-        shadow: undefined,
         style: undefined,
         start,
         end: span.end,

@@ -1,29 +1,28 @@
 import { describe, expect, it } from "vitest";
 import {
-  bigWordLayout,
   maskSpans,
   nearestSpot,
   needsCutout,
-  photoBox,
   spotBox,
   spotFaceShare,
+  visualBox,
 } from "./behind.ts";
 import { build } from "./build.ts";
-import { faceBox } from "./head-track.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import type { BehindItem, BehindWordItem, Edit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
 const behind = FIXTURES.find((fixture) => fixture.name === "rethink-work-behind")!;
-const PHOTO = "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14";
+const engine = FIXTURES.find((fixture) => fixture.name === "rethink-work-engine")!;
 const FRAME = 1 / 30;
 
 function word(text: string): BehindWordItem {
   return { id: "big", kind: "word", text, start: { time: 0 }, end: { time: 3 } };
 }
 
-// The behind fixture with its behind track replaced by items at fixed times.
+// The behind fixture with its behind track replaced by big words at fixed
+// times (the only items with a cut-out).
 function withBehind(
   items: { start: number; end: number }[],
   duration = behind.edit.duration,
@@ -32,9 +31,8 @@ function withBehind(
   edit.duration = duration;
   edit.tracks.behind = items.map(({ start, end }, index): BehindItem => ({
     id: `b${index}`,
-    kind: "photo",
-    photo_id: PHOTO,
-    spot: "top",
+    kind: "word",
+    text: "WORK",
     start: { time: start },
     end: { time: end },
   }));
@@ -75,65 +73,26 @@ describe("spotBox", () => {
   });
 });
 
-describe("bigWordLayout", () => {
-  it("sets a short word at the preset's largest size, centred, below the head top", async () => {
-    const measurer = await nodeMeasurer();
-    const box = bigWordLayout(
-      word("AI"),
-      { start: 1, end: 3 },
-      behind.headTrack,
-      ISSEBYA_PRESET,
-      measurer,
-    );
-    expect(box.size).toBe(400);
-    expect(box.x + box.width / 2).toBeCloseTo(540, 0);
-    const face = faceBox(behind.headTrack, 1, 1)!;
-    expect(box.y + box.size / 2).toBeCloseTo(face.top + 60, 0);
-    expect(measurer.widths()).toHaveProperty("primary:AI");
-  });
-
-  it("shrinks a long word to the frame between the side margins", async () => {
-    const box = bigWordLayout(
-      word("rethinking"),
-      { start: 1, end: 3 },
-      behind.headTrack,
-      ISSEBYA_PRESET,
-      await nodeMeasurer(),
-    );
-    expect(box.size).toBeLessThan(400);
-    expect(box.width).toBeLessThanOrEqual(1080 - 2 * 40);
-    expect(box.x).toBeGreaterThanOrEqual(40);
-  });
-
-  it("uses the preset's line with no head in the frame", async () => {
-    const box = bigWordLayout(
-      word("AI"),
-      { start: 1, end: 3 },
-      [null, null],
-      ISSEBYA_PRESET,
-      await nodeMeasurer(),
-    );
-    expect(box.y + box.size / 2).toBe(700);
-  });
-});
-
-describe("photo boxes", () => {
+describe("visual boxes", () => {
   const item = (more: Partial<BehindItem> = {}) =>
     ({
-      id: "p",
-      kind: "photo",
-      photo_id: PHOTO,
+      id: "v",
+      kind: "visual",
       spot: "left",
+      box: { x: 40, y: 560, width: 460, height: 620 },
       start: { time: 0 },
       end: { time: 2 },
       ...more,
-    }) as Extract<BehindItem, { kind: "photo" }>;
+    }) as Extract<BehindItem, { kind: "visual" }>;
 
-  it("is the engine's box, or the spot for a version saved before it", () => {
-    expect(photoBox(item(), ISSEBYA_PRESET)).toEqual(spotBox("left", ISSEBYA_PRESET));
-    expect(
-      photoBox(item({ box: { x: 100, y: 220, width: 640, height: 480 } }), ISSEBYA_PRESET),
-    ).toEqual({ left: 100, right: 740, top: 220, bottom: 700 });
+  it("is the box the engine gave it", () => {
+    expect(visualBox(item())).toEqual({ left: 40, right: 500, top: 560, bottom: 1180 });
+    expect(visualBox(item({ box: { x: 100, y: 220, width: 640, height: 480 } }))).toEqual({
+      left: 100,
+      right: 740,
+      top: 220,
+      bottom: 700,
+    });
   });
 
   it("names the nearest spot, and only what sits behind needs the cut-out", () => {
@@ -143,9 +102,7 @@ describe("photo boxes", () => {
     expect(nearestSpot({ left: 600, right: 1000, top: 700, bottom: 1000 }, ISSEBYA_PRESET)).toBe(
       "right",
     );
-    expect(needsCutout(item())).toBe(true);
-    expect(needsCutout(item({ layer: "behind" }))).toBe(true);
-    expect(needsCutout(item({ layer: "front" }))).toBe(false);
+    expect(needsCutout(item())).toBe(false);
     expect(needsCutout(word("WORK"))).toBe(true);
   });
 });
@@ -160,13 +117,19 @@ describe("maskSpans", () => {
     expect(Math.abs(span!.start / FRAME - Math.round(span!.start / FRAME))).toBeLessThan(0.02);
   });
 
-  it("leaves out a photo in front of the speaker: it needs no mask", () => {
+  it("leaves out a VISUAL, which sits in front of the speaker: it needs no mask", () => {
     const edit = withBehind([
       { start: 5, end: 7 },
       { start: 10, end: 12 },
     ]);
-    const front = edit.tracks.behind![0]!;
-    if (front.kind === "photo") front.layer = "front";
+    edit.tracks.behind![0] = {
+      id: "b0",
+      kind: "visual",
+      spot: "top",
+      box: { x: 90, y: 160, width: 900, height: 600 },
+      start: { time: 5 },
+      end: { time: 7 },
+    };
     expect(maskSpans(edit, behind.transcript, ISSEBYA_PRESET).map((span) => span.items)).toEqual([
       ["b1"],
     ]);
@@ -214,40 +177,33 @@ describe("maskSpans", () => {
 });
 
 describe("build with behind items", () => {
-  it("places the photo exactly over its spot and lists masks and photos as assets", async () => {
+  it("places the visual exactly over its box and lists its masks as assets", async () => {
     const { html, assets } = build(
-      behind.edit,
-      behind.transcript,
-      behind.headTrack,
+      engine.edit,
+      engine.transcript,
+      engine.headTrack,
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
     expect(html).toContain(
-      `<img id="behind-photo" class="clip photo" src="photos/${PHOTO}.jpg" alt="" data-start="5.206" data-duration="2.632" data-track-index="21" style="left: 580px; top: 560px; width: 460px; height: 620px" />`,
+      `<div id="visual-1" class="clip visual" alt="" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 75px; top: 260px; width: 252px; height: 315px"></div>`,
     );
-    expect(html.match(/<video /g)).toHaveLength(9);
-    expect(html).not.toContain("#behind-photo");
+    expect(html).not.toContain("photo");
     expect(assets.filter((asset) => !["font", "sound"].includes(asset.role))).toEqual([
       {
-        path: `masks/${"1".repeat(64)}.mp4`,
+        path: `masks/${"3".repeat(64)}.mp4`,
         role: "mask",
-        ref: { step: "cutout", fingerprint: "1".repeat(64), file: "mask.mp4" },
+        ref: { step: "cutout", fingerprint: "3".repeat(64), file: "mask.mp4" },
       },
-      {
-        path: `masks/${"2".repeat(64)}.mp4`,
-        role: "mask",
-        ref: { step: "cutout", fingerprint: "2".repeat(64), file: "mask.mp4" },
-      },
-      { path: `photos/${PHOTO}.jpg`, role: "photo", ref: null, photoId: PHOTO },
-      { path: "source.mp4", role: "footage", ref: behind.edit.inputs.footage },
+      { path: "source.mp4", role: "footage", ref: engine.edit.inputs.footage },
     ]);
   });
 
-  it("throws for a behind item whose span has no mask", async () => {
-    const edit = structuredClone(behind.edit);
-    edit.inputs.masks = edit.inputs.masks!.slice(1);
+  it("throws for a big word whose span has no mask", async () => {
+    const edit = structuredClone(engine.edit);
+    edit.inputs.masks = [];
     await expect(async () =>
-      build(edit, behind.transcript, behind.headTrack, ISSEBYA_PRESET, await nodeMeasurer()),
-    ).rejects.toThrow("build: behind item behind-photo has no cut-out");
+      build(edit, engine.transcript, engine.headTrack, ISSEBYA_PRESET, await nodeMeasurer()),
+    ).rejects.toThrow("has no cut-out");
   });
 });

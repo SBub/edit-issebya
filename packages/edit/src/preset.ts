@@ -11,32 +11,15 @@ export interface PresetFont {
   size: number;
 }
 
-// Every transition type the stored format knows. `card` is kept only so
-// versions saved with it still parse and render; it is no longer offered.
-export type TransitionType = "dim" | "panel" | "numbered" | "card";
-export const TRANSITION_TYPES = [
-  "dim",
-  "panel",
-  "numbered",
-  "card",
-] as const satisfies readonly TransitionType[];
-
-// The transition library: the kinds Claude may pick.
-export const TRANSITION_KINDS = [
-  "dim",
-  "panel",
-  "numbered",
-] as const satisfies readonly TransitionType[];
+// The transition kinds: the LIST (`numbered`), the one kind a transition takes.
+export const TRANSITION_KINDS = ["numbered"] as const;
 export type TransitionKind = (typeof TRANSITION_KINDS)[number];
 
-// One transition kind. No colour and no font: the layer is the preset's
-// `background` role at `shade` opacity, the text inside it takes the caption
-// and accent roles.
+// One transition kind. No colour, no background and no font: the layer only
+// places the phrase's text levels (the caption and accent roles).
 export interface PresetTransition {
-  // The layer covering the footage, in frame pixels.
+  // The frame the text levels are placed in, in frame pixels.
   layer: Box;
-  // The opacity of the background role on the layer (1: the role as is).
-  shade: number;
   // How the layer comes in and goes out: a fade, or a slide up from below.
   motion: "fade" | "slide";
   seconds: number;
@@ -45,13 +28,10 @@ export interface PresetTransition {
   // safe zone. `want` is the wanted top of the level stack.
   area: Box;
   want: number;
-  // The line Claude reads about the kind (library kinds only).
+  // The line Claude reads about the kind.
   description?: string;
   // `numbered`: the number's font size.
   numberSize?: number;
-  // Where captions inside the transition's span were set in versions saved
-  // before the levels (the builder's old path).
-  text: Box;
 }
 
 export type SoundKey = "click";
@@ -65,9 +45,8 @@ export interface PresetSound {
   minGapSeconds: number;
 }
 
-// Where a library photo goes behind the speaker: three preset spots. A photo
-// the layout engine places (a new version) has its own box; its spot names
-// the preset spot nearest it.
+// Where a VISUAL sits behind the speaker: three preset spots. A VISUAL the
+// layout engine places has its own box; its spot names the preset spot nearest it.
 export type BehindSpot = "top" | "left" | "right";
 export const BEHIND_SPOTS = ["top", "left", "right"] as const satisfies readonly BehindSpot[];
 
@@ -106,7 +85,7 @@ interface PresetCard {
 }
 
 export interface PresetBehind {
-  // Each spot's rectangle in frame pixels; the photo covers it exactly.
+  // Each spot's rectangle in frame pixels.
   spots: Record<BehindSpot, Box>;
   // A big word: as large as fits between the side margins (at most
   // `maxSize`), centred, its vertical centre wanted `belowHeadTop` below the
@@ -126,21 +105,17 @@ export interface PresetBehind {
   // The cut-out covers each item plus this many frames on each side.
   padFrames: number;
   frameRate: number;
-  // A photo lasts between these, in seconds.
+  // A VISUAL lasts between these, in seconds.
   minSeconds: number;
   maxSeconds: number;
-  // The largest share (0 to 1) of a photo's spot the face box may cover.
+  // The largest share (0 to 1) of a VISUAL's spot the face box may cover.
   maxFaceShare: number;
   // A VISUAL's card (see `PresetCard`).
   card: PresetCard;
-  // A library photo (an older version's). The layout engine places no photo
-  // now: a visual is a card (`card`). A stored photo behind the speaker is
-  // checked with `minVisible` (the person covers at most `1 - minVisible` of
-  // its height in every column); a card's white edge needs `minContrast`
-  // against the footage within `ring` pixels around it, else it moves to a
-  // place nearby that has it, else stays, recorded `low-contrast`.
-  photo: {
-    minVisible: number;
+  // A VISUAL's white edge needs `minContrast` against the footage within
+  // `ring` pixels around it, else it moves to a place nearby that has it, else
+  // stays, recorded `low-contrast`.
+  edge: {
     minContrast: number;
     ring: number;
   };
@@ -154,11 +129,8 @@ export type Intensity = "calm" | "medium" | "intense";
 // One intensity level's pacing, in seconds of reel.
 export interface PresetPace {
   // Something new on screen besides the captions (an accent, a big word, a
-  // photo or a transition) at least this often: what the editor aims for.
+  // visual or a transition) at least this often: what the editor aims for.
   extraEverySeconds: number;
-  // About one transition per this many seconds, at most (the engine drops
-  // the rest): slower than the extras, since a transition covers the speaker.
-  transitionEverySeconds: number;
   // The written hook: one line Claude writes (never spoken) shown from
   // `fromSeconds` to `untilSeconds` of reel, the one extra of that window;
   // at most `maxWords` words and `maxCharacters` characters.
@@ -180,12 +152,6 @@ export interface GlossaryTerm {
 
 export interface Preset {
   id: "issebya";
-  // How the layout engine places the picks. `all`: every pick the answer
-  // proposed is shown at its own words' times, never dropped for room, for
-  // another extra, for the hook or for pace; overlaps are kept (the engine
-  // notes them). `clean`: the strict layout, which drops, moves and retimes
-  // picks that do not fit and never overlaps. The worker uses `all`.
-  placement: "all" | "clean";
   frame: { width: number; height: number };
   // Text never leaves it; always inside `PLATFORM_SAFE`. A rectangle for the
   // placement code: the button-column notch (`PLATFORM_BUTTONS`) is left to
@@ -210,10 +176,10 @@ export interface Preset {
     fallbackY: number;
     lineGap: number;
   };
-  // An accent shows from `leadSeconds` before its first word (so its
-  // entrance has finished as the word is heard) to `afterSeconds` after its
-  // last, at least `minSeconds`. A big word behind the speaker takes the
-  // same timing, its one word both first and last.
+  // An accent or a question shows exactly while its words are spoken, like a
+  // caption (no lead, no minimum). A big word behind the speaker shows from
+  // `leadSeconds` before its one word (so its entrance has finished as the word
+  // is heard) to `afterSeconds` after it, at least `minSeconds`.
   accent: {
     font: FontKey;
     color: string;
@@ -231,32 +197,16 @@ export interface Preset {
   // Below it a text moves to a free place within `moveRadius` (a grid every
   // `moveStep` pixels) in the same zone, else stays where it is, plain: never
   // a shadow, never a colour change (owner decision 2026-11-04).
-  // `shadows` are legacy, for versions saved before then only: their stored
-  // `shadow` level (1 soft, 2 strong) renders with them, `dark` under a light
-  // text, `light` under a dark one. No new version uses them.
   readability: {
     caption: { min: number };
     large: { min: number };
     moveRadius: number;
     moveStep: number;
-    shadows: { dark: [string, string]; light: [string, string] };
   };
-  // Spots beside the head (build.py's `_slots`).
-  slots: { firstRow: number; rowGap: number; rightDrop: number; minLeft: number; minRight: number };
-  // The background style role: the colour of every transition layer.
-  background: string;
-  transitions: Record<TransitionType, PresetTransition>;
-  // Transition timing: the layer's entrance finishes as its phrase's first
-  // word starts; it has left when the next word starts, holding at most
-  // `holdSeconds` after the phrase (`longHoldSeconds` when asked), never
-  // shorter than `minSeconds`. `slowFactor` stretches the motion when asked
-  // slower; `gap` pixels between stacked text levels. How often one comes is
-  // the pace's.
+  transitions: Record<TransitionKind, PresetTransition>;
+  // A LIST's layer shows exactly while its phrase is spoken (no hold).
+  // `gap` pixels between stacked text levels.
   transition: {
-    minSeconds: number;
-    holdSeconds: number;
-    longHoldSeconds: number;
-    slowFactor: number;
     gap: number;
   };
   // How busy the reel is: the level the preset edits at, and that level's pace.
@@ -321,7 +271,6 @@ const STYLE_SAFE: Box = { left: 130, right: 860, top: 260, bottom: 1400 };
 // The issebya style: the values of the approved `rethink-work` reel.
 export const ISSEBYA_PRESET: Preset = {
   id: "issebya",
-  placement: "all",
   intensity: "intense",
   frame: { width: 1080, height: 1920 },
   safe: intersectBox(STYLE_SAFE, PLATFORM_SAFE),
@@ -367,82 +316,29 @@ export const ISSEBYA_PRESET: Preset = {
     large: { min: 3 },
     moveRadius: 300,
     moveStep: 60,
-    shadows: {
-      dark: [
-        "0 2px 8px rgba(0, 0, 0, 0.55)",
-        "0 2px 6px rgba(0, 0, 0, 0.8), 0 0 18px rgba(0, 0, 0, 0.6)",
-      ],
-      light: [
-        "0 2px 8px rgba(255, 255, 255, 0.55)",
-        "0 2px 6px rgba(255, 255, 255, 0.8), 0 0 18px rgba(255, 255, 255, 0.6)",
-      ],
-    },
   },
-  slots: { firstRow: 610, rowGap: 85, rightDrop: 42, minLeft: 110, minRight: 90 },
-  background: "#121212",
   // Starting values; the owner tunes them by eye on a real reel.
   transitions: {
-    dim: {
-      layer: FRAME,
-      shade: 0.62,
-      motion: "fade",
-      seconds: 0.3,
-      ease: "power2.out",
-      area: STYLE_SAFE,
-      want: 1180,
-      description: "darkens the whole picture: for a turn in the story or a strong statement",
-      text: { left: 130, right: 860, top: 1180, bottom: 1400 },
-    },
-    panel: {
-      layer: { left: 0, right: 1080, top: 1150, bottom: 1920 },
-      shade: 1,
-      motion: "slide",
-      seconds: 0.5,
-      ease: "power3.inOut",
-      area: { left: 130, right: 860, top: 1170, bottom: 1400 },
-      want: 1180,
-      description:
-        "a dark panel slides up over the lower part: for an aside, a definition or a short explanation",
-      text: { left: 130, right: 860, top: 1200, bottom: 1400 },
-    },
     numbered: {
       layer: FRAME,
-      shade: 0.38,
       motion: "fade",
       seconds: 0.3,
       ease: "power2.out",
       area: STYLE_SAFE,
       want: 640,
       description:
-        "a large number over a light dim with the phrase below: for each item of a list the speaker goes through, numbered in order",
+        "a large number over the phrase, the phrase below: for each item of a list the speaker goes through, numbered in order",
       numberSize: 300,
-      text: STYLE_SAFE,
-    },
-    // Kept only for versions saved with it; never offered.
-    card: {
-      layer: FRAME,
-      shade: 0.9,
-      motion: "fade",
-      seconds: 0.25,
-      ease: "power2.out",
-      area: { left: 130, right: 860, top: 640, bottom: 1400 },
-      want: 640,
-      text: { left: 130, right: 860, top: 640, bottom: 1400 },
     },
   },
   transition: {
-    minSeconds: 1.5,
-    holdSeconds: 1,
-    longHoldSeconds: 2,
-    slowFactor: 1.6,
     gap: 24,
   },
-  // Intense (the pros' level): something new about every 3 s, a transition about every 9 s, a
-  // written hook from 0.2 s (the accent's lead) to 3 s, the first seconds
-  // that decide whether people keep watching.
+  // Intense (the pros' level): something new about every 3 s, a written hook
+  // from 0.2 s (the big word's lead) to 3 s, the first seconds that decide
+  // whether people keep watching.
   pace: {
     extraEverySeconds: 3,
-    transitionEverySeconds: 9,
     hook: { fromSeconds: 0.2, untilSeconds: 3, maxWords: 7, maxCharacters: 45 },
   },
   // One pick (a component) per this many seconds of speech, at each level.
@@ -476,8 +372,7 @@ export const ISSEBYA_PRESET: Preset = {
     minSeconds: 1,
     maxSeconds: 2,
     maxFaceShare: 0.4,
-    photo: {
-      minVisible: 0.7,
+    edge: {
       minContrast: 1.5,
       ring: 30,
     },
@@ -523,16 +418,10 @@ export const ISSEBYA_PRESET: Preset = {
   glossary: [{ term: "lock-in", heard: [["locking"], ["lock", "in"]] }],
 };
 
-// `all` placement: the shortest a pick shows, in seconds. A reel's end or a
-// cut can leave a pick under its kind's minimum; it then shows this long
-// (earlier where the reel ends), never dropped. Checks and the schema use it
-// in `all` mode only.
-export const ALL_SHOWN_SECONDS = 0.5;
-
-// The strict layout (`placement: "clean"`): the issebya preset with the
-// engine's drops, retimes and no overlaps. Tests and goldens that assert those
-// use it; the worker places with `ISSEBYA_PRESET`.
-export const CLEAN_PRESET: Preset = { ...ISSEBYA_PRESET, placement: "clean" };
+// The shortest a pick shows, in seconds. A reel's end or a cut can leave a
+// pick under its kind's minimum; it then shows this long (earlier where the
+// reel ends), never dropped. The engine, the schema and the checks use it.
+export const SHOWN_FLOOR_SECONDS = 0.5;
 
 // A spoken word as a caption shows it (build.py's `clean`): surrounding
 // spaces and punctuation stripped, lower-case except the preset's kept words.

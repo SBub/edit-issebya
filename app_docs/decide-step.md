@@ -26,9 +26,7 @@ over the version by the layout engine together with the hook (`placeEdit`, `app_
 "Layout engine"), built and checked, and becomes a new version (version 2 on a fresh reel). Only an
 answer breaking the schema or the glossary is refused: it goes back once with the reasons; a second
 refusal of the hook or of the components fails the step and leaves the current version untouched.
-Layout never refuses an answer: in the worker's `all` placement nothing is dropped (a pick with no free
-place at its default spot, overlap noted), and in the strict `clean` layout what fits nowhere is
-dropped; either way it is written to the engine record saved with the version. Nothing asks Claude again about what the engine left out: the decide step makes no
+Layout never refuses an answer: nothing is dropped (a pick with no free place takes its default spot, its overlap noted), and every note is written to the engine record saved with the version. Nothing asks Claude again about what the engine left out: the decide step makes no
 call after the components' answer is placed. Every AI call a decided version made (the hook attempts,
 the decide attempts) is stored beside it with its prompt, schema and raw answer
 (the version's AI record), so a version can be replayed and diagnosed.
@@ -55,9 +53,8 @@ answer and never written by the components.
 
 The components' prompt is told a target count (`{{target_picks}}`, the speech's length over the preset's
 seconds per pick at the reel's level, `preset.picksEverySeconds`), a guide and no cap: the schema does
-not count picks. Claude picks what the script's moments deserve, and the code decides how many show and when (the engine shows every pick at its own words'
-times in `all`, the worker's placement, overlaps kept and noted; the strict `clean` layout shows one
-extra at a time and drops what has no room). The model is told the reel's intensity (`{{intensity}}`)
+not count picks. Claude picks what the script's moments deserve, and the code decides how many show and when (the engine shows every pick, the text picks one at a
+time, at their own words' times where that allows, every change noted). The model is told the reel's intensity (`{{intensity}}`)
 and the target count (`{{target_picks}}`), see "Prompts". The overlap limits between components
 are held by the prompt (see "Prompts"); the schema does not count them.
 
@@ -83,8 +80,7 @@ placed first):
   has a time, an anchor, a position, a size, a font, a colour, a spot, a `style`, a `wish`, a title
   or a checklist; every answer object is closed (`z.strictObject`, `additionalProperties: false`), so
   an answer carrying any of them is refused as the schema's ("Unrecognized key").
-- The only transition kind a new answer may pick is `numbered` (`NEW_TRANSITION_KINDS`). A `dim`, a
-  `panel` or a `card` is refused. Old versions keep the kinds they were saved with (below).
+- The only transition kind is `numbered` (`TRANSITION_KINDS`). A `dim`, a `panel` or a `card` is refused.
 - There is no title and no summary: a new version saves `change_title` and `change_summary` as null (the
   summary call is gone, "Version title and summary" below). `format`, `preset`, `duration` and
   `inputs` come from the current version, so the result is always a full edit and the AI cannot
@@ -102,50 +98,27 @@ placed first):
   window (`app_docs/edit-model.md`, "The written hook").
 - `big_words` is a list of `{ from, to }`: one word (equal ids) or two consecutive words, from the
   first spoken word to the last; the same word allowed again. `to` is never before `from`, never
-  more than two words apart, and each word must be one plain word (`BEHIND_WORD`). An older answer's
-  `{ word }` reads as one word (`bigWordSpan`).
+  more than two words apart, and each word must be one plain word (`BEHIND_WORD`).
 - `visuals`: each VISUAL sits over its words, with a `description` of what a visual would show: a
   plain line of at most 8 words and 80 characters, with words in it. The description is data for the
   owner and the trace, never shown on screen. The layout puts the frame as a small corner card (a third
   of the frame's width, in front of the speaker): a corner of the safe zone or beside the face, never
-  over the face, the smaller step before a drop (`app_docs/edit-model.md`, "Preset values" and "Layout
-  engine"). A new answer has no `photo_id` and no `reason`: both
-  are refused. The description is stored on the placed item (`tracks.behind[].description`, optional)
-  and read back by `choicesOf`. A stored forbid (`no_photos`) switches visuals off too, since a
-  visual takes a photo's place.
-- Behind lengths: a photo shows 1 to 2 s (`behind.minSeconds`, `maxSeconds`), a big word
-  the accent's timing (from `accent.leadSeconds`, 0.2 s, before its word to a second after it, at
-  least 1.5 s). A big word only on a key word, a spoken word by construction.
+  over the face, the smaller step before the corner fallback (`app_docs/edit-model.md`, "Preset values" and "Layout
+  engine"). A new answer names no photo: a `photo_id` is refused
+  like any unknown key. The description is stored on the placed item (`tracks.behind[].description`, optional)
+  and read back by `choicesOf`.
+- Behind lengths: a VISUAL shows 1 to 2 s (`behind.minSeconds`, `maxSeconds`), a big word
+  its own timing (from `accent.leadSeconds`, 0.2 s, before its first word to its last word's end, at
+  least 1.5 s). An accent or a question shows exactly its words (no lead, no minimum). A big word only on a key word, a spoken word by construction.
 - Pace (`preset.pace`): the answer carries no rate (the transition kind is given as data, its pace is
-  not); the components prompt is told the reel's intensity word and the target count, never a rate. In `clean` the engine keeps the rhythm: one extra at a time, transitions at their own
-  slower pace (about one per `preset.pace.transitionEverySeconds`, 9), and drops what has no room. In
-  `all` (the worker's placement) every pick shows at its own words' times, so the rhythm is the
-  answer's, and a reel too short for a pick clamps it to the reel's end (nothing is dropped).
-- The stored forbids: `reels.no_photos` and `reels.no_big_word` are read at the start of the run. While one is set, the schema refuses the kind (visuals for photos, big words), and a visual or big word in the answer is refused. Nothing sets or lifts them now: a new version writes
-  `forbid` as null (`save_version` keeps the stored flag). Those flags come only from the older
-  request path (dormant, `app_docs/change-requests.md`).
+  not); the components prompt is told the reel's intensity word and the target count, never a rate. Every pick shows at its own words' times, so the rhythm is the answer's, and a reel too short for a pick clamps it to the reel's end (nothing is dropped).
 
-### Old versions
+### Stored versions
 
-Stored versions are never re-decided or rewritten, and the engine and the stored edit format still
-read and render every older version. What changed is only what a new answer may contain:
-
-- A title (an accent with `title: true` in the engine's input, the overlay with id `title`) is an
-  older version's. `choicesOf` reads it back as an accent with `title: true`. A new answer never
-  writes it, and `decideInput` shows it to Claude as a plain accent.
-- A `dim`, `panel` or `card` transition is an older version's. `choicesOf` reads it back with its
-  kind; `decideInput` leaves non-numbered transitions out of the current choices, so the next answer
-  does not copy one (the schema would refuse it). A stored `card` reads back as a `dim`.
-- A `wish` on an older item is read back and rendered by the engine; `decideInput` never shows one.
-- An older version's `checklist`, `unexpressed` and version title and summary are read back as stored.
-  `versions.checklist` stays empty for every version written now.
-- `choicesOf` reads every big word back as a list of `{ from, to }` (an older version has at most one).
-- An older version's library photo reads back as a VISUAL over the same words (no description), so a
-  choice placed again places a frame in its place; the photo itself is not a choice a new answer makes.
-
-`packages/edit/src/engine-input.ts` (`AccentChoice.title` is optional) and `engine.ts` keep the
-title, the wish and every transition kind; the test "reads and renders an old version" in
-`decide.test.ts` places an old answer (a title and a dim) over the hand fixture and renders it.
+Stored versions are never re-decided or rewritten: the engine and the stored edit format read and
+render them as saved. The stored `checklist`, `unexpressed` and version title and summary are read
+back as stored; `versions.checklist` stays empty for every version written now. `choicesOf` reads
+every big word back as a `{ from, to }` list entry.
 
 - `packages/edit/src/decide.ts`: `hookTextSchemaFor(preset)` (the hook's text rules, one place),
   `hookAnswerSchemaFor(preset)` and `hookJsonSchema(preset)` (the hook call's schema),
@@ -156,24 +129,15 @@ title, the wish and every transition kind; the test "reads and renders an old ve
   to; a limit is added only when a real case shows the need, derived from that case)),
   `decideJsonSchema` (Zod 4
   `z.toJSONSchema`, draft-07, real `enum` lists, every object closed, refs inlined),
-  `parseDecideAnswer` (both take a `DecideRules` argument, `{ forbid }`, default `NO_RULES`),
-  `editFromAnswer(current, answer, preset, transcript, headTrack, measurer, backgrounds?,
-options?)` (the answer placed by the layout engine and parsed with the decide limits, returned
-  with the engine's `record`; `options.requested` is the engine's requested-items option and the
-  decide step passes none; the current version's `inputs.masks` and `inputs.photos` are dropped, since
+  `parseDecideAnswer` (both take the answer, the preset and the transcript),
+  `editFromAnswer(current, answer, preset, transcript, headTrack, measurer, backgrounds?)` (the answer placed by the layout engine and parsed with the decide limits, returned as `{ ok, edit, record }`, the record being the engine's; the current version's `inputs.masks` is dropped, since
   the worker names them again for the new `behind` track; a parse failure here is an engine bug,
   refused as `answer-edit`), `decideCounts` (the step line's counts) and `usedFreeField`. The Zod
-  refinement refuses a range ending before it starts, a key phrase outside its phrase, a stored forbid
-  the answer breaks, a big word that is not one or two consecutive plain words and a word fixed twice, each with a
+  refinement refuses a range ending before it starts, a key phrase outside its phrase, a big word that is not one or two consecutive plain words and a word fixed twice, each with a
   readable reason for the retry.
-- `apps/worker/src/decide/input.ts`: `currentChoices` shows the current choices in the new terms (a title as an
-  accent, non-numbered transitions left out, no wish). The engine input types (`packages/edit/src/engine-input.ts`)
-  are a superset of the answer (`title?`, `wish?`, every kind), so older versions read back and place.
 - `packages/edit/src/schema.ts`: `editSchemaFor` takes optional `EditLimits { duration, bounds,
-photoIds, behindLengths }`; without them stored versions keep parsing with the default frame
-  limits. `behindLengths` (the decide limit) refuses a photo outside the preset's 1 to 2 s and a big
-  word under the accent's 1.5 s. A stored version saved under the older lengths parses and renders
-  without it.
+behindLengths }`; without them stored versions keep parsing with the default frame
+  limits. `behindLengths` (the decide limit) refuses a VISUAL outside 0.5 to 2 s and a big word outside 0.5 s up to its lead, its words and `afterSeconds` (at least 1.5 s). A stored version parses without it.
 - `packages/edit/src/glossary.ts`: `glossaryChecks`, check rule `glossary`: no caption or overlay
   shows a heard form of a glossary term; the term itself passes.
 - The AI double: `E2E_MOCK_AI=true` is the real runner over a scripted model (the AI SDK's
@@ -204,16 +168,11 @@ input, reasons?)` fills them as fenced JSON and, on the retry, appends the refus
   call's text), `intensity` (the preset's level), `target_picks` (`targetPicks`: the speech from its
   first word's start to its last word's end, over `preset.picksEverySeconds[level]`, rounded, at least
   one). `speechAfterHookSeconds` measures from the later of the first word's start and the hook's end
-  (`preset.pace.hook.untilSeconds`), so the hook window is not counted: ACCENT, BIGWORD and LIST cannot
-  go under the hook. A word of `script` that starts before the hook ends carries `under_hook: true`
+  (`preset.pace.hook.untilSeconds`), so the hook window is not counted in the target. A word of `script` that starts before the hook ends carries `under_hook: true`
   (other words omit the field). Nothing else is sent: no glossary, no current choices, no
-  transcript list, no preset summary, no transitions, no stored forbids (the answer's schema refuses
-  what they rule out, and its retry says why). No photo library is read or sent. No head track, face
+  transcript list, no preset summary, no transitions. No photo library is read or sent. No head track, face
   box, `clear_spots`, safe box, font size or spot: the layout owns free space.
-- `apps/worker/src/decide/behind-rules.ts`: the `ReelRules` store (`supabaseReelRules(db)` reads
-  `reels.no_photos` and `no_big_word` with the service role).
-- `packages/edit/src/checks.ts`, `behind.ts`: check rules `behind-face`, `behind-caption` and
-  `photo-hidden`. They are the engine's final guard, never a refusal.
+- `packages/edit/src/checks.ts`: the layout checks are the engine's final guard, never a refusal of the answer (`app_docs/edit-model.md`, "Checks").
 - `apps/worker/src/decide/run-decide.ts`: `runDecide`, a `runToolsStep` named `decide`. It reads the
   current version and its inputs, builds the schemas, and makes the hook call first (`decide.hook`
   span, at most two attempts: a hook refused by its schema or its glossary goes back once with the
@@ -227,18 +186,17 @@ input, reasons?)` fills them as fenced JSON and, on the retry, appends the refus
   output is an engine bug: the worker logs `decide: engine bug, reel <id>: <rule> <item>: <reason>; ...`
   and still saves the version, with the checks stored on its row (`checks`). The one face covering the
   engine may make (captions it records `covers-face`, when nothing else is free) is not called a bug.
-  With `behind` items, `ensureCutouts` (`apps/worker/src/cutout/ensure-cutouts.ts`) refuses a photo the library does not hold (the decide step names none, so a photo is refused) and makes sure each padded span's mask is stored (a `cutout` step row,
+  With `behind` items, `ensureCutouts` (`apps/worker/src/cutout/ensure-cutouts.ts`) makes sure each padded span's mask is stored (a `cutout` step row,
   `app_docs/pipeline.md`) before anything is saved; a failure there comes after the AI call, so it is
   permanent, and no version is saved. It then writes the AI record, then `saveVersion` with `parentId`
   the current version, `request` null, model, the components' identity as `promptVersion`,
   `changeTitle` and `changeSummary` null, `checklist` empty,
-  `unexpressed` empty, `forbid` `{ photos: null, bigWord: null }` (the stored flags untouched), the
-  records below (`free_field` is always empty: the answer has no free style; `used_free_field` reports
+  `unexpressed` empty, the records below (`free_field` is always empty: the answer has no free style; `used_free_field` reports
   a kept item's style) and the engine record (`engine_record`). After the save the worker logs the
   record in one line (`apps/worker/src/engine-record.ts`, `engineRecordLine`):
   `engine record, reel <id>, version <n>: <item> <action> (<rule>): <reason>; ...`, or `nothing moved`.
   Step line: `version 2: 1 accent, 1 transition, hook set, 1 word fixed`, with `, <n> behind` after it
-  when the version has behind items, `, <n> dropped` when the engine dropped items (`clean` only), and `, started over
+  when the version has behind items, and `, started over
 from version <n>` for Start over.
   There is no title segment: a new answer has no title.
 - `apps/worker/src/process-job.ts`: runs `runDecide` after `saveFirstVersion`. Never cached: a retried
@@ -378,8 +336,7 @@ set`) and the job waits.
 - `yarn turbo run test --filter=./packages/edit --filter=./apps/worker`: `decide.test.ts` (the
   per-reel schema and its closed objects; the list kind `numbered` only and no `wish` anywhere; the
   refusals of a title, a `dim`, `panel` or `card`, a wish, a checklist, `behind_rules` and `unexpressed`;
-  the hook, its final stop taken off; a visual's description limit, and no photo id or reason; a stored forbid refused; the old
-  version's title and dim placed and rendered), `glossary.test.ts`, `ai.test.ts` (the OpenRouter request
+  the hook, its final stop taken off; a visual's description limit, and no photo id; `questions` required), `glossary.test.ts`, `ai.test.ts` (the OpenRouter request
   through the real provider over a captured `fetch`, no network; the double; the error mapping),
   `ai-record.test.ts` (the identities in the record), `hook.test.ts` (the hook call's input with no
   ids or times, the hook prompt's fill and retry reasons, the closed one-text schema, the glossary
@@ -390,10 +347,9 @@ set`) and the job waits.
 word fixed`; the AI record holding the hook and decide calls; the hook refused by its
   schema or a heard form sent back once to the hook call; a hook refused twice fails the step with
   `the hook failed twice` and calls no components; one retry on the components, a second refusal failing
-  the step, nothing written on failure; the usage of every call summed; a wide accent or an image on the
-  2.7 s clip over the hook in `all` (the worker's default, noted), and the clean-layout tests (`runDecide` takes
-  a `preset`; they pass `CLEAN_PRESET`) with a wide accent dropped for the hook and a transition in its window dropped; the two behind tests that need a
-  placed photo run on the 47 s reel, see "Testing" below) and `step-runner.test.ts`. `ai.test.ts` also covers the
+  the step, nothing written on failure; the usage of every call summed; a wide accent or a visual on the
+  2.7 s clip over the hook, kept and noted; the two behind tests that need a
+  placed visual run on the 47 s reel, see "Testing" below) and `step-runner.test.ts`. `ai.test.ts` also covers the
   double's hook lane. `apps/worker/src/decision-trace.test.ts` (`hookOf`: the hook call's text, the last
   readable one, else an older record's decide `hook`). `packages/edit/src/engine.test.ts` ("the written
   hook": the fixed slot, an accent and an image asked for in its window never move or remove it). `run-decide.test.ts` builds its check-refused answer as a word fix
@@ -403,10 +359,9 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
   on a network error or a 5xx, refused beyond it, never for a prompt never fetched or a 404; the source
   never reading `POSTHOG_PROJECT_TOKEN`), `prompts/no-prompt-files.test.ts`
   (no prompt file in the repository). `decision-trace.test.ts` (both old and new answers).
-  Behind tests on a short clip: a behind photo or a placed accent needs a sentence after the hook's
-  window (0.2 s to 3 s), and the 2.7 s fixture clip is all hook. `run-decide.test.ts` seeds the 47 s
+  Behind tests on a short clip: the 2.7 s fixture clip is all hook. `run-decide.test.ts` seeds the 47 s
   reel of the packages/edit fixtures (its transcript and head track written over the clip's keys, the
-  first version replaced) for the two cut-out tests (`useLongReel`, photo on w18 to w25). The e2e
+  first version replaced) for the two long-reel tests (`useLongReel`, visual on w18 to w25). The e2e
   specs that place a visual or a transition (`decide-behind.spec.ts`, the preview transition test) seed
   `speech-ten`, the 10 s clip with a person and a transcript (`app_docs/pipeline.md`), with the scripted
   answers of `apps/studio/test-support/ai-script.ts`; the export spec's behind test still seeds the 2.7 s clip.
@@ -418,9 +373,8 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
 - `decide/testdata/short-speech-answer.json` is the scripted AI replies for the fixture clip: the hook
   reply (role `hook`, "A short test for the real studio") and the decide answer (one accent word,
   w0005, and one fixed word, w0010 "Studio", no transition). On the 2.7 s clip the hook holds the screen
-  from 0.2 s to the end: in `all` the accent shows over it (noted `kept-overlapping`), and the step
-  line reads `1 accent, 0 transitions, hook set, 1 word fixed`. In `clean` the engine drops the accent
-  (rule `one-extra`) and the line ends `1 dropped`.
+  from 0.2 s to the end, so the accent cannot wait for it: it shows over it (noted `kept-overlapping`), and
+  the step line reads `1 accent, 0 transitions, hook set, 1 word fixed`.
 - `yarn turbo run test:db --filter=./apps/studio`: `versions.test.ts` covers the new columns, `checklist`
   included.
 - E2E: `apps/studio/e2e/upload.spec.ts` sets `E2E_MOCK_AI_SCRIPT` to the committed answer and checks the
@@ -431,7 +385,7 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
   (`E2E_MOCK_PROMPTS`), so every identity it asserts is a fake's.
   `preview.spec.ts` seeds through `test-support/ai-script.ts` (`unchangedAnswerScript`), whose decide
   answer makes no choice; version 2 is then version 1 plus the hook alone (every reel has one), so it no
-  longer matches the version 1 golden (see the report of the hook change). `decide-behind.spec.ts` seeds a processed reel whose automatic decide proposes a visual, and the preview shows its frame; the version's `inputs.photos` names none. `behind.spec.ts` (a change answer with a wish) is removed with the change box.
+  longer matches the version 1 golden (see the report of the hook change). `decide-behind.spec.ts` seeds a processed reel whose automatic decide proposes a visual, and the preview shows its frame. `behind.spec.ts` (a change answer with a wish) is removed with the change box.
   `change-requests.spec.ts` covers going back and Start over, not a typed change.
 
 ## The AI runner
@@ -506,17 +460,13 @@ punctuation) splits at its largest speech pause, a gap of 0.35 s or more between
 else after the last word that keeps it within 60 characters. The script column is 60 wide. A pick
 sits on the line where its words start; a line with several picks prints one row per pick, the
 script on the first row and the rest with an empty script column. The picks
-use the owner's editor words: `HOOK` (an accent marked as the title), `ACCENT` (any other accent),
-`QUESTION "<words>"` (a question the speaker puts to the viewer), `BIGWORD`, `VISUAL "<description>"` (a visual on its words, the words only when the span is not the whole line; an older answer's photo prints `VISUAL photo <name>`), `LIST` (numbered transitions, on single words of one
-line grouped as one pick); a transition of any other kind (`dim`, `panel`, ...) is an accent
-printed with its kind in brackets, such as `ACCENT whole line (dim)`. `whole line` shows when a
+use the owner's editor words: `ACCENT` (an accent),
+`QUESTION "<words>"` (a question the speaker puts to the viewer), `BIGWORD`, `VISUAL "<description>"` (a visual on its words, the words only when the span is not the whole line), `LIST` (numbered transitions, on single words of one
+line grouped as one pick; a transition of any other kind is not traced). `whole line` shows when a
 pick is exactly its line. With `--table` it prints instead, for every version with an AI record,
-one row per item of the last readable decide answer (and the hook): its engine id (`title`, `accent-N` in answer
-order, `big-word-N`, `visual-N` (an older answer's photo keeps `photo-N`), `transition-N`, `hook`; these ids match the engine record and are
-not renamed), what Claude proposed in the same words (`hook "..."` for the title accent, `accent
-"..."`, `bigword "..."`, `visual "..." on "..."`, `list "..."` for numbered transitions,
-`accent "..." (dim)` for the others), `kept` (no engine note), `changed` (placed with notes) or
-`dropped` (its last note is `dropped` or `removed`) and the notes as `action (rule)`; a question is `question "..."` with the engine id `question-N` (its own answer order, not the accents' count); then the counts, the word fixes and the notes on other items (captions)
+one row per item of the last readable decide answer (and the hook): its engine id (`accent-N` in answer
+order, `big-word-N`, `visual-N`, `question-N`, `transition-N`, `hook`; these ids match the engine record and are
+not renamed), what Claude proposed in the same words (`accent "..."`, `question "..."`, `bigword "..."`, `visual "..." on "..."`, `list "..."` for numbered transitions, `hook "..."`), `kept` (no engine note) or `changed` (placed with notes), and the notes as `action (rule)`; a question is `question "..."` with the engine id `question-N` (its own answer order, not the accents' count); then the counts, the word fixes and the notes on other items (captions)
 by action and rule. It reads the `versions` row, the AI record and the transcript with the
 worker's own variables and writes nothing (`src/trace.ts`, `src/decision-trace.ts`).
 
@@ -561,16 +511,9 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
 - Never cache the decide step.
 - Prompt text is changed only in PostHog prompt management (a new version, moved to the label). The
   worker records the identity it fetched; a prompt never enters the repository (AGENTS.md).
-- Never read an older version's title, wish, dim, panel or card as something a new answer may write; the
-  engine and the stored format still read and render them.
-- Never set or lift a stored forbid (`reels.no_photos`, `reels.no_big_word`) from a decide run; a new
-  version writes `forbid` as null. A stored forbid is respected: no photo or big word it switches off.
-- Never propose a photo or big word the reel's stored forbids switch off.
 - Never save a version with a `behind` item before its masks are stored.
 - Never cap the components' answer lists (accents, questions, big words, visuals, transitions, word fixes) or any per reel count (in the preset, the prompt or the answer schema): how many is the editor's choice. No list has a `max` or a `maxItems`. A limit is added only when a real case shows the need, derived from that case. A visual is a frame with a description of at most 8 words.
-- Transitions never set the rhythm: a numbered list item is only ever a counted list, about one per
-  `preset.pace.transitionEverySeconds` (the engine's pace, never sent to the model); in `clean` the engine
-  drops the rest, and in `all` every transition the answer names shows.
+- Transitions never set the rhythm: a numbered list item is only ever a counted list, and the model is sent no rate. The engine shows every transition the answer names.
 - A new answer names no photo: a visual is a frame, and the answer's schema has no photo id.
 - The decide step reads no photo library (for now), so none is sent to the model.
 - Never write a title or a summary for a new version: `change_title` and `change_summary` are saved null.
@@ -587,11 +530,10 @@ leaves it in place, plain, and records it (never a shadow, never a colour change
 - The OpenRouter switch (2026-11-05) and an unresolved risk: Anthropic's strict structured outputs may refuse
   a large per-reel schema (word-id enums repeated per field); the runner then asks once in JSON mode and the
   Zod check does the rest. Check `edit_issebya.ai.output_mode` on the `chat` spans after the first real runs.
-- The change box is removed (owner decision 2026-11-07): the answer lost its title, its wishes, its checklist,
-  its behind rules and its unexpressed list, and its transitions are `numbered` only. The reasons are in
+- The change box is removed (owner decision 2026-11-07): the answer has no checklist, no behind rule and
+  no unexpressed list, and its transitions are `numbered` only. The reasons are in
   `app_docs/change-requests.md`.
-- The engine side (making room for a requested item) is in `app_docs/edit-model.md`, "Layout engine"; the
-  engine keeps its requested-items option, the decide step passes none.
+- The engine's placement is in `app_docs/edit-model.md`, "Layout engine".
 - The editorial round is removed (owner decision 2026-11-08). The engine is tuned first, so the trace shows
   exactly what the components' call picked and what the engine did with it, with no second call in
   between. Versions decided before the removal keep their editorial calls in the AI record and their
