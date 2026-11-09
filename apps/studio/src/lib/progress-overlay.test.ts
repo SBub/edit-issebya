@@ -240,7 +240,7 @@ describe("overlayState", () => {
     for (const extra of [
       { failure_kind: "transient" as const },
       { failure_kind: null },
-      { failure_kind: "answer_refused" as const, failure_rules: ["frame"] },
+      { failure_kind: "answer_refused" as const, failure_rules: ["safe-box"] },
     ]) {
       const j = job({ status: "failed", ...extra });
       const state = overlayState(input({ jobs: [j], steps: [step(j.id, "transcribe", "failed")] }));

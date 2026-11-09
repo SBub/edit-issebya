@@ -53,7 +53,7 @@ machine from idle-sleeping while a job runs.
   words), `stepWords(name, { restoreNumber })` (`restore` names its version N, else `an earlier
 version`), the `Working on it` / `Could not finish this step` fallback for an unknown step, and
   `RULE_WORDS` with `refusalReason(rules)`: the first two distinct rule words of a refused answer,
-  joined with "and", from the rule names only. `RULE_WORDS` covers the check rules (`safe-box`, `frame`,
+  joined with "and", from the rule names only. `RULE_WORDS` covers the check rules (`safe-box`,
   `face`, `text-overlap`, `same-text`, `timing`, `big-word-timing`, `sound-gap`, `time-in-speech`,
   `out-of-reel`), the rules a refused answer carries (`answer-json`, `answer-schema`, `answer-edit` and
   `glossary`) and the engine's `hidden-footage`. The engine's other notes never refuse, so they have no words.

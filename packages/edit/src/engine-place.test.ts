@@ -45,7 +45,17 @@ function text(variant: TextVariant, words: string, id = "accent-1", lineGap = 0)
 const hook = (words: string) => text(VARIANTS["hook/written-line"], words, "hook");
 const accent = (words: string) => text(VARIANTS["accent/above-head"], words);
 const caption = (words: string) => text(VARIANTS["caption/default"], words, "w0012", 14);
-const bigWord = (words: string) => text(VARIANTS["bigword/behind"], words, "big-word-1");
+// The big word as the engine passes it: on one line (the behind word item has
+// no `breaks`).
+const bigWord = (words: string): PlaceElement => ({
+  type: "text",
+  id: "big-word-1",
+  variant: VARIANTS["bigword/behind"],
+  text: words,
+  lineGap: 0,
+  maxLines: 1,
+  ...span,
+});
 const card: PlaceElement = {
   type: "box",
   id: "visual-1",
@@ -233,36 +243,91 @@ describe("the face", () => {
     expect(result.notes[0]!.blockers).toEqual(expect.arrayContaining([{ kind: "face" }]));
   });
 
-  it("the behind big word grows to the largest fit, pays no face cost and keeps 70% of its height clear of the face (rule 6)", () => {
+  it("the behind big word is the largest fit anchored at the head top: centred in S, moved up until the face hides 30% of it, no face cost (rule 6)", () => {
     const result = placeElement(bigWord("AI"), scene([FACE]), measurer);
     expect(result.placed).not.toBeNull();
     const { box, zone, cost, coversFace, size } = result.placed!;
     expect(zone).toBe("head-top");
-    // Its style has no base: the largest room the face leaves (458 px below
-    // it) is its size, far over the accent's 110.
+    // Its style has no base: anchored at the head top (its centre wanted 60 px
+    // below the face's top), it moves up until the face hides 30% of it, and
+    // grows until its top meets S's top: 0.7 * size = FACE.top - S.top, 400 px,
+    // far over the accent's 110. It never wanders to the roomier strip below
+    // the face (decision 18).
+    expect(size).toBe(400);
     expect(size).toBeGreaterThan(BASE);
-    expect(size).toBe(S.bottom - (FACE.bottom + 12));
+    expect(box.top).toBe(S.top);
+    expect(box.bottom - FACE.top).toBeCloseTo(0.3 * size, 6);
+    expect(Math.abs((box.left + box.right) / 2 - (S.left + S.right) / 2)).toBeLessThanOrEqual(1);
     expect(coversFace).toBe(false);
-    expect(cost).toBeLessThan(PLACE_COSTS.face);
+    expect(cost).toBe(0);
     expect(bigWordCoveredShare(box, [FACE])).toBeLessThanOrEqual(0.3);
     expect(inside(box, S)).toBe(true);
-    expect(outcomes(result)).not.toContain("covers-face");
+    expect(outcomes(result)).toEqual(["placed"]);
   });
 
-  it("the 30% rule is a hard filter: a big word the face would hide most of at the largest fit takes a smaller spot clear of it", () => {
-    // A tall face through most of S: the largest fit (S's width, 1107 px) sits
-    // over the face, which would hide 90% of it, so rule 6 drops that
-    // candidate; the word takes the strip beside the face, still far over the
-    // accent's base, at a shrink cost.
+  it("the 30% rule is a hard filter: a face near the top of S bounds the big word's size, it never leaves the head top for a roomier spot", () => {
+    // A tall face from y 300 through most of S: at the head top only 80 px lie
+    // above the face, so the word is 114 px (0.7 * 114 <= 80) with its lower
+    // 30% behind the head, still over the accent's base, and nothing is given
+    // up (the full size is what the head leaves at the anchor, no text took
+    // room). The strip beside the face, or below it, is never taken.
     const tall: Box = { left: 300, right: 700, top: 300, bottom: 1300 };
     const result = placeElement(bigWord("AI"), scene([tall]), measurer);
     const { box, size, cost } = result.placed!;
-    expect(bigWordCoveredShare(box, [tall])).toBeLessThanOrEqual(0.3);
-    expect(overlaps(box, tall)).toBe(false);
+    expect(size).toBe(114);
     expect(size).toBeGreaterThan(BASE);
+    expect(box.top).toBe(S.top);
+    expect(bigWordCoveredShare(box, [tall])).toBeLessThanOrEqual(0.3);
+    expect(overlaps(box, tall)).toBe(true);
+    expect(Math.abs((box.left + box.right) / 2 - (S.left + S.right) / 2)).toBeLessThanOrEqual(1);
     expect(inside(box, S)).toBe(true);
+    expect(cost).toBe(0);
+    expect(outcomes(result)).toEqual(["placed"]);
+  });
+
+  it("a text at the head top shrinks the big word in place: it stays centred on its anchor, the text as its blocker", () => {
+    // An accent across the top of S, down to y 320: at 400 px the word would
+    // run into it (its top at S's top), so it shrinks until it sits between the
+    // accent (plus the gap) and the face's 30% line.
+    const accentBox: Box = { left: 200, right: 880, top: S.top, bottom: 320 };
+    const result = placeElement(
+      bigWord("AI"),
+      scene([FACE], [textAt("accent-1", accentBox)]),
+      measurer,
+    );
+    const { box, size, cost } = result.placed!;
+    expect(size).toBeLessThan(400);
+    expect(size).toBeGreaterThan(BASE);
+    expect(box.top).toBeGreaterThanOrEqual(accentBox.bottom + 12);
+    expect(bigWordCoveredShare(box, [FACE])).toBeLessThanOrEqual(0.3);
+    expect(Math.abs((box.left + box.right) / 2 - (S.left + S.right) / 2)).toBeLessThanOrEqual(1);
     expect(cost).toBeGreaterThan(0);
     expect(outcomes(result)).toEqual(["shrunk"]);
+    expect(result.notes[0]!.blockers).toEqual(
+      expect.arrayContaining([{ kind: "item", id: "accent-1" }]),
+    );
+    expect(result.notes[0]!.reason).toContain("from 400 px");
+  });
+
+  it("with no head the big word is centred at y 700 at the largest size S's width holds", () => {
+    const result = placeElement(bigWord("start here"), scene([]), measurer);
+    const { box, size, zone } = result.placed!;
+    expect(zone).toBe("head-top");
+    // One line (the behind word item has no breaks), as wide as S.
+    expect(result.placed!.lines).toEqual(["start here"]);
+    expect(size).toBe(Math.floor((S.right - S.left) / measurer.width("primary", 1, "start here")));
+    expect(Math.abs((box.top + box.bottom) / 2 - 700)).toBeLessThanOrEqual(1);
+    expect(Math.abs((box.left + box.right) / 2 - (S.left + S.right) / 2)).toBeLessThanOrEqual(1);
+    expect(outcomes(result)).toEqual(["placed"]);
+  });
+
+  it("a big word the face leaves no room for at 30 px is a `no-spot` blamed on the face", () => {
+    // The face's top at S's top: no size keeps 70% of the word above it.
+    const high: Box = { left: 300, right: 700, top: S.top, bottom: 1300 };
+    const result = placeElement(bigWord("AI"), scene([high]), measurer);
+    expect(result.placed).toBeNull();
+    expect(outcomes(result)).toEqual(["no-spot"]);
+    expect(result.notes[0]!.blockers).toEqual([{ kind: "face" }]);
   });
 });
 

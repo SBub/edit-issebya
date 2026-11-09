@@ -400,7 +400,7 @@ describe("big words in view", () => {
     expect(bigWordCoveredShare(half, [])).toBe(0);
   });
 
-  it("keeps a short big word at the head's rule place, noted when the head covers more than 30% of it", async () => {
+  it("keeps a big word at the head top with the face hiding at most 30% of it: moved up, sized to the room above the head, inside S", async () => {
     const measurer = await nodeMeasurer();
     const { edit, spans, checks, record } = await place(
       { big_words: [{ from: "w116", to: "w116" }] },
@@ -415,20 +415,42 @@ describe("big words in view", () => {
       top: word.position!.y,
       bottom: word.position!.y + word.size!,
     };
-    // The single mode never moves it for the head: the coverage is noted.
-    const share = bigWordCoveredShare(box, facesOver(BIG_FACE, span.start, span.end));
-    expect(share).toBeGreaterThan(maxCovered);
+    // Rule 6 is hard: the word moves up from its wanted centre (60 px below the
+    // head's top) until the face hides at most 30% of its height, and takes the
+    // largest size that keeps it so inside S; it stays centred in S.
+    const faces = facesOver(BIG_FACE, span.start, span.end);
+    const share = bigWordCoveredShare(box, faces);
+    expect(share).toBeLessThanOrEqual(maxCovered + 1e-6);
+    expect(share).toBeGreaterThan(0);
     expect(box.top).toBeGreaterThanOrEqual(PLATFORM_SAFE.top);
+    expect(box.bottom).toBeLessThanOrEqual(PLATFORM_SAFE.bottom);
+    expect(box.left).toBeGreaterThanOrEqual(PLATFORM_SAFE.left);
+    expect(box.right).toBeLessThanOrEqual(PLATFORM_SAFE.right);
+    const centre = (PLATFORM_SAFE.left + PLATFORM_SAFE.right) / 2;
+    expect(Math.abs((box.left + box.right) / 2 - centre)).toBeLessThanOrEqual(1);
+    // The largest fit: its top at S's top, its size the most the 30% rule
+    // allows there (0.7 * size <= face top - S top), under what S's width holds.
+    const faceTop = Math.min(...faces.map((face) => face.top));
+    const byWidth = Math.floor(
+      (PLATFORM_SAFE.right - PLATFORM_SAFE.left) /
+        measurer.width(ISSEBYA_PRESET.behind.word.font, 1, word.text),
+    );
+    const byHead = Math.floor(
+      (faceTop - PLATFORM_SAFE.top) / maxCovered / (1 / maxCovered - 1) + 1e-6,
+    );
+    expect(word.size).toBe(Math.min(byWidth, byHead));
+    expect(box.top).toBe(PLATFORM_SAFE.top);
     expect(record).toContainEqual(
       expect.objectContaining({
         item: word.id,
-        outcome: "kept-overlapping",
-        rule: "text-overlap",
-        reason: expect.stringMatching(
-          /^the big word ".+" sits with the person covering \d+% of it/,
-        ),
+        component: "BIGWORD",
+        variant: "bigword/behind",
+        outcome: "placed",
+        zone: "head-top",
+        size: word.size,
       }),
     );
+    expect(record.filter((note) => note.item === word.id && note.outcome !== "placed")).toEqual([]);
   });
 });
 
@@ -1128,7 +1150,7 @@ describe("readable text", () => {
     expect(checks).toEqual([]);
   });
 
-  it("leaves the big word in place, plain, on a light background and never moves it", async () => {
+  it("does not measure the big word: on a light background it keeps its place, with no contrast note", async () => {
     const input = { big_words: [{ from: "w76", to: "w76" }] };
     const before = await place(input);
     const { edit, record } = await place(input, { backgrounds: mapOf(() => BEIGE) });
@@ -1136,22 +1158,10 @@ describe("readable text", () => {
     const was = before.edit.tracks.behind!.find((item) => item.kind === "word")!;
     if (word.kind !== "word" || was.kind !== "word") throw new Error("not a word");
     expect(word.position).toEqual(was.position);
-    expect(record).toContainEqual(
-      expect.objectContaining({
-        item: "big-word-1",
-        outcome: "placed",
-        rule: "contrast",
-        reason: expect.stringMatching(
-          /^the big word ".+" stays in place: .*the big word is never moved$/,
-        ),
-      }),
+    expect(word.size).toBe(was.size);
+    expect(record.filter((note) => note.item === "big-word-1" && note.rule === "contrast")).toEqual(
+      [],
     );
-    expect(
-      record.filter(
-        (entry) =>
-          entry.item === "big-word-1" && entry.rule === "contrast" && entry.outcome === "moved",
-      ),
-    ).toEqual([]);
   });
 
   it("changes nothing on a dark background: the same edit and record as with no map", async () => {
@@ -2136,22 +2146,26 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
     );
   });
 
-  it("places a big word the head hides at every height where it is, noted", async () => {
+  it("leaves out a big word the head would hide at every height (no spot keeps 70% of it in view): `no-spot` blamed on the face, its word a caption", async () => {
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
     const { edit, record } = await place(
       { big_words: [{ from: "w76", to: "w76" }] },
       { headTrack: huge },
     );
-    expect(edit.tracks.behind).toEqual([
-      expect.objectContaining({ id: "big-word-1", kind: "word" }),
-    ]);
+    expect(edit.tracks.behind).toBeUndefined();
     expect(record).toContainEqual(
       expect.objectContaining({
         item: "big-word-1",
-        outcome: "kept-overlapping",
-        rule: "text-overlap",
+        component: "BIGWORD",
+        outcome: "no-spot",
+        rule: "no-spot",
+        blockers: [{ kind: "face" }],
       }),
     );
+    // Its word shows as a caption (rule 3), hidden by nothing.
+    const caption = edit.tracks.captions.find((item) => item.words.includes("w76"))!;
+    expect(caption.hidden_by).toBeUndefined();
+    expect(caption.position).toBeDefined();
   });
 
   it("shows a transition that runs during the hook: the hook keeps its window", async () => {
@@ -2228,7 +2242,7 @@ function oneSecondReel(): Edit {
 }
 
 describe("nothing the answer picks is dropped", () => {
-  it("shows a pick at the reel's end, a pick over a cut, a transition with no text and a hook on a 1 s reel", async () => {
+  it("shows a pick at the reel's end, a transition with no text and a hook on a 1 s reel; a big word over a cut with no room left at the head top is a `no-spot`", async () => {
     const { edit, record } = await place(
       {
         accents: [{ from: "w5", to: "w5" }],
@@ -2240,14 +2254,29 @@ describe("nothing the answer picks is dropped", () => {
     );
     expect(edit.tracks.overlays.map((item) => item.id)).toEqual(["hook", "accent-1"]);
     expect(edit.tracks.transitions.map((item) => item.id)).toEqual(["transition-1"]);
-    expect(edit.tracks.behind?.map((item) => item.id)).toEqual(["big-word-1"]);
+    // The big word moves off the cut to 0.45 s; by then the hook and the list
+    // stack fill the upper third down to 12 px above the head's 30% line, so no
+    // size keeps the hard rules at the head top: left out, its word a caption.
+    expect(edit.tracks.behind).toBeUndefined();
+    expect(record).toContainEqual(
+      expect.objectContaining({
+        item: "big-word-1",
+        outcome: "no-spot",
+        start: 0.45,
+        end: 1,
+        blockers: expect.arrayContaining([
+          { kind: "item", id: "hook" },
+          { kind: "item", id: "transition-1" },
+        ]),
+      }),
+    );
+    expect(
+      edit.tracks.captions.find((item) => item.words.includes("w2"))!.hidden_by,
+    ).toBeUndefined();
     expect(parseEdit(edit, ISSEBYA_PRESET, ONE_SECOND).ok).toBe(true);
     // The accent shows exactly its word, so it is never shown from earlier.
     expect(record).not.toContainEqual(
       expect.objectContaining({ item: "accent-1", outcome: "retimed" }),
-    );
-    expect(record).toContainEqual(
-      expect.objectContaining({ item: "big-word-1", outcome: "retimed" }),
     );
     // The list's phrase is its own caption's word now: the key shows it.
     expect(edit.tracks.transitions[0]!.levels?.key.text).toBeTruthy();

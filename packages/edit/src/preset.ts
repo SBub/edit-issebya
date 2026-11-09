@@ -81,16 +81,15 @@ interface PresetCard {
 export interface PresetBehind {
   // Each spot's rectangle in frame pixels.
   spots: Record<BehindSpot, Box>;
-  // A big word: as large as fits between the side margins (at most
-  // `maxSize`), centred, its vertical centre wanted `belowHeadTop` below the
-  // head's top (or at `noHeadY` with no head in the frame), moved up (never
-  // above `PLATFORM_SAFE`'s top), then smaller, until the person covers at
-  // most `1 - minVisible` of its height: only its lower part behind the head.
-  // It takes the accent's timing.
+  // A big word: the placer's largest fit (`engine-place.ts`, the `bigWord`
+  // style of `variants.ts`), centred, its vertical centre wanted
+  // `belowHeadTop` below the head's top (or at `noHeadY` with no head in the
+  // frame; the zone table of `engine-zones.ts` holds the same offsets), moved
+  // up (never above the safe zone's top), then smaller, until the face covers
+  // at most `1 - minVisible` of its height: only its lower part behind the
+  // head. It takes the accent's timing.
   word: {
     font: FontKey;
-    maxSize: number;
-    margin: number;
     color: string;
     belowHeadTop: number;
     noHeadY: number;
@@ -341,8 +340,6 @@ export const ISSEBYA_PRESET: Preset = {
     },
     word: {
       font: "primary",
-      maxSize: 400,
-      margin: 40,
       color: "#FFFFFF",
       belowHeadTop: 60,
       noHeadY: 700,

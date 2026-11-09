@@ -218,14 +218,15 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
         message: "a big word is one or two plain words of at most 24 letters",
       }),
       // Where the layout engine set it (its top left corner in the frame) and
-      // at what size.
+      // at what size. The size's bound is the format's (a word no taller than
+      // the frame), never a layout value: the engine's largest fit sets it.
       position: z
         .object({
           x: z.number().min(0).max(preset.frame.width),
           y: z.number().min(0).max(preset.frame.height),
         })
         .optional(),
-      size: z.number().int().min(MIN_TEXT_SIZE).max(400).optional(),
+      size: z.number().int().min(MIN_TEXT_SIZE).max(preset.frame.height).optional(),
       // The word ids it shows (one or two), written by the layout engine; the
       // same-text check reads them. Stored versions without it still parse.
       words: z.array(wordId).min(1).max(2).optional(),

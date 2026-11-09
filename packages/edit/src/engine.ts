@@ -1,5 +1,4 @@
 import type { Backgrounds } from "./background.ts";
-import { bigWordCoveredShare } from "./behind.ts";
 import { clicksFor } from "./clicks.ts";
 import { contrastRatio, relativeLuminance } from "./contrast.ts";
 import {
@@ -1785,19 +1784,20 @@ function placeOnce(
     }
   }
 
-  // One extra at its own span, placed by its kind. The old kinds (big word,
-  // visual) are always placed (over the face or other text if they must,
-  // noted); a placer element (the hook, an accent, a question) it finds no
-  // legal spot for is left out, noted `no-spot`, and `placeEdit` places the
-  // answer again without it.
+  // One extra at its own span, placed by its kind. The old kind (the visual)
+  // is always placed (over the face or other text if it must, noted); a placer
+  // element (the hook, an accent, a question, the big word) it finds no legal
+  // spot for is left out, noted `no-spot`, and `placeEdit` places the answer
+  // again without it.
   function tryExtra(extra: Extra): void {
     const span = { start: extra.start, end: extra.end };
     if (extra.kind === "hook") {
       if (!placeHook(extra, span)) noSpot.push(extra.ref);
     } else if (extra.kind === "accent") {
       if (!placeAccent(extra, span)) noSpot.push(extra.ref);
-    } else if (extra.kind === "big_word") placeBigWord(extra, span);
-    else placeVisual(extra, span);
+    } else if (extra.kind === "big_word") {
+      if (!placeBigWord(extra, span)) noSpot.push(extra.ref);
+    } else placeVisual(extra, span);
   }
 
   // The placer's scene over a span: the unpadded robust faces of its moments
@@ -1907,103 +1907,33 @@ function placeOnce(
     return true;
   }
 
-  function placeBigWord(extra: Extra, span: { start: number; end: number }): void {
+  // The big word through the placer: the element of the entry it was picked
+  // with (`bigword/behind`: the `head-top` zone, the `bigWord` style, the
+  // largest fit anchored at the head top, the behind layer), on one line (the
+  // behind word item carries no `breaks`), over the texts on screen with it.
+  // The face is no obstacle to it (it sits behind the speaker by design); rule
+  // 6, the face hiding at most 30% of its height, is the placer's hard filter,
+  // and the word stays inside the safe zone S like every text (decision 2).
+  // Its position and size are the placer's; the notes go to the record as they
+  // are. False when no candidate keeps the hard rules: the word is left out
+  // (see `tryExtra`).
+  function placeBigWord(extra: Extra, span: { start: number; end: number }): boolean {
     const first = word(extra.word!);
     const text = bigWordText(extra.word!, extra.wordTo!);
-    const spec = preset.behind.word;
-    const { width: frameWidth, height: frameHeight } = preset.frame;
-    const perPx = measurer.width(spec.font, 1, text);
-    const fit = perPx > 0 ? Math.floor((frameWidth - 2 * spec.margin) / perPx) : spec.maxSize;
-    const largest = Math.max(8, Math.min(spec.maxSize, fit));
-    const sizes = sizesFrom(largest, preset).filter((size) => size >= 8);
-    const face = facesOver(headTrack, span.start, span.start)[0] ?? null;
-    const centre = face ? face.top + spec.belowHeadTop : spec.noHeadY;
-    // Never above the platforms' safe top (they cover the frame there); it
-    // crosses the style's safe box by design.
-    const area = {
-      left: spec.margin,
-      right: frameWidth - spec.margin,
-      top: Math.max(spec.margin, PLATFORM_SAFE.top),
-      bottom: frameHeight - spec.margin,
+    const element: TextElement = {
+      type: "text",
+      id: extra.id,
+      variant: textVariantOf(picked, "BIGWORD"),
+      text,
+      lineGap: 0,
+      maxLines: 1,
+      start: span.start,
+      end: span.end,
     };
-    // The head rule's wanted centre at a size. The head is no obstacle (the
-    // word sits behind it by design); the text on screen is.
-    const wantedAt = (size: number) => ({
-      x: frameWidth / 2,
-      y: Math.max(area.top + size / 2, centre),
-    });
-    // The face in front over its span: most of the word stays in view, only
-    // its lower part behind the head.
-    const faces = facesOver(headTrack, span.start, span.end);
-    const maxCovered = 1 - spec.minVisible;
-    const covered = (spot: { x: number; y: number }, width: number, size: number) =>
-      bigWordCoveredShare(
-        { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + size },
-        faces,
-      );
-    // The nearest place to the rule's centre clear of the text on screen, at
-    // the largest size that has one (`shrunk` below the largest). With none at
-    // any size, the default spot: the rule's place at the largest size that
-    // fits, the text overlap noted. The head is never moved for either.
-    let chosen: { spot: { x: number; y: number }; size: number; width: number } | null = null;
-    for (const size of sizes) {
-      const width = perPx * size;
-      const spot = placeBox(area, textDuring(span), width, size, wantedAt(size));
-      if (spot) {
-        chosen = { spot, size, width };
-        break;
-      }
-    }
-    if (!chosen) {
-      for (const size of sizes) {
-        const width = perPx * size;
-        const spot = placeBox(area, [], width, size, wantedAt(size));
-        if (spot) {
-          chosen = { spot, size, width };
-          break;
-        }
-      }
-    }
-    // Last resort: the smallest size at the area's corner (never dropped).
-    if (!chosen) {
-      const size = sizes.at(-1)!;
-      chosen = { spot: { x: area.left, y: area.top }, size, width: perPx * size };
-    }
-    const { spot, size, width } = chosen;
-    const notes = record.length;
-    // The head overlapping it is the design: never moved for contrast.
-    keepReadable(
-      extra.id,
-      `the big word ${quote(text)}`,
-      { ...spot, width, height: size },
-      span,
-      [spec.color],
-      readability.large,
-      null,
-      "the big word is never moved",
-    );
-    const contrastNotes = record.splice(notes);
-    const box = { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + size };
-    noteOverlap(extra.id, `the big word ${quote(text)}`, box, span);
-    const share = covered(spot, width, size);
-    if (share > maxCovered + SLACK) {
-      record.push({
-        item: extra.id,
-        action: "kept-overlapping",
-        rule: "all-picks",
-        reason: `the big word ${quote(text)} sits with the person covering ${Math.round(share * 100)}% of it from ${at(span.start)} to ${at(span.end)}; kept, every pick is shown`,
-      });
-    }
-    // Moved from the rule's own place for the text on screen.
-    const atRule = placeBox(area, [], width, size, wantedAt(size));
-    if (atRule && (spot.x !== atRule.x || spot.y !== atRule.y)) {
-      record.push({
-        item: extra.id,
-        action: "moved",
-        rule: "big-word-spot",
-        reason: `the big word ${quote(text)} moves ${Math.round(Math.hypot(spot.x - atRule.x, spot.y - atRule.y))} px to a place clear of the text on screen from ${at(span.start)} to ${at(span.end)}`,
-      });
-    }
+    const result = placeElement(element, sceneFor(span), measurer);
+    record.push(...result.notes);
+    if (!result.placed) return false;
+    const { box, size } = result.placed;
     behind.set(extra.id, {
       id: extra.id,
       kind: "word",
@@ -2013,26 +1943,12 @@ function placeOnce(
         span.end,
         transcript.words.filter((w) => w.start >= first.start),
       ),
-      position: spot,
+      position: { x: box.left, y: box.top },
       size,
       words: range(extra.word!, extra.wordTo!),
     });
-    shown.push({
-      id: extra.id,
-      what: `the big word ${quote(text)}`,
-      start: span.start,
-      end: span.end,
-      box: { left: spot.x, right: spot.x + width, top: spot.y, bottom: spot.y + size },
-    });
-    if (size < largest) {
-      record.push({
-        item: extra.id,
-        action: "shrunk",
-        rule: "big-word-size",
-        reason: `the big word ${quote(text)} set at ${size} px instead of ${largest} px to fit`,
-      });
-    }
-    record.push(...contrastNotes);
+    shown.push({ id: extra.id, what: describe(extra), start: span.start, end: span.end, box });
+    return true;
   }
 
   // A visual's card: an empty white stroke frame, a small corner card (picture

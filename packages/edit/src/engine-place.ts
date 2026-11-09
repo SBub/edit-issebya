@@ -22,8 +22,8 @@ import type { BoxVariant, Level, StackVariant, TextStyle, TextVariant } from "./
 // ones that break a hard rule, scores the rest by the soft costs and takes the
 // cheapest, with the spec's tie-break. Pure and deterministic: the same input
 // gives the same result. The engine (`engine.ts`) places the hook, accents,
-// questions and LIST stacks through it (build steps 6 and 7); steps 8 to 10
-// wire the big word, the visual and the captions.
+// questions, LIST stacks and the big word through it (build steps 6 to 8);
+// steps 9 and 10 wire the visual and the captions.
 //
 // Where the spec leaves a detail open, this file takes the simplest reading
 // and says so in a comment marked "Settled:".
@@ -65,6 +65,10 @@ export interface TextElement extends ElementBase {
   variant: TextVariant;
   text: string;
   lineGap: number;
+  // The most lines the text may take; every count up to its word count when
+  // unset. Settled: the behind word item carries no `breaks` (the format sets
+  // a big word on one line), so the engine passes 1 for it.
+  maxLines?: number;
 }
 
 export type LevelRole = Level["role"];
@@ -340,7 +344,7 @@ function stackShapes(element: StackElement, measurer: Measurer): Shape[] {
 function shapesOf(element: PlaceElement, measurer: Measurer): Shape[] {
   if (element.type === "box") return [boxShape(element)];
   if (element.type === "stack") return stackShapes(element, measurer);
-  const count = element.text.split(" ").length;
+  const count = Math.min(element.text.split(" ").length, element.maxLines ?? Infinity);
   const shapes: Shape[] = [];
   for (let n = 1; n <= count; n += 1) {
     const shape = textShape(element, n, measurer);
@@ -426,20 +430,110 @@ function largestFit(shape: Shape, area: Box, obstacles: readonly Box[], cap: num
   return Math.min(size, cap);
 }
 
+// A spot for a shape in a zone part: its size and box, or null when no size
+// at or above the shape's minimum keeps the hard rules there.
+interface Fit {
+  size: number;
+  box: Box;
+}
+
+// What a fitter sees: the zone part's area, the centre the shape aims at (by
+// its width and height), the obstacles grown by the gap (the notch among
+// them), the unpadded faces and whether the text is behind the speaker
+// (rule 6), and the cap on the size.
+interface FitScene {
+  area: Box;
+  want: (width: number, height: number) => Point;
+  obstacles: readonly Box[];
+  faces: readonly Box[];
+  behind: boolean;
+  cap: number;
+}
+
+// Hard rule 6: the face hides at most 30% of a behind text's height. A front
+// text has no such rule.
+function keepsVisible(box: Box, scene: FitScene): boolean {
+  return !scene.behind || bigWordCoveredShare(box, scene.faces) <= MAX_HIDDEN_SHARE + SLACK;
+}
+
+// A text with a base size, a stack or a box: the largest size that fits a
+// free rectangle of the area with the obstacles out, at the spot nearest the
+// want (`freeRects`, `placeBox`).
+function freeFit(shape: Shape, scene: FitScene): Fit | null {
+  const size = largestFit(shape, scene.area, scene.obstacles, scene.cap);
+  // Hard: below the global minimum (for every text in the shape), nothing fits.
+  if (size < shape.min) return null;
+  const width = shape.widthAt(size);
+  const height = shape.heightAt(size);
+  const at = placeBox(scene.area, scene.obstacles, width, height, scene.want(width, height));
+  if (!at) return null;
+  const box: Box = { left: at.x, top: at.y, right: at.x + width, bottom: at.y + height };
+  return keepsVisible(box, scene) ? { size, box } : null;
+}
+
+// A `largest-fit` text (the big word), owner decision 18 (2026-11-09): its
+// largest fit is anchored at the zone's want (the head top), it does not wander
+// to a roomier spot elsewhere in the zone. Sizes are searched from the largest
+// the area holds down to the minimum, by the pixel; at each, the box is centred
+// on the want (moved only as far as keeps it inside the area), then moved up
+// towards the area's top, by the pixel, until every hard rule holds: clear of
+// the obstacles (the notch, the texts on screen) and, behind the speaker, the
+// face hiding at most 30% of it. The first size with such a spot is the fit,
+// at the lowest spot that keeps the rules (nearest the want). Settled: the
+// moves are by the pixel, not today's 10 px steps, so the fit is exact.
+function anchoredFit(shape: Shape, scene: FitScene): Fit | null {
+  const { area } = scene;
+  const minX = Math.ceil(area.left);
+  const top = Math.ceil(area.top);
+  for (let size = Math.min(scene.cap, shape.fit(area)); size >= shape.min; size -= 1) {
+    const width = shape.widthAt(size);
+    const height = shape.heightAt(size);
+    const maxX = Math.floor(area.right - width);
+    const maxY = Math.floor(area.bottom - height);
+    if (maxX < minX || maxY < top) continue;
+    const centre = scene.want(width, height);
+    const x = Math.min(maxX, Math.max(minX, Math.round(centre.x - width / 2)));
+    const start = Math.min(maxY, Math.max(top, Math.round(centre.y - height / 2)));
+    for (let y = start; y >= top; y -= 1) {
+      const box: Box = { left: x, top: y, right: x + width, bottom: y + height };
+      if (!scene.obstacles.some((o) => overlaps(box, o)) && keepsVisible(box, scene)) {
+        return { size, box };
+      }
+    }
+  }
+  return null;
+}
+
+const isAnchored = (element: PlaceElement): boolean =>
+  element.type === "text" && element.variant.style.base === "largest-fit";
+
+const fitterOf = (element: PlaceElement) => (isAnchored(element) ? anchoredFit : freeFit);
+
 // Whether some zone of the element's ranking holds it at its minimum size with
-// nothing but the notch in the way: the safe zone itself has room for it.
+// nothing but the notch in the way (and, behind the speaker, the face at most
+// 30% over it): the safe zone itself has room for it.
 function fitsEmpty(
   element: PlaceElement,
   shapes: readonly Shape[],
   scene: PlaceScene,
   F: Box | null,
 ): boolean {
+  const fit = fitterOf(element);
+  const behind = element.variant.layer === "behind";
   for (const zone of element.variant.zones) {
     for (const part of zonesAt(zone, scene.safe, F)) {
       const area = areaOf(part);
       if (!area) continue;
       for (const shape of shapes) {
-        if (largestFit(shape, area, [scene.safe.notch], Infinity) >= shape.min) return true;
+        const found = fit(shape, {
+          area,
+          want: (width, height) => centreWant(zone, part, area, F, width, height),
+          obstacles: [scene.safe.notch],
+          faces: scene.faces,
+          behind,
+          cap: Infinity,
+        });
+        if (found) return true;
       }
     }
   }
@@ -451,11 +545,11 @@ function fitsEmpty(
 // the engine never sets a text above its style's base, it only shrinks from
 // it). A stack: its key level's base (the lead-in and the number follow by
 // their factors). A box: its `width` share of the frame. The big word's style
-// is `largest-fit`: the largest size at which it fits its first zone with no
-// obstacles (the notch only, no face), over any line count. Settled: when that
-// first zone has no room (none, as above a face at the top; or less than the
-// minimum size), the next zone of the ranking with room gives it. 0 when no
-// zone has room.
+// is `largest-fit`: the largest size at which it fits at its first zone's want
+// with no text in the way (the notch only; behind the speaker, rule 6 kept),
+// over any line count it may take. Settled: when that first zone has no room
+// (none, as above a face at the top; or less than the minimum size), the next
+// zone of the ranking with room gives it. 0 when no zone has room.
 function fullSizeOf(
   element: PlaceElement,
   shapes: readonly Shape[],
@@ -466,13 +560,23 @@ function fullSizeOf(
   if (element.type === "stack") return baseOf(keyLevelOf(element.variant).style);
   const { base } = element.variant.style;
   if (base !== "largest-fit") return base;
+  const behind = element.variant.layer === "behind";
   for (const zone of element.variant.zones) {
     let full = 0;
     for (const part of zonesAt(zone, scene.safe, F)) {
       const area = areaOf(part);
       if (!area) continue;
-      for (const shape of shapes)
-        full = Math.max(full, largestFit(shape, area, [scene.safe.notch], Infinity));
+      for (const shape of shapes) {
+        const fit = anchoredFit(shape, {
+          area,
+          want: (width, height) => centreWant(zone, part, area, F, width, height),
+          obstacles: [scene.safe.notch],
+          faces: scene.faces,
+          behind,
+          cap: Infinity,
+        });
+        if (fit) full = Math.max(full, fit.size);
+      }
     }
     if (full >= MIN_SIZE_PX) return full;
   }
@@ -487,9 +591,12 @@ function shrinkStepsOf(size: number, full: number): number {
 }
 
 // Candidates in order: zone rank, part, line count, then the face as an
-// obstacle before the face allowed. A candidate is the largest size that fits
-// (capped at the full size: a text's base, so a short text never grows past
-// its style) at the spot nearest the zone's want.
+// obstacle before the face allowed (a front text; a behind text sits behind
+// the speaker by design, so the face is never an obstacle to it, rule 6 bounds
+// it instead). A candidate is the fitter's spot (`freeFit`: the largest size
+// that fits, capped at the full size, a text's base, so a short text never
+// grows past its style, nearest the zone's want; `anchoredFit`: the largest
+// size at the want).
 function candidates(
   element: PlaceElement,
   shapes: readonly Shape[],
@@ -499,29 +606,27 @@ function candidates(
   costs: PlaceCosts,
 ): Candidate[] {
   const out: Candidate[] = [];
+  const fit = fitterOf(element);
   const fixed = [scene.safe.notch, ...obstacleBoxes(element, scene.obstacles)];
   const behind = element.variant.layer === "behind";
-  const passes: readonly Box[][] = F ? [[expand(F, GAP), ...fixed], fixed] : [fixed];
+  const passes: readonly Box[][] = F && !behind ? [[expand(F, GAP), ...fixed], fixed] : [fixed];
   element.variant.zones.forEach((zone, rank) => {
     for (const part of zonesAt(zone, scene.safe, F)) {
       const area = areaOf(part);
       if (!area) continue;
       for (const shape of shapes) {
         for (const obstacles of passes) {
-          const size = largestFit(shape, area, obstacles, full);
-          // Hard: below the global minimum (for every text in the shape),
-          // nothing fits.
-          if (size < shape.min) continue;
-          const width = shape.widthAt(size);
-          const height = shape.heightAt(size);
-          const want = centreWant(zone, part, area, F, width, height);
-          const at = placeBox(area, obstacles, width, height, want);
-          if (!at) continue;
-          const box: Box = { left: at.x, top: at.y, right: at.x + width, bottom: at.y + height };
-          // Hard rule 6: the face hides at most 30% of a behind text's height.
-          if (behind && bigWordCoveredShare(box, scene.faces) > MAX_HIDDEN_SHARE + SLACK) continue;
-          // A behind text sits behind the speaker by design: it never "covers"
-          // the face (rule 6 bounds it instead).
+          const found = fit(shape, {
+            area,
+            want: (width, height) => centreWant(zone, part, area, F, width, height),
+            obstacles,
+            faces: scene.faces,
+            behind,
+            cap: full,
+          });
+          if (!found) continue;
+          const { size, box } = found;
+          // A behind text never "covers" the face (rule 6 bounds it instead).
           const coversFace = !behind && F !== null && overlaps(box, F);
           const shrinkSteps = shrinkStepsOf(size, full);
           const cost =
@@ -586,11 +691,16 @@ function blockersUpTo(
   return out;
 }
 
-// The safe zone's own edges as blockers, when the element at its minimum size
-// fits nowhere in S even with no obstacle: too wide (left and right) or too
-// tall (top and bottom).
-function safeZoneBlockers(shapes: readonly Shape[], safe: SafeZone): Blocker[] {
-  const s = safe.box;
+// What blocks the element at its minimum size when it fits nowhere in S even
+// with no text in the way: the safe zone's sides when it is too wide, the face
+// when it is behind the speaker and rule 6 leaves it no spot, else the safe
+// zone's top and bottom.
+function emptyBlockers(
+  element: PlaceElement,
+  shapes: readonly Shape[],
+  scene: PlaceScene,
+): Blocker[] {
+  const s = scene.safe.box;
   const fitsWidth = shapes.some((shape) => shape.widthAt(shape.min) <= s.right - s.left + SLACK);
   if (!fitsWidth) {
     return [
@@ -598,6 +708,7 @@ function safeZoneBlockers(shapes: readonly Shape[], safe: SafeZone): Blocker[] {
       { kind: "safe-zone", edge: "right" },
     ];
   }
+  if (element.variant.layer === "behind" && scene.faces.length > 0) return [{ kind: "face" }];
   return [
     { kind: "safe-zone", edge: "top" },
     { kind: "safe-zone", edge: "bottom" },
@@ -697,7 +808,7 @@ export function placeElement(
     // What took the space; the safe zone's edges when the element fits no zone
     // even with nothing in the way.
     const taken = blockersUpTo(element, scene, F, element.variant.zones.length);
-    const blockers = roomy && taken.length > 0 ? taken : safeZoneBlockers(shapes, scene.safe);
+    const blockers = roomy && taken.length > 0 ? taken : emptyBlockers(element, shapes, scene);
     return {
       placed: null,
       notes: [

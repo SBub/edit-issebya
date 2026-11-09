@@ -81,7 +81,6 @@ export const JOB_STEPS: Record<JobKind, readonly string[]> = {
 // they have no words here.
 export const RULE_WORDS: Record<string, string> = {
   "safe-box": "something would sit outside the safe area",
-  frame: "something would leave the frame",
   face: "something would cover your face",
   "text-overlap": "two texts would sit on top of each other",
   "same-text": "the same word would show twice on screen",

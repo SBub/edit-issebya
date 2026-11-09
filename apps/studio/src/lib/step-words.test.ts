@@ -63,7 +63,7 @@ describe("refusalReason", () => {
   });
 
   it("joins the first two distinct words, capitalised", () => {
-    expect(refusalReason(["same-text", "safe-box", "frame"])).toBe(
+    expect(refusalReason(["same-text", "safe-box", "face"])).toBe(
       "The same word would show twice on screen and something would sit outside the safe area",
     );
     expect(refusalReason(["answer-json", "answer-schema"])).toBe(

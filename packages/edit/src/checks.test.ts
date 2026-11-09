@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { build } from "./build.ts";
 import type { HeadTrack } from "./head-track.ts";
-import { ISSEBYA_PRESET, PLATFORM_BUTTONS } from "./preset.ts";
+import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE } from "./preset.ts";
 import type { Edit } from "./schema.ts";
 import type { EngineNote } from "./engine-note.ts";
 import { FIXTURES, PLACED_FIXTURES } from "./test-support/fixtures.ts";
@@ -208,10 +208,11 @@ describe("runChecks on big words behind the speaker", () => {
     );
   });
 
-  it("fails frame for a big word set past the frame's bottom edge", async () => {
+  it("fails safe-box for a big word set past the safe box's bottom edge: the big word keeps S like every text", async () => {
     const edit = structuredClone(hand.edit);
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
-    Object.assign(word, { position: { x: 41, y: 1900 } });
+    if (word.kind !== "word") throw new Error("not a word");
+    Object.assign(word, { position: { x: word.position!.x, y: 1900 } });
     const { checks } = build(
       edit,
       hand.transcript,
@@ -219,10 +220,10 @@ describe("runChecks on big words behind the speaker", () => {
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
-    const frame = checks.filter((check) => check.rule === "frame");
-    expect(frame.map((check) => check.item)).toEqual(["big-word-1"]);
-    expect(frame[0]!.reason).toBe(
-      'big word big-word-1 ("distribution") leaves the frame: bottom edge 2097 > 1920',
+    const failed = checks.filter((check) => check.rule === "safe-box");
+    expect(failed.map((check) => check.item)).toEqual(["big-word-1"]);
+    expect(failed[0]!.reason).toBe(
+      `big word big-word-1 ("distribution") runs past the safe box: bottom edge ${1900 + word.size!} > ${PLATFORM_SAFE.bottom}`,
     );
   });
 });

@@ -10,7 +10,6 @@ import type { Transcript } from "./transcript.ts";
 
 export type CheckRule =
   | "safe-box"
-  | "frame"
   | "face"
   | "text-overlap"
   | "same-text"
@@ -38,6 +37,10 @@ function label(box: TextBox): string {
   return `${box.kind} ${box.itemId} (${JSON.stringify(box.text)})`;
 }
 
+function wordLabel(word: BigWordBox): string {
+  return `big word ${word.itemId} (${JSON.stringify(word.text)})`;
+}
+
 // The box with each edge moved `by` inwards, so touching edges do not count.
 function shrink(box: Box, by: number): Box {
   return {
@@ -53,9 +56,9 @@ function overlaps(a: { left: number; right: number; top: number; bottom: number 
 }
 
 // The layout checks, in a stable order: text inside the safe zone S (the
-// platform guard, never past it nor over its button column), big
-// words behind the speaker inside the frame (they cross the safe box by
-// design), captions clear of the face, no two texts on screen at a shared
+// platform guard, never past it nor over its button column; the big words
+// behind the speaker too, decision 2 of `specs/layout-engine.md`), captions
+// clear of the face, no two texts on screen at a shared
 // moment overlapping (`text-overlap`), captions and accents at least their
 // minimum on screen (a pick at least the shown floor), the big word never more
 // than the lead before its word is said, sounds at least the preset's gap
@@ -85,7 +88,13 @@ export function runChecks(
   const checks: Check[] = [];
   const safe = SAFE_ZONE.box;
 
-  for (const box of [...boxes, ...levels]) {
+  // Every text as a box inside the frame: the captions and overlays, the
+  // transitions' levels, then the big words.
+  const framed = [
+    ...[...boxes, ...levels].map((box) => ({ ...box, what: label(box) })),
+    ...bigWords.map((word) => ({ ...word, what: wordLabel(word) })),
+  ];
+  for (const box of framed) {
     const right = box.x + box.width;
     const bottom = box.y + box.height;
     const edges: string[] = [];
@@ -97,7 +106,7 @@ export function runChecks(
       checks.push({
         rule: "safe-box",
         item: box.itemId,
-        reason: `${label(box)} runs past the safe box: ${edges.join(", ")}`,
+        reason: `${box.what} runs past the safe box: ${edges.join(", ")}`,
       });
     } else if (
       overlaps({ left: box.x, right, top: box.y, bottom }, shrink(SAFE_ZONE.notch, SLACK))
@@ -106,25 +115,7 @@ export function runChecks(
       checks.push({
         rule: "safe-box",
         item: box.itemId,
-        reason: `${label(box)} runs into the platform button column below y ${top}: right edge ${px(right)} > ${left}`,
-      });
-    }
-  }
-
-  for (const word of bigWords) {
-    const right = word.x + word.width;
-    const bottom = word.y + word.height;
-    const { width, height } = preset.frame;
-    const edges: string[] = [];
-    if (word.x < -SLACK) edges.push(`left edge ${px(word.x)} < 0`);
-    if (right > width + SLACK) edges.push(`right edge ${px(right)} > ${width}`);
-    if (word.y < -SLACK) edges.push(`top edge ${px(word.y)} < 0`);
-    if (bottom > height + SLACK) edges.push(`bottom edge ${px(bottom)} > ${height}`);
-    if (edges.length > 0) {
-      checks.push({
-        rule: "frame",
-        item: word.itemId,
-        reason: `big word ${word.itemId} (${JSON.stringify(word.text)}) leaves the frame: ${edges.join(", ")}`,
+        reason: `${box.what} runs into the platform button column below y ${top}: right edge ${px(right)} > ${left}`,
       });
     }
   }
@@ -165,7 +156,7 @@ export function runChecks(
       const span = resolved.get(word.itemId)!;
       return {
         owner: word.itemId,
-        what: `big word ${word.itemId} (${JSON.stringify(word.text)})`,
+        what: wordLabel(word),
         rect: {
           left: word.x,
           right: word.x + word.width,
