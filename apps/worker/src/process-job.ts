@@ -5,6 +5,7 @@ import type { WorkerConfig } from "./config.ts";
 import { runDecide } from "./decide/run-decide.ts";
 import type { ErrorTracker } from "./error-tracking.ts";
 import { saveFirstVersion } from "./first-version.ts";
+import { ownerFontPair } from "./font-pair-store.ts";
 import { runJobKind } from "./job-kinds.ts";
 import { runDescribePhotoJob } from "./photos/describe-photo.ts";
 import { supabasePhotoStore } from "./photos/photo-store.ts";
@@ -140,6 +141,7 @@ export async function processJob(
                 startFrom,
                 tools: cutouts.tools,
                 recordStored,
+                ownerFontPair: () => ownerFontPair(db, job.owner_id),
               });
             await runJobKind(job, {
               async process() {
@@ -163,6 +165,7 @@ export async function processJob(
                   blobs,
                   keyPrefix: config.keyPrefix,
                   fingerprints,
+                  fontPair: await ownerFontPair(db, job.owner_id),
                 });
                 // Never cached: a failed decide fails the job and version 1 stays
                 // current; a retried job decides again from the current version.

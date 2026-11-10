@@ -118,6 +118,10 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   `upload_id`, file name, content type, size and dimensions, status `uploading`, `describing`,
   `ready` or `failed`, description, tags, model, prompt version, `thumbnail_key`, `large_key`;
   owner-only `select` and a column-limited `insert` of an `uploading` row; in `supabase_realtime`).
+- `supabase/migrations/20261110123542_font_pair_profiles.sql`: table `public.profiles` (`user_id` primary key
+  referencing `auth.users`, `font_pair` one of the six ids, default `classic`, `updated_at`); the user reads,
+  inserts and changes only their own row, and changes only `font_pair`; `service_role` has every privilege.
+  The worker reads the reel owner's pair from it (`app_docs/font-pairs.md`). No row is the classic pair.
   The sixth job kind, `describe_photo`. `reel_id` is now nullable on `jobs`, `steps` and
   `stored_files`, each with a `photo_id` beside it (`on delete cascade`) and a check that exactly one
   is set (`jobs_target_check` also ties `describe_photo` to `photo_id`). Owners never insert a

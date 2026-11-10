@@ -81,6 +81,7 @@ function run(steps: ReturnType<typeof recordingSteps>["steps"]) {
     blobs: storageVersionBlobs(storage),
     keyPrefix: PREFIX,
     fingerprints,
+    fontPair: "classic",
     newId: () => VERSION_ID,
     log: () => {},
   });
