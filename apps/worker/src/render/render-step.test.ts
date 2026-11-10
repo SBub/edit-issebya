@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { copyFile, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
@@ -24,10 +25,11 @@ import { editMeasurer } from "../edit-measurer.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
-import type { ChildRun, SpawnTool, ToolCall } from "../step-runner.ts";
+import type { ChildRun, SpawnTool, Tool, ToolCall } from "../step-runner.ts";
 import { type Telemetry, createTelemetry } from "../telemetry.ts";
 import type { ExportStore, NewExport } from "./export-store.ts";
 import { FAKE_RENDER, STUB_EXPORT } from "./render-call.ts";
+import { renderExport } from "./render-step.ts";
 import { runRender } from "./render-step.ts";
 import { fixtureEdit, fixtureManifest, fixturePath } from "./render-test-support.ts";
 
@@ -659,4 +661,37 @@ describe("runRender spans", () => {
     expect(await storage.list(`${PREFIX}exports/`)).toEqual([]);
     await telemetry.shutdown();
   }, 30_000);
+});
+
+describe("renderExport's Chrome temporary folder", () => {
+  it("is outside the render's folder and gone after a failed render call", async () => {
+    const { edit, transcript, headTrack } = await fixtureEdit();
+    const footage = join(root, "footage.mp4");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's own temp folder
+    await writeFile(footage, "footage");
+    const renderDir = join(root, "scratch", TEST_JOB.id, "render-test");
+    let chromeTmp = "";
+    const tool: Tool = async (call) => {
+      chromeTmp = call.env?.TMPDIR ?? "";
+      throw new Error("render failed");
+    };
+    await expect(
+      renderExport({
+        tool,
+        tools: TOOLS,
+        dir: renderDir,
+        edit,
+        transcript,
+        headTrack,
+        files: { footage, masks: {} },
+      }),
+    ).rejects.toThrow("render failed");
+    expect(chromeTmp).not.toBe("");
+    expect(chromeTmp.startsWith(renderDir)).toBe(false);
+    expect(
+      join(chromeTmp, "org.chromium.Chromium.XXXXXX", "SingletonSocket").length,
+    ).toBeLessThanOrEqual(107);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's own temp folder
+    expect(existsSync(chromeTmp)).toBe(false);
+  });
 });

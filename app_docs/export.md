@@ -126,10 +126,18 @@ latestExport)` (`apps/studio/src/lib/exports.ts`), a pure function of `LiveReel`
   worker's machine than the GPU mode with one, and runs without a graphics chip; `--sdr` because
   the platforms show SDR.
 
-  The render also sets `HYPERFRAMES_EXTRACT_CACHE_DIR`, `HYPERFRAMES_HISTORY_ROOT` and `TMPDIR`
-  inside the render's folder in the job scratch (`renderScratchEnv`), so removing the job folder
-  takes the frame cache, the history and the work folders with it (`app_docs/storage.md`). The
-  export write records its `export` row in `stored_files` through `recordingStorage`.
+  The render also sets `HYPERFRAMES_EXTRACT_CACHE_DIR` and `HYPERFRAMES_HISTORY_ROOT` inside the
+  render's folder in the job scratch (`renderScratchEnv`), so removing the job folder takes the frame
+  cache and the history with it (`app_docs/storage.md`). Chrome's `TMPDIR` is not there: it is a
+  short folder of its own, `mkdtemp(join(tmpdir(), "hf-"))` (`/tmp` in the container), made by
+  `withChromeTmp` around the encode call and removed after it, on success, failure and cancel alike.
+  Why: Chrome listens on a Unix socket at `<TMPDIR>/org.chromium.Chromium.XXXXXX/SingletonSocket`,
+  and a socket path holds at most 107 characters. Under the job scratch folder that path was 108
+  characters and every export aborted before rendering. Frames and the MP4 stay in the render's
+  folder: HyperFrames writes its frame chunks next to the output (`chunk-encode-*`, `.capture-*`).
+  Chrome's profile (its disk cache included) is the one large thing that lands in the short folder,
+  because HyperFrames creates it under `tmpdir()`; the container's `/tmp` must have room for it.
+  The export write records its `export` row in `stored_files` through `recordingStorage`.
 
 - Sound comes only from the edit's sound track, inside the page. HyperFrames mixes at unity gain
   (no `PRODUCER_AUDIO_GAIN`); the worker tools test measures the voice within 0.5 LU of the source
@@ -316,6 +324,8 @@ Before the one-screen layout (the 0.99 bound):
 - Sounds come only from the edit's sound track.
 - Never write an `exports` row from the studio; only the worker does.
 - Never turn the render double on unless `E2E_MOCK_RENDER` is exactly `"true"`.
+- Chrome's TMPDIR must stay short (socket path limit): never point it into the job scratch folder
+  or the render's folder; it is the `withChromeTmp` folder, removed after each render call.
 
 ## Notes
 
