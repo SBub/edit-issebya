@@ -370,12 +370,17 @@ test.describe("a LIST item on the speech clip", () => {
     );
     expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
     const edit = (parsed as { ok: true; edit: Edit }).edit;
+    // Timing rule (specs/layout-engine.md, "Timing first"): a LIST's layer
+    // comes in 0.3 s before its first word and goes out at its last word's
+    // end, with no hold. The anchors are the engine's own picks for those
+    // two times (the start resolves to 0.3 s before w0028, the end is w0032's
+    // end edge); the times themselves are asserted below.
     expect(edit.tracks.transitions).toEqual([
       expect.objectContaining({
         type: "numbered",
         words: ["w0028", "w0029", "w0030", "w0031", "w0032"],
-        start: expect.objectContaining({ word: "w0028" }),
-        end: { word: "w0033" },
+        start: expect.objectContaining({ edge: "end", word: "w0026" }),
+        end: { word: "w0032", edge: "end" },
         key: "w0031",
         list: 1,
       }),
@@ -396,6 +401,14 @@ test.describe("a LIST item on the speech clip", () => {
     const layer = resolved.get("transition-1")!;
     const keyFirst = transcript.words.find((word) => word.id === "w0031")!;
     const keyLast = transcript.words.find((word) => word.id === "w0032")!;
+    const phraseFirst = transcript.words.find((word) => word.id === "w0028")!;
+    // The layer's times: in 0.3 s before the phrase's first word, out at the
+    // last word's end.
+    expect(layer.start).toBeCloseTo(
+      phraseFirst.start - ISSEBYA_PRESET.transitions.numbered.seconds,
+      3,
+    );
+    expect(layer.end).toBeCloseTo(keyLast.end, 3);
 
     // Inside the phrase, on its key phrase ("to work,").
     await setPosition(page, (keyFirst.start + keyLast.end) / 2);
