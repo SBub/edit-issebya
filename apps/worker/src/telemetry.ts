@@ -160,19 +160,26 @@ export function endJobSpan(span: Span, outcome: string, size?: ReelSizeHolder): 
 // its Context, the parent of any span it starts. A thrown error marks the span
 // as failed and is rethrown unchanged; the span always ends. Spans are
 // observation only: the work runs, and fails, as it would without them.
+// `cancelled()`, asked when the work throws, says the error is the owner's
+// cancel: the span then ends clean with `job.cancelled` true, not as an error.
 export async function inSpan<T>(
   telemetry: Telemetry,
   parent: Context,
   name: string,
   attributes: Attributes,
   work: (span: Span, context: Context) => Promise<T>,
+  { cancelled }: { cancelled?: () => boolean } = {},
 ): Promise<T> {
   const span = telemetry.tracer.startSpan(name, { attributes }, parent);
   try {
     return await work(span, trace.setSpan(parent, span));
   } catch (error) {
-    span.recordException(error instanceof Error ? error : String(error));
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    if (cancelled?.()) {
+      span.setAttribute("job.cancelled", true);
+    } else {
+      span.recordException(error instanceof Error ? error : String(error));
+      span.setStatus({ code: SpanStatusCode.ERROR });
+    }
     throw error;
   } finally {
     span.end();

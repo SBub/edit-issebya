@@ -397,4 +397,45 @@ describe("inSpan", () => {
     await expect(inSpan(telemetry, context, "decide.test", {}, async () => 7)).resolves.toBe(7);
     await telemetry.shutdown();
   });
+
+  it("ends a cancelled work clean with job.cancelled, not as an error", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const { context: jobContext } = startJobSpan(telemetry, TEST_JOB);
+    let cancelled = true;
+    const thrown = new Error("job cancelled");
+    const error = await inSpan(
+      telemetry,
+      jobContext,
+      "render.encode",
+      {},
+      async () => {
+        throw thrown;
+      },
+      { cancelled: () => cancelled },
+    ).catch((caught: unknown) => caught);
+    expect(error).toBe(thrown);
+    const span = exporter.getFinishedSpans().find((s) => s.name === "render.encode");
+    expect(span?.status.code).not.toBe(SpanStatusCode.ERROR);
+    expect(span?.events).toEqual([]);
+    expect(span?.attributes).toEqual({ "job.cancelled": true });
+    // Not cancelled: the same error is a failure again.
+    cancelled = false;
+    await inSpan(
+      telemetry,
+      jobContext,
+      "render.encode",
+      {},
+      async () => {
+        throw thrown;
+      },
+      { cancelled: () => cancelled },
+    ).catch(() => {});
+    const failed = exporter.getFinishedSpans().filter((s) => s.name === "render.encode")[1];
+    expect(failed?.status.code).toBe(SpanStatusCode.ERROR);
+    await telemetry.shutdown();
+  });
 });
