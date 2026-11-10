@@ -22,6 +22,10 @@ services:
       - otel-lgtm-data:/data
       # The image's Prometheus config plus one scrape job: cAdvisor below.
       - ./monitoring/prometheus.yaml:/otel-lgtm/prometheus.yaml:ro
+      # Dashboards stored in the repository: the provider file, beside the image's own, and the
+      # folder of dashboard JSON files it loads (monitoring/grafana/dashboards).
+      - ./monitoring/grafana/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/edit-issebya.yaml:ro
+      - ./monitoring/grafana/dashboards:/etc/edit-issebya/dashboards:ro
 
   # Container metrics (CPU, throttling, memory, OOM kills, disk and network bytes) for every
   # container of the machine, the worker and the Supabase database among them. Prometheus in the

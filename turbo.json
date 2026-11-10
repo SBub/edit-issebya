@@ -46,6 +46,13 @@
     },
     "test": {
       "dependsOn": ["^transit"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/monitoring/**",
+        "$TURBO_ROOT$/compose.yaml",
+        "$TURBO_ROOT$/scripts/dev-studio.sh",
+        "$TURBO_ROOT$/supabase/config.toml"
+      ],
       "outputs": []
     },
     "dev": {

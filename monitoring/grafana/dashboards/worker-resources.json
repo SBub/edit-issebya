@@ -1,0 +1,1620 @@
+{
+  "uid": "worker-resources",
+  "title": "Worker resources",
+  "tags": ["edit-issebya", "worker"],
+  "description": "What limits each step of the worker: CPU, memory, disk, network (R2) or the database. Container metrics come from cAdvisor; on a Mac they measure Docker Desktop's Linux VM. See app_docs/measurement.md, Resource metrics.",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "reel",
+        "label": "reel (id without dashes)",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "",
+            "value": ""
+          }
+        ],
+        "description": "The reel's uuid without dashes: its trace id. Set the time range to cover the reel's jobs."
+      },
+      {
+        "name": "worker",
+        "label": "worker container",
+        "type": "constant",
+        "query": "edit-issebya-worker-worker-1",
+        "hide": 2,
+        "skipUrlSync": true
+      },
+      {
+        "name": "db",
+        "label": "database container",
+        "type": "constant",
+        "query": "supabase_db_edit-issebya",
+        "hide": 2,
+        "skipUrlSync": true
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Worker container",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Worker CPU",
+      "description": "CPU the worker container uses, as a percentage of one core: 100% is one core busy, the dashed line is every core of the Docker VM (8 cores = 800%). A step that stays near the line is CPU-bound. System time is the kernel's share (disk and network work).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name=\"$worker\"}[$__rate_interval])) * 100",
+          "legendFormat": "total",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "sum(rate(container_cpu_user_seconds_total{name=\"$worker\"}[$__rate_interval])) * 100",
+          "legendFormat": "user",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "C",
+          "expr": "sum(rate(container_cpu_system_seconds_total{name=\"$worker\"}[$__rate_interval])) * 100",
+          "legendFormat": "system",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "D",
+          "expr": "max(machine_cpu_cores) * 100",
+          "legendFormat": "all cores of the Docker VM",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "all cores of the Docker VM"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [8, 6]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Worker memory",
+      "description": "Working set is what the container cannot give back without swapping or being killed (the number the OOM killer looks at). Page cache is file data the kernel keeps and drops when memory is needed. The dashed line is the Docker VM's total memory, shared by every container.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 6,
+        "h": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(container_memory_working_set_bytes{name=\"$worker\"})",
+          "legendFormat": "working set",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "max(container_memory_rss{name=\"$worker\"})",
+          "legendFormat": "process memory (rss)",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "C",
+          "expr": "max(container_memory_cache{name=\"$worker\"})",
+          "legendFormat": "page cache",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "D",
+          "expr": "max(machine_memory_bytes)",
+          "legendFormat": "Docker VM total",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Docker VM total"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [8, 6]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Worker network",
+      "description": "Bytes per second through the container's network interface: R2 downloads and uploads, the database and the AI calls. Received is drawn up, sent down. A step with a flat CPU and a busy network is network-bound (see its r2.get and r2.put spans below).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 6,
+        "h": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(rate(container_network_receive_bytes_total{name=\"$worker\"}[$__rate_interval]))",
+          "legendFormat": "received",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "sum(rate(container_network_transmit_bytes_total{name=\"$worker\"}[$__rate_interval]))",
+          "legendFormat": "sent",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "binBps",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "sent"
+            },
+            "properties": [
+              {
+                "id": "custom.transform",
+                "value": "negative-Y"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Worker disk",
+      "description": "Bytes per second the container reads from and writes to the VM's disk (the scratch volume and the image). Reads are drawn up, writes down. Files mounted from the Mac (the source folders) are not block devices and are not counted.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 6,
+        "h": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(rate(container_fs_reads_bytes_total{name=\"$worker\"}[$__rate_interval]))",
+          "legendFormat": "read",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "sum(rate(container_fs_writes_bytes_total{name=\"$worker\"}[$__rate_interval]))",
+          "legendFormat": "written",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "binBps",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "written"
+            },
+            "properties": [
+              {
+                "id": "custom.transform",
+                "value": "negative-Y"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Worker waiting (pressure) and CPU throttling",
+      "description": "The share of time at least one process of the container waited: for a CPU (more runnable work than cores), for the disk, or for memory to be freed. High CPU waiting with CPU at the dashed line means more cores would help. Throttling is the share of time the kernel paused the container at its CPU limit; it stays empty while the container has no CPU limit (compose sets none).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(rate(container_pressure_cpu_waiting_seconds_total{name=\"$worker\"}[$__rate_interval]))",
+          "legendFormat": "waiting for CPU",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "sum(rate(container_pressure_io_waiting_seconds_total{name=\"$worker\"}[$__rate_interval]))",
+          "legendFormat": "waiting for disk",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "C",
+          "expr": "sum(rate(container_pressure_memory_waiting_seconds_total{name=\"$worker\"}[$__rate_interval]))",
+          "legendFormat": "waiting for memory",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "D",
+          "expr": "sum(rate(container_cpu_cfs_throttled_seconds_total{name=\"$worker\"}[$__rate_interval]))",
+          "legendFormat": "throttled at the CPU limit",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "OOM kills",
+      "description": "Processes the kernel killed for memory, per container, counted in each interval. Any bar is a step that ran out of memory.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 8,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (name) (increase(container_oom_events_total{name=~\"$worker|$db\"}[$__rate_interval]))",
+          "legendFormat": "{{name}}",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Postgres CPU",
+      "description": "CPU of the local Supabase database container, as a percentage of one core. A step that waits while this is busy is database-bound.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name=\"$db\"}[$__rate_interval])) * 100",
+          "legendFormat": "total",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "max(machine_cpu_cores) * 100",
+          "legendFormat": "all cores of the Docker VM",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "all cores of the Docker VM"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [8, 6]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Postgres disk and waiting",
+      "description": "Bytes per second the database container writes to disk (left axis) and the share of time it waited for the disk (right axis).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 8,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(rate(container_fs_writes_bytes_total{name=\"$db\"}[$__rate_interval]))",
+          "legendFormat": "written",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "sum(rate(container_fs_reads_bytes_total{name=\"$db\"}[$__rate_interval]))",
+          "legendFormat": "read",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "C",
+          "expr": "sum(rate(container_pressure_io_waiting_seconds_total{name=\"$db\"}[$__rate_interval]))",
+          "legendFormat": "waiting for disk",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "binBps",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "waiting for disk"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "The reel's steps (variable reel = the reel's id without dashes)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "state-timeline",
+      "title": "Steps on the metrics' time axis",
+      "description": "Each block is one step of the chosen reel, from its start to its end, on the same time axis as the panels above (the crosshair is shared). Read a step's CPU, memory, network and disk straight above its block. A cache hit is too short to see.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "refId": "A",
+          "queryType": "traceql",
+          "tableType": "spans",
+          "limit": 20,
+          "spss": 100,
+          "query": "{ trace:id = \"$reel\" && name =~ \"step .*\" }"
+        },
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "refId": "B",
+          "queryType": "traceql",
+          "tableType": "spans",
+          "limit": 20,
+          "spss": 100,
+          "query": "{ trace:id = \"$reel\" && name =~ \"step .*\" }"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "calculateField",
+          "filter": {
+            "id": "byRefId",
+            "options": "B"
+          },
+          "options": {
+            "mode": "binary",
+            "alias": "ms",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Duration"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "fixed": "1000000"
+              }
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "calculateField",
+          "filter": {
+            "id": "byRefId",
+            "options": "B"
+          },
+          "options": {
+            "mode": "binary",
+            "alias": "end",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Start time"
+                }
+              },
+              "operator": "+",
+              "right": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ms"
+                }
+              }
+            },
+            "replaceFields": true
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "filter": {
+            "id": "byRefId",
+            "options": "B"
+          },
+          "options": {
+            "conversions": [
+              {
+                "targetField": "end",
+                "destinationType": "time"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "id": "organize",
+          "filter": {
+            "id": "byRefId",
+            "options": "B"
+          },
+          "options": {
+            "renameByName": {
+              "end": "Start time"
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "filter": {
+            "id": "byRefId",
+            "options": "A"
+          },
+          "options": {
+            "excludeByName": {
+              "traceIdHidden": true,
+              "traceService": true,
+              "traceName": true,
+              "spanID": true,
+              "Duration": true
+            },
+            "renameByName": {
+              "Name": "step"
+            }
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Start time"
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "step",
+          "custom": {
+            "fillOpacity": 75,
+            "lineWidth": 0,
+            "spanNulls": false
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "step check_footage": {
+                  "color": "semi-dark-blue",
+                  "index": 0
+                },
+                "step convert": {
+                  "color": "green",
+                  "index": 1
+                },
+                "step transcribe": {
+                  "color": "yellow",
+                  "index": 2
+                },
+                "step retime": {
+                  "color": "orange",
+                  "index": 3
+                },
+                "step head_track": {
+                  "color": "purple",
+                  "index": 4
+                },
+                "step preview_copies": {
+                  "color": "super-light-blue",
+                  "index": 5
+                },
+                "step first_version": {
+                  "color": "light-green",
+                  "index": 6
+                },
+                "step decide": {
+                  "color": "red",
+                  "index": 7
+                },
+                "step cutout": {
+                  "color": "dark-purple",
+                  "index": 8
+                },
+                "step restore": {
+                  "color": "light-orange",
+                  "index": 9
+                },
+                "step render": {
+                  "color": "dark-red",
+                  "index": 10
+                },
+                "step describe_photo": {
+                  "color": "light-purple",
+                  "index": 11
+                },
+                "step photo_images": {
+                  "color": "dark-yellow",
+                  "index": 12
+                },
+                "step relayout": {
+                  "color": "blue",
+                  "index": 13
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": false,
+        "showValue": "auto",
+        "alignValue": "left",
+        "rowHeight": 0.9,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Per step: time, cores, memory, bytes",
+      "description": "One row per step span of the chosen reel, oldest first. Wall time, CPU time, peak memory and bytes in and out are the step row's own measurements (the span's step.* attributes); average cores is CPU time divided by wall time: near the core count is CPU-bound, far under 1 means the step waited (network, disk, the database or the AI). In-process steps (first_version, restore) and cache hits have no CPU or memory. At most 100 step spans are shown.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "refId": "A",
+          "queryType": "traceql",
+          "tableType": "spans",
+          "limit": 20,
+          "spss": 100,
+          "query": "{ trace:id = \"$reel\" && name =~ \"step .*\" } | select(span.step.wall_ms, span.step.cpu_ms, span.step.peak_rss_bytes, span.step.bytes_in, span.step.bytes_out, span.step.cache_hit)"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "alias": "Average cores",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "step.cpu_ms"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "step.wall_ms"
+                }
+              }
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Start time"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "traceIdHidden": true,
+              "traceService": true,
+              "traceName": true,
+              "spanID": true
+            },
+            "indexByName": {
+              "Start time": 0,
+              "Name": 1,
+              "Duration": 2,
+              "step.wall_ms": 3,
+              "step.cpu_ms": 4,
+              "Average cores": 5,
+              "step.peak_rss_bytes": 6,
+              "step.bytes_in": 7,
+              "step.bytes_out": 8,
+              "step.cache_hit": 9
+            },
+            "renameByName": {
+              "Start time": "Started",
+              "Name": "Step",
+              "Duration": "Span",
+              "step.wall_ms": "Wall time",
+              "step.cpu_ms": "CPU time",
+              "step.peak_rss_bytes": "Peak memory",
+              "step.bytes_in": "Bytes in",
+              "step.bytes_out": "Bytes out",
+              "step.cache_hit": "Cache hit"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Span"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ns"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wall time"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU time"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Average cores"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Peak memory"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bytes in"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bytes out"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Jobs: queue wait and run time",
+      "description": "One row per job of the chosen reel. Queue wait is the time from the job's creation to the worker's claim (job.queue_wait_ms, on jobs run by a worker with this change). Run time is the job span.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 9,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "refId": "A",
+          "queryType": "traceql",
+          "tableType": "spans",
+          "limit": 20,
+          "spss": 100,
+          "query": "{ trace:id = \"$reel\" && name =~ \"job .*\" } | select(span.job.queue_wait_ms, span.job.outcome, span.job.attempt)"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Start time"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "traceIdHidden": true,
+              "traceService": true,
+              "traceName": true,
+              "spanID": true
+            },
+            "indexByName": {
+              "Start time": 0,
+              "Name": 1,
+              "job.queue_wait_ms": 2,
+              "Duration": 3,
+              "job.outcome": 4,
+              "job.attempt": 5
+            },
+            "renameByName": {
+              "Start time": "Started",
+              "Name": "Job",
+              "job.queue_wait_ms": "Queue wait",
+              "Duration": "Run time",
+              "job.outcome": "Outcome",
+              "job.attempt": "Attempt"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Queue wait"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Run time"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ns"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "R2 reads and writes",
+      "description": "One row per r2.get and r2.put span of the chosen reel, slowest first: what was moved (kind, and the pipeline step for a cache object), how many bytes, how long it took and how it ended. Bytes divided by time is the transfer speed. The export's upload is the r2.put of kind export. At most 100 spans are shown.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 29,
+        "w": 15,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "refId": "A",
+          "queryType": "traceql",
+          "tableType": "spans",
+          "limit": 20,
+          "spss": 100,
+          "query": "{ trace:id = \"$reel\" && name =~ \"r2\\\\..*\" } | select(span.r2.operation, span.r2.kind, span.r2.cache_step, span.r2.bytes, span.r2.outcome, span.r2.multipart_parts)"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "alias": "seconds",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Duration"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "fixed": "1000000000"
+              }
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "alias": "Speed",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "r2.bytes"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "seconds"
+                }
+              }
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Duration",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "traceIdHidden": true,
+              "traceService": true,
+              "traceName": true,
+              "spanID": true,
+              "seconds": true
+            },
+            "indexByName": {
+              "Start time": 0,
+              "Name": 1,
+              "r2.operation": 2,
+              "r2.kind": 3,
+              "r2.cache_step": 4,
+              "r2.bytes": 5,
+              "Duration": 6,
+              "Speed": 7,
+              "r2.outcome": 8,
+              "r2.multipart_parts": 9
+            },
+            "renameByName": {
+              "Start time": "Started",
+              "Name": "Span",
+              "r2.operation": "Call",
+              "r2.kind": "Kind",
+              "r2.cache_step": "Cache step",
+              "r2.bytes": "Bytes",
+              "Duration": "Time",
+              "r2.outcome": "Outcome",
+              "r2.multipart_parts": "Parts"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ns"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Speed"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "binBps"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 15,
+      "type": "traces",
+      "title": "The reel's trace",
+      "description": "Every job, step, tool call (exec), AI call (chat) and R2 call (r2.get, r2.put) of the chosen reel. A reel's trace id is its uuid without dashes.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 20
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "$reel",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ]
+    }
+  ]
+}

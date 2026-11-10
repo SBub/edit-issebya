@@ -1,0 +1,16 @@
+# Grafana dashboard provisioning for the local monitoring container
+# (docker-compose.monitoring.yml mounts this file and the dashboards folder). Every JSON file in
+# monitoring/grafana/dashboards is loaded at start-up and re-read every 10 seconds, so a dashboard
+# lives in the repository and survives a recreated container. The image's own providers
+# (grafana-dashboards.yaml in the same folder) are left as they are.
+apiVersion: 1
+
+providers:
+  - name: edit-issebya
+    type: file
+    # The file is the source: a change made in the UI is not saved over it.
+    allowUiUpdates: false
+    updateIntervalSeconds: 10
+    options:
+      path: /etc/edit-issebya/dashboards
+      foldersFromFilesStructure: false

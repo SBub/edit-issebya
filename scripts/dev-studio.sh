@@ -302,6 +302,7 @@ start_all() {
   Database:              Supabase Studio $SUPABASE_STUDIO_URL
   Worker errors:         Grafana $MONITORING_UI_URL (Explore, Loki, service edit-issebya-worker-dev, level error)
   Grafana (worker):      $grafana_line
+  Worker resources:      $MONITORING_UI_URL/d/worker-resources (CPU, memory, disk, network per step)
   Sign in with the owner email; the link arrives in Mailpit.
   Ctrl-C stops web, studio and the worker container.
   Monitoring keeps running: docker compose -f docker-compose.monitoring.yml down
