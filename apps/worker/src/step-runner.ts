@@ -254,10 +254,11 @@ async function withStep(
       await ctx.steps.done(stepId, summary, measurements);
       return;
     } catch (error) {
-      span.setStatus({ code: SpanStatusCode.ERROR });
       // A lost lease (another worker may hold the job now), or the job's row
-      // is gone (its reel was deleted): nothing more is written or captured.
+      // is gone (its reel was deleted): nothing more is written or captured,
+      // and the span is not an error (a cancel ends clean the same way).
       if (ctx.signal.aborted || (await ctx.checkGone?.())) throw error;
+      span.setStatus({ code: SpanStatusCode.ERROR });
       const failure = error instanceof StepFailure ? error : null;
       const measurements = failure?.measurements ?? emptyMeasurements(elapsedMs(ctx, started));
       setMeasurementAttributes(span, measurements);

@@ -2,6 +2,14 @@ import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  type Context,
+  INVALID_SPAN_CONTEXT,
+  ROOT_CONTEXT,
+  type Attributes,
+  type Span,
+  trace,
+} from "@opentelemetry/api";
+import {
   type Edit,
   type EditInputs,
   type HeadTrack,
@@ -17,9 +25,11 @@ import {
 import type { Storage } from "@edit-issebya/storage";
 import { type CutoutDeps, ensureVersionCutouts } from "../cutout/version-cutouts.ts";
 import { editMeasurer } from "../edit-measurer.ts";
+import { isJobCancelled } from "../lease.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { runPipeline } from "../pipeline/run-pipeline.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
+import { reelOf } from "../queue.ts";
 import {
   type SpawnTool,
   type StepContext,
@@ -27,13 +37,25 @@ import {
   recordHit,
   runToolsStep,
 } from "../step-runner.ts";
+import { inSpan } from "../telemetry.ts";
 import { exportKey } from "./export-key.ts";
 import type { ExportStore } from "./export-store.ts";
 import { type RenderRange, renderCall, renderScratchEnv } from "./render-call.ts";
 import { type RenderFiles, writeRenderProject } from "./render-project.ts";
-import { reelOf } from "../queue.ts";
 
 export const STEP = "render";
+
+// A stage of the render in its own span under the step (see inSpan): the
+// span's name and attributes, and the work with its span and Context.
+export type RenderStage = <T>(
+  name: string,
+  attributes: Attributes,
+  work: (span: Span, context: Context) => Promise<T>,
+) => Promise<T>;
+
+// Without telemetry: the work runs, its span is not recording.
+const UNSPANNED: RenderStage = (_name, _attributes, work) =>
+  work(trace.wrapSpanContext(INVALID_SPAN_CONTEXT), ROOT_CONTEXT);
 
 export interface RenderExport {
   tool: Tool;
@@ -49,6 +71,8 @@ export interface RenderExport {
   files: RenderFiles;
   range?: RenderRange;
   env?: NodeJS.ProcessEnv;
+  // The build and the encode are its spans (`render.build`, `render.encode`).
+  stage?: RenderStage;
 }
 
 // One version to an MP4: the page from the one shared builder (exactly what
@@ -64,22 +88,40 @@ export async function renderExport({
   files,
   range,
   env,
+  stage = UNSPANNED,
 }: RenderExport): Promise<{ output: string; projectFiles: string[] }> {
-  const { html, assets } = build(
-    edit,
-    transcript,
-    headTrack,
-    ISSEBYA_PRESET,
-    await editMeasurer(edit.font_pair),
-  );
   const projectDir = join(dir, "project");
-  const projectFiles = await writeRenderProject({ dir: projectDir, html, assets, files });
+  const projectFiles = await stage("render.build", {}, async (span) => {
+    const { html, assets } = build(
+      edit,
+      transcript,
+      headTrack,
+      ISSEBYA_PRESET,
+      await editMeasurer(edit.font_pair),
+    );
+    const written = await writeRenderProject({ dir: projectDir, html, assets, files });
+    span.setAttributes({
+      "render.page_bytes": Buffer.byteLength(html),
+      "render.assets": assets.length,
+    });
+    return written;
+  });
   const output = join(dir, "export.mp4");
   for (const folder of Object.values(renderScratchEnv(dir))) {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
     await mkdir(folder, { recursive: true });
   }
-  await tool(renderCall({ tools, dir, projectDir, output, range, env }));
+  // The HyperFrames call is the encode's child: its exec span is under it.
+  await stage(
+    "render.encode",
+    { "render.duration_seconds": edit.duration },
+    async (_span, context) => {
+      await tool({
+        ...renderCall({ tools, dir, projectDir, output, range, env }),
+        parent: context,
+      });
+    },
+  );
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
   const info = await stat(output).catch(() => null);
   if (!info || info.size === 0) throw new Error(`${STEP}: the render wrote no MP4`);
@@ -125,6 +167,13 @@ function elapsedMs(started: number): number {
 // owner closed the export) aborts the signal: the running render's process
 // group is killed and nothing more is written; a file uploaded but not
 // recorded is discarded.
+//
+// The step's span has five stages as children, in order: `render.load` (the
+// version row, its edit and inputs), `render.build` (the HyperFrames page and
+// project), `render.encode` (the HyperFrames render, its exec span beneath),
+// `render.upload` (the MP4 to storage) and `render.save` (the export row). A
+// cancel ends the stage it stopped and the step clean, with `job.cancelled`
+// true; nothing is an error.
 export async function runRender({
   ctx,
   storage,
@@ -187,6 +236,7 @@ export async function runRender({
   const output = join(dir, "export.mp4");
   // Filled inside the step, measured after it (bytes_in).
   const inputs: string[] = [];
+  const cancelled = () => isJobCancelled(signal);
   try {
     await runToolsStep(
       ctx,
@@ -195,90 +245,119 @@ export async function runRender({
         inputs,
         outputs: [output],
         sizeOf: "out",
-        async work(tool) {
-          const version = await rows.get(versionId);
-          if (!version || version.reel_id !== reelOf(job)) {
-            throw new Error(`${STEP}: version ${versionId} is not a version of this reel`);
-          }
-          const read = async (ref: EditInputs["footage"]) => {
-            const key = cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file);
-            const bytes = await storage.get(key);
-            if (!bytes) throw new Error(`${STEP}: input missing: ${key}`);
-            return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
-          };
-          const transcript = transcriptSchema.parse(await read(version.inputs.transcript));
-          const headTrack = headTrackSchema.parse(await read(version.inputs.head_track));
-          const editBytes = await storage.get(version.r2_key);
-          if (!editBytes) throw new Error(`${STEP}: edit missing: ${version.r2_key}`);
-          const parsed = parseEdit(
-            JSON.parse(new TextDecoder().decode(editBytes)) as unknown,
-            ISSEBYA_PRESET,
-            transcript,
-          );
-          if (!parsed.ok) {
-            throw new Error(`${STEP}: stored edit refused: ${parsed.reasons.join("; ")}`);
-          }
-
-          const download = async (ref: EditInputs["footage"], name = ref.file) => {
-            const key = cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file);
-            const path = join(dir, "inputs", ref.step, name);
-            // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
-            await mkdir(join(dir, "inputs", ref.step), { recursive: true });
-            if (!(await storage.getFile(key, path, { signal }))) {
-              throw new Error(`${STEP}: input missing: ${key}`);
-            }
-            return path;
-          };
-          // An old version may name the whole-clip cut-out: the page never
-          // uses it, so it is never downloaded. Masks are.
-          const files: Required<RenderFiles> = {
-            footage: await download(version.inputs.footage),
-            masks: {},
-          };
-          for (const mask of parsed.edit.inputs.masks ?? []) {
-            files.masks[maskPath(mask)] = await download(mask, `${mask.fingerprint}.mp4`);
-          }
-          const { projectFiles } = await renderExport({
-            tool,
-            tools,
-            dir,
-            edit: parsed.edit,
-            transcript,
-            headTrack,
-            files,
-            env,
-          });
-          inputs.push(...projectFiles);
-
-          // A cancel seen now stops before anything is uploaded.
-          await checkCancelled();
-          signal.throwIfAborted();
-          const id = newId();
-          const key = exportKey(keyPrefix, reelOf(job), id);
-          await storage.putFileIfAbsent(key, output, { contentType: "video/mp4" });
+        async work(tool, stepContext) {
+          const step = trace.getSpan(stepContext);
+          const stage: RenderStage = (name, attributes, work) =>
+            inSpan(ctx.telemetry, stepContext, name, attributes, work, { cancelled });
+          step?.setAttributes({ "render.version_id": versionId, "job.cancelled": false });
           try {
+            const loaded = await stage(
+              "render.load",
+              { "render.version_id": versionId },
+              async (span) => {
+                const version = await rows.get(versionId);
+                if (!version || version.reel_id !== reelOf(job)) {
+                  throw new Error(`${STEP}: version ${versionId} is not a version of this reel`);
+                }
+                const read = async (ref: EditInputs["footage"]) => {
+                  const key = cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file);
+                  const bytes = await storage.get(key);
+                  if (!bytes) throw new Error(`${STEP}: input missing: ${key}`);
+                  return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+                };
+                const transcript = transcriptSchema.parse(await read(version.inputs.transcript));
+                const headTrack = headTrackSchema.parse(await read(version.inputs.head_track));
+                const editBytes = await storage.get(version.r2_key);
+                if (!editBytes) throw new Error(`${STEP}: edit missing: ${version.r2_key}`);
+                const parsed = parseEdit(
+                  JSON.parse(new TextDecoder().decode(editBytes)) as unknown,
+                  ISSEBYA_PRESET,
+                  transcript,
+                );
+                if (!parsed.ok) {
+                  throw new Error(`${STEP}: stored edit refused: ${parsed.reasons.join("; ")}`);
+                }
+
+                const download = async (ref: EditInputs["footage"], name = ref.file) => {
+                  const key = cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file);
+                  const path = join(dir, "inputs", ref.step, name);
+                  // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
+                  await mkdir(join(dir, "inputs", ref.step), { recursive: true });
+                  if (!(await storage.getFile(key, path, { signal }))) {
+                    throw new Error(`${STEP}: input missing: ${key}`);
+                  }
+                  return path;
+                };
+                // An old version may name the whole-clip cut-out: the page never
+                // uses it, so it is never downloaded. Masks are.
+                const files: Required<RenderFiles> = {
+                  footage: await download(version.inputs.footage),
+                  masks: {},
+                };
+                for (const mask of parsed.edit.inputs.masks ?? []) {
+                  files.masks[maskPath(mask)] = await download(mask, `${mask.fingerprint}.mp4`);
+                }
+                span.setAttributes({
+                  "render.version_number": version.number,
+                  "render.inputs": 1 + (parsed.edit.inputs.masks?.length ?? 0),
+                });
+                return { version, transcript, headTrack, edit: parsed.edit, files };
+              },
+            );
+            const { version, transcript, headTrack, edit, files } = loaded;
+            step?.setAttribute("render.duration_seconds", edit.duration);
+
+            const { projectFiles } = await renderExport({
+              tool,
+              tools,
+              dir,
+              edit,
+              transcript,
+              headTrack,
+              files,
+              env,
+              stage,
+            });
+            inputs.push(...projectFiles);
+
+            // A cancel seen now stops before anything is uploaded.
+            await checkCancelled();
+            signal.throwIfAborted();
+            const id = newId();
+            const key = exportKey(keyPrefix, reelOf(job), id);
             // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
             const { size } = await stat(output);
-            signal.throwIfAborted();
-            // Refused by the database once the job is cancelled.
-            await exports.insert({
-              id,
-              reel_id: reelOf(job),
-              owner_id: job.owner_id,
-              job_id: job.id,
-              version_id: version.id,
-              r2_key: key,
-              bytes: size,
-            });
+            await stage("render.upload", { "render.mp4_bytes": size, "render.key": key }, () =>
+              storage.putFileIfAbsent(key, output, { contentType: "video/mp4" }),
+            );
+            step?.setAttribute("render.mp4_bytes", size);
+            try {
+              signal.throwIfAborted();
+              // Refused by the database once the job is cancelled.
+              await stage("render.save", { "render.export_id": id }, () =>
+                exports.insert({
+                  id,
+                  reel_id: reelOf(job),
+                  owner_id: job.owner_id,
+                  job_id: job.id,
+                  version_id: version.id,
+                  r2_key: key,
+                  bytes: size,
+                }),
+              );
+            } catch (error) {
+              // Uploaded but not recorded: the file is removed, so a cancelled
+              // or failed render leaves no export behind. A cancel turns the
+              // refusal into the abort, so the step writes nothing more.
+              await discardExport?.(key);
+              await checkCancelled();
+              throw error;
+            }
+            return { what: "exported" };
           } catch (error) {
-            // Uploaded but not recorded: the file is removed, so a cancelled
-            // or failed render leaves no export behind. A cancel turns the
-            // refusal into the abort, so the step writes nothing more.
-            await discardExport?.(key);
-            await checkCancelled();
+            if (cancelled()) step?.setAttribute("job.cancelled", true);
             throw error;
           }
-          return { what: "exported" };
         },
       },
       spawnTool,
