@@ -13,6 +13,22 @@ import {
 
 const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
 
+// The fastest of several runs after one warm-up run. A single wall-clock sample
+// also measures whatever the machine did meanwhile: CPU contention from other
+// test workers, a GC pause, a JIT still warming up. Those only ever add time, so
+// the minimum over several runs is the cost of the run itself. A budget on the
+// minimum still fails when the build really gets slower.
+function fastestMs(run: () => unknown, runs = 7): number {
+  run();
+  let fastest = Infinity;
+  for (let i = 0; i < runs; i++) {
+    const started = performance.now();
+    run();
+    fastest = Math.min(fastest, performance.now() - started);
+  }
+  return fastest;
+}
+
 describe("build", () => {
   for (const fixture of FIXTURES) {
     it(`${fixture.name} equals its golden byte for byte`, async () => {
@@ -211,9 +227,9 @@ describe("build", () => {
   it("builds the 50-second hand edit in under 200 ms with a ready measurer", async () => {
     expect(hand.transcript.words).toHaveLength(162);
     const measurer = await nodeMeasurer();
-    build(hand.edit, hand.transcript, hand.headTrack, ISSEBYA_PRESET, measurer);
-    const started = performance.now();
-    build(hand.edit, hand.transcript, hand.headTrack, ISSEBYA_PRESET, measurer);
-    expect(performance.now() - started).toBeLessThan(200);
+    const fastest = fastestMs(() =>
+      build(hand.edit, hand.transcript, hand.headTrack, ISSEBYA_PRESET, measurer),
+    );
+    expect(fastest).toBeLessThan(200);
   });
 });
