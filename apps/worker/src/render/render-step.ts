@@ -40,7 +40,7 @@ import {
 import { inSpan } from "../telemetry.ts";
 import { exportKey } from "./export-key.ts";
 import type { ExportStore } from "./export-store.ts";
-import { type RenderRange, renderCall, renderScratchEnv } from "./render-call.ts";
+import { type RenderRange, renderCall, renderScratchEnv, withChromeTmp } from "./render-call.ts";
 import { type RenderFiles, writeRenderProject } from "./render-project.ts";
 
 export const STEP = "render";
@@ -112,14 +112,18 @@ export async function renderExport({
     await mkdir(folder, { recursive: true });
   }
   // The HyperFrames call is the encode's child: its exec span is under it.
+  // Chrome's short temporary folder exists only for the call (removed on
+  // success, failure and cancel alike).
   await stage(
     "render.encode",
     { "render.duration_seconds": edit.duration },
     async (_span, context) => {
-      await tool({
-        ...renderCall({ tools, dir, projectDir, output, range, env }),
-        parent: context,
-      });
+      await withChromeTmp((chromeTmp) =>
+        tool({
+          ...renderCall({ tools, dir, chromeTmp, projectDir, output, range, env }),
+          parent: context,
+        }),
+      );
     },
   );
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
