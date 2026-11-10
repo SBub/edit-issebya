@@ -15,6 +15,8 @@ export interface ClaimedJob {
   version_id: string | null;
   // The failed job this one retries (the owner's Retry), or null.
   retry_of_job_id?: string | null;
+  // The font pair a relayout job sets the reel in (null for every other kind).
+  font_pair?: string | null;
 }
 
 // The reel a reel's job works on; a job without one (a photo's) is refused,

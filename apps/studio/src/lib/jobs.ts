@@ -8,7 +8,14 @@ export const STEP_COLUMNS =
 // `process` after an upload; `change` carries the owner's words; `restore`
 // goes back to an earlier version; `render` exports a version to an MP4;
 // `start_over` (a temporary testing control) decides again from version 1.
-export const JOB_KINDS = ["process", "change", "restore", "render", "start_over"] as const;
+export const JOB_KINDS = [
+  "process",
+  "change",
+  "restore",
+  "render",
+  "start_over",
+  "relayout",
+] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 // `cancelled`: the owner closed a render's export modal (`cancel_job`).

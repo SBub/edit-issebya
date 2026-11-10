@@ -7,6 +7,7 @@ import { STEP as PHOTO_IMAGES } from "./photos/photo-images.ts";
 import { PIPELINE } from "./pipeline/definition.ts";
 import { CHECK_FOOTAGE_STEP } from "./pipeline/run-pipeline.ts";
 import { STEP as PREVIEW_COPIES } from "./preview-copies-record.ts";
+import { STEP as RELAYOUT } from "./relayout.ts";
 import { STEP as RENDER } from "./render/render-step.ts";
 import { STEP as RESTORE } from "./restore-step.ts";
 import { STEP_NAMES } from "./step-names.ts";
@@ -21,6 +22,7 @@ describe("STEP_NAMES", () => {
     MASK_STEP,
     RESTORE,
     RENDER,
+    RELAYOUT,
     DESCRIBE_PHOTO,
     PHOTO_IMAGES,
   ]);

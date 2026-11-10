@@ -1,3 +1,4 @@
+import { type FontPairId, isFontPairId } from "@edit-issebya/edit";
 import type { ClaimedJob } from "./queue.ts";
 
 // What each job kind runs, injected so the dispatch is testable without a
@@ -14,13 +15,16 @@ export interface KindRunners {
   // Start over (temporary, for testing): only the decide step, from version
   // 1 with no request, saved as a new version.
   start_over: () => Promise<void>;
+  // The reel's current version placed again in this font pair, with no AI call.
+  relayout: (fontPair: FontPairId) => Promise<void>;
 }
 
 // Runs the work of one claimed job by its kind. A change job (the change box
 // is removed, app_docs/change-requests.md), a restore or a render without a
-// version, a describe_photo without a photo and any other kind fail the job.
+// version, a describe_photo without a photo, a relayout without a font pair
+// and any other kind fail the job.
 export function runJobKind(
-  job: Pick<ClaimedJob, "kind" | "restore_version_id" | "version_id" | "photo_id">,
+  job: Pick<ClaimedJob, "kind" | "restore_version_id" | "version_id" | "photo_id" | "font_pair">,
   runners: KindRunners,
 ): Promise<void> {
   switch (job.kind) {
@@ -39,6 +43,9 @@ export function runJobKind(
       return runners.describe_photo(job.photo_id);
     case "start_over":
       return runners.start_over();
+    case "relayout":
+      if (!isFontPairId(job.font_pair)) throw new Error("relayout job has no font pair");
+      return runners.relayout(job.font_pair);
     default:
       throw new Error(`unknown job kind: ${job.kind}`);
   }
