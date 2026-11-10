@@ -17,6 +17,10 @@ export interface ClaimedJob {
   retry_of_job_id?: string | null;
   // The font pair a relayout job sets the reel in (null for every other kind).
   font_pair?: string | null;
+  // When the job was queued, and when this claim took it (claim_job returns
+  // the whole row): the job span's queue wait.
+  created_at?: string;
+  started_at?: string | null;
 }
 
 // The reel a reel's job works on; a job without one (a photo's) is refused,

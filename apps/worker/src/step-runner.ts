@@ -32,6 +32,7 @@ import {
   type Telemetry,
   emitFailureLog,
   failureAttributes,
+  runUnderSpan,
   stepLogger,
   targetAttributes,
 } from "./telemetry.ts";
@@ -244,10 +245,9 @@ async function withStep(
     );
     const started = stepClock(ctx)();
     try {
-      const { summary, measurements } = await body(
-        trace.setSpan(ctx.jobContext, span),
-        started,
-        stepId,
+      const stepContext = trace.setSpan(ctx.jobContext, span);
+      const { summary, measurements } = await runUnderSpan(stepContext, () =>
+        body(stepContext, started, stepId),
       );
       ctx.signal.throwIfAborted();
       setMeasurementAttributes(span, measurements);

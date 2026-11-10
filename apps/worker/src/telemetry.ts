@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   type Attributes,
   type Context,
@@ -158,6 +159,14 @@ export function createTelemetry(
   };
 }
 
+// `job.queue_wait_ms`: from the job's creation to this claim (`started_at` is
+// set by claim_job, on every claim). Left out when either time is not known.
+function queueWaitAttributes(job: Pick<ClaimedJob, "created_at" | "started_at">): Attributes {
+  if (!job.created_at || !job.started_at) return {};
+  const waited = Date.parse(job.started_at) - Date.parse(job.created_at);
+  return Number.isFinite(waited) && waited >= 0 ? { "job.queue_wait_ms": waited } : {};
+}
+
 // The job span. A reel's job is a root span in the reel's trace (trace id = the
 // reel id without dashes), so every job of the reel, at any time, lands in the
 // same trace as a top-level block with no parent span id. With the reel's size,
@@ -177,6 +186,7 @@ export function startJobSpan(
       ...targetAttributes(job),
       "job.id": job.id,
       "job.attempt": job.attempts,
+      ...queueWaitAttributes(job),
       ...(size ? reelSizeAttributes(size.current()) : {}),
     },
   };
@@ -204,6 +214,23 @@ export function endJobSpan(span: Span, outcome: string, size?: ReelSizeHolder): 
   span.end();
 }
 
+// The span the running work belongs to (its Context), for code that is handed
+// no Context: the storage wrapper (traced-storage.ts) reads it to put a read or
+// a write under the step or the stage that made it. It is not OpenTelemetry's
+// global context manager (none is registered); only `runUnderSpan` sets it.
+const activeSpan = new AsyncLocalStorage<Context>();
+
+// Runs `work` with `context` as the active span's Context, for everything it
+// awaits.
+export function runUnderSpan<T>(context: Context, work: () => T): T {
+  return activeSpan.run(context, work);
+}
+
+// The Context of the step or stage that is running, if any.
+export function activeSpanContext(): Context | undefined {
+  return activeSpan.getStore();
+}
+
 // Runs `work` in a span of its own, a child of `parent` (a Context carrying
 // the span it belongs to). `work` gets the span, to set attributes on it, and
 // its Context, the parent of any span it starts. A thrown error marks the span
@@ -220,8 +247,9 @@ export async function inSpan<T>(
   { cancelled }: { cancelled?: () => boolean } = {},
 ): Promise<T> {
   const span = telemetry.tracer.startSpan(name, { attributes }, parent);
+  const context = trace.setSpan(parent, span);
   try {
-    return await work(span, trace.setSpan(parent, span));
+    return await runUnderSpan(context, () => work(span, context));
   } catch (error) {
     if (cancelled?.()) {
       span.setAttribute("job.cancelled", true);

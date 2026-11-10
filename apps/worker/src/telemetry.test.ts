@@ -378,6 +378,41 @@ describe("reel size attributes", () => {
   });
 });
 
+describe("job.queue_wait_ms", () => {
+  function jobSpanAttributes(times: { created_at?: string; started_at?: string | null }) {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const { span } = startJobSpan(telemetry, { ...TEST_JOB, ...times });
+    endJobSpan(span, "done");
+    return exporter.getFinishedSpans()[0]?.attributes ?? {};
+  }
+
+  it("is the time from the job's creation to its claim", () => {
+    expect(
+      jobSpanAttributes({
+        created_at: "2026-11-10T10:00:00.000Z",
+        started_at: "2026-11-10T10:00:02.500Z",
+      })["job.queue_wait_ms"],
+    ).toBe(2500);
+  });
+
+  it("is left out when a time is missing or the two are out of order", () => {
+    expect(jobSpanAttributes({})).not.toHaveProperty("job.queue_wait_ms");
+    expect(
+      jobSpanAttributes({ created_at: "2026-11-10T10:00:00.000Z", started_at: null }),
+    ).not.toHaveProperty("job.queue_wait_ms");
+    expect(
+      jobSpanAttributes({
+        created_at: "2026-11-10T10:00:05.000Z",
+        started_at: "2026-11-10T10:00:00.000Z",
+      }),
+    ).not.toHaveProperty("job.queue_wait_ms");
+  });
+});
+
 describe("inSpan", () => {
   it("runs the work in a child span of the parent, with its attributes and context", async () => {
     const exporter = new InMemorySpanExporter();
