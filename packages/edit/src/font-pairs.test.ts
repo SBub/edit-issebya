@@ -1,5 +1,10 @@
 import { readFile, readdir } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import { build } from "./build.ts";
+import { ISSEBYA_PRESET } from "./preset.ts";
+import { parseEdit, type Edit } from "./schema.ts";
+import { FIXTURES } from "./test-support/fixtures.ts";
+import { nodeMeasurer } from "./test-support/measurer.node.ts";
 import {
   DEFAULT_FONT_PAIR_ID,
   FONT_PAIR_IDS,
@@ -83,5 +88,32 @@ describe("font files", () => {
       expect(files.length, id).toBeLessThanOrEqual(FONT_ROLES.length);
     }
     expect(allFontFiles().some((file) => /Raleway|GolosText/.test(file))).toBe(false);
+  });
+});
+
+describe("a version's font pair", () => {
+  const fixture = FIXTURES.find((item) => item.name === "rethink-work-engine")!;
+
+  it("is recorded on the edit and refused when missing, with the reason, never read as classic", () => {
+    expect(fixture.edit.font_pair).toBe("classic");
+    const stored = structuredClone(fixture.edit) as Partial<Edit>;
+    delete stored.font_pair;
+    const parsed = parseEdit(stored, ISSEBYA_PRESET, fixture.transcript);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.ok ? [] : parsed.reasons).toEqual([
+      expect.stringMatching(/^font_pair: a font pair is required/),
+    ]);
+  });
+
+  it("refuses an unknown pair id", () => {
+    const stored = { ...structuredClone(fixture.edit), font_pair: "primary" };
+    expect(parseEdit(stored, ISSEBYA_PRESET, fixture.transcript).ok).toBe(false);
+  });
+
+  it("is refused by the builder when the measurer shaped another pair", async () => {
+    const measurer = await nodeMeasurer(FONT_PAIRS.script);
+    expect(() =>
+      build(fixture.edit, fixture.transcript, fixture.headTrack, ISSEBYA_PRESET, measurer),
+    ).toThrow(/set in classic, measured in script/);
   });
 });

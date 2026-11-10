@@ -2372,7 +2372,7 @@ const ONE_SECOND: Transcript = {
 function oneSecondReel(): Edit {
   const base = baselineEdit(
     ONE_SECOND,
-    { inputs: baselineInputs().inputs, duration: 1 },
+    { inputs: baselineInputs().inputs, duration: 1, fontPair: "classic" },
     ISSEBYA_PRESET,
   );
   return {

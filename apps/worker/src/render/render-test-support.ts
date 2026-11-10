@@ -12,6 +12,7 @@ import {
   pickVariants,
   placeEdit,
   transcriptSchema,
+  DEFAULT_FONT_PAIR_ID,
 } from "@edit-issebya/edit";
 import { editMeasurer } from "../edit-measurer.ts";
 
@@ -63,7 +64,7 @@ export async function fixtureEdit(): Promise<{
   const retime = (await json("retime", "retime.json")) as { durationSeconds: number };
   const baseline = baselineEdit(
     transcript,
-    { inputs, duration: retime.durationSeconds },
+    { inputs, duration: retime.durationSeconds, fontPair: DEFAULT_FONT_PAIR_ID },
     ISSEBYA_PRESET,
   );
   const { tracks } = placeEdit(
@@ -73,7 +74,7 @@ export async function fixtureEdit(): Promise<{
     transcript,
     headTrack,
     ISSEBYA_PRESET,
-    await editMeasurer(),
+    await editMeasurer(baseline.font_pair),
   );
   return { inputs, transcript, headTrack, edit: { ...baseline, tracks } };
 }

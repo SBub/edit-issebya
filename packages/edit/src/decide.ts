@@ -270,9 +270,15 @@ export function editFromAnswer(
     preset,
     measurer,
   );
+  if (measurer.pair.id !== current.font_pair) {
+    throw new Error(
+      `editFromAnswer: the edit is set in ${current.font_pair}, measured in ${measurer.pair.id}`,
+    );
+  }
   const json = {
     format: 1,
     preset: preset.id,
+    font_pair: current.font_pair,
     duration: current.duration,
     inputs,
     tracks,

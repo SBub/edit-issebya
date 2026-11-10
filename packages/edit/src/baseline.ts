@@ -1,3 +1,4 @@
+import type { FontPairId } from "./font-pairs.ts";
 import { type Preset, cleanWord } from "./preset.ts";
 import type { CaptionItem, Edit, EditInputs } from "./schema.ts";
 import type { Transcript, Word } from "./transcript.ts";
@@ -59,7 +60,7 @@ function groups(list: Word[][], preset: Preset): Word[][][] {
 // (the layout engine sets them: `placeEdit`), no accents, transitions or sounds.
 export function baselineEdit(
   transcript: Transcript,
-  { inputs, duration }: { inputs: EditInputs; duration: number },
+  { inputs, duration, fontPair }: { inputs: EditInputs; duration: number; fontPair: FontPairId },
   preset: Preset,
 ): Edit {
   const captions: CaptionItem[] = [];
@@ -78,6 +79,7 @@ export function baselineEdit(
   return {
     format: 1,
     preset: preset.id,
+    font_pair: fontPair,
     duration: Math.round(duration * 1000) / 1000,
     inputs,
     tracks: {

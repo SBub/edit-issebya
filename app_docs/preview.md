@@ -41,11 +41,12 @@ clicks through Web Audio. It is built and tested for Chrome.
   entry as `{ path: maskPath(mask), key }`, step `cutout`) and `photoIds` (`inputs.photos`, each a
   uuid); a version without them has none, and a malformed list fails the whole read.
 - `apps/studio/src/app/api/edit-assets/[...path]/route.ts` and `src/lib/edit-assets.ts`: serve the
-  preset's fonts and click sound from `packages/edit/assets/` (allow-list taken from `ISSEBYA_PRESET`,
+  every font pair's files and the preset's click sound from `packages/edit/assets/` (allow-list: `allFontFiles()` and the preset,
   404 for anything else, immutable cache). `outputFileTracingIncludes` in `apps/studio/next.config.ts`
   traces the files into the server output.
 - `apps/studio/src/components/ReelPreview.tsx`: loads the sources, fetches the edit, transcript, head
-  track and fonts, loads `harfbuzzjs` by client-only dynamic import, calls `createMeasurer` and `build`
+  track and the two font files of the version's own `font_pair` (fetched once per page load and pair), loads
+  `harfbuzzjs` by client-only dynamic import, calls `createMeasurer(hb, pair, fonts)` and `build`
   from `@edit-issebya/edit`, runs `previewPage`, fetches the sound files `soundHits` names, and hands
   everything to the player. `photo-missing` shows `A photo in this version was deleted from the
 library` and `cutout-cleared` shows `This version's cut-out was cleared to save space; Export

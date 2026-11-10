@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  DEFAULT_FONT_PAIR_ID,
   FONT_PAIRS,
   FONT_ROLES,
   type FontPair,
@@ -98,12 +97,10 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
     return { forVersion: versionId, status: "message", message: MESSAGES[sources.status] };
   }
   const { urls } = sources;
-  const pair = FONT_PAIRS[DEFAULT_FONT_PAIR_ID];
-  const [editJson, transcriptJson, headTrackJson, fontBytes, hb] = await Promise.all([
+  const [editJson, transcriptJson, headTrackJson, hb] = await Promise.all([
     fetchOk(urls.edit).then((r) => r.json() as Promise<unknown>),
     fetchOk(urls.transcript).then((r) => r.json() as Promise<unknown>),
     fetchOk(urls.headTrack).then((r) => r.json() as Promise<unknown>),
-    loadFonts(pair),
     import("harfbuzzjs"),
   ]);
   const transcript = transcriptSchema.parse(transcriptJson);
@@ -111,6 +108,9 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
   const parsed = parseEdit(editJson, ISSEBYA_PRESET, transcript);
   if (!parsed.ok) throw new Error(`edit refused: ${parsed.reasons.join("; ")}`);
   const { edit } = parsed;
+  // The version's own pair: its files are the ones the page loads and measures.
+  const pair = FONT_PAIRS[edit.font_pair];
+  const fontBytes = await loadFonts(pair);
   const result = build(
     edit,
     transcript,

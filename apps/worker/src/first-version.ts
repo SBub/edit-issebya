@@ -11,6 +11,7 @@ import {
   placeEdit,
   saveVersion,
   transcriptSchema,
+  DEFAULT_FONT_PAIR_ID,
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import { editMeasurer } from "./edit-measurer.ts";
@@ -103,10 +104,10 @@ export async function saveFirstVersion({
       }
       const baseline = baselineEdit(
         transcript,
-        { inputs, duration: retime.durationSeconds },
+        { inputs, duration: retime.durationSeconds, fontPair: DEFAULT_FONT_PAIR_ID },
         ISSEBYA_PRESET,
       );
-      const measurer = await editMeasurer();
+      const measurer = await editMeasurer(baseline.font_pair);
       const { tracks, record } = placeEdit(
         baseline,
         NO_CHOICES,

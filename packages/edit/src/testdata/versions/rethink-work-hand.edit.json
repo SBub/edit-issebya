@@ -1,6 +1,7 @@
 {
   "format": 1,
   "preset": "issebya",
+  "font_pair": "classic",
   "duration": 47.526,
   "inputs": {
     "footage": {

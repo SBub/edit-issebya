@@ -88,6 +88,9 @@ export function build(
   measurer: Measurer,
   options: BuildOptions = {},
 ): BuildResult {
+  if (edit.font_pair !== measurer.pair.id) {
+    throw new Error(`build: the edit is set in ${edit.font_pair}, measured in ${measurer.pair.id}`);
+  }
   const resolved = resolveTimeline(edit, transcript);
   // A caption a text shows is left out only while that text is on screen.
   const hidden = hiddenCaptionIds(edit, resolved);

@@ -65,7 +65,13 @@ export async function renderExport({
   range,
   env,
 }: RenderExport): Promise<{ output: string; projectFiles: string[] }> {
-  const { html, assets } = build(edit, transcript, headTrack, ISSEBYA_PRESET, await editMeasurer());
+  const { html, assets } = build(
+    edit,
+    transcript,
+    headTrack,
+    ISSEBYA_PRESET,
+    await editMeasurer(edit.font_pair),
+  );
   const projectDir = join(dir, "project");
   const projectFiles = await writeRenderProject({ dir: projectDir, html, assets, files });
   const output = join(dir, "export.mp4");

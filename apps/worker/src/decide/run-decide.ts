@@ -25,6 +25,7 @@ import {
   saveVersion,
   transcriptSchema,
   usedFreeField,
+  type FontPairId,
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import { type AiRunner, NO_USAGE } from "../ai.ts";
@@ -71,7 +72,7 @@ export interface DecideRun {
   // of the current one (the reel's version 1); the new version's parent is
   // still the current one. Null or absent: from the current version.
   startFrom?: string | null;
-  measurer?: () => Promise<Measurer>;
+  measurer?: (pair: FontPairId) => Promise<Measurer>;
   newId?: () => string;
   // For the cut-out a behind item needs before the version is saved.
   tools?: ToolPaths;
@@ -208,7 +209,7 @@ export function runDecide({
         const schema = decideJsonSchema(preset, transcript);
         return {
           schema,
-          measure: await measurer(),
+          measure: await measurer(current.font_pair),
         };
       });
       const { schema, measure } = prepared;

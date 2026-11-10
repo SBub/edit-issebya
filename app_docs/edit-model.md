@@ -25,7 +25,7 @@ types until slice 9 brings the live preview.
 
 ### Format
 
-- `src/schema.ts`: `edit.json`, format 1: `format`, `preset` (`"issebya"`), `duration`, `inputs`
+- `src/schema.ts`: `edit.json`, format 1: `format`, `preset` (`"issebya"`), `font_pair` (required: one of the six pair ids, `src/font-pairs.ts`; a version without it fails to parse with that reason, never read as classic), `duration`, `inputs`
   (the pipeline outputs it was made from, each `{ step, fingerprint, file }`: `footage`,
   `transcript`, `head_track`) and `tracks`: `footage`, `captions`, `overlays`
   (`kind: "accent"`, or `kind: "hook"` for the written hook, below), `transitions` (the LIST items, `numbered`, the only kind, each with its `list` and `number`), `sounds` (`click`) and the optional
