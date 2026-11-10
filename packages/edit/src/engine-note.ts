@@ -106,6 +106,7 @@ const RULE_OF: Record<string, string> = {
   "caption-min": "timing",
   "transition-min": "timing",
   "transition-time": "timing",
+  "transition-next-text": "timing",
   "hook-time": "timing",
   "accent-time": "timing",
   "big-word-time": "timing",

@@ -328,6 +328,34 @@ function placeOnce(
         });
       }),
     );
+    // A layer's out-fade never runs past the next text's start (spec decision
+    // 25): the layer ends at that start, or one fade past its last word when
+    // that comes first, and build.ts fades it over the time left. A text that
+    // starts while the phrase is still spoken does not cut it: the layer then
+    // ends at its last word's end (rule 3, everything spoken stays on screen).
+    // A lengthened layer (a phrase with no length) keeps its floor.
+    const textStarts = [
+      ...current.tracks.captions.map((caption) => resolveAnchor(caption.start, byId, duration)),
+      ...extras.filter((extra) => extra.kind !== "visual").map((extra) => extra.start),
+      ...kept.map((plan) => plan.start),
+    ];
+    for (const plan of kept) {
+      const spokenEnd = ms(Math.min(word(plan.choice.to).end, duration));
+      if (spokenEnd - ms(word(plan.choice.from).start) <= SLACK) continue;
+      const next = textStarts
+        .filter((time) => time >= spokenEnd - SLACK && time < plan.end - SLACK)
+        .reduce((best, time) => Math.min(best, time), Infinity);
+      if (next === Infinity) continue;
+      const end = ms(Math.max(spokenEnd, next));
+      record.push({
+        item: plan.id,
+        action: "retimed",
+        rule: "transition-next-text",
+        reason: `${plan.label} ends at ${at(end)}: the next text starts at ${at(next)}`,
+      });
+      plan.end = end;
+      plan.endAnchor = anchorAt(end, transcript.words);
+    }
     // A list's kept items number 1, 2, ... in reel order (as the speaker goes
     // through them); a list left with one kept item shows no number.
     const itemsOf = new Map<number, TransitionPlan[]>();

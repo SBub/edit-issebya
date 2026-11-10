@@ -3202,7 +3202,7 @@
         "end": {
           "word": "w103",
           "edge": "end",
-          "offset": 0.3
+          "offset": 0.171
         },
         "type": "numbered",
         "words": [
@@ -3267,8 +3267,7 @@
         },
         "end": {
           "word": "w108",
-          "edge": "end",
-          "offset": 0.3
+          "edge": "end"
         },
         "type": "numbered",
         "words": [
@@ -3288,11 +3287,11 @@
               "offset": -0.004
             },
             "position": {
-              "x": 478,
-              "y": 1049,
+              "x": 477,
+              "y": 1045,
               "align": "left"
             },
-            "size": 242
+            "size": 245
           },
           "lead": {
             "text": "protected",
@@ -3301,7 +3300,7 @@
             },
             "position": {
               "x": 444,
-              "y": 1315,
+              "y": 1314,
               "align": "left"
             },
             "size": 40
@@ -3312,11 +3311,11 @@
               "word": "w107"
             },
             "position": {
-              "x": 261,
-              "y": 1379,
+              "x": 258,
+              "y": 1378,
               "align": "left"
             },
-            "size": 89
+            "size": 90
           }
         }
       }

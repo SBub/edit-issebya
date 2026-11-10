@@ -228,8 +228,11 @@ and rule 6 (`engine-place.ts`).
   opacity while spoken (spec decision 25). No hold after the phrase and no minimum; only a phrase with no length at all is lengthened
   to the shown floor (`SHOWN_FLOOR_SECONDS`, 0.5 s, from its first word, earlier where the reel ends,
   `transition-min`). On a reel under the floor it gives null and the layer covers the whole reel
-  (`transition-time`). No other text moves or cuts it: a text said at the same time is placed around it,
-  and only the same-text rule trims a list that repeats a word another pick shows at that moment.
+  (`transition-time`). The next text's start clips its out-fade: the layer ends there when that comes before
+  one fade past its last word (`transition-next-text`, `engine.ts`), and build.ts fades it over the time left,
+  never inside the spoken time. A text said while the phrase is still spoken does not cut it, and no text moves
+  it: a text said at the same time is placed around it, and only the same-text rule trims a list that repeats a
+  word another pick shows at that moment.
 - Claude gives the LIST as `lists: [{ items: [{ from, to, key_from }] }]`: each list has one or more
   items, and no item has a kind (every LIST item is numbered; `TRANSITION_KINDS` is the stored type only).
   The engine writes each item as a transition item with `words`, `key`, `list` (the list's place in the

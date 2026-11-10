@@ -319,17 +319,22 @@ export function build(
       }
       body.push("      </div>");
     }
-    const out = Math.max(end - seconds, start);
+    // The out-fade runs over `seconds` before the layer's end, never inside the
+    // phrase's spoken time: a layer the engine clipped at the next text's start
+    // (`engine.ts`) fades over the time left, and a hard cut where it has none.
+    const lastWord = transcript.words.find((word) => word.id === item.words!.at(-1))!;
+    const out = Math.min(Math.max(end - seconds, start, lastWord.end), end);
+    const fade = num(end - out);
     const id = selector(item.id);
     if (kind.motion === "fade") {
       js.push(
         `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
-        `tl.to(${id}, { opacity: 0, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
+        `tl.to(${id}, { opacity: 0, duration: ${fade}, ease: "${kind.ease}" }, ${num(out)});`,
       );
     } else {
       js.push(
         `tl.fromTo(${id}, { y: ${height} }, { y: 0, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
-        `tl.to(${id}, { y: ${height}, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
+        `tl.to(${id}, { y: ${height}, duration: ${fade}, ease: "${kind.ease}" }, ${num(out)});`,
       );
     }
   }

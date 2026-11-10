@@ -36,7 +36,8 @@ export interface TransitionTiming {
 // as the word is spoken, never before 0. Its out-fade runs over the
 // `kind.seconds` after the phrase's last word's end (the span ends one fade
 // past the last word), so the phrase is at full opacity for all of its spoken
-// time; no hold and no minimum, and no other text moves or cuts it. Only a
+// time; no hold and no minimum. The engine clips the layer at the next text's
+// start (`engine.ts`, spec decision 25), and no other text moves it. Only a
 // phrase with no length at all is lengthened, to the shown floor from its
 // first word (earlier where the reel ends); a reel under the floor gives null.
 // The out-fade is clipped where the reel ends.

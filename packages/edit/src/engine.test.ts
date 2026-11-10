@@ -22,7 +22,7 @@ import { FIXTURES } from "./test-support/fixtures.ts";
 import { baselineInputs } from "./test-support/inputs.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 import { LEFT_HEAD, REQUEST_ANSWER } from "./test-support/request.ts";
-import { resolveTimeline } from "./timeline.ts";
+import { resolveAnchor, resolveTimeline } from "./timeline.ts";
 import { type Transcript, sentenceSpans } from "./transcript.ts";
 import { levelBoxes } from "./transitions.ts";
 import { pickVariants } from "./variant-picker.ts";
@@ -160,6 +160,20 @@ const leadOf = (id: string) => Math.round((byId.get(id)!.start - LEAD) * 1000) /
 // A word's start and end.
 const start = (id: string) => byId.get(id)!.start;
 const end = (id: string) => byId.get(id)!.end;
+// A LIST layer's end (spec decision 25): one out-fade past its last word, or
+// the start of the next text that comes first, when that is later than the
+// word. The next text is any span starting from the word's end on; visuals are
+// no text.
+function listEnd(spans: ReturnType<typeof resolveTimeline>, id: string, last: string): number {
+  const spoken = end(last);
+  const next = [...spans]
+    .filter(
+      ([other, span]) =>
+        other !== id && !other.startsWith("visual-") && span.start >= spoken - 1e-6,
+    )
+    .reduce((best, [, span]) => Math.min(best, span.start), Infinity);
+  return ms(Math.max(spoken, Math.min(spoken + ENTRANCE, next)));
+}
 
 describe("the layout engine's timing", () => {
   it("shows each caption from its word, the group until its last word or 0.25 s, never into the next group", async () => {
@@ -731,25 +745,27 @@ describe("the layout engine's placement", () => {
         }
         // The hook runs its whole window; an accent, question or list ends at
         // its last word's end, whatever shows with it; a LIST's layer runs one
-        // out-fade past its last word, so its words are at full opacity while
-        // spoken. The only retimes are the reel's end, a cut and the same-text
-        // trims.
+        // out-fade past its last word, or ends at the next text's start when
+        // that comes first, so its words are at full opacity while spoken. The
+        // only retimes are the reel's end, a cut, the same-text trims and that
+        // clip.
         expect(spans.get("hook")).toMatchObject({ start: 0.2, end: 3 });
-        const fadeOf = (id: string) =>
-          edit.tracks.transitions.some((item) => item.id === id)
-            ? ISSEBYA_PRESET.transitions.numbered.seconds
-            : 0;
         for (const item of [...edit.tracks.overlays, ...edit.tracks.transitions]) {
           if (item.id === "hook") continue;
+          const last = item.words!.at(-1)!;
+          const layer = edit.tracks.transitions.some((other) => other.id === item.id);
           expect(spans.get(item.id)!.end, item.id).toBeCloseTo(
-            end(item.words!.at(-1)!) + fadeOf(item.id),
+            layer ? listEnd(spans, item.id, last) : end(last),
             3,
           );
         }
         expect(
           record.filter(
             (note) =>
-              note.rule === "timing" && note.component !== "CAPTION" && note.outcome === "retimed",
+              note.rule === "timing" &&
+              note.component !== "CAPTION" &&
+              note.outcome === "retimed" &&
+              !note.reason.includes("the next text starts at"),
           ),
         ).toEqual([]);
         expect(checks.filter((check) => check.rule === "text-overlap")).toEqual([]);
@@ -1304,12 +1320,13 @@ describe("transitions", () => {
     const { spans, levels, edit, html, checks } = await place({ lists: [{ items: [LIST] }] });
     const span = spans.get("transition-1")!;
     expect(span.start).toBe(ms(start("w26") - ENTRANCE));
-    // The out-fade (the same seconds) runs after w33: the layer is at full
-    // opacity while w33 is spoken.
-    expect(span.end).toBe(ms(end("w33") + ENTRANCE));
-    expect(edit.tracks.transitions[0]).toMatchObject({
-      end: { word: "w33", edge: "end", offset: ENTRANCE },
-    });
+    // The out-fade (the same seconds) runs after w33, the layer at full opacity
+    // while w33 is spoken, unless the next text starts first (listEnd).
+    expect(span.end).toBe(listEnd(spans, "transition-1", "w33"));
+    expect(resolveAnchor(edit.tracks.transitions[0]!.end, byId, edit.duration)).toBeCloseTo(
+      span.end,
+      3,
+    );
     expect(edit.tracks.transitions[0]).toMatchObject({
       type: "numbered",
       words: ["w26", "w27", "w28", "w29", "w30", "w31", "w32", "w33"],
@@ -1332,6 +1349,26 @@ describe("transitions", () => {
     }
     expect(html).toContain('id="transition-1-lead"');
     expect(checks).toEqual([]);
+  });
+
+  it("ends its out-fade at the next text's start when that comes first: the fade runs over the time left, the phrase full", async () => {
+    // Caption w34 starts before w33's out-fade would end (spec decision 25):
+    // the layer is gone as w34's caption starts, and it fades over the time
+    // left after w33 is spoken, not inside its words.
+    const { spans, edit, html } = await place({ lists: [{ items: [LIST] }] });
+    const span = spans.get("transition-1")!;
+    const next = spans.get("cw34")!;
+    expect(next.start).toBeLessThan(end("w33") + ENTRANCE);
+    expect(span.end).toBeCloseTo(next.start, 3);
+    expect(span.end).toBeGreaterThanOrEqual(end("w33") - 1e-6);
+    expect(resolveAnchor(edit.tracks.transitions[0]!.end, byId, edit.duration)).toBeCloseTo(
+      span.end,
+      3,
+    );
+    const fade = ms(span.end - end("w33"));
+    expect(html).toContain(
+      `tl.to("#transition-1", { opacity: 0, duration: ${fade.toFixed(3)}, ease: "power2.out" }, ${end("w33").toFixed(3)});`,
+    );
   });
 
   it("does not hold after its phrase: it leaves at the last word's end, before a long pause", async () => {
@@ -1357,10 +1394,15 @@ describe("transitions", () => {
     const span = spans.get("transition-1")!;
     expect([span.start, span.end]).toEqual([
       ms(start("w26") - ENTRANCE),
-      ms(end("w27") + ENTRANCE),
+      listEnd(spans, "transition-1", "w27"),
     ]);
     expect(
-      record.filter((note) => note.item === "transition-1" && note.outcome === "retimed"),
+      record.filter(
+        (note) =>
+          note.item === "transition-1" &&
+          note.outcome === "retimed" &&
+          !note.reason.includes("the next text starts at"),
+      ),
     ).toEqual([]);
     expect(checks).toEqual([]);
   });
@@ -1374,7 +1416,10 @@ describe("transitions", () => {
     });
     const key = levels.find((level) => level.role === "key")!;
     const span = spans.get("transition-1")!;
-    expect(span.end - ENTRANCE).toBeCloseTo(end("w30"), 3);
+    // Full through its word: the layer ends no earlier than the word's end, and
+    // at the next text's start when that comes first (listEnd).
+    expect(span.end).toBeGreaterThanOrEqual(end("w30") - 1e-6);
+    expect(span.end).toBe(listEnd(spans, "transition-1", "w30"));
     expect(key.start + key.reveal).toBeLessThanOrEqual(end("w30") + 1e-6);
     expect(key.reveal).toBeCloseTo(
       Math.min(ISSEBYA_PRESET.caption.inSeconds, end("w30") - start("w30")),
@@ -1874,7 +1919,7 @@ describe("text picks share the screen in time", () => {
     expect(accent).toMatchObject({ start: start("w24"), end: end("w26") });
     expect(list).toMatchObject({
       start: ms(start("w27") - ENTRANCE),
-      end: ms(end("w33") + ENTRANCE),
+      end: listEnd(placed.spans, "transition-1", "w33"),
     });
     expect(placed.edit.tracks.transitions[0]!.words[0]).toBe("w27");
     expect(placed.record).toContainEqual(
@@ -1899,7 +1944,7 @@ describe("text picks share the screen in time", () => {
     expect(placed.spans.has("accent-1")).toBe(false);
     expect(placed.spans.get("transition-1")).toMatchObject({
       start: ms(start("w26") - ENTRANCE),
-      end: ms(end("w33") + ENTRANCE),
+      end: listEnd(placed.spans, "transition-1", "w33"),
     });
     expect(placed.record).toContainEqual(
       expect.objectContaining({
@@ -1922,12 +1967,17 @@ describe("text picks share the screen in time", () => {
     });
     expect(placed.spans.get("transition-1")).toMatchObject({
       start: ms(start("w22") - ENTRANCE),
-      end: ms(end("w27") + ENTRANCE),
+      end: listEnd(placed.spans, "transition-1", "w27"),
     });
     expect(placed.spans.get("big-word-1")!.start).toBeCloseTo(leadOf("w28"), 3);
     expect(placed.spans.get("big-word-1")!.start).toBeLessThan(end("w27"));
     expect(
-      placed.record.filter((note) => note.item === "transition-1" && note.outcome === "retimed"),
+      placed.record.filter(
+        (note) =>
+          note.item === "transition-1" &&
+          note.outcome === "retimed" &&
+          !note.reason.includes("the next text starts at"),
+      ),
     ).toEqual([]);
     for (const id of ["cw25", "cw27"]) {
       const caption = placed.edit.tracks.captions.find((item) => item.id === id)!;
@@ -1976,7 +2026,7 @@ describe("text picks share the screen in time", () => {
     const word = placed.spans.get("big-word-1")!;
     expect(item).toMatchObject({
       start: ms(start("w23") - ENTRANCE),
-      end: ms(end("w25") + ENTRANCE),
+      end: listEnd(placed.spans, "transition-1", "w25"),
     });
     expect(word.start).toBeCloseTo(leadOf("w26"), 3);
     expect(word.end).toBeCloseTo(leadOf("w26") + BIG_WORD.minimum, 3);
@@ -1985,7 +2035,8 @@ describe("text picks share the screen in time", () => {
       placed.record.filter(
         (note) =>
           (note.item === "transition-1" || note.item === "big-word-1") &&
-          note.outcome === "retimed",
+          note.outcome === "retimed" &&
+          !note.reason.includes("the next text starts at"),
       ),
     ).toEqual([]);
     expect(placed.edit.tracks.transitions[0]!.levels!.key.text).toBe("what we do");
@@ -2292,7 +2343,7 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
     expect(placed.spans.get("hook")).toMatchObject({ start: 0.2, end: 3 });
     expect(placed.spans.get("transition-1")).toMatchObject({
       start: ms(start("w4") - ENTRANCE),
-      end: ms(end("w9") + ENTRANCE),
+      end: listEnd(placed.spans, "transition-1", "w9"),
     });
     expect(placed.record).toContainEqual(
       expect.objectContaining({
