@@ -260,9 +260,11 @@ export function build(
     body.push("      </div>");
   }
   // Above the footage and the composites, under transitions and text, each
-  // with its own hard cut in and out.
+  // with its own hard cut in and out. A VISUAL's card is track 30; a big word
+  // with no cut-out is front text, drawn above the cards (track 31, decision 24).
   for (const item of overFootage) {
-    body.push(`      ${behindElement(item, span(item.id), bigWords.get(item.id), preset, "30")}`);
+    const track = item.kind === "word" ? "31" : "30";
+    body.push(`      ${behindElement(item, span(item.id), bigWords.get(item.id), preset, track)}`);
   }
 
   const { caption } = preset;

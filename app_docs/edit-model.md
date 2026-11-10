@@ -140,7 +140,8 @@ and rule 6 (`engine-place.ts`).
   `gain_db ?? gainDb`), at least 0.25 s apart.
 - Behind (`behind`): `padFrames` 3 and `frameRate` 30: the cut-out covers each big word that needs one plus 3 frames
   on each side. A big word needs it only where the head reaches it (`bigWordNeedsCutout`, the box's bottom
-  below the highest head top over its padded span less `HAIR_MARGIN` 20 px); no head in the span, no cut-out. The big word's font and colour are the `bigWord` style's; its face rule (30% of its
+  below the highest robust face's top (`facesOver`, the faces the placer reads) over its padded span less
+  `HAIR_MARGIN` 20 px); no head sample in the span, no cut-out. The big word's font and colour are the `bigWord` style's; its face rule (30% of its
   height at most behind the head) is rule 6 in `engine-place.ts`. A VISUAL's card is the `visual/card`
   entry's: a white stroke of 8 px (the style's `stroke.px`, read by the builder's `.visual` rule), its
   width a third of the frame, its height the stand-in picture's own aspect (no crop), its timing 1 s to 2 s (`words-min-max`), a short beat rather than a
@@ -207,8 +208,8 @@ and rule 6 (`engine-place.ts`).
   footage copy times the mask (the person back in front). Every layer is a plain timed element, so
   the player and the render's frame injector show the same pixels. A span with no matching entry
   in `inputs.masks` (start and end within half a millisecond) throws.
-- Big words with `cutout: false` (above the head): plain text (`.word`, track 30) over the footage with the
-  VISUALs, no composite and no mask; the `.word` rule is written on any page with a big word.
+- Big words with `cutout: false` (above the head): plain text (`.word`, track 31, above the VISUALs' cards at
+  track 30) over the footage, no composite and no mask; the `.word` rule is written on any page with a big word.
 - VISUALs (always in front of the speaker): each VISUAL's frame (`clip visual`, or `clip visual-picture`
   with its picture, track index 30) after the composites, above the footage and under transitions and
   text, with no cut-out (so no mask span and no mask). A page whose only behind items are VISUALs writes
@@ -359,6 +360,10 @@ deterministic (no clock, no randomness, no I/O). Modules in `packages/edit/src`:
 - The face: the robust faces (`facesOver`, `head-track.ts`) of each moment; an element's `F` is their
   bounding box, padded 35 px left and 30 px right (`LAYOUT_PADDING`), and `layout.gap` (12 px) above
   and below in the zones. The body under the face is no obstacle.
+- The head track is cleaned once, where it is parsed (`headTrackSchema`, `cleanHeadTrack` in
+  `head-track.ts`): a sample whose head is narrower than `HEAD_GLITCH_WIDTH_SHARE` (0.7) of the clip's
+  median head width is no head (decision 22). Every reader (the placer, the checks, the cut-out, the
+  decide step, the render) gets the cleaned track, so the cut-out and the anchors agree.
 - Fonts and the measurer (HarfBuzz, `measure.ts`) give every width. Cut footage spans
   (`tracks.footage[].hidden`) keep a behind item off a cut.
 
@@ -427,7 +432,8 @@ A zone is the engine's; an entry only ranks names from this table.
 2. The scene: moments cut at every element edge; each moment's faces.
 3. Components in order of their start time, ties by the answer's order (hook, accents, questions, big
    words, visuals, lists): each element is placed by `placeElement` over the texts placed before it that
-   share a moment with it (`shown`). A visual's card sees no text and no text sees it (rule 5).
+   share a moment with it (`shown`). A visual's card sees no text but a big word that needs the cut-out,
+   and no front text sees it (rules 5 and 6; decisions 9 and 24).
 4. Captions last, in time order, one block per sentence, over everything placed.
 5. An element with no legal spot is left out of that pass (`no-spot`), and the answer is placed again
    without it. A pass that trims or drops a pick is placed again too, so the rules hold on the final
@@ -445,8 +451,9 @@ and allowed in a second. The cheapest candidate wins.
    and avoid each other.
 3. Everything spoken is on screen, as a caption or inside a component (the caption split in time).
 4. The same text never shows twice at one moment (`same-text`).
-5. Text never overlaps text, with `layout.gap` (12 px) between: a card is no obstacle to a text, and a
-   text no obstacle to a card. A caption block that has no legal spot at 30 px is set over the texts on
+5. Text never overlaps text, with `layout.gap` (12 px) between. A front text (a caption, an accent, a big
+   word with no cut-out) is no obstacle to a card, and the card draws under it; a big word that needs the
+   cut-out and a card never overlap while both show (decision 24). A caption block that has no legal spot at 30 px is set over the texts on
    screen, inside `S`, noted `no-spot` (decision 19); the strict `text-overlap` check excuses exactly
    those pairs.
 6. A big word (behind): the face hides at most 30% of its height (`MIN_VISIBLE_SHARE` 0.7 in
@@ -515,6 +522,9 @@ the platform button column below y 1164` with the right edge past x 945). A tran
   other text (decision 19: the caption had no legal spot and is never left out). It
   needs the record: `build(edit, ..., { engineRecord })`, which the decide step and the first version pass.
   The engine's output never fails it.
+- `card-overlap` (`checks.ts`): a big word that needs the cut-out (`needsCutout`) and a visual's card never
+  overlap while both show (decision 24); the reason names the word and the card. A big word with no cut-out
+  is front text and may sit on a card. The engine's output never fails it.
 - `same-text` (`checks.ts`): no spoken word (by word id) is shown by two items at a shared moment. The items
   are the captions shown (not those a text hides, `hidden_by`), the accents and questions, the lists and the
   big words (their `words`). The reason names both items and the word. The engine's output never fails it:
@@ -528,9 +538,11 @@ the platform button column below y 1164` with the right edge past x 945). A tran
 - `time-in-speech`: a time anchor outside speech (it names the word to anchor to instead).
 - `out-of-reel`: an anchor that resolved outside the reel and was clamped.
 
-The checks look at overlaps between texts only (`text-overlap`); a visual over the face is noted
-`covers-face` like any front pick, and a visual under a text is no overlap (decision 9: the card draws
-under the text). The glossary check is separate (`src/glossary.ts`, `glossaryChecks`).
+The checks look at overlaps between texts (`text-overlap`) and between a cut-out big word and a visual's
+card (`card-overlap`, decision 24; a big word with no cut-out may sit on a card and draws above it). A
+visual over the face is noted `covers-face` like any front pick, and a visual under a text is no overlap
+(decision 9: the card draws under the text). The glossary check is separate (`src/glossary.ts`,
+`glossaryChecks`).
 
 ### Versions and restore
 
@@ -647,7 +659,18 @@ never fatal.
     placed over its sentence, nothing dropped.
   - "big words: the cut-out only where the head reaches them" (`src/engine.test.ts`): a big word with no
     head over its span is plain text with no mask; one the head reaches keeps its cut-out and mask span
-    (`src/behind.test.ts`: `bigWordNeedsCutout` at the hair margin, the highest head, no head in the span).
+    (`src/behind.test.ts`: `bigWordNeedsCutout` at the hair margin, the highest robust face, one stray reading
+    not deciding, no head in the span, the cleaned track's glitches not deciding).
+  - "a big word behind the speaker never sits on a visual card" (decision 24): a word that needs the
+    cut-out and a card it shows with keep apart in either order, with `checks` empty; a word with no
+    cut-out sits on a card and is drawn above it (track 31 over the card's 30); the checker flags a
+    cut-out word moved onto a card and passes the same word with no cut-out.
+  - "the head track's glitch samples" (decisions 22 and 23): the five glitch readings of the real clip
+    (46.25 to 47.25 s) anchor a big word on the real head's top (564), cut out, its lower 30% behind the
+    head, not on the glitch tops (424).
+- `src/head-track.test.ts`: the glitch cleaning (`cleanHeadTrack`): the samples under 0.7 of the median
+  head width dropped and the real ones kept, a clip of similar widths unchanged, the floor exact, the
+  schema applying it, a track with no head as it is.
   - "visuals: corner cards over the footage": a card at a corner or beside the face, inside the safe
     zone, clear of the face with no failed check, drawn as a white frame, never wider than 360 and at
     its picture's aspect; the full card where a corner holds it (the large centred face: the bottom-left corner, `placed`),
@@ -746,7 +769,7 @@ never fatal.
   out while an extra shows its words is
   not dropped: its words are on screen.
 - Never read a single head-track sample for a placement or a check: always the robust faces
-  (`facesOver`).
+  (`facesOver`), of the head track as `headTrackSchema` parses it (glitch samples dropped, decision 22).
 - Never show an accent or question before its first word, nor a big word more than its entry's lead (0.2 s)
   before its word, nor a list more than its entrance before its first word. Never make a text wait and
   never cut a text's time for another: a text pick never starts after its own words, and two picks (the
@@ -778,14 +801,17 @@ never fatal.
 - Never move a big word up for the head: a big word the face covers more of than the lower 30%
   (rule 6 of the layout engine, 30%) is kept and noted. Never place one above `PLATFORM_SAFE`'s top.
 - Never give a big word `cutout: false` while its box reaches the head over its padded span (the box's
-  bottom below the highest head top less `HAIR_MARGIN`); a word the head cannot reach is plain text over
-  the footage, with no mask.
+  bottom below the highest robust face's top less `HAIR_MARGIN`); a word the head cannot reach is plain
+  text over the footage, with no mask.
+- Never let a big word that needs the cut-out sit on a visual's card while both show (decision 24). A big
+  word with no cut-out may sit on a card: it is front text, drawn above the card (track 31).
 - Never let a visual leave its card: it is a corner card in front of the speaker, never behind them,
   always inside the safe zone `S` and off the button column. The placer gives it a corner, then the strip
   beside the face, the full card (360 wide) where the spot holds it, else shrunk from it at its picture's aspect in 10%
   steps, never under 30 px wide; only when nothing off the face holds a card does it cover the face
-  (noted `covers-face`, rule `face`). Text is no obstacle to the card and the card none to text: a text
-  may sit on a card, and the card always draws under it (track 30 under the text track 50). The engine,
+  (noted `covers-face`, rule `face`). A front text is no obstacle to the card and the card none to it: a
+  text may sit on a card, and the card draws under it (track 30 under the text track 50); a big word that
+  needs the cut-out is the exception (decision 24). The engine,
   never Claude, chooses its place and size.
 - Never give a visual a fill, a text, a shadow or a colour change: its white stroke is its frame.
 - Never cut out (no mask span, no mask) for a visual: only a big word behind the speaker has a mask.
@@ -811,7 +837,7 @@ never fatal.
   text, only when no spot off the face is free at any candidate and size (`covers-face`). A component
   (the hook, an accent, a question, a big word, a LIST stack) is never set over other text: with no
   legal spot it is left out (`no-spot`); a caption block alone, never left out, sits over text with no
-  legal spot (`no-spot`, decision 19); a visual's card is no obstacle to text and text none to it (decision 9). Never set a text above its style's
+  legal spot (`no-spot`, decision 19); a visual's card is no obstacle to front text and text none to it (decision 9), but a big word that needs the cut-out never sits on one (decision 24). Never set a text above its style's
   base size (`accent` 110, `caption` 50): the placer only shrinks from it; the big word alone takes the
   largest fit, anchored at the head top (never a roomier spot elsewhere). The body under the face is no
   obstacle to any of them. A big word is behind

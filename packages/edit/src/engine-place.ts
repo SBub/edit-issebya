@@ -143,12 +143,13 @@ export interface BlockElement extends ElementBase {
 export type PlaceElement = TextElement | StackElement | BoxElement | BlockElement;
 
 // Something already placed over a moment of the element's span. A `caption`
-// blocks everything (rule 2); a `text` blocks text (rule 5); a `box` blocks
-// nothing (text may sit on a card, a card under text). The caller passes the
-// obstacles whose span shares a moment with the element.
+// blocks everything (rule 2); a `text` blocks text (rule 5); a `behind` (a big
+// word) blocks text and cards (decision 24); a `box` (a visual's card) blocks
+// only the big words, so text may sit on a card (decision 9). The caller passes
+// the obstacles whose span shares a moment with the element.
 export interface Obstacle {
   id: string;
-  kind: "caption" | "text" | "box";
+  kind: "caption" | "text" | "behind" | "box";
   box: Box;
 }
 
@@ -158,6 +159,10 @@ export interface PlaceScene {
   faces: readonly Box[];
   obstacles: readonly Obstacle[];
   safe: SafeZone;
+  // A big word only: whether a candidate box needs the cut-out (decision 21). One
+  // that does keeps off every card (decision 24); one that does not is front text
+  // and may sit on a card, drawn above it. Absent: every behind box needs it.
+  cutout?: (box: Box) => boolean;
 }
 
 // One level of a placed stack, at the stack's chosen size: its own size, its
@@ -544,12 +549,27 @@ interface Candidate {
   shrinkSteps: number;
 }
 
-// Which obstacles the element sees (rule 5: a box sees no text; a box is no
-// obstacle to anything), each grown by the gap.
+// Whether the element sees an obstacle. A caption is seen by everything (rule 2).
+// A text is seen by every text (rule 5), never by a card (decision 9: text may
+// sit on a card). A big word (`behind`) is text, and a card never sits on one
+// either (decision 24): it is seen by a card too. A card (`box`) is seen only by
+// the big words, which are the behind layer.
+function sees(element: PlaceElement, o: Obstacle): boolean {
+  switch (o.kind) {
+    case "caption":
+      return true;
+    case "text":
+      return element.type !== "box";
+    case "behind":
+      return true;
+    case "box":
+      return element.variant.layer === "behind";
+  }
+}
+
+// Which obstacles the element sees (`sees`), each grown by the gap.
 function obstacleBoxes(element: PlaceElement, obstacles: readonly Obstacle[]): Box[] {
-  return obstacles
-    .filter((o) => o.kind === "caption" || (o.kind === "text" && element.type !== "box"))
-    .map((o) => expand(o.box, GAP));
+  return obstacles.filter((o) => sees(element, o)).map((o) => expand(o.box, GAP));
 }
 
 // The largest size of `shape` that fits a free rectangle of `area` with the
@@ -738,9 +758,28 @@ function candidates(
 ): Candidate[] {
   const out: Candidate[] = [];
   const fit = fitterOf(element);
-  const fixed = [scene.safe.notch, ...obstacleBoxes(element, scene.obstacles)];
   const behind = element.variant.layer === "behind";
-  const passes: readonly Box[][] = F && !behind ? [[expand(F, GAP), ...fixed], fixed] : [fixed];
+  // The cards are obstacles only to a big word, and only where it needs the
+  // cut-out (decision 24): searched once without them (a word without a cut-out
+  // may sit on a card) and once with them (the cut-out spot clear of every card).
+  const cards = behind
+    ? scene.obstacles.filter((o) => o.kind === "box").map((o) => expand(o.box, GAP))
+    : [];
+  const needsCut = scene.cutout ?? (() => true);
+  const fixed = [
+    scene.safe.notch,
+    ...obstacleBoxes(
+      element,
+      scene.obstacles.filter((o) => o.kind !== "box"),
+    ),
+  ];
+  const passes: readonly Box[][] = behind
+    ? cards.length > 0
+      ? [fixed, [...fixed, ...cards]]
+      : [fixed]
+    : F
+      ? [[expand(F, GAP), ...fixed], fixed]
+      : [fixed];
   element.variant.zones.forEach((zone, rank) => {
     zonesAt(zone, scene.safe, F).forEach((part, index) => {
       const area = areaOf(part);
@@ -759,6 +798,8 @@ function candidates(
           });
           if (!found) continue;
           const { size, box } = found;
+          // A big word that needs the cut-out keeps off every card (decision 24).
+          if (behind && needsCut(box) && cards.some((card) => overlaps(box, card))) continue;
           // A behind text never "covers" the face (rule 6 bounds it instead).
           const coversFace = !behind && F !== null && overlaps(box, F);
           const shrinkSteps = shrinkStepsOf(size, full);
@@ -832,13 +873,12 @@ function blockersUpTo(
     seen.add(key);
     out.push(blocker);
   };
-  const seesText = element.type !== "box";
   element.variant.zones.slice(0, rank + 1).forEach((zone) => {
     for (const part of zonesAt(zone, scene.safe, F)) {
       const area = areaOf(part);
       if (!area) continue;
       for (const o of scene.obstacles) {
-        if (o.kind === "box" || (o.kind === "text" && !seesText)) continue;
+        if (!sees(element, o)) continue;
         if (!overlaps(expand(o.box, GAP), area)) continue;
         add(o.kind === "caption" ? { kind: "caption", id: o.id } : { kind: "item", id: o.id });
       }

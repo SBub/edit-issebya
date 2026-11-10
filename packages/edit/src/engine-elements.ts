@@ -182,7 +182,9 @@ function textsOver(
   box: Box,
   span: { start: number; end: number },
 ): Shown[] {
-  return shown.filter((item) => during(item, span) && overlaps(box, item.box));
+  return shown.filter(
+    (item) => item.kind !== "box" && during(item, span) && overlaps(box, item.box),
+  );
 }
 // The text of a LIST item's levels: the number, the lead-in (the words before
 // `key_from`) and the key phrase, as the captions show them.
@@ -538,7 +540,10 @@ function placeHook(pass: Pass, extra: Extra, span: { start: number; end: number 
 // behind word item carries no `breaks`), over the texts on screen with it.
 // The face is no obstacle to it (it sits behind the speaker by design); rule
 // 6, the face hiding at most 30% of its height, is the placer's hard filter,
-// and the word stays inside the safe zone S like every text (decision 2).
+// and the word stays inside the safe zone S like every text (decision 2). A word
+// that needs the cut-out keeps off every visual card (decision 24; the placer's
+// `cutout` predicate and `box` obstacles), and joins `shown` as `behind`, so a
+// card placed after it keeps off it too; a word with no cut-out is front text.
 // Its position and size are the placer's; the notes go to the record as they
 // are. Its `cutout` is whether the head reaches it over its padded span
 // (`bigWordNeedsCutout`): a word above the head needs no cut-out. False when no
@@ -558,11 +563,16 @@ function placeBigWord(pass: Pass, extra: Extra, span: { start: number; end: numb
     start: span.start,
     end: span.end,
   };
-  const result = placeElement(element, sceneFor(pass, span), measurer);
+  const padded = paddedSpan(span, duration, preset);
+  const scene = {
+    ...sceneFor(pass, span),
+    cutout: (at: Box) => bigWordNeedsCutout(at, headTrack, padded),
+  };
+  const result = placeElement(element, scene, measurer);
   record.push(...result.notes);
   if (!result.placed) return false;
   const { box, size } = result.placed;
-  const cutout = bigWordNeedsCutout(box, headTrack, paddedSpan(span, duration, preset));
+  const cutout = bigWordNeedsCutout(box, headTrack, padded);
   behind.set(extra.id, {
     id: extra.id,
     kind: "word",
@@ -577,7 +587,16 @@ function placeBigWord(pass: Pass, extra: Extra, span: { start: number; end: numb
     words: range(extra.word!, extra.wordTo!),
     cutout,
   });
-  shown.push({ id: extra.id, what: describe(pass, extra), start: span.start, end: span.end, box });
+  // A big word that needs the cut-out is `behind` (a card keeps off it); one that
+  // does not is plain text over the footage (a card may sit under it).
+  shown.push({
+    id: extra.id,
+    what: describe(pass, extra),
+    start: span.start,
+    end: span.end,
+    box,
+    ...(cutout ? { kind: "behind" as const } : {}),
+  });
   return true;
 }
 
@@ -588,14 +607,16 @@ function placeBigWord(pass: Pass, extra: Extra, span: { start: number; end: numb
 // in 10% steps where the spot is smaller), an empty white stroke frame in front
 // of the speaker, over the footage, showing the picture the extra was given
 // (`VISUAL_STAND_INS`). The face is a cost (100),
-// so the card covers it only as a last resort (noted `covers-face`). Text and
-// the card are no obstacles to each other (decision 9: a text may sit on a
-// card, the card draws under it), so the card sees nothing but the notch and
-// the face, and never joins `shown`. Its box and the notes are the placer's.
+// so the card covers it only as a last resort (noted `covers-face`). Text is no
+// obstacle to the card (decision 9: a text may sit on a card, the card draws
+// under it): the card sees the notch, the face and the big words on screen, and
+// joins `shown` as a `box` for the big words placed after it (decision 24: a
+// card never sits on a big word behind the speaker). Its box and the notes are
+// the placer's.
 // False when no candidate keeps the hard rules: the card is left out (see
 // `placeExtra`).
 function placeVisual(pass: Pass, extra: Extra, span: { start: number; end: number }): boolean {
-  const { transcript, picked, measurer, record, behind, word, sentenceOf } = pass;
+  const { transcript, picked, measurer, record, shown, behind, word, sentenceOf } = pass;
   const visual = extra.visual!;
   const image = extra.image!;
   const element: BoxElement = {
@@ -610,6 +631,14 @@ function placeVisual(pass: Pass, extra: Extra, span: { start: number; end: numbe
   record.push(...result.notes);
   if (!result.placed) return false;
   const { box } = result.placed;
+  shown.push({
+    id: extra.id,
+    what: describe(pass, extra),
+    start: span.start,
+    end: span.end,
+    box,
+    kind: "box",
+  });
   const sentence = sentenceOf(visual.from)!;
   behind.set(extra.id, {
     id: extra.id,

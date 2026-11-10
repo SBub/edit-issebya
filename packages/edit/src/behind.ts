@@ -1,4 +1,4 @@
-import type { Box, HeadTrack } from "./head-track.ts";
+import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
 import type { FontKey, Preset } from "./preset.ts";
 import type { BehindItem, BehindVisualItem, BehindWordItem, Edit } from "./schema.ts";
@@ -29,18 +29,21 @@ export const HAIR_MARGIN = 20;
 const SAMPLE_HALF_STEP = 0.125;
 
 // Whether a big word's box reaches the head over its span, so the cut-out is
-// needed: the box's bottom is below the highest head top (the smallest `head_top`)
-// over the span, less `HAIR_MARGIN`. The span is the word's mask span (padded,
-// `paddedSpan`). No head in the span: no cut-out.
+// needed: the box's bottom is below the highest robust face's top over the span
+// (`facesOver`, the faces the placer reads, so the two never disagree), less
+// `HAIR_MARGIN`. The span is the word's mask span (padded, `paddedSpan`). No head
+// sample in the span: no cut-out (`facesOver` would otherwise borrow the nearest
+// heads, far away, which is not a head over the word).
 export function bigWordNeedsCutout(box: Box, track: HeadTrack, span: Span): boolean {
-  let highest: number | null = null;
-  for (const sample of track) {
-    if (sample === null) continue;
-    if (sample.t < span.start - SAMPLE_HALF_STEP || sample.t > span.end + SAMPLE_HALF_STEP)
-      continue;
-    highest = highest === null ? sample.head_top : Math.min(highest, sample.head_top);
-  }
-  return highest !== null && box.bottom > highest - HAIR_MARGIN;
+  const headInSpan = track.some(
+    (sample) =>
+      sample !== null &&
+      sample.t >= span.start - SAMPLE_HALF_STEP &&
+      sample.t <= span.end + SAMPLE_HALF_STEP,
+  );
+  if (!headInSpan) return false;
+  const highest = Math.min(...facesOver(track, span.start, span.end).map((face) => face.top));
+  return box.bottom > highest - HAIR_MARGIN;
 }
 
 // The largest share (0 to 1) of a big word's height the face covers, in any of

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bigWordCoveredShare, maskSpans } from "./behind.ts";
+import { bigWordCoveredShare, maskSpans, placedBigWord, visualBox } from "./behind.ts";
 import { baselineEdit } from "./baseline.ts";
 import { build } from "./build.ts";
 import { editFromAnswer } from "./decide.ts";
@@ -8,7 +8,13 @@ import { type EngineInput, choicesOf } from "./engine-input.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import { wordsText } from "./glossary.ts";
 import { textLines } from "./lines.ts";
-import { LAYOUT_PADDING, type Box, type HeadTrack, facesOver } from "./head-track.ts";
+import {
+  LAYOUT_PADDING,
+  type Box,
+  type HeadTrack,
+  facesOver,
+  headTrackSchema,
+} from "./head-track.ts";
 import { MIN_SIZE_PX } from "./engine-place.ts";
 import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE } from "./preset.ts";
 import { type Edit, parseEdit } from "./schema.ts";
@@ -1087,6 +1093,140 @@ describe("visuals: corner cards over the footage", () => {
     expect(named).not.toContainEqual({ kind: "item", id: "accent-1" });
     // The card is drawn under the text: its track (30) below the text track (50).
     expect(both.html.indexOf('id="visual-1"')).toBeLessThan(both.html.indexOf('id="accent-1"'));
+  });
+});
+
+describe("a big word behind the speaker never sits on a visual card (decision 24)", () => {
+  const overlapping = (a: Box, b: Box) =>
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+  // The placed cards' boxes and the placed big words' boxes (their width from
+  // HarfBuzz), with each word's cut-out.
+  const boxesOf = async (edit: Edit) => {
+    const measurer = await nodeMeasurer();
+    const cards: Box[] = [];
+    const words: { id: string; cutout: boolean | undefined; box: Box }[] = [];
+    for (const item of edit.tracks.behind ?? []) {
+      if (item.kind === "visual") cards.push(visualBox(item));
+      else if (item.kind === "word" && item.position && item.size) {
+        const at = placedBigWord(item, item.position, item.size, measurer);
+        const box = { left: at.x, top: at.y, right: at.x + at.width, bottom: at.y + at.height };
+        words.push({ id: item.id, cutout: item.cutout, box });
+      }
+    }
+    return { cards, words };
+  };
+
+  // The data-track-index of one element's opening tag in the page.
+  const trackOf = (html: string, id: string) => {
+    const start = html.indexOf(`<div id="${id}"`);
+    const tag = html.slice(start, html.indexOf(">", start));
+    return tag.match(/data-track-index="(\d+)"/)?.[1];
+  };
+
+  it("a word that needs the cut-out keeps off the card it shows with, in either order", async () => {
+    // The card first (its words earlier), then the word; and the word first.
+    const orders: Partial<EngineInput>[] = [
+      { visuals: [{ from: "w84", to: "w99" }], big_words: [{ from: "w86", to: "w86" }] },
+      { visuals: [{ from: "w86", to: "w99" }], big_words: [{ from: "w84", to: "w84" }] },
+    ];
+    for (const input of orders) {
+      const { edit, checks } = await place(input, { headTrack: BIG_FACE });
+      const { cards, words } = await boxesOf(edit);
+      expect(cards).toHaveLength(1);
+      expect(words).toHaveLength(1);
+      // The head reaches the word, so it needs the cut-out: the card keeps off it.
+      expect(words[0]!.cutout).toBe(true);
+      expect(overlapping(cards[0]!, words[0]!.box)).toBe(false);
+      expect(checks).toEqual([]);
+    }
+  });
+
+  it("a word with no cut-out is front text: it may sit on a card, drawn above it", async () => {
+    const { edit, html, checks } = await place(
+      { visuals: [{ from: "w84", to: "w99" }], big_words: [{ from: "w86", to: "w86" }] },
+      { headTrack: [] },
+    );
+    const { cards, words } = await boxesOf(edit);
+    expect(words[0]!.cutout).toBe(false);
+    expect(overlapping(cards[0]!, words[0]!.box)).toBe(true);
+    expect(trackOf(html, "visual-1")).toBe("30");
+    expect(trackOf(html, "big-word-1")).toBe("31");
+    expect(checks).toEqual([]);
+  });
+
+  it("the checker flags a cut-out word over a card, and not the same word with no cut-out", async () => {
+    const spoken = transcript;
+    const placed = await place(
+      { visuals: [{ from: "w84", to: "w99" }], big_words: [{ from: "w86", to: "w86" }] },
+      { headTrack: BIG_FACE },
+    );
+    const { cards, words } = await boxesOf(placed.edit);
+    expect(overlapping(cards[0]!, words[0]!.box)).toBe(false);
+    // Move the card onto the word, as a stored edit could.
+    const moved = structuredClone(placed.edit);
+    const word = words[0]!;
+    for (const item of moved.tracks.behind ?? []) {
+      if (item.kind === "visual") {
+        item.box = {
+          x: word.box.left,
+          y: word.box.top,
+          width: cards[0]!.right - cards[0]!.left,
+          height: cards[0]!.bottom - cards[0]!.top,
+        };
+      }
+    }
+    const measurer = await nodeMeasurer();
+    const checksOf = (edit: Edit) =>
+      build(withPlaceholderMasks(edit, spoken), spoken, BIG_FACE, ISSEBYA_PRESET, measurer, {
+        engineRecord: placed.record,
+      }).checks.filter((check) => check.rule === "card-overlap");
+    expect(checksOf(moved)).toEqual([
+      expect.objectContaining({ rule: "card-overlap", item: "big-word-1" }),
+    ]);
+    const noCutout = structuredClone(moved);
+    for (const item of noCutout.tracks.behind ?? []) {
+      if (item.kind === "word") item.cutout = false;
+    }
+    expect(checksOf(noCutout)).toEqual([]);
+  });
+});
+
+describe("the head track's glitch samples (decisions 22 and 23)", () => {
+  // A steady real head at top 564, 332 px wide, with the five glitch readings of
+  // the evidence over 46.25 to 47.25 s (the samples 185 to 189).
+  const READINGS: [number, number, number][] = [
+    [424, 692, 228],
+    [432, 676, 112],
+    [424, 640, 152],
+    [472, 636, 172],
+    [480, 640, 180],
+  ];
+  const GLITCHED: HeadTrack = Array.from({ length: 200 }, (_, index) => {
+    const t = index * 0.25;
+    const reading = READINGS[index - 185];
+    if (reading) return { t, head_top: reading[0], cx: reading[1], head_w: reading[2] };
+    return { t, head_top: 564, cx: 612, head_w: 332 };
+  });
+
+  it("a big word over the glitches anchors on the real head, cut out, not on the glitch tops", async () => {
+    // "hear what" (46.27 to 46.71 s), its span over the glitches.
+    const headTrack = headTrackSchema.parse(GLITCHED);
+    const { edit, spans, checks } = await place(
+      { big_words: [{ from: "w157", to: "w158" }] },
+      { headTrack },
+    );
+    const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
+    expect(word).toMatchObject({ kind: "word", cutout: true });
+    if (word.kind !== "word" || !word.position || !word.size) throw new Error("no placed word");
+    const span = spans.get(word.id)!;
+    // The robust face over the word's span: the real head's top, never 424.
+    const top = Math.min(...facesOver(headTrack, span.start, span.end).map((face) => face.top));
+    expect(top).toBe(564);
+    // The lower 30% of the word sits behind the head's top (rule 6, the anchor moved up).
+    const bottom = word.position.y + word.size;
+    expect(Math.abs(bottom - (top + 0.3 * word.size))).toBeLessThanOrEqual(1.5);
+    expect(checks).toEqual([]);
   });
 });
 

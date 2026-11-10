@@ -18,6 +18,9 @@ export interface Shown {
   end: number;
   box: Box;
   caption?: boolean;
+  // A big word behind the speaker (`behind`), or a visual's card (`box`); absent
+  // for any other text.
+  kind?: "behind" | "box";
 }
 
 export interface Moment {
@@ -64,9 +67,9 @@ function rawFacesDuring(scene: readonly Moment[], span: { start: number; end: nu
 }
 
 // The placer's scene over a span: the unpadded robust faces of its moments and
-// every text on screen with it as an obstacle, a `text` for a component and a
-// `caption` for a caption placed before it (captions come last, so a component
-// sees none).
+// every text on screen with it as an obstacle, a `text` for a component, a
+// `behind` for a big word, a `box` for a visual's card, and a `caption` for a
+// caption placed before it (captions come last, so a component sees none).
 export function placerScene(
   scene: readonly Moment[],
   shown: readonly Shown[],
@@ -76,7 +79,7 @@ export function placerScene(
     .filter((item) => during(item, span))
     .map((item): Obstacle => ({
       id: item.id,
-      kind: item.caption ? "caption" : "text",
+      kind: item.caption ? "caption" : (item.kind ?? "text"),
       box: item.box,
     }));
   return { faces: rawFacesDuring(scene, span), obstacles, safe: SAFE_ZONE };

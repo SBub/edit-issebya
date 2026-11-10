@@ -1,4 +1,4 @@
-import type { BigWordBox } from "./behind.ts";
+import { type BigWordBox, needsCutout, visualBox } from "./behind.ts";
 import type { EngineNote } from "./engine-note.ts";
 import type { TextBox } from "./engine-space.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
@@ -13,6 +13,7 @@ export type CheckRule =
   | "safe-box"
   | "face"
   | "text-overlap"
+  | "card-overlap"
   | "same-text"
   | "timing"
   | "big-word-timing"
@@ -192,6 +193,33 @@ export function runChecks(
         rule: "text-overlap",
         item: text.owner,
         reason: `${text.what} sits on ${other.what} while both are shown`,
+      });
+    }
+  }
+
+  // A big word behind the speaker never sits on a visual card while both show
+  // (decision 24: the card is in front of the speaker, the word behind it). A big
+  // word with no cut-out is front text: it draws above the card, so it may sit on one.
+  const behindItems = edit.tracks.behind ?? [];
+  const cards = behindItems.flatMap((item) => (item.kind === "visual" ? [item] : []));
+  for (const word of bigWords) {
+    const item = behindItems.find((entry) => entry.id === word.itemId);
+    if (!item || !needsCutout(item)) continue;
+    const span = resolved.get(word.itemId)!;
+    const rect = {
+      left: word.x,
+      right: word.x + word.width,
+      top: word.y,
+      bottom: word.y + word.height,
+    };
+    for (const card of cards) {
+      const cardSpan = resolved.get(card.id)!;
+      if (!(span.start < cardSpan.end - SLACK && cardSpan.start < span.end - SLACK)) continue;
+      if (!overlaps(shrink(rect, SLACK), visualBox(card))) continue;
+      checks.push({
+        rule: "card-overlap",
+        item: word.itemId,
+        reason: `${wordLabel(word)} sits on the visual ${card.id} while both are shown`,
       });
     }
   }

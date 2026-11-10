@@ -8,6 +8,7 @@ import {
   visualBox,
 } from "./behind.ts";
 import { build } from "./build.ts";
+import { headTrackSchema } from "./head-track.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import type { BehindItem, BehindWordItem, Edit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
@@ -92,12 +93,32 @@ describe("bigWordNeedsCutout", () => {
     expect(bigWordNeedsCutout(box(900), track, span)).toBe(true);
   });
 
-  it("reads the highest head over the span: one higher sample decides", () => {
-    const higher = track.map((sample) =>
+  it("reads the robust face: one stray higher reading does not decide", () => {
+    const stray = track.map((sample) =>
       sample.t > 11 && sample.t < 11.5 ? { ...sample, head_top: 500 } : sample,
+    );
+    expect(bigWordNeedsCutout(box(560), stray, span)).toBe(false);
+  });
+
+  it("reads the highest face over the span: a head that stands higher for a while decides", () => {
+    const higher = track.map((sample) =>
+      sample.t >= 11 && sample.t <= 11.5 ? { ...sample, head_top: 500 } : sample,
     );
     expect(bigWordNeedsCutout(box(560), track, span)).toBe(false);
     expect(bigWordNeedsCutout(box(560), higher, span)).toBe(true);
+  });
+
+  it("decides on the same faces the placer reads: the cleaned track, glitches dropped", () => {
+    // A glitch reading 424 over 10.25 to 10.75 s: with it, the word's box clears
+    // no head top at 424 - 20; without it (the cleaned track), the real 600 decides.
+    const glitched = track.map((sample) =>
+      sample.t >= 10.25 && sample.t <= 10.75
+        ? { t: sample.t, head_top: 424, cx: 540, head_w: 60 }
+        : sample,
+    );
+    const cleaned = headTrackSchema.parse(glitched);
+    expect(cleaned[41]).toBeNull();
+    expect(bigWordNeedsCutout(box(560), cleaned, span)).toBe(false);
   });
 
   it("needs no cut-out with no head in the span, even with heads elsewhere", () => {
