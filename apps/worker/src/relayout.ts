@@ -19,6 +19,7 @@ import {
   usedFreeField,
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
+import { trace } from "@opentelemetry/api";
 import { randomUUID } from "node:crypto";
 import { NO_USAGE } from "./ai.ts";
 import {
@@ -35,6 +36,7 @@ import { PermanentError } from "./failure.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
 import { type ToolPaths } from "./pipeline/tools.ts";
 import { reelOf } from "./queue.ts";
+import { inSpan } from "./telemetry.ts";
 import { type SpawnTool, type StepContext, runToolsStep } from "./step-runner.ts";
 
 export const STEP = "relayout";
@@ -157,52 +159,84 @@ export async function runRelayout({
   return runToolsStep(ctx, {
     name: STEP,
     async work(_tool, stepContext) {
+      // The job's pair, on the step's span.
+      trace.getSpan(stepContext)?.setAttribute("relayout.font_pair", fontPair);
       const reelId = reelOf(ctx.job);
-      const currentId = await rows.current(reelId);
-      if (currentId === null) throw new PermanentError(`${STEP}: the reel has no current version`);
-      const row = await rows.get(currentId);
-      if (!row || row.reel_id !== reelId) {
-        throw new PermanentError(`${STEP}: version ${currentId} of this reel not found`);
-      }
-      const bytes = await blobs.get(row.r2_key);
-      if (!bytes) throw new Error(`${STEP}: edit missing at ${row.r2_key}`);
-      const read = async (ref: EditRef) => {
-        const key = cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file);
-        const stored = await storage.get(key);
-        if (!stored) throw new Error(`${STEP}: input missing: ${key}`);
-        return JSON.parse(new TextDecoder().decode(stored)) as unknown;
-      };
-      const transcript = transcriptSchema.parse(await read(row.inputs.transcript));
-      const headTrack = headTrackSchema.parse(await read(row.inputs.head_track));
-      const preset = ISSEBYA_PRESET;
-      const parsed = parseEdit(JSON.parse(new TextDecoder().decode(bytes)), preset, transcript);
-      if (!parsed.ok) {
-        throw new PermanentError(
-          `${STEP}: current version does not parse: ${parsed.reasons.join("; ")}`,
-        );
-      }
-      const record = await readAiRecord(storage, keyPrefix, reelId, currentId);
-      const answer = answerOfRecord(record, preset, transcript);
+      // The current version, its inputs and the answer it was decided from.
+      const loaded = await inSpan(ctx.telemetry, stepContext, "relayout.load", {}, async (span) => {
+        const currentId = await rows.current(reelId);
+        if (currentId === null)
+          throw new PermanentError(`${STEP}: the reel has no current version`);
+        const row = await rows.get(currentId);
+        if (!row || row.reel_id !== reelId) {
+          throw new PermanentError(`${STEP}: version ${currentId} of this reel not found`);
+        }
+        const bytes = await blobs.get(row.r2_key);
+        if (!bytes) throw new Error(`${STEP}: edit missing at ${row.r2_key}`);
+        const read = async (ref: EditRef) => {
+          const key = cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file);
+          const stored = await storage.get(key);
+          if (!stored) throw new Error(`${STEP}: input missing: ${key}`);
+          return JSON.parse(new TextDecoder().decode(stored)) as unknown;
+        };
+        const transcript = transcriptSchema.parse(await read(row.inputs.transcript));
+        const headTrack = headTrackSchema.parse(await read(row.inputs.head_track));
+        const preset = ISSEBYA_PRESET;
+        const parsed = parseEdit(JSON.parse(new TextDecoder().decode(bytes)), preset, transcript);
+        if (!parsed.ok) {
+          throw new PermanentError(
+            `${STEP}: current version does not parse: ${parsed.reasons.join("; ")}`,
+          );
+        }
+        const record = await readAiRecord(storage, keyPrefix, reelId, currentId);
+        const answer = answerOfRecord(record, preset, transcript);
+        span.setAttributes({
+          "relayout.version": row.number,
+          "relayout.inputs": (["footage", "transcript", "head_track"] as const)
+            .map((name) => `${name}=${row.inputs[name].step}`)
+            .join(","),
+          "relayout.ai_record": record !== null,
+          "relayout.ai_calls": record?.calls.length ?? 0,
+        });
+        return { currentId, row, transcript, headTrack, preset, parsed, record, answer };
+      });
+      const { currentId, row, transcript, headTrack, preset, parsed, record, answer } = loaded;
 
-      const measure = await measurer(fontPair);
-      // The version is set in the target pair; the layout places it there.
-      const current = { ...parsed.edit, font_pair: fontPair };
-      const composed = editFromAnswer(current, answer, preset, transcript, headTrack, measure);
-      if (!composed.ok) {
-        throw new PermanentError(
-          `${STEP}: the answer no longer places: ${composed.reasons.join("; ")}`,
-        );
-      }
-      const { checks } = build(
-        withMasks(composed.edit, transcript),
-        transcript,
-        headTrack,
-        preset,
-        measure,
-        {
-          engineRecord: composed.record,
+      // The layout: the answer placed in the job's pair, then built for its checks.
+      const placed = await inSpan(
+        ctx.telemetry,
+        stepContext,
+        "relayout.engine",
+        { "relayout.font_pair": fontPair, "relayout.from_version_id": currentId },
+        async (span) => {
+          const measure = await measurer(fontPair);
+          // The version is set in the target pair; the layout places it there.
+          const current = { ...parsed.edit, font_pair: fontPair };
+          const composed = editFromAnswer(current, answer, preset, transcript, headTrack, measure);
+          if (!composed.ok) {
+            throw new PermanentError(
+              `${STEP}: the answer no longer places: ${composed.reasons.join("; ")}`,
+            );
+          }
+          const { checks } = build(
+            withMasks(composed.edit, transcript),
+            transcript,
+            headTrack,
+            preset,
+            measure,
+            {
+              engineRecord: composed.record,
+            },
+          );
+          const { overlays } = composed.edit.tracks;
+          span.setAttributes({
+            "relayout.picks_placed": overlays.length + (composed.edit.tracks.behind ?? []).length,
+            "relayout.checks": checks.length,
+          });
+          return { composed, checks };
         },
       );
+      const { composed, checks } = placed;
       const edit = await ensureCutouts({
         ctx,
         storage,
@@ -228,28 +262,30 @@ export async function runRelayout({
           version_id: versionId,
         });
       }
-      const saved = await saveVersion(
-        { rows, blobs, keyPrefix, newId: () => versionId },
-        {
-          reelId,
-          parentId: currentId,
-          restoredFromId: null,
-          request: null,
-          // No AI call was made: no model.
-          model: null,
-          promptVersion: record?.prompt_version ?? null,
-          // A re-layout is not a change: no title and no summary.
-          changeTitle: null,
-          changeSummary: null,
-          checks,
-          usedFreeField: usedFreeField(edit),
-          unexpressed: [],
-          freeField: [],
-          rejectedReasons: [],
-          engineRecord: composed.record,
-          checklist: [],
-          edit,
-        },
+      const saved = await inSpan(ctx.telemetry, stepContext, "relayout.save_version", {}, () =>
+        saveVersion(
+          { rows, blobs, keyPrefix, newId: () => versionId },
+          {
+            reelId,
+            parentId: currentId,
+            restoredFromId: null,
+            request: null,
+            // No AI call was made: no model.
+            model: null,
+            promptVersion: record?.prompt_version ?? null,
+            // A re-layout is not a change: no title and no summary.
+            changeTitle: null,
+            changeSummary: null,
+            checks,
+            usedFreeField: usedFreeField(edit),
+            unexpressed: [],
+            freeField: [],
+            rejectedReasons: [],
+            engineRecord: composed.record,
+            checklist: [],
+            edit,
+          },
+        ),
       );
       log(engineRecordLine(reelId, saved.number, composed.record));
       return {

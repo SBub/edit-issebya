@@ -212,6 +212,19 @@ Loki's detected level). They were written from the exporter and Loki 3's OTLP ma
 checked against a running stack; if the field shows as `level` in your Grafana, use `| level="error"`.
 A worker crash is not a log record in development: it reaches PostHog in production only.
 
+### relayout's spans
+
+The `step relayout` span carries `relayout.font_pair` (the job's pair). Its stages are child spans, one per
+stage, the same shape as decide's: `relayout.load` (`relayout.version`, `relayout.inputs` as `name=step`
+pairs, `relayout.ai_record`, `relayout.ai_calls`), `relayout.engine` (`relayout.font_pair`,
+`relayout.from_version_id`, `relayout.picks_placed`: the overlays and behind items the engine placed,
+`relayout.checks`), the cut-out step span (below) and `relayout.save_version`. A stage that throws marks its
+own span with error status; the step's failure is one ERROR record, `relayout failed: ...`, with the job id
+and `step.name` `relayout`, as for every step. Relayout makes no AI call, so there is no `chat` span.
+
+The cut-out step span (`step cutout`, from decide or relayout) carries `cutout.made` and `cutout.reused`:
+the masks this call made and the stored masks it reused. A cache hit has `cutout.made` 0.
+
 ### AI calls (`chat` spans)
 
 Every model call is one `chat` span, a `CLIENT` span under the stage that made the call, with the

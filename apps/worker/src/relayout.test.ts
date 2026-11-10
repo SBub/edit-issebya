@@ -1,6 +1,9 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SeverityNumber } from "@opentelemetry/api-logs";
+import { InMemoryLogRecordExporter, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import {
   ISSEBYA_PRESET,
   type NewVersion,
@@ -25,6 +28,7 @@ import { cacheKey } from "./pipeline/fingerprint.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
 import { storageVersionBlobs } from "./version-store.ts";
 import { toolPaths } from "./pipeline/tools.ts";
+import { createTelemetry } from "./telemetry.ts";
 
 const PREFIX = "dev/";
 const FIXTURES = new URL("../../../fixtures/pipeline/", import.meta.url);
@@ -278,5 +282,93 @@ describe("answerOfRecord", () => {
       transcriptOf(),
     );
     expect(answer.hook).toEqual({ text: "Second" });
+  });
+});
+
+// The job's span tree and its failure record: the stages are children of the
+// step span, and a refused answer is one ERROR record of the relayout step.
+describe("runRelayout spans and failures", () => {
+  it("nests load, engine and save under the step span, with the job's pair and the stage counts", async () => {
+    await recordAnswersFor(firstId);
+    const spans = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter: spans })] },
+    );
+    await runRelayout({
+      ctx: stepContext(recordingSteps().steps, { telemetry }),
+      storage,
+      rows: memoryRows(),
+      blobs: storageVersionBlobs(storage),
+      keyPrefix: PREFIX,
+      scratchDir: scratch,
+      tools: toolPaths(),
+      fontPair: "bold",
+      newId,
+      log: () => {},
+    });
+    const finished = spans.getFinishedSpans();
+    const byName = (name: string) => finished.find((span) => span.name === name);
+    const step = byName("step relayout");
+    expect(step?.attributes["relayout.font_pair"]).toBe("bold");
+    for (const name of ["relayout.load", "relayout.engine", "relayout.save_version"]) {
+      expect(byName(name)?.parentSpanContext?.spanId).toBe(step?.spanContext().spanId);
+    }
+    expect(byName("relayout.load")?.attributes).toMatchObject({
+      "relayout.version": 1,
+      "relayout.ai_record": true,
+      "relayout.ai_calls": 2,
+      "relayout.inputs": "footage=retime,transcript=retime,head_track=head_track",
+    });
+    expect(byName("relayout.engine")?.attributes).toMatchObject({
+      "relayout.font_pair": "bold",
+      "relayout.from_version_id": firstId,
+    });
+    expect(byName("relayout.engine")?.attributes["relayout.picks_placed"]).toBeGreaterThan(0);
+    expect(byName("relayout.engine")?.attributes["relayout.checks"]).toBe(0);
+    await telemetry.shutdown();
+  });
+
+  it("logs a refused stored answer as one ERROR record of the relayout step, with the job id", async () => {
+    await writeAiRecord(storage, PREFIX, {
+      format: 1,
+      reel_id: REEL,
+      version_id: firstId,
+      prompt_version: "reel-components@v1",
+      hook_prompt_version: "reel-hook@v1",
+      calls: [{ attempt: 1, role: "decide", answerText: "not json" } as unknown as AiRecordCall],
+    });
+    const logs = new InMemoryLogRecordExporter();
+    const telemetry = createTelemetry(
+      {},
+      { logProcessors: [new SimpleLogRecordProcessor({ exporter: logs })] },
+    );
+    const failed = await runRelayout({
+      ctx: stepContext(recordingSteps().steps, { telemetry }),
+      storage,
+      rows: memoryRows(),
+      blobs: storageVersionBlobs(storage),
+      keyPrefix: PREFIX,
+      scratchDir: scratch,
+      tools: toolPaths(),
+      fontPair: "retro",
+      newId,
+      log: () => {},
+    }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failed).toBeInstanceOf(Error);
+    const records = logs.getFinishedLogRecords();
+    expect(records).toHaveLength(1);
+    const [record] = records;
+    expect(record?.severityNumber).toBe(SeverityNumber.ERROR);
+    expect(record?.body).toMatch(/^relayout failed: /);
+    expect(record?.attributes).toMatchObject({
+      "job.id": TEST_JOB.id,
+      "step.name": "relayout",
+      "reel.id": REEL,
+    });
+    await telemetry.shutdown();
   });
 });

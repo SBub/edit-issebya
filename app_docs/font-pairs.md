@@ -77,6 +77,7 @@ The "stands in for" names are the owner's own words for the look each pair gives
   pair, makes only the cut-outs the new placement needs (the cache reuses the rest), and saves a new version
   after the current one. The AI record is copied under the new version's id, so a later relayout finds the
   same answer. A version with no AI record (the first version) is placed with no answer at all.
+- Its spans and failure record are in `app_docs/measurement.md` ("relayout's spans").
 - Going back (`restore`) copies the bytes of an old version, so it keeps the pair that version was saved in.
 
 ## The picker

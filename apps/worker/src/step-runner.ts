@@ -299,10 +299,16 @@ async function withStep(
 }
 
 // A step whose outputs are already stored (a cache hit): one `skipped` row
-// with cache_hit, and its span. Nothing is spawned, read or written.
+// with cache_hit, and its span. Nothing is spawned, read or written. `attributes`
+// are the caller's own span attributes (a cut-out's made and reused counts).
 export async function recordHit(
   ctx: StepContext,
-  { name, summary, wallMs }: { name: string; summary: string; wallMs: number },
+  {
+    name,
+    summary,
+    wallMs,
+    attributes = {},
+  }: { name: string; summary: string; wallMs: number; attributes?: Attributes },
 ): Promise<void> {
   ctx.signal.throwIfAborted();
   const span = ctx.telemetry.tracer.startSpan(
@@ -315,6 +321,7 @@ export async function recordHit(
         "step.cache_hit": true,
         "step.wall_ms": wallMs,
         ...sizeAttributes(ctx),
+        ...attributes,
       },
     },
     ctx.jobContext,
