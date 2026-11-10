@@ -27,7 +27,9 @@ the third tab on a phone.
   that can grow is `min-h-0`, and only the list areas scroll inside their own box (no JavaScript
   measures the window). Desktop: header, then a grid of three columns
   (`lg:grid-cols-[minmax(0,1fr)_20rem_18rem]`, wider at `xl:`) over one row of full height: the main
-  column (preview, controls, timeline) in column 1, and on its right Versions (`lg:col-start-2`,
+  column (preview, controls, timeline) in column 1, and on its right the versions column (`lg:col-start-2`):
+  a tool panel on its top half, the font pair picker (`FontPairPicker.tsx`, six samples, `app_docs/font-pairs.md`),
+  and the versions list in the lower part (Versions, `lg:col-start-2`,
   `min-h-0 overflow-y-auto overscroll-contain`, no padding of its own, so its list of fixed-height
   version rows (no time or date, edge to edge of the area), each opened with its arrow, scrolls
   inside it; rows and texts in `app_docs/change-requests.md`; the temporary Start over button sits at

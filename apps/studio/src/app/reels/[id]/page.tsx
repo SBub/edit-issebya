@@ -11,6 +11,7 @@ import type { ReelDetail } from "@/lib/reels";
 import { loadLibrary } from "@/lib/photo-server";
 import { REEL_DETAIL_COLUMNS, isReelId } from "@/lib/reels";
 import { studioStorage } from "@/lib/storage";
+import { pairOfProfile } from "@/lib/font-pair-faces";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
 import { WORKER_STATUS_COLUMNS, type WorkerStatusRow } from "@/lib/worker-status";
@@ -60,7 +61,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
       .limit(ESTIMATE_LAST_ROWS)
       .returns<HistoryRow[]>();
 
-  const [library, jobs, steps, versions, latestExport, workerStatus, ...histories] =
+  const [library, jobs, steps, versions, latestExport, workerStatus, profile, ...histories] =
     await Promise.all([
       loadLibrary({ supabase, storage: studioStorage(), errors: serverErrorCapture() }),
       supabase
@@ -89,6 +90,11 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
         .limit(1)
         .maybeSingle<ExportRef>(),
       supabase.from("worker_status").select(WORKER_STATUS_COLUMNS).returns<WorkerStatusRow[]>(),
+      supabase
+        .from("profiles")
+        .select("font_pair")
+        .eq("user_id", user.id)
+        .maybeSingle<{ font_pair: string }>(),
       ...PROGRESS_STEPS.map(history),
     ]);
   if (jobs.error) throw new Error(`studio: jobs not loaded: ${jobs.error.message}`);
@@ -120,6 +126,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
         workerStatus={workerStatus.data ?? []}
         estimateRates={estimateRates}
         library={<PhotoLibrary initial={library.ok ? library.value : []} />}
+        fontPair={pairOfProfile(profile.data)}
       />
     </>
   );

@@ -3,6 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { FontPairId } from "@edit-issebya/edit";
 import { type ReactNode, useEffect, useState } from "react";
 import { requestRetry } from "@/app/retry-actions";
 import {
@@ -14,6 +15,7 @@ import {
   upsertById,
 } from "@/lib/jobs";
 import { ExportPanel } from "@/components/ExportPanel";
+import { FontPairPicker } from "@/components/FontPairPicker";
 import { ProgressOverlay } from "@/components/ProgressOverlay";
 import { ReelPreview } from "@/components/ReelPreview";
 import { ReelScreen } from "@/components/ReelScreen";
@@ -54,6 +56,8 @@ interface LiveReelProps extends Snapshot {
   // The owner's photo library (it follows its own table), shown beside the
   // reel on desktop and as the phone's Library tab.
   library: ReactNode;
+  // The owner's font pair (their profile), the picker's chosen one.
+  fontPair: FontPairId;
 }
 
 // How long "New version N" shows after a save.
@@ -132,6 +136,7 @@ export function LiveReel({
   workerStatus: initialWorkerStatus,
   estimateRates,
   library,
+  fontPair,
 }: LiveReelProps) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
@@ -398,21 +403,33 @@ export function LiveReel({
           </>
         }
         versions={
-          <VersionList
-            reelId={reel.id}
-            versions={versions}
-            currentVersionId={currentId}
-            blockedReason={blockedReason}
-            action={
-              <StartOverButton
+          <div className="flex h-full min-h-0 flex-col">
+            <FontPairPicker
+              reelId={reel.id}
+              fontPair={fontPair}
+              blockedReason={blockedReason}
+              queueNote={queueNote}
+              jobs={jobs}
+              hasVersion={currentId !== null}
+            />
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <VersionList
                 reelId={reel.id}
+                versions={versions}
+                currentVersionId={currentId}
                 blockedReason={blockedReason}
-                queueNote={queueNote}
-                jobs={jobs}
-                hasVersion={currentId !== null}
+                action={
+                  <StartOverButton
+                    reelId={reel.id}
+                    blockedReason={blockedReason}
+                    queueNote={queueNote}
+                    jobs={jobs}
+                    hasVersion={currentId !== null}
+                  />
+                }
               />
-            }
-          />
+            </div>
+          </div>
         }
         library={library}
       />
