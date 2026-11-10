@@ -177,6 +177,21 @@ class StepFailure extends Error {
   }
 }
 
+// A failure carried out of a wrapper: `error` is its cause, and the message,
+// tail and exit are those of the failure it carries (`from`).
+function carriedFailure(
+  error: unknown,
+  from: StepFailure,
+  measurements: StepMeasurements,
+): StepFailure {
+  const failure = new StepFailure(from.message, from.tail, measurements, {
+    exitCode: from.exitCode,
+    exitSignal: from.exitSignal,
+  });
+  failure.cause = error;
+  return failure;
+}
+
 // Every error a step's row failed with and the error tracker captured there.
 const STEP_FAILURES = new WeakSet<object>();
 
@@ -204,6 +219,11 @@ function elapsedMs(ctx: StepContext, started: number): number {
   return Math.max(0, Math.round(stepClock(ctx)() - started));
 }
 
+// The instant `wallMs` after `startedAt`: where a row or span of that wall time ends.
+function endOf(startedAt: Date, wallMs: number): Date {
+  return new Date(startedAt.getTime() + wallMs);
+}
+
 function setMeasurementAttributes(span: Span, measurements: StepMeasurements): void {
   for (const [column, value] of Object.entries(measurements)) {
     if (value !== null) span.setAttribute(`step.${column}`, value);
@@ -229,7 +249,10 @@ async function withStep(
 ): Promise<void> {
   for (let attempt = 1; ; attempt += 1) {
     ctx.signal.throwIfAborted();
-    const stepId = await ctx.steps.start(ctx.job, name);
+    // The attempt's start instant: the row's started_at and the span's start.
+    // The row ends wall_ms after it, and so does the span (see finishedAt).
+    const startedAt = new Date();
+    const stepId = await ctx.steps.start(ctx.job, name, startedAt);
     const span = ctx.telemetry.tracer.startSpan(
       `step ${name}`,
       {
@@ -240,10 +263,13 @@ async function withStep(
           "step.attempt": attempt,
           ...sizeAttributes(ctx),
         },
+        startTime: startedAt,
       },
       ctx.jobContext,
     );
     const started = stepClock(ctx)();
+    // The span ends at the attempt's wall time, set once it is measured.
+    let spanEnd: Date | undefined;
     try {
       const stepContext = trace.setSpan(ctx.jobContext, span);
       const { summary, measurements } = await runUnderSpan(stepContext, () =>
@@ -251,7 +277,8 @@ async function withStep(
       );
       ctx.signal.throwIfAborted();
       setMeasurementAttributes(span, measurements);
-      await ctx.steps.done(stepId, summary, measurements);
+      spanEnd = endOf(startedAt, measurements.wall_ms);
+      await ctx.steps.done(stepId, summary, measurements, startedAt);
       return;
     } catch (error) {
       // A lost lease (another worker may hold the job now), or the job's row
@@ -262,6 +289,7 @@ async function withStep(
       const failure = error instanceof StepFailure ? error : null;
       const measurements = failure?.measurements ?? emptyMeasurements(elapsedMs(ctx, started));
       setMeasurementAttributes(span, measurements);
+      spanEnd = endOf(startedAt, measurements.wall_ms);
       const unavailable = findCause(error, AiUnavailable);
       if (unavailable) {
         await ctx.steps.waiting(
@@ -269,6 +297,7 @@ async function withStep(
           unavailable.reason,
           `${name} waiting for the AI`,
           measurements,
+          startedAt,
         );
         throw error;
       }
@@ -283,6 +312,7 @@ async function withStep(
           sizeBytes: null,
         }),
         measurements,
+        startedAt,
       );
       ctx.errors.stepFailed({ job: ctx.job, step: name, attempt, retrying: retry, error, tail });
       // One ERROR log record for this failed attempt, in the step's context, and
@@ -302,7 +332,7 @@ async function withStep(
       if (!retry) throw error;
     } finally {
       span.setAttributes(sizeAttributes(ctx));
-      span.end();
+      span.end(spanEnd);
     }
     await sleep(ctx.retryDelayMs ?? TRANSIENT_RETRY_DELAY_MS, undefined, { signal: ctx.signal });
   }
@@ -321,6 +351,9 @@ export async function recordHit(
   }: { name: string; summary: string; wallMs: number; attributes?: Attributes },
 ): Promise<void> {
   ctx.signal.throwIfAborted();
+  // The hit ended now, so it started wall_ms ago: the row and the span both
+  // last exactly wall_ms.
+  const startedAt = new Date(Date.now() - wallMs);
   const span = ctx.telemetry.tracer.startSpan(
     `step ${name}`,
     {
@@ -333,14 +366,15 @@ export async function recordHit(
         ...sizeAttributes(ctx),
         ...attributes,
       },
+      startTime: startedAt,
     },
     ctx.jobContext,
   );
   try {
-    await ctx.steps.skipped(ctx.job, name, summary, wallMs);
+    await ctx.steps.skipped(ctx.job, name, summary, wallMs, startedAt);
   } finally {
     span.setAttributes(sizeAttributes(ctx));
-    span.end();
+    span.end(endOf(startedAt, wallMs));
   }
 }
 
@@ -653,6 +687,8 @@ export function runToolsStep(
       return made;
     };
 
+    // This step's own calls that failed (see the catch below).
+    const ownFailures = new Set<StepFailure>();
     const tool: Tool = async (call) => {
       const parser = call.progress;
       let callLog = log;
@@ -704,11 +740,18 @@ export function runToolsStep(
       if (run.code === 0) return run.stdout;
       const tail = outputTail(run.output);
       const how = exitSignal ? `signal ${exitSignal}` : (run.code ?? "unknown");
-      // Measured here: the wall time ends at the failing call.
-      throw new StepFailure(`${spec.name} exited with ${how}\n${tail}`, tail, await measure(), {
-        exitCode: exitSignal ? null : run.code,
-        exitSignal,
-      });
+      // Measured here: the step's own calls so far, its wall time to the failing call.
+      const failed = new StepFailure(
+        `${spec.name} exited with ${how}\n${tail}`,
+        tail,
+        await measure(),
+        {
+          exitCode: exitSignal ? null : run.code,
+          exitSignal,
+        },
+      );
+      ownFailures.add(failed);
+      throw failed;
     };
 
     let what: string;
@@ -723,28 +766,40 @@ export function runToolsStep(
       const pending = throttle as ProgressThrottle | null;
       pending?.stop();
       await pending?.settled();
-      if (error instanceof StepFailure || ctx.signal.aborted) throw error;
-      // A failed call wrapped on its way out (decide marks it permanent):
-      // its tail and measurements stay, the wrapper is the cause.
-      const call = findCause(error, StepFailure);
-      if (call) {
-        const failure = new StepFailure(call.message, call.tail, call.measurements);
-        failure.cause = error;
-        throw failure;
+      if (ctx.signal.aborted) throw error;
+      // Every failure of this step's attempt measures the whole attempt: its
+      // wall time runs from the step's start to here, the nested steps it ran
+      // included. Its CPU, memory and bytes are its own calls and files only:
+      // a nested step (a cut-out inside decide) has its own row with its own.
+      const nested = findCause(error, StepFailure);
+      // This step's own call, wrapped on its way out (decide marks it
+      // permanent): its tail, exit and measurements stay, only the wall time
+      // is the whole step's.
+      if (nested !== null && ownFailures.has(nested)) {
+        throw carriedFailure(error, nested, {
+          ...nested.measurements,
+          wall_ms: elapsedMs(ctx, started),
+        });
       }
       // A failure between calls (a download, a parse) keeps what was measured;
       // a StepError brings its own tail (its reasons) and AI usage; a refusal
-      // its human message. The original error is the cause, so the retry
-      // classifier sees it.
+      // its human message; a nested step's failure its tail and exit. The
+      // original error is the cause, so the retry classifier sees it.
       const own = error instanceof StepError ? error : null;
       const refused = error instanceof FootageRefused ? error : null;
       let tail = outputTail(errorTail(error));
       if (own) tail = outputTail(own.tail);
       else if (refused) tail = outputTail(refused.message);
+      else if (nested) tail = nested.tail;
+      const measurements = {
+        ...(await measure()),
+        ...(own?.ai ? aiMeasurements(own.ai) : {}),
+      };
+      if (nested !== null) throw carriedFailure(error, nested, measurements);
       const failure = new StepFailure(
         error instanceof Error ? error.message : String(error),
         tail,
-        { ...(await measure()), ...(own?.ai ? aiMeasurements(own.ai) : {}) },
+        measurements,
       );
       failure.cause = error;
       throw failure;

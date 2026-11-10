@@ -25,6 +25,12 @@ container's CPU, memory, disk and network are measured too and shown above a ree
   call): it records `wall_ms` only and leaves the other four measurements null, because moving one
   call into a child would measure Node's start-up, not the step. `first_version` and `restore` are such
   steps. Both share the row, the span, the summary and the tail.
+- A step attempt's times agree. The worker stamps its start (`startedAt`, one instant) and writes it as
+  the row's `started_at` and the span's start; the row finishes `wall_ms` later (`finishedAt` in
+  `step-store.ts`), and the span ends there too. A cache hit (`recordHit`) is the same: its skipped row and
+  span last exactly its `wall_ms`. A failed attempt's `wall_ms` runs from its own start to the end of its
+  work, never a nested step's time (decide's cut-out, its own row) or an earlier attempt's. Its CPU, peak
+  memory and bytes are its own calls and declared files, as on success; a nested step's are on its row.
 - `src/time-report.ts`: `timeCommand(platform)` (`/usr/bin/time -l` on macOS, `-v` on Linux, an error
   elsewhere) and the two report parsers. macOS reports max RSS in bytes, Linux in kilobytes (times
   1024). `/usr/bin/time` is the kernel's `wait4` accounting (`RUSAGE_CHILDREN`): CPU summed over every
