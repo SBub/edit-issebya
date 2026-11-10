@@ -17,8 +17,9 @@ import {
   placeElement,
   stackPositions,
 } from "./engine-place.ts";
+import { bigWordNeedsCutout, paddedSpan } from "./behind.ts";
 import { overlaps } from "./engine-space.ts";
-import type { Box } from "./head-track.ts";
+import type { Box, HeadTrack } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
 import { type Preset, cleanWord } from "./preset.ts";
 import type { PickedVariants } from "./variant-picker.ts";
@@ -55,6 +56,9 @@ export interface Words {
 export interface Pass extends Words {
   picked: PickedVariants;
   measurer: Measurer;
+  // The head track and the reel's length: a big word's cut-out is read from them.
+  headTrack: HeadTrack;
+  duration: number;
   record: RecordNote[];
   shown: Shown[];
   scene: readonly Moment[];
@@ -536,10 +540,12 @@ function placeHook(pass: Pass, extra: Extra, span: { start: number; end: number 
 // 6, the face hiding at most 30% of its height, is the placer's hard filter,
 // and the word stays inside the safe zone S like every text (decision 2).
 // Its position and size are the placer's; the notes go to the record as they
-// are. False when no candidate keeps the hard rules: the word is left out
-// (see `placeExtra`).
+// are. Its `cutout` is whether the head reaches it over its padded span
+// (`bigWordNeedsCutout`): a word above the head needs no cut-out. False when no
+// candidate keeps the hard rules: the word is left out (see `placeExtra`).
 function placeBigWord(pass: Pass, extra: Extra, span: { start: number; end: number }): boolean {
   const { transcript, picked, measurer, record, shown, behind, word, range } = pass;
+  const { headTrack, duration, preset } = pass;
   const first = word(extra.word!);
   const text = bigWordText(pass, extra.word!, extra.wordTo!);
   const element: TextElement = {
@@ -556,6 +562,7 @@ function placeBigWord(pass: Pass, extra: Extra, span: { start: number; end: numb
   record.push(...result.notes);
   if (!result.placed) return false;
   const { box, size } = result.placed;
+  const cutout = bigWordNeedsCutout(box, headTrack, paddedSpan(span, duration, preset));
   behind.set(extra.id, {
     id: extra.id,
     kind: "word",
@@ -568,6 +575,7 @@ function placeBigWord(pass: Pass, extra: Extra, span: { start: number; end: numb
     position: { x: box.left, y: box.top },
     size,
     words: range(extra.word!, extra.wordTo!),
+    cutout,
   });
   shown.push({ id: extra.id, what: describe(pass, extra), start: span.start, end: span.end, box });
   return true;

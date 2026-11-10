@@ -45,7 +45,8 @@ types until slice 9 brings the live preview.
   `text` one or two words of 1 to 24 characters each, with no space inside a
   word and no `<`, `>` or `&`, the two joined by one space: "distribution channel"). It is anchored
   on words like a caption (a big word starts on its first word with a negative
-  `offset`, the lead), cuts in and out with no animation. A big word is a text pick: the text picks (the
+  `offset`, the lead), cuts in and out with no animation. Its optional `cutout` (`false` when the head cannot
+  reach it, decision 21; missing = true) says whether it needs the person's cut-out. A big word is a text pick: the text picks (the
   hook, accents, questions, big words and lists) share the screen in time and keep apart on it. A VISUAL
   lasts 1 to 2 s (the `visual/card` entry's timing), less only at the reel's end or over a cut, is not
   text, and may show with any text. A big word lasts from the lead before its first word to its last word's
@@ -58,7 +59,8 @@ types until slice 9 brings the live preview.
 - `inputs.masks`, optional, filled by the worker before a version with a `behind` item is saved:
   `masks` lists the person masks (`EditMask`, a `{ step: "cutout", fingerprint, file: "mask.mp4",
 start, end }` ref plus the span of the reel it covers, in seconds, by start). A version without
-  behind items has none; a VISUAL needs no mask, so a version whose behind items are all VISUALs has none.
+  behind items has none; a VISUAL needs no mask, so a version whose behind items are all VISUALs has none, and
+  neither does a big word with `cutout: false`.
 - Every item has an `id` (`^[a-z][a-z0-9-]{0,63}$`, unique across tracks), a `start` and an `end`
   anchor. An anchor is a word (`{ word, edge?: "start" | "end", offset? }`, offset within plus or
   minus 1 s), a time in seconds (`{ time }`, only where nobody speaks) or the reel's edge
@@ -136,8 +138,9 @@ and rule 6 (`engine-place.ts`).
   a stored click with no `gain_db` plays at it too, in the preview through
   `apps/studio/src/lib/sound-schedule.ts` and in the export through the page's `data-volume`, both from
   `gain_db ?? gainDb`), at least 0.25 s apart.
-- Behind (`behind`): `padFrames` 3 and `frameRate` 30: the cut-out covers each big word plus 3 frames
-  on each side. The big word's font and colour are the `bigWord` style's; its face rule (30% of its
+- Behind (`behind`): `padFrames` 3 and `frameRate` 30: the cut-out covers each big word that needs one plus 3 frames
+  on each side. A big word needs it only where the head reaches it (`bigWordNeedsCutout`, the box's bottom
+  below the highest head top over its padded span less `HAIR_MARGIN` 20 px); no head in the span, no cut-out. The big word's font and colour are the `bigWord` style's; its face rule (30% of its
   height at most behind the head) is rule 6 in `engine-place.ts`. A VISUAL's card is the `visual/card`
   entry's: a white stroke of 8 px (the style's `stroke.px`, read by the builder's `.visual` rule), its
   width a third of the frame, its height the stand-in picture's own aspect (no crop), its timing 1 s to 2 s (`words-min-max`), a short beat rather than a
@@ -179,7 +182,9 @@ and rule 6 (`engine-place.ts`).
   `size` throws the same way. `src/html.ts` escapes text and attributes and formats numbers.
 - `src/lines.ts`: `textLines(text, breaks)` (a text cut after each of its `breaks`, the builder and the transition levels share it) and `breaksOf(lines)` (the breaks the engine writes for its lines).
 - `src/behind.ts`: `visualBox(item)` (a VISUAL's
-  `box`), `needsCutout(item)` (a big word only: a VISUAL is in front, over the footage),
+  `box`), `needsCutout(item)` (a big word whose `cutout` is not false: a VISUAL is in front, over the footage),
+  `bigWordNeedsCutout(box, track, span)` and `paddedSpan(span, duration, preset)` (the mask span of an item,
+  shared by `maskSpans` and the layout engine's check),
   `bigWordCoveredShare`, `placedBigWord` (a big word at its stored
   `position` and `size`, its width from HarfBuzz at 1 px) and `maskSpans(edit, transcript, preset)`:
   the span of each big word (the items that need the cut-out) padded by `padFrames`, clamped
@@ -202,6 +207,8 @@ and rule 6 (`engine-place.ts`).
   footage copy times the mask (the person back in front). Every layer is a plain timed element, so
   the player and the render's frame injector show the same pixels. A span with no matching entry
   in `inputs.masks` (start and end within half a millisecond) throws.
+- Big words with `cutout: false` (above the head): plain text (`.word`, track 30) over the footage with the
+  VISUALs, no composite and no mask; the `.word` rule is written on any page with a big word.
 - VISUALs (always in front of the speaker): each VISUAL's frame (`clip visual`, or `clip visual-picture`
   with its picture, track index 30) after the composites, above the footage and under transitions and
   text, with no cut-out (so no mask span and no mask). A page whose only behind items are VISUALs writes
@@ -638,6 +645,9 @@ never fatal.
     only as noted; determinism; the engine placing its own output the same again.
   - "today's failures, placed by the engine": a transition's text levels kept off the face; a visual
     placed over its sentence, nothing dropped.
+  - "big words: the cut-out only where the head reaches them" (`src/engine.test.ts`): a big word with no
+    head over its span is plain text with no mask; one the head reaches keeps its cut-out and mask span
+    (`src/behind.test.ts`: `bigWordNeedsCutout` at the hair margin, the highest head, no head in the span).
   - "visuals: corner cards over the footage": a card at a corner or beside the face, inside the safe
     zone, clear of the face with no failed check, drawn as a white frame, never wider than 360 and at
     its picture's aspect; the full card where a corner holds it (the large centred face: the bottom-left corner, `placed`),
@@ -767,6 +777,9 @@ never fatal.
   set under 30 px, never over other text).
 - Never move a big word up for the head: a big word the face covers more of than the lower 30%
   (rule 6 of the layout engine, 30%) is kept and noted. Never place one above `PLATFORM_SAFE`'s top.
+- Never give a big word `cutout: false` while its box reaches the head over its padded span (the box's
+  bottom below the highest head top less `HAIR_MARGIN`); a word the head cannot reach is plain text over
+  the footage, with no mask.
 - Never let a visual leave its card: it is a corner card in front of the speaker, never behind them,
   always inside the safe zone `S` and off the button column. The placer gives it a corner, then the strip
   beside the face, the full card (360 wide) where the spot holds it, else shrunk from it at its picture's aspect in 10%

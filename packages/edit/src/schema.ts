@@ -234,6 +234,11 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
       // The word ids it shows (one or two), written by the layout engine; the
       // same-text check reads them. Stored versions without it still parse.
       words: z.array(wordId).min(1).max(2).optional(),
+      // Whether the speaker's head can reach it, so it needs the cut-out (written
+      // by the layout engine, `bigWordNeedsCutout`). `false` is a word above the
+      // head, plain text over the footage with no mask; a stored word without the
+      // field needs the cut-out.
+      cutout: z.boolean().optional(),
     }),
   ]);
   return z.object({

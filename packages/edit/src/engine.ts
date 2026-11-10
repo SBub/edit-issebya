@@ -662,6 +662,8 @@ function placeOnce(
     ...words,
     picked,
     measurer,
+    headTrack,
+    duration,
     record,
     shown,
     scene,

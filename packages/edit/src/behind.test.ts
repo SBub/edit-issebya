@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { maskSpans, needsCutout, visualBox } from "./behind.ts";
+import {
+  HAIR_MARGIN,
+  bigWordNeedsCutout,
+  maskSpans,
+  needsCutout,
+  paddedSpan,
+  visualBox,
+} from "./behind.ts";
 import { build } from "./build.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import type { BehindItem, BehindWordItem, Edit } from "./schema.ts";
@@ -56,6 +63,58 @@ describe("visual boxes", () => {
   it("only what sits behind needs the cut-out", () => {
     expect(needsCutout(item())).toBe(false);
     expect(needsCutout(word("WORK"))).toBe(true);
+  });
+
+  it("a big word the head cannot reach needs none; a stored word without the field still needs it", () => {
+    expect(needsCutout({ ...word("WORK"), cutout: false })).toBe(false);
+    expect(needsCutout({ ...word("WORK"), cutout: true })).toBe(true);
+    expect(needsCutout(word("WORK"))).toBe(true);
+  });
+});
+
+describe("bigWordNeedsCutout", () => {
+  // A head whose top is at y 600 over the whole reel, and a word of the span
+  // 10 s to 12 s (padded to 9.9 s to 12.1 s).
+  const track = Array.from({ length: 200 }, (_, index) => ({
+    t: index * 0.25,
+    head_top: 600,
+    cx: 540,
+    head_w: 300,
+  }));
+  const span = { start: 10, end: 12 };
+  const box = (bottom: number) => ({ left: 100, right: 900, top: bottom - 200, bottom });
+
+  it("needs the cut-out when the word's bottom is below the highest head top less the hair margin", () => {
+    expect(HAIR_MARGIN).toBe(20);
+    // The line sits 20 px above the head: a bottom at it is clear, one px lower is not.
+    expect(bigWordNeedsCutout(box(600 - HAIR_MARGIN), track, span)).toBe(false);
+    expect(bigWordNeedsCutout(box(600 - HAIR_MARGIN + 1), track, span)).toBe(true);
+    expect(bigWordNeedsCutout(box(900), track, span)).toBe(true);
+  });
+
+  it("reads the highest head over the span: one higher sample decides", () => {
+    const higher = track.map((sample) =>
+      sample.t > 11 && sample.t < 11.5 ? { ...sample, head_top: 500 } : sample,
+    );
+    expect(bigWordNeedsCutout(box(560), track, span)).toBe(false);
+    expect(bigWordNeedsCutout(box(560), higher, span)).toBe(true);
+  });
+
+  it("needs no cut-out with no head in the span, even with heads elsewhere", () => {
+    const early = track.map((sample) => (sample.t < 5 ? sample : null));
+    expect(bigWordNeedsCutout(box(900), early, span)).toBe(false);
+    expect(bigWordNeedsCutout(box(900), [], span)).toBe(false);
+  });
+});
+
+describe("paddedSpan", () => {
+  it("is the mask span of a big word: padded by the preset's frames, clamped, to the millisecond", () => {
+    // Whole frames: 5.01 s less 3 frames (0.1 s) is 4.91 s, the frame at 4.9 s.
+    expect(paddedSpan({ start: 5.01, end: 7.5 }, 50, ISSEBYA_PRESET)).toEqual({
+      start: 4.9,
+      end: 7.6,
+    });
+    expect(paddedSpan({ start: 0, end: 2.5 }, 20, ISSEBYA_PRESET)).toEqual({ start: 0, end: 2.6 });
   });
 });
 
@@ -117,6 +176,17 @@ describe("maskSpans", () => {
     expect(spans).toEqual([
       { start: 9.9, end: 15.1, items: ["b1", "b2"] },
       { start: 29.9, end: 33.1, items: ["b0"] },
+    ]);
+  });
+
+  it("skips a big word the head cannot reach: no span, no mask", () => {
+    const edit = withBehind([
+      { start: 5, end: 7 },
+      { start: 30, end: 33 },
+    ]);
+    edit.tracks.behind![1] = { ...edit.tracks.behind![1]!, cutout: false } as BehindItem;
+    expect(maskSpans(edit, behind.transcript, ISSEBYA_PRESET).map((span) => span.items)).toEqual([
+      ["b0"],
     ]);
   });
 

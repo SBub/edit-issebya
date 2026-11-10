@@ -3230,7 +3230,8 @@
         "size": 199,
         "words": [
           "w76"
-        ]
+        ],
+        "cutout": true
       }
     ]
   }

@@ -44,14 +44,16 @@ const visualPictureStyle = (stroke: number) => [
 ];
 
 // The extra rules a page with a cut-out needs: the composite's groups and
-// blends, and the big word.
+// blends.
 const BEHIND_STYLE = [
   "      .cutout { position: absolute; inset: 0; isolation: isolate; }",
   "      .cutout-front { position: absolute; inset: 0; isolation: isolate; mix-blend-mode: plus-lighter; }",
   "      .mask-under { filter: invert(1); mix-blend-mode: multiply; }",
   "      .mask-front { mix-blend-mode: multiply; }",
-  "      .word { position: absolute; line-height: 1; white-space: nowrap; }",
 ];
+
+// A big word's class, on any page with one.
+const WORD_STYLE = "      .word { position: absolute; line-height: 1; white-space: nowrap; }";
 
 export interface BuildResult {
   html: string;
@@ -137,8 +139,11 @@ export function build(
     return mask;
   });
   const span = (id: string) => resolved.get(id)!;
-  // VISUALs: in front of the speaker, over the footage, no cut-out.
-  const visuals = behindItems.filter((item) => item.kind === "visual");
+  // VISUALs, and the big words the head cannot reach: in front of the speaker,
+  // over the footage, no cut-out.
+  const overFootage = behindItems.filter(
+    (item) => item.kind === "visual" || (item.kind === "word" && item.cutout === false),
+  );
   const duration = sec(edit.duration);
   const { tracks } = edit;
   const js: string[] = [];
@@ -159,6 +164,7 @@ export function build(
       return `      .f-${key} { font-family: "${font.family}", sans-serif; font-weight: ${font.weight}; }`;
     }),
     ...(spans.length > 0 ? BEHIND_STYLE : []),
+    ...(behindItems.some((item) => item.kind === "word") ? [WORD_STYLE] : []),
     // A visual's frame: only on a page that has one, and its picture's only on a
     // page with a picture.
     ...(behindItems.some((item) => item.kind === "visual")
@@ -255,8 +261,8 @@ export function build(
   }
   // Above the footage and the composites, under transitions and text, each
   // with its own hard cut in and out.
-  for (const item of visuals) {
-    body.push(`      ${behindElement(item, span(item.id), undefined, preset, "30")}`);
+  for (const item of overFootage) {
+    body.push(`      ${behindElement(item, span(item.id), bigWords.get(item.id), preset, "30")}`);
   }
 
   const { caption } = preset;

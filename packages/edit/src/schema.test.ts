@@ -253,6 +253,23 @@ describe("the behind track", () => {
     ).not.toEqual([]);
   });
 
+  it("takes a big word's cut-out flag, and parses a word without it", () => {
+    const word = (extra: Record<string, unknown>) => ({
+      id: "w1",
+      kind: "word",
+      text: "WORK",
+      start: { time: 10 },
+      end: { time: 13 },
+      ...extra,
+    });
+    const parse = (json: unknown) => parseEdit(json, ISSEBYA_PRESET, behind.transcript);
+    expect(parse(withItems([word({ cutout: false })]))).toMatchObject({ ok: true });
+    expect(parse(withItems([word({})]))).toMatchObject({ ok: true });
+    const parsed = parse(withItems([word({ cutout: false })]));
+    expect(parsed.ok && parsed.edit.tracks.behind?.[0]).toMatchObject({ cutout: false });
+    expect(behindReasons(withItems([word({ cutout: "no" })])).length).toBeGreaterThan(0);
+  });
+
   it("refuses a visual without its box", () => {
     const boxless: Record<string, unknown> = { ...visual(10, 13) };
     delete boxless.box;

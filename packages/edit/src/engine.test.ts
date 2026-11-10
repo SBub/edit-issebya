@@ -386,6 +386,41 @@ describe("never the same word twice on screen", () => {
   });
 });
 
+describe("big words: the cut-out only where the head reaches them", () => {
+  // The head only in the reel's first seconds: none over the word's span (w76,
+  // about 20 s in), so nothing of the speaker can cover it.
+  const EARLY_HEAD: HeadTrack = Array.from({ length: 200 }, (_, index) =>
+    index * 0.25 < 5 ? { t: index * 0.25, head_top: 452, cx: 580, head_w: 292 } : null,
+  );
+
+  it("a big word with no head over its span is plain text: no cut-out, no mask, no composite", async () => {
+    const { edit, html, checks } = await place(
+      { big_words: [{ from: "w76", to: "w76" }] },
+      { headTrack: EARLY_HEAD },
+    );
+    expect(edit.tracks.behind).toEqual([
+      expect.objectContaining({ id: "big-word-1", kind: "word", cutout: false }),
+    ]);
+    expect(maskSpans(edit, transcript, ISSEBYA_PRESET)).toEqual([]);
+    expect(html).not.toContain(".cutout");
+    expect(html).toContain(`<div id="big-word-1" class="clip word f-primary"`);
+    expect(html).toContain(">distribution</div>");
+    expect(checks).toEqual([]);
+  });
+
+  it("a big word the head reaches keeps its cut-out, and its mask span", async () => {
+    const { edit, html, checks } = await place({ big_words: [{ from: "w76", to: "w76" }] });
+    expect(edit.tracks.behind).toEqual([
+      expect.objectContaining({ id: "big-word-1", kind: "word", cutout: true }),
+    ]);
+    expect(maskSpans(edit, transcript, ISSEBYA_PRESET).map((span) => span.items)).toEqual([
+      ["big-word-1"],
+    ]);
+    expect(html).toContain(`<div id="cut_1" class="cutout">`);
+    expect(checks).toEqual([]);
+  });
+});
+
 describe("big words in view", () => {
   // Rule 6: the face hides at most 30% of a big word's height.
   const maxCovered = 1 - 0.7;

@@ -1,4 +1,4 @@
-import type { Box } from "./head-track.ts";
+import type { Box, HeadTrack } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
 import type { FontKey, Preset } from "./preset.ts";
 import type { BehindItem, BehindVisualItem, BehindWordItem, Edit } from "./schema.ts";
@@ -13,10 +13,34 @@ export function visualBox(item: BehindVisualItem): Box {
 }
 
 // Whether a behind-track item needs the cut-out: a big word, which sits behind
-// the speaker. A VISUAL sits in front of the speaker, over the footage, and
-// needs none.
+// the speaker, unless the layout engine found the head cannot reach it (its
+// `cutout: false`; a stored word without the field needs it). A VISUAL sits in
+// front of the speaker, over the footage, and needs none.
 export function needsCutout(item: BehindItem): boolean {
-  return item.kind === "word";
+  return item.kind === "word" && item.cutout !== false;
+}
+
+// The margin (px) a big word's box may come under the highest head over its span
+// before it needs the cut-out: the head is not in its way until it is that close.
+export const HAIR_MARGIN = 20;
+
+// The head track samples every 0.25 s: a span window also takes this much either
+// side, so a short span always holds the sample nearest it.
+const SAMPLE_HALF_STEP = 0.125;
+
+// Whether a big word's box reaches the head over its span, so the cut-out is
+// needed: the box's bottom is below the highest head top (the smallest `head_top`)
+// over the span, less `HAIR_MARGIN`. The span is the word's mask span (padded,
+// `paddedSpan`). No head in the span: no cut-out.
+export function bigWordNeedsCutout(box: Box, track: HeadTrack, span: Span): boolean {
+  let highest: number | null = null;
+  for (const sample of track) {
+    if (sample === null) continue;
+    if (sample.t < span.start - SAMPLE_HALF_STEP || sample.t > span.end + SAMPLE_HALF_STEP)
+      continue;
+    highest = highest === null ? sample.head_top : Math.min(highest, sample.head_top);
+  }
+  return highest !== null && box.bottom > highest - HAIR_MARGIN;
 }
 
 // The largest share (0 to 1) of a big word's height the face covers, in any of
@@ -81,6 +105,18 @@ function ms(seconds: number): number {
   return rounded === 0 ? 0 : rounded;
 }
 
+// A span of the reel padded by the preset's frames on each side, clamped to the
+// reel, widened to whole frames, to the millisecond: the mask span of a big word
+// (`maskSpans`), and the span the layout engine checks its head against.
+export function paddedSpan(span: Span, duration: number, preset: Preset): Span {
+  const { padFrames, frameRate } = preset.behind;
+  const pad = padFrames / frameRate;
+  const end = ms(duration);
+  const from = Math.floor(Math.max(0, span.start - pad) * frameRate + 1e-6) / frameRate;
+  const to = Math.ceil(Math.min(end, span.end + pad) * frameRate - 1e-6) / frameRate;
+  return { start: ms(from), end: Math.min(ms(to), end) };
+}
+
 // The spans the cut-out must cover, shared by the builder (which draws one
 // composite per span) and the worker (which fingerprints and makes one mask
 // per span), so the two always agree: the span of each item behind the
@@ -92,16 +128,11 @@ export function maskSpans(edit: Edit, transcript: Transcript, preset: Preset): M
   const items = (edit.tracks.behind ?? []).filter(needsCutout);
   if (items.length === 0) return [];
   const resolved = resolveTimeline(edit, transcript);
-  const { padFrames, frameRate } = preset.behind;
-  const pad = padFrames / frameRate;
-  const duration = ms(edit.duration);
   const spans = items
-    .map((item) => {
-      const { start, end } = resolved.get(item.id)!;
-      const from = Math.floor(Math.max(0, start - pad) * frameRate + 1e-6) / frameRate;
-      const to = Math.ceil(Math.min(duration, end + pad) * frameRate - 1e-6) / frameRate;
-      return { start: ms(from), end: Math.min(ms(to), duration), items: [item.id] };
-    })
+    .map((item) => ({
+      ...paddedSpan(resolved.get(item.id)!, edit.duration, preset),
+      items: [item.id],
+    }))
     .sort((a, b) => a.start - b.start || a.end - b.end);
   const merged: MaskSpan[] = [];
   for (const span of spans) {
