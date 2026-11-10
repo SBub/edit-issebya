@@ -44,6 +44,17 @@ describe("writeRenderProject", () => {
     expect(await readFile(join(dir, footage.path))).toEqual(await readFile(FILES.footage));
   });
 
+  it("copies a visual's stand-in picture from packages/edit at the path the page names", async () => {
+    const picture = { path: "assets/visuals/visual-2.jpg", role: "visual" as const, ref: null };
+    await writeRenderProject({ dir, html: "<!doctype html>", assets: [picture], files: FILES });
+    const packaged = new URL("../../../../packages/edit/", import.meta.url);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder and the committed assets
+    expect(await readFile(join(dir, picture.path))).toEqual(
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed asset
+      await readFile(new URL(picture.path, packaged)),
+    );
+  });
+
   it("places masks from the given files, and throws for one without a file", async () => {
     const mask = fixturePath("retime", "source.mp4");
     const assets = [{ path: "masks/abc.mp4", role: "mask" as const, ref: null }];

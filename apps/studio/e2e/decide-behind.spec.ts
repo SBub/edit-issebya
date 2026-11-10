@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { VISUAL_STAND_INS } from "@edit-issebya/edit";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { type Page, expect, test } from "@playwright/test";
 import { speechTenVisualAnswerScript } from "../test-support/ai-script.ts";
@@ -94,6 +95,7 @@ async function currentVersion() {
     tracks: {
       behind?: {
         kind: string;
+        image?: string;
         box?: { width: number; height: number };
       }[];
     };
@@ -114,10 +116,10 @@ test("the automatic decide proposes a visual, and the preview shows its frame", 
   test.setTimeout(240_000);
 
   // Version 2: the process job's decide proposed a visual, and the layout put
-  // it as a card over the footage: the full card (360 by 450) where a corner
-  // or the strip beside the face holds it, else shrunk from it at 4:5 (the
-  // placer's 10% steps), off the face where a spot is free (over it only as a
-  // noted last resort).
+  // it as a card over the footage, showing its stand-in picture: the full card
+  // (360 wide) where a corner or the strip beside the face holds it, else
+  // shrunk from it at the picture's aspect (the placer's 10% steps), off the
+  // face where a spot is free (over it only as a noted last resort).
   const v2 = await currentVersion();
   expect(v2.version.number).toBe(2);
   expect(v2.behind).toEqual([expect.objectContaining({ kind: "visual" })]);
@@ -125,7 +127,8 @@ test("the automatic decide proposes a visual, and the preview shows its frame", 
   const { width, height } = card!.box!;
   expect(width).toBeGreaterThanOrEqual(30);
   expect(width).toBeLessThanOrEqual(360);
-  expect(height).toBe(Math.floor(width / 0.8));
+  const picture = VISUAL_STAND_INS.find((image) => image.file === card!.image)!;
+  expect(height).toBe(Math.floor(width / (picture.width / picture.height)));
   // A version names no photo: the placed photo is gone from the edit.
   expect(v2.version.inputs).not.toHaveProperty("photos");
 

@@ -81,14 +81,14 @@ describe("the variant entries", () => {
     expect(entries.filter(([, entry]) => entry.type === "box").map(([name]) => name)).toEqual([
       "visual/card",
     ]);
-    expect(VARIANTS["visual/card"]).toMatchObject({ aspect: "4/5", width: "1/3" });
+    expect(VARIANTS["visual/card"]).toMatchObject({ width: "1/3" });
+    expect(VARIANTS["visual/card"]).not.toHaveProperty("aspect");
     const ratio = (text: string) =>
       text
         .split("/")
         .map(Number)
         .reduce((x, y) => x / y);
     expect(ratio(VARIANTS["visual/card"].width)).toBeCloseTo(1 / 3, 12);
-    expect(ratio(VARIANTS["visual/card"].aspect)).toBeCloseTo(4 / 5, 12);
     expect(VARIANTS["list/numbered"].levels.map((level) => level.role)).toEqual([
       "number",
       "lead",

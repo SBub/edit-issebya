@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 import { EDIT_ASSET_FILES } from "@/lib/edit-assets";
 
 /**
- * The preset's fonts and click sound, from packages/edit/assets/ (the live
- * preview's built page names them). Only the files the preset names are
+ * The preset's fonts and click sound, and the visuals' stand-in pictures, from
+ * packages/edit/assets/ (the live preview's built page names them). Only the files the preset names are
  * served; anything else, a traversal included, is a 404. The files never
  * change for a path, so they are cached for a year.
  */

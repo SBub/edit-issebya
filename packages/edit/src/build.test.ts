@@ -88,6 +88,7 @@ describe("build", () => {
       ["assets/fonts/GolosText-Bold.ttf", "font"],
       ["assets/fonts/Raleway-Light.ttf", "font"],
       ["assets/sounds/mouse-click-trimmed.wav", "sound"],
+      ["assets/visuals/visual-1.jpg", "visual"],
       [`masks/${"3".repeat(64)}.mp4`, "mask"],
       ["source.mp4", "footage"],
     ]);
@@ -113,7 +114,9 @@ describe("build", () => {
   it("draws a VISUAL in front of the speaker over the footage, with no cut-out for it", async () => {
     const edit = structuredClone(engine.edit);
     edit.tracks.behind = edit.tracks.behind!.flatMap((item) =>
-      item.kind === "visual" ? [{ ...item, box: { x: 600, y: 300, width: 400, height: 300 } }] : [],
+      item.kind === "visual"
+        ? [{ ...item, image: undefined, box: { x: 600, y: 300, width: 400, height: 300 } }]
+        : [],
     );
     delete edit.inputs.masks;
     const { html, assets } = build(
@@ -124,10 +127,44 @@ describe("build", () => {
       await nodeMeasurer(),
     );
     expect(html).not.toContain(".cutout");
+    // A stored version without a picture: the empty white frame.
     expect(html).toContain(
       '<div id="visual-1" class="clip visual" alt="" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 600px; top: 300px; width: 400px; height: 300px"></div>',
     );
+    expect(html).not.toContain("visual-picture");
     expect(assets.some((asset) => asset.role === "mask")).toBe(false);
+    expect(assets.some((asset) => asset.role === "visual")).toBe(false);
+  });
+
+  it("fills a VISUAL's box with its stand-in picture, the stroke over it", async () => {
+    const edit = structuredClone(engine.edit);
+    edit.tracks.behind = edit.tracks.behind!.map((item) =>
+      item.kind === "visual"
+        ? {
+            ...item,
+            image: "assets/visuals/visual-2.jpg",
+            box: { x: 600, y: 300, width: 400, height: 300 },
+          }
+        : item,
+    );
+    const { html, assets } = build(
+      edit,
+      engine.transcript,
+      engine.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(html).toContain(
+      '<div id="visual-1" class="clip visual-picture" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 600px; top: 300px; width: 400px; height: 300px">\n  <img src="assets/visuals/visual-2.jpg" alt="">\n</div>',
+    );
+    expect(html).toContain(
+      ".visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }",
+    );
+    expect(assets).toContainEqual({
+      path: "assets/visuals/visual-2.jpg",
+      role: "visual",
+      ref: null,
+    });
   });
 
   it("draws a caption above a card that overlaps it: the card's track under the text track (decision 9)", async () => {
@@ -150,7 +187,7 @@ describe("build", () => {
       height: 450,
     };
     const { html } = build(edit, engine.transcript, engine.headTrack, ISSEBYA_PRESET, measurer);
-    const cardAt = html.indexOf(`<div id="${card.id}" class="clip visual"`);
+    const cardAt = html.indexOf(`<div id="${card.id}" class="clip visual`);
     const textAt = html.indexOf('<div id="text" class="clip" data-start="0.000"');
     const captionAt = html.indexOf(`<span id="${caption.id}" class="text`);
     expect(cardAt).toBeGreaterThan(-1);

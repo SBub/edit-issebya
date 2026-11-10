@@ -1,13 +1,14 @@
-import { ISSEBYA_PRESET } from "@edit-issebya/edit";
+import { ISSEBYA_PRESET, VISUAL_STAND_INS } from "@edit-issebya/edit";
 import { describe, expect, it } from "vitest";
 import { EDIT_ASSET_FILES, editAssetUrl } from "./edit-assets";
 
 describe("EDIT_ASSET_FILES", () => {
-  it("is exactly the preset's fonts and sounds, with their types", () => {
+  it("is exactly the preset's fonts and sounds and the stand-in pictures, with their types", () => {
     expect(Object.fromEntries(EDIT_ASSET_FILES)).toEqual({
       [ISSEBYA_PRESET.fonts.primary.file]: "font/ttf",
       [ISSEBYA_PRESET.fonts.secondary.file]: "font/ttf",
       [ISSEBYA_PRESET.sounds.click.file]: "audio/wav",
+      ...Object.fromEntries(VISUAL_STAND_INS.map((image) => [image.file, "image/jpeg"])),
     });
   });
 });

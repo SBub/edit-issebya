@@ -7,7 +7,7 @@ import {
   SOUND_KEYS,
   TRANSITION_KINDS,
 } from "./preset.ts";
-import { timingOf, VARIANTS } from "./variants.ts";
+import { VARIANTS, VISUAL_STAND_INS, timingOf } from "./variants.ts";
 import { resolveAnchor } from "./timeline.ts";
 import type { Transcript, Word } from "./transcript.ts";
 
@@ -97,6 +97,7 @@ export interface EditLimits {
 function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLimits = {}) {
   const ids = transcript.words.map((word) => word.id);
   const wordId = ids.length > 0 ? z.enum(ids as [string, ...string[]]) : z.never();
+  const visualFiles = VISUAL_STAND_INS.map((image) => image.file) as [string, ...string[]];
   const time =
     limits.duration === undefined ? z.number().min(0) : z.number().min(0).max(limits.duration);
   const bounds = limits.bounds ?? {
@@ -203,13 +204,15 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     height: z.number().int().min(1).max(preset.frame.height),
   });
   const behind = z.discriminatedUnion("kind", [
-    // A VISUAL: an empty white stroke frame over the footage, with no picture
-    // behind it. `description` says what a visual would show; it is never
-    // shown on screen.
+    // A VISUAL: a white stroke frame over the footage, showing its stand-in
+    // picture (`image`, a file of `VISUAL_STAND_INS`) at the box. `description`
+    // says what a visual would show; it is never shown on screen. Stored
+    // versions without `image` parse, and render the empty frame.
     z.object({
       ...base,
       kind: z.literal("visual"),
       description: z.string().min(1).max(VISUAL_DESCRIPTION_MAX).optional(),
+      image: z.enum(visualFiles).optional(),
       box: visualBox,
     }),
     z.object({

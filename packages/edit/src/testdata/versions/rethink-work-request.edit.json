@@ -3120,11 +3120,12 @@
         },
         "kind": "visual",
         "description": "a question mark on a wall",
+        "image": "assets/visuals/visual-1.jpg",
         "box": {
           "x": 645,
           "y": 260,
           "width": 360,
-          "height": 450
+          "height": 459
         }
       }
     ]

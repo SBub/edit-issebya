@@ -25,7 +25,7 @@ import type { PickedVariants } from "./variant-picker.ts";
 import { wordsText } from "./glossary.ts";
 import { anchorAt } from "./timeline.ts";
 import { boxVariantOf, stackVariantOf, textVariantOf } from "./variant-picker.ts";
-import { STYLES } from "./variants.ts";
+import { STYLES, type StandIn } from "./variants.ts";
 import { type Moment, type Shown, placerScene } from "./engine-scene.ts";
 import { type CaptionBlock, at, during, ms, quote } from "./engine-timing.ts";
 import type {
@@ -144,6 +144,8 @@ export interface Extra {
   word?: string;
   wordTo?: string;
   hook?: HookChoice;
+  // A visual's stand-in picture (`VISUAL_STAND_INS`), set by the loop in start-time order.
+  image?: StandIn;
 }
 
 // A LIST item kept by the timing rules: its answer item and its layer's span.
@@ -573,9 +575,11 @@ function placeBigWord(pass: Pass, extra: Extra, span: { start: number; end: numb
 
 // A visual's card through the placer: the box element of the entry it was
 // picked with (`visual/card`: a corner of S, then beside the face; its full
-// size its `width` share of the frame at its `aspect`, 360 by 450 px, shrunk
-// from there in 10% steps where the spot is smaller), an empty white stroke
-// frame in front of the speaker, over the footage. The face is a cost (100),
+// width its `width` share of the frame, 360 px, and its height the stand-in
+// picture's own aspect, so 360 by 450 px for a 4:5 picture, shrunk from there
+// in 10% steps where the spot is smaller), an empty white stroke frame in front
+// of the speaker, over the footage, showing the picture the extra was given
+// (`VISUAL_STAND_INS`). The face is a cost (100),
 // so the card covers it only as a last resort (noted `covers-face`). Text and
 // the card are no obstacles to each other (decision 9: a text may sit on a
 // card, the card draws under it), so the card sees nothing but the notch and
@@ -585,10 +589,12 @@ function placeBigWord(pass: Pass, extra: Extra, span: { start: number; end: numb
 function placeVisual(pass: Pass, extra: Extra, span: { start: number; end: number }): boolean {
   const { transcript, picked, measurer, record, behind, word, sentenceOf } = pass;
   const visual = extra.visual!;
+  const image = extra.image!;
   const element: BoxElement = {
     type: "box",
     id: extra.id,
     variant: boxVariantOf(picked),
+    aspect: image.width / image.height,
     start: span.start,
     end: span.end,
   };
@@ -601,6 +607,7 @@ function placeVisual(pass: Pass, extra: Extra, span: { start: number; end: numbe
     id: extra.id,
     kind: "visual",
     ...(visual.description ? { description: visual.description } : {}),
+    image: image.file,
     box: {
       x: box.left,
       y: box.top,

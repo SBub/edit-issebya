@@ -87,17 +87,34 @@ export interface StackVariant extends Common {
   width?: never;
 }
 
-// A box: a stroke, no fill, a full width as a share of the frame at an aspect.
+// A box: a stroke, no fill, a full width as a share of the frame. Its height is
+// the picture's own aspect (the stand-in's, `VISUAL_STAND_INS`), not the entry's.
 export interface BoxVariant extends Common {
   layer: "front";
   type: "box";
   style: { stroke: { color: Hex; px: number } };
-  aspect: Ratio;
   width: Ratio;
   levels?: never;
 }
 
 export type Variant = TextVariant | StackVariant | BoxVariant;
+
+// The stand-in pictures a VISUAL shows, as data. They are dev stand-ins until a
+// real image search exists: the Nth VISUAL of a reel in start-time order shows
+// image N mod 3 (`engine.ts`). `file` is the path the built page names, relative
+// to packages/edit; `width` and `height` are the picture's pixels, so the card
+// takes the picture's aspect with no crop.
+export interface StandIn {
+  file: string;
+  width: number;
+  height: number;
+}
+
+export const VISUAL_STAND_INS = [
+  { file: "assets/visuals/visual-1.jpg", width: 1170, height: 1494 },
+  { file: "assets/visuals/visual-2.jpg", width: 828, height: 1428 },
+  { file: "assets/visuals/visual-3.jpg", width: 675, height: 900 },
+] as const satisfies readonly StandIn[];
 
 // The timing option of an entry, narrowed to the one a reader needs (the engine
 // and the decide limits read a big word's lead and minimum, a visual's minimum
@@ -166,7 +183,6 @@ export const VARIANTS = {
     zones: ["corner", "beside-face"],
     timing: { option: "words-min-max", minimum: 1, maximum: 2 },
     hides: false,
-    aspect: "4/5",
     width: "1/3",
   },
   "list/numbered": {

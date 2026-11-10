@@ -20,7 +20,7 @@ import { resolveTimeline } from "./timeline.ts";
 import { type Transcript, sentenceSpans } from "./transcript.ts";
 import { levelBoxes } from "./transitions.ts";
 import { pickVariants } from "./variant-picker.ts";
-import { STYLES, VARIANTS, timingOf } from "./variants.ts";
+import { STYLES, VARIANTS, VISUAL_STAND_INS, timingOf } from "./variants.ts";
 
 // The big word's lead and minimum, its entry's timing (`variants.ts`).
 const BIG_WORD = timingOf(VARIANTS["bigword/behind"], "words-lead");
@@ -854,13 +854,15 @@ describe("today's failures, placed by the engine", () => {
 });
 
 describe("visuals: corner cards over the footage", () => {
-  // The card's entry: its stroke, its ratio, its inset from the zone table.
-  const card = { stroke: VARIANTS["visual/card"].style.stroke.px, aspect: 4 / 5, inset: 40 };
+  // The card's entry: its stroke and its inset from the zone table.
+  const card = { stroke: VARIANTS["visual/card"].style.stroke.px, inset: 40 };
   const gap = ISSEBYA_PRESET.layout.gap;
-  // The card's full size, the `visual/card` entry's width share (a third of the
-  // frame's width) at 4:5: 360 by 450. The placer shrinks from it in 10% steps
-  // where the spot is smaller, so a card is never wider and keeps its ratio.
-  const FULL = { width: 360, height: 450 };
+  // The first visual shows the first stand-in picture (1170 by 1494, so the
+  // card's height is its picture's): the card's full size, the `visual/card`
+  // entry's width share (a third of the frame's width), 360 by 459. The placer
+  // shrinks from it in 10% steps where the spot is smaller, so a card is never
+  // wider and keeps its picture's ratio.
+  const FULL = { width: 360, height: 459 };
   // The speech-ten reel's speaker: a head about 336 px wide, its top near
   // y 568 and its centre near x 600 (the median of its head track).
   const SPEECH_TEN = steadyHead({ head_top: 568, cx: 600, head_w: 336 });
@@ -874,12 +876,14 @@ describe("visuals: corner cards over the footage", () => {
   });
   const meets = (a: Box, b: Box) =>
     a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-  // The card's size: at most the full card, its height from its width at 4:5.
-  const expectCardSize = (visual: { box?: { width: number; height: number } }) => {
+  // The card's size: at most the full card, its height from its width at its
+  // picture's aspect.
+  const expectCardSize = (visual: { box?: { width: number; height: number }; image?: string }) => {
     const { width, height } = visual.box!;
+    const picture = VISUAL_STAND_INS.find((image) => image.file === visual.image)!;
     expect(width).toBeLessThanOrEqual(FULL.width);
     expect(width).toBeGreaterThanOrEqual(MIN_SIZE_PX);
-    expect(height).toBe(Math.floor(width / card.aspect));
+    expect(height).toBe(Math.floor(width / (picture.width / picture.height)));
   };
 
   it("places a visual as a corner card or beside the face, clear of it, as a white frame", async () => {
@@ -918,21 +922,24 @@ describe("visuals: corner cards over the footage", () => {
           box.bottom <= face.bottom + 120,
       );
       expect(atCorner || beside).toBe(true);
-      // The frame: a white stroke at the preset's width, no picture, no words,
-      // no cut-out, drawn at the card's size.
+      // The frame: the stand-in picture filling the card, its white stroke over
+      // it, no words, no cut-out, drawn at the card's size.
       expect(maskSpans(edit, transcript, ISSEBYA_PRESET)).toEqual([]);
-      expect(html).toMatch(/<div id="visual-1" class="clip visual"[^>]*data-track-index="30"/);
-      expect(html).toContain(
-        `.visual { position: absolute; box-sizing: border-box; border: ${card.stroke}px solid #ffffff; background: transparent; }`,
+      expect(visual).toMatchObject({ image: "assets/visuals/visual-1.jpg" });
+      expect(html).toMatch(
+        /<div id="visual-1" class="clip visual-picture"[^>]*data-track-index="30"[^>]*>\n {2}<img src="assets\/visuals\/visual-1\.jpg" alt="">\n<\/div>/,
       );
-      expect(html).not.toMatch(/<img id="visual-1"/);
+      expect(html).toContain(
+        `.visual-picture::after { content: ""; position: absolute; inset: 0; border: ${card.stroke}px solid #ffffff; box-sizing: border-box; }`,
+      );
+      expect(html).not.toMatch(/class="clip visual"/);
     }
   });
 
   it("takes the full card where a corner or side holds it, and shrinks from it in 10% steps where none does", async () => {
     // The large centred face: the bottom-left corner holds the full card.
     const roomy = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: BIG_FACE });
-    expect(cardsOf(roomy.edit)[0]!.box).toEqual({ x: 75, y: 980, ...FULL });
+    expect(cardsOf(roomy.edit)[0]!.box).toEqual({ x: 75, y: 971, ...FULL });
     expect(roomy.record.filter((note) => note.item === "visual-1")).toEqual([
       expect.objectContaining({ outcome: "placed", zone: "corner", size: 360, cost: 0 }),
     ]);
@@ -940,7 +947,7 @@ describe("visuals: corner cards over the footage", () => {
     // strip beside it does: one zone step (10) beats two shrink steps (20),
     // and the card sits at the face's padded edge, full size, noted `moved`.
     const tight = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: SPEECH_TEN });
-    expect(cardsOf(tight.edit)[0]!.box).toEqual({ x: 37, y: 663, ...FULL });
+    expect(cardsOf(tight.edit)[0]!.box).toEqual({ x: 37, y: 658, ...FULL });
     expect(tight.record.filter((note) => note.item === "visual-1")).toEqual([
       expect.objectContaining({
         outcome: "moved",
@@ -957,20 +964,20 @@ describe("visuals: corner cards over the footage", () => {
     ]);
     expect(tight.checks).toEqual([]);
     // The fixture reel's head (its bottom near y 1039): the bottom-left corner
-    // holds 378 px of height, so the card shrinks to 303 by 378 (two steps, 20),
+    // holds 378 px of height, so the card shrinks to 296 by 377 (two steps, 20),
     // cheaper than the strip beside the face (a zone step and two shrink steps).
     const low = await place({ visuals: [{ from: "w84", to: "w99" }] });
-    expect(cardsOf(low.edit)[0]!.box).toEqual({ x: 75, y: 1052, width: 303, height: 378 });
+    expect(cardsOf(low.edit)[0]!.box).toEqual({ x: 75, y: 1053, width: 296, height: 377 });
     expect(low.record.filter((note) => note.item === "visual-1")).toEqual([
       expect.objectContaining({
         outcome: "shrunk",
         rule: "size",
         zone: "corner",
-        size: 303,
+        size: 296,
         cost: 20,
         blockers: [{ kind: "face" }, { kind: "buttons" }],
         reason: expect.stringMatching(
-          /^visual visual-1 shrinks to 303 px from 360 px in a corner from .+ to .+; the face, the buttons took the room$/,
+          /^visual visual-1 shrinks to 296 px from 360 px in a corner from .+ to .+; the face, the buttons took the room$/,
         ),
       }),
     ]);

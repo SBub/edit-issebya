@@ -31,14 +31,17 @@ types until slice 9 brings the live preview.
   (`kind: "accent"`, or `kind: "hook"` for the written hook, below), `transitions` (the LIST items, `numbered`, the only kind, each with its `list` and `number`), `sounds` (`click`) and the optional
   `behind` track. There is no whole-clip cut-out: the per-span masks in `inputs.masks` are the only cut-out.
 - `tracks.behind`: the big words (behind the speaker) and the VISUALs (over the footage, in front of the
-  speaker), any number of items. A VISUAL (`kind: "visual"`, `decide-17`) is an empty white stroke frame,
-  a corner card (the `visual/card` entry), always in front: `box` its place and size, which the layout engine always
-  writes, with no picture and no asset.
+  speaker), any number of items. A VISUAL (`kind: "visual"`, `decide-17`) is a white stroke frame
+  showing its stand-in picture, a corner card (the `visual/card` entry), always in front: `box` its place
+  and size, which the layout engine always writes, and `image`, the picture's file (one of
+  `VISUAL_STAND_INS`, the layout engine's choice). A stored version without `image` renders the empty frame.
   It may carry an optional
   `description` (a short plain phrase of what the frame would show, at most 120 characters, the
   decide answer's own limit is 8 words), which is never shown on screen; the builder draws a
   `div.clip.visual` with a white border of the `visual/card` entry's stroke (8 px), transparent
-  inside (the `.visual` rule is written only on a page with a visual). Or a big word (`kind: "word"`,
+  inside (the `.visual` rule is written only on a page with a visual). With `image`, the builder draws
+  `div.clip.visual-picture` filling the box with an `<img>` of the same box (no crop), the stroke drawn
+  over it (the `.visual-picture` rules). Or a big word (`kind: "word"`,
   `text` one or two words of 1 to 24 characters each, with no space inside a
   word and no `<`, `>` or `&`, the two joined by one space: "distribution channel"). It is anchored
   on words like a caption (a big word starts on its first word with a negative
@@ -137,10 +140,15 @@ and rule 6 (`engine-place.ts`).
   on each side. The big word's font and colour are the `bigWord` style's; its face rule (30% of its
   height at most behind the head) is rule 6 in `engine-place.ts`. A VISUAL's card is the `visual/card`
   entry's: a white stroke of 8 px (the style's `stroke.px`, read by the builder's `.visual` rule), its
-  width a third of the frame at 4:5, its timing 1 s to 2 s (`words-min-max`), a short beat rather than a
+  width a third of the frame, its height the stand-in picture's own aspect (no crop), its timing 1 s to 2 s (`words-min-max`), a short beat rather than a
   backdrop. The card's corner inset (40 px) is the zone table's `corner`. No count per reel.
-- Visuals: an empty white stroke frame over the footage, in front of the speaker, no fill and no text
-  (owner decision 2026-11-07). The placer places it as a box from its entry (see Layout engine).
+- Visuals: a white stroke frame over the footage, in front of the speaker, no fill and no text
+  (owner decision 2026-11-07), showing a stand-in picture (owner decision 2026-11-10: a visual shows
+  a picture so the owner can judge the text with real pictures; the meaning of the picture is not judged).
+  The placer places it as a box from its entry (see Layout engine).
+- Stand-in pictures: `VISUAL_STAND_INS` in `src/variants.ts`, three JPEGs under `assets/visuals/`
+  (`file`, `width`, `height` as data). They are dev stand-ins until a real image search exists. The Nth
+  VISUAL of a reel in start-time order (ties by the answer's order) shows image N mod 3 (`engine.ts`).
 - Pace (`pace`, the preset's `intensity` names its level, `intense` (the pros' level); the pace block is
   that level's; a later level, `calm` or `medium`, is one more name with its own block). The written hook
   (`pace.hook`): from 0.2 s (`fromSeconds`) to 3 s (`untilSeconds`), the first seconds that decide
@@ -155,7 +163,7 @@ and rule 6 (`engine-place.ts`).
 - `src/build.ts`: `build(edit, transcript, headTrack, preset, measurer) -> { html, assets, checks }`.
   `html` is a HyperFrames composition (`data-composition-id="main"`, a paused GSAP 3.14.2 timeline
   registered on `window.__timelines`); `assets` lists every referenced file with its role
-  (`footage`, `font`, `sound`, `mask`), sorted; `checks` is the layout check list. A
+  (`footage`, `font`, `sound`, `mask`, `visual`), sorted; `checks` is the layout check list. A
   `mask` asset carries its `cutout` ref at `maskPath(mask)` (`masks/<fingerprint>.mp4`).
 - Deterministic: no clock, no randomness, no I/O. The same inputs give the same bytes in Node and in
   the browser. One builder serves the preview and the export.
@@ -194,9 +202,12 @@ and rule 6 (`engine-place.ts`).
   footage copy times the mask (the person back in front). Every layer is a plain timed element, so
   the player and the render's frame injector show the same pixels. A span with no matching entry
   in `inputs.masks` (start and end within half a millisecond) throws.
-- VISUALs (always in front of the speaker): each VISUAL's frame (`clip visual`, track index 30) after
-  the composites, above the footage and under transitions and text, with no cut-out (so no mask span
-  and no mask). A page whose only behind items are VISUALs writes the `.visual` rule and no composite.
+- VISUALs (always in front of the speaker): each VISUAL's frame (`clip visual`, or `clip visual-picture`
+  with its picture, track index 30) after the composites, above the footage and under transitions and
+  text, with no cut-out (so no mask span and no mask). A page whose only behind items are VISUALs writes
+  the `.visual` rule (and the `.visual-picture` rules with a picture) and no composite. Each picture is an
+  `assets` entry of role `visual`, served like the fonts (the studio's edit-assets route, the worker's copy
+  from packages/edit).
 
 ### Transitions tied to a phrase
 
@@ -388,7 +399,8 @@ A zone is the engine's; an entry only ranks names from this table.
 - Wrapping is free: any number of lines, balanced breaks (`balancedLines`); the lines are stored as
   `breaks: number[]`. The big word is set on one line (`maxLines` 1). Line height is the size; a caption
   adds `caption.lineGap` (14 px) between its lines.
-- A box is its `width` share of the frame at its `aspect` (the card: 360 by 450), shrunk the same way.
+- A box is its `width` share of the frame at its aspect (the picture's width over its height; the card:
+  360 wide, 459 high for the first stand-in), shrunk the same way.
 - A LIST item is one stack: its number (ratio 300/110 to the key, when the list has two or more items),
   its lead-in (`caption` style) and its key (`accent` style), `transition.gap` (24 px) apart. The stack
   shrinks until its smallest level reaches 30 px. Its levels are placed at whole pixels, stacked from the
@@ -628,9 +640,9 @@ never fatal.
     placed over its sentence, nothing dropped.
   - "visuals: corner cards over the footage": a card at a corner or beside the face, inside the safe
     zone, clear of the face with no failed check, drawn as a white frame, never wider than 360 and at
-    4:5; the full card where a corner holds it (the large centred face: the bottom-left corner, `placed`),
+    its picture's aspect; the full card where a corner holds it (the large centred face: the bottom-left corner, `placed`),
     the strip beside the face at full size where no corner does (the speech-ten head, `moved`, one zone
-    step), and the card shrunk in a corner where that is cheaper (the fixture head: 303 by 378, two
+    step), and the card shrunk in a corner where that is cheaper (the fixture head: 296 by 377, two
     shrink steps); a card over the face only when nothing off it holds one (a face filling the safe
     zone), noted `covers-face`; the ratio kept across a reel; decision 9, a card and an accent said while
     it shows each placed as when alone, neither among the other's blockers, the card drawn under the text.
@@ -757,7 +769,7 @@ never fatal.
   (rule 6 of the layout engine, 30%) is kept and noted. Never place one above `PLATFORM_SAFE`'s top.
 - Never let a visual leave its card: it is a corner card in front of the speaker, never behind them,
   always inside the safe zone `S` and off the button column. The placer gives it a corner, then the strip
-  beside the face, the full card (360 by 450) where the spot holds it, else shrunk from it at 4:5 in 10%
+  beside the face, the full card (360 wide) where the spot holds it, else shrunk from it at its picture's aspect in 10%
   steps, never under 30 px wide; only when nothing off the face holds a card does it cover the face
   (noted `covers-face`, rule `face`). Text is no obstacle to the card and the card none to text: a text
   may sit on a card, and the card always draws under it (track 30 under the text track 50). The engine,
@@ -802,7 +814,7 @@ never fatal.
 - Never rewrite a stored version to fit the guard; it shows its failed check.
 - Nothing Node-only or browser-only in `packages/edit`; the caller injects the platform.
 - Never commit an asset without its licence (`assets/fonts/OFL-*.txt`,
-  `assets/sounds/LICENSE-sounds.md`).
+  `assets/sounds/LICENSE-sounds.md`, `assets/visuals/LICENSE-visuals.md`).
 
 ## Notes
 

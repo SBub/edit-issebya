@@ -14,10 +14,10 @@ import { resolveSpans, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 import { hiddenCaptionIds, levelBoxes } from "./transitions.ts";
 
-export type AssetRole = "footage" | "font" | "sound" | "mask";
+export type AssetRole = "footage" | "font" | "sound" | "mask" | "visual";
 
 // A file the page references: the footage and the masks are stored outputs
-// (by producer), fonts and sounds are packages/edit's assets.
+// (by producer), fonts, sounds and the stand-in pictures are packages/edit's assets.
 export interface BuildAsset {
   path: string;
   role: AssetRole;
@@ -33,6 +33,15 @@ export function maskPath(mask: Pick<EditMask, "fingerprint">): string {
 // the preset's stroke width.
 const visualStyle = (stroke: number) =>
   `      .visual { position: absolute; box-sizing: border-box; border: ${stroke}px solid #ffffff; background: transparent; }`;
+
+// A VISUAL with its stand-in picture: the picture fills the card's box exactly
+// (the box has the picture's aspect, so nothing is cropped), and the stroke is
+// drawn over it as the card's own frame.
+const visualPictureStyle = (stroke: number) => [
+  "      .visual-picture { position: absolute; box-sizing: border-box; }",
+  "      .visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }",
+  `      .visual-picture::after { content: ""; position: absolute; inset: 0; border: ${stroke}px solid #ffffff; box-sizing: border-box; }`,
+];
 
 // The extra rules a page with a cut-out needs: the composite's groups and
 // blends, and the big word.
@@ -150,9 +159,13 @@ export function build(
       return `      .f-${key} { font-family: "${font.family}", sans-serif; font-weight: ${font.weight}; }`;
     }),
     ...(spans.length > 0 ? BEHIND_STYLE : []),
-    // A visual's frame: only on a page that has one.
+    // A visual's frame: only on a page that has one, and its picture's only on a
+    // page with a picture.
     ...(behindItems.some((item) => item.kind === "visual")
       ? [visualStyle(VARIANTS["visual/card"].style.stroke.px)]
+      : []),
+    ...(behindItems.some((item) => item.kind === "visual" && item.image !== undefined)
+      ? visualPictureStyle(VARIANTS["visual/card"].style.stroke.px)
       : []),
     ...(levels.length > 0
       ? ["      .level { position: absolute; line-height: 1; white-space: nowrap; opacity: 0; }"]
@@ -420,7 +433,6 @@ function behindElement(
   ] as const;
   const extra = item.style ? [inlineStyle(item.style)] : [];
   if (item.kind === "visual") {
-    // An empty white stroke frame: no picture, no text, no fill.
     const box = visualBox(item);
     const css = [
       `left: ${px(box.left)}px`,
@@ -429,6 +441,23 @@ function behindElement(
       `height: ${px(box.bottom - box.top)}px`,
       ...extra,
     ].join("; ");
+    if (item.image !== undefined) {
+      // The stand-in picture, filling the box; the stroke is its frame.
+      return [
+        `<div${attrs([
+          ["id", item.id],
+          ["class", "clip visual-picture"],
+          ...timing,
+          ["style", css],
+        ])}>`,
+        `  <img${attrs([
+          ["src", item.image],
+          ["alt", ""],
+        ])}>`,
+        "</div>",
+      ].join("\n");
+    }
+    // An empty white stroke frame: no picture, no text, no fill.
     return `<div${attrs([
       ["id", item.id],
       ["class", "clip visual"],
@@ -520,6 +549,15 @@ function assetsOf(edit: Edit, preset: Preset, masks: readonly EditMask[]): Build
   }
   for (const key of new Set(edit.tracks.sounds.map((item) => item.sound))) {
     assets.push({ path: preset.sounds[key].file, role: "sound", ref: null });
+  }
+  // Each stand-in picture a visual shows, once.
+  const pictures = new Set(
+    (edit.tracks.behind ?? []).flatMap((item) =>
+      item.kind === "visual" && item.image !== undefined ? [item.image] : [],
+    ),
+  );
+  for (const file of pictures) {
+    assets.push({ path: file, role: "visual", ref: null });
   }
   return assets.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }

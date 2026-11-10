@@ -34,7 +34,7 @@ import { type HeadTrack } from "./head-track.ts";
 import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
 import { type PickedVariants, boxVariantOf, textVariantOf } from "./variant-picker.ts";
-import { timingOf } from "./variants.ts";
+import { VISUAL_STAND_INS, timingOf } from "./variants.ts";
 import { type Preset, SHOWN_FLOOR_SECONDS } from "./preset.ts";
 import {
   type Anchor,
@@ -495,9 +495,18 @@ function placeOnce(
     if (skip.has(`big_words[${index}]`)) return;
     extras.push(bigWordExtra(choice, index, bigWordId(index)));
   });
-  input.visuals.forEach((visual, index) => {
-    extras.push(visualExtra(visual, index, `visual-${index + 1}`));
-  });
+  // The VISUALs' stand-in pictures: the Nth in start-time order (ties by the
+  // answer's order) shows image N mod 3 (`VISUAL_STAND_INS`), so a reel's
+  // pictures follow its speech.
+  const visualExtras = input.visuals.map((visual, index) =>
+    visualExtra(visual, index, `visual-${index + 1}`),
+  );
+  [...visualExtras]
+    .sort((a, b) => a.start - b.start || a.index - b.index)
+    .forEach((extra, rank) => {
+      extra.image = VISUAL_STAND_INS[rank % VISUAL_STAND_INS.length];
+    });
+  extras.push(...visualExtras);
 
   // Transitions, timed from their words (their entrance before the first word).
   const transitionPlans = timeTransitions();

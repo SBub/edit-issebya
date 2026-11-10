@@ -21,6 +21,9 @@
       .mask-front { mix-blend-mode: multiply; }
       .word { position: absolute; line-height: 1; white-space: nowrap; }
       .visual { position: absolute; box-sizing: border-box; border: 8px solid #ffffff; background: transparent; }
+      .visual-picture { position: absolute; box-sizing: border-box; }
+      .visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+      .visual-picture::after { content: ""; position: absolute; inset: 0; border: 8px solid #ffffff; box-sizing: border-box; }
       .hook { text-align: center; }
     </style>
   </head>
@@ -36,7 +39,9 @@
           <video id="cut_1_mask" class="clip full mask-front" src="masks/3333333333333333333333333333333333333333333333333333333333333333.mp4" muted playsinline data-start="19.767" data-duration="1.733" data-track-index="24"></video>
         </div>
       </div>
-      <div id="visual-1" class="clip visual" alt="" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 75px; top: 1047px; width: 307px; height: 383px"></div>
+      <div id="visual-1" class="clip visual-picture" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 75px; top: 1047px; width: 300px; height: 383px">
+  <img src="assets/visuals/visual-1.jpg" alt="">
+</div>
       <div id="text" class="clip" data-start="0.000" data-duration="47.526" data-track-index="50">
         <span id="cw0" class="text f-secondary" style="left: 65px; top: 783px; font-size: 50px; color: #FFFFFF">the</span>
         <span id="cw1" class="text f-secondary" style="left: 157px; top: 783px; font-size: 50px; color: #FFFFFF">time</span>

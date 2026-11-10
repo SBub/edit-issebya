@@ -111,10 +111,12 @@ export function stackPositions(
   });
 }
 
-// A box: its entry gives its aspect and full width.
+// A box: its entry gives its full width, `aspect` (width over height) is the
+// picture's own, so the height follows the picture and nothing is cropped.
 export interface BoxElement extends ElementBase {
   type: "box";
   variant: BoxVariant;
+  aspect: number;
 }
 
 // One caption of a block: set whole on one line, in its own font when the
@@ -358,7 +360,7 @@ const ratio = (text: `${number}/${number}`): number => {
 };
 
 function boxShape(element: BoxElement): Shape {
-  const aspect = ratio(element.variant.aspect);
+  const { aspect } = element;
   return {
     lines: [],
     extraLines: 0,

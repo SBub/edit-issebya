@@ -238,6 +238,21 @@ describe("the behind track", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("takes a visual's stand-in picture, and refuses a file that is no stand-in", () => {
+    const box = { x: 110, y: 220, width: 640, height: 480 };
+    const parsed = parseEdit(
+      withItems([{ ...visual(10, 13), box, image: "assets/visuals/visual-3.jpg" }]),
+      ISSEBYA_PRESET,
+      behind.transcript,
+    );
+    expect(parsed.ok && parsed.edit.tracks.behind?.[0]).toMatchObject({
+      image: "assets/visuals/visual-3.jpg",
+    });
+    expect(
+      behindReasons(withItems([{ ...visual(10, 13), box, image: "assets/visuals/other.jpg" }])),
+    ).not.toEqual([]);
+  });
+
   it("refuses a visual without its box", () => {
     const boxless: Record<string, unknown> = { ...visual(10, 13) };
     delete boxless.box;

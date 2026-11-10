@@ -3178,10 +3178,11 @@
           "offset": -0.059
         },
         "kind": "visual",
+        "image": "assets/visuals/visual-1.jpg",
         "box": {
           "x": 75,
           "y": 1047,
-          "width": 307,
+          "width": 300,
           "height": 383
         }
       },

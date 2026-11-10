@@ -57,10 +57,12 @@ const bigWord = (words: string): PlaceElement => ({
   maxLines: 1,
   ...span,
 });
+// A 4:5 picture's aspect (width over height): the card's box at its shape.
 const card: PlaceElement = {
   type: "box",
   id: "visual-1",
   variant: VARIANTS["visual/card"],
+  aspect: 4 / 5,
   ...span,
 };
 

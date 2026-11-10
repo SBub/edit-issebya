@@ -15,7 +15,7 @@
 asks the model (Claude Haiku 5.5 through OpenRouter, the Vercel AI SDK, no tools; see "The AI runner"
 below) twice, in order. First the written hook (HOOK), its own call (role `hook`, prompt `reel-hook`, see
 "Prompts"). Then the components: the accent
-phrases (ACCENT), the big words behind the speaker (BIGWORD), the VISUALS (empty frames, each with a short
+phrases (ACCENT), the big words behind the speaker (BIGWORD), the VISUALS (frames, each with a short
 description of what it would show), the questions the speaker puts to the viewer (QUESTION), the numbered
 list items (LIST), and the misheard words to fix,
 with the hook text given to them as data (role `decide`). Claude answers in meaning only: word ids and
@@ -44,7 +44,7 @@ The model names each component by its answer list (prompt `reel-components`):
 | ACCENT    | `accents`    | a phrase worth stressing, `{ "from", "to" }`                                                                         |
 | QUESTION  | `questions`  | a question the speaker puts to the viewer, often rhetorical, `{ "from", "to" }`; shown with the ACCENT look for now  |
 | BIGWORD   | `big_words`  | one or two consecutive plain words shown large behind the speaker, `{ "from", "to" }`                                |
-| VISUAL    | `visuals`    | an empty frame over its words, `{ "from", "to", "description" }` (8 words at most)                                   |
+| VISUAL    | `visuals`    | a frame over its words (the layout picks its picture), `{ "from", "to", "description" }` (8 words at most)           |
 | LIST      | `lists`      | the numbered lists: each `{ "items": [...] }` (one or more), an item over its phrase, `{ "from", "to", "key_from" }` |
 
 `word_fixes` (`{ "word", "text" }`) is not a component: it fixes a misheard word on its caption.

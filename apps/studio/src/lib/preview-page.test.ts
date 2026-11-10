@@ -105,6 +105,28 @@ describe("previewPage", () => {
     ).toHaveLength(2);
   });
 
+  it("loads each visual's stand-in picture from the edit-assets route", () => {
+    const picture: BuildAsset = { path: "assets/visuals/visual-1.jpg", role: "visual", ref: null };
+    const mask = `masks/${"3".repeat(64)}.mp4`;
+    const assets: BuildAsset[] = [
+      ...CLIPS,
+      ...FONTS,
+      picture,
+      { path: mask, role: "mask", ref: null },
+    ];
+    const urls = { ...URLS, masks: [{ path: mask, url: "https://r2.example/a.mp4?s=1&t=2" }] };
+    const page = previewPage(behind, assets, urls, ["click-visual-1", "click-big-word-1"]);
+    expect(page).toContain(
+      '<img src="/studio/api/edit-assets/assets/visuals/visual-1.jpg" alt="">',
+    );
+    expect(page).not.toMatch(/src="assets\/visuals\//);
+  });
+
+  it("throws for a visual picture the page does not show", () => {
+    const picture: BuildAsset = { path: "assets/visuals/visual-3.jpg", role: "visual", ref: null };
+    expect(() => previewPage(baseline, [picture], URLS, [])).toThrow(/no <img> plays/);
+  });
+
   it("throws for a mask without a URL", () => {
     const mask: BuildAsset = { path: `masks/${"3".repeat(64)}.mp4`, role: "mask", ref: null };
     expect(() => previewPage(behind, [mask], URLS, [])).toThrow(`preview: no URL for ${mask.path}`);
