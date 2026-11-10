@@ -174,9 +174,9 @@ start_group() {
 # Starts the local monitoring containers (otel-lgtm and cAdvisor). They are left running on exit,
 # since they are cheap to keep and the data survives; `docker compose -f docker-compose.monitoring.yml down`
 # stops them. One stack per machine: every checkout uses the same Compose project name, so a stack
-# that already answers on Grafana (from any checkout) and runs every service of this checkout's
-# compose file is reused and not started again. A stack that lacks a service (one started by an
-# older checkout) gets `up -d`, which adds the service and recreates a container whose settings
+# that already answers on Grafana and runs every service with this checkout's settings is reused
+# and not started again. Any other stack (a service missing, or a container made from other
+# settings) gets `up -d`, which adds the service and recreates only the containers whose settings
 # changed (the data volume is kept).
 # Up is not the same as working: the image can exit seconds after it starts (one of its programs
 # failing at start). So the script waits for Grafana to answer, recreates the container once when it
@@ -194,11 +194,15 @@ monitoring_not_running() {
   return 0
 }
 
-# True when every service of the compose file has a running container.
-monitoring_complete() {
+# True when every service of the compose file has a running container made from the settings the
+# file has now. Compose stamps each container with a hash of its service's settings (image,
+# command, mounts, ports); `config --hash` gives the same hash for the file. A mount's host path is
+# part of it, so a checkout in another folder recreates the containers with its own files mounted.
+monitoring_current() {
   local wanted running
-  wanted="$(docker compose -f "$MONITORING_COMPOSE" config --services 2>/dev/null | sort)" || return 1
-  running="$(docker compose -f "$MONITORING_COMPOSE" ps --status running --services 2>/dev/null | sort)" || return 1
+  wanted="$(docker compose -f "$MONITORING_COMPOSE" config --hash '*' 2>/dev/null | sort)" || return 1
+  running="$(docker compose -f "$MONITORING_COMPOSE" ps --status running \
+    --format '{{.Service}} {{.Label "com.docker.compose.config-hash"}}' 2>/dev/null | sort)" || return 1
   [ -n "$wanted" ] && [ "$wanted" = "$running" ]
 }
 
@@ -223,7 +227,7 @@ warn_monitoring_down() {
 }
 
 start_monitoring() {
-  if monitoring_answers && monitoring_complete; then
+  if monitoring_answers && monitoring_current; then
     ok "Local monitoring is already running at $MONITORING_UI_URL (reused)"
     return
   fi

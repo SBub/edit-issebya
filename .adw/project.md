@@ -253,7 +253,8 @@ on every pull request and push to `develop` and `master`.
   the `grafana/otel-lgtm` container): Grafana on host port 3300 (container 3000, bound to 127.0.0.1;
   3000 is the landing page) and OTLP over HTTP on 4318 (127.0.0.1). Its second container, cAdvisor
   (container metrics), publishes no host port. One Compose project (`edit-issebya-monitoring`) per
-  machine, reused when Grafana already answers and every service runs. ADW never starts it.
+  machine, reused when Grafana already answers and every service runs with the checkout's settings.
+  ADW never starts it.
 
 ## Protected
 
