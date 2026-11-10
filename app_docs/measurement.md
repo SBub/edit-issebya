@@ -64,8 +64,11 @@ client, identifies the signed-in user and sends `studio_*` events.
   none, and an empty value sends none. Without an endpoint the providers have no processor and nothing
   is exported or fails.
 - `traceIdForReel(uuid)`: the reel uuid without dashes, lowercased. `startJobSpan` starts the span
-  `job <kind>` under a remote parent with that trace id (span id from the last 16 hex digits of the reel
-  id, never exported), so every job of a reel, at any time, lands in one trace. Each step is a child
+  `job <kind>` as a root span (no parent span id) in that trace: `startRootSpan` passes `root: true`
+  and a trace id pinned for that one call to the SDK's id generator (`PinnableIdGenerator`, which
+  the SDK asks for a trace id only when a span has no parent). So every job of a reel, at any time,
+  lands in one trace as a top-level block, with no missing-parent gap. A span started outside a job
+  gets a random trace id as before. Each step is a child
   span `step <name>` with `reel.id`, `job.id`, `step.name` and `step.wall_ms`, `step.cpu_ms`,
   `step.peak_rss_bytes`, `step.bytes_in`, `step.bytes_out`. Output lines are log records emitted in the
   step span's context (INFO for both streams, attribute `stream`: a tool's stderr is progress as often
@@ -84,7 +87,8 @@ client, identifies the signed-in user and sends `studio_*` events.
   `footage_seconds`) are each written once by the worker while null; the owner reads them, never
   writes them.
 - A `describe_photo` job's trace uses the photo's id in place of the reel's (`traceIdForJob`), and its
-  spans carry `photo.id` in place of `reel.id` (`targetAttributes`).
+  spans carry `photo.id` in place of `reel.id` (`targetAttributes`). Its `job` span keeps the earlier
+  shape: a remote parent whose span id no span carries, so Grafana shows it with a missing parent.
 - `decide`'s stages are child spans of its `step decide` span, one per stage, with the `decide.*`
   names and attributes listed under Local monitoring. `step cutout` is a
   child of the decide span when decide runs it (the step takes an optional `parent`); its
@@ -179,7 +183,8 @@ traces and logs are not recorded until the stack is back.
 - Grafana: `http://localhost:3300`. The host port is 3300 because the landing page owns 3000. Both
   published ports (3300 and 4318) are bound to 127.0.0.1.
 - A reel's trace: Explore, the Tempo data source, query type TraceID, the reel's uuid without dashes
-  (`traceIdForReel`). Each job is a `job <kind>` span, each step a child `step <name>` span and each
+  (`traceIdForReel`). Each job is a root `job <kind>` span (a top-level block; jobs of one reel follow each
+  other in time), each step a child `step <name>` span and each
   tool call a child `exec <executable>` span of its step.
 - A step's output: from a span, Logs for this span opens Loki (Tempo's `tracesToLogsV2` link). Each
   output line is a log record in the step span's context, and Loki links back to Tempo by `trace_id`.

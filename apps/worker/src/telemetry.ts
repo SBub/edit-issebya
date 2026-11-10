@@ -3,6 +3,7 @@ import {
   type Context,
   ROOT_CONTEXT,
   type Span,
+  type SpanOptions,
   SpanStatusCode,
   TraceFlags,
   type Tracer,
@@ -17,7 +18,13 @@ import {
   type LogRecordProcessor,
   LoggerProvider,
 } from "@opentelemetry/sdk-logs";
-import { BatchSpanProcessor, type SpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
+import {
+  BatchSpanProcessor,
+  type IdGenerator,
+  RandomIdGenerator,
+  type SpanProcessor,
+  TracerProvider,
+} from "@opentelemetry/sdk-trace";
 import type { ClaimedJob } from "./queue.ts";
 import { type ReelSizeHolder, reelSizeAttributes } from "./reel-size.ts";
 import { scrub } from "./scrub.ts";
@@ -29,8 +36,36 @@ export interface Telemetry {
   logger: Logger;
   // True only when OTEL_EXPORTER_OTLP_ENDPOINT is set and exporters were built.
   exporting: boolean;
+  // Starts a span that is a root (no parent span id) in the trace `traceId`.
+  startRootSpan(traceId: string, name: string, options: SpanOptions): Span;
   // Flushes and stops both providers; call before the process exits.
   shutdown(): Promise<void>;
+}
+
+// The SDK asks its id generator for a trace id only when a span has no valid
+// parent, and it asks synchronously inside startSpan. So a trace id pinned for
+// the one call is the one that span gets; every other root span (and a pinned
+// call that did not need one) gets a random id, as the SDK's default does.
+class PinnableIdGenerator implements IdGenerator {
+  private readonly random = new RandomIdGenerator();
+  private pinned: string | undefined;
+
+  generateTraceId(): string {
+    return this.pinned ?? this.random.generateTraceId();
+  }
+
+  generateSpanId(): string {
+    return this.random.generateSpanId();
+  }
+
+  pin<T>(traceId: string, start: () => T): T {
+    this.pinned = traceId;
+    try {
+      return start();
+    } finally {
+      this.pinned = undefined;
+    }
+  }
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -101,47 +136,61 @@ export function createTelemetry(
     );
   }
 
-  const tracerProvider = new TracerProvider({ resource, spanProcessors: spans });
+  const ids = new PinnableIdGenerator();
+  const tracerProvider = new TracerProvider({
+    resource,
+    spanProcessors: spans,
+    idGenerator: ids,
+  });
   const loggerProvider = new LoggerProvider({ resource, processors: logs });
+  const tracer = tracerProvider.getTracer("edit-issebya-worker");
   return {
-    tracer: tracerProvider.getTracer("edit-issebya-worker"),
+    tracer,
     logger: loggerProvider.getLogger("edit-issebya-worker"),
     exporting,
+    startRootSpan(traceId, name, options) {
+      // `root` drops any active parent, so no parent span id is written.
+      return ids.pin(traceId, () => tracer.startSpan(name, { ...options, root: true }));
+    },
     async shutdown() {
       await Promise.all([tracerProvider.shutdown(), loggerProvider.shutdown()]);
     },
   };
 }
 
-// The job span, under a remote parent carrying the reel's trace id (span id
-// from the reel id's last 16 hex digits, never exported), so every job of the
-// reel, at any time, lands in the same trace. A photo's job does the same
-// with the photo's id. With the reel's size, the span carries its `reel.*`
-// attributes from the start.
+// The job span. A reel's job is a root span in the reel's trace (trace id = the
+// reel id without dashes), so every job of the reel, at any time, lands in the
+// same trace as a top-level block with no parent span id. With the reel's size,
+// the span carries its `reel.*` attributes from the start.
+//
+// A photo's job keeps its earlier shape: it runs under a remote parent with the
+// photo's trace id (span id from the photo id's last 16 hex digits, never
+// exported), whose span id no span carries, so Grafana shows it as missing parent.
 export function startJobSpan(
   telemetry: Telemetry,
   job: ClaimedJob,
   size?: ReelSizeHolder,
 ): { span: Span; context: Context } {
   const traceId = traceIdForJob(job);
+  const options: SpanOptions = {
+    attributes: {
+      ...targetAttributes(job),
+      "job.id": job.id,
+      "job.attempt": job.attempts,
+      ...(size ? reelSizeAttributes(size.current()) : {}),
+    },
+  };
+  if (job.reel_id) {
+    const span = telemetry.startRootSpan(traceId, `job ${job.kind}`, options);
+    return { span, context: trace.setSpan(ROOT_CONTEXT, span) };
+  }
   const parent = trace.setSpanContext(ROOT_CONTEXT, {
     traceId,
     spanId: traceId.slice(-16),
     traceFlags: TraceFlags.SAMPLED,
     isRemote: true,
   });
-  const span = telemetry.tracer.startSpan(
-    `job ${job.kind}`,
-    {
-      attributes: {
-        ...targetAttributes(job),
-        "job.id": job.id,
-        "job.attempt": job.attempts,
-        ...(size ? reelSizeAttributes(size.current()) : {}),
-      },
-    },
-    parent,
-  );
+  const span = telemetry.tracer.startSpan(`job ${job.kind}`, options, parent);
   return { span, context: trace.setSpan(parent, span) };
 }
 
