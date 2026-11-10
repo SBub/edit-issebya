@@ -320,6 +320,37 @@ the layout, not the AI.
 
 The photo description (`describe_photo`) makes its call as a `chat` span under its step span.
 
+### render's spans
+
+The `step render` span has five stages as children, in order. The HyperFrames call is the `exec`
+span under `render.encode`:
+
+```
+step render                        render.version_id, render.duration_seconds, render.mp4_bytes, job.cancelled
+├─ render.load                     render.version_id, render.version_number, render.inputs
+├─ render.build                    render.page_bytes, render.assets
+├─ render.encode                   render.duration_seconds
+│  └─ exec hyperframes             the tool call's exec attributes (CPU, peak, exit)
+├─ render.upload                   render.mp4_bytes, render.key
+└─ render.save                     render.export_id
+```
+
+- `render.load`: the version row, its edit and the inputs read from storage. `render.inputs` is the
+  footage plus the masks downloaded for the render.
+- `render.build`: the HyperFrames page from the shared builder and the project folder beside it.
+  `render.page_bytes` is the page's UTF-8 size, `render.assets` the files the page names.
+- `render.duration_seconds` is the composition's length (the edit's duration), on the step and on
+  `render.encode`. The step's own wall time is `step.wall_ms`.
+- `render.upload` and `render.save` are the MP4 put to storage and the `exports` row. A row refused
+  for a cancelled job ends `render.save` clean; the uploaded file is discarded as before.
+- `job.cancelled` is on the step (`true` or `false`) and on the stage a cancel stopped. A cancel
+  (`JobCancelled`) ends those spans clean: no error status, no exception event, and no ERROR log
+  record. The step span is not an error either. A lost lease or a deleted job also ends the step span
+  without an error status (`step-runner.ts` `withStep`), but sets no `job.cancelled`.
+- A failed render writes one ERROR record `render failed: <message>` through the step's failure log
+  (`emitFailureLog`), with `job.id`, `job.kind` and `step.name` `render`, in the step span's context. The
+  failing stage's span carries the exception and the error status.
+
 ## Configuration
 
 - Worker: `OTEL_EXPORTER_OTLP_ENDPOINT` turns export on; `OTEL_EXPORTER_OTLP_HEADERS` is optional
@@ -336,6 +367,10 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
   pipes killed, no call started after the abort), `summary.test.ts`, `time-report.test.ts`, `process-tree.test.ts`, `telemetry.test.ts` (one
   trace per reel, span tree, logs linked to spans, no request without an endpoint against a local HTTP
   server, an endpoint alone with no Authorization header, positive control).
+- Render's spans: `render/render-step.test.ts` (`runRender spans`: the five stages in order under the
+  step, the HyperFrames exec under `render.encode`, each stage's attributes, one ERROR `render failed`
+  record with the job and the step when the footage is missing, a cancel that ends the stage and the
+  step clean with `job.cancelled`). `telemetry.test.ts` (`inSpan`: a cancelled work ends clean).
 - Decide's spans: `telemetry.test.ts` (`inSpan`: the child's parent and attributes, an error marked
   and rethrown, telemetry that exports nothing), `run-decide.test.ts` (`runDecide spans`: a normal
   run's children in order with their facts, a retry as two attempts, a thrown error on the attempt's
