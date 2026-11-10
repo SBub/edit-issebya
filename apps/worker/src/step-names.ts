@@ -15,4 +15,5 @@ export const STEP_NAMES = [
   "render",
   "describe_photo",
   "photo_images",
+  "relayout",
 ] as const;

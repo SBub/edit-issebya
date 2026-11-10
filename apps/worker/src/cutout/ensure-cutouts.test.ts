@@ -2,10 +2,12 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
+import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { recordingSteps, stepContext } from "../recording-steps.ts";
 import { classifyKey, recordingStorage } from "../stored-files.ts";
+import { createTelemetry } from "../telemetry.ts";
 import { ensureCutouts } from "./ensure-cutouts.ts";
 import { cutoutKey, plannedMasks } from "./spans.ts";
 import { BEHIND_TRANSCRIPT, behindEdit, fakeMaskSpawn } from "./test-support.ts";
@@ -159,5 +161,55 @@ describe("ensureCutouts", () => {
     await ensure();
     expect(rows).toEqual(keys().map((key) => ({ key, kind: "rebuildable", step: "cutout" })));
     expect(classifyKey(PREFIX, keys()[0]!)).toEqual({ kind: "rebuildable", step: "cutout" });
+  });
+});
+
+// The cut-out span's counts: masks made by this call and stored ones reused.
+describe("ensureCutouts span counts", () => {
+  it("puts the made and reused counts on the cut-out span when some are stored", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const [first] = keys();
+    await storage.put(first!, new TextEncoder().encode("stored"));
+    await ensureCutouts({
+      ctx: stepContext(recordingSteps().steps, { telemetry }),
+      storage,
+      keyPrefix: PREFIX,
+      scratchDir: scratch,
+      edit: behindEdit(),
+      transcript: BEHIND_TRANSCRIPT,
+      tools,
+      spawnTool: fakeMaskSpawn().spawnTool,
+      env: { E2E_MOCK_MASK: "true" },
+    });
+    const span = exporter.getFinishedSpans().find((s) => s.name === "step cutout");
+    expect(span?.attributes).toMatchObject({ "cutout.made": 1, "cutout.reused": 1 });
+    await telemetry.shutdown();
+  });
+
+  it("puts reused on the cut-out span of a cache hit", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    for (const key of keys()) await storage.put(key, new TextEncoder().encode("stored"));
+    await ensureCutouts({
+      ctx: stepContext(recordingSteps().steps, { telemetry }),
+      storage,
+      keyPrefix: PREFIX,
+      scratchDir: scratch,
+      edit: behindEdit(),
+      transcript: BEHIND_TRANSCRIPT,
+      tools,
+      spawnTool: fakeMaskSpawn().spawnTool,
+      env: { E2E_MOCK_MASK: "true" },
+    });
+    const span = exporter.getFinishedSpans().find((s) => s.name === "step cutout");
+    expect(span?.attributes).toMatchObject({ "cutout.made": 0, "cutout.reused": 2 });
+    await telemetry.shutdown();
   });
 });

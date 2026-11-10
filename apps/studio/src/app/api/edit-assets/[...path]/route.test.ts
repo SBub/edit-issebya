@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { ISSEBYA_PRESET } from "@edit-issebya/edit";
+import { FONT_PAIRS, DEFAULT_FONT_PAIR_ID } from "@edit-issebya/edit";
 import { describe, expect, it } from "vitest";
 import { GET } from "./route";
 
-// The caption font as the preset names it (`assets/fonts/...`).
-const FONT = ISSEBYA_PRESET.fonts.secondary.file;
+// The caption font of the default pair as the pair names it (`assets/fonts/...`).
+const FONT = FONT_PAIRS[DEFAULT_FONT_PAIR_ID].simple.file;
 
 function get(path: string[]) {
   return GET(new Request("http://x/"), { params: Promise.resolve({ path }) });
@@ -30,7 +30,7 @@ describe("GET /api/edit-assets/[...path]", () => {
   });
 
   it("answers 404 to a file the preset does not name", async () => {
-    expect((await get(["assets", "fonts", "OFL-Raleway.txt"])).status).toBe(404);
+    expect((await get(["assets", "fonts", "OFL-InterTight.txt"])).status).toBe(404);
     expect((await get(["package.json"])).status).toBe(404);
   });
 

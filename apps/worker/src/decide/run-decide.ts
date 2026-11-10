@@ -25,6 +25,7 @@ import {
   saveVersion,
   transcriptSchema,
   usedFreeField,
+  type FontPairId,
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import { type AiRunner, NO_USAGE } from "../ai.ts";
@@ -71,7 +72,9 @@ export interface DecideRun {
   // of the current one (the reel's version 1); the new version's parent is
   // still the current one. Null or absent: from the current version.
   startFrom?: string | null;
-  measurer?: () => Promise<Measurer>;
+  // The reel owner's font pair (`font-pair-store.ts`), read when the step starts.
+  ownerFontPair: () => Promise<FontPairId>;
+  measurer?: (pair: FontPairId) => Promise<Measurer>;
   newId?: () => string;
   // For the cut-out a behind item needs before the version is saved.
   tools?: ToolPaths;
@@ -152,6 +155,7 @@ export function runDecide({
   prompts,
   scratchDir,
   startFrom = null,
+  ownerFontPair,
   measurer = editMeasurer,
   newId = randomUUID,
   tools = toolPaths(),
@@ -188,6 +192,8 @@ export function runDecide({
           if (!stored) throw new Error(`${STEP}: input missing: ${key}`);
           return JSON.parse(new TextDecoder().decode(stored)) as unknown;
         };
+        // The owner's pair: the new version is set in it, whatever pair the version it decides from is in.
+        const fontPair = await ownerFontPair();
         const transcript = transcriptSchema.parse(await read(row.inputs.transcript));
         const headTrack = headTrackSchema.parse(await read(row.inputs.head_track));
         const parsed = parseEdit(JSON.parse(new TextDecoder().decode(bytes)), preset, transcript);
@@ -200,7 +206,7 @@ export function runDecide({
           row,
           transcript,
           headTrack,
-          current: parsed.edit,
+          current: { ...parsed.edit, font_pair: fontPair },
         };
       });
       const { currentId, currentNumber, row, transcript, headTrack, current } = loaded;
@@ -208,7 +214,7 @@ export function runDecide({
         const schema = decideJsonSchema(preset, transcript);
         return {
           schema,
-          measure: await measurer(),
+          measure: await measurer(current.font_pair),
         };
       });
       const { schema, measure } = prepared;

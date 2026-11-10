@@ -1,15 +1,5 @@
 import type { Box } from "./head-track.ts";
 
-export type FontKey = "primary" | "secondary";
-export const FONT_KEYS = ["primary", "secondary"] as const satisfies readonly FontKey[];
-
-export interface PresetFont {
-  family: string;
-  // Relative to packages/edit (and to the built page): `assets/fonts/...`.
-  file: string;
-  weight: number;
-}
-
 // The transition kinds: the LIST (`numbered`), the one kind a transition takes.
 export const TRANSITION_KINDS = ["numbered"] as const;
 export type TransitionKind = (typeof TRANSITION_KINDS)[number];
@@ -74,7 +64,6 @@ export interface GlossaryTerm {
 export interface Preset {
   id: "issebya";
   frame: { width: number; height: number };
-  fonts: Record<FontKey, PresetFont>;
   caption: {
     // Appear: opacity 0 to 1 while rising `rise` pixels; disappear: a fade.
     rise: number;
@@ -162,18 +151,6 @@ export const ISSEBYA_PRESET: Preset = {
   id: "issebya",
   intensity: "intense",
   frame: { width: 1080, height: 1920 },
-  fonts: {
-    primary: {
-      family: "Raleway Light",
-      file: "assets/fonts/Raleway-Light.ttf",
-      weight: 300,
-    },
-    secondary: {
-      family: "Golos Text",
-      file: "assets/fonts/GolosText-Bold.ttf",
-      weight: 700,
-    },
-  },
   caption: {
     rise: 12,
     inSeconds: 0.18,

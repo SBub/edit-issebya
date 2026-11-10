@@ -16,6 +16,7 @@ function edit(tracks: Partial<Edit["tracks"]>): Edit {
   return {
     format: 1,
     preset: "issebya",
+    font_pair: "classic",
     duration: 1,
     inputs: {
       footage: { step: "retime", fingerprint: "f", file: "source.mp4" },

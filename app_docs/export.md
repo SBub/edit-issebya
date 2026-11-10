@@ -95,6 +95,8 @@ latestExport)` (`apps/studio/src/lib/exports.ts`), a pure function of `LiveReel`
 ### Worker
 
 - `job-kinds.ts` dispatches `render` with its `version_id`; a render without one fails the job.
+- The export's fonts are the version's own pair files: the render measures with `editMeasurer(edit.font_pair)`
+  and the build copies that pair's font assets (`app_docs/font-pairs.md`).
 - `runRender` (`apps/worker/src/render/render-step.ts`): an export already recorded for the job is a
   hit (`export kept, reused`). Otherwise it runs the pipeline with `setReelStatus: false`, so every
   step is a hit or the missing rebuildable output is rebuilt, and the reel stays `processed`.

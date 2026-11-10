@@ -423,7 +423,7 @@ describe("big words: the cut-out only where the head reaches them", () => {
     ]);
     expect(maskSpans(edit, transcript, ISSEBYA_PRESET)).toEqual([]);
     expect(html).not.toContain(".cutout");
-    expect(html).toContain(`<div id="big-word-1" class="clip word f-primary"`);
+    expect(html).toContain(`<div id="big-word-1" class="clip word f-simple"`);
     expect(html).toContain(">distribution</div>");
     expect(checks).toEqual([]);
   });
@@ -1684,7 +1684,7 @@ describe("the written hook", () => {
       placed.record.filter((note) => note.item === "hook").map((note) => note.outcome),
     ).toEqual(expect.arrayContaining(["wrapped"]));
     // Its own class, the accents' entrance.
-    expect(placed.html).toContain('class="text hook f-primary"');
+    expect(placed.html).toContain('class="text hook f-artistic"');
     expect(placed.html).toContain(".hook { text-align: center; }");
     expect(placed.checks).toEqual([]);
     // Nobody says it: no caption is left out for it.
@@ -1867,7 +1867,7 @@ describe("the written hook", () => {
       "shrunk",
     ]);
     expect(parseEdit(long.edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
-    // Twenty words wrap freely at the base size (seven lines) instead of shrinking.
+    // Twenty words wrap freely at the base size (five lines) instead of shrinking.
     const sentence = await place(
       {
         hook: {
@@ -1878,7 +1878,7 @@ describe("the written hook", () => {
     );
     const lines = hookOf(sentence.edit)!;
     expect(lines.size).toBe(preset110);
-    expect(lines.breaks!.length).toBeGreaterThanOrEqual(5);
+    expect(lines.breaks!.length).toBe(4);
     expect(sentence.checks).toEqual([]);
   });
 
@@ -2372,7 +2372,7 @@ const ONE_SECOND: Transcript = {
 function oneSecondReel(): Edit {
   const base = baselineEdit(
     ONE_SECOND,
-    { inputs: baselineInputs().inputs, duration: 1 },
+    { inputs: baselineInputs().inputs, duration: 1, fontPair: "classic" },
     ISSEBYA_PRESET,
   );
   return {

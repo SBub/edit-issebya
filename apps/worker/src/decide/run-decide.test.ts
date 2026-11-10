@@ -8,6 +8,7 @@ import {
   type VersionRows,
   parseEdit,
   transcriptSchema,
+  type FontPairId,
 } from "@edit-issebya/edit";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
@@ -121,6 +122,7 @@ beforeEach(async () => {
     blobs: storageVersionBlobs(storage),
     keyPrefix: PREFIX,
     fingerprints,
+    fontPair: "classic",
     newId,
     log: () => {},
   });
@@ -161,6 +163,7 @@ async function decide(
   ai: AiRunner,
   telemetry?: Telemetry,
   prompts: PromptSource = fakePromptSource(),
+  ownerPair: () => Promise<FontPairId> = CLASSIC_PAIR,
 ) {
   const { steps, calls } = recordingSteps();
   const run = runDecide({
@@ -172,11 +175,14 @@ async function decide(
     ai,
     prompts,
     scratchDir: scratch,
+    ownerFontPair: ownerPair,
     newId,
     log: () => {},
   });
   return { run, calls };
 }
+
+const CLASSIC_PAIR = async (): Promise<FontPairId> => "classic";
 
 // The decide step's answer calls (the decide attempts), without the hook calls.
 function editorCalls(ai: FakeAiRunner) {
@@ -308,6 +314,19 @@ describe("runDecide", () => {
     // The scratch folder is gone.
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder
     expect(await readdir(scratch)).toEqual([]);
+  });
+
+  it("sets the new version in the owner's pair, and the version it decided from keeps its own", async () => {
+    const ai = aiScript([scripted]);
+    const { run } = await decide(ai, undefined, fakePromptSource(), async () => "retro");
+    await run;
+    const saved = rows.get(current!)!;
+    expect(saved.number).toBe(2);
+    const stored = JSON.parse(new TextDecoder().decode((await storage.get(saved.r2_key))!));
+    expect(stored.font_pair).toBe("retro");
+    const from = rows.get(firstId)!;
+    const before = JSON.parse(new TextDecoder().decode((await storage.get(from.r2_key))!));
+    expect(before.font_pair).toBe("classic");
   });
 
   it("saves version 1 with only the hook added for an answer with no choices", async () => {
@@ -451,6 +470,7 @@ describe("runDecide", () => {
       ai: aiScript([scripted]),
       prompts: fakePromptSource(),
       scratchDir: scratch,
+      ownerFontPair: CLASSIC_PAIR,
       newId,
       log: () => {},
     });
@@ -601,6 +621,7 @@ describe("runDecide", () => {
       ai,
       prompts: fakePromptSource(),
       scratchDir: scratch,
+      ownerFontPair: CLASSIC_PAIR,
       newId,
       log: (line) => lines.push(line),
     });
@@ -791,6 +812,7 @@ describe("runDecide with a visual", () => {
       ai,
       prompts: fakePromptSource(),
       scratchDir: scratch,
+      ownerFontPair: CLASSIC_PAIR,
       newId,
       spawnTool,
       env: { E2E_MOCK_MASK: "true" },
@@ -873,6 +895,7 @@ describe("runDecide starting over", () => {
       ai,
       prompts: fakePromptSource(),
       scratchDir: scratch,
+      ownerFontPair: CLASSIC_PAIR,
       newId,
       startFrom: firstId,
       log: () => {},
@@ -912,6 +935,7 @@ describe("runDecide starting over", () => {
       ai: aiScript([]),
       prompts: fakePromptSource(),
       scratchDir: scratch,
+      ownerFontPair: CLASSIC_PAIR,
       newId,
       startFrom: "other",
       log: () => {},

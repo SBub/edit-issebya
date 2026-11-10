@@ -27,11 +27,12 @@ the third tab on a phone.
   that can grow is `min-h-0`, and only the list areas scroll inside their own box (no JavaScript
   measures the window). Desktop: header, then a grid of three columns
   (`lg:grid-cols-[minmax(0,1fr)_20rem_18rem]`, wider at `xl:`) over one row of full height: the main
-  column (preview, controls, timeline) in column 1, and on its right Versions (`lg:col-start-2`,
-  `min-h-0 overflow-y-auto overscroll-contain`, no padding of its own, so its list of fixed-height
+  column (preview, controls, timeline) in column 1, and on its right the versions column (`lg:col-start-2`):
+  a tool panel on its top half, the font pair picker (`FontPairPicker.tsx`, six samples; the chosen one is the current version's pair, the "Last used" badge the profile's, `app_docs/font-pairs.md`),
+  and the versions list in the lower part (`data-testid` `versions-scroll`, `min-h-0 flex-1 overflow-y-auto overscroll-contain`, no padding of its own, so its list of fixed-height
   version rows (no time or date, edge to edge of the area), each opened with its arrow, scrolls
   inside it; rows and texts in `app_docs/change-requests.md`; the temporary Start over button sits at
-  the right of the `Versions` heading) and the photo library (`id="reel-panel-library"`, column 3, its
+  the right of the `Versions` heading). The versions column itself (`versions-area`) is `overflow-hidden`: the picker is `flex-none` with its own cap (`max-h-[50%]`), so it stays pinned on top and the list is the only scroll box in the column; a column that scrolled would move the picker away from the list it controls. The photo library (`id="reel-panel-library"`, column 3, its
   grid scrolling inside it, the add tile and drop target unchanged). The change box is removed
   (`app_docs/change-requests.md`), so nothing sits under the two columns. Phone: the same header, the
   middle split into Edit, Versions and Library tabs (WAI-ARIA tabs: arrows, Home and End wrap over the
@@ -302,7 +303,8 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   area, no step log and no ready-notification control, the phone's Edit, Versions and Library tabs,
   with Start over on the Versions tab). At 1440x900, 1280x800 and 1024x768 (the `lg` breakpoint) it
   checks the desktop split within 1 px: the edit area over the full height under the header, Versions
-  and the library side by side each over the full height, Versions' list scrolling inside it, and the
+  and the library side by side each over the full height, Versions' list (`versions-scroll`) scrolling
+  inside it while the font pair picker stays pinned above it (the versions column has no scroll of its own), and the
   DOM order edit, Versions, library (the tab order). At 1440x900 and 390x844 it checks the versions list:
   every row one height within 1 px whatever its text, the details behind the arrow. It also checks the
   timeline's five rows in order (Footage, Behind, Hook, Accents, Transitions; no Captions or Sounds row,
@@ -358,6 +360,9 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
 ## Rules
 
 - The reel page never scrolls as a page at any size; lists scroll inside their own area.
+- The versions column never scrolls as a whole: the font pair picker stays pinned on top and only the
+  versions list (`versions-scroll`) scrolls below it. Do not give `versions-area` an `overflow-y` other
+  than `hidden`.
 - On desktop the edit area takes the full height, and Versions and the library take the full height
   beside it; never put a panel under them. The DOM order (edit, Versions, library) is the tab order; do
   not reorder it with CSS `order`.

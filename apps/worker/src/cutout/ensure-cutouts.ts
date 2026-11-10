@@ -1,4 +1,4 @@
-import type { Context } from "@opentelemetry/api";
+import { type Attributes, type Context, trace } from "@opentelemetry/api";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Edit, Transcript } from "@edit-issebya/edit";
@@ -34,6 +34,12 @@ function elapsedMs(started: number): number {
 
 function plural(count: number, unit: string): string {
   return `${count} ${unit}${count === 1 ? "" : "s"}`;
+}
+
+// The cut-out step span's counts: the masks this call made and the stored ones
+// it reused (`cutout.made`, `cutout.reused`).
+function cutoutCounts(made: number, reused: number): Attributes {
+  return { "cutout.made": made, "cutout.reused": reused };
 }
 
 // Makes sure every padded span of the edit's behind items has its person mask
@@ -88,6 +94,7 @@ export async function ensureCutouts({
       name: MASK_STEP,
       summary: "cut-out reused",
       wallMs: elapsedMs(started),
+      attributes: cutoutCounts(0, spans.length),
     });
   } else {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the worker's own scratch folder
@@ -103,7 +110,10 @@ export async function ensureCutouts({
           inputs: [footagePath],
           outputs,
           sizeOf: "out",
-          async work(tool) {
+          async work(tool, cutoutContext) {
+            trace
+              .getSpan(cutoutContext)
+              ?.setAttributes(cutoutCounts(missing.length, spans.length - missing.length));
             const footageKey = cacheKey(keyPrefix, footage.step, footage.fingerprint, footage.file);
             if (!(await storage.getFile(footageKey, footagePath, { signal }))) {
               throw new Error(`${MASK_STEP}: input missing: ${footageKey}`);

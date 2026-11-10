@@ -2,6 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
+import { type FontPairId, isFontPairId } from "@edit-issebya/edit";
 import { changeBlockedReason } from "@/lib/change-requests";
 import { type ReelDetail, isReelId } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -54,8 +55,9 @@ async function insertJob(
   { supabase, userId }: { supabase: SupabaseClient; userId: string },
   row: {
     reel_id: string;
-    kind: "restore" | "start_over";
+    kind: "restore" | "start_over" | "relayout";
     restore_version_id?: string;
+    font_pair?: FontPairId;
   },
 ): Promise<ChangeActionResult> {
   // Under RLS: the insert policy takes the owner from the session and accepts
@@ -111,4 +113,40 @@ export async function requestStartOver(input: { reelId: string }): Promise<Chang
     return { status: "invalid", reason: "Start over opens once the first version is ready" };
   }
   return insertJob(open, { reel_id: input.reelId, kind: "start_over" });
+}
+
+// Font pairs (app_docs/font-pairs.md): saves the owner's pair to their profile,
+// then queues a `relayout` job that places the reel's current version again in
+// that pair (no AI call). The profile is what the next decide and first version
+// use; the job is what this reel gets now.
+export async function requestFontPair(input: {
+  reelId: string;
+  fontPair: string;
+}): Promise<ChangeActionResult> {
+  if (typeof input.reelId !== "string" || !isReelId(input.reelId)) return { status: "failed" };
+  if (!isFontPairId(input.fontPair)) {
+    return { status: "invalid", reason: "Pick one of the six font pairs" };
+  }
+  const open = await openReel(input.reelId);
+  if (!open.ok) return open.result;
+  if (open.currentVersionId === null) {
+    return { status: "invalid", reason: "Font pairs open once the first version is ready" };
+  }
+  // The database saves the owner's row (`set_font_pair`, a security invoker
+  // upsert that never sets user_id: the user may change only the pair).
+  const { error } = await open.supabase.rpc("set_font_pair", { p_font_pair: input.fontPair });
+  if (error) {
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: font pair not saved",
+      error,
+      userId: open.userId,
+      log: [error.code, error.message],
+    });
+    return { status: "failed" };
+  }
+  return insertJob(open, {
+    reel_id: input.reelId,
+    kind: "relayout",
+    font_pair: input.fontPair,
+  });
 }

@@ -134,7 +134,7 @@ describe("traceIdForJob and targetAttributes", () => {
 });
 
 describe("spans", () => {
-  it("gives one trace per reel, one span per job and one child span per step", async () => {
+  it("gives one trace per reel, one root span per job and one child span per step", async () => {
     const exporter = new InMemorySpanExporter();
     const telemetry = createTelemetry(
       {},
@@ -154,9 +154,10 @@ describe("spans", () => {
     const traceIds = new Set(spans.map((s) => s.spanContext().traceId));
     expect([...traceIds]).toEqual([traceIdForReel(REEL)]);
 
-    const [one, two, job] = spans;
+    const [one, two, job, three, secondJob] = spans;
     expect(one?.parentSpanContext?.spanId).toBe(job?.spanContext().spanId);
     expect(two?.parentSpanContext?.spanId).toBe(job?.spanContext().spanId);
+    expect(three?.parentSpanContext?.spanId).toBe(secondJob?.spanContext().spanId);
     expect(job?.attributes).toMatchObject({
       "reel.id": REEL,
       "job.id": TEST_JOB.id,
@@ -166,7 +167,43 @@ describe("spans", () => {
       "step.name": "one",
       "step.wall_ms": expect.any(Number),
     });
+    // Each job is a root: no parent span id, so no missing-parent gap in Tempo.
+    expect(job?.parentSpanContext).toBeUndefined();
+    expect(secondJob?.parentSpanContext).toBeUndefined();
+    expect(secondJob?.spanContext().traceId).toBe(traceIdForReel(REEL));
+    await telemetry.shutdown();
+  });
+
+  it("keeps a span started outside any job out of the reel's trace", async () => {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    await runJobWithSteps(telemetry);
+    telemetry.tracer.startSpan("loose").end();
+    const loose = exporter.getFinishedSpans().find((s) => s.name === "loose");
+    expect(loose?.spanContext().traceId).not.toBe(traceIdForReel(REEL));
+    expect(loose?.parentSpanContext).toBeUndefined();
+    await telemetry.shutdown();
+  });
+
+  it("keeps a photo's job under its remote parent, in the photo's trace", async () => {
+    const PHOTO = "7a2d0c1e-4b5f-4c3a-9e8d-1f2a3b4c5d6e";
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    const photoJob = { ...TEST_JOB, reel_id: null, photo_id: PHOTO };
+    const { span, context } = startJobSpan(telemetry, photoJob);
+    await inSpan(telemetry, context, "decide.test", {}, async () => undefined);
+    endJobSpan(span, "done");
+    const job = exporter.getFinishedSpans().find((s) => s.name === "job process");
+    expect(job?.spanContext().traceId).toBe(traceIdForReel(PHOTO));
     expect(job?.parentSpanContext?.isRemote).toBe(true);
+    expect(job?.parentSpanContext?.spanId).toBe(traceIdForReel(PHOTO).slice(-16));
+    expect(job?.attributes).toMatchObject({ "photo.id": PHOTO });
     await telemetry.shutdown();
   });
 });

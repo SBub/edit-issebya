@@ -1,8 +1,11 @@
 "use client";
 
 import {
-  FONT_KEYS,
-  type FontKey,
+  FONT_PAIRS,
+  FONT_ROLES,
+  type FontPair,
+  type FontPairId,
+  type FontRole,
   ISSEBYA_PRESET,
   build,
   createMeasurer,
@@ -64,22 +67,26 @@ async function fetchOk(url: string): Promise<Response> {
   return response;
 }
 
-let fonts: Promise<Record<FontKey, Uint8Array>> | undefined;
+const fonts = new Map<FontPairId, Promise<Record<FontRole, Uint8Array>>>();
 
-// The preset's fonts, fetched once per page load.
-function loadFonts(): Promise<Record<FontKey, Uint8Array>> {
-  fonts ??= Promise.all(
-    FONT_KEYS.map(async (key) => {
-      const response = await fetchOk(editAssetUrl(ISSEBYA_PRESET.fonts[key].file));
-      return [key, new Uint8Array(await response.arrayBuffer())] as const;
-    }),
-  )
-    .then((entries) => Object.fromEntries(entries) as Record<FontKey, Uint8Array>)
-    .catch((error: unknown) => {
-      fonts = undefined;
-      throw error;
-    });
-  return fonts;
+// One font pair's files, fetched once per page load and pair.
+function loadFonts(pair: FontPair): Promise<Record<FontRole, Uint8Array>> {
+  let entry = fonts.get(pair.id);
+  if (!entry) {
+    entry = Promise.all(
+      FONT_ROLES.map(async (role) => {
+        const response = await fetchOk(editAssetUrl(pair[role].file));
+        return [role, new Uint8Array(await response.arrayBuffer())] as const;
+      }),
+    )
+      .then((files) => Object.fromEntries(files) as Record<FontRole, Uint8Array>)
+      .catch((error: unknown) => {
+        fonts.delete(pair.id);
+        throw error;
+      });
+    fonts.set(pair.id, entry);
+  }
+  return entry;
 }
 
 // Signed sources, then the page built here by packages/edit's one builder
@@ -90,11 +97,10 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
     return { forVersion: versionId, status: "message", message: MESSAGES[sources.status] };
   }
   const { urls } = sources;
-  const [editJson, transcriptJson, headTrackJson, fontBytes, hb] = await Promise.all([
+  const [editJson, transcriptJson, headTrackJson, hb] = await Promise.all([
     fetchOk(urls.edit).then((r) => r.json() as Promise<unknown>),
     fetchOk(urls.transcript).then((r) => r.json() as Promise<unknown>),
     fetchOk(urls.headTrack).then((r) => r.json() as Promise<unknown>),
-    loadFonts(),
     import("harfbuzzjs"),
   ]);
   const transcript = transcriptSchema.parse(transcriptJson);
@@ -102,7 +108,16 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
   const parsed = parseEdit(editJson, ISSEBYA_PRESET, transcript);
   if (!parsed.ok) throw new Error(`edit refused: ${parsed.reasons.join("; ")}`);
   const { edit } = parsed;
-  const result = build(edit, transcript, headTrack, ISSEBYA_PRESET, createMeasurer(hb, fontBytes));
+  // The version's own pair: its files are the ones the page loads and measures.
+  const pair = FONT_PAIRS[edit.font_pair];
+  const fontBytes = await loadFonts(pair);
+  const result = build(
+    edit,
+    transcript,
+    headTrack,
+    ISSEBYA_PRESET,
+    createMeasurer(hb, pair, fontBytes),
+  );
   recordPreviewBuild(result.html);
   const hits = soundHits(edit, transcript, ISSEBYA_PRESET);
   const html = previewPage(

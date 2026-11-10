@@ -30,6 +30,7 @@ const STEP_WORDS: Record<string, { doing: string; failed?: string }> = {
   restore: { doing: "Going back to version N", failed: "Could not go back to version N" },
   render: { doing: "Exporting" },
   describe_photo: { doing: "Describing your photo" },
+  relayout: { doing: "Setting your text in the new font", failed: "Could not set the new font" },
   photo_images: { doing: "Preparing your photo" },
 };
 
@@ -71,6 +72,7 @@ export const JOB_STEPS: Record<JobKind, readonly string[]> = {
   restore: ["restore"],
   render: ["render"],
   start_over: ["decide"],
+  relayout: ["relayout"],
 };
 
 // Plain words per rule that can name a refused answer: the checks' rules (what

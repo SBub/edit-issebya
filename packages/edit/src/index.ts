@@ -13,13 +13,10 @@ export {
   headTrackSchema,
 } from "./head-track.ts";
 export {
-  type FontKey,
   type Intensity,
   type Preset,
-  type PresetFont,
   type TransitionKind,
   type SoundKey,
-  FONT_KEYS,
   ISSEBYA_PRESET,
   PLATFORM_BUTTONS,
   PLATFORM_SAFE,
@@ -67,6 +64,20 @@ export {
   choicesOf,
 } from "./engine-input.ts";
 export { type EngineNote } from "./engine-note.ts";
+export {
+  type FontPair,
+  type FontPairId,
+  type FontRole,
+  type PresetFont,
+  DEFAULT_FONT_PAIR_ID,
+  FONT_PAIR_IDS,
+  FONT_PAIRS,
+  FONT_ROLES,
+  allFontFiles,
+  fontPairFiles,
+  fontPairOf,
+  isFontPairId,
+} from "./font-pairs.ts";
 export { placeEdit } from "./engine.ts";
 export {
   type BoxElement,

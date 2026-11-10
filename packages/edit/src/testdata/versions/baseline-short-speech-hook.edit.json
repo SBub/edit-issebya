@@ -1,6 +1,7 @@
 {
   "format": 1,
   "preset": "issebya",
+  "font_pair": "classic",
   "duration": 2.69,
   "inputs": {
     "footage": {
@@ -47,7 +48,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 375.12,
+          "x": 391.17,
           "y": 1290,
           "align": "left"
         }
@@ -67,7 +68,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 479.57,
+          "x": 484.99,
           "y": 1290,
           "align": "left"
         }
@@ -87,7 +88,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 533.77,
+          "x": 532.26,
           "y": 1290,
           "align": "left"
         }
@@ -107,7 +108,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 575.27,
+          "x": 569.81,
           "y": 1290,
           "align": "left"
         }
@@ -127,7 +128,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 490.95,
+          "x": 496.63,
           "y": 1290,
           "align": "left"
         }
@@ -147,7 +148,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 273,
+          "x": 300,
           "y": 1290,
           "align": "left"
         }
@@ -167,7 +168,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 375.45,
+          "x": 389.2,
           "y": 1290,
           "align": "left"
         }
@@ -187,7 +188,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 455.45,
+          "x": 462.3,
           "y": 1290,
           "align": "left"
         }
@@ -207,7 +208,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 547.7,
+          "x": 547.07,
           "y": 1290,
           "align": "left"
         }
@@ -227,7 +228,7 @@
         ],
         "size": 50,
         "position": {
-          "x": 654.2,
+          "x": 640.28,
           "y": 1290,
           "align": "left"
         }
@@ -250,7 +251,7 @@
         "text": "A short test for the real studio",
         "size": 110,
         "position": {
-          "x": 174,
+          "x": 195,
           "y": 220,
           "align": "left"
         },

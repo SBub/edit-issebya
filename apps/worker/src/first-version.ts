@@ -11,6 +11,7 @@ import {
   placeEdit,
   saveVersion,
   transcriptSchema,
+  type FontPairId,
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import { editMeasurer } from "./edit-measurer.ts";
@@ -38,6 +39,8 @@ export interface FirstVersionRun {
   keyPrefix: string;
   // Every pipeline step's fingerprint, from runPipeline.
   fingerprints: Record<string, string>;
+  // The reel owner's font pair (`font-pair-store.ts`): the version is set in it.
+  fontPair: FontPairId;
   newId?: () => string;
   // Where the engine record is logged, one line per version.
   log?: (line: string) => void;
@@ -70,6 +73,7 @@ export async function saveFirstVersion({
   blobs,
   keyPrefix,
   fingerprints,
+  fontPair,
   newId = randomUUID,
   log = console.log,
 }: FirstVersionRun): Promise<void> {
@@ -104,10 +108,10 @@ export async function saveFirstVersion({
       }
       const baseline = baselineEdit(
         transcript,
-        { inputs, duration: retime.durationSeconds },
+        { inputs, duration: retime.durationSeconds, fontPair },
         ISSEBYA_PRESET,
       );
-      const measurer = await editMeasurer();
+      const measurer = await editMeasurer(fontPair);
       const { tracks, record } = placeEdit(
         baseline,
         NO_CHOICES,

@@ -3,7 +3,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { FontPairId } from "@edit-issebya/edit";
 import { type ReactNode, useEffect, useState } from "react";
+import { loadVersionFontPair } from "@/app/font-pair-actions";
 import { requestRetry } from "@/app/retry-actions";
 import {
   JOB_COLUMNS,
@@ -14,6 +16,7 @@ import {
   upsertById,
 } from "@/lib/jobs";
 import { ExportPanel } from "@/components/ExportPanel";
+import { FontPairPicker } from "@/components/FontPairPicker";
 import { ProgressOverlay } from "@/components/ProgressOverlay";
 import { ReelPreview } from "@/components/ReelPreview";
 import { ReelScreen } from "@/components/ReelScreen";
@@ -54,6 +57,11 @@ interface LiveReelProps extends Snapshot {
   // The owner's photo library (it follows its own table), shown beside the
   // reel on desktop and as the phone's Library tab.
   library: ReactNode;
+  // The owner's font pair (their profile): the picker's "Last used" pair.
+  fontPair: FontPairId;
+  // The font pair the current version was set in (its edit), read on the
+  // server; null when the version names none. The picker's chosen pair.
+  currentFontPair: { versionId: string; fontPair: FontPairId | null } | null;
 }
 
 // How long "New version N" shows after a save.
@@ -132,6 +140,8 @@ export function LiveReel({
   workerStatus: initialWorkerStatus,
   estimateRates,
   library,
+  fontPair,
+  currentFontPair,
 }: LiveReelProps) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
@@ -162,6 +172,14 @@ export function LiveReel({
   const [retry, setRetry] = useState<{ jobId: string; busy: boolean; message: string } | null>(
     null,
   );
+  // The pair of the version the picker shows as chosen. Read again when a new
+  // current version arrives (a relayout, a going back), never from the profile.
+  const [pairOfVersion, setPairOfVersion] = useState(currentFontPair);
+  const currentVersionId = reel.current_version_id;
+  const reelFontPair =
+    pairOfVersion !== null && pairOfVersion.versionId === currentVersionId
+      ? pairOfVersion.fontPair
+      : null;
   const router = useRouter();
   const id = initialReel.id;
   const offlineMoment = offlineAt(workerStatus)?.getTime() ?? null;
@@ -176,6 +194,20 @@ export function LiveReel({
       clearTimeout(later);
     };
   }, [offlineMoment]);
+
+  // A new current version (a relayout, a going back) reads its own pair from
+  // its edit; the picker follows it. The effect only fetches: the state is set
+  // from the result, and a superseded result is dropped.
+  useEffect(() => {
+    if (currentVersionId === null || pairOfVersion?.versionId === currentVersionId) return;
+    let alive = true;
+    void loadVersionFontPair(initialReel.id, currentVersionId).then((fontPair) => {
+      if (alive) setPairOfVersion({ versionId: currentVersionId, fontPair });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentVersionId, pairOfVersion?.versionId, initialReel.id]);
 
   useEffect(() => {
     if (noticeId === null) return;
@@ -398,21 +430,38 @@ export function LiveReel({
           </>
         }
         versions={
-          <VersionList
-            reelId={reel.id}
-            versions={versions}
-            currentVersionId={currentId}
-            blockedReason={blockedReason}
-            action={
-              <StartOverButton
+          <div className="flex h-full min-h-0 flex-col">
+            <FontPairPicker
+              reelId={reel.id}
+              profilePair={fontPair}
+              reelPair={reelFontPair}
+              blockedReason={blockedReason}
+              queueNote={queueNote}
+              jobs={jobs}
+              hasVersion={currentId !== null}
+            />
+            {/* The picker stays pinned on top; only this list scrolls (app_docs/studio-reel-layout.md). */}
+            <div
+              data-testid="versions-scroll"
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+            >
+              <VersionList
                 reelId={reel.id}
+                versions={versions}
+                currentVersionId={currentId}
                 blockedReason={blockedReason}
-                queueNote={queueNote}
-                jobs={jobs}
-                hasVersion={currentId !== null}
+                action={
+                  <StartOverButton
+                    reelId={reel.id}
+                    blockedReason={blockedReason}
+                    queueNote={queueNote}
+                    jobs={jobs}
+                    hasVersion={currentId !== null}
+                  />
+                }
               />
-            }
-          />
+            </div>
+          </div>
         }
         library={library}
       />

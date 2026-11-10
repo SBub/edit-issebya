@@ -10,7 +10,8 @@ import {
 import { type Box, LAYOUT_PADDING, boundingBox } from "./head-track.ts";
 import { breaksOf } from "./lines.ts";
 import type { Measurer } from "./measure.ts";
-import { type FontKey, ISSEBYA_PRESET } from "./preset.ts";
+import { ISSEBYA_PRESET } from "./preset.ts";
+import type { FontRole } from "./font-pairs.ts";
 import { bigWordCoveredShare } from "./behind.ts";
 import type { Span } from "./timeline.ts";
 import type { BoxVariant, Level, StackVariant, TextStyle, TextVariant } from "./variants.ts";
@@ -124,7 +125,7 @@ export interface BoxElement extends ElementBase {
 export interface BlockUnit {
   id: string;
   text: string;
-  font?: FontKey;
+  font?: FontRole;
 }
 
 // A caption block (owner decision 4): a sentence's captions as one element,

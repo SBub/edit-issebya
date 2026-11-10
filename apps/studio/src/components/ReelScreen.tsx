@@ -105,7 +105,7 @@ export function ReelScreen({ header, main, versions, library }: Props) {
         <div
           {...panel("versions")}
           data-testid="versions-area"
-          className={`${shown("versions")} min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain lg:col-start-2 lg:row-start-1 lg:border-l lg:border-line`}
+          className={`${shown("versions")} min-h-0 flex-1 flex-col overflow-hidden lg:col-start-2 lg:row-start-1 lg:border-l lg:border-line`}
         >
           {versions}
         </div>

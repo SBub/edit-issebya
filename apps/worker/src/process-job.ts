@@ -5,6 +5,8 @@ import type { WorkerConfig } from "./config.ts";
 import { runDecide } from "./decide/run-decide.ts";
 import type { ErrorTracker } from "./error-tracking.ts";
 import { saveFirstVersion } from "./first-version.ts";
+import { ownerFontPair } from "./font-pair-store.ts";
+import { runRelayout } from "./relayout.ts";
 import { runJobKind } from "./job-kinds.ts";
 import { runDescribePhotoJob } from "./photos/describe-photo.ts";
 import { supabasePhotoStore } from "./photos/photo-store.ts";
@@ -140,6 +142,7 @@ export async function processJob(
                 startFrom,
                 tools: cutouts.tools,
                 recordStored,
+                ownerFontPair: () => ownerFontPair(db, job.owner_id),
               });
             await runJobKind(job, {
               async process() {
@@ -163,6 +166,7 @@ export async function processJob(
                   blobs,
                   keyPrefix: config.keyPrefix,
                   fingerprints,
+                  fontPair: await ownerFontPair(db, job.owner_id),
                 });
                 // Never cached: a failed decide fails the job and version 1 stays
                 // current; a retried job decides again from the current version.
@@ -187,6 +191,20 @@ export async function processJob(
               // Start over (temporary, for testing): decide alone, no
               // request, from version 1; saved as a new version.
               start_over: async () => decide(await firstVersionId(db, reelOf(job))),
+              // A re-layout (font pairs): the current version placed again in the job's
+              // pair, from its own AI answers, with no AI call.
+              relayout: (fontPair) =>
+                runRelayout({
+                  ctx,
+                  storage,
+                  rows,
+                  blobs,
+                  keyPrefix: config.keyPrefix,
+                  scratchDir,
+                  tools: cutouts.tools,
+                  recordStored,
+                  fontPair,
+                }),
               // A library photo: its two copies, then the AI's
               // description and tags; no reel is touched.
               describe_photo: (photoId) =>

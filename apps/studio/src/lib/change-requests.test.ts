@@ -103,7 +103,7 @@ describe("labels", () => {
   });
 
   it("names what each job kind was asked to do", () => {
-    expect(JOB_KINDS).toEqual(["process", "change", "restore", "render", "start_over"]);
+    expect(JOB_KINDS).toEqual(["process", "change", "restore", "render", "start_over", "relayout"]);
     const none = { request: null, restore_version_id: null, version_id: null };
     expect(jobRequestLabel({ kind: "process", ...none }, byId)).toBeNull();
     expect(jobRequestLabel({ kind: "restore", ...none, restore_version_id: "v1" }, byId)).toBe(

@@ -97,7 +97,7 @@ export async function renderExport({
       transcript,
       headTrack,
       ISSEBYA_PRESET,
-      await editMeasurer(),
+      await editMeasurer(edit.font_pair),
     );
     const written = await writeRenderProject({ dir: projectDir, html, assets, files });
     span.setAttributes({

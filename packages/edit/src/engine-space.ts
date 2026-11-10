@@ -1,5 +1,5 @@
 import type { Box } from "./head-track.ts";
-import type { FontKey } from "./preset.ts";
+import type { FontRole } from "./font-pairs.ts";
 import type { Span } from "./timeline.ts";
 
 // One piece of text on screen, in frame pixels: `x`, `y` its top left corner,
@@ -12,7 +12,7 @@ export interface TextBox extends Span {
   text: string;
   // The text's lines: one, or more for a text set with `breaks`.
   lines: string[];
-  font: FontKey;
+  font: FontRole;
   size: number;
   color: string;
   style: Record<string, string> | undefined;

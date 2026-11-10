@@ -1,8 +1,10 @@
 import { readFile } from "node:fs/promises";
 import {
   type Edit,
-  FONT_KEYS,
-  type FontKey,
+  DEFAULT_FONT_PAIR_ID,
+  FONT_PAIRS,
+  FONT_ROLES,
+  type FontRole,
   ISSEBYA_PRESET,
   type Transcript,
   choicesOf,
@@ -29,17 +31,15 @@ const LIST_ITEM = {
 } as const;
 
 async function measurer() {
+  const pair = FONT_PAIRS[DEFAULT_FONT_PAIR_ID];
   const fonts = await Promise.all(
-    FONT_KEYS.map(async (key) => {
-      const url = new URL(
-        `../../../packages/edit/${ISSEBYA_PRESET.fonts[key].file}`,
-        import.meta.url,
-      );
+    FONT_ROLES.map(async (role) => {
+      const url = new URL(`../../../packages/edit/file`, import.meta.url);
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- packages/edit's own font assets
-      return [key, new Uint8Array(await readFile(url))] as const;
+      return [role, new Uint8Array(await readFile(url))] as const;
     }),
   );
-  return createMeasurer(hb, Object.fromEntries(fonts) as Record<FontKey, Uint8Array>);
+  return createMeasurer(hb, pair, Object.fromEntries(fonts) as Record<FontRole, Uint8Array>);
 }
 
 // `base`'s choices with the LIST, placed by the layout engine the way the

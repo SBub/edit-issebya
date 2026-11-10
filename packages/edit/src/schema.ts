@@ -1,12 +1,7 @@
 import { z } from "zod";
 import type { Box } from "./head-track.ts";
-import {
-  SHOWN_FLOOR_SECONDS,
-  FONT_KEYS,
-  type Preset,
-  SOUND_KEYS,
-  TRANSITION_KINDS,
-} from "./preset.ts";
+import { FONT_PAIR_IDS, FONT_ROLES } from "./font-pairs.ts";
+import { SHOWN_FLOOR_SECONDS, type Preset, SOUND_KEYS, TRANSITION_KINDS } from "./preset.ts";
 import { VARIANTS, VISUAL_STAND_INS, timingOf } from "./variants.ts";
 import { resolveAnchor } from "./timeline.ts";
 import type { Transcript, Word } from "./transcript.ts";
@@ -130,7 +125,7 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
   });
   const textProps = {
     text: z.string().min(1).max(200).optional(),
-    font: z.enum(FONT_KEYS).optional(),
+    font: z.enum(FONT_ROLES).optional(),
     size: z.number().int().min(MIN_TEXT_SIZE).max(400).optional(),
     color: z.string().regex(COLOR).optional(),
     position: position.optional(),
@@ -419,6 +414,12 @@ export function editSchemaFor(preset: Preset, transcript: Transcript, limits: Ed
     .object({
       format: z.literal(1),
       preset: z.literal(preset.id),
+      // The pair the reel is set in (`font-pairs.ts`): the page loads its files and
+      // the layout measured them. Required: a version saved before font pairs is
+      // refused, not read as the classic pair.
+      font_pair: z.enum(FONT_PAIR_IDS, {
+        error: "a font pair is required: classic, script, signature, handwritten, retro or bold",
+      }),
       duration: z.number().positive(),
       inputs: editInputsSchema,
       tracks: tracksSchemaFor(preset, transcript, limits),

@@ -93,22 +93,11 @@ describe("the transition library", () => {
     expect(bigWord.lead).toBeLessThanOrEqual(1);
   });
 
-  it("sets captions in Golos Text Bold, accents and the big word in Raleway Light, all white", () => {
-    const { fonts } = ISSEBYA_PRESET;
-    expect(fonts.primary).toMatchObject({
-      family: "Raleway Light",
-      file: "assets/fonts/Raleway-Light.ttf",
-      weight: 300,
-    });
-    expect(fonts.secondary).toMatchObject({
-      family: "Golos Text",
-      file: "assets/fonts/GolosText-Bold.ttf",
-      weight: 700,
-    });
+  it("sets captions and the big word in the simple font, accents in the artistic one, all white", () => {
     expect([STYLES.caption.font, STYLES.accent.font, STYLES.bigWord.font]).toEqual([
-      "secondary",
-      "primary",
-      "primary",
+      "simple",
+      "artistic",
+      "simple",
     ]);
     expect([STYLES.caption.color, STYLES.accent.color, STYLES.bigWord.color]).toEqual([
       "#FFFFFF",

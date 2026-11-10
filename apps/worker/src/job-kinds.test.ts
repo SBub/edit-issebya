@@ -8,6 +8,7 @@ function runners() {
     render: vi.fn<(versionId: string) => Promise<void>>(async () => {}),
     describe_photo: vi.fn<(photoId: string) => Promise<void>>(async () => {}),
     start_over: vi.fn(async () => {}),
+    relayout: vi.fn<(fontPair: string) => Promise<void>>(async () => {}),
   };
 }
 
@@ -78,6 +79,26 @@ describe("runJobKind", () => {
       /render job has no version to export/,
     );
     expect(() => runJobKind({ kind: "publish", ...NONE }, r)).toThrow(/unknown job kind: publish/);
+    expectOnly(r, null);
+  });
+});
+
+describe("runJobKind for a relayout", () => {
+  it("runs only relayout, with the job's font pair", async () => {
+    const r = runners();
+    await runJobKind({ kind: "relayout", ...NONE, font_pair: "retro" }, r);
+    expect(r.relayout).toHaveBeenCalledWith("retro");
+    expectOnly(r, "relayout");
+  });
+
+  it("fails a relayout without a font pair, or with one outside the six, and runs nothing", () => {
+    const r = runners();
+    expect(() => runJobKind({ kind: "relayout", ...NONE, font_pair: null }, r)).toThrow(
+      /relayout job has no font pair/,
+    );
+    expect(() => runJobKind({ kind: "relayout", ...NONE, font_pair: "primary" }, r)).toThrow(
+      /relayout job has no font pair/,
+    );
     expectOnly(r, null);
   });
 });

@@ -1,13 +1,20 @@
 import { readFile } from "node:fs/promises";
-import { type BuildAsset, ISSEBYA_PRESET } from "@edit-issebya/edit";
+import {
+  type BuildAsset,
+  DEFAULT_FONT_PAIR_ID,
+  FONT_PAIRS,
+  fontPairFiles,
+} from "@edit-issebya/edit";
 import { beforeAll, describe, expect, it } from "vitest";
 import { previewPage } from "./preview-page";
 
 const GOLDEN = new URL("../../../../packages/edit/src/testdata/golden/", import.meta.url);
-// The preset's font files, once each (as the builder lists them).
-const FONTS: BuildAsset[] = [
-  ...new Set(Object.values(ISSEBYA_PRESET.fonts).map((font) => font.file)),
-].map((path) => ({ path, role: "font" as const, ref: null }));
+// The default pair's font files, once each (as the builder lists them).
+const FONTS: BuildAsset[] = fontPairFiles(FONT_PAIRS[DEFAULT_FONT_PAIR_ID]).map((path) => ({
+  path,
+  role: "font" as const,
+  ref: null,
+}));
 const CLIPS: BuildAsset[] = [{ path: "source.mp4", role: "footage", ref: null }];
 const SOUND: BuildAsset = {
   path: "assets/sounds/mouse-click-trimmed.wav",
