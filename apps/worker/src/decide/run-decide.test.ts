@@ -31,7 +31,7 @@ import {
 import { type Telemetry, createTelemetry } from "../telemetry.ts";
 import { saveFirstVersion } from "../first-version.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
-import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
+import { FROZEN_CLOCK, TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
 import { storageVersionBlobs } from "../version-store.ts";
 import { BEHIND_TRANSCRIPT, behindEdit, fakeMaskSpawn } from "../cutout/test-support.ts";
 import type { SpawnTool } from "../step-runner.ts";
@@ -167,7 +167,7 @@ async function decide(
 ) {
   const { steps, calls } = recordingSteps();
   const run = runDecide({
-    ctx: stepContext(steps, telemetry ? { telemetry } : {}),
+    ctx: stepContext(steps, { ...(telemetry ? { telemetry } : {}), clock: FROZEN_CLOCK }),
     storage,
     rows: memoryRows(),
     blobs: storageVersionBlobs(storage),

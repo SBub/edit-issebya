@@ -14,7 +14,7 @@ import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { saveFirstVersion } from "./first-version.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
-import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
+import { FROZEN_CLOCK, TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
 import { storageVersionBlobs } from "./version-store.ts";
 
 const PREFIX = "dev/";
@@ -75,7 +75,7 @@ afterEach(async () => {
 
 function run(steps: ReturnType<typeof recordingSteps>["steps"]) {
   return saveFirstVersion({
-    ctx: stepContext(steps),
+    ctx: stepContext(steps, { clock: FROZEN_CLOCK }),
     storage,
     rows: memoryRows(),
     blobs: storageVersionBlobs(storage),
