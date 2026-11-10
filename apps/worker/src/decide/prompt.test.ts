@@ -65,12 +65,11 @@ describe("decidePrompt", () => {
     ).toBe(true);
   });
 
-  it("sends none of the removed inputs: no choices, no transcript, no preset, no stored rules", () => {
+  it("sends none of the removed inputs: no choices, no transcript, no preset", () => {
     const { prompt } = decidePrompt(TEMPLATE, input);
     for (const removed of [
       "current_choices",
       "behind_rules",
-      "photos_forbidden",
       '"transitions"',
       '"accents"',
       '"preset"',

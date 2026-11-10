@@ -24,10 +24,9 @@
         "fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
         "file": "mask.mp4",
         "start": 19.767,
-        "end": 21.833
+        "end": 21.5
       }
-    ],
-    "photos": []
+    ]
   },
   "tracks": {
     "footage": [
@@ -49,15 +48,16 @@
         },
         "end": {
           "word": "w3",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.055
         },
         "words": [
           "w0"
         ],
         "size": 50,
         "position": {
-          "x": 277,
-          "y": 1057,
+          "x": 64.9,
+          "y": 783,
           "align": "left"
         }
       },
@@ -68,15 +68,16 @@
         },
         "end": {
           "word": "w3",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.055
         },
         "words": [
           "w1"
         ],
         "size": 50,
         "position": {
-          "x": 369.25,
-          "y": 1057,
+          "x": 157.15,
+          "y": 783,
           "align": "left"
         }
       },
@@ -87,15 +88,16 @@
         },
         "end": {
           "word": "w3",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.055
         },
         "words": [
           "w2"
         ],
         "size": 50,
         "position": {
-          "x": 488.7,
-          "y": 1057,
+          "x": 99.22,
+          "y": 847,
           "align": "left"
         }
       },
@@ -106,15 +108,16 @@
         },
         "end": {
           "word": "w3",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.055
         },
         "words": [
           "w3"
         ],
         "size": 50,
         "position": {
-          "x": 631.75,
-          "y": 1057,
+          "x": 96.92,
+          "y": 911,
           "align": "left"
         }
       },
@@ -125,15 +128,16 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w4"
         ],
         "size": 50,
         "position": {
-          "x": 184,
-          "y": 1057,
+          "x": 50.4,
+          "y": 783,
           "align": "left"
         }
       },
@@ -144,15 +148,16 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w5"
         ],
         "size": 50,
         "position": {
-          "x": 310.7,
-          "y": 1057,
+          "x": 177.1,
+          "y": 783,
           "align": "left"
         }
       },
@@ -163,15 +168,16 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w6"
         ],
         "size": 50,
         "position": {
-          "x": 424.7,
-          "y": 1057,
+          "x": 70,
+          "y": 847,
           "align": "left"
         }
       },
@@ -182,15 +188,16 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w7"
         ],
         "size": 50,
         "position": {
-          "x": 555.95,
-          "y": 1057,
+          "x": 201.25,
+          "y": 847,
           "align": "left"
         }
       },
@@ -201,15 +208,16 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w8"
         ],
         "size": 50,
         "position": {
-          "x": 626.2,
-          "y": 1057,
+          "x": 47.65,
+          "y": 911,
           "align": "left"
         }
       },
@@ -220,15 +228,16 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w9"
         ],
         "size": 50,
         "position": {
-          "x": 688.7,
-          "y": 1057,
+          "x": 110.15,
+          "y": 911,
           "align": "left"
         }
       },
@@ -239,15 +248,16 @@
         },
         "end": {
           "word": "w12",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w10"
         ],
         "size": 50,
         "position": {
-          "x": 369.2,
-          "y": 1057,
+          "x": 113.75,
+          "y": 783,
           "align": "left"
         }
       },
@@ -258,15 +268,16 @@
         },
         "end": {
           "word": "w12",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w11"
         ],
         "size": 50,
         "position": {
-          "x": 483.2,
-          "y": 1057,
+          "x": 129.12,
+          "y": 847,
           "align": "left"
         }
       },
@@ -277,15 +288,16 @@
         },
         "end": {
           "word": "w12",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w12"
         ],
         "size": 50,
         "position": {
-          "x": 566.45,
-          "y": 1057,
+          "x": 110.37,
+          "y": 911,
           "align": "left"
         }
       },
@@ -303,8 +315,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 243.09,
-          "y": 1057,
+          "x": 72.12,
+          "y": 783,
           "align": "left"
         }
       },
@@ -322,8 +334,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 357.1,
-          "y": 1057,
+          "x": 186.12,
+          "y": 783,
           "align": "left"
         }
       },
@@ -341,8 +353,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 440.35,
-          "y": 1057,
+          "x": 89.87,
+          "y": 847,
           "align": "left"
         }
       },
@@ -360,8 +372,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 602.09,
-          "y": 1057,
+          "x": 65.15,
+          "y": 911,
           "align": "left"
         }
       },
@@ -379,8 +391,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 693.84,
-          "y": 1057,
+          "x": 156.9,
+          "y": 911,
           "align": "left"
         }
       },
@@ -398,8 +410,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 323.57,
-          "y": 1057,
+          "x": 113.75,
+          "y": 783,
           "align": "left"
         }
       },
@@ -417,8 +429,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 437.57,
-          "y": 1057,
+          "x": 129.12,
+          "y": 847,
           "align": "left"
         }
       },
@@ -436,8 +448,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 520.82,
-          "y": 1057,
+          "x": 64.75,
+          "y": 911,
           "align": "left"
         }
       },
@@ -455,8 +467,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 355.57,
-          "y": 1057,
+          "x": 124.87,
+          "y": 783,
           "align": "left"
         }
       },
@@ -474,8 +486,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 447.32,
-          "y": 1057,
+          "x": 44,
+          "y": 847,
           "align": "left"
         }
       },
@@ -487,15 +499,15 @@
         "end": {
           "word": "w25",
           "edge": "end",
-          "offset": 0.022
+          "offset": 0.072
         },
         "words": [
           "w23"
         ],
         "size": 50,
         "position": {
-          "x": 383.32,
-          "y": 1057,
+          "x": 104.12,
+          "y": 783,
           "align": "left"
         }
       },
@@ -507,15 +519,15 @@
         "end": {
           "word": "w25",
           "edge": "end",
-          "offset": 0.022
+          "offset": 0.072
         },
         "words": [
           "w24"
         ],
         "size": 50,
         "position": {
-          "x": 516.57,
-          "y": 1057,
+          "x": 129.12,
+          "y": 847,
           "align": "left"
         }
       },
@@ -527,15 +539,15 @@
         "end": {
           "word": "w25",
           "edge": "end",
-          "offset": 0.022
+          "offset": 0.072
         },
         "words": [
           "w25"
         ],
         "size": 50,
         "position": {
-          "x": 599.82,
-          "y": 1057,
+          "x": 134.12,
+          "y": 911,
           "align": "left"
         }
       },
@@ -546,11 +558,18 @@
         },
         "end": {
           "word": "w28",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w26"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 159.87,
+          "y": 737,
+          "align": "left"
+        }
       },
       {
         "id": "cw27",
@@ -559,11 +578,18 @@
         },
         "end": {
           "word": "w28",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w27"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 142.5,
+          "y": 801,
+          "align": "left"
+        }
       },
       {
         "id": "cw28",
@@ -572,11 +598,18 @@
         },
         "end": {
           "word": "w28",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w28"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 49,
+          "y": 865,
+          "align": "left"
+        }
       },
       {
         "id": "cw30",
@@ -586,11 +619,17 @@
         "end": {
           "word": "w33",
           "edge": "end",
-          "offset": 0.058
+          "offset": 0.15
         },
         "words": [
           "w30"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 146.25,
+          "y": 737,
+          "align": "left"
+        }
       },
       {
         "id": "cw31",
@@ -600,11 +639,17 @@
         "end": {
           "word": "w33",
           "edge": "end",
-          "offset": 0.058
+          "offset": 0.15
         },
         "words": [
           "w31"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 136.87,
+          "y": 801,
+          "align": "left"
+        }
       },
       {
         "id": "cw32",
@@ -614,11 +659,17 @@
         "end": {
           "word": "w33",
           "edge": "end",
-          "offset": 0.058
+          "offset": 0.15
         },
         "words": [
           "w32"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 150.75,
+          "y": 865,
+          "align": "left"
+        }
       },
       {
         "id": "cw33",
@@ -628,11 +679,17 @@
         "end": {
           "word": "w33",
           "edge": "end",
-          "offset": 0.058
+          "offset": 0.15
         },
         "words": [
           "w33"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 126.25,
+          "y": 929,
+          "align": "left"
+        }
       },
       {
         "id": "cw34",
@@ -641,15 +698,16 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w34"
         ],
         "size": 50,
         "position": {
-          "x": 217,
-          "y": 1047,
+          "x": 69,
+          "y": 737,
           "align": "left"
         }
       },
@@ -660,15 +718,16 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w35"
         ],
         "size": 50,
         "position": {
-          "x": 310,
-          "y": 1047,
+          "x": 162,
+          "y": 737,
           "align": "left"
         }
       },
@@ -679,15 +738,16 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w36"
         ],
         "size": 50,
         "position": {
-          "x": 371.5,
-          "y": 1047,
+          "x": 223.5,
+          "y": 737,
           "align": "left"
         }
       },
@@ -698,15 +758,16 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w37"
         ],
         "size": 50,
         "position": {
-          "x": 463.75,
-          "y": 1047,
+          "x": 61.27,
+          "y": 801,
           "align": "left"
         }
       },
@@ -717,15 +778,16 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w38"
         ],
         "size": 50,
         "position": {
-          "x": 606.5,
-          "y": 1047,
+          "x": 204.02,
+          "y": 801,
           "align": "left"
         }
       },
@@ -736,15 +798,16 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w39"
         ],
         "size": 50,
         "position": {
-          "x": 725.95,
-          "y": 1047,
+          "x": 46.54,
+          "y": 865,
           "align": "left"
         }
       },
@@ -755,15 +818,16 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w40"
         ],
         "size": 50,
         "position": {
-          "x": 772.15,
-          "y": 1047,
+          "x": 92.74,
+          "y": 865,
           "align": "left"
         }
       },
@@ -774,15 +838,16 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w41"
         ],
         "size": 50,
         "position": {
-          "x": 321.22,
-          "y": 1111,
+          "x": 192.5,
+          "y": 865,
           "align": "left"
         }
       },
@@ -793,15 +858,16 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w42"
         ],
         "size": 50,
         "position": {
-          "x": 466.92,
-          "y": 1111,
+          "x": 42,
+          "y": 929,
           "align": "left"
         }
       },
@@ -812,15 +878,16 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w43"
         ],
         "size": 50,
         "position": {
-          "x": 537.17,
-          "y": 1111,
+          "x": 112.25,
+          "y": 929,
           "align": "left"
         }
       },
@@ -831,15 +898,16 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w44"
         ],
         "size": 50,
         "position": {
-          "x": 578.67,
-          "y": 1111,
+          "x": 153.75,
+          "y": 929,
           "align": "left"
         }
       },
@@ -857,8 +925,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 312.35,
-          "y": 1047,
+          "x": 161.12,
+          "y": 737,
           "align": "left"
         }
       },
@@ -876,8 +944,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 374.85,
-          "y": 1047,
+          "x": 127.5,
+          "y": 801,
           "align": "left"
         }
       },
@@ -895,8 +963,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 504.6,
-          "y": 1047,
+          "x": 171.62,
+          "y": 865,
           "align": "left"
         }
       },
@@ -914,8 +982,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 546.1,
-          "y": 1047,
+          "x": 77.15,
+          "y": 929,
           "align": "left"
         }
       },
@@ -926,15 +994,16 @@
         },
         "end": {
           "word": "w50",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w49"
         ],
         "size": 50,
         "position": {
-          "x": 431.72,
-          "y": 1047,
+          "x": 171.62,
+          "y": 737,
           "align": "left"
         }
       },
@@ -945,15 +1014,16 @@
         },
         "end": {
           "word": "w50",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w50"
         ],
         "size": 50,
         "position": {
-          "x": 473.22,
-          "y": 1047,
+          "x": 100.4,
+          "y": 801,
           "align": "left"
         }
       },
@@ -971,8 +1041,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 340.1,
-          "y": 1047,
+          "x": 145.87,
+          "y": 737,
           "align": "left"
         }
       },
@@ -990,8 +1060,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 433.1,
-          "y": 1047,
+          "x": 117.25,
+          "y": 801,
           "align": "left"
         }
       },
@@ -1009,8 +1079,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 583.35,
-          "y": 1047,
+          "x": 109.65,
+          "y": 865,
           "align": "left"
         }
       },
@@ -1021,15 +1091,16 @@
         },
         "end": {
           "word": "w57",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w54"
         ],
         "size": 50,
         "position": {
-          "x": 359.32,
-          "y": 1047,
+          "x": 146.25,
+          "y": 737,
           "align": "left"
         }
       },
@@ -1040,15 +1111,16 @@
         },
         "end": {
           "word": "w57",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w55"
         ],
         "size": 50,
         "position": {
-          "x": 451.57,
-          "y": 1047,
+          "x": 162.12,
+          "y": 801,
           "align": "left"
         }
       },
@@ -1059,15 +1131,16 @@
         },
         "end": {
           "word": "w57",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w56"
         ],
         "size": 50,
         "position": {
-          "x": 512.07,
-          "y": 1047,
+          "x": 149.62,
+          "y": 865,
           "align": "left"
         }
       },
@@ -1078,15 +1151,16 @@
         },
         "end": {
           "word": "w57",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w57"
         ],
         "size": 50,
         "position": {
-          "x": 597.57,
-          "y": 1047,
+          "x": 126.37,
+          "y": 929,
           "align": "left"
         }
       },
@@ -1098,15 +1172,15 @@
         "end": {
           "word": "w62",
           "edge": "end",
-          "offset": 0.014
+          "offset": 0.146
         },
         "words": [
           "w58"
         ],
         "size": 50,
         "position": {
-          "x": 311,
-          "y": 1047,
+          "x": 134.65,
+          "y": 737,
           "align": "left"
         }
       },
@@ -1118,15 +1192,15 @@
         "end": {
           "word": "w62",
           "edge": "end",
-          "offset": 0.014
+          "offset": 0.146
         },
         "words": [
           "w59"
         ],
         "size": 50,
         "position": {
-          "x": 426.45,
-          "y": 1047,
+          "x": 138.02,
+          "y": 801,
           "align": "left"
         }
       },
@@ -1138,15 +1212,15 @@
         "end": {
           "word": "w62",
           "edge": "end",
-          "offset": 0.014
+          "offset": 0.146
         },
         "words": [
           "w60"
         ],
         "size": 50,
         "position": {
-          "x": 472.65,
-          "y": 1047,
+          "x": 184.22,
+          "y": 801,
           "align": "left"
         }
       },
@@ -1158,15 +1232,15 @@
         "end": {
           "word": "w62",
           "edge": "end",
-          "offset": 0.014
+          "offset": 0.146
         },
         "words": [
           "w61"
         ],
         "size": 50,
         "position": {
-          "x": 535.15,
-          "y": 1047,
+          "x": 146.25,
+          "y": 865,
           "align": "left"
         }
       },
@@ -1178,15 +1252,15 @@
         "end": {
           "word": "w62",
           "edge": "end",
-          "offset": 0.014
+          "offset": 0.146
         },
         "words": [
           "w62"
         ],
         "size": 50,
         "position": {
-          "x": 627.4,
-          "y": 1047,
+          "x": 117.12,
+          "y": 929,
           "align": "left"
         }
       },
@@ -1205,8 +1279,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 315.5,
-          "y": 1069,
+          "x": 118.5,
+          "y": 777,
           "align": "left"
         }
       },
@@ -1225,8 +1299,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 474.2,
-          "y": 1069,
+          "x": 118.24,
+          "y": 841,
           "align": "left"
         }
       },
@@ -1245,8 +1319,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 633.4,
-          "y": 1069,
+          "x": 147.97,
+          "y": 905,
           "align": "left"
         }
       },
@@ -1258,15 +1332,15 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w66"
         ],
         "size": 50,
         "position": {
-          "x": 177,
-          "y": 1069,
+          "x": 89.87,
+          "y": 777,
           "align": "left"
         }
       },
@@ -1278,15 +1352,15 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w67"
         ],
         "size": 50,
         "position": {
-          "x": 322.7,
-          "y": 1069,
+          "x": 235.57,
+          "y": 777,
           "align": "left"
         }
       },
@@ -1298,15 +1372,15 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w68"
         ],
         "size": 50,
         "position": {
-          "x": 392.95,
-          "y": 1069,
+          "x": 59,
+          "y": 841,
           "align": "left"
         }
       },
@@ -1318,15 +1392,15 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w69"
         ],
         "size": 50,
         "position": {
-          "x": 670.65,
-          "y": 1069,
+          "x": 128.6,
+          "y": 905,
           "align": "left"
         }
       },
@@ -1338,15 +1412,15 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w70"
         ],
         "size": 50,
         "position": {
-          "x": 809.15,
-          "y": 1069,
+          "x": 106.22,
+          "y": 969,
           "align": "left"
         }
       },
@@ -1358,15 +1432,15 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w71"
         ],
         "size": 50,
         "position": {
-          "x": 463.95,
-          "y": 1133,
+          "x": 168.72,
+          "y": 969,
           "align": "left"
         }
       },
@@ -1384,8 +1458,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 289.97,
-          "y": 1069,
+          "x": 146.6,
+          "y": 777,
           "align": "left"
         }
       },
@@ -1403,8 +1477,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 392.47,
-          "y": 1069,
+          "x": 170.75,
+          "y": 841,
           "align": "left"
         }
       },
@@ -1422,8 +1496,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 446.67,
-          "y": 1069,
+          "x": 161.97,
+          "y": 905,
           "align": "left"
         }
       },
@@ -1441,8 +1515,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 518.42,
-          "y": 1069,
+          "x": 77.72,
+          "y": 969,
           "align": "left"
         }
       },
@@ -1453,7 +1527,8 @@
         },
         "end": {
           "word": "w77",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w76"
@@ -1467,15 +1542,16 @@
         },
         "end": {
           "word": "w77",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w77"
         ],
         "size": 50,
         "position": {
-          "x": 420.7,
-          "y": 1069,
+          "x": 94.22,
+          "y": 777,
           "align": "left"
         }
       },
@@ -1486,15 +1562,16 @@
         },
         "end": {
           "word": "w80",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w78"
         ],
         "size": 50,
         "position": {
-          "x": 331.97,
-          "y": 1069,
+          "x": 157.85,
+          "y": 777,
           "align": "left"
         }
       },
@@ -1505,15 +1582,16 @@
         },
         "end": {
           "word": "w80",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w79"
         ],
         "size": 50,
         "position": {
-          "x": 411.97,
-          "y": 1069,
+          "x": 137.47,
+          "y": 841,
           "align": "left"
         }
       },
@@ -1524,15 +1602,16 @@
         },
         "end": {
           "word": "w80",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w80"
         ],
         "size": 50,
         "position": {
-          "x": 532.72,
-          "y": 1069,
+          "x": 105.87,
+          "y": 905,
           "align": "left"
         }
       },
@@ -1544,15 +1623,15 @@
         "end": {
           "word": "w83",
           "edge": "end",
-          "offset": 0.059
+          "offset": 0.15
         },
         "words": [
           "w81"
         ],
         "size": 50,
         "position": {
-          "x": 366.22,
-          "y": 1069,
+          "x": 157.85,
+          "y": 777,
           "align": "left"
         }
       },
@@ -1564,15 +1643,15 @@
         "end": {
           "word": "w83",
           "edge": "end",
-          "offset": 0.059
+          "offset": 0.15
         },
         "words": [
           "w82"
         ],
         "size": 50,
         "position": {
-          "x": 446.22,
-          "y": 1069,
+          "x": 137.47,
+          "y": 841,
           "align": "left"
         }
       },
@@ -1584,15 +1663,15 @@
         "end": {
           "word": "w83",
           "edge": "end",
-          "offset": 0.059
+          "offset": 0.15
         },
         "words": [
           "w83"
         ],
         "size": 50,
         "position": {
-          "x": 566.97,
-          "y": 1069,
+          "x": 140.12,
+          "y": 905,
           "align": "left"
         }
       },
@@ -1603,15 +1682,16 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w84"
         ],
         "size": 50,
         "position": {
-          "x": 275.75,
-          "y": 1054,
+          "x": 860.12,
+          "y": 764,
           "align": "left"
         }
       },
@@ -1622,15 +1702,16 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w85"
         ],
         "size": 50,
         "position": {
-          "x": 378.25,
-          "y": 1054,
+          "x": 838.52,
+          "y": 828,
           "align": "left"
         }
       },
@@ -1641,15 +1722,16 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w86"
         ],
         "size": 50,
         "position": {
-          "x": 422.7,
-          "y": 1054,
+          "x": 882.97,
+          "y": 828,
           "align": "left"
         }
       },
@@ -1660,15 +1742,16 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w87"
         ],
         "size": 50,
         "position": {
-          "x": 523.95,
-          "y": 1054,
+          "x": 821.62,
+          "y": 892,
           "align": "left"
         }
       },
@@ -1679,15 +1762,16 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w88"
         ],
         "size": 50,
         "position": {
-          "x": 641.95,
-          "y": 1054,
+          "x": 939.62,
+          "y": 892,
           "align": "left"
         }
       },
@@ -1698,7 +1782,8 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w89",
@@ -1707,8 +1792,8 @@
         "text": "Gen Z",
         "size": 50,
         "position": {
-          "x": 703.45,
-          "y": 1054,
+          "x": 834.87,
+          "y": 956,
           "align": "left"
         }
       },
@@ -1720,15 +1805,15 @@
         "end": {
           "word": "w93",
           "edge": "end",
-          "offset": 0.096
+          "offset": 0.15
         },
         "words": [
           "w91"
         ],
         "size": 50,
         "position": {
-          "x": 386.57,
-          "y": 1054,
+          "x": 850.75,
+          "y": 764,
           "align": "left"
         }
       },
@@ -1740,15 +1825,15 @@
         "end": {
           "word": "w93",
           "edge": "end",
-          "offset": 0.096
+          "offset": 0.15
         },
         "words": [
           "w92"
         ],
         "size": 50,
         "position": {
-          "x": 507.82,
-          "y": 1054,
+          "x": 843.2,
+          "y": 828,
           "align": "left"
         }
       },
@@ -1760,15 +1845,15 @@
         "end": {
           "word": "w93",
           "edge": "end",
-          "offset": 0.096
+          "offset": 0.15
         },
         "words": [
           "w93"
         ],
         "size": 50,
         "position": {
-          "x": 644.17,
-          "y": 1054,
+          "x": 860.65,
+          "y": 892,
           "align": "left"
         }
       },
@@ -1779,15 +1864,16 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w94"
         ],
         "size": 50,
         "position": {
-          "x": 260,
-          "y": 1054,
+          "x": 814,
+          "y": 764,
           "align": "left"
         }
       },
@@ -1798,15 +1884,16 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w95"
         ],
         "size": 50,
         "position": {
-          "x": 322.5,
-          "y": 1054,
+          "x": 876.5,
+          "y": 764,
           "align": "left"
         }
       },
@@ -1817,15 +1904,16 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w96"
         ],
         "size": 50,
         "position": {
-          "x": 454.75,
-          "y": 1054,
+          "x": 850.75,
+          "y": 828,
           "align": "left"
         }
       },
@@ -1836,15 +1924,16 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w97"
         ],
         "size": 50,
         "position": {
-          "x": 576,
-          "y": 1054,
+          "x": 845.25,
+          "y": 892,
           "align": "left"
         }
       },
@@ -1855,15 +1944,16 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w98"
         ],
         "size": 50,
         "position": {
-          "x": 708.25,
-          "y": 1054,
+          "x": 829.4,
+          "y": 956,
           "align": "left"
         }
       },
@@ -1874,15 +1964,16 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w99"
         ],
         "size": 50,
         "position": {
-          "x": 770.75,
-          "y": 1054,
+          "x": 891.9,
+          "y": 956,
           "align": "left"
         }
       },
@@ -1893,11 +1984,13 @@
         },
         "end": {
           "word": "w103",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w100"
-        ]
+        ],
+        "hidden_by": "transition-1"
       },
       {
         "id": "cw101",
@@ -1906,11 +1999,13 @@
         },
         "end": {
           "word": "w103",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w101"
-        ]
+        ],
+        "hidden_by": "transition-1"
       },
       {
         "id": "cw102",
@@ -1919,11 +2014,13 @@
         },
         "end": {
           "word": "w103",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w102"
-        ]
+        ],
+        "hidden_by": "transition-1"
       },
       {
         "id": "cw103",
@@ -1932,11 +2029,13 @@
         },
         "end": {
           "word": "w103",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w103"
-        ]
+        ],
+        "hidden_by": "transition-1"
       },
       {
         "id": "cw104",
@@ -1945,15 +2044,16 @@
         },
         "end": {
           "word": "w104",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.052
         },
         "words": [
           "w104"
         ],
-        "size": 45,
+        "size": 50,
         "position": {
-          "x": 609.49,
-          "y": 1053,
+          "x": 801.52,
+          "y": 839,
           "align": "left"
         }
       },
@@ -1969,10 +2069,10 @@
         "words": [
           "w105"
         ],
-        "size": 45,
+        "size": 50,
         "position": {
-          "x": 643.58,
-          "y": 1053,
+          "x": 839.4,
+          "y": 839,
           "align": "left"
         }
       },
@@ -1987,7 +2087,8 @@
         },
         "words": [
           "w106"
-        ]
+        ],
+        "hidden_by": "transition-2"
       },
       {
         "id": "cw107",
@@ -2000,7 +2101,8 @@
         },
         "words": [
           "w107"
-        ]
+        ],
+        "hidden_by": "transition-2"
       },
       {
         "id": "cw108",
@@ -2013,7 +2115,8 @@
         },
         "words": [
           "w108"
-        ]
+        ],
+        "hidden_by": "transition-2"
       },
       {
         "id": "cw109",
@@ -2028,10 +2131,10 @@
         "words": [
           "w109"
         ],
-        "size": 45,
+        "size": 50,
         "position": {
-          "x": 553,
-          "y": 1053,
+          "x": 847.87,
+          "y": 839,
           "align": "left"
         }
       },
@@ -2048,10 +2151,10 @@
         "words": [
           "w110"
         ],
-        "size": 45,
+        "size": 50,
         "position": {
-          "x": 645.25,
-          "y": 1053,
+          "x": 790,
+          "y": 903,
           "align": "left"
         }
       },
@@ -2068,10 +2171,10 @@
         "words": [
           "w111"
         ],
-        "size": 45,
+        "size": 50,
         "position": {
-          "x": 787.22,
-          "y": 1053,
+          "x": 947.75,
+          "y": 903,
           "align": "left"
         }
       },
@@ -2089,8 +2192,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 142,
-          "y": 884,
+          "x": 67,
+          "y": 916,
           "align": "left"
         }
       },
@@ -2108,8 +2211,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 225.25,
-          "y": 884,
+          "x": 150.25,
+          "y": 916,
           "align": "left"
         }
       },
@@ -2127,8 +2230,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 354.75,
-          "y": 884,
+          "x": 279.75,
+          "y": 916,
           "align": "left"
         }
       },
@@ -2147,7 +2250,7 @@
         "size": 50,
         "position": {
           "x": 325.95,
-          "y": 948,
+          "y": 916,
           "align": "left"
         }
       },
@@ -2158,15 +2261,16 @@
         },
         "end": {
           "word": "w118",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.027
         },
         "words": [
           "w117"
         ],
         "size": 50,
         "position": {
-          "x": 442.57,
-          "y": 1084,
+          "x": 189.25,
+          "y": 823,
           "align": "left"
         }
       },
@@ -2177,15 +2281,16 @@
         },
         "end": {
           "word": "w118",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.027
         },
         "words": [
           "w118"
         ],
         "size": 50,
         "position": {
-          "x": 556.07,
-          "y": 1084,
+          "x": 177.37,
+          "y": 887,
           "align": "left"
         }
       },
@@ -2196,15 +2301,16 @@
         },
         "end": {
           "word": "w122",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w119"
         ],
         "size": 50,
         "position": {
-          "x": 350.32,
-          "y": 1084,
+          "x": 189.25,
+          "y": 823,
           "align": "left"
         }
       },
@@ -2215,15 +2321,16 @@
         },
         "end": {
           "word": "w122",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w120"
         ],
         "size": 50,
         "position": {
-          "x": 463.82,
-          "y": 1084,
+          "x": 176.75,
+          "y": 887,
           "align": "left"
         }
       },
@@ -2234,15 +2341,16 @@
         },
         "end": {
           "word": "w122",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w121"
         ],
         "size": 50,
         "position": {
-          "x": 602.32,
-          "y": 1084,
+          "x": 154.37,
+          "y": 951,
           "align": "left"
         }
       },
@@ -2253,15 +2361,16 @@
         },
         "end": {
           "word": "w122",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w122"
         ],
         "size": 50,
         "position": {
-          "x": 664.82,
-          "y": 1084,
+          "x": 216.87,
+          "y": 951,
           "align": "left"
         }
       },
@@ -2272,15 +2381,16 @@
         },
         "end": {
           "word": "w125",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.116
         },
         "words": [
           "w123"
         ],
         "size": 50,
         "position": {
-          "x": 264,
-          "y": 1084,
+          "x": 165.87,
+          "y": 823,
           "align": "left"
         }
       },
@@ -2291,15 +2401,16 @@
         },
         "end": {
           "word": "w125",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.116
         },
         "words": [
           "w124"
         ],
         "size": 50,
         "position": {
-          "x": 424.25,
-          "y": 1084,
+          "x": 108.9,
+          "y": 887,
           "align": "left"
         }
       },
@@ -2310,15 +2421,16 @@
         },
         "end": {
           "word": "w125",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.116
         },
         "words": [
           "w125"
         ],
         "size": 50,
         "position": {
-          "x": 698.45,
-          "y": 1084,
+          "x": 159.27,
+          "y": 951,
           "align": "left"
         }
       },
@@ -2329,11 +2441,18 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w126"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 91,
+          "y": 823,
+          "align": "left"
+        }
       },
       {
         "id": "cw127",
@@ -2342,11 +2461,18 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w127"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 223.25,
+          "y": 823,
+          "align": "left"
+        }
       },
       {
         "id": "cw128",
@@ -2355,11 +2481,18 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w128"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 93.77,
+          "y": 887,
+          "align": "left"
+        }
       },
       {
         "id": "cw129",
@@ -2368,11 +2501,18 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w129"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 215.27,
+          "y": 887,
+          "align": "left"
+        }
       },
       {
         "id": "cw130",
@@ -2381,11 +2521,18 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w130"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 305.72,
+          "y": 887,
+          "align": "left"
+        }
       },
       {
         "id": "cw131",
@@ -2394,11 +2541,18 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w131"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 103.65,
+          "y": 951,
+          "align": "left"
+        }
       },
       {
         "id": "cw132",
@@ -2407,11 +2561,18 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w132"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 222.65,
+          "y": 951,
+          "align": "left"
+        }
       },
       {
         "id": "cw133",
@@ -2420,11 +2581,18 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w133"
-        ]
+        ],
+        "size": 50,
+        "position": {
+          "x": 268.85,
+          "y": 951,
+          "align": "left"
+        }
       },
       {
         "id": "cw134",
@@ -2433,15 +2601,16 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w134"
         ],
         "size": 50,
         "position": {
-          "x": 254.5,
-          "y": 1081,
+          "x": 107.52,
+          "y": 815,
           "align": "left"
         }
       },
@@ -2452,15 +2621,16 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w135"
         ],
         "size": 50,
         "position": {
-          "x": 357,
-          "y": 1081,
+          "x": 210.02,
+          "y": 815,
           "align": "left"
         }
       },
@@ -2471,15 +2641,16 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w136"
         ],
         "size": 50,
         "position": {
-          "x": 464.45,
-          "y": 1081,
+          "x": 105.5,
+          "y": 879,
           "align": "left"
         }
       },
@@ -2490,15 +2661,16 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w137"
         ],
         "size": 50,
         "position": {
-          "x": 544.45,
-          "y": 1081,
+          "x": 185.5,
+          "y": 879,
           "align": "left"
         }
       },
@@ -2509,15 +2681,16 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w138"
         ],
         "size": 50,
         "position": {
-          "x": 678.45,
-          "y": 1081,
+          "x": 147.12,
+          "y": 943,
           "align": "left"
         }
       },
@@ -2528,15 +2701,16 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w139"
         ],
         "size": 50,
         "position": {
-          "x": 738.95,
-          "y": 1081,
+          "x": 207.62,
+          "y": 943,
           "align": "left"
         }
       },
@@ -2547,15 +2721,16 @@
         },
         "end": {
           "word": "w144",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.142
         },
         "words": [
           "w140"
         ],
         "size": 50,
         "position": {
-          "x": 209.45,
-          "y": 1081,
+          "x": 70.34,
+          "y": 815,
           "align": "left"
         }
       },
@@ -2566,15 +2741,16 @@
         },
         "end": {
           "word": "w144",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.142
         },
         "words": [
           "w141"
         ],
         "size": 50,
         "position": {
-          "x": 299.9,
-          "y": 1081,
+          "x": 160.8,
+          "y": 815,
           "align": "left"
         }
       },
@@ -2585,15 +2761,16 @@
         },
         "end": {
           "word": "w144",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.142
         },
         "words": [
           "w142"
         ],
         "size": 50,
         "position": {
-          "x": 493.75,
-          "y": 1081,
+          "x": 159.37,
+          "y": 879,
           "align": "left"
         }
       },
@@ -2604,15 +2781,16 @@
         },
         "end": {
           "word": "w144",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.142
         },
         "words": [
           "w143"
         ],
         "size": 50,
         "position": {
-          "x": 600,
-          "y": 1081,
+          "x": 85.37,
+          "y": 943,
           "align": "left"
         }
       },
@@ -2623,15 +2801,16 @@
         },
         "end": {
           "word": "w144",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.142
         },
         "words": [
           "w144"
         ],
         "size": 50,
         "position": {
-          "x": 734.5,
-          "y": 1081,
+          "x": 219.87,
+          "y": 943,
           "align": "left"
         }
       },
@@ -2642,15 +2821,16 @@
         },
         "end": {
           "word": "w148",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w145"
         ],
         "size": 50,
         "position": {
-          "x": 219.35,
-          "y": 1081,
+          "x": 125.12,
+          "y": 815,
           "align": "left"
         }
       },
@@ -2661,15 +2841,16 @@
         },
         "end": {
           "word": "w148",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w146"
         ],
         "size": 50,
         "position": {
-          "x": 394.1,
-          "y": 1081,
+          "x": 103.62,
+          "y": 879,
           "align": "left"
         }
       },
@@ -2680,15 +2861,16 @@
         },
         "end": {
           "word": "w148",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w147"
         ],
         "size": 50,
         "position": {
-          "x": 611.85,
-          "y": 1081,
+          "x": 96.24,
+          "y": 943,
           "align": "left"
         }
       },
@@ -2699,15 +2881,16 @@
         },
         "end": {
           "word": "w148",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w148"
         ],
         "size": 50,
         "position": {
-          "x": 695.1,
-          "y": 1081,
+          "x": 179.5,
+          "y": 943,
           "align": "left"
         }
       },
@@ -2718,15 +2901,16 @@
         },
         "end": {
           "word": "w149",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.14
         },
         "words": [
           "w149"
         ],
         "size": 50,
         "position": {
-          "x": 426.1,
-          "y": 1081,
+          "x": 106.75,
+          "y": 815,
           "align": "left"
         }
       },
@@ -2744,8 +2928,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 192,
-          "y": 1081,
+          "x": 42,
+          "y": 815,
           "align": "left"
         }
       },
@@ -2763,8 +2947,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 270.25,
-          "y": 1081,
+          "x": 120.25,
+          "y": 815,
           "align": "left"
         }
       },
@@ -2782,8 +2966,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 409.75,
-          "y": 1081,
+          "x": 259.75,
+          "y": 815,
           "align": "left"
         }
       },
@@ -2801,8 +2985,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 533,
-          "y": 1081,
+          "x": 74.4,
+          "y": 879,
           "align": "left"
         }
       },
@@ -2820,8 +3004,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 624.75,
-          "y": 1081,
+          "x": 166.15,
+          "y": 879,
           "align": "left"
         }
       },
@@ -2839,8 +3023,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 809.2,
-          "y": 1081,
+          "x": 75.5,
+          "y": 943,
           "align": "left"
         }
       },
@@ -2858,8 +3042,8 @@
         ],
         "size": 50,
         "position": {
-          "x": 426.1,
-          "y": 1145,
+          "x": 138,
+          "y": 943,
           "align": "left"
         }
       },
@@ -2871,15 +3055,15 @@
         "end": {
           "word": "w161",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.122
         },
         "words": [
           "w157"
         ],
         "size": 50,
         "position": {
-          "x": 207.6,
-          "y": 1081,
+          "x": 85.5,
+          "y": 815,
           "align": "left"
         }
       },
@@ -2891,15 +3075,15 @@
         "end": {
           "word": "w161",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.122
         },
         "words": [
           "w158"
         ],
         "size": 50,
         "position": {
-          "x": 328.35,
-          "y": 1081,
+          "x": 206.25,
+          "y": 815,
           "align": "left"
         }
       },
@@ -2911,15 +3095,15 @@
         "end": {
           "word": "w161",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.122
         },
         "words": [
           "w159"
         ],
         "size": 50,
         "position": {
-          "x": 461.6,
-          "y": 1081,
+          "x": 94.75,
+          "y": 879,
           "align": "left"
         }
       },
@@ -2931,15 +3115,15 @@
         "end": {
           "word": "w161",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.122
         },
         "words": [
           "w160"
         ],
         "size": 50,
         "position": {
-          "x": 544.85,
-          "y": 1081,
+          "x": 178,
+          "y": 879,
           "align": "left"
         }
       },
@@ -2951,7 +3135,7 @@
         "end": {
           "word": "w161",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.122
         },
         "words": [
           "w161"
@@ -2959,23 +3143,41 @@
         "text": "want?",
         "size": 50,
         "position": {
-          "x": 697.1,
-          "y": 1081,
+          "x": 133,
+          "y": 943,
           "align": "left"
         }
       }
     ],
     "overlays": [
       {
-        "id": "accent-2",
+        "id": "accent-1",
         "start": {
-          "word": "w112",
-          "offset": -0.2
+          "word": "w29"
         },
         "end": {
-          "word": "w117",
-          "edge": "end",
-          "offset": -0.072
+          "word": "w29",
+          "edge": "end"
+        },
+        "kind": "accent",
+        "words": [
+          "w29"
+        ],
+        "size": 110,
+        "position": {
+          "x": 301,
+          "y": 254,
+          "align": "left"
+        }
+      },
+      {
+        "id": "accent-2",
+        "start": {
+          "word": "w112"
+        },
+        "end": {
+          "word": "w112",
+          "edge": "end"
         },
         "kind": "accent",
         "words": [
@@ -2983,8 +3185,8 @@
         ],
         "size": 110,
         "position": {
-          "x": 286,
-          "y": 374,
+          "x": 331,
+          "y": 378,
           "align": "left"
         }
       }
@@ -2993,60 +3195,14 @@
       {
         "id": "transition-1",
         "start": {
-          "word": "w26",
-          "offset": -0.3
+          "word": "w98",
+          "edge": "end",
+          "offset": 0.127
         },
         "end": {
-          "word": "w34"
-        },
-        "type": "dim",
-        "words": [
-          "w26",
-          "w27",
-          "w28",
-          "w29",
-          "w30",
-          "w31",
-          "w32",
-          "w33"
-        ],
-        "key": "w30",
-        "levels": {
-          "lead": {
-            "text": "AI has completely disrupted",
-            "start": {
-              "word": "w26"
-            },
-            "position": {
-              "x": 494.98,
-              "y": 1106,
-              "align": "center"
-            },
-            "size": 50
-          },
-          "key": {
-            "text": "the way we work",
-            "start": {
-              "word": "w30"
-            },
-            "position": {
-              "x": 494.98,
-              "y": 1180,
-              "align": "center"
-            },
-            "size": 110,
-            "break_after": 2
-          }
-        }
-      },
-      {
-        "id": "transition-2",
-        "start": {
-          "word": "w100",
-          "offset": -0.3
-        },
-        "end": {
-          "word": "w104"
+          "word": "w103",
+          "edge": "end",
+          "offset": 0.171
         },
         "type": "numbered",
         "words": [
@@ -3056,18 +3212,20 @@
           "w103"
         ],
         "key": "w102",
+        "list": 1,
         "number": 1,
         "levels": {
           "number": {
             "text": "1",
             "start": {
-              "word": "w100",
-              "offset": -0.3
+              "word": "w98",
+              "edge": "end",
+              "offset": 0.127
             },
             "position": {
-              "x": 256.07,
-              "y": 640,
-              "align": "center"
+              "x": 155,
+              "y": 536,
+              "align": "left"
             },
             "size": 300
           },
@@ -3077,12 +3235,11 @@
               "word": "w100"
             },
             "position": {
-              "x": 256.07,
-              "y": 964,
-              "align": "center"
+              "x": 96,
+              "y": 860,
+              "align": "left"
             },
-            "size": 50,
-            "break_after": 1
+            "size": 50
           },
           "key": {
             "text": "fair pay",
@@ -3090,23 +3247,27 @@
               "word": "w102"
             },
             "position": {
-              "x": 256.07,
-              "y": 1088,
-              "align": "center"
+              "x": 124,
+              "y": 934,
+              "align": "left"
             },
             "size": 110,
-            "break_after": 1
+            "breaks": [
+              1
+            ]
           }
         }
       },
       {
-        "id": "transition-3",
+        "id": "transition-2",
         "start": {
-          "word": "w106",
-          "offset": -0.3
+          "word": "w104",
+          "edge": "end",
+          "offset": -0.004
         },
         "end": {
-          "word": "w109"
+          "word": "w108",
+          "edge": "end"
         },
         "type": "numbered",
         "words": [
@@ -3115,20 +3276,22 @@
           "w108"
         ],
         "key": "w107",
+        "list": 1,
         "number": 2,
         "levels": {
           "number": {
             "text": "2",
             "start": {
-              "word": "w106",
-              "offset": -0.3
+              "word": "w104",
+              "edge": "end",
+              "offset": -0.004
             },
             "position": {
-              "x": 494.65,
+              "x": 477,
               "y": 1045,
-              "align": "center"
+              "align": "left"
             },
-            "size": 180
+            "size": 245
           },
           "lead": {
             "text": "protected",
@@ -3136,11 +3299,11 @@
               "word": "w106"
             },
             "position": {
-              "x": 494.65,
-              "y": 1249,
-              "align": "center"
+              "x": 444,
+              "y": 1314,
+              "align": "left"
             },
-            "size": 30
+            "size": 40
           },
           "key": {
             "text": "mental health",
@@ -3148,60 +3311,11 @@
               "word": "w107"
             },
             "position": {
-              "x": 494.65,
-              "y": 1303,
-              "align": "center"
+              "x": 258,
+              "y": 1378,
+              "align": "left"
             },
-            "size": 66
-          }
-        }
-      },
-      {
-        "id": "transition-4",
-        "start": {
-          "word": "w126",
-          "offset": -0.5
-        },
-        "end": {
-          "word": "w134"
-        },
-        "type": "panel",
-        "words": [
-          "w126",
-          "w127",
-          "w128",
-          "w129",
-          "w130",
-          "w131",
-          "w132",
-          "w133"
-        ],
-        "key": "w128",
-        "levels": {
-          "lead": {
-            "text": "work should",
-            "start": {
-              "word": "w126"
-            },
-            "position": {
-              "x": 495.36,
-              "y": 1180,
-              "align": "center"
-            },
-            "size": 35
-          },
-          "key": {
-            "text": "fund life not take it over",
-            "start": {
-              "word": "w128"
-            },
-            "position": {
-              "x": 495.36,
-              "y": 1239,
-              "align": "center"
-            },
-            "size": 77,
-            "break_after": 3
+            "size": 90
           }
         }
       }
@@ -3226,9 +3340,9 @@
           "offset": -0.2
         },
         "end": {
-          "word": "w79",
+          "word": "w78",
           "edge": "end",
-          "offset": 0.219
+          "offset": 0.036
         },
         "sound": "click"
       }
@@ -3245,13 +3359,12 @@
           "offset": -0.059
         },
         "kind": "visual",
-        "spot": "top",
-        "layer": "front",
+        "image": "assets/visuals/visual-1.jpg",
         "box": {
           "x": 75,
-          "y": 260,
-          "width": 252,
-          "height": 315
+          "y": 1047,
+          "width": 300,
+          "height": 383
         }
       },
       {
@@ -3261,17 +3374,21 @@
           "offset": -0.2
         },
         "end": {
-          "word": "w79",
+          "word": "w78",
           "edge": "end",
-          "offset": 0.219
+          "offset": 0.036
         },
         "kind": "word",
         "text": "distribution",
         "position": {
-          "x": 41,
-          "y": 390
+          "x": 36,
+          "y": 388
         },
-        "size": 197
+        "size": 199,
+        "words": [
+          "w76"
+        ],
+        "cutout": true
       }
     ]
   }

@@ -8,7 +8,7 @@ import { recordingSteps, stepContext } from "../recording-steps.ts";
 import { classifyKey, recordingStorage } from "../stored-files.ts";
 import { ensureCutouts } from "./ensure-cutouts.ts";
 import { cutoutKey, plannedMasks } from "./spans.ts";
-import { BEHIND_PHOTO, BEHIND_TRANSCRIPT, behindEdit, fakeMaskSpawn } from "./test-support.ts";
+import { BEHIND_TRANSCRIPT, behindEdit, fakeMaskSpawn } from "./test-support.ts";
 
 const PREFIX = "dev/";
 const tools = {
@@ -43,7 +43,6 @@ const keys = () =>
 async function ensure(
   edit = behindEdit(),
   options: {
-    photoIds?: string[];
     recordStored?: (key: string, bytes: number) => Promise<void>;
   } = {},
 ) {
@@ -56,7 +55,6 @@ async function ensure(
     scratchDir: scratch,
     edit,
     transcript: BEHIND_TRANSCRIPT,
-    photoIds: options.photoIds ?? [BEHIND_PHOTO],
     tools,
     spawnTool: spawn.spawnTool,
     env: { E2E_MOCK_MASK: "true" },
@@ -73,7 +71,6 @@ describe("ensureCutouts", () => {
     expect(toolCalls).toHaveLength(2);
     expect(toolCalls[0]!.args).toContain("5.100");
     expect(result.inputs.masks).toEqual(plannedMasks(behindEdit(), BEHIND_TRANSCRIPT));
-    expect(result.inputs.photos).toEqual([BEHIND_PHOTO]);
     for (const key of keys()) expect(await storage.head(key)).not.toBeNull();
     const done = calls.filter((call) => call.call === "done");
     expect(calls.filter((call) => call.call === "start").map((call) => call.name)).toEqual([
@@ -129,29 +126,17 @@ describe("ensureCutouts", () => {
     expect(calls).toEqual([]);
     expect(toolCalls).toEqual([]);
     expect(result.inputs).not.toHaveProperty("masks");
-    expect(result.inputs).not.toHaveProperty("photos");
   });
 
-  it("writes no row and names no masks for photos in front of the speaker only", async () => {
+  it("writes no row and names no masks for VISUALs alone, which sit over the footage", async () => {
     const edit = behindEdit();
     edit.tracks.behind = edit.tracks.behind!.flatMap((item) =>
-      item.kind === "photo" ? [{ ...item, layer: "front" as const }] : [],
+      item.kind === "visual" ? [item] : [],
     );
     const { result, calls, toolCalls } = await ensure(edit);
     expect(calls).toEqual([]);
     expect(toolCalls).toEqual([]);
     expect(result.inputs).not.toHaveProperty("masks");
-    expect(result.inputs.photos).toEqual([BEHIND_PHOTO]);
-    // Still only the owner's library photos.
-    await expect(ensure(edit, { photoIds: [] })).rejects.toThrow(
-      `cutout: photo ${BEHIND_PHOTO} is not in the library`,
-    );
-  });
-
-  it("refuses a photo that is not in the owner's library", async () => {
-    await expect(ensure(behindEdit(), { photoIds: [] })).rejects.toThrow(
-      `cutout: photo ${BEHIND_PHOTO} is not in the library`,
-    );
   });
 
   it("records each written mask as rebuildable, step cutout", async () => {

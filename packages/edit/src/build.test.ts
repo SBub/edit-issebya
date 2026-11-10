@@ -1,20 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { build } from "./build.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
-import { FIXTURES } from "./test-support/fixtures.ts";
+import { FIXTURES, PLACED_FIXTURES } from "./test-support/fixtures.ts";
 import { goldenOf } from "./test-support/golden.ts";
 import { GOLDENS } from "./test-support/goldens.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
+import { resolveTimeline } from "./timeline.ts";
 import {
   editTransitionLevels,
   TRANSITION_LEVELS,
   transitionLayers,
 } from "./test-support/transition-layers.ts";
 
-const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
+// The placed version the build tests read (the hand edit has no positions yet,
+// so the builder does not render it).
+const engine = FIXTURES.find((fixture) => fixture.name === "rethink-work-engine")!;
 
 describe("build", () => {
-  for (const fixture of FIXTURES) {
+  for (const fixture of PLACED_FIXTURES) {
     it(`${fixture.name} equals its golden byte for byte`, async () => {
       const built = goldenOf(fixture, await nodeMeasurer());
       expect(built.widths).toBe(GOLDENS[fixture.name]!.widths);
@@ -39,23 +42,16 @@ describe("build", () => {
     });
   }
 
-  it("rethink-work-transitions holds one layer per kind with its level texts", async () => {
+  it("rethink-work-transitions holds one layer per numbered transition with its level texts", async () => {
     const fixture = FIXTURES.find((item) => item.name === "rethink-work-transitions")!;
     const transitions = fixture.edit.tracks.transitions;
-    expect(transitions.map((transition) => transition.type)).toEqual([
-      "dim",
-      "numbered",
-      "numbered",
-      "panel",
-    ]);
+    expect(transitions.map((transition) => transition.type)).toEqual(["numbered", "numbered"]);
     for (const transition of transitions) {
-      if (transition.type === "numbered") {
-        expect(transition.levels?.number?.text).toBe(String(transition.number));
-      }
+      expect(transition.levels?.number?.text).toBe(String(transition.number));
     }
     const built = goldenOf(fixture, await nodeMeasurer());
     for (const html of [built.html, GOLDENS["rethink-work-transitions"]!.html]) {
-      expect(html.match(/class="clip layer"/g)).toHaveLength(4);
+      expect(html.match(/class="clip layer"/g)).toHaveLength(2);
       const layers = transitionLayers(html);
       expect(layers).toEqual(TRANSITION_LEVELS);
       expect(layers).toEqual(transitions.map(editTransitionLevels));
@@ -64,9 +60,9 @@ describe("build", () => {
 
   it("is a HyperFrames composition with a registered paused timeline", async () => {
     const { html } = build(
-      hand.edit,
-      hand.transcript,
-      hand.headTrack,
+      engine.edit,
+      engine.transcript,
+      engine.headTrack,
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
@@ -74,16 +70,16 @@ describe("build", () => {
     expect(html).toContain("gsap.timeline({ paused: true })");
     expect(html).toContain('window.__timelines["main"] = tl;');
     expect(html).toMatch(
-      /<audio id="s-fund-life" class="clip" src="assets\/sounds\/mouse-click-trimmed.wav" data-start="[\d.]+" data-duration="0.230" data-track-index="60" data-volume="0.5012"><\/audio>/,
+      /<audio id="click-visual-1" class="clip" src="assets\/sounds\/mouse-click-trimmed.wav" data-start="[\d.]+" data-duration="0.230" data-track-index="60" data-volume="0.5012"><\/audio>/,
     );
-    expect(html).toContain('<span id="aw29" class="text f-primary"');
+    expect(html).toContain('<span id="accent-1" class="text f-primary"');
   });
 
   it("lists every referenced file with its role, sorted", async () => {
     const { assets } = build(
-      hand.edit,
-      hand.transcript,
-      hand.headTrack,
+      engine.edit,
+      engine.transcript,
+      engine.headTrack,
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
@@ -92,6 +88,8 @@ describe("build", () => {
       ["assets/fonts/GolosText-Bold.ttf", "font"],
       ["assets/fonts/Raleway-Light.ttf", "font"],
       ["assets/sounds/mouse-click-trimmed.wav", "sound"],
+      ["assets/visuals/visual-1.jpg", "visual"],
+      [`masks/${"3".repeat(64)}.mp4`, "mask"],
       ["source.mp4", "footage"],
     ]);
   });
@@ -102,9 +100,9 @@ describe("build", () => {
       fonts: { ...ISSEBYA_PRESET.fonts, secondary: { ...ISSEBYA_PRESET.fonts.primary, size: 50 } },
     };
     const { assets } = build(
-      hand.edit,
-      hand.transcript,
-      hand.headTrack,
+      engine.edit,
+      engine.transcript,
+      engine.headTrack,
       shared,
       await nodeMeasurer(),
     );
@@ -113,93 +111,116 @@ describe("build", () => {
     ]);
   });
 
-  it("builds a stored version naming a cut-out without it", async () => {
-    expect(hand.edit.inputs.cutout).toBeDefined();
-    expect(hand.edit.tracks.cutout?.length).toBeGreaterThan(0);
-    const { html, assets } = build(
-      hand.edit,
-      hand.transcript,
-      hand.headTrack,
-      ISSEBYA_PRESET,
-      await nodeMeasurer(),
-    );
-    expect(html).not.toContain('<video id="cutout"');
-    expect(html).not.toContain("subject.webm");
-    expect(html).not.toContain('data-track-index="30"');
-    expect(html.match(/<video /g)).toHaveLength(1);
-    expect(assets.map((asset) => asset.role)).not.toContain("cutout");
-  });
-
-  it("renders an older version's stored shadow as the preset's legacy text-shadow, and none without it", async () => {
-    const edit = structuredClone(hand.edit);
-    const caption = edit.tracks.captions[0]!;
-    const accent = edit.tracks.overlays[0]!;
-    const plain = build(
-      edit,
-      hand.transcript,
-      hand.headTrack,
-      ISSEBYA_PRESET,
-      await nodeMeasurer(),
-    );
-    expect(plain.html).not.toContain("text-shadow");
-    caption.shadow = 1;
-    accent.shadow = 2;
-    const { html } = build(
-      edit,
-      hand.transcript,
-      hand.headTrack,
-      ISSEBYA_PRESET,
-      await nodeMeasurer(),
-    );
-    // The span's tag, from its id to the end of the tag.
-    const styleOf = (id: string) => {
-      const from = html.indexOf(`<span id="${id}" `);
-      return html.slice(from, html.indexOf(">", from));
-    };
-    expect(styleOf(caption.id)).toContain("; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.55)");
-    expect(styleOf(accent.id)).toContain(
-      "; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8), 0 0 18px rgba(0, 0, 0, 0.6)",
-    );
-    expect(html.match(/text-shadow/g)).toHaveLength(2);
-    // A dark text gets the light halo.
-    caption.color = "#000000";
-    const dark = build(edit, hand.transcript, hand.headTrack, ISSEBYA_PRESET, await nodeMeasurer());
-    expect(dark.html).toContain("text-shadow: 0 2px 8px rgba(255, 255, 255, 0.55)");
-  });
-
-  it("draws a photo in front of the speaker over the footage, with no cut-out for it", async () => {
-    const behind = FIXTURES.find((fixture) => fixture.name === "rethink-work-behind")!;
-    const edit = structuredClone(behind.edit);
+  it("draws a VISUAL in front of the speaker over the footage, with no cut-out for it", async () => {
+    const edit = structuredClone(engine.edit);
     edit.tracks.behind = edit.tracks.behind!.flatMap((item) =>
-      item.kind === "photo"
-        ? [{ ...item, layer: "front" as const, box: { x: 600, y: 300, width: 400, height: 300 } }]
+      item.kind === "visual"
+        ? [{ ...item, image: undefined, box: { x: 600, y: 300, width: 400, height: 300 } }]
         : [],
     );
     delete edit.inputs.masks;
     const { html, assets } = build(
       edit,
-      behind.transcript,
-      behind.headTrack,
+      engine.transcript,
+      engine.headTrack,
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
-    expect(html).toContain("      .photo { position: absolute; object-fit: cover; }");
     expect(html).not.toContain(".cutout");
-    expect(html).toMatch(
-      /<img id="behind-photo" class="clip photo" src="photos\/[0-9a-f-]+\.jpg" alt="" data-start="[\d.]+" data-duration="[\d.]+" data-track-index="30" style="left: 600px; top: 300px; width: 400px; height: 300px" \/>/,
+    // A stored version without a picture: the empty white frame.
+    expect(html).toContain(
+      '<div id="visual-1" class="clip visual" alt="" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 600px; top: 300px; width: 400px; height: 300px"></div>',
     );
+    expect(html).not.toContain("visual-picture");
     expect(assets.some((asset) => asset.role === "mask")).toBe(false);
-    expect(assets.filter((asset) => asset.role === "photo")).toHaveLength(1);
+    expect(assets.some((asset) => asset.role === "visual")).toBe(false);
+  });
+
+  it("fills a VISUAL's box with its stand-in picture, the stroke over it", async () => {
+    const edit = structuredClone(engine.edit);
+    edit.tracks.behind = edit.tracks.behind!.map((item) =>
+      item.kind === "visual"
+        ? {
+            ...item,
+            image: "assets/visuals/visual-2.jpg",
+            box: { x: 600, y: 300, width: 400, height: 300 },
+          }
+        : item,
+    );
+    const { html, assets } = build(
+      edit,
+      engine.transcript,
+      engine.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(html).toContain(
+      '<div id="visual-1" class="clip visual-picture" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 600px; top: 300px; width: 400px; height: 300px">\n  <img src="assets/visuals/visual-2.jpg" alt="">\n</div>',
+    );
+    expect(html).toContain(
+      ".visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }",
+    );
+    expect(assets).toContainEqual({
+      path: "assets/visuals/visual-2.jpg",
+      role: "visual",
+      ref: null,
+    });
+  });
+
+  it("draws a caption above a card that overlaps it: the card's track under the text track (decision 9)", async () => {
+    // A card may sit under a caption (text is no obstacle to a card and a card
+    // none to text); the caption stays visible because the text track (50)
+    // renders above the visual track (30), later in the page.
+    const edit = structuredClone(engine.edit);
+    const measurer = await nodeMeasurer();
+    const spans = resolveTimeline(edit, engine.transcript);
+    const card = edit.tracks.behind!.find((item) => item.kind === "visual")!;
+    const cardSpan = spans.get(card.id)!;
+    const caption = edit.tracks.captions.find((item) => {
+      const span = spans.get(item.id)!;
+      return item.position && span.start < cardSpan.end && cardSpan.start < span.end;
+    })!;
+    card.box = {
+      x: caption.position!.x - 20,
+      y: caption.position!.y - 20,
+      width: 360,
+      height: 450,
+    };
+    const { html } = build(edit, engine.transcript, engine.headTrack, ISSEBYA_PRESET, measurer);
+    const cardAt = html.indexOf(`<div id="${card.id}" class="clip visual`);
+    const textAt = html.indexOf('<div id="text" class="clip" data-start="0.000"');
+    const captionAt = html.indexOf(`<span id="${caption.id}" class="text`);
+    expect(cardAt).toBeGreaterThan(-1);
+    expect(textAt).toBeGreaterThan(cardAt);
+    expect(captionAt).toBeGreaterThan(textAt);
+    const trackOf = (at: number) => Number(/data-track-index="(\d+)"/.exec(html.slice(at))![1]);
+    expect(trackOf(cardAt)).toBe(30);
+    expect(trackOf(textAt)).toBe(50);
+  });
+
+  it("renders a text with two breaks in three lines", async () => {
+    const edit = structuredClone(engine.edit);
+    const accent = edit.tracks.overlays.find((item) => item.kind === "accent")!;
+    accent.text = "one two three four";
+    accent.breaks = [1, 2];
+    const { html } = build(
+      edit,
+      engine.transcript,
+      engine.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(html).toContain("one<br />two<br />three four");
   });
 
   it("escapes text and style values", async () => {
-    const edit = structuredClone(hand.edit);
+    const edit = structuredClone(engine.edit);
     edit.tracks.captions[0]!.text = `<b>"Tom" & 'Jerry'</b>`;
     edit.tracks.captions[0]!.style = { "font-family": `"Raleway Light"` };
     const { html } = build(
       edit,
-      hand.transcript,
-      hand.headTrack,
+      engine.transcript,
+      engine.headTrack,
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
@@ -208,12 +229,12 @@ describe("build", () => {
     expect(html).not.toContain("<b>");
   });
 
-  it("builds the 50-second hand edit in under 200 ms with a ready measurer", async () => {
-    expect(hand.transcript.words).toHaveLength(162);
+  it("builds the 50-second engine edit in under 200 ms with a ready measurer", async () => {
+    expect(engine.transcript.words).toHaveLength(162);
     const measurer = await nodeMeasurer();
-    build(hand.edit, hand.transcript, hand.headTrack, ISSEBYA_PRESET, measurer);
+    build(engine.edit, engine.transcript, engine.headTrack, ISSEBYA_PRESET, measurer);
     const started = performance.now();
-    build(hand.edit, hand.transcript, hand.headTrack, ISSEBYA_PRESET, measurer);
+    build(engine.edit, engine.transcript, engine.headTrack, ISSEBYA_PRESET, measurer);
     expect(performance.now() - started).toBeLessThan(200);
   });
 });

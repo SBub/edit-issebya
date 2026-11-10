@@ -1,34 +1,15 @@
 import { z } from "zod";
-import type { Backgrounds } from "./background.ts";
-import { type EngineNote, type FreeSentence, type UnplacedItem, placeEdit } from "./engine.ts";
+import type { EngineNote } from "./engine-note.ts";
+import { placeEdit } from "./engine.ts";
+import { pickVariants } from "./variant-picker.ts";
 import { type EngineInput, QUESTION_PREFIX } from "./engine-input.ts";
+import { SAFE_ZONE } from "./engine-zones.ts";
 import type { HeadTrack } from "./head-track.ts";
-import { wordsText } from "./layout.ts";
+import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
 import { type Preset, cleanWord } from "./preset.ts";
 import { BEHIND_WORD, type Edit, issueReasons, parseEdit } from "./schema.ts";
 import type { Transcript } from "./transcript.ts";
-
-// The reel's stored behind forbids: photos or big words switched off by an
-// earlier owner request (`reels.no_photos`, `reels.no_big_word`). A new answer
-// never sets or lifts one; it only has to respect them.
-export interface BehindForbid {
-  photos: boolean;
-  bigWord: boolean;
-}
-
-// The forbids in force for one decide run.
-export interface DecideRules {
-  forbid: BehindForbid;
-}
-
-export const NO_RULES: DecideRules = {
-  forbid: { photos: false, bigWord: false },
-};
-
-// The transition kinds a new answer may pick: a list only (`numbered`, the
-// LIST component). Older versions keep the kinds they were saved with.
-export const NEW_TRANSITION_KINDS = ["numbered"] as const;
 
 // No count cap on any list here: how many of each the editor picks is its
 // choice. A limit is added only when a real case shows the need, derived from
@@ -113,18 +94,15 @@ function visualDescriptionSchema() {
 // layout engine's input (`EngineInput`) for the components: `accents`
 // (ACCENT), `questions` (QUESTION), `big_words` (BIGWORD), `visuals` (VISUAL:
 // over its words, with a short description of what it would show),
-// `transitions` (LIST, kind `numbered` only) and `word_fixes`. The written hook is not in it: its own
-// call answers it (`hookAnswerSchemaFor`), and the decide step puts the text
-// beside these components when it places them. Built per reel from its
-// transcript. The refinement (dropped from the JSON Schema) refuses a phrase
-// ending before it starts, a transition's key phrase starting outside its
-// phrase, a big word that is not one or two plain words in a row, a word fixed
-// twice, and a kind or item the reel's stored forbids rule out.
-export function decideAnswerSchemaFor(
-  preset: Preset,
-  transcript: Transcript,
-  rules: DecideRules = NO_RULES,
-) {
+// `lists` (LIST: the items of each numbered list, each over its phrase) and
+// `word_fixes`. The written hook
+// is not in it: its own call answers it (`hookAnswerSchemaFor`), and the decide
+// step puts the text beside these components when it places them. Built per
+// reel from its transcript. The refinement (dropped from the JSON Schema)
+// refuses a phrase ending before it starts, a LIST item's key phrase starting
+// outside its phrase, a big word that is not one or two plain words in a row,
+// and a word fixed twice.
+export function decideAnswerSchemaFor(preset: Preset, transcript: Transcript) {
   const ids = transcript.words.map((word) => word.id);
   const order = new Map(ids.map((id, index) => [id, index]));
   const words = new Map(transcript.words.map((word) => [word.id, word]));
@@ -134,21 +112,21 @@ export function decideAnswerSchemaFor(
     .strictObject({
       // ACCENT: a phrase worth stressing.
       accents: z.array(z.strictObject(phrase)),
-      // QUESTION: a question the speaker puts to the viewer, over its words; an
-      // answer saved before it has none.
-      questions: z.array(z.strictObject(phrase)).default([]),
+      // QUESTION: a question the speaker puts to the viewer, over its words;
+      // none when the reel has none.
+      questions: z.array(z.strictObject(phrase)),
       // BIGWORD: one or two consecutive plain words shown large behind the
       // speaker, from the first spoken word to the last (equal for one word);
       // the same word may come back.
       big_words: z.array(z.strictObject(phrase)),
       // VISUAL: an empty frame over its words, with what it would show.
       visuals: z.array(z.strictObject({ ...phrase, description: visualDescriptionSchema() })),
-      // LIST: the numbered transitions only, each over its phrase.
-      transitions: z.array(
+      // LIST: the lists of the reel's numbered phrases, in reel order. Each
+      // list's items are numbered 1, 2, ... in order; a list of one item shows
+      // no number. A list has at least one item.
+      lists: z.array(
         z.strictObject({
-          kind: z.enum(NEW_TRANSITION_KINDS),
-          ...phrase,
-          key_from: wordId,
+          items: z.array(z.strictObject({ ...phrase, key_from: wordId })).min(1),
         }),
       ),
       word_fixes: z.array(z.strictObject({ word: wordId, text: z.string().min(1).max(60) })),
@@ -158,7 +136,6 @@ export function decideAnswerSchemaFor(
         accents: answer.accents,
         questions: answer.questions,
         visuals: answer.visuals,
-        transitions: answer.transitions,
       };
       for (const [name, list] of Object.entries(lists)) {
         list.forEach((item, index) => {
@@ -171,32 +148,26 @@ export function decideAnswerSchemaFor(
           }
         });
       }
-      answer.transitions.forEach((item, index) => {
-        const key = order.get(item.key_from)!;
-        if (key < order.get(item.from)! || key > order.get(item.to)!) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["transitions", index, "key_from"],
-            message: `key phrase starts on ${item.key_from}, outside ${item.from} to ${item.to}`,
-          });
-        }
+      answer.lists.forEach((list, listIndex) => {
+        list.items.forEach((item, index) => {
+          const path = ["lists", listIndex, "items", index];
+          if (order.get(item.to)! < order.get(item.from)!) {
+            ctx.addIssue({
+              code: "custom",
+              path: [...path, "to"],
+              message: `ends on ${item.to}, before it starts on ${item.from}`,
+            });
+          }
+          const key = order.get(item.key_from)!;
+          if (key < order.get(item.from)! || key > order.get(item.to)!) {
+            ctx.addIssue({
+              code: "custom",
+              path: [...path, "key_from"],
+              message: `key phrase starts on ${item.key_from}, outside ${item.from} to ${item.to}`,
+            });
+          }
+        });
       });
-      const forbid = rules.forbid;
-      // A visual takes a photo's place, so the owner's switch-off covers it.
-      if (forbid.photos && answer.visuals.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["visuals"],
-          message: "photos and visuals are switched off for this reel by the owner; leave them out",
-        });
-      }
-      if (forbid.bigWord && answer.big_words.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["big_words"],
-          message: "big words are switched off for this reel by the owner; leave them out",
-        });
-      }
       answer.big_words.forEach((big, index) => {
         const from = order.get(big.from)!;
         const to = order.get(big.to)!;
@@ -251,12 +222,8 @@ export type DecideAnswer = z.infer<ReturnType<typeof decideAnswerSchemaFor>>;
 // rejected draft 2020-12; the runner leaves the `$schema` line and the length
 // bounds out of what it sends, and Zod checks them). The worker doctor's
 // `ai structured call` sends this schema in one real call.
-export function decideJsonSchema(
-  preset: Preset,
-  transcript: Transcript,
-  rules: DecideRules = NO_RULES,
-): Record<string, unknown> {
-  return z.toJSONSchema(decideAnswerSchemaFor(preset, transcript, rules), {
+export function decideJsonSchema(preset: Preset, transcript: Transcript): Record<string, unknown> {
+  return z.toJSONSchema(decideAnswerSchemaFor(preset, transcript), {
     target: "draft-07",
     io: "output",
     reused: "inline",
@@ -268,9 +235,8 @@ export function parseDecideAnswer(
   json: unknown,
   preset: Preset,
   transcript: Transcript,
-  rules: DecideRules = NO_RULES,
 ): { ok: true; answer: DecideAnswer } | { ok: false; reasons: string[] } {
-  const result = decideAnswerSchemaFor(preset, transcript, rules).safeParse(json);
+  const result = decideAnswerSchemaFor(preset, transcript).safeParse(json);
   if (!result.success) return { ok: false, reasons: issueReasons(json, result.error.issues) };
   return { ok: true, answer: result.data };
 }
@@ -282,8 +248,8 @@ export function parseDecideAnswer(
 // retimed or dropped. Also returned: the answer's extras left out and the
 // sentences with room for their kind (the engine's own report, for the trace
 // and tests; the worker no longer asks for a second answer on them). The
-// current version's masks and photos are not carried over: the worker's
-// cut-out step names them again for the new `behind` track. A parse failure
+// current version's masks are not carried over: the worker's cut-out step
+// names them again for the new `behind` track. A parse failure
 // here is an engine bug, never the answer's.
 export function editFromAnswer(
   current: Edit,
@@ -292,30 +258,17 @@ export function editFromAnswer(
   transcript: Transcript,
   headTrack: HeadTrack,
   measurer: Measurer,
-  // The footage's background map, sampled: the engine keeps every text
-  // readable over it. Without it nothing is measured.
-  backgrounds?: Backgrounds,
-  // The answer items the owner asked for, placed first and given room
-  // (`PlaceOptions.requested`). The decide step passes none: a new answer
-  // has no request.
-  options: { requested?: readonly string[] } = {},
-):
-  | { ok: true; edit: Edit; record: EngineNote[]; unplaced: UnplacedItem[]; free: FreeSentence[] }
-  | { ok: false; reasons: string[] } {
+): { ok: true; edit: Edit; record: EngineNote[] } | { ok: false; reasons: string[] } {
   const inputs = { ...current.inputs };
   delete inputs.masks;
-  delete inputs.photos;
-  const { tracks, record, unplaced, free } = placeEdit(
+  const { tracks, record } = placeEdit(
     current,
     answer,
+    pickVariants(answer),
     transcript,
     headTrack,
     preset,
     measurer,
-    {
-      ...(backgrounds ? { backgrounds } : {}),
-      ...(options.requested ? { requested: options.requested } : {}),
-    },
   );
   const json = {
     format: 1,
@@ -326,10 +279,10 @@ export function editFromAnswer(
   };
   const parsed = parseEdit(json, preset, transcript, {
     duration: current.duration,
-    bounds: preset.safe,
+    bounds: SAFE_ZONE.box,
     behindLengths: true,
   });
-  return parsed.ok ? { ok: true, edit: parsed.edit, record, unplaced, free } : parsed;
+  return parsed.ok ? { ok: true, edit: parsed.edit, record } : parsed;
 }
 
 export interface DecideCounts {
@@ -338,7 +291,6 @@ export interface DecideCounts {
   transitions: number;
   hook: boolean;
   wordsFixed: number;
-  behindPhotos: number;
   behindVisuals: number;
   behindWords: number;
 }
@@ -349,12 +301,10 @@ export function decideCounts(edit: Edit, transcript: Transcript, preset: Preset)
   const { overlays, transitions, captions } = edit.tracks;
   const behind = edit.tracks.behind ?? [];
   return {
-    behindPhotos: behind.filter((item) => item.kind === "photo").length,
     behindVisuals: behind.filter((item) => item.kind === "visual").length,
     behindWords: behind.filter((item) => item.kind === "word").length,
     accents: overlays.filter(
-      (item) =>
-        item.kind === "accent" && item.id !== "title" && !item.id.startsWith(QUESTION_PREFIX),
+      (item) => item.kind === "accent" && !item.id.startsWith(QUESTION_PREFIX),
     ).length,
     questions: overlays.filter((item) => item.id.startsWith(QUESTION_PREFIX)).length,
     transitions: transitions.length,
@@ -370,7 +320,6 @@ export function usedFreeField(edit: Edit): boolean {
   const { tracks } = edit;
   return [
     ...tracks.footage,
-    ...(tracks.cutout ?? []),
     ...tracks.captions,
     ...tracks.overlays,
     ...tracks.transitions,

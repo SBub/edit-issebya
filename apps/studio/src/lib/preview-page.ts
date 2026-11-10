@@ -18,18 +18,16 @@ function escapeAttr(text: string): string {
 // The page the player is handed, from the page packages/edit built: each
 // footage video's file (the cut-out's footage copies included) becomes its
 // preview copy's signed URL, each mask video's file its signed URL (both
-// buffer ahead), each photo `<img>`'s file its signed URL, each font comes
-// from the edit-assets route, and the sound items' `<audio>` clips are dropped
-// (the studio plays them through Web Audio). Nothing else changes. Throws
-// when the page is not shaped the way the builder writes it, or a mask or
-// photo has no URL.
+// buffer ahead), each font and each visual's picture comes from the edit-assets
+// route, and the sound items' `<audio>` clips are dropped (the studio plays
+// them through Web Audio). Nothing else changes. Throws when the page is not shaped the way the builder
+// writes it, or a mask has no URL.
 export function previewPage(
   html: string,
   assets: readonly BuildAsset[],
   urls: {
     footage: string;
     masks?: readonly { path: string; url: string }[];
-    photos?: readonly { path: string; url: string }[];
   },
   soundIds: readonly string[],
 ): string {
@@ -58,8 +56,8 @@ export function previewPage(
       swap("video", asset.path, urls.footage, ' preload="auto"');
     } else if (asset.role === "mask") {
       swap("video", asset.path, urlOf(urls.masks, asset.path), ' preload="auto"');
-    } else if (asset.role === "photo") {
-      swap("img", asset.path, urlOf(urls.photos, asset.path), "");
+    } else if (asset.role === "visual") {
+      swap("img", asset.path, editAssetUrl(asset.path), "");
     } else if (asset.role === "font") {
       const from = `url("${asset.path}")`;
       const to = `url("${editAssetUrl(asset.path)}")`;

@@ -11,14 +11,12 @@ import {
   build,
   headTrackSchema,
   maskPath,
-  photoPath,
   parseEdit,
   transcriptSchema,
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import { type CutoutDeps, ensureVersionCutouts } from "../cutout/version-cutouts.ts";
 import { editMeasurer } from "../edit-measurer.ts";
-import type { PhotoLibrary } from "../photos/photo-store.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { runPipeline } from "../pipeline/run-pipeline.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
@@ -47,7 +45,7 @@ export interface RenderExport {
   edit: Edit;
   transcript: Transcript;
   headTrack: HeadTrack;
-  // The full-size retimed footage, the masks and the photos, on disk.
+  // The full-size retimed footage and the masks, on disk.
   files: RenderFiles;
   range?: RenderRange;
   env?: NodeJS.ProcessEnv;
@@ -101,8 +99,6 @@ export interface RenderRun {
   newId?: () => string;
   spawnTool?: SpawnTool;
   env?: NodeJS.ProcessEnv;
-  // The owner's ready photos: where a behind photo's large copy is.
-  photos?: PhotoLibrary;
   // Given, the version's masks are made sure of after the pipeline (a slimmed
   // one is rebuilt in a `cutout` step).
   cutouts?: CutoutDeps;
@@ -137,7 +133,6 @@ export async function runRender({
   newId = randomUUID,
   spawnTool,
   env = process.env,
-  photos,
   cutouts,
   discardExport,
 }: RenderRun): Promise<void> {
@@ -229,38 +224,13 @@ export async function runRender({
             return path;
           };
           // An old version may name the whole-clip cut-out: the page never
-          // uses it, so it is never downloaded. Masks and photos are.
+          // uses it, so it is never downloaded. Masks are.
           const files: Required<RenderFiles> = {
             footage: await download(version.inputs.footage),
             masks: {},
-            photos: {},
           };
           for (const mask of parsed.edit.inputs.masks ?? []) {
             files.masks[maskPath(mask)] = await download(mask, `${mask.fingerprint}.mp4`);
-          }
-          const behindPhotos = new Set(
-            (parsed.edit.tracks.behind ?? []).flatMap((item) =>
-              item.kind === "photo" ? [item.photo_id] : [],
-            ),
-          );
-          if (behindPhotos.size > 0) {
-            const library = new Map(
-              (photos ? await photos.readyPhotos(job.owner_id) : []).map((photo) => [
-                photo.id,
-                photo,
-              ]),
-            );
-            for (const photoId of [...behindPhotos].sort()) {
-              const photo = library.get(photoId);
-              if (!photo) throw new Error(`${STEP}: photo ${photoId} is no longer in the library`);
-              const path = join(dir, "inputs", "photos", `${photoId}.jpg`);
-              // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
-              await mkdir(join(dir, "inputs", "photos"), { recursive: true });
-              if (!(await storage.getFile(photo.large_key, path, { signal }))) {
-                throw new Error(`${STEP}: photo ${photoId} is no longer in the library`);
-              }
-              files.photos[photoPath(photoId)] = path;
-            }
           }
           const { projectFiles } = await renderExport({
             tool,

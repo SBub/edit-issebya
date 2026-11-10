@@ -80,7 +80,7 @@ export function jobProgress(
   }
   const running = own.findLast((step) => step.status === "running");
   // A waiting step (decide on an AI limit) is the job's own step even when a
-  // step inside it (backgrounds, cutout) finished after it started.
+  // step inside it (cutout) finished after it started.
   const current = running ?? own.findLast((step) => step.status === "waiting") ?? own.at(-1)!;
   // A step not in the list keeps the last known index.
   let index = 0;
@@ -151,11 +151,7 @@ function failureState(input: OverlayInput): OverlayState | null {
   const failedStep = own.findLast((step) => step.status === "failed") ?? own.at(-1) ?? null;
   const step = failedStep?.name ?? null;
   const refused = newest.failure_kind === "answer_refused";
-  // A change that would leave the reel as it is: nothing was saved.
-  const unchanged = refused && (newest.failure_rules ?? []).includes("no-change");
-  const headline = unchanged
-    ? "Nothing changed"
-    : wordsFor(step ?? "", newest, versionsById).failed;
+  const headline = wordsFor(step ?? "", newest, versionsById).failed;
   const actions: FailureAction[] = ["try_again", "keep_current"];
   return {
     kind: "failure",

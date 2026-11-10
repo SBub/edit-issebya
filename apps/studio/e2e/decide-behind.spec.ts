@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { VISUAL_STAND_INS } from "@edit-issebya/edit";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { type Page, expect, test } from "@playwright/test";
 import { speechTenVisualAnswerScript } from "../test-support/ai-script.ts";
@@ -70,7 +71,7 @@ test.afterAll(async () => {
 interface VersionRow {
   id: string;
   number: number;
-  inputs: { masks?: unknown[]; photos?: string[] };
+  inputs: { masks?: unknown[] };
   rejected_reasons: string[];
   change_title: string | null;
   change_summary: string | null;
@@ -81,9 +82,9 @@ interface VersionRow {
 async function currentVersion() {
   const { data: reelRow } = await admin
     .from("reels")
-    .select("current_version_id, no_photos, no_big_word")
+    .select("current_version_id")
     .eq("id", reel!.reelId)
-    .single<{ current_version_id: string; no_photos: boolean; no_big_word: boolean }>();
+    .single<{ current_version_id: string }>();
   const { data: version } = await admin
     .from("versions")
     .select("id, number, inputs, rejected_reasons, change_title, change_summary, r2_key")
@@ -94,8 +95,7 @@ async function currentVersion() {
     tracks: {
       behind?: {
         kind: string;
-        spot?: string;
-        layer?: string;
+        image?: string;
         box?: { width: number; height: number };
       }[];
     };
@@ -116,19 +116,21 @@ test("the automatic decide proposes a visual, and the preview shows its frame", 
   test.setTimeout(240_000);
 
   // Version 2: the process job's decide proposed a visual, and the layout put
-  // it as a card over the footage: the full card (360 by 450) or its smaller
-  // step (252 by 315), beside the speaker, never over the face.
+  // it as a card over the footage, showing its stand-in picture: the full card
+  // (360 wide) where a corner or the strip beside the face holds it, else
+  // shrunk from it at the picture's aspect (the placer's 10% steps), off the
+  // face where a spot is free (over it only as a noted last resort).
   const v2 = await currentVersion();
   expect(v2.version.number).toBe(2);
-  expect(v2.behind).toEqual([expect.objectContaining({ kind: "visual", layer: "front" })]);
+  expect(v2.behind).toEqual([expect.objectContaining({ kind: "visual" })]);
   const [card] = v2.behind;
-  expect([
-    [360, 450],
-    [252, 315],
-  ]).toContainEqual([card!.box!.width, card!.box!.height]);
-  // No library photo is named by a new version.
-  expect(v2.version.inputs.photos ?? []).toEqual([]);
-  expect(v2.reel).toMatchObject({ no_photos: false, no_big_word: false });
+  const { width, height } = card!.box!;
+  expect(width).toBeGreaterThanOrEqual(30);
+  expect(width).toBeLessThanOrEqual(360);
+  const picture = VISUAL_STAND_INS.find((image) => image.file === card!.image)!;
+  expect(height).toBe(Math.floor(width / (picture.width / picture.height)));
+  // A version names no photo: the placed photo is gone from the edit.
+  expect(v2.version.inputs).not.toHaveProperty("photos");
 
   await routePreviewCdn(page);
   await page.goto(await signInLink(admin, owner.email, baseURL!));

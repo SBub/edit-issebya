@@ -199,8 +199,8 @@ not a corner, and is unchanged.
   for Claude's decisions, so the edit's captions and sounds tracks have no row (owner, 2026-11-03;
   the edit and `resolveTimeline` still carry them, and there is no toggle to show them), and a
   legacy `cutout` track is never shown. The Behind row holds the version's `behind` items (empty for a
-  version without them): a photo labelled `photo <spot>` (for example `photo left`), a big word by
-  its text. The Hook row holds the written hook (the overlay of kind `hook`, at most one, labelled
+  version without them): a VISUAL labelled `visual <spot>` (for example `visual left`, or `visual, in front`
+  for one in front of the speaker), a big word by its text. The Hook row holds the written hook (the overlay of kind `hook`, at most one, labelled
   by its text; empty for a version without one), so the Accents row keeps the spoken accents
   only. `formatClock` makes `mm:ss`. Temporary testing aid, to be removed: `SHOW_MILLISECONDS`
   (true) switches `clockText` (the player's clock and the ruler's read-out) to `formatClockMs`

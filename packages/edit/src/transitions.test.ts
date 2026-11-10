@@ -1,17 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ISSEBYA_PRESET } from "./preset.ts";
+import { ISSEBYA_PRESET, SHOWN_FLOOR_SECONDS } from "./preset.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
-import {
-  hiddenCaptionIds,
-  levelStyle,
-  motionSeconds,
-  transitionBackground,
-  transitionTiming,
-} from "./transitions.ts";
+import { resolveTimeline } from "./timeline.ts";
+import { hiddenCaptionIds, levelStyle, transitionTiming } from "./transitions.ts";
 import type { Word } from "./transcript.ts";
+import { STYLES } from "./variants.ts";
 
 const P = ISSEBYA_PRESET;
-const DIM = P.transitions.dim;
+const NUMBERED = P.transitions.numbered;
 
 // Words `a` to `e`: `c` ends at 3.0, then `pause` seconds of silence.
 function wordsWith(pause: number): Word[] {
@@ -24,107 +20,121 @@ function wordsWith(pause: number): Word[] {
   ];
 }
 
+const timing0 = (words: Word[]) =>
+  transitionTiming({ from: "a", to: "c" }, words, 10, P, NUMBERED)!;
+
 describe("transitionTiming", () => {
-  it("finishes its entrance as the first word starts and has left as the next word starts", () => {
+  it("comes in as its entrance ends on its first word's start, its out-fade after its last word's end", () => {
     const words = wordsWith(0.2);
-    const timing = transitionTiming({ from: "a", to: "c" }, words, 10, P, DIM)!;
-    expect(timing.start).toBe(0.7);
-    expect(timing.end).toBe(3.2);
-    expect(timing.startAnchor).toEqual({ word: "a", offset: -0.3 });
-    expect(timing.endAnchor).toEqual({ word: "d" });
+    const timing = transitionTiming({ from: "a", to: "c" }, words, 10, P, NUMBERED)!;
+    expect(timing.seconds).toBe(NUMBERED.seconds);
+    expect(timing.start).toBe(1 - NUMBERED.seconds);
+    expect(timing.end).toBe(3 + NUMBERED.seconds);
+    expect(timing.endAnchor).toEqual({ word: "c", edge: "end", offset: NUMBERED.seconds });
     expect(timing.lengthened).toBe(false);
   });
 
-  it("holds at most 1 s after its last word before a long pause, 2 s when asked longer", () => {
-    const words = wordsWith(3);
-    expect(transitionTiming({ from: "a", to: "c" }, words, 10, P, DIM)!.end).toBe(4);
-    expect(transitionTiming({ from: "a", to: "c", wish: "long" }, words, 10, P, DIM)!.end).toBe(5);
+  it("is at full opacity through its last word: the out-fade starts at that word's end", () => {
+    const words = wordsWith(0.2);
+    const timing = transitionTiming({ from: "a", to: "c" }, words, 10, P, NUMBERED)!;
+    // build.ts fades the layer out over [end - seconds, end].
+    expect(timing.end - timing.seconds).toBeCloseTo(3, 9);
   });
 
-  it("moves 1.6 times slower when asked", () => {
-    const timing = transitionTiming(
-      { from: "a", to: "c", wish: "slow" },
-      wordsWith(0.2),
-      10,
-      P,
-      DIM,
-    )!;
-    expect(timing.seconds).toBe(0.48);
-    expect(timing.start).toBe(0.52);
-  });
-
-  it("lengthens a short phrase to 1.5 s", () => {
-    const timing = transitionTiming({ from: "b", to: "b" }, wordsWith(0.2), 10, P, DIM)!;
-    expect(timing.end - timing.start).toBeCloseTo(1.5, 6);
-    expect(timing.start).toBe(1.2);
-    expect(timing.lengthened).toBe(true);
-  });
-
-  it("starts at the reel's start when its phrase opens the reel", () => {
+  it("never starts its entrance before 0", () => {
     const words = wordsWith(0.2).map((word) => ({ ...word, start: word.start - 0.9 }));
-    const timing = transitionTiming({ from: "a", to: "c" }, words, 10, P, DIM)!;
+    const timing = transitionTiming({ from: "a", to: "c" }, words, 10, P, NUMBERED)!;
     expect(timing.start).toBe(0);
     expect(timing.startAnchor).toEqual({ reel: "start" });
   });
 
-  it("leaves at the reel's end after the last phrase, coming in earlier to last 1.5 s", () => {
-    const timing = transitionTiming({ from: "e", to: "e" }, wordsWith(0.2), 4.3, P, DIM)!;
-    expect(timing.end).toBe(4.3);
-    expect(timing.endAnchor).toEqual({ reel: "end" });
-    expect(timing.end - timing.start).toBeCloseTo(1.5, 6);
+  it("does not hold after its last word: its fade ends one fade past it, even before a long pause", () => {
+    const words = wordsWith(3);
+    expect(P.transition).not.toHaveProperty("holdSeconds");
+    expect(transitionTiming({ from: "a", to: "c" }, words, 10, P, NUMBERED)!.end).toBe(
+      3 + NUMBERED.seconds,
+    );
   });
 
-  it("is too short on a reel under 1.5 s", () => {
-    const words: Word[] = [{ id: "a", text: "hi", start: 0.1, end: 0.5 }];
-    expect(transitionTiming({ from: "a", to: "a" }, words, 1.2, P, DIM)).toBeNull();
+  it("has no minimum: a short phrase keeps its words, the entrance before the first", () => {
+    // "x" is said for 0.05 s: under the shown floor, and kept as it is said.
+    const words: Word[] = [
+      { id: "x", text: "one", start: 1, end: 1.05 },
+      { id: "y", text: "two", start: 1.1, end: 1.2 },
+    ];
+    const timing = transitionTiming({ from: "x", to: "x" }, words, 10, P, NUMBERED)!;
+    expect([timing.start, timing.end]).toEqual([1 - NUMBERED.seconds, 1.05 + NUMBERED.seconds]);
+    expect(timing.lengthened).toBe(false);
+  });
+
+  it("lengthens only a phrase with no length at all, to the shown floor from its first word", () => {
+    const words: Word[] = [{ id: "x", text: "one", start: 1, end: 1 }];
+    const timing = transitionTiming({ from: "x", to: "x" }, words, 10, P, NUMBERED)!;
+    expect([timing.start, timing.end]).toEqual([1 - NUMBERED.seconds, 1 + SHOWN_FLOOR_SECONDS]);
+    expect(timing.lengthened).toBe(true);
+  });
+
+  it("starts at the reel's start when its phrase opens the reel", () => {
+    const words = wordsWith(0.2).map((word) => ({ ...word, start: word.start - 1 }));
+    const timing = timing0(words);
+    expect(timing.start).toBe(0);
+    expect(timing.startAnchor).toEqual({ reel: "start" });
+  });
+
+  it("leaves at the reel's end after the last phrase", () => {
+    const timing = transitionTiming({ from: "e", to: "e" }, wordsWith(0.2), 4.2, P, NUMBERED)!;
+    expect(timing.end).toBe(4.2);
+    expect(timing.endAnchor).toEqual({ reel: "end" });
+  });
+
+  it("is too short on a reel under the shown floor, when its phrase has no length", () => {
+    const words: Word[] = [{ id: "a", text: "hi", start: 0.4, end: 0.4 }];
+    expect(transitionTiming({ from: "a", to: "a" }, words, 0.4, P, NUMBERED)).toBeNull();
   });
 });
 
 describe("transition style roles", () => {
-  it("sets the lead-in in caption text, the key phrase and the number in accent text", () => {
-    expect(levelStyle("lead", P)).toEqual({
-      font: P.caption.font,
-      size: P.fonts[P.caption.font].size,
-      color: P.caption.color,
-    });
-    expect(levelStyle("key", P)).toEqual({
-      font: P.accent.font,
-      size: P.fonts[P.accent.font].size,
-      color: P.accent.color,
-    });
-    expect(levelStyle("number", P)).toEqual({
-      font: P.accent.font,
-      size: P.transitions.numbered.numberSize,
-      color: P.accent.color,
-    });
-  });
-
-  it("colours the layer with the background role at the kind's shade", () => {
-    expect(transitionBackground(P.transitions.panel, P)).toBe("#121212");
-    expect(transitionBackground(DIM, P)).toBe("rgba(18, 18, 18, 0.62)");
-    expect(transitionBackground(P.transitions.numbered, P)).toBe("rgba(18, 18, 18, 0.38)");
-    expect(transitionBackground(DIM, P, "#336699")).toBe("#336699");
-  });
-
-  it("stretches the motion of a slower transition", () => {
-    const item = {
-      id: "t",
-      type: "dim" as const,
-      start: { reel: "start" as const },
-      end: { reel: "end" as const },
-    };
-    expect(motionSeconds(item, P)).toBe(0.3);
-    expect(motionSeconds({ ...item, pace: "slow" }, P)).toBe(0.48);
+  it("sets the lead-in in caption text, the key phrase and the number in accent text; no size (the engine's)", () => {
+    expect(levelStyle("lead")).toEqual({ font: STYLES.caption.font, color: STYLES.caption.color });
+    expect(levelStyle("key")).toEqual({ font: STYLES.accent.font, color: STYLES.accent.color });
+    expect(levelStyle("number")).toEqual({ font: STYLES.accent.font, color: STYLES.accent.color });
   });
 });
 
 describe("hiddenCaptionIds", () => {
   it("lists the captions a transition shows as its levels, none for a version saved before", () => {
     const transitions = FIXTURES.find((fixture) => fixture.name === "rethink-work-transitions")!;
-    const hidden = hiddenCaptionIds(transitions.edit);
-    expect(hidden.has("cw26")).toBe(true);
-    expect(hidden.has("cw34")).toBe(false);
+    const hidden = hiddenCaptionIds(
+      transitions.edit,
+      resolveTimeline(transitions.edit, transitions.transcript),
+    );
+    expect(hidden.has("cw100")).toBe(true);
+    expect(hidden.has("cw104")).toBe(false);
     const hand = FIXTURES.find((fixture) => fixture.name === "rethink-work-hand")!;
-    expect(hiddenCaptionIds(hand.edit).size).toBe(0);
+    expect(hiddenCaptionIds(hand.edit, resolveTimeline(hand.edit, hand.transcript)).size).toBe(0);
+  });
+
+  it("hides a caption by its own hidden_by, and a stored list caption only while the list is on screen", () => {
+    const transitions = structuredClone(
+      FIXTURES.find((fixture) => fixture.name === "rethink-work-transitions")!,
+    );
+    const edit = transitions.edit;
+    const layer = edit.tracks.transitions[0]!;
+    const resolved = resolveTimeline(edit, transitions.transcript);
+    const span = resolved.get(layer.id)!;
+    // A version saved before `hidden_by`: its phrase's captions have none.
+    const cut = edit.tracks.captions.find((caption) => caption.id === "cw100")!;
+    delete cut.hidden_by;
+    expect(hiddenCaptionIds(edit, resolved).has("cw100")).toBe(true);
+    // Moved past the layer's end: a caption of its phrase shows again.
+    cut.start = { time: span.end + 0.5 };
+    expect(hiddenCaptionIds(edit, resolveTimeline(edit, transitions.transcript)).has("cw100")).toBe(
+      false,
+    );
+    // A caption the layer hides carries its id: hidden for good.
+    edit.tracks.captions.find((caption) => caption.id === "cw104")!.hidden_by = layer.id;
+    expect(hiddenCaptionIds(edit, resolveTimeline(edit, transitions.transcript)).has("cw104")).toBe(
+      true,
+    );
   });
 });

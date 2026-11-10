@@ -326,12 +326,13 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
   }
 });
 
-// The numbered transition the decide step scripts on the speech clip
-// (speechTenTransitionAnswerScript): a LIST over w0028 to w0032, its lead-in
-// "they don't leave", its key phrase "to work," (from w0031) in accent text,
-// number 1. The layer runs until w0033 starts, the word after the phrase. It starts after the
-// hook (0.2 s to 3 s), so the layer shows.
-test.describe("a numbered transition on the speech clip", () => {
+// The LIST the decide step scripts on the speech clip
+// (speechTenTransitionAnswerScript): one item over w0028 to w0032, its lead-in
+// "they don't leave", its key phrase "to work," (from w0031) in accent text.
+// A list of one item shows no number. The layer runs until w0033 starts, the
+// word after the phrase. It starts after the hook (0.2 s to 3 s), so the layer
+// shows.
+test.describe("a LIST item on the speech clip", () => {
   let speech: ProcessedReel;
 
   test.beforeAll(async () => {
@@ -352,7 +353,7 @@ test.describe("a numbered transition on the speech clip", () => {
     extraKeys.push(...speech.keys);
   });
 
-  test("a transition shows its number, lead-in and key phrase inside its layer, never the phrase's captions", async ({
+  test("a transition shows its lead-in and key phrase inside its layer, with no number, never the phrase's captions", async ({
     page,
     baseURL,
   }) => {
@@ -369,14 +370,20 @@ test.describe("a numbered transition on the speech clip", () => {
     );
     expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
     const edit = (parsed as { ok: true; edit: Edit }).edit;
+    // Timing rule (specs/layout-engine.md, decision 25): a LIST's layer comes
+    // in 0.3 s before its first word and its out-fade runs over the 0.3 s after
+    // its last word, unless the next text starts first, so the phrase is at full
+    // opacity while spoken. The start anchor is the engine's own pick for 0.3 s
+    // before w0028; the end is clipped at the next caption here (checked below
+    // from the resolved spans, not from the anchor).
     expect(edit.tracks.transitions).toEqual([
       expect.objectContaining({
         type: "numbered",
         words: ["w0028", "w0029", "w0030", "w0031", "w0032"],
-        start: expect.objectContaining({ word: "w0028" }),
-        end: { word: "w0033" },
+        start: expect.objectContaining({ edge: "end", word: "w0026" }),
+        end: expect.objectContaining({ edge: "end" }),
         key: "w0031",
-        number: 1,
+        list: 1,
       }),
     ]);
     await expect(
@@ -395,11 +402,25 @@ test.describe("a numbered transition on the speech clip", () => {
     const layer = resolved.get("transition-1")!;
     const keyFirst = transcript.words.find((word) => word.id === "w0031")!;
     const keyLast = transcript.words.find((word) => word.id === "w0032")!;
+    const phraseFirst = transcript.words.find((word) => word.id === "w0028")!;
+    // The layer's times: in 0.3 s before the phrase's first word; it ends one
+    // fade past the last word, or at the next text's start when that comes
+    // first. Caption cw0033 ("they", w0033) starts before the fade would end,
+    // so the layer ends as it starts.
+    const fade = ISSEBYA_PRESET.transitions.numbered.seconds;
+    const next = resolved.get("cw0033")!;
+    expect(next.start).toBeLessThan(keyLast.end + fade);
+    expect(layer.start).toBeCloseTo(phraseFirst.start - fade, 3);
+    expect(layer.end).toBeCloseTo(Math.min(keyLast.end + fade, next.start), 3);
 
-    // Inside the phrase, on its key phrase ("to work,").
-    await setPosition(page, (keyFirst.start + keyLast.end) / 2);
+    // While the phrase is spoken, after its key reveal (caption.inSeconds from
+    // its first word) and before its last word ends, the layer and both levels
+    // are at full opacity.
+    const revealed = keyFirst.start + ISSEBYA_PRESET.caption.inSeconds;
+    await setPosition(page, (revealed + keyLast.end) / 2);
     await expect.poll(() => opacity("#transition-1")).toBeGreaterThan(0.9);
-    await expect(frame.locator("#transition-1 #transition-1-number")).toHaveText("1");
+    // A list of one item has no number level.
+    await expect(frame.locator("#transition-1 #transition-1-number")).toHaveCount(0);
     // A level's lines are separated by <br />: the text nodes are the lines.
     const lines = (selector: string) =>
       frame
@@ -411,33 +432,33 @@ test.describe("a numbered transition on the speech clip", () => {
         );
     expect(await lines("#transition-1-lead")).toEqual(["they don't", "leave"]);
     expect(await lines("#transition-1-key")).toEqual(["to", "work"]);
-    await expect.poll(() => opacity("#transition-1-lead")).toBeGreaterThan(0.5);
-    await expect.poll(() => opacity("#transition-1-key")).toBeGreaterThan(0.5);
+    await expect.poll(() => opacity("#transition-1-lead")).toBeGreaterThan(0.9);
+    await expect.poll(() => opacity("#transition-1-key")).toBeGreaterThan(0.9);
     const color = (selector: string) =>
       frame.locator(selector).evaluate((el) => getComputedStyle(el).color);
-    // The lead-in in caption text, the key phrase and the number in accent
-    // text: every text role is white for now.
+    // The lead-in in caption text and the key phrase in accent text: every
+    // text role is white for now.
     expect(await color("#transition-1-lead")).toBe("rgb(255, 255, 255)");
     expect(await color("#transition-1-key")).toBe("rgb(255, 255, 255)");
-    expect(await color("#transition-1-number")).toBe("rgb(255, 255, 255)");
     // The phrase's captions show nowhere else.
     for (const id of ["cw0028", "cw0029", "cw0030", "cw0031", "cw0032"]) {
       await expect(frame.locator(`#${id}`)).toHaveCount(0);
     }
 
-    // After it has left, the next caption shows as usual: caption cw0033
-    // (w0033) fades in over caption.inSeconds from its start and out over
-    // caption.outSeconds at its end, so the check lands after the fade-in and
-    // before the fade-out.
-    const nextSpan = resolved.get("cw0033")!;
-    const fadeOut = nextSpan.end - ISSEBYA_PRESET.caption.outSeconds;
-    expect(fadeOut).toBeGreaterThan(layer.end);
-    expect(layer.end + 0.001).toBeLessThan(fadeOut);
+    // Once the layer has left, the next caption shows as usual: cw0033 fades in
+    // over caption.inSeconds from its start and out over caption.outSeconds at
+    // its end. The layer and the caption never share a moment (the layer ends
+    // where the caption starts), so the caption is checked at full opacity
+    // between the two fades.
+    expect(layer.end).toBeLessThanOrEqual(next.start + 1e-6);
     await setPosition(page, layer.end + 0.001);
     await expect.poll(() => opacity("#transition-1")).toBeLessThan(0.05);
-    const next = frame.locator("#cw0033");
-    await expect(next).toHaveText("they");
-    await setPosition(page, nextSpan.start + ISSEBYA_PRESET.caption.inSeconds + 0.01);
-    await expect.poll(() => opacity("#cw0033")).toBeGreaterThan(0.5);
+    const nextShown = frame.locator("#cw0033");
+    await expect(nextShown).toHaveText("they");
+    const shownFrom = next.start + ISSEBYA_PRESET.caption.inSeconds;
+    const shownTo = next.end - ISSEBYA_PRESET.caption.outSeconds;
+    expect(shownFrom).toBeLessThan(shownTo);
+    await setPosition(page, (shownFrom + shownTo) / 2);
+    await expect.poll(() => opacity("#cw0033")).toBeGreaterThan(0.9);
   });
 });

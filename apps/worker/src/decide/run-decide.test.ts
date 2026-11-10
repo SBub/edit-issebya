@@ -2,7 +2,6 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  CLEAN_PRESET,
   ISSEBYA_PRESET,
   type NewVersion,
   type StoredVersion,
@@ -29,14 +28,12 @@ import {
   isTransient,
 } from "../failure.ts";
 import { type Telemetry, createTelemetry } from "../telemetry.ts";
-import { storeFixtureBackgrounds } from "../backgrounds/test-support.ts";
 import { saveFirstVersion } from "../first-version.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
 import { storageVersionBlobs } from "../version-store.ts";
 import { BEHIND_TRANSCRIPT, behindEdit, fakeMaskSpawn } from "../cutout/test-support.ts";
 import type { SpawnTool } from "../step-runner.ts";
-import type { ReelRules } from "./behind-rules.ts";
 import { fakePromptSource } from "../../test-support/fake-prompts.ts";
 import { type PromptSource, PromptUnavailable } from "../prompts/source.ts";
 import { runDecide } from "./run-decide.ts";
@@ -114,7 +111,6 @@ beforeEach(async () => {
       await storage.put(cacheKey(PREFIX, step.name, step.fingerprint, file), new Uint8Array(bytes));
     }
   }
-  await storeFixtureBackgrounds(storage, PREFIX, fingerprints);
   rows = new Map();
   current = null;
   ids = 0;
@@ -125,8 +121,6 @@ beforeEach(async () => {
     blobs: storageVersionBlobs(storage),
     keyPrefix: PREFIX,
     fingerprints,
-    scratchDir: scratch,
-    tools: { ffmpeg: "ffmpeg", ffprobe: "ffprobe", hyperframes: ["node", "hf.mjs"] },
     newId,
     log: () => {},
   });
@@ -170,7 +164,6 @@ async function decide(
 ) {
   const { steps, calls } = recordingSteps();
   const run = runDecide({
-    preset: CLEAN_PRESET,
     ctx: stepContext(steps, telemetry ? { telemetry } : {}),
     storage,
     rows: memoryRows(),
@@ -233,13 +226,20 @@ describe("runDecide", () => {
     });
     const done = lastCall(calls);
     if (done.call !== "done") throw new Error(JSON.stringify(calls));
-    // On the 2.7 s clip the hook holds the screen from 0.2 s to the end: the
-    // accent on w0005 would show with it (one extra at a time), so it is dropped.
+    // On the 2.7 s clip the accent on w0005 is said while the hook shows: the
+    // hook keeps its whole window (0.2 s to the reel's end) and the accent is
+    // placed around it on its own words.
     expect(done.summary).toMatch(
-      /^version 2: 0 accents, 0 transitions, hook set, 1 word fixed, 1 dropped, under a second$/,
+      /^version 2: 1 accent, 0 transitions, hook set, 1 word fixed, under a second$/,
     );
     expect(v2.engine_record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "dropped", rule: "one-extra" }),
+      expect.objectContaining({ item: "hook", component: "HOOK", start: 0.2 }),
+    );
+    expect(v2.engine_record).not.toContainEqual(
+      expect.objectContaining({ item: "hook", outcome: "retimed" }),
+    );
+    expect(v2.engine_record).toContainEqual(
+      expect.objectContaining({ item: "accent-1", component: "ACCENT" }),
     );
     // The schema the AI got is this reel's, and the prompt carries its words.
     expect(JSON.stringify(ai.calls[1]!.schema)).toContain('"w0010"');
@@ -296,13 +296,14 @@ describe("runDecide", () => {
     const parsed = parseEdit(stored, ISSEBYA_PRESET, transcript);
     expect(parsed.ok).toBe(true);
     expect(stored.inputs).toEqual(rows.get(firstId)!.inputs);
-    // The written hook, the only overlay: its own text, no words.
+    // The written hook, its own text and no words, and the accent shown beside it.
     expect(stored.tracks.overlays).toEqual([
       expect.objectContaining({
         id: "hook",
         kind: "hook",
         text: "A short test for the real studio",
       }),
+      expect.objectContaining({ id: "accent-1", kind: "accent" }),
     ]);
     // The scratch folder is gone.
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder
@@ -313,7 +314,7 @@ describe("runDecide", () => {
     const empty = answered(
       answer((a) => {
         a.accents = [];
-        a.transitions = [];
+        a.lists = [];
         a.word_fixes = [];
       }),
     );
@@ -442,7 +443,6 @@ describe("runDecide", () => {
     );
     const { steps } = recordingSteps();
     await runDecide({
-      preset: CLEAN_PRESET,
       ctx: stepContext(steps, { telemetry }),
       storage,
       rows: memoryRows(),
@@ -552,12 +552,12 @@ describe("runDecide", () => {
     expect(v2).toMatchObject({ used_free_field: false, free_field: [] });
   });
 
-  it("places the answer's words: the fix lands on its caption, and the hook holds the clip", async () => {
+  it("places the answer's words: the fix lands on its caption, and the hook keeps its window", async () => {
     const { run } = await decide(
       aiScript([
         answered(
           answer((a) => {
-            a.transitions = [{ kind: "numbered", from: "w0006", to: "w0008", key_from: "w0007" }];
+            a.lists = [{ items: [{ from: "w0006", to: "w0008", key_from: "w0007" }] }];
           }),
         ),
       ]),
@@ -566,31 +566,33 @@ describe("runDecide", () => {
     const stored = JSON.parse(
       new TextDecoder().decode((await storage.get(rows.get(current!)!.r2_key))!),
     ) as { tracks: Record<string, Json[]> };
-    // The hook holds the whole 2.7 s clip from 0.2 s, so no transition may run
-    // during it (rule `hook`) and the accent waits for it (rule `one-extra`).
-    expect(stored.tracks.overlays!.map((item) => item.id)).toEqual(["hook"]);
-    expect(stored.tracks.transitions).toEqual([]);
-    expect(rows.get(current!)!.engine_record).toEqual(
+    // The accent and the transition said in the hook's window are shown with it,
+    // each noted; nothing cuts the hook.
+    expect(stored.tracks.overlays!.map((item) => item.id)).toEqual(["hook", "accent-1"]);
+    expect(stored.tracks.transitions!.map((item) => item.id)).toEqual(["transition-1"]);
+    const record = rows.get(current!)!.engine_record as { item: string; outcome: string }[];
+    expect(record).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ item: "transition-1", action: "dropped", rule: "hook" }),
-        expect.objectContaining({ item: "accent-1", action: "dropped", rule: "one-extra" }),
+        expect.objectContaining({ item: "hook", component: "HOOK", start: 0.2 }),
+        expect.objectContaining({ item: "accent-1", component: "ACCENT" }),
+        expect.objectContaining({ item: "transition-1", component: "LIST" }),
       ]),
     );
+    expect(record.filter((note) => note.item === "hook" && note.outcome === "retimed")).toEqual([]);
     expect(stored.tracks.captions!.find((item) => item.id === "cw0010")!.text).toBe("Studio");
   });
 
-  it("never refuses an answer over layout: a wide accent waits for the hook, recorded and logged", async () => {
+  it("never refuses an answer over layout: a wide accent said through the hook is placed around it, noted and logged", async () => {
     const wide = answered(
       answer((a) => {
         a.accents = [{ from: "w0001", to: "w0010" }];
-        a.transitions = [];
+        a.lists = [];
       }),
     );
     const ai = aiScript([wide]);
     const lines: string[] = [];
     const { steps } = recordingSteps();
     await runDecide({
-      preset: CLEAN_PRESET,
       ctx: stepContext(steps),
       storage,
       rows: memoryRows(),
@@ -605,41 +607,20 @@ describe("runDecide", () => {
     expect(editorCalls(ai)).toHaveLength(1);
     const v2 = rows.get(current!)!;
     expect(v2).toMatchObject({ number: 2, checks: [], rejected_reasons: [] });
-    // The hook holds the clip: the wide accent is dropped, never refused.
-    expect(v2.engine_record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "dropped", rule: "one-extra" }),
-    );
+    // The wide accent runs through the hook's window on its own words; neither
+    // cuts the other, and the accent is placed off the hook (wrapped and, with
+    // the hook in the upper third, moved or shrunk), noted.
+    const record = v2.engine_record as { item: string; outcome: string }[];
+    const accentNotes = record.filter((note) => note.item === "accent-1");
+    expect(accentNotes.length).toBeGreaterThan(0);
+    for (const note of accentNotes) {
+      expect(["placed", "moved", "shrunk", "wrapped"]).toContain(note.outcome);
+    }
+    expect(record.filter((note) => note.item === "hook" && note.outcome === "retimed")).toEqual([]);
     // One engine record line per version, with the reel id; no engine bug line.
     expect(lines).toHaveLength(1);
     expect(lines[0]!.startsWith(`engine record, reel ${TEST_JOB.reel_id}, version 2: `)).toBe(true);
-    expect(lines[0]).toMatch(/accent-1 dropped \(one-extra\): /);
-  });
-
-  it("the worker's layout keeps the wide accent the clean layout drops: shown over the hook, noted", async () => {
-    const wide = answered(
-      answer((a) => {
-        a.accents = [{ from: "w0001", to: "w0010" }];
-        a.transitions = [];
-      }),
-    );
-    const ai = aiScript([wide]);
-    const { steps } = recordingSteps();
-    await runDecide({
-      ctx: stepContext(steps),
-      storage,
-      rows: memoryRows(),
-      blobs: storageVersionBlobs(storage),
-      keyPrefix: PREFIX,
-      ai,
-      prompts: fakePromptSource(),
-      scratchDir: scratch,
-      newId,
-    });
-    const v2 = rows.get(current!)!;
-    expect(v2.engine_record.filter((note) => note.action === "dropped")).toEqual([]);
-    expect(v2.engine_record).toContainEqual(
-      expect.objectContaining({ item: "accent-1", action: "kept-overlapping", rule: "all-picks" }),
-    );
+    expect(lines[0]).toMatch(/accent-1 (placed|moved|shrunk|wrapped) \((zone|size)\): /);
   });
 
   it("asks at most twice, however many bad answers are scripted", async () => {
@@ -683,8 +664,7 @@ describe("runDecide when the AI is not available", () => {
     expect(editorCalls(ai)).toHaveLength(1);
     expect(current).toBe(firstId);
     expect(rows.size).toBe(1);
-    // The background map, reused before the AI call.
-    expect(calls.map((c) => c.call)).toEqual(["start", "skipped", "waiting"]);
+    expect(calls.map((c) => c.call)).toEqual(["start", "waiting"]);
     expect(lastCall(calls)).toMatchObject({ reason: "the OpenRouter credits are used up" });
   });
 
@@ -733,7 +713,7 @@ describe("runDecide when the AI is not available", () => {
     expect(made).toBe(1);
     expect(error.cause).toBeInstanceOf(PermanentError);
     expect(isTransient(error)).toBe(false);
-    expect(calls.map((c) => c.call)).toEqual(["start", "skipped", "failed"]);
+    expect(calls.map((c) => c.call)).toEqual(["start", "failed"]);
   });
 });
 
@@ -750,7 +730,7 @@ describe("runDecide with a visual", () => {
         // No accents and no transition: on the 2.7 s clip the title or the
         // transition would hold the screen.
         a.accents = [];
-        a.transitions = [];
+        a.lists = [];
         a.visuals = items;
       }),
     );
@@ -762,7 +742,7 @@ describe("runDecide with a visual", () => {
     answered(
       answer((a) => {
         a.accents = [];
-        a.transitions = [];
+        a.lists = [];
         a.word_fixes = [];
         a.visuals = [{ from: "w18", to: "w25", description: "a messy desk at night" }];
       }),
@@ -792,22 +772,10 @@ describe("runDecide with a visual", () => {
     await storage.put(fixtureRow.r2_key, new TextEncoder().encode(JSON.stringify(edit)));
     rows.set(current!, { ...fixtureRow, inputs });
   }
-  const storedRules = (photos: boolean, bigWord = false): ReelRules => ({
-    async read() {
-      return { photos, bigWord };
-    },
-  });
-
   async function decideBehind(
     ai: AiRunner,
     spawnTool: SpawnTool,
-    {
-      rules,
-      telemetry,
-    }: {
-      rules?: ReelRules;
-      telemetry?: Telemetry;
-    } = {},
+    { telemetry }: { telemetry?: Telemetry } = {},
   ) {
     const footage = cacheKey(PREFIX, "retime", fingerprints.retime!, "source.mp4");
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixtures
@@ -815,7 +783,6 @@ describe("runDecide with a visual", () => {
     await storage.put(footage, new Uint8Array(bytes));
     const { steps, calls } = recordingSteps();
     const run = runDecide({
-      preset: CLEAN_PRESET,
       ctx: stepContext(steps, telemetry ? { telemetry } : {}),
       storage,
       rows: memoryRows(),
@@ -825,7 +792,6 @@ describe("runDecide with a visual", () => {
       prompts: fakePromptSource(),
       scratchDir: scratch,
       newId,
-      rules,
       spawnTool,
       env: { E2E_MOCK_MASK: "true" },
       log: () => {},
@@ -833,7 +799,7 @@ describe("runDecide with a visual", () => {
     return { run, calls };
   }
 
-  it("decides a visual with no photo library: the schema names no photo, and the visual waits behind the hook", async () => {
+  it("decides a visual: the schema names no photo, and the visual is shown beside the hook, in the record", async () => {
     const ai = aiScript([behindAnswer()]);
     const spawn = fakeMaskSpawn();
     const { run } = await decideBehind(ai, spawn.spawnTool);
@@ -843,13 +809,16 @@ describe("runDecide with a visual", () => {
     // Nothing behind is placed, so no mask is made and nothing is cut out.
     expect(spawn.calls).toHaveLength(0);
     const v2 = rows.get(current!)!;
-    expect(v2.engine_record).toContainEqual(
-      expect.objectContaining({ item: "visual-1", action: "dropped", rule: "one-extra" }),
+    // The visual shares the hook's time and is placed in its own spot: its
+    // note says so, and nothing lacked a spot.
+    const record = v2.engine_record as { item: string; outcome: string }[];
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "visual-1", component: "VISUAL", outcome: "placed" }),
     );
-    expect(v2.inputs.photos ?? []).toEqual([]);
+    expect(record.filter((note) => note.outcome === "no-spot")).toEqual([]);
   });
 
-  it("places a visual in front of the speaker on a long reel: its frame needs no cut-out", async () => {
+  it("places a visual over the footage on a long reel: its frame needs no cut-out", async () => {
     await useLongReel();
     const ai = aiScript([longVisualAnswer()]);
     const spawn = fakeMaskSpawn();
@@ -857,43 +826,27 @@ describe("runDecide with a visual", () => {
     await run;
     const v2 = rows.get(current!)!;
     const edit = JSON.parse(new TextDecoder().decode(await storage.get(v2.r2_key)!)) as {
-      tracks: { behind?: { kind: string; layer?: string }[] };
+      tracks: { behind?: { kind: string }[] };
     };
-    expect(edit.tracks.behind).toEqual([
-      expect.objectContaining({ kind: "visual", layer: "front" }),
-    ]);
+    expect(edit.tracks.behind).toEqual([expect.objectContaining({ kind: "visual" })]);
+    expect(edit.tracks.behind?.[0]).not.toHaveProperty("layer");
     expect(spawn.calls).toHaveLength(0);
-    expect(v2.inputs.photos ?? []).toEqual([]);
   });
 
-  it("takes three visuals with no count to refuse: the hook holds the clip and every visual waits", async () => {
+  it("takes three visuals with no count to refuse: the hook holds the clip and every visual is shown, in the record", async () => {
     const three = behindAnswer([visualItem(), visualItem("a calm lake"), visualItem("a red door")]);
     const ai = aiScript([three]);
     const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool);
     await run;
     const v2 = rows.get(current!)!;
     expect(v2.rejected_reasons).toEqual([]);
+    const record = v2.engine_record as { item: string; component: string }[];
     for (const item of ["visual-1", "visual-2", "visual-3"]) {
-      expect(v2.engine_record).toContainEqual(
-        expect.objectContaining({ item, action: "dropped", rule: "one-extra" }),
-      );
+      expect(record).toContainEqual(expect.objectContaining({ item, component: "VISUAL" }));
     }
-    expect(v2).toMatchObject({ no_photos: null, no_big_word: null });
-  });
-
-  it("holds a stored forbid: a visual is refused while photos are off, the retry without it saves", async () => {
-    const ai = aiScript([behindAnswer(), behindAnswer([])]);
-    const { run } = await decideBehind(ai, fakeMaskSpawn().spawnTool, {
-      rules: storedRules(true),
-    });
-    await run;
-    expect(editorCalls(ai)).toHaveLength(2);
-    // The forbid is not in the prompt: the schema refuses the visual while it holds.
-    expect(editorCalls(ai)[0]!.prompt).not.toContain("photos_forbidden");
-    const v2 = rows.get(current!)!;
-    expect(v2.rejected_reasons.join("\n")).toMatch(/^visuals: /m);
-    expect(v2).toMatchObject({ no_photos: null, no_big_word: null });
-    expect(v2.inputs.photos ?? []).toEqual([]);
+    expect(record).toContainEqual(
+      expect.objectContaining({ item: "hook", component: "HOOK", start: 0.2 }),
+    );
   });
 });
 
@@ -905,14 +858,13 @@ describe("runDecide starting over", () => {
     const empty = answered(
       answer((a) => {
         a.accents = [];
-        a.transitions = [];
+        a.lists = [];
         a.word_fixes = [];
       }),
     );
     const ai = aiScript([empty]);
     const { steps, calls } = recordingSteps();
     await runDecide({
-      preset: CLEAN_PRESET,
       ctx: stepContext(steps),
       storage,
       rows: memoryRows(),
@@ -952,7 +904,6 @@ describe("runDecide starting over", () => {
     rows.set("other", { ...rows.get(firstId)!, id: "other", reel_id: "another-reel" });
     const { steps } = recordingSteps();
     const run = runDecide({
-      preset: CLEAN_PRESET,
       ctx: stepContext(steps),
       storage,
       rows: memoryRows(),
@@ -1009,7 +960,6 @@ describe("runDecide spans", () => {
     expect(decideSpan?.status.code).not.toBe(SpanStatusCode.ERROR);
     expect(childrenOf(spans, decideSpan).map((s) => s.name)).toEqual([
       "decide.load",
-      "step backgrounds",
       "decide.prepare",
       "decide.hook",
       "decide.attempt",
@@ -1019,8 +969,6 @@ describe("runDecide spans", () => {
     const hook = named(spans, "decide.hook");
     expect(hook?.attributes).toMatchObject({ "decide.attempt": 1, "decide.outcome": "ok" });
     expect(childrenOf(spans, hook).map((s) => s.name)).toEqual([`chat ${AI_MODEL}`]);
-    // The background map was reused: a hit row, under decide.
-    expect(named(spans, "step backgrounds")?.attributes["step.cache_hit"]).toBe(true);
     // The attempt's call is a `chat` span named with the model, then the
     // layout engine's span under the attempt.
     const attempt = named(spans, "decide.attempt");
@@ -1045,7 +993,6 @@ describe("runDecide spans", () => {
       "edit_issebya.ai.cost_usd": 0.0123,
     });
     expect(named(spans, "decide.engine")?.attributes).toMatchObject({
-      "decide.dropped": 1,
       "decide.checks": 0,
     });
     for (const span of spans) {
@@ -1086,7 +1033,7 @@ describe("runDecide spans", () => {
     expect(attempt?.status.code).toBe(SpanStatusCode.ERROR);
     expect(attempt?.events.map((event) => event.name)).toEqual(["exception"]);
     expect(named(spans, "step decide")?.status.code).toBe(SpanStatusCode.ERROR);
-    expect(calls.map((c) => c.call)).toEqual(["start", "skipped", "failed"]);
+    expect(calls.map((c) => c.call)).toEqual(["start", "failed"]);
   });
 
   it("decides and saves version 2 with telemetry that exports nothing", async () => {

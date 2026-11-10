@@ -9,15 +9,14 @@ export interface RenderProject {
   // The page exactly as `build` returned it.
   html: string;
   assets: BuildAsset[];
-  // The full-size footage, the masks and the photos, already on disk; masks
-  // and photos by the path the page names them at.
+  // The full-size footage and the masks, already on disk; masks by the path
+  // the page names them at.
   files: RenderFiles;
 }
 
 export interface RenderFiles {
   footage: string;
   masks?: Record<string, string>;
-  photos?: Record<string, string>;
 }
 
 // A relative path with no `..` segment: it stays inside the project.
@@ -42,8 +41,8 @@ function editAsset(path: string): string {
   return fileURLToPath(import.meta.resolve(`@edit-issebya/edit/${path}`));
 }
 
-// Where an asset comes from: the footage, a mask or a photo from the given
-// files (one missing throws), a font or a sound from packages/edit.
+// Where an asset comes from: the footage or a mask from the given files (one
+// missing throws), a font or a sound from packages/edit.
 function sourceOf(asset: BuildAsset, files: RenderFiles): string {
   const given = (from: Record<string, string> | undefined) => {
     const path = from?.[asset.path];
@@ -55,16 +54,14 @@ function sourceOf(asset: BuildAsset, files: RenderFiles): string {
       return files.footage;
     case "mask":
       return given(files.masks);
-    case "photo":
-      return given(files.photos);
     default:
       return editAsset(asset.path);
   }
 }
 
 // The temporary HyperFrames project a render reads: `index.html` and every
-// asset the page names at its own path (the footage, masks and photos from the
-// given files, fonts and sounds from packages/edit). Returns every file written, the
+// asset the page names at its own path (the footage and masks from the given
+// files, fonts and sounds from packages/edit). Returns every file written, the
 // render step's inputs.
 export async function writeRenderProject({
   dir,

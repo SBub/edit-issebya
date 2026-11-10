@@ -17,10 +17,6 @@ export interface EnsureCutouts {
   scratchDir: string;
   edit: Edit;
   transcript: Transcript;
-  // The reel owner's ready library photos: a behind photo must be one of them
-  // (a new version). Omitted, photos are not checked here (a restore or a
-  // render of a version saved before; the render fails on a deleted photo).
-  photoIds?: readonly string[];
   tools: ToolPaths;
   spawnTool?: SpawnTool;
   env?: NodeJS.ProcessEnv;
@@ -47,10 +43,9 @@ function plural(count: number, unit: string): string {
 // measured `cutout` step downloads the footage once, runs the mask tool for
 // each missing span (its per-frame progress weighted by the span's length
 // across the step) and uploads it put-if-absent, so a stored mask is never
-// replaced. Returns the edit with `inputs.masks` (by start) and
-// `inputs.photos` (sorted) naming them; an edit without behind items comes
-// back without either, and one whose only items are photos in front of the
-// speaker with its photos and no masks; neither writes a row.
+// replaced. Returns the edit with `inputs.masks` (by start) naming them; an
+// edit without behind items comes back without masks, and one whose only items
+// are VISUALs in front of the speaker has none; neither writes a row.
 export async function ensureCutouts({
   ctx,
   storage,
@@ -58,7 +53,6 @@ export async function ensureCutouts({
   scratchDir,
   edit,
   transcript,
-  photoIds,
   tools,
   spawnTool,
   env = process.env,
@@ -73,16 +67,7 @@ export async function ensureCutouts({
   const stepCtx: StepContext = parent ? { ...ctx, jobContext: parent } : ctx;
   const started = performance.now();
 
-  if (photoIds) {
-    const library = new Set(photoIds);
-    for (const item of items) {
-      if (item.kind === "photo" && !library.has(item.photo_id)) {
-        throw new Error(`${MASK_STEP}: photo ${item.photo_id} is not in the library`);
-      }
-    }
-  }
-
-  // Photos in front of the speaker only: no cut-out to make or reuse.
+  // VISUALs in front of the speaker only: no cut-out to make or reuse.
   if ((named.inputs.masks ?? []).length === 0) return named;
   const footage = edit.inputs.footage;
   const spans = (named.inputs.masks ?? []).map((mask) => ({

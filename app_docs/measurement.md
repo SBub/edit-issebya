@@ -86,8 +86,8 @@ client, identifies the signed-in user and sends `studio_*` events.
 - A `describe_photo` job's trace uses the photo's id in place of the reel's (`traceIdForJob`), and its
   spans carry `photo.id` in place of `reel.id` (`targetAttributes`).
 - `decide`'s stages are child spans of its `step decide` span, one per stage, with the `decide.*`
-  names and attributes listed under Local monitoring. `step backgrounds` and `step cutout` are
-  children of the decide span when decide runs them (the step takes an optional `parent`); their
+  names and attributes listed under Local monitoring. `step cutout` is a
+  child of the decide span when decide runs it (the step takes an optional `parent`); its
   step rows are the same either way. `src/telemetry.ts` `inSpan` runs a stage in its span. Each AI
   call is a `chat` span under the stage that made it (`src/ai.ts` `inChatSpan`, see AI calls below).
 - Step measurements are never sent to PostHog as events: PostHog reads the tables as a data source.
@@ -295,21 +295,19 @@ behind item) the children run in this order; a retry adds a second
 ```
 step decide                        reel.tracks_items
 ├─ decide.load                     the current version, transcript, head track, parse
-├─ step backgrounds                cache hit, or its own measurements
 ├─ decide.prepare                  rules, library, schema, prompt input
 ├─ decide.photo_looks              decide.photos
 ├─ decide.attempt                  decide.attempt 1, decide.outcome, decide.refused_by
 │  ├─ chat <model>                 gen_ai.* (the attempt's AI call)
-│  └─ decide.engine                decide.dropped, decide.checks
+│  └─ decide.engine                decide.checks
 ├─ step cutout                     (only with a behind item)
 └─ decide.save_version
 ```
 
 - `decide.attempt`: `decide.attempt` (1 or 2); `decide.outcome`: `ok`, `invalid` (the answer is
-  not JSON), or `refused` (the schema, the placement or the glossary check); `decide.refused_by`
+  not JSON), or `refused` (the schema, the placed edit's parse or the glossary check); `decide.refused_by`
   the rule names, comma-separated, when refused.
-- `decide.engine`: `decide.dropped` (items the engine left out) and `decide.checks` (layout checks
-  that failed on its output).
+- `decide.engine`: `decide.checks` (layout checks that failed on its output).
 - The stage spans carry no AI facts; the `chat` span under each stage does (see AI calls above).
   The step row keeps the summed totals.
 - A stage that throws marks its own span with error status and an `exception` event; the step

@@ -5,9 +5,36 @@ import { z } from "zod";
 export type HeadSample = { t: number; head_top: number; cx: number; head_w: number } | null;
 export type HeadTrack = HeadSample[];
 
-export const headTrackSchema = z.array(
-  z.object({ t: z.number(), head_top: z.number(), cx: z.number(), head_w: z.number() }).nullable(),
-);
+// A sample this much narrower than the clip's median head is not the head. Evidence
+// (a real clip, 2026-11-10): from 46.25 to 47.5 s the real head is 310 to 350 px wide
+// with its top at 564 to 600 (median 332), but five samples read 112 to 228 px wide
+// with tops at 424 to 480 (probably a hand or an earbud). Those dropped the big word
+// "routine" onto a head that is not there and made its cut-out decision wrong.
+export const HEAD_GLITCH_WIDTH_SHARE = 0.7;
+
+// The track with its glitch samples dropped: a sample whose head is narrower than
+// `HEAD_GLITCH_WIDTH_SHARE` of the median head width of all the clip's heads
+// becomes `null` (no head). Applied once, when the track is parsed
+// (`headTrackSchema`), so every reader (the placer, the checks, the cut-out and the
+// worker's decide and render) sees the same track.
+export function cleanHeadTrack(track: HeadTrack): HeadTrack {
+  const widths = track
+    .flatMap((sample) => (sample === null ? [] : [sample.head_w]))
+    .sort((a, b) => a - b);
+  if (widths.length === 0) return track;
+  const mid = Math.floor(widths.length / 2);
+  const median = widths.length % 2 === 1 ? widths[mid]! : (widths[mid - 1]! + widths[mid]!) / 2;
+  const floor = HEAD_GLITCH_WIDTH_SHARE * median;
+  return track.map((sample) => (sample !== null && sample.head_w < floor ? null : sample));
+}
+
+export const headTrackSchema = z
+  .array(
+    z
+      .object({ t: z.number(), head_top: z.number(), cx: z.number(), head_w: z.number() })
+      .nullable(),
+  )
+  .transform(cleanHeadTrack);
 
 export interface Box {
   left: number;

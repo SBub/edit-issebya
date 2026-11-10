@@ -8,8 +8,7 @@ import {
 import type { FramesLayout } from "./preview-sources";
 
 // The read-only tracks timeline's rows, in display order. The captions and
-// sounds tracks and a legacy `cutout` track are never shown (the edit still
-// carries them). The hook is an overlay with its own row (`hook`), so the
+// sounds tracks are never shown (the edit still carries them). The hook is an overlay with its own row (`hook`), so the
 // Accents row keeps only spoken accents. A future title kind adds one entry
 // here.
 export const TRACK_ROWS = [
@@ -43,9 +42,6 @@ export interface TimelineItem {
   start: number;
   end: number;
   label: string;
-  // Shown in the tooltip only: why a behind photo is there (a version saved
-  // before photos carried it has none).
-  note?: string;
 }
 
 export interface TimelineRow {
@@ -88,16 +84,13 @@ export function clockText(seconds: number): string {
   return SHOW_MILLISECONDS ? formatClockMs(seconds) : formatClock(seconds);
 }
 
-// A track item's native tooltip: its label, its note when it has one, and
-// exact span, `There (0.412 to 0.733 s)` or `photo top, mood photo (1.000 to
-// 3.000 s)` (two decimals without the testing aid).
+// A track item's native tooltip: its label and exact span, `There (0.412 to
+// 0.733 s)` or `visual right (1.000 to 3.000 s)` (two decimals without the
+// testing aid).
 export function itemTitle(item: TimelineItem): string {
   const digits = SHOW_MILLISECONDS ? 3 : 2;
-  const note = item.note ? `, ${item.note}` : "";
-  return `${item.label}${note} (${item.start.toFixed(digits)} to ${item.end.toFixed(digits)} s)`;
+  return `${item.label} (${item.start.toFixed(digits)} to ${item.end.toFixed(digits)} s)`;
 }
-
-const PHOTO_NOTE = { match: "matches the words", mood: "mood photo" } as const;
 
 // The shown version's items on the reel's clock, every row present even when
 // empty. The spans are resolveTimeline's (the one the builder uses), so the
@@ -114,21 +107,10 @@ export function timelineRows(edit: Edit, transcript: Transcript): Timeline {
   const { tracks } = edit;
   const items: Record<TrackKey, TimelineItem[]> = {
     footage: tracks.footage.map((clip) => item(clip.id, (start, end) => formatClock(end - start))),
-    // A photo behind the speaker by its spot, one in front as such (its
-    // reason in the tooltip), a visual the same as a frame, a big word by
-    // itself.
-    behind: (tracks.behind ?? []).map((entry) => {
-      const shown = item(entry.id, () => {
-        if (entry.kind === "word") return entry.text;
-        if (entry.kind === "visual") {
-          return entry.layer === "front" ? "visual, in front" : `visual ${entry.spot}`;
-        }
-        return entry.layer === "front" ? "photo, in front" : `photo ${entry.spot}`;
-      });
-      return entry.kind === "photo" && entry.reason
-        ? { ...shown, note: PHOTO_NOTE[entry.reason] }
-        : shown;
-    }),
+    // A visual, always in front of the speaker; a big word by its text.
+    behind: (tracks.behind ?? []).map((entry) =>
+      item(entry.id, () => (entry.kind === "word" ? entry.text : "visual, in front")),
+    ),
     // The written hook by its text.
     hook: tracks.overlays
       .filter((overlay) => overlay.kind === "hook")

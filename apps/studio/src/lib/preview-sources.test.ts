@@ -48,12 +48,6 @@ const COPIES: PreviewCopies = {
 const FOOTAGE_ONLY = { footage: RAW.footage };
 const FOOTAGE_ONLY_COPIES: PreviewCopies = { footage: RAW.footage, thumbnail: null, frames: null };
 
-// An old reel's column, written while the pipeline still made a cut-out.
-const OLD_COPIES = {
-  ...FOOTAGE_ONLY,
-  cutout: { step: "preview_copies", fingerprint: "a".repeat(64), file: "subject-preview.webm" },
-};
-
 function key(prefix: string): string {
   return `${prefix}reels/${REEL}/versions/${VERSION}.json`;
 }
@@ -85,13 +79,6 @@ describe("parsePreviewCopies", () => {
     expect(parsePreviewCopies(FOOTAGE_ONLY)).toEqual(FOOTAGE_ONLY_COPIES);
   });
 
-  it("reads an old reel's column naming a cut-out copy as the footage alone", () => {
-    expect(parsePreviewCopies(OLD_COPIES)).toEqual(FOOTAGE_ONLY_COPIES);
-    expect(parsePreviewCopies({ ...FOOTAGE_ONLY, cutout: { step: "x" } })).toEqual(
-      FOOTAGE_ONLY_COPIES,
-    );
-  });
-
   it("drops a malformed thumbnail or frames part to null, never the whole column", () => {
     expect(parsePreviewCopies({ ...RAW, thumbnail: { step: "x" } })?.thumbnail).toBeNull();
     expect(parsePreviewCopies({ ...RAW, frames: "x" })?.frames).toBeNull();
@@ -111,7 +98,6 @@ describe("parsePreviewCopies", () => {
   it("refuses anything else", () => {
     expect(parsePreviewCopies(null)).toBeNull();
     expect(parsePreviewCopies("x")).toBeNull();
-    expect(parsePreviewCopies({ cutout: OLD_COPIES.cutout })).toBeNull();
     expect(parsePreviewCopies({ footage: { step: "x" } })).toBeNull();
   });
 });
@@ -133,12 +119,10 @@ describe("previewKeys", () => {
       footage: `dev/cache/preview_copies/${fp("preview_copies")}/footage-preview.mp4`,
       frames: `dev/cache/preview_copies/${fp("preview_copies")}/frames.jpg`,
       masks: [],
-      photoIds: [],
     });
   });
 
-  it("gives each cut-out mask's key at its page path, and the photo ids", () => {
-    const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
+  it("gives each cut-out mask's key at its page path", () => {
     const mask = {
       step: "cutout" as const,
       fingerprint: "c".repeat(64),
@@ -146,17 +130,14 @@ describe("previewKeys", () => {
       start: 1,
       end: 4,
     };
-    const inputs = { ...INPUTS, masks: [mask], photos: [PHOTO] };
+    const inputs = { ...INPUTS, masks: [mask] };
     expect(previewKeys({ ...args("dev/"), inputs })).toMatchObject({
       masks: [
         { path: `masks/${"c".repeat(64)}.mp4`, key: `dev/cache/cutout/${"c".repeat(64)}/mask.mp4` },
       ],
-      photoIds: [PHOTO],
     });
     const wrongStep = { ...inputs, masks: [{ ...mask, step: "retime" }] } as unknown;
     expect(previewKeys({ ...args("dev/"), inputs: wrongStep as EditInputs })).toBeNull();
-    const badPhoto = { ...inputs, photos: ["../x"] };
-    expect(previewKeys({ ...args("dev/"), inputs: badPhoto })).toBeNull();
   });
 
   it("gives no frames key without a sprite or with a malformed one", () => {

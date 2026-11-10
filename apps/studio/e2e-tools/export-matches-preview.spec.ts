@@ -152,8 +152,8 @@ async function storedEdit(key: string): Promise<Edit> {
   return parsed.edit;
 }
 
-// Version 2's choices with a numbered transition placed by the layout engine
-// (its layer crossing 1.5 s, carrying its number and its two text levels),
+// Version 2's choices with a LIST placed by the layout engine (its layer
+// crossing 1.5 s, carrying its two text levels),
 // plus one accent before it and one click: every kind of layer the export
 // must match.
 async function guardrailEdit(base: Edit): Promise<Edit> {
@@ -415,14 +415,14 @@ test("text moved by 60 px falls below the bound", async () => {
   expect(Math.min(...probeScores)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
 });
 
-// A library photo in the top spot, then one big word, behind the speaker: each
-// a start over job (the scripted answer, decided from version 1) that makes the cut-out with the real mask
-// tool and saves the version, then the composite in the live preview and in
-// the real export are compared at the same moments. The photo and the word
-// each show 2 s from the speech's start (0.038 s), as two versions over the
-// same span. The first two moments are inside it, the last one after it (the
-// composite gone in both). The photo moved by 60 px is the probe and must
-// fall below the bound.
+// A VISUAL over the speaker, then one big word, behind the speaker: each a
+// start over job (the scripted answer, decided from version 1) that makes the
+// cut-out with the real mask tool and saves the version, then the composite in
+// the live preview and in the real export are compared at the same moments.
+// The visual and the word each show 2 s from the speech's start (0.038 s), as
+// two versions over the same span. The first two moments are inside it, the
+// last one after it (the composite gone in both). A ready library photo is
+// seeded beside them; no version places it (the placed photo is gone).
 async function startOverTo(script: string): Promise<string> {
   const { error } = await admin
     .from("jobs")

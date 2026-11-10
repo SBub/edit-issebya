@@ -1,8 +1,8 @@
-import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE } from "@edit-issebya/edit";
+import { ISSEBYA_PRESET, SAFE_ZONE } from "@edit-issebya/edit";
 import { describe, expect, it } from "vitest";
 import { platformZones } from "./platform-zones";
 
-const zones = platformZones(ISSEBYA_PRESET.frame, PLATFORM_SAFE, PLATFORM_BUTTONS);
+const zones = platformZones(ISSEBYA_PRESET.frame, SAFE_ZONE.box, SAFE_ZONE.notch);
 const byId = Object.fromEntries(zones.map((zone) => [zone.id, zone]));
 
 describe("platformZones", () => {

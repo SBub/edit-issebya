@@ -361,11 +361,10 @@ describe("runDoctor", () => {
       "questions",
       "big_words",
       "visuals",
-      "transitions",
+      "lists",
       "word_fixes",
     ]);
     expect(JSON.stringify(schema)).toContain('"enum":["w0001","w0002"]');
-    expect(JSON.stringify(schema)).toContain('"enum":["numbered"]');
   });
 
   it("fails the PostHog key line when the key is missing, names no prompt and fetches none", async () => {
