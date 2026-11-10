@@ -638,7 +638,7 @@ export const EMPTY_DECIDE_ANSWER = {
   questions: [],
   big_words: [],
   visuals: [],
-  transitions: [],
+  lists: [],
   word_fixes: [],
 };
 

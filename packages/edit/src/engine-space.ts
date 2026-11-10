@@ -1,4 +1,26 @@
 import type { Box } from "./head-track.ts";
+import type { FontKey } from "./preset.ts";
+import type { Span } from "./timeline.ts";
+
+// One piece of text on screen, in frame pixels: `x`, `y` its top left corner,
+// `height` its font size (line-height 1).
+export interface TextBox extends Span {
+  itemId: string;
+  // `level`: a text level inside a transition's layer; `hook`: the written
+  // hook (Claude's own line, nobody says it).
+  kind: "caption" | "accent" | "hook" | "level";
+  text: string;
+  // The text's lines: one, or more for a text set with `breaks`.
+  lines: string[];
+  font: FontKey;
+  size: number;
+  color: string;
+  style: Record<string, string> | undefined;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 // FREE SPACE for the layout engine: an area minus the obstacles in it, as the
 // largest free rectangles (the "maximal rectangles" split: each free
@@ -23,7 +45,7 @@ function contains(outer: Box, inner: Box): boolean {
 }
 
 // The largest rectangles of `area` no obstacle touches.
-function freeRects(area: Box, obstacles: readonly Box[]): Box[] {
+export function freeRects(area: Box, obstacles: readonly Box[]): Box[] {
   if (area.right <= area.left || area.bottom <= area.top) return [];
   let free: Box[] = [area];
   for (const obstacle of obstacles) {

@@ -151,7 +151,7 @@ describe("failureKind", () => {
     ).toBe("answer_refused");
     expect(failureKind(wrapped(withCode("ECONNRESET")))).toBe("transient");
     expect(failureKind(new Error("no such file"))).toBe("failed");
-    expect(failureKind(new AnswerRefused(["frame"], 2))).toBe("answer_refused");
+    expect(failureKind(new AnswerRefused(["face"], 2))).toBe("answer_refused");
   });
 
   it("keeps a refused answer permanent and free of free text", () => {

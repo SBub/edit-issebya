@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from "vitest";
 import behindEdit from "../../../../packages/edit/src/testdata/versions/rethink-work-behind.edit.json" with { type: "json" };
 import handEdit from "../../../../packages/edit/src/testdata/versions/rethink-work-hand.edit.json" with { type: "json" };
+import transitionsEdit from "../../../../packages/edit/src/testdata/versions/rethink-work-transitions.edit.json" with { type: "json" };
 import baselineEdit from "../../../../packages/edit/src/testdata/versions/baseline-short-speech.edit.json" with { type: "json" };
 import handTranscript from "../../../../packages/edit/src/testdata/rethink-work/transcript.json" with { type: "json" };
 import speechTranscript from "../../../../fixtures/pipeline/retime/transcript.json" with { type: "json" };
@@ -33,6 +34,9 @@ function parsed(json: unknown, transcriptJson: unknown) {
 }
 
 const LAYOUT = { everySeconds: 2, columns: 32, width: 90, height: 160 };
+// The behind fixture's VISUAL span on the reel's clock.
+const VISUAL_START = 5.206;
+const VISUAL_END = 7.838;
 
 describe("timelineRows", () => {
   it("lays every item of a full edit at resolveTimeline's span, in the five rows", () => {
@@ -74,34 +78,23 @@ describe("timelineRows", () => {
     }
   });
 
-  it("shows the behind items in their row: a photo by its spot, a word by itself", () => {
+  it("shows the behind items in their row: a visual as in front, a word by itself", () => {
     const { edit, transcript } = parsed(behindEdit, handTranscript);
     const row = timelineRows(edit, transcript).rows.find((entry) => entry.key === "behind")!;
     expect(row.items.map((item) => [item.id, item.label])).toEqual([
-      ["behind-photo", "photo right"],
+      ["visual-1", "visual, in front"],
       ["behind-word", "WORK"],
     ]);
-    expect(row.items[0]).toMatchObject({ start: 5.206, end: 7.838 });
-    // A version saved before photos carried a reason has no note.
-    expect(row.items[0]!.note).toBeUndefined();
+    expect(row.items[0]).toMatchObject({ start: VISUAL_START, end: VISUAL_END });
   });
 
-  it("names a photo's reason in its tooltip, never in its label", () => {
+  it("titles a visual as in front of the speaker", () => {
     const { edit, transcript } = parsed(behindEdit, handTranscript);
-    const photo = edit.tracks.behind!.find((entry) => entry.kind === "photo")!;
-    if (photo.kind === "photo") photo.reason = "mood";
     const row = timelineRows(edit, transcript).rows.find((entry) => entry.key === "behind")!;
-    expect(row.items[0]).toMatchObject({ label: "photo right", note: "mood photo" });
-    expect(itemTitle(row.items[0]!)).toBe("photo right, mood photo (5.206 to 7.838 s)");
-  });
-
-  it("labels a photo in front of the speaker as such, its reason still in the tooltip", () => {
-    const { edit, transcript } = parsed(behindEdit, handTranscript);
-    const photo = edit.tracks.behind!.find((entry) => entry.kind === "photo")!;
-    if (photo.kind === "photo") Object.assign(photo, { layer: "front", reason: "match" });
-    const row = timelineRows(edit, transcript).rows.find((entry) => entry.key === "behind")!;
-    expect(row.items[0]).toMatchObject({ label: "photo, in front", note: "matches the words" });
-    expect(itemTitle(row.items[0]!)).toBe("photo, in front, matches the words (5.206 to 7.838 s)");
+    expect(row.items[0]!.label).toBe("visual, in front");
+    expect(itemTitle(row.items[0]!)).toBe(
+      `visual, in front (${VISUAL_START.toFixed(3)} to ${VISUAL_END.toFixed(3)} s)`,
+    );
   });
 
   it("shows the written hook in its own row by its text, never among the accents", () => {
@@ -123,27 +116,18 @@ describe("timelineRows", () => {
     expect(trackItemClass("hook")).toBe("bg-track-hook text-surface rounded-track");
   });
 
-  it("never shows the legacy cut-out track", () => {
-    const { edit, transcript } = parsed(handEdit, handTranscript);
-    expect(edit.tracks.cutout?.length).toBeGreaterThan(0);
-    const ids = new Set(
-      timelineRows(edit, transcript).rows.flatMap((row) => row.items.map((item) => item.id)),
-    );
-    for (const clip of edit.tracks.cutout ?? []) {
-      if (!edit.tracks.footage.some((footage) => footage.id === clip.id)) {
-        expect(ids.has(clip.id)).toBe(false);
-      }
-    }
-  });
-
-  it("labels each kind: clip length, accent words, transition type", () => {
-    const { edit, transcript } = parsed(handEdit, handTranscript);
+  it("labels each kind: clip length, accent words, the numbered transition", () => {
+    const { edit, transcript } = parsed(transitionsEdit, handTranscript);
     const rows = Object.fromEntries(
       timelineRows(edit, transcript).rows.map((row) => [row.key, row.items]),
     );
     expect(rows.footage![0]!.label).toBe(formatClock(edit.duration));
     expect(rows.overlays![0]!.label).not.toBe("");
-    expect(rows.transitions![0]!.label).toBe(edit.tracks.transitions[0]!.type);
+    expect(edit.tracks.transitions.length).toBeGreaterThan(0);
+    expect(rows.transitions!.map((item) => item.label)).toEqual(
+      edit.tracks.transitions.map((transition) => transition.type),
+    );
+    expect(rows.transitions!.every((item) => item.label === "numbered")).toBe(true);
   });
 
   it("keeps the empty rows of the baseline version", () => {

@@ -11,7 +11,6 @@ export const STEP_NAMES = [
   "first_version",
   "decide",
   "cutout",
-  "backgrounds",
   "restore",
   "render",
   "describe_photo",

@@ -1,101 +1,64 @@
-import { type Box, type HeadTrack, faceBox } from "./head-track.ts";
+import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
-import { BEHIND_SPOTS, type BehindSpot, type FontKey, type Preset } from "./preset.ts";
-import type { BehindItem, BehindPictureItem, BehindWordItem, Edit } from "./schema.ts";
+import type { FontKey, Preset } from "./preset.ts";
+import type { BehindItem, BehindVisualItem, BehindWordItem, Edit } from "./schema.ts";
 import { type Span, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
+import { STYLES } from "./variants.ts";
 
-// The smallest size a big word is set at; a word that does not fit the frame
-// even at this size fails the `frame` check.
-const MIN_WORD_SIZE = 8;
-
-// The rectangle a photo in `spot` covers exactly.
-export function spotBox(spot: BehindSpot, preset: Preset): Box {
-  return preset.behind.spots[spot];
-}
-
-// The rectangle a photo covers: the box the layout engine gave it, else (a
-// version saved before it) its spot exactly.
-export function photoBox(item: BehindPictureItem, preset: Preset): Box {
+// The rectangle a VISUAL covers: the box the layout engine gave it.
+export function visualBox(item: BehindVisualItem): Box {
   const { box } = item;
-  if (!box) return spotBox(item.spot, preset);
   return { left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height };
 }
 
-// Whether a behind-track item needs the cut-out: a big word, and a photo
-// behind the speaker (no `layer`, or `behind`). A photo in front of the
-// speaker sits over the footage and needs none.
+// Whether a behind-track item needs the cut-out: a big word, which sits behind
+// the speaker, unless the layout engine found the head cannot reach it (its
+// `cutout: false`; a stored word without the field needs it). A VISUAL sits in
+// front of the speaker, over the footage, and needs none.
 export function needsCutout(item: BehindItem): boolean {
-  return item.kind === "word" || item.layer !== "front";
+  return item.kind === "word" && item.cutout !== false;
 }
 
-// The preset spot nearest a photo box (by their centres, ties in spot
-// order): what a placed photo's `spot` names.
-export function nearestSpot(box: Box, preset: Preset): BehindSpot {
-  const cx = (box.left + box.right) / 2;
-  const cy = (box.top + box.bottom) / 2;
-  let best: BehindSpot = BEHIND_SPOTS[0];
-  let distance = Infinity;
-  for (const spot of BEHIND_SPOTS) {
-    const at = spotBox(spot, preset);
-    const d = Math.hypot((at.left + at.right) / 2 - cx, (at.top + at.bottom) / 2 - cy);
-    if (d < distance - 1e-9) {
-      best = spot;
-      distance = d;
-    }
-  }
-  return best;
+// The margin (px) a big word's box may come under the highest head over its span
+// before it needs the cut-out: the head is not in its way until it is that close.
+export const HAIR_MARGIN = 20;
+
+// The head track samples every 0.25 s: a span window also takes this much either
+// side, so a short span always holds the sample nearest it.
+const SAMPLE_HALF_STEP = 0.125;
+
+// Whether a big word's box reaches the head over its span, so the cut-out is
+// needed: the box's bottom is below the highest robust face's top over the span
+// (`facesOver`, the faces the placer reads, so the two never disagree), less
+// `HAIR_MARGIN`. The span is the word's mask span (padded, `paddedSpan`). No head
+// sample in the span: no cut-out (`facesOver` would otherwise borrow the nearest
+// heads, far away, which is not a head over the word).
+export function bigWordNeedsCutout(box: Box, track: HeadTrack, span: Span): boolean {
+  const headInSpan = track.some(
+    (sample) =>
+      sample !== null &&
+      sample.t >= span.start - SAMPLE_HALF_STEP &&
+      sample.t <= span.end + SAMPLE_HALF_STEP,
+  );
+  if (!headInSpan) return false;
+  const highest = Math.min(...facesOver(track, span.start, span.end).map((face) => face.top));
+  return box.bottom > highest - HAIR_MARGIN;
 }
 
-// The share (0 to 1) of a box the face box covers; 0 without a face.
-export function boxFaceShare(box: Box, face: Box | null): number {
-  if (!face) return 0;
-  const width = Math.max(0, Math.min(box.right, face.right) - Math.max(box.left, face.left));
-  const height = Math.max(0, Math.min(box.bottom, face.bottom) - Math.max(box.top, face.top));
-  const area = (box.right - box.left) * (box.bottom - box.top);
-  return area > 0 ? (width * height) / area : 0;
-}
-
-// The share (0 to 1) of a photo's spot the face box covers; 0 without a face.
-// Shared by the `behind-face` check and the decide prompt's clear spots, so
-// the two never disagree.
-export function spotFaceShare(spot: BehindSpot, face: Box | null, preset: Preset): number {
-  return boxFaceShare(spotBox(spot, preset), face);
-}
-
-// The person in front of a big word or a photo behind them at one face: the
-// face box and, under it, the body (1.8 head widths wide, to the frame's
-// bottom), the same body the engine keeps accents off.
-function personBoxes(face: Box, preset: Preset): Box[] {
-  const width = face.right - face.left;
-  return [
-    face,
-    {
-      left: face.left - width * 0.4,
-      right: face.right + width * 0.4,
-      top: face.bottom,
-      bottom: preset.frame.height,
-    },
-  ];
-}
-
-// The largest share (0 to 1) of a big word's (or a behind photo's) height
-// the person covers in any of its columns, at any of the faces (the robust
-// ones over its span, `facesOver`); 0 without a face. Where the person is in
-// front of it, the person runs from the face's (or the body's) top down to
-// the frame's bottom, so only its lower part may go behind the head. Shared
-// by the layout engine and the `big-word-hidden` and `photo-hidden` checks,
+// The largest share (0 to 1) of a big word's height the face covers, in any of
+// its columns, at any of the faces (the robust ones over its span, `facesOver`);
+// 0 without a face. Only the face counts: the body under it is no obstacle to
+// the word's visibility. Shared by the layout engine's placement and its check,
 // so they never disagree.
-export function bigWordCoveredShare(box: Box, faces: readonly Box[], preset: Preset): number {
+export function bigWordCoveredShare(box: Box, faces: readonly Box[]): number {
   const height = box.bottom - box.top;
   if (height <= 0) return 0;
   let worst = 0;
   for (const face of faces) {
-    for (const part of personBoxes(face, preset)) {
-      if (!(part.left < box.right && box.left < part.right)) continue;
-      const covered = Math.min(box.bottom, part.bottom) - Math.max(box.top, part.top);
-      worst = Math.max(worst, Math.max(0, covered) / height);
-    }
+    if (!(face.left < box.right && box.left < face.right)) continue;
+    const covered = Math.min(box.bottom, face.bottom) - Math.max(box.top, face.top);
+    worst = Math.max(worst, Math.max(0, covered) / height);
   }
   return worst;
 }
@@ -113,49 +76,15 @@ export interface BigWordBox {
   height: number;
 }
 
-// For a version saved before the layout engine: the big word as large as fits between the side margins (at most the
-// preset's size), centred across the frame, its vertical centre below the
-// head's top at the item's start (so the head overlaps it) or at the preset's
-// line when no head is in the frame. The width comes from HarfBuzz at 1 px, so
-// the measurer records it and the goldens cover it.
-export function bigWordLayout(
-  item: BehindWordItem,
-  span: Span,
-  headTrack: HeadTrack,
-  preset: Preset,
-  measurer: Measurer,
-): BigWordBox {
-  const { word } = preset.behind;
-  const { width: frameWidth } = preset.frame;
-  const perPx = measurer.width(word.font, 1, item.text);
-  const fit = perPx > 0 ? Math.floor((frameWidth - 2 * word.margin) / perPx) : word.maxSize;
-  const size = Math.max(MIN_WORD_SIZE, Math.min(word.maxSize, fit));
-  const width = perPx * size;
-  const face = faceBox(headTrack, span.start, span.start);
-  const centre = face ? face.top + word.belowHeadTop : word.noHeadY;
-  return {
-    itemId: item.id,
-    text: item.text,
-    font: word.font,
-    size,
-    color: word.color,
-    x: Math.round((frameWidth - width) / 2),
-    y: Math.round(centre - size / 2),
-    width,
-    height: size,
-  };
-}
-
 // The big word where the layout engine set it: its top left corner and size
 // from the edit, its width from HarfBuzz.
 export function placedBigWord(
   item: BehindWordItem,
   position: { x: number; y: number },
   size: number,
-  preset: Preset,
   measurer: Measurer,
 ): BigWordBox {
-  const { word } = preset.behind;
+  const word = STYLES.bigWord;
   return {
     itemId: item.id,
     text: item.text,
@@ -179,27 +108,34 @@ function ms(seconds: number): number {
   return rounded === 0 ? 0 : rounded;
 }
 
+// A span of the reel padded by the preset's frames on each side, clamped to the
+// reel, widened to whole frames, to the millisecond: the mask span of a big word
+// (`maskSpans`), and the span the layout engine checks its head against.
+export function paddedSpan(span: Span, duration: number, preset: Preset): Span {
+  const { padFrames, frameRate } = preset.behind;
+  const pad = padFrames / frameRate;
+  const end = ms(duration);
+  const from = Math.floor(Math.max(0, span.start - pad) * frameRate + 1e-6) / frameRate;
+  const to = Math.ceil(Math.min(end, span.end + pad) * frameRate - 1e-6) / frameRate;
+  return { start: ms(from), end: Math.min(ms(to), end) };
+}
+
 // The spans the cut-out must cover, shared by the builder (which draws one
 // composite per span) and the worker (which fingerprints and makes one mask
 // per span), so the two always agree: the span of each item behind the
-// speaker (a big word, a photo not in front) padded by the preset's frames
+// speaker (a big word) padded by the preset's frames
 // on each side, clamped to the reel, widened to whole frames, overlapping or
 // touching spans merged, sorted, to the millisecond.
 export function maskSpans(edit: Edit, transcript: Transcript, preset: Preset): MaskSpan[] {
-  // Only what sits behind the speaker: a photo in front needs no mask.
+  // Only what sits behind the speaker: a big word (a VISUAL needs no mask).
   const items = (edit.tracks.behind ?? []).filter(needsCutout);
   if (items.length === 0) return [];
   const resolved = resolveTimeline(edit, transcript);
-  const { padFrames, frameRate } = preset.behind;
-  const pad = padFrames / frameRate;
-  const duration = ms(edit.duration);
   const spans = items
-    .map((item) => {
-      const { start, end } = resolved.get(item.id)!;
-      const from = Math.floor(Math.max(0, start - pad) * frameRate + 1e-6) / frameRate;
-      const to = Math.ceil(Math.min(duration, end + pad) * frameRate - 1e-6) / frameRate;
-      return { start: ms(from), end: Math.min(ms(to), duration), items: [item.id] };
-    })
+    .map((item) => ({
+      ...paddedSpan(resolved.get(item.id)!, edit.duration, preset),
+      items: [item.id],
+    }))
     .sort((a, b) => a.start - b.start || a.end - b.end);
   const merged: MaskSpan[] = [];
   for (const span of spans) {

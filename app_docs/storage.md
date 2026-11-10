@@ -84,7 +84,7 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
 - A pipeline cache hit records each output's row from the `head` it already made
   (`run-pipeline.ts`, `recordStored`).
 - The cut-out's masks: `${R2_KEY_PREFIX}cache/cutout/<fingerprint>/mask.mp4`
-  (`apps/worker/src/cutout/spans.ts`, `cutoutKey`), one per padded span of a version's `behind`
+  (`apps/worker/src/cutout/spans.ts`, `cutoutKey`), one per padded span of a version's `behind` big words
   items, the fingerprint of the footage (by its producer), the span, the matte settings (the MODNet
   model's SHA-256 among them) and the mask tool's version.
   `ensureCutouts` uploads a missing one put-if-absent through the job's `recordingStorage`, and a
@@ -100,8 +100,9 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
 - Deleted: the live `rebuildable` outputs (`convert`'s `converted.mp4`, `retime`'s `source.mp4`
   and the cut-out's `cutout/<fingerprint>/mask.mp4`) once every reel holding the key was last
   exported more than seven days ago. A reel never exported, or exported within seven days, keeps the file for everyone.
-- Old reels' `remove_background/subject.webm` and `preview_copies/subject-preview.webm` objects
-  stay where they are, still classified as retired outputs (`app_docs/pipeline.md`) and slimmed like
+- Old reels' `remove_background/subject.webm`, `preview_copies/subject-preview.webm` and
+  `backgrounds/backgrounds.json` objects stay where they are, still classified as retired outputs
+  (`app_docs/pipeline.md`) and slimmed like
   any file of their tag: `subject.webm` is rebuildable and deleted under the same seven-day rule;
   nothing re-runs to rebuild it, since no version built since needs it.
 - Deleted: export files once their export's `expires_at` has passed (1 hour after the export was

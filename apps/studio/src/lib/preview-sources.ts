@@ -22,8 +22,7 @@ export interface PreviewCopies {
 
 // The objects the live preview reads, as storage keys (the frames sprite
 // only when the reel has one), plus the cut-out masks a version with behind
-// items names (each at the path its page plays it from) and the library
-// photos it shows (by id; their keys come from the photos rows).
+// items names (each at the path its page plays it from).
 export interface PreviewKeys {
   edit: string;
   transcript: string;
@@ -31,10 +30,7 @@ export interface PreviewKeys {
   footage: string;
   frames: string | null;
   masks: { path: string; key: string }[];
-  photoIds: string[];
 }
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const FINGERPRINT = /^[0-9a-f]{64}$/;
 const STEP = /^[a-z0-9_]+$/;
@@ -79,7 +75,7 @@ function layoutOf(value: unknown): FramesLayout | null {
 
 // Narrows the jsonb column; null without a footage ref. The thumbnail and
 // the frames sprite (with its layout) are optional: a missing or malformed
-// one is null, never a failure. A stored `cutout` (an old reel's) is ignored.
+// one is null, never a failure.
 export function parsePreviewCopies(value: unknown): PreviewCopies | null {
   if (typeof value !== "object" || value === null) return null;
   const { footage, thumbnail, frames, frames_layout } = value as Record<string, unknown>;
@@ -130,27 +126,17 @@ export function previewKeys({
   const frames = previewCopies.frames
     ? cacheKeyOf(prefix, previewCopies.frames.ref, "preview_copies")
     : null;
-  // Masks and photos: a version without them has none; a malformed one is a
-  // failure (the page would name a file the preview cannot sign).
+  // Masks: a version without them has none; a malformed one is a failure (the
+  // page would name a file the preview cannot sign).
   const rawMasks: unknown = inputs.masks ?? [];
-  const rawPhotos: unknown = inputs.photos ?? [];
-  if (!Array.isArray(rawMasks) || !Array.isArray(rawPhotos)) return null;
+  if (!Array.isArray(rawMasks)) return null;
   const masks: PreviewKeys["masks"] = [];
   for (const mask of rawMasks) {
     const key = cacheKeyOf(prefix, mask, "cutout");
     if (!key) return null;
     masks.push({ path: maskPath(mask as EditRef), key });
   }
-  if (!rawPhotos.every((id) => typeof id === "string" && UUID.test(id))) return null;
-  return {
-    edit: r2Key,
-    transcript,
-    headTrack,
-    footage,
-    frames,
-    masks,
-    photoIds: [...(rawPhotos as string[])],
-  };
+  return { edit: r2Key, transcript, headTrack, footage, frames, masks };
 }
 
 // The key of the reel's thumbnail, beside its other preview copies under the

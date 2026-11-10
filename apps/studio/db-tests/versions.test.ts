@@ -170,7 +170,17 @@ describe("save_version", () => {
       name: "engine.mov",
       status: "received",
     });
-    const note = { item: "photo-1", action: "dropped", rule: "no-room", reason: "no free spot" };
+    const note = {
+      item: "photo-1",
+      component: "VISUAL",
+      variant: "visual/card",
+      start: 1,
+      end: 2,
+      rule: "zone",
+      outcome: "dropped",
+      blockers: [],
+      reason: "no free spot",
+    };
     const placed = randomUUID();
     const { error } = await admin.rpc("save_version", {
       ...args(own, placed, null),
@@ -307,71 +317,5 @@ describe("versions RLS", () => {
       .select("id");
     expect(error !== null || (data ?? []).length === 0).toBe(true);
     expect(await currentOf(reel)).toBe(saved[2]);
-  });
-});
-
-describe("the reel's behind rules", () => {
-  async function flagsOf(reelId: string, client: SupabaseClient = admin) {
-    const { data, error } = await client
-      .from("reels")
-      .select("no_photos, no_big_word")
-      .eq("id", reelId)
-      .single<{ no_photos: boolean; no_big_word: boolean }>();
-    if (error || !data) throw new Error(`reel not read: ${error?.message}`);
-    return data;
-  }
-
-  it("are written by save_version with the version, kept by null, lifted by false", async () => {
-    const own = await insertReel(admin, {
-      ownerId: owner.id,
-      name: "rules.mov",
-      status: "received",
-    });
-    expect(await flagsOf(own)).toEqual({ no_photos: false, no_big_word: false });
-
-    const v1 = randomUUID();
-    const first = await admin.rpc("save_version", { ...args(own, v1, null), p_no_photos: true });
-    expect(first.error).toBeNull();
-    expect(await flagsOf(own)).toEqual({ no_photos: true, no_big_word: false });
-
-    const v2 = randomUUID();
-    const kept = await admin.rpc("save_version", {
-      ...args(own, v2, v1),
-      p_no_photos: null,
-      p_no_big_word: true,
-    });
-    expect(kept.error).toBeNull();
-    expect(await flagsOf(own)).toEqual({ no_photos: true, no_big_word: true });
-
-    // A call without them (a restore, the first version) leaves both.
-    const v3 = randomUUID();
-    expect((await admin.rpc("save_version", args(own, v3, v2))).error).toBeNull();
-    expect(await flagsOf(own)).toEqual({ no_photos: true, no_big_word: true });
-
-    const v4 = randomUUID();
-    const lifted = await admin.rpc("save_version", {
-      ...args(own, v4, v3),
-      p_no_photos: false,
-      p_no_big_word: false,
-    });
-    expect(lifted.error).toBeNull();
-    expect(await flagsOf(own)).toEqual({ no_photos: false, no_big_word: false });
-    expect(await currentOf(own)).toBe(v4);
-  });
-
-  it("are read by the owner, never updated by them", async () => {
-    const own = await insertReel(admin, {
-      ownerId: owner.id,
-      name: "flags.mov",
-      status: "received",
-    });
-    expect(await flagsOf(own, ownerClient)).toEqual({ no_photos: false, no_big_word: false });
-    const { data, error } = await ownerClient
-      .from("reels")
-      .update({ no_photos: true })
-      .eq("id", own)
-      .select("id");
-    expect(error !== null || (data ?? []).length === 0).toBe(true);
-    expect(await flagsOf(own)).toEqual({ no_photos: false, no_big_word: false });
   });
 });

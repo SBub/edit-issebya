@@ -1,5 +1,5 @@
 // Test helper: the committed pipeline fixtures as a reel's stored inputs, and
-// the baseline edit built from them.
+// the baseline edit built from them, placed as a saved first version is.
 import { readFile } from "node:fs/promises";
 import {
   type Edit,
@@ -9,8 +9,20 @@ import {
   type Transcript,
   baselineEdit,
   headTrackSchema,
+  pickVariants,
+  placeEdit,
   transcriptSchema,
 } from "@edit-issebya/edit";
+import { editMeasurer } from "../edit-measurer.ts";
+
+const NO_CHOICES = {
+  accents: [],
+  questions: [],
+  big_words: [],
+  visuals: [],
+  lists: [],
+  word_fixes: [],
+};
 
 const FIXTURES = new URL("../../../../fixtures/pipeline/", import.meta.url);
 
@@ -49,10 +61,19 @@ export async function fixtureEdit(): Promise<{
   const transcript = transcriptSchema.parse(await json("retime", "transcript.json"));
   const headTrack = headTrackSchema.parse(await json("head_track", "head-track.json"));
   const retime = (await json("retime", "retime.json")) as { durationSeconds: number };
-  const edit = baselineEdit(
+  const baseline = baselineEdit(
     transcript,
     { inputs, duration: retime.durationSeconds },
     ISSEBYA_PRESET,
   );
-  return { inputs, transcript, headTrack, edit };
+  const { tracks } = placeEdit(
+    baseline,
+    NO_CHOICES,
+    pickVariants(NO_CHOICES),
+    transcript,
+    headTrack,
+    ISSEBYA_PRESET,
+    await editMeasurer(),
+  );
+  return { inputs, transcript, headTrack, edit: { ...baseline, tracks } };
 }

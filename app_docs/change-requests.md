@@ -29,8 +29,7 @@ longer run: the change box is removed` (`apps/worker/src/job-kinds.ts`). It neve
   so old rows stay valid. No migration was made for the removal.
 - Versions made from an old change keep their owner's words in the list: `versionOrigin` and
   `versionTitle` read them as before (`What you asked` in the details).
-- The decide answer's request path (the prompt's request, the checklist, the `no-change` refusal, the
-  hook kept unless asked) stays in the worker's decide code, unused by the live paths. The
+- The decide answer's request path (the prompt's request, the checklist, the hook kept unless asked) stays in the worker's decide code, unused by the live paths. The
   `studio_change_requested` event is no longer sent (`app_docs/measurement.md`).
 - To bring the box back, see the owner's later decision; its files were `ChangeRequestForm.tsx`, the
   `change` case in `change-actions.ts` and `job-kinds.ts`, and the overlay's Change the request action.
@@ -126,7 +125,7 @@ version is ready`.
 - `apps/worker/src/job-kinds.ts` dispatches `start_over`; `apps/worker/src/process-job.ts` reads the
   reel's version 1 (`firstVersionId` in `apps/worker/src/start-over.ts`; a reel without one fails
   the job) and runs `runDecide` with `request` null and `startFrom` that version. Every earlier step
-  (convert, transcribe, retime, head_track, preview_copies, the background map, cut-outs) is reused
+  (convert, transcribe, retime, head_track, preview_copies, cut-outs) is reused
   from the cache; decide is never cached. Claude starts from version 1's choices (captions only),
   never the current version's; the reel's behind rules hold as on any run. The new version's
   parent is the current version and it becomes current; it saves no title and no summary (both
@@ -189,8 +188,7 @@ specs, see `app_docs/decide-step.md`).
 
 - Jobs are ordered per reel in the database: `claim_job` runs one job per reel at a time, oldest
   first (`app_docs/failures.md`). The Export button follows its own rule (`app_docs/export.md`).
-- The decide step's request path (the `no-change` refusal, the photo and hook rules that a request
-  lifts) is dormant: no live path passes a request. It stays in the decide code for the later decide
+- The decide step's request path (the photo and hook rules that a request lifts) is dormant: no live path passes a request. It stays in the decide code for the later decide
   task (`app_docs/decide-step.md`).
 - Touches `app_docs/studio.md` (jobs kinds, policies), `app_docs/decide-step.md` (the Start over path),
   `app_docs/measurement.md` (the `studio_change_requested` event, no longer sent) and

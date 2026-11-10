@@ -33,9 +33,6 @@
         "start": 19.967,
         "end": 22.733
       }
-    ],
-    "photos": [
-      "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14"
     ]
   },
   "tracks": {
@@ -2156,20 +2153,7 @@
         "color": "#B3E6FF"
       }
     ],
-    "transitions": [
-      {
-        "id": "t-fund-life",
-        "type": "panel",
-        "start": {
-          "word": "w126",
-          "offset": -0.03
-        },
-        "end": {
-          "word": "w133",
-          "edge": "end"
-        }
-      }
-    ],
+    "transitions": [],
     "sounds": [
       {
         "id": "s-fund-life",
@@ -2186,16 +2170,20 @@
     ],
     "behind": [
       {
-        "id": "behind-photo",
-        "kind": "photo",
-        "photo_id": "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14",
-        "spot": "right",
+        "id": "visual-1",
+        "kind": "visual",
         "start": {
           "word": "w18"
         },
         "end": {
           "word": "w27",
           "edge": "end"
+        },
+        "box": {
+          "x": 580,
+          "y": 560,
+          "width": 460,
+          "height": 620
         }
       },
       {

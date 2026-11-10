@@ -213,24 +213,6 @@ describe("runRender", () => {
     expect(await storage.list(`${PREFIX}exports/`)).toEqual([]);
   });
 
-  it("renders a stored version naming a cut-out whose file is not in storage", async () => {
-    const { edit } = await fixtureEdit();
-    const cutout = { step: "remove_background", fingerprint: "gone", file: "subject.webm" };
-    const whole = { start: { reel: "start" as const }, end: { reel: "end" as const } };
-    const old = {
-      ...edit,
-      inputs: { ...edit.inputs, cutout },
-      tracks: { ...edit.tracks, cutout: [{ id: "cutout", ...whole }] },
-    };
-    await storage.put(version.r2_key, editBytes(old));
-    version = { ...version, inputs: { ...inputs, cutout } };
-    const { steps, calls } = recordingSteps();
-    await run(steps);
-    expect(calls.map((call) => call.call)).toEqual(["start", "progress", "done"]);
-    expect(projectHtml).not.toContain("subject.webm");
-    expect(inserted).toHaveLength(1);
-  });
-
   it("fails the step naming a missing footage file and records nothing", async () => {
     const key = cacheKey(
       PREFIX,
@@ -254,13 +236,11 @@ describe("runRender", () => {
   });
 });
 
-describe("runRender with a behind photo", () => {
-  const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
-  const LARGE = `${PREFIX}library/${PHOTO}/large.jpg`;
+describe("runRender with a behind big word", () => {
   let projectFiles: string[];
 
-  // The fixture edit with one left photo over its whole speech, its mask and
-  // the photo's large copy stored.
+  // The fixture edit with one big word behind the speaker over its whole speech,
+  // and its mask stored. A VISUAL would name no file; a big word has a mask.
   beforeEach(async () => {
     const { edit, transcript } = await fixtureEdit();
     const behind = withMasks(
@@ -270,10 +250,11 @@ describe("runRender with a behind photo", () => {
           ...edit.tracks,
           behind: [
             {
-              id: "behind-photo",
-              kind: "photo",
-              photo_id: PHOTO,
-              spot: "left",
+              id: "behind-word",
+              kind: "word",
+              text: "WORK",
+              position: { x: 100, y: 700 },
+              size: 200,
               start: { word: "w0001" },
               end: { word: "w0010", edge: "end" },
             },
@@ -290,11 +271,10 @@ describe("runRender with a behind photo", () => {
         new TextEncoder().encode("mask"),
       );
     }
-    await storage.put(LARGE, new TextEncoder().encode("jpeg"));
     projectFiles = [];
   });
 
-  function runBehind(library: { id: string; large_key: string }[]) {
+  function runBehind() {
     const { steps, calls } = recordingSteps();
     const spawnTool: SpawnTool = async (call) => {
       if (call.args.includes("-o")) {
@@ -316,11 +296,6 @@ describe("runRender with a behind photo", () => {
       newId: () => EXPORT_ID,
       spawnTool,
       env: {},
-      photos: {
-        async readyPhotos() {
-          return library.map((photo) => ({ ...photo, description: "a kitchen", tags: [] }));
-        },
-      },
       cutouts: {
         storage,
         keyPrefix: PREFIX,
@@ -332,25 +307,16 @@ describe("runRender with a behind photo", () => {
     return { done, calls };
   }
 
-  it("reuses the stored mask and places the mask and the photo in the project", async () => {
-    const { done, calls } = runBehind([{ id: PHOTO, large_key: LARGE }]);
+  it("reuses the stored mask and places only the mask in the project", async () => {
+    const { done, calls } = runBehind();
     await done;
     expect(calls[0]).toMatchObject({ call: "skipped", name: "cutout", summary: "cut-out reused" });
-    expect(projectHtml).toContain(`src="photos/${PHOTO}.jpg"`);
     const [mask] = version.inputs.masks!;
     expect(projectHtml).toContain(`src="masks/${mask!.fingerprint}.mp4"`);
-    expect(projectFiles).toEqual(
-      expect.arrayContaining([`photos/${PHOTO}.jpg`, `masks/${mask!.fingerprint}.mp4`]),
-    );
+    expect(projectHtml).not.toContain("photos/");
+    expect(projectFiles).toEqual(expect.arrayContaining([`masks/${mask!.fingerprint}.mp4`]));
+    expect(projectFiles.some((file) => file.startsWith("photos"))).toBe(false);
     expect(inserted).toHaveLength(1);
-  });
-
-  it("fails with one line when the photo left the library", async () => {
-    const { done, calls } = runBehind([]);
-    await expect(done).rejects.toThrow(`render: photo ${PHOTO} is no longer in the library`);
-    const failed = calls.find((call) => call.call === "failed");
-    expect(failed?.call === "failed" && failed.tail).toContain("is no longer in the library");
-    expect(inserted).toEqual([]);
   });
 });
 

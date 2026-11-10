@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 // The worker's scripted AI replies for the fixture clip: the written hook
 // (role `hook`, "A short test for the real studio") and the decide answer (one
 // accent word, one fixed word). On the 2.7 s clip the hook holds the screen
-// from 0.2 s to the end, and the accent shows over it (`all` placement: the
-// layout engine drops nothing the answer picks).
+// from 0.2 s to the end, and the accent shows over it (the layout engine drops
+// nothing the answer picks).
 export const SHORT_SPEECH_ANSWER = fileURLToPath(
   new URL("../../worker/src/decide/testdata/short-speech-answer.json", import.meta.url),
 );
@@ -53,7 +53,7 @@ export async function unchangedAnswerScript(dir: string): Promise<string> {
       questions: [],
       big_words: [],
       visuals: [],
-      transitions: [],
+      lists: [],
       word_fixes: [],
     },
   };
@@ -64,18 +64,18 @@ export async function unchangedAnswerScript(dir: string): Promise<string> {
 }
 
 // One round of a scripted decide: the visuals behind the speaker (none by
-// default), a big word (a word id; none by default), the transitions (none by
+// default), a big word (a word id; none by default), the LIST lists (none by
 // default) and the hook's text (the committed one by default). The version
 // title and summary are never scripted: a new version saves neither.
 interface AnswerRound {
   visuals?: Record<string, unknown>[];
   bigWord?: string;
-  transitions?: Record<string, unknown>[];
+  lists?: { items: Record<string, unknown>[] }[];
   hook?: { text: string };
 }
 
-// The committed decide reply with the round's visuals, big word and transitions.
-async function roundReply({ visuals = [], bigWord, transitions }: AnswerRound = {}) {
+// The committed decide reply with the round's visuals, big word and lists.
+async function roundReply({ visuals = [], bigWord, lists }: AnswerRound = {}) {
   const { decide } = await committedReplies();
   const reply = structuredClone(decide) as {
     answer: Record<string, unknown> & {
@@ -83,7 +83,7 @@ async function roundReply({ visuals = [], bigWord, transitions }: AnswerRound = 
       questions: unknown[];
       visuals: unknown[];
       big_words: { from: string; to: string }[];
-      transitions: unknown[];
+      lists: unknown[];
     };
   };
   reply.answer.visuals = visuals;
@@ -91,12 +91,12 @@ async function roundReply({ visuals = [], bigWord, transitions }: AnswerRound = 
   reply.answer.big_words = bigWord ? [{ from: bigWord, to: bigWord }] : [];
   // On the 2.7 s fixture clip the accent holds the screen for most of it: a
   // round with a behind item leaves the accent out, so that round's expected
-  // overlays stay as they were (a round's own transitions stay as given).
+  // overlays stay as they were (a round's own lists stay as given).
   if (visuals.length > 0 || bigWord) {
     reply.answer.accents = [];
-    reply.answer.transitions = [];
+    reply.answer.lists = [];
   }
-  if (transitions) reply.answer.transitions = transitions;
+  if (lists) reply.answer.lists = lists;
   return reply;
 }
 
@@ -153,7 +153,7 @@ function speechTenReply(round: AnswerRound) {
       questions: [],
       big_words: round.bigWord ? [{ from: round.bigWord, to: round.bigWord }] : [],
       visuals: round.visuals ?? [],
-      transitions: round.transitions ?? [],
+      lists: round.lists ?? [],
       word_fixes: [],
     },
   };
@@ -169,13 +169,13 @@ export async function speechTenVisualAnswerScript(dir: string): Promise<string> 
   );
 }
 
-// Writes, into `dir`, a script whose one answer is a LIST (a numbered
-// transition) over w0028 to w0032, its key phrase from w0031 ("to work,") and
-// its lead-in "they don't leave". Returns its path.
+// Writes, into `dir`, a script whose one answer is a LIST of one item (a
+// numbered phrase, so no number shows) over w0028 to w0032, its key phrase
+// from w0031 ("to work,") and its lead-in "they don't leave". Returns its path.
 export async function speechTenTransitionAnswerScript(dir: string): Promise<string> {
   return answerRoundsScript(
     dir,
-    [{ transitions: [{ kind: "numbered", from: "w0028", to: "w0032", key_from: "w0031" }] }],
+    [{ lists: [{ items: [{ from: "w0028", to: "w0032", key_from: "w0031" }] }] }],
     speechTenReply,
   );
 }

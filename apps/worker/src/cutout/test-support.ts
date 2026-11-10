@@ -13,10 +13,10 @@ const readJson = (path: string): unknown =>
   JSON.parse(readFileSync(new URL(path, TESTDATA), "utf8"));
 
 export const BEHIND_TRANSCRIPT = transcriptSchema.parse(readJson("rethink-work/transcript.json"));
-export const BEHIND_PHOTO = "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14";
 
-// The fixture with one right photo and one big word, its masks and photos
-// removed (what a new answer looks like before the cut-out step).
+// The fixture with two big words over two spans, its masks removed (what a new
+// answer looks like before the cut-out step). Its VISUAL is made a big word
+// over the same span: a VISUAL needs no mask, and the cases here need two.
 export function behindEdit(): Edit {
   const parsed = parseEdit(
     readJson("versions/rethink-work-behind.edit.json"),
@@ -26,8 +26,18 @@ export function behindEdit(): Edit {
   if (!parsed.ok) throw new Error(parsed.reasons.join("; "));
   const inputs = { ...parsed.edit.inputs };
   delete inputs.masks;
-  delete inputs.photos;
-  return { ...parsed.edit, inputs };
+  const behind = (parsed.edit.tracks.behind ?? []).map((item) =>
+    item.kind === "visual"
+      ? {
+          id: "behind-word-2",
+          kind: "word" as const,
+          text: "WORK",
+          start: item.start,
+          end: item.end,
+        }
+      : item,
+  );
+  return { ...parsed.edit, tracks: { ...parsed.edit.tracks, behind }, inputs };
 }
 
 // Every tool call it gets, and a run that writes `mask <n>` to the file after

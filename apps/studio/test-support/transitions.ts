@@ -18,11 +18,11 @@ const HEAD_TRACK = new URL(
   import.meta.url,
 );
 
-// The numbered transition the preview and export specs place on the fixture
-// clip: "clip for the" (w0006 to w0008), its lead-in "clip" in caption text
-// and its key phrase "for the" (from w0007) in accent text, number 1.
-const NUMBERED_TRANSITION = {
-  kind: "numbered",
+// The LIST the preview and export specs place on the fixture clip: one item,
+// "clip for the" (w0006 to w0008), its lead-in "clip" in caption text and its
+// key phrase "for the" (from w0007) in accent text. A list of one item shows
+// no number.
+const LIST_ITEM = {
   from: "w0006",
   to: "w0008",
   key_from: "w0007",
@@ -42,24 +42,24 @@ async function measurer() {
   return createMeasurer(hb, Object.fromEntries(fonts) as Record<FontKey, Uint8Array>);
 }
 
-// `base`'s choices with the numbered transition, placed by the layout engine
-// the way the worker's decide step places an answer: the transition's layer,
-// its number and its two text levels, its phrase's captions shown only there.
+// `base`'s choices with the LIST, placed by the layout engine the way the
+// worker's decide step places an answer: the transition's layer and its two
+// text levels, its phrase's captions shown only there.
 export async function withNumberedTransition(base: Edit, transcript: Transcript): Promise<Edit> {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
   const headTrack = headTrackSchema.parse(JSON.parse(await readFile(HEAD_TRACK, "utf8")));
   const made = editFromAnswer(
     base,
-    { ...choicesOf(base, transcript, ISSEBYA_PRESET), transitions: [NUMBERED_TRANSITION] },
+    { ...choicesOf(base, transcript, ISSEBYA_PRESET), lists: [{ items: [LIST_ITEM] }] },
     ISSEBYA_PRESET,
     transcript,
     headTrack,
     await measurer(),
   );
-  if (!made.ok) throw new Error(`the numbered transition was refused: ${made.reasons.join("; ")}`);
+  if (!made.ok) throw new Error(`the LIST was refused: ${made.reasons.join("; ")}`);
   if (made.edit.tracks.transitions.length !== 1) {
     throw new Error(
-      `the numbered transition was not kept: ${JSON.stringify(made.record.filter((note) => note.item === "transition-1"))}`,
+      `the LIST was not kept: ${JSON.stringify(made.record.filter((note) => note.item === "transition-1"))}`,
     );
   }
   return made.edit;

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import * as hb from "harfbuzzjs";
 import { type Measurer, createMeasurer } from "../measure.ts";
-import { FONT_KEYS, type FontKey, CLEAN_PRESET } from "../preset.ts";
+import { FONT_KEYS, type FontKey, ISSEBYA_PRESET } from "../preset.ts";
 
 let fonts: Promise<Record<FontKey, Uint8Array>> | undefined;
 
@@ -9,7 +9,7 @@ let fonts: Promise<Record<FontKey, Uint8Array>> | undefined;
 function loadFonts(): Promise<Record<FontKey, Uint8Array>> {
   fonts ??= Promise.all(
     FONT_KEYS.map(async (key) => {
-      const url = new URL(`../../${CLEAN_PRESET.fonts[key].file}`, import.meta.url);
+      const url = new URL(`../../${ISSEBYA_PRESET.fonts[key].file}`, import.meta.url);
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- the package's own font assets
       return [key, new Uint8Array(await readFile(url))] as const;
     }),

@@ -1,5 +1,5 @@
-import { wordsText } from "./layout.ts";
-import { type Preset, type TransitionKind, cleanWord } from "./preset.ts";
+import { wordsText } from "./glossary.ts";
+import { type Preset, cleanWord } from "./preset.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -7,39 +7,16 @@ import type { Transcript } from "./transcript.ts";
 // THE LAYOUT ENGINE'S INPUT. Claude (the decide step) answers in meaning only:
 // which words are accents, which words are questions the speaker puts to the
 // viewer, which words are big words behind, which words a VISUAL sits on (an
-// empty frame, with a short description of what it would show), which phrase
-// a transition carries, which misheard words to fix, and one short written
-// hook line for the start.
+// empty frame, with a short description of what it would show), which phrases
+// form each LIST (a numbered list, its items each over its phrase), which
+// misheard words to fix, and one short written hook line for the start.
 // Everything refers to the transcript by word id; there
-// are no times, positions, sizes or spots. A `wish` is a placement word the
-// owner used in a request, forwarded from this fixed list; never invented.
-// The layout engine (`engine.ts`, `placeEdit`) turns it into placed tracks.
-
-export const WISHES = [
-  "top",
-  "bottom",
-  "left",
-  "right",
-  "behind",
-  // A photo in front of the speaker (over the footage, never over the face).
-  "front",
-  "beside_head",
-  "big",
-  "small",
-  // Transitions only (the engine records `wish-not-kept` on another kind):
-  // the motion slower, the layer staying longer after its phrase.
-  "slow",
-  "long",
-] as const;
-export type Wish = (typeof WISHES)[number];
+// are no times, positions, sizes or spots. The layout engine (`engine.ts`,
+// `placeEdit`) turns it into placed tracks.
 
 export interface AccentChoice {
   from: string;
   to: string;
-  // An older version's title (the written title is gone); a new answer never
-  // sets it, so it is left out.
-  title?: boolean;
-  wish?: Wish;
   // Set by the engine on a QUESTION it places with the ACCENT's look and timing
   // (its overlay id is `question-N`); never in an answer.
   question?: boolean;
@@ -47,7 +24,7 @@ export interface AccentChoice {
 
 // A QUESTION: a question the speaker puts to the viewer over the words `from`
 // to `to`, often rhetorical. It is placed as an ACCENT (the same look and
-// timing), so it has no wish and no title.
+// timing).
 export interface QuestionChoice {
   from: string;
   to: string;
@@ -58,16 +35,11 @@ export interface QuestionChoice {
 export interface BigWordChoice {
   from: string;
   to: string;
-  wish?: Wish;
 }
 
-// A big word's span as stored: `{ from, to }`, or an older answer's
-// `{ word }` (one word), read as `{ from: word, to: word }`.
-export function bigWordSpan(item: { from: string; to: string } | { word: string }): {
-  from: string;
-  to: string;
-} {
-  return "word" in item ? { from: item.word, to: item.word } : { from: item.from, to: item.to };
+// A big word's span as stored: `{ from, to }` (the same word twice for one word).
+export function bigWordSpan(item: { from: string; to: string }): { from: string; to: string } {
+  return { from: item.from, to: item.to };
 }
 
 // A VISUAL: an empty white stroke frame over the words `from` to `to`. The
@@ -78,14 +50,18 @@ export interface VisualChoice {
   description?: string;
 }
 
-// A transition carries the phrase `from` to `to`; its key phrase (in accent
+// A LIST item carries the phrase `from` to `to`; its key phrase (in accent
 // text) starts on `key_from`, the words before it are the lead-in.
 export interface TransitionChoice {
-  kind: TransitionKind;
   from: string;
   to: string;
   key_from: string;
-  wish?: Wish;
+}
+
+// A LIST: its items in order. Its items number 1, 2, ... within the list when
+// it has more than one item; a one-item list shows no number.
+export interface ListChoice {
+  items: TransitionChoice[];
 }
 
 // The caption showing `word` shows `text` instead (a misheard word fixed).
@@ -102,11 +78,11 @@ export interface HookChoice {
 
 export interface EngineInput {
   accents: AccentChoice[];
-  // Left out (or none) for an answer saved before QUESTION: no questions.
-  questions?: QuestionChoice[];
+  // May be empty: no question in the reel.
+  questions: QuestionChoice[];
   big_words: BigWordChoice[];
   visuals: VisualChoice[];
-  transitions: TransitionChoice[];
+  lists: ListChoice[];
   word_fixes: WordFix[];
   // None (null or left out): no hook.
   hook?: HookChoice | null;
@@ -122,13 +98,12 @@ function range(from: string, to: string, transcript: Transcript): string[] {
 }
 
 // The current version's choices in the engine input's terms (what Claude is
-// shown and starts from): each item by the words under it. An accent without
-// words (an older version's written title) becomes the words spoken while it
-// shows; an item no word is spoken under is left out. Every big word reads
-// back (an older version has at most one). A VISUAL reads back with its
-// description; a library photo reads back as a visual over its words (no
-// description: a version saved before one). The hook reads back as its text
-// (null when the version has none, as every version saved before it).
+// shown and starts from): each item by the words under it. An item no word is
+// spoken under is left out. A LIST item reads back from its own words, its key
+// phrase from its key word, and the items placed in one list (the same `list`
+// number) read back as one list in reel order; a placed item with no `list`
+// reads back as a list of its own. A VISUAL reads back with its description.
+// The hook reads back as its text (null when the version has none).
 export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): EngineInput {
   const resolved = resolveTimeline(edit, transcript);
   // The words under an item: from its start word to its end word when it is
@@ -156,25 +131,26 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
     if (ids.length === 0) continue;
     // A QUESTION is an accent overlay with a `question-` id.
     if (overlay.id.startsWith(QUESTION_PREFIX)) questions.push(ends(ids));
-    else accents.push({ ...ends(ids), title: overlay.id === "title" });
+    else accents.push(ends(ids));
   }
-  const transitions: TransitionChoice[] = [];
+  const lists: ListChoice[] = [];
+  const listOf = new Map<number, ListChoice>();
   for (const transition of edit.tracks.transitions) {
-    // A stored `card` reads back as a `dim`, the library's nearest kind.
-    const kind = transition.type === "card" ? "dim" : transition.type;
-    if (transition.words) {
-      const wish =
-        transition.pace === "slow" ? "slow" : transition.hold === "long" ? "long" : undefined;
-      transitions.push({
-        kind,
-        ...ends(transition.words),
-        key_from: transition.key ?? transition.words[0]!,
-        ...(wish ? { wish } : {}),
-      });
+    const item: TransitionChoice = {
+      ...ends(transition.words),
+      key_from: transition.key ?? transition.words[0]!,
+    };
+    if (transition.list === undefined) {
+      lists.push({ items: [item] });
       continue;
     }
-    const ids = under(transition);
-    if (ids.length > 0) transitions.push({ kind, ...ends(ids), key_from: ids[0]! });
+    let list = listOf.get(transition.list);
+    if (!list) {
+      list = { items: [] };
+      listOf.set(transition.list, list);
+      lists.push(list);
+    }
+    list.items.push(item);
   }
   const visuals: VisualChoice[] = [];
   const bigWords: BigWordChoice[] = [];
@@ -182,10 +158,8 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
   for (const item of edit.tracks.behind ?? []) {
     const ids = under(item);
     if (ids.length === 0) continue;
-    if (item.kind === "visual" || item.kind === "photo") {
-      // A library photo (an older version's) reads back as a visual over the
-      // same words: a new answer has no photo, only a frame in its place.
-      const description = item.kind === "visual" ? item.description : undefined;
+    if (item.kind === "visual") {
+      const { description } = item;
       visuals.push({ ...ends(ids), ...(description ? { description } : {}) });
     } else if (item.kind === "word") {
       // The stored text is one or two words joined by a space; the span starts
@@ -211,5 +185,5 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
       word_fixes.push({ word: caption.words[0]!, text: caption.text });
     }
   }
-  return { accents, questions, big_words: bigWords, visuals, transitions, word_fixes, hook };
+  return { accents, questions, big_words: bigWords, visuals, lists, word_fixes, hook };
 }

@@ -39,14 +39,15 @@
         },
         "end": {
           "word": "w0004",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.129
         },
         "words": [
           "w0001"
         ],
         "size": 50,
         "position": {
-          "x": 330.12,
+          "x": 375.12,
           "y": 1290,
           "align": "left"
         }
@@ -58,14 +59,15 @@
         },
         "end": {
           "word": "w0004",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.129
         },
         "words": [
           "w0002"
         ],
         "size": 50,
         "position": {
-          "x": 434.57,
+          "x": 479.57,
           "y": 1290,
           "align": "left"
         }
@@ -77,14 +79,15 @@
         },
         "end": {
           "word": "w0004",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.129
         },
         "words": [
           "w0003"
         ],
         "size": 50,
         "position": {
-          "x": 488.77,
+          "x": 533.77,
           "y": 1290,
           "align": "left"
         }
@@ -96,14 +99,15 @@
         },
         "end": {
           "word": "w0004",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.129
         },
         "words": [
           "w0004"
         ],
         "size": 50,
         "position": {
-          "x": 530.27,
+          "x": 575.27,
           "y": 1290,
           "align": "left"
         }
@@ -116,14 +120,14 @@
         "end": {
           "word": "w0005",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.15
         },
         "words": [
           "w0005"
         ],
         "size": 50,
         "position": {
-          "x": 445.95,
+          "x": 490.95,
           "y": 1290,
           "align": "left"
         }
@@ -135,14 +139,15 @@
         },
         "end": {
           "word": "w0010",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.085
         },
         "words": [
           "w0006"
         ],
         "size": 50,
         "position": {
-          "x": 228,
+          "x": 273,
           "y": 1290,
           "align": "left"
         }
@@ -154,14 +159,15 @@
         },
         "end": {
           "word": "w0010",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.085
         },
         "words": [
           "w0007"
         ],
         "size": 50,
         "position": {
-          "x": 330.45,
+          "x": 375.45,
           "y": 1290,
           "align": "left"
         }
@@ -173,14 +179,15 @@
         },
         "end": {
           "word": "w0010",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.085
         },
         "words": [
           "w0008"
         ],
         "size": 50,
         "position": {
-          "x": 410.45,
+          "x": 455.45,
           "y": 1290,
           "align": "left"
         }
@@ -192,14 +199,15 @@
         },
         "end": {
           "word": "w0010",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.085
         },
         "words": [
           "w0009"
         ],
         "size": 50,
         "position": {
-          "x": 502.7,
+          "x": 547.7,
           "y": 1290,
           "align": "left"
         }
@@ -211,14 +219,15 @@
         },
         "end": {
           "word": "w0010",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.085
         },
         "words": [
           "w0010"
         ],
         "size": 50,
         "position": {
-          "x": 609.2,
+          "x": 654.2,
           "y": 1290,
           "align": "left"
         }
@@ -239,13 +248,15 @@
         },
         "kind": "hook",
         "text": "A short test for the real studio",
-        "size": 99,
+        "size": 110,
         "position": {
-          "x": 166,
-          "y": 260,
+          "x": 174,
+          "y": 220,
           "align": "left"
         },
-        "break_after": 4
+        "breaks": [
+          4
+        ]
       }
     ],
     "transitions": [],

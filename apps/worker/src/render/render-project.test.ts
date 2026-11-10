@@ -44,26 +44,27 @@ describe("writeRenderProject", () => {
     expect(await readFile(join(dir, footage.path))).toEqual(await readFile(FILES.footage));
   });
 
-  it("places masks and photos from the given files, and throws for one without a file", async () => {
+  it("copies a visual's stand-in picture from packages/edit at the path the page names", async () => {
+    const picture = { path: "assets/visuals/visual-2.jpg", role: "visual" as const, ref: null };
+    await writeRenderProject({ dir, html: "<!doctype html>", assets: [picture], files: FILES });
+    const packaged = new URL("../../../../packages/edit/", import.meta.url);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder and the committed assets
+    expect(await readFile(join(dir, picture.path))).toEqual(
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed asset
+      await readFile(new URL(picture.path, packaged)),
+    );
+  });
+
+  it("places masks from the given files, and throws for one without a file", async () => {
     const mask = fixturePath("retime", "source.mp4");
-    const photo = fixturePath("preview_copies", "thumbnail.jpg");
-    const assets = [
-      { path: "masks/abc.mp4", role: "mask" as const, ref: null },
-      { path: "photos/p.jpg", role: "photo" as const, ref: null, photoId: "p" },
-    ];
+    const assets = [{ path: "masks/abc.mp4", role: "mask" as const, ref: null }];
     const written = await writeRenderProject({
       dir,
       html: "<html></html>",
       assets,
-      files: { ...FILES, masks: { "masks/abc.mp4": mask }, photos: { "photos/p.jpg": photo } },
+      files: { ...FILES, masks: { "masks/abc.mp4": mask } },
     });
-    expect(written).toEqual([
-      join(dir, "index.html"),
-      join(dir, "masks/abc.mp4"),
-      join(dir, "photos/p.jpg"),
-    ]);
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder and the committed fixtures
-    expect(await readFile(join(dir, "photos/p.jpg"))).toEqual(await readFile(photo));
+    expect(written).toEqual([join(dir, "index.html"), join(dir, "masks/abc.mp4")]);
     await expect(
       writeRenderProject({ dir, html: "<html></html>", assets, files: FILES }),
     ).rejects.toThrow("render: no file for mask masks/abc.mp4");

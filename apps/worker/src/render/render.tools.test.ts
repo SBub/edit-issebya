@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { type Edit, ISSEBYA_PRESET, resolveTimeline } from "@edit-issebya/edit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -289,15 +288,11 @@ describe("the real render", () => {
   });
 });
 
-// A photo, then a big word, behind the speaker over the whole reel's speech,
+// A VISUAL, then a big word, behind the speaker over the whole reel's speech,
 // each with its real mask (MODNet on the retimed source, the model installed
 // by models:install; the fixture clip has no person, so the mask is black and
 // the item shows whole).
 describe("the real render behind the speaker", () => {
-  const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
-  const SAMPLE_PHOTO = fileURLToPath(
-    new URL("../../../../fixtures/photos/sample.jpg", import.meta.url),
-  );
   const span = { start: { word: "w0001" }, end: { word: "w0010", edge: "end" as const } };
 
   async function renderBehind(name: string, item: NonNullable<Edit["tracks"]["behind"]>[number]) {
@@ -316,7 +311,6 @@ describe("the real render behind the speaker", () => {
     return render(name, behind, dir, {
       footage: SOURCE,
       masks,
-      photos: { [`photos/${PHOTO}.jpg`]: SAMPLE_PHOTO },
     });
   }
 
@@ -342,63 +336,44 @@ describe("the real render behind the speaker", () => {
     return Number(match[1]);
   }
 
-  // SSIM of a render's spot at 1.3 s against the sample photo scaled to
-  // cover the spot, centred.
-  async function photoSsim(
-    rendered: string,
-    box: string,
-    spot: { left: number; right: number; top: number; bottom: number },
-  ): Promise<number> {
-    const width = spot.right - spot.left;
-    const height = spot.bottom - spot.top;
-    const stderr = await ffmpegStderr([
-      "-ss",
-      "1.3",
-      "-i",
-      rendered,
-      "-i",
-      SAMPLE_PHOTO,
-      "-filter_complex",
-      `[0:v]trim=end_frame=1,crop=${box},format=yuv420p[x];[1:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},format=yuv420p[y];[x][y]ssim`,
-      "-f",
-      "null",
-      "-",
-    ]);
-    const match = /All:([\d.]+)/.exec(stderr);
-    if (!match) throw new Error("no SSIM");
-    console.log(`behind photo: spot against the photo SSIM ${match[1]}`);
-    return Number(match[1]);
-  }
-
-  it("renders a photo in its spot and a big word, each changing only its own part", async () => {
-    const photo = await renderBehind("behind-photo", {
-      id: "behind-photo",
-      kind: "photo",
-      photo_id: PHOTO,
-      spot: "left",
+  it("renders a VISUAL in its box and a big word, each changing only its own part", async () => {
+    // A card's box as the layout engine would set it beside the speaker.
+    const left = { left: 40, right: 400, top: 560, bottom: 1010 };
+    const visual = await renderBehind("behind-visual", {
+      id: "behind-visual",
+      kind: "visual",
+      description: "a kitchen",
+      box: {
+        x: left.left,
+        y: left.top,
+        width: left.right - left.left,
+        height: left.bottom - left.top,
+      },
       ...span,
     });
+    // Where the layout engine would have set the word: its top left corner, above
+    // the bottom band the checks below keep clear.
     const word = await renderBehind("behind-word", {
       id: "behind-word",
       kind: "word",
       text: "WORK",
+      position: { x: 200, y: 800 },
+      size: 160,
       ...span,
     });
-    for (const rendered of [photo, word]) {
+    for (const rendered of [visual, word]) {
       expect(await streamInfo(rendered.output)).toMatchObject({
         codec_name: "h264",
         width: 1080,
         height: 1920,
       });
     }
-    const left = ISSEBYA_PRESET.behind.spots.left;
     const spot = `${left.right - left.left}:${left.bottom - left.top}:${left.left}:${left.top}`;
-    // The spot shows the photo, covering it exactly (the clip has no person,
-    // so the black mask keeps all of it).
-    expect(await photoSsim(photo.output, spot, left)).toBeGreaterThan(0.8);
-    expect(await boxSsim(photo.output, silent.output, spot)).toBeLessThan(0.8);
+    // The spot shows the VISUAL's card: a thin stroke frame over the footage, so
+    // the spot stays close to the silent reel (0.967 measured) yet is not identical.
+    expect(await boxSsim(visual.output, silent.output, spot)).toBeLessThan(0.99);
     // The bottom of the frame, below every spot and the word, is untouched.
-    expect(await boxSsim(photo.output, silent.output, "1080:500:0:1400")).toBeGreaterThan(0.95);
+    expect(await boxSsim(visual.output, silent.output, "1080:500:0:1400")).toBeGreaterThan(0.95);
     expect(await boxSsim(word.output, silent.output, "1080:500:0:1400")).toBeGreaterThan(0.95);
   });
 });

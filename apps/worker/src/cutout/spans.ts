@@ -46,19 +46,14 @@ export function plannedMasks(edit: Edit, transcript: Transcript): EditMask[] {
   }));
 }
 
-// The edit naming its planned masks (none when every item is a photo in
-// front of the speaker) and its photos (sorted), or neither without
-// behind-track items: what a saved version's inputs say.
+// The edit naming its planned masks (none when every item is a VISUAL in front
+// of the speaker), or the edit without masks when it has no behind-track
+// items: what a saved version's inputs say.
 export function withMasks(edit: Edit, transcript: Transcript): Edit {
   const inputs = { ...edit.inputs };
   delete inputs.masks;
-  delete inputs.photos;
   const items = edit.tracks.behind ?? [];
   if (items.length === 0) return { ...edit, inputs };
-  const photos = [
-    ...new Set(items.flatMap((item) => (item.kind === "photo" ? [item.photo_id] : []))),
-  ].sort();
-  // Photos in front of the speaker only: no mask at all.
   const masks = plannedMasks(edit, transcript);
-  return { ...edit, inputs: { ...inputs, ...(masks.length > 0 ? { masks } : {}), photos } };
+  return { ...edit, inputs: { ...inputs, ...(masks.length > 0 ? { masks } : {}) } };
 }

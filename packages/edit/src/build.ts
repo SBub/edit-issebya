@@ -1,72 +1,70 @@
-import {
-  type BigWordBox,
-  bigWordLayout,
-  maskSpans,
-  needsCutout,
-  photoBox,
-  placedBigWord,
-} from "./behind.ts";
+import { type BigWordBox, maskSpans, placedBigWord, visualBox } from "./behind.ts";
 import { type Check, runChecks } from "./checks.ts";
-import { isLightText } from "./contrast.ts";
+import type { EngineNote } from "./engine-note.ts";
+import { type TextBox } from "./engine-space.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
-import { type TextBox, layoutText } from "./layout.ts";
+import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
+import { textLines } from "./lines.ts";
 import { FONT_KEYS, type Preset } from "./preset.ts";
+import { STYLES, VARIANTS } from "./variants.ts";
 import type { BehindItem, Edit, EditMask, EditRef } from "./schema.ts";
 import { resolveSpans, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
-import {
-  hiddenCaptionIds,
-  levelBoxes,
-  motionSeconds,
-  transitionBackground,
-} from "./transitions.ts";
+import { hiddenCaptionIds, levelBoxes } from "./transitions.ts";
 
-export type AssetRole = "footage" | "font" | "sound" | "mask" | "photo";
+export type AssetRole = "footage" | "font" | "sound" | "mask" | "visual";
 
 // A file the page references: the footage and the masks are stored outputs
-// (by producer), a photo is a library photo (by id), fonts and sounds are
-// packages/edit's assets. A stored version naming the old whole-clip cut-out
-// builds without it: no cut-out video, no cut-out asset.
+// (by producer), fonts, sounds and the stand-in pictures are packages/edit's assets.
 export interface BuildAsset {
   path: string;
   role: AssetRole;
   ref: EditRef | null;
-  photoId?: string;
 }
 
-// Where the page looks for a mask and a photo, inside the project.
+// Where the page looks for a mask, inside the project.
 export function maskPath(mask: Pick<EditMask, "fingerprint">): string {
   return `masks/${mask.fingerprint}.mp4`;
 }
 
-export function photoPath(photoId: string): string {
-  return `photos/${photoId}.jpg`;
-}
-
-// A library photo's rule: behind the speaker or in front of them.
-const PHOTO_STYLE = "      .photo { position: absolute; object-fit: cover; }";
 // A VISUAL: an empty white stroke frame (transparent inside), a corner card of
 // the preset's stroke width.
 const visualStyle = (stroke: number) =>
   `      .visual { position: absolute; box-sizing: border-box; border: ${stroke}px solid #ffffff; background: transparent; }`;
 
-// The extra rules a page with behind items needs: the composite's groups and
-// blends, the photo and the big word.
+// A VISUAL with its stand-in picture: the picture fills the card's box exactly
+// (the box has the picture's aspect, so nothing is cropped), and the stroke is
+// drawn over it as the card's own frame.
+const visualPictureStyle = (stroke: number) => [
+  "      .visual-picture { position: absolute; box-sizing: border-box; }",
+  "      .visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }",
+  `      .visual-picture::after { content: ""; position: absolute; inset: 0; border: ${stroke}px solid #ffffff; box-sizing: border-box; }`,
+];
+
+// The extra rules a page with a cut-out needs: the composite's groups and
+// blends.
 const BEHIND_STYLE = [
   "      .cutout { position: absolute; inset: 0; isolation: isolate; }",
   "      .cutout-front { position: absolute; inset: 0; isolation: isolate; mix-blend-mode: plus-lighter; }",
   "      .mask-under { filter: invert(1); mix-blend-mode: multiply; }",
   "      .mask-front { mix-blend-mode: multiply; }",
-  PHOTO_STYLE,
-  "      .word { position: absolute; line-height: 1; white-space: nowrap; }",
 ];
+
+// A big word's class, on any page with one.
+const WORD_STYLE = "      .word { position: absolute; line-height: 1; white-space: nowrap; }";
 
 export interface BuildResult {
   html: string;
   assets: BuildAsset[];
   checks: Check[];
+}
+
+export interface BuildOptions {
+  // The engine's record of the placement: its kept overlaps are the only
+  // text overlaps the checks excuse.
+  engineRecord?: readonly EngineNote[];
 }
 
 // The GSAP build the reference reel was made with, pinned: HyperFrames drives
@@ -87,10 +85,11 @@ export function build(
   headTrack: HeadTrack,
   preset: Preset,
   measurer: Measurer,
+  options: BuildOptions = {},
 ): BuildResult {
   const resolved = resolveTimeline(edit, transcript);
-  // A transition's own captions show only as its levels, never in their place.
-  const hidden = hiddenCaptionIds(edit);
+  // A caption a text shows is left out only while that text is on screen.
+  const hidden = hiddenCaptionIds(edit, resolved);
   const shownEdit =
     hidden.size === 0
       ? edit
@@ -101,7 +100,7 @@ export function build(
             captions: edit.tracks.captions.filter((caption) => !hidden.has(caption.id)),
           },
         };
-  const boxes = layoutText(shownEdit, resolved, transcript, headTrack, preset, measurer);
+  const boxes = placedText(shownEdit, resolved, transcript, preset, measurer);
   const levels = levelBoxes(
     edit,
     resolved,
@@ -113,12 +112,10 @@ export function build(
   const bigWords = new Map<string, BigWordBox>();
   for (const item of behindItems) {
     if (item.kind !== "word") continue;
-    bigWords.set(
-      item.id,
-      item.position && item.size
-        ? placedBigWord(item, item.position, item.size, preset, measurer)
-        : bigWordLayout(item, resolved.get(item.id)!, headTrack, preset, measurer),
-    );
+    if (!item.position || !item.size) {
+      throw new Error(`build: big word ${item.id} has no position; place the edit first`);
+    }
+    bigWords.set(item.id, placedBigWord(item, item.position, item.size, measurer));
   }
   const checks = runChecks(
     edit,
@@ -129,6 +126,7 @@ export function build(
     preset,
     [...bigWords.values()],
     levels,
+    options.engineRecord,
   );
   const spans = maskSpans(edit, transcript, preset);
   const masks = spans.map((maskSpan) => {
@@ -141,8 +139,11 @@ export function build(
     return mask;
   });
   const span = (id: string) => resolved.get(id)!;
-  // Photos in front of the speaker: over the footage, no cut-out.
-  const frontPhotos = behindItems.filter((item) => !needsCutout(item));
+  // VISUALs, and the big words the head cannot reach: in front of the speaker,
+  // over the footage, no cut-out.
+  const overFootage = behindItems.filter(
+    (item) => item.kind === "visual" || (item.kind === "word" && item.cutout === false),
+  );
   const duration = sec(edit.duration);
   const { tracks } = edit;
   const js: string[] = [];
@@ -162,10 +163,15 @@ export function build(
       const font = preset.fonts[key];
       return `      .f-${key} { font-family: "${font.family}", sans-serif; font-weight: ${font.weight}; }`;
     }),
-    ...(spans.length > 0 ? BEHIND_STYLE : frontPhotos.length > 0 ? [PHOTO_STYLE] : []),
-    // A visual's frame: only on a page that has one (older pages are unchanged).
+    ...(spans.length > 0 ? BEHIND_STYLE : []),
+    ...(behindItems.some((item) => item.kind === "word") ? [WORD_STYLE] : []),
+    // A visual's frame: only on a page that has one, and its picture's only on a
+    // page with a picture.
     ...(behindItems.some((item) => item.kind === "visual")
-      ? [visualStyle(preset.behind.card.stroke)]
+      ? [visualStyle(VARIANTS["visual/card"].style.stroke.px)]
+      : []),
+    ...(behindItems.some((item) => item.kind === "visual" && item.image !== undefined)
+      ? visualPictureStyle(VARIANTS["visual/card"].style.stroke.px)
       : []),
     ...(levels.length > 0
       ? ["      .level { position: absolute; line-height: 1; white-space: nowrap; opacity: 0; }"]
@@ -253,10 +259,12 @@ export function build(
     body.push("        </div>");
     body.push("      </div>");
   }
-  // In front of the speaker: above the footage and the composites, under
-  // transitions and text, each with its own hard cut in and out.
-  for (const item of frontPhotos) {
-    body.push(`      ${behindElement(item, span(item.id), undefined, preset, "30")}`);
+  // Above the footage and the composites, under transitions and text, each
+  // with its own hard cut in and out. A VISUAL's card is track 30; a big word
+  // with no cut-out is front text, drawn above the cards (track 31, decision 24).
+  for (const item of overFootage) {
+    const track = item.kind === "word" ? "31" : "30";
+    body.push(`      ${behindElement(item, span(item.id), bigWords.get(item.id), preset, track)}`);
   }
 
   const { caption } = preset;
@@ -265,7 +273,7 @@ export function build(
   // its own word with the caption's rise.
   for (const [index, item] of tracks.transitions.entries()) {
     const kind = preset.transitions[item.type];
-    const seconds = motionSeconds(item, preset);
+    const seconds = kind.seconds;
     const { start, end } = span(item.id);
     const height = kind.layer.bottom - kind.layer.top;
     const hidden = kind.motion === "fade" ? "opacity: 0" : `transform: translateY(${height}px)`;
@@ -274,7 +282,6 @@ export function build(
       `top: ${px(kind.layer.top)}px`,
       `width: ${px(kind.layer.right - kind.layer.left)}px`,
       `height: ${px(height)}px`,
-      `background: ${transitionBackground(kind, preset, item.color)}`,
       hidden,
       ...(item.style ? [inlineStyle(item.style)] : []),
     ].join("; ");
@@ -307,22 +314,27 @@ export function build(
           ])}>${level.lines.map(escapeHtml).join("<br />")}</div>`,
         );
         js.push(
-          `tl.fromTo(${selector(level.itemId)}, { opacity: 0, y: ${caption.rise} }, { opacity: 1, y: 0, duration: ${num(caption.inSeconds)}, ease: "${caption.inEase}" }, ${num(level.start)});`,
+          `tl.fromTo(${selector(level.itemId)}, { opacity: 0, y: ${caption.rise} }, { opacity: 1, y: 0, duration: ${num(level.reveal)}, ease: "${caption.inEase}" }, ${num(level.start)});`,
         );
       }
       body.push("      </div>");
     }
-    const out = Math.max(end - seconds, start);
+    // The out-fade runs over `seconds` before the layer's end, never inside the
+    // phrase's spoken time: a layer the engine clipped at the next text's start
+    // (`engine.ts`) fades over the time left, and a hard cut where it has none.
+    const lastWord = transcript.words.find((word) => word.id === item.words!.at(-1))!;
+    const out = Math.min(Math.max(end - seconds, start, lastWord.end), end);
+    const fade = num(end - out);
     const id = selector(item.id);
     if (kind.motion === "fade") {
       js.push(
         `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
-        `tl.to(${id}, { opacity: 0, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
+        `tl.to(${id}, { opacity: 0, duration: ${fade}, ease: "${kind.ease}" }, ${num(out)});`,
       );
     } else {
       js.push(
         `tl.fromTo(${id}, { y: ${height} }, { y: 0, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(start)});`,
-        `tl.to(${id}, { y: ${height}, duration: ${num(seconds)}, ease: "${kind.ease}" }, ${num(out)});`,
+        `tl.to(${id}, { y: ${height}, duration: ${fade}, ease: "${kind.ease}" }, ${num(out)});`,
       );
     }
   }
@@ -347,7 +359,6 @@ export function build(
       `font-size: ${px(box.size)}px`,
       `color: ${box.color}`,
       ...(box.lines.length > 1 && box.kind !== "hook" ? ["text-align: center"] : []),
-      ...(box.shadow ? [`text-shadow: ${textShadow(box.color, box.shadow, preset)}`] : []),
       ...(box.style ? [inlineStyle(box.style)] : []),
     ].join("; ");
     body.push(
@@ -418,10 +429,9 @@ export function build(
   return { html, assets: assetsOf(edit, preset, masks), checks };
 }
 
-// One behind-track item as its element: a photo exactly covering its box
-// (its spot in a version saved before the engine set one), or the big word at
-// its measured size. Its own start and duration are the hard cut in and out;
-// nothing animates it.
+// One behind-track item as its element: a VISUAL exactly covering its box, or
+// the big word at its measured size. Its own start and duration are the hard
+// cut in and out; nothing animates it.
 function behindElement(
   item: BehindItem,
   { start, end }: { start: number; end: number },
@@ -436,8 +446,7 @@ function behindElement(
   ] as const;
   const extra = item.style ? [inlineStyle(item.style)] : [];
   if (item.kind === "visual") {
-    // An empty white stroke frame: no picture, no text, no fill.
-    const box = photoBox(item, preset);
+    const box = visualBox(item);
     const css = [
       `left: ${px(box.left)}px`,
       `top: ${px(box.top)}px`,
@@ -445,6 +454,23 @@ function behindElement(
       `height: ${px(box.bottom - box.top)}px`,
       ...extra,
     ].join("; ");
+    if (item.image !== undefined) {
+      // The stand-in picture, filling the box; the stroke is its frame.
+      return [
+        `<div${attrs([
+          ["id", item.id],
+          ["class", "clip visual-picture"],
+          ...timing,
+          ["style", css],
+        ])}>`,
+        `  <img${attrs([
+          ["src", item.image],
+          ["alt", ""],
+        ])}>`,
+        "</div>",
+      ].join("\n");
+    }
+    // An empty white stroke frame: no picture, no text, no fill.
     return `<div${attrs([
       ["id", item.id],
       ["class", "clip visual"],
@@ -453,31 +479,12 @@ function behindElement(
       ["style", css],
     ])}></div>`;
   }
-  if (item.kind === "photo") {
-    const box = photoBox(item, preset);
-    const css = [
-      `left: ${px(box.left)}px`,
-      `top: ${px(box.top)}px`,
-      `width: ${px(box.right - box.left)}px`,
-      `height: ${px(box.bottom - box.top)}px`,
-      ...extra,
-    ].join("; ");
-    return `<img${attrs([
-      ["id", item.id],
-      ["class", "clip photo"],
-      ["src", photoPath(item.photo_id)],
-      ["alt", ""],
-      ...timing,
-      ["style", css],
-    ])} />`;
-  }
   const box = word!;
   const css = [
     `left: ${px(box.x)}px`,
     `top: ${px(box.y)}px`,
     `font-size: ${px(box.size)}px`,
     `color: ${box.color}`,
-    ...(item.shadow ? [`text-shadow: ${textShadow(box.color, item.shadow, preset)}`] : []),
     ...extra,
   ].join("; ");
   return `<div${attrs([
@@ -488,13 +495,49 @@ function behindElement(
   ])}>${escapeHtml(box.text)}</div>`;
 }
 
-// Legacy, for versions saved before 2026-11-04 only (the engine never writes
-// `shadow` now): the preset's soft shadow at a stored level, dark under a
-// light text, light under a dark one, so old versions render unchanged.
-function textShadow(color: string, level: 1 | 2, preset: Preset): string {
-  const { shadows } = preset.readability;
-  const [soft, strong] = isLightText(color) ? shadows.dark : shadows.light;
-  return level === 1 ? soft : strong;
+// The text the page shows in its own place, each at the position the layout
+// engine set: every caption shown there and every overlay (an accent or the
+// hook). Its width is HarfBuzz's. A shown text with no position is an error.
+function placedText(
+  edit: Edit,
+  resolved: ReadonlyMap<string, { start: number; end: number }>,
+  transcript: Transcript,
+  preset: Preset,
+  measurer: Measurer,
+): TextBox[] {
+  const items = [
+    ...edit.tracks.captions.map((item) => ({ item, kind: "caption" as const })),
+    ...edit.tracks.overlays.map((item) => ({ item, kind: item.kind })),
+  ];
+  return items.map(({ item, kind }): TextBox => {
+    if (!item.position)
+      throw new Error(`build: ${kind} ${item.id} has no position; place the edit first`);
+    const font = item.font ?? (kind === "caption" ? STYLES.caption.font : STYLES.accent.font);
+    // An item with no size takes its font's style base.
+    const size = item.size ?? (font === "primary" ? STYLES.accent.base : STYLES.caption.base);
+    const text = item.text ?? wordsText(item.words ?? [], transcript, preset);
+    const lines = textLines(text, item.breaks);
+    const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
+    const { x, y, align } = item.position;
+    const left = align === "left" ? x : align === "right" ? x - width : x - width / 2;
+    const span = resolved.get(item.id)!;
+    return {
+      itemId: item.id,
+      kind,
+      text,
+      lines,
+      font,
+      size,
+      color: item.color ?? (kind === "caption" ? STYLES.caption.color : STYLES.accent.color),
+      style: item.style,
+      start: span.start,
+      end: span.end,
+      x: left,
+      y,
+      width,
+      height: size * lines.length,
+    };
+  });
 }
 
 function inlineStyle(style: Record<string, string>): string {
@@ -510,13 +553,6 @@ function assetsOf(edit: Edit, preset: Preset, masks: readonly EditMask[]): Build
     const { step, fingerprint, file } = mask;
     assets.push({ path: maskPath(mask), role: "mask", ref: { step, fingerprint, file } });
   }
-  const photoIds = new Set<string>();
-  for (const item of edit.tracks.behind ?? []) {
-    if (item.kind === "photo") photoIds.add(item.photo_id);
-  }
-  for (const photoId of photoIds) {
-    assets.push({ path: photoPath(photoId), role: "photo", ref: null, photoId });
-  }
   if (edit.tracks.footage.length > 0) {
     assets.push({ path: edit.inputs.footage.file, role: "footage", ref: edit.inputs.footage });
   }
@@ -526,6 +562,15 @@ function assetsOf(edit: Edit, preset: Preset, masks: readonly EditMask[]): Build
   }
   for (const key of new Set(edit.tracks.sounds.map((item) => item.sound))) {
     assets.push({ path: preset.sounds[key].file, role: "sound", ref: null });
+  }
+  // Each stand-in picture a visual shows, once.
+  const pictures = new Set(
+    (edit.tracks.behind ?? []).flatMap((item) =>
+      item.kind === "visual" && item.image !== undefined ? [item.image] : [],
+    ),
+  );
+  for (const file of pictures) {
+    assets.push({ path: file, role: "visual", ref: null });
   }
   return assets.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }

@@ -63,8 +63,8 @@ describe("refusalReason", () => {
   });
 
   it("joins the first two distinct words, capitalised", () => {
-    expect(refusalReason(["behind-caption", "safe-box", "frame"])).toBe(
-      "A photo would cover your captions and something would sit outside the safe area",
+    expect(refusalReason(["same-text", "safe-box", "face"])).toBe(
+      "The same word would show twice on screen and something would sit outside the safe area",
     );
     expect(refusalReason(["answer-json", "answer-schema"])).toBe(
       "The AI's answer could not be used",

@@ -79,8 +79,8 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
   version among them, so a HyperFrames upgrade re-runs it). Output `head-track.json` (format
   unchanged). Zero frames or a trailing partial frame fails the step.
 - The on-demand cut-out (`apps/worker/src/cutout/`): `ensure-cutouts.ts` makes the person mask of
-  each padded span of an edit's `behind` items (big words and photos behind the speaker, never a
-  photo in front) that is not stored yet, in one measured `cutout` step, one tool call per span.
+  each padded span of an edit's big words (`behind` items behind the speaker; a VISUAL needs none)
+  that is not stored yet, in one measured `cutout` step, one tool call per span.
   The tool is MODNet portrait matting (the official `modnet_photographic_portrait_matting.onnx` of
   ZHKKKe/MODNet, Apache 2.0 code and weights) run through `onnxruntime-node` on the CPU, on any OS
   (Linux and Docker included): `mask-tool.ts` (`maskToolCall`, `MASK_TOOL_VERSION` 2) runs this
@@ -163,12 +163,11 @@ Every output carries a tag, so the slimming (`app_docs/storage.md`) can act on i
 cheaply and stays; `rebuildable` is heavy and may be deleted, since its step re-runs from the
 fingerprint. Tags are not part of a fingerprint.
 
-- `rebuildable`: `converted.mp4`, retime's `source.mp4`, the on-demand `backgrounds` step's
-  `backgrounds.json` (the footage's luminance grid for readable text, fingerprint of the footage ref,
-  `BACKGROUND_SETTINGS` and a version, made by `ensureBackgrounds` before `first_version` and
-  `decide`, a hit when stored) and the on-demand `cutout` step's
+- `rebuildable`: `converted.mp4`, retime's `source.mp4` and the on-demand `cutout` step's
   `mask.mp4` (`ON_DEMAND_OUTPUTS` in `definition.ts`, read by `retentionOf`): the next export,
-  restore or Start over makes it again.
+  restore or Start over makes it again. The retired `backgrounds` step's `backgrounds.json` (removed
+  with readability) is `rebuildable` too, listed under `RETIRED_OUTPUTS`, so old reels' copies are
+  still classified and slimmed; nothing makes it again.
 - `kept`: `transcript.json` (transcribe and retime), `retime.json`, `envelope.json`,
   `head-track.json`, `footage-preview.mp4`.
 - Retired outputs (`remove_background`'s `subject.webm`, rebuildable, and `preview_copies`'
@@ -286,7 +285,7 @@ inputs name the old retime outputs) does not re-run retime.
   `cutout/mask-tool.tools.test.ts` runs the real MODNet entry (the installed model, never a
   download) on 3 seconds of `short-person.mp4` (H.264 1080x1920 `yuv420p`, video range BT.709, 90
   frames, 90 progress lines, the face white and a corner black); `render/render.tools.test.ts`
-  renders a photo and a big word behind the speaker with real MODNet masks. The owner's Mac only,
+  renders a big word behind the speaker with a real MODNet mask. The owner's Mac only,
   never CI.
 - Unit: `cutout/matte.test.ts` (working size, the model input, the gray matte, the temporal median,
   the frame count and the two ffmpeg calls), `cutout/modnet-model.test.ts` (the model's place, the

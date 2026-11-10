@@ -2,7 +2,7 @@ import * as hb from "harfbuzzjs";
 import golosUrl from "../../assets/fonts/GolosText-Bold.ttf?url";
 import ralewayUrl from "../../assets/fonts/Raleway-Light.ttf?url";
 import { type Measurer, createMeasurer } from "../measure.ts";
-import { FONT_KEYS, type FontKey, CLEAN_PRESET } from "../preset.ts";
+import { FONT_KEYS, type FontKey, ISSEBYA_PRESET } from "../preset.ts";
 
 // The same font files as the Node run, served by the test server.
 const URLS: Record<string, string> = {
@@ -15,7 +15,7 @@ let fonts: Promise<Record<FontKey, Uint8Array>> | undefined;
 function loadFonts(): Promise<Record<FontKey, Uint8Array>> {
   fonts ??= Promise.all(
     FONT_KEYS.map(async (key) => {
-      const file = CLEAN_PRESET.fonts[key].file;
+      const file = ISSEBYA_PRESET.fonts[key].file;
       const url = URLS[file];
       if (!url) throw new Error(`no test URL for ${file}`);
       const response = await fetch(url);
