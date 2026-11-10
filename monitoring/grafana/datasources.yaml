@@ -1,0 +1,19 @@
+# Grafana data source provisioning for the local monitoring container
+# (docker-compose.monitoring.yml mounts this file beside the image's own grafana-datasources.yaml,
+# which is left as it is). One data source: the Infinity plugin (installed by GF_PLUGINS_PREINSTALL
+# in the compose file) reading Tempo's HTTP API inside the same container. The "Worker resources"
+# dashboard asks it for a reel's whole trace as JSON (GET /api/traces/<trace id>) and turns span
+# attributes into table columns, which the Tempo data source cannot do (app_docs/measurement.md).
+apiVersion: 1
+
+datasources:
+  - name: Tempo trace JSON
+    type: yesoreyeram-infinity-datasource
+    uid: tempo-trace-json
+    # Tempo's HTTP port in the otel-lgtm container (its tempo-config.yaml); no host port, no login.
+    url: http://127.0.0.1:3200
+    editable: false
+    jsonData:
+      # The only host a query of this data source may call.
+      allowedHosts:
+        - http://127.0.0.1:3200

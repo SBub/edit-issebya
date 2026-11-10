@@ -16,6 +16,17 @@ services:
       # OTLP over HTTP: the worker posts traces to /v1/traces and logs to /v1/logs here.
       # 4317 (gRPC) is not published; the worker speaks HTTP.
       - "127.0.0.1:4318:4318"
+    environment:
+      # The Infinity data source plugin, a pinned version (grafana.com/grafana/plugins; its
+      # dependency range covers the image's Grafana 13.3.0). Grafana downloads it from grafana.com
+      # in the background after it starts (about 25 seconds on the first start), into
+      # /data/grafana/plugins on the volume below, so the network is needed once. Without the
+      # network the container still runs and records; only the dashboard's trace tables wait.
+      # Not GF_PLUGINS_PREINSTALL_SYNC: a failed download then stops Grafana and the container.
+      # The image appends its own plugin to this list (run-grafana.sh).
+      # The "Worker resources" dashboard reads a reel's whole trace through the plugin
+      # (monitoring/grafana/datasources.yaml).
+      GF_PLUGINS_PREINSTALL: yesoreyeram-infinity-datasource@4.1.6
     # The backends keep their data under /data (Loki, Tempo, Prometheus and Grafana each have a
     # folder there), so it survives a restart. `down -v` deletes it.
     volumes:
@@ -26,6 +37,8 @@ services:
       # folder of dashboard JSON files it loads (monitoring/grafana/dashboards).
       - ./monitoring/grafana/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/edit-issebya.yaml:ro
       - ./monitoring/grafana/dashboards:/etc/edit-issebya/dashboards:ro
+      # One more data source, beside the image's own: Tempo's trace JSON through the Infinity plugin.
+      - ./monitoring/grafana/datasources.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/edit-issebya.yaml:ro
 
   # Container metrics (CPU, throttling, memory, OOM kills, disk and network bytes) for every
   # container of the machine, the worker and the Supabase database among them. Prometheus in the

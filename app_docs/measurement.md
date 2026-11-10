@@ -189,7 +189,7 @@ every service runs with the settings of the checkout's compose file (Compose's h
 the data volume is kept. The files mounted from `monitoring/` are part of the settings by their path,
 so a checkout in another folder recreates the otel-lgtm container with its own files.
 
-Three files of the repository are mounted into the otel-lgtm container:
+Four files of the repository are mounted into the otel-lgtm container:
 
 - `monitoring/prometheus.yaml` over `/otel-lgtm/prometheus.yaml`: the image's own Prometheus config
   (0.39.0, unchanged) plus one `scrape_configs` job, cAdvisor. On an image upgrade, copy the new
@@ -198,6 +198,17 @@ Three files of the repository are mounted into the otel-lgtm container:
   it loads, `monitoring/grafana/dashboards/`. Every dashboard JSON file in that folder is in Grafana
   after start-up and re-read every 10 seconds, and survives a recreated container. A change made in
   the Grafana UI is not saved to the file: export the JSON and commit it.
+- `monitoring/grafana/datasources.yaml`, beside the image's own data sources: one more data source,
+  "Tempo trace JSON" (uid `tempo-trace-json`), which is the Infinity plugin reading Tempo's HTTP API
+  inside the container (`http://127.0.0.1:3200`, the only host it may call).
+
+The Infinity plugin (`yesoreyeram-infinity-datasource`) is not in the image. The compose file names
+it at a pinned version in `GF_PLUGINS_PREINSTALL`; Grafana downloads it from grafana.com in the
+background after it starts (about 25 seconds on the first start) and keeps it in
+`/data/grafana/plugins` on the data volume, so the network is needed once. Without the network the
+container runs and records as before, and only the four dashboard panels that read through the
+plugin show an error until a later start downloads it. The image's Drilldown apps are downloaded
+the same way.
 
 After starting the stack, `yarn dev:studio` waits up to 60 seconds for Grafana to answer. If it does
 not (or the container has exited), it recreates the container once with `up -d --force-recreate`, which
@@ -486,14 +497,15 @@ The dashboard, "Worker resources" (`monitoring/grafana/dashboards/worker-resourc
    line, memory with the VM's total as the dashed line, network (received up, sent down), disk (read
    up, written down), waiting and throttling, OOM kills; then the database container's CPU, disk
    writes and disk waiting.
-4. "Steps on the metrics' time axis": one block per step of the reel, from its start to its end, on
-   the same time axis as the panels above (the crosshair is shared). Read a step's resources straight
-   above its block.
-5. "Per step": one row per `step` span with its wall time, CPU time, average cores
-   (`step.cpu_ms / step.wall_ms`), peak memory and bytes in and out: the step row's own measurements,
-   read from the span (no database connection from Grafana). "Jobs": the queue wait
+4. "Steps on the metrics' time axis": one row per step name and one bar per run of that step, from
+   its start to its end, on the same time axis as the panels above (the crosshair is shared). Read a
+   step's resources straight above its bar. A step that runs inside another (`cutout` inside
+   `decide`) has its own row.
+5. "Per step": one row per `step` span with its start and end, its wall time, CPU time, average
+   cores (`step.cpu_ms / step.wall_ms`), peak memory and bytes in and out: the step row's own
+   measurements, read from the span (no database connection from Grafana). "Jobs": the queue wait
    (`job.queue_wait_ms`) and the run time of each job. "R2 reads and writes": each transfer's bytes,
-   time and speed.
+   time and speed (bytes divided by the span's duration).
 6. "The reel's trace": the whole trace, as in Explore.
 
 How to read a step:
@@ -508,9 +520,15 @@ How to read a step:
 | Low worker CPU, busy Postgres CPU or Postgres disk waiting  | the database                        |
 | Low everything, a long `chat` span                          | the AI call                         |
 
-The tables show at most 100 spans of a reel in the time range (Tempo's limit per trace); narrow the
-time range for a reel with many jobs. A step colour on the timeline comes from the dashboard's list
-of step names (`resource-dashboard.test.ts` fails when a step name has none).
+The timeline and the three tables read the reel's whole trace by id, never a search: the "Tempo
+trace JSON" data source gets `/api/traces/<trace id>` from Tempo, and a JSONata expression in each
+panel (`root_selector`) keeps the spans it wants and turns their attributes into columns. So the
+tables show every span of the reel whatever the time range is (the time range only moves the
+timeline and the metric panels), with no limit on the number of spans. An empty or unknown `reel`
+shows a 404 error on the four panels. On the timeline each step sends two rows, its name at the
+start and `idle` at the end (drawn transparent), and the rows are split by step name: a bar stops
+where the step stopped, not where the next one starts. A step colour on the timeline comes from the
+dashboard's list of step names (`resource-dashboard.test.ts` fails when a step name has none).
 
 ## Configuration
 
@@ -545,9 +563,11 @@ of step names (`resource-dashboard.test.ts` fails when a step name has none).
   failed call marked and rethrown unchanged, an aborted download not an error, no span for `head`,
   `list` and `delete`, no exporter). `telemetry.test.ts` (`job.queue_wait_ms`).
 - The resources dashboard: `resource-dashboard.test.ts` (the uid `yarn dev:studio` links to, the
-  container names against `compose.yaml` and `supabase/config.toml`, the two data sources, the
-  10-second query interval against the scrape interval, a colour per step name, the span attributes
-  it reads). The metrics themselves are checked by hand, see Notes.
+  container names against `compose.yaml` and `supabase/config.toml`, the three data sources, the
+  10-second query interval against the scrape interval, the Infinity plugin pinned and installed in
+  the background, the trace JSON data source on Tempo's port, the timeline and the three tables
+  reading the whole trace by id, each step's explicit end on the timeline and a row per step name, a
+  colour per step name, the span attributes it reads). The metrics themselves are checked by hand, see Notes.
 - Tool calls: `step-runner.test.ts` (`exec spans`: one span per call under the step, the row's CPU and
   peak equal to the calls', a script's name and subcommand with no path, the parent a call names, a
   non-zero exit, a spawn error, an abort, no exporter).
@@ -586,6 +606,9 @@ of step names (`resource-dashboard.test.ts` fails when a step name has none).
   cache step, the bytes and the outcome only.
 - Never let an `r2.*` span change a storage call: its answer and its error pass through unchanged.
 - Never read the container metrics as the Mac's: on a Mac they are the Docker VM's.
+- Never read a reel's spans for the dashboard with a TraceQL search: read the whole trace by id.
+- Never install a Grafana plugin without a pinned version, and never with
+  `GF_PLUGINS_PREINSTALL_SYNC`: a failed download then stops Grafana and the whole container.
 - Never use `latest` for a monitoring image, and never edit a provisioned dashboard only in the
   Grafana UI: the JSON file in `monitoring/grafana/dashboards/` is the source.
 - Never publish cAdvisor's port to the host: it reads every container of the machine.
@@ -598,6 +621,18 @@ of step names (`resource-dashboard.test.ts` fails when a step name has none).
 - The step names are the list in `apps/worker/src/step-names.ts`. `first_version` and `restore` run
   in-process, so their rows carry `wall_ms` only.
 - Group sampling is as fine as one second; the report's max RSS still bounds short single-process peaks.
+- A TraceQL search of a reel's trace misses spans: the trace sits in more than one Tempo block and the
+  search answers from some of them (on reel 80fd7cbe, the regex `name =~ "step .*"` found 9 of its 16
+  step spans, `name = "r2.put"` 19 of 20). Reading the trace by id returns all of it, but Grafana's
+  built-in transformations cannot turn a span's tag list into columns, hence the Infinity plugin.
+- The timeline's first form (one row, a null value at each step's end) drew each bar until the next
+  step's start on the owner's dashboard and hid `cutout` behind `decide`. The explicit `idle` state
+  and the row per step name replaced it.
+- The Infinity panels were checked by hand in a throwaway otel-lgtm container (same mounts and
+  plugin setting, another port) holding a copy of reel 80fd7cbe's trace: 16 step rows over both jobs,
+  2 jobs (queue waits 8799 ms and 221 ms), 40 R2 rows (20 `r2.put`), `cutout` ending inside `decide`.
+  A first start without the network keeps the container up with the background setting and stops it
+  with the synchronous one.
 - The trace's root is virtual; PostHog groups by trace id, so a reel opens as one timeline.
 - `app_docs/studio.md` (Worker, Live status) and `app_docs/analytics.md` (landing rules unchanged) are the
   neighbouring features this change touches.

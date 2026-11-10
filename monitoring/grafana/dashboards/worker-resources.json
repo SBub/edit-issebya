@@ -873,160 +873,79 @@
       "id": 11,
       "type": "state-timeline",
       "title": "Steps on the metrics' time axis",
-      "description": "Each block is one step of the chosen reel, from its start to its end, on the same time axis as the panels above (the crosshair is shared). Read a step's CPU, memory, network and disk straight above its block. A cache hit is too short to see.",
+      "description": "One row per step name of the chosen reel, one bar per run of that step from its start to its end, on the same time axis as the panels above (the crosshair is shared). Read a step's CPU, memory, network and disk straight above its bar. A step that runs inside another (cutout inside decide) has its own row. The bars come from the reel's whole trace, read by id; each end is an explicit idle state, so a bar stops where the step stopped. A cache hit is too short to see.",
       "datasource": {
-        "type": "tempo",
-        "uid": "tempo"
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "tempo-trace-json"
       },
       "gridPos": {
         "x": 0,
         "y": 15,
         "w": 24,
-        "h": 4
+        "h": 9
       },
       "targets": [
         {
           "datasource": {
-            "type": "tempo",
-            "uid": "tempo"
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "tempo-trace-json"
           },
           "refId": "A",
-          "queryType": "traceql",
-          "tableType": "spans",
-          "limit": 20,
-          "spss": 100,
-          "query": "{ trace:id = \"$reel\" && name =~ \"step .*\" }"
-        },
-        {
-          "datasource": {
-            "type": "tempo",
-            "uid": "tempo"
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "/api/traces/${reel}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
           },
-          "refId": "B",
-          "queryType": "traceql",
-          "tableType": "spans",
-          "limit": 20,
-          "spss": 100,
-          "query": "{ trace:id = \"$reel\" && name =~ \"step .*\" }"
+          "root_selector": "($a := function($s, $k) { $s.attributes[key = $k].value.* }; $n := function($s, $k) { $number($a($s, $k)) }; $ms := function($v) { $number($v) / 1000000 }; $steps := *.scopeSpans.spans[$match(name, /^step /)]; $append($map($steps, function($s) { { \"time\": $ms($s.startTimeUnixNano), \"step\": $s.name, \"state\": $s.name } }), $map($steps, function($s) { { \"time\": $ms($s.endTimeUnixNano), \"step\": $s.name, \"state\": \"idle\" } })))",
+          "columns": [
+            {
+              "selector": "time",
+              "text": "Time",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "step",
+              "text": "step",
+              "type": "string"
+            },
+            {
+              "selector": "state",
+              "text": "state",
+              "type": "string"
+            }
+          ]
         }
       ],
       "transformations": [
-        {
-          "id": "calculateField",
-          "filter": {
-            "id": "byRefId",
-            "options": "B"
-          },
-          "options": {
-            "mode": "binary",
-            "alias": "ms",
-            "binary": {
-              "left": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Duration"
-                }
-              },
-              "operator": "/",
-              "right": {
-                "fixed": "1000000"
-              }
-            },
-            "replaceFields": false
-          }
-        },
-        {
-          "id": "calculateField",
-          "filter": {
-            "id": "byRefId",
-            "options": "B"
-          },
-          "options": {
-            "mode": "binary",
-            "alias": "end",
-            "binary": {
-              "left": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Start time"
-                }
-              },
-              "operator": "+",
-              "right": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "ms"
-                }
-              }
-            },
-            "replaceFields": true
-          }
-        },
-        {
-          "id": "convertFieldType",
-          "filter": {
-            "id": "byRefId",
-            "options": "B"
-          },
-          "options": {
-            "conversions": [
-              {
-                "targetField": "end",
-                "destinationType": "time"
-              }
-            ],
-            "fields": {}
-          }
-        },
-        {
-          "id": "organize",
-          "filter": {
-            "id": "byRefId",
-            "options": "B"
-          },
-          "options": {
-            "renameByName": {
-              "end": "Start time"
-            }
-          }
-        },
-        {
-          "id": "organize",
-          "filter": {
-            "id": "byRefId",
-            "options": "A"
-          },
-          "options": {
-            "excludeByName": {
-              "traceIdHidden": true,
-              "traceService": true,
-              "traceName": true,
-              "spanID": true,
-              "Duration": true
-            },
-            "renameByName": {
-              "Name": "step"
-            }
-          }
-        },
-        {
-          "id": "merge",
-          "options": {}
-        },
         {
           "id": "sortBy",
           "options": {
             "sort": [
               {
-                "field": "Start time"
+                "field": "Time",
+                "desc": false
               }
             ]
+          }
+        },
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": ["step"],
+            "keepFields": false,
+            "naming": {
+              "asLabels": true
+            }
           }
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "displayName": "step",
+          "displayName": "${__field.labels.step}",
           "custom": {
             "fillOpacity": 75,
             "lineWidth": 0,
@@ -1091,6 +1010,11 @@
                 "step relayout": {
                   "color": "blue",
                   "index": 13
+                },
+                "idle": {
+                  "color": "transparent",
+                  "text": " ",
+                  "index": 14
                 }
               }
             }
@@ -1100,9 +1024,9 @@
       },
       "options": {
         "mergeValues": false,
-        "showValue": "auto",
+        "showValue": "never",
         "alignValue": "left",
-        "rowHeight": 0.9,
+        "rowHeight": 0.8,
         "legend": {
           "showLegend": false
         },
@@ -1115,61 +1039,101 @@
       "id": 12,
       "type": "table",
       "title": "Per step: time, cores, memory, bytes",
-      "description": "One row per step span of the chosen reel, oldest first. Wall time, CPU time, peak memory and bytes in and out are the step row's own measurements (the span's step.* attributes); average cores is CPU time divided by wall time: near the core count is CPU-bound, far under 1 means the step waited (network, disk, the database or the AI). In-process steps (first_version, restore) and cache hits have no CPU or memory. At most 100 step spans are shown.",
+      "description": "One row per step span of the chosen reel, oldest first, from the reel's whole trace read by id (every span, whatever the time range). Wall time, CPU time, peak memory and bytes in and out are the step row's own measurements (the span's step.* attributes); average cores is CPU time divided by wall time: near the core count is CPU-bound, far under 1 means the step waited (network, disk, the database or the AI). In-process steps (first_version, restore) and cache hits have no CPU or memory.",
       "datasource": {
-        "type": "tempo",
-        "uid": "tempo"
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "tempo-trace-json"
       },
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 24,
         "w": 24,
-        "h": 10
+        "h": 18
       },
       "targets": [
         {
           "datasource": {
-            "type": "tempo",
-            "uid": "tempo"
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "tempo-trace-json"
           },
           "refId": "A",
-          "queryType": "traceql",
-          "tableType": "spans",
-          "limit": 20,
-          "spss": 100,
-          "query": "{ trace:id = \"$reel\" && name =~ \"step .*\" } | select(span.step.wall_ms, span.step.cpu_ms, span.step.peak_rss_bytes, span.step.bytes_in, span.step.bytes_out, span.step.cache_hit)"
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "/api/traces/${reel}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "($a := function($s, $k) { $s.attributes[key = $k].value.* }; $n := function($s, $k) { $number($a($s, $k)) }; $ms := function($v) { $number($v) / 1000000 }; $map(*.scopeSpans.spans[$match(name, /^step /)], function($s) { { \"started\": $ms($s.startTimeUnixNano), \"ended\": $ms($s.endTimeUnixNano), \"step\": $s.name, \"span_ms\": $ms($s.endTimeUnixNano) - $ms($s.startTimeUnixNano), \"wall_ms\": $n($s, \"step.wall_ms\"), \"cpu_ms\": $n($s, \"step.cpu_ms\"), \"cores\": $n($s, \"step.cpu_ms\") / $n($s, \"step.wall_ms\"), \"peak_rss_bytes\": $n($s, \"step.peak_rss_bytes\"), \"bytes_in\": $n($s, \"step.bytes_in\"), \"bytes_out\": $n($s, \"step.bytes_out\"), \"cache_hit\": $a($s, \"step.cache_hit\") = true ? \"yes\" : \"\" } }))",
+          "columns": [
+            {
+              "selector": "started",
+              "text": "Started",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "ended",
+              "text": "Ended",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "step",
+              "text": "Step",
+              "type": "string"
+            },
+            {
+              "selector": "span_ms",
+              "text": "Span",
+              "type": "number"
+            },
+            {
+              "selector": "wall_ms",
+              "text": "Wall time",
+              "type": "number"
+            },
+            {
+              "selector": "cpu_ms",
+              "text": "CPU time",
+              "type": "number"
+            },
+            {
+              "selector": "cores",
+              "text": "Average cores",
+              "type": "number"
+            },
+            {
+              "selector": "peak_rss_bytes",
+              "text": "Peak memory",
+              "type": "number"
+            },
+            {
+              "selector": "bytes_in",
+              "text": "Bytes in",
+              "type": "number"
+            },
+            {
+              "selector": "bytes_out",
+              "text": "Bytes out",
+              "type": "number"
+            },
+            {
+              "selector": "cache_hit",
+              "text": "Cache hit",
+              "type": "string"
+            }
+          ]
         }
       ],
       "transformations": [
-        {
-          "id": "calculateField",
-          "options": {
-            "mode": "binary",
-            "alias": "Average cores",
-            "binary": {
-              "left": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "step.cpu_ms"
-                }
-              },
-              "operator": "/",
-              "right": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "step.wall_ms"
-                }
-              }
-            },
-            "replaceFields": false
-          }
-        },
         {
           "id": "sortBy",
           "options": {
             "sort": [
               {
-                "field": "Start time"
+                "field": "Started",
+                "desc": false
               }
             ]
           }
@@ -1177,35 +1141,21 @@
         {
           "id": "organize",
           "options": {
-            "excludeByName": {
-              "traceIdHidden": true,
-              "traceService": true,
-              "traceName": true,
-              "spanID": true
-            },
+            "excludeByName": {},
             "indexByName": {
-              "Start time": 0,
-              "Name": 1,
-              "Duration": 2,
-              "step.wall_ms": 3,
-              "step.cpu_ms": 4,
-              "Average cores": 5,
-              "step.peak_rss_bytes": 6,
-              "step.bytes_in": 7,
-              "step.bytes_out": 8,
-              "step.cache_hit": 9
+              "Started": 0,
+              "Ended": 1,
+              "Step": 2,
+              "Span": 3,
+              "Wall time": 4,
+              "CPU time": 5,
+              "Average cores": 6,
+              "Peak memory": 7,
+              "Bytes in": 8,
+              "Bytes out": 9,
+              "Cache hit": 10
             },
-            "renameByName": {
-              "Start time": "Started",
-              "Name": "Step",
-              "Duration": "Span",
-              "step.wall_ms": "Wall time",
-              "step.cpu_ms": "CPU time",
-              "step.peak_rss_bytes": "Peak memory",
-              "step.bytes_in": "Bytes in",
-              "step.bytes_out": "Bytes out",
-              "step.cache_hit": "Cache hit"
-            }
+            "renameByName": {}
           }
         }
       ],
@@ -1219,12 +1169,44 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "Started"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time:YYYY-MM-DD HH:mm:ss.SSS"
+              },
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ended"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time:YYYY-MM-DD HH:mm:ss.SSS"
+              },
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "Span"
             },
             "properties": [
               {
                 "id": "unit",
-                "value": "ns"
+                "value": "ms"
               }
             ]
           },
@@ -1315,29 +1297,71 @@
       "id": 13,
       "type": "table",
       "title": "Jobs: queue wait and run time",
-      "description": "One row per job of the chosen reel. Queue wait is the time from the job's creation to the worker's claim (job.queue_wait_ms, on jobs run by a worker with this change). Run time is the job span.",
+      "description": "One row per job of the chosen reel, from the reel's whole trace read by id. Queue wait is the time from the job's creation to the worker's claim (job.queue_wait_ms, on jobs run by a worker with this change). Run time is the job span.",
       "datasource": {
-        "type": "tempo",
-        "uid": "tempo"
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "tempo-trace-json"
       },
       "gridPos": {
         "x": 0,
-        "y": 29,
-        "w": 9,
-        "h": 8
+        "y": 42,
+        "w": 24,
+        "h": 5
       },
       "targets": [
         {
           "datasource": {
-            "type": "tempo",
-            "uid": "tempo"
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "tempo-trace-json"
           },
           "refId": "A",
-          "queryType": "traceql",
-          "tableType": "spans",
-          "limit": 20,
-          "spss": 100,
-          "query": "{ trace:id = \"$reel\" && name =~ \"job .*\" } | select(span.job.queue_wait_ms, span.job.outcome, span.job.attempt)"
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "/api/traces/${reel}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "($a := function($s, $k) { $s.attributes[key = $k].value.* }; $n := function($s, $k) { $number($a($s, $k)) }; $ms := function($v) { $number($v) / 1000000 }; $map(*.scopeSpans.spans[$match(name, /^job /)], function($s) { { \"started\": $ms($s.startTimeUnixNano), \"ended\": $ms($s.endTimeUnixNano), \"job\": $s.name, \"queue_wait_ms\": $n($s, \"job.queue_wait_ms\"), \"run_ms\": $ms($s.endTimeUnixNano) - $ms($s.startTimeUnixNano), \"outcome\": $a($s, \"job.outcome\"), \"attempt\": $n($s, \"job.attempt\") } }))",
+          "columns": [
+            {
+              "selector": "started",
+              "text": "Started",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "ended",
+              "text": "Ended",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "job",
+              "text": "Job",
+              "type": "string"
+            },
+            {
+              "selector": "queue_wait_ms",
+              "text": "Queue wait",
+              "type": "number"
+            },
+            {
+              "selector": "run_ms",
+              "text": "Run time",
+              "type": "number"
+            },
+            {
+              "selector": "outcome",
+              "text": "Outcome",
+              "type": "string"
+            },
+            {
+              "selector": "attempt",
+              "text": "Attempt",
+              "type": "number"
+            }
+          ]
         }
       ],
       "transformations": [
@@ -1346,7 +1370,8 @@
           "options": {
             "sort": [
               {
-                "field": "Start time"
+                "field": "Started",
+                "desc": false
               }
             ]
           }
@@ -1354,28 +1379,17 @@
         {
           "id": "organize",
           "options": {
-            "excludeByName": {
-              "traceIdHidden": true,
-              "traceService": true,
-              "traceName": true,
-              "spanID": true
-            },
+            "excludeByName": {},
             "indexByName": {
-              "Start time": 0,
-              "Name": 1,
-              "job.queue_wait_ms": 2,
-              "Duration": 3,
-              "job.outcome": 4,
-              "job.attempt": 5
+              "Started": 0,
+              "Ended": 1,
+              "Job": 2,
+              "Queue wait": 3,
+              "Run time": 4,
+              "Outcome": 5,
+              "Attempt": 6
             },
-            "renameByName": {
-              "Start time": "Started",
-              "Name": "Job",
-              "job.queue_wait_ms": "Queue wait",
-              "Duration": "Run time",
-              "job.outcome": "Outcome",
-              "job.attempt": "Attempt"
-            }
+            "renameByName": {}
           }
         }
       ],
@@ -1386,6 +1400,38 @@
           }
         },
         "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Started"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time:YYYY-MM-DD HH:mm:ss.SSS"
+              },
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ended"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time:YYYY-MM-DD HH:mm:ss.SSS"
+              },
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
           {
             "matcher": {
               "id": "byName",
@@ -1406,7 +1452,7 @@
             "properties": [
               {
                 "id": "unit",
-                "value": "ns"
+                "value": "ms"
               }
             ]
           }
@@ -1421,81 +1467,95 @@
       "id": 14,
       "type": "table",
       "title": "R2 reads and writes",
-      "description": "One row per r2.get and r2.put span of the chosen reel, slowest first: what was moved (kind, and the pipeline step for a cache object), how many bytes, how long it took and how it ended. Bytes divided by time is the transfer speed. The export's upload is the r2.put of kind export. At most 100 spans are shown.",
+      "description": "One row per r2.get and r2.put span of the chosen reel, slowest first, from the reel's whole trace read by id: what was moved (kind, and the pipeline step for a cache object), how many bytes, how long it took and how it ended. Bytes divided by time is the transfer speed. The export's upload is the r2.put of kind export.",
       "datasource": {
-        "type": "tempo",
-        "uid": "tempo"
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "tempo-trace-json"
       },
       "gridPos": {
-        "x": 9,
-        "y": 29,
-        "w": 15,
-        "h": 8
+        "x": 0,
+        "y": 47,
+        "w": 24,
+        "h": 14
       },
       "targets": [
         {
           "datasource": {
-            "type": "tempo",
-            "uid": "tempo"
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "tempo-trace-json"
           },
           "refId": "A",
-          "queryType": "traceql",
-          "tableType": "spans",
-          "limit": 20,
-          "spss": 100,
-          "query": "{ trace:id = \"$reel\" && name =~ \"r2\\\\..*\" } | select(span.r2.operation, span.r2.kind, span.r2.cache_step, span.r2.bytes, span.r2.outcome, span.r2.multipart_parts)"
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "/api/traces/${reel}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "($a := function($s, $k) { $s.attributes[key = $k].value.* }; $n := function($s, $k) { $number($a($s, $k)) }; $ms := function($v) { $number($v) / 1000000 }; $map(*.scopeSpans.spans[$match(name, /^r2\\./)], function($s) { ($t := $ms($s.endTimeUnixNano) - $ms($s.startTimeUnixNano); { \"started\": $ms($s.startTimeUnixNano), \"span\": $s.name, \"operation\": $a($s, \"r2.operation\"), \"kind\": $a($s, \"r2.kind\"), \"cache_step\": $a($s, \"r2.cache_step\"), \"bytes\": $n($s, \"r2.bytes\"), \"time_ms\": $t, \"speed\": $t > 0 ? $n($s, \"r2.bytes\") * 1000 / $t : null, \"outcome\": $a($s, \"r2.outcome\"), \"parts\": $n($s, \"r2.multipart_parts\") }) }))",
+          "columns": [
+            {
+              "selector": "started",
+              "text": "Started",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "span",
+              "text": "Span",
+              "type": "string"
+            },
+            {
+              "selector": "operation",
+              "text": "Call",
+              "type": "string"
+            },
+            {
+              "selector": "kind",
+              "text": "Kind",
+              "type": "string"
+            },
+            {
+              "selector": "cache_step",
+              "text": "Cache step",
+              "type": "string"
+            },
+            {
+              "selector": "bytes",
+              "text": "Bytes",
+              "type": "number"
+            },
+            {
+              "selector": "time_ms",
+              "text": "Time",
+              "type": "number"
+            },
+            {
+              "selector": "speed",
+              "text": "Speed",
+              "type": "number"
+            },
+            {
+              "selector": "outcome",
+              "text": "Outcome",
+              "type": "string"
+            },
+            {
+              "selector": "parts",
+              "text": "Parts",
+              "type": "number"
+            }
+          ]
         }
       ],
       "transformations": [
-        {
-          "id": "calculateField",
-          "options": {
-            "mode": "binary",
-            "alias": "seconds",
-            "binary": {
-              "left": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Duration"
-                }
-              },
-              "operator": "/",
-              "right": {
-                "fixed": "1000000000"
-              }
-            },
-            "replaceFields": false
-          }
-        },
-        {
-          "id": "calculateField",
-          "options": {
-            "mode": "binary",
-            "alias": "Speed",
-            "binary": {
-              "left": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "r2.bytes"
-                }
-              },
-              "operator": "/",
-              "right": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "seconds"
-                }
-              }
-            },
-            "replaceFields": false
-          }
-        },
         {
           "id": "sortBy",
           "options": {
             "sort": [
               {
-                "field": "Duration",
+                "field": "Time",
                 "desc": true
               }
             ]
@@ -1504,36 +1564,20 @@
         {
           "id": "organize",
           "options": {
-            "excludeByName": {
-              "traceIdHidden": true,
-              "traceService": true,
-              "traceName": true,
-              "spanID": true,
-              "seconds": true
-            },
+            "excludeByName": {},
             "indexByName": {
-              "Start time": 0,
-              "Name": 1,
-              "r2.operation": 2,
-              "r2.kind": 3,
-              "r2.cache_step": 4,
-              "r2.bytes": 5,
-              "Duration": 6,
+              "Started": 0,
+              "Span": 1,
+              "Call": 2,
+              "Kind": 3,
+              "Cache step": 4,
+              "Bytes": 5,
+              "Time": 6,
               "Speed": 7,
-              "r2.outcome": 8,
-              "r2.multipart_parts": 9
+              "Outcome": 8,
+              "Parts": 9
             },
-            "renameByName": {
-              "Start time": "Started",
-              "Name": "Span",
-              "r2.operation": "Call",
-              "r2.kind": "Kind",
-              "r2.cache_step": "Cache step",
-              "r2.bytes": "Bytes",
-              "Duration": "Time",
-              "r2.outcome": "Outcome",
-              "r2.multipart_parts": "Parts"
-            }
+            "renameByName": {}
           }
         }
       ],
@@ -1544,6 +1588,22 @@
           }
         },
         "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Started"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time:YYYY-MM-DD HH:mm:ss.SSS"
+              },
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
           {
             "matcher": {
               "id": "byName",
@@ -1564,7 +1624,7 @@
             "properties": [
               {
                 "id": "unit",
-                "value": "ns"
+                "value": "ms"
               }
             ]
           },
@@ -1598,7 +1658,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 37,
+        "y": 61,
         "w": 24,
         "h": 20
       },
