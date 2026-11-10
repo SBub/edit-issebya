@@ -85,12 +85,22 @@ The "stands in for" names are the owner's own words for the look each pair gives
 - `apps/studio/src/components/FontPairPicker.tsx` is the tool panel on top of the versions column (the
   versions list is in the lower part, `LiveReel.tsx`). Each pair is a button with its label, what it stands
   in for, and a sample ("Your words" in the simple face, "with style" in the artistic one).
+- Two things are marked, and they are different:
+  - **Chosen** (`aria-checked`) is the pair the reel's current version was set in: the `font_pair` of that
+    version's edit, read from storage (`apps/studio/src/lib/version-font-pair.ts`, `readVersionFontPair`,
+    the edit being the version's own `r2_key`). The reel page reads it on the server for the first render
+    (`apps/studio/src/app/reels/[id]/page.tsx`); `LiveReel.tsx` reads it again through
+    `loadVersionFontPair` (`apps/studio/src/app/font-pair-actions.ts`) whenever the current version changes,
+    so a relayout or a going back moves the chosen option by itself. No database column holds it.
+  - **Last used** is a small badge on the owner's profile pair (`profiles.font_pair`), whether or not this reel
+    is set in it: it is the pair new reels use.
 - The sample faces are registered with `FontFace` from the edit-assets route, once per page load
-  (`apps/studio/src/lib/font-pair-faces.ts`). The picker shows the owner's profile pair as chosen.
+  (`apps/studio/src/lib/font-pair-faces.ts`).
 - A pick calls `requestFontPair` (`apps/studio/src/app/change-actions.ts`): it calls `set_font_pair` for the
-  profile's `font_pair`, then queues a `relayout` job for the open reel. The picker is off while the reel is blocked,
-  has no version, or a job of it is live (the same rule as Start over). The new version appears in the list
-  like any other.
+  profile's `font_pair`, then queues a `relayout` job for the open reel. The badge moves to the picked pair at
+  once; the chosen option moves when the new version is saved. Clicking the reel's chosen pair does nothing.
+  The picker is off while the reel is blocked, has no version, or a job of it is live (the same rule as Start
+  over). The new version appears in the list like any other.
 
 ## Rules
 
@@ -108,3 +118,7 @@ The "stands in for" names are the owner's own words for the look each pair gives
   relayout use it.
 - Never save the profile from the studio with an upsert or a plain update of `user_id`: the owner's grants
   allow `font_pair` only, so save through `set_font_pair`.
+- Never mark the chosen pair from the profile: the chosen option is the current version's own pair (its
+  edit), and the profile's pair only carries the "Last used" badge.
+- Never store the reel's chosen pair in a second place (a column, a cache) that a new current version
+  could leave stale: read it from the current version's edit.

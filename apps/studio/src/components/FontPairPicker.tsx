@@ -9,8 +9,12 @@ import type { JobRow } from "@/lib/jobs";
 
 interface Props {
   reelId: string;
-  // The owner's pair (their profile): the one shown as chosen until a pick.
-  fontPair: FontPairId;
+  // The owner's pair (their profile): what new reels use. Its option carries
+  // the "Last used" badge, whether or not this reel is set in it.
+  profilePair: FontPairId;
+  // The pair this reel's current version was set in (its edit), chosen; null
+  // while it is not known yet, so no option is chosen.
+  reelPair: FontPairId | null;
   // Null when a pair can be picked; otherwise why not (the reel is blocked).
   blockedReason: string | null;
   // The queue note (`Waiting: ...`) while any job of the reel is live.
@@ -24,22 +28,25 @@ const LIVE: readonly JobRow["status"][] = ["queued", "running", "waiting_ai"];
 const FAILED = "Font pair did not change. Try again";
 
 // The tool panel above the versions list: the six font pairs, each shown as a
-// sample written in its own two fonts. Picking one saves it to the owner's
-// profile and queues a `relayout` job for this reel; the new version appears
-// in the list like any other. Off while the reel is blocked, has no version,
-// or a job of it is live (the same rule as Start over).
+// sample written in its own two fonts. The chosen option is this reel's pair
+// (the current version's); the "Last used" badge sits on the owner's profile
+// pair. Picking another pair saves it to the profile and queues a `relayout`
+// job for this reel; the chosen option moves when the new version is saved.
+// Off while the reel is blocked, has no version, or a job of it is live (the
+// same rule as Start over).
 export function FontPairPicker({
   reelId,
-  fontPair,
+  profilePair,
+  reelPair,
   blockedReason,
   queueNote,
   jobs,
   hasVersion,
 }: Props) {
   const router = useRouter();
-  // The pair picked on this page, until the profile's pair is read again.
-  const [picked, setPicked] = useState<FontPairId | null>(null);
-  const current = picked ?? fontPair;
+  // The profile pair saved from this page, until the page is read again.
+  const [savedPair, setSavedPair] = useState<FontPairId | null>(null);
+  const lastUsed = savedPair ?? profilePair;
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   // The job sent, until it shows in the live jobs and ends.
@@ -63,7 +70,7 @@ export function FontPairPicker({
   }, []);
 
   async function choose(id: FontPairId) {
-    if (disabled || id === current) return;
+    if (disabled || id === reelPair) return;
     setBusy(true);
     setMessage("");
     try {
@@ -73,7 +80,7 @@ export function FontPairPicker({
         return;
       }
       if (result.status === "queued") {
-        setPicked(id);
+        setSavedPair(id);
         setSentId(result.jobId);
         return;
       }
@@ -113,7 +120,8 @@ export function FontPairPicker({
       <div role="radiogroup" aria-label="Font pair" className="grid gap-1.5">
         {FONT_PAIR_IDS.map((id) => {
           const pair = FONT_PAIRS[id];
-          const selected = id === current;
+          const selected = id === reelPair;
+          const isLastUsed = id === lastUsed;
           return (
             <button
               key={id}
@@ -130,7 +138,17 @@ export function FontPairPicker({
               }`}
             >
               <span className="flex items-baseline justify-between gap-2">
-                <span className="text-xs font-semibold">{pair.label}</span>
+                <span className="flex min-w-0 items-baseline gap-1.5">
+                  <span className="text-xs font-semibold">{pair.label}</span>
+                  {isLastUsed && (
+                    <span
+                      data-testid="font-pair-last-used"
+                      className="border border-line px-1 text-[0.65rem] text-muted"
+                    >
+                      Last used
+                    </span>
+                  )}
+                </span>
                 <span className="truncate text-[0.7rem] text-muted">{pair.standsInFor}</span>
               </span>
               <span

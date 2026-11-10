@@ -12,12 +12,14 @@ import { loadLibrary } from "@/lib/photo-server";
 import { REEL_DETAIL_COLUMNS, isReelId } from "@/lib/reels";
 import { studioStorage } from "@/lib/storage";
 import { pairOfProfile } from "@/lib/font-pair-faces";
+import { readVersionFontPair } from "@/lib/version-font-pair";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
 import { WORKER_STATUS_COLUMNS, type WorkerStatusRow } from "@/lib/worker-status";
 
 // Reads the reel, its jobs, its steps, its versions, its newest export's id,
-// every worker's status row, the owner's photo library and, per long step, the owner's newest earlier
+// every worker's status row, the owner's photo library and profile, the font pair
+// of the current version and, per long step, the owner's newest earlier
 // done rows (the time-left history) once on the server; LiveReel then
 // follows changes through Realtime. No polling, no interval.
 export default async function ReelPage({ params }: { params: Promise<{ id: string }> }) {
@@ -61,42 +63,61 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
       .limit(ESTIMATE_LAST_ROWS)
       .returns<HistoryRow[]>();
 
-  const [library, jobs, steps, versions, latestExport, workerStatus, profile, ...histories] =
-    await Promise.all([
-      loadLibrary({ supabase, storage: studioStorage(), errors: serverErrorCapture() }),
-      supabase
-        .from("jobs")
-        .select(JOB_COLUMNS)
-        .eq("reel_id", id)
-        .order("created_at")
-        .returns<JobRow[]>(),
-      supabase
-        .from("steps")
-        .select(STEP_COLUMNS)
-        .eq("reel_id", id)
-        .order("started_at")
-        .returns<StepRow[]>(),
-      supabase
-        .from("versions")
-        .select(VERSION_LIST_COLUMNS)
-        .eq("reel_id", id)
-        .order("number")
-        .returns<VersionListRow[]>(),
-      supabase
-        .from("exports")
-        .select("id, job_id")
-        .eq("reel_id", id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle<ExportRef>(),
-      supabase.from("worker_status").select(WORKER_STATUS_COLUMNS).returns<WorkerStatusRow[]>(),
-      supabase
-        .from("profiles")
-        .select("font_pair")
-        .eq("user_id", user.id)
-        .maybeSingle<{ font_pair: string }>(),
-      ...PROGRESS_STEPS.map(history),
-    ]);
+  const [
+    library,
+    jobs,
+    steps,
+    versions,
+    latestExport,
+    workerStatus,
+    profile,
+    currentPair,
+    ...histories
+  ] = await Promise.all([
+    loadLibrary({ supabase, storage: studioStorage(), errors: serverErrorCapture() }),
+    supabase
+      .from("jobs")
+      .select(JOB_COLUMNS)
+      .eq("reel_id", id)
+      .order("created_at")
+      .returns<JobRow[]>(),
+    supabase
+      .from("steps")
+      .select(STEP_COLUMNS)
+      .eq("reel_id", id)
+      .order("started_at")
+      .returns<StepRow[]>(),
+    supabase
+      .from("versions")
+      .select(VERSION_LIST_COLUMNS)
+      .eq("reel_id", id)
+      .order("number")
+      .returns<VersionListRow[]>(),
+    supabase
+      .from("exports")
+      .select("id, job_id")
+      .eq("reel_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<ExportRef>(),
+    supabase.from("worker_status").select(WORKER_STATUS_COLUMNS).returns<WorkerStatusRow[]>(),
+    supabase
+      .from("profiles")
+      .select("font_pair")
+      .eq("user_id", user.id)
+      .maybeSingle<{ font_pair: string }>(),
+    // The pair the current version was set in (its edit), not the profile's.
+    reel.current_version_id
+      ? readVersionFontPair({
+          supabase,
+          storage: studioStorage(),
+          reelId: id,
+          versionId: reel.current_version_id,
+          userId: user.id,
+        }).then((fontPair) => ({ versionId: reel.current_version_id!, fontPair }))
+      : Promise.resolve(null),
+    ...PROGRESS_STEPS.map(history),
+  ]);
   if (jobs.error) throw new Error(`studio: jobs not loaded: ${jobs.error.message}`);
   if (steps.error) throw new Error(`studio: steps not loaded: ${steps.error.message}`);
   if (versions.error) throw new Error(`studio: versions not loaded: ${versions.error.message}`);
@@ -127,6 +148,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
         estimateRates={estimateRates}
         library={<PhotoLibrary initial={library.ok ? library.value : []} />}
         fontPair={pairOfProfile(profile.data)}
+        currentFontPair={currentPair}
       />
     </>
   );
