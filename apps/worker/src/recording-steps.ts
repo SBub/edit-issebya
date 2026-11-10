@@ -114,6 +114,7 @@ export function stepContext(
     size,
     checkCancelled,
     checkGone,
+    clock,
   }: {
     signal?: AbortSignal;
     checkCancelled?: () => Promise<boolean>;
@@ -123,6 +124,7 @@ export function stepContext(
     retryDelayMs?: number;
     errors?: ErrorTracker;
     size?: ReelSizeHolder;
+    clock?: () => number;
   } = {},
 ): StepContext {
   return {
@@ -135,6 +137,11 @@ export function stepContext(
     checkCancelled,
     checkGone,
     retryDelayMs,
+    clock,
     size,
   };
 }
+
+// A clock that stands still: every step's wall time is 0 ms, so a duration in
+// a summary reads "under a second" on every run (pass it as `clock`).
+export const FROZEN_CLOCK = (): number => 0;

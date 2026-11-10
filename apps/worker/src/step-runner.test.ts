@@ -5,7 +5,7 @@ import { ROOT_CONTEXT, SpanStatusCode, trace } from "@opentelemetry/api";
 import { InMemoryLogRecordExporter, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
+import { FROZEN_CLOCK, TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
 import {
   type ChildRun,
   type SpawnTool,
@@ -702,7 +702,7 @@ describe("the one automatic retry", () => {
   it("runs a step again after a transient error, in a second row", async () => {
     const { steps, calls } = recordingSteps();
     let attempts = 0;
-    await runToolsStep(stepContext(steps), {
+    await runToolsStep(stepContext(steps, { clock: FROZEN_CLOCK }), {
       name: "upload",
       async work() {
         attempts += 1;
@@ -717,7 +717,7 @@ describe("the one automatic retry", () => {
   it("runs a tool killed by a signal again", async () => {
     const { steps, calls } = recordingSteps();
     const { spawnTool, count } = sequence([exited(null, "SIGKILL"), exited(0)]);
-    await runToolsStep(stepContext(steps), toolStep(), spawnTool);
+    await runToolsStep(stepContext(steps, { clock: FROZEN_CLOCK }), toolStep(), spawnTool);
     expect(count()).toBe(2);
     expect(rows(calls)).toEqual(["start", "failed: flaky failed, retrying once", "start", "done"]);
   });
@@ -730,16 +730,16 @@ describe("the one automatic retry", () => {
         fs.writeFileSync(${JSON.stringify(marker)}, "1");
         process.kill(process.pid, "SIGKILL");
       }`;
-    await runStep(stepContext(steps), node(script, { name: "killed" }));
+    await runStep(stepContext(steps, { clock: FROZEN_CLOCK }), node(script, { name: "killed" }));
     expect(rows(calls)).toEqual(["start", "failed: killed failed, retrying once", "start", "done"]);
   });
 
   it("never retries a tool's exit 1", async () => {
     const { steps, calls } = recordingSteps();
     const { spawnTool, count } = sequence([exited(1), exited(0)]);
-    await expect(runToolsStep(stepContext(steps), toolStep(), spawnTool)).rejects.toThrow(
-      /flaky exited with 1/,
-    );
+    await expect(
+      runToolsStep(stepContext(steps, { clock: FROZEN_CLOCK }), toolStep(), spawnTool),
+    ).rejects.toThrow(/flaky exited with 1/);
     expect(count()).toBe(1);
     expect(rows(calls)).toEqual(["start", "failed: flaky failed"]);
   });
@@ -751,9 +751,9 @@ describe("the one automatic retry", () => {
       exited(null, "SIGKILL"),
       exited(0),
     ]);
-    await expect(runToolsStep(stepContext(steps), toolStep(), spawnTool)).rejects.toThrow(
-      /SIGKILL/,
-    );
+    await expect(
+      runToolsStep(stepContext(steps, { clock: FROZEN_CLOCK }), toolStep(), spawnTool),
+    ).rejects.toThrow(/SIGKILL/);
     expect(count()).toBe(2);
     expect(rows(calls)).toEqual([
       "start",

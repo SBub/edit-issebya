@@ -58,6 +58,10 @@ export interface StepContext {
   // The pause before a step's one automatic retry (default
   // TRANSIENT_RETRY_DELAY_MS; unit tests pass 0).
   retryDelayMs?: number;
+  // The clock the step's wall time is read from, in milliseconds (default
+  // performance.now; unit tests pass a fixed one, so a duration in a summary
+  // is the same on every run, however loaded the machine is).
+  clock?: () => number;
   // The reel's size, put on every step span as `reel.*` attributes (none for
   // a photo job or a unit test without it).
   size?: ReelSizeHolder;
@@ -190,8 +194,13 @@ function emptyMeasurements(wallMs: number): StepMeasurements {
   return { wall_ms: wallMs, cpu_ms: null, peak_rss_bytes: null, bytes_in: null, bytes_out: null };
 }
 
-function elapsedMs(started: number): number {
-  return Math.max(0, Math.round(performance.now() - started));
+// The clock a step's wall time is read from (see StepContext.clock).
+export function stepClock(ctx: StepContext): () => number {
+  return ctx.clock ?? (() => performance.now());
+}
+
+function elapsedMs(ctx: StepContext, started: number): number {
+  return Math.max(0, Math.round(stepClock(ctx)() - started));
 }
 
 function setMeasurementAttributes(span: Span, measurements: StepMeasurements): void {
@@ -233,7 +242,7 @@ async function withStep(
       },
       ctx.jobContext,
     );
-    const started = performance.now();
+    const started = stepClock(ctx)();
     try {
       const { summary, measurements } = await body(
         trace.setSpan(ctx.jobContext, span),
@@ -250,7 +259,7 @@ async function withStep(
       // is gone (its reel was deleted): nothing more is written or captured.
       if (ctx.signal.aborted || (await ctx.checkGone?.())) throw error;
       const failure = error instanceof StepFailure ? error : null;
-      const measurements = failure?.measurements ?? emptyMeasurements(elapsedMs(started));
+      const measurements = failure?.measurements ?? emptyMeasurements(elapsedMs(ctx, started));
       setMeasurementAttributes(span, measurements);
       const unavailable = findCause(error, AiUnavailable);
       if (unavailable) {
@@ -335,7 +344,7 @@ export function runInProcessStep(
 ): Promise<void> {
   return withStep(ctx, name, async (_stepContext, started) => {
     const { what, sizeBytes } = await work();
-    const wallMs = elapsedMs(started);
+    const wallMs = elapsedMs(ctx, started);
     return {
       summary: stepSummary({ what, wallMs, sizeBytes }),
       measurements: emptyMeasurements(wallMs),
@@ -610,7 +619,7 @@ export function runToolsStep(
     let peakRssBytes: number | null = null;
 
     const measure = async (): Promise<StepMeasurements> => ({
-      wall_ms: elapsedMs(started),
+      wall_ms: elapsedMs(ctx, started),
       cpu_ms: cpuMs,
       peak_rss_bytes: peakRssBytes,
       bytes_in: await totalSize(spec.inputs),
@@ -732,7 +741,7 @@ export function runToolsStep(
       failure.cause = error;
       throw failure;
     }
-    const wallMs = elapsedMs(started);
+    const wallMs = elapsedMs(ctx, started);
     const measurements = {
       ...(await measure()),
       wall_ms: wallMs,

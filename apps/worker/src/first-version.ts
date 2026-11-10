@@ -17,7 +17,7 @@ import { editMeasurer } from "./edit-measurer.ts";
 import { engineRecordLine } from "./engine-record.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
 import { reelOf } from "./queue.ts";
-import { type StepContext, recordHit, runInProcessStep } from "./step-runner.ts";
+import { type StepContext, recordHit, runInProcessStep, stepClock } from "./step-runner.ts";
 
 export const STEP = "first_version";
 
@@ -73,13 +73,14 @@ export async function saveFirstVersion({
   newId = randomUUID,
   log = console.log,
 }: FirstVersionRun): Promise<void> {
-  const started = performance.now();
+  const now = stepClock(ctx);
+  const started = now();
   const reelId = reelOf(ctx.job);
   if ((await rows.current(reelId)) !== null) {
     await recordHit(ctx, {
       name: STEP,
       summary: "first version kept, reused",
-      wallMs: Math.max(0, Math.round(performance.now() - started)),
+      wallMs: Math.max(0, Math.round(now() - started)),
     });
     return;
   }
