@@ -57,6 +57,11 @@ The "stands in for" names are the owner's own words for the look each pair gives
 - `public.profiles` (migration `20261110123542_font_pair_profiles.sql`): one row per user, `font_pair` one
   of the six ids, default `classic`, `updated_at`. The user reads, inserts and changes only their own row
   and only `font_pair`; `service_role` has every privilege.
+- The owner saves a pair with `public.set_font_pair(p_font_pair)` (migration
+  `20261110151308_set_font_pair.sql`): a `security invoker` upsert of the caller's own row. It never names
+  `user_id` (`auth.uid()` is the row), so a user who may change only `font_pair` can still save a pair. A
+  plain upsert from the studio also sets `user_id` on conflict and failed with "permission denied".
+  `authenticated` may execute it; `anon` and `public` may not.
 - The worker reads the reel owner's pair (`apps/worker/src/font-pair-store.ts`). No row is classic.
 - The decide step (`decide/run-decide.ts`) and the first version (`first-version.ts`) set the new version in
   the owner's pair, whatever pair the version they decide from is in.
@@ -81,8 +86,8 @@ The "stands in for" names are the owner's own words for the look each pair gives
   in for, and a sample ("Your words" in the simple face, "with style" in the artistic one).
 - The sample faces are registered with `FontFace` from the edit-assets route, once per page load
   (`apps/studio/src/lib/font-pair-faces.ts`). The picker shows the owner's profile pair as chosen.
-- A pick calls `requestFontPair` (`apps/studio/src/app/change-actions.ts`): it upserts the profile's
-  `font_pair`, then queues a `relayout` job for the open reel. The picker is off while the reel is blocked,
+- A pick calls `requestFontPair` (`apps/studio/src/app/change-actions.ts`): it calls `set_font_pair` for the
+  profile's `font_pair`, then queues a `relayout` job for the open reel. The picker is off while the reel is blocked,
   has no version, or a job of it is live (the same rule as Start over). The new version appears in the list
   like any other.
 
@@ -100,3 +105,5 @@ The "stands in for" names are the owner's own words for the look each pair gives
 - Never rewrite a stored version to change its pair: a relayout saves a new version after the current one.
 - Never let the profile's pair change a version that exists: only the next decide, first version and
   relayout use it.
+- Never save the profile from the studio with an upsert or a plain update of `user_id`: the owner's grants
+  allow `font_pair` only, so save through `set_font_pair`.

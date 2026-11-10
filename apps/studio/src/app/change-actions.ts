@@ -132,9 +132,9 @@ export async function requestFontPair(input: {
   if (open.currentVersionId === null) {
     return { status: "invalid", reason: "Font pairs open once the first version is ready" };
   }
-  const { error } = await open.supabase
-    .from("profiles")
-    .upsert({ user_id: open.userId, font_pair: input.fontPair }, { onConflict: "user_id" });
+  // The database saves the owner's row (`set_font_pair`, a security invoker
+  // upsert that never sets user_id: the user may change only the pair).
+  const { error } = await open.supabase.rpc("set_font_pair", { p_font_pair: input.fontPair });
   if (error) {
     await reportFailure(serverErrorCapture(), {
       message: "studio: font pair not saved",

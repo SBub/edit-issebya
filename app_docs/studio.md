@@ -122,6 +122,8 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   referencing `auth.users`, `font_pair` one of the six ids, default `classic`, `updated_at`); the user reads,
   inserts and changes only their own row, and changes only `font_pair`; `service_role` has every privilege.
   The worker reads the reel owner's pair from it (`app_docs/font-pairs.md`). No row is the classic pair.
+- `supabase/migrations/20261110151308_set_font_pair.sql`: `set_font_pair(p_font_pair)`, the one save of the
+  owner's pair (`requestFontPair`), `security invoker`, granted to `authenticated` only.
 - `supabase/migrations/20261110124046_relayout_jobs.sql`: the job kind `relayout` (the reel's current version placed
   again in `jobs.font_pair`, one of the six ids, set for this kind only); the owner inserts it with the
   `(reel_id, kind)` and `font_pair` grants and a policy that mirrors start over (queued, own reel). The worker

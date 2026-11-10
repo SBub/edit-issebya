@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestUser, deleteTestUser, signedInClient } from "../test-support/fixtures.ts";
-import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
+import { localSupabaseAdmin, localSupabaseClient } from "../test-support/local-supabase.ts";
 
 // The owner's font pair (migration font_pair_profiles): a user reads, inserts
 // and changes only their own row's pair, and the worker reads every row.
@@ -84,6 +84,38 @@ describe("profiles RLS", () => {
     expect(unchanged).toEqual({ font_pair: "script" });
     const deleted = await clientA.from("profiles").delete().eq("user_id", userA.id);
     expect(deleted.error).not.toBeNull();
+  });
+
+  it("saves the owner's pair through set_font_pair, twice, and only on the caller's row", async () => {
+    const first = await clientA.rpc("set_font_pair", { p_font_pair: "retro" });
+    expect(first.error).toBeNull();
+    const second = await clientA.rpc("set_font_pair", { p_font_pair: "bold" });
+    expect(second.error).toBeNull();
+    const { data: own } = await admin
+      .from("profiles")
+      .select("font_pair")
+      .eq("user_id", userA.id)
+      .single();
+    expect(own).toEqual({ font_pair: "bold" });
+    // Called by another user, the function writes that user's row and never
+    // the owner's: the user id is the caller's, not a parameter.
+    const other = await clientB.rpc("set_font_pair", { p_font_pair: "handwritten" });
+    expect(other.error).toBeNull();
+    const { data: after } = await admin
+      .from("profiles")
+      .select("user_id, font_pair")
+      .in("user_id", [userA.id, userB.id])
+      .order("user_id");
+    expect(after?.find((row) => row.user_id === userA.id)?.font_pair).toBe("bold");
+    expect(after?.find((row) => row.user_id === userB.id)?.font_pair).toBe("handwritten");
+  });
+
+  it("refuses a pair outside the six through set_font_pair, and an anonymous caller", async () => {
+    const unknown = await clientA.rpc("set_font_pair", { p_font_pair: "primary" });
+    expect(unknown.error).not.toBeNull();
+    const anon = localSupabaseClient();
+    const refused = await anon.rpc("set_font_pair", { p_font_pair: "retro" });
+    expect(refused.error).not.toBeNull();
   });
 
   it("is read by the worker's service role for every user", async () => {
