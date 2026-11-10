@@ -370,18 +370,18 @@ test.describe("a LIST item on the speech clip", () => {
     );
     expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
     const edit = (parsed as { ok: true; edit: Edit }).edit;
-    // Timing rule (specs/layout-engine.md, "Timing first"): a LIST's layer
-    // comes in 0.3 s before its first word and its out-fade runs over the
-    // 0.3 s after its last word, so the phrase is at full opacity while spoken.
-    // The anchors are the engine's own picks for those two times (the start
-    // resolves to 0.3 s before w0028, the end is w0032's end edge plus the
-    // fade); the times themselves are asserted below.
+    // Timing rule (specs/layout-engine.md, decision 25): a LIST's layer comes
+    // in 0.3 s before its first word and its out-fade runs over the 0.3 s after
+    // its last word, unless the next text starts first, so the phrase is at full
+    // opacity while spoken. The start anchor is the engine's own pick for 0.3 s
+    // before w0028; the end is clipped at the next caption here (checked below
+    // from the resolved spans, not from the anchor).
     expect(edit.tracks.transitions).toEqual([
       expect.objectContaining({
         type: "numbered",
         words: ["w0028", "w0029", "w0030", "w0031", "w0032"],
         start: expect.objectContaining({ edge: "end", word: "w0026" }),
-        end: { word: "w0032", edge: "end", offset: 0.3 },
+        end: expect.objectContaining({ edge: "end" }),
         key: "w0031",
         list: 1,
       }),
@@ -403,12 +403,15 @@ test.describe("a LIST item on the speech clip", () => {
     const keyFirst = transcript.words.find((word) => word.id === "w0031")!;
     const keyLast = transcript.words.find((word) => word.id === "w0032")!;
     const phraseFirst = transcript.words.find((word) => word.id === "w0028")!;
-    // The layer's times: in 0.3 s before the phrase's first word; the out-fade
-    // runs over the 0.3 s after the last word's end, so the layer ends one
-    // fade past it.
+    // The layer's times: in 0.3 s before the phrase's first word; it ends one
+    // fade past the last word, or at the next text's start when that comes
+    // first. Caption cw0033 ("they", w0033) starts before the fade would end,
+    // so the layer ends as it starts.
     const fade = ISSEBYA_PRESET.transitions.numbered.seconds;
+    const next = resolved.get("cw0033")!;
+    expect(next.start).toBeLessThan(keyLast.end + fade);
     expect(layer.start).toBeCloseTo(phraseFirst.start - fade, 3);
-    expect(layer.end).toBeCloseTo(keyLast.end + fade, 3);
+    expect(layer.end).toBeCloseTo(Math.min(keyLast.end + fade, next.start), 3);
 
     // While the phrase is spoken, after its key reveal (caption.inSeconds from
     // its first word) and before its last word ends, the layer and both levels
@@ -442,8 +445,20 @@ test.describe("a LIST item on the speech clip", () => {
       await expect(frame.locator(`#${id}`)).toHaveCount(0);
     }
 
-    // Once its out-fade is over, the layer is gone.
+    // Once the layer has left, the next caption shows as usual: cw0033 fades in
+    // over caption.inSeconds from its start and out over caption.outSeconds at
+    // its end. The layer and the caption never share a moment (the layer ends
+    // where the caption starts), so the caption is checked at full opacity
+    // between the two fades.
+    expect(layer.end).toBeLessThanOrEqual(next.start + 1e-6);
     await setPosition(page, layer.end + 0.001);
     await expect.poll(() => opacity("#transition-1")).toBeLessThan(0.05);
+    const nextShown = frame.locator("#cw0033");
+    await expect(nextShown).toHaveText("they");
+    const shownFrom = next.start + ISSEBYA_PRESET.caption.inSeconds;
+    const shownTo = next.end - ISSEBYA_PRESET.caption.outSeconds;
+    expect(shownFrom).toBeLessThan(shownTo);
+    await setPosition(page, (shownFrom + shownTo) / 2);
+    await expect.poll(() => opacity("#cw0033")).toBeGreaterThan(0.9);
   });
 });
