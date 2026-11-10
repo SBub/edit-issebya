@@ -234,14 +234,17 @@ interface Shape {
 // `[from, to)`. `lineWidth(from, to)` is the width of those items on one line,
 // measured at size 1 so the break is the same at every size. Settled: ties go
 // to the earlier cuts.
-function balancedCuts(
+//
+// The returned cutter takes any line count. Its table is the same for every
+// count (best[k][j] does not depend on the count asked for), so it grows the
+// table only as far as a count needs and every count reads the same rows.
+function balancer(
   length: number,
-  count: number,
   lineWidth: (from: number, to: number) => number,
-): [number, number][] {
-  const widths = new Map<string, number>();
+): (count: number) => [number, number][] {
+  const widths = new Map<number, number>();
   const widthOf = (from: number, to: number): number => {
-    const key = `${from}:${to}`;
+    const key = from * (length + 1) + to;
     const known = widths.get(key);
     if (known !== undefined) return known;
     const width = lineWidth(from, to);
@@ -250,28 +253,31 @@ function balancedCuts(
   };
   // best[k][j]: the narrowest widest line of the first j items on k lines, and
   // where its last line starts.
-  const best: { width: number; cut: number }[][] = [];
-  best[1] = [];
+  const best: { width: number; cut: number }[][] = [[], []];
   for (let j = 1; j <= length; j += 1) best[1]![j] = { width: widthOf(0, j), cut: 0 };
-  for (let k = 2; k <= count; k += 1) {
-    best[k] = [];
-    for (let j = k; j <= length; j += 1) {
-      let found: { width: number; cut: number } | undefined;
-      for (let i = k - 1; i < j; i += 1) {
-        const width = Math.max(best[k - 1]![i]!.width, widthOf(i, j));
-        if (!found || width < found.width - SLACK) found = { width, cut: i };
+  let filled = 1;
+  return (count) => {
+    for (let k = filled + 1; k <= count; k += 1) {
+      best[k] = [];
+      for (let j = k; j <= length; j += 1) {
+        let found: { width: number; cut: number } | undefined;
+        for (let i = k - 1; i < j; i += 1) {
+          const width = Math.max(best[k - 1]![i]!.width, widthOf(i, j));
+          if (!found || width < found.width - SLACK) found = { width, cut: i };
+        }
+        best[k]![j] = found!;
       }
-      best[k]![j] = found!;
     }
-  }
-  const lines: [number, number][] = [];
-  let end = length;
-  for (let k = count; k >= 1; k -= 1) {
-    const { cut } = best[k]![end]!;
-    lines.unshift([cut, end]);
-    end = cut;
-  }
-  return lines;
+    filled = Math.max(filled, count);
+    const lines: [number, number][] = [];
+    let end = length;
+    for (let k = count; k >= 1; k -= 1) {
+      const { cut } = best[k]![end]!;
+      lines.unshift([cut, end]);
+      end = cut;
+    }
+    return lines;
+  };
 }
 
 // The lines of `words` on `count` lines, balanced (above).
@@ -281,9 +287,8 @@ function balancedLines(
   widthOf: (line: string) => number,
 ): string[] {
   const line = (from: number, to: number) => words.slice(from, to).join(" ");
-  return balancedCuts(words.length, count, (from, to) => widthOf(line(from, to))).map(
-    ([from, to]) => line(from, to),
-  );
+  const cuts = balancer(words.length, (from, to) => widthOf(line(from, to)));
+  return cuts(count).map(([from, to]) => line(from, to));
 }
 
 function textShape(element: TextElement, count: number, measurer: Measurer): Shape | null {
@@ -309,22 +314,38 @@ function textShape(element: TextElement, count: number, measurer: Measurer): Sha
   };
 }
 
+// A block's groups, each with its units' widths at size 1, its line width (the
+// units' widths and a space between them) and its balanced cutter. Made once
+// per block: every line count of the block reads the same cutters.
+interface BlockGroup {
+  units: readonly BlockUnit[];
+  widths: number[];
+  lineWidth: (from: number, to: number) => number;
+  cutter: (count: number) => [number, number][];
+}
+
+function blockGroups(element: BlockElement, measurer: Measurer): BlockGroup[] {
+  const { font } = element.variant.style;
+  const space = measurer.width(font, 1, " ");
+  return element.groups.map((units) => {
+    const widths = units.map((unit) => measurer.width(unit.font ?? font, 1, unit.text));
+    const lineWidth = (from: number, to: number): number =>
+      widths.slice(from, to).reduce((sum, width) => sum + width, 0) + (to - from - 1) * space;
+    return { units, widths, lineWidth, cutter: balancer(units.length, lineWidth) };
+  });
+}
+
 // A block at one line count: every group on at most `count` lines (a group of
 // fewer captions on one per caption), balanced between whole units, the line
 // width the units' widths at size 1 and a space between them. The block's
 // width is its widest line's, its height its deepest group's: the size that
 // fits is the largest at which every group fits (decision 4). Null when the
 // block has no text.
-function blockShape(element: BlockElement, count: number, measurer: Measurer): Shape | null {
-  const { font } = element.variant.style;
-  const space = measurer.width(font, 1, " ");
-  const groups = element.groups.map((units) => {
-    const widths = units.map((unit) => measurer.width(unit.font ?? font, 1, unit.text));
-    const lineWidth = (from: number, to: number): number =>
-      widths.slice(from, to).reduce((sum, width) => sum + width, 0) + (to - from - 1) * space;
-    const cuts = balancedCuts(units.length, Math.min(count, units.length), lineWidth);
-    return { units, widths, cuts, lineWidth };
-  });
+function blockShape(element: BlockElement, count: number, blocks: BlockGroup[]): Shape | null {
+  const groups = blocks.map((group) => ({
+    ...group,
+    cuts: group.cutter(Math.min(count, group.units.length)),
+  }));
   const perPx = Math.max(
     ...groups.flatMap((group) => group.cuts.map(([from, to]) => group.lineWidth(from, to))),
   );
@@ -477,10 +498,11 @@ function shapesOf(element: PlaceElement, measurer: Measurer): Shape[] {
     element.type === "block"
       ? Math.max(0, ...element.groups.map((group) => group.length))
       : Math.min(element.text.split(" ").length, element.maxLines ?? Infinity);
+  const blocks = element.type === "block" ? blockGroups(element, measurer) : [];
   const shapes: Shape[] = [];
   for (let n = 1; n <= count; n += 1) {
     const shape =
-      element.type === "block" ? blockShape(element, n, measurer) : textShape(element, n, measurer);
+      element.type === "block" ? blockShape(element, n, blocks) : textShape(element, n, measurer);
     if (shape) shapes.push(shape);
   }
   return shapes;
