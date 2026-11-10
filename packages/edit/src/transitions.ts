@@ -33,11 +33,13 @@ export interface TransitionTiming {
 
 // A LIST's layer comes in as its phrase's first word starts: it starts
 // `kind.seconds` (its entrance) before that word, so the entrance is finished
-// as the word is spoken, never before 0. It goes out at the phrase's last
-// word's end, with no hold and no minimum; no other text moves or cuts it.
-// Only a phrase with no length at all is lengthened, to the shown floor from
-// its first word (earlier where the reel ends); a reel under the floor gives
-// null.
+// as the word is spoken, never before 0. Its out-fade runs over the
+// `kind.seconds` after the phrase's last word's end (the span ends one fade
+// past the last word), so the phrase is at full opacity for all of its spoken
+// time; no hold and no minimum, and no other text moves or cuts it. Only a
+// phrase with no length at all is lengthened, to the shown floor from its
+// first word (earlier where the reel ends); a reel under the floor gives null.
+// The out-fade is clipped where the reel ends.
 export function transitionTiming(
   choice: { from: string; to: string },
   words: readonly Word[],
@@ -51,9 +53,10 @@ export function transitionTiming(
   const seconds = kind.seconds;
   const reelEnd = ms(duration);
   let start = ms(Math.max(0, first.start - seconds));
-  let end = ms(Math.min(last.end, reelEnd));
+  const spokenEnd = ms(Math.min(last.end, reelEnd));
+  let end = ms(Math.min(spokenEnd + seconds, reelEnd));
   let lengthened = false;
-  if (end - ms(first.start) <= SLACK) {
+  if (spokenEnd - ms(first.start) <= SLACK) {
     lengthened = true;
     end = ms(Math.min(reelEnd, first.start + floor));
     if (end - start < floor - SLACK) {
@@ -70,8 +73,8 @@ export function transitionTiming(
   const endAnchor: Anchor =
     end === reelEnd
       ? { reel: "end" }
-      : Math.abs(end - last.end) < 0.0005
-        ? { word: last.id, edge: "end" }
+      : !lengthened && Math.abs(end - (spokenEnd + seconds)) < 0.0005
+        ? { word: last.id, edge: "end", offset: seconds }
         : anchorAt(end, words);
   return { start, end, seconds, lengthened, startAnchor, endAnchor };
 }
@@ -130,8 +133,8 @@ export function levelBoxes(
   words: ReadonlyMap<string, Word>,
   preset: Preset,
   measurer: Measurer,
-): (TextBox & { transitionId: string; role: LevelRole })[] {
-  const out: (TextBox & { transitionId: string; role: LevelRole })[] = [];
+): (TextBox & { transitionId: string; role: LevelRole; reveal: number })[] {
+  const out: (TextBox & { transitionId: string; role: LevelRole; reveal: number })[] = [];
   for (const item of edit.tracks.transitions) {
     if (!item.levels) continue;
     const span = resolved.get(item.id)!;
@@ -147,6 +150,15 @@ export function levelBoxes(
         span.end,
         Math.max(span.start, resolveAnchor(level.start, words, edit.duration)),
       );
+      // The level's spoken end: the key phrase's to its last word's end, the
+      // lead-in's to the key phrase's first word. Its reveal finishes by then,
+      // so a short phrase is at full opacity while it is spoken.
+      const lastWord = words.get(item.words!.at(-1)!)!;
+      const keyStart = item.levels?.key
+        ? resolveAnchor(item.levels.key.start, words, edit.duration)
+        : undefined;
+      const spokenEnd = role === "lead" && keyStart !== undefined ? keyStart : lastWord.end;
+      const reveal = Math.max(0, Math.min(preset.caption.inSeconds, spokenEnd - start));
       out.push({
         itemId: `${item.id}-${role}`,
         transitionId: item.id,
@@ -159,6 +171,7 @@ export function levelBoxes(
         color,
         style: undefined,
         start,
+        reveal,
         end: span.end,
         x: left,
         y,

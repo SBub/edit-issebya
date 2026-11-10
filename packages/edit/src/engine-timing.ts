@@ -49,10 +49,11 @@ export interface CaptionBlock {
 }
 
 // The current captions as groups (one set of words on screen: consecutive
-// captions ending on the same anchor), re-timed: a group leaves at its last
-// word's end, held so its last caption shows at least the preset's minimum,
-// never past the next group's start; a last caption that cannot show that
-// long joins the next group.
+// captions ending on the same anchor), re-timed: a group's out-fade runs over
+// `caption.outSeconds` after its last word's end (the span ends one fade past
+// the word, so the word is at full opacity while spoken), held so its last
+// caption shows at least the preset's minimum, never past the next group's
+// start; a last caption that cannot show that long joins the next group.
 export function captionGroups(
   captions: readonly CaptionItem[],
   texts: readonly string[],
@@ -97,7 +98,10 @@ export function captionGroups(
   const ends = groups.map((group, index) => {
     const lastWord = group.at(-1)!.lastWord;
     const next = groups[index + 1]?.[0]?.start ?? duration;
-    const end = ms(Math.min(next, duration, Math.max(lastWord.end, group.at(-1)!.start + min)));
+    const fade = preset.caption.outSeconds;
+    const end = ms(
+      Math.min(next, duration, Math.max(lastWord.end + fade, group.at(-1)!.start + min)),
+    );
     if (end > lastWord.end + 0.0005) {
       record.push({
         item: group.at(-1)!.caption.id,

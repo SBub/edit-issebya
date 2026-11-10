@@ -730,12 +730,21 @@ describe("the layout engine's placement", () => {
           );
         }
         // The hook runs its whole window; an accent, question or list ends at
-        // its last word's end, whatever shows with it. The only retimes are the
-        // reel's end, a cut and the same-text trims.
+        // its last word's end, whatever shows with it; a LIST's layer runs one
+        // out-fade past its last word, so its words are at full opacity while
+        // spoken. The only retimes are the reel's end, a cut and the same-text
+        // trims.
         expect(spans.get("hook")).toMatchObject({ start: 0.2, end: 3 });
+        const fadeOf = (id: string) =>
+          edit.tracks.transitions.some((item) => item.id === id)
+            ? ISSEBYA_PRESET.transitions.numbered.seconds
+            : 0;
         for (const item of [...edit.tracks.overlays, ...edit.tracks.transitions]) {
           if (item.id === "hook") continue;
-          expect(spans.get(item.id)!.end, item.id).toBeCloseTo(end(item.words!.at(-1)!), 3);
+          expect(spans.get(item.id)!.end, item.id).toBeCloseTo(
+            end(item.words!.at(-1)!) + fadeOf(item.id),
+            3,
+          );
         }
         expect(
           record.filter(
@@ -1295,9 +1304,11 @@ describe("transitions", () => {
     const { spans, levels, edit, html, checks } = await place({ lists: [{ items: [LIST] }] });
     const span = spans.get("transition-1")!;
     expect(span.start).toBe(ms(start("w26") - ENTRANCE));
-    expect(span.end).toBe(end("w33"));
+    // The out-fade (the same seconds) runs after w33: the layer is at full
+    // opacity while w33 is spoken.
+    expect(span.end).toBe(ms(end("w33") + ENTRANCE));
     expect(edit.tracks.transitions[0]).toMatchObject({
-      end: { word: "w33", edge: "end" },
+      end: { word: "w33", edge: "end", offset: ENTRANCE },
     });
     expect(edit.tracks.transitions[0]).toMatchObject({
       type: "numbered",
@@ -1335,7 +1346,7 @@ describe("transitions", () => {
     );
     if (!made.ok) throw new Error(made.reasons.join("; "));
     const span = resolveTimeline(made.edit, paused.transcript).get("transition-1")!;
-    expect(span.end).toBe(ms(end("w33")));
+    expect(span.end).toBe(ms(end("w33") + ENTRANCE));
     expect(T).not.toHaveProperty("holdSeconds");
   });
 
@@ -1344,11 +1355,31 @@ describe("transitions", () => {
       lists: [{ items: [{ from: "w26", to: "w27", key_from: "w26" }] }],
     });
     const span = spans.get("transition-1")!;
-    expect([span.start, span.end]).toEqual([ms(start("w26") - ENTRANCE), end("w27")]);
+    expect([span.start, span.end]).toEqual([
+      ms(start("w26") - ENTRANCE),
+      ms(end("w27") + ENTRANCE),
+    ]);
     expect(
       record.filter((note) => note.item === "transition-1" && note.outcome === "retimed"),
     ).toEqual([]);
     expect(checks).toEqual([]);
+  });
+
+  it("a short key phrase is at full opacity from its reveal's end to its last word's end", async () => {
+    // A one-word key phrase: shorter than the reveal, so its reveal is cut to
+    // the word and it is full by the word's end; the layer's out-fade starts
+    // there too, never inside the spoken time.
+    const { spans, levels } = await place({
+      lists: [{ items: [{ from: "w30", to: "w30", key_from: "w30" }] }],
+    });
+    const key = levels.find((level) => level.role === "key")!;
+    const span = spans.get("transition-1")!;
+    expect(span.end - ENTRANCE).toBeCloseTo(end("w30"), 3);
+    expect(key.start + key.reveal).toBeLessThanOrEqual(end("w30") + 1e-6);
+    expect(key.reveal).toBeCloseTo(
+      Math.min(ISSEBYA_PRESET.caption.inSeconds, end("w30") - start("w30")),
+      6,
+    );
   });
 
   it("sets the lead-in in caption text and the key phrase in accent text, inside the safe zone", async () => {
@@ -1841,7 +1872,10 @@ describe("text picks share the screen in time", () => {
     // keeps it and its whole span; the list shows its own words from "has"
     // (w27), its entrance before that word. Nothing is cut in time.
     expect(accent).toMatchObject({ start: start("w24"), end: end("w26") });
-    expect(list).toMatchObject({ start: ms(start("w27") - ENTRANCE), end: end("w33") });
+    expect(list).toMatchObject({
+      start: ms(start("w27") - ENTRANCE),
+      end: ms(end("w33") + ENTRANCE),
+    });
     expect(placed.edit.tracks.transitions[0]!.words[0]).toBe("w27");
     expect(placed.record).toContainEqual(
       expect.objectContaining({
@@ -1865,7 +1899,7 @@ describe("text picks share the screen in time", () => {
     expect(placed.spans.has("accent-1")).toBe(false);
     expect(placed.spans.get("transition-1")).toMatchObject({
       start: ms(start("w26") - ENTRANCE),
-      end: end("w33"),
+      end: ms(end("w33") + ENTRANCE),
     });
     expect(placed.record).toContainEqual(
       expect.objectContaining({
@@ -1888,7 +1922,7 @@ describe("text picks share the screen in time", () => {
     });
     expect(placed.spans.get("transition-1")).toMatchObject({
       start: ms(start("w22") - ENTRANCE),
-      end: end("w27"),
+      end: ms(end("w27") + ENTRANCE),
     });
     expect(placed.spans.get("big-word-1")!.start).toBeCloseTo(leadOf("w28"), 3);
     expect(placed.spans.get("big-word-1")!.start).toBeLessThan(end("w27"));
@@ -1940,7 +1974,10 @@ describe("text picks share the screen in time", () => {
     });
     const item = placed.spans.get("transition-1")!;
     const word = placed.spans.get("big-word-1")!;
-    expect(item).toMatchObject({ start: ms(start("w23") - ENTRANCE), end: end("w25") });
+    expect(item).toMatchObject({
+      start: ms(start("w23") - ENTRANCE),
+      end: ms(end("w25") + ENTRANCE),
+    });
     expect(word.start).toBeCloseTo(leadOf("w26"), 3);
     expect(word.end).toBeCloseTo(leadOf("w26") + BIG_WORD.minimum, 3);
     expect(word.start).toBeLessThan(item.end);
@@ -2251,11 +2288,11 @@ describe("every pick shown, or dropped where another pick shows its text", () =>
     ]);
     expect(placed.edit.tracks.overlays.map((item) => item.id)).toEqual(["hook"]);
     // The hook keeps its window; the first item, said inside it, keeps its
-    // entrance and its last word's end, placed off the hook.
+    // entrance and its out-fade after its last word, placed off the hook.
     expect(placed.spans.get("hook")).toMatchObject({ start: 0.2, end: 3 });
     expect(placed.spans.get("transition-1")).toMatchObject({
       start: ms(start("w4") - ENTRANCE),
-      end: end("w9"),
+      end: ms(end("w9") + ENTRANCE),
     });
     expect(placed.record).toContainEqual(
       expect.objectContaining({

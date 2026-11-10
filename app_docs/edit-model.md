@@ -120,7 +120,8 @@ and rule 6 (`engine-place.ts`).
   white (`#FFFFFF`). Sizes are not here: the style table (`STYLES` in `src/variants.ts`) holds the
   bases, `accent` 110 px and `caption` 50 px, and the big word's `largest-fit`. An item with no size
   in an edit takes its font's style base.
-- Captions: `#FFFFFF`, rise 12 px over 0.18 s (`power2.out`), fade out 0.15 s, at least 0.25 s on
+- Captions: `#FFFFFF`, rise 12 px over 0.18 s (`power2.out`), fade out 0.15 s after the group's last word
+  (the span ends one fade past it, never past the next group's start; spec decision 25), at least 0.25 s on
   screen, a group breaks at a 0.35 s pause or after 4 units, line gap 14. The caption line (y 1290) is
   the zone table's.
 - Layout (`layout`): `gap` 12 px, the gap a text keeps from the face and from other text (and the
@@ -130,7 +131,8 @@ and rule 6 (`engine-place.ts`).
   (1.5 s) from its word. `accent.afterSeconds` (1 s) is not a shown time: it only bounds a big word's
   length in the decide limit (`schema.ts`).
 - Transitions (`transitions.numbered`, the LIST): the layer is the full frame, with no background; its
-  text levels come in with a fade of 0.3 s (`power2.out`; `seconds` is the entrance). Their styles and
+  text levels come in with a fade of 0.3 s (`power2.out`; `seconds` is the entrance), each cut to its own
+  spoken time (`caption.inSeconds` at most, so a short key phrase is full by its last word). Their styles and
   spots are the entry's (`list/numbered`: the key phrase and the number `accent`, the lead-in `caption`,
   the number's ratio to the key 300/110) and the zone table's. Stacked levels keep `transition.gap`
   (24 px) apart. Their text stays inside `S` and clear of the notch.
@@ -221,8 +223,9 @@ and rule 6 (`engine-place.ts`).
 
 - `src/transitions.ts`: pure helpers shared by the engine and the builder. `transitionTiming`: the layer
   comes in as its entrance (`seconds`, 0.3 s) ends on the phrase's first word, so it starts 0.3 s before
-  that word (never before 0; the fade is finished as the word starts), and goes out at the phrase's last
-  word's end. No hold after the phrase and no minimum; only a phrase with no length at all is lengthened
+  that word (never before 0; the fade is finished as the word starts), and its out-fade runs over the
+  0.3 s after the phrase's last word, so the layer ends one fade past that word and the phrase is at full
+  opacity while spoken (spec decision 25). No hold after the phrase and no minimum; only a phrase with no length at all is lengthened
   to the shown floor (`SHOWN_FLOOR_SECONDS`, 0.5 s, from its first word, earlier where the reel ends,
   `transition-min`). On a reel under the floor it gives null and the layer covers the whole reel
   (`transition-time`). No other text moves or cuts it: a text said at the same time is placed around it,

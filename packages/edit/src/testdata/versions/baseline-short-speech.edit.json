@@ -39,7 +39,8 @@
         },
         "end": {
           "word": "w0004",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.129
         },
         "words": [
           "w0001"
@@ -58,7 +59,8 @@
         },
         "end": {
           "word": "w0004",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.129
         },
         "words": [
           "w0002"
@@ -77,7 +79,8 @@
         },
         "end": {
           "word": "w0004",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.129
         },
         "words": [
           "w0003"
@@ -96,7 +99,8 @@
         },
         "end": {
           "word": "w0004",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.129
         },
         "words": [
           "w0004"
@@ -116,7 +120,7 @@
         "end": {
           "word": "w0005",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.15
         },
         "words": [
           "w0005"
@@ -135,7 +139,8 @@
         },
         "end": {
           "word": "w0010",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.085
         },
         "words": [
           "w0006"
@@ -154,7 +159,8 @@
         },
         "end": {
           "word": "w0010",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.085
         },
         "words": [
           "w0007"
@@ -173,7 +179,8 @@
         },
         "end": {
           "word": "w0010",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.085
         },
         "words": [
           "w0008"
@@ -192,7 +199,8 @@
         },
         "end": {
           "word": "w0010",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.085
         },
         "words": [
           "w0009"
@@ -211,7 +219,8 @@
         },
         "end": {
           "word": "w0010",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.085
         },
         "words": [
           "w0010"

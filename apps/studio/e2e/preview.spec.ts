@@ -371,16 +371,17 @@ test.describe("a LIST item on the speech clip", () => {
     expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
     const edit = (parsed as { ok: true; edit: Edit }).edit;
     // Timing rule (specs/layout-engine.md, "Timing first"): a LIST's layer
-    // comes in 0.3 s before its first word and goes out at its last word's
-    // end, with no hold. The anchors are the engine's own picks for those
-    // two times (the start resolves to 0.3 s before w0028, the end is w0032's
-    // end edge); the times themselves are asserted below.
+    // comes in 0.3 s before its first word and its out-fade runs over the
+    // 0.3 s after its last word, so the phrase is at full opacity while spoken.
+    // The anchors are the engine's own picks for those two times (the start
+    // resolves to 0.3 s before w0028, the end is w0032's end edge plus the
+    // fade); the times themselves are asserted below.
     expect(edit.tracks.transitions).toEqual([
       expect.objectContaining({
         type: "numbered",
         words: ["w0028", "w0029", "w0030", "w0031", "w0032"],
         start: expect.objectContaining({ edge: "end", word: "w0026" }),
-        end: { word: "w0032", edge: "end" },
+        end: { word: "w0032", edge: "end", offset: 0.3 },
         key: "w0031",
         list: 1,
       }),
@@ -402,20 +403,18 @@ test.describe("a LIST item on the speech clip", () => {
     const keyFirst = transcript.words.find((word) => word.id === "w0031")!;
     const keyLast = transcript.words.find((word) => word.id === "w0032")!;
     const phraseFirst = transcript.words.find((word) => word.id === "w0028")!;
-    // The layer's times: in 0.3 s before the phrase's first word, out at the
-    // last word's end.
-    expect(layer.start).toBeCloseTo(
-      phraseFirst.start - ISSEBYA_PRESET.transitions.numbered.seconds,
-      3,
-    );
-    expect(layer.end).toBeCloseTo(keyLast.end, 3);
+    // The layer's times: in 0.3 s before the phrase's first word; the out-fade
+    // runs over the 0.3 s after the last word's end, so the layer ends one
+    // fade past it.
+    const fade = ISSEBYA_PRESET.transitions.numbered.seconds;
+    expect(layer.start).toBeCloseTo(phraseFirst.start - fade, 3);
+    expect(layer.end).toBeCloseTo(keyLast.end + fade, 3);
 
-    // The layer fades out over its last `seconds` (the out-fade runs from
-    // layer.end - seconds to layer.end, build.ts), so a check at full opacity
-    // sits before that fade: between the key phrase's first word and the start
-    // of the fade ("to work," is still in its layer).
-    const fadeOutStart = layer.end - ISSEBYA_PRESET.transitions.numbered.seconds;
-    await setPosition(page, (keyFirst.start + fadeOutStart) / 2);
+    // While the phrase is spoken, after its key reveal (caption.inSeconds from
+    // its first word) and before its last word ends, the layer and both levels
+    // are at full opacity.
+    const revealed = keyFirst.start + ISSEBYA_PRESET.caption.inSeconds;
+    await setPosition(page, (revealed + keyLast.end) / 2);
     await expect.poll(() => opacity("#transition-1")).toBeGreaterThan(0.9);
     // A list of one item has no number level.
     await expect(frame.locator("#transition-1 #transition-1-number")).toHaveCount(0);
@@ -430,8 +429,8 @@ test.describe("a LIST item on the speech clip", () => {
         );
     expect(await lines("#transition-1-lead")).toEqual(["they don't", "leave"]);
     expect(await lines("#transition-1-key")).toEqual(["to", "work"]);
-    await expect.poll(() => opacity("#transition-1-lead")).toBeGreaterThan(0.5);
-    await expect.poll(() => opacity("#transition-1-key")).toBeGreaterThan(0.5);
+    await expect.poll(() => opacity("#transition-1-lead")).toBeGreaterThan(0.9);
+    await expect.poll(() => opacity("#transition-1-key")).toBeGreaterThan(0.9);
     const color = (selector: string) =>
       frame.locator(selector).evaluate((el) => getComputedStyle(el).color);
     // The lead-in in caption text and the key phrase in accent text: every
@@ -443,19 +442,8 @@ test.describe("a LIST item on the speech clip", () => {
       await expect(frame.locator(`#${id}`)).toHaveCount(0);
     }
 
-    // After it has left, the next caption shows as usual: caption cw0033
-    // (w0033) fades in over caption.inSeconds from its start and out over
-    // caption.outSeconds at its end, so the check lands after the fade-in and
-    // before the fade-out.
-    const nextSpan = resolved.get("cw0033")!;
-    const fadeOut = nextSpan.end - ISSEBYA_PRESET.caption.outSeconds;
-    expect(fadeOut).toBeGreaterThan(layer.end);
-    expect(layer.end + 0.001).toBeLessThan(fadeOut);
+    // Once its out-fade is over, the layer is gone.
     await setPosition(page, layer.end + 0.001);
     await expect.poll(() => opacity("#transition-1")).toBeLessThan(0.05);
-    const next = frame.locator("#cw0033");
-    await expect(next).toHaveText("they");
-    await setPosition(page, nextSpan.start + ISSEBYA_PRESET.caption.inSeconds + 0.01);
-    await expect.poll(() => opacity("#cw0033")).toBeGreaterThan(0.5);
   });
 });

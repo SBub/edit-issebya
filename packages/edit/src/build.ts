@@ -314,7 +314,7 @@ export function build(
           ])}>${level.lines.map(escapeHtml).join("<br />")}</div>`,
         );
         js.push(
-          `tl.fromTo(${selector(level.itemId)}, { opacity: 0, y: ${caption.rise} }, { opacity: 1, y: 0, duration: ${num(caption.inSeconds)}, ease: "${caption.inEase}" }, ${num(level.start)});`,
+          `tl.fromTo(${selector(level.itemId)}, { opacity: 0, y: ${caption.rise} }, { opacity: 1, y: 0, duration: ${num(level.reveal)}, ease: "${caption.inEase}" }, ${num(level.start)});`,
         );
       }
       body.push("      </div>");

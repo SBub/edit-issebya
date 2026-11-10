@@ -24,14 +24,21 @@ const timing0 = (words: Word[]) =>
   transitionTiming({ from: "a", to: "c" }, words, 10, P, NUMBERED)!;
 
 describe("transitionTiming", () => {
-  it("comes in as its entrance ends on its first word's start, gone at its last word's end", () => {
+  it("comes in as its entrance ends on its first word's start, its out-fade after its last word's end", () => {
     const words = wordsWith(0.2);
     const timing = transitionTiming({ from: "a", to: "c" }, words, 10, P, NUMBERED)!;
     expect(timing.seconds).toBe(NUMBERED.seconds);
     expect(timing.start).toBe(1 - NUMBERED.seconds);
-    expect(timing.end).toBe(3);
-    expect(timing.endAnchor).toEqual({ word: "c", edge: "end" });
+    expect(timing.end).toBe(3 + NUMBERED.seconds);
+    expect(timing.endAnchor).toEqual({ word: "c", edge: "end", offset: NUMBERED.seconds });
     expect(timing.lengthened).toBe(false);
+  });
+
+  it("is at full opacity through its last word: the out-fade starts at that word's end", () => {
+    const words = wordsWith(0.2);
+    const timing = transitionTiming({ from: "a", to: "c" }, words, 10, P, NUMBERED)!;
+    // build.ts fades the layer out over [end - seconds, end].
+    expect(timing.end - timing.seconds).toBeCloseTo(3, 9);
   });
 
   it("never starts its entrance before 0", () => {
@@ -41,10 +48,12 @@ describe("transitionTiming", () => {
     expect(timing.startAnchor).toEqual({ reel: "start" });
   });
 
-  it("does not hold after its last word: it leaves there, even before a long pause", () => {
+  it("does not hold after its last word: its fade ends one fade past it, even before a long pause", () => {
     const words = wordsWith(3);
     expect(P.transition).not.toHaveProperty("holdSeconds");
-    expect(transitionTiming({ from: "a", to: "c" }, words, 10, P, NUMBERED)!.end).toBe(3);
+    expect(transitionTiming({ from: "a", to: "c" }, words, 10, P, NUMBERED)!.end).toBe(
+      3 + NUMBERED.seconds,
+    );
   });
 
   it("has no minimum: a short phrase keeps its words, the entrance before the first", () => {
@@ -54,7 +63,7 @@ describe("transitionTiming", () => {
       { id: "y", text: "two", start: 1.1, end: 1.2 },
     ];
     const timing = transitionTiming({ from: "x", to: "x" }, words, 10, P, NUMBERED)!;
-    expect([timing.start, timing.end]).toEqual([1 - NUMBERED.seconds, 1.05]);
+    expect([timing.start, timing.end]).toEqual([1 - NUMBERED.seconds, 1.05 + NUMBERED.seconds]);
     expect(timing.lengthened).toBe(false);
   });
 

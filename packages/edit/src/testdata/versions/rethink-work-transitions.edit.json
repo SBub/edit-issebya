@@ -48,7 +48,8 @@
         },
         "end": {
           "word": "w3",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.055
         },
         "words": [
           "w0"
@@ -67,7 +68,8 @@
         },
         "end": {
           "word": "w3",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.055
         },
         "words": [
           "w1"
@@ -86,7 +88,8 @@
         },
         "end": {
           "word": "w3",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.055
         },
         "words": [
           "w2"
@@ -105,7 +108,8 @@
         },
         "end": {
           "word": "w3",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.055
         },
         "words": [
           "w3"
@@ -124,7 +128,8 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w4"
@@ -143,7 +148,8 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w5"
@@ -162,7 +168,8 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w6"
@@ -181,7 +188,8 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w7"
@@ -200,7 +208,8 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w8"
@@ -219,7 +228,8 @@
         },
         "end": {
           "word": "w9",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w9"
@@ -238,7 +248,8 @@
         },
         "end": {
           "word": "w12",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w10"
@@ -257,7 +268,8 @@
         },
         "end": {
           "word": "w12",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w11"
@@ -276,7 +288,8 @@
         },
         "end": {
           "word": "w12",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w12"
@@ -486,7 +499,7 @@
         "end": {
           "word": "w25",
           "edge": "end",
-          "offset": 0.022
+          "offset": 0.072
         },
         "words": [
           "w23"
@@ -506,7 +519,7 @@
         "end": {
           "word": "w25",
           "edge": "end",
-          "offset": 0.022
+          "offset": 0.072
         },
         "words": [
           "w24"
@@ -526,7 +539,7 @@
         "end": {
           "word": "w25",
           "edge": "end",
-          "offset": 0.022
+          "offset": 0.072
         },
         "words": [
           "w25"
@@ -545,7 +558,8 @@
         },
         "end": {
           "word": "w28",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w26"
@@ -564,7 +578,8 @@
         },
         "end": {
           "word": "w28",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w27"
@@ -583,7 +598,8 @@
         },
         "end": {
           "word": "w28",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w28"
@@ -603,7 +619,7 @@
         "end": {
           "word": "w33",
           "edge": "end",
-          "offset": 0.058
+          "offset": 0.15
         },
         "words": [
           "w30"
@@ -623,7 +639,7 @@
         "end": {
           "word": "w33",
           "edge": "end",
-          "offset": 0.058
+          "offset": 0.15
         },
         "words": [
           "w31"
@@ -643,7 +659,7 @@
         "end": {
           "word": "w33",
           "edge": "end",
-          "offset": 0.058
+          "offset": 0.15
         },
         "words": [
           "w32"
@@ -663,7 +679,7 @@
         "end": {
           "word": "w33",
           "edge": "end",
-          "offset": 0.058
+          "offset": 0.15
         },
         "words": [
           "w33"
@@ -682,7 +698,8 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w34"
@@ -701,7 +718,8 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w35"
@@ -720,7 +738,8 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w36"
@@ -739,7 +758,8 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w37"
@@ -758,7 +778,8 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w38"
@@ -777,7 +798,8 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w39"
@@ -796,7 +818,8 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w40"
@@ -815,7 +838,8 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w41"
@@ -834,7 +858,8 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w42"
@@ -853,7 +878,8 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w43"
@@ -872,7 +898,8 @@
         },
         "end": {
           "word": "w44",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w44"
@@ -967,7 +994,8 @@
         },
         "end": {
           "word": "w50",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w49"
@@ -986,7 +1014,8 @@
         },
         "end": {
           "word": "w50",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w50"
@@ -1062,7 +1091,8 @@
         },
         "end": {
           "word": "w57",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w54"
@@ -1081,7 +1111,8 @@
         },
         "end": {
           "word": "w57",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w55"
@@ -1100,7 +1131,8 @@
         },
         "end": {
           "word": "w57",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w56"
@@ -1119,7 +1151,8 @@
         },
         "end": {
           "word": "w57",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w57"
@@ -1139,7 +1172,7 @@
         "end": {
           "word": "w62",
           "edge": "end",
-          "offset": 0.014
+          "offset": 0.146
         },
         "words": [
           "w58"
@@ -1159,7 +1192,7 @@
         "end": {
           "word": "w62",
           "edge": "end",
-          "offset": 0.014
+          "offset": 0.146
         },
         "words": [
           "w59"
@@ -1179,7 +1212,7 @@
         "end": {
           "word": "w62",
           "edge": "end",
-          "offset": 0.014
+          "offset": 0.146
         },
         "words": [
           "w60"
@@ -1199,7 +1232,7 @@
         "end": {
           "word": "w62",
           "edge": "end",
-          "offset": 0.014
+          "offset": 0.146
         },
         "words": [
           "w61"
@@ -1219,7 +1252,7 @@
         "end": {
           "word": "w62",
           "edge": "end",
-          "offset": 0.014
+          "offset": 0.146
         },
         "words": [
           "w62"
@@ -1299,7 +1332,7 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w66"
@@ -1319,7 +1352,7 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w67"
@@ -1339,7 +1372,7 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w68"
@@ -1359,7 +1392,7 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w69"
@@ -1379,7 +1412,7 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w70"
@@ -1399,7 +1432,7 @@
         "end": {
           "word": "w71",
           "edge": "end",
-          "offset": 0.077
+          "offset": 0.15
         },
         "words": [
           "w71"
@@ -1494,7 +1527,8 @@
         },
         "end": {
           "word": "w77",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w76"
@@ -1508,7 +1542,8 @@
         },
         "end": {
           "word": "w77",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w77"
@@ -1527,7 +1562,8 @@
         },
         "end": {
           "word": "w80",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w78"
@@ -1546,7 +1582,8 @@
         },
         "end": {
           "word": "w80",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w79"
@@ -1565,7 +1602,8 @@
         },
         "end": {
           "word": "w80",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.073
         },
         "words": [
           "w80"
@@ -1585,7 +1623,7 @@
         "end": {
           "word": "w83",
           "edge": "end",
-          "offset": 0.059
+          "offset": 0.15
         },
         "words": [
           "w81"
@@ -1605,7 +1643,7 @@
         "end": {
           "word": "w83",
           "edge": "end",
-          "offset": 0.059
+          "offset": 0.15
         },
         "words": [
           "w82"
@@ -1625,7 +1663,7 @@
         "end": {
           "word": "w83",
           "edge": "end",
-          "offset": 0.059
+          "offset": 0.15
         },
         "words": [
           "w83"
@@ -1644,7 +1682,8 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w84"
@@ -1663,7 +1702,8 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w85"
@@ -1682,7 +1722,8 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w86"
@@ -1701,7 +1742,8 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w87"
@@ -1720,7 +1762,8 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w88"
@@ -1739,7 +1782,8 @@
         },
         "end": {
           "word": "w90",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.145
         },
         "words": [
           "w89",
@@ -1761,7 +1805,7 @@
         "end": {
           "word": "w93",
           "edge": "end",
-          "offset": 0.096
+          "offset": 0.15
         },
         "words": [
           "w91"
@@ -1781,7 +1825,7 @@
         "end": {
           "word": "w93",
           "edge": "end",
-          "offset": 0.096
+          "offset": 0.15
         },
         "words": [
           "w92"
@@ -1801,7 +1845,7 @@
         "end": {
           "word": "w93",
           "edge": "end",
-          "offset": 0.096
+          "offset": 0.15
         },
         "words": [
           "w93"
@@ -1820,7 +1864,8 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w94"
@@ -1839,7 +1884,8 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w95"
@@ -1858,7 +1904,8 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w96"
@@ -1877,7 +1924,8 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w97"
@@ -1896,7 +1944,8 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w98"
@@ -1915,7 +1964,8 @@
         },
         "end": {
           "word": "w99",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.091
         },
         "words": [
           "w99"
@@ -1934,7 +1984,8 @@
         },
         "end": {
           "word": "w103",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w100"
@@ -1948,7 +1999,8 @@
         },
         "end": {
           "word": "w103",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w101"
@@ -1962,7 +2014,8 @@
         },
         "end": {
           "word": "w103",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w102"
@@ -1976,7 +2029,8 @@
         },
         "end": {
           "word": "w103",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w103"
@@ -1990,7 +2044,8 @@
         },
         "end": {
           "word": "w104",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.052
         },
         "words": [
           "w104"
@@ -2206,7 +2261,8 @@
         },
         "end": {
           "word": "w118",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.027
         },
         "words": [
           "w117"
@@ -2225,7 +2281,8 @@
         },
         "end": {
           "word": "w118",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.027
         },
         "words": [
           "w118"
@@ -2244,7 +2301,8 @@
         },
         "end": {
           "word": "w122",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w119"
@@ -2263,7 +2321,8 @@
         },
         "end": {
           "word": "w122",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w120"
@@ -2282,7 +2341,8 @@
         },
         "end": {
           "word": "w122",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w121"
@@ -2301,7 +2361,8 @@
         },
         "end": {
           "word": "w122",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w122"
@@ -2320,7 +2381,8 @@
         },
         "end": {
           "word": "w125",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.116
         },
         "words": [
           "w123"
@@ -2339,7 +2401,8 @@
         },
         "end": {
           "word": "w125",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.116
         },
         "words": [
           "w124"
@@ -2358,7 +2421,8 @@
         },
         "end": {
           "word": "w125",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.116
         },
         "words": [
           "w125"
@@ -2377,7 +2441,8 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w126"
@@ -2396,7 +2461,8 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w127"
@@ -2415,7 +2481,8 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w128"
@@ -2434,7 +2501,8 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w129"
@@ -2453,7 +2521,8 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w130"
@@ -2472,7 +2541,8 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w131"
@@ -2491,7 +2561,8 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w132"
@@ -2510,7 +2581,8 @@
         },
         "end": {
           "word": "w133",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.136
         },
         "words": [
           "w133"
@@ -2529,7 +2601,8 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w134"
@@ -2548,7 +2621,8 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w135"
@@ -2567,7 +2641,8 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w136"
@@ -2586,7 +2661,8 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w137"
@@ -2605,7 +2681,8 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w138"
@@ -2624,7 +2701,8 @@
         },
         "end": {
           "word": "w139",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.143
         },
         "words": [
           "w139"
@@ -2643,7 +2721,8 @@
         },
         "end": {
           "word": "w144",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.142
         },
         "words": [
           "w140"
@@ -2662,7 +2741,8 @@
         },
         "end": {
           "word": "w144",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.142
         },
         "words": [
           "w141"
@@ -2681,7 +2761,8 @@
         },
         "end": {
           "word": "w144",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.142
         },
         "words": [
           "w142"
@@ -2700,7 +2781,8 @@
         },
         "end": {
           "word": "w144",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.142
         },
         "words": [
           "w143"
@@ -2719,7 +2801,8 @@
         },
         "end": {
           "word": "w144",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.142
         },
         "words": [
           "w144"
@@ -2738,7 +2821,8 @@
         },
         "end": {
           "word": "w148",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w145"
@@ -2757,7 +2841,8 @@
         },
         "end": {
           "word": "w148",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w146"
@@ -2776,7 +2861,8 @@
         },
         "end": {
           "word": "w148",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w147"
@@ -2795,7 +2881,8 @@
         },
         "end": {
           "word": "w148",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.15
         },
         "words": [
           "w148"
@@ -2814,7 +2901,8 @@
         },
         "end": {
           "word": "w149",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.14
         },
         "words": [
           "w149"
@@ -2967,7 +3055,7 @@
         "end": {
           "word": "w161",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.122
         },
         "words": [
           "w157"
@@ -2987,7 +3075,7 @@
         "end": {
           "word": "w161",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.122
         },
         "words": [
           "w158"
@@ -3007,7 +3095,7 @@
         "end": {
           "word": "w161",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.122
         },
         "words": [
           "w159"
@@ -3027,7 +3115,7 @@
         "end": {
           "word": "w161",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.122
         },
         "words": [
           "w160"
@@ -3047,7 +3135,7 @@
         "end": {
           "word": "w161",
           "edge": "end",
-          "offset": 0.05
+          "offset": 0.122
         },
         "words": [
           "w161"
@@ -3113,7 +3201,8 @@
         },
         "end": {
           "word": "w103",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.3
         },
         "type": "numbered",
         "words": [
@@ -3178,7 +3267,8 @@
         },
         "end": {
           "word": "w108",
-          "edge": "end"
+          "edge": "end",
+          "offset": 0.3
         },
         "type": "numbered",
         "words": [
@@ -3198,11 +3288,11 @@
               "offset": -0.004
             },
             "position": {
-              "x": 477,
-              "y": 1045,
+              "x": 478,
+              "y": 1049,
               "align": "left"
             },
-            "size": 245
+            "size": 242
           },
           "lead": {
             "text": "protected",
@@ -3211,7 +3301,7 @@
             },
             "position": {
               "x": 444,
-              "y": 1314,
+              "y": 1315,
               "align": "left"
             },
             "size": 40
@@ -3222,11 +3312,11 @@
               "word": "w107"
             },
             "position": {
-              "x": 258,
-              "y": 1378,
+              "x": 261,
+              "y": 1379,
               "align": "left"
             },
-            "size": 90
+            "size": 89
           }
         }
       }
