@@ -410,8 +410,12 @@ test.describe("a LIST item on the speech clip", () => {
     );
     expect(layer.end).toBeCloseTo(keyLast.end, 3);
 
-    // Inside the phrase, on its key phrase ("to work,").
-    await setPosition(page, (keyFirst.start + keyLast.end) / 2);
+    // The layer fades out over its last `seconds` (the out-fade runs from
+    // layer.end - seconds to layer.end, build.ts), so a check at full opacity
+    // sits before that fade: between the key phrase's first word and the start
+    // of the fade ("to work," is still in its layer).
+    const fadeOutStart = layer.end - ISSEBYA_PRESET.transitions.numbered.seconds;
+    await setPosition(page, (keyFirst.start + fadeOutStart) / 2);
     await expect.poll(() => opacity("#transition-1")).toBeGreaterThan(0.9);
     // A list of one item has no number level.
     await expect(frame.locator("#transition-1 #transition-1-number")).toHaveCount(0);
