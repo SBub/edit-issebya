@@ -171,10 +171,13 @@ start_group() {
   PGIDS+=("$(ps -o pgid= -p $! | tr -d ' ')")
 }
 
-# Starts the local otel-lgtm container. It is left running on exit, since it is cheap to
-# keep and its data survives; `docker compose -f docker-compose.monitoring.yml down` stops it.
-# One stack per machine: every checkout uses the same Compose project name, so a stack that
-# already answers on Grafana (from any checkout) is reused and not started again.
+# Starts the local monitoring containers (otel-lgtm and cAdvisor). They are left running on exit,
+# since they are cheap to keep and the data survives; `docker compose -f docker-compose.monitoring.yml down`
+# stops them. One stack per machine: every checkout uses the same Compose project name, so a stack
+# that already answers on Grafana (from any checkout) and runs every service of this checkout's
+# compose file is reused and not started again. A stack that lacks a service (one started by an
+# older checkout) gets `up -d`, which adds the service and recreates a container whose settings
+# changed (the data volume is kept).
 # Up is not the same as working: the image can exit seconds after it starts (one of its programs
 # failing at start). So the script waits for Grafana to answer, recreates the container once when it
 # does not (the data volume is kept), and otherwise warns: the studio runs without monitoring, but
@@ -183,12 +186,20 @@ monitoring_down=0
 
 monitoring_answers() { curl -fsS -o /dev/null --max-time 2 "$MONITORING_UI_URL/api/health"; }
 
-# True when the container is not running (exited, restarting or missing).
+# True when the otel-lgtm container is not running (exited, restarting or missing).
 monitoring_not_running() {
   local states
-  states="$(docker compose -f "$MONITORING_COMPOSE" ps -a --format '{{.State}}' 2>/dev/null)" || return 0
+  states="$(docker compose -f "$MONITORING_COMPOSE" ps -a --format '{{.State}}' otel-lgtm 2>/dev/null)" || return 0
   [ "$states" = running ] && return 1
   return 0
+}
+
+# True when every service of the compose file has a running container.
+monitoring_complete() {
+  local wanted running
+  wanted="$(docker compose -f "$MONITORING_COMPOSE" config --services 2>/dev/null | sort)" || return 1
+  running="$(docker compose -f "$MONITORING_COMPOSE" ps --status running --services 2>/dev/null | sort)" || return 1
+  [ -n "$wanted" ] && [ "$wanted" = "$running" ]
 }
 
 # Up to 60 seconds, polling every 2 seconds. Stops early when the container has exited.
@@ -212,21 +223,21 @@ warn_monitoring_down() {
 }
 
 start_monitoring() {
-  if monitoring_answers; then
+  if monitoring_answers && monitoring_complete; then
     ok "Local monitoring is already running at $MONITORING_UI_URL (reused)"
     return
   fi
   docker compose -f "$MONITORING_COMPOSE" up -d ||
     fail "docker compose up for the monitoring stack failed (see the output above)"
   if wait_for_monitoring; then
-    ok "Local monitoring is up (Grafana, Tempo, Loki, Prometheus)"
+    ok "Local monitoring is up (Grafana, Tempo, Loki, Prometheus, cAdvisor)"
     return
   fi
   echo "..  Local monitoring did not answer: recreating its container once"
   docker compose -f "$MONITORING_COMPOSE" up -d --force-recreate >/dev/null 2>&1 ||
     echo "..  The recreate failed too (docker compose -f docker-compose.monitoring.yml logs)" >&2
   if wait_for_monitoring; then
-    ok "Local monitoring is up after a recreate (Grafana, Tempo, Loki, Prometheus)"
+    ok "Local monitoring is up after a recreate (Grafana, Tempo, Loki, Prometheus, cAdvisor)"
     return
   fi
   warn_monitoring_down
