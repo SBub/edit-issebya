@@ -440,7 +440,11 @@ export function LiveReel({
               jobs={jobs}
               hasVersion={currentId !== null}
             />
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {/* The picker stays pinned on top; only this list scrolls (app_docs/studio-reel-layout.md). */}
+            <div
+              data-testid="versions-scroll"
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+            >
               <VersionList
                 reelId={reel.id}
                 versions={versions}

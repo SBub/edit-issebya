@@ -227,6 +227,32 @@ async function expectOwnScroll(page: Page, area: Locator) {
   expect(await page.evaluate(() => document.scrollingElement!.scrollTop)).toBe(0);
 }
 
+// The font pair picker stays pinned on top of the versions column: the list
+// scrolls under it, the picker keeps its place and stays visible, and the
+// versions column itself never scrolls (its overflow is hidden, the list and
+// the picker are the only scroll boxes).
+async function expectPinnedPicker(page: Page) {
+  const picker = page.getByTestId("font-pair-picker");
+  const before = (await picker.boundingBox())!;
+  const column = await page.getByTestId("versions-area").evaluate((el) => ({
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+    overflowY: getComputedStyle(el).overflowY,
+  }));
+  expect(column.overflowY).toBe("hidden");
+  expect(column.scrollHeight).toBeLessThanOrEqual(column.clientHeight + 1);
+
+  await page.getByTestId("versions-scroll").evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  const after = (await picker.boundingBox())!;
+  await expect(picker).toBeVisible();
+  expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
+  expect(after.y + after.height).toBeLessThanOrEqual(
+    (await page.getByTestId("versions-scroll").boundingBox())!.y + 1,
+  );
+}
+
 // The reel page has no ready-notification control: no button, toggle or
 // blocked note.
 async function expectNoNotifyControl(page: Page) {
@@ -296,7 +322,8 @@ test("one screen at 1440x900: preview, timeline and the side panels at once", as
   await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
 
   await expectDesktopSplit(page);
-  await expectOwnScroll(page, page.getByTestId("versions-area"));
+  await expectOwnScroll(page, page.getByTestId("versions-scroll"));
+  await expectPinnedPicker(page);
   await expectNoPageScroll(page);
 
   // Pitch black theme: the page and the edit area are black; only the
@@ -483,7 +510,7 @@ for (const [size, viewport] of [
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(details).toBeHidden();
     await expectNoPageScroll(page);
-    await expectOwnScroll(page, page.getByTestId("versions-area"));
+    await expectOwnScroll(page, page.getByTestId("versions-scroll"));
   });
 }
 
@@ -498,7 +525,7 @@ for (const viewport of [
     await expectNoPageScroll(page);
     await expectInsideRoot(page, page.getByRole("button", { name: "Upload a photo" }));
     await expectDesktopSplit(page);
-    await expectOwnScroll(page, page.getByTestId("versions-area"));
+    await expectOwnScroll(page, page.getByTestId("versions-scroll"));
     await expectNoPageScroll(page);
   });
 }
@@ -527,7 +554,8 @@ test("one screen at 390x844 with tabs Edit, Versions and Library", async ({ page
   await expect(page.locator("hyperframes-player")).toBeHidden();
   await expect(page.getByTestId("start-over")).toBeVisible();
   await expectNoPageScroll(page);
-  await expectOwnScroll(page, page.getByTestId("versions-area"));
+  await expectOwnScroll(page, page.getByTestId("versions-scroll"));
+  await expectPinnedPicker(page);
 
   await tab("Library").click();
   await expect(page.getByTestId("library-area")).toBeVisible();
