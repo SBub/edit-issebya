@@ -67,8 +67,8 @@ start, end }` ref plus the span of the reel it covers, in seconds, by start). A 
   (`{ reel: "start" | "end" }`). Anchors are resolved at every build (`src/timeline.ts`,
   `resolveAnchor`, `resolveTimeline`, to the millisecond), so items follow their words through a
   re-time.
-- Per-item properties: captions and overlays take `words`, `text`, `font` (`primary` or
-  `secondary`), `size`, `color` (`#RRGGBB`), `position` (`{ x, y, align }` inside the frame) and
+- Per-item properties: captions and overlays take `words`, `text`, `font` (`simple` or
+  `artistic`, the roles of the edit's font pair, `src/font-pairs.ts`), `size`, `color` (`#RRGGBB`), `position` (`{ x, y, align }` inside the frame) and
   `breaks` (set in lines: each break is the number of words on the lines before it, ascending, so the builder cuts after each); a big word behind the speaker
   takes `position` (`{ x, y }`, its top left corner in the frame), `size` and `words` (the one or two word
   ids it shows, written by the engine; the same-text check reads them). A caption
@@ -113,10 +113,11 @@ and rule 6 (`engine-place.ts`).
   reference drawing, which does not label it; it and the column's width
   (`PLATFORM_BUTTONS_WIDTH`, 100) are named constants the owner tunes by eye with the studio's
   Zones button. Module constants, not `Preset` fields: no preset and no change request moves them.
-- Fonts: `primary` Raleway Light (`assets/fonts/Raleway-Light.ttf`, weight 300) for accents, the big
-  word and a transition's key phrase and number; `secondary` Golos Text Bold
-  (`assets/fonts/GolosText-Bold.ttf`, weight 700) for captions and a transition's lead-in (owner
-  decision 2026-11-04). The builder lists a font file once even when both roles share it. All text is
+- Fonts: a font pair (`src/font-pairs.ts`, `FONT_PAIRS`, the six approved pairs; `app_docs/font-pairs.md`)
+  gives two roles. `artistic` (the classic pair: Playfair Display Italic) writes the accents, a transition's
+  key phrase and number and the hook; `simple` (Inter Tight SemiBold) writes captions, the big word and a
+  transition's lead-in. Each face is a static OFL instance in `assets/fonts/`. The builder lists a pair's
+  font file once even when both roles share it. All text is
   white (`#FFFFFF`). Sizes are not here: the style table (`STYLES` in `src/variants.ts`) holds the
   bases, `accent` 110 px and `caption` 50 px, and the big word's `largest-fit`. An item with no size
   in an edit takes its font's style base.
@@ -173,9 +174,10 @@ and rule 6 (`engine-place.ts`).
   `mask` asset carries its `cutout` ref at `maskPath(mask)` (`masks/<fingerprint>.mp4`).
 - Deterministic: no clock, no randomness, no I/O. The same inputs give the same bytes in Node and in
   the browser. One builder serves the preview and the export.
-- `src/measure.ts`: `createMeasurer(hb, fonts)` over the initialised `harfbuzzjs` module and the
-  font bytes, both passed in by the caller (the worker's `apps/worker/src/edit-measurer.ts` reads
-  them from `packages/edit/assets/`, once per process). The `Measurer` returns advance widths
+- `src/measure.ts`: `createMeasurer(hb, pair, fonts)` over the initialised `harfbuzzjs` module, the pair and its
+  two files' bytes, all passed in by the caller (the worker's `apps/worker/src/edit-measurer.ts` reads
+  them from `packages/edit/assets/`, once per process and pair). The `Measurer` carries its `pair`, and
+  the builder takes its @font-face rules and the font assets from it, so the page loads the measured files. The `Measurer` returns advance widths
   (`sum(x_advance) * size / upem`) and records every width it measured (`widths()`, what the
   goldens compare). The same wasm on the same font bytes gives identical widths everywhere.
 - The builder places each caption, accent, hook and big word at the `position` the layout engine set
@@ -198,8 +200,8 @@ and rule 6 (`engine-place.ts`).
   captions with `hidden_by`, and a stored list caption with none whose start falls inside its list's layer),
   so the page and the checks never see it. The engine splits a caption in time so that `hidden_by` covers
   only a stretch the text is on screen for (see Placement, "never the same word twice").
-- The hook renders like an accent (the primary font, white, the same rise in and fade out, no
-  shadow) with its own class: `<span class="text hook f-primary">`, its lines centred by the
+- The hook renders like an accent (the artistic font, white, the same rise in and fade out, no
+  shadow) with its own class: `<span class="text hook f-artistic">`, its lines centred by the
   `.hook { text-align: center; }` rule, written only on a page with a hook (so every stored page
   builds byte for byte as before). `TextBox.kind` is `hook` for it.
 - Behind the speaker, one composite per mask span, above the footage and under transitions and
@@ -292,7 +294,7 @@ word" is now "spoken words, plus one written hook at the start".
   freely, moves down its zones and shrinks to 30 px before it covers the face (`covers-face`, rule
   `face`); it never sits on the hook. A caption-heavy opening never pushes the hook out.
 - Placement: the placer, as for every element (`placeExtra` in `src/engine-elements.ts`, with the
-  `hook/written-line` entry): the `accent` style (primary, white, base 110), zones the upper third then
+  `hook/written-line` entry): the `accent` style (artistic, white, base 110), zones the upper third then
   anywhere in the safe zone, shrunk in 10% steps to 30 px, wrapped freely (cost 0), the face a cost of
   100, never over other text (hard). Notes: `placed`, `moved`, `shrunk`, `wrapped`, `covers-face`, and
   `hook-time` (`clamped-to-end`). A hook that fits nowhere at 30 px or more is a `no-spot`: left out of
@@ -381,8 +383,8 @@ deterministic (no clock, no randomness, no I/O). Modules in `packages/edit/src`:
   the cut-out), `type` (`text` or `box`), `style`, its ranked `zones`, its `timing` option, whether its
   words `hides` the captions while it shows, and for a box its `aspect` and `width` share, for a stack its
   `levels`. It holds no size and no position. A wrong field or an unknown zone fails typecheck.
-- `STYLES` is the style table: `accent` (`primary`, white, base 110), `caption` (`secondary`, white,
-  base 50), `bigWord` (`primary`, white, `largest-fit`). Two entries on one style share its base. The
+- `STYLES` is the style table: `accent` (`artistic`, white, base 110), `caption` (`simple`, white,
+  base 50), `bigWord` (`simple`, white, `largest-fit`). Two entries on one style share its base. The
   base is the cap: a text is never set above it, and shrinks from it.
 - Timing options: `words`; `words-lead` (a lead before the first word, at least a minimum: the big
   word, 0.2 s and 1.5 s); `words-min-max` (the visual, 1 s to 2 s); `words-entrance` (the list, 0.3 s
@@ -858,7 +860,7 @@ never fatal.
   a preset value, and no preset or change request moves them.
 - Never rewrite a stored version to fit the guard; it shows its failed check.
 - Nothing Node-only or browser-only in `packages/edit`; the caller injects the platform.
-- Never commit an asset without its licence (`assets/fonts/OFL-*.txt`,
+- Never commit an asset without its licence (`assets/fonts/OFL-*.txt`, one per font family,
   `assets/sounds/LICENSE-sounds.md`, `assets/visuals/LICENSE-visuals.md`).
 
 ## Notes

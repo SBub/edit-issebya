@@ -1,6 +1,7 @@
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
-import type { FontKey, Preset } from "./preset.ts";
+import type { Preset } from "./preset.ts";
+import type { FontRole } from "./font-pairs.ts";
 import type { BehindItem, BehindVisualItem, BehindWordItem, Edit } from "./schema.ts";
 import { type Span, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -67,7 +68,7 @@ export function bigWordCoveredShare(box: Box, faces: readonly Box[]): number {
 export interface BigWordBox {
   itemId: string;
   text: string;
-  font: FontKey;
+  font: FontRole;
   size: number;
   color: string;
   x: number;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { build } from "./build.ts";
+import { FONT_PAIRS } from "./font-pairs.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import { FIXTURES, PLACED_FIXTURES } from "./test-support/fixtures.ts";
 import { goldenOf } from "./test-support/golden.ts";
@@ -72,7 +73,7 @@ describe("build", () => {
     expect(html).toMatch(
       /<audio id="click-visual-1" class="clip" src="assets\/sounds\/mouse-click-trimmed.wav" data-start="[\d.]+" data-duration="0.230" data-track-index="60" data-volume="0.5012"><\/audio>/,
     );
-    expect(html).toContain('<span id="accent-1" class="text f-primary"');
+    expect(html).toContain('<span id="accent-1" class="text f-artistic"');
   });
 
   it("lists every referenced file with its role, sorted", async () => {
@@ -83,10 +84,10 @@ describe("build", () => {
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
-    // Both roles' font files (Golos Text for captions, Raleway for accents).
+    // Both roles' font files (Inter Tight for captions, Playfair Display Italic for accents).
     expect(assets.map((asset) => [asset.path, asset.role])).toEqual([
-      ["assets/fonts/GolosText-Bold.ttf", "font"],
-      ["assets/fonts/Raleway-Light.ttf", "font"],
+      ["assets/fonts/InterTight-SemiBold.ttf", "font"],
+      ["assets/fonts/PlayfairDisplay-Italic.ttf", "font"],
       ["assets/sounds/mouse-click-trimmed.wav", "sound"],
       ["assets/visuals/visual-1.jpg", "visual"],
       [`masks/${"3".repeat(64)}.mp4`, "mask"],
@@ -95,19 +96,17 @@ describe("build", () => {
   });
 
   it("lists a font file once when both roles share it", async () => {
-    const shared = {
-      ...ISSEBYA_PRESET,
-      fonts: { ...ISSEBYA_PRESET.fonts, secondary: { ...ISSEBYA_PRESET.fonts.primary, size: 50 } },
-    };
+    const classic = FONT_PAIRS.classic;
+    const shared = { ...classic, artistic: classic.simple };
     const { assets } = build(
       engine.edit,
       engine.transcript,
       engine.headTrack,
-      shared,
-      await nodeMeasurer(),
+      ISSEBYA_PRESET,
+      await nodeMeasurer(shared),
     );
     expect(assets.filter((asset) => asset.role === "font").map((asset) => asset.path)).toEqual([
-      "assets/fonts/Raleway-Light.ttf",
+      "assets/fonts/InterTight-SemiBold.ttf",
     ]);
   });
 
@@ -216,7 +215,7 @@ describe("build", () => {
   it("escapes text and style values", async () => {
     const edit = structuredClone(engine.edit);
     edit.tracks.captions[0]!.text = `<b>"Tom" & 'Jerry'</b>`;
-    edit.tracks.captions[0]!.style = { "font-family": `"Raleway Light"` };
+    edit.tracks.captions[0]!.style = { "font-family": `"Inter Tight SemiBold"` };
     const { html } = build(
       edit,
       engine.transcript,
@@ -225,7 +224,7 @@ describe("build", () => {
       await nodeMeasurer(),
     );
     expect(html).toContain("&lt;b&gt;&quot;Tom&quot; &amp; &#39;Jerry&#39;&lt;/b&gt;</span>");
-    expect(html).toContain("font-family: &quot;Raleway Light&quot;");
+    expect(html).toContain("font-family: &quot;Inter Tight SemiBold&quot;");
     expect(html).not.toContain("<b>");
   });
 

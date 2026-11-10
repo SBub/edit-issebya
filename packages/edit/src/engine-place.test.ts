@@ -20,9 +20,9 @@ import { STYLES, type StackVariant, VARIANTS, type TextVariant } from "./variant
 // Synthetic scenes for the placer: one element, a face or none, obstacles laid
 // by hand. Sizes come from HarfBuzz over the package's fonts, so the tests
 // check relations (which zone, which cost, which notes) over exact pixels.
-// Widths at size 1 (Raleway Light): "hi" 0.78, "start here" 4.32 ("start"
-// 2.00, "here" 2.06), "lock-in" 3.08, "AI" 0.91; Golos Bold: "one two" 3.88,
-// "one" 1.80.
+// Widths at size 1 (Playfair Display Italic, the artistic role): "hi" 0.84,
+// "start here" 4.05 ("start" 2.00, "here" 1.80), "lock-in" 3.10, "AI" 0.97; Inter Tight
+// SemiBold (the simple role): "one two" 3.61, "one" 1.70.
 
 const S = PLATFORM_SAFE;
 // An unpadded robust face in the middle of the frame.
@@ -318,7 +318,7 @@ describe("the face", () => {
     expect(zone).toBe("head-top");
     // One line (the behind word item has no breaks), as wide as S.
     expect(result.placed!.lines).toEqual(["start here"]);
-    expect(size).toBe(Math.floor((S.right - S.left) / measurer.width("primary", 1, "start here")));
+    expect(size).toBe(Math.floor((S.right - S.left) / measurer.width("simple", 1, "start here")));
     expect(Math.abs((box.top + box.bottom) / 2 - 700)).toBeLessThanOrEqual(1);
     expect(Math.abs((box.left + box.right) / 2 - (S.left + S.right) / 2)).toBeLessThanOrEqual(1);
     expect(outcomes(result)).toEqual(["placed"]);
@@ -412,7 +412,7 @@ describe("wrapping", () => {
       scene([]),
       measurer,
     );
-    const oneLine = Math.floor((S.right - S.left) / measurer.width("primary", 1, "start here"));
+    const oneLine = Math.floor((S.right - S.left) / measurer.width("simple", 1, "start here"));
     expect(result.placed!.lines).toEqual(["start", "here"]);
     expect(result.placed!.breaks).toEqual([1]);
     expect(result.placed!.size).toBeGreaterThan(oneLine);
@@ -439,7 +439,7 @@ describe("wrapping", () => {
   });
 
   it("shrinks as little as it must: two lines four steps down beat one line seven steps down", () => {
-    // A column of 150 px: two lines fit at 72 px (four steps under 110), one
+    // A column of 150 px: two lines fit at 74 px (four steps under 110), one
     // line at 34 px (seven steps).
     const upperOnly: TextVariant = { ...VARIANTS["hook/written-line"], zones: ["upper-third"] };
     const result = placeElement(
@@ -448,7 +448,12 @@ describe("wrapping", () => {
       measurer,
     );
     expect(result.placed!.lines).toEqual(["start", "here"]);
-    expect(result.placed!.size).toBe(Math.floor(150 / measurer.width("primary", 1, "here")));
+    // The widest line sets the size: "start" is wider than "here" in this face.
+    const widest = Math.max(
+      measurer.width("artistic", 1, "start"),
+      measurer.width("artistic", 1, "here"),
+    );
+    expect(result.placed!.size).toBe(Math.floor(150 / widest));
     expect(result.placed!.cost).toBe(4 * PLACE_COSTS.shrinkStep);
     expect(outcomes(result)).toEqual(["shrunk", "wrapped"]);
   });
@@ -728,7 +733,7 @@ describe("a LIST stack", () => {
 });
 
 describe("a caption block (a sentence's groups as one element)", () => {
-  // Golos Bold at size 1: "one two" 3.88, "one" 1.80 (a space is the rest).
+  // Inter Tight SemiBold (simple) at size 1: "one two" 3.61, "one" 1.70 (a space is the rest).
   const CAPTION = VARIANTS["caption/default"];
   const CAPTION_BASE = STYLES.caption.base as number;
   const LINE_GAP = 14;
@@ -748,7 +753,7 @@ describe("a caption block (a sentence's groups as one element)", () => {
   const EIGHT = ["one", "two", "three", "four", "five", "six", "seven", "eight"].map(
     (word, index) => unit(`cw${index}`, word),
   );
-  const widthOf = (text: string) => measurer.width("secondary", 1, text);
+  const widthOf = (text: string) => measurer.width("simple", 1, text);
 
   it("is placed once at its base size, each group on one line, its units whole and in order", () => {
     const result = placeElement(

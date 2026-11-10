@@ -7,7 +7,8 @@ import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
 import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
 import { textLines } from "./lines.ts";
-import { FONT_KEYS, type Preset } from "./preset.ts";
+import type { Preset } from "./preset.ts";
+import { FONT_ROLES, type FontPair, fontPairFiles } from "./font-pairs.ts";
 import { STYLES, VARIANTS } from "./variants.ts";
 import type { BehindItem, Edit, EditMask, EditRef } from "./schema.ts";
 import { resolveSpans, resolveTimeline } from "./timeline.ts";
@@ -149,9 +150,9 @@ export function build(
   const js: string[] = [];
 
   const style = [
-    ...FONT_KEYS.map((key) => {
-      const font = preset.fonts[key];
-      return `      @font-face { font-family: "${font.family}"; src: url("${font.file}") format("truetype"); font-weight: ${font.weight}; }`;
+    ...FONT_ROLES.map((role) => {
+      const font = measurer.pair[role];
+      return `      @font-face { font-family: "${font.family}"; src: url("${font.file}") format("truetype"); font-weight: ${font.weight}; font-style: ${font.style}; }`;
     }),
     "      * { margin: 0; padding: 0; box-sizing: border-box; }",
     `      html, body { width: ${preset.frame.width}px; height: ${preset.frame.height}px; overflow: hidden; background: #000; }`,
@@ -159,9 +160,9 @@ export function build(
     "      .layer { position: absolute; }",
     "      #text { position: absolute; inset: 0; }",
     "      .text { position: absolute; line-height: 1; white-space: nowrap; opacity: 0; }",
-    ...FONT_KEYS.map((key) => {
-      const font = preset.fonts[key];
-      return `      .f-${key} { font-family: "${font.family}", sans-serif; font-weight: ${font.weight}; }`;
+    ...FONT_ROLES.map((role) => {
+      const font = measurer.pair[role];
+      return `      .f-${role} { font-family: "${font.family}", sans-serif; font-weight: ${font.weight}; font-style: ${font.style}; }`;
     }),
     ...(spans.length > 0 ? BEHIND_STYLE : []),
     ...(behindItems.some((item) => item.kind === "word") ? [WORD_STYLE] : []),
@@ -426,7 +427,7 @@ export function build(
     "",
   ].join("\n");
 
-  return { html, assets: assetsOf(edit, preset, masks), checks };
+  return { html, assets: assetsOf(edit, preset, masks, measurer.pair), checks };
 }
 
 // One behind-track item as its element: a VISUAL exactly covering its box, or
@@ -514,7 +515,8 @@ function placedText(
       throw new Error(`build: ${kind} ${item.id} has no position; place the edit first`);
     const font = item.font ?? (kind === "caption" ? STYLES.caption.font : STYLES.accent.font);
     // An item with no size takes its font's style base.
-    const size = item.size ?? (font === "primary" ? STYLES.accent.base : STYLES.caption.base);
+    const size =
+      item.size ?? (font === STYLES.accent.font ? STYLES.accent.base : STYLES.caption.base);
     const text = item.text ?? wordsText(item.words ?? [], transcript, preset);
     const lines = textLines(text, item.breaks);
     const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
@@ -547,7 +549,12 @@ function inlineStyle(style: Record<string, string>): string {
     .join("; ");
 }
 
-function assetsOf(edit: Edit, preset: Preset, masks: readonly EditMask[]): BuildAsset[] {
+function assetsOf(
+  edit: Edit,
+  preset: Preset,
+  masks: readonly EditMask[],
+  pair: FontPair,
+): BuildAsset[] {
   const assets: BuildAsset[] = [];
   for (const mask of new Map(masks.map((entry) => [entry.fingerprint, entry])).values()) {
     const { step, fingerprint, file } = mask;
@@ -556,8 +563,8 @@ function assetsOf(edit: Edit, preset: Preset, masks: readonly EditMask[]): Build
   if (edit.tracks.footage.length > 0) {
     assets.push({ path: edit.inputs.footage.file, role: "footage", ref: edit.inputs.footage });
   }
-  // Each font file once, even when both roles use it.
-  for (const file of new Set(FONT_KEYS.map((key) => preset.fonts[key].file))) {
+  // Each font file of the pair once, even when both roles use it.
+  for (const file of fontPairFiles(pair)) {
     assets.push({ path: file, role: "font", ref: null });
   }
   for (const key of new Set(edit.tracks.sounds.map((item) => item.sound))) {

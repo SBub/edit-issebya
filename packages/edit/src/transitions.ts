@@ -1,7 +1,8 @@
 import type { TextBox } from "./engine-space.ts";
 import type { Measurer } from "./measure.ts";
 import { textLines } from "./lines.ts";
-import { type FontKey, type Preset, type PresetTransition, SHOWN_FLOOR_SECONDS } from "./preset.ts";
+import { type Preset, type PresetTransition, SHOWN_FLOOR_SECONDS } from "./preset.ts";
+import type { FontRole } from "./font-pairs.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import { type ResolvedItem, anchorAt, resolveAnchor } from "./timeline.ts";
 import type { Word } from "./transcript.ts";
@@ -121,7 +122,7 @@ const LEVEL_ROLES = ["number", "lead", "key"] as const satisfies readonly LevelR
 // text, the key phrase and the number accent text. The sizes are the engine's
 // (the stack's entry in `variants.ts`: the styles' bases and the number's
 // ratio to the key), written on each level.
-export function levelStyle(role: LevelRole): { font: FontKey; color: string } {
+export function levelStyle(role: LevelRole): { font: FontRole; color: string } {
   const style = role === "lead" ? STYLES.caption : STYLES.accent;
   return { font: style.font, color: style.color };
 }

@@ -1,12 +1,7 @@
 import { z } from "zod";
 import type { Box } from "./head-track.ts";
-import {
-  SHOWN_FLOOR_SECONDS,
-  FONT_KEYS,
-  type Preset,
-  SOUND_KEYS,
-  TRANSITION_KINDS,
-} from "./preset.ts";
+import { FONT_ROLES } from "./font-pairs.ts";
+import { SHOWN_FLOOR_SECONDS, type Preset, SOUND_KEYS, TRANSITION_KINDS } from "./preset.ts";
 import { VARIANTS, VISUAL_STAND_INS, timingOf } from "./variants.ts";
 import { resolveAnchor } from "./timeline.ts";
 import type { Transcript, Word } from "./transcript.ts";
@@ -130,7 +125,7 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
   });
   const textProps = {
     text: z.string().min(1).max(200).optional(),
-    font: z.enum(FONT_KEYS).optional(),
+    font: z.enum(FONT_ROLES).optional(),
     size: z.number().int().min(MIN_TEXT_SIZE).max(400).optional(),
     color: z.string().regex(COLOR).optional(),
     position: position.optional(),

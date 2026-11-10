@@ -1,3 +1,4 @@
+import type { FontRole } from "./font-pairs.ts";
 import type { EngineComponent } from "./engine-note.ts";
 import type { ZoneName } from "./engine-zones.ts";
 
@@ -11,7 +12,7 @@ import type { ZoneName } from "./engine-zones.ts";
 
 type Hex = `#${string}`;
 type Ratio = `${number}/${number}`;
-type Role = "primary" | "secondary";
+type Role = FontRole;
 
 // The span a variant's element takes from its words (or from its window).
 export type Timing =
@@ -54,11 +55,11 @@ const WHITE: Hex = "#FFFFFF";
 // typography decision, taken once, not a field of the entry.
 export const STYLES = {
   // Accents, questions, the hook and a list's key phrase.
-  accent: { font: "primary", color: WHITE, base: 110 },
+  accent: { font: "artistic", color: WHITE, base: 110 },
   // Captions and a list's lead-in.
-  caption: { font: "secondary", color: WHITE, base: 50 },
+  caption: { font: "simple", color: WHITE, base: 50 },
   // The big word behind the speaker: as large as its zone allows.
-  bigWord: { font: "primary", color: WHITE, base: "largest-fit" },
+  bigWord: { font: "simple", color: WHITE, base: "largest-fit" },
 } satisfies Record<string, TextStyle>;
 
 // A text: its style (font, colour, base size). Text is `front` or `behind`.

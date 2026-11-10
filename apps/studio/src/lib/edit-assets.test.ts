@@ -1,12 +1,11 @@
-import { ISSEBYA_PRESET, VISUAL_STAND_INS } from "@edit-issebya/edit";
+import { ISSEBYA_PRESET, VISUAL_STAND_INS, allFontFiles } from "@edit-issebya/edit";
 import { describe, expect, it } from "vitest";
 import { EDIT_ASSET_FILES, editAssetUrl } from "./edit-assets";
 
 describe("EDIT_ASSET_FILES", () => {
   it("is exactly the preset's fonts and sounds and the stand-in pictures, with their types", () => {
     expect(Object.fromEntries(EDIT_ASSET_FILES)).toEqual({
-      [ISSEBYA_PRESET.fonts.primary.file]: "font/ttf",
-      [ISSEBYA_PRESET.fonts.secondary.file]: "font/ttf",
+      ...Object.fromEntries(allFontFiles().map((file) => [file, "font/ttf"])),
       [ISSEBYA_PRESET.sounds.click.file]: "audio/wav",
       ...Object.fromEntries(VISUAL_STAND_INS.map((image) => [image.file, "image/jpeg"])),
     });
@@ -15,12 +14,12 @@ describe("EDIT_ASSET_FILES", () => {
 
 describe("editAssetUrl", () => {
   it("points a preset path at the route", () => {
-    expect(editAssetUrl("assets/fonts/Raleway-Light.ttf")).toBe(
-      "/studio/api/edit-assets/assets/fonts/Raleway-Light.ttf",
+    expect(editAssetUrl("assets/fonts/InterTight-SemiBold.ttf")).toBe(
+      "/studio/api/edit-assets/assets/fonts/InterTight-SemiBold.ttf",
     );
   });
 
   it("refuses a path the preset does not name", () => {
-    expect(() => editAssetUrl("assets/fonts/OFL-Raleway.txt")).toThrow(/not a preset asset/);
+    expect(() => editAssetUrl("assets/fonts/OFL-InterTight.txt")).toThrow(/not a preset asset/);
   });
 });
