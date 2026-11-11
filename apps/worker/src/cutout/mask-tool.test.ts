@@ -7,11 +7,17 @@ const tools = {
   ffprobe: "/opt/ffprobe",
   hyperframes: ["node", "hf.mjs"] as [string, string],
 };
-const span = { input: "/s/footage.mp4", start: 5.1, end: 7.9667, output: "/s/fp.mp4" };
+const span = {
+  input: "/s/footage.mp4",
+  start: 5.1,
+  end: 7.9667,
+  cropTop: 266,
+  output: "/s/fp.mp4",
+};
 const MODEL = "/models/modnet.onnx";
 
 describe("the mask tool", () => {
-  it("runs the MODNet entry with this Node, the span to the millisecond, the model and ffmpeg", () => {
+  it("runs the MODNet entry with this Node, the span to the millisecond, its crop, the model and ffmpeg", () => {
     expect(maskToolArgs(span, MODEL, tools)).toEqual([
       MODNET_ENTRY,
       "--input",
@@ -22,6 +28,8 @@ describe("the mask tool", () => {
       "7.967",
       "--output",
       "/s/fp.mp4",
+      "--crop-top",
+      "266",
       "--model",
       MODEL,
       "--ffmpeg",

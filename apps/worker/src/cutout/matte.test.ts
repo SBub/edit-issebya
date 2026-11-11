@@ -4,6 +4,7 @@ import {
   TemporalMedian,
   decodeArgs,
   encodeArgs,
+  matteRegion,
   matteToGray,
   modelInput,
   onFrameGrid,
@@ -13,20 +14,85 @@ import {
 } from "./matte.ts";
 
 describe("workingSize", () => {
-  it("scales the short side to 512 and rounds both sides down to multiples of 32", () => {
-    expect(workingSize(1080, 1920)).toEqual({ width: 512, height: 896 });
-    expect(workingSize(720, 1280)).toEqual({ width: 512, height: 896 });
-    expect(workingSize(1920, 1080)).toEqual({ width: 896, height: 512 });
-    expect(workingSize(300, 400)).toEqual({ width: 512, height: 672 });
+  it("scales the short side to 384 and rounds both sides down to multiples of 32", () => {
+    expect(workingSize(1080, 1920)).toEqual({ width: 384, height: 672 });
+    expect(workingSize(720, 1280)).toEqual({ width: 384, height: 672 });
+    expect(workingSize(1920, 1080)).toEqual({ width: 672, height: 384 });
+    expect(workingSize(300, 380)).toEqual({ width: 384, height: 480 });
   });
 
   it("keeps a frame whose sides straddle the reference, as MODNet does", () => {
-    expect(workingSize(500, 900)).toEqual({ width: 480, height: 896 });
-    expect(workingSize(512, 512)).toEqual({ width: 512, height: 512 });
+    expect(workingSize(360, 640)).toEqual({ width: 352, height: 640 });
+    expect(workingSize(384, 384)).toEqual({ width: 384, height: 384 });
   });
 
-  it("is MODNet's reference size in the settings", () => {
-    expect(MATTE_SETTINGS).toMatchObject({ size: 512, smoothing: "median3", provider: "cpu" });
+  it("still gives MODNet's own size at its reference", () => {
+    expect(workingSize(1080, 1920, 512)).toEqual({ width: 512, height: 896 });
+  });
+
+  it("is 384 in the settings", () => {
+    expect(MATTE_SETTINGS).toMatchObject({ size: 384, smoothing: "median3", provider: "cpu" });
+  });
+});
+
+describe("matteRegion", () => {
+  it("is the whole frame at its working size without a crop", () => {
+    expect(matteRegion(1080, 1920)).toEqual({
+      top: 0,
+      height: 1920,
+      matte: { width: 384, height: 672 },
+    });
+    expect(matteRegion(1080, 1920, 0)).toEqual(matteRegion(1080, 1920));
+  });
+
+  it("moves the crop up until the region scales to a whole multiple of 32 rows", () => {
+    // 1550 rows at 384 / 1080 are 551.1: 576 rows are 1620 of the footage.
+    expect(matteRegion(1080, 1920, 370)).toEqual({
+      top: 300,
+      height: 1620,
+      matte: { width: 384, height: 576 },
+    });
+    // Already whole: 1440 rows are 512.
+    expect(matteRegion(1080, 1920, 480)).toEqual({
+      top: 480,
+      height: 1440,
+      matte: { width: 384, height: 512 },
+    });
+    // One row less of a crop is one more step of 32.
+    expect(matteRegion(1080, 1920, 479).top).toBe(390);
+  });
+
+  it("never crops lower than asked, on any size, and keeps the region on even rows", () => {
+    for (const [width, height] of [
+      [1080, 1920],
+      [720, 1280],
+      [1088, 1928],
+      [360, 640],
+      [1920, 1080],
+    ] as const) {
+      for (let cropTop = 0; cropTop <= 1900; cropTop += 7) {
+        const region = matteRegion(width, height, cropTop);
+        expect(region.top).toBeLessThanOrEqual((cropTop * height) / 1920);
+        expect(region.top + region.height).toBe(height);
+        expect(region.top % 2).toBe(0);
+        expect(region.matte.height % 32).toBe(0);
+        expect(region.matte.width % 32).toBe(0);
+        expect(region.matte.height).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("takes the crop in the head track's 1920-high pixels, whatever the footage's size", () => {
+    // 480 of 1920 is 320 of 1280: 960 rows at 384 / 720 are 512.
+    expect(matteRegion(720, 1280, 480)).toEqual({
+      top: 320,
+      height: 960,
+      matte: { width: 384, height: 512 },
+    });
+  });
+
+  it("is no crop when moving it up reaches the frame's top", () => {
+    expect(matteRegion(1080, 1920, 20)).toEqual(matteRegion(1080, 1920));
   });
 });
 
@@ -86,7 +152,7 @@ describe("span frames", () => {
 describe("the ffmpeg calls", () => {
   it("decodes exactly the span's frames to RGB at the working size, seeking a quarter frame early", () => {
     expect(
-      decodeArgs({ input: "/f.mp4", start: 5.1, frames: 86, fps: 30, width: 512, height: 896 }),
+      decodeArgs({ input: "/f.mp4", start: 5.1, frames: 86, fps: 30, width: 384, height: 672 }),
     ).toEqual([
       "-hide_banner",
       "-nostdin",
@@ -103,21 +169,63 @@ describe("the ffmpeg calls", () => {
       "-fps_mode",
       "passthrough",
       "-vf",
-      "scale=512:896:flags=area,format=rgb24",
+      "scale=384:672:flags=area,format=rgb24",
       "-f",
       "rawvideo",
       "pipe:1",
     ]);
     expect(
-      decodeArgs({ input: "/f.mp4", start: 0, frames: 30, fps: 30, width: 512, height: 896 }),
+      decodeArgs({ input: "/f.mp4", start: 0, frames: 30, fps: 30, width: 384, height: 672 }),
     ).toContain("0.000000");
+  });
+
+  it("decodes only the region's rows, and pads the mask's rows above it black", () => {
+    const region = { top: 300, height: 1620 };
+    const decode = decodeArgs({
+      input: "/f.mp4",
+      start: 0,
+      frames: 30,
+      fps: 30,
+      width: 384,
+      height: 576,
+      region,
+    });
+    expect(decode[decode.indexOf("-vf") + 1]!.split(",")).toEqual([
+      "crop=iw:1620:0:300:exact=1",
+      "scale=384:576:flags=area",
+      "format=rgb24",
+    ]);
+    const encode = encodeArgs({
+      output: "/o.mp4.part",
+      rate: "30/1",
+      matte: { width: 384, height: 576 },
+      footage: { width: 1080, height: 1920 },
+      region,
+    });
+    const filters = encode[encode.indexOf("-vf") + 1]!.split(",").map((part) => part.split(":"));
+    expect(filters.slice(0, 3)).toEqual([
+      ["scale=1080", "1620", "flags=bicubic", "in_range=full", "out_range=limited"],
+      ["format=yuv420p"],
+      ["pad=1080", "1920", "0", "300", "black"],
+    ]);
+    // A region from row 0 is the whole frame: no crop, no pad.
+    const whole = { top: 0, height: 1920 };
+    expect(
+      encodeArgs({
+        output: "/o.mp4.part",
+        rate: "30/1",
+        matte: { width: 384, height: 672 },
+        footage: { width: 1080, height: 1920 },
+        region: whole,
+      }).join(" "),
+    ).not.toContain("pad=");
   });
 
   it("encodes gray mattes as the footage-sized, video-range BT.709 H.264 mask", () => {
     const args = encodeArgs({
       output: "/o.mp4.part",
       rate: "30/1",
-      matte: { width: 512, height: 896 },
+      matte: { width: 384, height: 672 },
       footage: { width: 1080, height: 1920 },
     });
     expect(args.slice(args.indexOf("-f"), args.indexOf("pipe:0") + 1)).toEqual([
@@ -126,7 +234,7 @@ describe("the ffmpeg calls", () => {
       "-pix_fmt",
       "gray",
       "-s",
-      "512x896",
+      "384x672",
       "-framerate",
       "30/1",
       "-i",

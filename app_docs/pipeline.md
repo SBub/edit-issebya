@@ -84,17 +84,21 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
   The tool is MODNet portrait matting (ZHKKKe/MODNet, Apache 2.0 code and weights, its weights
   quantised to int8, see the model below) run through `onnxruntime-node` on the CPU, on any OS
   (Linux and Docker included): `mask-tool.ts` (`maskToolCall`, `MASK_TOOL_VERSION` 3) runs this
-  Node on `modnet-entry.ts` with `--input --start --end --output --model --ffmpeg --ffprobe`.
+  Node on `modnet-entry.ts` with `--input --start --end --output --crop-top --model --ffmpeg
+--ffprobe`.
   The entry checks the model's SHA-256, probes the footage's size and frame rate, and streams:
   ffmpeg decodes exactly `round((end - start) * fps)` frames from the span's first frame (seeking a
-  quarter frame early, `-frames:v`) to raw RGB at MODNet's working size (`workingSize` in
-  `matte.ts`: the short side 512, both sides rounded down to multiples of 32, the aspect kept, area
-  scaling, so 1080x1920 and 720x1280 run at 512x896); each frame is normalised to -1 to 1 (NCHW
+  quarter frame early, `-frames:v`) to raw RGB at the working size (`workingSize` in
+  `matte.ts`: the short side 384, both sides rounded down to multiples of 32, the aspect kept, area
+  scaling, so 1080x1920 and 720x1280 run at 384x672 uncropped; MODNet's own reference is 512, and
+  384 is about 1.7 times faster with masks that look the same), without the rows above the crop
+  (below); each frame is normalised to -1 to 1 (NCHW
   float32) and run; the matte (0 to 1) becomes 8-bit gray, goes through a 3-frame per-pixel
   temporal median (`TemporalMedian`: frame i is the median of frames i - 1, i, i + 1, the first and
   last unchanged; it removes one-frame flicker without the lag a moving average leaves on motion;
-  one frame of delay, three mattes held) and into a second ffmpeg, which scales it to the footage's
-  size (bicubic) and writes the mask: H.264 High `yuv420p`, full-range gray mapped to video range
+  one frame of delay, three mattes held) and into a second ffmpeg, which scales it to its rows of
+  the footage (bicubic), fills the rows above the crop black (background, `pad`), and writes the
+  mask at the footage's size: H.264 High `yuv420p`, full-range gray mapped to video range
   (white = person, chroma neutral), BT.709 tags, crf 12, a keyframe every second, frame i at
   i / fps, the span's frame count. The same format, keys and layout the Apple Vision tool (`vseg`,
   removed) wrote, so the builder, the preview and the export read it unchanged. Written to
@@ -119,11 +123,28 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
   `cutout` step with `cutout: MODNet model missing at <path>, restore it with git checkout --
 apps/worker/models/modnet_int8_13.onnx`; a file with another size or hash fails the entry
   (`verifyModel`), naming both.
-- A mask's fingerprint (`maskFingerprint` in `spans.ts`): the footage ref, the span, and
-  `MATTE_SETTINGS` (`model`, `modelSha256`, `size` 512, `smoothing` `median3`, `provider` `cpu`,
-  `format` `h264-gray`), version `MASK_TOOL_VERSION`. Version 1 was `vseg`, version 2 the fp32
-  model; version 3 (the int8 model) makes new masks for new runs, while stored versions keep naming
-  (and rendering) the masks of the version that made them. Bump the
+- The crop above the head (`crop.ts`, `spanCropTop`, `CROP_RULE`): the model never sees the rows
+  above the speaker, which are wall, and the mask has them black. It comes from the head track
+  (`head-track.json`, which every reel has before any cut-out: decide and relayout have it loaded,
+  a stored version's is read from storage by `version-cutouts.ts`), never from a fixed height. For
+  each span: of the samples from 0.25 s before the span to 0.25 s after it, the smallest `head_top`
+  (the top of the person mask, so a raised hand counts) minus half the widest `head_w`, never
+  below 0, in the head track's 1080x1920 pixels (the track has no head height; the width is its
+  measure of the head). No crop (0) without a head track, without a sample in the span, or when
+  one of the span's samples has no head. The entry gets it as `--crop-top <px>` and
+  `matteRegion` (`matte.ts`) turns it into the footage rows the model runs on: scaled to the
+  footage's height, then moved up (never down) until the region scales, at the frame's own scale,
+  to a whole multiple of 32 rows, and starts on an even row. A crop that moves up to row 0 is no
+  crop. Example, 1080x1920 with the person's top at 560 and a head 412 wide: `--crop-top 354`,
+  rows from 300 down (1620 rows), run at 384x576 instead of 384x672.
+- A mask's fingerprint (`maskFingerprint` in `spans.ts`): the footage ref, the span, its
+  `cropTop`, and `MATTE_SETTINGS` (`model`, `modelSha256`, `size` 384, `crop`
+  `above-head-half-width` (`CROP_RULE.id`), `smoothing` `median3`, `provider` `cpu`,
+  `format` `h264-gray`), version `MASK_TOOL_VERSION`. So `plannedMasks` and `withMasks` take the
+  head track. Version 1 was `vseg`, version 2 the fp32 model at 512 over the whole frame;
+  version 3 (the int8 model, 384, the crop) makes new masks for new runs, while stored versions
+  keep naming (and rendering) the masks of the version that made them: nothing rewrites or
+  deletes a stored mask. Change `CROP_RULE.id` with any value of the rule. Bump the
   version whenever `modnet-entry.ts` or `matte.ts` changes what a mask looks like. CoreML (in
   `onnxruntime-node` on the Mac) was tried: slower than the CPU on an M3 and with other values, so
   the provider is `cpu` everywhere.

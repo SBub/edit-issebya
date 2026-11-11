@@ -48,10 +48,11 @@ async function meanOf(file: string, box: string): Promise<number> {
 }
 
 describe("the MODNet mask tool", () => {
-  it("masks 3 seconds of the person clip: H.264, its size, its frames, the person white", async () => {
+  it("masks 3 seconds of the person clip: H.264, its size, its frames, the person white, the crop black", async () => {
     const output = join(dir, "mask.mp4");
     const call = maskToolCall(
-      { input: PERSON, start: 0.5, end: 3.5, output },
+      // The person's top is at row 556: a crop of 400 leaves the rows above 390 out.
+      { input: PERSON, start: 0.5, end: 3.5, cropTop: 400, output },
       { tools: REAL_TOOLS, env: {} },
     );
     const started = performance.now();
@@ -91,5 +92,8 @@ describe("the MODNet mask tool", () => {
     // The face (the head box of the clip) is person; the top-left corner is not.
     expect(await meanOf(output, "160:160:520:700")).toBeGreaterThan(200);
     expect(await meanOf(output, "100:100:0:0")).toBeLessThan(30);
+    // The rows above the crop are background, to the last pixel; the mask is
+    // still the footage's size (checked above).
+    expect(await meanOf(output, "1080:380:0:0")).toBeLessThan(0.5);
   });
 });

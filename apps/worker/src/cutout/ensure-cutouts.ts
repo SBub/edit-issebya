@@ -1,12 +1,13 @@
 import { type Attributes, type Context, trace } from "@opentelemetry/api";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { Edit, Transcript } from "@edit-issebya/edit";
+import type { Edit, HeadTrack, Transcript } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
 import { type SpawnTool, type StepContext, recordHit, runToolsStep } from "../step-runner.ts";
 import { parseCutoutProgress, partProgress } from "../progress-parsers.ts";
+import { spanCropTop } from "./crop.ts";
 import { maskToolCall } from "./mask-tool.ts";
 import { MASK_STEP, cutoutKey, withMasks } from "./spans.ts";
 
@@ -17,6 +18,9 @@ export interface EnsureCutouts {
   scratchDir: string;
   edit: Edit;
   transcript: Transcript;
+  // The reel's head track: each span's crop above the speaker comes from it
+  // (null: no crop).
+  headTrack: HeadTrack | null;
   tools: ToolPaths;
   spawnTool?: SpawnTool;
   env?: NodeJS.ProcessEnv;
@@ -44,7 +48,7 @@ function cutoutCounts(made: number, reused: number): Attributes {
 
 // Makes sure every padded span of the edit's behind items has its person mask
 // stored, before a version naming them is saved or rendered. Each mask is
-// fingerprinted by footage, span and tool version (maskSpans gives the same
+// fingerprinted by footage, span, crop and tool version (maskSpans gives the same
 // spans the builder draws). All stored: a hit row (`cut-out reused`). Else one
 // measured `cutout` step downloads the footage once, runs the mask tool for
 // each missing span (its per-frame progress weighted by the span's length
@@ -59,13 +63,14 @@ export async function ensureCutouts({
   scratchDir,
   edit,
   transcript,
+  headTrack,
   tools,
   spawnTool,
   env = process.env,
   recordStored,
   parent,
 }: EnsureCutouts): Promise<Edit> {
-  const named = withMasks(edit, transcript);
+  const named = withMasks(edit, transcript, headTrack);
   const items = edit.tracks.behind ?? [];
   if (items.length === 0) return named;
   const { signal } = ctx;
@@ -123,7 +128,13 @@ export async function ensureCutouts({
             for (const [index, span] of missing.entries()) {
               const output = outputs[index]!;
               const call = maskToolCall(
-                { input: footagePath, start: span.start, end: span.end, output },
+                {
+                  input: footagePath,
+                  start: span.start,
+                  end: span.end,
+                  cropTop: spanCropTop(headTrack, span),
+                  output,
+                },
                 { tools, env },
               );
               const from = (100 * seconds) / total;

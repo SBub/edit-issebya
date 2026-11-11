@@ -2,7 +2,13 @@
 // packages/edit and a spawnTool double that writes each call's output.
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
-import { type Edit, ISSEBYA_PRESET, parseEdit, transcriptSchema } from "@edit-issebya/edit";
+import {
+  type Edit,
+  ISSEBYA_PRESET,
+  headTrackSchema,
+  parseEdit,
+  transcriptSchema,
+} from "@edit-issebya/edit";
 import type { ToolCall } from "../step-runner.ts";
 import type { SpawnTool } from "../step-runner.ts";
 
@@ -13,6 +19,9 @@ const readJson = (path: string): unknown =>
   JSON.parse(readFileSync(new URL(path, TESTDATA), "utf8"));
 
 export const BEHIND_TRANSCRIPT = transcriptSchema.parse(readJson("rethink-work/transcript.json"));
+// The same clip's head track: over the fixture's two spans the crops are 266
+// and 350 (the highest person tops 460 and 528, the widest heads 388 and 356).
+export const BEHIND_HEAD_TRACK = headTrackSchema.parse(readJson("rethink-work/head-track.json"));
 
 // The fixture with two big words over two spans, its masks removed (what a new
 // answer looks like before the cut-out step). Its VISUAL is made a big word

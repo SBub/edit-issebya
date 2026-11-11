@@ -10,6 +10,7 @@ import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
 import { withJobScratch } from "../scratch.ts";
 import { type ChildRun, type SpawnTool, runToolsStep, spawnChild } from "../step-runner.ts";
 import { parseTimeReport } from "../time-report.ts";
+import { spanCropTop } from "../cutout/crop.ts";
 import { withMasks } from "../cutout/spans.ts";
 import { maskToolCall } from "../cutout/mask-tool.ts";
 import type { RenderFiles } from "./render-project.ts";
@@ -296,13 +297,23 @@ describe("the real render behind the speaker", () => {
   const span = { start: { word: "w0001" }, end: { word: "w0010", edge: "end" as const } };
 
   async function renderBehind(name: string, item: NonNullable<Edit["tracks"]["behind"]>[number]) {
-    const { edit, transcript } = await fixtureEdit();
-    const behind = withMasks({ ...edit, tracks: { ...edit.tracks, behind: [item] } }, transcript);
+    const { edit, transcript, headTrack } = await fixtureEdit();
+    const behind = withMasks(
+      { ...edit, tracks: { ...edit.tracks, behind: [item] } },
+      transcript,
+      headTrack,
+    );
     const masks: Record<string, string> = {};
     for (const mask of behind.inputs.masks!) {
       const output = join(dir, `${name}-${mask.fingerprint}.mp4`);
       const call = maskToolCall(
-        { input: SOURCE, start: mask.start, end: mask.end, output },
+        {
+          input: SOURCE,
+          start: mask.start,
+          end: mask.end,
+          cropTop: spanCropTop(headTrack, mask),
+          output,
+        },
         { tools: REAL_TOOLS, env: {} },
       );
       await run(call.file, call.args);

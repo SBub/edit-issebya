@@ -12,7 +12,12 @@ import { editBytes, versionKey } from "@edit-issebya/edit";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { withMasks } from "./cutout/spans.ts";
-import { BEHIND_TRANSCRIPT, behindEdit, fakeMaskSpawn } from "./cutout/test-support.ts";
+import {
+  BEHIND_HEAD_TRACK,
+  BEHIND_TRANSCRIPT,
+  behindEdit,
+  fakeMaskSpawn,
+} from "./cutout/test-support.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
 import { storageVersionBlobs } from "./version-store.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
@@ -151,7 +156,7 @@ describe("runRestore of a version with a behind item", () => {
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "restore-cutout-"));
     storage = fakeStorage({ root: join(root, "store"), uploadUrlBase: "" });
-    const edit = withMasks(behindEdit(), BEHIND_TRANSCRIPT);
+    const edit = withMasks(behindEdit(), BEHIND_TRANSCRIPT, BEHIND_HEAD_TRACK);
     const ref = edit.inputs.transcript;
     await storage.put(
       cacheKey(PREFIX, ref.step, ref.fingerprint, ref.file),
@@ -161,6 +166,12 @@ describe("runRestore of a version with a behind item", () => {
     await storage.put(
       cacheKey(PREFIX, footage.step, footage.fingerprint, footage.file),
       new TextEncoder().encode("footage"),
+    );
+    // The head track the masks' crops are read from.
+    const track = edit.inputs.head_track;
+    await storage.put(
+      cacheKey(PREFIX, track.step, track.fingerprint, track.file),
+      new TextEncoder().encode(JSON.stringify(BEHIND_HEAD_TRACK)),
     );
     const key = versionKey(PREFIX, REEL, V1);
     await storage.put(key, editBytes(edit));

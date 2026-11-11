@@ -20,6 +20,8 @@ export interface MaskSpanCall {
   input: string;
   start: number;
   end: number;
+  // The rows left out above the speaker (spanCropTop), in head-track pixels.
+  cropTop: number;
   output: string;
 }
 
@@ -27,10 +29,10 @@ function seconds(n: number): string {
   return n.toFixed(3);
 }
 
-// The entry's arguments, exactly: the span to the millisecond, the model and
-// the two ffmpeg tools it runs.
+// The entry's arguments, exactly: the span to the millisecond, its crop, the
+// model and the two ffmpeg tools it runs.
 export function maskToolArgs(
-  { input, start, end, output }: MaskSpanCall,
+  { input, start, end, cropTop, output }: MaskSpanCall,
   model: string,
   tools: Pick<ToolPaths, "ffmpeg" | "ffprobe">,
 ): string[] {
@@ -44,6 +46,8 @@ export function maskToolArgs(
     seconds(end),
     "--output",
     output,
+    "--crop-top",
+    String(cropTop),
     "--model",
     model,
     "--ffmpeg",

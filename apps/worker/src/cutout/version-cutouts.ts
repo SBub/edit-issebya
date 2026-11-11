@@ -1,8 +1,10 @@
 import {
   type Edit,
+  type HeadTrack,
   ISSEBYA_PRESET,
   type StoredVersion,
   type Transcript,
+  headTrackSchema,
   parseEdit,
   transcriptSchema,
 } from "@edit-issebya/edit";
@@ -29,12 +31,12 @@ async function readJson(storage: Storage, key: string, what: string): Promise<un
   return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
 }
 
-// A stored version's edit and transcript, read from storage.
+// A stored version's edit, transcript and head track, read from storage.
 async function readVersionEdit(
   storage: Storage,
   keyPrefix: string,
   version: Pick<StoredVersion, "r2_key" | "inputs">,
-): Promise<{ edit: Edit; transcript: Transcript }> {
+): Promise<{ edit: Edit; transcript: Transcript; headTrack: HeadTrack }> {
   const ref = version.inputs.transcript;
   const transcript = transcriptSchema.parse(
     await readJson(storage, cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file), "input"),
@@ -45,7 +47,15 @@ async function readVersionEdit(
     transcript,
   );
   if (!parsed.ok) throw new Error(`cutout: stored edit refused: ${parsed.reasons.join("; ")}`);
-  return { edit: parsed.edit, transcript };
+  const track = version.inputs.head_track;
+  const headTrack = headTrackSchema.parse(
+    await readJson(
+      storage,
+      cacheKey(keyPrefix, track.step, track.fingerprint, track.file),
+      "input",
+    ),
+  );
+  return { edit: parsed.edit, transcript, headTrack };
 }
 
 // Makes sure a stored version's masks exist (a slimmed one is rebuilt; all
@@ -56,7 +66,11 @@ export async function ensureVersionCutouts(
   deps: CutoutDeps,
   version: Pick<StoredVersion, "r2_key" | "inputs">,
 ): Promise<void> {
-  const { edit, transcript } = await readVersionEdit(deps.storage, deps.keyPrefix, version);
+  const { edit, transcript, headTrack } = await readVersionEdit(
+    deps.storage,
+    deps.keyPrefix,
+    version,
+  );
   if ((edit.tracks.behind ?? []).length === 0) return;
-  await ensureCutouts({ ctx, ...deps, edit, transcript });
+  await ensureCutouts({ ctx, ...deps, edit, transcript, headTrack });
 }

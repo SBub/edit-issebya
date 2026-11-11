@@ -1,6 +1,7 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { HeadTrack } from "@edit-issebya/edit";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,7 +11,7 @@ import { classifyKey, recordingStorage } from "../stored-files.ts";
 import { createTelemetry } from "../telemetry.ts";
 import { ensureCutouts } from "./ensure-cutouts.ts";
 import { cutoutKey, plannedMasks } from "./spans.ts";
-import { BEHIND_TRANSCRIPT, behindEdit, fakeMaskSpawn } from "./test-support.ts";
+import { BEHIND_HEAD_TRACK, BEHIND_TRANSCRIPT, behindEdit, fakeMaskSpawn } from "./test-support.ts";
 
 const PREFIX = "dev/";
 const tools = {
@@ -40,12 +41,16 @@ afterEach(async () => {
 });
 
 const keys = () =>
-  plannedMasks(behindEdit(), BEHIND_TRANSCRIPT).map((mask) => cutoutKey(PREFIX, mask.fingerprint));
+  plannedMasks(behindEdit(), BEHIND_TRANSCRIPT, BEHIND_HEAD_TRACK).map((mask) =>
+    cutoutKey(PREFIX, mask.fingerprint),
+  );
 
 async function ensure(
   edit = behindEdit(),
   options: {
     recordStored?: (key: string, bytes: number) => Promise<void>;
+    headTrack?: HeadTrack | null;
+    env?: NodeJS.ProcessEnv;
   } = {},
 ) {
   const { steps, calls } = recordingSteps();
@@ -57,9 +62,10 @@ async function ensure(
     scratchDir: scratch,
     edit,
     transcript: BEHIND_TRANSCRIPT,
+    headTrack: options.headTrack === undefined ? BEHIND_HEAD_TRACK : options.headTrack,
     tools,
     spawnTool: spawn.spawnTool,
-    env: { E2E_MOCK_MASK: "true" },
+    env: options.env ?? { E2E_MOCK_MASK: "true" },
     recordStored: options.recordStored,
   });
   return { result, calls, toolCalls: spawn.calls };
@@ -72,7 +78,9 @@ describe("ensureCutouts", () => {
     const { result, calls, toolCalls } = await ensure();
     expect(toolCalls).toHaveLength(2);
     expect(toolCalls[0]!.args).toContain("5.100");
-    expect(result.inputs.masks).toEqual(plannedMasks(behindEdit(), BEHIND_TRANSCRIPT));
+    expect(result.inputs.masks).toEqual(
+      plannedMasks(behindEdit(), BEHIND_TRANSCRIPT, BEHIND_HEAD_TRACK),
+    );
     for (const key of keys()) expect(await storage.head(key)).not.toBeNull();
     const done = calls.filter((call) => call.call === "done");
     expect(calls.filter((call) => call.call === "start").map((call) => call.name)).toEqual([
@@ -81,6 +89,25 @@ describe("ensureCutouts", () => {
     expect(done[0]!.summary).toMatch(/^2 cut-outs made, 0 reused, 5\.6 s masked/);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder
     expect(await readdir(scratch)).toEqual([]);
+  });
+
+  it("gives the real tool each span's crop above the head, read from the head track", async () => {
+    const { toolCalls, result } = await ensure(behindEdit(), { env: {} });
+    const cropOf = (index: number) => {
+      const args = toolCalls[index]!.args;
+      return args[args.indexOf("--crop-top") + 1];
+    };
+    expect([cropOf(0), cropOf(1)]).toEqual(["266", "350"]);
+    for (const key of keys()) expect(await storage.head(key)).not.toBeNull();
+
+    // Without a head track nothing is cropped, and the masks are other masks.
+    const whole = await ensure(behindEdit(), { env: {}, headTrack: null });
+    expect(whole.toolCalls.map((call) => call.args[call.args.indexOf("--crop-top") + 1])).toEqual([
+      "0",
+      "0",
+    ]);
+    const cropped = result.inputs.masks!.map((mask) => mask.fingerprint);
+    for (const mask of whole.result.inputs.masks!) expect(cropped).not.toContain(mask.fingerprint);
   });
 
   it("weights each span's frame progress by its length, so the step's progress keeps rising", async () => {
@@ -123,7 +150,7 @@ describe("ensureCutouts", () => {
   it("writes no row and names no masks without behind items", async () => {
     const edit = behindEdit();
     delete edit.tracks.behind;
-    edit.inputs.masks = plannedMasks(behindEdit(), BEHIND_TRANSCRIPT);
+    edit.inputs.masks = plannedMasks(behindEdit(), BEHIND_TRANSCRIPT, BEHIND_HEAD_TRACK);
     const { result, calls, toolCalls } = await ensure(edit);
     expect(calls).toEqual([]);
     expect(toolCalls).toEqual([]);
@@ -181,6 +208,7 @@ describe("ensureCutouts span counts", () => {
       scratchDir: scratch,
       edit: behindEdit(),
       transcript: BEHIND_TRANSCRIPT,
+      headTrack: BEHIND_HEAD_TRACK,
       tools,
       spawnTool: fakeMaskSpawn().spawnTool,
       env: { E2E_MOCK_MASK: "true" },
@@ -204,6 +232,7 @@ describe("ensureCutouts span counts", () => {
       scratchDir: scratch,
       edit: behindEdit(),
       transcript: BEHIND_TRANSCRIPT,
+      headTrack: BEHIND_HEAD_TRACK,
       tools,
       spawnTool: fakeMaskSpawn().spawnTool,
       env: { E2E_MOCK_MASK: "true" },

@@ -87,7 +87,7 @@ const deps: DoctorDeps = {
     verifyModel: () => verifyModel(modnetModelPath()),
     async run(output) {
       const call = maskToolCall(
-        { input: MASK_SAMPLE, start: 0, end: 1, output },
+        { input: MASK_SAMPLE, start: 0, end: 1, cropTop: 0, output },
         // No test switch (E2E_MOCK_MASK) from the environment.
         { tools: toolPaths(), env: {} },
       );

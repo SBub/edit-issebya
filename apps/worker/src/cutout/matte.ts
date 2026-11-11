@@ -2,15 +2,18 @@
 // the working size, the model's input from RGB frames, the matte as grayscale,
 // the temporal smoothing and the two ffmpeg calls around the model.
 
-// What makes a mask besides its span: the model (by its SHA-256), the working
-// size, the smoothing, the execution provider and the mask's format. Every
-// mask fingerprint names them, with MASK_TOOL_VERSION.
+// What makes a mask besides its span and its crop: the model (by its SHA-256),
+// the working size, the crop rule, the smoothing, the execution provider and
+// the mask's format. Every mask fingerprint names them, with MASK_TOOL_VERSION.
 export const MATTE_SETTINGS = {
   // MODNet's portrait matting model quantised to int8 (modnet-model.ts).
   model: "modnet_int8_13",
   modelSha256: "a293b5ae8fb8ac81447a82bf1ad661479fb412fe2d276188711386c6c81df28b",
-  // MODNet's reference size: the short side 512, both sides multiples of 32.
-  size: 512,
+  // The short side 384, both sides multiples of 32 (MODNet's reference is 512:
+  // 384 is 1.7 times faster and the masks stay as good to the eye).
+  size: 384,
+  // The rule that leaves out the rows above the speaker (CROP_RULE.id, crop.ts).
+  crop: "above-head-half-width",
   // A per-pixel median of each frame and its two neighbours.
   smoothing: "median3",
   // CPU everywhere: CoreML on the Mac was slower and gave other values.
@@ -18,7 +21,8 @@ export const MATTE_SETTINGS = {
   format: "h264-gray",
 } as const;
 
-// MODNet's own working size for a frame (onnx/inference_onnx.py): a frame
+// The working size of a frame, by MODNet's own rule (onnx/inference_onnx.py)
+// at this reference: a frame
 // whose sides are not both above or both below the reference keeps its size,
 // any other is scaled so its short side is the reference; then each side is
 // rounded down to a multiple of 32.
@@ -39,6 +43,42 @@ export function workingSize(
     }
   }
   return { width: w - (w % 32), height: h - (h % 32) };
+}
+
+// The height of the frame the head track measures in (1080x1920 pixels,
+// whatever the footage's size): a crop is given in these pixels.
+const HEAD_TRACK_FRAME_HEIGHT = 1920;
+
+export interface MatteRegion {
+  // The footage rows the model sees: from `top` down, `height` of them.
+  top: number;
+  height: number;
+  // The size the region is scaled to for the model.
+  matte: { width: number; height: number };
+}
+
+// The part of a frame the model runs on, and at which size. Without a crop,
+// the whole frame at its working size. With `cropTop` (rows left out at the
+// top, in head-track pixels) the frame keeps the scale of its working size,
+// and the crop is moved up as far as needed for the region to scale to a
+// whole multiple of 32 rows (and to start on an even row), so the model never
+// sees less than the rule asked for; the rows above it are background. A crop
+// that moves up to the frame's top is no crop.
+export function matteRegion(
+  width: number,
+  height: number,
+  cropTop = 0,
+  ref: number = MATTE_SETTINGS.size,
+): MatteRegion {
+  const whole = { top: 0, height, matte: workingSize(width, height, ref) };
+  const asked = Math.floor((cropTop * height) / HEAD_TRACK_FRAME_HEIGHT);
+  if (!(asked > 0)) return whole;
+  const scaled = Math.max(width, height) < ref || Math.min(width, height) > ref;
+  const scale = scaled ? ref / Math.min(width, height) : 1;
+  const rows = Math.ceil(((height - asked) * scale) / 32) * 32;
+  const top = Math.floor((height - rows / scale) / 2) * 2;
+  if (top <= 0) return whole;
+  return { top, height: height - top, matte: { width: whole.matte.width, height: rows } };
 }
 
 // One packed RGB frame (rgb24) as the model's input: planar NCHW, each value
@@ -133,14 +173,26 @@ export interface DecodeCall {
   fps: number;
   width: number;
   height: number;
+  // The footage rows decoded (matteRegion); absent or from row 0, all of them.
+  region?: { top: number; height: number };
 }
 
 // ffmpeg decoding the span to raw RGB at the working size (area scaling, as
-// MODNet's reference resizes), on stdout. The seek sits a quarter frame
-// before the first frame, so that frame is kept and the one before is not,
-// and exactly `frames` frames come out (fewer only where the footage ends).
-export function decodeArgs({ input, start, frames, fps, width, height }: DecodeCall): string[] {
+// MODNet's reference resizes), on stdout; with a region, only its rows. The
+// seek sits a quarter frame before the first frame, so that frame is kept and
+// the one before is not, and exactly `frames` frames come out (fewer only
+// where the footage ends).
+export function decodeArgs({
+  input,
+  start,
+  frames,
+  fps,
+  width,
+  height,
+  region,
+}: DecodeCall): string[] {
   const seek = Math.max(0, onFrameGrid(start, fps) - 0.25 / fps);
+  const crop = region && region.top > 0 ? [`crop=iw:${region.height}:0:${region.top}:exact=1`] : [];
   return [
     "-hide_banner",
     "-nostdin",
@@ -157,7 +209,7 @@ export function decodeArgs({ input, start, frames, fps, width, height }: DecodeC
     "-fps_mode",
     "passthrough",
     "-vf",
-    `scale=${width}:${height}:flags=area,format=rgb24`,
+    [...crop, `scale=${width}:${height}:flags=area`, "format=rgb24"].join(","),
     "-f",
     "rawvideo",
     "pipe:1",
@@ -180,15 +232,20 @@ export interface EncodeCall {
   // The matte's size (the working size) and the footage's.
   matte: { width: number; height: number };
   footage: { width: number; height: number };
+  // The footage rows the mattes cover (matteRegion); absent or from row 0, all.
+  region?: { top: number; height: number };
 }
 
 // ffmpeg reading the gray mattes on stdin and writing the mask: scaled up to
-// the footage's size (bicubic), full-range gray to video-range luma with
+// the footage's size (bicubic), or to its region with the rows above it
+// filled black (background), full-range gray to video-range luma with
 // neutral chroma, H.264 High yuv420p, BT.709 tags, a keyframe every second,
 // frame i at i / fps. The format the old mask tool wrote, which the builder,
 // the preview and the export read.
-export function encodeArgs({ output, rate, matte, footage }: EncodeCall): string[] {
+export function encodeArgs({ output, rate, matte, footage, region }: EncodeCall): string[] {
   const fps = parseFrameRate(rate) ?? 30;
+  const cropped = region && region.top > 0 ? region : null;
+  const height = cropped ? cropped.height : footage.height;
   return [
     "-hide_banner",
     "-nostdin",
@@ -207,8 +264,9 @@ export function encodeArgs({ output, rate, matte, footage }: EncodeCall): string
     "pipe:0",
     "-vf",
     [
-      `scale=${footage.width}:${footage.height}:flags=bicubic:in_range=full:out_range=limited`,
+      `scale=${footage.width}:${height}:flags=bicubic:in_range=full:out_range=limited`,
       "format=yuv420p",
+      ...(cropped ? [`pad=${footage.width}:${footage.height}:0:${cropped.top}:black`] : []),
       BT709_VIDEO_RANGE,
     ].join(","),
     "-c:v",
