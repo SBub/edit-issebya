@@ -289,8 +289,8 @@ describe("the real render", () => {
 });
 
 // A VISUAL, then a big word, behind the speaker over the whole reel's speech,
-// each with its real mask (MODNet on the retimed source, the model installed
-// by models:install; the fixture clip has no person, so the mask is black and
+// each with its real mask (MODNet on the retimed source, the committed
+// model; the fixture clip has no person, so the mask is black and
 // the item shows whole).
 describe("the real render behind the speaker", () => {
   const span = { start: { word: "w0001" }, end: { word: "w0010", edge: "end" as const } };

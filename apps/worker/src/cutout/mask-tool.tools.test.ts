@@ -1,6 +1,6 @@
-// `test:tools` only: the real MODNet entry (the installed model, ONNX Runtime
+// `test:tools` only: the real MODNet entry (the committed model, ONNX Runtime
 // on the CPU, the real ffmpeg) on a 3-second span of the committed person clip
-// (read only, never modified). Needs `models:install` first; never downloads.
+// (read only, never modified). Never downloads.
 import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

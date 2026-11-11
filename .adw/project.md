@@ -153,7 +153,7 @@ the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (rea
 HyperFrames on the committed clip, `footage-check.tools.test.ts` with real ffprobe, and
 `photos/photo-images.tools.test.ts` with real ffmpeg on `fixtures/photos/sample.jpg` and `sample.heic`,
 `cutout/mask-tool.tools.test.ts` with the real MODNet mask tool (ONNX Runtime on the CPU, the model
-installed once by `yarn workspace @edit-issebya/worker models:install`, never downloaded by a test) on
+committed at `apps/worker/models/`, never downloaded) on
 the person clip; on the owner's Mac only, never in CI), and the studio's
 `yarn workspace @edit-issebya/studio test:tools` (`apps/studio/e2e-tools/export-matches-preview.spec.ts`,
 the preview-matches-export guardrail, real HyperFrames, on the owner's Mac only, never in CI, run as

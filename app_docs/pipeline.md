@@ -81,9 +81,9 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
 - The on-demand cut-out (`apps/worker/src/cutout/`): `ensure-cutouts.ts` makes the person mask of
   each padded span of an edit's big words (`behind` items behind the speaker; a VISUAL needs none)
   that is not stored yet, in one measured `cutout` step, one tool call per span.
-  The tool is MODNet portrait matting (the official `modnet_photographic_portrait_matting.onnx` of
-  ZHKKKe/MODNet, Apache 2.0 code and weights) run through `onnxruntime-node` on the CPU, on any OS
-  (Linux and Docker included): `mask-tool.ts` (`maskToolCall`, `MASK_TOOL_VERSION` 2) runs this
+  The tool is MODNet portrait matting (ZHKKKe/MODNet, Apache 2.0 code and weights, its weights
+  quantised to int8, see the model below) run through `onnxruntime-node` on the CPU, on any OS
+  (Linux and Docker included): `mask-tool.ts` (`maskToolCall`, `MASK_TOOL_VERSION` 3) runs this
   Node on `modnet-entry.ts` with `--input --start --end --output --model --ffmpeg --ffprobe`.
   The entry checks the model's SHA-256, probes the footage's size and frame rate, and streams:
   ffmpeg decodes exactly `round((end - start) * fps)` frames from the span's first frame (seeking a
@@ -100,19 +100,30 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
   removed) wrote, so the builder, the preview and the export read it unchanged. Written to
   `<output>.part`, renamed when done; one `@hf-progress` line per frame (`app_docs/status.md`); any
   failure exits 1 with one `modnet: ...` line. About 8 s per second of footage on an M3's CPU.
-- The MODNet model (`apps/worker/src/cutout/modnet-model.ts`, `MODNET_MODEL`): pinned by URL (the
-  official Google Drive file the MODNet ONNX README links), size (25,888,640 bytes) and SHA-256
-  (`07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9`). Never committed, never
-  downloaded at job time: `yarn workspace @edit-issebya/worker models:install`
-  (`src/models-install.ts`) downloads it once into `WORKER_MODELS_DIR` (default
-  `~/.edit-issebya-worker/models/`), hashing as it streams, and keeps it only when size and hash
-  match (a model already there with the hash is kept). Without the model the `cutout` step fails
-  with `cutout: MODNet model not installed at <path>, run yarn workspace @edit-issebya/worker
-models:install`; a file with another hash fails the entry, naming both hashes.
+- The MODNet model (`apps/worker/src/cutout/modnet-model.ts`, `MODNET_MODEL`): the committed file
+  `apps/worker/models/modnet_int8_13.onnx`, pinned by name, size (6,912,985 bytes) and SHA-256
+  (`a293b5ae8fb8ac81447a82bf1ad661479fb412fe2d276188711386c6c81df28b`). It is committed because it
+  is a modified file that no official URL serves: the official
+  `modnet_photographic_portrait_matting.onnx` of ZHKKKe/MODNet (the Google Drive file its ONNX
+  README links, 25,888,640 bytes, SHA-256
+  `07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9`) with its weights and
+  activations quantised to int8. How it was made, with ONNX Runtime 1.31.1's quantization tool:
+  `quant_pre_process` (symbolic shape inference skipped), the graph converted from opset 11 to 13
+  (per-channel `DequantizeLinear` needs 13), then `quantize_static` in the QDQ format, per-channel
+  int8 weights, int8 activations, MinMax calibration on 16 frames of one talking-head clip, taken
+  evenly over it and scaled to 384x512. The calibration footage and frames are not in the
+  repository. The licence notice sits beside the file (`apps/worker/models/THIRD_PARTY_NOTICES.md`:
+  the attribution, the statement that the file is modified, and the full Apache 2.0 text), and
+  `modnet-model.test.ts` checks both the file and the notice. Nothing is downloaded, at install or
+  at job time; the worker image gets the file with the worker's folder. A missing file fails the
+  `cutout` step with `cutout: MODNet model missing at <path>, restore it with git checkout --
+apps/worker/models/modnet_int8_13.onnx`; a file with another size or hash fails the entry
+  (`verifyModel`), naming both.
 - A mask's fingerprint (`maskFingerprint` in `spans.ts`): the footage ref, the span, and
   `MATTE_SETTINGS` (`model`, `modelSha256`, `size` 512, `smoothing` `median3`, `provider` `cpu`,
-  `format` `h264-gray`), version `MASK_TOOL_VERSION`. Version 1 was `vseg`; version 2 makes new masks
-  for new runs, while stored versions keep naming (and rendering) their version 1 masks. Bump the
+  `format` `h264-gray`), version `MASK_TOOL_VERSION`. Version 1 was `vseg`, version 2 the fp32
+  model; version 3 (the int8 model) makes new masks for new runs, while stored versions keep naming
+  (and rendering) the masks of the version that made them. Bump the
   version whenever `modnet-entry.ts` or `matte.ts` changes what a mask looks like. CoreML (in
   `onnxruntime-node` on the Mac) was tried: slower than the CPU on an M3 and with other values, so
   the provider is `cpu` everywhere.
@@ -249,20 +260,17 @@ inputs name the old retime outputs) does not re-run retime.
   example `ffmpeg 6.1 found, 7 or newer is needed for HEIC photos (-show_stream_groups)`; a git
   build without a version number passes), and the ffmpeg filters `zscale`, `tonemap`, `atempo`, `astats`,
   `ametadata`, the codecs `libx264` and `libvpx-vp9` (encoders) and the `libvpx-vp9` decoder, and
-  that `hyperframes --version` answers. Its `mask tool` line checks the MODNet model is installed
-  with its pinned SHA-256, masks the first second of `fixtures/footage/short-speech.mp4` with the
+  that `hyperframes --version` answers. Its `mask tool` line checks the committed MODNet model
+  has its pinned size and SHA-256, masks the first second of `fixtures/footage/short-speech.mp4` with the
   real entry and checks the mask is H.264 at the sample's size with 30 frames (give or take one),
-  for example `modnet 07c308cf, 1 s masked in 9.4 s`; a missing model fails the line with
-  `MODNet model not installed at <path>, run yarn workspace @edit-issebya/worker models:install`.
+  for example `modnet a293b5ae, 1 s masked in 9.4 s`; a missing model fails the line with
+  `MODNet model missing at <path>, restore it with git checkout -- apps/worker/models/modnet_int8_13.onnx`.
   It checks that `OPENROUTER_API_KEY` is set, fetches the five PostHog prompts by name (no AI call;
   `POSTHOG_PERSONAL_API_KEY`, `app_docs/decide-step.md`, "Prompts"), and makes no AI call; `doctor --ai`
   adds the two paid OpenRouter calls and the image call.
-- `WORKER_MODELS_DIR` (default `~/.edit-issebya-worker/models`): where `models:install` puts the
-  MODNet model and the `cutout` step and the doctor read it.
-- `yarn workspace @edit-issebya/worker models:install` downloads and verifies the model once per
-  machine: run it after `yarn install` on a new worker. The worker image bakes the same file in
-  at `/opt/edit-issebya/models` (a build stage checks its size and SHA-256), so the container needs
-  no install (`app_docs/worker-container.md`).
+- The MODNet model needs no install: it is the committed `apps/worker/models/modnet_int8_13.onnx`,
+  read from there by the `cutout` step and the doctor, natively and in the worker image
+  (`app_docs/worker-container.md`). There is no `models:install` and no `WORKER_MODELS_DIR` any more.
 
 ## Testing
 
@@ -322,8 +330,11 @@ inputs name the old retime outputs) does not re-run retime.
   model), fingerprinted by footage, span, `MATTE_SETTINGS` and `MASK_TOOL_VERSION`, stored
   put-if-absent as `rebuildable` and reused by later versions. `head_track` still makes its own
   sampled u2net mask and never stores it.
-- Never commit the MODNet model, and never download it at job time or without checking its pinned
-  size and SHA-256 (`models:install` only).
+- The MODNet model is committed (`apps/worker/models/modnet_int8_13.onnx`), because it is a
+  modified file that no official URL serves. Never download it, at install or at job time, never
+  run it without checking its pinned size and SHA-256 (`verifyModel`), and never replace it without
+  its new pin, a new `MASK_TOOL_VERSION` and an up-to-date `THIRD_PARTY_NOTICES.md` beside it.
+  Never commit the calibration footage or frames.
 - Every output carries a `kept` or `rebuildable` tag.
 - Never touch `fixtures/footage/short-person.mp4`.
 

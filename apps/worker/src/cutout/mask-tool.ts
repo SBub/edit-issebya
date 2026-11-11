@@ -2,14 +2,15 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { ToolCall } from "../step-runner.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
-import { MODELS_INSTALL, modnetModelPath } from "./modnet-model.ts";
+import { MODEL_RESTORE, modnetModelPath } from "./modnet-model.ts";
 
 // The mask tool's code version, in every mask's fingerprint beside
 // MATTE_SETTINGS (the model's SHA-256 among them). Bump it whenever
 // modnet-entry.ts or matte.ts changes what a mask looks like. 1 was the
-// Apple Vision tool (vseg); masks stored under it stay with the versions
-// that name them.
-export const MASK_TOOL_VERSION = 2;
+// Apple Vision tool (vseg), 2 the fp32 MODNet model at 512 over the whole
+// frame, one span after the other; masks stored under either stay with the
+// versions that name them.
+export const MASK_TOOL_VERSION = 3;
 
 // The worker's own MODNet entry, run by this Node.
 export const MODNET_ENTRY = fileURLToPath(new URL("./modnet-entry.ts", import.meta.url));
@@ -95,7 +96,7 @@ export function maskToolCall(
   {
     tools,
     env = process.env,
-    model = modnetModelPath(env),
+    model = modnetModelPath(),
     node = process.execPath,
     exists = existsSync,
   }: MaskToolOptions,
@@ -104,7 +105,7 @@ export function maskToolCall(
     return { file: tools.ffmpeg, args: maskDoubleArgs(span) };
   }
   if (!exists(model)) {
-    throw new Error(`cutout: MODNet model not installed at ${model}, run ${MODELS_INSTALL}`);
+    throw new Error(`cutout: MODNet model missing at ${model}, restore it with ${MODEL_RESTORE}`);
   }
   return { file: node, args: maskToolArgs(span, model, tools) };
 }

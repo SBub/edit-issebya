@@ -39,14 +39,9 @@ yarn dev:studio --check            # the checks only, no servers (same as yarn d
 yarn dev:studio add-owner <email>  # once: creates the owner account in the local auth
 ```
 
-The worker image carries the cut-out's MODNet model (see
-[the worker container doc](app_docs/worker-container.md)). Only for the manual fallback below (the
-worker run natively), download it once per machine (about 26 MB, checked against its pinned
-SHA-256; see [the pipeline doc](app_docs/pipeline.md)):
-
-```bash
-yarn workspace @edit-issebya/worker models:install
-```
+The cut-out's MODNet model is a committed file (`apps/worker/models/`, about 7 MB, with its
+licence notice beside it), so the worker image and a native worker both have it after a checkout:
+nothing to download (see [the pipeline doc](app_docs/pipeline.md)).
 
 `scripts/dev-studio.sh` checks that Docker is running, starts the local Supabase stack
 (`edit-issebya`, `supabase/config.toml`) if it is down, applies pending migrations
@@ -76,7 +71,6 @@ Manual fallback, each step by hand:
 ```bash
 supabase start                               # the shared local Supabase stack
 supabase migration up --local                # apply the migrations
-yarn workspace @edit-issebya/worker models:install   # once: the cut-out's MODNet model
 yarn workspace @edit-issebya/worker doctor   # checks the configuration and connections
 yarn workspace @edit-issebya/worker doctor --ai   # also two tiny real, paid OpenRouter calls
 STUDIO_PORT=3001 yarn turbo run dev --filter=./apps/web --filter=./apps/studio

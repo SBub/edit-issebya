@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MODNET_ENTRY, maskDoubleArgs, maskToolArgs, maskToolCall } from "./mask-tool.ts";
+import { modnetModelPath } from "./modnet-model.ts";
 
 const tools = {
   ffmpeg: "/opt/ffmpeg",
@@ -34,18 +35,14 @@ describe("the mask tool", () => {
     ).toEqual({ file: "/bin/node", args: maskToolArgs(span, MODEL, tools) });
   });
 
-  it("finds the model under WORKER_MODELS_DIR", () => {
-    const call = maskToolCall(span, {
-      tools,
-      env: { WORKER_MODELS_DIR: "/m" },
-      exists: () => true,
-    });
-    expect(call.args).toContain("/m/modnet_photographic_portrait_matting.onnx");
+  it("finds the committed model", () => {
+    const call = maskToolCall(span, { tools, env: {}, exists: () => true });
+    expect(call.args).toContain(modnetModelPath());
   });
 
-  it("says how to install a missing model, before spawning", () => {
+  it("says how to restore a missing model, before spawning", () => {
     expect(() => maskToolCall(span, { tools, env: {}, model: MODEL, exists: () => false })).toThrow(
-      "cutout: MODNet model not installed at /models/modnet.onnx, run yarn workspace @edit-issebya/worker models:install",
+      "cutout: MODNet model missing at /models/modnet.onnx, restore it with git checkout -- apps/worker/models/modnet_int8_13.onnx",
     );
   });
 
@@ -77,7 +74,7 @@ describe("the mask tool", () => {
     for (const value of ["1", "TRUE", "true "]) {
       expect(() =>
         maskToolCall(span, { tools, env: { E2E_MOCK_MASK: value }, exists: () => false }),
-      ).toThrow(/MODNet model not installed/);
+      ).toThrow(/MODNet model missing/);
     }
   });
 });

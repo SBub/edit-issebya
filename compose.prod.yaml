@@ -1,7 +1,7 @@
 # Production override for the worker container: `docker compose -f compose.yaml
 # -f compose.prod.yaml up`. It resets what development sets: the env file is
 # .env.production, the environment keeps only what must differ inside the container
-# (the scratch folder, the model folder, ffmpeg), the scratch volume is its own, and
+# (the scratch folder, ffmpeg), the scratch volume is its own, and
 # no source is mounted. Same image; the MODNet model is in it.
 services:
   worker:
@@ -10,7 +10,6 @@ services:
         required: true
     environment: !override
       WORKER_SCRATCH_DIR: /scratch
-      WORKER_MODELS_DIR: /opt/edit-issebya/models
       FFMPEG_PATH: /usr/bin/ffmpeg
     volumes: !override
       - scratch-prod:/scratch

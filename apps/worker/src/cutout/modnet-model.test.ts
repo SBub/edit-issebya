@@ -1,24 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  MODNET_MODEL,
-  installModel,
-  modelsDirOf,
-  modnetModelPath,
-  verifyModel,
-} from "./modnet-model.ts";
+import { MATTE_SETTINGS } from "./matte.ts";
+import { MODNET_MODEL, modnetModelPath, verifyModel } from "./modnet-model.ts";
 
-// A tiny stand-in for the model: never the network, never the real file.
 const BYTES = new TextEncoder().encode("a tiny model");
-const FAKE = {
-  ...MODNET_MODEL,
-  url: "https://models.test/modnet.onnx",
-  sha256: createHash("sha256").update(BYTES).digest("hex"),
-  bytes: BYTES.byteLength,
-};
 
 let dir: string;
 
@@ -30,76 +18,57 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-function serving(body: Uint8Array, status = 200) {
-  const urls: string[] = [];
-  const get = async (url: string) => {
-    urls.push(url);
-    return new Response(body, { status });
-  };
-  return { get, urls };
-}
-
 describe("the model's place", () => {
-  it("is WORKER_MODELS_DIR, else ~/.edit-issebya-worker/models", () => {
-    expect(modnetModelPath({ WORKER_MODELS_DIR: "/m" })).toBe(
-      "/m/modnet_photographic_portrait_matting.onnx",
-    );
-    expect(modelsDirOf({})).toMatch(/\.edit-issebya-worker\/models$/);
+  it("is the committed file under apps/worker/models", () => {
+    expect(modnetModelPath()).toMatch(/apps\/worker\/models\/modnet_int8_13\.onnx$/);
   });
 
-  it("is pinned to the official ONNX by size and SHA-256", () => {
-    expect(MODNET_MODEL).toMatchObject({
-      sha256: "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9",
-      bytes: 25_888_640,
+  it("is pinned to the int8 file by name, size and SHA-256, the hash every mask names", () => {
+    expect(MODNET_MODEL).toEqual({
+      file: "modnet_int8_13.onnx",
+      sha256: "a293b5ae8fb8ac81447a82bf1ad661479fb412fe2d276188711386c6c81df28b",
+      bytes: 6_912_985,
     });
-    // eslint-disable-next-line no-secrets/no-secrets -- a public Google Drive file id, not a key
-    expect(MODNET_MODEL.url).toContain("1cgycTQlYXpTh26gB9FTnthE7AvruV8hd");
+    expect(MATTE_SETTINGS.modelSha256).toBe(MODNET_MODEL.sha256);
+  });
+
+  it("ships the pinned file", async () => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the worker's own model file
+    const file = await readFile(modnetModelPath());
+    expect(file.byteLength).toBe(MODNET_MODEL.bytes);
+    expect(createHash("sha256").update(file).digest("hex")).toBe(MODNET_MODEL.sha256);
+    await expect(verifyModel(modnetModelPath())).resolves.toBeUndefined();
+  });
+
+  it("ships the model's notice beside it: the attribution and the Apache 2.0 text", async () => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the worker's own notice
+    const notice = await readFile(
+      new URL("../../models/THIRD_PARTY_NOTICES.md", import.meta.url),
+      "utf8",
+    );
+    expect(notice).toContain("https://github.com/ZHKKKe/MODNet");
+    expect(notice).toContain("07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9");
+    expect(notice).toContain("Copyright (c) Microsoft Corporation");
+    expect(notice).toContain("TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION");
+    expect(notice).toContain("END OF TERMS AND CONDITIONS");
   });
 });
 
 describe("verifyModel", () => {
-  it("names a missing model and how to install it", async () => {
+  it("names a missing model and how to restore it", async () => {
     const path = join(dir, "none.onnx");
     await expect(verifyModel(path)).rejects.toThrow(
-      `MODNet model not installed at ${path}, run yarn workspace @edit-issebya/worker models:install`,
+      `MODNet model missing at ${path}, restore it with git checkout -- apps/worker/models/modnet_int8_13.onnx`,
     );
   });
 
-  it("refuses a file with another hash", async () => {
+  it("refuses a file with another size or hash", async () => {
     const path = join(dir, "other.onnx");
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder
     await writeFile(path, BYTES);
+    const sha = createHash("sha256").update(BYTES).digest("hex");
     await expect(verifyModel(path)).rejects.toThrow(
-      `has SHA-256 ${FAKE.sha256.slice(0, 8)}, not 07c308cf`,
+      `has 12 bytes and SHA-256 ${sha.slice(0, 8)}, not 6912985 bytes and a293b5ae`,
     );
-  });
-});
-
-describe("installModel", () => {
-  it("downloads, checks and renames the model, then keeps it", async () => {
-    const path = join(dir, "models", "modnet.onnx");
-    const { get, urls } = serving(BYTES);
-    expect(await installModel(path, { fetch: get, model: FAKE })).toBe("installed");
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder
-    expect(new Uint8Array(await readFile(path))).toEqual(BYTES);
-    expect(await installModel(path, { fetch: get, model: FAKE })).toBe("present");
-    expect(urls).toEqual([FAKE.url]);
-  });
-
-  it("refuses a download with another hash and leaves nothing behind", async () => {
-    const path = join(dir, "modnet.onnx");
-    const { get } = serving(new TextEncoder().encode("a tiny modem"));
-    await expect(installModel(path, { fetch: get, model: FAKE })).rejects.toThrow(
-      /model download refused: 12 bytes with SHA-256 [0-9a-f]{64}, expected 12 bytes/,
-    );
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's temp folder
-    expect(await readdir(dir)).toEqual([]);
-  });
-
-  it("fails on an HTTP error", async () => {
-    const { get } = serving(new Uint8Array(), 404);
-    await expect(
-      installModel(join(dir, "modnet.onnx"), { fetch: get, model: FAKE }),
-    ).rejects.toThrow("model download failed: HTTP 404 from https://models.test/modnet.onnx");
   });
 });

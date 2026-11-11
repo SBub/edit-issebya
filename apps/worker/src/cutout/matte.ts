@@ -6,8 +6,9 @@
 // size, the smoothing, the execution provider and the mask's format. Every
 // mask fingerprint names them, with MASK_TOOL_VERSION.
 export const MATTE_SETTINGS = {
-  model: "modnet_photographic_portrait_matting",
-  modelSha256: "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9",
+  // MODNet's portrait matting model quantised to int8 (modnet-model.ts).
+  model: "modnet_int8_13",
+  modelSha256: "a293b5ae8fb8ac81447a82bf1ad661479fb412fe2d276188711386c6c81df28b",
   // MODNet's reference size: the short side 512, both sides multiples of 32.
   size: 512,
   // A per-pixel median of each frame and its two neighbours.

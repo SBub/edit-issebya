@@ -64,8 +64,8 @@ export interface DoctorDeps {
   // The AI runner the jobs use: each AI check (run only with `--ai`) makes one
   // tiny real call.
   ai: () => AiRunner;
-  // The cut-out's mask tool (MODNet): the installed model checked against
-  // its pinned hash, one run on a 1-second sample (written to `output`), and
+  // The cut-out's mask tool (MODNet): the committed model checked against
+  // its pinned size and hash, one run on a 1-second sample (written to `output`), and
   // ffprobe of a file.
   maskTool: () => MaskToolDeps;
   // The scratch folder and whether it exists or can be created (never created).

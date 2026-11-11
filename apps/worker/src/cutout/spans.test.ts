@@ -20,20 +20,20 @@ describe("maskFingerprint", () => {
   });
 
   it("names the tool version and changes with every matte setting", () => {
-    expect(MASK_TOOL_VERSION).toBe(2);
+    expect(MASK_TOOL_VERSION).toBe(3);
     const span = { start: 5.1, end: 7.967 };
     const fp = maskFingerprint(FOOTAGE, span);
     for (const [name, value] of Object.entries(MATTE_SETTINGS)) {
       const changed = { ...MATTE_SETTINGS, [name]: `${value}-other` };
       expect(
-        fingerprint({ inputs: [FOOTAGE], settings: { ...span, ...changed }, version: 2 }),
+        fingerprint({ inputs: [FOOTAGE], settings: { ...span, ...changed }, version: 3 }),
       ).not.toBe(fp);
     }
     expect(
-      fingerprint({ inputs: [FOOTAGE], settings: { ...span, ...MATTE_SETTINGS }, version: 2 }),
+      fingerprint({ inputs: [FOOTAGE], settings: { ...span, ...MATTE_SETTINGS }, version: 3 }),
     ).toBe(fp);
     expect(
-      fingerprint({ inputs: [FOOTAGE], settings: { ...span, ...MATTE_SETTINGS }, version: 1 }),
+      fingerprint({ inputs: [FOOTAGE], settings: { ...span, ...MATTE_SETTINGS }, version: 2 }),
     ).not.toBe(fp);
   });
 });

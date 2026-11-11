@@ -22,7 +22,7 @@ Where each piece runs:
 | piece                  | where                           | how the worker reaches it                                                  |
 | ---------------------- | ------------------------------- | -------------------------------------------------------------------------- |
 | worker (`src/main.ts`) | container                       | `docker compose up`                                                        |
-| cut-out (MODNet)       | container, this Node            | `maskToolCall`, the model at `WORKER_MODELS_DIR=/opt/edit-issebya/models`  |
+| cut-out (MODNet)       | container, this Node            | `maskToolCall`, the model at `/repo/apps/worker/models` (committed)        |
 | AI calls               | OpenRouter (internet)           | `OPENROUTER_API_KEY` from the env file                                     |
 | Supabase (local)       | Mac, 54431                      | `SUPABASE_URL=http://host.docker.internal:54431` (compose)                 |
 | OTLP (otel-lgtm)       | Mac, 4318                       | `OTEL_EXPORTER_OTLP_ENDPOINT` from `WORKER_DOCKER_OTLP_ENDPOINT` (compose) |
@@ -42,12 +42,11 @@ dependencies and the apps the worker does not run out of the context):
   `HYPERFRAMES_WHISPER_PATH`. The `small` model (`ggml-small.bin`, HyperFrames' pinned revision and
   sha256) is in the image at `/home/node/.cache/hyperframes/whisper/models`, so the first transcribe
   does not download it.
-- The MODNet model (`modnet_photographic_portrait_matting.onnx`), downloaded by the `modnet` build
-  stage from the URL `models:install` uses and checked against the same size and SHA-256, at
-  `/opt/edit-issebya/models` (`ENV WORKER_MODELS_DIR`). The pin is written twice, in
-  `apps/worker/src/cutout/modnet-model.ts` and in the Dockerfile's `ARG` lines;
-  `apps/worker/src/dockerfile.test.ts` fails when they differ. A build whose download does not match
-  fails; the cut-out also checks the hash before each run (`verifyModel`).
+- The MODNet model (`modnet_int8_13.onnx`) and its notice, part of the worker's folder
+  (`apps/worker/models/`, committed), so `COPY apps/worker` puts them at `/repo/apps/worker/models`:
+  no download stage and no model folder of its own (`apps/worker/src/dockerfile.test.ts`). The
+  cut-out checks the file's size and SHA-256 before each run (`verifyModel`). The model is not
+  among the folders compose mounts in development, so a new model needs a rebuild.
 - Yarn 4 through corepack, `yarn workspaces focus @edit-issebya/worker` (with `LEFTHOOK=0`), which
   installs `onnxruntime-node`'s prebuilt Linux binary for the image's platform, then the worker's
   source. Runs as `node`, with `CMD node src/main.ts`.
@@ -58,15 +57,14 @@ dependencies and the apps the worker does not run out of the context):
 - `compose.yaml` (development, the default): the `worker` service with `env_file` =
   `apps/worker/.env.development` (Supabase key, R2 keys, `OPENROUTER_API_KEY` and the rest). The
   environment overrides only what must differ inside the container: `WORKER_SCRATCH_DIR` (`/scratch`),
-  `WORKER_MODELS_DIR` (the image's folder, so an env file line naming a Mac folder never applies),
   `FFMPEG_PATH` (the env file's is the Mac's), `SUPABASE_URL`, and
   `OTEL_EXPORTER_OTLP_ENDPOINT` from `WORKER_DOCKER_OTLP_ENDPOINT` (empty by default, so no export is
   attempted). Mounts: the named volume `scratch` at `/scratch`, and the three packages' `src` read-only so an
   edit needs no rebuild. The host-gateway entry makes `host.docker.internal` resolve on Linux hosts too.
 - `compose.prod.yaml` (production override, `docker compose -f compose.yaml -f compose.prod.yaml`):
-  `env_file` = `apps/worker/.env.production`, the environment reset to the scratch folder, the model
-  folder and `FFMPEG_PATH`, its own scratch volume (`scratch-prod`), and no source mounted. The same
-  image, with the model in it: production needs no model volume and no `models:install`.
+  `env_file` = `apps/worker/.env.production`, the environment reset to the scratch folder
+  and `FFMPEG_PATH`, its own scratch volume (`scratch-prod`), and no source mounted. The same
+  image, with the model in it: production needs no model volume and no download.
 
 ### The scratch folder
 
