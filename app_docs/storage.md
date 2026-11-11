@@ -269,7 +269,7 @@ Nothing to do for the owner. What they see:
   that worker writes again. Specs delete their own row.
 - `apps/worker/src/make-pipeline-fixtures.ts` and the test seeding helpers write storage directly
   on purpose: they are a dev tool and fixtures, not jobs.
-- `transcribe` and `head_track` also run HyperFrames; scoping their environment the same way
+- `transcribe` also runs HyperFrames; scoping its environment the same way
   is a follow-up if the owner's `df` check shows leftovers.
 - Owner steps: apply the migration to the hosted project after merge; the manual `df` check and the
   re-export of a reel last exported eight days ago; decide whether never-exported reels are ever

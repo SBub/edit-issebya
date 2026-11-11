@@ -1,8 +1,8 @@
 # The worker in a container (Docker Desktop on the owner's Mac, or any Linux host;
 # arm64 or amd64). Built from the repository root (compose.yaml sets the context).
 # Everything a job runs is inside: ffmpeg, HyperFrames with Chromium and whisper,
-# the MODNet cut-out (onnxruntime-node on the CPU) and the AI calls (OpenRouter
-# over HTTPS). See app_docs/worker-container.md.
+# the MODNet cut-out and the head track's U2Net mask (onnxruntime-node on the
+# CPU) and the AI calls (OpenRouter over HTTPS). See app_docs/worker-container.md.
 
 # whisper-cli, the transcribe step's engine, built from a pinned whisper.cpp tag
 # with the libraries linked in (one binary). HyperFrames finds it through

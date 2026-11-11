@@ -38,6 +38,7 @@
     "hyperframes": "0.8.222",
     "onnxruntime-node": "1.31.1",
     "posthog-node": "^5.61.1",
+    "sharp": "0.35.5",
     "zod": "4.6.7"
   },
   "devDependencies": {

@@ -23,6 +23,7 @@ Where each piece runs:
 | ---------------------- | ------------------------------- | -------------------------------------------------------------------------- |
 | worker (`src/main.ts`) | container                       | `docker compose up`                                                        |
 | cut-out (MODNet)       | container, this Node            | `maskToolCall`, the model at `/repo/apps/worker/models` (committed)        |
+| head track (U2Net)     | container, this Node            | `u2netArgs`, the model at `/repo/apps/worker/models` (committed)           |
 | AI calls               | OpenRouter (internet)           | `OPENROUTER_API_KEY` from the env file                                     |
 | Supabase (local)       | Mac, 54431                      | `SUPABASE_URL=http://host.docker.internal:54431` (compose)                 |
 | OTLP (otel-lgtm)       | Mac, 4318                       | `OTEL_EXPORTER_OTLP_ENDPOINT` from `WORKER_DOCKER_OTLP_ENDPOINT` (compose) |

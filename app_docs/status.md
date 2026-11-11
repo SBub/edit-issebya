@@ -92,14 +92,12 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
 - `render`: HyperFrames 0.8.222's `hyperframes render`, with stdout not a terminal, prints one
   `@hf-progress` line per progress report. `renderEnv` drops `HYPERFRAMES_STDOUT_IS_TTY`, which
   set to 1 silences those lines (`apps/worker/src/render/render-call.ts`).
-- `head_track`: the pinned CLI prints no progress when nobody watches (with `--json` its
-  spinner is off, and without it the unattended spinner drops every message); the per-frame events
-  exist only through `onProgress` of the package's `hyperframes/api` export. So the person mask
-  (`apps/worker/src/pipeline/person-mask.ts`) runs
-  `apps/worker/src/pipeline/remove-background-entry.ts` with HyperFrames' own Node: it calls the
-  same `removeBackground` with exactly the options the CLI passes (input, output, device, quality),
-  prints one `@hf-progress {"index","total","pct"}` line per sampled frame and, at the end, the
-  same JSON result document the CLI prints under `--json` (`app_docs/pipeline.md`).
+- `head_track`: the worker's U2Net entry (`apps/worker/src/pipeline/u2net-entry.ts`,
+  `app_docs/pipeline.md`) prints one `@hf-progress {"index","total","pct"}` line per sample of its
+  chunk. The step runs its chunks at the same time, so each call gets its own parser from
+  `weightedProgress(parsePersonMaskProgress, <samples per chunk>)`, as the cut-out's spans do: the
+  step's percentage is every chunk's furthest report, weighted by its samples. The sampling before
+  the chunks and the join and decode after them report nothing (a few seconds together).
 - `cutout`: the MODNet entry (`apps/worker/src/cutout/modnet-entry.ts`, `app_docs/pipeline.md`)
   prints one `@hf-progress {"index","total","pct"}` line per frame of its span. The step runs one
   call per missing span, several at the same time, so `ensureCutouts` gives each call its own

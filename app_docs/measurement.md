@@ -329,10 +329,10 @@ took the time.
 
 - Name: `exec <executable>`, the executable's base name (`exec ffmpeg`, `exec ffprobe`).
   When `node` runs a script (`.mjs`, `.js`, `.cjs`, `.ts`) the name is the script's base name:
-  `exec hyperframes` for HyperFrames' `bin/hyperframes.mjs`, `exec remove-background-entry` for the
-  person mask, `exec modnet-entry` for each cut-out span. `process.executable.name` stays `node`.
-  The ffmpeg processes the MODNet entry starts itself are not spans of their own; their time is in
-  `exec modnet-entry`.
+  `exec hyperframes` for HyperFrames' `bin/hyperframes.mjs`, `exec u2net-entry` for each chunk of the
+  head track's person mask, `exec modnet-entry` for each cut-out span. `process.executable.name` stays `node`.
+  The ffmpeg processes the MODNet and U2Net entries start themselves are not spans of their own;
+  their time is in `exec modnet-entry` and `exec u2net-entry`.
 - Parent: the step's span, or the call's `parent` when it names one.
 - Process attributes, from the OpenTelemetry process conventions (status Release Candidate:
   https://github.com/open-telemetry/semantic-conventions/blob/main/docs/registry/attributes/process.md):

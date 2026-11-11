@@ -674,6 +674,7 @@ __metadata:
     hyperframes: "npm:0.8.222"
     onnxruntime-node: "npm:1.31.1"
     posthog-node: "npm:^5.61.1"
+    sharp: "npm:0.35.5"
     typescript: "npm:5.9.3"
     typescript-eslint: "npm:^8.71.2"
     vitest: "npm:^5.0.3"
@@ -7921,7 +7922,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"sharp@npm:^0.35.0, sharp@npm:^0.35.4":
+"sharp@npm:0.35.5, sharp@npm:^0.35.0, sharp@npm:^0.35.4":
   version: 0.35.5
   resolution: "sharp@npm:0.35.5"
   dependencies:
