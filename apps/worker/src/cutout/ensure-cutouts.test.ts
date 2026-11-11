@@ -3,15 +3,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HeadTrack } from "@edit-issebya/edit";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
+import {
+  AggregationTemporality,
+  InMemoryMetricExporter,
+  PeriodicExportingMetricReader,
+} from "@opentelemetry/sdk-metrics";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { recordingSteps, stepContext } from "../recording-steps.ts";
 import type { SpawnTool } from "../step-runner.ts";
 import { classifyKey, recordingStorage } from "../stored-files.ts";
-import { createTelemetry } from "../telemetry.ts";
+import { type Telemetry, createTelemetry } from "../telemetry.ts";
 import { ensureCutouts } from "./ensure-cutouts.ts";
+import { MASK_TOOL_VERSION } from "./mask-tool.ts";
 import type { PoolLimits } from "./pool.ts";
+import { VERSION_ATTRIBUTE } from "./speed.ts";
 import { cutoutKey, plannedMasks } from "./spans.ts";
 import { BEHIND_HEAD_TRACK, BEHIND_TRANSCRIPT, behindEdit, fakeMaskSpawn } from "./test-support.ts";
 
@@ -58,12 +65,13 @@ async function ensure(
     env?: NodeJS.ProcessEnv;
     limits?: PoolLimits;
     spawn?: ReturnType<typeof fakeMaskSpawn>;
+    telemetry?: Telemetry;
   } = {},
 ) {
   const { steps, calls } = recordingSteps();
   const spawn = options.spawn ?? fakeMaskSpawn();
   const result = await ensureCutouts({
-    ctx: stepContext(steps),
+    ctx: stepContext(steps, { telemetry: options.telemetry }),
     storage,
     keyPrefix: PREFIX,
     scratchDir: scratch,
@@ -343,6 +351,104 @@ describe("ensureCutouts span counts", () => {
     });
     const span = exporter.getFinishedSpans().find((s) => s.name === "step cutout");
     expect(span?.attributes).toMatchObject({ "cutout.made": 0, "cutout.reused": 2 });
+    await telemetry.shutdown();
+  });
+});
+
+describe("cut-out speed", () => {
+  // A telemetry whose metrics are kept in memory: each read flushes first.
+  function metered() {
+    const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+    const reader = new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 60_000 });
+    const spans = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      {
+        metricReaders: [reader],
+        spanProcessors: [new SimpleSpanProcessor({ exporter: spans })],
+      },
+    );
+    // The metrics by name, as the last export read them.
+    const read = async () => {
+      await telemetry.flushMetrics();
+      const last = exporter.getMetrics().at(-1);
+      const metrics = last?.scopeMetrics.flatMap((scope) => scope.metrics) ?? [];
+      return Object.fromEntries(
+        metrics.map((metric) => [
+          metric.descriptor.name,
+          metric.dataPoints.map((point) => ({ value: point.value, attributes: point.attributes })),
+        ]),
+      );
+    };
+    return { telemetry, spans, read };
+  }
+
+  const version = { [VERSION_ATTRIBUTE]: String(MASK_TOOL_VERSION) };
+
+  it("records the footage cut out and the step's wall time, by the tool's version", async () => {
+    const { telemetry, read } = metered();
+    await ensure(behindEdit(), { env: {}, telemetry });
+    const metrics = await read();
+    // The two spans are 2.867 s and 2.766 s long.
+    expect(metrics["cutout.video"]).toEqual([
+      { value: expect.closeTo(5.633, 2), attributes: version },
+    ]);
+    expect(metrics["cutout.work"]).toEqual([{ value: expect.any(Number), attributes: version }]);
+    expect(metrics["cutout.work"]![0]!.value as number).toBeGreaterThan(0);
+    await telemetry.shutdown();
+  });
+
+  it("counts only the masks it made, and the footage they cover", async () => {
+    const { telemetry, read } = metered();
+    const [first] = keys();
+    await storage.put(first!, new TextEncoder().encode("stored"));
+    await ensure(behindEdit(), { env: {}, telemetry });
+    const metrics = await read();
+    // Only the second span, 2.766 s long, was made.
+    expect(metrics["cutout.video"]).toEqual([
+      { value: expect.closeTo(2.766, 2), attributes: version },
+    ]);
+    await telemetry.shutdown();
+  });
+
+  it("puts the footage cut out in milliseconds on the step span", async () => {
+    const { telemetry, spans } = metered();
+    await ensure(behindEdit(), { env: {}, telemetry });
+    const step = spans.getFinishedSpans().find((span) => span.name === "step cutout");
+    expect(step?.attributes["cutout.video_ms"]).toBe(5633);
+    await telemetry.shutdown();
+  });
+
+  it("records nothing when every mask was reused", async () => {
+    const { telemetry, read } = metered();
+    for (const key of keys()) await storage.put(key, new TextEncoder().encode("stored"));
+    await ensure(behindEdit(), { env: {}, telemetry });
+    expect(await read()).toEqual({});
+    await telemetry.shutdown();
+  });
+
+  it("adds nothing when the step fails", async () => {
+    const { telemetry, read } = metered();
+    const inner = fakeMaskSpawn();
+    const spawnTool: SpawnTool = async (call, signal, log) => {
+      if (call.args.includes("19.967")) {
+        return {
+          code: 1,
+          exitSignal: null,
+          report: "",
+          output: "modnet: decoding failed\n",
+          stdout: "",
+          groupPeakBytes: null,
+        };
+      }
+      return inner.spawnTool(call, signal, log);
+    };
+    await expect(
+      ensure(behindEdit(), { env: {}, telemetry, spawn: { spawnTool, calls: inner.calls } }),
+    ).rejects.toThrow(/cutout exited with 1/);
+    const metrics = await read();
+    expect(metrics["cutout.video"]?.map((point) => point.value)).toEqual([0]);
+    expect(metrics["cutout.work"]?.map((point) => point.value)).toEqual([0]);
     await telemetry.shutdown();
   });
 });

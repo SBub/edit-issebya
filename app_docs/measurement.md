@@ -73,13 +73,14 @@ container's CPU, memory, disk and network are measured too and shown above a ree
 
 ### Telemetry (`apps/worker/src/telemetry.ts`)
 
-- `createTelemetry(env)` builds a tracer and a logger provider per worker process (created in `once.ts`
+- `createTelemetry(env)` builds a tracer, a logger and a meter provider per worker process (created in `once.ts`
   and `main.ts`, passed down, flushed with `shutdown()` before exit). It reads only
   `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,k2=v2`, values URL-decoded) and
-  `OTEL_SERVICE_NAME` (default `edit-issebya-worker`). It exports to `<endpoint>/v1/traces` and
-  `<endpoint>/v1/logs` whenever the endpoint is set. The headers are optional: a local collector needs
-  none, and an empty value sends none. Without an endpoint the providers have no processor and nothing
-  is exported or fails.
+  `OTEL_SERVICE_NAME` (default `edit-issebya-worker`). It exports to `<endpoint>/v1/traces`,
+  `<endpoint>/v1/logs` and `<endpoint>/v1/metrics` (the cut-out speed, below) whenever the endpoint is
+  set. The headers are optional: a local collector needs
+  none, and an empty value sends none. Without an endpoint the providers have no processor or reader and
+  nothing is exported or fails.
 - `traceIdForReel(uuid)`: the reel uuid without dashes, lowercased. `startJobSpan` starts the span
   `job <kind>` as a root span (no parent span id) in that trace: `startRootSpan` passes `root: true`
   and a trace id pinned for that one call to the SDK's id generator (`PinnableIdGenerator`, which
@@ -548,6 +549,55 @@ start and `idle` at the end (drawn transparent), and the rows are split by step 
 where the step stopped, not where the next one starts. A step colour on the timeline comes from the
 dashboard's list of step names (`resource-dashboard.test.ts` fails when a step name has none).
 
+### Cut-out speed
+
+How fast the on-demand cut-out runs: seconds of work per second of video it cuts out. Local
+development only, like the rest of the resource metrics.
+
+What is recorded (`apps/worker/src/cutout/speed.ts`, `ensureCutouts`): when a `cutout` step succeeds
+and made at least one mask, two OpenTelemetry counters, both in seconds, both with the attribute
+`mask_tool_version` (the mask tool's `MASK_TOOL_VERSION` as a string: 2 is the fp32 tool, 3 the int8
+tool):
+
+- `cutout.video`: the footage the made masks cover, the made spans' lengths added up.
+- `cutout.work`: the wall time of the step that made them.
+
+A reused mask costs nothing and adds nothing. A failed step adds nothing: its counters stay at the
+zero they started at. The step span carries `cutout.video_ms`, the same footage in milliseconds.
+
+Where it goes: Prometheus, through the OTLP metrics endpoint (`<endpoint>/v1/metrics`, the trace
+exporter's headers, a periodic reader every 10 seconds, sent once more at shutdown so a one-shot
+process keeps its last value). It is not in the database, on purpose: the owner keeps the speed as a
+metric, so there is no table, no column and no product event for it. The otel-lgtm collector hands
+OTLP metrics to Prometheus's OTLP receiver, which names them (Prometheus 3.15.1, its default OTLP
+translation: dots become underscores, the unit `s` becomes `seconds`, a counter gets `_total`):
+
+- `cutout_video_seconds_total` and `cutout_work_seconds_total`, label `mask_tool_version`.
+
+Each step that makes masks first adds zero to both counters and flushes them, so Prometheus has a
+baseline to take the increase from; without it a one-shot process has one sample and the increase
+is empty. The series of a version exist from its first cut-out.
+
+Retention: Prometheus in the otel-lgtm container keeps 15 days, its default (`storageRetention`
+reads `15d` on the running container). Older speed is gone unless the volume is kept elsewhere.
+
+The chart: "Cut-out speed", `monitoring/grafana/dashboards/cutout-speed.json`, uid `cutout-speed`.
+Open `http://localhost:3300/d/cutout-speed`; the default range is the last 7 days.
+
+- One time series per version (the legend's `tool v3`): `increase(cutout_work_seconds_total[$__rate_interval])`
+  over `increase(cutout_video_seconds_total[$__rate_interval])`, per `mask_tool_version`. The unit is
+  seconds of work per second of video. Lower is better: the same footage takes less time. A gap means
+  no cut-out made masks in that window.
+- The annotation "Mask tool version first seen" marks the first step of each version's series. It is
+  a Prometheus annotation: true at the first step after a version's earliest sample in the last 15
+  days, so one mark per version, not one per scrape. It needs Grafana's annotation step to equal the
+  dashboard interval (`$__interval_ms`, Grafana's default). A version that is quiet for the whole 15
+  days and then reports again is marked again.
+
+The dashboard is a provisioned file: Grafana reads it within 10 seconds of the file appearing, and no
+container restarts for it. The worker needs its new code (the worker container's image, rebuilt, or
+the host worker restarted) before the counters exist.
+
 ## Configuration
 
 - Worker: `OTEL_EXPORTER_OTLP_ENDPOINT` turns export on; `OTEL_EXPORTER_OTLP_HEADERS` is optional
@@ -630,6 +680,8 @@ dashboard's list of step names (`resource-dashboard.test.ts` fails when a step n
 - Never use `latest` for a monitoring image, and never edit a provisioned dashboard only in the
   Grafana UI: the JSON file in `monitoring/grafana/dashboards/` is the source.
 - Never publish cAdvisor's port to the host: it reads every container of the machine.
+- Never store the cut-out speed in the database or as a product event: it is a metric
+  (`cutout.video`, `cutout.work`, Prometheus) and a dashboard reads it.
 - Never put a tool call's command line, its arguments, its stdin or its environment on its `exec`
   span: the executable's base name, the argument count, a plain-word subcommand and the measurements
   only. A prompt, a schema, an answer or a reel's path never reaches a span.

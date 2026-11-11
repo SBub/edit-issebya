@@ -10,6 +10,7 @@ import { parseCutoutProgress, weightedProgress } from "../progress-parsers.ts";
 import { spanCropTop } from "./crop.ts";
 import { maskToolCall } from "./mask-tool.ts";
 import { type PoolLimits, cutoutPool, machineLimits, runPool } from "./pool.ts";
+import { recordCutoutSpeed, startCutoutSpeed } from "./speed.ts";
 import { MASK_STEP, cutoutKey, withMasks } from "./spans.ts";
 
 export interface EnsureCutouts {
@@ -46,7 +47,8 @@ function plural(count: number, unit: string): string {
 
 // The cut-out step span's counts: the masks this call made and the stored ones
 // it reused (`cutout.made`, `cutout.reused`). A step that makes masks adds how
-// many it makes at a time (`cutout.parallel`).
+// many it makes at a time (`cutout.parallel`) and the footage it cuts out in
+// milliseconds (`cutout.video_ms`).
 function cutoutCounts(made: number, reused: number): Attributes {
   return { "cutout.made": made, "cutout.reused": reused };
 }
@@ -117,10 +119,15 @@ export async function ensureCutouts({
     const footagePath = join(dir, "footage.mp4");
     const outputs = missing.map((span) => join(dir, `${span.fingerprint}.mp4`));
     const lengths = missing.map((span) => span.end - span.start);
+    // The footage this step cuts out: the made spans' lengths.
+    const videoSeconds = lengths.reduce((sum, length) => sum + length, 0);
     const pool = cutoutPool(lengths, limits);
     // The longest first: it decides how long the step lasts.
     const order = [...missing.keys()].sort((a, b) => lengths[b]! - lengths[a]!);
     try {
+      startCutoutSpeed(ctx.telemetry.meter);
+      await ctx.telemetry.flushMetrics();
+      const stepStarted = performance.now();
       await runToolsStep(
         stepCtx,
         {
@@ -132,6 +139,7 @@ export async function ensureCutouts({
             trace.getSpan(cutoutContext)?.setAttributes({
               ...cutoutCounts(missing.length, spans.length - missing.length),
               "cutout.parallel": pool.concurrency,
+              "cutout.video_ms": Math.round(videoSeconds * 1000),
             });
             const footageKey = cacheKey(keyPrefix, footage.step, footage.fingerprint, footage.file);
             if (!(await storage.getFile(footageKey, footagePath, { signal }))) {
@@ -157,14 +165,19 @@ export async function ensureCutouts({
               signal.throwIfAborted();
               await storage.putFileIfAbsent(span.key, output, { contentType: "video/mp4" });
             });
-            const seconds = lengths.reduce((sum, length) => sum + length, 0);
             const reused = spans.length - missing.length;
             return {
-              what: `${plural(missing.length, "cut-out")} made, ${reused} reused, ${seconds.toFixed(1)} s masked`,
+              what: `${plural(missing.length, "cut-out")} made, ${reused} reused, ${videoSeconds.toFixed(1)} s masked`,
             };
           },
         },
         spawnTool,
+      );
+      // Only a step that succeeded: a failed one throws before this line.
+      recordCutoutSpeed(
+        ctx.telemetry.meter,
+        videoSeconds,
+        (performance.now() - stepStarted) / 1000,
       );
     } finally {
       await rm(dir, { recursive: true, force: true });

@@ -3,6 +3,7 @@ import {
   type Attributes,
   type Context,
   ROOT_CONTEXT,
+  type Meter,
   type Span,
   type SpanOptions,
   SpanStatusCode,
@@ -12,6 +13,7 @@ import {
 } from "@opentelemetry/api";
 import { type Logger, SeverityNumber } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
@@ -19,6 +21,11 @@ import {
   type LogRecordProcessor,
   LoggerProvider,
 } from "@opentelemetry/sdk-logs";
+import {
+  type IMetricReader,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} from "@opentelemetry/sdk-metrics";
 import {
   BatchSpanProcessor,
   type IdGenerator,
@@ -35,13 +42,23 @@ type Env = Record<string, string | undefined>;
 export interface Telemetry {
   tracer: Tracer;
   logger: Logger;
+  // The metrics meter (app_docs/measurement.md, Cut-out speed). Its instruments
+  // are no-ops without an endpoint.
+  meter: Meter;
   // True only when OTEL_EXPORTER_OTLP_ENDPOINT is set and exporters were built.
   exporting: boolean;
   // Starts a span that is a root (no parent span id) in the trace `traceId`.
   startRootSpan(traceId: string, name: string, options: SpanOptions): Span;
-  // Flushes and stops both providers; call before the process exits.
+  // Sends the metrics recorded so far now. A failed send is not an error for the
+  // work: the metrics are observation only.
+  flushMetrics(): Promise<void>;
+  // Flushes and stops every provider; call before the process exits.
   shutdown(): Promise<void>;
 }
+
+// How often a running process sends its metrics. A one-shot process sends them
+// once more at shutdown.
+const METRIC_EXPORT_INTERVAL_MS = 10_000;
 
 // The SDK asks its id generator for a trace id only when a span has no valid
 // parent, and it asks synchronously inside startSpan. So a trace id pinned for
@@ -106,13 +123,18 @@ function parseHeaders(raw: string): Record<string, string> {
 // OTEL_EXPORTER_OTLP_HEADERS and OTEL_SERVICE_NAME. It exports whenever the
 // endpoint is set; the headers are optional (a local collector needs none), and
 // empty headers send none. Without an endpoint the providers have no processor
-// at all. Tests pass in-memory processors.
+// or reader at all. Tests pass in-memory processors and readers.
 export function createTelemetry(
   env: Env = process.env,
   {
     spanProcessors = [],
     logProcessors = [],
-  }: { spanProcessors?: SpanProcessor[]; logProcessors?: LogRecordProcessor[] } = {},
+    metricReaders = [],
+  }: {
+    spanProcessors?: SpanProcessor[];
+    logProcessors?: LogRecordProcessor[];
+    metricReaders?: IMetricReader[];
+  } = {},
 ): Telemetry {
   const endpoint = env.OTEL_EXPORTER_OTLP_ENDPOINT?.trim().replace(/\/+$/, "") ?? "";
   const rawHeaders = env.OTEL_EXPORTER_OTLP_HEADERS?.trim() ?? "";
@@ -123,6 +145,7 @@ export function createTelemetry(
 
   const spans = [...spanProcessors];
   const logs = [...logProcessors];
+  const readers = [...metricReaders];
   if (exporting) {
     const headers = parseHeaders(rawHeaders);
     spans.push(
@@ -135,6 +158,12 @@ export function createTelemetry(
         exporter: new OTLPLogExporter({ url: `${endpoint}/v1/logs`, headers }),
       }),
     );
+    readers.push(
+      new PeriodicExportingMetricReader({
+        exporter: new OTLPMetricExporter({ url: `${endpoint}/v1/metrics`, headers }),
+        exportIntervalMillis: METRIC_EXPORT_INTERVAL_MS,
+      }),
+    );
   }
 
   const ids = new PinnableIdGenerator();
@@ -144,17 +173,27 @@ export function createTelemetry(
     idGenerator: ids,
   });
   const loggerProvider = new LoggerProvider({ resource, processors: logs });
+  const meterProvider = new MeterProvider({ resource, readers });
   const tracer = tracerProvider.getTracer("edit-issebya-worker");
   return {
     tracer,
     logger: loggerProvider.getLogger("edit-issebya-worker"),
+    meter: meterProvider.getMeter("edit-issebya-worker"),
     exporting,
     startRootSpan(traceId, name, options) {
       // `root` drops any active parent, so no parent span id is written.
       return ids.pin(traceId, () => tracer.startSpan(name, { ...options, root: true }));
     },
+    async flushMetrics() {
+      await meterProvider.forceFlush().catch(() => undefined);
+    },
     async shutdown() {
-      await Promise.all([tracerProvider.shutdown(), loggerProvider.shutdown()]);
+      // The meter provider's shutdown sends the last values of a one-shot process.
+      await Promise.all([
+        tracerProvider.shutdown(),
+        loggerProvider.shutdown(),
+        meterProvider.shutdown(),
+      ]);
     },
   };
 }

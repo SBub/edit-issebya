@@ -4,7 +4,7 @@ import { SpanStatusCode, trace } from "@opentelemetry/api";
 import { SeverityNumber } from "@opentelemetry/api-logs";
 import { InMemoryLogRecordExporter, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DISABLED_TRACKER } from "./error-tracking.ts";
 import { UNKNOWN_SIZE, createReelSizeHolder } from "./reel-size.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
@@ -20,6 +20,20 @@ import {
   traceIdForJob,
   traceIdForReel,
 } from "./telemetry.ts";
+
+// Every metric exporter the telemetry builds, with the options it was built with.
+// The class is the real one; only its construction is recorded.
+const metricExporters = vi.hoisted(() => [] as unknown[]);
+vi.mock("@opentelemetry/exporter-metrics-otlp-http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@opentelemetry/exporter-metrics-otlp-http")>();
+  class RecordingOTLPMetricExporter extends actual.OTLPMetricExporter {
+    constructor(config: ConstructorParameters<typeof actual.OTLPMetricExporter>[0]) {
+      super(config);
+      metricExporters.push(config);
+    }
+  }
+  return { ...actual, OTLPMetricExporter: RecordingOTLPMetricExporter };
+});
 
 const REEL = TEST_JOB.reel_id as string;
 
@@ -326,6 +340,62 @@ describe("export", () => {
     await telemetry.shutdown();
     expect(requests.sort()).toEqual(["POST /v1/logs", "POST /v1/traces"]);
     expect(authorizations).toEqual(["Bearer x", "Bearer x"]);
+  });
+});
+
+describe("metrics export", () => {
+  let server: Server;
+  let url: string;
+  const requests: string[] = [];
+
+  beforeAll(async () => {
+    server = createServer((request, response) => {
+      requests.push(`${request.method} ${request.url}`);
+      request.resume();
+      request.on("end", () => {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end("{}");
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  it("creates no metric exporter without an endpoint", async () => {
+    metricExporters.length = 0;
+    requests.length = 0;
+    for (const env of [{}, { OTEL_EXPORTER_OTLP_ENDPOINT: " " }]) {
+      const telemetry = createTelemetry(env);
+      telemetry.meter.createCounter("test.count").add(1);
+      await telemetry.flushMetrics();
+      await telemetry.shutdown();
+    }
+    expect(metricExporters).toEqual([]);
+    expect(requests).toEqual([]);
+  });
+
+  it("builds one exporter for <endpoint>/v1/metrics, with the trace exporter's headers", async () => {
+    metricExporters.length = 0;
+    const telemetry = createTelemetry({
+      OTEL_EXPORTER_OTLP_ENDPOINT: `${url}/`,
+      OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer%20x",
+    });
+    expect(metricExporters).toEqual([
+      { url: `${url}/v1/metrics`, headers: { Authorization: "Bearer x" } },
+    ]);
+    await telemetry.shutdown();
+  });
+
+  it("sends what was recorded at shutdown, so a one-shot process loses none of it", async () => {
+    requests.length = 0;
+    const telemetry = createTelemetry({ OTEL_EXPORTER_OTLP_ENDPOINT: url });
+    telemetry.meter.createCounter("test.count").add(1);
+    await telemetry.shutdown();
+    expect(requests).toContain("POST /v1/metrics");
   });
 });
 

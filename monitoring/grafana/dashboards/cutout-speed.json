@@ -1,0 +1,95 @@
+{
+  "uid": "cutout-speed",
+  "title": "Cut-out speed",
+  "tags": ["edit-issebya", "worker"],
+  "description": "How fast the on-demand cut-out runs, per mask tool version: seconds of work per second of footage cut out. Lower is better. Each version's first data is marked on the chart. See app_docs/measurement.md, Cut-out speed.",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Mask tool version first seen",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "blue",
+        "expr": "min by (mask_tool_version) (min_over_time(timestamp(cutout_work_seconds_total)[15d:1m])) > (time() - $__interval_ms / 1000)",
+        "titleFormat": "Tool v{{mask_tool_version}} first cut-out",
+        "textFormat": "Mask tool version {{mask_tool_version}} reported its first cut-out here.",
+        "tagKeys": "mask_tool_version",
+        "useValueForTime": false
+      }
+    ]
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Cut-out speed",
+      "description": "Seconds of work per second of video cut out, by mask tool version (the legend's tool v3, v2, ...). Work is the wall time of the cut-out step that made masks; video is the length of the footage those masks cover. Lower is better: the same footage takes less time. Each point is the ratio over the last rate interval; a gap means no cut-out made masks in that window. The vertical marker at the bottom of the chart shows when a version first reported.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: seconds of work per second of video",
+          "decimals": 2,
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "showPoints": "auto",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (mask_tool_version) (increase(cutout_work_seconds_total[$__rate_interval])) / sum by (mask_tool_version) (increase(cutout_video_seconds_total[$__rate_interval]))",
+          "legendFormat": "tool v{{mask_tool_version}}",
+          "interval": "10s",
+          "range": true,
+          "editorMode": "code"
+        }
+      ]
+    }
+  ]
+}
