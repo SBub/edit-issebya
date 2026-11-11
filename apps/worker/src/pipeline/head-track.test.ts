@@ -42,10 +42,42 @@ describe("headSample", () => {
     expect(Math.abs(sample.head_top - (cy - ry) * SCALE)).toBeLessThanOrEqual(4);
     expect(Math.abs(sample.cx - cx * SCALE)).toBeLessThanOrEqual(4);
     // The median span of the band is its middle row's.
-    const top = sample.head_top / SCALE;
+    const top = sample.head_top / SCALE + HEAD_TRACK_SETTINGS.headTopMargin;
     const middle = top + HEAD_TRACK_SETTINGS.widthBandStart + 15;
     // One analysis pixel per edge.
     expect(Math.abs(sample.head_w - widthAt(middle, cy, rx, ry))).toBeLessThanOrEqual(2 * SCALE);
+  });
+
+  // An opaque block, rows `top` to `bottom` and columns `left` to `right`.
+  function block(top: number, bottom: number, left: number, right: number, frame = emptyFrame()) {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) setAlpha(frame, x, y, 255);
+    }
+    return frame;
+  }
+
+  it("reports the head top one analysis row (4 px) above the first opaque row", () => {
+    expect(HEAD_TRACK_SETTINGS.headTopMargin).toBe(1);
+    const sample = headSample(block(100, 300, 100, 169), 0, HEAD_TRACK_SETTINGS)!;
+    expect(sample.head_top).toBe(99 * SCALE);
+    const exact = headSample(block(100, 300, 100, 169), 0, {
+      ...HEAD_TRACK_SETTINGS,
+      headTopMargin: 0,
+    })!;
+    expect(exact.head_top).toBe(100 * SCALE);
+    expect(sample.head_top).toBe(exact.head_top - 4);
+  });
+
+  it("never reports a head top above the frame", () => {
+    expect(headSample(block(0, 300, 100, 169), 0, HEAD_TRACK_SETTINGS)!.head_top).toBe(0);
+  });
+
+  it("measures the width in the band below the real top, not the raised one", () => {
+    // 70 wide in rows 100 to 119, 30 wide from row 120 (the band's first row) on.
+    const frame = block(120, 300, 120, 149, block(100, 119, 100, 169));
+    const sample = headSample(frame, 0, HEAD_TRACK_SETTINGS)!;
+    expect(sample.head_w).toBe(29 * SCALE);
+    expect(sample.cx).toBe(134 * SCALE);
   });
 
   it("gives null for a frame with no person", () => {

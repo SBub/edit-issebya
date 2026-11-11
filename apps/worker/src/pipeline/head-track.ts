@@ -1,6 +1,7 @@
 // The head tracker, pure: one RGBA frame of the person mask in, one head sample
 // out. A port of the old `head_track.py`: the topmost opaque rows are the
-// head; its width is the median opaque span in a band below the top.
+// head; its width is the median opaque span in a band below the top. The top
+// it reports is raised by a safety margin.
 
 export interface HeadTrackBounds {
   // A sample whose head top is above this (1080x1920 pixels) is dropped.
@@ -21,6 +22,10 @@ export interface HeadTrackSettings {
   alphaThreshold: number;
   // The head's top is the first row with at least this many opaque pixels.
   minOpaquePixels: number;
+  // The reported head top is this many analysis rows above the first such row
+  // (never above the frame): a safety margin, so what sits above the head, and
+  // the cut-out's crop (cutout/crop.ts), keep clear of it.
+  headTopMargin: number;
   // The band below the top (analysis rows) the head width is measured in.
   widthBandStart: number;
   widthBandEnd: number;
@@ -36,6 +41,9 @@ export const HEAD_TRACK_SETTINGS: HeadTrackSettings = {
   sampleSeconds: 0.25,
   alphaThreshold: 128,
   minOpaquePixels: 4,
+  // One row, 4 px at 1080: with the int8 mask no cut-out crop of the test
+  // reels is lower than with the fp32 mask of version 2 (app_docs/pipeline.md).
+  headTopMargin: 1,
   widthBandStart: 20,
   widthBandEnd: 50,
   bounds: { minHeadTop: null, minHeadWidth: null, maxHeadWidth: null },
@@ -105,7 +113,7 @@ export function headSample(
   const [x0, x1] = spans[Math.floor(spans.length / 2)]!;
   return {
     t: Math.round(t * 100) / 100,
-    head_top: top * scale,
+    head_top: Math.max(0, top - settings.headTopMargin) * scale,
     cx: Math.floor((x0 + x1) / 2) * scale,
     head_w: (x1 - x0) * scale,
   };

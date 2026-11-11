@@ -257,8 +257,13 @@ apps/worker/models/modnet_int8_13.onnx`; a file with another size or hash fails 
 `head-track.json` is an array with one entry per 0.25 s (entry `i` is `t = i * 0.25`), each either
 `null` (no head found) or `{ t, head_top, cx, head_w }` in 1080x1920 coordinates (the same format as
 the old `head_track.py`). A frame is analysed at 270x480 and the numbers are scaled by 4. A pixel is
-opaque when alpha is above 128. The top is the first row with at least 4 opaque pixels; for the rows
-20 to 49 below it, each row with an opaque pixel gives a span (first to last opaque x); the spans
+opaque when alpha is above 128. The top is the first row with at least 4 opaque pixels; `head_top`
+is one analysis row above it (`headTopMargin`, 4 px, never above the frame), a safety margin added
+with the int8 mask of version 3: with it, no cut-out crop (`spanCropTop`) over a span with a head
+on the four test reels is lower than with version 2's mask, and none reaches a real head top (three
+spans were lower without it, by 4 px at most). A span where version 2 found no head in one sample
+had no crop then and can have one now. For the rows
+20 to 49 below the first opaque row, each row with an opaque pixel gives a span (first to last opaque x); the spans
 are sorted by width and the median one gives `cx` and `head_w`. Coordinates stay in 1080x1920 space
 for a source of another size. The optional bounds (`minHeadTop`, `minHeadWidth`, `maxHeadWidth`)
 default to none: the old values (380, 220, 420) fitted one room and are not a default. A clip with no
@@ -426,6 +431,8 @@ inputs name the old retime outputs) does not re-run retime.
   never removes a frame of a non-silent run; word starts follow the audio (rule 6), never the
   other way round.
 - Bump a step's version whenever its behaviour changes, then re-run `fixtures:pipeline`.
+- Never report a head top below the mask's first opaque row: `headTopMargin` only raises it, and
+  the width band is measured from the real row.
 - Never let the head track depend on how its samples are split: no state from one frame to the
   next in the U2Net entry, and one encode over every chunk's masks. Never change the entry's
   preparation of a frame, the mask's encoding or the model without a new `head_track` version.
