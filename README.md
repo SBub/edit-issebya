@@ -106,3 +106,7 @@ already running, start that one as `E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true ya
 - Working rules: [`AGENTS.md`](AGENTS.md)
 - Feature docs: [`docs/conditional-docs.md`](docs/conditional-docs.md)
 - ADW profile: [`.adw/project.md`](.adw/project.md)
+
+## License
+
+All rights reserved. See [`LICENSE`](LICENSE).
