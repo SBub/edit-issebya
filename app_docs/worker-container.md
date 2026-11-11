@@ -42,11 +42,12 @@ dependencies and the apps the worker does not run out of the context):
   `HYPERFRAMES_WHISPER_PATH`. The `small` model (`ggml-small.bin`, HyperFrames' pinned revision and
   sha256) is in the image at `/home/node/.cache/hyperframes/whisper/models`, so the first transcribe
   does not download it.
-- The MODNet model (`modnet_int8_13.onnx`) and its notice, part of the worker's folder
+- The MODNet model (`modnet_int8_13.onnx`), the head track's U2Net model
+  (`u2net_int8_static13.onnx`) and their notice, part of the worker's folder
   (`apps/worker/models/`, committed), so `COPY apps/worker` puts them at `/repo/apps/worker/models`:
-  no download stage and no model folder of its own (`apps/worker/src/dockerfile.test.ts`). The
-  cut-out checks the file's size and SHA-256 before each run (`verifyModel`). The model is not
-  among the folders compose mounts in development, so a new model needs a rebuild.
+  no download stage and no model folder of its own (`apps/worker/src/dockerfile.test.ts`). Each
+  model's size and SHA-256 are checked before each run (`verifyModel`, `verifyU2netModel`). The
+  models are not among the folders compose mounts in development, so a new model needs a rebuild.
 - Yarn 4 through corepack, `yarn workspaces focus @edit-issebya/worker` (with `LEFTHOOK=0`), which
   installs `onnxruntime-node`'s prebuilt Linux binary for the image's platform, then the worker's
   source. Runs as `node`, with `CMD node src/main.ts`.
@@ -119,7 +120,7 @@ memory limit on the worker, so the VM's size is the only ceiling.
 - Never change the MODNet pin in one place only: `modnet-model.ts` and the Dockerfile's `MODNET_*`
   `ARG` lines change together (`dockerfile.test.ts` checks it), with `MASK_TOOL_VERSION` when the
   masks change.
-- Never download a model at job time in the container: the image carries the MODNet and whisper models.
+- Never download a model at job time in the container: the image carries the MODNet, U2Net and whisper models.
 - Never put a secret in the image or in a compose file: secrets come only from the env file
   (`env_file`), and `.dockerignore` keeps every `.env*` file out of the build context.
 - Never drop the empty `OTEL_EXPORTER_OTLP_HEADERS` from `compose.yaml`: it keeps a PostHog token in

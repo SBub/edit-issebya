@@ -39,9 +39,9 @@ yarn dev:studio --check            # the checks only, no servers (same as yarn d
 yarn dev:studio add-owner <email>  # once: creates the owner account in the local auth
 ```
 
-The cut-out's MODNet model is a committed file (`apps/worker/models/`, about 7 MB, with its
-licence notice beside it), so the worker image and a native worker both have it after a checkout:
-nothing to download (see [the pipeline doc](app_docs/pipeline.md)).
+The cut-out's MODNet model and the head track's U2Net model are committed files
+(`apps/worker/models/`, about 7 MB and 44 MB, with their licence notice beside them), so the worker
+image and a native worker both have them after a checkout: nothing to download (see [the pipeline doc](app_docs/pipeline.md)).
 
 `scripts/dev-studio.sh` checks that Docker is running, starts the local Supabase stack
 (`edit-issebya`, `supabase/config.toml`) if it is down, applies pending migrations

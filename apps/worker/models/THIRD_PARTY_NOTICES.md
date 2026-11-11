@@ -11,15 +11,29 @@ Microsoft Corporation). The modification is not endorsed by the MODNet authors.
 
 How the file was made is in `app_docs/pipeline.md` (the cut-out's model).
 
+## u2net_int8_static13.onnx
+
+U-2-Net human segmentation model (u2net_human_seg), by Xuebin Qin, Zichen Zhang, Chenyang Huang,
+Masood Dehghan, Osmar R. Zaiane and Martin Jagersand. Source: https://github.com/xuebinqin/U-2-Net.
+Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+u2net_int8_static13.onnx is a modified version of the ONNX copy `u2net_human_seg.onnx`
+(https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_human_seg.onnx, SHA-256
+01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c): it was converted from ONNX opset
+11 to opset 13, then its weights and activations were statically quantised to int8 with ONNX
+Runtime's quantization tool (MIT License, Copyright (c) Microsoft Corporation), calibrated on 16
+frames from the owner's reels. The modification is not endorsed by the U-2-Net authors.
+
+How the file was made is in `app_docs/pipeline.md` (the head track's model).
+
 ## ONNX Runtime
 
-The model was quantised with, and runs on, ONNX Runtime (https://github.com/microsoft/onnxruntime),
+The models were quantised with, and run on, ONNX Runtime (https://github.com/microsoft/onnxruntime),
 which is under the MIT License, Copyright (c) Microsoft Corporation. The worker installs it as the
 `onnxruntime-node` package, which carries its own licence file.
 
 ## Apache License, Version 2.0
 
-The full text of the licence the MODNet model is under:
+The full text of the licence the MODNet and U-2-Net models are under:
 
 ```text
                                  Apache License

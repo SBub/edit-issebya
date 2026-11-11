@@ -130,6 +130,24 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
   `cutout` step with `cutout: MODNet model missing at <path>, restore it with git checkout --
 apps/worker/models/modnet_int8_13.onnx`; a file with another size or hash fails the entry
   (`verifyModel`), naming both.
+- The U2Net model (`apps/worker/src/pipeline/u2net-model.ts`, `U2NET_MODEL`), the head track's
+  person mask model: the committed file `apps/worker/models/u2net_int8_static13.onnx`, pinned by
+  name, size (44,444,038 bytes) and SHA-256
+  (`a42be65f30af575480020f4d827eabadf73c8cdfd8f77577d2946780f54dc746`). It is committed because it
+  is a modified file that no official URL serves: the `u2net_human_seg.onnx` copy of U-2-Net's
+  human segmentation model (xuebinqin/U-2-Net, Apache 2.0) that HyperFrames downloads
+  (`https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_human_seg.onnx`,
+  175,997,641 bytes, SHA-256 `01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c`)
+  with its weights and activations quantised to int8. How it was made, with ONNX Runtime's
+  quantization tool: the graph converted from opset 11 to 13 (the output did not change, largest
+  difference 0), then `quantize_static` in the QDQ format, per-channel int8 weights, int8
+  activations, MinMax calibration on 16 frames, 8 taken evenly from each of two of the owner's
+  reels (the step's own 270x480 samples, prepared as the step prepares a frame). The calibration
+  footage and frames are not in the repository. Its notice is in the same
+  `THIRD_PARTY_NOTICES.md`, and `u2net-model.test.ts` checks both the file and the notice. Nothing
+  is downloaded; a missing file or one with another size or hash fails `verifyU2netModel`, naming
+  the path and `git checkout -- apps/worker/models/u2net_int8_static13.onnx`. Both pins share
+  `apps/worker/src/model-file.ts` (`ModelFile`, `modelPath`, `verifyModelFile`).
 - The crop above the head (`crop.ts`, `spanCropTop`, `CROP_RULE`): the model never sees the rows
   above the speaker, which are wall, and the mask has them black. It comes from the head track
   (`head-track.json`, which every reel has before any cut-out: decide and relayout have it loaded,
@@ -382,6 +400,10 @@ inputs name the old retime outputs) does not re-run retime.
   run it without checking its pinned size and SHA-256 (`verifyModel`), and never replace it without
   its new pin, a new `MASK_TOOL_VERSION` and an up-to-date `THIRD_PARTY_NOTICES.md` beside it.
   Never commit the calibration footage or frames.
+- The U2Net model is committed the same way (`apps/worker/models/u2net_int8_static13.onnx`). Never
+  download it, never run it without checking its pinned size and SHA-256 (`verifyU2netModel`), and
+  never replace it without its new pin, a new `head_track` version and an up-to-date
+  `THIRD_PARTY_NOTICES.md` beside it. Never commit its calibration frames.
 - Every output carries a `kept` or `rebuildable` tag.
 - Never touch `fixtures/footage/short-person.mp4`.
 
