@@ -1,8 +1,8 @@
 # The worker in a container (Docker Desktop on the owner's Mac, or any Linux host;
 # arm64 or amd64). Built from the repository root (compose.yaml sets the context).
 # Everything a job runs is inside: ffmpeg, HyperFrames with Chromium and whisper,
-# the MODNet cut-out (onnxruntime-node on the CPU) and the AI calls (OpenRouter
-# over HTTPS). See app_docs/worker-container.md.
+# the MODNet cut-out and the head track's U2Net mask (onnxruntime-node on the
+# CPU) and the AI calls (OpenRouter over HTTPS). See app_docs/worker-container.md.
 
 # whisper-cli, the transcribe step's engine, built from a pinned whisper.cpp tag
 # with the libraries linked in (one binary). HyperFrames finds it through
@@ -63,8 +63,9 @@ COPY packages/edit/package.json packages/edit/
 COPY packages/storage/package.json packages/storage/
 RUN yarn workspaces focus @edit-issebya/worker
 
-# The worker's source, and with it the cut-out's MODNet model and its notice
-# (apps/worker/models, committed; the cut-out checks its SHA-256 before each run).
+# The worker's source, and with it the cut-out's MODNet model, the head track's
+# U2Net model and their notice (apps/worker/models, committed; each model's
+# SHA-256 is checked before each run).
 COPY apps/worker apps/worker
 COPY packages/edit packages/edit
 COPY packages/storage packages/storage

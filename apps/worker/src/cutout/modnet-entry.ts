@@ -17,11 +17,12 @@
 // out between the spans it runs at once; the two ffmpegs keep their own). At most three mattes are held at a time. Written to <output>.part, renamed
 // to <output> once finished. One `@hf-progress {"index","total","pct"}` line
 // per frame on stdout; any failure exits non-zero with one `modnet: ...` line.
-import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { rename, rm } from "node:fs/promises";
 import { promisify } from "node:util";
 import { InferenceSession, Tensor } from "onnxruntime-node";
+import { exited, stderrOf } from "../child-output.ts";
 import {
   MATTE_SETTINGS,
   TemporalMedian,
@@ -120,19 +121,6 @@ async function probe(
   const fps = parseFrameRate(rate);
   if (fps === null) throw new Error(`bad frame rate ${rate}`);
   return { width, height, rate, fps };
-}
-
-// A child's stderr, kept for the failure line.
-function stderrOf(child: ChildProcess): () => string {
-  let text = "";
-  child.stderr?.on("data", (chunk: Buffer) => {
-    text = (text + chunk.toString("utf8")).slice(-4096);
-  });
-  return () => text.trim().split("\n").at(-1) ?? "";
-}
-
-function exited(child: ChildProcess): Promise<number | null> {
-  return once(child, "close").then(([code]) => code as number | null);
 }
 
 async function makeMask(options: Options): Promise<void> {

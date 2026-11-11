@@ -8,9 +8,9 @@ import {
   weightedProgress,
 } from "./progress-parsers.ts";
 
-// Real stdout, captured on the committed clips: the worker's person mask entry
-// (HyperFrames 0.8.222's removeBackground), a full `hyperframes render` and the
-// cut-out's MODNet entry on one second of the person clip.
+// Real stdout, captured on the committed clips: the worker's U2Net entry on
+// the person clip's 16 samples in one chunk, a full `hyperframes render` and
+// the cut-out's MODNet entry on one second of the person clip.
 async function sample(name: string): Promise<string[]> {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed samples
   const text = await readFile(new URL(`progress-testdata/${name}`, import.meta.url), "utf8");

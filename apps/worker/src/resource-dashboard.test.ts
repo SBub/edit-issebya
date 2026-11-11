@@ -8,6 +8,12 @@ import {
   WORK_METRIC,
   prometheusCounterName,
 } from "./cutout/speed.ts";
+import {
+  SPEED_UNIT as HEAD_SPEED_UNIT,
+  VERSION_ATTRIBUTE as HEAD_VERSION_ATTRIBUTE,
+  VIDEO_METRIC as HEAD_VIDEO_METRIC,
+  WORK_METRIC as HEAD_WORK_METRIC,
+} from "./pipeline/head-track-speed.ts";
 
 // The "Worker resources" dashboard of the local monitoring stack
 // (app_docs/measurement.md, Resource metrics) names things the worker and the
@@ -191,20 +197,24 @@ describe("worker resources dashboard", () => {
   });
 });
 
-// The "Cut-out speed" dashboard (app_docs/measurement.md, Cut-out speed): its
-// queries name the two counters the worker records, as Prometheus names them.
+// The "Processing speed" dashboard (app_docs/measurement.md, Cut-out speed and
+// Head-track speed): its queries name the counters the worker records, as
+// Prometheus names them.
 describe("cut-out speed dashboard", () => {
   const SPEED = JSON.parse(repoFile("monitoring/grafana/dashboards/cutout-speed.json")) as {
     uid: string;
+    title: string;
     time: { from: string };
     description: string;
     panels: Panel[];
     annotations: { list: { expr: string; datasource: { uid: string } }[] };
   };
   const speedPanel = SPEED.panels.find((p) => p.title === "Cut-out speed");
+  const headPanel = SPEED.panels.find((p) => p.title === "Head-track speed");
 
   it("keeps its uid and shows the last seven days by default", () => {
     expect(SPEED.uid).toBe("cutout-speed");
+    expect(SPEED.title).toBe("Processing speed");
     expect(SPEED.time.from).toBe("now-7d");
   });
 
@@ -243,6 +253,36 @@ describe("cut-out speed dashboard", () => {
     expect(mark?.expr).toContain("[15d:1m]");
     expect(mark?.expr).toContain("$__interval_ms");
     expect(mark?.expr).toContain(`by (${VERSION_ATTRIBUTE})`);
+  });
+
+  it("plots the head track's work over video per version, from the counters' increase", () => {
+    const video = prometheusCounterName(HEAD_VIDEO_METRIC, HEAD_SPEED_UNIT);
+    const work = prometheusCounterName(HEAD_WORK_METRIC, HEAD_SPEED_UNIT);
+    const [target] = headPanel?.targets ?? [];
+    expect(video).toBe("head_track_video_seconds_total");
+    expect(work).toBe("head_track_work_seconds_total");
+    expect(headPanel?.type).toBe("timeseries");
+    expect(target?.expr).toBe(
+      `sum by (${HEAD_VERSION_ATTRIBUTE}) (increase(${work}[$__rate_interval])) / ` +
+        `sum by (${HEAD_VERSION_ATTRIBUTE}) (increase(${video}[$__rate_interval]))`,
+    );
+    expect(target?.datasource).toEqual({ type: "prometheus", uid: "prometheus" });
+    expect(target?.legendFormat).toBe(`head track v{{${HEAD_VERSION_ATTRIBUTE}}}`);
+    expect(headPanel?.fieldConfig?.defaults.unit).toBe(
+      "suffix: seconds of work per second of video",
+    );
+    expect(headPanel?.description).toContain("Lower is better");
+  });
+
+  it("marks, once per head track version, the first time it reports", () => {
+    const work = prometheusCounterName(HEAD_WORK_METRIC, HEAD_SPEED_UNIT);
+    const mark = SPEED.annotations.list.find((a) => a.expr.includes(work));
+    expect(mark?.datasource.uid).toBe("prometheus");
+    expect(mark?.expr).toContain(`timestamp(${work})`);
+    expect(mark?.expr).toContain("min_over_time(");
+    expect(mark?.expr).toContain("[15d:1m]");
+    expect(mark?.expr).toContain("$__interval_ms");
+    expect(mark?.expr).toContain(`by (${HEAD_VERSION_ATTRIBUTE})`);
   });
 
   it("has no em-dash and no machine path", () => {

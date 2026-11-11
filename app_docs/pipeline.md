@@ -59,25 +59,62 @@ live status shows one line per step (`name: summary`).
   `envelope.json`.
 - `apps/worker/src/pipeline/retime-preset.ts`: `RETIME_PRESET`, every retime setting; each value is
   part of the fingerprint.
-- `apps/worker/src/pipeline/person-mask.ts`: the person mask `head_track` reads. It runs HyperFrames'
-  own Node on `apps/worker/src/pipeline/remove-background-entry.ts` (`PERSON_MASK_ENTRY`, the
-  package's `removeBackground` with the CLI's options, `personMaskArgs`: `--device auto --quality
-balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with the CLI's JSON
-  result. `parsePersonMaskResult` reads the last stdout line (`ok` true and a positive
-  `framesProcessed`, else the step fails). `PERSON_MASK_SETTINGS`: `device`, `quality` and the
-  HyperFrames version (the model, `u2net_human_seg`, is HyperFrames' default and is pinned by that
-  version).
+- `apps/worker/src/pipeline/u2net.ts` and `u2net-entry.ts`: the person mask `head_track` reads,
+  made by the worker's own U2Net entry through `onnxruntime-node` on the CPU, with the committed
+  int8 model (`u2net-model.ts`, below). The entry is run by the worker's Node, one tool call per
+  chunk of the sample clip: `u2net-entry --input <samples.mp4> --first <sample> --frames <count>
+--output <rgba> --threads <n> --model <onnx> --ffmpeg <path>` (`u2netArgs`). It checks the model
+  against its pin, decodes its samples with ffmpeg (`u2netDecodeArgs`: `-ss` at the chunk's first
+  sample, the sample filter, `-frames:v`, raw RGB on stdout) and masks each frame on its own, the
+  way HyperFrames' background removal does with `u2net_human_seg` (0.8.222, the tool this step
+  used until version 3): the frame scaled to 320x320 with `sharp` (lanczos3), divided by its
+  largest value, the ImageNet mean taken off and divided by the deviation (`u2netInput`); the
+  model's first output stretched from its smallest to its largest value over 0 to 255
+  (`u2netMask`) and scaled back to 270x480 (lanczos3). Each mask is written as the alpha of a raw
+  RGBA frame (`<output>.part`, renamed when done). Exactly `--frames` frames or the entry fails;
+  any failure exits 1 with one `u2net: ...` line. It prints one `@hf-progress` line per frame
+  (`app_docs/status.md`). `sharp` is pinned exactly in `apps/worker/package.json`, at the version
+  HyperFrames installs. `U2NET_SETTINGS` (the model and its SHA-256, the input size, the resize
+  kernel, `provider` `cpu`, the mask file's `crf` and `cpuUsed`) is part of the step's fingerprint.
+- The chunks (`maskPool`, `chunkBounds`, `MASK_POOL`): the samples are split into at most 4 runs
+  of the same length, masked at once, as many as there are CPUs and memory for (half the memory
+  limit, each chunk counted as 512 MB: one entry with its ffmpeg peaks at about 440 MB), the CPUs
+  shared out evenly as ONNX intra-op threads (8 CPUs: 4 chunks of 2 threads; 1 CPU: one chunk).
+  The limits are the cut-out's (`machineLimits`, `cutout/pool.ts`). No frame depends on another,
+  and one encode joins every chunk, so the track is the same, byte for byte, whatever the split
+  (`head-track.tools.test.ts` runs one chunk, four and the machine's own); the split is therefore
+  not a setting.
 - `apps/worker/src/pipeline/head-track.ts`: the pure tracker, `HEAD_TRACK_SETTINGS`, `headSample`,
   `withinBounds`, `headTrackWhat`; tested on synthetic frames without ffmpeg.
-- `apps/worker/src/pipeline/head-track-step.ts`: reads retime's `source.mp4`. ffmpeg keeps one frame
-  per 0.25 s at 270x480, losslessly, in a scratch `samples.mp4` (`headTrackSampleArgs`); the person
-  mask runs on that clip into a scratch VP9-alpha `mask.part.webm`; ffmpeg decodes it
-  (`headTrackDecodeArgs`, `-c:v libvpx-vp9` before `-i`, so alpha survives) to raw RGBA in a scratch
-  `frames.rgba` (stdout through the step runner is capped at 64 KB, so it cannot carry frames), read
-  back one frame at a time. All three scratch files are deleted in the step, never uploaded.
-  Version 2; its settings are the tracker's plus `mask` (`HEAD_TRACK_STEP_SETTINGS`, the HyperFrames
-  version among them, so a HyperFrames upgrade re-runs it). Output `head-track.json` (format
-  unchanged). Zero frames or a trailing partial frame fails the step.
+- `apps/worker/src/pipeline/head-track-step.ts` (`headTrackStep`, `headTrack`): reads retime's
+  `source.mp4`. ffmpeg keeps one frame per 0.25 s at 270x480, losslessly (yuv444p), in a scratch
+  `samples.mp4` (`headTrackSampleArgs`); ffprobe counts its frames (`sampleCountArgs`); the U2Net
+  entry masks them in chunks run at once into scratch `mask-<n>.rgba` files (each call's memory
+  sampled with its ffmpeg's, `sampleGroupMemory`; each chunk's progress weighted by its samples,
+  `weightedProgress`); ffmpeg joins the chunks in order (`maskEncodeArgs`, the `concat:` protocol)
+  into a scratch VP9-alpha `mask.part.webm`, with the arguments HyperFrames encodes its `.webm`
+  with at `balanced` quality (`-crf 18 -cpu-used 4`, BT.709 video range); ffmpeg decodes it
+  (`headTrackDecodeArgs`, `-c:v libvpx-vp9` before `-i`, so alpha survives) to raw RGBA in a
+  scratch `frames.rgba` (stdout through the step runner is capped at 64 KB, so it cannot carry
+  frames), read back one frame at a time. The VP9 round trip is kept from version 2 on purpose: the
+  tracker sees what it saw then, so the int8 weights are the only change to the mask. Every scratch
+  file is deleted in the step, never uploaded. Version 3 (2 ran HyperFrames' `removeBackground`
+  with the fp32 `u2net_human_seg` in one process; tracks stored under 2 stay with the reels that
+  name them); its settings are the tracker's plus `mask` (`HEAD_TRACK_STEP_SETTINGS`, the model's
+  SHA-256 among them, so another model re-runs it). Output `head-track.json` (format unchanged).
+  A sample clip without frames, a failed chunk, zero frames or a trailing partial frame fails the
+  step.
+- `head_track` speed, measured in the worker container on the owner's Mac (M3, 8 CPUs, Docker),
+  on four reels of about 27 to 55 s (106, 131, 193 and 218 samples): 17.9, 17.9, 29.3 and 28.5 s, 94 s
+  together, about 0.14 s per sample; version 2 took 55, 69, 103 and 116 s (343 s, about 0.53 s
+  per sample). CPU time 105 to 181 s a reel against 369 to 774 s; the largest process holds about
+  440 MB (version 2: 686 MB in one process), four at once. The tracks are not version 2's: against
+  it the head top moves by 0.6 to 1.1 px on average on three of the reels and by 16 px on the
+  fourth (p95 4 px and 120 px, largest 172 px), the head width by 1 to 2 px and 44 px. What was
+  checked instead is the layout: with the saved edits of the four reels re-placed over the new
+  tracks, no on-screen item newly covers the face (16 face hits before, the same 16 after). The
+  model alone gives the speed: version 2's fp32 model in the same four chunks took 305 s. Two of
+  the four reels gave the model's calibration frames, so the other two are the clean test.
 - The on-demand cut-out (`apps/worker/src/cutout/`): `ensure-cutouts.ts` makes the person mask of
   each padded span of an edit's big words (`behind` items behind the speaker; a VISUAL needs none)
   that is not stored yet, in one measured `cutout` step, one tool call per span, several spans at
@@ -130,6 +167,24 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
   `cutout` step with `cutout: MODNet model missing at <path>, restore it with git checkout --
 apps/worker/models/modnet_int8_13.onnx`; a file with another size or hash fails the entry
   (`verifyModel`), naming both.
+- The U2Net model (`apps/worker/src/pipeline/u2net-model.ts`, `U2NET_MODEL`), the head track's
+  person mask model: the committed file `apps/worker/models/u2net_int8_static13.onnx`, pinned by
+  name, size (44,444,038 bytes) and SHA-256
+  (`a42be65f30af575480020f4d827eabadf73c8cdfd8f77577d2946780f54dc746`). It is committed because it
+  is a modified file that no official URL serves: the `u2net_human_seg.onnx` copy of U-2-Net's
+  human segmentation model (xuebinqin/U-2-Net, Apache 2.0) that HyperFrames downloads
+  (`https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_human_seg.onnx`,
+  175,997,641 bytes, SHA-256 `01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c`)
+  with its weights and activations quantised to int8. How it was made, with ONNX Runtime's
+  quantization tool: the graph converted from opset 11 to 13 (the output did not change, largest
+  difference 0), then `quantize_static` in the QDQ format, per-channel int8 weights, int8
+  activations, MinMax calibration on 16 frames, 8 taken evenly from each of two of the owner's
+  reels (the step's own 270x480 samples, prepared as the step prepares a frame). The calibration
+  footage and frames are not in the repository. Its notice is in the same
+  `THIRD_PARTY_NOTICES.md`, and `u2net-model.test.ts` checks both the file and the notice. Nothing
+  is downloaded; a missing file or one with another size or hash fails `verifyU2netModel`, naming
+  the path and `git checkout -- apps/worker/models/u2net_int8_static13.onnx`. Both pins share
+  `apps/worker/src/model-file.ts` (`ModelFile`, `modelPath`, `verifyModelFile`).
 - The crop above the head (`crop.ts`, `spanCropTop`, `CROP_RULE`): the model never sees the rows
   above the speaker, which are wall, and the mask has them black. It comes from the head track
   (`head-track.json`, which every reel has before any cut-out: decide and relayout have it loaded,
@@ -202,8 +257,13 @@ apps/worker/models/modnet_int8_13.onnx`; a file with another size or hash fails 
 `head-track.json` is an array with one entry per 0.25 s (entry `i` is `t = i * 0.25`), each either
 `null` (no head found) or `{ t, head_top, cx, head_w }` in 1080x1920 coordinates (the same format as
 the old `head_track.py`). A frame is analysed at 270x480 and the numbers are scaled by 4. A pixel is
-opaque when alpha is above 128. The top is the first row with at least 4 opaque pixels; for the rows
-20 to 49 below it, each row with an opaque pixel gives a span (first to last opaque x); the spans
+opaque when alpha is above 128. The top is the first row with at least 4 opaque pixels; `head_top`
+is one analysis row above it (`headTopMargin`, 4 px, never above the frame), a safety margin added
+with the int8 mask of version 3: with it, no cut-out crop (`spanCropTop`) over a span with a head
+on the four test reels is lower than with version 2's mask, and none reaches a real head top (three
+spans were lower without it, by 4 px at most). A span where version 2 found no head in one sample
+had no crop then and can have one now. For the rows
+20 to 49 below the first opaque row, each row with an opaque pixel gives a span (first to last opaque x); the spans
 are sorted by width and the median one gives `cx` and `head_w`. Coordinates stay in 1080x1920 space
 for a source of another size. The optional bounds (`minHeadTop`, `minHeadWidth`, `maxHeadWidth`)
 default to none: the old values (380, 220, 420) fitted one room and are not a default. A clip with no
@@ -328,15 +388,17 @@ inputs name the old retime outputs) does not re-run retime.
   audio with a transcript pinned at 0, word starts moved to the speech onset from a removed or a
   kept silence, a cut at a speed boundary, a clip silent throughout; the reference's longest
   silence is 0.31 s, so the default cuts nothing there), `retime-encode.test.ts` (audio and video
-  of every planned piece trimmed at the same frame), `head-track-step.test.ts` and `person-mask.test.ts`
-  (the sample, mask and decode calls, the person mask's arguments and JSON result), and `pipeline-fixtures.test.ts`, which fails when a
+  of every planned piece trimmed at the same frame), `head-track-step.test.ts` (the sample, count, chunk, join
+  and decode calls, the chunks' weighted progress, a failed chunk), `u2net.test.ts` (the model's
+  input and mask, the chunks and their threads, the decode and encode arguments),
+  `u2net-model.test.ts` (the pin, the file, the notice), and `pipeline-fixtures.test.ts`, which fails when a
   version or setting change leaves either clip's outputs stale (`fixtures/pipeline/` and
   `fixtures/pipeline/speech-ten/`).
 - `yarn workspace @edit-issebya/worker test:tools` (`*.tools.test.ts`): real ffmpeg and HyperFrames
   on `fixtures/footage/short-speech.mp4`; `head-track.tools.test.ts` runs `head_track` and
-  `preview_copies` on `fixtures/footage/short-person.mp4` (the real HyperFrames mask with the
-  `u2net_human_seg` default model, at least 80 percent of head samples found, no mask, sample clip
-  or raw frames left, one 540x960 footage preview of the source's duration);
+  `preview_copies` on `fixtures/footage/short-person.mp4` (the real U2Net entry with the
+  committed int8 model, the same track byte for byte in one chunk, in four and by the machine's
+  split, at least 80 percent of head samples found, no mask, sample clip or raw frames left, one 540x960 footage preview of the source's duration);
   `cutout/mask-tool.tools.test.ts` runs the real MODNet entry (the installed model, never a
   download) on 3 seconds of `short-person.mp4` (H.264 1080x1920 `yuv420p`, video range BT.709, 90
   frames, 90 progress lines, the face white and a corner black); `render/render.tools.test.ts`
@@ -369,19 +431,28 @@ inputs name the old retime outputs) does not re-run retime.
   never removes a frame of a non-silent run; word starts follow the audio (rule 6), never the
   other way round.
 - Bump a step's version whenever its behaviour changes, then re-run `fixtures:pipeline`.
+- Never report a head top below the mask's first opaque row: `headTopMargin` only raises it, and
+  the width band is measured from the real row.
+- Never let the head track depend on how its samples are split: no state from one frame to the
+  next in the U2Net entry, and one encode over every chunk's masks. Never change the entry's
+  preparation of a frame, the mask's encoding or the model without a new `head_track` version.
 - Never run HyperFrames through `npx` or `yarn dlx`, and always with `HYPERFRAMES_NO_TELEMETRY=1`.
 - Never write to the reference repository (`issebya-homes-reels`).
 - Never fingerprint a source without its ETag.
 - The cut-out is made on demand, only for the padded spans of `behind` items, by MODNet through
   `onnxruntime-node` (the pinned model, `provider` `cpu`, grayscale H.264, any OS, no fallback
   model), fingerprinted by footage, span, `MATTE_SETTINGS` and `MASK_TOOL_VERSION`, stored
-  put-if-absent as `rebuildable` and reused by later versions. `head_track` still makes its own
-  sampled u2net mask and never stores it.
+  put-if-absent as `rebuildable` and reused by later versions. `head_track` makes its own
+  sampled U2Net mask (the int8 model, its own entry) and never stores it.
 - The MODNet model is committed (`apps/worker/models/modnet_int8_13.onnx`), because it is a
   modified file that no official URL serves. Never download it, at install or at job time, never
   run it without checking its pinned size and SHA-256 (`verifyModel`), and never replace it without
   its new pin, a new `MASK_TOOL_VERSION` and an up-to-date `THIRD_PARTY_NOTICES.md` beside it.
   Never commit the calibration footage or frames.
+- The U2Net model is committed the same way (`apps/worker/models/u2net_int8_static13.onnx`). Never
+  download it, never run it without checking its pinned size and SHA-256 (`verifyU2netModel`), and
+  never replace it without its new pin, a new `head_track` version and an up-to-date
+  `THIRD_PARTY_NOTICES.md` beside it. Never commit its calibration frames.
 - Every output carries a `kept` or `rebuildable` tag.
 - Never touch `fixtures/footage/short-person.mp4`.
 

@@ -9,7 +9,7 @@ import type { ChildRun, SpawnTool, ToolCall } from "../step-runner.ts";
 import { PIPELINE, type StepOutput, fingerprintsFor, outputFiles } from "./definition.ts";
 import { cacheKey } from "./fingerprint.ts";
 import { HEAD_TRACK_SETTINGS, frameBytes } from "./head-track.ts";
-import { PERSON_MASK_ENTRY } from "./person-mask.ts";
+import { U2NET_ENTRY } from "./head-track-step.ts";
 import { FootageRefused } from "../failure.ts";
 import { runPipeline } from "./run-pipeline.ts";
 import type { RunStep } from "./step-double.ts";
@@ -58,17 +58,20 @@ function option(args: string[], name: string): string {
 
 // Plays each tool: ffprobe answers fixture JSON, ffmpeg writes the file its
 // arguments name (two transparent raw frames for the head tracker),
-// HyperFrames writes its transcript into --dir or head_track's person mask to -o.
+// the U2Net entry writes head_track's chunk of masks to --output, HyperFrames
+// writes its transcript into --dir.
 function fakeTools({ failTranscribe = 0 } = {}): SpawnTool {
   let transcribeFailures = failTranscribe;
   return async (call) => {
     spawned.push(call);
     const at = (file: string) => (call.cwd ? resolve(call.cwd, file) : file);
+    // head_track's count of its samples.
+    if (call.file === TOOLS.ffprobe && call.args.includes("-count_frames")) return ok("2\n");
     if (call.file === TOOLS.ffprobe) return ok(PROBE);
-    if (call.file === TOOLS.hyperframes[0] && call.args[0] === PERSON_MASK_ENTRY) {
+    if (call.args[0] === U2NET_ENTRY) {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
-      await writeFile(option(call.args, "-o"), "person mask");
-      return ok(`${JSON.stringify({ ok: true, framesProcessed: 57, provider: "cpu" })}\n`);
+      await writeFile(option(call.args, "--output"), "person mask");
+      return ok('@hf-progress {"index":1,"total":1,"pct":100}\n');
     }
     if (call.args.includes("rawvideo")) {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
