@@ -324,6 +324,40 @@ describe("runToolsStep", () => {
     expect(summary).toMatch(/^both ran, \d+ seconds?$/);
   });
 
+  it(
+    "counts calls run at the same time together in the peak, and sums their CPU",
+    TIMEOUT,
+    async () => {
+      const { steps, calls } = recordingSteps();
+      let stdouts: string[] = [];
+      await runToolsStep(stepContext(steps), {
+        name: "pair",
+        async work(tool) {
+          // Two at once, then one alone that is smaller than the two together.
+          stdouts = await Promise.all([
+            tool({ file: NODE, args: ["-e", spin(100, 600)] }),
+            tool({ file: NODE, args: ["-e", spin(150, 600)] }),
+          ]);
+          stdouts.push(await tool({ file: NODE, args: ["-e", spin(200, 300)] }));
+          return { what: "all ran" };
+        },
+      });
+      const [selfA, selfB, selfC] = stdouts.map((stdout) => Number(stdout.trim())) as [
+        number,
+        number,
+        number,
+      ];
+      const { measurements } = onlyDone(calls);
+      expect(measurements.cpu_ms).toBeGreaterThanOrEqual(1500);
+      const peak = measurements.peak_rss_bytes ?? 0;
+      // The pair together, not the largest single call and not all three.
+      expect(peak).toBeGreaterThanOrEqual(selfA + selfB);
+      expect(peak - (selfA + selfB)).toBeLessThan(32 * MB);
+      expect(peak).toBeGreaterThan(selfC + 16 * MB);
+      expect(peak).toBeLessThan(selfA + selfB + selfC);
+    },
+  );
+
   it("stores the measurements so far and the failing call's tail", TIMEOUT, async () => {
     const { steps, calls } = recordingSteps();
     await expect(

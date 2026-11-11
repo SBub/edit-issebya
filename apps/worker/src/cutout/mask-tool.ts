@@ -22,6 +22,8 @@ export interface MaskSpanCall {
   end: number;
   // The rows left out above the speaker (spanCropTop), in head-track pixels.
   cropTop: number;
+  // The entry's ONNX intra-op threads (cutoutPool).
+  threads: number;
   output: string;
 }
 
@@ -29,10 +31,10 @@ function seconds(n: number): string {
   return n.toFixed(3);
 }
 
-// The entry's arguments, exactly: the span to the millisecond, its crop, the
-// model and the two ffmpeg tools it runs.
+// The entry's arguments, exactly: the span to the millisecond, its crop, its
+// threads, the model and the two ffmpeg tools it runs.
 export function maskToolArgs(
-  { input, start, end, cropTop, output }: MaskSpanCall,
+  { input, start, end, cropTop, threads, output }: MaskSpanCall,
   model: string,
   tools: Pick<ToolPaths, "ffmpeg" | "ffprobe">,
 ): string[] {
@@ -48,6 +50,8 @@ export function maskToolArgs(
     output,
     "--crop-top",
     String(cropTop),
+    "--threads",
+    String(threads),
     "--model",
     model,
     "--ffmpeg",

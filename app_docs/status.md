@@ -102,9 +102,10 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
   same JSON result document the CLI prints under `--json` (`app_docs/pipeline.md`).
 - `cutout`: the MODNet entry (`apps/worker/src/cutout/modnet-entry.ts`, `app_docs/pipeline.md`)
   prints one `@hf-progress {"index","total","pct"}` line per frame of its span. The step runs one
-  call per missing span, so `ensureCutouts` wraps the parser in `partProgress(parser, from, to)`:
-  each span's 0 to 100 maps onto its share of the step, weighted by the span's length, and the
-  step's progress keeps rising across spans (the throttle drops a value at or below the last).
+  call per missing span, several at the same time, so `ensureCutouts` gives each call its own
+  parser from `weightedProgress(parser, lengths)`: a line of any call gives the step's progress,
+  every span counted by its length at the furthest it has reported, so the step's progress keeps
+  rising whichever spans are running (the throttle drops a value at or below the last).
 - `apps/worker/src/progress-testdata/render.txt`, `person-mask.txt` and `cutout.txt` are committed
   samples of the real output; `apps/worker/src/progress-parsers.test.ts` replays all three and
   expects rising values ending at 100 or just below, and checks `partProgress`.
@@ -202,8 +203,8 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
 
 - Unit (`yarn test`): `apps/worker/src/progress.test.ts` (the throttle with a fake clock, rising
   values only, `stop`, a failed write), `progress-parsers.test.ts` (the three committed samples rise
-  to 100, other lines give null, `partProgress`), `cutout/ensure-cutouts.test.ts` (each span's
-  progress weighted by its length), `step-runner.test.ts` (throttled progress then 100 before `done`, no
+  to 100, other lines give null, `weightedProgress` for calls in turn and at the same time),
+  `cutout/ensure-cutouts.test.ts` (each span's progress weighted by its length), `step-runner.test.ts` (throttled progress then 100 before `done`, no
   writes without a parser, no 100 on failure), `pipeline/head-track-step.test.ts` and
   `render/render-call.test.ts` (the calls carry their parser, the render env drops
   `HYPERFRAMES_STDOUT_IS_TTY`, the double is the fake-render process),

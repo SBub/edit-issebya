@@ -4,8 +4,8 @@ import {
   type ProgressParser,
   parseCutoutProgress,
   parsePersonMaskProgress,
-  partProgress,
   parseRenderProgress,
+  weightedProgress,
 } from "./progress-parsers.ts";
 
 // Real stdout, captured on the committed clips: the worker's person mask entry
@@ -62,12 +62,33 @@ describe("parseRenderProgress", () => {
   });
 });
 
-describe("partProgress", () => {
-  it("maps one call's 0 to 100 onto its part of the step", () => {
-    const second = partProgress(parseCutoutProgress, 40, 100);
-    expect(second('@hf-progress {"index":0,"total":10,"pct":0}')).toBe(40);
-    expect(second('@hf-progress {"index":5,"total":10,"pct":50}')).toBe(70);
-    expect(second('@hf-progress {"index":10,"total":10,"pct":100}')).toBe(100);
-    expect(second("modnet: decoding failed")).toBeNull();
+describe("weightedProgress", () => {
+  const line = (pct: number) => `@hf-progress {"index":0,"total":10,"pct":${pct}}`;
+
+  it("counts each part by its weight, in turn or at the same time", () => {
+    // In turn: the first part is 40% of the step.
+    const [first, second] = weightedProgress(parseCutoutProgress, [4, 6]);
+    expect(first!(line(0))).toBe(0);
+    expect(first!(line(50))).toBe(20);
+    expect(first!(line(100))).toBe(40);
+    expect(second!(line(50))).toBe(70);
+    expect(second!(line(100))).toBe(100);
+
+    // At the same time: each line gives the step's total so far.
+    const [a, b, c] = weightedProgress(parseCutoutProgress, [1, 1, 2]);
+    expect(a!(line(100))).toBe(25);
+    expect(c!(line(50))).toBe(50);
+    expect(b!(line(20))).toBe(55);
+    expect(c!(line(100))).toBe(80);
+    expect(b!(line(100))).toBe(100);
+  });
+
+  it("never goes back, and reads only its own call's lines", () => {
+    const [a, b] = weightedProgress(parseCutoutProgress, [1, 1]);
+    expect(a!(line(60))).toBe(30);
+    // A lower report of the same part changes nothing.
+    expect(a!(line(40))).toBe(30);
+    expect(b!("modnet: decoding failed")).toBeNull();
+    expect(b!(line(10))).toBe(35);
   });
 });

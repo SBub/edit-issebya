@@ -6,9 +6,10 @@ import type { Storage } from "@edit-issebya/storage";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import type { ToolPaths } from "../pipeline/tools.ts";
 import { type SpawnTool, type StepContext, recordHit, runToolsStep } from "../step-runner.ts";
-import { parseCutoutProgress, partProgress } from "../progress-parsers.ts";
+import { parseCutoutProgress, weightedProgress } from "../progress-parsers.ts";
 import { spanCropTop } from "./crop.ts";
 import { maskToolCall } from "./mask-tool.ts";
+import { type PoolLimits, cutoutPool, machineLimits, runPool } from "./pool.ts";
 import { MASK_STEP, cutoutKey, withMasks } from "./spans.ts";
 
 export interface EnsureCutouts {
@@ -30,6 +31,9 @@ export interface EnsureCutouts {
   // The span the step is a child of when it is not the job's own (decide's
   // span context); the job span when absent.
   parent?: Context;
+  // The CPUs and memory the span tool calls share (the machine's, or the
+  // container's; unit tests pass their own).
+  limits?: PoolLimits;
 }
 
 function elapsedMs(started: number): number {
@@ -41,7 +45,8 @@ function plural(count: number, unit: string): string {
 }
 
 // The cut-out step span's counts: the masks this call made and the stored ones
-// it reused (`cutout.made`, `cutout.reused`).
+// it reused (`cutout.made`, `cutout.reused`). A step that makes masks adds how
+// many it makes at a time (`cutout.parallel`).
 function cutoutCounts(made: number, reused: number): Attributes {
   return { "cutout.made": made, "cutout.reused": reused };
 }
@@ -51,9 +56,12 @@ function cutoutCounts(made: number, reused: number): Attributes {
 // fingerprinted by footage, span, crop and tool version (maskSpans gives the same
 // spans the builder draws). All stored: a hit row (`cut-out reused`). Else one
 // measured `cutout` step downloads the footage once, runs the mask tool for
-// each missing span (its per-frame progress weighted by the span's length
-// across the step) and uploads it put-if-absent, so a stored mask is never
-// replaced. Returns the edit with `inputs.masks` (by start) naming them; an
+// each missing span, several at a time (cutoutPool: as many as the CPUs and
+// the memory allow, the longest first, the CPUs shared out as ONNX threads;
+// each span's per-frame progress weighted by its length across the step), and
+// uploads each mask put-if-absent as its call ends, so a stored mask is never
+// replaced. A failed span stops the ones not started; the step fails once the
+// running ones have ended. Returns the edit with `inputs.masks` (by start) naming them; an
 // edit without behind items comes back without masks, and one whose only items
 // are VISUALs in front of the speaker has none; neither writes a row.
 export async function ensureCutouts({
@@ -69,6 +77,7 @@ export async function ensureCutouts({
   env = process.env,
   recordStored,
   parent,
+  limits = machineLimits(),
 }: EnsureCutouts): Promise<Edit> {
   const named = withMasks(edit, transcript, headTrack);
   const items = edit.tracks.behind ?? [];
@@ -107,6 +116,10 @@ export async function ensureCutouts({
     const dir = await mkdtemp(join(scratchDir, "cutout-"));
     const footagePath = join(dir, "footage.mp4");
     const outputs = missing.map((span) => join(dir, `${span.fingerprint}.mp4`));
+    const lengths = missing.map((span) => span.end - span.start);
+    const pool = cutoutPool(lengths, limits);
+    // The longest first: it decides how long the step lasts.
+    const order = [...missing.keys()].sort((a, b) => lengths[b]! - lengths[a]!);
     try {
       await runToolsStep(
         stepCtx,
@@ -116,16 +129,17 @@ export async function ensureCutouts({
           outputs,
           sizeOf: "out",
           async work(tool, cutoutContext) {
-            trace
-              .getSpan(cutoutContext)
-              ?.setAttributes(cutoutCounts(missing.length, spans.length - missing.length));
+            trace.getSpan(cutoutContext)?.setAttributes({
+              ...cutoutCounts(missing.length, spans.length - missing.length),
+              "cutout.parallel": pool.concurrency,
+            });
             const footageKey = cacheKey(keyPrefix, footage.step, footage.fingerprint, footage.file);
             if (!(await storage.getFile(footageKey, footagePath, { signal }))) {
               throw new Error(`${MASK_STEP}: input missing: ${footageKey}`);
             }
-            const total = missing.reduce((sum, span) => sum + (span.end - span.start), 0);
-            let seconds = 0;
-            for (const [index, span] of missing.entries()) {
+            const progress = weightedProgress(parseCutoutProgress, lengths);
+            await runPool(order, pool.concurrency, async (index) => {
+              const span = missing[index]!;
               const output = outputs[index]!;
               const call = maskToolCall(
                 {
@@ -133,17 +147,17 @@ export async function ensureCutouts({
                   start: span.start,
                   end: span.end,
                   cropTop: spanCropTop(headTrack, span),
+                  threads: pool.threads[index]!,
                   output,
                 },
                 { tools, env },
               );
-              const from = (100 * seconds) / total;
-              const to = (100 * (seconds + span.end - span.start)) / total;
-              await tool({ ...call, progress: partProgress(parseCutoutProgress, from, to) });
+              // The call's memory is the entry's and its two ffmpegs' together.
+              await tool({ ...call, sampleGroupMemory: true, progress: progress[index]! });
               signal.throwIfAborted();
               await storage.putFileIfAbsent(span.key, output, { contentType: "video/mp4" });
-              seconds += span.end - span.start;
-            }
+            });
+            const seconds = lengths.reduce((sum, length) => sum + length, 0);
             const reused = spans.length - missing.length;
             return {
               what: `${plural(missing.length, "cut-out")} made, ${reused} reused, ${seconds.toFixed(1)} s masked`,

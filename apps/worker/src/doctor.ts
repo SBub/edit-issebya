@@ -11,6 +11,7 @@
 // fraction of a cent); without it no AI call is made. Prints one line per
 // check; exits 1 when any failed.
 import { execFile } from "node:child_process";
+import { availableParallelism } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { keyPrefix } from "@edit-issebya/storage";
@@ -87,7 +88,14 @@ const deps: DoctorDeps = {
     verifyModel: () => verifyModel(modnetModelPath()),
     async run(output) {
       const call = maskToolCall(
-        { input: MASK_SAMPLE, start: 0, end: 1, cropTop: 0, output },
+        {
+          input: MASK_SAMPLE,
+          start: 0,
+          end: 1,
+          cropTop: 0,
+          threads: availableParallelism(),
+          output,
+        },
         // No test switch (E2E_MOCK_MASK) from the environment.
         { tools: toolPaths(), env: {} },
       );

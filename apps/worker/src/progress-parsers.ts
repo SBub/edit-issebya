@@ -26,12 +26,22 @@ export const parseRenderProgress: ProgressParser = hfProgress;
 export const parsePersonMaskProgress: ProgressParser = hfProgress;
 export const parseCutoutProgress: ProgressParser = hfProgress;
 
-// A parser for one part of a step made of several tool calls: the call's own
-// 0 to 100 mapped onto `from` to `to` of the step (the cut-out's spans, each
-// weighted by its length), so the step's progress keeps rising.
-export function partProgress(parser: ProgressParser, from: number, to: number): ProgressParser {
-  return (line) => {
+// One parser per part of a step made of several tool calls that may run at
+// the same time (the cut-out's spans): each reads its own call's 0 to 100, and
+// gives the step's progress, every part counted by its weight (a span's
+// length) at the furthest it has reported. So the step's progress keeps
+// rising, whichever calls are running.
+export function weightedProgress(
+  parser: ProgressParser,
+  weights: readonly number[],
+): ProgressParser[] {
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  const done = weights.map(() => 0);
+  return weights.map((_, index) => (line) => {
     const pct = parser(line);
-    return pct === null ? null : Math.round(from + ((to - from) * pct) / 100);
-  };
+    if (pct === null) return null;
+    done[index] = Math.max(done[index]!, pct);
+    if (!(total > 0)) return pct;
+    return Math.round(done.reduce((sum, part, at) => sum + part * weights[at]!, 0) / total);
+  });
 }

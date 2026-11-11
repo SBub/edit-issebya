@@ -44,8 +44,17 @@ container's CPU, memory, disk and network are measured too and shown above a ree
   every second (and once after the spawn), sums the RSS of the tool and all its descendants and keeps
   the peak. `peak_rss_bytes` is the larger of that peak and the report's max RSS. Without the option
   it is the largest single process. Meant for the render's long-lived browser processes: the
-  export's `render` step is the step that uses it (HyperFrames runs Chrome workers and an encoder);
-  see `app_docs/export.md`.
+  export's `render` step uses it (HyperFrames runs Chrome workers and an encoder; see
+  `app_docs/export.md`), and so does each span call of the `cutout` step (the MODNet entry and its
+  two ffmpegs, of which the encoder alone is the largest single process).
+- A step's calls may run at the same time (the `cutout` step's spans, `app_docs/pipeline.md`). The
+  row is measured the same way: `wall_ms` is the step's own clock from its start to its end (not a
+  sum of the calls), `cpu_ms` is still the sum of every call's CPU (so it can be several times
+  `wall_ms`), and `peak_rss_bytes` is the largest total of the peaks of calls that were running at
+  the same moment (`concurrentPeak` in `step-runner.ts`): the largest single call when they run
+  one after the other, as before, and the calls together when they overlap. Each call is taken at
+  its own peak, so for overlapping calls the number is an upper bound. A failed call's row counts
+  the calls that ended beside it. Each `exec` span keeps its own call's numbers.
 - `src/summary.ts`: `stepSummary` gives `<what>, <duration in words>, <size>`, for example
   `background removed, 6 minutes 47 seconds, 51.0 MB` (`formatBytes`, one decimal, 1024 convention;
   durations under a second read `under a second`, hours drop the seconds, zero parts are omitted).
@@ -270,7 +279,9 @@ own span with error status; the step's failure is one ERROR record, `relayout fa
 and `step.name` `relayout`, as for every step. Relayout makes no AI call, so there is no `chat` span.
 
 The cut-out step span (`step cutout`, from decide or relayout) carries `cutout.made` and `cutout.reused`:
-the masks this call made and the stored masks it reused. A cache hit has `cutout.made` 0.
+the masks this call made and the stored masks it reused. A cache hit has `cutout.made` 0. A step that
+makes masks also carries `cutout.parallel`, how many span calls it ran at a time (`cutoutPool`); its
+`exec modnet-entry` spans overlap under it, one per span made.
 
 ### AI calls (`chat` spans)
 
@@ -330,7 +341,8 @@ took the time.
 - Other attributes: `step.name`; `edit_issebya.exec.subcommand` (the first argument after the script
   when it is a plain lower-case word, such as `transcribe`; a path or a flag never is);
   `edit_issebya.exec.cpu_ms` and `edit_issebya.exec.peak_rss_bytes` (this call's own report, read the
-  way the step row reads it, so the step's CPU is the sum of its calls' and its peak the largest);
+  way the step row reads it, so the step's CPU is the sum of its calls' and its peak the largest,
+  or the total of the calls that ran at the same time);
   `edit_issebya.exec.stdout_bytes` (the stdout the call returned, UTF-8 bytes, capped as the call
   returns it); `edit_issebya.exec.signal` when a signal ended the call.
 - Errors: a call the abort ended (`error.type` `aborted`), one that could not be spawned (`spawn_error`,
@@ -575,7 +587,7 @@ dashboard's list of step names (`resource-dashboard.test.ts` fails when a step n
   reading the whole trace by id, each step's explicit end on the timeline and a row per step name, a
   colour per step name, the span attributes it reads). The metrics themselves are checked by hand, see Notes.
 - Tool calls: `step-runner.test.ts` (`exec spans`: one span per call under the step, the row's CPU and
-  peak equal to the calls', a script's name and subcommand with no path, the parent a call names, a
+  peak equal to the calls'; `runToolsStep`: calls run at the same time counted together in the peak; a script's name and subcommand with no path, the parent a call names, a
   non-zero exit, a spawn error, an abort, no exporter).
 - Studio unit tests: `src/lib/analytics.test.ts`, `src/lib/track.test.ts`.
 - DB test: `db-tests/steps-measurements.test.ts` pins the exact column set of `steps`, so a money column

@@ -12,12 +12,13 @@ const span = {
   start: 5.1,
   end: 7.9667,
   cropTop: 266,
+  threads: 3,
   output: "/s/fp.mp4",
 };
 const MODEL = "/models/modnet.onnx";
 
 describe("the mask tool", () => {
-  it("runs the MODNet entry with this Node, the span to the millisecond, its crop, the model and ffmpeg", () => {
+  it("runs the MODNet entry with this Node, the span to the millisecond, its crop, its threads, the model and ffmpeg", () => {
     expect(maskToolArgs(span, MODEL, tools)).toEqual([
       MODNET_ENTRY,
       "--input",
@@ -30,6 +31,8 @@ describe("the mask tool", () => {
       "/s/fp.mp4",
       "--crop-top",
       "266",
+      "--threads",
+      "3",
       "--model",
       MODEL,
       "--ffmpeg",

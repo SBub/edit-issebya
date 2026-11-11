@@ -312,6 +312,7 @@ describe("the real render behind the speaker", () => {
           start: mask.start,
           end: mask.end,
           cropTop: spanCropTop(headTrack, mask),
+          threads: 4,
           output,
         },
         { tools: REAL_TOOLS, env: {} },

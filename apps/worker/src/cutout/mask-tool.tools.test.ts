@@ -52,7 +52,7 @@ describe("the MODNet mask tool", () => {
     const output = join(dir, "mask.mp4");
     const call = maskToolCall(
       // The person's top is at row 556: a crop of 400 leaves the rows above 390 out.
-      { input: PERSON, start: 0.5, end: 3.5, cropTop: 400, output },
+      { input: PERSON, start: 0.5, end: 3.5, cropTop: 400, threads: 4, output },
       { tools: REAL_TOOLS, env: {} },
     );
     const started = performance.now();

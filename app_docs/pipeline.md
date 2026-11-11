@@ -80,12 +80,13 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
   unchanged). Zero frames or a trailing partial frame fails the step.
 - The on-demand cut-out (`apps/worker/src/cutout/`): `ensure-cutouts.ts` makes the person mask of
   each padded span of an edit's big words (`behind` items behind the speaker; a VISUAL needs none)
-  that is not stored yet, in one measured `cutout` step, one tool call per span.
+  that is not stored yet, in one measured `cutout` step, one tool call per span, several spans at
+  the same time (the pool, below).
   The tool is MODNet portrait matting (ZHKKKe/MODNet, Apache 2.0 code and weights, its weights
   quantised to int8, see the model below) run through `onnxruntime-node` on the CPU, on any OS
   (Linux and Docker included): `mask-tool.ts` (`maskToolCall`, `MASK_TOOL_VERSION` 3) runs this
-  Node on `modnet-entry.ts` with `--input --start --end --output --crop-top --model --ffmpeg
---ffprobe`.
+  Node on `modnet-entry.ts` with `--input --start --end --output --crop-top --threads --model
+--ffmpeg --ffprobe`.
   The entry checks the model's SHA-256, probes the footage's size and frame rate, and streams:
   ffmpeg decodes exactly `round((end - start) * fps)` frames from the span's first frame (seeking a
   quarter frame early, `-frames:v`) to raw RGB at the working size (`workingSize` in
@@ -103,7 +104,13 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
   i / fps, the span's frame count. The same format, keys and layout the Apple Vision tool (`vseg`,
   removed) wrote, so the builder, the preview and the export read it unchanged. Written to
   `<output>.part`, renamed when done; one `@hf-progress` line per frame (`app_docs/status.md`); any
-  failure exits 1 with one `modnet: ...` line. About 8 s per second of footage on an M3's CPU.
+  failure exits 1 with one `modnet: ...` line. Speed, measured
+  2026-11-11 in the worker image on Docker Desktop (M3, 8 CPUs, 7.75 GiB), the real entry on one
+  reel's six spans (13.7 s of 1080x1920 at 30 fps, crops of 300 to 390 rows): 27 to 30 s for the
+  whole step at 3 spans at a time (what that VM's memory allows; about 3.0 GB held at the peak,
+  170 to 190 s of CPU), 24 s at 6 at a time (5.2 GB), so about 2 s per second of footage. Version
+  2 took 254 s for the same spans (about 19 s per second). Against version 2's masks the mean IoU
+  is 0.9937 (worst frame 0.958). One span alone on one thread: about 0.14 s a frame.
 - The MODNet model (`apps/worker/src/cutout/modnet-model.ts`, `MODNET_MODEL`): the committed file
   `apps/worker/models/modnet_int8_13.onnx`, pinned by name, size (6,912,985 bytes) and SHA-256
   (`a293b5ae8fb8ac81447a82bf1ad661479fb412fe2d276188711386c6c81df28b`). It is committed because it
@@ -137,6 +144,25 @@ apps/worker/models/modnet_int8_13.onnx`; a file with another size or hash fails 
   to a whole multiple of 32 rows, and starts on an even row. A crop that moves up to row 0 is no
   crop. Example, 1080x1920 with the person's top at 560 and a head 412 wide: `--crop-top 354`,
   rows from 300 down (1620 rows), run at 384x576 instead of 384x672.
+- The pool (`pool.ts`, `cutoutPool`, `runPool`): the span calls of one `cutout` step run at the
+  same time, the longest span first. How many at once is the smallest of the spans to make, the
+  CPUs (`os.availableParallelism()`) and what memory allows: half the memory limit
+  (`CUTOUT_POOL.memoryShare`; the limit is the container's when it has one,
+  `process.constrainedMemory()`, else the machine's) divided by 1 GiB per call
+  (`CUTOUT_POOL.processBytes`: one call, the entry and its two ffmpegs together, was measured at
+  about 0.9 GB on 1080x1920 footage, of which the entry is 0.35 GB and the mask encoder 0.5 GB),
+  and never less than one. Neither compose file sets a CPU or memory limit on the worker, so in
+  Docker Desktop the limits are the VM's: with its 8 CPUs and 7.75 GiB, 3 spans at a time. The
+  CPUs are shared out as ONNX intra-op threads (`--threads`, inter-op 1): every span starts with
+  one, and one more goes, again and again, to the span with the most footage per thread, unless
+  the busiest calls that can run together would then have more threads than there are CPUs. So
+  the longest span, which decides how long the step lasts, gets the spare CPUs (six spans on 8
+  CPUs with room for all: 1 thread each and 3 for the long one). The two ffmpegs of a call keep
+  their own threads: limiting them saved about 0.1 GB a call and no time. A failed span stops the
+  spans not yet started; the step fails once the running ones have ended, and a mask whose span
+  ended well is already stored, so the next run of the job reuses it. The step's measurement (CPU summed, peak
+  memory of the calls that ran together, each call's whole process tree sampled) is in
+  `app_docs/measurement.md`; its progress in `app_docs/status.md`.
 - A mask's fingerprint (`maskFingerprint` in `spans.ts`): the footage ref, the span, its
   `cropTop`, and `MATTE_SETTINGS` (`model`, `modelSha256`, `size` 384, `crop`
   `above-head-half-width` (`CROP_RULE.id`), `smoothing` `median3`, `provider` `cpu`,

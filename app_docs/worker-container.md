@@ -152,3 +152,6 @@ memory limit on the worker, so the VM's size is the only ceiling.
 - MODNet speed on the 2.8 s sample clip, the same entry and model: about 11 s per second of footage
   natively on the Mac, about 19 s per second in the container (CPU only in both; Docker Desktop's VM
   is slower). A cut-out of a few seconds behind a big word takes about a minute in the container.
+  That was mask tool version 2. Version 3 (the int8 model at 384, the crop above the head, the
+  spans in parallel) takes about 2 s per second of footage in the container; see
+  `app_docs/pipeline.md`.
