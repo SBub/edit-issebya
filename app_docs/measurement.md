@@ -9,7 +9,9 @@
 Every step the worker runs is measured by the operating system and saved on its `steps` row, so the
 owner knows what each reel costs to make, step by step. The full output of every step goes to
 PostHog as OpenTelemetry logs and each reel is one trace. The studio also starts its own PostHog
-client, identifies the signed-in user and sends `studio_*` events.
+client, identifies the signed-in user and sends `studio_*` events. In local development the worker
+container's CPU, memory, disk and network are measured too and shown above a reel's trace
+(Resource metrics).
 
 ## How it works
 
@@ -23,6 +25,12 @@ client, identifies the signed-in user and sends `studio_*` events.
   call): it records `wall_ms` only and leaves the other four measurements null, because moving one
   call into a child would measure Node's start-up, not the step. `first_version` and `restore` are such
   steps. Both share the row, the span, the summary and the tail.
+- A step attempt's times agree. The worker stamps its start (`startedAt`, one instant) and writes it as
+  the row's `started_at` and the span's start; the row finishes `wall_ms` later (`finishedAt` in
+  `step-store.ts`), and the span ends there too. A cache hit (`recordHit`) is the same: its skipped row and
+  span last exactly its `wall_ms`. A failed attempt's `wall_ms` runs from its own start to the end of its
+  work, never a nested step's time (decide's cut-out, its own row) or an earlier attempt's. Its CPU, peak
+  memory and bytes are its own calls and declared files, as on success; a nested step's are on its row.
 - `src/time-report.ts`: `timeCommand(platform)` (`/usr/bin/time -l` on macOS, `-v` on Linux, an error
   elsewhere) and the two report parsers. macOS reports max RSS in bytes, Linux in kilobytes (times
   1024). `/usr/bin/time` is the kernel's `wait4` accounting (`RUSAGE_CHILDREN`): CPU summed over every
@@ -94,6 +102,14 @@ client, identifies the signed-in user and sends `studio_*` events.
   child of the decide span when decide runs it (the step takes an optional `parent`); its
   step rows are the same either way. `src/telemetry.ts` `inSpan` runs a stage in its span. Each AI
   call is a `chat` span under the stage that made it (`src/ai.ts` `inChatSpan`, see AI calls below).
+- The job span carries `job.queue_wait_ms`: the time from the job's creation to this claim
+  (`started_at - created_at` of the row `claim_job` returns). It is left out when either time is
+  missing.
+- Every object the job reads from or writes to storage is an `r2.get` or `r2.put` span (R2 reads and
+  writes below).
+- `runUnderSpan` and `activeSpanContext` (`src/telemetry.ts`) keep the Context of the running step or
+  stage in an `AsyncLocalStorage`, for code that is handed no Context (the storage wrapper). The step
+  runner and `inSpan` set it. It is not OpenTelemetry's global context manager: none is registered.
 - Step measurements are never sent to PostHog as events: PostHog reads the tables as a data source.
 - Exceptions: `app_docs/error-tracking.md`.
 
@@ -163,16 +179,42 @@ and longest seconds, and the median seconds per second of retimed footage.
 
 `yarn dev:studio` always starts it. The script starts `docker-compose.monitoring.yml` (the
 `grafana/otel-lgtm` image: Grafana, Tempo for traces, Loki for logs and Prometheus for metrics in one
-container, OTLP over HTTP) and sets `WORKER_DOCKER_OTLP_ENDPOINT=http://host.docker.internal:4318`,
+container, OTLP over HTTP; and cAdvisor, a second container that measures the containers, see
+Resource metrics) and sets `WORKER_DOCKER_OTLP_ENDPOINT=http://host.docker.internal:4318`,
 which `compose.yaml` passes to the worker container as `OTEL_EXPORTER_OTLP_ENDPOINT`. The container
 also gets an empty `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_SERVICE_NAME=edit-issebya-worker-dev` from
 `compose.yaml`; compose `environment` wins over the env file, so a PostHog token in
-`apps/worker/.env.development` never reaches the local container. The monitoring container keeps
+`apps/worker/.env.development` never reaches the local container. The monitoring containers keep
 running when `yarn dev:studio` stops.
 
 There is one monitoring stack per machine: every checkout uses the Compose project
-`edit-issebya-monitoring`, and `yarn dev:studio` reuses it when Grafana already answers on 3300
-instead of starting a second one.
+`edit-issebya-monitoring`, and `yarn dev:studio` reuses it when Grafana already answers on 3300 and
+every service runs with the settings of the checkout's compose file (Compose's hash of each service,
+`docker compose config --hash`, against the hash on the running container). Otherwise it runs
+`docker compose up -d`, which adds a missing container and recreates only one whose settings changed;
+the data volume is kept. The files mounted from `monitoring/` are part of the settings by their path,
+so a checkout in another folder recreates the otel-lgtm container with its own files.
+
+Four files of the repository are mounted into the otel-lgtm container:
+
+- `monitoring/prometheus.yaml` over `/otel-lgtm/prometheus.yaml`: the image's own Prometheus config
+  (0.39.0, unchanged) plus one `scrape_configs` job, cAdvisor. On an image upgrade, copy the new
+  image's file and keep that block.
+- `monitoring/grafana/dashboards.yaml`, a dashboard provider beside the image's own, and the folder
+  it loads, `monitoring/grafana/dashboards/`. Every dashboard JSON file in that folder is in Grafana
+  after start-up and re-read every 10 seconds, and survives a recreated container. A change made in
+  the Grafana UI is not saved to the file: export the JSON and commit it.
+- `monitoring/grafana/datasources.yaml`, beside the image's own data sources: one more data source,
+  "Tempo trace JSON" (uid `tempo-trace-json`), which is the Infinity plugin reading Tempo's HTTP API
+  inside the container (`http://127.0.0.1:3200`, the only host it may call).
+
+The Infinity plugin (`yesoreyeram-infinity-datasource`) is not in the image. The compose file names
+it at a pinned version in `GF_PLUGINS_PREINSTALL`; Grafana downloads it from grafana.com in the
+background after it starts (about 25 seconds on the first start) and keeps it in
+`/data/grafana/plugins` on the data volume, so the network is needed once. Without the network the
+container runs and records as before, and only the four dashboard panels that read through the
+plugin show an error until a later start downloads it. The image's Drilldown apps are downloaded
+the same way.
 
 After starting the stack, `yarn dev:studio` waits up to 60 seconds for Grafana to answer. If it does
 not (or the container has exited), it recreates the container once with `up -d --force-recreate`, which
@@ -188,7 +230,7 @@ traces and logs are not recorded until the stack is back.
   tool call a child `exec <executable>` span of its step.
 - A step's output: from a span, Logs for this span opens Loki (Tempo's `tracesToLogsV2` link). Each
   output line is a log record in the step span's context, and Loki links back to Tempo by `trace_id`.
-- Stop it with `docker compose -f docker-compose.monitoring.yml down`. The data lives in the named
+- Stop it (both containers) with `docker compose -f docker-compose.monitoring.yml down`. The data lives in the named
   volume `otel-lgtm-data` (under `/data` in the container), so it survives a restart; add `-v` to
   delete it.
 
@@ -346,10 +388,12 @@ span under `render.encode`:
 ```
 step render                        render.version_id, render.duration_seconds, render.mp4_bytes, job.cancelled
 ├─ render.load                     render.version_id, render.version_number, render.inputs
+│  └─ r2.get                       one per object read (the edit, the footage, the masks)
 ├─ render.build                    render.page_bytes, render.assets
 ├─ render.encode                   render.duration_seconds
 │  └─ exec hyperframes             the tool call's exec attributes (CPU, peak, exit)
 ├─ render.upload                   render.mp4_bytes, render.key
+│  └─ r2.put                       the MP4's upload: r2.kind export, r2.bytes, r2.outcome
 └─ render.save                     render.export_id
 ```
 
@@ -368,6 +412,129 @@ step render                        render.version_id, render.duration_seconds, r
 - A failed render writes one ERROR record `render failed: <message>` through the step's failure log
   (`emitFailureLog`), with `job.id`, `job.kind` and `step.name` `render`, in the step span's context. The
   failing stage's span carries the exception and the error status.
+
+### R2 reads and writes (`r2.get`, `r2.put` spans)
+
+`src/traced-storage.ts` `tracedStorage` wraps the worker's storage (`process-job.ts`, under the
+recording storage of `app_docs/storage.md`), so every object a job reads or writes is one span, a
+`CLIENT` span under the step or stage that made the call (`activeSpanContext`), or under the job's
+span outside any step. `packages/storage` is shared with the studio and does not know OpenTelemetry:
+the wrapping is the worker's.
+
+- `r2.get`: `get` and `getFile`. `r2.put`: `put`, `putIfAbsent`, `putFileIfAbsent` and
+  `completeMultipartUpload`. The span's duration is the call's.
+- `r2.operation`: the storage method.
+- `r2.kind`: what the key holds, from its layout: `cache` (a pipeline output), `source` (the raw
+  footage), `version`, `export`, `library` (a photo) or `other`. For `cache`, `r2.cache_step` is the
+  step that made the object.
+- `r2.bytes`: the bytes read, or the bytes offered for writing (a file's size for the two file
+  methods).
+- `r2.outcome`: `ok` or `missing` for a read; `written`, `exists` (the key was taken and nothing was
+  replaced) or `missing` (an unknown multipart upload) for a write; `aborted` when the call's signal
+  stopped it (no error status); `error` otherwise, with an error status, `error.type` and an
+  `exception` event.
+- `r2.multipart_parts`: the parts of a completed multipart upload. The worker's own writes are each
+  one PUT (`packages/storage/src/r2.ts`), so they carry no part count; the browser's multipart
+  upload of the footage is the studio's and is not a worker span.
+- `head`, `list`, `delete` and the signing methods move no object bytes and are not spans.
+- Never on the span: the key, a reel's id in a path, a file name.
+- Under `E2E_MOCK_STORAGE` the same spans wrap the folder-backed fake.
+
+TraceQL: `{ name = "r2.put" && span.r2.kind = "export" }` for the exports' uploads,
+`{ name =~ "r2\\..*" && duration > 5s }` for the slow transfers.
+
+### Resource metrics
+
+What limits a step (CPU, memory, disk, the network to R2, or the database) is read from the
+container's own counters, next to the reel's trace. Local development only.
+
+What is collected:
+
+- cAdvisor (`gcr.io/cadvisor/cadvisor`, pinned in `docker-compose.monitoring.yml`, the `cadvisor`
+  service, no host port) reads the kernel's per-container counters (cgroups) for every container of
+  the machine, the worker (`edit-issebya-worker-worker-1`) and the Supabase database
+  (`supabase_db_edit-issebya`) among them. Prometheus in the otel-lgtm container scrapes it every
+  10 seconds (`monitoring/prometheus.yaml`). Each series carries the container's `name`.
+- CPU: `container_cpu_usage_seconds_total` (and `_user_`, `_system_`), as a rate: seconds of CPU per
+  second, so 1 is one core busy.
+- Memory: `container_memory_working_set_bytes` (what cannot be given back without swapping or a
+  kill), `container_memory_rss`, `container_memory_cache` (page cache).
+- OOM kills: `container_oom_events_total`, read from the kernel log (`/dev/kmsg`).
+- Disk: `container_fs_reads_bytes_total` and `container_fs_writes_bytes_total`.
+- Network: `container_network_receive_bytes_total` and `container_network_transmit_bytes_total` of
+  `eth0` (the kernel's idle tunnel devices are dropped at scrape time).
+- Waiting: `container_pressure_cpu_waiting_seconds_total`, `container_pressure_io_waiting_seconds_total`
+  and `container_pressure_memory_waiting_seconds_total` (the kernel's pressure stall information):
+  the time at least one process of the container waited for a CPU, for the disk or for memory.
+- The machine: `machine_cpu_cores` and `machine_memory_bytes`, the dashed reference lines.
+- The export (`render` job) is a step like any other: its Chrome and ffmpeg run inside the worker
+  container, so the container's metrics cover them, and its upload is the `r2.put` span under
+  `render.upload`.
+
+What is not there, and why:
+
+- CPU throttling (`container_cpu_cfs_throttled_seconds_total`): the kernel counts it only for a
+  container with a CPU limit, and `compose.yaml` sets none, so the series does not exist and the
+  dashboard's throttling line stays empty. This is not a Mac limit. A container without a limit is
+  never throttled; it competes for cores, and that shows as CPU waiting (pressure).
+- A memory limit line: the containers have no memory limit, so the only ceiling is the VM's total.
+  An OOM kill then happens when the whole VM runs out, and the kernel picks the victim.
+- OOM kills were checked as a series (0 for both containers), not by forcing a kill.
+
+On a Mac, Docker Desktop runs every container in one Linux VM, and cAdvisor runs in it too:
+
+- "The machine" is the VM (8 CPUs and 7.75 GiB on the owner's Mac, Docker Desktop, Settings,
+  Resources), never macOS. 800% CPU is the VM's eight cores busy.
+- Nothing that runs on macOS is measured: the landing page, the studio, the browser. When they keep
+  the Mac's cores busy, the VM's cores run slower and a step takes longer with no sign of it here.
+- Disk bytes are the VM's virtual disk: the scratch volume, the image and the database's volume.
+  Folders mounted from the Mac (the worker's source folders) are not block devices and are not
+  counted. A buffered write is counted when the kernel writes it out, which can be after the step.
+- Network bytes are everything through the container's interface: R2, OpenRouter, the database and
+  the OTLP export together. The `r2.get` and `r2.put` spans say how much of it was R2.
+- The numbers do not predict a Linux server: the VM's disk and network go through macOS.
+
+The dashboard, "Worker resources" (`monitoring/grafana/dashboards/worker-resources.json`):
+
+1. Open `http://localhost:3300/d/worker-resources` (`yarn dev:studio` prints the link).
+2. Put the reel's id without dashes in `reel` (its trace id, `traceIdForReel`) and set the time range
+   to cover the reel's jobs.
+3. Top rows, the worker container: CPU as a percentage of one core with the VM's cores as the dashed
+   line, memory with the VM's total as the dashed line, network (received up, sent down), disk (read
+   up, written down), waiting and throttling, OOM kills; then the database container's CPU, disk
+   writes and disk waiting.
+4. "Steps on the metrics' time axis": one row per step name and one bar per run of that step, from
+   its start to its end, on the same time axis as the panels above (the crosshair is shared). Read a
+   step's resources straight above its bar. A step that runs inside another (`cutout` inside
+   `decide`) has its own row.
+5. "Per step": one row per `step` span with its start and end, its wall time, CPU time, average
+   cores (`step.cpu_ms / step.wall_ms`), peak memory and bytes in and out: the step row's own
+   measurements, read from the span (no database connection from Grafana). "Jobs": the queue wait
+   (`job.queue_wait_ms`) and the run time of each job. "R2 reads and writes": each transfer's bytes,
+   time and speed (bytes divided by the span's duration).
+6. "The reel's trace": the whole trace, as in Explore.
+
+How to read a step:
+
+| The step shows                                              | It is limited by                    |
+| ----------------------------------------------------------- | ----------------------------------- |
+| CPU near the dashed line, average cores near the core count | CPU (more cores help)               |
+| CPU near 100%, average cores near 1                         | one thread (more cores do not help) |
+| Working set climbing to the dashed line, memory waiting     | memory                              |
+| Low CPU, busy network, long `r2.get` or `r2.put` spans      | the network to R2                   |
+| Low CPU, busy disk, disk waiting                            | the VM's disk                       |
+| Low worker CPU, busy Postgres CPU or Postgres disk waiting  | the database                        |
+| Low everything, a long `chat` span                          | the AI call                         |
+
+The timeline and the three tables read the reel's whole trace by id, never a search: the "Tempo
+trace JSON" data source gets `/api/traces/<trace id>` from Tempo, and a JSONata expression in each
+panel (`root_selector`) keeps the spans it wants and turns their attributes into columns. So the
+tables show every span of the reel whatever the time range is (the time range only moves the
+timeline and the metric panels), with no limit on the number of spans. An empty or unknown `reel`
+shows a 404 error on the four panels. On the timeline each step sends two rows, its name at the
+start and `idle` at the end (drawn transparent), and the rows are split by step name: a bar stops
+where the step stopped, not where the next one starts. A step colour on the timeline comes from the
+dashboard's list of step names (`resource-dashboard.test.ts` fails when a step name has none).
 
 ## Configuration
 
@@ -396,6 +563,17 @@ step render                        render.version_id, render.duration_seconds, r
 - AI calls: `ai.test.ts` (`the chat span of a call`: name, kind, operation, provider, request and
   response model, the tokens, the cost, the finish reason, the role and output mode, the error
   types, no trace means no span).
+- R2 spans: `traced-storage.test.ts` (the kind from the key's layout and nothing of the key itself, a
+  step's reads and writes under the step, a stage's under the stage, a call outside any step under
+  the job, a file's size as the bytes, `missing` and `exists`, the parts of a multipart upload, a
+  failed call marked and rethrown unchanged, an aborted download not an error, no span for `head`,
+  `list` and `delete`, no exporter). `telemetry.test.ts` (`job.queue_wait_ms`).
+- The resources dashboard: `resource-dashboard.test.ts` (the uid `yarn dev:studio` links to, the
+  container names against `compose.yaml` and `supabase/config.toml`, the three data sources, the
+  10-second query interval against the scrape interval, the Infinity plugin pinned and installed in
+  the background, the trace JSON data source on Tempo's port, the timeline and the three tables
+  reading the whole trace by id, each step's explicit end on the timeline and a row per step name, a
+  colour per step name, the span attributes it reads). The metrics themselves are checked by hand, see Notes.
 - Tool calls: `step-runner.test.ts` (`exec spans`: one span per call under the step, the row's CPU and
   peak equal to the calls', a script's name and subcommand with no path, the parent a call names, a
   non-zero exit, a spawn error, an abort, no exporter).
@@ -428,6 +606,18 @@ step render                        render.version_id, render.duration_seconds, r
 - Every model call is one `chat` span with `gen_ai.*` attributes, never invented `ai.*` names; the
   cost is `edit_issebya.ai.cost_usd`, the role and output mode `edit_issebya.ai.*`, because the
   conventions have none.
+- Never make `packages/storage` depend on OpenTelemetry: the studio shares it. Storage spans are
+  made in the worker (`traced-storage.ts`).
+- Never put a storage key, a reel's id from a path or a file name on an `r2.*` span: the kind, the
+  cache step, the bytes and the outcome only.
+- Never let an `r2.*` span change a storage call: its answer and its error pass through unchanged.
+- Never read the container metrics as the Mac's: on a Mac they are the Docker VM's.
+- Never read a reel's spans for the dashboard with a TraceQL search: read the whole trace by id.
+- Never install a Grafana plugin without a pinned version, and never with
+  `GF_PLUGINS_PREINSTALL_SYNC`: a failed download then stops Grafana and the whole container.
+- Never use `latest` for a monitoring image, and never edit a provisioned dashboard only in the
+  Grafana UI: the JSON file in `monitoring/grafana/dashboards/` is the source.
+- Never publish cAdvisor's port to the host: it reads every container of the machine.
 - Never put a tool call's command line, its arguments, its stdin or its environment on its `exec`
   span: the executable's base name, the argument count, a plain-word subcommand and the measurements
   only. A prompt, a schema, an answer or a reel's path never reaches a span.
@@ -437,8 +627,27 @@ step render                        render.version_id, render.duration_seconds, r
 - The step names are the list in `apps/worker/src/step-names.ts`. `first_version` and `restore` run
   in-process, so their rows carry `wall_ms` only.
 - Group sampling is as fine as one second; the report's max RSS still bounds short single-process peaks.
+- A TraceQL search of a reel's trace misses spans: the trace sits in more than one Tempo block and the
+  search answers from some of them (on reel 80fd7cbe, the regex `name =~ "step .*"` found 9 of its 16
+  step spans, `name = "r2.put"` 19 of 20). Reading the trace by id returns all of it, but Grafana's
+  built-in transformations cannot turn a span's tag list into columns, hence the Infinity plugin.
+- The timeline's first form (one row, a null value at each step's end) drew each bar until the next
+  step's start on the owner's dashboard and hid `cutout` behind `decide`. The explicit `idle` state
+  and the row per step name replaced it.
+- The Infinity panels were checked by hand in a throwaway otel-lgtm container (same mounts and
+  plugin setting, another port) holding a copy of reel 80fd7cbe's trace: 16 step rows over both jobs,
+  2 jobs (queue waits 8799 ms and 221 ms), 40 R2 rows (20 `r2.put`), `cutout` ending inside `decide`.
+  A first start without the network keeps the container up with the background setting and stops it
+  with the synchronous one.
 - The trace's root is virtual; PostHog groups by trace id, so a reel opens as one timeline.
 - `app_docs/studio.md` (Worker, Live status) and `app_docs/analytics.md` (landing rules unchanged) are the
   neighbouring features this change touches.
+- The per-step table reads the step measurements from the `step` spans, not from the `steps` table: a
+  Postgres data source in Grafana would need a login role that bypasses row level security and a
+  password in the repository. A reel whose jobs ran while monitoring was down has rows and no spans.
+- Checked by hand on the owner's Mac (Docker Desktop 29, containerd image store, cgroup v2):
+  cAdvisor needs the Docker socket and the containerd socket mounted to name the containers; every
+  series listed under Resource metrics answered for the worker and the database container through
+  Grafana's Prometheus proxy.
 - Out of scope: the data warehouse source and dashboard, AI token and cost values, any real video
   step. Step progress and time left are in `app_docs/status.md`.

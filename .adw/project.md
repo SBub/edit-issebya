@@ -251,8 +251,10 @@ on every pull request and push to `develop` and `master`.
   `.adw/worktree-env`; the same never-write rule as the other `.ports.env` values applies.
 - Local monitoring is the developer's (always started by `yarn dev:studio`, `docker-compose.monitoring.yml`,
   the `grafana/otel-lgtm` container): Grafana on host port 3300 (container 3000, bound to 127.0.0.1;
-  3000 is the landing page) and OTLP over HTTP on 4318 (127.0.0.1). One Compose project
-  (`edit-issebya-monitoring`) per machine, reused when Grafana already answers. ADW never starts it.
+  3000 is the landing page) and OTLP over HTTP on 4318 (127.0.0.1). Its second container, cAdvisor
+  (container metrics), publishes no host port. One Compose project (`edit-issebya-monitoring`) per
+  machine, reused when Grafana already answers and every service runs with the checkout's settings.
+  ADW never starts it.
 
 ## Protected
 

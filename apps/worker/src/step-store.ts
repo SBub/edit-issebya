@@ -64,13 +64,31 @@ export type PipelineReelStatus =
 
 // The writes a step makes, behind an interface so steps are tested without a
 // database.
+// Every row's times come from the worker: `startedAt` is the instant the step
+// (or the attempt) started, and a finished row ends `wall_ms` after it, so the
+// row, its span and its wall time always agree.
+function finishedAt(startedAt: Date, wallMs: number): string {
+  return new Date(startedAt.getTime() + wallMs).toISOString();
+}
+
 export interface StepStore {
-  start(job: ClaimedJob, name: string): Promise<string>;
+  start(job: ClaimedJob, name: string, startedAt: Date): Promise<string>;
   // A cache hit: one finished row, status skipped, cache_hit true, wall time only.
-  skipped(job: ClaimedJob, name: string, summary: string, wallMs: number): Promise<void>;
+  skipped(
+    job: ClaimedJob,
+    name: string,
+    summary: string,
+    wallMs: number,
+    startedAt: Date,
+  ): Promise<void>;
   reelStatus(reelId: string, status: PipelineReelStatus): Promise<void>;
   sourceKey(reelId: string): Promise<string | null>;
-  done(stepId: string, summary: string, measurements: StepMeasurements): Promise<void>;
+  done(
+    stepId: string,
+    summary: string,
+    measurements: StepMeasurements,
+    startedAt: Date,
+  ): Promise<void>;
   // A long step's progress (0 to 100) on its own running row.
   progress(stepId: string, percent: number): Promise<void>;
   // The reel's retimed footage length in seconds, null until recorded.
@@ -90,6 +108,7 @@ export interface StepStore {
     errorTail: string,
     summary: string,
     measurements: StepMeasurements,
+    startedAt: Date,
   ): Promise<void>;
   // The AI is not available: the row is `waiting`, its tail the reason.
   waiting(
@@ -97,6 +116,7 @@ export interface StepStore {
     reason: string,
     summary: string,
     measurements: StepMeasurements,
+    startedAt: Date,
   ): Promise<void>;
   // A job taken again after its worker stopped: every row it left `running`
   // ends `failed`.
@@ -107,7 +127,7 @@ const ABANDONED_TAIL = "the worker stopped during this step; the job was taken a
 
 export function supabaseStepStore(db: SupabaseClient): StepStore {
   return {
-    async start(job, name) {
+    async start(job, name, startedAt) {
       const { data, error } = await db
         .from("steps")
         .insert({
@@ -117,13 +137,14 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
           owner_id: job.owner_id,
           name,
           status: "running",
+          started_at: startedAt.toISOString(),
         })
         .select("id")
         .single();
       if (error || !data) throw new Error(`step not started: ${error?.message}`);
       return (data as { id: string }).id;
     },
-    async skipped(job, name, summary, wallMs) {
+    async skipped(job, name, summary, wallMs, startedAt) {
       const { error } = await db.from("steps").insert({
         job_id: job.id,
         reel_id: job.reel_id,
@@ -133,7 +154,8 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
         status: "skipped",
         cache_hit: true,
         summary,
-        finished_at: new Date().toISOString(),
+        started_at: startedAt.toISOString(),
+        finished_at: finishedAt(startedAt, wallMs),
         wall_ms: wallMs,
         cpu_ms: null,
         peak_rss_bytes: null,
@@ -196,39 +218,39 @@ export function supabaseStepStore(db: SupabaseClient): StepStore {
         .is("word_count", null);
       if (error) throw new Error(`word count not recorded: ${error.message}`);
     },
-    async done(stepId, summary, measurements) {
+    async done(stepId, summary, measurements, startedAt) {
       const { error } = await db
         .from("steps")
         .update({
           status: "done",
           summary,
-          finished_at: new Date().toISOString(),
+          finished_at: finishedAt(startedAt, measurements.wall_ms),
           ...measurements,
         })
         .eq("id", stepId);
       if (error) throw new Error(`step not finished: ${error.message}`);
     },
-    async failed(stepId, tail, summary, measurements) {
+    async failed(stepId, tail, summary, measurements, startedAt) {
       const { error } = await db
         .from("steps")
         .update({
           status: "failed",
           error_tail: tail,
           summary,
-          finished_at: new Date().toISOString(),
+          finished_at: finishedAt(startedAt, measurements.wall_ms),
           ...measurements,
         })
         .eq("id", stepId);
       if (error) throw new Error(`step not failed: ${error.message}`);
     },
-    async waiting(stepId, reason, summary, measurements) {
+    async waiting(stepId, reason, summary, measurements, startedAt) {
       const { error } = await db
         .from("steps")
         .update({
           status: "waiting",
           error_tail: reason,
           summary,
-          finished_at: new Date().toISOString(),
+          finished_at: finishedAt(startedAt, measurements.wall_ms),
           ...measurements,
         })
         .eq("id", stepId);

@@ -92,7 +92,7 @@ One command, from the repository root: `yarn dev:studio` (`scripts/dev-studio.sh
    worker container (`docker compose up`).
 
 Ctrl-C, a kill, or closing the terminal stops web, studio and the worker container (the script ends
-with `docker compose down`). Monitoring keeps running; stop it with
+with `docker compose down`). Monitoring (Grafana and cAdvisor) keeps running; stop it with
 `docker compose -f docker-compose.monitoring.yml down`.
 
 By hand (debugging only): `docker compose up --build` from the repository root; the doctor with
@@ -109,7 +109,10 @@ A sleeping Mac freezes Docker and every job in it. The worker in the container n
 
 Give Docker Desktop 4 to 6 CPUs and at least 6 GB of memory (Settings, Resources). Renders,
 transcribes and the cut-out are the heavy steps; below that they swap or slow down. These numbers are
-the recommendation, not a measurement on this Mac.
+the recommendation, not a measurement on this Mac. What a step really uses (CPU against the VM's
+cores, memory against the VM's total, disk, network, waiting) is on the "Worker resources" dashboard
+of local monitoring: `app_docs/measurement.md`, Resource metrics. `compose.yaml` sets no CPU or
+memory limit on the worker, so the VM's size is the only ceiling.
 
 ## Rules
 

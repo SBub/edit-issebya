@@ -44,6 +44,7 @@ import {
   supabaseStoredFiles,
 } from "./stored-files.ts";
 import { type Telemetry, emitFailureLog, endJobSpan, startJobSpan } from "./telemetry.ts";
+import { tracedStorage } from "./traced-storage.ts";
 import { storageVersionBlobs, supabaseVersionRows } from "./version-store.ts";
 
 // One prompt source for the whole worker process: its cache serves every job
@@ -80,7 +81,6 @@ export async function processJob(
   const steps = supabaseStepStore(db);
   const records = supabaseStoredFiles(db);
   const target = jobTarget(job);
-  const storage = recordingStorage(rawStorage, { records, target, keyPrefix: config.keyPrefix });
   const recordStored = (key: string, bytes: number) =>
     records.record({ ...target, key, bytes, ...classifyKey(config.keyPrefix, key) });
   // The reel's size, on the job span and every step span (a photo job has none).
@@ -88,6 +88,13 @@ export async function processJob(
     ? createReelSizeHolder(await readReelSize(db, job.reel_id))
     : undefined;
   const { span, context: jobContext } = startJobSpan(telemetry, job, size);
+  // Every read and write of the job is an `r2.get` or `r2.put` span under the
+  // step or stage that made it (the job's span outside any step), and every
+  // write is recorded.
+  const storage = recordingStorage(
+    tracedStorage(rawStorage, { telemetry, keyPrefix: config.keyPrefix, fallback: jobContext }),
+    { records, target, keyPrefix: config.keyPrefix },
+  );
   let outcome: JobOutcome = "failed";
   try {
     outcome = await withKeepAwake(() =>

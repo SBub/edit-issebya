@@ -5,7 +5,13 @@ import { ROOT_CONTEXT, SpanStatusCode, trace } from "@opentelemetry/api";
 import { InMemoryLogRecordExporter, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { FROZEN_CLOCK, TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
+import {
+  FROZEN_CLOCK,
+  TEST_JOB,
+  type StepCall,
+  recordingSteps,
+  stepContext,
+} from "./recording-steps.ts";
 import {
   type ChildRun,
   type SpawnTool,
@@ -15,9 +21,10 @@ import {
   runStep,
   runToolsStep,
 } from "./step-runner.ts";
-import { createTelemetry } from "./telemetry.ts";
+import type { StepStore } from "./step-store.ts";
+import { type Telemetry, createTelemetry } from "./telemetry.ts";
 import type { ErrorTracker, StepFailedInput } from "./error-tracking.ts";
-import { AiUnavailable, TransientError } from "./failure.ts";
+import { AiUnavailable, PermanentError, TransientError, permanentAfterAiCall } from "./failure.ts";
 
 // Real child processes under /usr/bin/time: Node itself is the tool.
 const NODE = process.execPath;
@@ -463,14 +470,14 @@ describe("runToolsStep AI usage and StepError", () => {
   });
 });
 
-describe("runToolsStep arithmetic", () => {
-  // A `/usr/bin/time` report in this platform's format, with exact values.
-  function timeReport(user: string, sys: string, bytes: number): string {
-    return process.platform === "darwin"
-      ? `        1.00 real         ${user} user         ${sys} sys\n${bytes}  maximum resident set size\n`
-      : `\tUser time (seconds): ${user}\n\tSystem time (seconds): ${sys}\n\tMaximum resident set size (kbytes): ${bytes / 1024}\n`;
-  }
+// A `/usr/bin/time` report in this platform's format, with exact values.
+function timeReport(user: string, sys: string, bytes: number): string {
+  return process.platform === "darwin"
+    ? `        1.00 real         ${user} user         ${sys} sys\n${bytes}  maximum resident set size\n`
+    : `\tUser time (seconds): ${user}\n\tSystem time (seconds): ${sys}\n\tMaximum resident set size (kbytes): ${bytes / 1024}\n`;
+}
 
+describe("runToolsStep arithmetic", () => {
   function run(code: number, report: string, groupPeakBytes: number): ChildRun {
     const output = code === 0 ? "ok\n" : "not found\n";
     return { code, exitSignal: null, report, output, stdout: output, groupPeakBytes };
@@ -529,6 +536,255 @@ describe("runToolsStep arithmetic", () => {
       call: "failed",
       measurements: { cpu_ms: null, peak_rss_bytes: null },
     });
+  });
+});
+
+describe("a failed step's wall time", () => {
+  // The clock the test moves: the steps read it, and each fake call advances it.
+  function movingClock() {
+    let now = 0;
+    return { clock: () => now, advance: (ms: number) => void (now += ms) };
+  }
+  type Clock = ReturnType<typeof movingClock>;
+
+  // Each fake call advances the clock by its own milliseconds, then returns its run.
+  function timedSpawn(time: Clock, runs: Array<[number, ChildRun]>): SpawnTool {
+    return () => {
+      const next = runs.shift();
+      if (!next) throw new Error("no more runs");
+      time.advance(next[0]);
+      return Promise.resolve(next[1]);
+    };
+  }
+
+  const exited = (code: number | null, exitSignal: NodeJS.Signals | null = null): ChildRun => ({
+    code,
+    exitSignal,
+    report: "",
+    output: code === 0 ? "ok\n" : "boom\n",
+    stdout: "",
+    groupPeakBytes: null,
+  });
+
+  // decide's shape: a nested step (the cut-out) runs inside the outer step's work.
+  function nestedStep(
+    steps: StepStore,
+    time: Clock,
+    spawnTool: SpawnTool,
+    telemetry?: Telemetry,
+    outputs?: string[],
+  ) {
+    return runToolsStep(
+      stepContext(steps, { clock: time.clock, telemetry }),
+      {
+        name: "cutout",
+        outputs,
+        sizeOf: "out",
+        async work(tool) {
+          await tool({ file: "mask", args: [] });
+          return { what: "masked" };
+        },
+      },
+      spawnTool,
+    );
+  }
+
+  type Failed = Extract<StepCall, { call: "failed" }>;
+  function failedRows(calls: StepCall[], name: string): Failed[] {
+    return calls.filter(
+      (call): call is Failed => call.call === "failed" && call.summary.startsWith(`${name} failed`),
+    );
+  }
+
+  it("counts a nested step's time in the failed step's wall time", async () => {
+    const time = movingClock();
+    const { steps, calls } = recordingSteps();
+    // The cut-out runs twice (its one retry), 500 ms then 300 ms, and fails.
+    const spawnTool = timedSpawn(time, [
+      [500, exited(null, "SIGKILL")],
+      [300, exited(1)],
+    ]);
+    await expect(
+      runToolsStep(
+        stepContext(steps, { clock: time.clock }),
+        {
+          name: "decide",
+          async work() {
+            time.advance(1000);
+            await nestedStep(steps, time, spawnTool).catch(permanentAfterAiCall);
+            return { what: "never" };
+          },
+        },
+        spawnTool,
+      ),
+    ).rejects.toThrow(/cutout exited with 1/);
+    expect(failedRows(calls, "decide").map((row) => row.measurements.wall_ms)).toEqual([1800]);
+    expect(failedRows(calls, "cutout").map((row) => row.measurements.wall_ms)).toEqual([500, 300]);
+  });
+
+  it("keeps a failed step's CPU and memory to its own calls, not a nested step's", async () => {
+    const time = movingClock();
+    const { steps, calls } = recordingSteps();
+    const own: ChildRun = {
+      ...exited(0),
+      report: timeReport("0.40", "0.12", 300 * MB),
+      groupPeakBytes: 200 * MB,
+    };
+    const nestedRun: ChildRun = {
+      ...exited(1),
+      report: timeReport("9.00", "0.99", 900 * MB),
+      groupPeakBytes: 999 * MB,
+    };
+    const spawnTool = timedSpawn(time, [
+      [400, own],
+      [200, nestedRun],
+    ]);
+    // The cut-out's file is on disk when it fails: decide's row must not count it.
+    const cutout = join(dir, "cutout-written.mp4");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
+    await writeFile(cutout, Buffer.alloc(4096, 1));
+    await expect(
+      runToolsStep(
+        stepContext(steps, { clock: time.clock }),
+        {
+          name: "decide",
+          async work(tool) {
+            await tool({ file: "decide-tool", args: [] });
+            await nestedStep(steps, time, spawnTool, undefined, [cutout]).catch(
+              permanentAfterAiCall,
+            );
+            return { what: "never" };
+          },
+        },
+        spawnTool,
+      ),
+    ).rejects.toThrow(/cutout exited with 1/);
+    const [row] = failedRows(calls, "decide");
+    expect(row?.measurements).toMatchObject({
+      wall_ms: 600,
+      cpu_ms: 520,
+      peak_rss_bytes: 300 * MB,
+      bytes_out: null,
+    });
+    expect(failedRows(calls, "cutout")[0]?.measurements.bytes_out).toBe(4096);
+  });
+
+  it("measures a failed call to the end of the step when its work goes on after the call", async () => {
+    const time = movingClock();
+    const { steps, calls } = recordingSteps();
+    const spawnTool = timedSpawn(time, [[400, exited(1)]]);
+    await expect(
+      runToolsStep(
+        stepContext(steps, { clock: time.clock }),
+        {
+          name: "decide",
+          async work(tool) {
+            try {
+              await tool({ file: "decide-tool", args: [] });
+            } catch (error) {
+              time.advance(250);
+              throw permanentAfterAiCall(error);
+            }
+            return { what: "never" };
+          },
+        },
+        spawnTool,
+      ),
+    ).rejects.toThrow(/exited with 1/);
+    expect(failedRows(calls, "decide").map((row) => row.measurements.wall_ms)).toEqual([650]);
+  });
+
+  it("gives each failed attempt its own whole duration, after a retry and nested work", async () => {
+    const time = movingClock();
+    const { steps, calls } = recordingSteps();
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    // Attempt 1: the cut-out runs twice, 1000 ms each, and both are killed (transient).
+    // Attempt 2 starts later and fails at once.
+    const spawnTool = timedSpawn(time, [
+      [1000, exited(null, "SIGKILL")],
+      [1000, exited(null, "SIGKILL")],
+    ]);
+    let attempts = 0;
+    await expect(
+      runToolsStep(
+        stepContext(steps, { clock: time.clock, telemetry }),
+        {
+          name: "decide",
+          async work() {
+            attempts += 1;
+            if (attempts === 1) {
+              time.advance(100);
+              // A transient cause, as decide's own wrapper keeps it.
+              await nestedStep(steps, time, spawnTool, telemetry).catch((error: unknown) => {
+                throw new Error("cut-out failed", { cause: error });
+              });
+            }
+            time.advance(218);
+            throw new PermanentError("decide refused");
+          },
+        },
+        spawnTool,
+      ),
+    ).rejects.toThrow("decide refused");
+    expect(attempts).toBe(2);
+    expect(failedRows(calls, "decide").map((row) => row.measurements.wall_ms)).toEqual([2100, 218]);
+    const spans = exporter
+      .getFinishedSpans()
+      .filter((span) => span.name === "step decide")
+      .sort((a, b) => Number(a.attributes["step.attempt"]) - Number(b.attributes["step.attempt"]));
+    expect(spans.map((span) => span.attributes["step.wall_ms"])).toEqual([2100, 218]);
+  });
+});
+
+describe("a step's span lasts its wall time", () => {
+  function tracedSteps() {
+    const exporter = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      { spanProcessors: [new SimpleSpanProcessor({ exporter })] },
+    );
+    return { telemetry, exporter };
+  }
+
+  // The duration of a finished span, in milliseconds.
+  const spanMs = (span: { startTime: [number, number]; endTime: [number, number] }) =>
+    (span.endTime[0] - span.startTime[0]) * 1000 + (span.endTime[1] - span.startTime[1]) / 1e6;
+
+  it("ends a failed attempt's span at its row's wall time", async () => {
+    const { telemetry, exporter } = tracedSteps();
+    const time = { now: 0, clock: () => time.now };
+    const { steps, calls } = recordingSteps();
+    await expect(
+      runToolsStep(stepContext(steps, { clock: time.clock, telemetry }), {
+        name: "upload",
+        async work() {
+          time.now += 1250;
+          throw new PermanentError("R2 refused");
+        },
+      }),
+    ).rejects.toThrow("R2 refused");
+    const failed = calls.find((call) => call.call === "failed");
+    const span = exporter.getFinishedSpans().find((s) => s.name === "step upload");
+    expect(failed?.call === "failed" && failed.measurements.wall_ms).toBe(1250);
+    expect(span && spanMs(span)).toBeCloseTo(1250, 0);
+  });
+
+  it("ends a cache hit's span at its skipped row's wall time", async () => {
+    const { telemetry, exporter } = tracedSteps();
+    const { steps, calls } = recordingSteps();
+    await recordHit(stepContext(steps, { telemetry }), {
+      name: "cutout",
+      summary: "reused",
+      wallMs: 150,
+    });
+    const skipped = calls.find((call) => call.call === "skipped");
+    const span = exporter.getFinishedSpans().find((s) => s.name === "step cutout");
+    expect(skipped?.call === "skipped" && skipped.wallMs).toBe(150);
+    expect(span && spanMs(span)).toBeCloseTo(150, 0);
   });
 });
 

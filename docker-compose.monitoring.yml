@@ -1,6 +1,7 @@
 # Local monitoring for the worker, started by `yarn dev:studio`. One container
 # holds Grafana (the UI), Tempo (traces), Loki (logs) and Prometheus (metrics) and takes
-# OpenTelemetry over OTLP/HTTP. The studio does not need it to run. Stop it with
+# OpenTelemetry over OTLP/HTTP. A second one (cAdvisor) measures the containers. The studio
+# does not need either to run. Stop them with
 # `docker compose -f docker-compose.monitoring.yml down`.
 # One Compose project name for every checkout of the repo: a checkout in another folder would
 # otherwise start a second stack and fight over ports 3300 and 4318. One stack per machine.
@@ -15,10 +16,58 @@ services:
       # OTLP over HTTP: the worker posts traces to /v1/traces and logs to /v1/logs here.
       # 4317 (gRPC) is not published; the worker speaks HTTP.
       - "127.0.0.1:4318:4318"
+    environment:
+      # The Infinity data source plugin, a pinned version (grafana.com/grafana/plugins; its
+      # dependency range covers the image's Grafana 13.3.0). Grafana downloads it from grafana.com
+      # in the background after it starts (about 25 seconds on the first start), into
+      # /data/grafana/plugins on the volume below, so the network is needed once. Without the
+      # network the container still runs and records; only the dashboard's trace tables wait.
+      # Not GF_PLUGINS_PREINSTALL_SYNC: a failed download then stops Grafana and the container.
+      # The image appends its own plugin to this list (run-grafana.sh).
+      # The "Worker resources" dashboard reads a reel's whole trace through the plugin
+      # (monitoring/grafana/datasources.yaml).
+      GF_PLUGINS_PREINSTALL: yesoreyeram-infinity-datasource@4.1.6
     # The backends keep their data under /data (Loki, Tempo, Prometheus and Grafana each have a
     # folder there), so it survives a restart. `down -v` deletes it.
     volumes:
       - otel-lgtm-data:/data
+      # The image's Prometheus config plus one scrape job: cAdvisor below.
+      - ./monitoring/prometheus.yaml:/otel-lgtm/prometheus.yaml:ro
+      # Dashboards stored in the repository: the provider file, beside the image's own, and the
+      # folder of dashboard JSON files it loads (monitoring/grafana/dashboards).
+      - ./monitoring/grafana/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/edit-issebya.yaml:ro
+      - ./monitoring/grafana/dashboards:/etc/edit-issebya/dashboards:ro
+      # One more data source, beside the image's own: Tempo's trace JSON through the Infinity plugin.
+      - ./monitoring/grafana/datasources.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/edit-issebya.yaml:ro
+
+  # Container metrics (CPU, throttling, memory, OOM kills, disk and network bytes) for every
+  # container of the machine, the worker and the Supabase database among them. Prometheus in the
+  # container above scrapes it over the Compose network; no host port is published.
+  # On a Mac it measures Docker Desktop's Linux VM, never macOS (app_docs/measurement.md).
+  cadvisor:
+    # A pinned release, never latest (`docker manifest inspect`: it has a linux/arm64 image).
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
+    command:
+      # Containers only, no system cgroups.
+      - --docker_only=true
+      - --housekeeping_interval=10s
+      # Only what the dashboard reads: cpu, memory, diskIO, network and oom_event stay on.
+      - --disable_metrics=advtcp,cpu_topology,cpuset,disk,hugetlb,memory_numa,percpu,perf_event,process,referenced_memory,resctrl,sched,tcp,udp
+      # No container label or env value becomes a metric label; the container name is enough.
+      - --store_container_labels=false
+    privileged: true
+    devices:
+      # Where the kernel reports OOM kills.
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      # The socket itself: Docker Desktop's VM has no socket under its own /var/run.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Docker keeps its images in containerd here (the containerd image store), and cAdvisor
+      # asks containerd for each container's writable layer.
+      - /run/containerd/containerd.sock:/run/containerd/containerd.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
 
 volumes:
   otel-lgtm-data:

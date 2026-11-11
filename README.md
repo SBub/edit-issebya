@@ -66,7 +66,7 @@ local auth: `yarn dev:studio add-owner <email>` creates it as a confirmed user t
 Auth admin API (it refuses any host but `127.0.0.1` and `localhost`). Then sign in with that email;
 the link arrives in Mailpit.
 
-To watch the worker's traces and logs in a local Grafana, see [the monitoring section](app_docs/measurement.md#local-monitoring).
+To watch the worker's traces and logs in a local Grafana, see [the monitoring section](app_docs/measurement.md#local-monitoring); for what each step uses of the CPU, memory, disk and network, see [resource metrics](app_docs/measurement.md#resource-metrics).
 
 ADW runs use their own local stack (`edit-issebya-adw`, ports 54450 to 54459, see
 `app_docs/adw-supabase-stack.md`), which the command never touches.
