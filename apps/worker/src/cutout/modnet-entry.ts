@@ -3,14 +3,18 @@
 // worker's Node as one tool call of the `cutout` step.
 //
 //   modnet-entry --input <mp4> --start <s> --end <s> --output <mp4>
-//                --model <onnx> --ffmpeg <path> --ffprobe <path>
+//                --crop-top <px> --threads <n> --model <onnx>
+//                --ffmpeg <path> --ffprobe <path>
 //
 // Checks the model against its pinned SHA-256, then streams: ffmpeg decodes
-// the span's frames to RGB at MODNet's working size, each frame goes through
-// the model, its matte through a 3-frame temporal median, and a second ffmpeg
-// scales the mattes to the footage's size and writes them as grayscale H.264
+// the span's frames to RGB at the working size, without the rows above the
+// crop (`--crop-top`, in the head track's 1920-high pixels; 0 is the whole
+// frame), each frame goes through the model, its matte through a 3-frame
+// temporal median, and a second ffmpeg scales the mattes back to their rows of
+// the footage, fills the rows above them black and writes grayscale H.264
 // (white = person). Frame i of the mask is the footage frame at start + i / fps.
-// At most three mattes are held at a time. Written to <output>.part, renamed
+// The model runs on `--threads` intra-op threads (the step shares the CPUs
+// out between the spans it runs at once; the two ffmpegs keep their own). At most three mattes are held at a time. Written to <output>.part, renamed
 // to <output> once finished. One `@hf-progress {"index","total","pct"}` line
 // per frame on stdout; any failure exits non-zero with one `modnet: ...` line.
 import { type ChildProcess, execFile, spawn } from "node:child_process";
@@ -23,11 +27,11 @@ import {
   TemporalMedian,
   decodeArgs,
   encodeArgs,
+  matteRegion,
   matteToGray,
   modelInput,
   parseFrameRate,
   spanFrames,
-  workingSize,
 } from "./matte.ts";
 import { verifyModel } from "./modnet-model.ts";
 
@@ -38,12 +42,24 @@ interface Options {
   start: number;
   end: number;
   output: string;
+  cropTop: number;
+  threads: number;
   model: string;
   ffmpeg: string;
   ffprobe: string;
 }
 
-const NAMES = ["--input", "--start", "--end", "--output", "--model", "--ffmpeg", "--ffprobe"];
+const NAMES = [
+  "--input",
+  "--start",
+  "--end",
+  "--output",
+  "--crop-top",
+  "--threads",
+  "--model",
+  "--ffmpeg",
+  "--ffprobe",
+];
 
 function parseOptions(argv: string[]): Options {
   const flags = new Map<string, string>();
@@ -59,11 +75,21 @@ function parseOptions(argv: string[]): Options {
   const end = Number(flags.get("--end"));
   if (!Number.isFinite(start) || start < 0) throw new Error(`bad --start ${flags.get("--start")}`);
   if (!Number.isFinite(end) || end <= start) throw new Error("--end must be after --start");
+  const cropTop = Number(flags.get("--crop-top"));
+  if (!Number.isInteger(cropTop) || cropTop < 0) {
+    throw new Error(`bad --crop-top ${flags.get("--crop-top")}`);
+  }
+  const threads = Number(flags.get("--threads"));
+  if (!Number.isInteger(threads) || threads < 1) {
+    throw new Error(`bad --threads ${flags.get("--threads")}`);
+  }
   return {
     input: flags.get("--input")!,
     start,
     end,
     output: flags.get("--output")!,
+    cropTop,
+    threads,
     model: flags.get("--model")!,
     ffmpeg: flags.get("--ffmpeg")!,
     ffprobe: flags.get("--ffprobe")!,
@@ -112,10 +138,14 @@ function exited(child: ChildProcess): Promise<number | null> {
 async function makeMask(options: Options): Promise<void> {
   await verifyModel(options.model);
   const footage = await probe(options.ffprobe, options.input);
-  const matte = workingSize(footage.width, footage.height);
+  const region = matteRegion(footage.width, footage.height, options.cropTop);
+  const { matte } = region;
   const total = spanFrames(options.start, options.end, footage.fps);
   const session = await InferenceSession.create(options.model, {
     executionProviders: [MATTE_SETTINGS.provider],
+    // One frame at a time on this many threads; nothing runs between operators.
+    intraOpNumThreads: options.threads,
+    interOpNumThreads: 1,
   });
   const [inputName] = session.inputNames;
   const [outputName] = session.outputNames;
@@ -131,12 +161,19 @@ async function makeMask(options: Options): Promise<void> {
       frames: total,
       fps: footage.fps,
       ...matte,
+      region,
     }),
     { stdio: ["ignore", "pipe", "pipe"] },
   );
   const encoder = spawn(
     options.ffmpeg,
-    encodeArgs({ output: part, rate: footage.rate, matte, footage }),
+    encodeArgs({
+      output: part,
+      rate: footage.rate,
+      matte,
+      footage,
+      region,
+    }),
     { stdio: ["pipe", "ignore", "pipe"] },
   );
   const decoderError = stderrOf(decoder);

@@ -44,8 +44,17 @@ container's CPU, memory, disk and network are measured too and shown above a ree
   every second (and once after the spawn), sums the RSS of the tool and all its descendants and keeps
   the peak. `peak_rss_bytes` is the larger of that peak and the report's max RSS. Without the option
   it is the largest single process. Meant for the render's long-lived browser processes: the
-  export's `render` step is the step that uses it (HyperFrames runs Chrome workers and an encoder);
-  see `app_docs/export.md`.
+  export's `render` step uses it (HyperFrames runs Chrome workers and an encoder; see
+  `app_docs/export.md`), and so does each span call of the `cutout` step (the MODNet entry and its
+  two ffmpegs, of which the encoder alone is the largest single process).
+- A step's calls may run at the same time (the `cutout` step's spans, `app_docs/pipeline.md`). The
+  row is measured the same way: `wall_ms` is the step's own clock from its start to its end (not a
+  sum of the calls), `cpu_ms` is still the sum of every call's CPU (so it can be several times
+  `wall_ms`), and `peak_rss_bytes` is the largest total of the peaks of calls that were running at
+  the same moment (`concurrentPeak` in `step-runner.ts`): the largest single call when they run
+  one after the other, as before, and the calls together when they overlap. Each call is taken at
+  its own peak, so for overlapping calls the number is an upper bound. A failed call's row counts
+  the calls that ended beside it. Each `exec` span keeps its own call's numbers.
 - `src/summary.ts`: `stepSummary` gives `<what>, <duration in words>, <size>`, for example
   `background removed, 6 minutes 47 seconds, 51.0 MB` (`formatBytes`, one decimal, 1024 convention;
   durations under a second read `under a second`, hours drop the seconds, zero parts are omitted).
@@ -64,13 +73,14 @@ container's CPU, memory, disk and network are measured too and shown above a ree
 
 ### Telemetry (`apps/worker/src/telemetry.ts`)
 
-- `createTelemetry(env)` builds a tracer and a logger provider per worker process (created in `once.ts`
+- `createTelemetry(env)` builds a tracer, a logger and a meter provider per worker process (created in `once.ts`
   and `main.ts`, passed down, flushed with `shutdown()` before exit). It reads only
   `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,k2=v2`, values URL-decoded) and
-  `OTEL_SERVICE_NAME` (default `edit-issebya-worker`). It exports to `<endpoint>/v1/traces` and
-  `<endpoint>/v1/logs` whenever the endpoint is set. The headers are optional: a local collector needs
-  none, and an empty value sends none. Without an endpoint the providers have no processor and nothing
-  is exported or fails.
+  `OTEL_SERVICE_NAME` (default `edit-issebya-worker`). It exports to `<endpoint>/v1/traces`,
+  `<endpoint>/v1/logs` and `<endpoint>/v1/metrics` (the cut-out speed, below) whenever the endpoint is
+  set. The headers are optional: a local collector needs
+  none, and an empty value sends none. Without an endpoint the providers have no processor or reader and
+  nothing is exported or fails.
 - `traceIdForReel(uuid)`: the reel uuid without dashes, lowercased. `startJobSpan` starts the span
   `job <kind>` as a root span (no parent span id) in that trace: `startRootSpan` passes `root: true`
   and a trace id pinned for that one call to the SDK's id generator (`PinnableIdGenerator`, which
@@ -270,7 +280,9 @@ own span with error status; the step's failure is one ERROR record, `relayout fa
 and `step.name` `relayout`, as for every step. Relayout makes no AI call, so there is no `chat` span.
 
 The cut-out step span (`step cutout`, from decide or relayout) carries `cutout.made` and `cutout.reused`:
-the masks this call made and the stored masks it reused. A cache hit has `cutout.made` 0.
+the masks this call made and the stored masks it reused. A cache hit has `cutout.made` 0. A step that
+makes masks also carries `cutout.parallel`, how many span calls it ran at a time (`cutoutPool`); its
+`exec modnet-entry` spans overlap under it, one per span made.
 
 ### AI calls (`chat` spans)
 
@@ -330,7 +342,8 @@ took the time.
 - Other attributes: `step.name`; `edit_issebya.exec.subcommand` (the first argument after the script
   when it is a plain lower-case word, such as `transcribe`; a path or a flag never is);
   `edit_issebya.exec.cpu_ms` and `edit_issebya.exec.peak_rss_bytes` (this call's own report, read the
-  way the step row reads it, so the step's CPU is the sum of its calls' and its peak the largest);
+  way the step row reads it, so the step's CPU is the sum of its calls' and its peak the largest,
+  or the total of the calls that ran at the same time);
   `edit_issebya.exec.stdout_bytes` (the stdout the call returned, UTF-8 bytes, capped as the call
   returns it); `edit_issebya.exec.signal` when a signal ended the call.
 - Errors: a call the abort ended (`error.type` `aborted`), one that could not be spawned (`spawn_error`,
@@ -536,6 +549,55 @@ start and `idle` at the end (drawn transparent), and the rows are split by step 
 where the step stopped, not where the next one starts. A step colour on the timeline comes from the
 dashboard's list of step names (`resource-dashboard.test.ts` fails when a step name has none).
 
+### Cut-out speed
+
+How fast the on-demand cut-out runs: seconds of work per second of video it cuts out. Local
+development only, like the rest of the resource metrics.
+
+What is recorded (`apps/worker/src/cutout/speed.ts`, `ensureCutouts`): when a `cutout` step succeeds
+and made at least one mask, two OpenTelemetry counters, both in seconds, both with the attribute
+`mask_tool_version` (the mask tool's `MASK_TOOL_VERSION` as a string: 2 is the fp32 tool, 3 the int8
+tool):
+
+- `cutout.video`: the footage the made masks cover, the made spans' lengths added up.
+- `cutout.work`: the wall time of the step that made them.
+
+A reused mask costs nothing and adds nothing. A failed step adds nothing: its counters stay at the
+zero they started at. The step span carries `cutout.video_ms`, the same footage in milliseconds.
+
+Where it goes: Prometheus, through the OTLP metrics endpoint (`<endpoint>/v1/metrics`, the trace
+exporter's headers, a periodic reader every 10 seconds, sent once more at shutdown so a one-shot
+process keeps its last value). It is not in the database, on purpose: the owner keeps the speed as a
+metric, so there is no table, no column and no product event for it. The otel-lgtm collector hands
+OTLP metrics to Prometheus's OTLP receiver, which names them (Prometheus 3.15.1, its default OTLP
+translation: dots become underscores, the unit `s` becomes `seconds`, a counter gets `_total`):
+
+- `cutout_video_seconds_total` and `cutout_work_seconds_total`, label `mask_tool_version`.
+
+Each step that makes masks first adds zero to both counters and flushes them, so Prometheus has a
+baseline to take the increase from; without it a one-shot process has one sample and the increase
+is empty. The series of a version exist from its first cut-out.
+
+Retention: Prometheus in the otel-lgtm container keeps 15 days, its default (`storageRetention`
+reads `15d` on the running container). Older speed is gone unless the volume is kept elsewhere.
+
+The chart: "Cut-out speed", `monitoring/grafana/dashboards/cutout-speed.json`, uid `cutout-speed`.
+Open `http://localhost:3300/d/cutout-speed`; the default range is the last 7 days.
+
+- One time series per version (the legend's `tool v3`): `increase(cutout_work_seconds_total[$__rate_interval])`
+  over `increase(cutout_video_seconds_total[$__rate_interval])`, per `mask_tool_version`. The unit is
+  seconds of work per second of video. Lower is better: the same footage takes less time. A gap means
+  no cut-out made masks in that window.
+- The annotation "Mask tool version first seen" marks the first step of each version's series. It is
+  a Prometheus annotation: true at the first step after a version's earliest sample in the last 15
+  days, so one mark per version, not one per scrape. It needs Grafana's annotation step to equal the
+  dashboard interval (`$__interval_ms`, Grafana's default). A version that is quiet for the whole 15
+  days and then reports again is marked again.
+
+The dashboard is a provisioned file: Grafana reads it within 10 seconds of the file appearing, and no
+container restarts for it. The worker needs its new code (the worker container's image, rebuilt, or
+the host worker restarted) before the counters exist.
+
 ## Configuration
 
 - Worker: `OTEL_EXPORTER_OTLP_ENDPOINT` turns export on; `OTEL_EXPORTER_OTLP_HEADERS` is optional
@@ -575,7 +637,7 @@ dashboard's list of step names (`resource-dashboard.test.ts` fails when a step n
   reading the whole trace by id, each step's explicit end on the timeline and a row per step name, a
   colour per step name, the span attributes it reads). The metrics themselves are checked by hand, see Notes.
 - Tool calls: `step-runner.test.ts` (`exec spans`: one span per call under the step, the row's CPU and
-  peak equal to the calls', a script's name and subcommand with no path, the parent a call names, a
+  peak equal to the calls'; `runToolsStep`: calls run at the same time counted together in the peak; a script's name and subcommand with no path, the parent a call names, a
   non-zero exit, a spawn error, an abort, no exporter).
 - Studio unit tests: `src/lib/analytics.test.ts`, `src/lib/track.test.ts`.
 - DB test: `db-tests/steps-measurements.test.ts` pins the exact column set of `steps`, so a money column
@@ -618,6 +680,8 @@ dashboard's list of step names (`resource-dashboard.test.ts` fails when a step n
 - Never use `latest` for a monitoring image, and never edit a provisioned dashboard only in the
   Grafana UI: the JSON file in `monitoring/grafana/dashboards/` is the source.
 - Never publish cAdvisor's port to the host: it reads every container of the machine.
+- Never store the cut-out speed in the database or as a product event: it is a metric
+  (`cutout.video`, `cutout.work`, Prometheus) and a dashboard reads it.
 - Never put a tool call's command line, its arguments, its stdin or its environment on its `exec`
   span: the executable's base name, the argument count, a plain-word subcommand and the measurements
   only. A prompt, a schema, an answer or a reel's path never reaches a span.

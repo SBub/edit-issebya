@@ -249,7 +249,7 @@ describe("runRender with a behind big word", () => {
   // The fixture edit with one big word behind the speaker over its whole speech,
   // and its mask stored. A VISUAL would name no file; a big word has a mask.
   beforeEach(async () => {
-    const { edit, transcript } = await fixtureEdit();
+    const { edit, transcript, headTrack } = await fixtureEdit();
     const behind = withMasks(
       {
         ...edit,
@@ -269,6 +269,7 @@ describe("runRender with a behind big word", () => {
         },
       },
       transcript,
+      headTrack,
     );
     await storage.put(version.r2_key, editBytes(behind));
     version = { ...version, inputs: behind.inputs };

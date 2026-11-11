@@ -227,8 +227,8 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   (`apps/studio/e2e-tools/export-matches-preview.spec.ts`), on the owner's Mac only, against the
   run's servers, never in CI.
 - Acceptance: every guardrail frame, every frame of the photo behind the speaker (a library photo
-  in the `top` spot over the whole speech, cut out with the real MODNet mask tool, its model installed
-  by `yarn workspace @edit-issebya/worker models:install`) and every frame of one
+  in the `top` spot over the whole speech, cut out with the real MODNet mask tool, its model committed
+  at `apps/worker/models/`) and every frame of one
   big word behind the speaker (`WORK`, a second version over the same span, since the fixture's
   speech is too short for both in one version) scores at or above `PREVIEW_EXPORT_SSIM_BOUND`
   (0.9855), and each case's probe (a caption, or the photo, moved by 60 px) scores at least one

@@ -30,20 +30,6 @@ RUN wget -q -O /ggml-small.bin \
       "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REVISION}/ggml-small.bin" \
  && echo "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b  /ggml-small.bin" | sha256sum -c -
 
-# The cut-out's MODNet model, fetched from the URL and checked against the size and
-# SHA-256 that apps/worker/src/cutout/modnet-model.ts pins (the same file
-# `models:install` downloads). In the image, so production needs no model volume.
-FROM node:24-trixie-slim AS modnet
-ARG MODNET_URL="https://drive.usercontent.google.com/download?id=1cgycTQlYXpTh26gB9FTnthE7AvruV8hd&export=download&confirm=t"
-ARG MODNET_SHA256=07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9
-ARG MODNET_BYTES=25888640
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates wget \
- && rm -rf /var/lib/apt/lists/*
-RUN wget -q -O /modnet.onnx "${MODNET_URL}" \
- && test "$(stat -c %s /modnet.onnx)" = "${MODNET_BYTES}" \
- && echo "${MODNET_SHA256}  /modnet.onnx" | sha256sum -c -
-
 FROM node:24-trixie-slim AS runtime
 # ffmpeg 7 (ffprobe's -show_stream_groups for HEIC photos); procps (ps, the
 # process-tree memory sample); time (/usr/bin/time, the step measurements); the
@@ -62,10 +48,6 @@ ENV HOME=/home/node \
 RUN mkdir -p /home/node/.cache/hyperframes/whisper/models /scratch \
  && chown -R node:node /home/node /scratch
 COPY --from=model --chown=node:node /ggml-small.bin /home/node/.cache/hyperframes/whisper/models/ggml-small.bin
-# The MODNet model at WORKER_MODELS_DIR (compose sets the same value, so a line in
-# the env file never points the container at a Mac path).
-ENV WORKER_MODELS_DIR=/opt/edit-issebya/models
-COPY --from=modnet /modnet.onnx /opt/edit-issebya/models/modnet_photographic_portrait_matting.onnx
 
 # The worker's workspace and its two packages, with their dependencies only: the
 # lockfile and every workspace's manifest, then `yarn workspaces focus`. It installs
@@ -81,6 +63,8 @@ COPY packages/edit/package.json packages/edit/
 COPY packages/storage/package.json packages/storage/
 RUN yarn workspaces focus @edit-issebya/worker
 
+# The worker's source, and with it the cut-out's MODNet model and its notice
+# (apps/worker/models, committed; the cut-out checks its SHA-256 before each run).
 COPY apps/worker apps/worker
 COPY packages/edit packages/edit
 COPY packages/storage packages/storage

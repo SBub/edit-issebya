@@ -80,39 +80,97 @@ balanced`), which prints per-frame progress (`app_docs/status.md`) and ends with
   unchanged). Zero frames or a trailing partial frame fails the step.
 - The on-demand cut-out (`apps/worker/src/cutout/`): `ensure-cutouts.ts` makes the person mask of
   each padded span of an edit's big words (`behind` items behind the speaker; a VISUAL needs none)
-  that is not stored yet, in one measured `cutout` step, one tool call per span.
-  The tool is MODNet portrait matting (the official `modnet_photographic_portrait_matting.onnx` of
-  ZHKKKe/MODNet, Apache 2.0 code and weights) run through `onnxruntime-node` on the CPU, on any OS
-  (Linux and Docker included): `mask-tool.ts` (`maskToolCall`, `MASK_TOOL_VERSION` 2) runs this
-  Node on `modnet-entry.ts` with `--input --start --end --output --model --ffmpeg --ffprobe`.
+  that is not stored yet, in one measured `cutout` step, one tool call per span, several spans at
+  the same time (the pool, below).
+  The tool is MODNet portrait matting (ZHKKKe/MODNet, Apache 2.0 code and weights, its weights
+  quantised to int8, see the model below) run through `onnxruntime-node` on the CPU, on any OS
+  (Linux and Docker included): `mask-tool.ts` (`maskToolCall`, `MASK_TOOL_VERSION` 3) runs this
+  Node on `modnet-entry.ts` with `--input --start --end --output --crop-top --threads --model
+--ffmpeg --ffprobe`.
   The entry checks the model's SHA-256, probes the footage's size and frame rate, and streams:
   ffmpeg decodes exactly `round((end - start) * fps)` frames from the span's first frame (seeking a
-  quarter frame early, `-frames:v`) to raw RGB at MODNet's working size (`workingSize` in
-  `matte.ts`: the short side 512, both sides rounded down to multiples of 32, the aspect kept, area
-  scaling, so 1080x1920 and 720x1280 run at 512x896); each frame is normalised to -1 to 1 (NCHW
+  quarter frame early, `-frames:v`) to raw RGB at the working size (`workingSize` in
+  `matte.ts`: the short side 384, both sides rounded down to multiples of 32, the aspect kept, area
+  scaling, so 1080x1920 and 720x1280 run at 384x672 uncropped; MODNet's own reference is 512, and
+  384 is about 1.7 times faster with masks that look the same), without the rows above the crop
+  (below); each frame is normalised to -1 to 1 (NCHW
   float32) and run; the matte (0 to 1) becomes 8-bit gray, goes through a 3-frame per-pixel
   temporal median (`TemporalMedian`: frame i is the median of frames i - 1, i, i + 1, the first and
   last unchanged; it removes one-frame flicker without the lag a moving average leaves on motion;
-  one frame of delay, three mattes held) and into a second ffmpeg, which scales it to the footage's
-  size (bicubic) and writes the mask: H.264 High `yuv420p`, full-range gray mapped to video range
+  one frame of delay, three mattes held) and into a second ffmpeg, which scales it to its rows of
+  the footage (bicubic), fills the rows above the crop black (background, `pad`), and writes the
+  mask at the footage's size: H.264 High `yuv420p`, full-range gray mapped to video range
   (white = person, chroma neutral), BT.709 tags, crf 12, a keyframe every second, frame i at
   i / fps, the span's frame count. The same format, keys and layout the Apple Vision tool (`vseg`,
   removed) wrote, so the builder, the preview and the export read it unchanged. Written to
   `<output>.part`, renamed when done; one `@hf-progress` line per frame (`app_docs/status.md`); any
-  failure exits 1 with one `modnet: ...` line. About 8 s per second of footage on an M3's CPU.
-- The MODNet model (`apps/worker/src/cutout/modnet-model.ts`, `MODNET_MODEL`): pinned by URL (the
-  official Google Drive file the MODNet ONNX README links), size (25,888,640 bytes) and SHA-256
-  (`07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9`). Never committed, never
-  downloaded at job time: `yarn workspace @edit-issebya/worker models:install`
-  (`src/models-install.ts`) downloads it once into `WORKER_MODELS_DIR` (default
-  `~/.edit-issebya-worker/models/`), hashing as it streams, and keeps it only when size and hash
-  match (a model already there with the hash is kept). Without the model the `cutout` step fails
-  with `cutout: MODNet model not installed at <path>, run yarn workspace @edit-issebya/worker
-models:install`; a file with another hash fails the entry, naming both hashes.
-- A mask's fingerprint (`maskFingerprint` in `spans.ts`): the footage ref, the span, and
-  `MATTE_SETTINGS` (`model`, `modelSha256`, `size` 512, `smoothing` `median3`, `provider` `cpu`,
-  `format` `h264-gray`), version `MASK_TOOL_VERSION`. Version 1 was `vseg`; version 2 makes new masks
-  for new runs, while stored versions keep naming (and rendering) their version 1 masks. Bump the
+  failure exits 1 with one `modnet: ...` line. Speed, measured
+  2026-11-11 in the worker image on Docker Desktop (M3, 8 CPUs, 7.75 GiB), the real entry on one
+  reel's six spans (13.7 s of 1080x1920 at 30 fps, crops of 300 to 390 rows): 27 to 30 s for the
+  whole step at 3 spans at a time (what that VM's memory allows; about 3.0 GB held at the peak,
+  170 to 190 s of CPU), 24 s at 6 at a time (5.2 GB), so about 2 s per second of footage. Version
+  2 took 254 s for the same spans (about 19 s per second). Against version 2's masks the mean IoU
+  is 0.9937 (worst frame 0.958). One span alone on one thread: about 0.14 s a frame.
+- The MODNet model (`apps/worker/src/cutout/modnet-model.ts`, `MODNET_MODEL`): the committed file
+  `apps/worker/models/modnet_int8_13.onnx`, pinned by name, size (6,912,985 bytes) and SHA-256
+  (`a293b5ae8fb8ac81447a82bf1ad661479fb412fe2d276188711386c6c81df28b`). It is committed because it
+  is a modified file that no official URL serves: the official
+  `modnet_photographic_portrait_matting.onnx` of ZHKKKe/MODNet (the Google Drive file its ONNX
+  README links, 25,888,640 bytes, SHA-256
+  `07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9`) with its weights and
+  activations quantised to int8. How it was made, with ONNX Runtime 1.31.1's quantization tool:
+  `quant_pre_process` (symbolic shape inference skipped), the graph converted from opset 11 to 13
+  (per-channel `DequantizeLinear` needs 13), then `quantize_static` in the QDQ format, per-channel
+  int8 weights, int8 activations, MinMax calibration on 16 frames of one talking-head clip, taken
+  evenly over it and scaled to 384x512. The calibration footage and frames are not in the
+  repository. The licence notice sits beside the file (`apps/worker/models/THIRD_PARTY_NOTICES.md`:
+  the attribution, the statement that the file is modified, and the full Apache 2.0 text), and
+  `modnet-model.test.ts` checks both the file and the notice. Nothing is downloaded, at install or
+  at job time; the worker image gets the file with the worker's folder. A missing file fails the
+  `cutout` step with `cutout: MODNet model missing at <path>, restore it with git checkout --
+apps/worker/models/modnet_int8_13.onnx`; a file with another size or hash fails the entry
+  (`verifyModel`), naming both.
+- The crop above the head (`crop.ts`, `spanCropTop`, `CROP_RULE`): the model never sees the rows
+  above the speaker, which are wall, and the mask has them black. It comes from the head track
+  (`head-track.json`, which every reel has before any cut-out: decide and relayout have it loaded,
+  a stored version's is read from storage by `version-cutouts.ts`), never from a fixed height. For
+  each span: of the samples from 0.25 s before the span to 0.25 s after it, the smallest `head_top`
+  (the top of the person mask, so a raised hand counts) minus half the widest `head_w`, never
+  below 0, in the head track's 1080x1920 pixels (the track has no head height; the width is its
+  measure of the head). No crop (0) without a head track, without a sample in the span, or when
+  one of the span's samples has no head. The entry gets it as `--crop-top <px>` and
+  `matteRegion` (`matte.ts`) turns it into the footage rows the model runs on: scaled to the
+  footage's height, then moved up (never down) until the region scales, at the frame's own scale,
+  to a whole multiple of 32 rows, and starts on an even row. A crop that moves up to row 0 is no
+  crop. Example, 1080x1920 with the person's top at 560 and a head 412 wide: `--crop-top 354`,
+  rows from 300 down (1620 rows), run at 384x576 instead of 384x672.
+- The pool (`pool.ts`, `cutoutPool`, `runPool`): the span calls of one `cutout` step run at the
+  same time, the longest span first. How many at once is the smallest of the spans to make, the
+  CPUs (`os.availableParallelism()`) and what memory allows: half the memory limit
+  (`CUTOUT_POOL.memoryShare`; the limit is the container's when it has one,
+  `process.constrainedMemory()`, else the machine's) divided by 1 GiB per call
+  (`CUTOUT_POOL.processBytes`: one call, the entry and its two ffmpegs together, was measured at
+  about 0.9 GB on 1080x1920 footage, of which the entry is 0.35 GB and the mask encoder 0.5 GB),
+  and never less than one. Neither compose file sets a CPU or memory limit on the worker, so in
+  Docker Desktop the limits are the VM's: with its 8 CPUs and 7.75 GiB, 3 spans at a time. The
+  CPUs are shared out as ONNX intra-op threads (`--threads`, inter-op 1): every span starts with
+  one, and one more goes, again and again, to the span with the most footage per thread, unless
+  the busiest calls that can run together would then have more threads than there are CPUs. So
+  the longest span, which decides how long the step lasts, gets the spare CPUs (six spans on 8
+  CPUs with room for all: 1 thread each and 3 for the long one). The two ffmpegs of a call keep
+  their own threads: limiting them saved about 0.1 GB a call and no time. A failed span stops the
+  spans not yet started; the step fails once the running ones have ended, and a mask whose span
+  ended well is already stored, so the next run of the job reuses it. The step's measurement (CPU summed, peak
+  memory of the calls that ran together, each call's whole process tree sampled) is in
+  `app_docs/measurement.md`; its progress in `app_docs/status.md`.
+- A mask's fingerprint (`maskFingerprint` in `spans.ts`): the footage ref, the span, its
+  `cropTop`, and `MATTE_SETTINGS` (`model`, `modelSha256`, `size` 384, `crop`
+  `above-head-half-width` (`CROP_RULE.id`), `smoothing` `median3`, `provider` `cpu`,
+  `format` `h264-gray`), version `MASK_TOOL_VERSION`. So `plannedMasks` and `withMasks` take the
+  head track. Version 1 was `vseg`, version 2 the fp32 model at 512 over the whole frame;
+  version 3 (the int8 model, 384, the crop) makes new masks for new runs, while stored versions
+  keep naming (and rendering) the masks of the version that made them: nothing rewrites or
+  deletes a stored mask. Change `CROP_RULE.id` with any value of the rule. Bump the
   version whenever `modnet-entry.ts` or `matte.ts` changes what a mask looks like. CoreML (in
   `onnxruntime-node` on the Mac) was tried: slower than the CPU on an M3 and with other values, so
   the provider is `cpu` everywhere.
@@ -249,20 +307,17 @@ inputs name the old retime outputs) does not re-run retime.
   example `ffmpeg 6.1 found, 7 or newer is needed for HEIC photos (-show_stream_groups)`; a git
   build without a version number passes), and the ffmpeg filters `zscale`, `tonemap`, `atempo`, `astats`,
   `ametadata`, the codecs `libx264` and `libvpx-vp9` (encoders) and the `libvpx-vp9` decoder, and
-  that `hyperframes --version` answers. Its `mask tool` line checks the MODNet model is installed
-  with its pinned SHA-256, masks the first second of `fixtures/footage/short-speech.mp4` with the
+  that `hyperframes --version` answers. Its `mask tool` line checks the committed MODNet model
+  has its pinned size and SHA-256, masks the first second of `fixtures/footage/short-speech.mp4` with the
   real entry and checks the mask is H.264 at the sample's size with 30 frames (give or take one),
-  for example `modnet 07c308cf, 1 s masked in 9.4 s`; a missing model fails the line with
-  `MODNet model not installed at <path>, run yarn workspace @edit-issebya/worker models:install`.
+  for example `modnet a293b5ae, 1 s masked in 9.4 s`; a missing model fails the line with
+  `MODNet model missing at <path>, restore it with git checkout -- apps/worker/models/modnet_int8_13.onnx`.
   It checks that `OPENROUTER_API_KEY` is set, fetches the five PostHog prompts by name (no AI call;
   `POSTHOG_PERSONAL_API_KEY`, `app_docs/decide-step.md`, "Prompts"), and makes no AI call; `doctor --ai`
   adds the two paid OpenRouter calls and the image call.
-- `WORKER_MODELS_DIR` (default `~/.edit-issebya-worker/models`): where `models:install` puts the
-  MODNet model and the `cutout` step and the doctor read it.
-- `yarn workspace @edit-issebya/worker models:install` downloads and verifies the model once per
-  machine: run it after `yarn install` on a new worker. The worker image bakes the same file in
-  at `/opt/edit-issebya/models` (a build stage checks its size and SHA-256), so the container needs
-  no install (`app_docs/worker-container.md`).
+- The MODNet model needs no install: it is the committed `apps/worker/models/modnet_int8_13.onnx`,
+  read from there by the `cutout` step and the doctor, natively and in the worker image
+  (`app_docs/worker-container.md`). There is no `models:install` and no `WORKER_MODELS_DIR` any more.
 
 ## Testing
 
@@ -322,8 +377,11 @@ inputs name the old retime outputs) does not re-run retime.
   model), fingerprinted by footage, span, `MATTE_SETTINGS` and `MASK_TOOL_VERSION`, stored
   put-if-absent as `rebuildable` and reused by later versions. `head_track` still makes its own
   sampled u2net mask and never stores it.
-- Never commit the MODNet model, and never download it at job time or without checking its pinned
-  size and SHA-256 (`models:install` only).
+- The MODNet model is committed (`apps/worker/models/modnet_int8_13.onnx`), because it is a
+  modified file that no official URL serves. Never download it, at install or at job time, never
+  run it without checking its pinned size and SHA-256 (`verifyModel`), and never replace it without
+  its new pin, a new `MASK_TOOL_VERSION` and an up-to-date `THIRD_PARTY_NOTICES.md` beside it.
+  Never commit the calibration footage or frames.
 - Every output carries a `kept` or `rebuildable` tag.
 - Never touch `fixtures/footage/short-person.mp4`.
 

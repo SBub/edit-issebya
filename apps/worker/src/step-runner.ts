@@ -110,7 +110,8 @@ export interface ChildStep extends ToolCall {
 export type Tool = (call: ToolCall) => Promise<string>;
 
 // A step made of several tool calls (ffprobe, then ffmpeg, say), measured as
-// one row: CPU summed over the calls, peak memory the largest of them.
+// one row: CPU summed over the calls, peak memory the largest of them, or of
+// the calls that ran at the same time taken together (see concurrentPeak).
 export interface ToolsStep {
   name: string;
   // Local files the step reads and writes, measured after `work` (inputs may
@@ -639,10 +640,38 @@ function failExecSpan(span: Span, errorType: string, error: unknown): void {
   span.end();
 }
 
+// One finished call of a step: when it started and ended, as places in the
+// order the step's calls started and ended, and its own peak.
+interface CallPeak {
+  started: number;
+  ended: number;
+  bytes: number;
+}
+
+// The step's peak memory from its finished calls: the largest total of the
+// peaks of calls that were running at the same moment. Calls run one after the
+// other give the largest single peak; calls run together count together (each
+// at its own peak, so the total is an upper bound: the peaks need not fall on
+// the same instant). The largest set of calls running together is always
+// whole at the moment one of them ends, so only those moments are looked at.
+function concurrentPeak(calls: readonly CallPeak[]): number | null {
+  let peak: number | null = null;
+  for (const one of calls) {
+    let together = 0;
+    for (const other of calls) {
+      if (other.started < one.ended && other.ended >= one.ended) together += other.bytes;
+    }
+    peak = Math.max(peak ?? 0, together);
+  }
+  return peak;
+}
+
 // Several tool calls as one step row. Each call runs as its own child process,
 // measured by the operating system; the row has the wall time of the whole
 // step, CPU (user + sys) summed over the calls (null when none reported), the
-// largest peak RSS, and the sizes of the declared files. Each call is an `exec`
+// largest peak RSS (of one call, or of the calls that ran together, see
+// concurrentPeak), and the sizes of the declared files. The work may run its
+// calls one after the other or several at once. Each call is an `exec`
 // span under the step (see startExecSpan). Output lines go to the OTel logger;
 // a failed call's tail goes to the row and the thrown error, with the
 // measurements gathered so far.
@@ -658,12 +687,14 @@ export function runToolsStep(
       "step.name": spec.name,
     });
     let cpuMs: number | null = null;
-    let peakRssBytes: number | null = null;
+    // Every call that ended with a peak, and the count of starts and ends so far.
+    const peaks: CallPeak[] = [];
+    let moment = 0;
 
     const measure = async (): Promise<StepMeasurements> => ({
       wall_ms: elapsedMs(ctx, started),
       cpu_ms: cpuMs,
-      peak_rss_bytes: peakRssBytes,
+      peak_rss_bytes: concurrentPeak(peaks),
       bytes_in: await totalSize(spec.inputs),
       bytes_out: await totalSize(spec.outputs),
     });
@@ -703,6 +734,7 @@ export function runToolsStep(
       // A call after a lost lease never starts.
       ctx.signal.throwIfAborted();
       const exec = startExecSpan(ctx.telemetry, call.parent ?? stepContext, spec.name, call);
+      const startedAt = (moment += 1);
       let run: ChildRun;
       try {
         run = await spawnTool(call, ctx.signal, callLog);
@@ -736,7 +768,9 @@ export function runToolsStep(
       ctx.signal.throwIfAborted();
       // Into the step's totals only once the call was not aborted, as before.
       if (report) cpuMs = (cpuMs ?? 0) + report.cpuMs;
-      if (callPeakBytes !== null) peakRssBytes = Math.max(peakRssBytes ?? 0, callPeakBytes);
+      if (callPeakBytes !== null) {
+        peaks.push({ started: startedAt, ended: (moment += 1), bytes: callPeakBytes });
+      }
       if (run.code === 0) return run.stdout;
       const tail = outputTail(run.output);
       const how = exitSignal ? `signal ${exitSignal}` : (run.code ?? "unknown");
@@ -775,11 +809,9 @@ export function runToolsStep(
       // This step's own call, wrapped on its way out (decide marks it
       // permanent): its tail, exit and measurements stay, only the wall time
       // is the whole step's.
+      // The other calls it ran beside may have ended since: measured again.
       if (nested !== null && ownFailures.has(nested)) {
-        throw carriedFailure(error, nested, {
-          ...nested.measurements,
-          wall_ms: elapsedMs(ctx, started),
-        });
+        throw carriedFailure(error, nested, { ...nested.measurements, ...(await measure()) });
       }
       // A failure between calls (a download, a parse) keeps what was measured;
       // a StepError brings its own tail (its reasons) and AI usage; a refusal

@@ -22,8 +22,6 @@ services:
     environment:
       # The scratch folder inside the container, on the named volume below.
       WORKER_SCRATCH_DIR: /scratch
-      # The MODNet model baked into the image (the env file's folder is the Mac's).
-      WORKER_MODELS_DIR: /opt/edit-issebya/models
       # The container's ffmpeg (the env file's path is the Mac's).
       FFMPEG_PATH: /usr/bin/ffmpeg
       # Local services on the Mac (development only; compose.prod.yaml resets these).

@@ -219,7 +219,7 @@ export async function runRelayout({
             );
           }
           const { checks } = build(
-            withMasks(composed.edit, transcript),
+            withMasks(composed.edit, transcript, headTrack),
             transcript,
             headTrack,
             preset,
@@ -244,6 +244,7 @@ export async function runRelayout({
         scratchDir,
         edit: composed.edit,
         transcript,
+        headTrack,
         tools,
         spawnTool,
         env,

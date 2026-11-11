@@ -348,7 +348,7 @@ export function runDecide({
             // Built with the masks it will name: their fingerprints are known
             // before any is made.
             const { checks } = build(
-              withMasks(composed.edit, transcript),
+              withMasks(composed.edit, transcript, headTrack),
               transcript,
               headTrack,
               preset,
@@ -428,6 +428,7 @@ export function runDecide({
         scratchDir,
         edit: placed,
         transcript,
+        headTrack,
         tools,
         spawnTool,
         env,

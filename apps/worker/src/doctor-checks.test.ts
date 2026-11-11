@@ -92,7 +92,7 @@ const PASSING: DoctorDeps = {
 function maskTool(change: Partial<MaskToolDeps> = {}): MaskToolDeps {
   return {
     sample: "/fixtures/short-speech.mp4",
-    modelSha256: "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9",
+    modelSha256: "a293b5ae8fb8ac81447a82bf1ad661479fb412fe2d276188711386c6c81df28b",
     verifyModel: async () => {},
     run: async () => {},
     probe: async (file) =>
@@ -112,14 +112,14 @@ describe("runDoctor's mask tool line", () => {
     const verifyModel = async () =>
       Promise.reject(
         new Error(
-          "MODNet model not installed at /m/modnet.onnx, run yarn workspace @edit-issebya/worker models:install",
+          "MODNet model missing at /m/modnet.onnx, restore it with git checkout -- apps/worker/models/modnet_int8_13.onnx",
         ),
       );
     const run = async () => {
       ran = true;
     };
     expect(await line(maskTool({ verifyModel, run }))).toBe(
-      "FAIL mask tool: MODNet model not installed at /m/modnet.onnx, run yarn workspace @edit-issebya/worker models:install",
+      "FAIL mask tool: MODNet model missing at /m/modnet.onnx, restore it with git checkout -- apps/worker/models/modnet_int8_13.onnx",
     );
     expect(ran).toBe(false);
   });
@@ -200,7 +200,7 @@ describe("runDoctor", () => {
         "ok   prompt reel-hook@v1 (label production)",
         "ok   prompt reel-components@v1 (label production)",
         "ok   prompt photo-describe@v1 (label production)",
-        "ok   mask tool modnet 07c308cf, 1 s masked in 0.0 s",
+        "ok   mask tool modnet a293b5ae, 1 s masked in 0.0 s",
         "ok   scratch dir /scratch exists",
       ],
       exitCode: 0,
@@ -243,7 +243,7 @@ describe("runDoctor", () => {
         "ok   ai structured call anthropic/claude-haiku-5.5",
         "ok   ai hook call anthropic/claude-haiku-5.5",
         "ok   ai image call",
-        "ok   mask tool modnet 07c308cf, 1 s masked in 0.0 s",
+        "ok   mask tool modnet a293b5ae, 1 s masked in 0.0 s",
         "ok   scratch dir /scratch exists",
       ],
       exitCode: 0,

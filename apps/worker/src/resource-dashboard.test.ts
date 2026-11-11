@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { STEP_NAMES } from "./step-names.ts";
+import {
+  SPEED_UNIT,
+  VERSION_ATTRIBUTE,
+  VIDEO_METRIC,
+  WORK_METRIC,
+  prometheusCounterName,
+} from "./cutout/speed.ts";
 
 // The "Worker resources" dashboard of the local monitoring stack
 // (app_docs/measurement.md, Resource metrics) names things the worker and the
@@ -12,6 +19,7 @@ function repoFile(path: string): string {
 
 interface Target {
   expr?: string;
+  legendFormat?: string;
   query?: string;
   queryType?: string;
   interval?: string;
@@ -27,11 +35,12 @@ interface Target {
 interface Panel {
   type: string;
   title: string;
+  description?: string;
   datasource?: { uid: string };
   targets?: Target[];
   transformations?: { id: string; options: { fields?: string[] } }[];
   fieldConfig?: {
-    defaults: { mappings?: { options: Record<string, { color?: string }> }[] };
+    defaults: { unit?: string; mappings?: { options: Record<string, { color?: string }> }[] };
   };
 }
 
@@ -179,5 +188,66 @@ describe("worker resources dashboard", () => {
   it("has no em-dash and no machine path", () => {
     expect(TEXT).not.toContain("—");
     expect(TEXT).not.toContain("/Users/");
+  });
+});
+
+// The "Cut-out speed" dashboard (app_docs/measurement.md, Cut-out speed): its
+// queries name the two counters the worker records, as Prometheus names them.
+describe("cut-out speed dashboard", () => {
+  const SPEED = JSON.parse(repoFile("monitoring/grafana/dashboards/cutout-speed.json")) as {
+    uid: string;
+    time: { from: string };
+    description: string;
+    panels: Panel[];
+    annotations: { list: { expr: string; datasource: { uid: string } }[] };
+  };
+  const speedPanel = SPEED.panels.find((p) => p.title === "Cut-out speed");
+
+  it("keeps its uid and shows the last seven days by default", () => {
+    expect(SPEED.uid).toBe("cutout-speed");
+    expect(SPEED.time.from).toBe("now-7d");
+  });
+
+  it("names the worker's two counters as Prometheus names them through OTLP", () => {
+    // The OTLP translation: dots to underscores, the unit's long name, then _total.
+    expect(SPEED_UNIT).toBe("s");
+    expect(prometheusCounterName(VIDEO_METRIC, SPEED_UNIT)).toBe("cutout_video_seconds_total");
+    expect(prometheusCounterName(WORK_METRIC, SPEED_UNIT)).toBe("cutout_work_seconds_total");
+  });
+
+  it("plots work over video per tool version, from the counters' increase", () => {
+    const video = prometheusCounterName(VIDEO_METRIC, SPEED_UNIT);
+    const work = prometheusCounterName(WORK_METRIC, SPEED_UNIT);
+    const [target] = speedPanel?.targets ?? [];
+    expect(speedPanel?.type).toBe("timeseries");
+    expect(target?.expr).toBe(
+      `sum by (${VERSION_ATTRIBUTE}) (increase(${work}[$__rate_interval])) / ` +
+        `sum by (${VERSION_ATTRIBUTE}) (increase(${video}[$__rate_interval]))`,
+    );
+    expect(target?.datasource).toEqual({ type: "prometheus", uid: "prometheus" });
+    expect(target?.legendFormat).toBe(`tool v{{${VERSION_ATTRIBUTE}}}`);
+    expect(speedPanel?.fieldConfig?.defaults.unit).toBe(
+      "suffix: seconds of work per second of video",
+    );
+    expect(SPEED.description + speedPanel?.description).toContain("Lower is better");
+  });
+
+  it("marks, once per version, the first time a version reports", () => {
+    const work = prometheusCounterName(WORK_METRIC, SPEED_UNIT);
+    const [mark] = SPEED.annotations.list;
+    expect(mark?.datasource.uid).toBe("prometheus");
+    // The earliest sample of each version's series in the retention window, as the
+    // step that contains it: true once, at the first step after the series starts.
+    expect(mark?.expr).toContain(`timestamp(${work})`);
+    expect(mark?.expr).toContain("min_over_time(");
+    expect(mark?.expr).toContain("[15d:1m]");
+    expect(mark?.expr).toContain("$__interval_ms");
+    expect(mark?.expr).toContain(`by (${VERSION_ATTRIBUTE})`);
+  });
+
+  it("has no em-dash and no machine path", () => {
+    const text = JSON.stringify(SPEED);
+    expect(text).not.toContain("—");
+    expect(text).not.toContain("/Users/");
   });
 });
