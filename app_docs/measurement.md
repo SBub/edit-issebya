@@ -77,7 +77,7 @@ container's CPU, memory, disk and network are measured too and shown above a ree
   and `main.ts`, passed down, flushed with `shutdown()` before exit). It reads only
   `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,k2=v2`, values URL-decoded) and
   `OTEL_SERVICE_NAME` (default `edit-issebya-worker`). It exports to `<endpoint>/v1/traces`,
-  `<endpoint>/v1/logs` and `<endpoint>/v1/metrics` (the cut-out speed, below) whenever the endpoint is
+  `<endpoint>/v1/logs` and `<endpoint>/v1/metrics` (the speed metrics, below) whenever the endpoint is
   set. The headers are optional: a local collector needs
   none, and an empty value sends none. Without an endpoint the providers have no processor or reader and
   nothing is exported or fails.
@@ -581,8 +581,9 @@ is empty. The series of a version exist from its first cut-out.
 Retention: Prometheus in the otel-lgtm container keeps 15 days, its default (`storageRetention`
 reads `15d` on the running container). Older speed is gone unless the volume is kept elsewhere.
 
-The chart: "Cut-out speed", `monitoring/grafana/dashboards/cutout-speed.json`, uid `cutout-speed`.
-Open `http://localhost:3300/d/cutout-speed`; the default range is the last 7 days.
+The chart: the "Processing speed" dashboard, `monitoring/grafana/dashboards/cutout-speed.json`, uid
+`cutout-speed` (the file and uid keep the name it had when it only charted the cut-out). Open
+`http://localhost:3300/d/cutout-speed`; the default range is the last 7 days. Its "Cut-out speed" panel:
 
 - One time series per version (the legend's `tool v3`): `increase(cutout_work_seconds_total[$__rate_interval])`
   over `increase(cutout_video_seconds_total[$__rate_interval])`, per `mask_tool_version`. The unit is
@@ -597,6 +598,30 @@ Open `http://localhost:3300/d/cutout-speed`; the default range is the last 7 day
 The dashboard is a provisioned file: Grafana reads it within 10 seconds of the file appearing, and no
 container restarts for it. The worker needs its new code (the worker container's image, rebuilt, or
 the host worker restarted) before the counters exist.
+
+### Head-track speed
+
+How fast the `head_track` step runs: seconds of work per second of footage it tracks. The same
+rules as the cut-out speed (local development only, Prometheus, no table), on the same dashboard.
+
+What is recorded (`apps/worker/src/pipeline/head-track-speed.ts`, the step's `run` in
+`head-track-step.ts`): when the step succeeds, two OpenTelemetry counters, both in seconds, both with
+the attribute `head_track_version` (the step's `HEAD_TRACK_VERSION` as a string, 3 now):
+
+- `head_track.video`: the footage the step tracked, its samples times their spacing (`sampleSeconds`,
+  0.25 s): one sample per 0.25 s of footage.
+- `head_track.work`: the wall time of the step, from its first tool call to its output written.
+
+A cache hit records nothing: the step does not run. A failed step adds nothing: its counters stay at
+the zero they started at. The step span carries `head_track.video_ms`, the same footage in
+milliseconds. The counters start at zero before the step's first call and flush, as the cut-out's do.
+
+Prometheus names them `head_track_video_seconds_total` and `head_track_work_seconds_total`, label
+`head_track_version`. The chart is the "Head-track speed" panel of the "Processing speed" dashboard:
+`increase(head_track_work_seconds_total[$__rate_interval])` over
+`increase(head_track_video_seconds_total[$__rate_interval])`, per `head_track_version`. The annotation
+"Head track version first seen" (purple) marks each version's first run, as the cut-out's annotation
+does. Retention is the cut-out's (15 days).
 
 ## Configuration
 
@@ -680,8 +705,8 @@ the host worker restarted) before the counters exist.
 - Never use `latest` for a monitoring image, and never edit a provisioned dashboard only in the
   Grafana UI: the JSON file in `monitoring/grafana/dashboards/` is the source.
 - Never publish cAdvisor's port to the host: it reads every container of the machine.
-- Never store the cut-out speed in the database or as a product event: it is a metric
-  (`cutout.video`, `cutout.work`, Prometheus) and a dashboard reads it.
+- Never store the cut-out or head-track speed in the database or as a product event: it is a metric
+  (`cutout.video`, `cutout.work`, `head_track.video`, `head_track.work`, Prometheus) and a dashboard reads it.
 - Never put a tool call's command line, its arguments, its stdin or its environment on its `exec`
   span: the executable's base name, the argument count, a plain-word subcommand and the measurements
   only. A prompt, a schema, an answer or a reel's path never reaches a span.

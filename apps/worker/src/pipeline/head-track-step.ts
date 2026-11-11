@@ -1,10 +1,13 @@
 import { open, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ROOT_CONTEXT, trace } from "@opentelemetry/api";
 import { type PoolLimits, machineLimits, runPool } from "../cutout/pool.ts";
 import { parsePersonMaskProgress, weightedProgress } from "../progress-parsers.ts";
+import { activeSpanContext } from "../telemetry.ts";
 import { writeAtomic } from "./atomic.ts";
 import type { PipelineStep } from "./definition.ts";
+import { recordHeadTrackSpeed, startHeadTrackSpeed } from "./head-track-speed.ts";
 import {
   HEAD_TRACK_SETTINGS,
   type HeadSample,
@@ -205,7 +208,12 @@ export function headTrackStep({
         as: "source.mp4",
       },
     ],
-    async run({ tool, tools, dir, files, settings, signal }) {
+    async run({ tool, tools, dir, files, settings, signal, telemetry }) {
+      const started = performance.now();
+      if (telemetry) {
+        startHeadTrackSpeed(telemetry.meter, HEAD_TRACK_VERSION);
+        await telemetry.flushMetrics();
+      }
       const sampled = join(dir, SAMPLES);
       const mask = join(dir, MASK);
       const frames = join(dir, FRAMES);
@@ -253,6 +261,20 @@ export function headTrackStep({
       }
       if (samples.length === 0) throw new Error("head_track: the person mask decoded to no frames");
       await writeAtomic(join(dir, OUTPUT), `${JSON.stringify(samples)}\n`);
+      // The footage the samples stand for: one per sampleSeconds.
+      const videoSeconds = samples.length * settings.sampleSeconds;
+      trace
+        .getSpan(activeSpanContext() ?? ROOT_CONTEXT)
+        ?.setAttributes({ "head_track.video_ms": Math.round(videoSeconds * 1000) });
+      // Only a step that succeeded: a failed one throws before this line.
+      if (telemetry) {
+        recordHeadTrackSpeed(
+          telemetry.meter,
+          HEAD_TRACK_VERSION,
+          videoSeconds,
+          (performance.now() - started) / 1000,
+        );
+      }
       return { what: headTrackWhat(samples) };
     },
   };

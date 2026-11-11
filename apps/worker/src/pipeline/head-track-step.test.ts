@@ -2,8 +2,16 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ROOT_CONTEXT, trace } from "@opentelemetry/api";
+import {
+  AggregationTemporality,
+  InMemoryMetricExporter,
+  PeriodicExportingMetricReader,
+} from "@opentelemetry/sdk-metrics";
+import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { describe, expect, it } from "vitest";
 import type { ToolCall } from "../step-runner.ts";
+import { type Telemetry, createTelemetry, runUnderSpan } from "../telemetry.ts";
 import { HEAD_TRACK_SETTINGS, frameBytes } from "./head-track.ts";
 import {
   HEAD_TRACK_STEP_SETTINGS,
@@ -317,6 +325,122 @@ describe("headTrack", () => {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
       expect(await readdir(dir)).toEqual([]);
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("head track speed", () => {
+  // A telemetry whose metrics are kept in memory: each read flushes first.
+  function metered() {
+    const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+    const reader = new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 60_000 });
+    const spans = new InMemorySpanExporter();
+    const telemetry = createTelemetry(
+      {},
+      {
+        metricReaders: [reader],
+        spanProcessors: [new SimpleSpanProcessor({ exporter: spans })],
+      },
+    );
+    // The metrics by name, as the last export read them.
+    const read = async () => {
+      await telemetry.flushMetrics();
+      const last = exporter.getMetrics().at(-1);
+      const metrics = last?.scopeMetrics.flatMap((scope) => scope.metrics) ?? [];
+      return Object.fromEntries(
+        metrics.map((metric) => [
+          metric.descriptor.name,
+          metric.dataPoints.map((point) => ({ value: point.value, attributes: point.attributes })),
+        ]),
+      );
+    };
+    return { telemetry, spans, read };
+  }
+
+  // The step's run, under a step span of the telemetry, as the pipeline runs it.
+  async function runTracked(
+    telemetry: Telemetry,
+    dir: string,
+    tool: (call: ToolCall) => Promise<string>,
+  ) {
+    const span = telemetry.tracer.startSpan("step head_track");
+    try {
+      return await runUnderSpan(trace.setSpan(ROOT_CONTEXT, span), () =>
+        headTrackStep({
+          limits: () => ({ cpus: 8, memoryBytes: 8 * GB }),
+          node: "/node",
+        }).run({
+          tool,
+          tools: TOOLS,
+          dir,
+          files: { "source.mp4": "/in/source.mp4" },
+          settings: HEAD_TRACK_STEP_SETTINGS,
+          signal: new AbortController().signal,
+          telemetry,
+        }),
+      );
+    } finally {
+      span.end();
+    }
+  }
+
+  const version = { head_track_version: String(headTrack.version) };
+
+  it("records the footage tracked and the step's wall time, by the version", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "head-track-speed-"));
+    const { telemetry, read } = metered();
+    try {
+      await runTracked(telemetry, dir, fakeTool(10, []));
+      const metrics = await read();
+      // Ten samples a quarter second apart: 2.5 s of footage.
+      expect(metrics["head_track.video"]).toEqual([
+        { value: expect.closeTo(2.5, 5), attributes: version },
+      ]);
+      expect(metrics["head_track.work"]).toEqual([
+        { value: expect.any(Number), attributes: version },
+      ]);
+      expect(metrics["head_track.work"]![0]!.value as number).toBeGreaterThan(0);
+    } finally {
+      await telemetry.shutdown();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("puts the footage tracked in milliseconds on the step span", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "head-track-speed-"));
+    const { telemetry, spans } = metered();
+    try {
+      await runTracked(telemetry, dir, fakeTool(10, []));
+      const step = spans.getFinishedSpans().find((span) => span.name === "step head_track");
+      expect(step?.attributes["head_track.video_ms"]).toBe(2500);
+    } finally {
+      await telemetry.shutdown();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("adds nothing when the step fails", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "head-track-speed-"));
+    const { telemetry, read } = metered();
+    try {
+      await expect(
+        runTracked(
+          telemetry,
+          dir,
+          fakeTool(10, [], async (call) => {
+            if (option(call.args, "--first") === "3") throw new Error("u2net: decoding failed");
+            // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+            await writeFile(option(call.args, "--output"), "masks");
+            return "";
+          }),
+        ),
+      ).rejects.toThrow(/u2net: decoding failed/);
+      const metrics = await read();
+      expect(metrics["head_track.video"]?.map((point) => point.value)).toEqual([0]);
+      expect(metrics["head_track.work"]?.map((point) => point.value)).toEqual([0]);
+    } finally {
+      await telemetry.shutdown();
       await rm(dir, { recursive: true, force: true });
     }
   });

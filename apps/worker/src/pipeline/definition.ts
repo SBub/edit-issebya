@@ -1,5 +1,6 @@
 import type { PipelineReelStatus } from "../step-store.ts";
 import type { Tool } from "../step-runner.ts";
+import type { Telemetry } from "../telemetry.ts";
 import { convert } from "./convert.ts";
 import { type FileRef, fingerprint } from "./fingerprint.ts";
 import { headTrack } from "./head-track-step.ts";
@@ -25,6 +26,9 @@ export interface StepRunArgs<S> {
   files: Record<string, string>;
   settings: S;
   signal: AbortSignal;
+  // The process's telemetry (its meter for a step's speed metrics); absent in
+  // unit tests that run a step alone.
+  telemetry?: Telemetry;
 }
 
 // `kept`: cannot be regenerated cheaply, so it stays. `rebuildable`: heavy,

@@ -246,7 +246,15 @@ export async function runPipeline({
               }
               local.set(key, path);
             }
-            const args = { tool, tools, dir: stepDir, files, settings: step.settings, signal };
+            const args = {
+              tool,
+              tools,
+              dir: stepDir,
+              files,
+              settings: step.settings,
+              signal,
+              telemetry: ctx.telemetry,
+            };
             const result = runStep ? await runStep(step, args, fingerprint) : await step.run(args);
             for (const [index, file] of outputNames.entries()) {
               if (!(await exists(outputPaths[index]!))) {
