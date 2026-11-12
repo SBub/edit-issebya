@@ -82,7 +82,7 @@ function disagreementRow(pick: JudgedPick): string {
     `${escapeHtml(pick.reel)}<br><span class="dim">${escapeHtml(pick.run)}</span>`,
     pick.component,
     escapeHtml(pick.words),
-    `${pick.label}<br><span class="dim">${pick.why}, ${pick.sources.join(" + ")}</span>`,
+    `${pick.label}<br><span class="dim">${pick.why}, ${pick.source}</span>`,
     pick.verdict,
     escapeHtml(pick.reason),
     pick.better === null ? '<span class="dim">none</span>' : escapeHtml(pick.better),
@@ -163,6 +163,10 @@ export function renderReport(input: ReportInput): string {
     `<p class="big">${percent(agreement(scored.overall))}</p>`,
     `<p class="meta">judge and owner agree on ${scored.overall.agree} of ${scored.overall.total} picks</p>`,
     confusionTable(scored.overall),
+    tallyTable("By source", "Source", [
+      ["Owner marks", scored.bySource.owner],
+      ["Curator picks", scored.bySource.curator],
+    ]),
     tallyTable(
       "By component",
       "Component",

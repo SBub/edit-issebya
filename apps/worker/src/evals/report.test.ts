@@ -14,7 +14,7 @@ const pick = (
   words: "work to live",
   label,
   why: label === "good" ? "match" : "extra",
-  sources: ["curator"],
+  source: "curator",
   verdict,
   reason: "a reason",
   better: null,
@@ -30,6 +30,19 @@ const PICKS: JudgedPick[] = [
 ];
 
 describe("the score", () => {
+  it("splits the owner's marks and the curator's picks, each with its own agreement", () => {
+    const owner = [
+      pick("good", "approve", { id: "o1", source: "owner", why: "owner" }),
+      pick("good", "reject", { id: "o2", source: "owner", why: "owner" }),
+    ];
+    const scored = score([...owner, pick("bad", "reject")]);
+    expect(scored.bySource.owner).toEqual(tally(owner));
+    expect(agreement(scored.bySource.owner)).toBeCloseTo(0.5);
+    expect(agreement(scored.bySource.curator)).toBe(1);
+    expect(scored.overall.total).toBe(3);
+    expect(agreement(score([]).bySource.owner)).toBeNull();
+  });
+
   it("counts the confusion table and the agreement", () => {
     expect(tally(PICKS)).toEqual({
       total: 5,
@@ -91,6 +104,8 @@ describe("the report", () => {
     expect(html).toContain('<th scope="row">question</th><td>n/a</td><td>0 of 0</td>');
     expect(html).toContain('<th scope="row">bbbbbbbb</th><td>100.0%</td>');
     expect(html).toContain('<th scope="row">Judge approve</th><td>1</td><td class="off">1</td>');
+    expect(html).toContain('<th scope="row">Owner marks</th><td>n/a</td><td>0 of 0</td>');
+    expect(html).toContain('<th scope="row">Curator picks</th><td>60.0%</td><td>3 of 5</td>');
   });
 
   it("lists every disagreement, and only those, with the label, the verdict, the reason and better", () => {

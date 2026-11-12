@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ROOT_CONTEXT, trace } from "@opentelemetry/api";
+import type { Transcript } from "@edit-issebya/edit";
 import { AI_MODELS, type AiRunner, NO_USAGE } from "../ai.ts";
 import { type PromptSource, promptIdentity } from "../prompts/source.ts";
 import { addUsage } from "../step-store.ts";
@@ -8,7 +9,9 @@ import { type CuratorRun, type RunSources, curatorRunsFor, runCandidates } from 
 import { JUDGE_PROMPT_NAME, type Verdict, callJudge } from "./judge-call.ts";
 import {
   type JudgePick,
+  type Labelled,
   type SentPick,
+  type Source,
   type Why,
   judgePicks,
   labelPick,
@@ -23,8 +26,9 @@ import { type JudgedPick, agreement, score, tally } from "./score.ts";
 // THE JUDGE EVAL (app_docs/evals.md): how well the components judge agrees
 // with the owner's hand labels, measured on picks the curator already made.
 // It reads the dataset, the stored curator runs and the judge prompt, calls
-// the judge once per reel and curator run, and uploads the run to PostHog as
-// an offline experiment. It never calls the curator and writes nothing to the
+// the judge once for the owner's marks of each reel and once per curator run
+// (never mixing the two in one call), and uploads the run to PostHog as an
+// offline experiment. It never calls the curator and writes nothing to the
 // database or to storage.
 
 const SCORER = "judge_agreement";
@@ -33,6 +37,9 @@ const SCORER_DESCRIPTION =
 const SUITE = "components-judge";
 // The shuffle's fixed seed: the same run always shows the judge the same order.
 const SEED = "components-judge-1";
+// The owner's marks are good by the owner's word, whatever the curator said.
+const OWNER_LABEL: Labelled = { label: "good", why: "owner" };
+const OWNER_CALL = "owner marks";
 
 export interface EvalOptions {
   datasetId: string;
@@ -61,12 +68,14 @@ export interface ReelCounts {
   curatorRuns: number;
   // Runs of the reel itself decided from another transcript (not usable).
   differingRuns: number;
+  // 1 when the owner's marks are judged (the reel has a curator run and a mark), else 0.
+  ownerCalls: number;
   ownerMarks: number;
   curatorPicks: number;
   good: number;
   bad: number;
   why: Partial<Record<Why, number>>;
-  // The picks the judge would see over all the reel's calls, after merging.
+  // The picks the judge would see over all the reel's calls.
   judgePicks: number;
 }
 
@@ -78,8 +87,12 @@ export interface EvalSummary {
   reportPath?: string;
 }
 
+// One judge call: the owner's marks (no `run`) or one curator run's picks.
 interface PreparedCall {
-  run: CuratorRun;
+  source: Source;
+  run?: CuratorRun;
+  // The script the judge reads: the reel's transcript (every run of a reel shares its words).
+  transcript: Transcript;
   picks: JudgePick[];
   sent: SentPick[];
 }
@@ -94,19 +107,24 @@ function runName(run: CuratorRun): string {
   return `${run.reelId.slice(0, 8)} v${run.number} ${run.promptVersion}`;
 }
 
+function callName(call: PreparedCall): string {
+  return call.run ? runName(call.run) : OWNER_CALL;
+}
+
 function countsLines({ counts, calls }: Prepared): string[] {
   const why = Object.entries(counts.why)
     .map(([name, count]) => `${name} ${count}`)
     .join(", ");
   return [
-    `reel ${counts.reel}: ${counts.curatorRuns} curator runs, ${counts.ownerMarks} owner marks, ${counts.curatorPicks} curator picks (${counts.good} good, ${counts.bad} bad${why ? `: ${why}` : ""}), ${counts.judgePicks} judge picks` +
+    `reel ${counts.reel}: ${counts.curatorRuns} curator runs, ${counts.ownerMarks} owner marks, ${counts.curatorPicks} curator picks (${counts.good} good, ${counts.bad} bad${why ? `: ${why}` : ""}), ${counts.ownerCalls + counts.curatorRuns} judge calls, ${counts.judgePicks} judge picks` +
       (counts.differingRuns > 0
         ? `; ${counts.differingRuns} runs of this reel left out (another transcript)`
         : ""),
-    ...calls.map(
-      ({ run, picks }) =>
-        `  ${runName(run)}: ${run.picks.length} picks, ${picks.length} judge picks` +
-        (run.unreadable > 0 ? `, ${run.unreadable} unreadable` : ""),
+    ...calls.map((call) =>
+      call.run
+        ? `  ${runName(call.run)}: ${call.run.picks.length} picks, ${call.picks.length} judge picks` +
+          (call.run.unreadable > 0 ? `, ${call.run.unreadable} unreadable` : "")
+        : `  ${OWNER_CALL}: ${call.picks.length} judge picks`,
     ),
   ];
 }
@@ -130,10 +148,38 @@ async function prepare(
       }
     }
   }
-  const calls = found.runs.map((run) => {
-    const picks = judgePicks(run.picks, item, `${SEED}/${item.reelId}/${run.versionId}`);
-    return { run, picks, sent: picks.map((pick) => sentPick(pick, item.words)) };
-  });
+  const calls: PreparedCall[] = [];
+  // The reel's script: the first run's transcript, the words the owner marked.
+  const [first] = found.runs;
+  if (first && item.marks.length > 0) {
+    const picks = judgePicks(
+      "owner",
+      item.marks,
+      () => OWNER_LABEL,
+      `${SEED}/${item.reelId}/owner`,
+    );
+    calls.push({
+      source: "owner",
+      transcript: first.transcript,
+      picks,
+      sent: picks.map((pick) => sentPick(pick, item.words)),
+    });
+  }
+  for (const run of found.runs) {
+    const picks = judgePicks(
+      "curator",
+      run.picks,
+      (pick) => labelPick(pick, item.marks, item.nothing),
+      `${SEED}/${item.reelId}/${run.versionId}`,
+    );
+    calls.push({
+      source: "curator",
+      run,
+      transcript: run.transcript,
+      picks,
+      sent: picks.map((pick) => sentPick(pick, item.words)),
+    });
+  }
   return {
     item,
     calls,
@@ -141,6 +187,7 @@ async function prepare(
       reel: item.reelId,
       curatorRuns: found.runs.length,
       differingRuns: found.differing,
+      ownerCalls: calls.filter((call) => call.source === "owner").length,
       ownerMarks: item.marks.length,
       curatorPicks: good + bad,
       good,
@@ -162,18 +209,23 @@ function judged(item: OwnerItem, call: PreparedCall, verdicts: readonly Verdict[
     const verdict = byId.get(pick.id)!;
     return {
       reel: item.reelId,
-      run: runName(call.run),
+      run: callName(call),
       id: pick.id,
       component: pick.component,
       words: wordsOf(item.words, pick.span),
       label: pick.label,
       why: pick.why,
-      sources: pick.sources,
+      source: pick.source,
       verdict: verdict.verdict,
       reason: verdict.reason,
       better: verdict.better,
     };
   });
+}
+
+// The picks of the answered calls of one source.
+function picksFrom(calls: readonly Judged[], source: Source): JudgedPick[] {
+  return calls.flatMap((one) => (one.ok ? one.picks.filter((pick) => pick.source === source) : []));
 }
 
 // The upload of one run: one experiment item per labelled reel (pinned to the
@@ -201,12 +253,18 @@ function uploadBody({
   const body: UploadBody = { items: [], results: [] };
   for (const { item, judged: calls } of results) {
     const id = newId();
-    const run = (call: PreparedCall) => ({
-      curator_reel_id: call.run.reelId,
-      curator_version_id: call.run.versionId,
-      curator_prompt_version: call.run.promptVersion,
-    });
-    const curatorPrompts = [...new Set(calls.map(({ call }) => call.run.promptVersion))].sort();
+    const fields = (call: PreparedCall) =>
+      call.run
+        ? {
+            source: call.source,
+            curator_reel_id: call.run.reelId,
+            curator_version_id: call.run.versionId,
+            curator_prompt_version: call.run.promptVersion,
+          }
+        : { source: call.source };
+    const curatorPrompts = [
+      ...new Set(calls.flatMap(({ call }) => (call.run ? [call.run.promptVersion] : []))),
+    ].sort();
     const metadata = {
       reel_id: item.reelId,
       judge_prompt_version: judgePrompt,
@@ -219,16 +277,16 @@ function uploadBody({
       case_key: item.caseKey,
       dataset_item_version_id: item.versionId,
       payload: {
-        input: { runs: calls.map(({ call }) => ({ ...run(call), picks: call.sent })) },
+        input: { calls: calls.map(({ call }) => ({ ...fields(call), picks: call.sent })) },
         output: {
-          runs: calls.map((one) => ({
-            ...run(one.call),
+          calls: calls.map((one) => ({
+            ...fields(one.call),
             ...(one.ok ? { verdicts: one.verdicts } : { error: one.reasons }),
           })),
         },
         expected_output: {
-          runs: calls.map(({ call }) => ({
-            ...run(call),
+          calls: calls.map(({ call }) => ({
+            ...fields(call),
             labels: call.picks.map(({ id: pick, label, why }) => ({ pick, label, why })),
           })),
         },
@@ -237,6 +295,8 @@ function uploadBody({
     });
     const answered = calls.filter((one) => one.ok).length;
     const of = tally(calls.flatMap((one) => (one.ok ? one.picks : [])));
+    const owner = tally(picksFrom(calls, "owner"));
+    const curator = tally(picksFrom(calls, "curator"));
     const shared = {
       item_id: id,
       scorer_version_id: scorerVersionId,
@@ -246,9 +306,14 @@ function uploadBody({
     const details = {
       ...metadata,
       ...of,
-      curator_runs: calls.length,
-      runs: calls.map((one) => ({
-        ...run(one.call),
+      owner_agreement: agreement(owner),
+      owner_picks: owner.total,
+      curator_agreement: agreement(curator),
+      curator_picks: curator.total,
+      owner_calls: calls.filter((one) => one.call.source === "owner").length,
+      curator_runs: calls.filter((one) => one.call.source === "curator").length,
+      calls: calls.map((one) => ({
+        ...fields(one.call),
         agreement: one.ok ? agreement(tally(one.picks)) : null,
       })),
     };
@@ -275,7 +340,7 @@ function uploadBody({
         status: "ok",
         value,
         payload: {
-          reasoning: `the judge agrees with the owner's label on ${of.agree} of ${of.total} picks over ${answered} of ${calls.length} curator runs`,
+          reasoning: `the judge agrees with the owner's label on ${of.agree} of ${of.total} picks over ${answered} of ${calls.length} judge calls (owner marks ${percent(agreement(owner))}, curator picks ${percent(agreement(curator))})`,
           metadata: details,
         },
       });
@@ -316,10 +381,14 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
     prepared.push(one);
   }
   const reels = prepared.map((one) => one.counts);
-  const sum = (field: "curatorRuns" | "curatorPicks" | "good" | "bad" | "judgePicks") =>
-    reels.reduce((total, counts) => total + counts[field], 0);
+  const sum = (
+    field:
+      "curatorRuns" | "ownerCalls" | "curatorPicks" | "ownerMarks" | "good" | "bad" | "judgePicks",
+  ) => reels.reduce((total, counts) => total + counts[field], 0);
+  const curatorCalls = sum("curatorRuns");
+  const ownerCalls = sum("ownerCalls");
   log(
-    `total: ${sum("curatorRuns")} judge calls, ${sum("curatorPicks")} curator picks (${sum("good")} good, ${sum("bad")} bad), ${sum("judgePicks")} judge picks`,
+    `total: ${ownerCalls + curatorCalls} judge calls (${ownerCalls} owner, ${curatorCalls} curator), ${sum("ownerMarks")} owner marks, ${sum("curatorPicks")} curator picks (${sum("good")} good, ${sum("bad")} bad), ${sum("judgePicks")} judge picks`,
   );
   if (options.dryRun) {
     log("dry run: no judge call, no upload");
@@ -331,7 +400,11 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
   const template = await deps.prompts.get(JUDGE_PROMPT_NAME);
   const judgePrompt = promptIdentity(template);
   const curatorPrompts = [
-    ...new Set(prepared.flatMap((one) => one.calls.map((call) => call.run.promptVersion))),
+    ...new Set(
+      prepared.flatMap((one) =>
+        one.calls.flatMap((call) => (call.run ? [call.run.promptVersion] : [])),
+      ),
+    ),
   ].sort();
   const scorerVersionId = await posthog.scorerVersion(SCORER, SCORER_DESCRIPTION);
   const experimentId = newId();
@@ -371,16 +444,21 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
             rootContext,
             "eval.judge.call",
             {
-              "reel.id": call.run.reelId,
+              "reel.id": call.run ? call.run.reelId : item.reelId,
               "eval.case": item.caseKey,
-              "eval.curator_version_id": call.run.versionId,
-              "eval.curator_prompt_version": call.run.promptVersion,
+              "eval.source": call.source,
+              ...(call.run
+                ? {
+                    "eval.curator_version_id": call.run.versionId,
+                    "eval.curator_prompt_version": call.run.promptVersion,
+                  }
+                : {}),
             },
             (_span, context) =>
               callJudge({
                 ai: deps.ai,
                 template,
-                transcript: call.run.transcript,
+                transcript: call.transcript,
                 picks: call.sent,
                 trace: { telemetry, parent: context },
               }),
@@ -389,10 +467,10 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
           if (outcome.ok) {
             const picks = judged(item, call, outcome.verdicts);
             done.push({ call, ok: true, verdicts: outcome.verdicts, picks });
-            log(`  ${runName(call.run)}: agreement ${percent(agreement(tally(picks)))}`);
+            log(`  ${callName(call)}: agreement ${percent(agreement(tally(picks)))}`);
           } else {
             done.push({ call, ok: false, reasons: outcome.reasons });
-            log(`  ${runName(call.run)}: no valid answer: ${outcome.reasons.join("; ")}`);
+            log(`  ${callName(call)}: no valid answer: ${outcome.reasons.join("; ")}`);
           }
         }
         results.push({ item, judged: done });
@@ -406,7 +484,7 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
     );
     const failures = results.flatMap(({ item, judged: calls }) =>
       calls.flatMap((one) =>
-        one.ok ? [] : [{ reel: item.reelId, run: runName(one.call.run), reasons: one.reasons }],
+        one.ok ? [] : [{ reel: item.reelId, run: callName(one.call), reasons: one.reasons }],
       ),
     );
     const scored = score(picks);
@@ -427,6 +505,9 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
     log(
       `agreement ${percent(agreement(scored.overall))} (${scored.overall.agree} of ${scored.overall.total} picks); approve/bad ${scored.overall.approveBad}, reject/good ${scored.overall.rejectGood}`,
     );
+    const { owner, curator } = scored.bySource;
+    log(`  owner marks: ${percent(agreement(owner))} (${owner.agree} of ${owner.total})`);
+    log(`  curator picks: ${percent(agreement(curator))} (${curator.agree} of ${curator.total})`);
     for (const { component, tally: of } of scored.byComponent) {
       log(`  ${component}: ${percent(agreement(of))} (${of.agree} of ${of.total})`);
     }

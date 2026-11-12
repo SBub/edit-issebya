@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { transcriptOf } from "../../test-support/eval-fixtures.ts";
-import { type Source, judgePicks, labelPick, overlap, sentPick } from "./label.ts";
+import { judgePicks, labelPick, overlap, sentPick } from "./label.ts";
 import type { ComponentPick, OwnerMark, Span } from "./owner-marks.ts";
 
 const span = (from: number, to: number): Span => ({ from, to });
@@ -124,7 +124,6 @@ describe("labelPick, lists", () => {
 
 describe("judgePicks", () => {
   const marks: OwnerMark[] = [accent(4, 7), bigword(12), list([span(20, 21), span(23, 24)])];
-  const item = { marks, nothing: [] };
   const curator: ComponentPick[] = [
     accent(4, 7),
     accent(4, 7),
@@ -132,40 +131,45 @@ describe("judgePicks", () => {
     bigword(5),
     list([span(20, 20), span(24, 24)]),
   ];
+  const labelOf = (pick: ComponentPick) => labelPick(pick, marks, []);
+  const OWNER = { label: "good", why: "owner" } as const;
 
-  it("labels the curator's picks, adds every owner mark as good, and merges identical picks", () => {
-    const picks = judgePicks(curator, item, "seed");
-    expect(picks.map((pick) => pick.id).sort()).toEqual(["p1", "p2", "p3", "p4", "p5", "p6"]);
-    const by = (component: string, from: number, source: Source) =>
-      picks.find(
-        (pick) =>
-          pick.component === component && pick.span.from === from && pick.sources.includes(source),
-      );
-    // The curator's copy of the owner's accent: one pick, from both.
-    expect(by("accent", 4, "curator")).toMatchObject({
-      label: "good",
-      why: "owner",
-      sources: ["curator", "owner"],
-    });
-    expect(by("accent", 15, "curator")).toMatchObject({ label: "bad", why: "extra" });
-    expect(by("bigword", 5, "curator")).toMatchObject({ label: "bad", why: "wrong-component" });
-    expect(by("bigword", 12, "owner")).toMatchObject({ label: "good", sources: ["owner"] });
-    // The same list by other item words: two picks, both good.
-    expect(by("list", 20, "curator")).toMatchObject({ label: "good", why: "match" });
-    expect(by("list", 20, "owner")).toMatchObject({ label: "good", why: "owner" });
+  it("labels one curator run's picks by the owner's marks, and merges identical picks", () => {
+    const picks = judgePicks("curator", curator, labelOf, "seed");
+    expect(picks.map((pick) => pick.id).sort()).toEqual(["p1", "p2", "p3", "p4"]);
+    expect(picks.every((pick) => pick.source === "curator")).toBe(true);
+    const by = (component: string, from: number) =>
+      picks.find((pick) => pick.component === component && pick.span.from === from);
+    expect(by("accent", 4)).toMatchObject({ label: "good", why: "match" });
+    expect(by("accent", 15)).toMatchObject({ label: "bad", why: "extra" });
+    expect(by("bigword", 5)).toMatchObject({ label: "bad", why: "wrong-component" });
+    expect(by("list", 20)).toMatchObject({ label: "good", why: "match" });
+  });
+
+  it("judges the owner's marks alone, every one good by the owner", () => {
+    const picks = judgePicks("owner", marks, () => OWNER, "seed");
+    expect(picks.map((pick) => `${pick.component}:${pick.span.from}`).sort()).toEqual([
+      "accent:4",
+      "bigword:12",
+      "list:20",
+    ]);
+    expect(picks.every((pick) => pick.source === "owner" && pick.why === "owner")).toBe(true);
+  });
+
+  it("holds the picks of its one source only: a curator copy of an owner mark is that run's own pick", () => {
+    const run = judgePicks("curator", [accent(4, 7)], labelOf, "seed");
+    expect(run).toMatchObject([{ id: "p1", source: "curator", label: "good", why: "match" }]);
+    const owner = judgePicks("owner", marks, () => OWNER, "seed");
+    expect(owner.some((pick) => pick.source === "curator")).toBe(false);
   });
 
   it("shuffles the same way for the same seed, whatever order the picks came in", () => {
     const order = (seed: string, picks: ComponentPick[]) =>
-      judgePicks(picks, item, seed).map((pick) => `${pick.component}:${pick.span.from}`);
+      judgePicks("curator", picks, labelOf, seed).map(
+        (pick) => `${pick.component}:${pick.span.from}`,
+      );
     expect(order("seed", curator)).toEqual(order("seed", [...curator].reverse()));
     expect(order("seed", curator)).not.toEqual(order("another seed", curator));
-  });
-
-  it("does not put the owner's marks after the curator's picks", () => {
-    const sources = judgePicks(curator, item, "seed").map((pick) => pick.sources.join("+"));
-    const grouped = [...sources].sort((a, b) => Number(a === "owner") - Number(b === "owner"));
-    expect(sources).not.toEqual(grouped);
   });
 });
 
@@ -173,7 +177,12 @@ describe("sentPick", () => {
   const words = transcriptOf("we work to live and we live to work").words;
 
   it("shows a pick as its words and seconds, a list with its items, and never its label", () => {
-    const [first] = judgePicks([], { marks: [accent(1, 3)], nothing: [] }, "seed");
+    const [first] = judgePicks(
+      "owner",
+      [accent(1, 3)],
+      () => ({ label: "good", why: "owner" }),
+      "seed",
+    );
     expect(sentPick(first!, words)).toEqual({
       pick: "p1",
       component: "accent",
@@ -181,7 +190,12 @@ describe("sentPick", () => {
       start: 1,
       end: 3.5,
     });
-    const [listed] = judgePicks([], { marks: [list([span(1, 1), span(7, 8)])], nothing: [] }, "s");
+    const [listed] = judgePicks(
+      "owner",
+      [list([span(1, 1), span(7, 8)])],
+      () => ({ label: "good", why: "owner" }),
+      "s",
+    );
     expect(sentPick(listed!, words)).toEqual({
       pick: "p1",
       component: "list",

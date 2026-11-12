@@ -1,4 +1,4 @@
-import type { ComponentPick, EvalWord, OwnerItem, OwnerMark, Span } from "./owner-marks.ts";
+import type { ComponentPick, EvalWord, OwnerMark, Span } from "./owner-marks.ts";
 
 // THE CODE LABEL: every curator pick called good or bad against the owner's
 // marks, by the words it covers (app_docs/evals.md, "Labels"). The judge is
@@ -99,10 +99,10 @@ export function labelPick(
 export type Source = "curator" | "owner";
 
 // One pick of a judge call: its name in the call (`p1`), the pick, its code
-// label and where it came from (never sent to the judge).
+// label and the source of the call it belongs to (never sent to the judge).
 export interface JudgePick extends ComponentPick, Labelled {
   id: string;
-  sources: Source[];
+  source: Source;
 }
 
 function keyOf(pick: ComponentPick): string {
@@ -126,42 +126,38 @@ function generator(seed: string): () => number {
   };
 }
 
-// The picks of one judge call: the curator run's picks with their labels and
-// every owner mark as a good pick, identical picks (the same component over
-// the same words and items) merged into one, then shuffled by the seed and
-// named `p1`, `p2`, ... so the order says nothing about the source.
+// The picks of one judge call, all from one source: the owner's marks (every
+// one labelled good) or one curator run's picks (each labelled by its words).
+// Identical picks (the same component over the same words and items) are
+// merged into one, then shuffled by the seed and named `p1`, `p2`, ... so the
+// order says nothing about the pick's place in the call.
 export function judgePicks(
-  curator: readonly ComponentPick[],
-  item: Pick<OwnerItem, "marks" | "nothing">,
+  source: Source,
+  picks: readonly ComponentPick[],
+  labelOf: (pick: ComponentPick) => Labelled,
   seed: string,
 ): JudgePick[] {
   const merged = new Map<string, Omit<JudgePick, "id">>();
-  const add = (pick: ComponentPick, labelled: Labelled, source: Source) => {
+  for (const pick of picks) {
     const key = keyOf(pick);
-    const held = merged.get(key);
-    if (!held) {
-      merged.set(key, {
-        component: pick.component,
-        span: pick.span,
-        ...(pick.items ? { items: pick.items } : {}),
-        ...labelled,
-        sources: [source],
-      });
-      return;
-    }
-    if (!held.sources.includes(source)) held.sources.push(source);
-    // The owner's own mark is good, whatever the curator's copy was called.
-    if (source === "owner") Object.assign(held, labelled);
-  };
-  for (const pick of curator) add(pick, labelPick(pick, item.marks, item.nothing), "curator");
-  for (const mark of item.marks) add(mark, { label: "good", why: "owner" }, "owner");
-  const picks = [...merged.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([, pick]) => pick);
-  const random = generator(seed);
-  for (let at = picks.length - 1; at > 0; at -= 1) {
-    const other = Math.floor(random() * (at + 1));
-    [picks[at], picks[other]] = [picks[other]!, picks[at]!];
+    if (merged.has(key)) continue;
+    merged.set(key, {
+      component: pick.component,
+      span: pick.span,
+      ...(pick.items ? { items: pick.items } : {}),
+      ...labelOf(pick),
+      source,
+    });
   }
-  return picks.map((pick, index) => ({ id: `p${index + 1}`, ...pick }));
+  const ordered = [...merged.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([, pick]) => pick);
+  const random = generator(seed);
+  for (let at = ordered.length - 1; at > 0; at -= 1) {
+    const other = Math.floor(random() * (at + 1));
+    [ordered[at], ordered[other]] = [ordered[other]!, ordered[at]!];
+  }
+  return ordered.map((pick, index) => ({ id: `p${index + 1}`, ...pick }));
 }
 
 // A pick as the judge prompt shows it (the fixed contract of `{{picks}}`).

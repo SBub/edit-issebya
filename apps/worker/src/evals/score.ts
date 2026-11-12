@@ -14,7 +14,8 @@ export interface JudgedPick {
   words: string;
   label: Label;
   why: Why;
-  sources: Source[];
+  // Whose marks the pick is: the owner's, or one curator run's.
+  source: Source;
   verdict: "approve" | "reject";
   reason: string;
   better: string | null;
@@ -57,6 +58,8 @@ export function agreement(of: Pick<Tally, "agree" | "total">): number | null {
 
 export interface Score {
   overall: Tally;
+  // The owner's marks and the curator's picks, each judged in its own calls.
+  bySource: { owner: Tally; curator: Tally };
   // Every scored component, in the fixed order, even with no pick.
   byComponent: { component: Component; tally: Tally }[];
   // Every reel that has a judged pick, in first-seen order.
@@ -67,6 +70,10 @@ export function score(picks: readonly JudgedPick[]): Score {
   const reels = [...new Set(picks.map((pick) => pick.reel))];
   return {
     overall: tally(picks),
+    bySource: {
+      owner: tally(picks.filter((pick) => pick.source === "owner")),
+      curator: tally(picks.filter((pick) => pick.source === "curator")),
+    },
     byComponent: COMPONENTS.map((component) => ({
       component,
       tally: tally(picks.filter((pick) => pick.component === component)),

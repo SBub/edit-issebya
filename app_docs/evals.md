@@ -27,7 +27,8 @@ yarn workspace @edit-issebya/worker eval:judge --reel 9dfd03d8 --label staging
 ```
 
 - `--dry-run`: everything except the judge calls and the upload. Prints, per labelled reel, the
-  curator runs found, the picks and their good and bad labels. Free.
+  curator runs found, the picks and their good and bad labels, and the judge calls it would make
+  (one owner call per reel, one per curator run: 6 + 12 = 18 for the current dataset). Free.
 - `--reel <id>`: only the labelled reel whose id starts like this.
 - `--label <label>`: the judge prompt's label in PostHog (default `POSTHOG_PROMPT_LABEL`, else
   `production`).
@@ -64,11 +65,13 @@ Code: `apps/worker/src/eval-judge.ts` (the command) and `apps/worker/src/evals/`
    reel decided from another transcript is left out and counted. The picks are the last `decide`
    answer's accents, questions, big words and lists; the hook and the visuals are skipped.
 3. **Labels** (`label.ts`). See below.
-4. **The judge** (`judge-call.ts`). One call per labelled reel and curator run: that run's picks plus
-   every owner mark as a good pick, identical picks merged, shuffled with a fixed seed and named `p1`,
-   `p2`, ... so the judge cannot tell the sources apart. `{{script}}` is the script exactly as the
-   curator's prompt receives it (`scriptOf`, the same preset); `{{picks}}` is a fenced JSON array of
-   `{ pick, component, words, start, end, items? }`.
+4. **The judge** (`judge-call.ts`). Two kinds of call, never mixed: one call for the owner's marks of a
+   reel (every mark as a good pick), and one call per curator run with only that run's picks. Within a
+   call, identical picks are merged, then shuffled with a fixed seed and named `p1`, `p2`, ... so the
+   judge cannot tell the picks apart by their place. A reel with no stored curator run has no script
+   to judge against, so it makes no call at all (`skipped`). `{{script}}` is the script exactly as the
+   curator's prompt receives it (`scriptOf`, the same preset, from the reel's first run's transcript);
+   `{{picks}}` is a fenced JSON array of `{ pick, component, words, start, end, items? }`.
 5. **The answer**. `{ "verdicts": [{ "pick", "verdict": "approve" | "reject", "reason", "better" }] }`,
    asked for as a strict structured output (the AI runner's `json_schema` mode, JSON mode only if the
    provider refuses the schema) and checked again in code: the same schema, exactly one verdict per
@@ -76,10 +79,12 @@ Code: `apps/worker/src/eval-judge.ts` (the command) and `apps/worker/src/evals/`
    invalid answer goes back once with its reasons, as in the decide step. A second invalid answer
    fails that call: it is listed in the report and marked in the upload, and its picks are not scored.
 6. **The score** (`score.ts`). A pick agrees when a good one is approved or a bad one rejected.
-   Agreement overall, per component and per reel, and the confusion table.
+   Agreement overall, per source (owner marks, curator picks), per component and per reel, and the
+   confusion table. The owner's marks and the curator's picks are summed over both kinds of call.
 7. **The report** (`report.ts`). One self-contained HTML page (light and dark) in
-   `apps/worker/eval-output/` (gitignored: it quotes transcripts), with the tables, the failed calls
-   and every disagreement: words, component, code label, verdict, reason and better.
+   `apps/worker/eval-output/` (gitignored: it quotes transcripts), with the tables (overall, by source,
+   by component, by reel), the failed calls and every disagreement: words, component, code label,
+   verdict, reason and better.
 8. **The upload** (`run-eval.ts`). An offline experiment in PostHog, suite `components-judge`, pinned
    to the dataset revision, created with the caller's uuid before the first judge call (so a missing
    scope costs nothing), then one item per labelled reel (pinned to the dataset item's version) with
@@ -110,14 +115,16 @@ visual marks are ignored.
 - Experiment: `prompt_version` is the judge prompt (`reel-components-judge@v3`), `model_version` the
   judge's model, `application_version` the curator prompt versions judged, `dataset_revision_id` the
   revision.
-- Item (one per labelled reel): `case_key` the dataset item's client id; the payload holds, per curator
-  run, the picks sent (`input`), the verdicts or the failure (`output`) and the code labels
-  (`expected_output`); its metadata the reel, the judge prompt version and label, the model and the
-  curator prompt versions.
+- Item (one per labelled reel): `case_key` the dataset item's client id; the payload holds, per judge
+  call, its `source` (`owner` or `curator`, with the run's ids for a curator call), the picks sent
+  (`input.calls`), the verdicts or the failure (`output.calls`) and the code labels
+  (`expected_output.calls`); its metadata the reel, the judge prompt version and label, the model and
+  the curator prompt versions, and the agreement per source: `owner_agreement` and `owner_picks`,
+  `curator_agreement` and `curator_picks`, with `owner_calls` and `curator_runs` counted.
 - Result, scorer `judge_agreement` (numeric, 0 to 1, made on the first run): the reel's agreement over
-  its calls that answered; `skipped` for a reel with no stored curator run; `error`
-  (`judge_answer_invalid`) when every call of the reel failed. Its metadata repeats the counts and each
-  run's agreement (null for a failed call).
+  its calls that answered, owner calls and curator calls together; `skipped` for a reel with no stored
+  curator run; `error` (`judge_answer_invalid`) when every call of the reel failed. Its metadata repeats
+  the counts and each call's agreement (null for a failed call).
 
 ## Rules
 
@@ -132,6 +139,8 @@ visual marks are ignored.
   worker's own prompts: never add it to `PROMPT_NAMES`, or the doctor would require it.
 - Never tell the judge where a pick came from or what its label is, and never drop the shuffle or the
   merge: a judge that can tell the owner's marks apart is not measured.
+- Never put the owner's marks and a curator run's picks in one judge call: the judge would reject the
+  owner's marks as duplicates of the curator's picks on the same words. A call holds one source only.
 - Never guess a verdict: an answer that fails the schema or the per-pick rules after the one retry
   fails its call.
 - Never commit `apps/worker/eval-output/`.
@@ -143,11 +152,13 @@ visual marks are ignored.
 ## Testing
 
 Unit tests beside each module (`apps/worker/src/evals/*.test.ts`), no network and no database: mark
-positions, every label rule, pick parsing from a stored AI record, the re-upload match, the answer
-rules and the retry, the score, the report, the PostHog requests and the upload payload.
+positions, every label rule, pick parsing from a stored AI record, the re-upload match, the call
+grouping (the owner's marks alone, each run's picks alone), the answer rules and the retry, the score
+and its split by source, the report, the PostHog requests and the upload payload.
 
 ## Notes
 
 - Overall agreement counts picks, so a reel with many stored curator runs weighs more; the per-reel
   table and the PostHog scorer (one value per reel) do not have that tilt.
-- The owner's marks are sent in every call of a reel, so they count once per curator run.
+- The owner's marks are judged once per reel (one call), so they weigh once; each curator run's picks
+  weigh with their run. The agreement by source shows the two apart.

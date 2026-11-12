@@ -154,17 +154,19 @@ describe("a dry run", () => {
           reel: "aaaaaaaa",
           curatorRuns: 2,
           differingRuns: 0,
+          ownerCalls: 1,
           ownerMarks: 2,
           curatorPicks: 3,
           good: 1,
           bad: 2,
           why: { extra: 2 },
-          judgePicks: 6,
+          judgePicks: 5,
         },
         {
           reel: "bbbbbbbb",
           curatorRuns: 0,
           differingRuns: 0,
+          ownerCalls: 0,
           ownerMarks: 1,
           curatorPicks: 0,
           good: 0,
@@ -178,9 +180,13 @@ describe("a dry run", () => {
     expect(ai.calls).toEqual([]);
     expect(reports).toEqual([]);
     expect(lines).toContain(
-      "reel aaaaaaaa: 2 curator runs, 2 owner marks, 3 curator picks (1 good, 2 bad: extra 2), 6 judge picks",
+      "reel aaaaaaaa: 2 curator runs, 2 owner marks, 3 curator picks (1 good, 2 bad: extra 2), 3 judge calls, 5 judge picks",
     );
-    expect(lines).toContain("  aaaaaaaa v2 reel-components@v7: 2 picks, 3 judge picks");
+    expect(lines).toContain(
+      "total: 3 judge calls (1 owner, 2 curator), 3 owner marks, 3 curator picks (1 good, 2 bad), 5 judge picks",
+    );
+    expect(lines).toContain("  owner marks: 2 judge picks");
+    expect(lines).toContain("  aaaaaaaa v2 reel-components@v7: 2 picks, 2 judge picks");
     expect(lines.at(-1)).toBe("dry run: no judge call, no upload");
   });
 
@@ -195,16 +201,31 @@ describe("a dry run", () => {
 });
 
 describe("a judged run", () => {
-  it("judges each curator run once (one retry on an invalid answer) and never the curator", async () => {
+  it("judges the owner's marks once, each curator run once (one retry on an invalid answer), never the curator", async () => {
     const { deps, ai } = setup();
     await runJudgeEval(OPTIONS, deps);
-    // Run v2 once; run v3 twice (its answer stays invalid).
-    expect(ai.calls.map((call) => call.role)).toEqual(["judge", "judge", "judge"]);
+    // The owner's marks once; run v2 once; run v3 twice (its answer stays invalid).
+    expect(ai.calls.map((call) => call.role)).toEqual(["judge", "judge", "judge", "judge"]);
     expect(ai.calls.every((call) => call.promptVersion === "reel-components-judge@v1")).toBe(true);
     expect(ai.calls.every((call) => call.trace !== undefined)).toBe(true);
-    expect(ai.calls[2]?.prompt).toContain("Your previous answer was refused");
+    expect(ai.calls[3]?.prompt).toContain("Your previous answer was refused");
     // The judge sees picks, never where one came from or its label.
-    expect(ai.calls[0]?.prompt).not.toMatch(/owner|curator|good|bad|label/);
+    for (const call of ai.calls) expect(call.prompt).not.toMatch(/owner|curator|good|bad|label/);
+  });
+
+  it("keeps the owner's marks and each curator run's picks in separate calls", async () => {
+    const { deps, ai } = setup();
+    await runJudgeEval(OPTIONS, deps);
+    const sentOf = (prompt: string) =>
+      (JSON.parse(prompt.split("```json\n").at(-1)!.split("\n```")[0]!) as SentPick[]).map(
+        (pick) => pick.words,
+      );
+    expect(ai.calls.map((call) => sentOf(call.prompt).sort())).toEqual([
+      ["day", "work to live"],
+      ["we", "work to live"],
+      ["to work"],
+      ["to work"],
+    ]);
   });
 
   it("creates the experiment before any judge call, pinned to the dataset revision", async () => {
@@ -232,7 +253,7 @@ describe("a judged run", () => {
       application_version: "reel-components@v7",
     });
     expect(summary.experimentId).toBe(id);
-    expect(summary.agreement).toBeCloseTo(2 / 3);
+    expect(summary.agreement).toBeCloseTo(3 / 4);
   });
 
   it("uploads one item and one judge_agreement result per labelled reel", async () => {
@@ -251,35 +272,37 @@ describe("a judged run", () => {
       curator_prompt_versions: ["reel-components@v7"],
     };
     expect(items[0]?.payload.metadata).toEqual(metadata);
+    const owner = { source: "owner" };
     const run = {
+      source: "curator",
       curator_reel_id: REEL_A,
       curator_version_id: V2,
       curator_prompt_version: "reel-components@v7",
     };
     const payload = items[0]!.payload as {
-      input: { runs: { picks: SentPick[] }[] };
-      output: { runs: Record<string, unknown>[] };
-      expected_output: { runs: { labels: { pick: string; label: string; why: string }[] }[] };
+      input: { calls: ({ picks: SentPick[] } & Record<string, unknown>)[] };
+      output: { calls: Record<string, unknown>[] };
+      expected_output: { calls: { labels: { pick: string; label: string; why: string }[] }[] };
     };
-    expect(payload.input.runs[0]).toMatchObject(run);
-    expect(payload.input.runs[0]?.picks.map((pick) => pick.words).sort()).toEqual([
-      "day",
-      "we",
-      "work to live",
+    // The owner's marks in their own call, then one call per curator run.
+    expect(payload.input.calls[0]).toMatchObject(owner);
+    expect(payload.input.calls[1]).toMatchObject(run);
+    expect(payload.input.calls.map((call) => call.picks.map((pick) => pick.words).sort())).toEqual([
+      ["day", "work to live"],
+      ["we", "work to live"],
+      ["to work"],
     ]);
-    expect(
-      payload.expected_output.runs[0]?.labels.map(({ label, why }) => `${label} ${why}`).sort(),
-    ).toEqual(["bad extra", "good owner", "good owner"]);
-    expect(payload.output.runs[0]).toMatchObject({ ...run, verdicts: expect.any(Array) });
+    const labels = (call: number) =>
+      payload.expected_output.calls[call]?.labels.map(({ label, why }) => `${label} ${why}`).sort();
+    expect(labels(0)).toEqual(["good owner", "good owner"]);
+    expect(labels(1)).toEqual(["bad extra", "good match"]);
+    expect(payload.output.calls[0]).toMatchObject({ ...owner, verdicts: expect.any(Array) });
+    expect(payload.output.calls[1]).toMatchObject({ ...run, verdicts: expect.any(Array) });
     // The call that stayed invalid is marked failed, never guessed.
-    expect(payload.output.runs[1]).toEqual({
+    expect(payload.output.calls[2]).toEqual({
       ...run,
       curator_version_id: V3,
-      error: [
-        '"p1" has no verdict, give one for every pick',
-        '"p2" has no verdict, give one for every pick',
-        '"p3" has no verdict, give one for every pick',
-      ],
+      error: ['"p1" has no verdict, give one for every pick'],
     });
 
     expect(results[0]).toMatchObject({
@@ -290,24 +313,30 @@ describe("a judged run", () => {
       evaluated_at: "2026-11-12T10:00:00.000Z",
       payload: {
         reasoning:
-          "the judge agrees with the owner's label on 2 of 3 picks over 1 of 2 curator runs",
+          "the judge agrees with the owner's label on 3 of 4 picks over 2 of 3 judge calls (owner marks 50.0%, curator picks 100.0%)",
         metadata: {
           ...metadata,
-          total: 3,
-          agree: 2,
-          approveGood: 1,
+          total: 4,
+          agree: 3,
+          approveGood: 2,
           rejectBad: 1,
           rejectGood: 1,
           approveBad: 0,
+          owner_agreement: 0.5,
+          owner_picks: 2,
+          curator_agreement: 1,
+          curator_picks: 2,
+          owner_calls: 1,
           curator_runs: 2,
-          runs: [
-            { ...run, agreement: 2 / 3 },
+          calls: [
+            { ...owner, agreement: 0.5 },
+            { ...run, agreement: 1 },
             { ...run, curator_version_id: V3, agreement: null },
           ],
         },
       },
     });
-    expect(results[0]?.value).toBeCloseTo(2 / 3);
+    expect(results[0]?.value).toBeCloseTo(3 / 4);
     // No stored curator run: skipped, with no value.
     expect(results[1]).toMatchObject({ item_id: items[1]?.id, status: "skipped" });
     expect(results[1]).not.toHaveProperty("value");
@@ -319,7 +348,18 @@ describe("a judged run", () => {
       ...sources,
       aiFiles: async () => [{ reelId: REEL_A, key: key(V3) }],
     };
-    await runJudgeEval({ ...OPTIONS, reel: "aaaaaaaa" }, { ...deps, sources: only });
+    // Every answer is empty: the owner's marks' call and the run's call both stay invalid.
+    const refuses: AiRunner = {
+      async call() {
+        return {
+          kind: "answer",
+          answer: { verdicts: [] },
+          usage: NO_USAGE,
+          exchange: {} as AiExchange,
+        };
+      },
+    };
+    await runJudgeEval({ ...OPTIONS, reel: "aaaaaaaa" }, { ...deps, sources: only, ai: refuses });
     expect(sent.experiment).toMatchObject({ expected_item_count: 1, expected_result_count: 1 });
     expect(sent.upload?.results).toHaveLength(1);
     expect(sent.upload?.results[0]).toMatchObject({
@@ -341,8 +381,12 @@ describe("a judged run", () => {
     expect(html).toContain("<td>bigword</td><td>day</td>");
     expect(html).toContain("about day");
     expect(html).toContain("Judge calls with no valid answer");
-    expect(lines).toContain("agreement 66.7% (2 of 3 picks); approve/bad 0, reject/good 1");
-    expect(lines).toContain("judge cost: $0.0300");
+    expect(lines).toContain("agreement 75.0% (3 of 4 picks); approve/bad 0, reject/good 1");
+    expect(lines).toContain("  owner marks: 50.0% (1 of 2)");
+    expect(lines).toContain("  curator picks: 100.0% (2 of 2)");
+    expect(html).toContain('<th scope="row">Owner marks</th>');
+    expect(html).toContain('<th scope="row">Curator picks</th>');
+    expect(lines).toContain("judge cost: $0.0400");
   });
 
   it("traces the run: one root span, one span per judge call under it", async () => {
@@ -352,12 +396,14 @@ describe("a judged run", () => {
     const root = spans.find((span) => span.name === "eval.judge");
     expect(root?.spanContext().traceId).toBe("00000000000040008000000000000001");
     const calls = spans.filter((span) => span.name === "eval.judge.call");
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(
       calls.every((span) => span.parentSpanContext?.spanId === root?.spanContext().spanId),
     ).toBe(true);
-    expect(calls[0]?.attributes).toMatchObject({
+    expect(calls[0]?.attributes).toMatchObject({ "reel.id": "aaaaaaaa", "eval.source": "owner" });
+    expect(calls[1]?.attributes).toMatchObject({
       "reel.id": REEL_A,
+      "eval.source": "curator",
       "eval.curator_version_id": V2,
       "eval.curator_prompt_version": "reel-components@v7",
     });
