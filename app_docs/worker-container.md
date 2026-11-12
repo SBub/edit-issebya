@@ -77,8 +77,9 @@ bind-mounted Mac folder on Docker Desktop, and kept across restarts like the nat
 `WORKER_MIN_FREE_DISK_GB` is measured on that volume, which is Docker Desktop's disk image, not the
 Mac's disk.
 
-Chrome's `TMPDIR` is not on the volume: each render call gets a short `/tmp/hf-*` folder in the
-container (`withChromeTmp`, `app_docs/export.md`), removed after the call. It stays out of
+Chrome's `TMPDIR` is not on the volume: each HyperFrames call of a render (the composite export
+runs up to three, two at a time) gets a short `/tmp/hf-*` folder of its own in the container
+(`withChromeTmp`, `app_docs/export.md`), removed after the call. It stays out of
 `/scratch` because Chrome's Unix socket path must fit in 107 characters.
 
 ## How to Run

@@ -304,7 +304,8 @@ describe("the real render behind the speaker", () => {
       headTrack,
     );
     const masks: Record<string, string> = {};
-    for (const mask of behind.inputs.masks!) {
+    // A VISUAL sits in front of the speaker and has no mask.
+    for (const mask of behind.inputs.masks ?? []) {
       const output = join(dir, `${name}-${mask.fingerprint}.mp4`);
       const call = maskToolCall(
         {

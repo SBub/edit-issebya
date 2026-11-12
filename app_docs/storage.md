@@ -168,9 +168,15 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   scratch folder: `apps/studio/test-support/worker.ts` sets `WORKER_SCRATCH_DIR` to
   `.e2e-storage/worker-scratch` (a spec may pass its own), never the owner's folder from
   `apps/worker/.env.development`.
-- `apps/worker/src/render/render-call.ts`: `renderScratchEnv` sets `HYPERFRAMES_EXTRACT_CACHE_DIR`,
-  `HYPERFRAMES_HISTORY_ROOT` and `TMPDIR` inside the render's folder, so the frame cache, the
-  history and the work folders go with the job folder. `hyperframes clean` is not run.
+- `apps/worker/src/render/render-call.ts`: `renderScratchEnv` sets `HYPERFRAMES_EXTRACT_CACHE_DIR`
+  and `HYPERFRAMES_HISTORY_ROOT` inside the render's folder, so the frame cache and the history go
+  with the job folder. `hyperframes clean` is not run. Chrome's `TMPDIR` is a short folder of its
+  own outside the scratch folder, removed after each call (`withChromeTmp`, `app_docs/export.md`).
+- The composite export keeps everything it makes in the same render folder, removed with it on
+  success, failure and cancel: one folder per layer page (`front`, `sound`, `behind`: its project,
+  frame cache, history and, for a picture layer, its PNG frames, 78 to 152 MB per reel measured), the
+  cut sound, the masks' list and, in `match` mode, the footage's Motion JPEG copy (about 0.2 MB per
+  frame, 308 MB for a 48 s reel).
 
 ### Disk guard
 

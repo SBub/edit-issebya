@@ -21,6 +21,18 @@ const hfProgress: ProgressParser = (line) => {
   return Math.round(Math.min(100, Math.max(0, pct)));
 };
 
+// ffmpeg run with `-progress pipe:1` prints `frame=N` once per report and
+// `progress=end` at the end: the share of `totalFrames` written so far.
+export function ffmpegFrameProgress(totalFrames: number): ProgressParser {
+  return (line) => {
+    const text = line.trim();
+    if (text === "progress=end") return 100;
+    const match = /^frame=\s*(\d+)$/.exec(text);
+    if (!match || !(totalFrames > 0)) return null;
+    return Math.round(Math.min(100, (Number(match[1]) / totalFrames) * 100));
+  };
+}
+
 // Each step names its own parser, so either can follow its tool later.
 export const parseRenderProgress: ProgressParser = hfProgress;
 export const parsePersonMaskProgress: ProgressParser = hfProgress;
@@ -36,10 +48,22 @@ export function weightedProgress(
   parser: ProgressParser,
   weights: readonly number[],
 ): ProgressParser[] {
+  return weightedParts(
+    weights.map(() => parser),
+    weights,
+  );
+}
+
+// The same, each part with a parser of its own: a step whose calls are
+// different tools (the composite export's HyperFrames pages and ffmpeg passes).
+export function weightedParts(
+  parsers: readonly ProgressParser[],
+  weights: readonly number[],
+): ProgressParser[] {
   const total = weights.reduce((sum, weight) => sum + weight, 0);
   const done = weights.map(() => 0);
   return weights.map((_, index) => (line) => {
-    const pct = parser(line);
+    const pct = parsers[index]!(line);
     if (pct === null) return null;
     done[index] = Math.max(done[index]!, pct);
     if (!(total > 0)) return pct;

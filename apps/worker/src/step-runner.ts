@@ -93,6 +93,10 @@ export interface ToolCall {
   progress?: ProgressParser;
   // The Context the call's `exec` span is a child of; absent, the step's span.
   parent?: Context;
+  // Aborted, this call alone stops (its process group is killed) and throws
+  // the signal's reason: the step stops a call whose sibling failed (the
+  // composite export's lanes). The job's own signal stops every call as before.
+  signal?: AbortSignal;
 }
 
 export interface ChildStep extends ToolCall {
@@ -731,15 +735,17 @@ export function runToolsStep(
           if (percent !== null) progress.push(percent);
         };
       }
-      // A call after a lost lease never starts.
+      // A call after a lost lease never starts, nor one whose own signal is aborted.
       ctx.signal.throwIfAborted();
+      call.signal?.throwIfAborted();
+      const signal = call.signal ? AbortSignal.any([ctx.signal, call.signal]) : ctx.signal;
       const exec = startExecSpan(ctx.telemetry, call.parent ?? stepContext, spec.name, call);
       const startedAt = (moment += 1);
       let run: ChildRun;
       try {
-        run = await spawnTool(call, ctx.signal, callLog);
+        run = await spawnTool(call, signal, callLog);
       } catch (error) {
-        failExecSpan(exec, ctx.signal.aborted ? "aborted" : "spawn_error", error);
+        failExecSpan(exec, signal.aborted ? "aborted" : "spawn_error", error);
         throw error;
       }
       const toolStarted = run.code === null || !NOT_STARTED.has(run.code);
@@ -763,9 +769,10 @@ export function runToolsStep(
         exitSignal,
         cpuMs: report?.cpuMs ?? null,
         peakRssBytes: callPeakBytes,
-        aborted: ctx.signal.aborted,
+        aborted: signal.aborted,
       });
       ctx.signal.throwIfAborted();
+      call.signal?.throwIfAborted();
       // Into the step's totals only once the call was not aborted, as before.
       if (report) cpuMs = (cpuMs ?? 0) + report.cpuMs;
       if (callPeakBytes !== null) {
