@@ -167,13 +167,40 @@ and rule 6 (`engine-place.ts`).
 
 ### Builder contract
 
-- `src/build.ts`: `build(edit, transcript, headTrack, preset, measurer) -> { html, assets, checks }`.
+- `src/build.ts`: `build(edit, transcript, headTrack, preset, measurer, options) -> { html, assets, checks }`.
   `html` is a HyperFrames composition (`data-composition-id="main"`, a paused GSAP 3.14.2 timeline
   registered on `window.__timelines`); `assets` lists every referenced file with its role
   (`footage`, `font`, `sound`, `mask`, `visual`), sorted; `checks` is the layout check list. A
   `mask` asset carries its `cutout` ref at `maskPath(mask)` (`masks/<fingerprint>.mp4`).
 - Deterministic: no clock, no randomness, no I/O. The same inputs give the same bytes in Node and in
   the browser. One builder serves the preview and the export.
+- `options.layer` (`full`, `behind`, `front`, `sound`; default `full`) says which part of the version
+  the page draws. `full` is the whole page: the studio preview's and the export's single call, byte
+  for byte what the builder gave before the option existed. The other three are the export
+  composite's small pages (`app_docs/export.md`), each a cut of the same build, so an element is
+  where and when the full page has it:
+  - `behind`: only the big words inside the cut-out spans (the items of `maskSpans`), on a
+    transparent page (`background: transparent`), with no footage, mask, composite group or sound.
+    Each word gets two tweens that change nothing (`opacity` 1 to 1 over 1 ms at its start and its
+    end): HyperFrames reuses a still frame only between a timeline's keyframes, so without them
+    every frame of a page with no tween is drawn again.
+  - `front`: everything over the speaker (the VISUALs' cards, big words with `cutout: false`,
+    transitions with their levels, captions, accents and the hook), with the full page's own
+    timeline, on a transparent page, with no footage, mask or sound.
+  - `sound`: no picture. The footage clip as an `<audio>` element with the `<video>`'s attributes
+    (HyperFrames mixes sound from the page's elements, never from frames) and the sound track's
+    `<audio>` elements.
+    A layer page's `assets` are only what it names: the pair's fonts on every page, a card's picture on
+    `front`, the footage and the sounds on `sound`, never a mask. `checks` are the full page's on every
+    layer.
+- `src/span-frames.ts`: the frames a timed clip is on in the export, HyperFrames' rules (0.8.222)
+  measured against its own export. `EXPORT_FPS` is 30. `reelFrames(duration)` is
+  `ceil(duration x 30)`. `clipFrames({ start, end }, total)` gives the clip's first output frame
+  (`ceil(start x 30)`), its last (`ceil(end x 30) - 1`, never past the reel), how many of its own
+  frames HyperFrames extracts (`round((end - start) x 30)`) and `held`, the output frames on which
+  the clip has no frame of its own left and repeats its last one. A span of 16.033 to 17.767 s is on
+  53 frames (481 to 533) and extracts 52, so frame 533 repeats frame 532. The worker's composite
+  follows these rules (`apps/worker/src/render/composite.ts`).
 - `src/measure.ts`: `createMeasurer(hb, pair, fonts)` over the initialised `harfbuzzjs` module, the pair and its
   two files' bytes, all passed in by the caller (the worker's `apps/worker/src/edit-measurer.ts` reads
   them from `packages/edit/assets/`, once per process and pair). The `Measurer` carries its `pair`, and
@@ -211,7 +238,10 @@ and rule 6 (`engine-place.ts`).
   where the person is not), and an untimed `plus-lighter` sub-group (`.cutout-front`) of a second
   footage copy times the mask (the person back in front). Every layer is a plain timed element, so
   the player and the render's frame injector show the same pixels. A span with no matching entry
-  in `inputs.masks` (start and end within half a millisecond) throws.
+  in `inputs.masks` (start and end within half a millisecond) throws. Per pixel the group is
+  `(footage with the words over it) x (1 - mask) + footage x mask`. The export's composite does the
+  same blend a second time in ffmpeg (`compositeGraph` in `apps/worker/src/render/composite.ts`,
+  `app_docs/export.md`), from the `behind` page's frames, the footage and the mask.
 - Big words with `cutout: false` (above the head): plain text (`.word`, track 31, above the VISUALs' cards at
   track 30) over the footage, no composite and no mask; the `.word` rule is written on any page with a big word.
 - VISUALs (always in front of the speaker): each VISUAL's frame (`clip visual`, or `clip visual-picture`
@@ -633,6 +663,11 @@ never fatal.
   of them). Each placed fixture's page and widths are compared with its golden in both projects
   (`src/build.test.ts`, `src/build.browser.test.ts`); the two engine inputs (`rethink-work-hand`,
   `rethink-work-behind`) have no golden, since their captions have no positions.
+  `src/build-layers.test.ts`: `full` equals the page built with no option; the `behind` page holds
+  only the cut-out big words, each the full page's own element, with its two still tweens; the
+  `front` page holds everything over the speaker with the full page's timeline and text lines; the
+  `sound` page holds the footage as `<audio>` and the sound track; each layer's assets and checks.
+  `src/span-frames.test.ts`: the frame rules, on the spans measured in a real export.
 - `apps/studio/db-tests/versions.test.ts` under `yarn test:db`: `save_version`, version
   immutability and its RLS.
 - `apps/worker/src/first-version.test.ts` (version 1 saved, kept on a retry),
@@ -760,6 +795,11 @@ never fatal.
 - Never write a version key twice (put-if-absent, an existing key fails the save).
 - Never let anything but the service role execute `save_version`.
 - One builder for preview and export; never fork it per environment.
+- The cut-out blend exists twice: in the full page's CSS (`BEHIND_STYLE`, the `.cutout` group) and in
+  the export composite's ffmpeg graph (`compositeGraph`). Never change one without the other, and
+  run the worker's `render-compare.tools.test.ts` after either.
+- Never change what a `full` page holds through the `layer` option: `full` and no option give the same
+  bytes. A layer page only leaves elements out; it never moves, restyles or retimes one.
 - Never store a built page; versions hold the edit, the page is built from it.
 - Anchors are words; seconds only where nobody speaks.
 - Claude never writes times, positions or sizes: every one in a decided version comes from the

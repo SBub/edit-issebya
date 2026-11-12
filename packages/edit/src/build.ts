@@ -62,10 +62,21 @@ export interface BuildResult {
   checks: Check[];
 }
 
+// Which part of the version a page draws. `full` is the whole page, the
+// studio preview's and the single-call export's. The other three are the
+// composite export's small pages (app_docs/export.md): `behind` draws only the
+// big words inside the cut-out spans, `front` everything over the speaker
+// (cards, big words with no cut-out, transitions, text), both on a transparent
+// page with no footage, mask or sound; `sound` has no picture at all, only the
+// footage as an `<audio>` element and the sound track.
+export type Layer = "full" | "behind" | "front" | "sound";
+
 export interface BuildOptions {
   // The engine's record of the placement: its kept overlaps are the only
   // text overlaps the checks excuse.
   engineRecord?: readonly EngineNote[];
+  // The part to draw (default `full`).
+  layer?: Layer;
 }
 
 // The GSAP build the reference reel was made with, pinned: HyperFrames drives
@@ -91,6 +102,10 @@ export function build(
   if (edit.font_pair !== measurer.pair.id) {
     throw new Error(`build: the edit is set in ${edit.font_pair}, measured in ${measurer.pair.id}`);
   }
+  const layer: Layer = options.layer ?? "full";
+  // What each layer page draws; the full page draws everything.
+  const drawsFront = layer === "full" || layer === "front";
+  const drawsSound = layer === "full" || layer === "sound";
   const resolved = resolveTimeline(edit, transcript);
   // A caption a text shows is left out only while that text is on screen.
   const hidden = hiddenCaptionIds(edit, resolved);
@@ -158,7 +173,7 @@ export function build(
       return `      @font-face { font-family: "${font.family}"; src: url("${font.file}") format("truetype"); font-weight: ${font.weight}; font-style: ${font.style}; }`;
     }),
     "      * { margin: 0; padding: 0; box-sizing: border-box; }",
-    `      html, body { width: ${preset.frame.width}px; height: ${preset.frame.height}px; overflow: hidden; background: #000; }`,
+    `      html, body { width: ${preset.frame.width}px; height: ${preset.frame.height}px; overflow: hidden; background: ${layer === "full" ? "#000" : "transparent"}; }`,
     "      .full { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }",
     "      .layer { position: absolute; }",
     "      #text { position: absolute; inset: 0; }",
@@ -188,8 +203,12 @@ export function build(
   const clip = (item: Edit["tracks"]["footage"][number], track: number) => {
     const { start, end } = span(item.id);
     const src = edit.inputs.footage.file;
+    // The sound page takes the footage as an `<audio>` element with the same
+    // attributes: HyperFrames mixes sound from the elements, never from
+    // frames, so no picture is decoded or drawn there.
+    const tag = layer === "sound" ? "audio" : "video";
     body.push(
-      `      <video${attrs([
+      `      <${tag}${attrs([
         ["id", item.id],
         ["class", "clip full"],
         ["src", src],
@@ -199,14 +218,14 @@ export function build(
         ["data-track-index", String(track)],
         ["data-has-audio", "true"],
         ...(item.style ? ([["style", inlineStyle(item.style)]] as const) : []),
-      ])}></video>`,
+      ])}></${tag}>`,
     );
     for (const hidden of resolveSpans(item.hidden, edit, transcript)) {
       js.push(`tl.set(${selector(item.id)}, { opacity: 0 }, ${num(hidden.start)});`);
       js.push(`tl.set(${selector(item.id)}, { opacity: 1 }, ${num(hidden.end)});`);
     }
   };
-  for (const item of tracks.footage) clip(item, 1);
+  if (layer === "full" || layer === "sound") for (const item of tracks.footage) clip(item, 1);
 
   // Behind the speaker, one composite per mask span, above the footage and
   // under transitions and text. Inside an isolated group: a footage copy, the
@@ -218,6 +237,27 @@ export function build(
   // pixels; the groups themselves are untimed (HyperFrames times the video or
   // its wrapper, never both).
   for (const [index, maskSpan] of spans.entries()) {
+    if (layer === "front" || layer === "sound") continue;
+    if (layer === "behind") {
+      // The behind page: the span's items alone, at the full page's own places
+      // and times. The export's composite (the worker's `composite.ts`) puts
+      // the footage under them and the person back over them with the mask.
+      for (const item of behindItems) {
+        if (!maskSpan.items.includes(item.id)) continue;
+        body.push(`      ${behindElement(item, span(item.id), bigWords.get(item.id), preset)}`);
+        // A tween that changes nothing at the item's in and out: HyperFrames
+        // reuses a frame only between a timeline's keyframes (a page with no
+        // tween is never deduplicated), so the still frames between are drawn
+        // once. Opacity stays 1: no pixel changes.
+        const { start: itemStart, end: itemEnd } = span(item.id);
+        for (const at of [itemStart, itemEnd]) {
+          js.push(
+            `tl.fromTo(${selector(item.id)}, { opacity: 1 }, { opacity: 1, duration: 0.001 }, ${num(at)});`,
+          );
+        }
+      }
+      continue;
+    }
     const id = `cut_${index + 1}`;
     const mask = masks[index]!;
     const timing = [
@@ -266,7 +306,7 @@ export function build(
   // Above the footage and the composites, under transitions and text, each
   // with its own hard cut in and out. A VISUAL's card is track 30; a big word
   // with no cut-out is front text, drawn above the cards (track 31, decision 24).
-  for (const item of overFootage) {
+  for (const item of drawsFront ? overFootage : []) {
     const track = item.kind === "word" ? "31" : "30";
     body.push(`      ${behindElement(item, span(item.id), bigWords.get(item.id), preset, track)}`);
   }
@@ -275,7 +315,7 @@ export function build(
   // Each transition is a layer of the background role; its text levels are
   // children of the layer (so they come and go with it), each revealed on
   // its own word with the caption's rise.
-  for (const [index, item] of tracks.transitions.entries()) {
+  for (const [index, item] of (drawsFront ? tracks.transitions : []).entries()) {
     const kind = preset.transitions[item.type];
     const seconds = kind.seconds;
     const { start, end } = span(item.id);
@@ -344,7 +384,7 @@ export function build(
   }
 
   const byId = new Map(boxes.map((box) => [box.itemId, box]));
-  const texts = [...tracks.captions, ...tracks.overlays]
+  const texts = (drawsFront ? [...tracks.captions, ...tracks.overlays] : [])
     .map((item) => byId.get(item.id))
     .filter((box): box is TextBox => box !== undefined);
   body.push(
@@ -380,7 +420,7 @@ export function build(
   }
   body.push("      </div>");
 
-  for (const item of tracks.sounds) {
+  for (const item of drawsSound ? tracks.sounds : []) {
     const sound = preset.sounds[item.sound];
     const { start } = span(item.id);
     const length = Math.min(sound.durationSeconds, Math.max(edit.duration - start, 0));
@@ -430,7 +470,21 @@ export function build(
     "",
   ].join("\n");
 
-  return { html, assets: assetsOf(edit, preset, masks, measurer.pair), checks };
+  const assets = assetsOf(edit, preset, masks, measurer.pair).filter((asset) =>
+    layerNames(layer, asset.role),
+  );
+  return { html, assets, checks };
+}
+
+// Whether a layer's page names an asset of this role: the full page names them
+// all, every page the fonts (its style sheet declares them), the front page
+// the cards' pictures, the sound page the footage and the sounds. No layer
+// page names a mask.
+function layerNames(layer: Layer, role: AssetRole): boolean {
+  if (layer === "full" || role === "font") return true;
+  if (layer === "front") return role === "visual";
+  if (layer === "sound") return role === "footage" || role === "sound";
+  return false;
 }
 
 // One behind-track item as its element: a VISUAL exactly covering its box, or
