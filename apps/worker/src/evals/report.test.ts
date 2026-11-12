@@ -66,7 +66,7 @@ describe("the report", () => {
     startedAt: "2026-11-12T10:00:00.000Z",
     judgePrompt: "reel-components-judge@v1",
     judgeLabel: "production",
-    model: "anthropic/claude-sonnet-5.5",
+    model: "anthropic/claude-haiku-5.5",
     datasetRevision: 6,
     curatorPrompts: ["reel-components@v7"],
     experimentId: "experiment-id",

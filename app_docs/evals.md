@@ -8,7 +8,7 @@
 
 The owner labelled six reels by hand: which words are an ACCENT, a BIGWORD, a LIST, a QUESTION, and
 which lines hold nothing. The labels live in PostHog as the dataset `owner-reels` (project 312096).
-An LLM judge (prompt `reel-components-judge` in PostHog, model Sonnet 5.5) reads a reel's script and a
+An LLM judge (prompt `reel-components-judge` in PostHog, model Haiku 5.5) reads a reel's script and a
 set of picks and answers approve or reject for each. This eval measures how often the judge agrees
 with the owner, so the judge prompt can be tuned until it does.
 
@@ -125,7 +125,7 @@ visual marks are ignored.
   stored answers only. Its only AI call is the `judge` role.
 - Read-only on the database and on storage: selects and gets only. The eval's only writes are the
   judge calls, the report file and the PostHog scorer and experiment.
-- Never run it against production data on a whim: a judged run costs Sonnet calls (one per labelled
+- Never run it against production data on a whim: a judged run costs Haiku calls (one per labelled
   reel and curator run). Use `--dry-run` first.
 - The judge prompt's wording lives only in PostHog (`reel-components-judge`), never in the repository;
   tests use the placeholder in `apps/worker/test-support/fake-prompts.ts`. It is not one of the

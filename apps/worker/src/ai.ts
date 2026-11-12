@@ -22,27 +22,23 @@ type Env = Record<string, string | undefined>;
 // answered.
 export const AI_MODEL = "anthropic/claude-haiku-5.5";
 
-// The model of the components judge (the eval of app_docs/evals.md), as
-// OpenRouter names it: a stronger model than the one it judges.
-const JUDGE_MODEL = "anthropic/claude-sonnet-5.5";
-
 // What a call is for: the written hook, the decide answer, a library photo's
-// description, the eval's judge of the decide answer's picks.
+// description, the eval's judge of the decide answer's picks. The judge runs
+// on Haiku for cost for now (the owner's choice); a stronger judge can be tried
+// later by changing its role here.
 export type AiRole = "hook" | "decide" | "describe" | "judge";
 
 export const AI_MODELS: Readonly<Record<AiRole, string>> = {
   hook: AI_MODEL,
   decide: AI_MODEL,
   describe: AI_MODEL,
-  judge: JUDGE_MODEL,
+  judge: AI_MODEL,
 };
 
 // US dollars per million tokens, for a call whose cost OpenRouter did not
-// report (OpenRouter's list prices for Haiku 5.5, prompts up to 100k tokens,
-// and for Sonnet 5.5).
+// report (OpenRouter's list prices for Haiku 5.5, prompts up to 100k tokens).
 const PRICES: Readonly<Record<string, { input: number; output: number }>> = {
   [AI_MODEL]: { input: 0.1, output: 0.5 },
-  [JUDGE_MODEL]: { input: 2, output: 10 },
 };
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";

@@ -227,7 +227,7 @@ describe("a judged run", () => {
       dataset_revision_id: "revision-6",
       expected_item_count: 2,
       expected_result_count: 2,
-      model_version: "anthropic/claude-sonnet-5.5",
+      model_version: "anthropic/claude-haiku-5.5",
       prompt_version: "reel-components-judge@v1",
       application_version: "reel-components@v7",
     });
@@ -247,7 +247,7 @@ describe("a judged run", () => {
       reel_id: "aaaaaaaa",
       judge_prompt_version: "reel-components-judge@v1",
       judge_prompt_label: "production",
-      judge_model: "anthropic/claude-sonnet-5.5",
+      judge_model: "anthropic/claude-haiku-5.5",
       curator_prompt_versions: ["reel-components@v7"],
     };
     expect(items[0]?.payload.metadata).toEqual(metadata);

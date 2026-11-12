@@ -331,9 +331,10 @@ version row (`prompt_version`, the components' identity), the AI record (`prompt
   `apps/worker/.env.example`). Without it every AI call is `unavailable` (`the OpenRouter key is not
 set`) and the job waits.
 - The model: `AI_MODEL` in `apps/worker/src/ai.ts` (`anthropic/claude-haiku-5.5`), one setting;
-  `AI_MODELS` maps each role (`hook`, `decide`, `describe`) to it, the one place to give
-  a role another model later. The `judge` role (the eval, `app_docs/evals.md`) is
-  `anthropic/claude-sonnet-5.5`.
+  `AI_MODELS` maps each role (`hook`, `decide`, `describe`, `judge`) to it, the one place to give
+  a role another model later. The `judge` role (the eval, `app_docs/evals.md`) is also
+  `anthropic/claude-haiku-5.5`, for cost for now (the owner's choice); a stronger judge can be
+  tried later by changing that role.
 - `E2E_MOCK_AI` and `E2E_MOCK_AI_SCRIPT`: tests only; documented in `apps/worker/.env.example`.
 - `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `POSTHOG_PROMPT_LABEL` and
   `POSTHOG_HOST`: the prompts, see "Prompts". `E2E_MOCK_PROMPTS`: tests only.

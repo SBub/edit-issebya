@@ -45,16 +45,10 @@ afterEach(async () => {
 });
 
 describe("the model", () => {
-  it("is Claude Haiku 5.5 on OpenRouter for every role of the worker's jobs", () => {
+  it("is Claude Haiku 5.5 on OpenRouter for every role, the judge included", () => {
     expect(AI_MODEL).toBe("anthropic/claude-haiku-5.5");
-    const { judge, ...jobs } = AI_MODELS;
-    expect(new Set(Object.values(jobs))).toEqual(new Set([AI_MODEL]));
-    expect(Object.keys(jobs).sort()).toEqual(["decide", "describe", "hook"]);
-    expect(judge).toBe("anthropic/claude-sonnet-5.5");
-  });
-
-  it("prices the judge's model at 2 and 10 dollars per million tokens", () => {
-    expect(listPriceUsd(AI_MODELS.judge, 1_000_000, 1_000_000)).toBeCloseTo(12);
+    expect(Object.keys(AI_MODELS).sort()).toEqual(["decide", "describe", "hook", "judge"]);
+    expect(new Set(Object.values(AI_MODELS))).toEqual(new Set([AI_MODEL]));
   });
 
   it("is priced at 0.10 and 0.50 dollars per million tokens when OpenRouter reports no cost", () => {
