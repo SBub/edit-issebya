@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ROOT_CONTEXT, trace } from "@opentelemetry/api";
 import type { Transcript } from "@edit-issebya/edit";
 import { AI_MODELS, type AiRunner, NO_USAGE } from "../ai.ts";
-import { type PromptSource, promptIdentity } from "../prompts/source.ts";
+import { type PromptSource, type PromptText, promptIdentity } from "../prompts/source.ts";
 import { addUsage } from "../step-store.ts";
 import { type Telemetry, inSpan } from "../telemetry.ts";
 import { type CuratorRun, type RunSources, curatorRunsFor, runCandidates } from "./curator-runs.ts";
@@ -19,6 +19,7 @@ import {
   wordsOf,
 } from "./label.ts";
 import { type OwnerItem, parseOwnerItem } from "./owner-marks.ts";
+import { type DraftPrompt, draftId } from "./draft-prompt.ts";
 import type { EvalsApi, UploadBody } from "./posthog-evals.ts";
 import { percent, renderReport } from "./report.ts";
 import { type JudgedPick, agreement, score, tally } from "./score.ts";
@@ -47,6 +48,8 @@ export interface EvalOptions {
   dryRun: boolean;
   // Only the labelled reel whose id starts like this.
   reel?: string;
+  // A draft judge prompt from a local file, judged instead of the PostHog prompt.
+  draft?: DraftPrompt;
 }
 
 export interface EvalDeps {
@@ -240,6 +243,7 @@ function uploadBody({
   evaluatedAt,
   judgePrompt,
   judgeLabel,
+  judgeFile,
   newId,
 }: {
   results: readonly { item: OwnerItem; judged: readonly Judged[] }[];
@@ -248,6 +252,8 @@ function uploadBody({
   evaluatedAt: string;
   judgePrompt: string;
   judgeLabel: string;
+  // The draft's file name, when the judge is a draft.
+  judgeFile?: string;
   newId: () => string;
 }): UploadBody {
   const body: UploadBody = { items: [], results: [] };
@@ -269,6 +275,7 @@ function uploadBody({
       reel_id: item.reelId,
       judge_prompt_version: judgePrompt,
       judge_prompt_label: judgeLabel,
+      ...(judgeFile ? { judge_prompt_file: judgeFile } : {}),
       judge_model: AI_MODELS.judge,
       curator_prompt_versions: curatorPrompts,
     };
@@ -397,8 +404,14 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
 
   // Before any paid call: the prompt, the scorer and the experiment, so a
   // missing prompt or key scope costs nothing.
-  const template = await deps.prompts.get(JUDGE_PROMPT_NAME);
-  const judgePrompt = promptIdentity(template);
+  // A draft has no PostHog version: its identity is its hash, its label "draft".
+  const template: PromptText = options.draft
+    ? { name: "draft", version: 0, label: "draft", text: options.draft.text }
+    : await deps.prompts.get(JUDGE_PROMPT_NAME);
+  const judgePrompt = options.draft ? draftId(options.draft.text) : promptIdentity(template);
+  const judgeLabel = template.label;
+  const judgeFile = options.draft?.file;
+  const described = judgeFile ? `${judgeLabel} ${judgeFile}` : judgeLabel;
   const curatorPrompts = [
     ...new Set(
       prepared.flatMap((one) =>
@@ -411,7 +424,7 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
   const traceId = experimentId.replaceAll("-", "");
   await posthog.createExperiment({
     id: experimentId,
-    name: `components judge ${judgePrompt} (${template.label}) ${startedAt}`,
+    name: `components judge ${judgePrompt} (${described}) ${startedAt}`,
     started_at: startedAt,
     run_source: "local",
     suite_key: SUITE,
@@ -422,7 +435,7 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
     prompt_version: judgePrompt,
     application_version: curatorPrompts.join(", ").slice(0, 255) || "none",
   });
-  log(`experiment ${experimentId}, judge ${judgePrompt} (label ${template.label})`);
+  log(`experiment ${experimentId}, judge ${judgePrompt} (${described})`);
 
   try {
     const root = telemetry.startRootSpan(traceId, "eval.judge", {
@@ -493,7 +506,8 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
       renderReport({
         startedAt,
         judgePrompt,
-        judgeLabel: template.label,
+        judgeLabel,
+        judgeFile,
         model: AI_MODELS.judge,
         datasetRevision: dataset.revision,
         curatorPrompts,
@@ -522,7 +536,8 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
         traceId,
         evaluatedAt: now().toISOString(),
         judgePrompt,
-        judgeLabel: template.label,
+        judgeLabel,
+        judgeFile,
         newId,
       }),
     );

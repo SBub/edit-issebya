@@ -8,6 +8,8 @@ export interface ReportInput {
   // `reel-components-judge@v3`, its label, and the model that judged.
   judgePrompt: string;
   judgeLabel: string;
+  // The draft's file name, when the judge is a draft.
+  judgeFile?: string;
   model: string;
   datasetRevision: number;
   curatorPrompts: string[];
@@ -120,7 +122,7 @@ export function renderReport(input: ReportInput): string {
   const scored = score(input.picks);
   const off = input.picks.filter((pick) => !agrees(pick));
   const meta = [
-    `Judge ${input.judgePrompt} (label ${input.judgeLabel}) on ${input.model}`,
+    `Judge ${input.judgePrompt} (label ${input.judgeLabel}${input.judgeFile ? `, file ${input.judgeFile}` : ""}) on ${input.model}`,
     `curator ${input.curatorPrompts.join(", ") || "none"}`,
     `dataset revision ${input.datasetRevision}`,
     `experiment ${input.experimentId}`,

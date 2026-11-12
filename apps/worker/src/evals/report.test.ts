@@ -135,3 +135,23 @@ describe("the report", () => {
     expect(agreed).toContain("None: the judge agrees with every label.");
   });
 });
+
+describe("the report's judge line", () => {
+  it("names a draft by its id and its file, a PostHog version by its label alone", () => {
+    const draft = renderReport({
+      startedAt: "2026-11-12T10:00:00.000Z",
+      judgePrompt: "draft:ba7816bf8f01",
+      judgeLabel: "draft",
+      judgeFile: "judge-v9.txt",
+      model: "anthropic/claude-haiku-5.5",
+      datasetRevision: 6,
+      curatorPrompts: [],
+      experimentId: "experiment-id",
+      picks: [],
+      failures: [],
+    });
+    expect(draft).toContain(
+      "Judge draft:ba7816bf8f01 (label draft, file judge-v9.txt) on anthropic/claude-haiku-5.5",
+    );
+  });
+});

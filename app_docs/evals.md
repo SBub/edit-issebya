@@ -24,6 +24,7 @@ From the repository root, on the Mac (not in the worker container), with the loc
 yarn workspace @edit-issebya/worker eval:judge --dry-run
 yarn workspace @edit-issebya/worker eval:judge
 yarn workspace @edit-issebya/worker eval:judge --reel 9dfd03d8 --label staging
+yarn workspace @edit-issebya/worker eval:judge --prompt-file ~/judge-draft.txt
 ```
 
 - `--dry-run`: everything except the judge calls and the upload. Prints, per labelled reel, the
@@ -32,6 +33,8 @@ yarn workspace @edit-issebya/worker eval:judge --reel 9dfd03d8 --label staging
 - `--reel <id>`: only the labelled reel whose id starts like this.
 - `--label <label>`: the judge prompt's label in PostHog (default `POSTHOG_PROMPT_LABEL`, else
   `production`).
+- `--prompt-file <path>`: a draft judge prompt read from that file instead of PostHog's. Never with
+  `--label` (a draft has no PostHog version). See "Drafts".
 
 It reads `apps/worker/.env.development` like the worker's other commands (`doctor`, `trace`): the
 Supabase and R2 variables, `OPENROUTER_API_KEY`, and `POSTHOG_PERSONAL_API_KEY`,
@@ -126,6 +129,23 @@ visual marks are ignored.
   curator run; `error` (`judge_answer_invalid`) when every call of the reel failed. Its metadata repeats
   the counts and each call's agreement (null for a failed call).
 
+## Drafts
+
+A new judge prompt is tried before PostHog holds a version of it, so PostHog gets a version only for a
+prompt that wins:
+
+1. Write the draft in a local file outside the repository (the wording never lives in the repo, and
+   `--prompt-file` refuses a path inside it).
+2. Run the eval on it: `eval:judge --prompt-file <path>`. The draft is judged in place of
+   `reel-components-judge`, which is not fetched.
+3. The report and the PostHog experiment record the draft as `draft:<first 12 hex of the sha256 of the
+text>` (the experiment's `prompt_version`, the item's `judge_prompt_version`, label `draft`), with
+   the file name (`judge_prompt_file` in the item metadata, and in the report's judge line). The same text
+   always gets the same id. The judge calls' traces show the call's prompt as `draft@v0`.
+4. Iterate on the file until the agreement is the one you want, comparing the experiments by id.
+5. Only for a winner: publish the text as a new `reel-components-judge` version in PostHog, set its
+   label, then run the eval with `--label <label>` to confirm the same agreement under that version.
+
 ## Rules
 
 - Never call the curator here (no `hook` or `decide` call, no decide step, no job): the eval reads
@@ -139,6 +159,8 @@ visual marks are ignored.
   worker's own prompts: never add it to `PROMPT_NAMES`, or the doctor would require it.
 - Never tell the judge where a pick came from or what its label is, and never drop the shuffle or the
   merge: a judge that can tell the owner's marks apart is not measured.
+- Never read a draft prompt from inside the repository, and never give `--label` and `--prompt-file`
+  together: the eval refuses both.
 - Never put the owner's marks and a curator run's picks in one judge call: the judge would reject the
   owner's marks as duplicates of the curator's picks on the same words. A call holds one source only.
 - Never guess a verdict: an answer that fails the schema or the per-pick rules after the one retry
@@ -154,7 +176,8 @@ visual marks are ignored.
 Unit tests beside each module (`apps/worker/src/evals/*.test.ts`), no network and no database: mark
 positions, every label rule, pick parsing from a stored AI record, the re-upload match, the call
 grouping (the owner's marks alone, each run's picks alone), the answer rules and the retry, the score
-and its split by source, the report, the PostHog requests and the upload payload.
+and its split by source, the report, the PostHog requests and the upload payload, and the draft prompt
+(the refusal of a path inside the repository, the draft id, the recorded version).
 
 ## Notes
 

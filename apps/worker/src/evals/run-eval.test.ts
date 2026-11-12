@@ -7,6 +7,7 @@ import { createTelemetry } from "../telemetry.ts";
 import type { RunSources } from "./curator-runs.ts";
 import type { SentPick } from "./label.ts";
 import type { EvalsApi, ExperimentBody, UploadBody } from "./posthog-evals.ts";
+import { draftId } from "./draft-prompt.ts";
 import { type EvalDeps, runJudgeEval } from "./run-eval.ts";
 
 const TEXT_A = "we work to live and we live to work every day";
@@ -428,5 +429,43 @@ describe("a judged run", () => {
     });
     await expect(runJudgeEval(OPTIONS, deps)).rejects.toThrow(/offline_evaluation_ingestion/);
     expect(ai.calls).toEqual([]);
+  });
+});
+
+describe("a draft judge prompt", () => {
+  const TEXT = "draft judge {{script}} {{picks}}";
+  const draft = { text: TEXT, file: "judge-draft.txt", id: draftId(TEXT) };
+
+  it("is judged in place of the PostHog prompt, which is never fetched", async () => {
+    const { deps, sent, ai, reports, lines } = setup();
+    const fetched: string[] = [];
+    const prompts = {
+      async get(name: string) {
+        fetched.push(name);
+        throw new Error(`fetched ${name}`);
+      },
+    };
+    await runJudgeEval({ ...OPTIONS, draft }, { ...deps, prompts });
+    expect(fetched).toEqual([]);
+    expect(ai.calls[0]?.prompt.startsWith("draft judge ")).toBe(true);
+    expect(lines).toContain(
+      `experiment 00000000-0000-4000-8000-000000000001, judge ${draft.id} (draft judge-draft.txt)`,
+    );
+    expect(sent.experiment).toMatchObject({
+      name: `components judge ${draft.id} (draft judge-draft.txt) 2026-11-12T10:00:00.000Z`,
+      prompt_version: draft.id,
+    });
+    expect(sent.upload?.items[0]?.payload.metadata).toMatchObject({
+      judge_prompt_version: draft.id,
+      judge_prompt_label: "draft",
+      judge_prompt_file: "judge-draft.txt",
+    });
+    expect(reports[0]?.html).toContain(`Judge ${draft.id} (label draft, file judge-draft.txt)`);
+  });
+
+  it("records no file name for a PostHog version", async () => {
+    const { deps, sent } = setup();
+    await runJudgeEval(OPTIONS, deps);
+    expect(sent.upload?.items[0]?.payload.metadata).not.toHaveProperty("judge_prompt_file");
   });
 });
