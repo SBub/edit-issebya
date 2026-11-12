@@ -28,7 +28,7 @@ const ESCAPES: Record<string, string> = {
   "'": "&#39;",
 };
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => ESCAPES[char]!);
 }
 
@@ -92,7 +92,7 @@ function disagreementRow(pick: JudgedPick): string {
   return `<tr>${cells.map((cell) => `<td>${cell}</td>`).join("")}</tr>`;
 }
 
-const STYLE = `
+export const STYLE = `
 :root { --bg: #fbfaf7; --ink: #1d1c1a; --dim: #6b6862; --line: #dedad2; --card: #ffffff; --off: #b3261e; }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #161513; --ink: #ecebe7; --dim: #9d9a93; --line: #34322e; --card: #1f1e1b; --off: #f2867d; }

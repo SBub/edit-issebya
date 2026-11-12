@@ -68,6 +68,15 @@ function listMatches(items: readonly Span[], mark: OwnerMark): boolean {
   return found > 0 && found * 2 >= owner.length && used * 2 >= items.length;
 }
 
+// Whether a pick is a good match of one owner mark: the same component, and
+// the pick covers the mark (a list by its items). The rule `labelPick` uses.
+export function matchesMark(pick: ComponentPick, mark: OwnerMark): boolean {
+  if (mark.component !== pick.component) return false;
+  return pick.component === "list"
+    ? listMatches(partsOf(pick), mark)
+    : covers(pick.span, mark.span);
+}
+
 // One curator pick's label. The first rule that fits, in this order: match,
 // setup, then for a list partial before wrong-component (its items lean on
 // the owner's lists first), for any other pick wrong-component before
@@ -80,11 +89,7 @@ export function labelPick(
   const same = marks.filter((mark) => mark.component === pick.component);
   const others = marks.filter((mark) => mark.component !== pick.component);
   const spans = partsOf(pick);
-  const matched =
-    pick.component === "list"
-      ? same.some((mark) => listMatches(spans, mark))
-      : same.some((mark) => covers(pick.span, mark.span));
-  if (matched) return { label: "good", why: "match" };
+  if (marks.some((mark) => matchesMark(pick, mark))) return { label: "good", why: "match" };
   if (spans.every((span) => nothing.some((outer) => inside(span, outer)))) {
     return { label: "bad", why: "setup" };
   }

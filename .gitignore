@@ -46,7 +46,7 @@ blob-report/
 # mock route and read by the worker; never commit it.
 .e2e-storage/
 
-# The judge eval's reports (yarn workspace @edit-issebya/worker eval:judge,
+# The eval reports (yarn workspace @edit-issebya/worker eval:judge and eval:curator,
 # app_docs/evals.md): they quote reel transcripts; never commit them.
 eval-output/
 

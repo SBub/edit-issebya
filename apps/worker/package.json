@@ -10,6 +10,7 @@
     "doctor": "node --env-file-if-exists=.env.development src/doctor.ts",
     "trace": "node --env-file-if-exists=.env.development src/trace.ts",
     "eval:judge": "node --env-file-if-exists=.env.development src/eval-judge.ts",
+    "eval:curator": "node --env-file-if-exists=.env.development src/eval-curator.ts",
     "fixtures:pipeline": "node --env-file-if-exists=.env.development src/make-pipeline-fixtures.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

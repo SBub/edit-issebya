@@ -26,6 +26,19 @@ export function curatorAnswer(record: unknown, transcript: Transcript): CuratorA
     .filter((json): json is TracedAnswer => json !== null && typeof json === "object")
     .at(-1);
   if (!answer) return null;
+  return {
+    promptVersion: typeof fields.prompt_version === "string" ? fields.prompt_version : "unknown",
+    ...picksOfAnswer(answer, transcript),
+  };
+}
+
+// The picks of one decide answer (its ids read against the transcript): the
+// accents, questions, big words and lists. Anything that does not read is left
+// out and counted.
+export function picksOfAnswer(
+  answer: TracedAnswer,
+  transcript: Transcript,
+): { picks: ComponentPick[]; unreadable: number } {
   const index = new Map(transcript.words.map((word, at) => [word.id, at]));
   let unreadable = 0;
   const spanOf = (phrase: { from?: unknown; to?: unknown }): Span | null => {
@@ -60,11 +73,7 @@ export function curatorAnswer(record: unknown, transcript: Transcript): CuratorA
       items: spans,
     });
   }
-  return {
-    promptVersion: typeof fields.prompt_version === "string" ? fields.prompt_version : "unknown",
-    picks,
-    unreadable,
-  };
+  return { picks, unreadable };
 }
 
 // What the eval reads, all of it read-only: the live AI record files
@@ -143,7 +152,7 @@ export interface CuratorRun extends CuratorAnswer {
   transcript: Transcript;
 }
 
-function sameWords(transcript: Transcript, words: readonly EvalWord[]): boolean {
+export function sameWords(transcript: Transcript, words: readonly EvalWord[]): boolean {
   return (
     transcript.words.length === words.length &&
     transcript.words.every((word, at) => word.text.trim() === words[at]!.text)

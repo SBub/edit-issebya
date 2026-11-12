@@ -18,7 +18,7 @@ import {
   sentPick,
   wordsOf,
 } from "./label.ts";
-import { type OwnerItem, parseOwnerItem } from "./owner-marks.ts";
+import { type OwnerItem, selectOwnerItems } from "./owner-marks.ts";
 import { type DraftPrompt, draftId } from "./draft-prompt.ts";
 import type { EvalsApi, UploadBody } from "./posthog-evals.ts";
 import { percent, renderReport } from "./report.ts";
@@ -364,21 +364,7 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
   const startedAt = now().toISOString();
 
   const dataset = await posthog.dataset(options.datasetId);
-  const items = dataset.items
-    .map(parseOwnerItem)
-    .filter(
-      (item) =>
-        !options.reel ||
-        item.reelId.startsWith(options.reel) ||
-        options.reel.startsWith(item.reelId),
-    );
-  if (items.length === 0) {
-    throw new Error(
-      options.reel
-        ? `evals: no labelled reel ${options.reel} in the dataset`
-        : "evals: the dataset has no item",
-    );
-  }
+  const items = selectOwnerItems(dataset.items, options.reel);
   log(`dataset revision ${dataset.revision}: ${items.length} labelled reels`);
   const candidates = await runCandidates(deps.sources);
   const prepared: Prepared[] = [];

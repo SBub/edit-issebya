@@ -161,3 +161,18 @@ export function parseOwnerItem(json: unknown): OwnerItem {
     nothing: expected.nothing.map((mark) => span(mark, "nothing")),
   };
 }
+
+// The dataset's items as owner items, only the reel whose id starts like
+// `reel` when one is given (either id may be the short form). Throws when no
+// item is left.
+export function selectOwnerItems(rawItems: readonly unknown[], reel?: string): OwnerItem[] {
+  const items = rawItems
+    .map(parseOwnerItem)
+    .filter((item) => !reel || item.reelId.startsWith(reel) || reel.startsWith(item.reelId));
+  if (items.length === 0) {
+    throw new Error(
+      reel ? `evals: no labelled reel ${reel} in the dataset` : "evals: the dataset has no item",
+    );
+  }
+  return items;
+}

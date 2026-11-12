@@ -2,6 +2,7 @@ import type { Storage } from "@edit-issebya/storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import type { RunSources, VersionRow } from "./curator-runs.ts";
+import type { CuratorSources } from "./curator-input.ts";
 
 const PAGE = 1000;
 const ID_CHUNK = 100;
@@ -61,6 +62,43 @@ export function workerRunSources(
     async readJson(key) {
       const bytes = await storage.get(key);
       return bytes ? (JSON.parse(new TextDecoder().decode(bytes)) as unknown) : null;
+    },
+  };
+}
+
+// The curator eval's sources: the judge eval's, and the latest version of a
+// reel (its edit, transcript and head track keys). Selects only.
+export function workerCuratorSources(
+  db: SupabaseClient,
+  storage: Pick<Storage, "get">,
+  keyPrefix: string,
+): CuratorSources {
+  return {
+    ...workerRunSources(db, storage, keyPrefix),
+    async latestVersion(reelId) {
+      const { data, error } = await db
+        .from("versions")
+        .select("id, number, r2_key, inputs")
+        .eq("reel_id", reelId)
+        .order("number", { ascending: false })
+        .limit(1);
+      if (error) throw new Error(`evals: reading the latest version: ${error.message}`);
+      const row = data?.[0];
+      if (!row) return null;
+      const inputs = row.inputs as {
+        transcript?: { step: string; fingerprint: string; file: string };
+        head_track?: { step: string; fingerprint: string; file: string };
+      } | null;
+      if (!inputs?.transcript || !inputs.head_track) return null;
+      const key = (ref: { step: string; fingerprint: string; file: string }) =>
+        cacheKey(keyPrefix, ref.step, ref.fingerprint, ref.file);
+      return {
+        id: String(row.id),
+        number: Number(row.number),
+        editKey: String(row.r2_key),
+        transcriptKey: key(inputs.transcript),
+        headTrackKey: key(inputs.head_track),
+      };
     },
   };
 }
