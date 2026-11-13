@@ -70,8 +70,8 @@ desktop and is a fourth tab, `Library`, on a phone.
   ffmpeg for `thumbnail.jpg` (long side 480) and `large.jpg` (long side 1568), both `rebuildable`.
 - `apps/worker/src/photos/describe-photo.ts`, `describe-schema.ts`, `describe-prompt.ts`: the
   `describe_photo` step. Its prompt is `photo-describe`, fetched from PostHog before the step's work
-  (`app_docs/decide-step.md`, "Prompts"); the repository holds no prompt text. The large copy's bytes go with the prompt as the
-  one JPEG image of the call (role `describe`, Claude Haiku 5.5 through OpenRouter, an `image_url`
+  (`app_docs/decide-step.md`, "Prompts"); the repository holds no prompt text. The prompt is the call's system message and the large copy's bytes are its user message, the
+  one JPEG image of the call, with no text beside it but a retry's reasons (`app_docs/decide-step.md`, "Messages") (role `describe`, Claude Haiku 5.5 through OpenRouter, an `image_url`
   data URL on the wire; `app_docs/decide-step.md`, "The AI runner"); the model reads no file and
   has no tools. The answer is checked against a draft-07 JSON Schema and Zod (description at most
   200 characters, 3 to 8 tags). The runner sends no length limit (`wireSchema`), so the prompt keeps
@@ -100,7 +100,7 @@ desktop and is a fourth tab, `Library`, on a phone.
   preview then shows `A photo in this version was deleted from the library` (status
   `photo-missing`), and its export fails with `render: photo <id> is no longer in the library`.
 - `apps/worker/src/ai.ts`: `AiRequest.image` (`{ data, mediaType: "image/jpeg" }`), sent as a file
-  part beside the prompt; only describe_photo sets it. The call's exchange records the image's
+  part of the user message; only describe_photo sets it. The call's exchange records the image's
   media type and size, never its bytes.
 - `apps/worker/src/job-kinds.ts`, `queue.ts`, `process-job.ts`, `stored-files.ts`, `telemetry.ts`:
   dispatch of the new kind, nullable `reel_id`, photo files classified and never slimmed, and

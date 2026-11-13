@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "worker": "node --env-file-if-exists=.env.development src/main.ts",
-    "worker:prod": "node --env-file-if-exists=.env.production src/main.ts",
+    "worker:prod": "WORKER_ENV=production node --env-file-if-exists=.env.production src/main.ts",
     "once": "node --env-file-if-exists=.env.development src/once.ts",
     "doctor": "node --env-file-if-exists=.env.development src/doctor.ts",
     "trace": "node --env-file-if-exists=.env.development src/trace.ts",
+    "eval": "node --env-file-if-exists=.env.development src/eval.ts",
     "fixtures:pipeline": "node --env-file-if-exists=.env.development src/make-pipeline-fixtures.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

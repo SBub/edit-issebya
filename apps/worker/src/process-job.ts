@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Storage } from "@edit-issebya/storage";
 import { aiRunner } from "./ai.ts";
+import {
+  type AiObserver,
+  DISABLED_AI_OBSERVER,
+  jobAiContext,
+  withAiContext,
+} from "./ai-observability.ts";
 import type { WorkerConfig } from "./config.ts";
 import { runDecide } from "./decide/run-decide.ts";
 import type { ErrorTracker } from "./error-tracking.ts";
@@ -77,7 +83,10 @@ export async function processJob(
   telemetry: Telemetry,
   errors: ErrorTracker,
   job: ClaimedJob,
+  aiObserver: AiObserver = DISABLED_AI_OBSERVER,
 ): Promise<JobOutcome> {
+  // The job's AI runner: every model call is reported with the job as its trace.
+  const ai = () => withAiContext(aiRunner(process.env, aiObserver), jobAiContext(job));
   const steps = supabaseStepStore(db);
   const records = supabaseStoredFiles(db);
   const target = jobTarget(job);
@@ -143,7 +152,7 @@ export async function processJob(
                 rows,
                 blobs,
                 keyPrefix: config.keyPrefix,
-                ai: aiRunner(process.env),
+                ai: ai(),
                 prompts: promptsOf(),
                 scratchDir,
                 startFrom,
@@ -219,7 +228,7 @@ export async function processJob(
                   ctx,
                   storage,
                   store: supabasePhotoStore(db),
-                  ai: aiRunner(process.env),
+                  ai: ai(),
                   prompts: promptsOf(),
                   tools: toolPaths(),
                   keyPrefix: config.keyPrefix,

@@ -166,7 +166,8 @@ Every row also carries `app`. A `reportFailure` row without a provider error sti
   (`NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`, `NEXT_PUBLIC_POSTHOG_HOST`); the landing page sends only in
   production, so its previews send nothing.
 - The worker reads `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` from `apps/worker/.env.production`,
-  the same variables as its events.
+  the same variables as its events. The same two also turn on the worker's AI generation events
+  (`app_docs/measurement.md`, "AI generations"), so filling the token in development turns on both.
 - `apps/studio/test-support/worker.ts` blanks `POSTHOG_PROJECT_TOKEN` for every spawned `once`, so a
   filled env file can never make a spec send an exception.
 - The comments in `apps/studio/.env.example`, `apps/web/.env.example` and `apps/worker/.env.example`

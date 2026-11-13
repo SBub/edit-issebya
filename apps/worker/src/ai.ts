@@ -12,6 +12,13 @@ import {
   jsonSchema,
 } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
+import {
+  type AiCallContext,
+  type AiGeneration,
+  type AiObserver,
+  DISABLED_AI_OBSERVER,
+} from "./ai-observability.ts";
+import type { PromptRef } from "./prompts/source.ts";
 import type { AiUsage } from "./step-store.ts";
 import type { Telemetry } from "./telemetry.ts";
 
@@ -23,17 +30,20 @@ type Env = Record<string, string | undefined>;
 export const AI_MODEL = "anthropic/claude-haiku-5.5";
 
 // What a call is for: the written hook, the decide answer, a library photo's
-// description.
-export type AiRole = "hook" | "decide" | "describe";
+// description, the eval's judge of the decide answer's picks. The judge runs
+// on Haiku for cost for now (the owner's choice); a stronger judge can be tried
+// later by changing its role here.
+export type AiRole = "hook" | "decide" | "describe" | "judge";
 
 export const AI_MODELS: Readonly<Record<AiRole, string>> = {
   hook: AI_MODEL,
   decide: AI_MODEL,
   describe: AI_MODEL,
+  judge: AI_MODEL,
 };
 
 // US dollars per million tokens, for a call whose cost OpenRouter did not
-// report (OpenRouter's list price for Haiku 5.5, prompts up to 100k tokens).
+// report (OpenRouter's list prices for Haiku 5.5, prompts up to 100k tokens).
 const PRICES: Readonly<Record<string, { input: number; output: number }>> = {
   [AI_MODEL]: { input: 0.1, output: 0.5 },
 };
@@ -46,14 +56,23 @@ const MAX_RETRIES = 1;
 // Room for the longest decide answer; an answer cut off here is broken.
 const MAX_OUTPUT_TOKENS = 16_000;
 
-// One structured call: the prompt (the one user message, no system prompt),
-// its identity (`<name>@v<version>`, from PostHog), the JSON Schema the answer
-// must match, and for describe_photo the image. The model takes no temperature
+// One structured call: its messages, the prompt's identity (`<name>@v<version>`,
+// from PostHog), the JSON Schema the answer must match, and for describe_photo
+// the image. With `system`, the call sends the system message (the fetched
+// prompt, unchanged, marked cacheable for an Anthropic model) and `prompt` as
+// the user message (the call's inputs). Without it, `prompt` is the one user
+// message and no system message is sent (a prompt that still is a template:
+// app_docs/decide-step.md, "Messages"). The model takes no temperature
 // setting, so a call sends none.
 export interface AiRequest {
   role: AiRole;
   prompt: string;
+  system?: string;
   promptVersion: string;
+  // The prompt behind `promptVersion`, for the call's generation event.
+  promptRef?: PromptRef;
+  // What the call belongs to (the job, the eval run), for its generation event.
+  observe?: AiCallContext;
   // Set when the prompt is a stale copy (PostHog did not answer): the span and the record say so.
   promptStale?: true;
   schema: Record<string, unknown>;
@@ -75,7 +94,10 @@ export type OutputMode = "json_schema" | "json";
 export interface AiExchange {
   role: AiRole;
   model: string;
+  // The user message as sent (in JSON mode, with the schema appended).
   prompt: string;
+  // The system message, only when the call sent one.
+  system?: string;
   promptVersion: string;
   // Set only when the prompt was a stale copy.
   promptStale?: true;
@@ -132,6 +154,15 @@ interface SdkUsage {
     cacheReadTokens?: number | undefined;
     cacheWriteTokens?: number | undefined;
   };
+  outputTokenDetails?: { reasoningTokens?: number | undefined };
+}
+
+// The cost OpenRouter reported with the response; null when it reported none.
+function reportedCost(providerMetadata: unknown): number | null {
+  return count(
+    (providerMetadata as { openrouter?: { usage?: { cost?: unknown } } } | undefined)?.openrouter
+      ?.usage?.cost,
+  );
 }
 
 // One call's usage: every input token (cache reads and writes included), the
@@ -140,10 +171,7 @@ interface SdkUsage {
 function usageOf(sdk: SdkUsage | undefined, model: string, providerMetadata: unknown): AiUsage {
   const inputTokens = count(sdk?.inputTokens);
   const outputTokens = count(sdk?.outputTokens);
-  const reported = count(
-    (providerMetadata as { openrouter?: { usage?: { cost?: unknown } } } | undefined)?.openrouter
-      ?.usage?.cost,
-  );
+  const reported = reportedCost(providerMetadata);
   return {
     inputTokens,
     outputTokens,
@@ -332,21 +360,50 @@ export interface ModelRunnerOptions {
   timeoutMs?: number;
   // Every request, in order (the double's record).
   onCall?: (request: AiRequest) => void;
+  // Where every model call is reported, one generation each (the JSON mode
+  // second try is its own call). Without it nothing is reported.
+  observer?: AiObserver;
 }
 
-// One call through the AI SDK: the prompt as the one user message (with the
-// image for describe_photo), the schema as a strict structured output, the
+// Whether a model's system message is marked cacheable: Anthropic's models
+// cache only at a marked block (OpenRouter's prompt caching: `cache_control`
+// `{ type: "ephemeral" }` on the system message's text block).
+function cacheable(modelId: string): boolean {
+  return modelId.startsWith("anthropic/");
+}
+
+// What a call learns beside its result, for its generation event.
+interface Seen {
+  reasoningTokens: number | null;
+  costSource: AiGeneration["costSource"];
+  httpStatus: number | null;
+}
+
+// One call through the AI SDK: the system message when the request has one
+// (unchanged, marked cacheable for an Anthropic model), then one user message
+// (the request's prompt, with the image for describe_photo; the image alone
+// when the prompt is empty), the schema as a strict structured output, the
 // answer parsed as JSON (never validated here: the caller's Zod check gives
 // the reasons the retry sends back). A schema the provider refuses (HTTP 400)
-// is asked again once in JSON mode. A key, credit, rate or network failure is
-// `unavailable`; a cancel is rethrown; anything else is thrown.
+// is asked again once in JSON mode, the schema appended to the user message.
+// A key, credit, rate or network failure is `unavailable`; a cancel is
+// rethrown; anything else is thrown. Every call made is reported to the
+// observer, whatever its outcome.
 export function modelRunner(options: ModelRunnerOptions): AiRunner {
   const maxRetries = options.maxRetries ?? MAX_RETRIES;
   const timeoutMs = options.timeoutMs ?? TIMEOUT_MS;
+  const observer = options.observer ?? DISABLED_AI_OBSERVER;
   return {
     call(request) {
       options.onCall?.(request);
       const modelId = AI_MODELS[request.role];
+      const system = request.system ?? null;
+      const cacheControl = system !== null && cacheable(modelId);
+      const image = request.image
+        ? { mediaType: request.image.mediaType, bytes: request.image.data.byteLength }
+        : null;
+      const userText = (outputMode: OutputMode) =>
+        outputMode === "json" ? jsonModePrompt(request.prompt, request.schema) : request.prompt;
       return inChatSpan(request, modelId, async () => {
         const exchangeOf = (
           outputMode: OutputMode,
@@ -354,25 +411,20 @@ export function modelRunner(options: ModelRunnerOptions): AiRunner {
         ): AiExchange => ({
           role: request.role,
           model: modelId,
-          prompt:
-            outputMode === "json" ? jsonModePrompt(request.prompt, request.schema) : request.prompt,
+          prompt: userText(outputMode),
+          ...(system !== null ? { system } : {}),
           promptVersion: request.promptVersion,
           ...(request.promptStale ? { promptStale: true as const } : {}),
           schema: request.schema,
-          image: request.image
-            ? { mediaType: request.image.mediaType, bytes: request.image.data.byteLength }
-            : null,
+          image,
           outputMode,
           answerText: null,
           finishReason: null,
           error: null,
           ...fields,
         });
-        const once = async (outputMode: OutputMode): Promise<AiResult> => {
-          // A call after a lost lease never starts.
-          request.signal?.throwIfAborted();
-          const prompt =
-            outputMode === "json" ? jsonModePrompt(request.prompt, request.schema) : request.prompt;
+        const attempt = async (outputMode: OutputMode, seen: Seen): Promise<AiResult> => {
+          const text = userText(outputMode);
           const output =
             outputMode === "json_schema"
               ? Output.object({
@@ -386,23 +438,39 @@ export function modelRunner(options: ModelRunnerOptions): AiRunner {
             const result = await generateText({
               // Inside the try: a missing key is an unavailable AI.
               model: options.model(modelId),
-              ...(request.image
+              ...(system !== null
                 ? {
-                    messages: [
-                      {
-                        role: "user" as const,
-                        content: [
-                          { type: "text" as const, text: prompt },
+                    instructions: {
+                      role: "system" as const,
+                      content: system,
+                      ...(cacheControl
+                        ? {
+                            providerOptions: {
+                              openrouter: { cacheControl: { type: "ephemeral" } },
+                            },
+                          }
+                        : {}),
+                    },
+                  }
+                : {}),
+              messages: [
+                {
+                  role: "user" as const,
+                  content: [
+                    // No empty text block: an image may be the whole message.
+                    ...(text === "" && request.image ? [] : [{ type: "text" as const, text }]),
+                    ...(request.image
+                      ? [
                           {
                             type: "file" as const,
                             data: request.image.data,
                             mediaType: request.image.mediaType,
                           },
-                        ],
-                      },
-                    ],
-                  }
-                : { prompt }),
+                        ]
+                      : []),
+                  ],
+                },
+              ],
               output,
               maxOutputTokens: MAX_OUTPUT_TOKENS,
               maxRetries,
@@ -414,6 +482,15 @@ export function modelRunner(options: ModelRunnerOptions): AiRunner {
               result.response.modelId || modelId,
               result.providerMetadata,
             );
+            seen.reasoningTokens = count(
+              (result.usage as SdkUsage).outputTokenDetails?.reasoningTokens,
+            );
+            seen.costSource =
+              reportedCost(result.providerMetadata) !== null
+                ? "openrouter"
+                : usage.costUsd !== null
+                  ? "price_table"
+                  : null;
             const exchange = exchangeOf(outputMode, {
               usage,
               answerText: result.text,
@@ -425,9 +502,14 @@ export function modelRunner(options: ModelRunnerOptions): AiRunner {
             }
             return { kind: "answer", answer: result.output, usage, exchange };
           } catch (error) {
+            seen.httpStatus = statusOf(error);
             if (request.signal?.aborted) throw error;
             if (NoObjectGeneratedError.isInstance(error)) {
               const usage = usageOf(error.usage, error.response?.modelId || modelId, undefined);
+              seen.reasoningTokens = count(
+                (error.usage as SdkUsage | undefined)?.outputTokenDetails?.reasoningTokens,
+              );
+              seen.costSource = usage.costUsd !== null ? "price_table" : null;
               const answerText = error.text ?? null;
               const finishReason = error.finishReason ?? null;
               // JSON mode: a fenced or wrapped answer still parses once its
@@ -470,6 +552,56 @@ export function modelRunner(options: ModelRunnerOptions): AiRunner {
             throw error;
           }
         };
+        // One model call and its generation event.
+        const once = async (outputMode: OutputMode): Promise<AiResult> => {
+          // A call after a lost lease never starts.
+          request.signal?.throwIfAborted();
+          const seen: Seen = { reasoningTokens: null, costSource: null, httpStatus: null };
+          const started = performance.now();
+          const report = (
+            fields: Pick<
+              AiGeneration,
+              "usage" | "finishReason" | "answerText" | "outcome" | "error"
+            >,
+          ) =>
+            observer.generation({
+              role: request.role,
+              model: modelId,
+              ...(request.observe ? { context: request.observe } : {}),
+              promptVersion: request.promptVersion,
+              ...(request.promptRef ? { promptRef: request.promptRef } : {}),
+              promptStale: request.promptStale === true,
+              outputMode,
+              system,
+              user: userText(outputMode),
+              image,
+              cacheControl,
+              maxOutputTokens: MAX_OUTPUT_TOKENS,
+              latencySeconds: (performance.now() - started) / 1000,
+              ...seen,
+              ...fields,
+            });
+          try {
+            const result = await attempt(outputMode, seen);
+            report({
+              usage: result.usage,
+              finishReason: result.exchange.finishReason,
+              answerText: result.exchange.answerText,
+              outcome: result.kind,
+              error: result.exchange.error,
+            });
+            return result;
+          } catch (error) {
+            report({
+              usage: { ...NO_USAGE, model: modelId },
+              finishReason: null,
+              answerText: null,
+              outcome: "error",
+              error: request.signal?.aborted ? "the call was cancelled" : reasonOf(error),
+            });
+            throw error;
+          }
+        };
         try {
           return await once("json_schema");
         } catch (error) {
@@ -484,10 +616,12 @@ export function modelRunner(options: ModelRunnerOptions): AiRunner {
 // The real runner: OpenRouter with the worker's key, usage accounting on (the
 // response carries the cost), only providers that take every parameter sent
 // (the structured output included). Without a key every call is unavailable.
-export function openRouterRunner(apiKey: string | undefined): AiRunner {
+// Every call is reported to the observer.
+export function openRouterRunner(apiKey: string | undefined, observer?: AiObserver): AiRunner {
   const key = apiKey?.trim();
   const openrouter = key ? createOpenRouter({ apiKey: key, baseURL: OPENROUTER_BASE_URL }) : null;
   return modelRunner({
+    ...(observer ? { observer } : {}),
     model(id) {
       if (!openrouter) {
         throw new LoadAPIKeyError({ message: "OPENROUTER_API_KEY is not set" });
@@ -649,8 +783,9 @@ const DEFAULT_HOOK_ANSWER = { text: "A short test hook" };
 // E2E_MOCK_AI_SCRIPT, a JSON array of replies replayed in order with the last
 // repeating, or one reply object used for every call; without a script the
 // empty decide answer and the default hook); otherwise OpenRouter with
-// OPENROUTER_API_KEY.
-export function aiRunner(env: Env = process.env): AiRunner {
+// OPENROUTER_API_KEY, every call reported to the observer (the double reports
+// none: it makes no model call).
+export function aiRunner(env: Env = process.env, observer?: AiObserver): AiRunner {
   if (env.E2E_MOCK_AI === "true") {
     const path = env.E2E_MOCK_AI_SCRIPT?.trim();
     return fakeAiRunner(
@@ -659,5 +794,5 @@ export function aiRunner(env: Env = process.env): AiRunner {
         : [{ answer: DEFAULT_HOOK_ANSWER, role: "hook" }, scriptedAnswer(EMPTY_DECIDE_ANSWER)],
     );
   }
-  return openRouterRunner(env.OPENROUTER_API_KEY);
+  return openRouterRunner(env.OPENROUTER_API_KEY, observer);
 }

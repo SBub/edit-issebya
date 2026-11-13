@@ -76,6 +76,7 @@ yarn workspace @edit-issebya/worker doctor --ai   # also two tiny real, paid Ope
 STUDIO_PORT=3001 yarn turbo run dev --filter=./apps/web --filter=./apps/studio
 yarn workspace @edit-issebya/worker worker   # in a second terminal: keeps taking jobs until stopped
 yarn workspace @edit-issebya/worker once     # or: takes one job, then exits
+yarn workspace @edit-issebya/worker eval judge --dry-run   # the evals against the owner's labels (app_docs/evals.md)
 ```
 
 `yarn dev` does not start the worker.

@@ -89,3 +89,52 @@ describe("decidePrompt", () => {
     ]);
   });
 });
+
+describe("decidePrompt on a prompt with no placeholder", () => {
+  const SYSTEM: PromptText = { ...TEMPLATE, text: "test system prompt reel-components" };
+  const fence = (value: unknown) => ["```json", JSON.stringify(value, null, 2), "```"].join("\n");
+
+  it("sends the prompt unchanged as the system message, and the four inputs as the user message", () => {
+    const call = decidePrompt(SYSTEM, input);
+    expect(call.system).toBe(SYSTEM.text);
+    expect(call.prompt).toBe(
+      [
+        "## script",
+        "",
+        fence(input.script),
+        "",
+        "## hook",
+        "",
+        fence(HOOK),
+        "",
+        "## intensity",
+        "",
+        "intense",
+        "",
+        "## target_picks",
+        "",
+        String(input.target_picks),
+        "",
+      ].join("\n"),
+    );
+    expect(call.promptVersion).toBe("reel-components@v1");
+  });
+
+  it("keeps the system message the same on the retry: the reasons are the user message's last section", () => {
+    const reasons = ["accents.0.to: ends before it starts"];
+    const first = decidePrompt(SYSTEM, input);
+    const retry = decidePrompt(SYSTEM, input, reasons);
+    expect(retry.system).toBe(first.system);
+    expect(retry.prompt.startsWith(first.prompt)).toBe(true);
+    expect(retry.prompt.slice(first.prompt.length)).toBe(
+      [
+        "",
+        "## previous_answer_refused",
+        "",
+        "Your previous answer was refused for these reasons. Fix them and answer again:",
+        "- accents.0.to: ends before it starts",
+        "",
+      ].join("\n"),
+    );
+  });
+});

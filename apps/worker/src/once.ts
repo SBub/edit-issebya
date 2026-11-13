@@ -4,6 +4,7 @@
 // subscription, no timer, no slimming. Specs spawn this. No heartbeat either:
 // it exits at once, and a beat from it would show a live worker for eleven
 // minutes that is not there.
+import { createAiObserver } from "./ai-observability.ts";
 import { workerConfig } from "./config.ts";
 import { createErrorTracker, installCrashCapture } from "./error-tracking.ts";
 import { freeBytesFn, guardedClaim, supabaseWorkerStatus } from "./disk-guard.ts";
@@ -22,6 +23,8 @@ const config = workerConfig();
 await prepareScratchDir(config.scratchDir);
 const db = workerSupabase(config);
 const telemetry = createTelemetry();
+// Every model call of the job is one PostHog generation event.
+const aiObserver = createAiObserver("app");
 const job = await guardedClaim({
   dir: config.scratchDir,
   minFreeDiskGb: config.minFreeDiskGb,
@@ -37,8 +40,9 @@ if (!job) {
   process.exit(0);
 }
 console.log(`job ${job.id}: claimed (attempt ${job.attempts})`);
-const outcome = await processJob(db, workerStorage(), config, telemetry, errors, job);
-// Flushes the job's spans, log records and exceptions before exiting.
+const outcome = await processJob(db, workerStorage(), config, telemetry, errors, job, aiObserver);
+// Flushes the job's spans, log records, exceptions and AI generations before exiting.
 await telemetry.shutdown();
 await errors.shutdown();
+await aiObserver.shutdown();
 process.exit(outcome === "done" || outcome === "deleted" ? 0 : 1);

@@ -58,6 +58,26 @@ describe("the hook prompt", () => {
     ]);
     expect(call.prompt).not.toContain("Your previous answer was refused");
   });
+
+  it("with no placeholder in the prompt, sends it as the system message and the transcript and style as the user message", () => {
+    const system: PromptText = { ...TEMPLATE, text: "test system prompt reel-hook" };
+    const input = hookInput(transcript, ISSEBYA_PRESET);
+    const split = hookPrompt(system, input);
+    const fence = (value: unknown) => ["```json", JSON.stringify(value, null, 2), "```"].join("\n");
+    expect(split.system).toBe(system.text);
+    expect(split.prompt).toBe(
+      [
+        "## transcript",
+        "",
+        fence(input.transcript),
+        "",
+        "## style",
+        "",
+        fence(input.style),
+        "",
+      ].join("\n"),
+    );
+  });
 });
 
 describe("the hook call's schema", () => {

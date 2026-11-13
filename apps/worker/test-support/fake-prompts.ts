@@ -10,6 +10,7 @@ const TEMPLATES: Record<string, { text: string }> = {
     text: "test prompt reel-components {{script}} under_hook {{hook}} {{intensity}} {{target_picks}}",
   },
   "photo-describe": { text: "test prompt photo-describe" },
+  "reel-components-judge": { text: "test prompt reel-components-judge {{script}} {{picks}}" },
 };
 
 // The fake source: the placeholder for each known name, version 1, label
