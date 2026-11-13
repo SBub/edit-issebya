@@ -48,7 +48,7 @@ const sources: RunSources = {
   },
 };
 
-// The dataset as `eval:snapshot` leaves it: each item carries its reel's
+// The dataset as the refresh step leaves it: each item carries its reel's
 // stored curator runs. The judge eval reads those and nothing else.
 const RAW_ITEMS = [
   ownerItemJson(TEXT_A, {
@@ -472,6 +472,42 @@ describe("a draft judge prompt", () => {
       judge_prompt_file: "judge-draft.txt",
     });
     expect(reports[0]?.html).toContain(`Judge ${draft.id} (label draft, file judge-draft.txt)`);
+  });
+
+  it("with placeholders is one filled message; with none it is the system message and the inputs are the user message", async () => {
+    const template = setup();
+    await runJudgeEval({ ...OPTIONS, draft }, template.deps);
+    expect(template.ai.calls[0]).not.toHaveProperty("system");
+
+    const text = "draft judge with no placeholder";
+    const split = setup();
+    await runJudgeEval(
+      { ...OPTIONS, draft: { text, file: "judge-system.txt", id: draftId(text) } },
+      split.deps,
+    );
+    const call = split.ai.calls[0]!;
+    expect(call.system).toBe(text);
+    expect(call.prompt.startsWith("## script\n\n```json\n")).toBe(true);
+    expect(call.prompt).toContain("\n## picks\n\n```json\n");
+    expect(call.promptRef).toEqual({
+      name: "draft",
+      version: 0,
+      label: "draft",
+      draftId: draftId(text),
+    });
+  });
+
+  it("names the eval run as the trace of every judge call's generation event", async () => {
+    const { deps, ai } = setup();
+    await runJudgeEval(OPTIONS, deps);
+    expect(ai.calls.length).toBeGreaterThan(0);
+    for (const call of ai.calls) {
+      expect(call.observe).toMatchObject({
+        traceId: "00000000-0000-4000-8000-000000000001",
+        properties: { source: "eval:judge", eval_suite: "components-judge" },
+      });
+      expect(typeof call.observe?.reelId).toBe("string");
+    }
   });
 
   it("records no file name for a PostHog version", async () => {

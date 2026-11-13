@@ -11,6 +11,8 @@ services:
     environment: !override
       WORKER_SCRATCH_DIR: /scratch
       FFMPEG_PATH: /usr/bin/ffmpeg
+      # The production run: its AI events say environment "production".
+      WORKER_ENV: production
     volumes: !override
       - scratch-prod:/scratch
 

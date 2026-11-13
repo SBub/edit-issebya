@@ -276,11 +276,14 @@ prompt file exists (`apps/worker/src/prompts/no-prompt-files.test.ts`).
   JSON, as data), `intensity` (the reel's edit intensity as one lowercase word, `intense`, `medium` or
   `calm`, the preset's level, `preset.intensity`) and `target_picks` (the target count as a number, see
   `input.ts` above). No glossary is sent; `word_fixes` stays in the answer and is checked by the engine.
-  The worker adds nothing else to the prompt; the retry's reasons are appended after it.
-- `photo-describe`: a library photo's description and tags (`photos/describe-prompt.ts`).
+  The worker adds nothing else to the call but the retry's reasons.
+- `reel-hook`'s inputs: `transcript` (the words in spoken order, fenced JSON) and `style` (the hook
+  length and the glossary, fenced JSON).
+- `photo-describe`: a library photo's description and tags (`photos/describe-prompt.ts`). No input but
+  its image.
 
-Each prompt is a template with its `{{variables}}` (the worker fills them as before) and nothing else
-the worker reads. The model takes no temperature setting (Haiku 5.5 on OpenRouter has none), so a
+How a prompt and its inputs become messages is in "Messages" below. The model takes no temperature
+setting (Haiku 5.5 on OpenRouter has none), so a
 prompt carries none and no call sends or records one. The version is fetched with
 the label, and its identity `<name>@v<version>` (for example `reel-components@v1`) is recorded in the
 version row (`prompt_version`, the components' identity), the AI record (`prompt_version`,
@@ -288,8 +291,8 @@ version row (`prompt_version`, the components' identity), the AI record (`prompt
 (`prompt_version`) and the `chat` span (`edit_issebya.ai.prompt_version`).
 
 - `apps/worker/src/prompts/source.ts`: `PromptSource.get(name)` returns `{ name, version, label, text }`;
-  `renderPrompt` fills a template and appends a retry's reasons, returning the call's text and
-  identity; `decidePrompts` fetches the two decide prompts together.
+  `renderPrompt` turns a fetched prompt and a call's inputs into the call's messages and identity
+  ("Messages"); `decidePrompts` fetches the two decide prompts together.
 - `apps/worker/src/prompts/posthog-source.ts`: the source, a plain `fetch` (no SDK) to
   `GET {POSTHOG_HOST}/api/projects/{POSTHOG_PROJECT_ID}/llm_prompts/name/{name}/?label={label}` with
   the header `Authorization: Bearer {POSTHOG_PERSONAL_API_KEY}`. The label is the query parameter of
@@ -319,11 +322,58 @@ version row (`prompt_version`, the components' identity), the AI record (`prompt
   message `prompts: <name> (label <label>) could not be fetched: <reason>` (`app_docs/failures.md`).
   There is no fallback text in code.
 - Tests: `apps/worker/test-support/fake-prompts.ts` holds placeholder templates (one neutral line each,
-  with the variables the call fills, versions 1). `E2E_MOCK_PROMPTS=true` selects it for the worker in
+  with the variables the call fills, versions 1; `photo-describe` has none, so it runs the two-message
+  path). A test of the two-message path swaps a template's text for a neutral line with no placeholder. `E2E_MOCK_PROMPTS=true` selects it for the worker in
   the E2E specs (`apps/studio/test-support/worker.ts`), so the E2E identities are `reel-*@v1` and
   `photo-describe@v1`.
 - `yarn workspace @edit-issebya/worker doctor` fetches each of the four prompts and prints its
   identity and label (never its text), after the `posthog personal key` line.
+
+### Messages
+
+A call sends a system message and a user message (the owner's design, 2026-11-13): the prompt is the
+system message, and the call's inputs are the user message. The system message is the same for every
+call of a prompt version, so the provider can cache it, and no text is filled into the prompt.
+`renderPrompt` (`prompts/source.ts`) builds both, and `ai.ts` sends them.
+
+- **The system message** is the fetched prompt text, byte for byte: nothing filled in, nothing added,
+  nothing trimmed. On a retry it is the same text again.
+- **The user message** holds the call's inputs, one section per input in a fixed order. A section is
+  a heading line `## <name>`, a blank line, then the input's text (fenced JSON or plain text), and
+  sections are separated by one blank line. The names are the inputs' names:
+  - hook call: `transcript`, `style`.
+  - components call: `script`, `hook`, `intensity`, `target_picks`.
+  - describe_photo: no section. The user message is the image alone (no text block is sent).
+  - judge call (`app_docs/evals.md`): `script`, `picks`.
+- **A retry** adds one last section to the user message, `## previous_answer_refused`: the line
+  `Your previous answer was refused for these reasons. Fix them and answer again:` and one `- <reason>`
+  line per reason. For describe_photo it is the only text, sent before the image.
+- **JSON mode** (the fallback, "The AI runner") appends the schema and the reply instruction to the
+  user message, never to the system message.
+- **Caching**: for an Anthropic model (`anthropic/...`) the system message's text block carries
+  `cache_control: { "type": "ephemeral" }` (OpenRouter's prompt caching, an explicit breakpoint, 5
+  minutes; in the AI SDK a `SystemModelMessage` passed as `instructions` with
+  `providerOptions.openrouter.cacheControl`, which `@openrouter/ai-sdk-provider` writes on the block).
+  Haiku 5.5 caches a prompt of 512 tokens or more, so a shorter prompt is sent the same way and simply
+  is not cached. A cache write and a cache read show in the call's usage (`cacheWriteTokens`,
+  `cacheReadTokens`), the `chat` span and the generation event (`app_docs/measurement.md`).
+
+**The switch, and the template path.** The versions in PostHog on 2026-11-13 still are templates: they
+hold `{{name}}` placeholders. The worker tells the two apart by the fetched text alone
+(`hasPlaceholders`: the text matches `{{name}}`, letters, digits and underscores):
+
+- A text **with** at least one placeholder runs as before, the template path: each placeholder is
+  filled with its input (one with no input is left as it is), a retry's reasons are appended, and the
+  filled text is the one user message. No system message is sent and nothing is marked cacheable.
+- A text **with none** runs the two-message path above.
+
+So production keeps working on today's versions, and a prompt moves to the two-message path when a
+version without placeholders gets the label; nothing in the code or the environment changes with it.
+`photo-describe` never had a placeholder, so it is on the two-message path from this change on. A
+prompt version must be one or the other: a system-message version refers to its inputs by their
+section names and holds no placeholder at all (one stray `{{name}}` would send it down the template
+path). The eval drafts follow the same rule (`app_docs/evals.md`, "Drafts"). Once every labelled
+version is a system message, the template path can be removed.
 
 ## Configuration
 
@@ -363,6 +413,13 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
   readable one, else an older record's decide `hook`). `packages/edit/src/engine.test.ts` ("the written
   hook": the fixed slot, an accent and an image asked for in its window never move or remove it). `run-decide.test.ts` builds its check-refused answer as a word fix
   writing the heard form "Locking" (the schema accepts any fix text, so only the glossary check refuses it).
+  The messages: `prompts/source.test.ts` (a prompt with no placeholder is the system message unchanged,
+  each input a labelled section of the user message, the retry's reasons the last section; a prompt with
+  a placeholder is still one filled message; `hasPlaceholders`), `prompt.test.ts`, `hook.test.ts`,
+  `photos/describe-prompt.test.ts` and `evals/judge-call.test.ts` (each call's sections on the
+  two-message path), `ai.test.ts` ("the system and user messages": the wire request through the real
+  provider, `cache_control` on the system block only, no system message on the template path, the image
+  alone as describe_photo's user message, the JSON mode schema in the user message).
   `prompts/posthog-source.test.ts` and `prompts/source.test.ts` (the fetch with a
   stubbed `fetch`, the failures, the identity; the last good copy within 60 minutes
   on a network error or a 5xx, refused beyond it, never for a prompt never fetched or a 404; the source
@@ -408,9 +465,13 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
   (the worker runs Node 24). The model is created with `usage: { include: true }` (OpenRouter's
   usage accounting: the response carries the cost) and `provider: { require_parameters: true }`
   (only endpoints that take every parameter sent, the structured output included).
-- `AiRunner.call({ role, prompt, promptVersion, schema, image?, signal?, trace? })`:
-  `generateText` with no temperature (the model takes none) and the prompt as the one user message (the image beside it as a JPEG file part, sent as an `image_url` data
-  URL), `Output.object` over `jsonSchema(wireSchema(schema))` (strict `json_schema`, named after
+- `AiRunner.call({ role, prompt, system?, promptVersion, promptRef?, observe?, schema, image?, signal?, trace? })`:
+  `generateText` with no temperature (the model takes none). With `system`, the system message
+  (marked cacheable for an Anthropic model) and `prompt` as the one user message; without it, `prompt`
+  as the one user message and no system message ("Messages"). The image goes in the user message as a
+  JPEG file part, sent as an `image_url` data URL, and is the whole message when `prompt` is empty.
+  `promptRef` (the prompt's name, version, label and draft id) and `observe` (the job or the eval run)
+  only feed the call's generation event (`app_docs/measurement.md`, "AI generations"). `Output.object` over `jsonSchema(wireSchema(schema))` (strict `json_schema`, named after
   the role), `maxOutputTokens` 16000, `maxRetries` 1 (the AI SDK's backoff: one more try on a
   network error, a 429 or a 5xx), `timeout` 180 s, and the job's signal. The SDK only parses the
   JSON; it never validates it (`jsonSchema` without a validator): the caller's Zod check gives the
@@ -418,7 +479,7 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
 - `wireSchema` leaves out what Anthropic's strict outputs refuse (string lengths, number bounds,
   `maxItems`, `minItems` over 1) and the `$schema` line; the Zod check still enforces all of them.
 - A schema the provider refuses (HTTP 400) is asked again once in JSON mode (`json_object`), the
-  schema appended to the prompt with a fixed reply instruction (no code fence); a second 400 is thrown (a bug, a permanent failure). Haiku may still fence its
+  schema appended to the user message with a fixed reply instruction (no code fence); a second 400 is thrown (a bug, a permanent failure). Haiku may still fence its
   JSON mode answer, so an answer that does not parse goes through `extractJson` (`ai.ts`): a
   leading and trailing Markdown code fence (three backticks, with or without a language such as
   `json`) is stripped, and when text is still left around it the outermost object (the first `{`
@@ -435,9 +496,12 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
   cost OpenRouter reported (`providerMetadata.openrouter.usage.cost`), else the list price, and
   the model that answered (`response.modelId`). Summed per step into `steps.ai_*`; the version's
   `model` is the editor's (`usage.model`).
-- Every result carries its exchange (role, model, prompt as sent, its identity `promptVersion`,
+- Every result carries its exchange (role, model, `prompt`: the user message as sent, `system`: the
+  system message when one was sent, its identity `promptVersion`,
   schema, image media type and size, output mode, raw answer text, finish
   reason, usage, error).
+- Every model call is reported to the runner's observer as one PostHog `$ai_generation` event
+  (`ai-observability.ts`; `app_docs/measurement.md`, "AI generations"). The double reports none.
 - The `chat` span (`app_docs/measurement.md`): `chat anthropic/claude-haiku-5.5`, provider
   `openrouter`, with the prompt's identity.
 
@@ -448,12 +512,12 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
 then saved with): `{ format: 1, reel_id, version_id, prompt_version, hook_prompt_version, intensity, target_picks, calls }` (the
 two identities, `<name>@v<version>`, the intensity and the target count the components prompt was filled
 with; absent in a record written before they were recorded), each call `{ attempt, role,
-model, prompt, promptVersion, schema, image, outputMode, answerText, finishReason, usage,
-error }` in order: the hook attempts first (role `hook`, attempt 1 and
+model, prompt, system?, promptVersion, schema, image, outputMode, answerText, finishReason, usage,
+error }` (`system` only on a call that sent a system message; `prompt` is then the user message) in order: the hook attempts first (role `hook`, attempt 1 and
 2), then the decide attempts (role `decide`, 1 and 2). It is a `stored_files` row of kind `version`, step `decide` (`classifyKey`), so it is
 kept with the version and deleted with the reel. A decide that saves nothing (refused twice,
 nothing changed, waiting) writes no record; its reasons are in the step's error tail. To replay a
-version, send each call's `prompt` with its `schema` to its `model`.
+version, send each call's `system` (when it has one) and `prompt` with its `schema` to its `model`.
 
 ### The decision trace
 
@@ -497,8 +561,16 @@ worker's own variables and writes nothing (`src/trace.ts`, `src/decision-trace.t
   it is never kept from an earlier version (a run decides it again), and never ends with a full stop
   (`stripHookStop` takes it off). The components' call only receives it as data.
 - Never give the model tools, a session or any instructions but our own prompt, fetched from PostHog
-  (one user message, no system prompt, no plugins, no CLAUDE.md); `describe_photo` adds only its one image
-  (`app_docs/photo-library.md`).
+  (no plugins, no CLAUDE.md): a call is that prompt as the system message and one user message with the
+  call's inputs, or, for a prompt that still is a template, the one filled user message and no system
+  message ("Messages"). `describe_photo` adds only its one image (`app_docs/photo-library.md`).
+- Never change the system message: it is the fetched text as it is, with no input, reason, schema or
+  per-call word in it, so every call of a prompt version sends the same one. A call's inputs, the retry's
+  reasons and the JSON mode schema go in the user message only.
+- Never mix the two paths in one prompt version: a version with any `{{name}}` placeholder is a template
+  and runs as one message; a system-message version holds none.
+- Mark only the system message cacheable, and only for an Anthropic model; never mark the user message
+  (it differs on every call).
 - Every AI call goes through `apps/worker/src/ai.ts` with the model of its role in `AI_MODELS`; never name
   a model anywhere else.
 - Never save a decided version without its AI record; never put a key or image bytes in it, never rewrite
@@ -528,6 +600,11 @@ worker's own variables and writes nothing (`src/trace.ts`, `src/decision-trace.t
 
 ## Notes
 
+- System and user messages (2026-11-13). To check after the first real calls: whether the system message
+  is cached at all (a prompt under 512 tokens is not), and whether the components call reads the cache
+  across reels. Its structured output schema is made per reel, and a provider may key its cache on the
+  schema too; the hook, describe and judge schemas are the same on every call. The generation events show
+  it (`$ai_cache_read_input_tokens` by `ai_role`, `app_docs/measurement.md`).
 - The OpenRouter switch (2026-11-05) and an unresolved risk: Anthropic's strict structured outputs may refuse
   a large per-reel schema (word-id enums repeated per field); the runner then asks once in JSON mode and the
   Zod check does the rest. Check `edit_issebya.ai.output_mode` on the `chat` spans after the first real runs.

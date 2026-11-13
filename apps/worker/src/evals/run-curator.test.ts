@@ -39,7 +39,7 @@ function reply(request: AiRequest): AiResult {
   return answerResult(CURATOR_ANSWER);
 }
 
-// The dataset as `eval:snapshot` leaves it for the reels `sources` holds.
+// The dataset as the refresh step leaves it for the reels `sources` holds.
 const RAW_ITEMS = [ownerItemJson(TEXT, OWNER)];
 const DATASET = { revisionId: "revision-6", revision: 6 };
 
@@ -211,6 +211,45 @@ describe("a run", () => {
       curator_prompt_file: "curator-draft.txt",
       judge_prompt_version: "reel-components-judge@v1",
     });
+    // A draft with placeholders is still one filled message.
+    expect(curatorCall).not.toHaveProperty("system");
+  });
+
+  it("sends a draft with no placeholder as the system message, the inputs as the user message, for the curator and the judge", async () => {
+    const curator = "a draft curator with no placeholder";
+    const judge = "a draft judge with no placeholder";
+    const { deps, ai } = setup();
+    await runCuratorEval(
+      {
+        ...OPTIONS,
+        curatorDraft: { text: curator, file: "curator-system.txt", id: draftId(curator) },
+        judgeDraft: { text: judge, file: "judge-system.txt", id: draftId(judge) },
+      },
+      deps,
+    );
+    const curatorCall = ai.calls.find((call) => call.role === "decide")!;
+    expect(curatorCall.system).toBe(curator);
+    expect(curatorCall.prompt.startsWith("## script\n\n```json\n")).toBe(true);
+    for (const heading of ["hook", "intensity", "target_picks"]) {
+      expect(curatorCall.prompt).toContain(`\n## ${heading}\n\n`);
+    }
+    expect(curatorCall.promptRef).toMatchObject({ draftId: draftId(curator) });
+    const judgeCall = ai.calls.find((call) => call.role === "judge")!;
+    expect(judgeCall.system).toBe(judge);
+    expect(judgeCall.prompt).toContain("\n## picks\n\n```json\n");
+    expect(judgeCall.promptRef).toMatchObject({ draftId: draftId(judge) });
+  });
+
+  it("names the eval run as the trace of every call's generation event, with its reel", async () => {
+    const { deps, sent, ai } = setup();
+    await runCuratorEval(OPTIONS, deps);
+    const sources = new Set<unknown>();
+    for (const call of ai.calls) {
+      expect(call.observe?.traceId).toBe(sent.experiment!.id);
+      expect(typeof call.observe?.reelId).toBe("string");
+      sources.add(call.observe?.properties?.source);
+    }
+    expect(sources).toEqual(new Set(["eval:curator", "eval:curator-judge"]));
   });
 
   it("marks the curator's result an error when it gives no valid answer twice, and makes no judge call", async () => {

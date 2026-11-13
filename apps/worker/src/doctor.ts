@@ -15,7 +15,9 @@ import { availableParallelism } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { keyPrefix } from "@edit-issebya/storage";
+import { randomUUID } from "node:crypto";
 import { aiRunner } from "./ai.ts";
+import { createAiObserver, withAiContext } from "./ai-observability.ts";
 import { scratchDirOf, workerConfig } from "./config.ts";
 import { maskToolCall } from "./cutout/mask-tool.ts";
 import { MODNET_MODEL, modnetModelPath, verifyModel } from "./cutout/modnet-model.ts";
@@ -31,6 +33,10 @@ const run = promisify(execFile);
 
 // One prompt source for the doctor's checks (created on first use).
 let prompts: PromptSource | undefined;
+
+// The paid calls of `--ai` are PostHog generation events too, one trace per run.
+const aiObserver = createAiObserver("doctor");
+const aiContext = { traceId: randomUUID(), properties: { source: "doctor" } };
 
 // The 1-second sample the mask tool check masks.
 const MASK_SAMPLE = fileURLToPath(
@@ -81,7 +87,7 @@ const deps: DoctorDeps = {
   posthogKey: () => process.env.POSTHOG_PERSONAL_API_KEY,
   projectId: () => process.env.POSTHOG_PROJECT_ID,
   prompts: () => (prompts ??= promptSourceOf(process.env)),
-  ai: () => aiRunner(process.env),
+  ai: () => withAiContext(aiRunner(process.env, aiObserver), aiContext),
   maskTool: () => ({
     sample: MASK_SAMPLE,
     modelSha256: MODNET_MODEL.sha256,
@@ -137,4 +143,5 @@ const deps: DoctorDeps = {
 const { lines, exitCode } = await runDoctor(deps, { ai: flags.ai });
 
 for (const line of lines) console.log(line);
+await aiObserver.shutdown();
 process.exit(exitCode);

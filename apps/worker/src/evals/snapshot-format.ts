@@ -2,12 +2,12 @@ import { headTrackSchema, transcriptSchema } from "@edit-issebya/edit";
 import { z } from "zod";
 import type { CuratorRun } from "./curator-runs.ts";
 
-// THE SNAPSHOT'S FORMAT (app_docs/evals.md, "The snapshot"): what `eval:snapshot`
-// copies into each dataset item, and what the judge and curator evals read back.
+// THE SNAPSHOT'S FORMAT (app_docs/evals.md, "The snapshot"): what the refresh step
+// (`refresh.ts`) copies into each dataset item, and what the judge and curator evals read back.
 // Pure: no database, no storage. The evals parse their items through here, and
 // the snapshot writes them through here, so the two sides cannot drift apart.
 
-const SNAPSHOT_COMMAND = "yarn workspace @edit-issebya/worker eval:snapshot";
+const EVAL_COMMAND = "yarn workspace @edit-issebya/worker eval";
 
 const spanSchema = z.object({
   from: z.number().int().nonnegative(),
@@ -91,7 +91,7 @@ export function pastRunsOf(raw: unknown, id: string): CuratorRun[] | null {
   const parsed = z.array(pastRunSchema).safeParse(field);
   if (!parsed.success) {
     throw new Error(
-      `evals: dataset item ${id} has a malformed snapshot (metadata.past_curator_runs): ${parsed.error.issues[0]?.message ?? "invalid"}; run ${SNAPSHOT_COMMAND} again`,
+      `evals: dataset item ${id} has a malformed snapshot (metadata.past_curator_runs): ${parsed.error.issues[0]?.message ?? "invalid"}; run ${EVAL_COMMAND} snapshot again`,
     );
   }
   return parsed.data.map((run) => ({
@@ -113,17 +113,18 @@ export function curatorInputOf(raw: unknown, id: string): StoredCuratorInput | n
   const parsed = storedCuratorInputSchema.safeParse(field);
   if (!parsed.success) {
     throw new Error(
-      `evals: dataset item ${id} has a malformed snapshot (input.curator_input): ${parsed.error.issues[0]?.message ?? "invalid"}; run ${SNAPSHOT_COMMAND} again`,
+      `evals: dataset item ${id} has a malformed snapshot (input.curator_input): ${parsed.error.issues[0]?.message ?? "invalid"}; run ${EVAL_COMMAND} snapshot again`,
     );
   }
   return parsed.data;
 }
 
-// The error an eval gives for an item with no snapshot yet: the one message
-// that tells the owner what to run.
+// The error an eval gives for an item with no snapshot. The eval command refreshes
+// every snapshot before it reads, so this is reached only if the refresh skipped
+// the item: the message names the command that refreshes it.
 export function missingSnapshot(id: string, field: string): Error {
   return new Error(
-    `evals: dataset item ${id} has no snapshot (${field}): run ${SNAPSHOT_COMMAND} first`,
+    `evals: dataset item ${id} has no snapshot (${field}): run ${EVAL_COMMAND} snapshot to refresh it`,
   );
 }
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { transcriptOf } from "../../test-support/eval-fixtures.ts";
 import { fakePromptSource } from "../../test-support/fake-prompts.ts";
 import { AI_MODELS, fakeAiRunner } from "../ai.ts";
-import { decideInput } from "../decide/input.ts";
+import { decideInput, scriptOf } from "../decide/input.ts";
 import { decidePrompt } from "../decide/prompt.ts";
 import {
   JUDGE_PROMPT_NAME,
@@ -103,6 +103,28 @@ describe("the judge's prompt", () => {
     expect(script).toContain('"id": "w9"');
     expect(call.prompt).toBe(
       `test prompt reel-components-judge ${script} ${["```json", JSON.stringify(PICKS, null, 2), "```"].join("\n")}`,
+    );
+  });
+
+  it("with no placeholder in the prompt (a PostHog version or a draft), is the system message, the script and the picks the user message", async () => {
+    const template = {
+      ...(await fakePromptSource().get(JUDGE_PROMPT_NAME)),
+      text: "test system prompt reel-components-judge",
+    };
+    const call = judgePrompt(template, TRANSCRIPT, PICKS);
+    const fence = (value: unknown) => ["```json", JSON.stringify(value, null, 2), "```"].join("\n");
+    expect(call.system).toBe(template.text);
+    expect(call.prompt).toBe(
+      [
+        "## script",
+        "",
+        fence(scriptOf(TRANSCRIPT, ISSEBYA_PRESET)),
+        "",
+        "## picks",
+        "",
+        fence(PICKS),
+        "",
+      ].join("\n"),
     );
   });
 });
