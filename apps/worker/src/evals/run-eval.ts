@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ROOT_CONTEXT, trace } from "@opentelemetry/api";
 import type { Transcript } from "@edit-issebya/edit";
 import { AI_MODELS, type AiRunner, NO_USAGE } from "../ai.ts";
+import { withAiContext } from "../ai-observability.ts";
 import { type PromptSource, type PromptText, promptIdentity } from "../prompts/source.ts";
 import { addUsage } from "../step-store.ts";
 import { type Telemetry, inSpan } from "../telemetry.ts";
@@ -394,7 +395,13 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
   // missing prompt or key scope costs nothing.
   // A draft has no PostHog version: its identity is its hash, its label "draft".
   const template: PromptText = options.draft
-    ? { name: "draft", version: 0, label: "draft", text: options.draft.text }
+    ? {
+        name: "draft",
+        version: 0,
+        label: "draft",
+        text: options.draft.text,
+        draftId: draftId(options.draft.text),
+      }
     : await deps.prompts.get(JUDGE_PROMPT_NAME);
   const judgePrompt = options.draft ? draftId(options.draft.text) : promptIdentity(template);
   const judgeLabel = template.label;
@@ -457,7 +464,17 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
             },
             (_span, context) =>
               callJudge({
-                ai: deps.ai,
+                // The call's generation event names this run (the experiment) as its trace.
+                ai: withAiContext(deps.ai, {
+                  traceId: experimentId,
+                  reelId: call.run ? call.run.reelId : item.reelId,
+                  properties: {
+                    source: "eval:judge",
+                    eval_suite: SUITE,
+                    eval_case: item.caseKey,
+                    eval_source: call.source,
+                  },
+                }),
                 template,
                 transcript: call.transcript,
                 picks: call.sent,

@@ -9,6 +9,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { aiRunner } from "./ai.ts";
+import { createAiObserver } from "./ai-observability.ts";
 import { posthogEvals } from "./evals/posthog-evals.ts";
 import { runCuratorEval } from "./evals/run-curator.ts";
 import { checkPromptSource, readDraftPrompt } from "./evals/draft-prompt.ts";
@@ -63,6 +64,8 @@ async function draftOf(path: string | undefined) {
 }
 
 const telemetry = createTelemetry();
+// Every curator and judge call is one PostHog generation event (app_docs/measurement.md).
+const aiObserver = createAiObserver();
 
 try {
   checkPromptSource({ label: values["curator-label"], promptFile: values["curator-prompt-file"] });
@@ -83,7 +86,7 @@ try {
       posthog: posthogEvals(process.env),
       curatorPrompts: posthogPromptSource(envAt(values["curator-label"])),
       judgePrompts: posthogPromptSource(envAt(values["judge-label"])),
-      ai: aiRunner(process.env),
+      ai: aiRunner(process.env, aiObserver),
       telemetry,
       measurerOf: (pair) => editMeasurer(pair),
       async saveReport(fileName, html) {
@@ -101,4 +104,5 @@ try {
   process.exitCode = 1;
 } finally {
   await telemetry.shutdown();
+  await aiObserver.shutdown();
 }

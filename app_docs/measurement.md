@@ -320,6 +320,64 @@ To see every AI call in Tempo, TraceQL: `{ span.gen_ai.operation.name = "chat" }
 calls: `{ span.edit_issebya.ai.output_mode = "json" }`. The `chat` span's duration is the whole
 call, the AI SDK's one retry and its backoff included.
 
+### AI generations (PostHog `$ai_generation`)
+
+Every model call is also one `$ai_generation` event in PostHog AI observability (project 312096):
+the hook, components and describe_photo calls of a job, the judge and curator calls of the evals
+(`app_docs/evals.md`), and the paid calls of `doctor --ai`. It is what the cost, cache and latency
+of the AI are read from, per prompt version.
+
+`apps/worker/src/ai-observability.ts`. The events are captured by hand with `posthog-node`
+(`client.capture`, PostHog's manual capture). PostHog's own integration for the AI SDK 7 is an
+OpenTelemetry span processor (`@posthog/ai/otel` with `@ai-sdk/otel`); it is not used: these events
+need OpenRouter's reported cost, the prompt version and the reel on them, and privacy as one switch
+for the whole process, which manual capture gives directly with a package the worker already has.
+`createAiObserver(env)` builds the observer once per process (`main.ts`,
+`once.ts`, `eval-judge.ts`, `eval-curator.ts`, `doctor.ts`) and each process flushes it on shutdown
+(`aiObserver.shutdown()`), after the telemetry and the error tracker. The runner (`ai.ts`
+`modelRunner`) reports each model call to it: one event per call, so a refused schema and its JSON
+mode second try are two events, and a call the AI SDK retried inside (a 429, a 5xx) is one. The AI
+double (`E2E_MOCK_AI`) reports nothing. A capture that throws is swallowed: an event never changes a
+call.
+
+What a call belongs to is set on the request (`AiRequest.observe`) by `withAiContext`: a job's runner
+is wrapped in `process-job.ts` (`jobAiContext`), an eval's per call in `run-eval.ts` and
+`run-curator.ts`.
+
+| property                                                         | value                                                                                                                                              |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| distinct id                                                      | the reel's or photo's owner for a job; `worker:<WORKER_ID>` with `$process_person_profile: false` for an eval or the doctor                        |
+| `$ai_trace_id`, `$ai_parent_id`                                  | the job's id; for an eval, the experiment's id; for the doctor, one id per run                                                                     |
+| `$ai_session_id`                                                 | always null: a job or a run is one trace                                                                                                           |
+| `$ai_span_id`, `$ai_span_name`                                   | a new id per call; the call's role (`hook`, `decide`, `describe`, `judge`)                                                                         |
+| `$ai_model`, `ai_requested_model`                                | the model that answered; the model asked for                                                                                                       |
+| `$ai_provider`                                                   | `openrouter`                                                                                                                                       |
+| `$ai_input_tokens`, `$ai_output_tokens`                          | as OpenRouter reports them; the input tokens include the cached ones, so `$ai_cache_reporting_exclusive` is `false`                                |
+| `$ai_reasoning_tokens`                                           | only when reported                                                                                                                                 |
+| `$ai_cache_read_input_tokens`, `$ai_cache_creation_input_tokens` | the cache reads and writes (`prompt_tokens_details.cached_tokens`, `cache_write_tokens`)                                                           |
+| `$ai_total_cost_usd`, `$ai_cost_passthrough`, `ai_cost_source`   | the cost OpenRouter reported (`openrouter`), else the price table's (`price_table`); passthrough is `true`, so PostHog keeps it and prices nothing |
+| `$ai_latency`                                                    | seconds, the whole call (the AI SDK's retry included)                                                                                              |
+| `$ai_stop_reason`, `$ai_max_tokens`, `$ai_stream`                | the finish reason, 16000, `false`                                                                                                                  |
+| `$ai_is_error`, `$ai_error`, `$ai_http_status`, `ai_outcome`     | `ai_outcome` is `answer`, `broken`, `unavailable` or `error` (a thrown call); the reason is scrubbed and cut to 500 characters                     |
+| `prompt_name`, `prompt_version`, `prompt_label`                  | the prompt as fetched (the names of PostHog's own `$llm_prompt_fetched` event)                                                                     |
+| `prompt_identity`, `prompt_draft_id`, `prompt_stale`             | `<name>@v<version>`; an eval draft's `draft:<sha12>`; whether the copy was stale                                                                   |
+| `ai_role`, `ai_output_mode`, `ai_messages`, `ai_cache_control`   | the role; `json_schema` or `json`; `system_user` or `single` (the template path); whether the system message was marked cacheable                  |
+| `ai_has_image`                                                   | describe_photo                                                                                                                                     |
+| `reel_id`, `photo_id`, `job_id`, `job_kind`                      | the job's; an eval sets `reel_id` and `source` (`eval:judge`, `eval:curator`, `eval:curator-judge`), `eval_suite`, `eval_case`                     |
+| `app`, `service_name`, `worker_id`                               | `worker`; `OTEL_SERVICE_NAME` (tells a development worker from production); `WORKER_ID`                                                            |
+
+**Privacy.** An event carries numbers, names and ids only, like `$llm_prompt_fetched`. `$ai_input`
+and `$ai_output_choices` are null (as PostHog's integrations send them in privacy mode), so no
+transcript, hook, pick, description or prompt text reaches PostHog. Only `POSTHOG_PRIVACY_MODE`
+set to exactly `false` sends them: the system message, the user message and the raw answer. An
+image is never sent, only named (`[image image/jpeg, <n> bytes]`).
+
+**Reading the cache.** A cached call has `$ai_cache_read_input_tokens` above zero; the first call
+of a prompt version within five minutes has `$ai_cache_creation_input_tokens` instead. Both zero on
+a call with `ai_cache_control: true` means the system message is under the model's minimum (512
+tokens for Haiku 5.5) or the provider did not cache it. The same numbers are on the `chat` span
+(`gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_write.input_tokens`).
+
 ### Tool calls (`exec` spans)
 
 Every tool call the step runner spawns is one `exec` span, an `INTERNAL` span under the step that ran
@@ -627,6 +685,13 @@ does. Retention is the cut-out's (15 days).
 
 - Worker: `OTEL_EXPORTER_OTLP_ENDPOINT` turns export on; `OTEL_EXPORTER_OTLP_HEADERS` is optional
   and only needed for PostHog. `apps/studio/test-support/worker.ts` blanks both so a spec never exports.
+- Worker, AI generations: `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` both set (the variables of the
+  worker's error tracking, `app_docs/error-tracking.md`); without both no client is built and no event
+  is sent. `apps/worker/.env.production` has them. In `apps/worker/.env.development` the token is
+  empty, so development jobs and the evals send nothing until it is filled, and filling it turns the
+  development error tracking on too. `POSTHOG_PRIVACY_MODE`: content is sent only when it is exactly
+  `false` (placeholder `true` in `apps/worker/.env.example`). `apps/studio/test-support/worker.ts`
+  blanks the token, so a spec never sends an event. No turbo task reads these.
 - Studio: `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` and `NEXT_PUBLIC_POSTHOG_HOST` (inlined at build, empty in
   development and CI). The PostHog project must accept non-cookieless events from the studio.
 - Linux needs GNU `time` at `/usr/bin/time` (`apt-get install time`); CI installs it before the tests.
@@ -650,6 +715,14 @@ does. Retention is the cut-out's (15 days).
 - AI calls: `ai.test.ts` (`the chat span of a call`: name, kind, operation, provider, request and
   response model, the tokens, the cost, the finish reason, the role and output mode, the error
   types, no trace means no span).
+- AI generations: `ai-observability.test.ts` (the event's payload: the trace, the model, the tokens,
+  the cache counts, the cost and its source, the latency, the prompt's name, version and draft id, the
+  reel; no message and no answer in privacy mode, both only for `POSTHOG_PRIVACY_MODE=false`; an image
+  named and never sent; an error's reason scrubbed and cut; no client without both variables; a
+  PostHog failure never thrown; `withAiContext`, `jobAiContext`), `ai.test.ts` ("the generation of a
+  call": one per model call through the real provider over a captured `fetch`, two for the JSON mode
+  fallback, an unavailable and a broken call, none for a call that never started or from the double),
+  `evals/run-eval.test.ts` and `evals/run-curator.test.ts` (the experiment as the trace of every call).
 - R2 spans: `traced-storage.test.ts` (the kind from the key's layout and nothing of the key itself, a
   step's reads and writes under the step, a stage's under the stage, a call outside any step under
   the job, a file's size as the bytes, `missing` and `exists`, the parts of a multipart upload, a
@@ -676,7 +749,20 @@ does. Retention is the cut-out's (15 days).
 ## Rules
 
 - Never write a step measurement twice: never send it to PostHog as an event or as an attribute of a
-  product event (span attributes are traces, not events).
+  product event (span attributes are traces, not events). The one exception is a model call's
+  `$ai_generation` event (owner decision 2026-11-13): it carries that call's own tokens, cost and
+  latency, and the step row keeps their sum per step.
+- Every model call is one `$ai_generation` event, sent only through the runner's observer
+  (`ai-observability.ts`); never capture one anywhere else, and never let a capture change, delay or
+  fail a call.
+- Never put a transcript, a hook, a pick, a description, a prompt's text, an answer or image bytes on
+  a generation event unless `POSTHOG_PRIVACY_MODE` is exactly `false`; names, ids and numbers only.
+  The image bytes never, in any mode.
+- Never let PostHog price a worker call again: the event's cost is the worker's own
+  (`$ai_cost_passthrough`), OpenRouter's when reported, else the price table's.
+- Never build the AI observer at module load or without both variables, and flush it before the
+  process exits.
+- Never rename a property of the generation event once shipped.
 - Never store or emit a price derived from machine measurements; `ai_cost_usd` is what OpenRouter
   reports, or, for a call whose response carries no cost, the list price of its reported tokens
   (`PRICES` in `apps/worker/src/ai.ts`).

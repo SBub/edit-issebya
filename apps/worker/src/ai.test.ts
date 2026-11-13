@@ -20,6 +20,7 @@ import {
   scriptedAnswer,
   wireSchema,
 } from "./ai.ts";
+import type { AiGeneration, AiObserver } from "./ai-observability.ts";
 import { createTelemetry } from "./telemetry.ts";
 
 const SCHEMA = {
@@ -194,6 +195,260 @@ describe("the OpenRouter request", () => {
     });
     const result = await runner.call(REQUEST);
     expect(result.usage.costUsd).toBeCloseTo(0.00025);
+  });
+});
+
+// The real provider over a fetch that answers each call with the next reply
+// (the last one again): what would go on the wire, and what the observer is
+// told. No network.
+function wired(replies: { status?: number; body: object }[], observer?: AiObserver) {
+  const bodies: { messages: unknown[] }[] = [];
+  let asked = 0;
+  const fetch = async (_url: string | URL | Request, init?: RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body)) as { messages: unknown[] });
+    const reply = replies[Math.min(asked, replies.length - 1)]!;
+    asked += 1;
+    return new Response(JSON.stringify(reply.body), {
+      status: reply.status ?? 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const openrouter = createOpenRouter({
+    apiKey: "test-key",
+    fetch: fetch as typeof globalThis.fetch,
+  });
+  const runner = modelRunner({
+    model: (id) =>
+      openrouter(id, { usage: { include: true }, provider: { require_parameters: true } }),
+    maxRetries: 0,
+    ...(observer ? { observer } : {}),
+  });
+  return { runner, bodies };
+}
+
+const WIRE_ANSWER = {
+  id: "gen-1",
+  model: "anthropic/claude-haiku-5.5",
+  created: 1,
+  choices: [
+    { index: 0, message: { role: "assistant", content: '{"a":"z"}' }, finish_reason: "stop" },
+  ],
+  usage: { prompt_tokens: 100, completion_tokens: 7, total_tokens: 107, cost: 0.0042 },
+};
+const REFUSED_SCHEMA = { status: 400, body: { error: { message: "schema refused", code: 400 } } };
+
+const SYSTEM = "test system prompt";
+const USER = "## script\n\nhello\n";
+const SPLIT: AiRequest = { ...REQUEST, system: SYSTEM, prompt: USER };
+const CACHED_SYSTEM = {
+  role: "system",
+  content: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+};
+
+describe("the system and user messages", () => {
+  it("sends the system message unchanged, marked cacheable, then the inputs as the one user message", async () => {
+    const { runner, bodies } = wired([{ body: WIRE_ANSWER }]);
+    const result = await runner.call(SPLIT);
+    expect(bodies[0]!.messages).toEqual([CACHED_SYSTEM, { role: "user", content: USER }]);
+    // The record keeps both messages.
+    expect(result.exchange).toMatchObject({ system: SYSTEM, prompt: USER });
+  });
+
+  it("marks nothing cacheable and sends no system message on the template path", async () => {
+    const { runner, bodies } = wired([{ body: WIRE_ANSWER }]);
+    const result = await runner.call(REQUEST);
+    expect(bodies[0]!.messages).toEqual([{ role: "user", content: "x" }]);
+    expect(JSON.stringify(bodies[0])).not.toContain("cache_control");
+    expect(result.exchange).not.toHaveProperty("system");
+  });
+
+  it("sends describe_photo's image as the whole user message when the call has no input, and beside the reasons on a retry", async () => {
+    const { runner, bodies } = wired([{ body: WIRE_ANSWER }]);
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+    const image = { data: jpeg, mediaType: "image/jpeg" as const };
+    const picture = {
+      type: "image_url",
+      image_url: { url: `data:image/jpeg;base64,${Buffer.from(jpeg).toString("base64")}` },
+    };
+    await runner.call({ ...SPLIT, role: "describe", prompt: "", image });
+    expect(bodies[0]!.messages).toEqual([CACHED_SYSTEM, { role: "user", content: [picture] }]);
+    await runner.call({
+      ...SPLIT,
+      role: "describe",
+      prompt: "## previous_answer_refused\n",
+      image,
+    });
+    expect(bodies[1]!.messages).toEqual([
+      CACHED_SYSTEM,
+      {
+        role: "user",
+        content: [{ type: "text", text: "## previous_answer_refused\n" }, picture],
+      },
+    ]);
+  });
+
+  it("in JSON mode appends the schema to the user message: the system message stays the same, still cacheable", async () => {
+    const { runner, bodies } = wired([REFUSED_SCHEMA, { body: WIRE_ANSWER }]);
+    const result = await runner.call(SPLIT);
+    expect(bodies).toHaveLength(2);
+    const [system, user] = bodies[1]!.messages as [unknown, { role: string; content: string }];
+    expect(system).toEqual(CACHED_SYSTEM);
+    expect(user.content.startsWith(USER.trimEnd())).toBe(true);
+    expect(user.content).toContain(JSON.stringify(wireSchema(SCHEMA)));
+    expect(result.exchange).toMatchObject({ outputMode: "json", system: SYSTEM });
+    expect(result.exchange.prompt).toBe(user.content);
+  });
+
+  it("reads the cache reads and writes OpenRouter reports", async () => {
+    const { runner } = wired([
+      {
+        body: {
+          ...WIRE_ANSWER,
+          usage: {
+            ...WIRE_ANSWER.usage,
+            prompt_tokens_details: { cached_tokens: 80, cache_write_tokens: 12 },
+          },
+        },
+      },
+    ]);
+    const result = await runner.call(SPLIT);
+    expect(result.usage).toMatchObject({
+      inputTokens: 100,
+      cacheReadTokens: 80,
+      cacheWriteTokens: 12,
+    });
+  });
+});
+
+describe("the generation of a call", () => {
+  function observing() {
+    const generations: AiGeneration[] = [];
+    const observer: AiObserver = {
+      enabled: true,
+      generation: (generation) => generations.push(generation),
+      async shutdown() {},
+    };
+    return { generations, observer };
+  }
+  const CONTEXT = { traceId: "job-1", reelId: "reel-1", distinctId: "owner-1" };
+  const REF = { name: "test-prompt", version: 1, label: "production" };
+
+  it("is reported once per model call with what was sent, the usage, the cost's source and the latency", async () => {
+    const { generations, observer } = observing();
+    const { runner } = wired(
+      [
+        {
+          body: {
+            ...WIRE_ANSWER,
+            usage: {
+              ...WIRE_ANSWER.usage,
+              prompt_tokens_details: { cached_tokens: 80 },
+              completion_tokens_details: { reasoning_tokens: 5 },
+            },
+          },
+        },
+      ],
+      observer,
+    );
+    await runner.call({ ...SPLIT, promptRef: REF, observe: CONTEXT, promptStale: true });
+    expect(generations).toHaveLength(1);
+    expect(generations[0]).toMatchObject({
+      role: "decide",
+      model: AI_MODEL,
+      context: CONTEXT,
+      promptVersion: "test-prompt@v1",
+      promptRef: REF,
+      promptStale: true,
+      outputMode: "json_schema",
+      system: SYSTEM,
+      user: USER,
+      image: null,
+      cacheControl: true,
+      maxOutputTokens: 16_000,
+      usage: { inputTokens: 100, outputTokens: 7, costUsd: 0.0042, cacheReadTokens: 80 },
+      reasoningTokens: 5,
+      costSource: "openrouter",
+      finishReason: "stop",
+      answerText: '{"a":"z"}',
+      outcome: "answer",
+      error: null,
+      httpStatus: null,
+    });
+    expect(generations[0]!.latencySeconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it("names the price table as the cost's source when OpenRouter reports no cost", async () => {
+    const { generations, observer } = observing();
+    const { runner } = wired(
+      [
+        {
+          body: {
+            ...WIRE_ANSWER,
+            usage: { prompt_tokens: 2000, completion_tokens: 100, total_tokens: 2100 },
+          },
+        },
+      ],
+      observer,
+    );
+    await runner.call(REQUEST);
+    expect(generations[0]).toMatchObject({ costSource: "price_table", system: null });
+    expect(generations[0]!.usage.costUsd).toBeCloseTo(0.00025);
+    expect(generations[0]!.cacheControl).toBe(false);
+    expect(generations[0]).not.toHaveProperty("context");
+  });
+
+  it("reports the refused schema call and the JSON mode call as two generations", async () => {
+    const { generations, observer } = observing();
+    const { runner } = wired([REFUSED_SCHEMA, { body: WIRE_ANSWER }], observer);
+    await runner.call(SPLIT);
+    expect(generations.map((one) => [one.outputMode, one.outcome, one.httpStatus])).toEqual([
+      ["json_schema", "error", 400],
+      ["json", "answer", null],
+    ]);
+    expect(generations[0]!.error).toContain("schema refused");
+    // The JSON mode call's user message carries the schema.
+    expect(generations[1]!.user).toContain(JSON.stringify(wireSchema(SCHEMA)));
+  });
+
+  it("reports an unavailable AI and a broken answer with their reasons", async () => {
+    const unavailable = observing();
+    await wired(
+      [{ status: 402, body: { error: { message: "no credits", code: 402 } } }],
+      unavailable.observer,
+    ).runner.call(REQUEST);
+    expect(unavailable.generations).toHaveLength(1);
+    expect(unavailable.generations[0]).toMatchObject({
+      outcome: "unavailable",
+      error: "the OpenRouter credits are used up",
+      httpStatus: 402,
+      costSource: null,
+      usage: { inputTokens: null, costUsd: null, model: AI_MODEL },
+    });
+
+    const broken = observing();
+    const cut = {
+      ...WIRE_ANSWER,
+      choices: [
+        { index: 0, message: { role: "assistant", content: '{"a":' }, finish_reason: "length" },
+      ],
+    };
+    await wired([{ body: cut }], broken.observer).runner.call(REQUEST);
+    expect(broken.generations).toHaveLength(1);
+    expect(broken.generations[0]).toMatchObject({ outcome: "broken", finishReason: "length" });
+    expect(broken.generations[0]!.error).not.toBeNull();
+  });
+
+  it("reports nothing for a call that never started, and nothing from the double's runner by default", async () => {
+    const { generations, observer } = observing();
+    const { runner, bodies } = wired([{ body: WIRE_ANSWER }], observer);
+    const stopped = new AbortController();
+    stopped.abort();
+    await expect(runner.call({ ...REQUEST, signal: stopped.signal })).rejects.toThrow();
+    expect(bodies).toEqual([]);
+    expect(generations).toEqual([]);
+    // E2E_MOCK_AI: the double makes no model call, so the observer is never told.
+    await aiRunner({ E2E_MOCK_AI: "true" }, observer).call(REQUEST);
+    expect(generations).toEqual([]);
   });
 });
 

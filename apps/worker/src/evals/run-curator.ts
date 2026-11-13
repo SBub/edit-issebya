@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ROOT_CONTEXT, trace } from "@opentelemetry/api";
 import { ISSEBYA_PRESET, type Measurer, type Preset } from "@edit-issebya/edit";
 import { AI_MODELS, type AiRunner, NO_USAGE } from "../ai.ts";
+import { withAiContext } from "../ai-observability.ts";
 import { type PromptSource, type PromptText, promptIdentity } from "../prompts/source.ts";
 import { addUsage } from "../step-store.ts";
 import { type Telemetry, inSpan } from "../telemetry.ts";
@@ -337,10 +338,22 @@ export async function runCuratorEval(
   // Before any paid call: the prompts, the scorers and the experiment, so a
   // missing prompt or key scope costs nothing.
   const curatorTemplate: PromptText = options.curatorDraft
-    ? { name: "draft", version: 0, label: "draft", text: options.curatorDraft.text }
+    ? {
+        name: "draft",
+        version: 0,
+        label: "draft",
+        text: options.curatorDraft.text,
+        draftId: draftId(options.curatorDraft.text),
+      }
     : await deps.curatorPrompts.get(CURATOR_PROMPT_NAME);
   const judgeTemplate: PromptText = options.judgeDraft
-    ? { name: "draft", version: 0, label: "draft", text: options.judgeDraft.text }
+    ? {
+        name: "draft",
+        version: 0,
+        label: "draft",
+        text: options.judgeDraft.text,
+        draftId: draftId(options.judgeDraft.text),
+      }
     : await deps.judgePrompts.get(JUDGE_PROMPT_NAME);
   const curator = {
     id: options.curatorDraft ? draftId(options.curatorDraft.text) : promptIdentity(curatorTemplate),
@@ -386,6 +399,13 @@ export async function runCuratorEval(
     const rootContext = trace.setSpan(ROOT_CONTEXT, root);
     const results: CaseResult[] = [];
     let usage = NO_USAGE;
+    // Every call's generation event names this run (the experiment) as its trace.
+    const aiFor = (c: CuratorCase, source: string) =>
+      withAiContext(deps.ai, {
+        traceId: experimentId,
+        reelId: c.reelId,
+        properties: { source, eval_suite: SUITE, eval_case: c.item.caseKey },
+      });
     try {
       for (const c of cases) {
         const measure = await deps.measurerOf(c.current.font_pair);
@@ -408,7 +428,7 @@ export async function runCuratorEval(
             { "reel.id": c.reelId, "eval.case": c.item.caseKey, "eval.repeat": repeat },
             (_span, context) =>
               callCurator({
-                ai: deps.ai,
+                ai: aiFor(c, "eval:curator"),
                 template: curatorTemplate,
                 input: c.input,
                 preset,
@@ -439,7 +459,7 @@ export async function runCuratorEval(
               { "reel.id": c.reelId, "eval.case": c.item.caseKey, "eval.source": "curator" },
               (_span, context) =>
                 callJudge({
-                  ai: deps.ai,
+                  ai: aiFor(c, "eval:curator-judge"),
                   template: judgeTemplate,
                   transcript: c.transcript,
                   picks: sent,

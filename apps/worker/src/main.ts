@@ -8,6 +8,7 @@
 // while the scratch volume is below WORKER_MIN_FREE_DISK_GB. It writes a
 // heartbeat at start and every five minutes. Before anything reads the scratch
 // volume it creates the scratch folder, and exits 1 naming it when it cannot.
+import { createAiObserver } from "./ai-observability.ts";
 import { workerConfig } from "./config.ts";
 import { createErrorTracker, installCrashCapture } from "./error-tracking.ts";
 import { freeBytesFn, guardedClaim, supabaseWorkerStatus } from "./disk-guard.ts";
@@ -35,6 +36,8 @@ await prepareScratchDir(config.scratchDir);
 const db = workerSupabase(config);
 const storage = workerStorage();
 const telemetry = createTelemetry();
+// Every model call of a job is one PostHog generation event.
+const aiObserver = createAiObserver();
 const status = supabaseWorkerStatus(db, config.workerId);
 const freeBytes = freeBytesFn(process.env);
 const records = supabaseStoredFiles(db);
@@ -76,7 +79,7 @@ const drainer = createDrainer({
       claim: () => claimJob(db, config),
     });
   },
-  run: (job) => processJob(db, storage, config, telemetry, errors, job),
+  run: (job) => processJob(db, storage, config, telemetry, errors, job, aiObserver),
   onError: (error) => {
     console.error("worker: drain failed:", error);
     errors.crashed(error);
@@ -125,6 +128,7 @@ async function stop(signal: string) {
   await drainer.idle();
   await telemetry.shutdown();
   await errors.shutdown();
+  await aiObserver.shutdown();
   process.exit(0);
 }
 

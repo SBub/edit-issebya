@@ -97,6 +97,12 @@ dashes), exported wherever `OTEL_EXPORTER_OTLP_ENDPOINT` of the env file points.
 sends its traces to local Grafana only (`app_docs/worker-container.md`), which is why the eval runs on
 the Mac.
 
+Each judge and curator call is also one PostHog `$ai_generation` event (`app_docs/measurement.md`,
+"AI generations"), when `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` are set in the env file: its trace
+is the experiment's id, with the reel, `source` (`eval:judge`, `eval:curator`, `eval:curator-judge`),
+`eval_suite`, `eval_case`, and the prompt's name and version or a draft's `prompt_draft_id`. It
+carries no script and no pick (privacy mode). Both evals flush the events before they exit.
+
 ## How it works
 
 Code: `apps/worker/src/eval-judge.ts` (the command) and `apps/worker/src/evals/` (shared with the curator eval).
@@ -113,9 +119,13 @@ Code: `apps/worker/src/eval-judge.ts` (the command) and `apps/worker/src/evals/`
    reel (every mark as a good pick), and one call per curator run with only that run's picks. Within a
    call, identical picks are merged, then shuffled with a fixed seed and named `p1`, `p2`, ... so the
    judge cannot tell the picks apart by their place. A reel with no stored curator run has no script
-   to judge against, so it makes no call at all (`skipped`). `{{script}}` is the script exactly as the
-   curator's prompt receives it (`scriptOf`, the same preset, from the reel's first run's transcript);
-   `{{picks}}` is a fenced JSON array of `{ pick, component, words, start, end, items? }`.
+   to judge against, so it makes no call at all (`skipped`). The call has two inputs: `script` is the
+   script exactly as the curator's prompt receives it (`scriptOf`, the same preset, from the reel's
+   first run's transcript); `picks` is a fenced JSON array of
+   `{ pick, component, words, start, end, items? }`. A judge prompt with no placeholder is the system
+   message and the two inputs are the user message's sections (`## script`, `## picks`); one that still
+   holds `{{script}}` and `{{picks}}` is filled and sent as one message
+   (`app_docs/decide-step.md`, "Messages").
 5. **The answer**. `{ "verdicts": [{ "pick", "verdict": "approve" | "reject", "reason", "better" }] }`,
    asked for as a strict structured output (the AI runner's `json_schema` mode, JSON mode only if the
    provider refuses the schema) and checked again in code: the same schema, exactly one verdict per
@@ -243,8 +253,10 @@ results per item: `curator_f1` and `judge_approval` (0 to 1), `skipped` when not
 `error` (`curator_answer_invalid`, `judge_answer_invalid`) when every call of that kind failed.
 
 **Drafts.** The curator draft follows the judge's draft rules (see "Drafts"): a local file outside the
-repository, the placeholders `{{script}}`, `{{hook}}`, `{{intensity}}` and `{{target_picks}}`, the id
-`draft:<sha12>` in the report and the experiment, label `draft`.
+repository, the id `draft:<sha12>` in the report and the experiment, label `draft`. Its inputs are
+`script`, `hook`, `intensity` and `target_picks`: a draft with no placeholder is the system message and
+they are the user message's sections; a draft with the placeholders `{{script}}`, `{{hook}}`,
+`{{intensity}}` and `{{target_picks}}` is filled and sent as one message.
 
 **Workflow.**
 
@@ -283,10 +295,18 @@ prompt that wins:
 3. The report and the PostHog experiment record the draft as `draft:<first 12 hex of the sha256 of the
 text>` (the experiment's `prompt_version`, the item's `judge_prompt_version`, label `draft`), with
    the file name (`judge_prompt_file` in the item metadata, and in the report's judge line). The same text
-   always gets the same id. The judge calls' traces show the call's prompt as `draft@v0`.
+   always gets the same id. The judge calls' traces show the call's prompt as `draft@v0`; their
+   generation events carry the id as `prompt_draft_id`.
 4. Iterate on the file until the agreement is the one you want, comparing the experiments by id.
 5. Only for a winner: publish the text as a new `reel-components-judge` version in PostHog, set its
    label, then run the eval with `--label <label>` to confirm the same agreement under that version.
+
+A draft (`--prompt-file`, `--curator-prompt-file`, `--judge-prompt-file`) is sent the way a PostHog
+version is, by the same rule (`app_docs/decide-step.md`, "Messages"): a file with no `{{name}}`
+placeholder is the system message, sent unchanged and marked cacheable, and the call's inputs are the
+user message; a file with placeholders is a template, filled and sent as one message. So a
+system-message version of a prompt is tried as a draft before PostHog holds it, and a draft and the
+version published from it run the same way. The draft id is the hash of the file's text either way.
 
 ## Rules
 
@@ -311,8 +331,10 @@ text>` (the experiment's `prompt_version`, the item's `judge_prompt_version`, la
 - Never guess a verdict: an answer that fails the schema or the per-pick rules after the one retry
   fails its call.
 - Never commit `apps/worker/eval-output/`.
-- The contract with the prompt (the two variables, the pick fields, the answer's shape) changes on
-  both sides together.
+- The contract with the prompt (the two inputs `script` and `picks`, as placeholders or as the user
+  message's sections, the pick fields, the answer's shape) changes on both sides together.
+- Never send an eval call outside the AI runner: a draft follows the same message rule as a PostHog
+  version, and every call is a generation event with the experiment as its trace.
 - The judge's model is `AI_MODELS.judge` in `apps/worker/src/ai.ts`, with its price in the price
   table; never name it elsewhere.
 
@@ -322,7 +344,9 @@ Unit tests beside each module (`apps/worker/src/evals/*.test.ts`), no network an
 positions, every label rule, pick parsing from a stored AI record, the re-upload match, the call
 grouping (the owner's marks alone, each run's picks alone), the answer rules and the retry, the score
 and its split by source, the report, the PostHog requests and the upload payload, and the draft prompt
-(the refusal of a path inside the repository, the draft id, the recorded version).
+(the refusal of a path inside the repository, the draft id, the recorded version; a draft with
+placeholders sent as one message, one with none as the system message with the inputs as the user
+message; the experiment as the trace of every call's generation event).
 
 The snapshot's tests (`snapshot.test.ts`, and the snapshot side of `curator-input.test.ts`) use in-memory fakes
 of the sources: the plan (re-uploads copied, a run of another transcript counted and left out, a skipped

@@ -6,9 +6,11 @@ import {
   type PromptText,
   PromptUnavailable,
   decidePrompts,
+  hasPlaceholders,
   promptIdentity,
   promptLabel,
   renderPrompt,
+  userMessage,
 } from "./source.ts";
 
 const TEMPLATE: PromptText = {
@@ -18,12 +20,111 @@ const TEMPLATE: PromptText = {
   text: "test prompt {{transcript}} and {{unknown}}",
 };
 
-describe("renderPrompt", () => {
-  it("fills the variables it is given, leaves the others, and names the version", () => {
-    expect(renderPrompt(TEMPLATE, { transcript: "hello" })).toEqual({
+const REF = { name: "reel-hook", version: 3, label: "production" };
+// A prompt with no placeholder: the system message of the two-message path.
+const SYSTEM: PromptText = { ...TEMPLATE, text: "test system prompt reel-hook" };
+
+describe("hasPlaceholders", () => {
+  it("is true only for a text with a {{name}} placeholder", () => {
+    expect(hasPlaceholders("a {{script}} b")).toBe(true);
+    expect(hasPlaceholders("a {{target_picks}}")).toBe(true);
+    expect(hasPlaceholders("no placeholder")).toBe(false);
+    // JSON braces in an example answer are not placeholders.
+    expect(hasPlaceholders('{"verdicts": [{"pick": "p1"}]}')).toBe(false);
+    expect(hasPlaceholders("{ { script } }")).toBe(false);
+    expect(hasPlaceholders("{{}}")).toBe(false);
+  });
+});
+
+describe("renderPrompt on a prompt with no placeholder (system and user messages)", () => {
+  it("sends the fetched text unchanged as the system message", () => {
+    const text = "  test system prompt\n\nwith a blank line and a trailing newline\n";
+    const call = renderPrompt({ ...SYSTEM, text }, { transcript: "hello" });
+    expect(call.system).toBe(text);
+    expect(call.promptVersion).toBe("reel-hook@v3");
+    expect(call.promptRef).toEqual(REF);
+  });
+
+  it("puts each input in its own labelled section of the user message, in the order given", () => {
+    const call = renderPrompt(SYSTEM, {
+      script: '```json\n{"a":1}\n```',
+      intensity: "intense",
+      target_picks: "12",
+    });
+    expect(call.prompt).toBe(
+      [
+        "## script",
+        "",
+        "```json",
+        '{"a":1}',
+        "```",
+        "",
+        "## intensity",
+        "",
+        "intense",
+        "",
+        "## target_picks",
+        "",
+        "12",
+        "",
+      ].join("\n"),
+    );
+    // No input reaches the system message.
+    expect(call.system).toBe(SYSTEM.text);
+  });
+
+  it("adds the refused reasons as the last section on a retry, and the system message stays the same", () => {
+    const first = renderPrompt(SYSTEM, { transcript: "x" });
+    const retry = renderPrompt(SYSTEM, { transcript: "x" }, ["a: first", "b: second"]);
+    expect(retry.system).toBe(first.system);
+    expect(retry.prompt).toBe(
+      [
+        "## transcript",
+        "",
+        "x",
+        "",
+        "## previous_answer_refused",
+        "",
+        "Your previous answer was refused for these reasons. Fix them and answer again:",
+        "- a: first",
+        "- b: second",
+        "",
+      ].join("\n"),
+    );
+    expect(renderPrompt(SYSTEM, { transcript: "x" }, []).prompt).toBe(first.prompt);
+  });
+
+  it("has an empty user message with no input and no reason", () => {
+    expect(userMessage({})).toBe("");
+    expect(renderPrompt(SYSTEM, {})).toMatchObject({ prompt: "", system: SYSTEM.text });
+  });
+
+  it("names a draft by its id", () => {
+    const draft: PromptText = {
+      name: "draft",
+      version: 0,
+      label: "draft",
+      text: "test system prompt draft",
+      draftId: "draft:ba7816bf8f01",
+    };
+    expect(renderPrompt(draft, {}).promptRef).toEqual({
+      name: "draft",
+      version: 0,
+      label: "draft",
+      draftId: "draft:ba7816bf8f01",
+    });
+  });
+});
+
+describe("renderPrompt on a template (placeholders: one message, as before)", () => {
+  it("fills the variables it is given, leaves the others, names the version and sends no system message", () => {
+    const call = renderPrompt(TEMPLATE, { transcript: "hello" });
+    expect(call).toEqual({
       prompt: "test prompt hello and {{unknown}}",
       promptVersion: "reel-hook@v3",
+      promptRef: REF,
     });
+    expect(call).not.toHaveProperty("system");
   });
 
   it("appends every refused reason on a retry, and nothing when there are none", () => {
@@ -45,8 +146,10 @@ describe("renderPrompt on a stale copy", () => {
     expect(renderPrompt({ ...TEMPLATE, stale: true }, { transcript: "x" })).toEqual({
       prompt: "test prompt x and {{unknown}}",
       promptVersion: "reel-hook@v3",
+      promptRef: REF,
       promptStale: true,
     });
+    expect(renderPrompt({ ...SYSTEM, stale: true }, {})).toMatchObject({ promptStale: true });
     expect(renderPrompt(TEMPLATE, { transcript: "x" })).not.toHaveProperty("promptStale");
   });
 });

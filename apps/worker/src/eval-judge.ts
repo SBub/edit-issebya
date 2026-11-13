@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { aiRunner } from "./ai.ts";
+import { createAiObserver } from "./ai-observability.ts";
 import { posthogEvals } from "./evals/posthog-evals.ts";
 import { runJudgeEval } from "./evals/run-eval.ts";
 import { posthogPromptSource } from "./prompts/posthog-source.ts";
@@ -32,6 +33,8 @@ const { values } = parseArgs({
 // `--label` picks the judge prompt's label; without it, POSTHOG_PROMPT_LABEL.
 const env = { ...process.env, ...(values.label ? { POSTHOG_PROMPT_LABEL: values.label } : {}) };
 const telemetry = createTelemetry();
+// Every judge call is one PostHog generation event (app_docs/measurement.md).
+const aiObserver = createAiObserver(env);
 
 try {
   checkPromptSource({ label: values.label, promptFile: values["prompt-file"] });
@@ -50,7 +53,7 @@ try {
     {
       posthog: posthogEvals(env),
       prompts: posthogPromptSource(env),
-      ai: aiRunner(env),
+      ai: aiRunner(env, aiObserver),
       telemetry,
       async saveReport(fileName, html) {
         const path = `${OUTPUT_DIR}${fileName}`;
@@ -67,4 +70,5 @@ try {
   process.exitCode = 1;
 } finally {
   await telemetry.shutdown();
+  await aiObserver.shutdown();
 }
