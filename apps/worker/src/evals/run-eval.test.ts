@@ -48,7 +48,7 @@ const sources: RunSources = {
   },
 };
 
-// The dataset as `eval:snapshot` leaves it: each item carries its reel's
+// The dataset as the refresh step leaves it: each item carries its reel's
 // stored curator runs. The judge eval reads those and nothing else.
 const RAW_ITEMS = [
   ownerItemJson(TEXT_A, {

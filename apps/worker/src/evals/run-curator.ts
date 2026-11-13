@@ -50,7 +50,7 @@ import {
 // prompt run on each labelled reel of the dataset, its picks scored against
 // the owner's marks by code, and each answer's picks judged in a separate call.
 // It reads the dataset items only (their curator input, written by
-// `eval:snapshot`) and writes the AI calls, the report file and the PostHog
+// the refresh step) and writes the AI calls, the report file and the PostHog
 // experiment. It reads nothing from the database or from storage.
 
 const SCORERS = {

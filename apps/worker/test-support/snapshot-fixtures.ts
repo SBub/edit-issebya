@@ -2,7 +2,7 @@ import type { ParseCurrent, CuratorSources } from "../src/evals/curator-input.ts
 import { selectOwnerItems } from "../src/evals/owner-marks.ts";
 import { planSnapshot, snapshotBody } from "../src/evals/snapshot.ts";
 
-// Test only: the dataset items as they read after `eval:snapshot` ran over
+// Test only: the dataset items as they read after the refresh step wrote over
 // `sources`, each item with its new version's input and metadata (what PostHog
 // would serve). The snapshot's own code is the one under test, not a copy.
 

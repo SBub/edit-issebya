@@ -16,7 +16,7 @@ import type { StoredCuratorInput } from "./snapshot-format.ts";
 
 // THE CURATOR'S INPUT for one labelled reel (app_docs/evals.md, "The curator
 // eval"). Two halves:
-//  - the snapshot (`snapshotCuratorInput`, run by `eval:snapshot` only): reads
+//  - the snapshot (`snapshotCuratorInput`, run by the refresh step only): reads
 //    the reel's latest stored version, its transcript, head track and edit, and
 //    the written hook, and returns them as the item's `input.curator_input`;
 //  - the eval (`curatorCaseOf`): rebuilds the decide step's input from that

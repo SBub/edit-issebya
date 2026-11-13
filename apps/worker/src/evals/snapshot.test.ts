@@ -9,9 +9,9 @@ import type { CuratorSources } from "./curator-input.ts";
 import { runCuratorEval } from "./run-curator.ts";
 import { runJudgeEval } from "./run-eval.ts";
 import { selectOwnerItems } from "./owner-marks.ts";
-import type { EvalsApi, UpdateItemBody } from "./posthog-evals.ts";
+import type { EvalsApi } from "./posthog-evals.ts";
 import { curatorInputOf, missingSnapshot, pastRunsOf, storedRunOf } from "./snapshot-format.ts";
-import { planSnapshot, runSnapshot, snapshotBody } from "./snapshot.ts";
+import { planSnapshot, snapshotBody } from "./snapshot.ts";
 
 // Two reels share one transcript (a re-upload of the same footage). Reel A also
 // has an older run decided from another transcript, which is left out.
@@ -161,93 +161,7 @@ describe("the item update", () => {
     expect(pastRunsOf(RAW[0], "item-a")).toBeNull();
     expect(curatorInputOf(RAW[0], "item-a")).toBeNull();
     const broken = { metadata: { past_curator_runs: [{ reel_id: 3 }] } };
-    expect(() => pastRunsOf(broken, "item-a")).toThrow(/malformed snapshot.*eval:snapshot again/);
-  });
-});
-
-// A PostHog dataset of the item, with its updates recorded.
-function posthogOf(items: unknown[]) {
-  const updates: { id: string; body: UpdateItemBody }[] = [];
-  const posthog: Pick<EvalsApi, "dataset" | "updateItem"> = {
-    async dataset() {
-      return { revisionId: "rev-7", revision: 7, items };
-    },
-    async updateItem(id, body) {
-      updates.push({ id, body });
-    },
-  };
-  return { posthog, updates };
-}
-
-describe("running the snapshot", () => {
-  it("a dry run prints what would be written and writes nothing", async () => {
-    const { posthog, updates } = posthogOf(RAW);
-    const lines: string[] = [];
-    const summary = await runSnapshot(
-      { datasetId: "data-set", dryRun: true },
-      { posthog, sources: store(), parseCurrent: parseEditStub, log: (line) => lines.push(line) },
-    );
-    expect(updates).toEqual([]);
-    expect(summary.written).toBe(0);
-    expect(lines).toContain(
-      `reel aaaaaaaa: 2 curator runs (2 picks), 1 runs of this reel left out (another transcript), curator input ready from version 2, hook from version`,
-    );
-    expect(lines.at(-1)).toBe("dry run: 1 items would get a new version, nothing written");
-  });
-
-  it("writes one new version per item, at the version it read", async () => {
-    const { posthog, updates } = posthogOf(RAW);
-    const summary = await runSnapshot(
-      { datasetId: "data-set", dryRun: false },
-      {
-        posthog,
-        sources: store(),
-        parseCurrent: parseEditStub,
-        log: () => undefined,
-        now: () => new Date(SNAPSHOT_AT),
-      },
-    );
-    expect(summary.written).toBe(1);
-    expect(updates).toHaveLength(1);
-    expect(updates[0]!.id).toBe("item-a");
-    expect(updates[0]!.body.base_version).toBe(1);
-    expect(updates[0]!.body.metadata).toMatchObject({ snapshot_at: SNAPSHOT_AT });
-  });
-
-  it("narrows to one reel by its id prefix, and fails on a reel the dataset does not have", async () => {
-    const other = ownerItemJson(OTHER, {}, { reelId: "cccccccc", id: "item-c" });
-    const { posthog, updates } = posthogOf([...RAW, other]);
-    await runSnapshot(
-      { datasetId: "data-set", dryRun: false, reel: "aaaa" },
-      { posthog, sources: store(), parseCurrent: parseEditStub, log: () => undefined },
-    );
-    expect(updates.map((update) => update.id)).toEqual(["item-a"]);
-    await expect(
-      runSnapshot(
-        { datasetId: "data-set", dryRun: true, reel: "dddd" },
-        { posthog, sources: store(), log: () => undefined },
-      ),
-    ).rejects.toThrow("no labelled reel dddd");
-  });
-
-  it("names how far it got when a write fails, so the run can be repeated", async () => {
-    const items = [RAW[0], ownerItemJson(OTHER, {}, { reelId: "cccccccc", id: "item-c" })];
-    let calls = 0;
-    const posthog: Pick<EvalsApi, "dataset" | "updateItem"> = {
-      async dataset() {
-        return { revisionId: "rev-7", revision: 7, items };
-      },
-      async updateItem() {
-        calls += 1;
-        if (calls === 2) throw new Error("evals: PostHog answered HTTP 409");
-      },
-    };
-    await expect(
-      runSnapshot(
-        { datasetId: "data-set", dryRun: false },
-        { posthog, sources: store(), parseCurrent: parseEditStub, log: () => undefined },
-      ),
-    ).rejects.toThrow("stopped after 1 of 2 items, run the snapshot again to finish");
+    expect(() => pastRunsOf(broken, "item-a")).toThrow(/malformed snapshot.*eval snapshot again/);
   });
 });
 
@@ -283,7 +197,7 @@ describe("an item with no snapshot", () => {
     async fail() {},
   });
 
-  it("the judge eval stops before any judge call, naming eval:snapshot", async () => {
+  it("the judge eval stops before any judge call, naming the eval command", async () => {
     const { ai, calls } = fakeAi();
     await expect(
       runJudgeEval(
@@ -301,7 +215,7 @@ describe("an item with no snapshot", () => {
     expect(calls).toEqual([]);
   });
 
-  it("the curator eval stops before any curator call, naming eval:snapshot", async () => {
+  it("the curator eval stops before any curator call, naming the eval command", async () => {
     const { ai, calls } = fakeAi();
     await expect(
       runCuratorEval(
@@ -317,7 +231,7 @@ describe("an item with no snapshot", () => {
           log: () => undefined,
         },
       ),
-    ).rejects.toThrow(/run yarn workspace @edit-issebya\/worker eval:snapshot first/);
+    ).rejects.toThrow(/run yarn workspace @edit-issebya\/worker eval snapshot to refresh it/);
     expect(calls).toEqual([]);
   });
 });

@@ -29,7 +29,7 @@ import { type JudgedPick, agreement, score, tally } from "./score.ts";
 // THE JUDGE EVAL (app_docs/evals.md): how well the components judge agrees
 // with the owner's hand labels, measured on picks the curator already made.
 // It reads the dataset items (their snapshot of the curator's past runs, written
-// by `eval:snapshot`) and the judge prompt, calls the judge once for the owner's
+// by the refresh step) and the judge prompt, calls the judge once for the owner's
 // marks of each reel and once per curator run (never mixing the two in one
 // call), and uploads the run to PostHog as an offline experiment. It never
 // calls the curator, and it reads nothing from the database or from storage.

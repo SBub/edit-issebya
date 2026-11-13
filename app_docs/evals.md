@@ -4,6 +4,50 @@
 
 - None: an owner request (a judge-only eval script for the worker, then a curator eval on the same dataset).
 
+## For the owner
+
+**What the evals are for.** You labelled six reels by hand: which words are an accent, a big word, a list or a
+question, and which lines hold nothing. The evals measure how well the components prompt (the curator) and the
+judge that checks it agree with those labels, so a prompt change is measured before it reaches the worker.
+
+**The one command.** From the repository root, on the Mac with the local stack up:
+
+```
+yarn workspace @edit-issebya/worker eval judge --dry-run       # free: the inputs and the counts
+yarn workspace @edit-issebya/worker eval judge                 # the judge on the current PostHog prompt
+yarn workspace @edit-issebya/worker eval curator --repeats 3   # the curator, scored and judged (AI calls)
+yarn workspace @edit-issebya/worker eval help                  # every option
+```
+
+**What happens automatically.** Every run first refreshes the copy of the app's data the labelled reels are
+read from, for any reel whose copy is missing or out of date (a new version of the reel, a new curator run, a
+changed hook). One line is printed per refreshed reel. You never run a snapshot step yourself: `eval snapshot`
+exists only to force a refresh of every reel.
+
+**Where results appear.**
+
+- A local report, `apps/worker/eval-output/` (gitignored, since it quotes transcripts). The run prints its path
+  as `report: <path>` at the end.
+- A PostHog experiment: `components-judge` for the judge, `components-curator` for the curator, on the dataset
+  `owner-reels`. Each reel is an item, with its agreement or its F1 and judge approval as scores.
+
+**How to try a prompt draft.** Write the draft in a file outside the repository, then run the eval on it. The
+draft is judged or curated in place of the PostHog prompt, nothing is published, and the run is recorded under
+the id `draft:<hash>`:
+
+```
+yarn workspace @edit-issebya/worker eval judge --prompt-file ~/judge-draft.txt
+yarn workspace @edit-issebya/worker eval curator --curator-prompt-file ~/curator-draft.txt --repeats 3
+```
+
+Edit the file and run again; compare the experiments by their ids.
+
+**The rule.** Publish a PostHog version only for a draft that wins. Then publish its text as a new version in
+PostHog, set its label, and run the eval with that label (`--label`, `--curator-label` or `--judge-label`) to
+confirm the same numbers. A draft that does not win is never published.
+
+## Technical details
+
 ## Overview
 
 The owner labelled six reels by hand: which words are an ACCENT, a BIGWORD, a LIST, a QUESTION, and
@@ -13,18 +57,29 @@ set of picks and answers approve or reject for each. This eval measures how ofte
 with the owner, so the judge prompt can be tuned until it does.
 
 It costs no curator call: the curator (the decide step's `reel-components` call) already ran on these
-reels, and every run's answer is stored beside its version. The answers are copied into the dataset once
-by the snapshot (below). The judge eval reads them from the item, labels each pick against the owner's
+reels, and every run's answer is stored beside its version. The answers are copied into the dataset by the
+refresh step (below). The judge eval reads them from the item, labels each pick against the owner's
 marks with code, asks the judge about them, and compares.
 
-## The snapshot
+## The refresh step
 
-The evals read the dataset items only. They never read the app's database or its storage, so an eval
-does not depend on the app's data, and a run against a copy of the dataset needs no database. The one
-command that copies the app's data into the dataset is `eval:snapshot`. It is the only eval code that
-reads `public.stored_files`, `public.versions` and R2 (`src/eval-snapshot.ts`, `evals/worker-sources.ts`).
+Every eval command runs it first (`src/evals/refresh.ts`, wired by `src/eval.ts`). It is the one eval step
+that reads the app's data: `public.stored_files`, `public.versions` and R2 (`evals/worker-sources.ts`), through
+sources the command passes in. For each labelled reel it builds the snapshot below and compares it with the
+item's. It writes a new item version only for a reel whose snapshot is stale:
 
-For each labelled item it writes a new item version (PostHog's `base_version` guards the write, so a stale
+- **no snapshot yet**: the item has none (`metadata.snapshot_at` or `input.curator_input` is missing);
+- **a new version or curator run**: the reel's latest version, or one of its stored runs, is not among the
+  item's `metadata.snapshot_source_version_ids`;
+- **the curator input changed**: the input read now differs from `input.curator_input` (a new hook, an edited
+  overlay, a new version that the curator input cannot be built from).
+
+Fresh reels are not written. The eval then reads the dataset the step left, through the same PostHog client,
+so it never sees a stale item. One line is printed per refreshed reel, for example
+`refreshed reel 9dfd03d8: a new version or curator run`, or `snapshot: all 6 labelled reels are up to date`.
+A dry run prints `would refresh` and writes nothing: the eval then reads the refreshed items in memory.
+
+For each labelled item the refresh step writes a new item version (PostHog's `base_version` guards the write, so a stale
 copy is refused). Everything already in the item is kept; these fields are added or replaced:
 
 - `metadata.past_curator_runs`: every stored curator run decided from the item's words, whatever reel it
@@ -38,39 +93,37 @@ copy is refused). Everything already in the item is kept; these fields are added
 - `metadata.snapshot_at` and `metadata.snapshot_source_version_ids`: when the snapshot was taken and the
   version ids it read.
 
-```
-yarn workspace @edit-issebya/worker eval:snapshot --dry-run
-yarn workspace @edit-issebya/worker eval:snapshot
-yarn workspace @edit-issebya/worker eval:snapshot --reel 9dfd03d8
-```
+`yarn workspace @edit-issebya/worker eval snapshot` refreshes every selected reel whether it is stale or not
+(`--dry-run` prints what it would write, `--reel <id>` narrows to the labelled reel whose id starts like this).
+It is for forcing a rewrite, not a step to remember: each eval command already refreshes what is stale.
 
-- `--dry-run`: reads everything and prints, per reel, the runs, picks, runs left out and the curator input
-  (or why it is skipped). Writes nothing.
-- `--reel <id>`: only the labelled reel whose id starts like this.
+The refresh is what makes an eval current, so a change the evals should see (a new curator run on a labelled
+reel, a new version of one, a new hook) needs nothing from the owner. A change to a prompt needs nothing either
+(prompts are read at eval time). A refresh writes a new version of each stale item only, and the evals read the
+latest revision, so an older snapshot is never mixed in.
 
-Re-snapshot when the stored data changes in a way the evals should see: after a new curator run on a
-labelled reel, or a new version of one (the curator input is the latest version). A change to a prompt
-does not need it (prompts are read at eval time). Each run of the command writes a new version of every
-selected item, and the evals read the latest revision, so an older snapshot is never mixed in.
-
-The personal key needs `dataset:write` besides the scopes of the eval (a refusal names it). The command
-reads `apps/worker/.env.development` for the database and R2, like the worker's other commands; the evals
-themselves need only the PostHog and OpenRouter variables.
-
-An item with no snapshot stops the judge or curator eval before any call, naming `eval:snapshot`.
+The personal key needs `dataset:write` besides the scopes of the eval (a refusal names it).
 
 ## How to run
 
 From the repository root, on the Mac (not in the worker container), with the local stack up:
 
 ```
-yarn workspace @edit-issebya/worker eval:judge --dry-run
-yarn workspace @edit-issebya/worker eval:judge
-yarn workspace @edit-issebya/worker eval:judge --reel 9dfd03d8 --label staging
-yarn workspace @edit-issebya/worker eval:judge --prompt-file ~/judge-draft.txt
+yarn workspace @edit-issebya/worker eval judge --dry-run
+yarn workspace @edit-issebya/worker eval judge
+yarn workspace @edit-issebya/worker eval judge --reel 9dfd03d8 --label staging
+yarn workspace @edit-issebya/worker eval judge --prompt-file ~/judge-draft.txt
+yarn workspace @edit-issebya/worker eval curator --dry-run
+yarn workspace @edit-issebya/worker eval curator --repeats 3
+yarn workspace @edit-issebya/worker eval snapshot --dry-run
+yarn workspace @edit-issebya/worker eval help
 ```
 
-- `--dry-run`: everything except the judge calls and the upload. Prints, per labelled reel, the
+One entry, `src/eval.ts`, routed by `src/evals/command.ts`: the options are checked before anything runs (a
+label with a draft file, a repeat count out of range, an option the subcommand does not take all stop it).
+
+- `--dry-run`: everything except the judge calls, the upload and the refresh's writes (a stale reel is listed as
+  `would refresh`). Prints, per labelled reel, the
   curator runs found, the picks and their good and bad labels, and the judge calls it would make
   (one owner call per reel, one per curator run: 6 + 12 = 18 for the current dataset). Free.
 - `--reel <id>`: only the labelled reel whose id starts like this.
@@ -80,16 +133,17 @@ yarn workspace @edit-issebya/worker eval:judge --prompt-file ~/judge-draft.txt
   `--label` (a draft has no PostHog version). See "Drafts".
 
 It reads `apps/worker/.env.development` like the worker's other commands (`doctor`, `trace`):
-`OPENROUTER_API_KEY`, and `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `POSTHOG_HOST`. No database or
-R2 variable is read (`eval-boundary.test.ts` enforces it). The personal key needs these scopes besides `llm_prompt:read`;
-a missing one fails with a message naming it:
+`OPENROUTER_API_KEY`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `POSTHOG_HOST`, and the database and R2
+variables the refresh step reads. The eval itself reads none of them (`eval-boundary.test.ts` enforces it). The
+personal key needs these scopes besides `llm_prompt:read`; a missing one fails with a message naming it:
 
-| scope                                | for                                            | needed by     |
-| ------------------------------------ | ---------------------------------------------- | ------------- |
-| `dataset:read`                       | the dataset's latest revision and items        | every run     |
-| `llm_analytics:read`                 | finding the `judge_agreement` scorer           | a judged run  |
-| `llm_analytics:write`                | creating that scorer, the first time only      | the first run |
-| `offline_evaluation_ingestion:write` | creating, uploading and closing the experiment | a judged run  |
+| scope                                | for                                            | needed by            |
+| ------------------------------------ | ---------------------------------------------- | -------------------- |
+| `dataset:read`                       | the dataset's latest revision and items        | every run            |
+| `dataset:write`                      | a new version of each stale reel's item        | a run after a change |
+| `llm_analytics:read`                 | finding the `judge_agreement` scorer           | a judged run         |
+| `llm_analytics:write`                | creating that scorer, the first time only      | the first run        |
+| `offline_evaluation_ingestion:write` | creating, uploading and closing the experiment | a judged run         |
 
 The judge calls are traced like the worker's other AI calls (a `chat` span per call, under an
 `eval.judge.call` span, under one `eval.judge` root span whose trace id is the experiment's id without
@@ -105,7 +159,7 @@ carries no script and no pick (privacy mode). Both evals flush the events before
 
 ## How it works
 
-Code: `apps/worker/src/eval-judge.ts` (the command) and `apps/worker/src/evals/` (shared with the curator eval).
+Code: `apps/worker/src/eval.ts` (the wiring), `apps/worker/src/evals/command.ts` (the routing) and `apps/worker/src/evals/` (the eval and the refresh step, shared with the curator eval).
 
 1. **The dataset** (`posthog-evals.ts`, `owner-marks.ts`). The latest revision of the dataset and its
    items. Each mark (seconds and words) becomes a span of word positions on the item's transcript: by
@@ -182,18 +236,18 @@ visual marks are ignored.
 
 ## The curator eval
 
-`eval:curator` runs the components prompt (`reel-components`, the decide step's curator call) on each
+`eval curator` runs the components prompt (`reel-components`, the decide step's curator call) on each
 labelled reel and scores its picks against the owner's marks, so curator drafts can be compared. The
-judge then rates the same picks, as a second check. Code: `apps/worker/src/eval-curator.ts` (the
+judge then rates the same picks, as a second check. Code: `apps/worker/src/eval.ts` (the
 command), `apps/worker/src/evals/run-curator.ts` (the run), `curator-input.ts` (the case, rebuilt from the
 item's `input.curator_input`), `curator-call.ts` (the call and its checks), `curator-score.ts` (the counts),
 `curator-report.ts`.
 
 ```
-yarn workspace @edit-issebya/worker eval:curator --dry-run
-yarn workspace @edit-issebya/worker eval:curator
-yarn workspace @edit-issebya/worker eval:curator --repeats 3 --reel 9dfd03d8
-yarn workspace @edit-issebya/worker eval:curator --curator-prompt-file ~/curator-draft.txt
+yarn workspace @edit-issebya/worker eval curator --dry-run
+yarn workspace @edit-issebya/worker eval curator
+yarn workspace @edit-issebya/worker eval curator --repeats 3 --reel 9dfd03d8
+yarn workspace @edit-issebya/worker eval curator --curator-prompt-file ~/curator-draft.txt
 ```
 
 - `--dry-run`: builds every input and prints the counts and the skipped reels. No AI call, no upload.
@@ -204,7 +258,7 @@ yarn workspace @edit-issebya/worker eval:curator --curator-prompt-file ~/curator
 - `--reel <id>`: only the labelled reel whose id starts like this.
 
 It reads `apps/worker/.env.development` for `OPENROUTER_API_KEY` and the PostHog variables, with the same
-personal key scopes as the judge eval, plus `llm_prompt:read` for each label. No database or R2 variable.
+personal key scopes as the judge eval, plus `llm_prompt:read` for each label. The database and R2 variables are read by the refresh step only.
 
 **The input.** Built per labelled reel from the item's `input.curator_input` (written by the snapshot,
 below), exactly as the decide step builds the components call:
@@ -261,11 +315,11 @@ they are the user message's sections; a draft with the placeholders `{{script}}`
 **Workflow.**
 
 1. Write the draft in a file outside the repository.
-2. `eval:curator --dry-run --curator-prompt-file <path>`: the inputs and the counts, free.
-3. `eval:curator --curator-prompt-file <path> --repeats 3`: the scores, and the spread over three runs.
+2. `eval curator --dry-run --curator-prompt-file <path>`: the inputs and the counts, free.
+3. `eval curator --curator-prompt-file <path> --repeats 3`: the scores, and the spread over three runs.
 4. Iterate on the file, comparing the experiments by their `draft:<sha12>` ids.
 5. Only for a winner: publish the text as a new `reel-components` version in PostHog, set its label, then
-   `eval:curator --curator-label <label>` to confirm the same numbers under that version.
+   `eval curator --curator-label <label>` to confirm the same numbers under that version.
 
 Cost: one curator call per reel per repeat (plus one retry on a refused answer) and at most as many judge
 calls. Run `--dry-run` first.
@@ -290,7 +344,7 @@ prompt that wins:
 
 1. Write the draft in a local file outside the repository (the wording never lives in the repo, and
    `--prompt-file` refuses a path inside it).
-2. Run the eval on it: `eval:judge --prompt-file <path>`. The draft is judged in place of
+2. Run the eval on it: `eval judge --prompt-file <path>`. The draft is judged in place of
    `reel-components-judge`, which is not fetched.
 3. The report and the PostHog experiment record the draft as `draft:<first 12 hex of the sha256 of the
 text>` (the experiment's `prompt_version`, the item's `judge_prompt_version`, label `draft`), with
@@ -312,11 +366,11 @@ version published from it run the same way. The draft id is the hash of the file
 
 - The judge eval never calls the curator (no `hook` or `decide` call, no decide step, no job): it reads
   the snapshot in the items only. Its only AI call is the `judge` role. (The curator eval has its own rules.)
-- Reads no database and no storage, and loads none of their modules: only `eval:snapshot` does
-  (`eval-boundary.test.ts` follows the imports). The judge eval's only writes are the judge calls, the
+- Reads no database and no storage, and loads none of their modules: only the refresh step does, through
+  sources the command passes in (`eval-boundary.test.ts` follows the imports). The judge eval's only writes are the judge calls, the
   report file and the PostHog scorer and experiment.
-- Only `eval:snapshot` writes dataset items, and only a new version of each (`base_version` guarded). The
-  evals never write one.
+- Only the refresh step writes dataset items, and only a new version of each stale reel (`base_version`
+  guarded). The evals never write one.
 - Never run it against production data on a whim: a judged run costs Haiku calls (one per labelled
   reel and curator run). Use `--dry-run` first.
 - The judge prompt's wording lives only in PostHog (`reel-components-judge`), never in the repository;
@@ -348,7 +402,7 @@ and its split by source, the report, the PostHog requests and the upload payload
 placeholders sent as one message, one with none as the system message with the inputs as the user
 message; the experiment as the trace of every call's generation event).
 
-The snapshot's tests (`snapshot.test.ts`, and the snapshot side of `curator-input.test.ts`) use in-memory fakes
+The refresh step's tests (`refresh.test.ts`: the stale check, the dry run, the forced run, the write's failure, a judge run after a refresh; `snapshot.test.ts` and the snapshot side of `curator-input.test.ts`), the command's routing (`command.test.ts`) use in-memory fakes
 of the sources: the plan (re-uploads copied, a run of another transcript counted and left out, a skipped
 curator input), the item update (what is kept, what is added, `base_version`, the read-back to the
 evals' shape), a dry run that writes nothing, the write's failure message, and an item with no snapshot

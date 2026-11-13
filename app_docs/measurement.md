@@ -333,7 +333,7 @@ OpenTelemetry span processor (`@posthog/ai/otel` with `@ai-sdk/otel`); it is not
 need OpenRouter's reported cost, the prompt version and the reel on them, and privacy as one switch
 for the whole process, which manual capture gives directly with a package the worker already has.
 `createAiObserver(env)` builds the observer once per process (`main.ts`,
-`once.ts`, `eval-judge.ts`, `eval-curator.ts`, `doctor.ts`) and each process flushes it on shutdown
+`once.ts`, `eval.ts`, `doctor.ts`) and each process flushes it on shutdown
 (`aiObserver.shutdown()`), after the telemetry and the error tracker. The runner (`ai.ts`
 `modelRunner`) reports each model call to it: one event per call, so a refused schema and its JSON
 mode second try are two events, and a call the AI SDK retried inside (a 429, a 5xx) is one. The AI

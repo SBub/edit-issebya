@@ -39,7 +39,7 @@ function reply(request: AiRequest): AiResult {
   return answerResult(CURATOR_ANSWER);
 }
 
-// The dataset as `eval:snapshot` leaves it for the reels `sources` holds.
+// The dataset as the refresh step leaves it for the reels `sources` holds.
 const RAW_ITEMS = [ownerItemJson(TEXT, OWNER)];
 const DATASET = { revisionId: "revision-6", revision: 6 };
 

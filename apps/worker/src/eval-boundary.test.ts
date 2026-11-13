@@ -3,31 +3,30 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-// THE EVAL BOUNDARY (app_docs/evals.md, "The snapshot"): the judge and curator
-// evals read the dataset items only. Nothing they load at run time may reach the
-// app's database or storage. Only the snapshot command may: `eval-snapshot.ts`
-// and the adapters it wires (`evals/worker-sources.ts`).
+// THE EVAL BOUNDARY (app_docs/evals.md, "What happens automatically"): the judge
+// and curator evals read the dataset items only. Nothing they load at run time
+// may reach the app's database or storage. The one exception is the refresh step
+// (`evals/refresh.ts`), which takes its reads as injected sources; only the
+// command's wiring (`src/eval.ts`) and the adapters it uses (`evals/worker-sources.ts`)
+// touch the database and storage.
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 
-// The eval entries: the judge and curator commands, and every eval module.
-const ENTRIES = [
-  join(SRC, "eval-judge.ts"),
-  join(SRC, "eval-curator.ts"),
-  ...readdirSync(join(SRC, "evals"))
-    .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
-    .filter((name) => name !== "worker-sources.ts")
-    .map((name) => join(SRC, "evals", name)),
-];
+// The eval entries: every eval module (the command's routing included), but not
+// the wiring that builds the real adapters.
+const ENTRIES = readdirSync(join(SRC, "evals"))
+  .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
+  .filter((name) => name !== "worker-sources.ts")
+  .map((name) => join(SRC, "evals", name));
 
 // Modules the eval code must never load: the database client, the storage and
-// its adapters, the app's own DB and R2 wiring, and the snapshot command.
+// its adapters, and the app's own DB and R2 wiring.
 const FORBIDDEN_PACKAGES = ["@supabase/supabase-js", "@edit-issebya/storage", "@aws-sdk/"];
 const FORBIDDEN_FILES = [
   join(SRC, "supabase.ts"),
   join(SRC, "storage.ts"),
   join(SRC, "evals", "worker-sources.ts"),
-  join(SRC, "eval-snapshot.ts"),
+  join(SRC, "eval.ts"),
 ];
 
 // Every import and re-export: its module specifier, and whether it is type-only
@@ -82,9 +81,10 @@ function violationFrom(entry: string): string | null {
 }
 
 describe("the eval modules' boundary", () => {
-  it("the eval entries are the judge, the curator and their modules", () => {
+  it("the eval entries are the eval modules, the command's routing included", () => {
     expect(ENTRIES.length).toBeGreaterThan(10);
-    expect(ENTRIES.map((file) => file.replace(`${SRC}/`, ""))).toContain("eval-judge.ts");
+    expect(ENTRIES.map((file) => file.replace(`${SRC}/`, ""))).toContain("evals/refresh.ts");
+    expect(ENTRIES.map((file) => file.replace(`${SRC}/`, ""))).toContain("evals/command.ts");
   });
 
   it.each(ENTRIES.map((file) => [file.replace(`${SRC}/`, ""), file]))(
@@ -94,11 +94,11 @@ describe("the eval modules' boundary", () => {
     },
   );
 
-  it("only the snapshot command wires the database and storage adapters", () => {
-    const wiring = readFileSync(join(SRC, "eval-snapshot.ts"), "utf8");
-    expect(wiring).toContain("workerCuratorSources");
+  it("only the command's wiring builds the database and storage adapters", () => {
+    const wiring = importsOf(join(SRC, "eval.ts")).map((one) => one.from);
+    expect(wiring).toContain("./evals/worker-sources.ts");
     for (const file of ENTRIES) {
-      expect(importsOf(file).map((one) => one.from)).not.toContain("./eval-snapshot.ts");
+      expect(importsOf(file).map((one) => one.from)).not.toContain("../eval.ts");
     }
   });
 });
