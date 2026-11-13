@@ -55,6 +55,10 @@ const GENERATION: AiGeneration = {
   httpStatus: null,
 };
 
+// A hook call: privacy mode drops its messages and answer (only the curator's
+// decide call sends them in privacy mode).
+const HOOK: AiGeneration = { ...GENERATION, role: "hook", promptVersion: "reel-hook@v3" };
+
 let ids = 0;
 const options = { privacy: true, fallbackId: "worker:w1", newId: () => `id-${(ids += 1)}` };
 
@@ -108,12 +112,38 @@ describe("the generation event", () => {
     expect(event.properties).not.toHaveProperty("$process_person_profile");
   });
 
-  it("carries no message and no answer in privacy mode: no spoken word leaves the worker", () => {
-    const event = generationEvent(GENERATION, options);
+  it("carries no message and no answer in privacy mode for a call other than the curator's", () => {
+    const event = generationEvent(HOOK, options);
     expect(event.properties.$ai_input).toBeNull();
     expect(event.properties.$ai_output_choices).toBeNull();
     expect(JSON.stringify(event)).not.toContain(SPOKEN);
     expect(JSON.stringify(event)).not.toContain("test system prompt");
+  });
+
+  it("sends the curator's user message and answer in privacy mode, never its system message", () => {
+    const event = generationEvent(GENERATION, options);
+    expect(event.properties.$ai_input).toEqual([{ role: "user", content: GENERATION.user }]);
+    expect(event.properties.$ai_output_choices).toEqual([
+      { role: "assistant", content: GENERATION.answerText },
+    ]);
+    expect(JSON.stringify(event)).not.toContain("test system prompt");
+    expect(event.properties).toMatchObject({ ai_messages: "system_user" });
+  });
+
+  it("names the curator's image and never sends its bytes, in privacy mode too", () => {
+    const event = generationEvent(
+      { ...GENERATION, user: "", image: { mediaType: "image/png", bytes: 9 } },
+      options,
+    );
+    expect(event.properties.$ai_input).toEqual([
+      { role: "user", content: [{ type: "text", text: "[image image/png, 9 bytes]" }] },
+    ]);
+  });
+
+  it("sends the curator's answer as null when the call gave none", () => {
+    const event = generationEvent({ ...GENERATION, answerText: null, outcome: "broken" }, options);
+    expect(event.properties.$ai_output_choices).toBeNull();
+    expect(event.properties.$ai_input).toEqual([{ role: "user", content: GENERATION.user }]);
   });
 
   it("carries the system message, the user message and the answer only with privacy mode off", () => {
@@ -257,7 +287,7 @@ describe("createAiObserver", () => {
     { POSTHOG_PROJECT_TOKEN: " ", POSTHOG_HOST: "https://eu.i.posthog.com" },
   ])("builds no client without both variables (%o) and captures nothing", async (env) => {
     const factory = vi.fn();
-    const observer = createAiObserver(env, factory);
+    const observer = createAiObserver("app", env, factory);
     expect(observer.enabled).toBe(false);
     observer.generation(GENERATION);
     await observer.shutdown();
@@ -268,12 +298,13 @@ describe("createAiObserver", () => {
     const client = fakeClient();
     const factory = vi.fn(() => client);
     const observer = createAiObserver(
+      "app",
       { ...ENV, WORKER_ID: "w1", OTEL_SERVICE_NAME: "edit-issebya-worker-dev" },
       factory,
     );
     expect(observer.enabled).toBe(true);
     expect(factory).toHaveBeenCalledWith("token", "https://eu.i.posthog.com");
-    observer.generation(GENERATION);
+    observer.generation(HOOK);
     expect(client.capture).toHaveBeenCalledTimes(1);
     const event = client.capture.mock.calls[0]![0] as ReturnType<typeof generationEvent>;
     expect(event.event).toBe("$ai_generation");
@@ -286,13 +317,48 @@ describe("createAiObserver", () => {
   });
 
   it.each([
+    ["production", "production"],
+    [" production ", "production"],
+    [undefined, "development"],
+    ["", "development"],
+    ["prod", "development"],
+    ["Production", "development"],
+    ["development", "development"],
+  ])("tags the environment of each event (WORKER_ENV %j -> %s)", (value, environment) => {
+    const client = fakeClient();
+    createAiObserver("app", { ...ENV, WORKER_ENV: value }, () => client).generation(HOOK);
+    const event = client.capture.mock.calls[0]![0] as ReturnType<typeof generationEvent>;
+    expect(event.properties.environment).toBe(environment);
+  });
+
+  it.each(["app", "eval", "doctor"] as const)(
+    "tags the call source of each event (%s)",
+    (source) => {
+      const client = fakeClient();
+      createAiObserver(source, ENV, () => client).generation(HOOK);
+      const event = client.capture.mock.calls[0]![0] as ReturnType<typeof generationEvent>;
+      expect(event.properties.call_source).toBe(source);
+    },
+  );
+
+  it("sends the curator's content through the observer, whatever the privacy setting", () => {
+    const client = fakeClient();
+    createAiObserver("app", ENV, () => client).generation(GENERATION);
+    const event = client.capture.mock.calls[0]![0] as ReturnType<typeof generationEvent>;
+    expect(event.properties.$ai_input).toEqual([{ role: "user", content: GENERATION.user }]);
+    expect(event.properties.$ai_output_choices).toEqual([
+      { role: "assistant", content: GENERATION.answerText },
+    ]);
+  });
+
+  it.each([
     ["false", false],
     ["true", true],
     ["0", true],
     ["", true],
   ])("sends content only when the privacy setting is exactly false (%j)", (value, privacy) => {
     const client = fakeClient();
-    createAiObserver({ ...ENV, POSTHOG_PRIVACY_MODE: value }, () => client).generation(GENERATION);
+    createAiObserver("app", { ...ENV, POSTHOG_PRIVACY_MODE: value }, () => client).generation(HOOK);
     const event = client.capture.mock.calls[0]![0] as ReturnType<typeof generationEvent>;
     expect(event.properties.$ai_input === null).toBe(privacy);
   });
@@ -306,7 +372,7 @@ describe("createAiObserver", () => {
         throw new Error("posthog down");
       }),
     };
-    const observer = createAiObserver(ENV, () => client);
+    const observer = createAiObserver("app", ENV, () => client);
     expect(() => observer.generation(GENERATION)).not.toThrow();
     await expect(observer.shutdown(1000)).resolves.toBeUndefined();
     expect(client.shutdown).toHaveBeenCalledWith(1000);

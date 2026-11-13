@@ -37,7 +37,7 @@ const db = workerSupabase(config);
 const storage = workerStorage();
 const telemetry = createTelemetry();
 // Every model call of a job is one PostHog generation event.
-const aiObserver = createAiObserver();
+const aiObserver = createAiObserver("app");
 const status = supabaseWorkerStatus(db, config.workerId);
 const freeBytes = freeBytesFn(process.env);
 const records = supabaseStoredFiles(db);

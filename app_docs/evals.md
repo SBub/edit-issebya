@@ -154,8 +154,10 @@ the Mac.
 Each judge and curator call is also one PostHog `$ai_generation` event (`app_docs/measurement.md`,
 "AI generations"), when `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` are set in the env file: its trace
 is the experiment's id, with the reel, `source` (`eval:judge`, `eval:curator`, `eval:curator-judge`),
-`eval_suite`, `eval_case`, and the prompt's name and version or a draft's `prompt_draft_id`. It
-carries no script and no pick (privacy mode). Both evals flush the events before they exit.
+`eval_suite`, `eval_case`, and the prompt's name and version or a draft's `prompt_draft_id`. The
+judge calls carry no script and no pick (privacy mode); the curator's call sends its transcript and
+its picks, as the curator's user message and answer (`app_docs/measurement.md`). Both evals flush the
+events before they exit.
 
 ## How it works
 

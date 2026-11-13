@@ -12,9 +12,14 @@ import type { AiUsage } from "./step-store.ts";
 // observability). The observer is built per process (main.ts, once.ts, the
 // evals, the doctor) and passed to the runner, never at module load, never
 // global. Without both POSTHOG_PROJECT_TOKEN and POSTHOG_HOST no client is
-// built and nothing is captured. An event carries numbers and names only: the
-// messages and the answer go with it only when POSTHOG_PRIVACY_MODE is exactly
-// "false", and the image bytes never.
+// built and nothing is captured. Every event says where it comes from: its
+// `environment` (production only when WORKER_ENV is exactly "production") and
+// its `call_source` (app, eval or doctor). An event carries numbers and names
+// only, with two exceptions. The curator call (role "decide", the components
+// pick from the transcript) sends its user message and its answer even in
+// privacy mode, so automated evals can judge them. Every other call sends them
+// only when POSTHOG_PRIVACY_MODE is exactly "false", and then the system
+// message too. The image bytes never go, in any mode.
 
 type Env = Record<string, string | undefined>;
 
@@ -90,8 +95,15 @@ export interface GenerationEvent {
   properties: Record<string, unknown>;
 }
 
+// The roles whose messages and answer are sent even in privacy mode: the
+// curator (the components pick, the decide step's `reel-components` call), which
+// the automated evals judge from its transcript and picks.
+const CONTENT_ROLES: ReadonlySet<AiRole> = new Set<AiRole>(["decide"]);
+
 // The event of one generation. `privacy` leaves the messages and the answer
-// out (null, as PostHog's own integrations send them in privacy mode).
+// out (null, as PostHog's own integrations send them in privacy mode), except
+// for a CONTENT_ROLES call, which sends its user message and answer anyway; its
+// system message is the prompt and stays out in privacy mode.
 // `fallbackId` is the distinct id of a call no owner asked for; such an event
 // builds no person profile.
 export function generationEvent(
@@ -99,7 +111,8 @@ export function generationEvent(
   options: {
     privacy: boolean;
     fallbackId: string;
-    // What every event of this process carries (its service name, its worker id).
+    // What every event of this process carries (its environment, its call
+    // source, its service name, its worker id).
     base?: Record<string, string | null>;
     newId?: () => string;
   },
@@ -108,6 +121,7 @@ export function generationEvent(
   const newId = options.newId ?? randomUUID;
   const traceId = context?.traceId ?? newId();
   const failed = generation.outcome !== "answer";
+  const sendsContent = !options.privacy || CONTENT_ROLES.has(generation.role);
   const user: unknown = generation.image
     ? [
         ...(generation.user === "" ? [] : [{ type: "text", text: generation.user }]),
@@ -153,16 +167,18 @@ export function generationEvent(
         ? { $ai_error: scrub(generation.error).slice(0, ERROR_CHARS) }
         : {}),
       ...(generation.httpStatus !== null ? { $ai_http_status: generation.httpStatus } : {}),
-      $ai_input: options.privacy
-        ? null
-        : [
-            ...(generation.system !== null ? [{ role: "system", content: generation.system }] : []),
+      $ai_input: sendsContent
+        ? [
+            ...(!options.privacy && generation.system !== null
+              ? [{ role: "system", content: generation.system }]
+              : []),
             { role: "user", content: user },
-          ],
+          ]
+        : null,
       $ai_output_choices:
-        options.privacy || generation.answerText === null
-          ? null
-          : [{ role: "assistant", content: generation.answerText }],
+        sendsContent && generation.answerText !== null
+          ? [{ role: "assistant", content: generation.answerText }]
+          : null,
       ...(context?.distinctId ? {} : { $process_person_profile: false }),
       app: "worker",
       ...options.base,
@@ -190,7 +206,12 @@ export function generationEvent(
 
 type PostHogClient = Pick<PostHog, "capture" | "shutdown">;
 
+// The process that made the call: the worker's app (main.ts, once.ts), an
+// eval run (eval.ts) or the doctor (doctor.ts).
+export type CallSource = "app" | "eval" | "doctor";
+
 export function createAiObserver(
+  callSource: CallSource,
   env: Env = process.env,
   makeClient: (projectToken: string, host: string) => PostHogClient = (projectToken, host) =>
     new PostHog(projectToken, { host }),
@@ -199,13 +220,20 @@ export function createAiObserver(
   const host = env.POSTHOG_HOST?.trim();
   if (!projectToken || !host) return DISABLED_AI_OBSERVER;
   const client = makeClient(projectToken, host);
-  // Content leaves the worker only when the owner turned privacy mode off.
+  // Content leaves the worker only when the owner turned privacy mode off (or,
+  // for the curator call alone, always: generationEvent).
   const privacy = env.POSTHOG_PRIVACY_MODE?.trim() !== "false";
   const workerId = env.WORKER_ID?.trim();
   const fallbackId = workerId ? `worker:${workerId}` : "worker";
+  // Only the exact value "production" is production. The worker:prod script and
+  // compose.prod.yaml set it; every other run, and every unset value, is
+  // development.
+  const environment = env.WORKER_ENV?.trim() === "production" ? "production" : "development";
   // The service name tells a development worker from the production one, as on
   // its OpenTelemetry spans (telemetry.ts).
   const base = {
+    environment,
+    call_source: callSource,
     service_name: env.OTEL_SERVICE_NAME?.trim() || "edit-issebya-worker",
     worker_id: workerId ?? null,
   };

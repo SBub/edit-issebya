@@ -24,7 +24,7 @@ await prepareScratchDir(config.scratchDir);
 const db = workerSupabase(config);
 const telemetry = createTelemetry();
 // Every model call of the job is one PostHog generation event.
-const aiObserver = createAiObserver();
+const aiObserver = createAiObserver("app");
 const job = await guardedClaim({
   dir: config.scratchDir,
   minFreeDiskGb: config.minFreeDiskGb,

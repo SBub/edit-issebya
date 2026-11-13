@@ -63,9 +63,10 @@ dependencies and the apps the worker does not run out of the context):
   `OTEL_EXPORTER_OTLP_ENDPOINT` from `WORKER_DOCKER_OTLP_ENDPOINT` (empty by default, so no export is
   attempted). Mounts: the named volume `scratch` at `/scratch`, and the three packages' `src` read-only so an
   edit needs no rebuild. The host-gateway entry makes `host.docker.internal` resolve on Linux hosts too.
+  `WORKER_ENV` is `development` (its AI events' `environment`).
 - `compose.prod.yaml` (production override, `docker compose -f compose.yaml -f compose.prod.yaml`):
-  `env_file` = `apps/worker/.env.production`, the environment reset to the scratch folder
-  and `FFMPEG_PATH`, its own scratch volume (`scratch-prod`), and no source mounted. The same
+  `env_file` = `apps/worker/.env.production`, the environment reset to the scratch folder,
+  `FFMPEG_PATH` and `WORKER_ENV=production` (its AI events' `environment`), its own scratch volume (`scratch-prod`), and no source mounted. The same
   image, with the model in it: production needs no model volume and no download.
 
 ### The scratch folder

@@ -35,7 +35,7 @@ const run = promisify(execFile);
 let prompts: PromptSource | undefined;
 
 // The paid calls of `--ai` are PostHog generation events too, one trace per run.
-const aiObserver = createAiObserver();
+const aiObserver = createAiObserver("doctor");
 const aiContext = { traceId: randomUUID(), properties: { source: "doctor" } };
 
 // The 1-second sample the mask tool check masks.

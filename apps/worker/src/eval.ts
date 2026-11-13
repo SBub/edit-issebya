@@ -69,7 +69,7 @@ async function judge(command: Extract<EvalCommand, { kind: "judge" }>): Promise<
   const env = command.label ? { ...process.env, POSTHOG_PROMPT_LABEL: command.label } : process.env;
   const telemetry = createTelemetry();
   // Every judge call is one PostHog generation event (app_docs/measurement.md).
-  const aiObserver = createAiObserver(env);
+  const aiObserver = createAiObserver("eval", env);
   try {
     const draft = await draftOf(command.promptFile);
     const { posthog, sources } = wiring();
@@ -102,7 +102,7 @@ async function judge(command: Extract<EvalCommand, { kind: "judge" }>): Promise<
 async function curator(command: Extract<EvalCommand, { kind: "curator" }>): Promise<void> {
   const telemetry = createTelemetry();
   // Every curator and judge call is one PostHog generation event (app_docs/measurement.md).
-  const aiObserver = createAiObserver();
+  const aiObserver = createAiObserver("eval");
   try {
     const curatorDraft = await draftOf(command.curatorPromptFile);
     const judgeDraft = await draftOf(command.judgePromptFile);
