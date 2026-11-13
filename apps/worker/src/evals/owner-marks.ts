@@ -45,6 +45,8 @@ export interface OwnerItem {
   marks: OwnerMark[];
   // The spans the owner marked as holding nothing (a setup line).
   nothing: Span[];
+  // The dataset item as PostHog serves it: the snapshot's fields are read from it (`snapshot-format.ts`).
+  raw: unknown;
 }
 
 const markSchema = z.object({
@@ -159,6 +161,7 @@ export function parseOwnerItem(json: unknown): OwnerItem {
     words,
     marks,
     nothing: expected.nothing.map((mark) => span(mark, "nothing")),
+    raw: json,
   };
 }
 

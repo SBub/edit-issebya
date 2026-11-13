@@ -173,3 +173,31 @@ describe("the offline experiment", () => {
     );
   });
 });
+
+describe("the snapshot's item update", () => {
+  it("sends a PATCH with the base version, the replacement input and metadata, and the scope it needs", async () => {
+    const { requests, api } = server(() => ({ body: { id: "i1", version: 2 } }));
+    await api.updateItem("i 1", {
+      base_version: 1,
+      input: { transcript: { words: [] }, curator_input: { status: "skipped", reason: "x" } },
+      metadata: { reel_id: "r", past_curator_runs: [] },
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      method: "PATCH",
+      url: `${BASE}/dataset_items/i%201/`,
+      body: {
+        base_version: 1,
+        input: { transcript: { words: [] }, curator_input: { status: "skipped", reason: "x" } },
+        metadata: { reel_id: "r", past_curator_runs: [] },
+      },
+    });
+  });
+
+  it("names the dataset:write scope when PostHog refuses the key", async () => {
+    const { api } = server(() => ({ status: 403, body: {} }));
+    await expect(
+      api.updateItem("i1", { base_version: 1, input: {}, metadata: {} }),
+    ).rejects.toThrow("needs the dataset:write scope");
+  });
+});

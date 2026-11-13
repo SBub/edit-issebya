@@ -1,20 +1,16 @@
 // `yarn workspace @edit-issebya/worker eval:judge [--dry-run] [--reel <id>] [--label <label> | --prompt-file <path>]`:
 // the components judge against the owner's hand-labelled reels
-// (app_docs/evals.md). Read-only on the database and on storage; its only
-// writes are the judge calls, the report file and the PostHog experiment.
+// (app_docs/evals.md). It reads the dataset items only (run `eval:snapshot`
+// first); its writes are the judge calls, the report file and the PostHog experiment.
 import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { aiRunner } from "./ai.ts";
-import { workerConfig } from "./config.ts";
 import { posthogEvals } from "./evals/posthog-evals.ts";
 import { runJudgeEval } from "./evals/run-eval.ts";
-import { workerRunSources } from "./evals/worker-sources.ts";
 import { posthogPromptSource } from "./prompts/posthog-source.ts";
 import { checkPromptSource, readDraftPrompt } from "./evals/draft-prompt.ts";
-import { workerStorage } from "./storage.ts";
-import { workerSupabase } from "./supabase.ts";
 import { createTelemetry } from "./telemetry.ts";
 
 // The PostHog dataset `owner-reels`: the reels the owner labelled by hand.
@@ -33,7 +29,6 @@ const { values } = parseArgs({
   },
 });
 
-const config = workerConfig();
 // `--label` picks the judge prompt's label; without it, POSTHOG_PROMPT_LABEL.
 const env = { ...process.env, ...(values.label ? { POSTHOG_PROMPT_LABEL: values.label } : {}) };
 const telemetry = createTelemetry();
@@ -54,7 +49,6 @@ try {
     { datasetId: OWNER_REELS_DATASET, dryRun: values["dry-run"], reel: values.reel, draft },
     {
       posthog: posthogEvals(env),
-      sources: workerRunSources(workerSupabase(config), workerStorage(), config.keyPrefix),
       prompts: posthogPromptSource(env),
       ai: aiRunner(env),
       telemetry,

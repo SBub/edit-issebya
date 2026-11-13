@@ -13,8 +13,51 @@ set of picks and answers approve or reject for each. This eval measures how ofte
 with the owner, so the judge prompt can be tuned until it does.
 
 It costs no curator call: the curator (the decide step's `reel-components` call) already ran on these
-reels, and every run's answer is stored beside its version. The eval reads those answers back, labels
-each pick against the owner's marks with code, asks the judge about them, and compares.
+reels, and every run's answer is stored beside its version. The answers are copied into the dataset once
+by the snapshot (below). The judge eval reads them from the item, labels each pick against the owner's
+marks with code, asks the judge about them, and compares.
+
+## The snapshot
+
+The evals read the dataset items only. They never read the app's database or its storage, so an eval
+does not depend on the app's data, and a run against a copy of the dataset needs no database. The one
+command that copies the app's data into the dataset is `eval:snapshot`. It is the only eval code that
+reads `public.stored_files`, `public.versions` and R2 (`src/eval-snapshot.ts`, `evals/worker-sources.ts`).
+
+For each labelled item it writes a new item version (PostHog's `base_version` guards the write, so a stale
+copy is refused). Everything already in the item is kept; these fields are added or replaced:
+
+- `metadata.past_curator_runs`: every stored curator run decided from the item's words, whatever reel it
+  belongs to (a re-upload of the same footage is copied). Each run holds its reel id, version id, version
+  number, curator prompt version, its transcript and its picks as word spans. A run of the labelled reel
+  decided from another transcript is left out and counted in `metadata.snapshot_differing_runs`.
+- `input.curator_input`: the reel's latest version as the curator eval needs it (its transcript, head track
+  and edit), the written hook and where it came from (`version` or `ai record`), the preset's id, and the
+  latest run's stored intensity and target (compared, never used). Or `{ "status": "skipped", "reason" }`
+  when the reel cannot be rebuilt, which the curator eval reports by name.
+- `metadata.snapshot_at` and `metadata.snapshot_source_version_ids`: when the snapshot was taken and the
+  version ids it read.
+
+```
+yarn workspace @edit-issebya/worker eval:snapshot --dry-run
+yarn workspace @edit-issebya/worker eval:snapshot
+yarn workspace @edit-issebya/worker eval:snapshot --reel 9dfd03d8
+```
+
+- `--dry-run`: reads everything and prints, per reel, the runs, picks, runs left out and the curator input
+  (or why it is skipped). Writes nothing.
+- `--reel <id>`: only the labelled reel whose id starts like this.
+
+Re-snapshot when the stored data changes in a way the evals should see: after a new curator run on a
+labelled reel, or a new version of one (the curator input is the latest version). A change to a prompt
+does not need it (prompts are read at eval time). Each run of the command writes a new version of every
+selected item, and the evals read the latest revision, so an older snapshot is never mixed in.
+
+The personal key needs `dataset:write` besides the scopes of the eval (a refusal names it). The command
+reads `apps/worker/.env.development` for the database and R2, like the worker's other commands; the evals
+themselves need only the PostHog and OpenRouter variables.
+
+An item with no snapshot stops the judge or curator eval before any call, naming `eval:snapshot`.
 
 ## How to run
 
@@ -36,9 +79,9 @@ yarn workspace @edit-issebya/worker eval:judge --prompt-file ~/judge-draft.txt
 - `--prompt-file <path>`: a draft judge prompt read from that file instead of PostHog's. Never with
   `--label` (a draft has no PostHog version). See "Drafts".
 
-It reads `apps/worker/.env.development` like the worker's other commands (`doctor`, `trace`): the
-Supabase and R2 variables, `OPENROUTER_API_KEY`, and `POSTHOG_PERSONAL_API_KEY`,
-`POSTHOG_PROJECT_ID`, `POSTHOG_HOST`. The personal key needs these scopes besides `llm_prompt:read`;
+It reads `apps/worker/.env.development` like the worker's other commands (`doctor`, `trace`):
+`OPENROUTER_API_KEY`, and `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `POSTHOG_HOST`. No database or
+R2 variable is read (`eval-boundary.test.ts` enforces it). The personal key needs these scopes besides `llm_prompt:read`;
 a missing one fails with a message naming it:
 
 | scope                                | for                                            | needed by     |
@@ -61,12 +104,10 @@ Code: `apps/worker/src/eval-judge.ts` (the command) and `apps/worker/src/evals/`
 1. **The dataset** (`posthog-evals.ts`, `owner-marks.ts`). The latest revision of the dataset and its
    items. Each mark (seconds and words) becomes a span of word positions on the item's transcript: by
    its words first (the run starting nearest the mark's start), else by its seconds.
-2. **The curator's past runs** (`curator-runs.ts`, `worker-sources.ts`). Every live `stored_files` row
-   of step `decide` ending in `.ai.json`, with its version's transcript. A run belongs to a labelled
-   reel when its transcript has the dataset item's words, word for word, whatever reel it is: a
-   re-upload of the same footage is found by its words, never by a hard-coded id. A run of the labelled
-   reel decided from another transcript is left out and counted. The picks are the last `decide`
-   answer's accents, questions, big words and lists; the hook and the visuals are skipped.
+2. **The curator's past runs** (`snapshot-format.ts`, read from `metadata.past_curator_runs`). Written
+   by the snapshot (`snapshot.ts`, `curator-runs.ts`): every stored curator run decided from the item's
+   words, re-uploads included. The picks are the last `decide` answer's accents, questions, big words and
+   lists; the hook and the visuals are skipped.
 3. **Labels** (`label.ts`). See below.
 4. **The judge** (`judge-call.ts`). Two kinds of call, never mixed: one call for the owner's marks of a
    reel (every mark as a good pick), and one call per curator run with only that run's picks. Within a
@@ -134,8 +175,9 @@ visual marks are ignored.
 `eval:curator` runs the components prompt (`reel-components`, the decide step's curator call) on each
 labelled reel and scores its picks against the owner's marks, so curator drafts can be compared. The
 judge then rates the same picks, as a second check. Code: `apps/worker/src/eval-curator.ts` (the
-command), `apps/worker/src/evals/run-curator.ts` (the run), `curator-input.ts` (the input),
-`curator-call.ts` (the call and its checks), `curator-score.ts` (the counts), `curator-report.ts`.
+command), `apps/worker/src/evals/run-curator.ts` (the run), `curator-input.ts` (the case, rebuilt from the
+item's `input.curator_input`), `curator-call.ts` (the call and its checks), `curator-score.ts` (the counts),
+`curator-report.ts`.
 
 ```
 yarn workspace @edit-issebya/worker eval:curator --dry-run
@@ -151,22 +193,23 @@ yarn workspace @edit-issebya/worker eval:curator --curator-prompt-file ~/curator
 - `--judge-label <label>` or `--judge-prompt-file <path>`: the same for the judge (`reel-components-judge`).
 - `--reel <id>`: only the labelled reel whose id starts like this.
 
-It reads `apps/worker/.env.development` and the same personal key scopes as the judge eval, plus
-`llm_prompt:read` for each label.
+It reads `apps/worker/.env.development` for `OPENROUTER_API_KEY` and the PostHog variables, with the same
+personal key scopes as the judge eval, plus `llm_prompt:read` for each label. No database or R2 variable.
 
-**The input.** Built per labelled reel exactly as the decide step builds the components call:
+**The input.** Built per labelled reel from the item's `input.curator_input` (written by the snapshot,
+below), exactly as the decide step builds the components call:
 
-- The reel is the one with a stored decide run whose transcript has the dataset item's words (the
-  judge eval's match). Its latest version (the highest number) gives the transcript, the head track and
-  the edit.
+- The transcript, the head track, the edit and the hook are the snapshot's: the reel's latest version
+  when the snapshot was taken. The snapshot names the reel's id and version number in the log and report.
 - The script, the intensity and the target come from `decideInput` (the decide step's own function) with
-  the reel's preset (`ISSEBYA_PRESET`, the only one the worker decides with).
-- The hook is the latest version's hook overlay. A version with none takes the latest run's hook call
+  the snapshot's preset (`ISSEBYA_PRESET`, the only one the worker decides with, matched by its id).
+- The hook is the version's hook overlay. A version with none takes the latest run's hook call
   (`parseHookAnswer`), and the log notes it.
 - The latest run's stored intensity and target are compared with the rebuilt ones. A difference is noted
   (the log and the report), never silently corrected.
-- A reel that cannot be rebuilt is skipped and named with its reason: no stored run with its words, no
-  version, a latest transcript that is not the dataset's words, a latest version that does not parse.
+- A reel that could not be rebuilt at snapshot time is skipped and named with its reason (no stored run
+  with its words, no version, a latest transcript that is not the dataset's words, a latest version that
+  does not parse). A snapshot whose edit no longer parses is skipped the same way.
 
 **The call.** Role `decide` (the decide role's model, Haiku 5.5), the same JSON schema, the same parse
 (`parseDecideAnswer`), then the decide step's own check of the answer: placed over the latest version
@@ -217,9 +260,8 @@ calls. Run `--dry-run` first.
 
 ## Rules
 
-- The curator eval writes nothing to the database or to storage: no job, no version, no AI record. Its
-  inputs are read the same way the judge eval reads them, and its writes are the AI calls, the report and
-  the PostHog experiment.
+- The curator eval reads the dataset items only and writes nothing to the database or to storage: no job,
+  no version, no AI record. Its writes are the AI calls, the report and the PostHog experiment.
 - The curator's input is the decide step's and nothing more: never the owner's marks, the glossary or a
   stored answer added to the prompt. The owner's marks are scored only, never shown to the curator.
 - The judge never sees a label, the curator's source or the owner's marks in its call.
@@ -249,9 +291,12 @@ text>` (the experiment's `prompt_version`, the item's `judge_prompt_version`, la
 ## Rules
 
 - The judge eval never calls the curator (no `hook` or `decide` call, no decide step, no job): it reads
-  stored answers only. Its only AI call is the `judge` role. (The curator eval has its own rules above.)
-- Read-only on the database and on storage: selects and gets only. The judge eval's only writes are the
-  judge calls, the report file and the PostHog scorer and experiment.
+  the snapshot in the items only. Its only AI call is the `judge` role. (The curator eval has its own rules.)
+- Reads no database and no storage, and loads none of their modules: only `eval:snapshot` does
+  (`eval-boundary.test.ts` follows the imports). The judge eval's only writes are the judge calls, the
+  report file and the PostHog scorer and experiment.
+- Only `eval:snapshot` writes dataset items, and only a new version of each (`base_version` guarded). The
+  evals never write one.
 - Never run it against production data on a whim: a judged run costs Haiku calls (one per labelled
   reel and curator run). Use `--dry-run` first.
 - The judge prompt's wording lives only in PostHog (`reel-components-judge`), never in the repository;
@@ -279,9 +324,17 @@ grouping (the owner's marks alone, each run's picks alone), the answer rules and
 and its split by source, the report, the PostHog requests and the upload payload, and the draft prompt
 (the refusal of a path inside the repository, the draft id, the recorded version).
 
-The curator eval's tests (`curator-*.test.ts`, `run-curator.test.ts`) use the in-memory fixtures of
-`apps/worker/test-support/curator-fixtures.ts` and a scripted AI double: the input rebuilt from the
-latest version (its hook, the notes on stored values, the skips), the call's one retry and its
+The snapshot's tests (`snapshot.test.ts`, and the snapshot side of `curator-input.test.ts`) use in-memory fakes
+of the sources: the plan (re-uploads copied, a run of another transcript counted and left out, a skipped
+curator input), the item update (what is kept, what is added, `base_version`, the read-back to the
+evals' shape), a dry run that writes nothing, the write's failure message, and an item with no snapshot
+stopping both evals before any call. `eval-boundary.test.ts` fails if an eval module reaches the database,
+storage or the snapshot command through a run-time import.
+
+The judge and curator evals' tests feed them dataset items the snapshot made from fakes
+(`test-support/snapshot-fixtures.ts`), so they run from dataset-only items. The curator eval's tests use the
+in-memory fixtures of `apps/worker/test-support/curator-fixtures.ts` and a scripted AI double: the case
+rebuilt from the stored input (its hook, the notes on stored values, the skips), the call's one retry and its
 unavailable stop, the precision, recall and F1 maths and their pooling, a dry run that makes no call,
 the drafts' ids and labels in the experiment, the upload's results (including `error` and `skipped`),
 and the report's escaping.

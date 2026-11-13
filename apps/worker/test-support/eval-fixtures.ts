@@ -33,6 +33,7 @@ export function ownerItemJson(
   return {
     id,
     client_item_id: `owner-reels-${reelId}`,
+    version: 1,
     version_id: `${id}-version`,
     input: {
       transcript: {

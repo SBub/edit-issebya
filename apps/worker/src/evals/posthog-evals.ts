@@ -13,6 +13,7 @@ const ITEMS_PAGE = 25;
 // The scope of the personal API key each request needs; a 403 names it.
 const SCOPES = {
   dataset: "dataset:read",
+  datasetWrite: "dataset:write",
   scorerRead: "llm_analytics:read",
   scorerWrite: "llm_analytics:write",
   experiment: "offline_evaluation_ingestion:write",
@@ -69,8 +70,20 @@ export interface UploadBody {
   }[];
 }
 
+// The body of an item update: the replacement input and metadata (the expected
+// output as it was, or replaced when given). PostHog stores it as a new version
+// of the item and refuses it when `base_version` is no longer the current one.
+export interface UpdateItemBody {
+  base_version: number;
+  input: unknown;
+  expected_output?: unknown;
+  metadata: Record<string, unknown>;
+}
+
 export interface EvalsApi {
   dataset(datasetId: string): Promise<Dataset>;
+  // Writes a new version of one dataset item (the snapshot only).
+  updateItem(itemId: string, body: UpdateItemBody): Promise<void>;
   // The pinned version uuid of the numeric 0 to 1 scorer of this name, made when missing.
   scorerVersion(name: string, description: string): Promise<string>;
   createExperiment(body: ExperimentBody): Promise<void>;
@@ -80,7 +93,7 @@ export interface EvalsApi {
 }
 
 interface Call {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PATCH";
   path: string;
   params?: Record<string, string>;
   body?: unknown;
@@ -201,6 +214,16 @@ export function posthogEvals(env: Env = process.env, fetchFn: typeof fetch = fet
         );
       }
       return { revisionId: latest.id, revision: latest.revision, items };
+    },
+
+    async updateItem(itemId, body) {
+      await request({
+        method: "PATCH",
+        path: `dataset_items/${encodeURIComponent(itemId)}/`,
+        body,
+        scope: SCOPES.datasetWrite,
+        what: "writing a new version of a dataset item",
+      });
     },
 
     async scorerVersion(name, description) {

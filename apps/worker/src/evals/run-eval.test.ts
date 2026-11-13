@@ -1,6 +1,7 @@
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { describe, expect, it } from "vitest";
 import { ownerItemJson, transcriptOf } from "../../test-support/eval-fixtures.ts";
+import { snapshotItems } from "../../test-support/snapshot-fixtures.ts";
 import { fakePromptSource } from "../../test-support/fake-prompts.ts";
 import { type AiExchange, type AiRequest, type AiRunner, NO_USAGE } from "../ai.ts";
 import { createTelemetry } from "../telemetry.ts";
@@ -47,20 +48,25 @@ const sources: RunSources = {
   },
 };
 
+// The dataset as `eval:snapshot` leaves it: each item carries its reel's
+// stored curator runs. The judge eval reads those and nothing else.
+const RAW_ITEMS = [
+  ownerItemJson(TEXT_A, {
+    accent: [{ start: 1, end: 3.5, words: "work to live" }],
+    bigword: [{ start: 10, end: 10.5, words: "day" }],
+  }),
+  ownerItemJson(
+    TEXT_B,
+    { accent: [{ start: 0, end: 1.5, words: "another reel" }] },
+    { reelId: "bbbbbbbb", id: "item-b" },
+  ),
+];
+const snapshotted = (from: RunSources) =>
+  snapshotItems(RAW_ITEMS, { ...from, latestVersion: async () => null });
 const DATASET = {
   revisionId: "revision-6",
   revision: 6,
-  items: [
-    ownerItemJson(TEXT_A, {
-      accent: [{ start: 1, end: 3.5, words: "work to live" }],
-      bigword: [{ start: 10, end: 10.5, words: "day" }],
-    }),
-    ownerItemJson(
-      TEXT_B,
-      { accent: [{ start: 0, end: 1.5, words: "another reel" }] },
-      { reelId: "bbbbbbbb", id: "item-b" },
-    ),
-  ],
+  items: await snapshotted(sources),
 };
 
 // A judge that approves every accent and rejects the rest; it answers a call
@@ -101,6 +107,9 @@ function setup(overrides: Partial<EvalsApi> = {}) {
       posthogCalls.push("dataset");
       return DATASET;
     },
+    async updateItem() {
+      throw new Error("the judge eval writes no dataset item");
+    },
     async scorerVersion(name) {
       posthogCalls.push(`scorer ${name}`);
       return "scorer-version-1";
@@ -128,7 +137,6 @@ function setup(overrides: Partial<EvalsApi> = {}) {
   let ids = 0;
   const deps: EvalDeps = {
     posthog,
-    sources,
     prompts: fakePromptSource(),
     ai,
     telemetry: createTelemetry({}, { spanProcessors: [new SimpleSpanProcessor({ exporter })] }),
@@ -344,11 +352,14 @@ describe("a judged run", () => {
   });
 
   it("uploads an error for a reel whose every judge call stayed invalid", async () => {
-    const { deps, sent } = setup();
+    // The snapshot made when only the run of V3 was stored.
     const only: RunSources = {
       ...sources,
       aiFiles: async () => [{ reelId: REEL_A, key: key(V3) }],
     };
+    const { deps, sent } = setup({
+      dataset: async () => ({ ...DATASET, items: await snapshotted(only) }),
+    });
     // Every answer is empty: the owner's marks' call and the run's call both stay invalid.
     const refuses: AiRunner = {
       async call() {
@@ -360,7 +371,7 @@ describe("a judged run", () => {
         };
       },
     };
-    await runJudgeEval({ ...OPTIONS, reel: "aaaaaaaa" }, { ...deps, sources: only, ai: refuses });
+    await runJudgeEval({ ...OPTIONS, reel: "aaaaaaaa" }, { ...deps, ai: refuses });
     expect(sent.experiment).toMatchObject({ expected_item_count: 1, expected_result_count: 1 });
     expect(sent.upload?.results).toHaveLength(1);
     expect(sent.upload?.results[0]).toMatchObject({

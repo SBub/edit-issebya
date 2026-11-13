@@ -2,21 +2,18 @@
 //   [--curator-label <label> | --curator-prompt-file <path>]
 //   [--judge-label <label> | --judge-prompt-file <path>]`: the components curator
 // run on the owner's hand-labelled reels, scored against the marks, the picks
-// judged (app_docs/evals.md, "The curator eval"). Read-only on the database and
-// on storage; its writes are the AI calls, the report file and the PostHog experiment.
+// judged (app_docs/evals.md, "The curator eval"). It reads the dataset items
+// only (run `eval:snapshot` first); its writes are the AI calls, the report file
+// and the PostHog experiment.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { aiRunner } from "./ai.ts";
-import { workerConfig } from "./config.ts";
 import { posthogEvals } from "./evals/posthog-evals.ts";
 import { runCuratorEval } from "./evals/run-curator.ts";
-import { workerCuratorSources } from "./evals/worker-sources.ts";
 import { checkPromptSource, readDraftPrompt } from "./evals/draft-prompt.ts";
 import { posthogPromptSource } from "./prompts/posthog-source.ts";
 import { editMeasurer } from "./edit-measurer.ts";
-import { workerStorage } from "./storage.ts";
-import { workerSupabase } from "./supabase.ts";
 import { createTelemetry } from "./telemetry.ts";
 
 // The PostHog dataset `owner-reels`: the reels the owner labelled by hand.
@@ -65,7 +62,6 @@ async function draftOf(path: string | undefined) {
   });
 }
 
-const config = workerConfig();
 const telemetry = createTelemetry();
 
 try {
@@ -85,7 +81,6 @@ try {
     },
     {
       posthog: posthogEvals(process.env),
-      sources: workerCuratorSources(workerSupabase(config), workerStorage(), config.keyPrefix),
       curatorPrompts: posthogPromptSource(envAt(values["curator-label"])),
       judgePrompts: posthogPromptSource(envAt(values["judge-label"])),
       ai: aiRunner(process.env),

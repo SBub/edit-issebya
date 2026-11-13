@@ -5,7 +5,7 @@ import { AI_MODELS, type AiRunner, NO_USAGE } from "../ai.ts";
 import { type PromptSource, type PromptText, promptIdentity } from "../prompts/source.ts";
 import { addUsage } from "../step-store.ts";
 import { type Telemetry, inSpan } from "../telemetry.ts";
-import { type CuratorRun, type RunSources, curatorRunsFor, runCandidates } from "./curator-runs.ts";
+import type { CuratorRun } from "./curator-runs.ts";
 import { JUDGE_PROMPT_NAME, type Verdict, callJudge } from "./judge-call.ts";
 import {
   type JudgePick,
@@ -19,6 +19,7 @@ import {
   wordsOf,
 } from "./label.ts";
 import { type OwnerItem, selectOwnerItems } from "./owner-marks.ts";
+import { differingRunsOf, missingSnapshot, pastRunsOf } from "./snapshot-format.ts";
 import { type DraftPrompt, draftId } from "./draft-prompt.ts";
 import type { EvalsApi, UploadBody } from "./posthog-evals.ts";
 import { percent, renderReport } from "./report.ts";
@@ -26,11 +27,11 @@ import { type JudgedPick, agreement, score, tally } from "./score.ts";
 
 // THE JUDGE EVAL (app_docs/evals.md): how well the components judge agrees
 // with the owner's hand labels, measured on picks the curator already made.
-// It reads the dataset, the stored curator runs and the judge prompt, calls
-// the judge once for the owner's marks of each reel and once per curator run
-// (never mixing the two in one call), and uploads the run to PostHog as an
-// offline experiment. It never calls the curator and writes nothing to the
-// database or to storage.
+// It reads the dataset items (their snapshot of the curator's past runs, written
+// by `eval:snapshot`) and the judge prompt, calls the judge once for the owner's
+// marks of each reel and once per curator run (never mixing the two in one
+// call), and uploads the run to PostHog as an offline experiment. It never
+// calls the curator, and it reads nothing from the database or from storage.
 
 const SCORER = "judge_agreement";
 const SCORER_DESCRIPTION =
@@ -54,7 +55,6 @@ export interface EvalOptions {
 
 export interface EvalDeps {
   posthog: EvalsApi;
-  sources: RunSources;
   prompts: PromptSource;
   ai: AiRunner;
   telemetry: Telemetry;
@@ -132,16 +132,19 @@ function countsLines({ counts, calls }: Prepared): string[] {
   ];
 }
 
-async function prepare(
-  item: OwnerItem,
-  deps: EvalDeps,
-  candidates: Awaited<ReturnType<typeof runCandidates>>,
-): Promise<Prepared> {
-  const found = await curatorRunsFor(item, candidates, deps.sources.readJson);
+// The item's snapshot: its curator runs and the runs left out. An item with no
+// snapshot stops the eval before any call, naming the command to run.
+function snapshotOf(item: OwnerItem): { runs: CuratorRun[]; differing: number } {
+  const runs = pastRunsOf(item.raw, item.id);
+  if (runs === null) throw missingSnapshot(item.id, "metadata.past_curator_runs");
+  return { runs, differing: differingRunsOf(item.raw) };
+}
+
+function prepare(item: OwnerItem, runs: readonly CuratorRun[], differing: number): Prepared {
   const why: Partial<Record<Why, number>> = {};
   let good = 0;
   let bad = 0;
-  for (const run of found.runs) {
+  for (const run of runs) {
     for (const pick of run.picks) {
       const labelled = labelPick(pick, item.marks, item.nothing);
       if (labelled.label === "good") good += 1;
@@ -153,7 +156,7 @@ async function prepare(
   }
   const calls: PreparedCall[] = [];
   // The reel's script: the first run's transcript, the words the owner marked.
-  const [first] = found.runs;
+  const [first] = runs;
   if (first && item.marks.length > 0) {
     const picks = judgePicks(
       "owner",
@@ -168,7 +171,7 @@ async function prepare(
       sent: picks.map((pick) => sentPick(pick, item.words)),
     });
   }
-  for (const run of found.runs) {
+  for (const run of runs) {
     const picks = judgePicks(
       "curator",
       run.picks,
@@ -188,8 +191,8 @@ async function prepare(
     calls,
     counts: {
       reel: item.reelId,
-      curatorRuns: found.runs.length,
-      differingRuns: found.differing,
+      curatorRuns: runs.length,
+      differingRuns: differing,
       ownerCalls: calls.filter((call) => call.source === "owner").length,
       ownerMarks: item.marks.length,
       curatorPicks: good + bad,
@@ -366,13 +369,12 @@ export async function runJudgeEval(options: EvalOptions, deps: EvalDeps): Promis
   const dataset = await posthog.dataset(options.datasetId);
   const items = selectOwnerItems(dataset.items, options.reel);
   log(`dataset revision ${dataset.revision}: ${items.length} labelled reels`);
-  const candidates = await runCandidates(deps.sources);
-  const prepared: Prepared[] = [];
-  for (const item of items) {
-    const one = await prepare(item, deps, candidates);
-    for (const line of countsLines(one)) log(line);
-    prepared.push(one);
-  }
+  // Every item's snapshot is checked before anything is counted or called.
+  const snapshots = items.map(snapshotOf);
+  const prepared: Prepared[] = items.map((item, at) =>
+    prepare(item, snapshots[at]!.runs, snapshots[at]!.differing),
+  );
+  for (const one of prepared) for (const line of countsLines(one)) log(line);
   const reels = prepared.map((one) => one.counts);
   const sum = (
     field:

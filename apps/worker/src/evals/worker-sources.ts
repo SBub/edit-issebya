@@ -9,7 +9,7 @@ const ID_CHUNK = 100;
 
 // The eval's sources over the worker's database and storage. Selects and gets
 // only: it never inserts, updates, deletes or puts.
-export function workerRunSources(
+function workerRunSources(
   db: SupabaseClient,
   storage: Pick<Storage, "get">,
   keyPrefix: string,

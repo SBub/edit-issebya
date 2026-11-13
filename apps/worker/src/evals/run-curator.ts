@@ -6,13 +6,9 @@ import { type PromptSource, type PromptText, promptIdentity } from "../prompts/s
 import { addUsage } from "../step-store.ts";
 import { type Telemetry, inSpan } from "../telemetry.ts";
 import type { TracedAnswer } from "../decision-trace.ts";
-import { runCandidates, picksOfAnswer } from "./curator-runs.ts";
-import {
-  type CuratorCase,
-  type CuratorSources,
-  type ParseCurrent,
-  buildCuratorCase,
-} from "./curator-input.ts";
+import { picksOfAnswer } from "./curator-runs.ts";
+import { type CuratorCase, type ParseCurrent, curatorCaseOf } from "./curator-input.ts";
+import { curatorInputOf, missingSnapshot } from "./snapshot-format.ts";
 import {
   CURATOR_PROMPT_NAME,
   type MeasurerOf,
@@ -52,8 +48,9 @@ import {
 // THE CURATOR EVAL (app_docs/evals.md, "The curator eval"): the components
 // prompt run on each labelled reel of the dataset, its picks scored against
 // the owner's marks by code, and each answer's picks judged in a separate call.
-// It reads the dataset and stored runs and writes only the AI calls, the report
-// file and the PostHog experiment. Nothing is written to the database or storage.
+// It reads the dataset items only (their curator input, written by
+// `eval:snapshot`) and writes the AI calls, the report file and the PostHog
+// experiment. It reads nothing from the database or from storage.
 
 const SCORERS = {
   f1: "curator_f1",
@@ -82,7 +79,6 @@ export interface CuratorEvalOptions {
 
 export interface CuratorEvalDeps {
   posthog: EvalsApi;
-  sources: CuratorSources;
   // The curator's prompt source (its label) and the judge's (its label).
   curatorPrompts: PromptSource;
   judgePrompts: PromptSource;
@@ -302,14 +298,18 @@ export async function runCuratorEval(
   const items = selectOwnerItems(dataset.items, options.reel);
   log(`dataset revision ${dataset.revision}: ${items.length} labelled reels`);
 
-  const candidates = await runCandidates(deps.sources);
+  // Every item's snapshot is checked before any case is built or call made.
+  const stored = items.map((item) => {
+    const input = curatorInputOf(item.raw, item.id);
+    if (input === null) throw missingSnapshot(item.id, "input.curator_input");
+    return input;
+  });
   const cases: CuratorCase[] = [];
   const skipped: { reel: string; reason: string }[] = [];
-  for (const item of items) {
-    const built = await buildCuratorCase({
+  for (const [at, item] of items.entries()) {
+    const built = curatorCaseOf({
       item,
-      candidates,
-      sources: deps.sources,
+      stored: stored[at]!,
       preset,
       ...(deps.parseCurrent ? { parseCurrent: deps.parseCurrent } : {}),
     });

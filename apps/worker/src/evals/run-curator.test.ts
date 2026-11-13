@@ -1,6 +1,7 @@
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { describe, expect, it } from "vitest";
 import { ownerItemJson } from "../../test-support/eval-fixtures.ts";
+import { snapshotItems } from "../../test-support/snapshot-fixtures.ts";
 import { fakePromptSource } from "../../test-support/fake-prompts.ts";
 import {
   ANSWER,
@@ -38,11 +39,9 @@ function reply(request: AiRequest): AiResult {
   return answerResult(CURATOR_ANSWER);
 }
 
-const DATASET = {
-  revisionId: "revision-6",
-  revision: 6,
-  items: [ownerItemJson(TEXT, OWNER)],
-};
+// The dataset as `eval:snapshot` leaves it for the reels `sources` holds.
+const RAW_ITEMS = [ownerItemJson(TEXT, OWNER)];
+const DATASET = { revisionId: "revision-6", revision: 6 };
 
 function setup({
   ai = roleAi(reply),
@@ -58,7 +57,13 @@ function setup({
   const posthog: EvalsApi = {
     async dataset() {
       posthogCalls.push("dataset");
-      return DATASET;
+      return {
+        ...DATASET,
+        items: await snapshotItems(RAW_ITEMS, sources, { parseCurrent: parseEditStub }),
+      };
+    },
+    async updateItem() {
+      throw new Error("the curator eval writes no dataset item");
     },
     async scorerVersion(name) {
       posthogCalls.push(`scorer ${name}`);
@@ -86,7 +91,6 @@ function setup({
   let ids = 0;
   const deps: CuratorEvalDeps = {
     posthog,
-    sources,
     curatorPrompts: fakePromptSource(),
     judgePrompts: fakePromptSource(),
     ai,
