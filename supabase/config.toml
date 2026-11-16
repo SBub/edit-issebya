@@ -154,8 +154,11 @@ additional_redirect_urls = ["http://localhost:3000/studio"]
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to the local API URL (http://127.0.0.1:<port>/auth/v1).
 # jwt_issuer = ""
-# Path to JWT signing key. DO NOT commit your signing keys file to git.
-# signing_keys_path = "./signing_keys.json"
+# Path to the JWT signing keys. The committed file is a throwaway ES256 key for local stacks only
+# (the developer's, ADW's and CI's); it never signs anything on the hosted project. With it the
+# CLI signs the role tokens behind the publishable and secret keys with ES256, which every Auth
+# version verifies (app_docs/studio.md, "Configuration"). Never put a hosted key in it.
+signing_keys_path = "./signing_keys.json"
 # If disabled, the refresh token will never expire.
 enable_refresh_token_rotation = true
 # Allows refresh tokens to be reused after expiry, up to the specified interval in seconds.

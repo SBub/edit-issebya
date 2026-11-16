@@ -29,7 +29,9 @@ be kept in step with them and with `README.md`.
   under row-level security.
 - database: two local Supabase stacks, migrations in `supabase/migrations/`. The developer's
   (`supabase/config.toml`, project `edit-issebya`, ports 54430 to 54439) is the owner's, started and
-  kept by them, never touched by ADW. ADW's (`edit-issebya-adw`, ports 54450 to 54459, workdir
+  kept by them, never touched by ADW. Both stacks and CI read the committed local signing key
+  `supabase/signing_keys.json` (`signing_keys_path` in the config; `app_docs/studio.md`,
+  "Configuration"); no setup step. ADW's (`edit-issebya-adw`, ports 54450 to 54459, workdir
   `agents/supabase-adw/` in the main checkout) is provided by `.adw/worktree-env` through
   `.adw/supabase-stack` and reset to the worktree's migrations at the start of a run
   (`app_docs/adw-supabase-stack.md`).

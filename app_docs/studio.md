@@ -282,6 +282,23 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
   `apps/studio/test-support/`, from `apps/worker/.env.development`.
 - `OPENROUTER_API_KEY` is read only by the worker (`apps/worker/src/ai.ts`, and the doctor's key
   line), never by the studio or a test: specs run the worker with `E2E_MOCK_AI=true`.
+- Local signing key: `supabase/config.toml` sets `signing_keys_path = "./signing_keys.json"`, and
+  `supabase/signing_keys.json` is committed. It holds one ES256 key made with
+  `supabase gen signing-key`, used only by local stacks (the developer's, ADW's and CI's), all bound
+  to `127.0.0.1`. `supabase start` reads it by itself, so a fresh machine and CI need no extra step.
+  With the file, the CLI signs the two role tokens that Kong puts behind the `sb_publishable_` and
+  `sb_secret_` keys with this ES256 key, and Auth, PostgREST and Realtime all get the same key.
+  Without it, CLI 2.75.0 signs those tokens with the legacy HS256 secret while Auth only holds an
+  ES256 key. Auth v2.186.0 (the CLI's default, which CI runs) still accepts HS256 through the legacy
+  secret; newer Auth (v2.197.0) refuses it, and every `auth.admin.*` call of the test helpers
+  (`listUsers`, `createUser`, `generateLink`) and of `add-owner` answers 403
+  `signing method HS256 is invalid`. A checkout linked to the hosted project (`supabase link`) runs
+  the hosted service versions locally (`supabase/.temp/*-version`), which is how a local stack gets
+  the newer Auth. The `sb_` keys that `supabase status` prints do not change; the legacy `ANON_KEY`
+  and `SERVICE_ROLE_KEY` tokens do, and nothing here uses them. The file applies on the next
+  `supabase stop` and `supabase start` (data is kept); browser sessions from before sign in again.
+  CI and the local CLI are both 2.75.0 (`.github/workflows/ci.yml` pins it); the CLI accepts only
+  ES256 and RS256 keys in this file, so the HS256 secret cannot be added to it.
 - `SUPABASE_DB_URL`: test helpers only (`localDbUrl` in `apps/studio/test-support/local-supabase.ts`),
   the direct database URL the DB tests query; defaults to the shared stack's 54432 database. In ADW
   runs `.adw/worktree-env` sets it to the ADW stack's.
@@ -349,6 +366,9 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
 - Never create an R2 or Supabase client at module load.
 - Never stage `.e2e-storage/`; never touch `fixtures/footage/short-person.mp4`.
 - Never point a test at real R2, a real AI or the hosted project.
+- Never put a key of the hosted project in `supabase/signing_keys.json`, and never remove
+  `signing_keys_path` from `supabase/config.toml`: the file is the local stacks' throwaway key, and
+  without it the Auth admin calls fail on a newer Auth version.
 - Do not select `*` from `reels`; name the columns.
 - Do not change `assetPrefix` on one side only: it must equal `STUDIO_ASSET_PREFIX`.
 - Do not return an absolute `Location` from the confirm route.
