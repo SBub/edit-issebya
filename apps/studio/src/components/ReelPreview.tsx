@@ -17,6 +17,7 @@ import {
   createMeasurer,
   effectiveMoves,
   headTrackSchema,
+  applyOwnerMoves,
   ownerWrapOptions,
   parseEdit,
   settleOwnerMove,
@@ -32,7 +33,16 @@ import { type TimelineFrames, TracksTimeline } from "@/components/TracksTimeline
 import { isChromium } from "@/lib/browser";
 import { editAssetUrl } from "@/lib/edit-assets";
 import type { JobRow } from "@/lib/jobs";
-import { type OwnerAsk, resolveAsk, showMoment, withMove } from "@/lib/owner-edit";
+import { type PageElements, dragPatch, pageElements, wrapPatch } from "@/lib/live-page";
+import {
+  type Drag,
+  type OwnerAsk,
+  type WrapOption,
+  moveOfDrag,
+  resolveAsk,
+  showMoment,
+  withMove,
+} from "@/lib/owner-edit";
 import { previewPage } from "@/lib/preview-page";
 import { recordPreviewBuild } from "@/lib/preview-test-hooks";
 import { type SoundHit, soundHits } from "@/lib/sound-schedule";
@@ -192,6 +202,10 @@ interface Draft {
   page: Page;
 }
 
+// One wrap width an edge handle can give, and the elements a page built with
+// it draws.
+type WrapPreview = WrapOption & { elements: PageElements };
+
 type LiveJob = Pick<JobRow, "id" | "status">;
 
 const SAVE_FAILED = "Your changes were not saved. Try again";
@@ -243,6 +257,13 @@ function BuiltPreview({
   const sentJob = sent && sent !== "sending" ? jobs.find((job) => job.id === sent.jobId) : null;
   const saveFailed = sentJob?.status === "failed" || sentJob?.status === "cancelled";
   const saving = sent !== null && !saveFailed;
+  // The lines an edge handle can give the component it is held on, each with
+  // the elements a page built with them draws: read once per press.
+  const wrapsRef = useRef<{
+    html: string;
+    component: PlacedComponent;
+    options: WrapPreview[];
+  } | null>(null);
 
   function openEditor() {
     playerRef.current?.pause();
@@ -258,6 +279,61 @@ function BuiltPreview({
     setSent(null);
   }
 
+  // One frame of a drag: the page on screen shows the component where the
+  // pointer has it, at once (app_docs/owner-edits.md, "Instant moves"). A move
+  // or a corner resize restyles its elements; an edge handle shows the lines
+  // the drop would give, read from pages built with each wrap width once per
+  // press. Null when the drag is dropped with nothing to show.
+  function dragFrame(component: PlacedComponent, drag: Drag | null) {
+    const player = playerRef.current;
+    if (!player) return;
+    if (!drag) {
+      wrapsRef.current = null;
+      player.live(null);
+      return;
+    }
+    if (drag.mode === "move" || drag.mode === "resize") {
+      player.live(dragPatch(pageElements(page.html), component, drag));
+      return;
+    }
+    const ask = moveOfDrag(component, drag);
+    const options = ask ? wrapPreviews(component) : [];
+    if (!ask || options.length === 0) return;
+    const chosen = resolveAsk(ask, options);
+    const option = options.find((entry) => entry.width === chosen.width) ?? options[0]!;
+    player.live(
+      wrapPatch(option.elements, component, chosen.x - component.x, chosen.y - component.y),
+    );
+  }
+
+  // Every wrap width of a component at its size, each with the elements a
+  // page built with it draws (the one builder's own lines).
+  function wrapPreviews(component: PlacedComponent): WrapPreview[] {
+    const known = wrapsRef.current;
+    if (known && known.html === page.html && known.component === component) return known.options;
+    const edit = draft?.edit ?? built.edit;
+    const context = { ...built.context, preset: ISSEBYA_PRESET };
+    const at = { x: component.x, y: component.y, size: component.size ?? 0 };
+    const options = (ownerWrapOptions(edit, component.id, at, context) ?? []).flatMap((option) => {
+      const applied = applyOwnerMoves(
+        edit,
+        [{ id: component.id, ...at, width: option.width }],
+        context,
+      );
+      if (!applied.ok) return [];
+      const html = build(
+        applied.edit,
+        built.context.transcript,
+        built.context.headTrack,
+        ISSEBYA_PRESET,
+        built.context.measurer,
+      ).html;
+      return [{ ...option, elements: pageElements(html) }];
+    });
+    wrapsRef.current = { html: page.html, component, options };
+    return options;
+  }
+
   // A finished drag: an edge handle's width or height turned into the lines
   // that give it (`ownerWrapOptions`), a move or a corner resize keeping the
   // wrap width an earlier edge drag set (scaled with the size, so its lines
@@ -270,6 +346,7 @@ function BuiltPreview({
     if (ask.width !== undefined || ask.height !== undefined) {
       const options = ownerWrapOptions(edit, ask.id, ask, context);
       if (!options) {
+        playerRef.current?.live(null);
         setMessage("This text keeps its lines");
         return;
       }
@@ -289,12 +366,16 @@ function BuiltPreview({
     }
     const settled = settleOwnerMove(edit, asked, context);
     if (!settled.ok) {
+      playerRef.current?.live(null);
       setMessage("This text does not fit there");
       return;
     }
     setMessage("");
     setSent(null);
     const page = built.pageOf(settled.edit);
+    // The same page again (a text put back where it was): nothing new to show,
+    // so the drag's patch goes.
+    if (page.html === (draft?.page ?? built.page).html) playerRef.current?.live(null);
     setDraft({
       edit: settled.edit,
       // Only what differs from the version: a text put back is no move.
@@ -380,7 +461,11 @@ function BuiltPreview({
                 setSelectedId(component.id);
                 playerRef.current?.seek(showMoment(component));
               }}
-              onMove={move}
+              onMove={(ask) => {
+                wrapsRef.current = null;
+                move(ask);
+              }}
+              onDragFrame={dragFrame}
               changed={(draft?.moves.length ?? 0) > 0}
               saving={saving}
               message={saveFailed ? SAVE_FAILED : saving ? "Saving your changes" : message}

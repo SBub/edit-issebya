@@ -1,7 +1,16 @@
 "use client";
 
 import type { HyperframesPlayer } from "@hyperframes/player";
-import { type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  type ReactNode,
+  type Ref,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { type LivePatch, changedElements, pageElements, restyle } from "@/lib/live-page";
 import {
   type MediaState,
   activeAt,
@@ -59,6 +68,11 @@ export interface PreviewPlayerHandle {
   seek: (seconds: number) => void;
   // Stops the clock and the sounds where they are.
   pause: () => void;
+  // Restyles elements of the page on screen at once, over the page it should
+  // show (the move and resize editor's drag); null drops the patch. A new
+  // `html` drops it too: from then on the page on screen shows that html's
+  // elements until the rebuilt page is swapped in.
+  live: (patch: LivePatch | null) => void;
 }
 
 interface Tracked extends MediaState {
@@ -196,6 +210,62 @@ export function PreviewPlayer({
     );
   }
   const swapping = nextPage !== null || html !== shownPage.html;
+  // The editor's patch over the page on screen, and the ids restyled so far.
+  const liveRef = useRef<LivePatch | null>(null);
+  const touchedRef = useRef<Set<string>>(new Set());
+  const htmlRef = useRef(html);
+  const shownHtmlRef = useRef(shownPage.html);
+
+  // The page on screen made to show the newest page's elements (their places,
+  // sizes and lines), with the editor's patch over them, at once: a drag and
+  // a drop show with no wait for the rebuilt page, which then swaps in with
+  // nothing moving. What the page's timeline animates is never touched.
+  function syncShown() {
+    let doc: Document | null = null;
+    try {
+      doc = playerRef.current?.iframeElement?.contentDocument ?? null;
+    } catch {
+      doc = null;
+    }
+    if (!doc) return;
+    const shown = pageElements(shownHtmlRef.current);
+    const target = pageElements(htmlRef.current);
+    const live = liveRef.current ?? {};
+    const ids = new Set([
+      ...touchedRef.current,
+      ...changedElements(shown, target),
+      ...Object.keys(live),
+    ]);
+    const touched = new Set<string>();
+    for (const id of ids) {
+      const el = doc.getElementById(id);
+      const wanted = target.get(id);
+      if (!el || !wanted) continue;
+      const patch = live[id];
+      const style = { ...wanted.style, ...patch?.style };
+      const lines = patch?.html ?? wanted.html;
+      const known = [
+        ...Object.keys(shown.get(id)?.style ?? {}),
+        ...Object.keys(wanted.style),
+        ...Object.keys(patch?.style ?? {}),
+      ];
+      restyle(el, lines === null ? { style } : { style, html: lines }, known);
+      touched.add(id);
+    }
+    touchedRef.current = touched;
+  }
+
+  // A new page to show, or a new page on screen: the editor's patch is
+  // dropped with a new page (the page now holds the drop), and the page on
+  // screen restyled before the browser paints.
+  useLayoutEffect(() => {
+    if (htmlRef.current !== html) liveRef.current = null;
+    htmlRef.current = html;
+    if (shownHtmlRef.current !== shownPage.html) touchedRef.current = new Set();
+    shownHtmlRef.current = shownPage.html;
+    // syncShown reads only refs.
+    syncShown();
+  }, [html, shownPage.html]);
 
   useEffect(() => {
     hitsRef.current = hits;
@@ -440,6 +510,10 @@ export function PreviewPlayer({
       if (playerReady) onSeek(seconds);
     },
     pause,
+    live: (patch: LivePatch | null) => {
+      liveRef.current = patch;
+      syncShown();
+    },
   }));
 
   // The player's own events: its load, its clock and its end.

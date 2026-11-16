@@ -31,6 +31,9 @@ interface Props {
   onPick: (component: PlacedComponent) => void;
   // A finished drag, before its lines are chosen and it is made legal.
   onMove: (ask: OwnerAsk) => void;
+  // Every frame of a drag, in frame pixels (snapped), so the page on screen
+  // shows the component there at once; null when a drag is cancelled.
+  onDragFrame: (component: PlacedComponent, drag: Drag | null) => void;
   // Whether anything was moved (Save is off until then), and the save's state.
   changed: boolean;
   saving: boolean;
@@ -91,6 +94,7 @@ export function MoveLayer({
   onSelect,
   onPick,
   onMove,
+  onDragFrame,
   changed,
   saving,
   message,
@@ -138,6 +142,15 @@ export function MoveLayer({
       ? snapDrag(component, raw, FRAME, SNAP_PX * pressed.scale)
       : { drag: raw, snapped: { x: false, y: false } };
     setPressed({ ...snapped, snapped: dragging ? on : { x: false, y: false } });
+    if (dragging && component) {
+      onDragFrame(component, { mode: snapped.mode, dx: snapped.dx, dy: snapped.dy });
+    }
+  }
+
+  function cancel() {
+    const component = pressed && components.find((entry) => entry.id === pressed.id);
+    if (component && pressed.dragging) onDragFrame(component, null);
+    setPressed(null);
   }
 
   function release(event: ReactPointerEvent<HTMLElement>) {
@@ -148,6 +161,7 @@ export function MoveLayer({
     const component = components.find((entry) => entry.id === pressed.id);
     const move = component ? moveOfDrag(component, pressed) : null;
     if (move) onMove(move);
+    else if (component) onDragFrame(component, null);
   }
 
   return (
@@ -237,7 +251,7 @@ export function MoveLayer({
             onPointerDown={(event) => press(event, component.id, "move")}
             onPointerMove={drag}
             onPointerUp={release}
-            onPointerCancel={() => setPressed(null)}
+            onPointerCancel={cancel}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
@@ -267,7 +281,7 @@ export function MoveLayer({
                   onPointerDown={(event) => press(event, component.id, "resize")}
                   onPointerMove={drag}
                   onPointerUp={release}
-                  onPointerCancel={() => setPressed(null)}
+                  onPointerCancel={cancel}
                   className="absolute -right-2.5 -bottom-2.5 size-4 cursor-nwse-resize border-2 border-white bg-accent"
                 />
                 {canRewrap(component) &&
@@ -282,7 +296,7 @@ export function MoveLayer({
                       onPointerDown={(event) => press(event, component.id, edge)}
                       onPointerMove={drag}
                       onPointerUp={release}
-                      onPointerCancel={() => setPressed(null)}
+                      onPointerCancel={cancel}
                       className={`absolute border border-white bg-accent ${EDGES[edge].className}`}
                     />
                   ))}

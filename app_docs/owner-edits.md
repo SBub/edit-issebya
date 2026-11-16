@@ -7,6 +7,9 @@
   kept as learning data for later placement rules.
 - Owner feedback, 2026-11-16: no black flash while dragging, snap guides at the frame's centre lines,
   and edge handles that make a text box wider, narrower, taller or shorter at the same text size.
+- Owner feedback, 2026-11-16 (top complaint): a dragged or resized text showed in its new place only
+  after a visible delay. It must follow the pointer and stay where it is dropped at once, like an
+  optimistic update.
 
 ## Overview
 
@@ -110,6 +113,24 @@ with it at that moment. Placement rules will be learnt from these later.
   once it shows the same moment with its video frame decoded (`app_docs/preview.md`), so the video
   and the other texts never go black or flicker, during the drag or after it. So the preview never
   shows a text anywhere the saved version would not.
+- **Instant moves** (`src/lib/live-page.ts`, `PreviewPlayerHandle.live`): the rebuilt page takes
+  a few hundred milliseconds to be ready behind, so the page already on screen is restyled in place
+  meanwhile. On every pointer move of a drag `MoveLayer` calls `onDragFrame` with the drag in frame
+  pixels (snapped), and `ReelPreview` hands the player a patch: a move sets the component's
+  elements' `left` and `top`, a corner resize scales their `font-size` (a VISUAL's `width` and
+  `height`) and their corners about the box's top left corner (a LIST: its levels inside its layer,
+  never the layer). An edge handle shows the lines the drop would give: once per press, a page is
+  built with each of the component's wrap widths (`ownerWrapOptions`, then `applyOwnerMoves` and
+  `build`), and each frame shows the one `resolveAsk` picks, its elements' style and lines
+  (`wrapPatch`). On the drop the settled draft's page becomes the page to show: the player restyles
+  every element whose style or lines differ between the page on screen and the new page to that
+  page's own values (`changedElements`, `restyle`) before the browser paints, then drops the drag's
+  patch. So the text is where it was dropped on the very next frame, and the rebuilt page swaps in
+  later with nothing moving. A patch never writes what the page's timeline animates (`transform`,
+  `opacity`, `visibility`, `display`), so the moment on screen stays the timeline's. A drop that
+  changes nothing or is refused drops the patch, and Cancel restyles the page back the same way.
+  Measured in `owner-edit.spec.ts` on the local stack: pointer up to the final position took 160 to
+  192 ms before (the swap), 6 to 11 ms after (the next frame).
 - `src/components/MoveLayer.tsx`: the layer over the frame (`data-testid="move-layer"`), given to
   `PreviewPlayer` as its `overlay`.
   - A bar on top (`move-bar`), as tall as the frame's top margin, which the platforms cover and no
@@ -309,6 +330,9 @@ like decide does (`E2E_MOCK_MASK` in specs).
   moment, the moment a picked text shows, a drag as a move, as a resize and on each edge handle,
   which components can be rewrapped, the lines an edge drag picks (`resolveAsk`), snapping to the
   centre lines, the draft's moves. `preview-clock.test.ts`: `showsFrameAt`.
+  `live-page.test.ts`: a move, a corner resize, a LIST's levels moved and scaled inside their layer, a
+  VISUAL scaled, an edge drag left to the rebuilt lines, a wrapped page's elements moved, the elements
+  that differ between two pages, and a restyle that never touches what the timeline animates.
   `change-requests.test.ts`: `Edited by you` and the details line.
 - `apps/studio/db-tests/owner-edits.test.ts` (`yarn test:db`): the job's insert policy, column grant
   and payload checks; `save_version` with the edited-from version and the learning rows (their
@@ -316,7 +340,12 @@ like decide does (`E2E_MOCK_MASK` in specs).
   one; the rows go with their reel and another reel's rows stay. `grants.test.ts` covers
   `owner_moves` like every public table.
 - `apps/studio/e2e/owner-edit.spec.ts` (`yarn test:e2e`): the editor opens paused, a picked text is
-  selected with its kind and a handle; a drag moves it, and a watch on every animation frame during
+  selected with its kind and a handle; a drag moves it; instant moves: read after each pointer move
+  the page on screen draws the text on the pointer (within 2 frame pixels), straight after pointer
+  up it is at the dropped place while the draft is still `swapping`, and a watch on every frame
+  from the drop through the swap finds it never anywhere else (pointer up to the final position is
+  logged and must be under 50 ms); a held right edge handle already shows the text on more lines
+  and the drop keeps them; and a watch on every animation frame during
   and after that drag finds no frame showing `Loading`, no player on screen, a player not ready or
   hidden, or a video with no decoded frame; a drag past the safe zone stops at its edge; the corner
   handle resizes it; a held drag near the middle snaps to both centre lines with both guides shown
@@ -342,7 +371,14 @@ moved, a resized and a widened component match between preview and export`: the 
 - Never save a moved component outside the safe zone or in the buttons' notch. The studio settles
   every drag (`settleOwnerMove`) and the worker refuses the job.
 - Never draw the draft with anything but the one builder: the editor's layer draws boxes and
-  handles only, never text, and is never part of the built page or the export.
+  handles only, never text, and is never part of the built page or the export. The instant view
+  only restyles the builder's own elements on the page on screen (their place, size and lines, from
+  a page the builder built, or scaled from them while a corner is held), and a drop always ends on
+  the rebuilt page's own values.
+- Never make the owner wait for the rebuilt page to see a drag or a drop: the page on screen is
+  restyled at once, and the swap that follows never moves anything.
+- Never let the instant view write what the page's timeline animates (`transform`, `opacity`,
+  `visibility`, `display`).
 - Never blank the preview for a draft: the player swaps the rebuilt page in only once it shows the
   same moment (`app_docs/preview.md`).
 - Never read a component's box from anything but the builder's own boxes (`build`'s `components`).

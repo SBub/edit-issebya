@@ -355,6 +355,126 @@ test("dragging the selected text moves it for its whole time on screen, and the 
   await shot("2-hook-moved.png");
 });
 
+// Records, on every animation frame until `stopTracking`, where the page on
+// screen draws a component (its corner as the element's own style has it, in
+// frame pixels) and whether a rebuilt draft is still being readied behind it,
+// with the time the pointer was let go.
+async function trackElement(id: string) {
+  await page.evaluate((target) => {
+    const track = {
+      frames: [] as { t: number; x: number; y: number; swapping: boolean }[],
+      upAt: null as number | null,
+      stop: false,
+    };
+    (window as unknown as { __track: typeof track }).__track = track;
+    window.addEventListener(
+      "pointerup",
+      () => {
+        track.upAt = performance.now();
+      },
+      { capture: true, once: true },
+    );
+    const frame = (t: number) => {
+      if (track.stop) return;
+      const shown = document.querySelector<HTMLElement & { iframeElement?: HTMLIFrameElement }>(
+        'hyperframes-player[data-page="shown"]',
+      );
+      const el = shown?.iframeElement?.contentDocument?.getElementById(target);
+      if (el) {
+        track.frames.push({
+          t,
+          x: Number.parseFloat(el.style.left),
+          y: Number.parseFloat(el.style.top),
+          swapping: document.querySelector("[data-page]")?.getAttribute("data-page") === "swapping",
+        });
+      }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }, id);
+}
+
+async function stopTracking() {
+  return page.evaluate(() => {
+    const track = (
+      window as unknown as {
+        __track: {
+          frames: { t: number; x: number; y: number; swapping: boolean }[];
+          upAt: number | null;
+          stop: boolean;
+        };
+      }
+    ).__track;
+    track.stop = true;
+    return { frames: track.frames, upAt: track.upAt };
+  });
+}
+
+test("a dragged text follows the pointer on every frame and stays where it is dropped: no wait for the rebuilt draft, no jump when it swaps in", async () => {
+  await page.getByTestId("move-pick").selectOption("hook");
+  await expect(moveBox("hook")).toHaveAttribute("data-selected", "true");
+  const before = await drawn("hook");
+  const scale = await screenScale();
+  const from = await centreOf(moveBox("hook"));
+  const steps = 8;
+  const dx = 64;
+  const dy = -96;
+  await trackElement("hook");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  // Each pointer move, read straight after it: the text is already there.
+  const during: { want: { x: number; y: number }; got: Drawn }[] = [];
+  for (let step = 1; step <= steps; step += 1) {
+    const sx = (dx * step) / steps;
+    const sy = (dy * step) / steps;
+    await page.mouse.move(from.x + sx * scale, from.y + sy * scale);
+    during.push({ want: { x: before.x + sx, y: before.y + sy }, got: await drawn("hook") });
+  }
+  await page.mouse.up();
+  // Straight after the pointer is let go, while the draft is still readied.
+  const dropped = await drawn("hook");
+  const swappingAtDrop = await page.locator("[data-page]").first().getAttribute("data-page");
+  await ready();
+  await page.waitForTimeout(300);
+  const { frames, upAt } = await stopTracking();
+  const final = await drawn("hook");
+
+  // From pointer up to the first frame that shows the text where it ends up.
+  const settledAt = frames.find(
+    (frame) =>
+      upAt !== null &&
+      frame.t >= upAt &&
+      Math.abs(frame.x - final.x) < 0.5 &&
+      Math.abs(frame.y - final.y) < 0.5,
+  );
+  const dropToFinalMs = settledAt && upAt !== null ? settledAt.t - upAt : null;
+  console.log(`owner-edit: pointer up to the final position: ${dropToFinalMs?.toFixed(1)} ms`);
+  test.info().annotations.push({ type: "drop-to-final-ms", description: String(dropToFinalMs) });
+
+  // During the drag: on the pointer, one frame pixel or two of rounding.
+  for (const { want, got } of during) {
+    expect(Math.abs(got.x - want.x)).toBeLessThan(2);
+    expect(Math.abs(got.y - want.y)).toBeLessThan(2);
+  }
+  // After it: where it was dropped, before the rebuilt draft is on screen.
+  expect(swappingAtDrop).toBe("swapping");
+  expect(Math.abs(dropped.x - (before.x + dx))).toBeLessThan(1.5);
+  expect(Math.abs(dropped.y - (before.y + dy))).toBeLessThan(1.5);
+  expect(Math.abs(final.x - dropped.x)).toBeLessThan(1);
+  expect(Math.abs(final.y - dropped.y)).toBeLessThan(1);
+  // No jump: every frame from the drop on, through the swap, shows it there.
+  const afterUp = frames.filter((frame) => upAt !== null && frame.t > upAt + 1);
+  expect(afterUp.some((frame) => frame.swapping)).toBe(true);
+  expect(afterUp.some((frame) => !frame.swapping)).toBe(true);
+  for (const frame of afterUp) {
+    expect(Math.abs(frame.x - final.x)).toBeLessThan(1);
+    expect(Math.abs(frame.y - final.y)).toBeLessThan(1);
+  }
+  expect(dropToFinalMs).not.toBeNull();
+  expect(dropToFinalMs!).toBeLessThan(50);
+  ownerHook = final;
+});
+
 test("a drag past the edge of the safe zone stops at the edge", async () => {
   await dragBy(await centreOf(moveBox("hook")), -2000, 0);
   await ready();
@@ -442,9 +562,24 @@ test("the edge handles make a text narrower or shorter at the same size: its lin
   await shot("5-edge-handles.png");
 
   // The right edge in by a third: more lines, the same size, the left edge kept.
-  await dragBy(await centreOf(box.locator('[data-edge="right"]')), -before.width / 3, 0);
+  // While the handle is held the text already shows its new lines, and they
+  // stay as they are when it is let go, before the rebuilt draft is on screen.
+  const scale = await screenScale();
+  const edge = await centreOf(box.locator('[data-edge="right"]'));
+  await page.mouse.move(edge.x, edge.y);
+  await page.mouse.down();
+  await page.mouse.move(edge.x - (before.width / 3) * scale, edge.y, { steps: 4 });
+  const held = await drawn("hook");
+  expect(held.fontSize).toBe(before.fontSize);
+  expect(Math.round(held.height / held.fontSize)).toBeGreaterThan(2);
+  await page.mouse.up();
+  const dropped = await drawn("hook");
+  expect(await page.locator("[data-page]").first().getAttribute("data-page")).toBe("swapping");
+  expect(dropped.height).toBe(held.height);
   await ready();
   const narrow = await drawn("hook");
+  expect(narrow.height).toBe(dropped.height);
+  expect(Math.abs(narrow.width - dropped.width)).toBeLessThan(1);
   expect(narrow.fontSize).toBe(before.fontSize);
   expect(narrow.width).toBeLessThanOrEqual((before.width * 2) / 3 + 1);
   expect(Math.round(narrow.height / narrow.fontSize)).toBeGreaterThan(2);
