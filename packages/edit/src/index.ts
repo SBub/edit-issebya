@@ -124,14 +124,17 @@ export {
 } from "./build.ts";
 export { type PlacedComponent } from "./components.ts";
 export {
+  type OwnerBoxMove,
   type OwnerMove,
   type OwnerMoveRecord,
+  type OwnerTextMove,
   type RecordedPlacement,
   MOVABLE_COMPONENTS,
   OWNER_MOVES_MAX,
   applyOwnerMoves,
   effectiveMoves,
   fitInSafeZone,
+  isBoxMove,
   isMovable,
   ownerMoveProblems,
   ownerMoveRecords,

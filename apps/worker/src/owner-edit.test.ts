@@ -44,6 +44,10 @@ let firstId: string;
 // Version 2: the committed answer placed by the engine (the hook and one accent).
 let placedId: string;
 let transcript: Transcript;
+// The committed answers, and how a call of the AI record is written.
+let hookAnswer: unknown;
+let decideAnswer: Record<string, unknown>;
+let aiCall: (role: "hook" | "decide", answer: unknown) => AiRecordCall;
 
 const newId = () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}`;
 
@@ -159,16 +163,16 @@ beforeEach(async () => {
       answerText: JSON.stringify(answer),
       finishReason: "stop",
     }) as AiRecordCall;
+  hookAnswer = replies.find((reply) => reply.role === "hook")!.answer;
+  decideAnswer = replies.find((reply) => reply.role !== "hook")!.answer as Record<string, unknown>;
+  aiCall = call;
   await writeAiRecord(storage, PREFIX, {
     format: 1,
     reel_id: REEL,
     version_id: firstId,
     prompt_version: "reel-components@v1",
     hook_prompt_version: "reel-hook@v1",
-    calls: [
-      call("hook", replies.find((reply) => reply.role === "hook")!.answer),
-      call("decide", replies.find((reply) => reply.role !== "hook")!.answer),
-    ],
+    calls: [call("hook", hookAnswer), call("decide", decideAnswer)],
   });
   await runRelayout({ ...deps(), fontPair: "classic", log: () => {} });
   placedId = current!;
@@ -331,6 +335,61 @@ describe("runOwnerEdit", () => {
       owner: { x: 200, y: 1000, size: 77 },
       moved: true,
       resized: true,
+    });
+  });
+
+  it("moves and scales a VISUAL as a box, keeping its picture's aspect ratio, and records it", async () => {
+    // Version 3: the committed answer with one VISUAL over the sentence instead
+    // of the accent (on the short clip the accent holds the screen), placed by
+    // the engine. Records are never rewritten: the test swaps version 2's.
+    await storage.delete(aiRecordKey(PREFIX, REEL, placedId));
+    await writeAiRecord(storage, PREFIX, {
+      format: 1,
+      reel_id: REEL,
+      version_id: placedId,
+      prompt_version: "reel-components@v1",
+      hook_prompt_version: "reel-hook@v1",
+      calls: [
+        aiCall("hook", hookAnswer),
+        aiCall("decide", {
+          ...decideAnswer,
+          accents: [],
+          lists: [],
+          visuals: [{ from: "w0001", to: "w0010", description: "a messy desk at night" }],
+        }),
+      ],
+    });
+    await runRelayout({ ...deps(), fontPair: "classic", log: () => {} });
+    const withVisual = current!;
+    const visualOf = async (id: string) => {
+      const item = (await editOf(id)).tracks.behind?.find((entry) => entry.kind === "visual");
+      if (item?.kind !== "visual") throw new Error("no visual");
+      return item;
+    };
+    const before = await visualOf(withVisual);
+    const width = Math.round(before.box.width * 0.75);
+    await ownerEditRun({
+      versionId: withVisual,
+      moves: [{ id: before.id, kind: "box", x: 120, y: 600, width }],
+    });
+    const after = await visualOf(current!);
+    expect(after.box.x).toBe(120);
+    expect(after.box.y).toBe(600);
+    expect(after.box.width).toBe(width);
+    expect(
+      Math.abs(after.box.height / after.box.width - before.box.height / before.box.width),
+    ).toBeLessThan(0.01);
+    expect(after.image).toBe(before.image);
+    const { owner_moves: records } = rows.get(current!)!;
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      item: before.id,
+      component: "VISUAL",
+      engine: { ...before.box, size: null },
+      owner: { ...after.box, size: null },
+      moved: true,
+      resized: true,
+      wrap_width: null,
     });
   });
 

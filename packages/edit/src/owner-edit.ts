@@ -9,27 +9,29 @@ import type { FontRole } from "./font-pairs.ts";
 import { breaksOf, textLines } from "./lines.ts";
 import type { Measurer } from "./measure.ts";
 import { type Preset, wordsText } from "./preset.ts";
-import type { Edit, TransitionLevel } from "./schema.ts";
+import type { BehindVisualItem, Edit, TransitionLevel } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 import { LEVEL_ROLES, levelBoxes, levelStyle } from "./transitions.ts";
-import { STYLES } from "./variants.ts";
+import { STYLES, VISUAL_STAND_INS } from "./variants.ts";
 
 // THE OWNER'S MOVES (app_docs/owner-edits.md): in the studio the owner moves
-// and resizes a text component on screen, and Save makes a new version from
-// them. A component has one box for its whole time on screen, so a move moves
-// it for all of it. Its place, its text size and, through its wrap width, its
-// line breaks change: never its words, its time or what its variant draws
-// inside the box.
+// and resizes a text component or a VISUAL on screen, and Save makes a new
+// version from them. A component has one box for its whole time on screen, so
+// a move moves it for all of it. A text's place, its text size and, through
+// its wrap width, its line breaks change: never its words, its time or what
+// its variant draws inside the box. A VISUAL's box moves and scales, keeping
+// its picture's aspect ratio.
 
-// The components the owner may move and resize: every text pick. Captions and
-// VISUALs are not (visuals get their own step later).
+// The components the owner may move and resize: every text pick and the
+// VISUALs. Captions are not.
 export const MOVABLE_COMPONENTS: readonly EngineComponent[] = [
   "ACCENT",
   "QUESTION",
   "BIGWORD",
   "LIST",
   "HOOK",
+  "VISUAL",
 ];
 
 export function isMovable(component: Pick<PlacedComponent, "component">): boolean {
@@ -44,13 +46,35 @@ export function isMovable(component: Pick<PlacedComponent, "component">): boolea
 // fits it (a LIST: its lead-in and its key phrase each), so a wider box has
 // fewer lines and a narrower one more, the letters never stretched. Without
 // it the version's own lines are kept. A big word has no wrap width.
-export interface OwnerMove {
+export interface OwnerTextMove {
   id: string;
+  kind?: never;
   x: number;
   y: number;
   size: number;
   width?: number;
 }
+
+// One move of a VISUAL: its box's top left corner and its width in frame
+// pixels. Its height follows from its picture's aspect ratio (`boxHeight`), so
+// a VISUAL is only ever scaled in proportion.
+export interface OwnerBoxMove {
+  id: string;
+  kind: "box";
+  x: number;
+  y: number;
+  width: number;
+}
+
+export type OwnerMove = OwnerTextMove | OwnerBoxMove;
+
+export function isBoxMove(move: OwnerMove): move is OwnerBoxMove {
+  return move.kind === "box";
+}
+
+// The narrowest a VISUAL may be made, in frame pixels: a card still worth a
+// look. The safe zone bounds the widest (`settleOwnerMove`).
+const MIN_BOX_PX = 100;
 
 // The largest text size of the format (`schema.ts`): an overlay or a level.
 const MAX_TEXT_SIZE = 400;
@@ -71,23 +95,47 @@ interface Context {
 }
 
 // A job's moves as they arrive (untrusted JSON): a list of at most
-// `OWNER_MOVES_MAX` moves, each an id, finite coordinates, a whole size and
-// optionally a positive wrap width, no id twice. Null when it is anything else.
+// `OWNER_MOVES_MAX` moves, no id twice, each either a text's (an id, finite
+// coordinates, a whole size and optionally a positive wrap width) or a
+// VISUAL's box (`kind: "box"`, an id, finite coordinates and a positive
+// width). Null when it is anything else.
 export function parseOwnerMoves(json: unknown): OwnerMove[] | null {
   if (!Array.isArray(json) || json.length === 0 || json.length > OWNER_MOVES_MAX) return null;
   const moves: OwnerMove[] = [];
   const seen = new Set<string>();
   for (const entry of json as unknown[]) {
     if (typeof entry !== "object" || entry === null) return null;
-    const { id, x, y, size, width } = entry as Record<string, unknown>;
+    const { id, kind, x, y, size, width } = entry as Record<string, unknown>;
     if (typeof id !== "string" || id.length === 0 || id.length > 64 || seen.has(id)) return null;
-    if (typeof x !== "number" || typeof y !== "number" || typeof size !== "number") return null;
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isInteger(size)) return null;
-    if (width !== undefined && !isWrapWidth(width)) return null;
+    if (typeof x !== "number" || typeof y !== "number") return null;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     seen.add(id);
+    if (kind === "box") {
+      if (size !== undefined || !isWrapWidth(width)) return null;
+      moves.push({ id, kind, x, y, width });
+      continue;
+    }
+    if (kind !== undefined) return null;
+    if (typeof size !== "number" || !Number.isInteger(size)) return null;
+    if (width !== undefined && !isWrapWidth(width)) return null;
     moves.push(typeof width === "number" ? { id, x, y, size, width } : { id, x, y, size });
   }
   return moves;
+}
+
+function visualOf(edit: Edit, id: string): BehindVisualItem | null {
+  const item = (edit.tracks.behind ?? []).find((entry) => entry.id === id);
+  return item?.kind === "visual" ? item : null;
+}
+
+// A VISUAL's height at a width: its picture's aspect ratio (its box's own,
+// for a VISUAL with no picture), at whole pixels; its own height at its own
+// width, so a move that only moves changes nothing else.
+function boxHeight(item: BehindVisualItem, width: number): number {
+  if (Math.abs(width - item.box.width) < SLACK) return item.box.height;
+  const picture = VISUAL_STAND_INS.find((entry) => entry.file === item.image);
+  const aspect = picture ? picture.height / picture.width : item.box.height / item.box.width;
+  return Math.max(1, Math.round(width * aspect));
 }
 
 function isWrapWidth(width: unknown): width is number {
@@ -186,11 +234,33 @@ export function applyOwnerMoves(
   { transcript, preset, measurer }: Pick<Context, "transcript" | "preset" | "measurer">,
 ): { ok: true; edit: Edit } | { ok: false; reasons: string[] } {
   const reasons: string[] = [];
-  const byId = new Map<string, OwnerMove>();
+  const byId = new Map<string, OwnerTextMove>();
+  const boxes = new Map<string, OwnerBoxMove>();
   for (const move of moves) {
+    if (byId.has(move.id) || boxes.has(move.id)) {
+      reasons.push(`${move.id}: moved twice`);
+      continue;
+    }
+    const visual = visualOf(edit, move.id);
+    if (isBoxMove(move) || visual) {
+      if (!visual) reasons.push(`${move.id}: not a visual of this version`);
+      else if (!isBoxMove(move)) reasons.push(`${move.id}: a visual moves as a box`);
+      else if (!Number.isFinite(move.x) || !Number.isFinite(move.y)) {
+        reasons.push(`${move.id}: its place is not a number`);
+      } else if (
+        !Number.isFinite(move.width) ||
+        move.width < MIN_BOX_PX - SLACK ||
+        move.width > preset.frame.width + SLACK
+      ) {
+        reasons.push(
+          `${move.id}: width ${move.width} is outside ${MIN_BOX_PX} to ${preset.frame.width} px`,
+        );
+      }
+      if (isBoxMove(move)) boxes.set(move.id, move);
+      continue;
+    }
     const range = ownerSizeRange(edit, move.id, preset);
-    if (byId.has(move.id)) reasons.push(`${move.id}: moved twice`);
-    else if (!range) reasons.push(`${move.id}: not a text component of this version`);
+    if (!range) reasons.push(`${move.id}: not a text component of this version`);
     else if (!Number.isInteger(move.size) || move.size < range[0] || move.size > range[1]) {
       reasons.push(`${move.id}: size ${move.size} is outside ${range[0]} to ${range[1]} px`);
     } else if (!Number.isFinite(move.x) || !Number.isFinite(move.y)) {
@@ -227,8 +297,17 @@ export function applyOwnerMoves(
     };
   });
   const behind = edit.tracks.behind?.map((item) => {
+    if (item.kind === "visual") {
+      const box = boxes.get(item.id);
+      if (!box) return item;
+      const width = Math.round(box.width);
+      return {
+        ...item,
+        box: { x: Math.round(box.x), y: Math.round(box.y), width, height: boxHeight(item, width) },
+      };
+    }
     const move = byId.get(item.id);
-    if (!move || item.kind !== "word") return item;
+    if (!move) return item;
     return { ...item, position: { x: move.x, y: move.y }, size: move.size };
   });
   const transitions = edit.tracks.transitions.map((item) => {
@@ -298,7 +377,7 @@ function isBigWord(edit: Edit, id: string): boolean {
 function restack(
   levels: NonNullable<Edit["tracks"]["transitions"][number]["levels"]>,
   own: readonly { role: (typeof LEVEL_ROLES)[number]; y: number; height: number }[],
-  move: OwnerMove & { width: number },
+  move: OwnerTextMove & { width: number },
   scale: number,
   measurer: Measurer,
 ): Map<(typeof LEVEL_ROLES)[number], { x: number; y: number; lines: string[] }> {
@@ -454,6 +533,7 @@ export function settleOwnerMove(
   move: OwnerMove,
   context: Context,
 ): { ok: true; move: OwnerMove; edit: Edit } | { ok: false; reasons: string[] } {
+  if (isBoxMove(move)) return settleBoxMove(edit, move, context);
   const range = ownerSizeRange(edit, move.id, context.preset);
   if (!range) return { ok: false, reasons: [`${move.id}: not a text component of this version`] };
   const { box: safe } = SAFE_ZONE;
@@ -468,7 +548,7 @@ export function settleOwnerMove(
     if (width !== undefined) width *= next / size;
     size = next;
   };
-  const asked = (): OwnerMove =>
+  const asked = (): OwnerTextMove =>
     width === undefined ? { id: move.id, x, y, size } : { id: move.id, x, y, size, width };
   // Each pass shrinks or moves; a text that still does not fit at its smallest
   // size ends the loop.
@@ -509,6 +589,45 @@ export function settleOwnerMove(
     y += fy - at.y;
   }
   return { ok: false, reasons: [`${move.id}: no place inside the safe zone`] };
+}
+
+// A VISUAL's move made legal: its width at least `MIN_BOX_PX` and shrunk (its
+// height with it, in proportion) until the box fits the safe zone and clears
+// the notch, then the box moved the least it must, at whole pixels. Refused
+// when the id is no VISUAL or it fits nowhere even at its narrowest.
+function settleBoxMove(
+  edit: Edit,
+  move: OwnerBoxMove,
+  context: Context,
+): { ok: true; move: OwnerMove; edit: Edit } | { ok: false; reasons: string[] } {
+  const visual = visualOf(edit, move.id);
+  if (!visual) return { ok: false, reasons: [`${move.id}: not a visual of this version`] };
+  const { box: safe } = SAFE_ZONE;
+  let width = Math.max(MIN_BOX_PX, Math.round(move.width));
+  for (let pass = 0; pass < 2000 && width >= MIN_BOX_PX; pass += 1) {
+    const height = boxHeight(visual, width);
+    const share = Math.min((safe.right - safe.left) / width, (safe.bottom - safe.top) / height);
+    if (share < 1 - SLACK) {
+      width = Math.min(width - 1, Math.floor(width * share));
+      continue;
+    }
+    const spot = fitInSafeZone({ x: Math.round(move.x), y: Math.round(move.y), width, height });
+    if (!spot) {
+      width -= 1;
+      continue;
+    }
+    const settled: OwnerBoxMove = {
+      id: move.id,
+      kind: "box",
+      x: Math.ceil(spot.x - SLACK),
+      y: Math.ceil(spot.y - SLACK),
+      width,
+    };
+    const applied = applyOwnerMoves(edit, [settled], context);
+    if (!applied.ok) return applied;
+    return { ok: true, move: settled, edit: applied.edit };
+  }
+  return { ok: false, reasons: [`${move.id}: does not fit the safe zone at any size`] };
 }
 
 function boxOf(edit: Edit, id: string, context: Context): PlacedComponent | null {
@@ -555,6 +674,13 @@ export function effectiveMoves(
       if (!now) return true;
       const change = differs(now, at);
       return change.moved || change.resized;
+    }
+    if (isBoxMove(move)) {
+      return (
+        Math.abs(at.x - move.x) >= 0.5 ||
+        Math.abs(at.y - move.y) >= 0.5 ||
+        Math.abs(at.width - move.width) >= 0.5
+      );
     }
     return (
       move.width !== undefined ||
@@ -656,6 +782,12 @@ export interface OwnerMoveRecord {
   };
 }
 
+// The wrap width a text's move set; a VISUAL's width is its box's, never a
+// wrap width.
+function wrapWidthOf(move: OwnerMove | undefined): number | null {
+  return move && !isBoxMove(move) ? (move.width ?? null) : null;
+}
+
 function placementOf(at: PlacedComponent): RecordedPlacement {
   return { x: at.x, y: at.y, width: at.width, height: at.height, size: at.size };
 }
@@ -704,7 +836,7 @@ export function ownerMoveRecords({
       engine: placementOf(theirs),
       owner: placementOf(mine),
       ...change,
-      wrap_width: moves.find((move) => move.id === id)?.width ?? null,
+      wrap_width: wrapWidthOf(moves.find((move) => move.id === id)),
       context: {
         frame: { width: preset.frame.width, height: preset.frame.height },
         font_pair: edit.font_pair,

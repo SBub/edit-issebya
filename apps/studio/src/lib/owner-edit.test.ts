@@ -1,6 +1,7 @@
 import type { PlacedComponent } from "@edit-issebya/edit";
 import { describe, expect, it } from "vitest";
 import {
+  type Drag,
   boxStyle,
   canRewrap,
   componentLabel,
@@ -49,9 +50,10 @@ describe("the editor's components", () => {
     ).toEqual(["Accent", "Question", "Big word", "List", "Hook"]);
   });
 
-  it("lists the texts the owner may move, in the order they come on screen", () => {
+  it("lists the texts and visuals the owner may move, in the order they come on screen", () => {
     expect(movableComponents(ALL).map((entry) => entry.id)).toEqual([
       "hook",
+      "visual-1",
       "accent-1",
       "big-word-1",
       "transition-1",
@@ -61,7 +63,7 @@ describe("the editor's components", () => {
 
   it("offers only what is on screen at the paused moment", () => {
     expect(movableAt(ALL, 0).map((entry) => entry.id)).toEqual([]);
-    expect(movableAt(ALL, 2).map((entry) => entry.id)).toEqual(["hook"]);
+    expect(movableAt(ALL, 2).map((entry) => entry.id)).toEqual(["hook", "visual-1"]);
     expect(movableAt(ALL, 5.2).map((entry) => entry.id)).toEqual([
       "accent-1",
       "big-word-1",
@@ -124,24 +126,51 @@ describe("a drag", () => {
   });
 
   it("shrinks with a drag inwards, along either edge, never inside out", () => {
-    expect(moveOfDrag(box, { mode: "resize", dx: -220, dy: -55 })?.size).toBe(55);
+    const size = (drag: Drag) => {
+      const ask = moveOfDrag(box, drag);
+      return ask && ask.kind !== "box" ? ask.size : null;
+    };
+    expect(size({ mode: "resize", dx: -220, dy: -55 })).toBe(55);
     // Straight in along the bottom edge, or straight up along the right one.
-    expect(moveOfDrag(box, { mode: "resize", dx: -132, dy: 0 })?.size).toBe(77);
-    expect(moveOfDrag(box, { mode: "resize", dx: 0, dy: -33 })?.size).toBe(77);
+    expect(size({ mode: "resize", dx: -132, dy: 0 })).toBe(77);
+    expect(size({ mode: "resize", dx: 0, dy: -33 })).toBe(77);
     // Straight down doubles it.
-    expect(moveOfDrag(box, { mode: "resize", dx: 0, dy: 110 })?.size).toBe(220);
+    expect(size({ mode: "resize", dx: 0, dy: 110 })).toBe(220);
     expect(resizeShare(box, { dx: -5000, dy: -5000 })).toBe(0.05);
   });
 
-  it("leaves the box where it is with no drag, and moves no card", () => {
+  it("leaves the box where it is with no drag", () => {
     expect(draggedBox(box, null)).toEqual({ x: 300, y: 400, width: 440, height: 110 });
-    expect(
-      moveOfDrag(component({ id: "visual-1", component: "VISUAL", size: null }), {
-        mode: "move",
-        dx: 1,
-        dy: 1,
-      }),
-    ).toBeNull();
+  });
+
+  it("moves a VISUAL's box and scales it about its corner in proportion, with no edge handle", () => {
+    const visual = component({
+      id: "visual-1",
+      component: "VISUAL",
+      size: null,
+      width: 300,
+      height: 383,
+    });
+    expect(moveOfDrag(visual, { mode: "move", dx: 12.5, dy: -40 })).toEqual({
+      id: "visual-1",
+      kind: "box",
+      x: 312.5,
+      y: 360,
+      width: 300,
+    });
+    expect(moveOfDrag(visual, { mode: "resize", dx: -90, dy: 0 })).toEqual({
+      id: "visual-1",
+      kind: "box",
+      x: 300,
+      y: 400,
+      width: 210,
+    });
+    const scaled = draggedBox(visual, { mode: "resize", dx: -90, dy: 0 });
+    expect(scaled).toMatchObject({ x: 300, y: 400, width: 210 });
+    expect(scaled.height).toBeCloseTo(268.1, 6);
+    expect(moveOfDrag(visual, { mode: "right", dx: -90, dy: 0 })).toBeNull();
+    expect(canRewrap(visual)).toBe(false);
+    expect(componentLabel("VISUAL")).toBe("Visual");
   });
 });
 

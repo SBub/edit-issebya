@@ -1,6 +1,8 @@
 import {
   type EngineComponent,
+  type OwnerBoxMove,
   type OwnerMove,
+  type OwnerTextMove,
   type PlacedComponent,
   isMovable,
 } from "@edit-issebya/edit";
@@ -17,6 +19,7 @@ const LABELS: Partial<Record<EngineComponent, string>> = {
   BIGWORD: "Big word",
   LIST: "List",
   HOOK: "Hook",
+  VISUAL: "Visual",
 };
 
 export function componentLabel(component: EngineComponent): string {
@@ -106,9 +109,13 @@ export function resizeShare(
 const MIN_EDGE_PX = 20;
 
 // Whether a component's lines can be set again by its edge handles: every
-// text but a big word (one or two words that keep their lines).
+// text but a big word (one or two words that keep their lines). A VISUAL has
+// no lines: its corner handle scales it in proportion, and it has no edge
+// handles.
 export function canRewrap(component: Pick<PlacedComponent, "component">): boolean {
-  return isMovable(component) && component.component !== "BIGWORD";
+  return (
+    isMovable(component) && component.component !== "BIGWORD" && component.component !== "VISUAL"
+  );
 }
 
 // The box a component shows while it is dragged, before it is settled: moved
@@ -141,15 +148,39 @@ export function draggedBox(
 // and it is made legal (`settleOwnerMove`): a move, or for an edge handle the
 // width or height the box was dragged to and the edge that stays where it was
 // (the right edge for the left handle, the bottom edge for the top one).
-export interface OwnerAsk extends OwnerMove {
+// A VISUAL's ask is its box (`kind: "box"`): moved, or scaled about its corner.
+export interface OwnerTextAsk extends OwnerTextMove {
   height?: number;
   keep?: { right?: number; bottom?: number };
 }
 
+export type OwnerAsk = OwnerTextAsk | OwnerBoxMove;
+
 // The ask of a finished drag: a move keeps the size, a resize keeps the
-// corner, an edge handle keeps the size and asks for a width or a height. Null
-// for a component with no text size.
+// corner, an edge handle keeps the size and asks for a width or a height. A
+// VISUAL's move or corner resize asks for its box (its height follows its
+// picture). Null for an edge handle on a VISUAL or any other component with
+// no text size.
 export function moveOfDrag(component: PlacedComponent, drag: Drag): OwnerAsk | null {
+  if (component.component === "VISUAL") {
+    if (drag.mode === "move") {
+      return {
+        id: component.id,
+        kind: "box",
+        x: component.x + drag.dx,
+        y: component.y + drag.dy,
+        width: component.width,
+      };
+    }
+    if (drag.mode !== "resize") return null;
+    return {
+      id: component.id,
+      kind: "box",
+      x: component.x,
+      y: component.y,
+      width: Math.round(component.width * resizeShare(component, drag)),
+    };
+  }
   if (component.size === null) return null;
   if (
     drag.mode === "left" ||
@@ -220,8 +251,8 @@ export interface WrapOption {
 // takes the widest option that fits in it (the narrowest when none does), a
 // height the option whose box is nearest it (the wider of two as near). The
 // kept edge stays where it was. An ask with neither is a plain move.
-export function resolveAsk(ask: OwnerAsk, options: readonly WrapOption[]): OwnerMove {
-  const move: OwnerMove = { id: ask.id, x: ask.x, y: ask.y, size: ask.size };
+export function resolveAsk(ask: OwnerTextAsk, options: readonly WrapOption[]): OwnerTextMove {
+  const move: OwnerTextMove = { id: ask.id, x: ask.x, y: ask.y, size: ask.size };
   if (ask.width === undefined && ask.height === undefined) return move;
   if (options.length === 0) return ask.width === undefined ? move : { ...move, width: ask.width };
   let chosen: WrapOption;

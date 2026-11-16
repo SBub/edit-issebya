@@ -1,4 +1,4 @@
-# The owner's moves: move and resize a text on screen
+# The owner's moves: move and resize a text or a visual on screen
 
 **Specifications:**
 
@@ -10,21 +10,27 @@
 - Owner feedback, 2026-11-16 (top complaint): a dragged or resized text showed in its new place only
   after a visible delay. It must follow the pointer and stay where it is dropped at once, like an
   optimistic update.
+- Owner decisions, 2026-11-16 (visuals step 1): the owner moves and resizes a VISUAL in the same
+  editor, behind the same `studio-owner-edit` flag; a VISUAL keeps its picture's aspect ratio; its
+  only resize is the corner handle, in proportion, like a text's; no edge handles for a VISUAL.
+  Rotation and adding images come later.
 
 ## Overview
 
 On a reel's page the owner presses `Move text`, selects a text component on the paused preview (an
-accent, a question, a big word, a list or the hook), drags it to move it, drags its corner handle to
-resize it or drags an edge handle to make its box wider, narrower, taller or shorter, and presses
-Save. Save queues an `owner_edit` job; the worker applies the moves to the
+accent, a question, a big word, a list or the hook) or a VISUAL card, drags it to move it, drags its
+corner handle to resize it or (a text) drags an edge handle to make its box wider, narrower, taller
+or shorter, and presses Save. Save queues an `owner_edit` job; the worker applies the moves to the
 version and saves the result as a **new** version titled `Edited by you`. The version the owner
 edited stays as it was, and going back works as for any version.
 
 Only the place, the text size and, through an edge handle, the line breaks of a component change.
 Never its words, its time on screen or what its variant draws inside its box. An edge handle never
 stretches letters: the text keeps its size and is set again on more or fewer lines. A component has one box for its whole time on screen
-(not one per frame), so a move moves it for all of it. Captions and VISUAL cards are not moved (visuals
-get their own step later). There is no delete, no timing change and no rotation.
+(not one per frame), so a move moves it for all of it. A VISUAL's box moves and scales: its picture
+and its time stay, and its height always follows its picture's aspect ratio, so a card is never
+stretched. Captions are not moved. There is no delete, no timing change, no rotation and no adding
+of images.
 
 For every component the owner moved or resized, the worker keeps a learning record in the
 `owner_moves` table: where the layout engine placed it, where the owner put it and what was on screen
@@ -65,9 +71,17 @@ with it at that moment. Placement rules will be learnt from these later.
     With a wrap width its lead-in and key phrase are each set again to it at their own sizes (the
     number keeps its line), and the levels are stacked again from the corner in their order on
     screen, each centred on the widest as the engine stacks them, the gaps the version's scaled.
-- It refuses, with reasons: an id that is no text component of the edit (a caption and a VISUAL are
-  not moved), a size outside the component's range (`ownerSizeRange`), a component moved twice, a
-  wrap width on a big word (`a big word keeps its lines`) or one that is no positive number.
+- A VISUAL's move is `OwnerBoxMove`, `{ id, kind: "box", x, y, width }`: its box's top left corner
+  and its width in frame pixels. Its height is derived (`boxHeight`): the width times its stand-in
+  picture's height over its width (`VISUAL_STAND_INS`; the box's own ratio for a VISUAL with no
+  picture), at whole pixels, and its own height at its own width, so a move that only moves changes
+  nothing else. `applyOwnerMoves` writes the item's `box` (whole pixels) and nothing else: not its
+  picture, its description or its time. `isBoxMove` tells the two kinds apart.
+- It refuses, with reasons: an id that is no text component of the edit (a caption is not moved), a
+  size outside the component's range (`ownerSizeRange`), a component moved twice, a wrap width on a
+  big word (`a big word keeps its lines`) or one that is no positive number; a text's move on a
+  VISUAL (`a visual moves as a box`), a box move on anything but a VISUAL (`not a visual of this
+version`) and a VISUAL narrower than 100 px (`MIN_BOX_PX`) or wider than the frame.
 - `ownerWrapOptions(edit, id, { x, y, size }, context)`: every wrap width at which the component's
   lines change at that size, widest first, each with the box it gives (read from a build, like
   every box), boxes that come out the same given once. For a LIST the widths at which its lead-in or
@@ -88,7 +102,9 @@ with it at that moment. Placement rules will be learnt from these later.
 - `settleOwnerMove(edit, move, context)` makes one move legal: a wrap width no wider than the safe
   zone, the size brought into its range and shrunk until the box fits the safe zone (a wrap width
   shrinks with the size, so the lines stay), then the box moved the least it must, at whole pixels. The
-  studio settles every drag with it, so what the owner sees is what the worker accepts.
+  studio settles every drag with it, so what the owner sees is what the worker accepts. A VISUAL's
+  move is settled the same way: its width at least 100 px and shrunk (its height with it) until the
+  box fits the safe zone and clears the notch, then moved the least it must, at whole pixels.
 - `effectiveMoves(moves, components, after?)` leaves out a move that changes nothing (a text put back
   where the version has it). Without `after` (the worker) a move with a wrap width always counts.
   With `after` (the studio's draft components) a move counts only when its box or size there differs
@@ -98,12 +114,15 @@ with it at that moment. Placement rules will be learnt from these later.
   it; the studio's draft does not (a mask can only be made by the worker), so a big word dragged onto
   the head shows in front of the speaker in the draft and behind the speaker once saved.
 - `parseOwnerMoves(json)`: a job's moves as they arrive (untrusted): 1 to 200 moves
-  (`OWNER_MOVES_MAX`), each an id, finite numbers, a whole size and optionally a wrap width (a finite
-  number above 0, at most 100000), no id twice; null otherwise.
+  (`OWNER_MOVES_MAX`), no id twice, each either a text's (an id, finite numbers, a whole size and
+  optionally a wrap width, a finite number above 0, at most 100000) or a VISUAL's (`kind: "box"`, an
+  id, finite numbers and a width like a wrap width, no size); null otherwise. `effectiveMoves` leaves
+  out a VISUAL's move whose corner and width are the version's.
 - `ownerMoveRecords(...)` builds the learning records (below).
 
 ### The editor (`apps/studio`)
 
+- `isMovable` (`MOVABLE_COMPONENTS`): the five text kinds and `VISUAL`.
 - `src/components/ReelPreview.tsx` (`BuiltPreview`): the `Move text` button (`data-testid="move-toggle"`,
   `aria-pressed`) in the player's control row, before `Zones`; desktop only (`lg:`), built for a
   mouse. It pauses the preview and shows the editor; Play is off while it is open; the ruler still
@@ -134,17 +153,20 @@ with it at that moment. Placement rules will be learnt from these later.
 - `src/components/MoveLayer.tsx`: the layer over the frame (`data-testid="move-layer"`), given to
   `PreviewPlayer` as its `overlay`.
   - A bar on top (`move-bar`), as tall as the frame's top margin, which the platforms cover and no
-    text sits in: the list of texts (`move-pick`, a `select` named `Text to move`, one line per
-    movable component, `Kind: text`), `Cancel` (`move-cancel`) and `Save` (`move-save`, off until
+    text sits in: the list (`move-pick`, a `select` named `Text or visual to move`, first line
+    `Pick a text or visual`, one line per movable component, `Kind: text`; a VISUAL's text is its
+    description), `Cancel` (`move-cancel`) and `Save` (`move-save`, off until
     something is moved).
   - A box (`move-box`, `data-component-id`, `data-component`) around each movable component on
     screen at the paused moment: dashed until selected. Clicking it selects it; the selected box
     (`data-selected`) shows its kind above it (`move-kind`: `Accent`, `Question`, `Big word`, `List`,
-    `Hook`), a corner handle (`move-handle`) at its bottom right and, for every text but a big word
-    (`canRewrap`), four edge handles (`move-edge`, `data-edge="left|right|top|bottom"`) at the
+    `Hook`, `Visual`), a corner handle (`move-handle`) at its bottom right and, for every text but a
+    big word (`canRewrap`; never a VISUAL), four edge handles (`move-edge`, `data-edge="left|right|top|bottom"`) at the
     middle of its edges.
   - Dragging a box moves it; dragging the corner handle resizes it about its top left corner, in
-    proportion (the text size). A press that moves less than 3 screen pixels is a click.
+    proportion (the text size; a VISUAL's width, its height following its picture). For a VISUAL
+    `moveOfDrag` asks for its box (`{ kind: "box", x, y, width }`). A press that moves less than 3
+    screen pixels is a click.
   - Dragging an edge handle keeps the text size and the opposite edge. While it is held the box
     follows the handle. When it is let go, `ownerWrapOptions` gives the lines the text can take and
     `resolveAsk` picks one: the left or right handle the widest lines that fit the width it was
@@ -152,7 +174,7 @@ with it at that moment. Placement rules will be learnt from these later.
     nearest the height it was dragged to (the wider of two as near). The left handle keeps the right
     edge, the top handle the bottom edge. A move or a corner resize later keeps the wrap width an
     edge drag set, scaled with the size, so the lines stay.
-  - Snap guides: while a box is dragged, its centre snaps to the frame's vertical centre line and
+  - Snap guides: while a box (a text's or a VISUAL's) is dragged, its centre snaps to the frame's vertical centre line and
     its horizontal centre line, each axis on its own, when it comes within 8 screen pixels
     (`SNAP_PX`) of one. A thin line (`move-guide`, `data-axis="vertical|horizontal"`) shows while it
     is on that line. The snapped place is still settled (`settleOwnerMove`) when the drag ends, so
@@ -192,7 +214,11 @@ your changes`); `JOB_STEPS.owner_edit` is that one step.
     (queued, own reel), which mirrors the relayout policy.
   - `versions.edited_from_id`: the version the owner edited, of the same reel (a foreign key like
     `parent_id`); null for every other version.
-  - `owner_moves`: the learning table (below).
+  - `owner_moves`: the learning table (below); its `component` check accepts `VISUAL`, and the
+    `jobs.owner_edit` comment names both kinds of move. A database that applied this migration
+    before visuals were added is brought in line by dropping and adding
+    `owner_moves_component_check` with `VISUAL` and setting the comment again (the migration is
+    edited in place, not added to).
   - `save_version` takes `p_edited_from_id` and `p_owner_moves` (both with defaults, so every other
     caller is unchanged) and writes the version and its learning rows in one transaction. Learning
     rows without `p_edited_from_id` are refused.
@@ -220,18 +246,18 @@ refused: ...`). All of these are permanent failures, and no version is written.
 
 One row per component moved or resized in one save, written by `save_version` with the version.
 
-| Column                                 | What it holds                                                                                                                               |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `owner_id`, `reel_id`                  | whose move, on which reel                                                                                                                   |
-| `version_id`, `from_version_id`        | the owner's version, and the version the owner edited                                                                                       |
-| `engine_version_id`                    | the engine-placed version the engine's box was read from                                                                                    |
-| `item`, `component`, `variant`, `text` | the item id, `ACCENT`, `QUESTION`, `BIGWORD`, `LIST` or `HOOK`, the variant entry the engine placed it with (`accent/above-head`), its text |
-| `start_seconds`, `end_seconds`         | its time on screen                                                                                                                          |
-| `engine_box`                           | where the engine placed it: `{ x, y, width, height, size }`                                                                                 |
-| `owner_box`                            | where the owner put it, the same shape                                                                                                      |
-| `moved`, `resized`                     | which of the two differs: a new corner is a move; a new size, or a box of another width or height (its lines set again), a resize           |
-| `wrap_width`                           | the wrap width an edge handle set, in frame pixels at the owner's size; null when the version's lines were kept                             |
-| `context`                              | the moment (below)                                                                                                                          |
+| Column                                 | What it holds                                                                                                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `owner_id`, `reel_id`                  | whose move, on which reel                                                                                                                                                      |
+| `version_id`, `from_version_id`        | the owner's version, and the version the owner edited                                                                                                                          |
+| `engine_version_id`                    | the engine-placed version the engine's box was read from                                                                                                                       |
+| `item`, `component`, `variant`, `text` | the item id, `ACCENT`, `QUESTION`, `BIGWORD`, `LIST`, `HOOK` or `VISUAL`, the variant entry the engine placed it with (`accent/above-head`), its text (a VISUAL's description) |
+| `start_seconds`, `end_seconds`         | its time on screen                                                                                                                                                             |
+| `engine_box`                           | where the engine placed it: `{ x, y, width, height, size }`                                                                                                                    |
+| `owner_box`                            | where the owner put it, the same shape                                                                                                                                         |
+| `moved`, `resized`                     | which of the two differs: a new corner is a move; a new size, or a box of another width or height (its lines set again), a resize                                              |
+| `wrap_width`                           | the wrap width an edge handle set, in frame pixels at the owner's size; null when the version's lines were kept                                                                |
+| `context`                              | the moment (below)                                                                                                                                                             |
 
 `context` is `{ frame, font_pair, head, engine_zone, others }`: the frame's size, the font pair, the
 head over the component's time (the box around the robust faces of the head track, `facesOver`; null
@@ -279,19 +305,22 @@ order by created_at;
 - Start over decides from version 1, so its new version has the engine's placement, not the owner's.
 - A font pair change (`relayout`) places the version's AI answer again in the new pair, so its new
   version has the engine's placement too. The owner's moves are not carried into the new pair.
-- Going back to the owner's version copies its bytes: the moved texts come back.
+- Going back to the owner's version copies its bytes: the moved texts and cards come back.
 - Export renders the owner's version like any version (`app_docs/export.md`).
 
 ## How to Use
 
 1. Open a reel in the studio on a desktop and wait for the preview.
 2. Press `Move text` under the preview. The preview pauses and a bar appears on top of it.
-3. Select a text: click its box on the preview (go to a moment where it shows with the ruler), or
-   pick it from the list in the bar. Its kind shows above its box.
+3. Select a text or a visual card: click its box on the preview (go to a moment where it shows with
+   the ruler), or pick it from the list in the bar. Its kind shows above its box.
 4. Drag the box to move it. Drag the square handle at its bottom right corner to make it larger or
    smaller. Drag a small handle on the left or right edge to make the box wider or narrower, or on the
    top or bottom edge to make it taller or shorter: the text keeps its size and moves onto fewer or
-   more lines. A big word has no edge handles. The preview is built again after each drag and replaces the old one without a flicker.
+   more lines. A big word and a visual have no edge handles; a visual's corner handle scales the
+   card with its picture's shape kept. The text or card follows the pointer at once and stays where
+   it is dropped; the preview is built again after each drag and replaces the old one without a
+   flicker or a jump.
    Near the middle of the frame the text snaps to the centre lines and a thin guide shows. A text stops at the edge of the safe zone.
 5. Press `Save`. A new version, `Edited by you`, becomes current. Press `Cancel` to drop the changes.
 6. To compare, open another version's details in the Versions list and press `Go back to this`.
@@ -314,20 +343,24 @@ like decide does (`E2E_MOCK_MASK` in specs).
   edges, the notch, a box too large); `ownerMoveProblems`; `settleOwnerMove` (a drag past the edge, a
   resize too large, the 30 px floor, a caption refused); `parseOwnerMoves`; `effectiveMoves`; a moved
   big word's cut-out; the learning records (the engine's box, the owner's, the head, the others, a
-  component moved earlier). The rewrap: a text narrower (more lines) and wider (one line) at the
+  component moved earlier). A VISUAL: movable, moved and scaled as a box with its picture's aspect
+  ratio, nothing else changed; a box move on a text, one narrower than 100 px and one made twice
+  refused; settled at the safe zone's edge, at the largest size that fits and at the 100 px floor;
+  parsed; left out when it changes nothing; recorded with no size and no wrap width. The rewrap: a text narrower (more lines) and wider (one line) at the
   same size, a LIST's lead-in and key phrase rewrapped and stacked again, a wrap width on a big word
   or of 0 refused, `ownerWrapOptions` (widest first, each taller than the one before; null for a big
   word), a wrap width settled to the safe zone's width, a parsed wrap width, `effectiveMoves` with
   the draft's boxes, and a rewrap recorded as a resize with its wrap width.
 - `apps/worker/src/owner-edit.test.ts` (unit): a new version after the current one, marked as the
   owner's, the edited version not rewritten; one learning record per moved component; a wrap width
-  setting the hook's lines again, recorded as a resize with `wrap_width`; the AI record copied; an
+  setting the hook's lines again, recorded as a resize with `wrap_width`; a VISUAL moved and scaled
+  as a box with its aspect ratio kept and recorded as `VISUAL`; the AI record copied; an
   earlier version edited; the engine's box read from the engine-placed version on a second edit; the
   refusals (outside the safe zone, a caption, an unknown component, a size under 30 px, nothing
   moved, a version of another reel), each writing no version. `job-kinds.test.ts`: the dispatch and
   a bad payload.
-- `apps/studio/src/lib/owner-edit.test.ts` (unit): labels, the list of texts, what is on screen at a
-  moment, the moment a picked text shows, a drag as a move, as a resize and on each edge handle,
+- `apps/studio/src/lib/owner-edit.test.ts` (unit): labels, the list of texts and visuals, what is on
+  screen at a moment, a VISUAL's drag as a box move or a proportional resize (never an edge), the moment a picked text shows, a drag as a move, as a resize and on each edge handle,
   which components can be rewrapped, the lines an edge drag picks (`resolveAsk`), snapping to the
   centre lines, the draft's moves. `preview-clock.test.ts`: `showsFrameAt`.
   `live-page.test.ts`: a move, a corner resize, a LIST's levels moved and scaled inside their layer, a
@@ -336,18 +369,19 @@ like decide does (`E2E_MOCK_MASK` in specs).
   `change-requests.test.ts`: `Edited by you` and the details line.
 - `apps/studio/db-tests/owner-edits.test.ts` (`yarn test:db`): the job's insert policy, column grant
   and payload checks; `save_version` with the edited-from version and the learning rows (their
-  `wrap_width` included), in one transaction; the owner reads only their own rows and never writes
+  `wrap_width` included, and a VISUAL's row with its boxes and no size), in one transaction; a job
+  with a VISUAL's box move queued; the owner reads only their own rows and never writes
   one; the rows go with their reel and another reel's rows stay. `grants.test.ts` covers
   `owner_moves` like every public table.
 - `apps/studio/e2e/owner-edit.spec.ts` (`yarn test:e2e`): the editor opens paused, a picked text is
-  selected with its kind and a handle; a drag moves it; instant moves: read after each pointer move
-  the page on screen draws the text on the pointer (within 2 frame pixels), straight after pointer
-  up it is at the dropped place while the draft is still `swapping`, and a watch on every frame
-  from the drop through the swap finds it never anywhere else (pointer up to the final position is
-  logged and must be under 50 ms); a held right edge handle already shows the text on more lines
-  and the drop keeps them; and a watch on every animation frame during
+  selected with its kind and a handle; a drag moves it, and a watch on every animation frame during
   and after that drag finds no frame showing `Loading`, no player on screen, a player not ready or
-  hidden, or a video with no decoded frame; a drag past the safe zone stops at its edge; the corner
+  hidden, or a video with no decoded frame; instant moves: read after each pointer move the page on
+  screen draws the text on the pointer (within 2 frame pixels), straight after pointer up it is at
+  the dropped place while the draft is still `swapping`, and a watch on every frame from the drop
+  through the swap finds it never anywhere else (pointer up to the final position is logged and must
+  be under 50 ms); a held right edge handle already shows the text on more lines and the drop keeps
+  them; a drag past the safe zone stops at its edge; the corner
   handle resizes it; a held drag near the middle snaps to both centre lines with both guides shown
   and drops centred; the right edge handle sets the hook on more lines at the same size and the
   bottom one back on two; Cancel drops the draft; Save queues the moves and the worker saves version
@@ -356,20 +390,34 @@ like decide does (`E2E_MOCK_MASK` in specs).
   another owner refused. With `OWNER_EDIT_SHOTS` set to a folder it keeps screenshots, among them
   the snap guides (`4-snap-guides.png`) and the edge handles (`5-edge-handles.png`,
   `6-edge-narrower.png`).
+- `apps/studio/e2e/owner-edit-visual.spec.ts` (`yarn test:e2e`, the speech-ten clip with one VISUAL):
+  the VISUAL picked from the list is selected with `Visual`, a corner handle and no edge handle; a
+  drag moves it on the pointer at every step, it is at the drop straight after pointer up while the
+  draft is `swapping`, and the swapped-in page draws it at the same place; the corner handle scales it
+  about its corner with its aspect ratio kept, already while held; it snaps to both centre lines
+  with the guides; Save queues one box move, the worker saves the version with the card's new box,
+  the preview draws it there, and the learning row is `VISUAL` with both boxes, `size` null, moved
+  and resized, no wrap width. With `OWNER_EDIT_SHOTS` it keeps `visual-1-selected-with-corner-handle.png`,
+  `visual-2-moved.png`, `visual-3-resized.png` and `visual-4-centred.png`.
 - `apps/studio/e2e-tools/export-matches-preview.spec.ts` (`test:tools`, the owner's Mac only): `a
 moved, a resized and a widened component match between preview and export`: the guardrail's
   version with its hook resized, moved and widened (a wrap width) and its LIST moved, saved by a real
   `owner_edit` job, exported and compared with its preview at the guardrail's moments and bound;
-  against the previews of the version before the moves the same export falls below the bound.
+  against the previews of the version before the moves the same export falls below the bound. In the
+  behind case, the VISUAL's version is then edited by a real `owner_edit` job (the card moved to the
+  middle of the frame and scaled to seven tenths, its aspect ratio kept), exported and compared with
+  its preview the same way, and against the engine's previews it falls below the bound.
 
 ## Rules
 
 - Never rewrite the version the owner edited: Save makes a new version after the current one.
-- Never change anything but the place, the text size and the line breaks of the moved components:
-  not a word, a time, a caption or a card. A line break changes only through a wrap width, on the
+- Never change anything but the place, the text size and the line breaks of the moved components,
+  and a moved VISUAL's box: not a word, a time, a caption, a card's picture or its description. A line break changes only through a wrap width, on the
   engine's balanced lines; never stretch or squeeze letters to fill a box.
 - Never save a moved component outside the safe zone or in the buttons' notch. The studio settles
   every drag (`settleOwnerMove`) and the worker refuses the job.
+- Never stretch a VISUAL: its height always follows its picture's aspect ratio (`boxHeight`), and it
+  has no edge handles.
 - Never draw the draft with anything but the one builder: the editor's layer draws boxes and
   handles only, never text, and is never part of the built page or the export. The instant view
   only restyles the builder's own elements on the page on screen (their place, size and lines, from
@@ -388,7 +436,7 @@ moved, a resized and a widened component match between preview and export`: the 
 - Never let the owner write, change or delete an `owner_moves` row; only `service_role` writes.
 - Never keep `owner_moves` rows after their reel is deleted: `reel_id` cascades.
 - Never call an AI model in an `owner_edit` job.
-- Never move a caption or a VISUAL card with this editor.
+- Never move a caption with this editor.
 - Never render the editor or queue an `owner_edit` job for a user whose `studio-owner-edit` flag is
   off: the page and `requestOwnerEdit` both evaluate it on the server.
 
@@ -399,8 +447,8 @@ moved, a resized and a widened component match between preview and export`: the 
 - A wrap width can only give whole lines. A top or bottom drag picks the nearest height the text
   can take, so the box can come out taller or shorter than the handle was dragged. A LIST's single
   wrap width applies to its lead-in and key phrase together; its number keeps its line.
-- Not done yet: touch and phone (the button is hidden below `lg`), keyboard nudging, moving a VISUAL,
-  rotation, deleting, timing changes, undo inside the editor (Cancel drops everything), and carrying
+- Not done yet: touch and phone (the button is hidden below `lg`), keyboard nudging, rotating a
+  VISUAL or any component, adding or swapping a VISUAL's picture, deleting, timing changes, undo inside the editor (Cancel drops everything), and carrying
   the owner's moves into another font pair.
 - A new version arriving while the editor is open (a job finishing) replaces the preview and closes
   the editor: the draft is lost. The moves are small, so this is accepted for now.

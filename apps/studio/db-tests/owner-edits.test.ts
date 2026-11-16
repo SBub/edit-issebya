@@ -29,7 +29,11 @@ const INPUTS = {
   head_track: { step: "head_track", fingerprint: "h", file: "head-track.json" },
 };
 
-const MOVES = [{ id: "accent-1", x: 120, y: 900, size: 110 }];
+// A text's move and a VISUAL's box move.
+const MOVES = [
+  { id: "accent-1", x: 120, y: 900, size: 110 },
+  { id: "visual-1", kind: "box", x: 600, y: 700, width: 200 },
+];
 
 function versionArgs(reelId: string, id: string, parentId: string | null) {
   return {
@@ -86,6 +90,19 @@ function moveRecord(item: string, engineVersionId: string, wrapWidth: number | n
         },
       ],
     },
+  };
+}
+
+// A VISUAL's learning record: its card's boxes, no text size.
+function visualRecord(engineVersionId: string) {
+  return {
+    ...moveRecord("visual-1", engineVersionId),
+    component: "VISUAL",
+    variant: "visual/card",
+    text: "a phone on a desk",
+    engine: { x: 75, y: 1047, width: 300, height: 383, size: null },
+    owner: { x: 600, y: 700, width: 200, height: 255, size: null },
+    resized: true,
   };
 }
 
@@ -223,7 +240,11 @@ describe("save_version with the owner's edit", () => {
     const { data, error } = await admin.rpc("save_version", {
       ...versionArgs(reelA, edited, versionA),
       p_edited_from_id: versionA,
-      p_owner_moves: [moveRecord("accent-1", versionA), moveRecord("hook", versionA, 412.25)],
+      p_owner_moves: [
+        moveRecord("accent-1", versionA),
+        moveRecord("hook", versionA, 412.25),
+        visualRecord(versionA),
+      ],
     });
     expect(error).toBeNull();
     expect(data).toBe(2);
@@ -261,6 +282,15 @@ describe("save_version with the owner's edit", () => {
       },
       // The wrap width an edge handle set comes back as it was sent.
       expect.objectContaining({ item: "hook", version_id: edited, wrap_width: 412.25 }),
+      // A VISUAL moved and scaled: its boxes with no size, no wrap width.
+      expect.objectContaining({
+        item: "visual-1",
+        component: "VISUAL",
+        engine_box: visualRecord(versionA).engine,
+        owner_box: visualRecord(versionA).owner,
+        resized: true,
+        wrap_width: null,
+      }),
     ]);
   });
 
@@ -314,7 +344,11 @@ describe("save_version with the owner's edit", () => {
   it("lets the owner read their own learning rows and no one else's", async () => {
     const own = await clientA.from("owner_moves").select("item").eq("version_id", edited);
     expect(own.error).toBeNull();
-    expect((own.data ?? []).map((row) => row.item).sort()).toEqual(["accent-1", "hook"]);
+    expect((own.data ?? []).map((row) => row.item).sort()).toEqual([
+      "accent-1",
+      "hook",
+      "visual-1",
+    ]);
     const other = await clientB.from("owner_moves").select("item").eq("version_id", edited);
     expect(other.data).toEqual([]);
     const anon = await localSupabaseClient().from("owner_moves").select("item");
@@ -343,7 +377,11 @@ describe("save_version with the owner's edit", () => {
     await clientA.from("owner_moves").update({ text: "changed" }).eq("version_id", edited);
     await clientA.from("owner_moves").delete().eq("version_id", edited);
     const rows = await movesOf(edited);
-    expect(rows.map((row) => row.text)).toEqual(["sense of purpose", "sense of purpose"]);
+    expect(rows.map((row) => row.text)).toEqual([
+      "sense of purpose",
+      "sense of purpose",
+      "a phone on a desk",
+    ]);
   });
 
   it("deletes the learning rows with their reel and keeps another reel's", async () => {
@@ -354,7 +392,7 @@ describe("save_version with the owner's edit", () => {
       p_owner_moves: [moveRecord("accent-1", versionB)],
     });
     expect(saved.error).toBeNull();
-    expect(await movesOf(edited)).toHaveLength(2);
+    expect(await movesOf(edited)).toHaveLength(3);
 
     const { error } = await clientA.rpc("delete_reel", { p_reel_id: reelA });
     expect(error).toBeNull();

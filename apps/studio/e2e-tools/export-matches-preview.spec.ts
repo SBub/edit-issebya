@@ -555,6 +555,60 @@ async function startOverTo(script: string): Promise<string> {
   return data!.current_version_id;
 }
 
+// The VISUAL of a version moved to the middle of the frame and scaled to
+// seven tenths of its width: a box move as the studio sends it, with the
+// card's aspect ratio for the checks.
+async function ownerVisualMoveOf(versionId: string) {
+  const { data, error } = await admin
+    .from("versions")
+    .select("r2_key")
+    .eq("id", versionId)
+    .single<{ r2_key: string }>();
+  if (error || !data) throw new Error(`version not read: ${error?.message}`);
+  const visual = ((await storedEdit(data.r2_key)).tracks.behind ?? []).find(
+    (item) => item.kind === "visual",
+  );
+  if (visual?.kind !== "visual") throw new Error("the version has no visual");
+  const width = Math.round(visual.box.width * 0.7);
+  return {
+    id: visual.id,
+    kind: "box" as const,
+    x: Math.round(ISSEBYA_PRESET.frame.width / 2 - width / 2),
+    y: 700,
+    width,
+    aspect: visual.box.height / visual.box.width,
+  };
+}
+
+// An `owner_edit` job on a version, run by the worker; the owner's new version.
+async function ownerEditTo(
+  versionId: string,
+  moves: { id: string; kind: "box"; x: number; y: number; width: number }[],
+): Promise<string> {
+  const { error } = await admin.from("jobs").insert({
+    reel_id: reel!.reelId,
+    owner_id: owner.id,
+    kind: "owner_edit",
+    owner_edit: {
+      version_id: versionId,
+      moves: moves.map(({ id, kind, x, y, width }) => ({ id, kind, x, y, width })),
+    },
+  });
+  if (error) throw new Error(`owner edit job not queued: ${error.message}`);
+  const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_MASK: "" });
+  expect(worker.code, worker.output).toBe(0);
+  const { data } = await admin
+    .from("versions")
+    .select("id, r2_key, edited_from_id")
+    .eq("reel_id", reel!.reelId)
+    .order("number", { ascending: false })
+    .limit(1)
+    .single<{ id: string; r2_key: string; edited_from_id: string | null }>();
+  expect(data!.edited_from_id).toBe(versionId);
+  written.add(data!.r2_key);
+  return data!.id;
+}
+
 // The moments of the big word's case, from the version's own edit: one third
 // and two thirds into the word's span, and halfway from its end to the reel's
 // end (the word gone in both). Never the span's end itself: the export shows
@@ -577,7 +631,7 @@ async function wordMoments(versionId: string): Promise<number[]> {
   );
 }
 
-test("a visual and a big word behind the speaker match between preview and export", async () => {
+test("a visual, the same visual moved and resized by the owner, and a big word behind the speaker match between preview and export", async () => {
   test.setTimeout(20 * 60_000);
   const dir = await mkdtemp(join(tmpdir(), "export-guardrail-behind-"));
   try {
@@ -605,6 +659,35 @@ test("a visual and a big word behind the speaker match between preview and expor
     for (const score of await scores("behind", mp4, behindPreviews)) {
       expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
     }
+
+    // The owner moves the VISUAL to the middle of the frame and scales it to
+    // seven tenths (its picture's aspect ratio kept), saved by the worker's
+    // `owner_edit` job the way the studio's Save queues it: the owner's
+    // version exports as its preview shows it, and the comparison sees the
+    // move (against the engine's previews it falls below the bound).
+    const visualMove = await ownerVisualMoveOf(behindId);
+    const movedId = await ownerEditTo(behindId, [visualMove]);
+    await openPreview(movedId);
+    const card = await composition()
+      .locator(`[id="${visualMove.id}"]`)
+      .evaluate((el) => {
+        const style = (el as HTMLElement).style;
+        return {
+          x: parseFloat(style.left),
+          y: parseFloat(style.top),
+          width: parseFloat(style.width),
+          height: parseFloat(style.height),
+        };
+      });
+    expect(card).toMatchObject({ x: visualMove.x, y: visualMove.y, width: visualMove.width });
+    expect(Math.abs(card.height / card.width - visualMove.aspect)).toBeLessThan(0.01);
+    const movedPreviews = await capturePreview("owner-visual");
+    const { mp4: movedMp4 } = await exportNow("owner-visual");
+    for (const score of await scores("owner-visual", movedMp4, movedPreviews)) {
+      expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+    }
+    const againstEngine = await scores("owner-visual-against-engine", movedMp4, behindPreviews);
+    expect(Math.min(...againstEngine)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
 
     // One big word behind the speaker, a second version.
     const wordId = await startOverTo(await behindWordAnswerScript(dir, "w0001"));

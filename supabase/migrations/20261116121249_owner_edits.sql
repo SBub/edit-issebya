@@ -1,5 +1,5 @@
 -- The owner's moves (app_docs/owner-edits.md): in the studio the owner moves
--- and resizes a text component of a version and presses Save. That queues an
+-- and resizes a text component or a VISUAL of a version and presses Save. That queues an
 -- `owner_edit` job; the worker applies the moves to the version and saves the
 -- result as a new version, marked as the owner's. For every component moved it
 -- also keeps a learning record: where the layout engine placed it, where the
@@ -17,8 +17,8 @@
 -- 1. The job. The owner inserts it through the (reel_id, kind) grant, the
 -- owner_edit grant and its own policy, which mirrors the relayout policy:
 -- queued, its reel owned by the caller. The worker checks the payload itself
--- (the version is one of the reel's, each move a text component inside the
--- safe zone). Status, lease, attempt and error columns stay the worker's.
+-- (the version is one of the reel's, each move a text component or a VISUAL
+-- inside the safe zone). Status, lease, attempt and error columns stay the worker's.
 alter table public.jobs
   drop constraint jobs_kind_check,
   add constraint jobs_kind_check check (
@@ -45,7 +45,7 @@ alter table public.jobs
   );
 
 comment on column public.jobs.owner_edit is
-  'An owner_edit job''s payload: { version_id, moves: [{ id, x, y, size, width? }] }; null for every other kind.';
+  'An owner_edit job''s payload: { version_id, moves: [{ id, x, y, size, width? } or { id, kind: "box", x, y, width }] }; null for every other kind.';
 
 grant insert (owner_edit) on public.jobs to authenticated;
 
@@ -96,11 +96,12 @@ create table public.owner_moves (
   -- owner's edits started from, through any earlier edits and goings back).
   engine_version_id uuid not null,
   -- The component: its item id in the edit, its kind, the variant entry the
-  -- engine placed it with (when its record names one) and its text.
+  -- engine placed it with (when its record names one) and its text (a VISUAL's
+  -- description, never shown on screen).
   item text not null,
   component text not null
     constraint owner_moves_component_check check (
-      component in ('ACCENT', 'QUESTION', 'BIGWORD', 'LIST', 'HOOK')
+      component in ('ACCENT', 'QUESTION', 'BIGWORD', 'LIST', 'HOOK', 'VISUAL')
     ),
   variant text,
   text text not null,
@@ -108,11 +109,13 @@ create table public.owner_moves (
   start_seconds numeric not null,
   end_seconds numeric not null,
   -- Where the engine placed it and where the owner put it: each a box in frame
-  -- pixels with the text size, { x, y, width, height, size }.
+  -- pixels with the text size, { x, y, width, height, size } (a VISUAL's size
+  -- is null).
   engine_box jsonb not null check (jsonb_typeof(engine_box) = 'object'),
   owner_box jsonb not null check (jsonb_typeof(owner_box) = 'object'),
   moved boolean not null,
-  -- A new size, or a box of another width or height (its lines set again).
+  -- A new size, or a box of another width or height (its lines set again, or
+  -- a VISUAL scaled).
   resized boolean not null,
   -- The wrap width the owner set with an edge handle, in frame pixels at the
   -- owner's size (the text set on the fewest balanced lines that fit it); null

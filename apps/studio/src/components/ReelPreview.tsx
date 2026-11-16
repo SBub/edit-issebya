@@ -297,8 +297,9 @@ function BuiltPreview({
       return;
     }
     const ask = moveOfDrag(component, drag);
-    const options = ask ? wrapPreviews(component) : [];
-    if (!ask || options.length === 0) return;
+    if (!ask || ask.kind === "box") return;
+    const options = wrapPreviews(component);
+    if (options.length === 0) return;
     const chosen = resolveAsk(ask, options);
     const option = options.find((entry) => entry.width === chosen.width) ?? options[0]!;
     player.live(
@@ -343,7 +344,10 @@ function BuiltPreview({
     const edit = draft?.edit ?? built.edit;
     const context = { ...built.context, preset: ISSEBYA_PRESET };
     let asked: OwnerMove;
-    if (ask.width !== undefined || ask.height !== undefined) {
+    if (ask.kind === "box") {
+      // A VISUAL: its box, its height following its picture.
+      asked = ask;
+    } else if (ask.width !== undefined || ask.height !== undefined) {
       const options = ownerWrapOptions(edit, ask.id, ask, context);
       if (!options) {
         playerRef.current?.live(null);
@@ -354,7 +358,7 @@ function BuiltPreview({
     } else {
       const earlier = draft?.moves.find((entry) => entry.id === ask.id);
       asked =
-        earlier?.width === undefined
+        earlier === undefined || earlier.kind === "box" || earlier.width === undefined
           ? { id: ask.id, x: ask.x, y: ask.y, size: ask.size }
           : {
               id: ask.id,

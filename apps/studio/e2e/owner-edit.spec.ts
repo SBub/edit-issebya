@@ -303,7 +303,7 @@ test("Move text opens the editor on the paused preview: a text picked from the l
   // The list holds the reel's text components, by kind: no caption.
   const pick = page.getByTestId("move-pick");
   await expect(pick.locator("option")).toHaveText([
-    "Pick a text",
+    "Pick a text or visual",
     "Hook: A short test for the real s…",
     /^Accent: /,
   ]);

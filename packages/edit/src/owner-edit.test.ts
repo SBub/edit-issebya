@@ -102,9 +102,9 @@ describe("the components of a built page", () => {
   it("says which components the owner may move", async () => {
     const components = await componentsOf(lists);
     const movable = components.filter(isMovable).map((component) => component.component);
-    expect(new Set(movable)).toEqual(new Set(["ACCENT", "BIGWORD", "LIST"]));
+    expect(new Set(movable)).toEqual(new Set(["ACCENT", "BIGWORD", "LIST", "VISUAL"]));
     expect(isMovable({ component: "CAPTION" })).toBe(false);
-    expect(isMovable({ component: "VISUAL" })).toBe(false);
+    expect(isMovable({ component: "VISUAL" })).toBe(true);
     expect(isMovable({ component: "HOOK" })).toBe(true);
     expect(isMovable({ component: "QUESTION" })).toBe(true);
   });
@@ -349,11 +349,65 @@ describe("applying the owner's moves", () => {
       ok: false,
       reasons: [
         `${caption}: not a text component of this version`,
-        "visual-1: not a text component of this version",
+        "visual-1: a visual moves as a box",
         "nothing: not a text component of this version",
         "accent-1: size 20 is outside 30 to 400 px",
         "accent-2: size 401 is outside 30 to 400 px",
         "big-word-1: moved twice",
+      ],
+    });
+  });
+
+  it("moves and scales a VISUAL's box, its height following its picture's aspect ratio", async () => {
+    const context = await contextOf(hook);
+    // visual-1 is 300 by 383: its picture is 1170 by 1494.
+    const moved = applyOwnerMoves(
+      hook.edit,
+      [{ id: "visual-1", kind: "box", x: 600.4, y: 700, width: 300 }],
+      context,
+    );
+    if (!moved.ok) throw new Error(moved.reasons.join("; "));
+    const visual = (edit: Edit) => edit.tracks.behind!.find((item) => item.id === "visual-1")!;
+    expect(visual(moved.edit)).toMatchObject({ box: { x: 600, y: 700, width: 300, height: 383 } });
+    const scaled = applyOwnerMoves(
+      hook.edit,
+      [{ id: "visual-1", kind: "box", x: 75, y: 1047, width: 150 }],
+      context,
+    );
+    if (!scaled.ok) throw new Error(scaled.reasons.join("; "));
+    expect(visual(scaled.edit)).toMatchObject({
+      box: { x: 75, y: 1047, width: 150, height: Math.round((150 * 1494) / 1170) },
+    });
+    // Nothing else changed: the picture, the time, the other items.
+    expect({ ...visual(scaled.edit), box: null }).toEqual({ ...visual(hook.edit), box: null });
+    expect(scaled.edit.tracks.overlays).toEqual(hook.edit.tracks.overlays);
+    // The builder draws it there.
+    expect(byId(await componentsOf(hook, scaled.edit), "visual-1")).toMatchObject({
+      x: 75,
+      y: 1047,
+      width: 150,
+      height: 192,
+    });
+  });
+
+  it("refuses a box move on a text, a VISUAL narrower than 100 px and a VISUAL moved twice", async () => {
+    const context = await contextOf(hook);
+    expect(
+      applyOwnerMoves(
+        hook.edit,
+        [
+          { id: "hook", kind: "box", x: 100, y: 300, width: 300 },
+          { id: "visual-1", kind: "box", x: 100, y: 300, width: 99 },
+          { id: "visual-1", kind: "box", x: 100, y: 300, width: 200 },
+        ],
+        context,
+      ),
+    ).toEqual({
+      ok: false,
+      reasons: [
+        "hook: not a visual of this version",
+        "visual-1: width 99 is outside 100 to 1080 px",
+        "visual-1: moved twice",
       ],
     });
   });
@@ -455,7 +509,7 @@ describe("the safe zone, the owner's one hard rule", () => {
     expect(after.width).toBeLessThanOrEqual(safe.right - safe.left);
     expect(after.width).toBeGreaterThan((safe.right - safe.left) * 0.98);
     expect(ownerMoveProblems([after], ["big-word-1"])).toEqual([]);
-    expect(settled.move.size).toBe(after.size);
+    expect(settled.move).toMatchObject({ size: after.size });
   });
 
   it("settles a size under the floor at 30 px, and leaves a legal move as it is", async () => {
@@ -481,6 +535,41 @@ describe("the safe zone, the owner's one hard rule", () => {
     expect(ownerMoveProblems([after], ["hook"])).toEqual([]);
   });
 
+  it("settles a VISUAL dragged past the edge at the edge, and one too large at the largest that fits", async () => {
+    const context = await contextOf(hook);
+    const past = settleOwnerMove(
+      hook.edit,
+      { id: "visual-1", kind: "box", x: -80.6, y: 5000, width: 300 },
+      context,
+    );
+    if (!past.ok) throw new Error(past.reasons.join("; "));
+    expect(past.move).toEqual({
+      id: "visual-1",
+      kind: "box",
+      x: safe.left,
+      y: safe.bottom - 383,
+      width: 300,
+    });
+    const huge = settleOwnerMove(
+      hook.edit,
+      { id: "visual-1", kind: "box", x: 75, y: 300, width: 5000 },
+      context,
+    );
+    if (!huge.ok) throw new Error(huge.reasons.join("; "));
+    const after = byId(await componentsOf(hook, huge.edit), "visual-1");
+    expect(ownerMoveProblems([after], ["visual-1"])).toEqual([]);
+    expect(after.width).toBeLessThanOrEqual(safe.right - safe.left);
+    expect(Math.abs(after.height / after.width - 1494 / 1170)).toBeLessThan(0.01);
+    // A VISUAL narrower than its floor is brought up to it.
+    const tiny = settleOwnerMove(
+      hook.edit,
+      { id: "visual-1", kind: "box", x: 300, y: 600, width: 20 },
+      context,
+    );
+    if (!tiny.ok) throw new Error(tiny.reasons.join("; "));
+    expect(tiny.move).toMatchObject({ x: 300, y: 600, width: 100 });
+  });
+
   it("refuses to settle a caption", async () => {
     const context = await contextOf(hook);
     const id = hook.edit.tracks.captions[0]!.id;
@@ -499,6 +588,9 @@ describe("the moves of one save", () => {
     expect(parseOwnerMoves([{ id: "hook", x: 10, y: 20, size: 90, width: 412.5 }])).toEqual([
       { id: "hook", x: 10, y: 20, size: 90, width: 412.5 },
     ]);
+    expect(
+      parseOwnerMoves([{ id: "visual-1", kind: "box", x: 10, y: 20.5, width: 250.5, extra: 1 }]),
+    ).toEqual([{ id: "visual-1", kind: "box", x: 10, y: 20.5, width: 250.5 }]);
     for (const bad of [
       null,
       {},
@@ -516,6 +608,10 @@ describe("the moves of one save", () => {
       [{ id: "a", x: 1, y: 2, size: 30, width: 0 }],
       [{ id: "a", x: 1, y: 2, size: 30, width: "400" }],
       [{ id: "a", x: 1, y: 2, size: 30, width: Number.POSITIVE_INFINITY }],
+      [{ id: "a", kind: "box", x: 1, y: 2 }],
+      [{ id: "a", kind: "box", x: 1, y: 2, width: 0 }],
+      [{ id: "a", kind: "box", x: 1, y: 2, width: 300, size: 30 }],
+      [{ id: "a", kind: "circle", x: 1, y: 2, size: 30 }],
     ]) {
       expect(parseOwnerMoves(bad)).toBeNull();
     }
@@ -533,6 +629,15 @@ describe("the moves of one save", () => {
         components,
       ),
     ).toEqual([{ id: "hook", x: 300, y: 500, size: 110 }]);
+  });
+
+  it("leaves out a VISUAL's move that changes nothing", async () => {
+    const components = await componentsOf(hook);
+    const still = { id: "visual-1", kind: "box" as const, x: 75, y: 1047, width: 300 };
+    const moved = { ...still, x: 90 };
+    const scaled = { ...still, width: 200 };
+    expect(effectiveMoves([still, moved], components)).toEqual([moved]);
+    expect(effectiveMoves([scaled], components)).toEqual([scaled]);
   });
 
   it("keeps a move with a wrap width, and with the draft's boxes leaves out a rewrap back to the version's lines", async () => {
@@ -673,6 +778,32 @@ describe("the learning records of a save", () => {
     expect(record).toMatchObject({ moved: false, resized: true, wrap_width: was.width * 0.6 });
     expect(record!.owner.size).toBe(110);
     expect(record!.owner.height).toBeGreaterThan(record!.engine.height);
+  });
+
+  it("records a VISUAL moved and scaled: its boxes, no size and no wrap width", async () => {
+    const context = await contextOf(hook);
+    const engine = await componentsOf(hook);
+    const moves = [{ id: "visual-1", kind: "box" as const, x: 600, y: 700, width: 200 }];
+    const applied = applyOwnerMoves(hook.edit, moves, context);
+    if (!applied.ok) throw new Error(applied.reasons.join("; "));
+    const [record] = ownerMoveRecords({
+      ids: ["visual-1"],
+      moves,
+      engine,
+      owner: await componentsOf(hook, applied.edit),
+      edit: applied.edit,
+      headTrack: hook.headTrack,
+      preset,
+    });
+    expect(record).toMatchObject({
+      item: "visual-1",
+      component: "VISUAL",
+      engine: { x: 75, y: 1047, width: 300, height: 383, size: null },
+      owner: { x: 600, y: 700, width: 200, height: 255, size: null },
+      moved: true,
+      resized: true,
+      wrap_width: null,
+    });
   });
 
   it("marks another component the owner moved earlier", async () => {
