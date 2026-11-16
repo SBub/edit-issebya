@@ -2,14 +2,23 @@
 
 import type { HyperframesPlayer } from "@hyperframes/player";
 import { type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { type MediaState, activeAt, canPlayFrom, mediaTimeAt } from "@/lib/preview-clock";
+import {
+  type MediaState,
+  activeAt,
+  canPlayFrom,
+  mediaTimeAt,
+  showsFrameAt,
+} from "@/lib/preview-clock";
 import { recordSoundSchedule } from "@/lib/preview-test-hooks";
 import { PlatformZones } from "./PlatformZones";
 import { type SoundHit, scheduleAt } from "@/lib/sound-schedule";
 import { clockText } from "@/lib/tracks-timeline";
 
 interface Props {
-  // The page handed to the player (already transformed for the preview).
+  // The page handed to the player (already transformed for the preview). A new
+  // page for the same version (the editor's rebuilt draft) is loaded behind the
+  // one on screen and swapped in once it shows the same moment, so the preview
+  // never goes black or shows Loading for it.
   html: string;
   versionId: string;
   hits: SoundHit[];
@@ -65,6 +74,19 @@ const STALL_EVENTS = ["waiting", "stalled"];
 const SEEK_SLACK = 0.1;
 // A resume that never settles must not hang playback.
 const RESUME_TIMEOUT_MS = 500;
+// A page swapped in is first on screen this many animation frames after it is
+// ready at the moment shown, so its own paint has landed.
+const SWAP_SETTLE_FRAMES = 2;
+// A page that never gets ready replaces the one on screen anyway after this
+// long, so an edit always shows.
+const SWAP_TIMEOUT_MS = 10_000;
+
+// One page in the frame: its player element's key and its html.
+interface PageEntry {
+  key: number;
+  html: string;
+}
+
 // The control row's outer icons sit flush with the row's edges (the tracks
 // panel's edges): each viewBox starts or ends where its glyph's visible edge
 // is (stroke included), and the icon sits at that end of its 40 px button.
@@ -133,6 +155,8 @@ export function PreviewPlayer({
   playDisabled = false,
 }: Props) {
   const playerRef = useRef<HyperframesPlayer>(null);
+  // The page being readied behind the one on screen.
+  const nextRef = useRef<HyperframesPlayer>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const buffersRef = useRef<Promise<Map<string, AudioBuffer>>>(Promise.resolve(new Map()));
   const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
@@ -157,11 +181,29 @@ export function PreviewPlayer({
   const [holding, setHolding] = useState(false);
   // The platform zones over the preview: off on every open, never saved.
   const [zones, setZones] = useState(false);
+  // The page on screen, and a newer page readied behind it (a rebuilt draft).
+  // A new `html` is adjusted for while rendering (React's "adjusting state when
+  // a prop changes"): back to the page on screen drops the one being readied.
+  const [shownPage, setShownPage] = useState<PageEntry>({ key: 0, html });
+  const [nextPage, setNextPage] = useState<PageEntry | null>(null);
+  const [seenHtml, setSeenHtml] = useState(html);
+  if (html !== seenHtml) {
+    setSeenHtml(html);
+    setNextPage(
+      html === shownPage.html
+        ? null
+        : { key: Math.max(shownPage.key, nextPage?.key ?? 0) + 1, html },
+    );
+  }
+  const swapping = nextPage !== null || html !== shownPage.html;
 
   useEffect(() => {
     hitsRef.current = hits;
-    expectedVideosRef.current = html.split("<video ").length - 1;
-  }, [hits, html]);
+  }, [hits]);
+
+  useEffect(() => {
+    expectedVideosRef.current = shownPage.html.split("<video ").length - 1;
+  }, [shownPage.html]);
 
   useEffect(() => {
     onPositionRef.current = onPosition;
@@ -449,7 +491,60 @@ export function PreviewPlayer({
       stopWatching();
       stopSounds();
     };
-  }, [defined]);
+  }, [defined, shownPage.key]);
+
+  // A page swapped in while the preview was playing plays on from where it was.
+  useEffect(() => {
+    if (shownPage.key === 0 || intentRef.current !== "playing") return;
+    holdThenStart(reportedRef.current);
+    // Once per swapped-in page; holdThenStart is the same routine a click uses.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownPage.key]);
+
+  // The page readied behind the one on screen: once its player is ready it is
+  // sought to the moment on screen (again whenever that moves), its videos are
+  // put there, and when every video showing then has that frame decoded it is
+  // swapped in a few frames later. The page on screen stays until then, so
+  // nothing on screen goes black or blank.
+  useEffect(() => {
+    if (!defined || !nextPage) return;
+    const expected = nextPage.html.split("<video ").length - 1;
+    const began = performance.now();
+    let sought: number | null = null;
+    let settled = 0;
+    let frame = 0;
+    const tick = () => {
+      const next = nextRef.current;
+      const t = reportedRef.current;
+      if (next?.ready) {
+        if (sought === null || Math.abs(sought - t) > 0.0005) {
+          next.seek(t);
+          sought = t;
+          settled = 0;
+        }
+        const media = mediaOf(next);
+        for (const item of activeAt(media, t)) {
+          if (!item.seeking && Math.abs(item.el.currentTime - mediaTimeAt(item, t)) > SEEK_SLACK) {
+            item.el.currentTime = mediaTimeAt(item, t);
+          }
+        }
+        const shows =
+          next.assetsReady &&
+          media.length >= expected &&
+          Math.abs(next.currentTime - t) < 0.001 &&
+          showsFrameAt(media, t);
+        settled = shows ? settled + 1 : 0;
+      }
+      if (settled > SWAP_SETTLE_FRAMES || performance.now() - began > SWAP_TIMEOUT_MS) {
+        setShownPage(nextPage);
+        setNextPage(null);
+        return;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [defined, nextPage]);
 
   // An automatic switch: once ready, the new version continues from where the
   // previous one was, playing or paused as it was. Playing goes through the
@@ -482,6 +577,7 @@ export function PreviewPlayer({
       data-preview-version={versionId}
       data-version-id={versionId}
       data-intent={intent}
+      data-page={swapping ? "swapping" : "shown"}
       className="flex min-h-0 w-full flex-1 flex-col gap-2"
     >
       {/* The frame's height is the smaller of this box's height and the height
@@ -493,20 +589,29 @@ export function PreviewPlayer({
       <div className="flex min-h-0 flex-1 items-start justify-center [container-type:size]">
         <div
           data-testid="preview-frame"
-          className="relative aspect-[9/16] h-[min(100cqh,calc(100cqw*16/9))] overflow-hidden rounded-reel bg-black ring-1 ring-line"
+          className="relative isolate aspect-[9/16] h-[min(100cqh,calc(100cqw*16/9))] overflow-hidden rounded-reel bg-black ring-1 ring-line"
         >
-          {defined && (
-            <hyperframes-player
-              ref={playerRef}
-              width="1080"
-              height="1920"
-              srcdoc={html}
-              disable-click-to-play=""
-              assets-loading-ui="none"
-              no-load-timeout=""
-              className="block h-full w-full"
-            />
-          )}
+          {/* The page on screen, and the next one readied under it (below it
+              in the stack, never moved in the DOM, so neither frame reloads). */}
+          {defined &&
+            [shownPage, ...(nextPage ? [nextPage] : [])].map((page) => {
+              const shown = page.key === shownPage.key;
+              return (
+                <hyperframes-player
+                  key={page.key}
+                  ref={shown ? playerRef : nextRef}
+                  width="1080"
+                  height="1920"
+                  srcdoc={page.html}
+                  disable-click-to-play=""
+                  assets-loading-ui="none"
+                  no-load-timeout=""
+                  data-page={shown ? "shown" : "next"}
+                  aria-hidden={shown ? undefined : true}
+                  className={`absolute inset-0 block h-full w-full ${shown ? "" : "-z-10"}`}
+                />
+              );
+            })}
           {loading && (
             <p
               role="status"

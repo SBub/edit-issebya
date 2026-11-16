@@ -5,6 +5,7 @@ import {
   activeAt,
   canPlayFrom,
   mediaTimeAt,
+  showsFrameAt,
 } from "./preview-clock";
 
 const ready = (start = 0, duration = 10): MediaState => ({
@@ -61,5 +62,22 @@ describe("canPlayFrom", () => {
     expect(canPlayFrom([{ ...copy, position: 1 }], 6)).toBe(false);
     expect(mediaTimeAt(copy, 6)).toBe(6);
     expect(mediaTimeAt(ready(5, 3), 6)).toBe(1);
+  });
+});
+
+describe("showsFrameAt", () => {
+  it("is true once every active medium has its current frame, at the target", () => {
+    expect(showsFrameAt([{ ...ready(), readyState: 2, position: 4 }], 4)).toBe(true);
+    expect(showsFrameAt([], 4)).toBe(true);
+  });
+
+  it("is false before the frame is decoded, while seeking, or away from the target", () => {
+    expect(showsFrameAt([{ ...ready(), readyState: 1 }], 4)).toBe(false);
+    expect(showsFrameAt([{ ...ready(), seeking: true }], 4)).toBe(false);
+    expect(showsFrameAt([{ ...ready(), position: 0 }], 4)).toBe(false);
+  });
+
+  it("ignores a medium outside its window", () => {
+    expect(showsFrameAt([{ ...ready(5, 5), readyState: 0 }], 4)).toBe(true);
   });
 });

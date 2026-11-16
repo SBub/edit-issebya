@@ -84,8 +84,10 @@ with it at that moment. Placement rules will be learnt from these later.
   mouse. It pauses the preview and shows the editor; Play is off while it is open; the ruler still
   seeks. The draft is the version's edit with the moves so far. Each finished drag is settled
   (`settleOwnerMove`) and the draft's page is built again by the one builder (`pageOf`, the same call
-  as the version's own page), then a new player is mounted at the same moment, paused. So the
-  preview never shows a text anywhere the saved version would not.
+  as the version's own page). The player loads it behind the page on screen and swaps it in only
+  once it shows the same moment with its video frame decoded (`app_docs/preview.md`), so the video
+  and the other texts never go black or flicker, during the drag or after it. So the preview never
+  shows a text anywhere the saved version would not.
 - `src/components/MoveLayer.tsx`: the layer over the frame (`data-testid="move-layer"`), given to
   `PreviewPlayer` as its `overlay`.
   - A bar on top (`move-bar`), as tall as the frame's top margin, which the platforms cover and no
@@ -227,7 +229,7 @@ order by created_at;
 3. Select a text: click its box on the preview (go to a moment where it shows with the ruler), or
    pick it from the list in the bar. Its kind shows above its box.
 4. Drag the box to move it. Drag the square handle at its bottom right corner to make it larger or
-   smaller. The preview is built again after each drag. A text stops at the edge of the safe zone.
+   smaller. The preview is built again after each drag and replaces the old one without a flicker. A text stops at the edge of the safe zone.
 5. Press `Save`. A new version, `Edited by you`, becomes current. Press `Cancel` to drop the changes.
 6. To compare, open another version's details in the Versions list and press `Go back to this`.
 
@@ -260,7 +262,8 @@ like decide does (`E2E_MOCK_MASK` in specs).
   `grants.test.ts` covers `owner_moves` like every public table.
 - `apps/studio/e2e/owner-edit.spec.ts` (`yarn test:e2e`): the editor opens paused, a picked text is
   selected with its kind and a handle, a drag moves it, a drag past the safe zone stops at its edge,
-  the handle resizes it, Cancel drops the draft, Save queues the moves and the worker saves version 3
+  the handle resizes it (a watch on every animation frame during and after the drag finds no frame
+  showing `Loading`, no player on screen, or a video with no decoded frame), Cancel drops the draft, Save queues the moves and the worker saves version 3
   `Edited by you` with the edited version unchanged, the learning rows, going back to the version
   before and to the owner's version, Start over leaving the owner's version and its rows alone, and
   another owner refused.
@@ -279,6 +282,8 @@ moved and a resized component match between preview and export`: the guardrail's
   every drag (`settleOwnerMove`) and the worker refuses the job.
 - Never draw the draft with anything but the one builder: the editor's layer draws boxes and
   handles only, never text, and is never part of the built page or the export.
+- Never blank the preview for a draft: the player swaps the rebuilt page in only once it shows the
+  same moment (`app_docs/preview.md`).
 - Never read a component's box from anything but the builder's own boxes (`build`'s `components`).
 - Never tie a move to how a component's variant draws its text: a move acts on the component's box.
 - Never save an owner's version without its learning rows, nor the rows without the version: both
@@ -293,7 +298,6 @@ moved and a resized component match between preview and export`: the guardrail's
 - Not done yet: touch and phone (the button is hidden below `lg`), keyboard nudging, moving a VISUAL,
   rotation, deleting, timing changes, undo inside the editor (Cancel drops everything), and carrying
   the owner's moves into another font pair.
-- Each drag mounts a new player, so the preview shows `Loading` for a moment after a drag.
 - A new version arriving while the editor is open (a job finishing) replaces the preview and closes
   the editor: the draft is lost. The moves are small, so this is accepted for now.
 - Other docs this change touches: `app_docs/change-requests.md` (the list's `Edited by you`),

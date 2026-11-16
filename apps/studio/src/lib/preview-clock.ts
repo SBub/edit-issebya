@@ -42,3 +42,19 @@ export function canPlayFrom(media: readonly MediaState[], t: number): boolean {
         Math.abs(item.position - mediaTimeAt(item, t)) <= POSITION_TOLERANCE),
   );
 }
+
+// A medium at ready state 2 (have current data): the frame at its current point is decoded.
+const HAVE_CURRENT_DATA = 2;
+
+// Whether every medium showing at t has its frame there decoded, not seeking
+// and at the target: what a paused page needs before it may replace the one on
+// screen (a rebuilt draft), so the swap shows no black frame.
+export function showsFrameAt(media: readonly MediaState[], t: number): boolean {
+  return activeAt(media, t).every(
+    (item) =>
+      !item.seeking &&
+      item.readyState >= HAVE_CURRENT_DATA &&
+      (item.position === undefined ||
+        Math.abs(item.position - mediaTimeAt(item, t)) <= POSITION_TOLERANCE),
+  );
+}

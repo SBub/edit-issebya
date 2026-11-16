@@ -76,12 +76,24 @@ rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) o
   player's time after each message from its frame when it changed: the clock and the playhead rest
   on the player's paused time, never a few frames before it. The root carries
   `data-preview="loading|ready"` and `data-preview-version`.
+- A new `html` for the same mounted player (the editor's rebuilt draft, or the version's page again
+  after Cancel) never remounts it. The new page loads in a second `<hyperframes-player>` under the
+  one on screen (`data-page="next"`, `aria-hidden`, below it in the stack; the frame is `isolate`).
+  Once it is ready it is sought to the moment on screen, again whenever that moment moves, and its
+  videos are put there. When every video showing then has that frame decoded (`showsFrameAt` in
+  `src/lib/preview-clock.ts`: ready state 2 or more, not seeking, at the target) for more than two
+  animation frames, it becomes the page on screen and the old player is removed. After 10 s it is
+  swapped in anyway, so an edit always shows. The page on screen stays the whole time, so the
+  preview never goes black or shows `Loading` for a draft. Neither element moves in the DOM, so
+  neither frame reloads. A page swapped in while playing plays on from where it was. The root
+  carries `data-page="shown|swapping"`: `swapping` from the render that hands over the new `html`
+  until the swap.
 - The move and resize editor (`app_docs/owner-edits.md`) uses three things of `PreviewPlayer`: `overlay`
   (a layer drawn inside the frame, after Zones; `MoveLayer`), `controls` (buttons in the control row
   before Zones, hidden with Zones while expanded; the `Move text` button) and `playDisabled` (Play is
   off while the editor is open), and `PreviewPlayerHandle.pause`. `ReelPreview` keeps the built
   version's edit and builds the editor's draft with the same `build` and `previewPage` calls
-  (`pageOf`); each draft page mounts a new player at the same moment, paused.
+  (`pageOf`); each draft page is swapped in behind the one on screen (above), never remounted.
 - `apps/studio/src/components/PlatformZones.tsx`, `src/lib/platform-zones.ts`: the player's `Zones`
   button (`aria-pressed`, off on every open, never saved, switched off when the preview expands and
   left off on collapse) shows a non-interactive layer
@@ -175,6 +187,8 @@ jsdelivr.
   switches it off; collapsing never switches it back on.
 - A photo's key always comes from its own `photos` row read under RLS, never built from the id.
 - A layer given as `overlay` draws over the frame only: it never changes the built page.
+- Never remount the player or blank the frame for a new page of the same version: ready it behind
+  the one on screen and swap it in only once it shows the same moment.
 
 ## Notes
 

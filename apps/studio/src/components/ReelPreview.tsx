@@ -204,7 +204,9 @@ const SAVE_FAILED = "Your changes were not saved. Try again";
 //
 // Move text opens the editor over the paused preview: the owner selects a
 // text component, drags it or its corner handle, and each drag builds the
-// draft again with the one builder, so what shows is what Save will save.
+// draft again with the one builder, so what shows is what Save will save. The
+// player readies the draft's page behind the one on screen and swaps it in
+// once it shows the same moment: the video never goes black.
 // Save queues an `owner_edit` job; the worker saves a new version and the
 // preview switches to it like to any new version. Cancel drops the draft.
 function BuiltPreview({
@@ -233,21 +235,10 @@ function BuiltPreview({
   const [message, setMessage] = useState("");
   // The save: being sent, or the job it queued.
   const [sent, setSent] = useState<"sending" | { jobId: string } | null>(null);
-  // The mounted player: a new page (a draft, or the version's again after
-  // Cancel) mounts a new one where the last one stood, paused.
-  const [mount, setMount] = useState({
-    key: 0,
-    at: handoff.position,
-    play: handoff.intent === "playing",
-  });
   const page = draft?.page ?? built.page;
   const sentJob = sent && sent !== "sending" ? jobs.find((job) => job.id === sent.jobId) : null;
   const saveFailed = sentJob?.status === "failed" || sentJob?.status === "cancelled";
   const saving = sent !== null && !saveFailed;
-
-  function remount() {
-    setMount((current) => ({ key: current.key + 1, at: position, play: false }));
-  }
 
   function openEditor() {
     playerRef.current?.pause();
@@ -256,7 +247,6 @@ function BuiltPreview({
   }
 
   function closeEditor() {
-    if (draft) remount();
     setDraft(null);
     setEditing(false);
     setSelectedId(null);
@@ -283,7 +273,6 @@ function BuiltPreview({
       moves: effectiveMoves(withMove(draft?.moves ?? [], settled.move), built.page.components),
       page: built.pageOf(settled.edit),
     });
-    remount();
   }
 
   async function save() {
@@ -316,14 +305,13 @@ function BuiltPreview({
   return (
     <>
       <PreviewPlayer
-        key={mount.key}
         ref={playerRef}
         html={page.html}
         versionId={built.versionId}
         hits={page.hits}
         soundBytes={built.soundBytes}
-        startAt={mount.at}
-        autoPlay={mount.play}
+        startAt={handoff.position}
+        autoPlay={handoff.intent === "playing"}
         onPosition={(seconds) => {
           setPosition(seconds);
           onHandoff({ position: seconds });

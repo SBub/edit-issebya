@@ -141,8 +141,9 @@ async function runWorker(env: Record<string, string> = {}) {
   expect(worker.code, worker.output).toBe(0);
 }
 
+// The composition on screen (a rebuilt draft is readied behind it first).
 function composition() {
-  return page.frameLocator("hyperframes-player iframe");
+  return page.frameLocator('hyperframes-player[data-page="shown"] iframe');
 }
 
 function moveBox(id: string) {
@@ -153,8 +154,68 @@ function versionItem(number: number) {
   return page.locator(`[data-testid="version-item"][data-version-number="${number}"]`);
 }
 
+// The preview ready, and the page it was last given on screen (a rebuilt
+// draft swapped in).
 async function ready() {
-  await expect(page.locator('[data-preview="ready"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-preview="ready"][data-page="shown"]')).toBeVisible({
+    timeout: 30_000,
+  });
+}
+
+// Watches the preview on every animation frame until `stopWatching`: each
+// frame where it shows Loading, has no player on screen, a player on screen
+// that is not ready or not visible, or a video showing at that moment with no
+// decoded frame is a flash.
+async function watchForFlashes() {
+  await page.evaluate(() => {
+    const watch = { frames: 0, flashes: [] as string[], stop: false };
+    (window as unknown as { __flashWatch: typeof watch }).__flashWatch = watch;
+    const frame = () => {
+      if (watch.stop) return;
+      watch.frames += 1;
+      const reasons: string[] = [];
+      const preview = document.querySelector("[data-preview]");
+      if (preview?.getAttribute("data-preview") !== "ready") reasons.push("loading");
+      const shown = document.querySelector<HTMLElement>('hyperframes-player[data-page="shown"]');
+      if (!shown) {
+        reasons.push("no player");
+      } else {
+        const player = shown as HTMLElement & {
+          ready?: boolean;
+          currentTime?: number;
+          iframeElement?: HTMLIFrameElement | null;
+        };
+        const style = getComputedStyle(shown);
+        if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+          reasons.push("player hidden");
+        }
+        if (!player.ready) reasons.push("player not ready");
+        const t = player.currentTime ?? 0;
+        const videos = player.iframeElement?.contentDocument?.querySelectorAll("video[data-start]");
+        for (const video of videos ?? []) {
+          const el = video as HTMLVideoElement;
+          const start = Number(el.dataset.start);
+          const duration = Number(el.dataset.duration);
+          if (t >= start && t < start + duration && el.readyState < 2) {
+            reasons.push("video frame not decoded");
+          }
+        }
+      }
+      if (reasons.length > 0) watch.flashes.push(reasons.join(", "));
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
+async function stopWatching(): Promise<{ frames: number; flashes: string[] }> {
+  return page.evaluate(() => {
+    const watch = (
+      window as unknown as { __flashWatch: { frames: number; flashes: string[]; stop: boolean } }
+    ).__flashWatch;
+    watch.stop = true;
+    return { frames: watch.frames, flashes: watch.flashes };
+  });
 }
 
 // A text as the built page draws it, in frame pixels: its corner and size as
@@ -266,8 +327,17 @@ test("Move text opens the editor on the paused preview: a text picked from the l
 });
 
 test("dragging the selected text moves it for its whole time on screen, and the preview is built again from the draft", async () => {
+  await watchForFlashes();
   await dragBy(await centreOf(moveBox("hook")), -100, 300);
   await ready();
+  // Half a second more after the swap, then the watch: never a frame without
+  // the video and the texts, during the drag or after it.
+  await page.waitForTimeout(500);
+  const watched = await stopWatching();
+  expect(watched.frames).toBeGreaterThan(10);
+  expect(watched.flashes).toEqual([]);
+  // One player again: the draft's page replaced the version's.
+  await expect(page.locator("hyperframes-player")).toHaveCount(1);
   ownerHook = await drawn("hook");
   expect(Math.abs(ownerHook.x - (engineHook.x - 100))).toBeLessThan(1.5);
   expect(Math.abs(ownerHook.y - (engineHook.y + 300))).toBeLessThan(1.5);
