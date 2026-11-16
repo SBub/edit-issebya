@@ -1,5 +1,4 @@
-import { wordsText } from "./glossary.ts";
-import { type Preset, cleanWord } from "./preset.ts";
+import { type Preset, cleanWord, wordsText } from "./preset.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";

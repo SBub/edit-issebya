@@ -121,12 +121,12 @@ describe("the curator call", () => {
       transcript: TRANSCRIPT,
       validate: () => {
         round += 1;
-        return { ok: false, reasons: [`glossary check, round ${round}`] };
+        return { ok: false, reasons: [`placement check, round ${round}`] };
       },
     });
     expect(outcome.ok).toBe(false);
     expect(ai.requests).toHaveLength(2);
-    expect(outcome.ok ? [] : outcome.reasons).toEqual(["glossary check, round 2"]);
+    expect(outcome.ok ? [] : outcome.reasons).toEqual(["placement check, round 2"]);
   });
 
   it("throws when the AI cannot answer now, so the whole run stops", async () => {

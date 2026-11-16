@@ -6,23 +6,17 @@ import type { Transcript, Word } from "./transcript.ts";
 // A spoken number: digits, maybe with a decimal point or thousands commas.
 const NUMBER = /^\d[\d.,]*$/;
 
-// The words of the transcript as caption units: a glossary term from any of
-// its heard forms, a number with the unit after it, a month with its day
-// number (either order); every other word alone.
+// The words of the transcript as caption units: a number with the unit after
+// it, a month with its day number (either order); every other word alone.
 function units(words: readonly Word[], preset: Preset): Word[][] {
   const cleaned = words.map((word) => cleanWord(word.text, preset).toLowerCase());
   const out: Word[][] = [];
   let index = 0;
   while (index < words.length) {
-    const rest = cleaned.slice(index);
-    const term = preset.glossary
-      .flatMap((entry) => entry.heard)
-      .filter((form) => form.every((part, at) => rest[at] === part))
-      .sort((a, b) => b.length - a.length)[0];
-    let size = term ? term.length : 1;
+    let size = 1;
     const here = cleaned[index]!;
     const next = cleaned[index + 1];
-    if (!term && next !== undefined) {
+    if (next !== undefined) {
       if (NUMBER.test(here) && preset.units.includes(next)) size = 2;
       else if (preset.months.includes(here) && NUMBER.test(next)) size = 2;
       else if (NUMBER.test(here) && preset.months.includes(next)) size = 2;

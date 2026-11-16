@@ -150,12 +150,15 @@ function answer(change: (answer: Answer) => void = () => {}) {
   return copy;
 }
 
-// The schema accepts a word fix in any words, so the glossary check, not the
-// schema, refuses a heard form of a glossary term ("locking" for "lock-in").
-const heardForm = () =>
+// A word fixed twice: the decide schema refuses it (`answer-schema`), so the
+// answer goes back once with the reason.
+const fixedTwice = () =>
   answered(
     answer((a) => {
-      a.word_fixes = [{ word: "w0003", text: "Locking" }];
+      a.word_fixes = [
+        { word: "w0003", text: "Studio" },
+        { word: "w0003", text: "Stadium" },
+      ];
     }),
   );
 
@@ -354,12 +357,12 @@ describe("runDecide", () => {
   });
 
   it("retries once with the first answer's reasons, then saves (verification 2)", async () => {
-    const ai = aiScript([heardForm(), scripted]);
+    const ai = aiScript([fixedTwice(), scripted]);
     const { run } = await decide(ai);
     await run;
     expect(editorCalls(ai)).toHaveLength(2);
     expect(editorCalls(ai)[1]!.prompt).toMatch(/Your previous answer was refused/);
-    expect(editorCalls(ai)[1]!.prompt).toMatch(/- glossary cw0003: /);
+    expect(editorCalls(ai)[1]!.prompt).toMatch(/- word_fixes: w0003 is fixed twice/);
     const v2 = rows.get(current!)!;
     // The model is the last one reported (the second round's).
     expect(v2).toMatchObject({
@@ -369,34 +372,22 @@ describe("runDecide", () => {
       model: AI_MODEL,
     });
     expect(v2.rejected_reasons).toHaveLength(1);
-    expect(v2.rejected_reasons[0]).toMatch(/^glossary cw0003: caption cw0003 shows "Locking"/);
+    expect(v2.rejected_reasons[0]).toMatch(/^word_fixes: w0003 is fixed twice$/);
   });
 
-  for (const [what, text, reason] of [
-    [
-      "an over-long hook",
-      "This short test clip is for the real studio",
-      "text: a hook has at most 7 words",
-    ],
-    [
-      "a hook with a glossary word's heard form",
-      "No more locking",
-      'glossary hook: the hook shows "No more locking": write the glossary term "lock-in"',
-    ],
-  ] as const) {
-    it(`sends ${what} back once to the hook call with the reason, then saves`, async () => {
-      const ai = aiScript([scripted], [{ role: "hook", answer: { text } }, hookReply]);
-      const { run } = await decide(ai);
-      await run;
-      const hooks = ai.calls.filter((call) => call.role === "hook");
-      expect(hooks).toHaveLength(2);
-      expect(hooks[1]!.prompt).toMatch(/Your previous answer was refused/);
-      expect(hooks[1]!.prompt).toContain(`- ${reason}`);
-      // The components were asked once: the hook's refusal never reaches them.
-      expect(editorCalls(ai)).toHaveLength(1);
-      expect(rows.get(current!)!.rejected_reasons).toEqual([]);
-    });
-  }
+  it("sends an over-long hook back once to the hook call with the reason, then saves", async () => {
+    const long = "This short test clip is for the real studio";
+    const ai = aiScript([scripted], [{ role: "hook", answer: { text: long } }, hookReply]);
+    const { run } = await decide(ai);
+    await run;
+    const hooks = ai.calls.filter((call) => call.role === "hook");
+    expect(hooks).toHaveLength(2);
+    expect(hooks[1]!.prompt).toMatch(/Your previous answer was refused/);
+    expect(hooks[1]!.prompt).toContain("- text: a hook has at most 7 words");
+    // The components were asked once: the hook's refusal never reaches them.
+    expect(editorCalls(ai)).toHaveLength(1);
+    expect(rows.get(current!)!.rejected_reasons).toEqual([]);
+  });
 
   it("fails the step when the hook fails twice, writing nothing and calling no components", async () => {
     const long: ScriptedReply = {
@@ -426,14 +417,14 @@ describe("runDecide", () => {
   });
 
   it("fails after two refused answers and writes nothing (verification 3)", async () => {
-    const ai = aiScript([heardForm(), heardForm()]);
+    const ai = aiScript([fixedTwice(), fixedTwice()]);
     const { run, calls } = await decide(ai);
     await expect(run).rejects.toThrow(/the answer failed twice/);
     const failed = lastCall(calls);
     if (failed.call !== "failed") throw new Error(JSON.stringify(calls));
     expect(failed.tail).toMatch(/^decide: the answer failed twice, version 1 stays current\n/);
     expect(failed.tail).toMatch(
-      /round 1:\n- glossary cw0003: [^\n]*\nround 2:\n- glossary cw0003: /,
+      /round 1:\n- word_fixes: w0003 is fixed twice\nround 2:\n- word_fixes: w0003 is fixed twice/,
     );
     expect(current).toBe(firstId);
     expect(rows.size).toBe(1);
@@ -441,16 +432,16 @@ describe("runDecide", () => {
   });
 
   it("throws with the rule names of both rounds as data, the tail unchanged", async () => {
-    const ai = aiScript(["not json", heardForm()]);
+    const ai = aiScript(["not json", fixedTwice()]);
     const { run, calls } = await decide(ai);
     const error = await run.catch((thrown: unknown) => thrown);
     const refused = findCause(error, AnswerRefused);
-    expect(refused?.rules).toEqual(["answer-json", "glossary"]);
+    expect(refused?.rules).toEqual(["answer-json", "answer-schema"]);
     expect(refused?.rounds).toBe(2);
     const failed = lastCall(calls);
     if (failed.call !== "failed") throw new Error(JSON.stringify(calls));
     expect(failed.tail).toMatch(
-      /round 1:\n- the answer was not valid JSON[^\n]*\nround 2:\n- glossary cw0003: /,
+      /round 1:\n- the answer was not valid JSON[^\n]*\nround 2:\n- word_fixes: w0003 is fixed twice/,
     );
   });
 
@@ -514,7 +505,7 @@ describe("runDecide", () => {
     expect(done.measurements.ai_cost_usd).toBeCloseTo(0.0138, 10);
 
     const bad = {
-      ...heardForm(),
+      ...fixedTwice(),
       usage: { input_tokens: 10, output_tokens: 5, cost_usd: 0.01 },
     };
     const two = await decide(aiScript([bad, withUsage(1200, 456, 0.0123, "claude-x")]));
@@ -531,7 +522,7 @@ describe("runDecide", () => {
 
   it("records the usage on a failed decide too", async () => {
     const bad = {
-      ...heardForm(),
+      ...fixedTwice(),
       usage: { input_tokens: 10, output_tokens: 5, cost_usd: 0.01 },
     };
     const { run, calls } = await decide(aiScript([bad, bad]));
@@ -544,16 +535,6 @@ describe("runDecide", () => {
       ai_output_tokens: 50,
     });
     expect(failed.measurements.ai_cost_usd).toBeCloseTo(0.0215, 10);
-  });
-
-  it("refuses a caption showing a glossary word's heard form", async () => {
-    const ai = aiScript([heardForm(), scripted]);
-    const { run } = await decide(ai);
-    await run;
-    expect(editorCalls(ai)).toHaveLength(2);
-    expect(rows.get(current!)!.rejected_reasons).toEqual([
-      'glossary cw0003: caption cw0003 shows "Locking": write the glossary term "lock-in"',
-    ]);
   });
 
   it("refuses an answer carrying a time or a position, as the schema's", async () => {
@@ -645,7 +626,7 @@ describe("runDecide", () => {
   });
 
   it("asks at most twice, however many bad answers are scripted", async () => {
-    const ai = aiScript([heardForm(), heardForm(), heardForm()]);
+    const ai = aiScript([fixedTwice(), fixedTwice(), fixedTwice()]);
     const { run } = await decide(ai);
     await expect(run).rejects.toThrow();
     expect(editorCalls(ai)).toHaveLength(2);
@@ -654,10 +635,8 @@ describe("runDecide", () => {
   it("keeps the failure tail within 20 lines when there are many reasons", async () => {
     const many = answered(
       answer((a) => {
-        a.word_fixes = Array.from({ length: 10 }, (_, index) => ({
-          word: `w${String(index + 1).padStart(4, "0")}`,
-          text: "locking",
-        }));
+        // Eleven fixes of one word: ten "fixed twice" reasons.
+        a.word_fixes = Array.from({ length: 11 }, () => ({ word: "w0003", text: "Studio" }));
       }),
     );
     const { run, calls } = await decide(aiScript([many, many]));
@@ -668,7 +647,7 @@ describe("runDecide", () => {
     expect(lines.length).toBeLessThanOrEqual(20);
     expect(lines[0]).toMatch(/^decide: the answer failed twice/);
     expect(failed.tail).toMatch(/- and 3 more\nround 2:/);
-    expect(failed.tail).toMatch(/round 2:\n- glossary cw\d+: /);
+    expect(failed.tail).toMatch(/round 2:\n- word_fixes: w0003 is fixed twice/);
   });
 });
 
@@ -692,7 +671,7 @@ describe("runDecide when the AI is not available", () => {
   it("throws AiUnavailable on the second call too", async () => {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
     const limit = JSON.parse(await readFile(USAGE_LIMIT, "utf8")) as ScriptedReply;
-    const ai = aiScript([heardForm(), limit]);
+    const ai = aiScript([fixedTwice(), limit]);
     const { run, calls } = await decide(ai);
     await expect(run).rejects.toThrow();
     expect(editorCalls(ai)).toHaveLength(2);
@@ -1029,16 +1008,17 @@ describe("runDecide spans", () => {
   });
 
   it("traces a retry as two decide.attempt spans, numbered 1 and 2, the first refused", async () => {
-    const ai = aiScript([heardForm(), scripted]);
+    const ai = aiScript([fixedTwice(), scripted]);
     const { spans, outcome } = await traced(ai);
     expect(outcome).toBeNull();
     const attempts = spans.filter((s) => s.name === "decide.attempt");
     expect(attempts.map((s) => s.attributes["decide.attempt"])).toEqual([1, 2]);
     expect(attempts.map((s) => s.attributes["decide.outcome"])).toEqual(["refused", "ok"]);
-    expect(attempts[0]!.attributes["decide.refused_by"]).toBe("glossary");
-    // Both attempts made their call and ran the engine, under themselves.
+    expect(attempts[0]!.attributes["decide.refused_by"]).toBe("answer-schema");
+    // Both attempts made their call under themselves; only the second ran the
+    // engine, since the first is refused by its schema before placement.
     expect(attempts.map((s) => childrenOf(spans, s).map((c) => c.name))).toEqual([
-      [`chat ${AI_MODEL}`, "decide.engine"],
+      [`chat ${AI_MODEL}`],
       [`chat ${AI_MODEL}`, "decide.engine"],
     ]);
   });

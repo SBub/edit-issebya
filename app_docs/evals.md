@@ -279,8 +279,7 @@ below), exactly as the decide step builds the components call:
 
 **The call.** Role `decide` (the decide role's model, Haiku 5.5), the same JSON schema, the same parse
 (`parseDecideAnswer`), then the decide step's own check of the answer: placed over the latest version
-(`editFromAnswer`, with the version's font pair for the measure) and the glossary check
-(`glossaryChecks`). A refused answer goes back once with its reasons; a second refusal fails that run,
+(`editFromAnswer`, with the version's font pair for the measure). A refused answer goes back once with its reasons; a second refusal fails that run,
 which is listed and not scored. The one difference from the worker is the font pair (the version's, not
 the owner's profile): it changes measuring, not what the answer says.
 
@@ -330,7 +329,7 @@ calls. Run `--dry-run` first.
 
 - The curator eval reads the dataset items only and writes nothing to the database or to storage: no job,
   no version, no AI record. Its writes are the AI calls, the report and the PostHog experiment.
-- The curator's input is the decide step's and nothing more: never the owner's marks, the glossary or a
+- The curator's input is the decide step's and nothing more: never the owner's marks or a
   stored answer added to the prompt. The owner's marks are scored only, never shown to the curator.
 - The judge never sees a label, the curator's source or the owner's marks in its call.
 - The components prompt's wording lives only in PostHog (`reel-components`) or in a draft file outside the

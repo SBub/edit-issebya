@@ -6,7 +6,6 @@ import { editFromAnswer } from "./decide.ts";
 import { placeEdit } from "./engine.ts";
 import { type EngineInput, choicesOf } from "./engine-input.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
-import { wordsText } from "./glossary.ts";
 import { textLines } from "./lines.ts";
 import {
   LAYOUT_PADDING,
@@ -16,7 +15,7 @@ import {
   headTrackSchema,
 } from "./head-track.ts";
 import { MIN_SIZE_PX } from "./engine-place.ts";
-import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE } from "./preset.ts";
+import { ISSEBYA_PRESET, PLATFORM_BUTTONS, PLATFORM_SAFE, wordsText } from "./preset.ts";
 import { type Edit, parseEdit } from "./schema.ts";
 import { FIXTURES } from "./test-support/fixtures.ts";
 import { baselineInputs } from "./test-support/inputs.ts";

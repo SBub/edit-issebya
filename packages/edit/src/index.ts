@@ -22,6 +22,7 @@ export {
   PLATFORM_SAFE,
   TRANSITION_KINDS,
   cleanWord,
+  wordsText,
 } from "./preset.ts";
 export {
   type Anchor,
@@ -102,7 +103,6 @@ export {
   SAFE_ZONE,
   zonesAt,
 } from "./engine-zones.ts";
-export { glossaryChecks, heardTerms, wordsText } from "./glossary.ts";
 export { type HarfBuzz, type Measurer, createMeasurer } from "./measure.ts";
 export { type ResolvedItem, resolveTimeline } from "./timeline.ts";
 export { type TextBox } from "./engine-space.ts";

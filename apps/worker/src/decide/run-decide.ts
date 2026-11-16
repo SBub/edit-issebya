@@ -16,7 +16,6 @@ import {
   decideCounts,
   decideJsonSchema,
   editFromAnswer,
-  glossaryChecks,
   headTrackSchema,
   hookJsonSchema,
   parseDecideAnswer,
@@ -49,7 +48,7 @@ import {
 import { type AiUsage, addUsage } from "../step-store.ts";
 import { type AiRecordCall, writeAiRecord } from "./ai-record.ts";
 import { decideInput } from "./input.ts";
-import { hookGlossaryReasons, hookInput, hookPrompt } from "./hook.ts";
+import { hookInput, hookPrompt } from "./hook.ts";
 import { decidePrompt } from "./prompt.ts";
 
 export const STEP = "decide";
@@ -129,8 +128,8 @@ function roundLines(round: number, reasons: readonly string[]): string[] {
 // (role `hook`, prompt `reel-hook`), the one text the reel opens with, then the
 // components (role `decide`), which see the reel's script, the hook as data and
 // the target count, and answer in meaning only (word ids) with a JSON Schema
-// made for this reel. Each answer is checked again by Zod and the glossary
-// check; only an answer breaking those is refused. Each goes
+// made for this reel. Each answer is checked again by Zod and by the layout
+// engine's placement; only an answer breaking those is refused. Each goes
 // back once with its reasons; a second refusal of either fails the step with
 // the reasons and writes nothing, so the current version stays. Layout never
 // refuses an answer: the layout engine (`editFromAnswer`) places every item,
@@ -224,7 +223,7 @@ export function runDecide({
       // calls first, then the decide attempts.
       const calls: AiRecordCall[] = [];
       // The written hook: its own call, before the components. Its answer is
-      // refused only by its schema or the glossary, and it goes back once; a
+      // refused only by its schema, and it goes back once; a
       // second refusal fails the step, so no reel is saved without a hook.
       const hookSource = hookInput(transcript, preset);
       const hookSchema = hookJsonSchema(preset);
@@ -248,8 +247,6 @@ export function runDecide({
         }
         const parsed = parseHookAnswer(result.answer, preset);
         if (!parsed.ok) return { ok: false, reasons: parsed.reasons, rules: ["answer-schema"] };
-        const glossary = hookGlossaryReasons(parsed.text, preset);
-        if (glossary.length > 0) return { ok: false, reasons: glossary, rules: ["glossary"] };
         return { ok: true, text: parsed.text };
       };
       // Each hook call is a `decide.hook` span with its `chat` span under it.
@@ -335,15 +332,6 @@ export function runDecide({
             );
             if (!composed.ok) {
               return { ok: false, reasons: composed.reasons, rules: ["answer-edit"] };
-            }
-            // What the answer wrote: a fix showing a glossary word's heard form.
-            const glossary = glossaryChecks(composed.edit, transcript, preset);
-            if (glossary.length > 0) {
-              return {
-                ok: false,
-                reasons: glossary.map((check) => `${check.rule} ${check.item}: ${check.reason}`),
-                rules: glossary.map((check) => check.rule),
-              };
             }
             // Built with the masks it will name: their fingerprints are known
             // before any is made.

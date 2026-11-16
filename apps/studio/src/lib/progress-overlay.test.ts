@@ -224,14 +224,13 @@ describe("overlayState", () => {
       kind: "start_over",
       status: "failed",
       failure_kind: "answer_refused",
-      failure_rules: ["answer-schema", "glossary"],
+      failure_rules: ["answer-schema", "same-text"],
     });
     const state = overlayState(input({ jobs: [j], steps: [step(j.id, "decide", "failed")] }));
     expect(state).toMatchObject({
       kind: "failure",
       headline: "Could not finish styling",
-      reason:
-        "The AI's answer could not be used and a word would be spelled differently from your glossary",
+      reason: "The AI's answer could not be used and the same word would show twice on screen",
       actions: ["try_again", "keep_current"],
     });
   });

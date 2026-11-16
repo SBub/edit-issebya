@@ -66,18 +66,6 @@ describe("baselineEdit", () => {
     expect(parseEdit(edit, ISSEBYA_PRESET, SHORT_SPEECH.transcript)).toMatchObject({ ok: true });
   });
 
-  it("joins lock-in from 'Locking' and from 'lock' 'in'", () => {
-    expect(captions(words("Locking", "is", "bad.")).map((caption) => caption.words)).toEqual([
-      ["w1"],
-      ["w2"],
-      ["w3"],
-    ]);
-    expect(captions(words("The", "lock", "in.")).map((caption) => caption.words)).toEqual([
-      ["w1"],
-      ["w2", "w3"],
-    ]);
-  });
-
   it("joins a number with its unit and a month with its day", () => {
     expect(
       captions(words("about", "40", "hours", "since", "March", "5")).map((c) => c.words),

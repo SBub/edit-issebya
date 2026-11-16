@@ -46,12 +46,6 @@ describe("decidePrompt", () => {
     expect(decidePrompt(TEMPLATE, input).prompt).toContain(JSON.stringify(HOOK, null, 2));
   });
 
-  it("sends no glossary: the components prompt never names one", () => {
-    const { prompt } = decidePrompt(TEMPLATE, input);
-    expect(prompt).not.toContain("glossary");
-    expect(prompt).not.toContain('"term"');
-  });
-
   it("fills the intensity as a lowercase word and the target as a number, last", () => {
     const { prompt } = decidePrompt(TEMPLATE, input);
     expect(prompt.trimEnd().endsWith(`\`\`\` intense ${input.target_picks}`)).toBe(true);
@@ -73,7 +67,6 @@ describe("decidePrompt", () => {
       '"transitions"',
       '"accents"',
       '"preset"',
-      "glossary",
       "sentences",
     ]) {
       expect(prompt).not.toContain(removed);
@@ -81,7 +74,7 @@ describe("decidePrompt", () => {
   });
 
   it("ends with every reason on the retry", () => {
-    const reasons = ["accents.0.to: ends before it starts", "glossary cw0003: write lock-in"];
+    const reasons = ["accents.0.to: ends before it starts", "timing cw0003: shows too briefly"];
     const { prompt } = decidePrompt(TEMPLATE, input, reasons);
     expect(prompt.trimEnd().split("\n").slice(-3)).toEqual([
       "Your previous answer was refused for these reasons. Fix them and answer again:",

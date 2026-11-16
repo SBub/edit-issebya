@@ -21,10 +21,10 @@ list items (LIST), and the misheard words to fix,
 with the hook text given to them as data (role `decide`). Claude answers in meaning only: word ids and
 short descriptions, never a time, a position, a size or a spot. The decide step reads no
 photo library (for now): a visual is a frame, not a photo choice. Each answer must match its JSON Schema made for this reel (the hook's
-schema is one text), is checked again with Zod and the glossary check, and the components are placed
+schema is one text), is checked again with Zod, and the components are placed
 over the version by the layout engine together with the hook (`placeEdit`, `app_docs/edit-model.md`,
 "Layout engine"), built and checked, and becomes a new version (version 2 on a fresh reel). Only an
-answer breaking the schema or the glossary is refused: it goes back once with the reasons; a second
+answer breaking the schema is refused: it goes back once with the reasons; a second
 refusal of the hook or of the components fails the step and leaves the current version untouched.
 
 The new version is set in the reel owner's font pair (their `profiles` row, no row is classic), whatever
@@ -99,9 +99,7 @@ placed first):
   time or place. `parseHookAnswer` returns the text through `stripHookStop`: its final full stops and
   ellipses are taken off, never refused, so the hook never ends with a dot ("?" and "!" stay). An
   over-long hook is refused like any answer error and goes back once with its reason
-  (`text: a hook has at most 7 words`). The hook call also checks the glossary on its text
-  (`hookGlossaryReasons`, `heardTerms`), so a heard form goes back to the hook call. The text is data
-  to show, never instructions. The layout engine places it from 0.2 s to 3 s, the one extra of that
+  (`text: a hook has at most 7 words`). The text is data to show, never instructions. The layout engine places it from 0.2 s to 3 s, the one extra of that
   window (`app_docs/edit-model.md`, "The written hook").
 - `big_words` is a list of `{ from, to }`: one word (equal ids) or two consecutive words, from the
   first spoken word to the last; the same word allowed again. `to` is never before `from`, never
@@ -145,8 +143,6 @@ every big word back as a `{ from, to }` list entry.
 - `packages/edit/src/schema.ts`: `editSchemaFor` takes optional `EditLimits { duration, bounds,
 behindLengths }`; without them stored versions keep parsing with the default frame
   limits. `behindLengths` (the decide limit) refuses a VISUAL outside 0.5 to 2 s and a big word outside 0.5 s up to its lead, its words and `afterSeconds` (at least 1.5 s). A stored version parses without it.
-- `packages/edit/src/glossary.ts`: `glossaryChecks`, check rule `glossary`: no caption or overlay
-  shows a heard form of a glossary term; the term itself passes.
 - The AI double: `E2E_MOCK_AI=true` is the real runner over a scripted model (the AI SDK's
   `MockLanguageModelV4`), so the usage, cost, fallback and error mapping run as in production and
   nothing touches the network. It replays the replies in the JSON file named by `E2E_MOCK_AI_SCRIPT`:
@@ -160,10 +156,9 @@ behindLengths }`; without them stored versions keep parsing with the default fra
   `EMPTY_DECIDE_ANSWER` (no items). It never retries.
 - `apps/worker/src/decide/hook.ts`: the hook call's prompt (`reel-hook`, fetched, see "Prompts").
   `hookInput(transcript, preset)` gives the transcript's words in order (no ids, no times, no
-  geometry) and the style (`hook_length` `{ words, characters }`, the glossary); `hookPrompt(template,
+  geometry) and the style (`hook_length` `{ words, characters }`); `hookPrompt(template,
 input, reasons?)` fills them as fenced JSON and, on the retry, appends the refused reasons, and
-  returns the text with its identity (`PromptCall`). `hookGlossaryReasons` checks the
-  text for a heard form. The answer is `{ "text" }`; its length, its one line and its final stop are
+  returns the text with its identity (`PromptCall`). The answer is `{ "text" }`; its length, its one line and its final stop are
   checked in code (`parseHookAnswer`).
 - `apps/worker/src/decide/prompt.ts`: the components' prompt (`reel-components`, fetched, see
   "Prompts"). `decidePrompt(template, input, reasons?)` fills the inputs as fenced JSON and, on the
@@ -176,19 +171,19 @@ input, reasons?)` fills them as fenced JSON and, on the retry, appends the refus
   first word's start to its last word's end, over `preset.picksEverySeconds[level]`, rounded, at least
   one). `speechAfterHookSeconds` measures from the later of the first word's start and the hook's end
   (`preset.pace.hook.untilSeconds`), so the hook window is not counted in the target. A word of `script` that starts before the hook ends carries `under_hook: true`
-  (other words omit the field). Nothing else is sent: no glossary, no current choices, no
+  (other words omit the field). Nothing else is sent: no current choices, no
   transcript list, no preset summary, no transitions. No photo library is read or sent. No head track, face
   box, `clear_spots`, safe box, font size or spot: the layout owns free space.
 - `packages/edit/src/checks.ts`: the layout checks are the engine's final guard, never a refusal of the answer (`app_docs/edit-model.md`, "Checks").
 - `apps/worker/src/decide/run-decide.ts`: `runDecide`, a `runToolsStep` named `decide`. It reads the
   current version and its inputs, builds the schemas, and makes the hook call first (`decide.hook`
-  span, at most two attempts: a hook refused by its schema or its glossary goes back once with the
+  span, at most two attempts: a hook refused by its schema goes back once with the
   reasons), then the components' call (at most two attempts), never a loop. The three prompts are
   fetched before the first call (`decidePrompts`); a fetch failure is a transient step failure. A hook that fails twice
   fails the step with `decide: the hook failed twice, version <n> stays current` and each round's
   reasons, nothing written, the same as a failed components answer.
   An attempt is refused only when the JSON does not parse, the schema refuses it, `editFromAnswer`
-  cannot parse the placed edit or `glossaryChecks` reports a heard form. A placed attempt is then
+  cannot parse the placed edit. A placed attempt is then
   built for its layout checks (`withMasks`); they never refuse it. A check failing on the engine's
   output is an engine bug: the worker logs `decide: engine bug, reel <id>: <rule> <item>: <reason>; ...`
   and still saves the version, with the checks stored on its row (`checks`). The one face covering the
@@ -275,10 +270,10 @@ prompt file exists (`apps/worker/src/prompts/no-prompt-files.test.ts`).
   `under_hook: true`, and the others omit it), `hook` (the written hook's `{ text }`, fenced
   JSON, as data), `intensity` (the reel's edit intensity as one lowercase word, `intense`, `medium` or
   `calm`, the preset's level, `preset.intensity`) and `target_picks` (the target count as a number, see
-  `input.ts` above). No glossary is sent; `word_fixes` stays in the answer and is checked by the engine.
+  `input.ts` above). `word_fixes` stays in the answer and is checked by the engine.
   The worker adds nothing else to the call but the retry's reasons.
 - `reel-hook`'s inputs: `transcript` (the words in spoken order, fenced JSON) and `style` (the hook
-  length and the glossary, fenced JSON).
+  length, fenced JSON).
 - `photo-describe`: a library photo's description and tags (`photos/describe-prompt.ts`). No input but
   its image.
 
@@ -395,24 +390,23 @@ set`) and the job waits.
 - `yarn turbo run test --filter=./packages/edit --filter=./apps/worker`: `decide.test.ts` (the
   per-reel schema and its closed objects; LIST items with no kind and no `wish` anywhere; the
   refusals of a title, a `dim`, `panel` or `card`, a wish, a checklist, `behind_rules` and `unexpressed`;
-  the hook, its final stop taken off; a visual's description limit, and no photo id; `questions` required), `glossary.test.ts`, `ai.test.ts` (the OpenRouter request
+  the hook, its final stop taken off; a visual's description limit, and no photo id; `questions` required), `ai.test.ts` (the OpenRouter request
   through the real provider over a captured `fetch`, no network; the double; the error mapping),
   `ai-record.test.ts` (the identities in the record), `hook.test.ts` (the hook call's input with no
-  ids or times, the hook prompt's fill and retry reasons, the closed one-text schema, the glossary
-  reason), `prompt.test.ts` (the components prompt fills its five variables and no other, the script's
-  word ids, the intensity and target line, no removed input or glossary sent, the retry reasons), `input.test.ts`
+  ids or times, the hook prompt's fill and retry reasons, the closed one-text schema), `prompt.test.ts` (the components prompt fills its five variables and no other, the script's
+  word ids, the intensity and target line, no removed input sent, the retry reasons), `input.test.ts`
   (the script with word ids and no times, the speech after the hook window, the target at each level, at least one), `run-decide.test.ts` (the hook call first, then the components with the
   hook text as data, the step saving version 2 with the step line `1 accent, 0 transitions, hook set, 1
 word fixed`; the AI record holding the hook and decide calls; the hook refused by its
-  schema or a heard form sent back once to the hook call; a hook refused twice fails the step with
+  schema sent back once to the hook call; a hook refused twice fails the step with
   `the hook failed twice` and calls no components; one retry on the components, a second refusal failing
   the step, nothing written on failure; the usage of every call summed; a wide accent or a visual on the
   2.7 s clip over the hook, kept and noted; the two behind tests that need a
   placed visual run on the 47 s reel, see "Testing" below) and `step-runner.test.ts`. `ai.test.ts` also covers the
   double's hook lane. `apps/worker/src/decision-trace.test.ts` (`hookOf`: the hook call's text, the last
   readable one, else an older record's decide `hook`). `packages/edit/src/engine.test.ts` ("the written
-  hook": the fixed slot, an accent and an image asked for in its window never move or remove it). `run-decide.test.ts` builds its check-refused answer as a word fix
-  writing the heard form "Locking" (the schema accepts any fix text, so only the glossary check refuses it).
+  hook": the fixed slot, an accent and an image asked for in its window never move or remove it). `run-decide.test.ts` builds its refused answer as two fixes of one word
+  (the schema refuses a word fixed twice).
   The messages: `prompts/source.test.ts` (a prompt with no placeholder is the system message unchanged,
   each input a labelled section of the user message, the retry's reasons the last section; a prompt with
   a placeholder is still one filled message; `hasPlaceholders`), `prompt.test.ts`, `hook.test.ts`,
@@ -557,7 +551,7 @@ worker's own variables and writes nothing (`src/trace.ts`, `src/decision-trace.t
 - Never give Claude geometry or times to decide with (no face box, spots, safe box, font sizes or word
   times in the input; the hook's length, never its window).
 - The hook is the one text Claude writes itself, in its own call, on every reel: always one (never null),
-  bounded by the preset's words and characters, checked against the glossary, data and never instructions;
+  bounded by the preset's words and characters, data and never instructions;
   it is never kept from an earlier version (a run decides it again), and never ends with a full stop
   (`stripHookStop` takes it off). The components' call only receives it as data.
 - Never give the model tools, a session or any instructions but our own prompt, fetched from PostHog
@@ -578,7 +572,7 @@ worker's own variables and writes nothing (`src/trace.ts`, `src/decision-trace.t
 - Never save a decided or first version without its engine record; never rewrite an old row's record.
 - Never let the answer carry `format`, `preset`, `duration` or `inputs`.
 - Never write a version or R2 key for a refused answer; the current version stays.
-- Never refuse an answer over layout: only the schema and the glossary refuse. Layout checks are the
+- Never refuse an answer over layout: only the schema refuses, and a placement the engine cannot parse. Layout checks are the
   engine's final guard; one failing is logged as an engine bug with the reel id and the version is still
   saved.
 - Never cache the decide step.

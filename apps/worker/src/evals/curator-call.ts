@@ -10,7 +10,6 @@ import {
   type HeadTrack,
   decideJsonSchema,
   editFromAnswer,
-  glossaryChecks,
   parseDecideAnswer,
 } from "@edit-issebya/edit";
 import { type AiRunner, NO_USAGE } from "../ai.ts";
@@ -23,7 +22,7 @@ import type { DecideInput } from "../decide/input.ts";
 // THE CURATOR CALL: the decide step's components call (role `decide`, prompt
 // `reel-components`) on one reel's input, with the same structured output and
 // the same checks: the answer's JSON and schema, then the layout engine's
-// placement and the glossary check (`editFromAnswer`, `glossaryChecks`). A
+// placement (`editFromAnswer`). A
 // refused answer goes back once with its reasons; a second refusal is the
 // call's failure. The prompt's wording lives only in PostHog.
 export const CURATOR_PROMPT_NAME = PROMPT_NAMES.components;
@@ -43,9 +42,8 @@ export type CuratorOutcome =
   | { ok: false; reasons: string[]; usage: AiUsage };
 
 // The decide step's checks after the schema, as the decide step runs them: the
-// answer is placed over the latest version with the written hook, and its
-// composed edit must pass the glossary check. Layout never refuses an answer
-// (an error here is an engine fault), so only the glossary can.
+// answer is placed over the latest version with the written hook. Layout
+// refuses an answer only when it cannot place it.
 export function decideValidator({
   current,
   hookText,
@@ -65,13 +63,6 @@ export function decideValidator({
     const engine: EngineInput = { ...answer, hook: { text: hookText } };
     const composed = editFromAnswer(current, engine, preset, transcript, headTrack, measure);
     if (!composed.ok) return { ok: false, reasons: composed.reasons };
-    const glossary = glossaryChecks(composed.edit, transcript, preset);
-    if (glossary.length > 0) {
-      return {
-        ok: false,
-        reasons: glossary.map((check) => `${check.rule} ${check.item}: ${check.reason}`),
-      };
-    }
     return { ok: true };
   };
 }

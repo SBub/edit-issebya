@@ -5,9 +5,8 @@ import { pickVariants } from "./variant-picker.ts";
 import { type EngineInput, QUESTION_PREFIX } from "./engine-input.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import type { HeadTrack } from "./head-track.ts";
-import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
-import { type Preset, cleanWord } from "./preset.ts";
+import { type Preset, cleanWord, wordsText } from "./preset.ts";
 import { BEHIND_WORD, type Edit, issueReasons, parseEdit } from "./schema.ts";
 import type { Transcript } from "./transcript.ts";
 

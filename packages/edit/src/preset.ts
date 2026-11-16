@@ -1,4 +1,5 @@
 import type { Box } from "./head-track.ts";
+import type { Transcript } from "./transcript.ts";
 
 // The transition kinds: the LIST (`numbered`), the one kind a transition takes.
 export const TRANSITION_KINDS = ["numbered"] as const;
@@ -55,12 +56,6 @@ interface PresetHook {
   maxCharacters: number;
 }
 
-export interface GlossaryTerm {
-  term: string;
-  // The word sequences the transcriber writes for it, lower-case, cleaned.
-  heard: string[][];
-}
-
 export interface Preset {
   id: "issebya";
   frame: { width: number; height: number };
@@ -106,7 +101,6 @@ export interface Preset {
   units: string[];
   // Joined with a day number into one caption unit.
   months: string[];
-  glossary: GlossaryTerm[];
 }
 
 const FRAME = { left: 0, right: 1080, top: 0, bottom: 1920 };
@@ -226,7 +220,6 @@ export const ISSEBYA_PRESET: Preset = {
     "november",
     "december",
   ],
-  glossary: [{ term: "lock-in", heard: [["locking"], ["lock", "in"]] }],
 };
 
 // The shortest a pick shows, in seconds. A reel's end or a cut can leave a
@@ -242,4 +235,10 @@ export function cleanWord(text: string, preset: Preset): string {
     .replace(/^[\s,.?!:;"]+|[\s,.?!:;"]+$/g, "")
     .toLowerCase();
   return preset.keepCaps[lower] ?? lower;
+}
+
+// The text of some spoken words: each word cleaned, joined by spaces.
+export function wordsText(ids: readonly string[], transcript: Transcript, preset: Preset): string {
+  const byId = new Map(transcript.words.map((word) => [word.id, word]));
+  return ids.map((id) => cleanWord(byId.get(id)?.text ?? "", preset)).join(" ");
 }

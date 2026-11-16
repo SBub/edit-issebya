@@ -9,7 +9,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { fakePromptSource } from "../../test-support/fake-prompts.ts";
 import { PROMPT_NAMES, type PromptText } from "../prompts/source.ts";
-import { hookGlossaryReasons, hookInput, hookPrompt } from "./hook.ts";
+import { hookInput, hookPrompt } from "./hook.ts";
 
 const TEMPLATE: PromptText = await fakePromptSource().get(PROMPT_NAMES.hook);
 
@@ -28,10 +28,9 @@ describe("the hook call's input", () => {
     expect(JSON.stringify(input)).not.toMatch(/"w\d{4}"|"start"|"end"|"position"|"face"/);
   });
 
-  it("gives the style's hook length and the glossary, as the components see them", () => {
+  it("gives the style's hook length, as the hook call sees it", () => {
     const input = hookInput(transcript, ISSEBYA_PRESET);
-    expect(input.style.hook_length).toEqual({ words: 7, characters: 45 });
-    expect(input.style.glossary).toEqual(ISSEBYA_PRESET.glossary);
+    expect(input.style).toEqual({ hook_length: { words: 7, characters: 45 } });
   });
 });
 
@@ -45,7 +44,6 @@ describe("the hook prompt", () => {
   it("fills the transcript and the style as data, with no placeholder left", () => {
     expect(call.prompt).toContain('"This is a short test clip for the real studio."');
     expect(call.prompt).toContain('"hook_length": {\n    "words": 7,\n    "characters": 45\n  }');
-    expect(call.prompt).toContain('"term": "lock-in"');
     expect(call.prompt).not.toMatch(/\{\{\w+\}\}/);
   });
 
@@ -106,14 +104,5 @@ describe("the hook call's schema", () => {
       ISSEBYA_PRESET,
     );
     expect(refused).toEqual({ ok: false, reasons: ["text: a hook has at most 7 words"] });
-  });
-});
-
-describe("the hook's glossary check", () => {
-  it("refuses a heard form of a glossary term, and passes the term", () => {
-    expect(hookGlossaryReasons("Stop locking yourself", ISSEBYA_PRESET)).toEqual([
-      'glossary hook: the hook shows "Stop locking yourself": write the glossary term "lock-in"',
-    ]);
-    expect(hookGlossaryReasons("No more lock-in", ISSEBYA_PRESET)).toEqual([]);
   });
 });
