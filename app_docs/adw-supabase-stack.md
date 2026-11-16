@@ -39,7 +39,8 @@ Step by step:
   whole word in `ps`, the same test as the toolkit's `queue_ops.ADW_PHASE_RE`); then `up` fails
   with `ADW Supabase stack is in use by run <id>`. Otherwise the new run takes it over.
 - **Sync and rewrite**: `rsync -a --delete` of the worktree's `supabase/` (migrations, `templates/`
-  for the magic-link email, `config.toml`; the CLI's `.temp/` survives), then the copied
+  for the magic-link email, `config.toml`, the local signing key `signing_keys.json`
+  (`app_docs/studio.md`, "Configuration"); the CLI's `.temp/` survives), then the copied
   `config.toml` gets `project_id = "edit-issebya-adw"` and each 5443x port becomes 5445x (the
   commented `smtp_port` and `pop3_port` examples too, so no 5443x is left). The committed
   `supabase/config.toml` is never changed.
