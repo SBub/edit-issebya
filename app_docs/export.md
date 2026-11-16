@@ -499,6 +499,15 @@ Measured scores (SSIM, live preview against the exported MP4), composition-box c
 The render step's `peak_rss_bytes` in the same run was 1546944512 (above 256 MB). The scores were
 the same in every run.
 
+The owner's moves (`app_docs/owner-edits.md`) have their own case, `a moved and a resized component
+match between preview and export`: the guardrail's version with its hook resized (110 px to 77 px)
+and moved 400 px down and its LIST moved 120 px, saved by a real `owner_edit` job, then exported and
+compared with its own preview at the guardrail's moments and bound. Its proof that the comparison
+sees the moves: the same export against the previews of the version before the moves must fall
+below the bound. Measured 2026-11-16 (the composite): 0.992532, 0.995585 and 0.995803 at 0.5, 1.5
+and 2.5 s; against the version before the moves 0.915802, 0.901661 and 0.919066. In the same run the
+guardrail scored 0.993226, 0.995332 and 0.996493. The bound is unchanged.
+
 Composition-box captures at device scale 1 (before the big word):
 
 | Moment | Guardrail | 60 px probe | Photo behind | Photo behind probe |

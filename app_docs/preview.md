@@ -76,6 +76,12 @@ rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) o
   player's time after each message from its frame when it changed: the clock and the playhead rest
   on the player's paused time, never a few frames before it. The root carries
   `data-preview="loading|ready"` and `data-preview-version`.
+- The move and resize editor (`app_docs/owner-edits.md`) uses three things of `PreviewPlayer`: `overlay`
+  (a layer drawn inside the frame, after Zones; `MoveLayer`), `controls` (buttons in the control row
+  before Zones, hidden with Zones while expanded; the `Move text` button) and `playDisabled` (Play is
+  off while the editor is open), and `PreviewPlayerHandle.pause`. `ReelPreview` keeps the built
+  version's edit and builds the editor's draft with the same `build` and `previewPage` calls
+  (`pageOf`); each draft page mounts a new player at the same moment, paused.
 - `apps/studio/src/components/PlatformZones.tsx`, `src/lib/platform-zones.ts`: the player's `Zones`
   button (`aria-pressed`, off on every open, never saved, switched off when the preview expands and
   left off on collapse) shows a non-interactive layer
@@ -168,6 +174,7 @@ jsdelivr.
 - The Zones layer takes no clicks and is never saved or built into the page. Expanding the preview
   switches it off; collapsing never switches it back on.
 - A photo's key always comes from its own `photos` row read under RLS, never built from the id.
+- A layer given as `overlay` draws over the frame only: it never changes the built page.
 
 ## Notes
 

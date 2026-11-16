@@ -167,7 +167,10 @@ and rule 6 (`engine-place.ts`).
 
 ### Builder contract
 
-- `src/build.ts`: `build(edit, transcript, headTrack, preset, measurer, options) -> { html, assets, checks }`.
+- `src/build.ts`: `build(edit, transcript, headTrack, preset, measurer, options) -> { html, assets, checks, components }`.
+  `components` is every component with its box on screen (`src/components.ts`, `placedComponents`,
+  from the builder's own text boxes; the same list on every layer): the studio's move and resize
+  editor and the owner's learning records read it (`app_docs/owner-edits.md`).
   `html` is a HyperFrames composition (`data-composition-id="main"`, a paused GSAP 3.14.2 timeline
   registered on `window.__timelines`); `assets` lists every referenced file with its role
   (`footage`, `font`, `sound`, `mask`, `visual`), sorted; `checks` is the layout check list. A
@@ -651,6 +654,12 @@ v<n>`). Restores saved before read `restored version <n>`.
   current version (a stale or concurrent save), inserts the row with the reel's owner and the next
   `number`, makes it current and returns the number, in one transaction. Only `service_role` may
   execute it.
+- The owner's edit (`app_docs/owner-edits.md`, migration `20261116121249_owner_edits.sql`):
+  `versions.edited_from_id` names the version the owner moved or resized text in (same reel, null for
+  every other version), and `save_version` takes `p_edited_from_id` and `p_owner_moves`, writing the
+  owner's learning rows (`owner_moves`) in the same transaction. `saveVersion`'s meta carries them as
+  `editedFromId` and `ownerMoves`; `StoredVersion` reads `edited_from_id` and, when asked for,
+  `engine_record`.
 
 ### First version
 
@@ -860,6 +869,9 @@ never fatal.
 - Anchors are words; seconds only where nobody speaks.
 - Claude never writes times, positions or sizes: every one in a decided version comes from the
   layout engine, never from the answer.
+- The only other writer of a position or a size is the owner, by hand, through `applyOwnerMoves`
+  (`app_docs/owner-edits.md`): a text component's place and text size, inside the safe zone, saved
+  as a new version. Never a time, a word or a line break.
 - Never let an overlap pass silently: a front pick or a caption block placed over the face is noted
   `covers-face` (rule `face`), and a caption block set over other text for want of a legal spot is noted
   `no-spot` with the texts it sits over. A text over a visual's card is no overlap (decision 9).

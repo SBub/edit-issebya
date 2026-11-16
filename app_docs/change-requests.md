@@ -53,7 +53,9 @@ first`, Try again being the progress overlay's, `app_docs/status.md`), `versionO
   `versionTitle` and `jobRequestLabel` (the text shown beside a version or a job; a render job reads
   `export of vN`, or `export` when the version is unknown). `versionOrigin`: `Back to vN` for a
   going back, the owner's own words for an old change, `First version` (no parent), else `Styled
-automatically` (the decide run after the first version). `versionTitle`: `Back to vN` and `First
+automatically` (the decide run after the first version). A version the owner made by moving or
+  resizing text (`edited_from_id`, `app_docs/owner-edits.md`) reads `Edited by you` in both, and its
+  details add `You moved or resized text in vN` (`editedFromLabel`). `versionTitle`: `Back to vN` and `First
 version` as above; otherwise the version's `change_title`, falling back (versions saved before
   titles) to the owner's request, else the origin label. A version saved now has no title (null), so
   it reads its origin label: `Styled automatically` for the automatic run and Start over.
@@ -183,6 +185,7 @@ specs, see `app_docs/decide-step.md`).
 - A going back saves a new version copying the old one's bytes, never rewriting history.
 - The worker never runs a `change` job: it fails with the clear message (the change box is removed).
 - A Start over decides from version 1's choices, never the current version's.
+- A version the owner edited by hand is titled `Edited by you`, never by a stored title.
 
 ## Notes
 

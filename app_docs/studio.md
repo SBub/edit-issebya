@@ -128,6 +128,12 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   again in `jobs.font_pair`, one of the six ids, set for this kind only); the owner inserts it with the
   `(reel_id, kind)` and `font_pair` grants and a policy that mirrors start over (queued, own reel). The worker
   runs it in `apps/worker/src/relayout.ts` with no AI call (`app_docs/font-pairs.md`).
+- `supabase/migrations/20261116121249_owner_edits.sql`: the job kind `owner_edit` (the owner's moves of
+  text components, in `jobs.owner_edit`, `{ version_id, moves }`, set for this kind only; inserted with its
+  own column grant and a policy that mirrors relayout), `versions.edited_from_id`, the learning table
+  `public.owner_moves` (owner-only `select`, `service_role` writes, no foreign key to the reel so its rows
+  outlive it) and `save_version`'s two parameters that write it. All of it is in
+  `app_docs/owner-edits.md`.
   The sixth job kind, `describe_photo`. `reel_id` is now nullable on `jobs`, `steps` and
   `stored_files`, each with a `photo_id` beside it (`on delete cascade`) and a check that exactly one
   is set (`jobs_target_check` also ties `describe_photo` to `photo_id`). Owners never insert a

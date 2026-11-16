@@ -79,6 +79,9 @@ The "stands in for" names are the owner's own words for the look each pair gives
   same answer. A version with no AI record (the first version) is placed with no answer at all.
 - Its spans and failure record are in `app_docs/measurement.md` ("relayout's spans").
 - Going back (`restore`) copies the bytes of an old version, so it keeps the pair that version was saved in.
+- A relayout places the answer again, so the new version has the engine's placement: texts the owner moved
+  or resized by hand (`app_docs/owner-edits.md`) are not carried into the new pair. The owner's version
+  stays in the list.
 
 ## The picker
 
