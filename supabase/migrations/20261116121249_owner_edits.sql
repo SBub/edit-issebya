@@ -79,14 +79,16 @@ comment on column public.versions.edited_from_id is
 -- in one save. A row is self-contained (the boxes, the head, the others on
 -- screen, the text), so it can be analysed without the reel.
 --
--- reel_id, version_id and from_version_id are plain ids with no foreign key,
--- on purpose: the rows outlive their reel. Deleting a reel (delete_reel)
--- removes its versions, and what the owner taught the layout by moving things
--- must not go with a test reel. They go only with the owner's account.
+-- The rows go with their reel: reel_id references the reel on delete cascade,
+-- so delete_reel (which deletes the reel row) removes them with it. They are
+-- only needed until placement is worked out. version_id, from_version_id and
+-- engine_version_id stay plain ids: the versions go with the same reel, and a
+-- foreign key on each would add nothing. The rows also go with the owner's
+-- account.
 create table public.owner_moves (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users (id) on delete cascade,
-  reel_id uuid not null,
+  reel_id uuid not null references public.reels (id) on delete cascade,
   -- The owner's version the move was saved in, and the version edited.
   version_id uuid not null,
   from_version_id uuid not null,

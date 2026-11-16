@@ -131,8 +131,8 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
 - `supabase/migrations/20261116121249_owner_edits.sql`: the job kind `owner_edit` (the owner's moves of
   text components, in `jobs.owner_edit`, `{ version_id, moves }`, set for this kind only; inserted with its
   own column grant and a policy that mirrors relayout), `versions.edited_from_id`, the learning table
-  `public.owner_moves` (owner-only `select`, `service_role` writes, no foreign key to the reel so its rows
-  outlive it) and `save_version`'s two parameters that write it. All of it is in
+  `public.owner_moves` (owner-only `select`, `service_role` writes, its rows go with their reel: `reel_id`
+  cascades) and `save_version`'s two parameters that write it. All of it is in
   `app_docs/owner-edits.md`.
   The sixth job kind, `describe_photo`. `reel_id` is now nullable on `jobs`, `steps` and
   `stored_files`, each with a `photo_id` beside it (`on delete cascade`) and a check that exactly one

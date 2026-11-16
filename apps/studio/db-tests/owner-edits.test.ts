@@ -144,13 +144,11 @@ describe("owner_edit jobs", () => {
   });
 
   it("refuses moves for another owner's reel", async () => {
-    const { error } = await clientB
-      .from("jobs")
-      .insert({
-        reel_id: reelA,
-        kind: "owner_edit",
-        owner_edit: { version_id: versionA, moves: MOVES },
-      });
+    const { error } = await clientB.from("jobs").insert({
+      reel_id: reelA,
+      kind: "owner_edit",
+      owner_edit: { version_id: versionA, moves: MOVES },
+    });
     expect(error).not.toBeNull();
     expect(await jobsOf(reelA)).toEqual([]);
   });
@@ -345,11 +343,23 @@ describe("save_version with the owner's edit", () => {
     expect(rows.map((row) => row.text)).toEqual(["sense of purpose", "sense of purpose"]);
   });
 
-  it("keeps the learning rows when the reel is deleted", async () => {
+  it("deletes the learning rows with their reel and keeps another reel's", async () => {
+    const otherEdited = randomUUID();
+    const saved = await admin.rpc("save_version", {
+      ...versionArgs(reelB, otherEdited, versionB),
+      p_edited_from_id: versionB,
+      p_owner_moves: [moveRecord("accent-1", versionB)],
+    });
+    expect(saved.error).toBeNull();
+    expect(await movesOf(edited)).toHaveLength(2);
+
     const { error } = await clientA.rpc("delete_reel", { p_reel_id: reelA });
     expect(error).toBeNull();
     const { data } = await admin.from("versions").select("id").eq("reel_id", reelA);
     expect(data).toEqual([]);
-    expect((await movesOf(edited)).map((row) => row.item)).toEqual(["accent-1", "hook"]);
+    expect(await movesOf(edited)).toEqual([]);
+    const { data: left } = await admin.from("owner_moves").select("id").eq("reel_id", reelA);
+    expect(left).toEqual([]);
+    expect((await movesOf(otherEdited)).map((row) => row.item)).toEqual(["accent-1"]);
   });
 });

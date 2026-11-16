@@ -184,10 +184,12 @@ Why a table, and why these keys:
   queries. The version's row (`engine_record`) stays what the engine did.
 - **In the same transaction as the version.** `save_version` writes both, so there is never a saved
   owner version without its rows, nor rows for a version that was not saved.
-- **No foreign key to the reel or the versions, on purpose.** Deleting a reel (`delete_reel`) removes
-  its versions, and what the owner taught the layout must not go with a test reel. A row is
-  self-contained (boxes, head, the others, the text), so it can be read without the reel. Rows go only
-  with the owner's account (`owner_id` cascades).
+- **The rows go with their reel.** `reel_id` references the reel `on delete cascade`, so
+  `delete_reel` removes them with the reel: they are only needed until placement is worked out
+  (owner decision, 2026-11-16). `version_id`, `from_version_id` and `engine_version_id` are plain
+  ids, as the versions go with the same reel. A row is self-contained (boxes, head, the others, the
+  text), so it can be read without the reel. Rows also go with the owner's account (`owner_id`
+  cascades).
 - **The engine's box is the engine's, even after several edits.** When the owner edits their own
   edit, or a going back to it, the engine box is still read from the engine-placed version
   (`engine_version_id`), so every row compares the engine with the owner's last word. Two saves that
@@ -254,7 +256,7 @@ like decide does (`E2E_MOCK_MASK` in specs).
   `change-requests.test.ts`: `Edited by you` and the details line.
 - `apps/studio/db-tests/owner-edits.test.ts` (`yarn test:db`): the job's insert policy, column grant
   and payload checks; `save_version` with the edited-from version and the learning rows, in one
-  transaction; the owner reads only their own rows and never writes one; the rows outlive the reel.
+  transaction; the owner reads only their own rows and never writes one; the rows go with their reel and another reel's rows stay.
   `grants.test.ts` covers `owner_moves` like every public table.
 - `apps/studio/e2e/owner-edit.spec.ts` (`yarn test:e2e`): the editor opens paused, a picked text is
   selected with its kind and a handle, a drag moves it, a drag past the safe zone stops at its edge,
@@ -282,7 +284,7 @@ moved and a resized component match between preview and export`: the guardrail's
 - Never save an owner's version without its learning rows, nor the rows without the version: both
   go through `save_version` in one transaction.
 - Never let the owner write, change or delete an `owner_moves` row; only `service_role` writes.
-- Never delete `owner_moves` rows with their reel: they go only with the owner's account.
+- Never keep `owner_moves` rows after their reel is deleted: `reel_id` cascades.
 - Never call an AI model in an `owner_edit` job.
 - Never move a caption or a VISUAL card with this editor.
 
