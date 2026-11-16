@@ -351,11 +351,14 @@ async function scores(
 
 let previews: Capture[] = [];
 let guardrailEditValue: Edit;
+// The guardrail's version: the owner's moves case edits it.
+let guardrailVersionId: string;
 
 test("the export matches the live preview at every moment", async ({ baseURL }) => {
   test.setTimeout(15 * 60_000);
   guardrailEditValue = await guardrailEdit(await storedEdit(reel!.versionKey));
   const guard = await saveVersionOf(guardrailEditValue, "guardrail");
+  guardrailVersionId = guard.id;
 
   await page.goto(await signInLink(admin, owner.email, baseURL!));
   await page.goto(`/studio/reels/${reel!.reelId}`);
@@ -416,6 +419,101 @@ test("text moved by 60 px falls below the bound", async () => {
   const { mp4 } = await exportNow("probe");
   const probeScores = await scores("probe", mp4, previews);
   expect(Math.min(...probeScores)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
+});
+
+// The owner's moves (app_docs/owner-edits.md): the guardrail's version with
+// its hook resized and moved down and its LIST moved, saved by the worker's
+// `owner_edit` job the way the studio's Save queues it. The owner's version
+// must export as its preview shows it, like any other version.
+const OWNER_HOOK = { down: 400, size: 77 };
+const OWNER_LIST_SHIFT = 120;
+
+// The moves, from where the guardrail's version has the two components (the
+// engine writes left-aligned positions, so a position is its box's corner).
+function ownerMovesOf(edit: Edit) {
+  const hook = edit.tracks.overlays.find((item) => item.kind === "hook");
+  const list = edit.tracks.transitions[0];
+  if (!hook?.position || !list?.levels) throw new Error("the guardrail has no hook or no LIST");
+  const levels = Object.values(list.levels);
+  const top = Math.min(...levels.map((level) => level.position.y));
+  return [
+    {
+      id: hook.id,
+      x: hook.position.x,
+      y: hook.position.y + OWNER_HOOK.down,
+      size: OWNER_HOOK.size,
+    },
+    {
+      id: list.id,
+      x: Math.min(...levels.map((level) => level.position.x)),
+      // Up where there is room above it inside the safe zone, else down.
+      y:
+        top - OWNER_LIST_SHIFT >= ISSEBYA_PRESET.frame.height * 0.2
+          ? top - OWNER_LIST_SHIFT
+          : top + OWNER_LIST_SHIFT,
+      size: list.levels.key.size,
+    },
+  ];
+}
+
+test("a moved and a resized component match between preview and export", async () => {
+  test.setTimeout(15 * 60_000);
+  expect(previews).toHaveLength(MOMENTS.length);
+  const moves = ownerMovesOf(guardrailEditValue);
+  const { error } = await admin.from("jobs").insert({
+    reel_id: reel!.reelId,
+    owner_id: owner.id,
+    kind: "owner_edit",
+    owner_edit: { version_id: guardrailVersionId, moves },
+  });
+  if (error) throw new Error(`owner edit job not queued: ${error.message}`);
+  const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_MASK: "" });
+  expect(worker.code, worker.output).toBe(0);
+  const { data } = await admin
+    .from("versions")
+    .select("id, r2_key, edited_from_id")
+    .eq("reel_id", reel!.reelId)
+    .order("number", { ascending: false })
+    .limit(1)
+    .single<{ id: string; r2_key: string; edited_from_id: string | null }>();
+  expect(data!.edited_from_id).toBe(guardrailVersionId);
+  written.add(data!.r2_key);
+  await openPreview(data!.id);
+
+  // The preview shows the owner's version: the hook where and as large as the
+  // owner put it, the LIST's levels moved with their box.
+  const [hookMove, listMove] = moves;
+  const drawn = (id: string) =>
+    composition()
+      .locator(`[id="${id}"]`)
+      .evaluate((el) => {
+        const style = (el as HTMLElement).style;
+        return {
+          x: parseFloat(style.left),
+          y: parseFloat(style.top),
+          size: parseFloat(style.fontSize),
+        };
+      });
+  expect(await drawn("hook")).toEqual({ x: hookMove!.x, y: hookMove!.y, size: OWNER_HOOK.size });
+  const key = guardrailEditValue.tracks.transitions[0]!.levels!.key;
+  const levels = Object.values(guardrailEditValue.tracks.transitions[0]!.levels!);
+  const listTop = Math.min(...levels.map((level) => level.position.y));
+  expect(await drawn(`${listMove!.id}-key`)).toEqual({
+    x: key.position.x,
+    y: key.position.y + (listMove!.y - listTop),
+    size: key.size,
+  });
+
+  const ownerPreviews = await capturePreview("owner-edit");
+  const { mp4 } = await exportNow("owner-edit");
+  for (const score of await scores("owner-edit", mp4, ownerPreviews)) {
+    expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+  }
+  // The comparison sees the moves: against the previews of the version the
+  // owner edited (the same texts where the engine placed them), the owner's
+  // export falls below the bound.
+  const against = await scores("owner-edit-against-engine", mp4, previews);
+  expect(Math.min(...against)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
 });
 
 // A VISUAL over the speaker, then one big word, behind the speaker: each a
