@@ -5,6 +5,7 @@ import {
   type Edit,
   ISSEBYA_PRESET,
   parseEdit,
+  questionShownAt,
   resolveTimeline,
   transcriptSchema,
 } from "@edit-issebya/edit";
@@ -16,6 +17,7 @@ import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
 import { seekOnRuler } from "../test-support/ruler.ts";
+import { questionOf, withQuestion } from "../test-support/transitions.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds } from "../test-support/worker.ts";
 import { eventsNamed, recordEvents } from "./events.ts";
@@ -323,6 +325,95 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
   for (const start of starts) {
     const at = resolved.get(start.id)!.start;
     expect(Math.abs(start.when - (ctxTime - playhead) - at)).toBeLessThanOrEqual(0.01);
+  }
+});
+
+// A QUESTION on the fixture clip ("test clip for the real studio?", w0005 to
+// w0010): the preview builds it up word by word as the words are spoken, shows
+// the question mark with the last word, keeps the whole question until it
+// leaves, and never shows its words as captions meanwhile.
+test("a question builds up word by word as it is spoken, with a question mark at its end", async ({
+  page,
+  baseURL,
+}) => {
+  await routePreviewCdn(page);
+  await openReel(page, baseURL!);
+  const transcript = await fixtureTranscript();
+  const stored = await storage.get(reel!.versionKey);
+  const parsed = parseEdit(
+    JSON.parse(new TextDecoder().decode(stored!)),
+    ISSEBYA_PRESET,
+    transcript,
+  );
+  expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
+  const edit = await withQuestion((parsed as { ok: true; edit: Edit }).edit, transcript);
+  const saved = await saveTestVersion({
+    admin,
+    storage,
+    prefix: CACHE_PREFIX,
+    reelId: reel!.reelId,
+    edit,
+    changeSummary: "a question",
+  });
+  extraKeys.push(saved.key);
+  await expect(
+    page.locator(`[data-preview-version="${saved.id}"][data-preview="ready"]`),
+  ).toBeVisible({ timeout: 30_000 });
+
+  const { reveal, start, end } = questionOf(edit, transcript);
+  const whole = "test clip for the real studio?";
+  expect(reveal.map((word) => word.text).join(" ")).toBe(whole);
+  const question = composition(page).locator('[id="question-1"]');
+  // Every word is its own element in its final place: the lines never reflow.
+  await expect(question.locator(".q")).toHaveText(whole.split(" "));
+  await expect(question).not.toHaveCSS("text-align", "center");
+  // The accent's own face and colour.
+  const accentFamily = await question.evaluate((el) => getComputedStyle(el).fontFamily);
+  expect(accentFamily).toContain("Playfair Display");
+  await expect(question).toHaveCSS("color", "rgb(255, 255, 255)");
+
+  // The words on screen: at full opacity inside a text at full opacity.
+  const onScreen = () =>
+    question.evaluate((el) =>
+      getComputedStyle(el).opacity === "1"
+        ? [...el.querySelectorAll<HTMLElement>(".q")]
+            .filter((word) => getComputedStyle(word).opacity === "1")
+            .map((word) => word.textContent)
+            .join(" ")
+        : "",
+    );
+  const places = () =>
+    question.evaluate((el) =>
+      [...el.querySelectorAll<HTMLElement>(".q")].map((word) => {
+        const box = word.getBoundingClientRect();
+        return [Math.round(box.left), Math.round(box.top)];
+      }),
+    );
+  // Before it starts: nothing of it.
+  await setPosition(page, start - 0.2);
+  await expect.poll(onScreen).toBe("");
+  // Halfway through each word: the question as far as it has been spoken.
+  const firstPlaces = await places();
+  for (const [index, word] of reveal.entries()) {
+    const next = reveal[index + 1]?.at ?? end - ISSEBYA_PRESET.caption.outSeconds;
+    const t = (word.at + next) / 2;
+    await setPosition(page, t);
+    const shown = questionShownAt(reveal, t);
+    expect(shown.split(" ")).toHaveLength(index + 1);
+    await expect.poll(onScreen).toBe(shown);
+    expect(shown.includes("?")).toBe(index === reveal.length - 1);
+    expect(await places()).toEqual(firstPlaces);
+  }
+  // Its words are not captions while it shows.
+  const captions = await composition(page)
+    .locator("#text > .text:not(#question-1):not(.hook)")
+    .evaluateAll((els) =>
+      els
+        .filter((el) => Number(getComputedStyle(el).opacity) > 0)
+        .map((el) => el.textContent ?? ""),
+    );
+  for (const word of ["clip", "real", "studio"]) {
+    expect(captions.join(" ")).not.toContain(word);
   }
 });
 

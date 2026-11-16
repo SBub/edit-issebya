@@ -155,9 +155,12 @@ export const VARIANTS = {
     timing: { option: "words" },
     hides: true,
   },
-  "question/as-accent": {
+  // Placed and timed like an accent, in the accent's style. Its look is its
+  // own (`question.ts`, the builder): the words appear one by one as they are
+  // spoken, left-aligned, with a question mark at the end.
+  "question/word-by-word": {
     component: "QUESTION",
-    variant: "question/as-accent",
+    variant: "question/word-by-word",
     layer: "front",
     type: "text",
     style: STYLES.accent,

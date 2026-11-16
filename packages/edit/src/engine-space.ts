@@ -1,5 +1,6 @@
 import type { Box } from "./head-track.ts";
 import type { FontRole } from "./font-pairs.ts";
+import type { RevealWord } from "./question.ts";
 import type { Span } from "./timeline.ts";
 
 // One piece of text on screen, in frame pixels: `x`, `y` its top left corner,
@@ -12,6 +13,9 @@ export interface TextBox extends Span {
   text: string;
   // The text's lines: one, or more for a text set with `breaks`.
   lines: string[];
+  // A QUESTION only: its shown words in order, each with the moment it appears
+  // (`questionReveal`). The builder draws it word by word, left-aligned.
+  question?: RevealWord[];
   font: FontRole;
   size: number;
   color: string;

@@ -6,6 +6,7 @@ import {
   type Edit,
   ISSEBYA_PRESET,
   parseEdit,
+  questionShownAt,
   resolveTimeline,
   transcriptSchema,
 } from "@edit-issebya/edit";
@@ -25,7 +26,7 @@ import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { SAMPLE_PHOTO, type SeededPhoto, seedReadyPhoto } from "../test-support/photos.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { seekOnRuler } from "../test-support/ruler.ts";
-import { withNumberedTransition } from "../test-support/transitions.ts";
+import { questionOf, withNumberedTransition, withQuestion } from "../test-support/transitions.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
@@ -513,4 +514,86 @@ test("a visual and a big word behind the speaker match between preview and expor
       .eq("step", "cutout");
     for (const row of (masks ?? []) as { r2_key: string }[]) written.add(row.r2_key);
   }
+});
+
+// The words of the question the composition shows now: each word element at
+// full opacity inside a text at full opacity, joined as the screen reads.
+function questionOnScreen(): Promise<string> {
+  return composition()
+    .locator("body")
+    .evaluate((body) =>
+      [...body.ownerDocument.querySelectorAll<HTMLElement>('[id^="question-1_w"]')]
+        .filter(
+          (word) =>
+            getComputedStyle(word).opacity === "1" &&
+            getComputedStyle(word.parentElement!).opacity === "1",
+        )
+        .map((word) => word.textContent)
+        .join(" "),
+    );
+}
+
+// A QUESTION builds up word by word, each word on its own spoken moment, the
+// question mark with the last one. The preview and the export are compared
+// twice mid-reveal (in the two longest waits between two words, so each moment
+// is well inside one state of the question) and once at its end (the whole
+// question, halfway from its last word to its out-fade). Measured 2026-11-16:
+// 0.995875 with one word shown (1.07 s), 0.993852 with five (1.9 s), 0.993295
+// whole (2.25 s). The export's whole question against the preview with one
+// word scored 0.955294, below the bound, so the comparison sees which words
+// are on screen.
+test("a question matches between preview and export mid-reveal and at its end", async ({
+  baseURL,
+}) => {
+  test.setTimeout(15 * 60_000);
+  const spoken = await transcript();
+  const edit = await withQuestion(await storedEdit(reel!.versionKey), spoken);
+  const { reveal, end } = questionOf(edit, spoken);
+  expect(reveal.at(-1)!.text.endsWith("?")).toBe(true);
+  const waits = reveal
+    .slice(1)
+    .map((word, index) => ({ from: reveal[index]!.at, to: word.at }))
+    .sort((a, b) => b.to - b.from - (a.to - a.from))
+    .slice(0, 2)
+    .sort((a, b) => a.from - b.from);
+  const fadeOut = end - ISSEBYA_PRESET.caption.outSeconds;
+  const moments = [
+    ...waits.map((wait) => (wait.from + wait.to) / 2),
+    (reveal.at(-1)!.at + fadeOut) / 2,
+  ].map((t) => Math.round(t * 100) / 100);
+  const whole = reveal.map((word) => word.text).join(" ");
+  const expected = moments.map((t) => questionShownAt(reveal, t));
+  // Two different partial states, then the whole question with its mark.
+  expect(new Set(expected).size).toBe(3);
+  expect(expected[2]).toBe(whole);
+  for (const partial of expected.slice(0, 2)) {
+    expect(partial).not.toBe("");
+    expect(partial).not.toContain("?");
+  }
+
+  const saved = await saveVersionOf(edit, "guardrail: a question");
+  await page.goto(await signInLink(admin, owner.email, baseURL!));
+  await page.goto(`/studio/reels/${reel!.reelId}`);
+  await openPreview(saved.id);
+  // The preview shows exactly the words spoken so far at each moment.
+  for (const [index, t] of moments.entries()) {
+    await seekTo(t);
+    expect(await questionOnScreen()).toBe(expected[index]);
+  }
+  const questionPreviews = await capturePreview("question", moments);
+  const { mp4 } = await exportNow("question");
+  for (const score of await scores("question", mp4, questionPreviews, moments)) {
+    expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+  }
+
+  // The comparison sees the reveal: the export's whole question against the
+  // preview's first partial state falls below the bound.
+  const { file: partial, crop } = questionPreviews[0]!;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the spec's temp folder
+  const { width, height } = pngSize(new Uint8Array(await readFile(partial)));
+  const wholeFrame = join(dir, "question-export-whole.png");
+  await extractFrame(mp4, moments[2]!, width, height, wholeFrame, crop);
+  const mismatch = await ssim(partial, wholeFrame);
+  console.log(`question: whole export against the first partial preview ${mismatch}`);
+  expect(mismatch).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
 });

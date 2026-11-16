@@ -432,13 +432,24 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
 - Command: `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn workspace @edit-issebya/studio test:tools`
   (`apps/studio/e2e-tools/export-matches-preview.spec.ts`), on the owner's Mac only, against the
   run's servers, never in CI.
-- Acceptance: every guardrail frame, every frame of the photo behind the speaker (a library photo
+- Acceptance (the question's case is described below): every guardrail frame, every frame of the photo behind the speaker (a library photo
   in the `top` spot over the whole speech, cut out with the real MODNet mask tool, its model committed
   at `apps/worker/models/`) and every frame of one
   big word behind the speaker (`WORK`, a second version over the same span, since the fixture's
   speech is too short for both in one version) scores at or above `PREVIEW_EXPORT_SSIM_BOUND`
   (0.9855), and each case's probe (a caption, or the photo, moved by 60 px) scores at least one
   frame below it.
+- A QUESTION (`app_docs/edit-model.md`, "The question's look") is a version of its own: "test clip
+  for the real studio?" (w0005 to w0010) placed by the layout engine. It is compared twice
+  mid-reveal, in the two longest waits between two of its words (one word on screen, then five), and
+  once at its end (the whole question with its mark, halfway from its last word to its out-fade); the
+  moments come from the version's own word times (`questionReveal`). Before each capture the spec
+  reads the words on screen in the preview and expects exactly the words spoken so far. Its probe:
+  the export's whole question against the preview with one word must score below the bound, so the
+  comparison is proven to see which words are on screen. Measured 2026-11-16 (the composite): 0.995875
+  at 1.07 s, 0.993852 at 1.9 s, 0.993295 at 2.25 s; the probe 0.955294. In the same run the guardrail
+  scored 0.993226, 0.995332 and 0.996493, its 60 px probe 0.993226, 0.971395 and 0.996492, the visual
+  0.991497, 0.994721 and 0.996376, the big word 0.991366, 0.994109 and 0.993578. The bound is unchanged.
 - The bound started at 0.95 and was raised to 0.99 because the probe's minimum (0.982028) was above
   0.95, so the comparison was not proven sensitive. 0.99 sat between the probe minimum and the
   guardrail minimum (0.995609).
@@ -542,6 +553,9 @@ Before the one-screen layout (the 0.99 bound):
 - Every process a render starts runs through the step runner's `tool`, in its own process group,
   and every file it writes is under the render's folder or a `withChromeTmp` folder. Never spawn
   one another way: a cancel must kill them all and leave nothing.
+- A question's moments in the guardrail are taken inside a wait between two of its words, never on a
+  word's own moment: a word cuts in on one frame, and a capture on that frame's edge measures the
+  frame clock, not the picture.
 - Use the same builder as the preview (`packages/edit`'s `build`) for every page, the composite's
   layer pages included; never a worker copy, never a stored page.
 - Never sign a download link past `expires_at`.

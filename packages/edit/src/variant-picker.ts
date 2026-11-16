@@ -22,7 +22,7 @@ export function variantOf(component: EngineComponent): Variant {
     case "ACCENT":
       return VARIANTS["accent/above-head"];
     case "QUESTION":
-      return VARIANTS["question/as-accent"];
+      return VARIANTS["question/word-by-word"];
     case "BIGWORD":
       return VARIANTS["bigword/behind"];
     case "VISUAL":

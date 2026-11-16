@@ -50,7 +50,7 @@ describe("the variant entries", () => {
         { option: "words" },
         true,
       ],
-      "question/as-accent": [
+      "question/word-by-word": [
         ["above-head", "upper-third", "anywhere-in-safe-zone"],
         { option: "words" },
         true,
@@ -104,7 +104,7 @@ describe("the variant entries", () => {
     for (const style of named) expect(styles.has(style)).toBe(true);
     // Two entries on the same style share one base by construction.
     expect(VARIANTS["hook/written-line"].style).toBe(VARIANTS["accent/above-head"].style);
-    expect(VARIANTS["question/as-accent"].style).toBe(VARIANTS["accent/above-head"].style);
+    expect(VARIANTS["question/word-by-word"].style).toBe(VARIANTS["accent/above-head"].style);
     expect(VARIANTS["list/numbered"].levels[2]!.style).toBe(STYLES.accent);
     expect(VARIANTS["list/numbered"].levels[1]!.style).toBe(STYLES.caption);
     // The bases the layout is built with: 110 for the accent style, 50 for the caption style.

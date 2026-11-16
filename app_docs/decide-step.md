@@ -44,13 +44,13 @@ runs, and both take the same path.
 
 The model names each component by its answer list (prompt `reel-components`):
 
-| Component | Answer field | What it is                                                                                                           |
-| --------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
-| ACCENT    | `accents`    | a phrase worth stressing, `{ "from", "to" }`                                                                         |
-| QUESTION  | `questions`  | a question the speaker puts to the viewer, often rhetorical, `{ "from", "to" }`; shown with the ACCENT look for now  |
-| BIGWORD   | `big_words`  | one or two consecutive plain words shown large behind the speaker, `{ "from", "to" }`                                |
-| VISUAL    | `visuals`    | a frame over its words (the layout picks its picture), `{ "from", "to", "description" }` (8 words at most)           |
-| LIST      | `lists`      | the numbered lists: each `{ "items": [...] }` (one or more), an item over its phrase, `{ "from", "to", "key_from" }` |
+| Component | Answer field | What it is                                                                                                                                                                                                |
+| --------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ACCENT    | `accents`    | a phrase worth stressing, `{ "from", "to" }`                                                                                                                                                              |
+| QUESTION  | `questions`  | a question the speaker puts to the viewer, often rhetorical, `{ "from", "to" }`; placed and timed as an ACCENT, shown word by word with a question mark (`app_docs/edit-model.md`, "The question's look") |
+| BIGWORD   | `big_words`  | one or two consecutive plain words shown large behind the speaker, `{ "from", "to" }`                                                                                                                     |
+| VISUAL    | `visuals`    | a frame over its words (the layout picks its picture), `{ "from", "to", "description" }` (8 words at most)                                                                                                |
+| LIST      | `lists`      | the numbered lists: each `{ "items": [...] }` (one or more), an item over its phrase, `{ "from", "to", "key_from" }`                                                                                      |
 
 `word_fixes` (`{ "word", "text" }`) is not a component: it fixes a misheard word on its caption.
 HOOK is not one either: it is the hook call's answer (`{ "text" }`, below), never in the components'

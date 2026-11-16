@@ -23,6 +23,7 @@ import type { Box, HeadTrack } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
 import { type Preset, cleanWord, wordsText } from "./preset.ts";
 import type { PickedVariants } from "./variant-picker.ts";
+import { questionText } from "./question.ts";
 import { anchorAt } from "./timeline.ts";
 import { boxVariantOf, stackVariantOf, textVariantOf } from "./variant-picker.ts";
 import { STYLES, type StandIn } from "./variants.ts";
@@ -86,9 +87,11 @@ export function bigWordText(words: Words, from: string, to: string): string {
     .join(" ");
 }
 
-// An accent's or a question's text: its words, as the captions show them.
+// An accent's or a question's text: its words, as the captions show them, a
+// question's with its question mark (`questionText`).
 export function accentText(words: Words, accent: AccentChoice): string {
-  return wordsText(words.range(accent.from, accent.to), words.transcript, words.preset);
+  const text = wordsText(words.range(accent.from, accent.to), words.transcript, words.preset);
+  return accent.question ? questionText(text) : text;
 }
 
 // What a note calls an element: the hook's text, the accent's or question's,
@@ -452,7 +455,7 @@ export function placeCaptions(pass: Pass, block: CaptionBlock): void {
 
 // An accent or a question through the placer (`engine-place.ts`): the
 // element from the entry its component was picked with (`accent/above-head`,
-// `question/as-accent`), the scene from the moments of its span (the robust
+// `question/word-by-word`), the scene from the moments of its span (the robust
 // faces, unpadded; every component on screen with it placed before it as an
 // obstacle; captions come last and are none yet). Its position, size and
 // `breaks` are the placer's; the notes go to the record as they are. False
@@ -462,7 +465,10 @@ function placeAccent(pass: Pass, extra: Extra, span: { start: number; end: numbe
   const { transcript, preset, picked, measurer, record, shown, overlays, range } = pass;
   const accent = extra.accent!;
   const ids = range(accent.from, accent.to);
-  const text = wordsText(ids, transcript, preset);
+  // A question is measured and wrapped with its question mark, the text the
+  // builder draws (`questionText`), so its box holds the mark.
+  const spoken = wordsText(ids, transcript, preset);
+  const text = accent.question ? questionText(spoken) : spoken;
   const element: TextElement = {
     type: "text",
     id: extra.id,
