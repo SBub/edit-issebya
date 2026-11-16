@@ -1,0 +1,160 @@
+import type { PlacedComponent } from "@edit-issebya/edit";
+import { describe, expect, it } from "vitest";
+import {
+  boxStyle,
+  componentLabel,
+  componentOption,
+  draggedBox,
+  movableAt,
+  movableComponents,
+  moveOfDrag,
+  resizeShare,
+  showMoment,
+  withMove,
+} from "./owner-edit";
+
+function component(over: Partial<PlacedComponent>): PlacedComponent {
+  return {
+    id: "accent-1",
+    component: "ACCENT",
+    text: "sense of purpose",
+    size: 110,
+    start: 4,
+    end: 6,
+    x: 300,
+    y: 400,
+    width: 440,
+    height: 110,
+    ...over,
+  };
+}
+
+const ALL = [
+  component({ id: "w0001", component: "CAPTION", start: 0, end: 1 }),
+  component({ id: "visual-1", component: "VISUAL", size: null, start: 1, end: 3 }),
+  component({ id: "transition-1", component: "LIST", start: 5, end: 8 }),
+  component({ id: "hook", component: "HOOK", start: 0.2, end: 3 }),
+  component({ id: "big-word-1", component: "BIGWORD", start: 4, end: 5.5 }),
+  component({ id: "question-1", component: "QUESTION", start: 9, end: 11 }),
+  component({}),
+];
+
+describe("the editor's components", () => {
+  it("names each kind in plain words", () => {
+    expect(
+      (["ACCENT", "QUESTION", "BIGWORD", "LIST", "HOOK"] as const).map(componentLabel),
+    ).toEqual(["Accent", "Question", "Big word", "List", "Hook"]);
+  });
+
+  it("lists the texts the owner may move, in the order they come on screen", () => {
+    expect(movableComponents(ALL).map((entry) => entry.id)).toEqual([
+      "hook",
+      "accent-1",
+      "big-word-1",
+      "transition-1",
+      "question-1",
+    ]);
+  });
+
+  it("offers only what is on screen at the paused moment", () => {
+    expect(movableAt(ALL, 0).map((entry) => entry.id)).toEqual([]);
+    expect(movableAt(ALL, 2).map((entry) => entry.id)).toEqual(["hook"]);
+    expect(movableAt(ALL, 5.2).map((entry) => entry.id)).toEqual([
+      "accent-1",
+      "big-word-1",
+      "transition-1",
+    ]);
+    // A component is gone at its end.
+    expect(movableAt(ALL, 6).map((entry) => entry.id)).toEqual(["transition-1"]);
+  });
+
+  it("writes one line per text for the list, a long text cut short", () => {
+    expect(componentOption(component({}))).toBe("Accent: sense of purpose");
+    expect(
+      componentOption(
+        component({ component: "HOOK", text: "Gen Z won't work like you did, and here is why" }),
+      ),
+    ).toBe("Hook: Gen Z won't work like you d…");
+  });
+
+  it("shows a picked text near its end, where it is whole on screen", () => {
+    expect(showMoment({ start: 4, end: 6 })).toBe(5.6);
+    expect(showMoment({ start: 0.2, end: 3 })).toBe(2.6);
+    // Too short for that: its middle.
+    expect(showMoment({ start: 4, end: 4.6 })).toBe(4.3);
+  });
+});
+
+describe("a drag", () => {
+  const box = component({});
+
+  it("moves the box by the drag and keeps its size", () => {
+    expect(draggedBox(box, { mode: "move", dx: -50, dy: 120 })).toEqual({
+      x: 250,
+      y: 520,
+      width: 440,
+      height: 110,
+    });
+    expect(moveOfDrag(box, { mode: "move", dx: -50, dy: 120 })).toEqual({
+      id: "accent-1",
+      x: 250,
+      y: 520,
+      size: 110,
+    });
+  });
+
+  it("resizes the box about its top left corner, by the direction the handle moved further in", () => {
+    // 220 px wider is one and a half times the width; 11 px taller is only 1.1.
+    expect(resizeShare(box, { dx: 220, dy: 11 })).toBe(1.5);
+    expect(draggedBox(box, { mode: "resize", dx: 220, dy: 11 })).toEqual({
+      x: 300,
+      y: 400,
+      width: 660,
+      height: 165,
+    });
+    expect(moveOfDrag(box, { mode: "resize", dx: 220, dy: 11 })).toEqual({
+      id: "accent-1",
+      x: 300,
+      y: 400,
+      size: 165,
+    });
+  });
+
+  it("shrinks with a drag inwards, along either edge, never inside out", () => {
+    expect(moveOfDrag(box, { mode: "resize", dx: -220, dy: -55 })?.size).toBe(55);
+    // Straight in along the bottom edge, or straight up along the right one.
+    expect(moveOfDrag(box, { mode: "resize", dx: -132, dy: 0 })?.size).toBe(77);
+    expect(moveOfDrag(box, { mode: "resize", dx: 0, dy: -33 })?.size).toBe(77);
+    // Straight down doubles it.
+    expect(moveOfDrag(box, { mode: "resize", dx: 0, dy: 110 })?.size).toBe(220);
+    expect(resizeShare(box, { dx: -5000, dy: -5000 })).toBe(0.05);
+  });
+
+  it("leaves the box where it is with no drag, and moves no card", () => {
+    expect(draggedBox(box, null)).toEqual({ x: 300, y: 400, width: 440, height: 110 });
+    expect(
+      moveOfDrag(component({ id: "visual-1", component: "VISUAL", size: null }), {
+        mode: "move",
+        dx: 1,
+        dy: 1,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("the draft's moves", () => {
+  it("keeps each component once, with where it is now", () => {
+    const first = { id: "accent-1", x: 1, y: 2, size: 110 };
+    const hook = { id: "hook", x: 5, y: 6, size: 80 };
+    const again = { id: "accent-1", x: 9, y: 9, size: 90 };
+    expect(withMove(withMove(withMove([], first), hook), again)).toEqual([hook, again]);
+  });
+});
+
+describe("a box on the preview", () => {
+  it("is placed in percentages of the frame", () => {
+    expect(
+      boxStyle({ x: 270, y: 480, width: 540, height: 192 }, { width: 1080, height: 1920 }),
+    ).toEqual({ left: "25%", top: "25%", width: "50%", height: "10%" });
+  });
+});

@@ -418,7 +418,7 @@ export function LiveReel({
               </p>
             )}
             <div className="relative flex min-h-0 flex-1 flex-col">
-              <ReelPreview reelId={reel.id} versionId={currentId} />
+              <ReelPreview reelId={reel.id} versionId={currentId} jobs={jobs} />
               <ProgressOverlay
                 state={overlay}
                 onTryAgain={() => void tryAgain()}

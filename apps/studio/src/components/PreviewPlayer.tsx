@@ -1,7 +1,7 @@
 "use client";
 
 import type { HyperframesPlayer } from "@hyperframes/player";
-import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { type ReactNode, type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { type MediaState, activeAt, canPlayFrom, mediaTimeAt } from "@/lib/preview-clock";
 import { recordSoundSchedule } from "@/lib/preview-test-hooks";
 import { PlatformZones } from "./PlatformZones";
@@ -33,6 +33,13 @@ interface Props {
   onIntent?: (intent: "paused" | "playing") => void;
   // The seek the tracks timeline's ruler drives (the one scrubber).
   ref?: Ref<PreviewPlayerHandle>;
+  // A layer over the frame (the move and resize editor). Never part of the
+  // built page.
+  overlay?: ReactNode;
+  // More buttons in the control row, before Zones.
+  controls?: ReactNode;
+  // Play is off (the editor works on a paused preview).
+  playDisabled?: boolean;
 }
 
 export interface PreviewPlayerHandle {
@@ -40,6 +47,8 @@ export interface PreviewPlayerHandle {
   // playing (hold, then start from there), paused stays paused. Ignored until
   // the player is ready.
   seek: (seconds: number) => void;
+  // Stops the clock and the sounds where they are.
+  pause: () => void;
 }
 
 interface Tracked extends MediaState {
@@ -118,6 +127,9 @@ export function PreviewPlayer({
   autoPlay = false,
   onIntent,
   ref,
+  overlay,
+  controls,
+  playDisabled = false,
 }: Props) {
   const playerRef = useRef<HyperframesPlayer>(null);
   const ctxRef = useRef<AudioContext | null>(null);
@@ -384,6 +396,7 @@ export function PreviewPlayer({
     seek: (seconds: number) => {
       if (playerReady) onSeek(seconds);
     },
+    pause,
   }));
 
   // The player's own events: its load, its clock and its end.
@@ -502,6 +515,7 @@ export function PreviewPlayer({
             </p>
           )}
           {zones && <PlatformZones />}
+          {overlay}
         </div>
       </div>
       {/* Three columns, the outer two equal: the clock sits on the row's centre
@@ -512,7 +526,7 @@ export function PreviewPlayer({
         <button
           type="button"
           onClick={onPlayClick}
-          disabled={!playerReady}
+          disabled={!playerReady || playDisabled}
           aria-label={intent === "playing" ? "Pause" : "Play"}
           title={intent === "playing" ? "Pause" : "Play"}
           data-testid="play-toggle"
@@ -556,6 +570,7 @@ export function PreviewPlayer({
           </span>
         </span>
         <div className="flex min-w-0 items-center justify-end gap-2">
+          {controls}
           {!expanded && (
             <button
               type="button"

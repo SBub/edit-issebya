@@ -1,34 +1,59 @@
 "use client";
 
 import {
+  type Edit,
   FONT_PAIRS,
   FONT_ROLES,
   type FontPair,
   type FontPairId,
   type FontRole,
+  type HeadTrack,
   ISSEBYA_PRESET,
+  type Measurer,
+  type OwnerMove,
+  type PlacedComponent,
+  type Transcript,
   build,
   createMeasurer,
+  effectiveMoves,
   headTrackSchema,
   parseEdit,
+  settleOwnerMove,
   transcriptSchema,
 } from "@edit-issebya/edit";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { requestOwnerEdit } from "@/app/change-actions";
 import { type PreviewSourcesResult, loadPreviewSources } from "@/app/preview-actions";
+import { MoveLayer } from "@/components/MoveLayer";
 import { PreviewPlayer, type PreviewPlayerHandle } from "@/components/PreviewPlayer";
 import { type TimelineFrames, TracksTimeline } from "@/components/TracksTimeline";
 import { isChromium } from "@/lib/browser";
 import { editAssetUrl } from "@/lib/edit-assets";
+import type { JobRow } from "@/lib/jobs";
+import { showMoment, withMove } from "@/lib/owner-edit";
 import { previewPage } from "@/lib/preview-page";
 import { recordPreviewBuild } from "@/lib/preview-test-hooks";
 import { type SoundHit, soundHits } from "@/lib/sound-schedule";
 import { capture } from "@/lib/track";
 import { type Timeline, timelineRows } from "@/lib/tracks-timeline";
 
-interface Built {
-  versionId: string;
+// One built page: the version's own, or the move and resize editor's draft.
+interface Page {
   html: string;
   hits: SoundHit[];
+  // Every component with its box on screen, from the builder.
+  components: PlacedComponent[];
+}
+
+interface Built {
+  versionId: string;
+  page: Page;
+  // The version's edit and what it was built with: the editor applies the
+  // owner's moves to the edit and builds the draft with the same builder.
+  edit: Edit;
+  context: { transcript: Transcript; headTrack: HeadTrack; measurer: Measurer };
+  pageOf: (edit: Edit) => Page;
   soundBytes: Record<string, ArrayBuffer>;
   // The same parsed edit's rows on the reel's clock (no second fetch, no
   // second builder).
@@ -111,21 +136,26 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
   // The version's own pair: its files are the ones the page loads and measures.
   const pair = FONT_PAIRS[edit.font_pair];
   const fontBytes = await loadFonts(pair);
-  const result = build(
-    edit,
-    transcript,
-    headTrack,
-    ISSEBYA_PRESET,
-    createMeasurer(hb, pair, fontBytes),
-  );
-  recordPreviewBuild(result.html);
-  const hits = soundHits(edit, transcript, ISSEBYA_PRESET);
-  const html = previewPage(
-    result.html,
-    result.assets,
-    { footage: urls.footage, masks: urls.masks },
-    hits.map((hit) => hit.id),
-  );
+  const measurer = createMeasurer(hb, pair, fontBytes);
+  // The one builder, then the preview transform: the version's page and every
+  // draft of the editor are made the same way.
+  const pageOf = (shown: Edit, record = false): Page => {
+    const result = build(shown, transcript, headTrack, ISSEBYA_PRESET, measurer);
+    if (record) recordPreviewBuild(result.html);
+    const pageHits = soundHits(shown, transcript, ISSEBYA_PRESET);
+    return {
+      html: previewPage(
+        result.html,
+        result.assets,
+        { footage: urls.footage, masks: urls.masks },
+        pageHits.map((hit) => hit.id),
+      ),
+      hits: pageHits,
+      components: result.components,
+    };
+  };
+  const page = pageOf(edit, true);
+  const { hits } = page;
   const files = [...new Set(hits.map((hit) => hit.file))];
   const soundBytes = Object.fromEntries(
     await Promise.all(
@@ -139,8 +169,10 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
     status: "built",
     built: {
       versionId: sources.versionId,
-      html,
-      hits,
+      page,
+      edit,
+      context: { transcript, headTrack, measurer },
+      pageOf: (shown) => pageOf(shown),
       soundBytes,
       timeline: timelineRows(edit, transcript),
       frames:
@@ -151,37 +183,147 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
   };
 }
 
+// The move and resize editor's draft (app_docs/owner-edits.md): the version's
+// edit with the owner's moves so far, and its page.
+interface Draft {
+  edit: Edit;
+  moves: OwnerMove[];
+  page: Page;
+}
+
+type LiveJob = Pick<JobRow, "id" | "status">;
+
+const SAVE_FAILED = "Your changes were not saved. Try again";
+
 // One built version: the player and its tracks timeline (hidden while the
 // preview is expanded), the playhead
 // following the player's clock (set only from the player's callback) and the
 // timeline's ruler seeking through the player's own seek. Keyed
 // by version, so a new version mounts a new player, started from the
 // hand-off (the previous version's position and play or pause state).
+//
+// Move text opens the editor over the paused preview: the owner selects a
+// text component, drags it or its corner handle, and each drag builds the
+// draft again with the one builder, so what shows is what Save will save.
+// Save queues an `owner_edit` job; the worker saves a new version and the
+// preview switches to it like to any new version. Cancel drops the draft.
 function BuiltPreview({
+  reelId,
   built,
   handoff,
   onHandoff,
   expanded,
   onExpandedChange,
+  jobs,
 }: {
+  reelId: string;
   built: Built;
   handoff: Handoff;
   onHandoff: (change: Partial<Handoff>) => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
+  jobs: readonly LiveJob[];
 }) {
+  const router = useRouter();
   const [position, setPosition] = useState(handoff.position);
   const playerRef = useRef<PreviewPlayerHandle>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  // The save: being sent, or the job it queued.
+  const [sent, setSent] = useState<"sending" | { jobId: string } | null>(null);
+  // The mounted player: a new page (a draft, or the version's again after
+  // Cancel) mounts a new one where the last one stood, paused.
+  const [mount, setMount] = useState({
+    key: 0,
+    at: handoff.position,
+    play: handoff.intent === "playing",
+  });
+  const page = draft?.page ?? built.page;
+  const sentJob = sent && sent !== "sending" ? jobs.find((job) => job.id === sent.jobId) : null;
+  const saveFailed = sentJob?.status === "failed" || sentJob?.status === "cancelled";
+  const saving = sent !== null && !saveFailed;
+
+  function remount() {
+    setMount((current) => ({ key: current.key + 1, at: position, play: false }));
+  }
+
+  function openEditor() {
+    playerRef.current?.pause();
+    setEditing(true);
+    setMessage("");
+  }
+
+  function closeEditor() {
+    if (draft) remount();
+    setDraft(null);
+    setEditing(false);
+    setSelectedId(null);
+    setMessage("");
+    setSent(null);
+  }
+
+  // A finished drag: made legal (inside the safe zone, a size the text may
+  // take), applied to the draft, and the draft's page built.
+  function move(asked: OwnerMove) {
+    const settled = settleOwnerMove(draft?.edit ?? built.edit, asked, {
+      ...built.context,
+      preset: ISSEBYA_PRESET,
+    });
+    if (!settled.ok) {
+      setMessage("This text does not fit there");
+      return;
+    }
+    setMessage("");
+    setSent(null);
+    setDraft({
+      edit: settled.edit,
+      // Only what differs from the version: a text put back is no move.
+      moves: effectiveMoves(withMove(draft?.moves ?? [], settled.move), built.page.components),
+      page: built.pageOf(settled.edit),
+    });
+    remount();
+  }
+
+  async function save() {
+    if (!draft || draft.moves.length === 0) return;
+    setSent("sending");
+    setMessage("");
+    try {
+      const result = await requestOwnerEdit({
+        reelId,
+        versionId: built.versionId,
+        moves: draft.moves,
+      });
+      if (result.status === "signed-out") {
+        router.refresh();
+        return;
+      }
+      if (result.status === "queued") {
+        setSent({ jobId: result.jobId });
+        setSelectedId(null);
+        return;
+      }
+      setSent(null);
+      setMessage(result.status === "failed" ? SAVE_FAILED : result.reason);
+    } catch {
+      setSent(null);
+      setMessage(SAVE_FAILED);
+    }
+  }
+
   return (
     <>
       <PreviewPlayer
+        key={mount.key}
         ref={playerRef}
-        html={built.html}
+        html={page.html}
         versionId={built.versionId}
-        hits={built.hits}
+        hits={page.hits}
         soundBytes={built.soundBytes}
-        startAt={handoff.position}
-        autoPlay={handoff.intent === "playing"}
+        startAt={mount.at}
+        autoPlay={mount.play}
         onPosition={(seconds) => {
           setPosition(seconds);
           onHandoff({ position: seconds });
@@ -189,6 +331,41 @@ function BuiltPreview({
         onIntent={(intent) => onHandoff({ intent })}
         expanded={expanded}
         onExpandedChange={onExpandedChange}
+        playDisabled={editing}
+        controls={
+          // Desktop only for now: the editor is built for a mouse.
+          <button
+            type="button"
+            data-testid="move-toggle"
+            aria-pressed={editing}
+            title="Move or resize a text on screen"
+            onClick={editing ? closeEditor : openEditor}
+            disabled={saving}
+            className="hidden h-8 flex-none items-center border border-line px-2.5 text-xs hover:bg-raised disabled:opacity-50 aria-pressed:bg-raised aria-pressed:font-semibold lg:flex"
+          >
+            Move text
+          </button>
+        }
+        overlay={
+          editing && (
+            <MoveLayer
+              components={page.components}
+              position={position}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onPick={(component) => {
+                setSelectedId(component.id);
+                playerRef.current?.seek(showMoment(component));
+              }}
+              onMove={move}
+              changed={(draft?.moves.length ?? 0) > 0}
+              saving={saving}
+              message={saveFailed ? SAVE_FAILED : saving ? "Saving your changes" : message}
+              onSave={() => void save()}
+              onCancel={closeEditor}
+            />
+          )
+        }
       />
       {!expanded && (
         <TracksTimeline
@@ -211,7 +388,16 @@ function subscribeNever(): () => void {
 // Realtime): no reload, no polling. A load overtaken by a newer version is dropped. While the next
 // version loads, the previous one keeps playing; the next one then takes over
 // at the same time, playing or paused as it was.
-export function ReelPreview({ reelId, versionId }: { reelId: string; versionId: string | null }) {
+export function ReelPreview({
+  reelId,
+  versionId,
+  jobs = [],
+}: {
+  reelId: string;
+  versionId: string | null;
+  // The reel's jobs: the editor follows the job its Save queued.
+  jobs?: readonly LiveJob[];
+}) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const opened = useRef(false);
   // The preview filling the edit area, the tracks timeline hidden: collapsed
@@ -280,7 +466,9 @@ export function ReelPreview({ reelId, versionId }: { reelId: string; versionId: 
       ) : built ? (
         <BuiltPreview
           key={built.versionId}
+          reelId={reelId}
           built={built}
+          jobs={jobs}
           handoff={handoff}
           onHandoff={(change) => {
             handoffRef.current = { ...handoffRef.current, ...change };

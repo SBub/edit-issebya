@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
-import { type FontPairId, isFontPairId } from "@edit-issebya/edit";
+import { type FontPairId, type OwnerMove, isFontPairId, parseOwnerMoves } from "@edit-issebya/edit";
 import { changeBlockedReason } from "@/lib/change-requests";
 import { type ReelDetail, isReelId } from "@/lib/reels";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -55,9 +55,10 @@ async function insertJob(
   { supabase, userId }: { supabase: SupabaseClient; userId: string },
   row: {
     reel_id: string;
-    kind: "restore" | "start_over" | "relayout";
+    kind: "restore" | "start_over" | "relayout" | "owner_edit";
     restore_version_id?: string;
     font_pair?: FontPairId;
+    owner_edit?: { version_id: string; moves: OwnerMove[] };
   },
 ): Promise<ChangeActionResult> {
   // Under RLS: the insert policy takes the owner from the session and accepts
@@ -148,5 +149,33 @@ export async function requestFontPair(input: {
     reel_id: input.reelId,
     kind: "relayout",
     font_pair: input.fontPair,
+  });
+}
+
+// The owner's moves (app_docs/owner-edits.md): queues an `owner_edit` job with
+// the version the owner edited and the moves. The worker applies them and
+// saves a new version marked as the owner's; the edited version stays as it
+// was. The moves are checked for shape here and for their rule (text
+// components only, inside the safe zone) by the worker.
+export async function requestOwnerEdit(input: {
+  reelId: string;
+  versionId: string;
+  moves: unknown;
+}): Promise<ChangeActionResult> {
+  if (typeof input.reelId !== "string" || !isReelId(input.reelId)) return { status: "failed" };
+  if (typeof input.versionId !== "string" || !isReelId(input.versionId)) {
+    return { status: "invalid", reason: "Pick a version to edit" };
+  }
+  const moves = parseOwnerMoves(input.moves);
+  if (!moves) return { status: "invalid", reason: "Move or resize a text first" };
+  const open = await openReel(input.reelId);
+  if (!open.ok) return open.result;
+  if (open.currentVersionId === null) {
+    return { status: "invalid", reason: "Editing opens once the first version is ready" };
+  }
+  return insertJob(open, {
+    reel_id: input.reelId,
+    kind: "owner_edit",
+    owner_edit: { version_id: input.versionId, moves },
   });
 }
