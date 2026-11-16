@@ -34,7 +34,7 @@ async function measurer() {
   const pair = FONT_PAIRS[DEFAULT_FONT_PAIR_ID];
   const fonts = await Promise.all(
     FONT_ROLES.map(async (role) => {
-      const url = new URL(`../../../packages/edit/file`, import.meta.url);
+      const url = new URL(`../../../packages/edit/${pair[role].file}`, import.meta.url);
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- packages/edit's own font assets
       return [role, new Uint8Array(await readFile(url))] as const;
     }),
