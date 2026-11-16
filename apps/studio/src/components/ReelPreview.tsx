@@ -218,9 +218,12 @@ function BuiltPreview({
   expanded,
   onExpandedChange,
   jobs,
+  ownerEdit,
 }: {
   reelId: string;
   built: Built;
+  // The Move editor's flag: off, neither its button nor the editor exists.
+  ownerEdit: boolean;
   handoff: Handoff;
   onHandoff: (change: Partial<Handoff>) => void;
   expanded: boolean;
@@ -351,19 +354,22 @@ function BuiltPreview({
         playDisabled={editing}
         controls={
           // Desktop only for now: the editor is built for a mouse.
-          <button
-            type="button"
-            data-testid="move-toggle"
-            aria-pressed={editing}
-            title="Move or resize a text on screen"
-            onClick={editing ? closeEditor : openEditor}
-            disabled={saving}
-            className="hidden h-8 flex-none items-center border border-line px-2.5 text-xs hover:bg-raised disabled:opacity-50 aria-pressed:bg-raised aria-pressed:font-semibold lg:flex"
-          >
-            Move text
-          </button>
+          ownerEdit && (
+            <button
+              type="button"
+              data-testid="move-toggle"
+              aria-pressed={editing}
+              title="Move or resize a text on screen"
+              onClick={editing ? closeEditor : openEditor}
+              disabled={saving}
+              className="hidden h-8 flex-none items-center border border-line px-2.5 text-xs hover:bg-raised disabled:opacity-50 aria-pressed:bg-raised aria-pressed:font-semibold lg:flex"
+            >
+              Move text
+            </button>
+          )
         }
         overlay={
+          ownerEdit &&
           editing && (
             <MoveLayer
               components={page.components}
@@ -409,11 +415,14 @@ export function ReelPreview({
   reelId,
   versionId,
   jobs = [],
+  ownerEdit = false,
 }: {
   reelId: string;
   versionId: string | null;
   // The reel's jobs: the editor follows the job its Save queued.
   jobs?: readonly LiveJob[];
+  // Whether the owner's Move editor is on (the `studio-owner-edit` flag).
+  ownerEdit?: boolean;
 }) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const opened = useRef(false);
@@ -486,6 +495,7 @@ export function ReelPreview({
           reelId={reelId}
           built={built}
           jobs={jobs}
+          ownerEdit={ownerEdit}
           handoff={handoff}
           onHandoff={(change) => {
             handoffRef.current = { ...handoffRef.current, ...change };

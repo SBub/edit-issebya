@@ -5,6 +5,7 @@ import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
 import { type FontPairId, type OwnerMove, isFontPairId, parseOwnerMoves } from "@edit-issebya/edit";
 import { changeBlockedReason } from "@/lib/change-requests";
 import { type ReelDetail, isReelId } from "@/lib/reels";
+import { OWNER_EDIT_FLAG, isFlagOn } from "@/lib/feature-flags";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type ChangeActionResult =
@@ -15,7 +16,13 @@ export type ChangeActionResult =
   | { status: "failed" };
 
 type Open =
-  | { ok: true; supabase: SupabaseClient; userId: string; currentVersionId: string | null }
+  | {
+      ok: true;
+      supabase: SupabaseClient;
+      userId: string;
+      email: string | null;
+      currentVersionId: string | null;
+    }
   | { ok: false; result: ChangeActionResult };
 
 // The user's own client, then the reel under RLS: another owner's reel reads
@@ -48,7 +55,13 @@ async function openReel(reelId: string): Promise<Open> {
   if (!reel.data) return { ok: false, result: { status: "failed" } };
   const reason = changeBlockedReason(reel.data);
   if (reason) return { ok: false, result: { status: "blocked", reason } };
-  return { ok: true, supabase, userId: user.id, currentVersionId: reel.data.current_version_id };
+  return {
+    ok: true,
+    supabase,
+    userId: user.id,
+    email: user.email ?? null,
+    currentVersionId: reel.data.current_version_id,
+  };
 }
 
 async function insertJob(
@@ -170,6 +183,11 @@ export async function requestOwnerEdit(input: {
   if (!moves) return { status: "invalid", reason: "Move or resize a text first" };
   const open = await openReel(input.reelId);
   if (!open.ok) return open.result;
+  // The Move editor's flag, evaluated for this user like the page does: off,
+  // nothing is queued whatever the browser sends.
+  if (!(await isFlagOn(OWNER_EDIT_FLAG, { id: open.userId, email: open.email }))) {
+    return { status: "invalid", reason: "Moving is not available yet" };
+  }
   if (open.currentVersionId === null) {
     return { status: "invalid", reason: "Editing opens once the first version is ready" };
   }

@@ -62,6 +62,9 @@ interface LiveReelProps extends Snapshot {
   // The font pair the current version was set in (its edit), read on the
   // server; null when the version names none. The picker's chosen pair.
   currentFontPair: { versionId: string; fontPair: FontPairId | null } | null;
+  // Whether the owner's Move editor is on for this user (the `studio-owner-edit`
+  // flag, evaluated on the server; app_docs/feature-flags.md).
+  ownerEdit?: boolean;
 }
 
 // How long "New version N" shows after a save.
@@ -142,6 +145,7 @@ export function LiveReel({
   library,
   fontPair,
   currentFontPair,
+  ownerEdit = false,
 }: LiveReelProps) {
   const [reel, setReel] = useState(initialReel);
   const [jobs, setJobs] = useState(initialJobs);
@@ -418,7 +422,12 @@ export function LiveReel({
               </p>
             )}
             <div className="relative flex min-h-0 flex-1 flex-col">
-              <ReelPreview reelId={reel.id} versionId={currentId} jobs={jobs} />
+              <ReelPreview
+                reelId={reel.id}
+                versionId={currentId}
+                jobs={jobs}
+                ownerEdit={ownerEdit}
+              />
               <ProgressOverlay
                 state={overlay}
                 onTryAgain={() => void tryAgain()}

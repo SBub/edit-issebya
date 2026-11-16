@@ -275,8 +275,9 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
 - `STUDIO_URL` and `STUDIO_PORT`: where the landing page forwards `/studio` (`STUDIO_PORT`
   defaults to 3001; the studio's `dev` and `start` use it).
 - `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_JURISDICTION`, `R2_STUDIO_ACCESS_KEY_ID`,
-  `R2_STUDIO_SECRET_ACCESS_KEY`, `R2_KEY_PREFIX` (studio, read per request at run time), and
-  `E2E_MOCK_STORAGE` (tests only).
+  `R2_STUDIO_SECRET_ACCESS_KEY`, `R2_KEY_PREFIX` (studio, read per request at run time), the optional
+  server-only `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` (the feature flags, `app_docs/feature-flags.md`),
+  and `E2E_MOCK_STORAGE` and `E2E_MOCK_FLAGS` (tests only).
 - Worker (`apps/worker/.env.development`): `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `WORKER_ID`,
   `R2_WORKER_ACCESS_KEY_ID`, `R2_WORKER_SECRET_ACCESS_KEY`, `WORKER_POLL_INTERVAL_SECONDS`
   (default 120), `WORKER_MIN_FREE_DISK_GB` (default 10), `WORKER_SCRATCH_DIR`, `WORKER_RENDER_PATH`

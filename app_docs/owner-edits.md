@@ -146,7 +146,7 @@ there`, or why a save did not start.
   handle moved further in, as a share of the box), `draggedBox`, `moveOfDrag`, `snapDrag` (a move drag with its centre snapped to the centre lines),
   `withMove`, `boxStyle`.
 - Save calls `requestOwnerEdit` (`src/app/change-actions.ts`): it checks the shape of the moves
-  (`parseOwnerMoves`), refuses a blocked reel like going back does (`changeBlockedReason`) and inserts
+  (`parseOwnerMoves`), refuses when the `studio-owner-edit` flag is off for the user, refuses a blocked reel like going back does (`changeBlockedReason`) and inserts
   the job `{ kind: "owner_edit", owner_edit: { version_id, moves } }` under RLS. The editor then waits
   for its job (`jobs` from `LiveReel`): the progress overlay shows `Saving your changes`, the new
   version replaces the preview by itself like any new version, and the editor closes. A failed job
@@ -277,7 +277,12 @@ order by created_at;
 
 ## Configuration
 
-None. The job needs no AI and no prompt. A moved big word that now needs a cut-out uses the mask tool
+The whole editor sits behind the PostHog feature flag `studio-owner-edit`, which gates the owner's
+Move editor (`app_docs/feature-flags.md`). It is evaluated on the server for the signed-in user:
+off, the reel page renders neither the `Move text` button nor the editor, and `requestOwnerEdit`
+refuses (`Moving is not available yet`) before anything is queued. PostHog unconfigured, slow or
+unreachable means off. The specs turn it on with `E2E_MOCK_FLAGS=studio-owner-edit` (the studio's
+Playwright config and the ADW dev command set it). The job needs no AI and no prompt. A moved big word that now needs a cut-out uses the mask tool
 like decide does (`E2E_MOCK_MASK` in specs).
 
 ## Testing
@@ -348,6 +353,8 @@ moved, a resized and a widened component match between preview and export`: the 
 - Never keep `owner_moves` rows after their reel is deleted: `reel_id` cascades.
 - Never call an AI model in an `owner_edit` job.
 - Never move a caption or a VISUAL card with this editor.
+- Never render the editor or queue an `owner_edit` job for a user whose `studio-owner-edit` flag is
+  off: the page and `requestOwnerEdit` both evaluate it on the server.
 
 ## Notes
 
