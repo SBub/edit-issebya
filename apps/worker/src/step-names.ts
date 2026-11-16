@@ -16,4 +16,5 @@ export const STEP_NAMES = [
   "describe_photo",
   "photo_images",
   "relayout",
+  "owner_edit",
 ] as const;

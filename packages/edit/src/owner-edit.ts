@@ -411,6 +411,8 @@ export interface OwnerMoveRecord {
   owner: RecordedPlacement;
   moved: boolean;
   resized: boolean;
+  // The engine-placed version `engine` was read from; set by the worker.
+  engine_version_id?: string;
   context: {
     frame: { width: number; height: number };
     font_pair: string;

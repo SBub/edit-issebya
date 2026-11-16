@@ -12,6 +12,7 @@ import { runDecide } from "./decide/run-decide.ts";
 import type { ErrorTracker } from "./error-tracking.ts";
 import { saveFirstVersion } from "./first-version.ts";
 import { ownerFontPair } from "./font-pair-store.ts";
+import { runOwnerEdit } from "./owner-edit.ts";
 import { runRelayout } from "./relayout.ts";
 import { runJobKind } from "./job-kinds.ts";
 import { runDescribePhotoJob } from "./photos/describe-photo.ts";
@@ -220,6 +221,20 @@ export async function processJob(
                   tools: cutouts.tools,
                   recordStored,
                   fontPair,
+                }),
+              // The owner's moves (app_docs/owner-edits.md): applied to the version
+              // the owner edited and saved as a new version, with no AI call.
+              owner_edit: (ownerEdit) =>
+                runOwnerEdit({
+                  ctx,
+                  storage,
+                  rows,
+                  blobs,
+                  keyPrefix: config.keyPrefix,
+                  scratchDir,
+                  tools: cutouts.tools,
+                  recordStored,
+                  ownerEdit,
                 }),
               // A library photo: its two copies, then the AI's
               // description and tags; no reel is touched.
