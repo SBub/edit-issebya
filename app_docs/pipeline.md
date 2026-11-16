@@ -402,8 +402,10 @@ inputs name the old retime outputs) does not re-run retime.
   `cutout/mask-tool.tools.test.ts` runs the real MODNet entry (the installed model, never a
   download) on 3 seconds of `short-person.mp4` (H.264 1080x1920 `yuv420p`, video range BT.709, 90
   frames, 90 progress lines, the face white and a corner black); `render/render.tools.test.ts`
-  renders a big word behind the speaker with a real MODNet mask. The owner's Mac only,
-  never CI.
+  renders a big word behind the speaker with a real MODNet mask;
+  `render/render-compare.tools.test.ts` exports two fixture reels both ways (the single call and
+  the composite) and compares them frame by frame and sample by sample (`app_docs/export.md`). The
+  owner's Mac only, never CI.
 - Unit: `cutout/matte.test.ts` (working size, the model input, the gray matte, the temporal median,
   the frame count and the two ffmpeg calls), `cutout/modnet-model.test.ts` (the model's place, the
   pin, a missing or changed model, the install with a tiny stand-in served by a fake `fetch`, never

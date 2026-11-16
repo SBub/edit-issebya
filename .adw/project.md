@@ -156,7 +156,9 @@ HyperFrames on the committed clip, `footage-check.tools.test.ts` with real ffpro
 `photos/photo-images.tools.test.ts` with real ffmpeg on `fixtures/photos/sample.jpg` and `sample.heic`,
 `cutout/mask-tool.tools.test.ts` with the real MODNet mask tool (ONNX Runtime on the CPU, the model
 committed at `apps/worker/models/`, never downloaded) on
-the person clip; on the owner's Mac only, never in CI), and the studio's
+the person clip, `render/render-compare.tools.test.ts` exporting two fixture reels by the single
+HyperFrames call and by the composite and comparing every frame (SSIM at or above 0.9855) and the
+decoded sound (`app_docs/export.md`); on the owner's Mac only, never in CI), and the studio's
 `yarn workspace @edit-issebya/studio test:tools` (`apps/studio/e2e-tools/export-matches-preview.spec.ts`,
 the preview-matches-export guardrail, real HyperFrames, on the owner's Mac only, never in CI, run as
 `PORT=<run port> STUDIO_PORT=<BACKEND_PORT>` against the run's servers from `/prepare_app`); DB integration

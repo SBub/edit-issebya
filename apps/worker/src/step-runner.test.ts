@@ -60,6 +60,27 @@ function onlyDone(calls: ReturnType<typeof recordingSteps>["calls"]) {
   return done;
 }
 
+// The pid a tool wrote to `file`, once it is there.
+async function waitForPid(file: string): Promise<number> {
+  let pid = 0;
+  for (let i = 0; i < 100 && !pid; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
+    pid = Number(await readFile(file, "utf8").catch(() => "0"));
+  }
+  expect(pid).toBeGreaterThan(0);
+  return pid;
+}
+
+function isGone(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 describe("runStep", () => {
   it("measures CPU and peak memory of the tool, not the worker", TIMEOUT, async () => {
     const { steps, calls } = recordingSteps();
@@ -193,27 +214,6 @@ describe("runStep", () => {
     });
   });
 
-  // The pid a tool wrote to `file`, once it is there.
-  async function waitForPid(file: string): Promise<number> {
-    let pid = 0;
-    for (let i = 0; i < 100 && !pid; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
-      pid = Number(await readFile(file, "utf8").catch(() => "0"));
-    }
-    expect(pid).toBeGreaterThan(0);
-    return pid;
-  }
-
-  function isGone(pid: number): boolean {
-    try {
-      process.kill(pid, 0);
-      return false;
-    } catch {
-      return true;
-    }
-  }
-
   // The step settles only once the group is gone, reaped included, so the
   // checks right after it need no waiting.
   it("kills the process group on abort and writes nothing more", TIMEOUT, async () => {
@@ -284,6 +284,101 @@ describe("runStep", () => {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
     await expect(readFile(marker, "utf8")).rejects.toThrow();
     expect(calls.map((c) => c.call)).toEqual(["start"]);
+  });
+});
+
+describe("a call's own signal", () => {
+  it("kills that call's process group alone and throws the signal's reason", TIMEOUT, async () => {
+    const pidFile = join(dir, "own-signal-pid");
+    const siblingFile = join(dir, "own-signal-sibling");
+    const { steps, calls } = recordingSteps();
+    const stop = new AbortController();
+    let pid = 0;
+    await runToolsStep(stepContext(steps), {
+      name: "lanes",
+      async work(tool) {
+        const stopped = tool({
+          file: NODE,
+          args: [
+            "-e",
+            `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 30000);`,
+          ],
+          signal: stop.signal,
+        });
+        // The sibling has no signal of its own: it runs to its end.
+        const sibling = tool({
+          file: NODE,
+          args: [
+            "-e",
+            `setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(siblingFile)}, "ran"), 300);`,
+          ],
+        });
+        pid = await waitForPid(pidFile);
+        stop.abort(new Error("the other lane failed"));
+        await expect(stopped).rejects.toThrow("the other lane failed");
+        expect(isGone(pid)).toBe(true);
+        await sibling;
+        return { what: "one stopped" };
+      },
+    });
+    // The step itself goes on: the job's signal was never aborted.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- a file in the test's temp folder
+    expect(await readFile(siblingFile, "utf8")).toBe("ran");
+    expect(calls.map((c) => c.call)).toEqual(["start", "done"]);
+  });
+
+  it("starts no call whose own signal is already aborted", async () => {
+    const { steps } = recordingSteps();
+    const stop = new AbortController();
+    stop.abort(new Error("stopped before it started"));
+    let spawned = 0;
+    const spawnTool: SpawnTool = async () => {
+      spawned += 1;
+      throw new Error("never spawned");
+    };
+    await expect(
+      runToolsStep(
+        stepContext(steps),
+        {
+          name: "lanes",
+          async work(tool) {
+            await tool({ file: "tool", args: [], signal: stop.signal });
+            return { what: "ran" };
+          },
+        },
+        spawnTool,
+      ),
+    ).rejects.toThrow("stopped before it started");
+    expect(spawned).toBe(0);
+  });
+
+  it("passes the spawner one signal that either abort fires", async () => {
+    const { steps } = recordingSteps();
+    const job = new AbortController();
+    const own = new AbortController();
+    const seen: AbortSignal[] = [];
+    const spawnTool: SpawnTool = (_call, signal) =>
+      new Promise((_resolve, reject) => {
+        seen.push(signal);
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    const running = runToolsStep(
+      stepContext(steps, { signal: job.signal }),
+      {
+        name: "lanes",
+        async work(tool) {
+          await tool({ file: "tool", args: [], signal: own.signal });
+          return { what: "ran" };
+        },
+      },
+      spawnTool,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    job.abort(new Error("lease lost"));
+    await expect(running).rejects.toThrow("lease lost");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.aborted).toBe(true);
+    expect(own.signal.aborted).toBe(false);
   });
 });
 

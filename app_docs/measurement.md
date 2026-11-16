@@ -464,25 +464,50 @@ The photo description (`describe_photo`) makes its call as a `chat` span under i
 
 ### render's spans
 
-The `step render` span has five stages as children, in order. The HyperFrames call is the `exec`
-span under `render.encode`:
+The `step render` span has six stages as children, in order. Every tool call of the render is an
+`exec` span under `render.encode` (the probes under `render.route`). The composite
+(`app_docs/export.md`):
 
 ```
-step render                        render.version_id, render.duration_seconds, render.mp4_bytes, job.cancelled
+step render                        render.version_id, render.duration_seconds, render.mp4_bytes, render.path, render.mode, job.cancelled
 ├─ render.load                     render.version_id, render.version_number, render.inputs
 │  └─ r2.get                       one per object read (the edit, the footage, the masks)
-├─ render.build                    render.page_bytes, render.assets
-├─ render.encode                   render.duration_seconds
-│  └─ exec hyperframes             the tool call's exec attributes (CPU, peak, exit)
+├─ render.route                    render.path, render.mode (or render.route_reason)
+│  └─ exec ffprobe                 one for the footage and one per mask
+├─ render.build                    render.page_bytes, render.assets, render.pages
+├─ render.encode                   render.duration_seconds, render.path, render.mode
+│  ├─ exec hyperframes             the front layer
+│  ├─ exec hyperframes             the sound page
+│  ├─ exec ffmpeg                  the sound cut
+│  ├─ exec hyperframes             the behind layer (a version with a cut-out span)
+│  ├─ exec ffmpeg                  the footage's JPEG pass (`match` mode)
+│  └─ exec ffmpeg                  the composite
 ├─ render.upload                   render.mp4_bytes, render.key
 │  └─ r2.put                       the MP4's upload: r2.kind export, r2.bytes, r2.outcome
 └─ render.save                     render.export_id
 ```
 
+The single call has the same six stages: `render.route` has no probe when the setting or the edit
+alone decides, `render.build` has no `render.pages`, and `render.encode` carries only
+`render.duration_seconds` with one `exec hyperframes` beneath.
+
+- `render.path` is `composite` or `single`, on the step and on `render.route`. With `composite`,
+  `render.mode` is `match` or `clean`; with `single`, `render.route_reason` says why
+  (`renderRoute`'s reason: `setting`, `footage_clips`, `footage_style`, `footage_hidden`,
+  `footage_span`, `long_reel`, `footage_fps`, `footage_format`, `no_audio`, `mask_fps`,
+  `mask_sizes`). TraceQL for the renders that took the slow way:
+  `{ name = "step render" && span.render.path = "single" }`.
+- `render.pages` is how many layer pages the composite built (2, or 3 with a cut-out span);
+  `render.page_bytes` and `render.assets` are then summed over them.
+- The step row's CPU is summed over every call. Its peak memory counts the calls that ran at the
+  same time together, each at its own peak (`concurrentPeak`), so for the composite it is an upper
+  bound of the tree's real peak, a few percent above it.
+
 - `render.load`: the version row, its edit and the inputs read from storage. `render.inputs` is the
   footage plus the masks downloaded for the render.
-- `render.build`: the HyperFrames page from the shared builder and the project folder beside it.
-  `render.page_bytes` is the page's UTF-8 size, `render.assets` the files the page names.
+- `render.build`: the HyperFrames page (or the composite's layer pages) from the shared builder and
+  the project folder beside each. `render.page_bytes` is the pages' UTF-8 size, `render.assets` the
+  files they name.
 - `render.duration_seconds` is the composition's length (the edit's duration), on the step and on
   `render.encode`. The step's own wall time is `step.wall_ms`.
 - `render.upload` and `render.save` are the MP4 put to storage and the `exports` row. A row refused
@@ -715,8 +740,10 @@ does. Retention is the cut-out's (15 days).
   pipes killed, no call started after the abort), `summary.test.ts`, `time-report.test.ts`, `process-tree.test.ts`, `telemetry.test.ts` (one
   trace per reel, span tree, logs linked to spans, no request without an endpoint against a local HTTP
   server, an endpoint alone with no Authorization header, positive control).
-- Render's spans: `render/render-step.test.ts` (`runRender spans`: the five stages in order under the
-  step, the HyperFrames exec under `render.encode`, each stage's attributes, one ERROR `render failed`
+- Render's spans: `render/render-step.test.ts` (`runRender spans`: the six stages in order under the
+  step, the probe under `render.route`, every HyperFrames and ffmpeg exec of the composite under
+  `render.encode`, `render.path` and `render.mode` on the step, the single call with its
+  `render.route_reason`, each stage's attributes, one ERROR `render failed`
   record with the job and the step when the footage is missing, a cancel that ends the stage and the
   step clean with `job.cancelled`). `telemetry.test.ts` (`inSpan`: a cancelled work ends clean).
 - Decide's spans: `telemetry.test.ts` (`inSpan`: the child's parent and attributes, an error marked

@@ -2,9 +2,11 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import {
   type ProgressParser,
+  ffmpegFrameProgress,
   parseCutoutProgress,
   parsePersonMaskProgress,
   parseRenderProgress,
+  weightedParts,
   weightedProgress,
 } from "./progress-parsers.ts";
 
@@ -90,5 +92,70 @@ describe("weightedProgress", () => {
     expect(a!(line(40))).toBe(30);
     expect(b!("modnet: decoding failed")).toBeNull();
     expect(b!(line(10))).toBe(35);
+  });
+});
+
+describe("ffmpegFrameProgress", () => {
+  // What `ffmpeg -progress pipe:1` prints for one report.
+  const REPORT = [
+    "frame=245",
+    "fps=61.20",
+    "stream_0_0_q=15.0",
+    "bitrate=17320.1kbits/s",
+    "total_size=17694768",
+    "out_time_us=8166667",
+    "out_time=00:00:08.166667",
+    "dup_frames=0",
+    "drop_frames=0",
+    "speed=2.04x",
+    "progress=continue",
+  ];
+
+  it("reads the share of the frames written, from the frame line alone", () => {
+    const parse = ffmpegFrameProgress(980);
+    expect(REPORT.map(parse)).toEqual([25, ...REPORT.slice(1).map(() => null)]);
+    expect(parse("frame=0")).toBe(0);
+    expect(parse("frame=  490")).toBe(50);
+    expect(parse("frame=980")).toBe(100);
+  });
+
+  it("never passes 100, and ends at 100", () => {
+    const parse = ffmpegFrameProgress(80);
+    expect(parse("frame=81")).toBe(100);
+    expect(parse("progress=end")).toBe(100);
+  });
+
+  it("gives null for anything else, and for a total it cannot divide by", () => {
+    const parse = ffmpegFrameProgress(980);
+    expect(parse("frame=N/A")).toBeNull();
+    expect(parse('@hf-progress {"pct":50}')).toBeNull();
+    expect(parse("")).toBeNull();
+    expect(ffmpegFrameProgress(0)("frame=10")).toBeNull();
+    expect(ffmpegFrameProgress(Number.NaN)("frame=10")).toBeNull();
+    expect(ffmpegFrameProgress(0)("progress=end")).toBe(100);
+  });
+});
+
+describe("weightedParts", () => {
+  const hf = (pct: number) => `@hf-progress {"pct":${pct}}`;
+
+  it("gives each part its own parser and its weight of the one percentage", () => {
+    const [page, pass] = weightedParts([parseRenderProgress, ffmpegFrameProgress(200)], [1, 3]);
+    expect(page!(hf(100))).toBe(25);
+    // Each reads only its own tool's lines.
+    expect(page!("frame=100")).toBeNull();
+    expect(pass!(hf(50))).toBeNull();
+    expect(pass!("frame=100")).toBe(63);
+    expect(pass!("progress=end")).toBe(100);
+  });
+
+  it("counts a part of no weight for nothing", () => {
+    const [a, off, b] = weightedParts(
+      [parseRenderProgress, parseRenderProgress, parseRenderProgress],
+      [1, 0, 1],
+    );
+    expect(a!(hf(100))).toBe(50);
+    expect(off!(hf(100))).toBe(50);
+    expect(b!(hf(100))).toBe(100);
   });
 });

@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseRenderProgress } from "../progress-parsers.ts";
+import { type ProgressParser, parseRenderProgress } from "../progress-parsers.ts";
 import type { ToolCall } from "../step-runner.ts";
 import { type ToolPaths, hyperframesEnv } from "../pipeline/tools.ts";
 
@@ -18,6 +18,67 @@ export const RENDER_SETTINGS = {
   workers: 3,
   browserGpu: false,
   sdr: true,
+} as const;
+
+// The composite export's three pages (app_docs/export.md). The front layer
+// takes two workers, not three: the pages run next to each other, and with
+// three the tree's peak memory was at the single call's level (5.4 to 5.8 GB);
+// with two it is about 4.3 GB for 0 to 9 s of wall time. The behind layer is
+// mostly still frames HyperFrames reuses, and the sound page draws nothing:
+// one worker each. The sound page runs at 1 fps: HyperFrames mixes the sound
+// from the page's elements, whatever the frame rate.
+export const LAYER_SETTINGS = {
+  frontWorkers: 2,
+  behindWorkers: 1,
+  soundWorkers: 1,
+  soundFps: 1,
+} as const;
+
+export type RenderLayer = "behind" | "front" | "sound";
+
+// `hyperframes render`'s arguments for one layer page, exactly: the picture
+// layers as PNG frames with alpha into the folder `output`, the sound page as
+// an MP4 whose pictures are never used.
+export function layerArgs({
+  layer,
+  projectDir,
+  output,
+}: {
+  layer: RenderLayer;
+  projectDir: string;
+  output: string;
+}): string[] {
+  const workers = {
+    front: LAYER_SETTINGS.frontWorkers,
+    behind: LAYER_SETTINGS.behindWorkers,
+    sound: LAYER_SETTINGS.soundWorkers,
+  }[layer];
+  return [
+    "render",
+    projectDir,
+    "-o",
+    output,
+    "--quality",
+    RENDER_SETTINGS.quality,
+    "--workers",
+    String(workers),
+    "--no-browser-gpu",
+    "--sdr",
+    "--format",
+    layer === "sound" ? "mp4" : "png-sequence",
+    ...(layer === "sound" ? ["--fps", String(LAYER_SETTINGS.soundFps)] : []),
+  ];
+}
+
+// The share of E2E_MOCK_RENDER_SECONDS each part of the composite's double
+// takes. The lanes run next to each other (front; sound then behind; the
+// footage pass), then the composite: 0.45 + 0.55 is the whole.
+export const DOUBLE_SHARES = {
+  front: 0.45,
+  sound: 0.15,
+  behind: 0.3,
+  footage: 0.3,
+  composite: 0.55,
 } as const;
 
 // The small committed MP4 the render double copies (E2E_MOCK_RENDER=true).
@@ -103,6 +164,122 @@ export async function withChromeTmp<T>(run: (dir: string) => Promise<T>): Promis
   }
 }
 
+// Whether the render double stands in for the real tools.
+export function renderDoubled(env: NodeJS.ProcessEnv): boolean {
+  return env.E2E_MOCK_RENDER === "true";
+}
+
+// One layer page as a tool call: its own caches and history under `dir` (the
+// layer's own folder), its own Chrome TMPDIR (a withChromeTmp folder of its
+// own), the tree's memory sampled, its progress read by `progress` (the
+// step's share of it). Under the render double it is the double's `layer`
+// part: the progress lines, then a file where the output goes.
+export function layerCall({
+  tools,
+  layer,
+  dir,
+  chromeTmp,
+  projectDir,
+  output,
+  progress,
+  signal,
+  env = process.env,
+}: {
+  tools: ToolPaths;
+  layer: RenderLayer;
+  dir: string;
+  chromeTmp: string;
+  projectDir: string;
+  output: string;
+  progress: ProgressParser;
+  signal?: AbortSignal;
+  env?: NodeJS.ProcessEnv;
+}): ToolCall {
+  if (renderDoubled(env)) {
+    return {
+      file: process.execPath,
+      args: [FAKE_RENDER, "layer", String(DOUBLE_SHARES[layer]), output],
+      env: { ...env },
+      sampleGroupMemory: true,
+      progress,
+      signal,
+    };
+  }
+  return {
+    file: tools.hyperframes[0],
+    args: [tools.hyperframes[1], ...layerArgs({ layer, projectDir, output })],
+    env: { ...renderEnv(env), ...renderScratchEnv(dir), TMPDIR: chromeTmp },
+    sampleGroupMemory: true,
+    progress,
+    signal,
+  };
+}
+
+// An ffmpeg pass of the composite as a tool call, its progress read from
+// `-progress pipe:1`. Under the render double it is the double's `ffmpeg`
+// part: `frames` progress reports, then the stub MP4 (`stub` true, the
+// composite itself) or a placeholder at `output`.
+export function ffmpegPassCall({
+  tools,
+  args,
+  output,
+  frames,
+  part,
+  progress,
+  signal,
+  env = process.env,
+}: {
+  tools: ToolPaths;
+  args: string[];
+  output: string;
+  frames: number;
+  part: "footage" | "composite";
+  progress: ProgressParser;
+  signal?: AbortSignal;
+  env?: NodeJS.ProcessEnv;
+}): ToolCall {
+  if (renderDoubled(env)) {
+    return {
+      file: process.execPath,
+      args: [
+        FAKE_RENDER,
+        "ffmpeg",
+        String(DOUBLE_SHARES[part]),
+        String(frames),
+        part === "composite" ? STUB_EXPORT : "-",
+        output,
+      ],
+      env: { ...env },
+      progress,
+      signal,
+    };
+  }
+  return { file: tools.ffmpeg, args, env: { ...env }, progress, signal };
+}
+
+// Runs the lanes at the same time and waits for every one of them. The first
+// failure aborts the signal the lanes pass to their calls, so the others'
+// processes are killed at once; it is thrown once all have ended, so no
+// child is left running when the caller cleans up.
+export async function runLanes(
+  lanes: readonly ((signal: AbortSignal) => Promise<void>)[],
+): Promise<void> {
+  const stop = new AbortController();
+  let failed: { error: unknown } | null = null;
+  await Promise.all(
+    lanes.map(async (lane) => {
+      try {
+        await lane(stop.signal);
+      } catch (error) {
+        if (failed) return;
+        failed = { error };
+        stop.abort(error);
+      }
+    }),
+  );
+  if (failed) throw (failed as { error: unknown }).error;
+}
+
 // The render as one tool call, with the whole process tree's memory sampled
 // (HyperFrames runs Chrome workers and an encoder), its caches and history
 // under `dir`, the render's own folder, Chrome's TMPDIR at `chromeTmp` (a short
@@ -129,7 +306,7 @@ export function renderCall({
   range?: RenderRange;
   env?: NodeJS.ProcessEnv;
 }): ToolCall {
-  if (env.E2E_MOCK_RENDER === "true") {
+  if (renderDoubled(env)) {
     return {
       file: process.execPath,
       args: [FAKE_RENDER, STUB_EXPORT, output],

@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { copyFile, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   type EditInputs,
   ISSEBYA_PRESET,
@@ -11,6 +11,7 @@ import {
   type VersionRows,
   build,
   editBytes,
+  reelFrames,
   versionKey,
 } from "@edit-issebya/edit";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
@@ -29,7 +30,7 @@ import type { ChildRun, SpawnTool, Tool, ToolCall } from "../step-runner.ts";
 import { type Telemetry, createTelemetry } from "../telemetry.ts";
 import type { ExportStore, NewExport } from "./export-store.ts";
 import { FAKE_RENDER, STUB_EXPORT } from "./render-call.ts";
-import { renderExport } from "./render-step.ts";
+import { renderExport, renderVersion } from "./render-step.ts";
 import { runRender } from "./render-step.ts";
 import { fixtureEdit, fixtureManifest, fixturePath } from "./render-test-support.ts";
 
@@ -47,34 +48,99 @@ let root: string;
 let storage: Storage;
 let version: StoredVersion;
 let spawned: ToolCall[];
-let projectHtml: string | null;
+// The page of each project a HyperFrames call rendered: `full` (the single
+// call's), or the composite's `front`, `sound` and `behind`.
+let pages: Record<string, string>;
+// The masks' concat list the composite read, when it had one.
+let maskList: string | null;
 let inserted: NewExport[];
 let existing: string | null;
 
-const ok = (): ChildRun => ({
+// Only a call that samples its tree reports a group peak, as the real spawner.
+const ok = (call?: ToolCall, stdout = ""): ChildRun => ({
   code: 0,
   exitSignal: null,
   report: "",
   output: "",
-  stdout: "",
-  groupPeakBytes: 300 * 1024 * 1024,
+  stdout,
+  groupPeakBytes: !call || call.sampleGroupMemory ? 300 * 1024 * 1024 : null,
 });
 
-// HyperFrames writes some bytes at `-o`; the render double copies the stub.
+// What ffprobe says of the fixture footage (and, here, of every mask): 30 fps,
+// 80 frames, 8-bit 4:2:0, with sound.
+const PROBED = JSON.stringify({
+  streams: [
+    {
+      codec_type: "video",
+      width: 720,
+      height: 1280,
+      pix_fmt: "yuv420p",
+      r_frame_rate: "30/1",
+      avg_frame_rate: "30/1",
+      nb_frames: "80",
+    },
+    { codec_type: "audio" },
+  ],
+});
+
+const isDouble = (call: ToolCall) => call.args[0] === FAKE_RENDER;
+const isProbe = (call: ToolCall) => call.file === TOOLS.ffprobe;
+const isFfmpeg = (call: ToolCall) => call.file === TOOLS.ffmpeg;
+const isHyperframes = (call: ToolCall) => call.args[0] === TOOLS.hyperframes[1];
+// The composite's own pass: the one ffmpeg call with a filter graph.
+const isComposite = (call: ToolCall) => isFfmpeg(call) && call.args.includes("-filter_complex");
+// Which page a HyperFrames call renders, from its project's folder.
+function pageOf(call: ToolCall): string {
+  const folder = basename(dirname(call.args[2]!));
+  return ["front", "sound", "behind"].includes(folder) ? folder : "full";
+}
+
+const bytes = () => new Uint8Array(2048).fill(7);
+
+// Each tool leaves what the real one would: ffprobe its JSON, HyperFrames some
+// bytes at `-o` (a folder of frames for a picture layer), ffmpeg some bytes at
+// its output (its last argument); the render double does what its part does.
 const fakeSpawn: SpawnTool = async (call) => {
   spawned.push(call);
-  if (call.args[0] === FAKE_RENDER) {
-    await copyFile(call.args[1]!, call.args[2]!);
-  } else {
-    const projectDir = call.args[2]!;
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
-    projectHtml = await readFile(join(projectDir, "index.html"), "utf8");
-    const output = call.args[call.args.indexOf("-o") + 1]!;
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
-    await writeFile(output, new Uint8Array(2048).fill(7));
+  if (isProbe(call)) return ok(call, PROBED);
+  if (isDouble(call)) {
+    const [, part] = call.args;
+    const output = call.args.at(-1)!;
+    if (part === "layer" && !output.endsWith(".mp4")) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+      await mkdir(output, { recursive: true });
+    } else if (part === "layer" || (part === "ffmpeg" && call.args[4] === "-")) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+      await writeFile(output, "placeholder");
+    } else {
+      await copyFile(part === "ffmpeg" ? call.args[4]! : call.args[1]!, output);
+    }
+    return ok(call);
   }
-  return ok();
+  if (isHyperframes(call)) {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+    pages[pageOf(call)] = await readFile(join(call.args[2]!, "index.html"), "utf8");
+    const output = call.args[call.args.indexOf("-o") + 1]!;
+    if (call.args.includes("png-sequence")) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+      await mkdir(output, { recursive: true });
+    } else {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+      await writeFile(output, bytes());
+    }
+    return ok(call);
+  }
+  if (isComposite(call) && call.args.includes("concat")) {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+    maskList = await readFile(call.args[call.args.indexOf("concat") + 4]!, "utf8");
+  }
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+  await writeFile(call.args.at(-1)!, bytes());
+  return ok(call);
 };
+
+// The settings of the single call, whatever the version.
+const SINGLE = { WORKER_RENDER_PATH: "single" };
 
 const rows: VersionRows = {
   async current() {
@@ -125,7 +191,8 @@ beforeEach(async () => {
     r2_key: key,
   };
   spawned = [];
-  projectHtml = null;
+  pages = {};
+  maskList = null;
   inserted = [];
   existing = null;
 });
@@ -169,7 +236,10 @@ describe("runRender", () => {
     expect(calls[1]).toEqual({ call: "progress", stepId: "s1", percent: 100 });
     const done = calls[2]!;
     expect(done.call === "done" && done.summary).toMatch(/^exported, under a second, 2\.0 KB$/);
-    expect(done.call === "done" && done.measurements.peak_rss_bytes).toBe(300 * 1024 * 1024);
+    // The pages run next to each other: at least one page's tree, at most both.
+    const peak = done.call === "done" ? done.measurements.peak_rss_bytes! : 0;
+    expect(peak).toBeGreaterThanOrEqual(300 * 1024 * 1024);
+    expect(peak).toBeLessThanOrEqual(600 * 1024 * 1024);
     expect(done.call === "done" && done.measurements.bytes_in).toBeGreaterThan(0);
 
     const key = `${PREFIX}exports/${TEST_JOB.reel_id}/${EXPORT_ID}.mp4`;
@@ -185,25 +255,161 @@ describe("runRender", () => {
         bytes: 2048,
       },
     ]);
-    expect(spawned).toHaveLength(1);
-    expect(spawned[0]!.sampleGroupMemory).toBe(true);
-    expect(spawned[0]!.args).toContain("--no-browser-gpu");
+    // The composite: the footage probed, the front and sound pages, the sound
+    // cut, the footage's JPEG pass, then the one blend.
+    expect(spawned.filter(isProbe)).toHaveLength(1);
+    const hyperframes = spawned.filter(isHyperframes);
+    expect(hyperframes.map(pageOf).sort()).toEqual(["front", "sound"]);
+    for (const call of hyperframes) {
+      expect(call.sampleGroupMemory).toBe(true);
+      expect(call.args).toContain("--no-browser-gpu");
+    }
+    expect(spawned.filter(isFfmpeg)).toHaveLength(3);
+    expect(spawned.at(-1)).toSatisfy(isComposite);
+    expect(spawned).toHaveLength(6);
     // The scratch folder is gone.
     expect(await storage.list(`${PREFIX}exports/`)).toEqual([key]);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+    expect(await readdir(join(root, "scratch"))).toEqual([]);
   });
 
-  it("renders exactly the page the shared builder makes", async () => {
+  it("renders the version by the single call when the setting says so", async () => {
+    const { steps, calls } = recordingSteps();
+    await run(steps, { env: SINGLE });
+    const done = calls.at(-1)!;
+    expect(done.call === "done" && done.summary).toMatch(/^exported, under a second, 2\.0 KB$/);
+    expect(done.call === "done" && done.measurements.peak_rss_bytes).toBe(300 * 1024 * 1024);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]).toSatisfy(isHyperframes);
+    expect(spawned[0]!.sampleGroupMemory).toBe(true);
+    expect(spawned[0]!.args).toContain("--no-browser-gpu");
+    expect(spawned[0]!.args).not.toContain("--format");
+    expect(inserted).toHaveLength(1);
+  });
+
+  it("refuses a render setting it does not know", async () => {
+    await expect(
+      run(recordingSteps().steps, { env: { WORKER_RENDER_MODE: "fast" } }),
+    ).rejects.toThrow("WORKER_RENDER_MODE must be match or clean, got fast");
+    expect(spawned).toEqual([]);
+    expect(inserted).toEqual([]);
+  });
+
+  it("renders exactly the layer pages the shared builder makes", async () => {
     await run(recordingSteps().steps);
     const { edit, transcript, headTrack } = await fixtureEdit();
-    const { html } = build(edit, transcript, headTrack, ISSEBYA_PRESET, await editMeasurer());
-    expect(projectHtml).toBe(html);
+    const measurer = await editMeasurer();
+    const page = (layer: "front" | "sound") =>
+      build(edit, transcript, headTrack, ISSEBYA_PRESET, measurer, { layer }).html;
+    // No cut-out span: no behind page, and never the full page.
+    expect(pages).toEqual({ front: page("front"), sound: page("sound") });
   });
 
-  it("copies the stub under the render double", async () => {
+  it("renders exactly the full page the shared builder makes by the single call", async () => {
+    await run(recordingSteps().steps, { env: SINGLE });
+    const { edit, transcript, headTrack } = await fixtureEdit();
+    const { html } = build(edit, transcript, headTrack, ISSEBYA_PRESET, await editMeasurer());
+    expect(pages).toEqual({ full: html });
+  });
+
+  it("goes to the single call for a version the composite does not handle", async () => {
+    const { edit } = await fixtureEdit();
+    const styled = structuredClone(edit);
+    styled.tracks.footage[0]!.style = { filter: "grayscale(1)" };
+    await storage.put(version.r2_key, editBytes(styled));
+    await run(recordingSteps().steps);
+    expect(spawned).toHaveLength(1);
+    expect(Object.keys(pages)).toEqual(["full"]);
+    expect(pages.full).toContain("filter: grayscale(1)");
+  });
+
+  it("goes to the single call when the probed footage is not 30 fps", async () => {
+    const slow: SpawnTool = async (call, signal, log) =>
+      isProbe(call)
+        ? (spawned.push(call), ok(call, PROBED.replaceAll("30/1", "25/1")))
+        : fakeSpawn(call, signal, log);
+    await runRender({
+      ctx: stepContext(recordingSteps().steps, { job: JOB }),
+      storage,
+      rows,
+      exports: exportsStore,
+      keyPrefix: PREFIX,
+      scratchDir: join(root, "scratch"),
+      tools: TOOLS,
+      versionId: VERSION_ID,
+      ensureInputs: async () => {},
+      newId: () => EXPORT_ID,
+      spawnTool: slow,
+      env: {},
+    });
+    expect(spawned.map((call) => (isProbe(call) ? "probe" : pageOf(call)))).toEqual([
+      "probe",
+      "full",
+    ]);
+    expect(inserted).toHaveLength(1);
+  });
+
+  it("runs the composite's double under the render double: every part a double, the stub copied", async () => {
     await run(recordingSteps().steps, { env: { E2E_MOCK_RENDER: "true" } });
-    expect(spawned[0]!.args[0]).toBe(FAKE_RENDER);
+    // Nothing probed and no sound cut: the two pages, the footage pass, the blend.
+    expect(spawned.every(isDouble)).toBe(true);
+    expect(spawned.map((call) => call.args[1]).sort()).toEqual([
+      "ffmpeg",
+      "ffmpeg",
+      "layer",
+      "layer",
+    ]);
+    expect(spawned.at(-1)!.args.slice(1, 5)).toEqual([
+      "ffmpeg",
+      "0.55",
+      String(reelFrames((await fixtureEdit()).edit.duration)),
+      STUB_EXPORT,
+    ]);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed stub
     expect(inserted[0]!.bytes).toBe((await stat(STUB_EXPORT)).size);
+  });
+
+  it("copies the stub under the render double by the single call", async () => {
+    await run(recordingSteps().steps, { env: { E2E_MOCK_RENDER: "true", ...SINGLE } });
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]!.args).toEqual([FAKE_RENDER, STUB_EXPORT, expect.any(String)]);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed stub
+    expect(inserted[0]!.bytes).toBe((await stat(STUB_EXPORT)).size);
+  });
+
+  it("reads the step's progress from every process of the composite", async () => {
+    await run(recordingSteps().steps);
+    // Both pages, the footage pass and the blend; the probe and the cut report none.
+    const part = (call: ToolCall) =>
+      isHyperframes(call) ? pageOf(call) : isComposite(call) ? "composite" : "footage";
+    const parsers = new Map(
+      spawned.filter((call) => call.progress).map((call) => [part(call), call.progress!]),
+    );
+    expect([...parsers.keys()].sort()).toEqual(["composite", "footage", "front", "sound"]);
+    expect(spawned.filter((call) => !call.progress)).toHaveLength(2);
+    const [front, sound, footage, composite] = ["front", "sound", "footage", "composite"].map(
+      (name) => parsers.get(name),
+    );
+    const hf = (pct: number) => `@hf-progress {"pct":${pct}}`;
+    // Nothing done yet is nothing to write.
+    expect(footage!("frame=0")).toBeNull();
+    expect(front!(hf(0))).toBeNull();
+    // Each part moves the step's one percentage by its own weight, never back.
+    const seen = [
+      front!(hf(50)),
+      sound!(hf(100)),
+      footage!("frame=40"),
+      front!(hf(100)),
+      footage!("progress=end"),
+      composite!("frame=1"),
+      composite!(`frame=${Math.round(reelFrames((await fixtureEdit()).edit.duration) / 2)}`),
+      composite!("progress=end"),
+    ];
+    expect(seen).toEqual([...seen].sort((a, b) => a! - b!));
+    expect(seen[0]).toBeGreaterThan(0);
+    expect(seen.at(-1)).toBe(100);
+    expect(new Set(seen).size).toBeGreaterThan(5);
+    expect(composite!("speed=3.1x")).toBeNull();
   });
 
   it("is a hit on a retried job whose export is recorded: nothing spawned or written", async () => {
@@ -282,10 +488,10 @@ describe("runRender with a behind big word", () => {
     projectFiles = [];
   });
 
-  function runBehind() {
+  function runBehind(env: NodeJS.ProcessEnv = {}) {
     const { steps, calls } = recordingSteps();
     const spawnTool: SpawnTool = async (call) => {
-      if (call.args.includes("-o")) {
+      if (isHyperframes(call) && pageOf(call) === "full") {
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
         projectFiles = await readdir(join(call.args[2]!), { recursive: true });
       }
@@ -303,7 +509,7 @@ describe("runRender with a behind big word", () => {
       ensureInputs: async () => {},
       newId: () => EXPORT_ID,
       spawnTool,
-      env: {},
+      env,
       cutouts: {
         storage,
         keyPrefix: PREFIX,
@@ -315,11 +521,36 @@ describe("runRender with a behind big word", () => {
     return { done, calls };
   }
 
-  it("reuses the stored mask and places only the mask in the project", async () => {
+  it("reuses the stored mask, renders the behind page and blends with the mask", async () => {
     const { done, calls } = runBehind();
     await done;
     expect(calls[0]).toMatchObject({ call: "skipped", name: "cutout", summary: "cut-out reused" });
     const [mask] = version.inputs.masks!;
+    // The footage and the mask are probed; no page names the mask.
+    expect(spawned.filter(isProbe)).toHaveLength(2);
+    expect(Object.keys(pages).sort()).toEqual(["behind", "front", "sound"]);
+    for (const html of Object.values(pages)) expect(html).not.toContain("masks/");
+    expect(pages.behind).toContain('<div id="behind-word"');
+    expect(pages.front).not.toContain("behind-word");
+    // The blend reads the behind layer's frames and the downloaded mask.
+    const composite = spawned.find(isComposite)!;
+    expect(composite.args.join(" ")).toContain(join("behind", "frames", "frame_%06d.png"));
+    expect(composite.args.join(" ")).toContain("alphamerge");
+    expect(maskList!.startsWith("file '")).toBe(true);
+    expect(maskList!.endsWith(`${mask!.fingerprint}.mp4'\n`)).toBe(true);
+    expect(maskList!.trim().split("\n")).toHaveLength(1);
+    // The behind page comes after the sound page, in its lane.
+    const order = spawned.filter(isHyperframes).map(pageOf);
+    expect(order.indexOf("behind")).toBeGreaterThan(order.indexOf("sound"));
+    expect(inserted).toHaveLength(1);
+  });
+
+  it("places only the mask in the single call's project", async () => {
+    const { done, calls } = runBehind(SINGLE);
+    await done;
+    expect(calls[0]).toMatchObject({ call: "skipped", name: "cutout", summary: "cut-out reused" });
+    const [mask] = version.inputs.masks!;
+    const projectHtml = pages.full;
     expect(projectHtml).toContain(`src="masks/${mask!.fingerprint}.mp4"`);
     expect(projectHtml).not.toContain("photos/");
     expect(projectFiles).toEqual(expect.arrayContaining([`masks/${mask!.fingerprint}.mp4`]));
@@ -384,9 +615,13 @@ describe("runRender cancelled", () => {
     } finally {
       lease.stop();
     }
-    // Stopped within seconds, not after the double's 30.
+    // Stopped within seconds, not after the double's 30: every process of the
+    // composite's double (both pages and the footage pass ran at once) is gone,
+    // and so is the render's folder with everything they wrote.
     expect(performance.now() - started).toBeLessThan(15_000);
     expect(await childrenOf(root)).toEqual([]);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+    expect(await readdir(join(root, "scratch"))).toEqual([]);
     // The step row stays as the abort left it: started, some progress, no
     // done or failed row.
     expect(calls.map((call) => call.call)).toContain("start");
@@ -502,7 +737,7 @@ describe("runRender spans", () => {
   const childrenOf = (spans: Finished, parent: Finished[number] | undefined) =>
     spans.filter((span) => span.parentSpanContext?.spanId === parent?.spanContext().spanId);
 
-  it("traces the step as its five stages in order, the HyperFrames call under encode", async () => {
+  it("traces the step as its six stages in order, every call of the composite under encode", async () => {
     const { telemetry, spans, logs } = telemetryWithMemory();
     const { steps } = recordingSteps();
     await runRender({
@@ -523,23 +758,47 @@ describe("runRender spans", () => {
     const step = named(finished, "step render");
     expect(childrenOf(finished, step).map((span) => span.name)).toEqual([
       "render.load",
+      "render.route",
       "render.build",
       "render.encode",
       "render.upload",
       "render.save",
     ]);
+    const route = named(finished, "render.route");
+    expect(childrenOf(finished, route).map((span) => span.name)).toEqual(["exec ffprobe"]);
+    expect(route?.attributes).toEqual({ "render.path": "composite", "render.mode": "match" });
     const encode = named(finished, "render.encode");
-    expect(childrenOf(finished, encode).map((span) => span.name)).toEqual(["exec hyperframes"]);
+    // Two pages, the sound cut, the footage pass and the blend.
+    expect(
+      childrenOf(finished, encode)
+        .map((span) => span.name)
+        .sort(),
+    ).toEqual([
+      "exec ffmpeg",
+      "exec ffmpeg",
+      "exec ffmpeg",
+      "exec hyperframes",
+      "exec hyperframes",
+    ]);
     expect(finished.some((span) => span.status.code === SpanStatusCode.ERROR)).toBe(false);
     expect(logs.getFinishedLogRecords()).toEqual([]);
 
     const { edit, transcript, headTrack } = await fixtureEdit();
-    const built = build(edit, transcript, headTrack, ISSEBYA_PRESET, await editMeasurer());
+    const measurer = await editMeasurer();
+    const layers = (["front", "sound"] as const).map((layer) =>
+      build(edit, transcript, headTrack, ISSEBYA_PRESET, measurer, { layer }),
+    );
+    const built = {
+      html: layers.map((layer) => layer.html).join(""),
+      assets: layers.flatMap((layer) => layer.assets),
+    };
     const key = `${PREFIX}exports/${TEST_JOB.reel_id}/${EXPORT_ID}.mp4`;
     expect(step?.attributes).toMatchObject({
       "render.version_id": VERSION_ID,
       "render.duration_seconds": edit.duration,
       "render.mp4_bytes": 2048,
+      "render.path": "composite",
+      "render.mode": "match",
       "job.cancelled": false,
     });
     expect(named(finished, "render.load")?.attributes).toEqual({
@@ -550,16 +809,61 @@ describe("runRender spans", () => {
     expect(named(finished, "render.build")?.attributes).toEqual({
       "render.page_bytes": Buffer.byteLength(built.html),
       "render.assets": built.assets.length,
+      "render.pages": 2,
     });
-    expect(encode?.attributes).toEqual({ "render.duration_seconds": edit.duration });
+    expect(encode?.attributes).toEqual({
+      "render.duration_seconds": edit.duration,
+      "render.path": "composite",
+      "render.mode": "match",
+    });
     expect(named(finished, "render.upload")?.attributes).toEqual({
       "render.mp4_bytes": 2048,
       "render.key": key,
     });
     expect(named(finished, "render.save")?.attributes).toEqual({ "render.export_id": EXPORT_ID });
-    expect(childrenOf(finished, encode)[0]?.parentSpanContext?.spanId).toBe(
-      encode?.spanContext().spanId,
-    );
+    await telemetry.shutdown();
+  });
+
+  it("traces the single call with its reason, the HyperFrames call alone under encode", async () => {
+    const { telemetry, spans } = telemetryWithMemory();
+    await runRender({
+      ctx: stepContext(recordingSteps().steps, { job: JOB, telemetry }),
+      storage,
+      rows,
+      exports: exportsStore,
+      keyPrefix: PREFIX,
+      scratchDir: join(root, "scratch"),
+      tools: TOOLS,
+      versionId: VERSION_ID,
+      ensureInputs: async () => {},
+      newId: () => EXPORT_ID,
+      spawnTool: fakeSpawn,
+      env: SINGLE,
+    });
+    const finished = spans.getFinishedSpans();
+    const step = named(finished, "step render");
+    expect(childrenOf(finished, step).map((span) => span.name)).toEqual([
+      "render.load",
+      "render.route",
+      "render.build",
+      "render.encode",
+      "render.upload",
+      "render.save",
+    ]);
+    const reason = { "render.path": "single", "render.route_reason": "setting" };
+    expect(named(finished, "render.route")?.attributes).toEqual(reason);
+    expect(childrenOf(finished, named(finished, "render.route"))).toEqual([]);
+    expect(step?.attributes).toMatchObject(reason);
+    expect(step?.attributes).not.toHaveProperty("render.mode");
+    const { edit, transcript, headTrack } = await fixtureEdit();
+    const built = build(edit, transcript, headTrack, ISSEBYA_PRESET, await editMeasurer());
+    expect(named(finished, "render.build")?.attributes).toEqual({
+      "render.page_bytes": Buffer.byteLength(built.html),
+      "render.assets": built.assets.length,
+    });
+    const encode = named(finished, "render.encode");
+    expect(encode?.attributes).toEqual({ "render.duration_seconds": edit.duration });
+    expect(childrenOf(finished, encode).map((span) => span.name)).toEqual(["exec hyperframes"]);
     await telemetry.shutdown();
   });
 
@@ -617,11 +921,14 @@ describe("runRender spans", () => {
     const timer = setTimeout(() => {
       cancelledNow = true;
     }, 100);
-    // The render never ends on its own: only the cancel stops it.
-    const hangs: SpawnTool = (_call, signal) =>
-      new Promise((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-      });
+    // The render never ends on its own: only the cancel stops it (the probe
+    // answers, so the cancel lands in the encode).
+    const hangs: SpawnTool = (call, signal, log) =>
+      isProbe(call)
+        ? fakeSpawn(call, signal, log)
+        : new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          });
     try {
       await expect(
         runRender({
@@ -651,6 +958,8 @@ describe("runRender spans", () => {
     const finished = spans.getFinishedSpans();
     const step = named(finished, "step render");
     expect(step?.attributes["job.cancelled"]).toBe(true);
+    // A cancelled render still says which way it was going.
+    expect(step?.attributes).toMatchObject({ "render.path": "composite", "render.mode": "match" });
     expect(step?.status.code).not.toBe(SpanStatusCode.ERROR);
     expect(named(finished, "render.encode")?.attributes["job.cancelled"]).toBe(true);
     expect(named(finished, "render.encode")?.status.code).not.toBe(SpanStatusCode.ERROR);
@@ -694,5 +1003,128 @@ describe("renderExport's Chrome temporary folder", () => {
     ).toBeLessThanOrEqual(107);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's own temp folder
     expect(existsSync(chromeTmp)).toBe(false);
+  });
+});
+
+describe("renderVersion's composite", () => {
+  const SETTINGS = { path: "composite", mode: "match" } as const;
+
+  async function compositeOf(tool: Tool, mode: "match" | "clean" = "match") {
+    const { edit, transcript, headTrack } = await fixtureEdit();
+    const footage = join(root, "footage.mp4");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's own temp folder
+    await writeFile(footage, "footage");
+    const dir = join(root, "scratch", TEST_JOB.id, "render-test");
+    return {
+      dir,
+      footage,
+      done: renderVersion({
+        tool,
+        tools: TOOLS,
+        dir,
+        edit,
+        transcript,
+        headTrack,
+        files: { footage, masks: {} },
+        settings: { ...SETTINGS, mode },
+      }),
+    };
+  }
+
+  // A Tool over the fake spawner, as the step runner's: the call's own signal
+  // stops it.
+  const fakeTool: Tool = async (call) => {
+    call.signal?.throwIfAborted();
+    const run = await fakeSpawn(call, call.signal ?? new AbortController().signal, () => {});
+    return run.stdout;
+  };
+
+  it("gives every page a Chrome folder and a scratch folder of its own, and removes the Chrome folders", async () => {
+    const { dir, done } = await compositeOf(fakeTool);
+    await done;
+    const hyperframes = spawned.filter(isHyperframes);
+    const chromeTmps = hyperframes.map((call) => call.env!.TMPDIR!);
+    expect(new Set(chromeTmps).size).toBe(hyperframes.length);
+    for (const [index, call] of hyperframes.entries()) {
+      const chromeTmp = chromeTmps[index]!;
+      expect(chromeTmp.startsWith(dir)).toBe(false);
+      expect(
+        join(chromeTmp, "org.chromium.Chromium.XXXXXX", "SingletonSocket").length,
+      ).toBeLessThanOrEqual(107);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's own temp folder
+      expect(existsSync(chromeTmp)).toBe(false);
+      const own = join(dir, pageOf(call));
+      expect(call.env).toMatchObject({
+        HYPERFRAMES_EXTRACT_CACHE_DIR: join(own, "frames-cache"),
+        HYPERFRAMES_HISTORY_ROOT: join(own, "hyperframes-history"),
+      });
+      expect(call.args[2]).toBe(join(own, "project"));
+    }
+  });
+
+  it("blends the JPEG copy of the footage in match mode and the footage itself in clean mode", async () => {
+    const match = await compositeOf(fakeTool);
+    const { output } = await match.done;
+    expect(output).toBe(join(match.dir, "export.mp4"));
+    const jpeg = join(match.dir, "footage.mkv");
+    expect(spawned.filter(isFfmpeg).map((call) => call.args.at(-1))).toEqual(
+      expect.arrayContaining([jpeg, join(match.dir, "sound.m4a"), output]),
+    );
+    const blend = spawned.find(isComposite)!;
+    expect(blend.args[blend.args.indexOf("-i") + 1]).toBe(jpeg);
+    expect(blend.args.at(-1)).toBe(output);
+
+    spawned = [];
+    const clean = await compositeOf(fakeTool, "clean");
+    expect((await clean.done).route).toEqual({ path: "composite", mode: "clean" });
+    expect(spawned.filter(isFfmpeg)).toHaveLength(2);
+    const cleanBlend = spawned.find(isComposite)!;
+    expect(cleanBlend.args[cleanBlend.args.indexOf("-i") + 1]).toBe(clean.footage);
+  });
+
+  it("stops the other lanes when one fails, and throws that failure once all have ended", async () => {
+    const stopped: string[] = [];
+    const chromeTmps: string[] = [];
+    let running = 0;
+    const tool: Tool = async (call) => {
+      if (isProbe(call)) return PROBED;
+      if (isHyperframes(call)) chromeTmps.push(call.env!.TMPDIR!);
+      // The front page fails once every lane is running.
+      if (isHyperframes(call) && pageOf(call) === "front") {
+        while (running < 2) await new Promise((resolve) => setTimeout(resolve, 5));
+        throw new Error("front page failed");
+      }
+      // The sound page and the footage pass run until they are stopped.
+      running += 1;
+      const name = isHyperframes(call) ? pageOf(call) : "footage";
+      return new Promise<string>((_resolve, reject) => {
+        call.signal!.addEventListener(
+          "abort",
+          () => {
+            stopped.push(name);
+            running -= 1;
+            reject(call.signal!.reason);
+          },
+          { once: true },
+        );
+      });
+    };
+    const { done } = await compositeOf(tool);
+    await expect(done).rejects.toThrow("front page failed");
+    expect(stopped.sort()).toEqual(["footage", "sound"]);
+    // Nothing was left running, and no Chrome folder is left.
+    expect(running).toBe(0);
+    expect(chromeTmps).toHaveLength(2);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's own temp folder
+    for (const chromeTmp of chromeTmps) expect(existsSync(chromeTmp)).toBe(false);
+  });
+
+  it("refuses a composite that wrote no MP4", async () => {
+    const tool: Tool = async (call) => {
+      if (isComposite(call)) return "";
+      return fakeTool(call);
+    };
+    const { done } = await compositeOf(tool);
+    await expect(done).rejects.toThrow("render: the render wrote no MP4");
   });
 });

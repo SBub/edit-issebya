@@ -111,43 +111,194 @@ latestExport)` (`apps/studio/src/lib/exports.ts`), a pure function of `LiveReel`
   the step with `render: photo <id> is no longer in the library`). `render-project.ts` places the
   masks and photos at the builder's paths (`maskPath`, `masks/<fingerprint>.mp4`, and `photoPath`,
   `photos/<id>.jpg`); an asset without its file throws. A stored version naming the old whole-clip
-  cut-out builds without it, and it is never downloaded. It builds the page with `packages/edit`'s `build`, the same builder as the preview, never
-  a worker copy and never stored, and `render-project.ts` writes `index.html` plus every asset the
-  page names into a temporary project.
-- The call (`render-call.ts`), with `sampleGroupMemory: true`:
+  cut-out builds without it, and it is never downloaded. Every page the render uses comes from
+  `packages/edit`'s `build`, the same builder as the preview, never a worker copy and never stored,
+  and `render-project.ts` writes `index.html` plus every asset a page names into a temporary
+  project.
+- `renderVersion` (`render-step.ts`) then exports the version one of two ways. `renderRoute`
+  (`render-route.ts`) picks: the composite (below) when it handles the version, else the single
+  call. Both give a 1080x1920, 30 fps H.264 MP4 with AAC sound, encoded with the same settings.
 
-  ```bash
-  hyperframes render <project> -o <tmp>/export.mp4 --quality delivery --workers 3 --no-browser-gpu --sdr
-  ```
+### The route
 
-  with `HYPERFRAMES_NO_TELEMETRY=1` and every `PRODUCER_*` variable removed. Why
-  (`RENDER_SETTINGS`): the platforms recompress every upload, so a `delivery` source keeps text
-  edges sharper; software mode with three workers is faster on the
-  worker's machine than the GPU mode with one, and runs without a graphics chip; `--sdr` because
-  the platforms show SDR.
+`renderRoute` is a pure function of the settings, the edit and what ffprobe says of the footage and
+of each mask (`parseMediaFacts`, `composite.ts`). It is asked twice: first with the edit alone
+(nothing is probed for a version the edit already sends to the single call), then with the probed
+files. A version goes to the composite unless one of these holds, checked in this order; the first
+that holds is the reason, written to the trace as `render.route_reason`:
 
-  The render also sets `HYPERFRAMES_EXTRACT_CACHE_DIR` and `HYPERFRAMES_HISTORY_ROOT` inside the
-  render's folder in the job scratch (`renderScratchEnv`), so removing the job folder takes the frame
-  cache and the history with it (`app_docs/storage.md`). Chrome's `TMPDIR` is not there: it is a
-  short folder of its own, `mkdtemp(join(tmpdir(), "hf-"))` (`/tmp` in the container), made by
-  `withChromeTmp` around the encode call and removed after it, on success, failure and cancel alike.
+| Reason           | The version goes to the single call when                                            |
+| ---------------- | ----------------------------------------------------------------------------------- |
+| `setting`        | `WORKER_RENDER_PATH=single`                                                         |
+| `footage_clips`  | the footage track has no clip, or more than one                                     |
+| `footage_style`  | the footage clip has a `style`                                                      |
+| `footage_hidden` | the footage clip has `hidden` spans                                                 |
+| `footage_span`   | the footage clip does not run from 0 to the reel's end                              |
+| `long_reel`      | the reel is 120 s or longer (`COMPOSITE_MAX_SECONDS`)                               |
+| `footage_fps`    | the footage is not 30 fps at a constant rate, or its frame count is not in the file |
+| `footage_format` | the footage is not 8-bit 4:2:0 (`yuv420p` or `yuvj420p`)                            |
+| `no_audio`       | the footage has no sound stream                                                     |
+| `mask_fps`       | a mask is not 30 fps at a constant rate, or its frame count is not in the file      |
+| `mask_sizes`     | the masks differ in width, height or colour range                                   |
+
+Why 120 s: from there on HyperFrames encodes the sound in segments whose cut points depend on the
+padded length, so the sound page's packets may differ near the cuts. The sound's identity is not
+verified there. Under the render double nothing is probed: only the edit's own rules are judged.
+
+### The composite
+
+The browser never draws the footage. HyperFrames renders small pages, and one ffmpeg pass decodes
+the footage and the masks once, blends, and encodes.
+
+1. `render.build`: the builder's layer pages (`build`'s `layer` option, `app_docs/edit-model.md`),
+   each in a project folder of its own under the render's folder: `front/` (everything over the
+   speaker), `sound/` (no picture: the footage as an `<audio>` element and the sound track) and,
+   for a version with a cut-out span, `behind/` (the big words behind the speaker). The picture
+   pages are transparent.
+2. `render.encode`, the lanes (`runLanes`, `render-call.ts`), at the same time:
+   - the front layer;
+   - next to it the sound page, then its cut, then the behind layer (both pages are short, so at
+     most three browsers are open at once);
+   - in `match` mode, the footage's JPEG pass.
+
+   A lane that fails aborts the others' processes at once, and the failure is thrown once every
+   lane has ended.
+
+   ```bash
+   hyperframes render <dir>/front/project  -o <dir>/front/frames   --quality delivery --workers 2 --no-browser-gpu --sdr --format png-sequence
+   hyperframes render <dir>/behind/project -o <dir>/behind/frames  --quality delivery --workers 1 --no-browser-gpu --sdr --format png-sequence
+   hyperframes render <dir>/sound/project  -o <dir>/sound/sound.mp4 --quality delivery --workers 1 --no-browser-gpu --sdr --format mp4 --fps 1
+   ```
+
+   `LAYER_SETTINGS`: two front workers, not three. With three the tree's peak memory was at the
+   single call's level (5.4 to 5.8 GB on the 7.75 GiB worker VM); with two it is 4.5 to 4.7 GB.
+   Each call has its own frame cache and history (`renderScratchEnv` of its own folder) and its
+   own Chrome `TMPDIR` (`withChromeTmp`).
+
+3. The sound cut (`soundCutArgs`). The sound page is rendered at 1 fps (HyperFrames mixes the sound
+   from the page's elements, whatever the frame rate), so HyperFrames pads its mix to a whole
+   second: longer than the reel, but its first AAC packets are the same bytes as the single
+   call's. The single call pads its mix to `frames / 30` seconds and keeps
+   `ceil(samples / 1024) + 1` packets at 48 kHz, the last one shortened. The cut keeps the same
+   count (`soundPackets`: 1533 for 980 frames) by stream copy and shortens the last packet with
+   HyperFrames' own `setts` expression:
+
+   ```bash
+   ffmpeg -i <dir>/sound/sound.mp4 -map 0:a:0 -c copy -frames:a <packets> \
+     -bsf:a "setts=duration='if(gte((PTS+DURATION)*TB,<frames/30>),round(<frames/30>/TB-PTS),DURATION)'" <dir>/sound.m4a
+   ```
+
+   Never cut by time (`-t`): that drops packets by timestamp and cannot shorten the last one.
+
+4. `match` mode only, the footage's JPEG pass (`footageJpegArgs`): the footage through HyperFrames'
+   own extraction chain (a bt601 full-range JPEG of every frame, `-q:v 2`) into one Motion JPEG
+   file, `<dir>/footage.mkv`. The single call shows the footage through that JPEG, the browser and
+   a second JPEG, about one level of noise on every frame; without this pass the composite's
+   frames are cleaner than the single call's and score a hair lower against them.
+5. The composite (`compositeArgs`, `compositeGraph`): one ffmpeg pass over the footage (its JPEG
+   copy in `match` mode), the behind layer's frames, the masks (one concat-demuxer input,
+   `masks.txt`, so they decode one after the other), the front layer's frames and the cut sound.
+   Per pixel, in bt709 limited-range 4:2:0:
+
+   ```
+   inside a cut-out span:  frame = (footage with the behind layer over it) x (1 - mask) + footage x mask
+   outside:                frame = footage
+   then:                   the front layer over it
+   ```
+
+   This is the builder's cut-out composite a second time (`app_docs/edit-model.md`: the page does
+   it in CSS with the inverted mask multiplied and the person added back). It is encoded with the
+   single call's x264 settings (`-preset fast -crf 15 -bf 0 -threads 8`,
+   `aq-mode=3:aq-strength=0.8:deblock=1,1`, bt709, 30 fps) and the cut sound is copied in.
+
+The frames follow HyperFrames' own rules for a timed clip (`clipFrames`,
+`packages/edit/src/span-frames.ts`): a clip is on output frames `ceil(start x 30)` to
+`ceil(end x 30) - 1` and extracts `round(duration x 30)` of its own frames. A cut-out span on screen
+one frame longer than it extracts (16.033 to 17.767 s: 53 frames, 52 extracted) shows its last
+frame twice in the single call's export: the span's footage copy, person copy and masks all hold.
+The composite reproduces that: it drops the footage frame the span never extracts so the frame
+before fills its place, and holds the mask the same way. The footage clip itself holds its last
+frame the same way when the footage is one frame short of the reel. The preview plays the real
+footage and does not repeat the frame.
+
+Modes (`WORKER_RENDER_MODE`):
+
+- `match` (the default): steps 1 to 5. Every frame is within the guardrail's bound of the single
+  call's export, and the sound is the same bytes.
+- `clean`: no JPEG pass; the composite reads the footage straight from the decoder (range and size
+  converted with bicubic). In the experiments it took about half the single call's CPU where
+  `match` took two thirds, with a file 14 to 26 percent smaller, closer to the source footage than
+  the single call's export is, and the same sound. Against the single call's export its mean SSIM is about 0.003 lower, and on one of three
+  measured reels 12 frames scored 0.9844 to 0.9855, a hair under the bound. Not the default until
+  the preview guardrail is measured on it.
+
+Measured (worker image, 8 CPUs, 7.75 GiB VM, a busy Mac, one run each, 2026-11-12; CPU is user plus
+system of the whole export, the peak is the largest resident memory of the whole process tree,
+SSIM is every frame of the composite against the single call's export of the same run):
+
+| Reel                                    | Way               | Wall s | CPU s | Tree peak MB | SSIM mean | SSIM min | Frames under 0.9855 | Sound      |
+| --------------------------------------- | ----------------- | ------ | ----- | ------------ | --------- | -------- | ------------------- | ---------- |
+| 32.6 s, 980 frames, 6 spans, 1080x1920  | single            | 126    | 679   | 5652         |           |          |                     |            |
+|                                         | composite `match` | 80     | 389   | 4536         | 0.99377   | 0.99217  | 0                   | same bytes |
+| 48.2 s, 1446 frames, 9 spans, 1080x1920 | single            | 162    | 885   | 5781         |           |          |                     |            |
+|                                         | composite `match` | 111    | 544   | 4655         | 0.99227   | 0.98983  | 0                   | same bytes |
+| 54.6 s, 1638 frames, 3 spans, 720x1280  | single            | 146    | 793   | 5523         |           |          |                     |            |
+|                                         | composite `match` | 105    | 454   | 4569         | 0.99126   | 0.99059  | 0                   | same bytes |
+
+Wall time is down 28 to 36 percent, CPU 39 to 43 percent, the peak about 1.1 GB. The single call
+against itself (two runs of the same reel) scores 0.998 to 0.9996 mean and 0.990 to 0.994 min, the
+ceiling for any way. Footage that is not the frame's size (the third reel) is scaled with ffmpeg's
+bicubic, not Chrome's scaler.
+
+### The single call
+
+For a version the composite does not handle. One HyperFrames call screenshots every frame, the
+footage included (`renderExport`, `render-call.ts`), with `sampleGroupMemory: true`:
+
+```bash
+hyperframes render <project> -o <tmp>/export.mp4 --quality delivery --workers 3 --no-browser-gpu --sdr
+```
+
+with the page built with no `layer` option (the preview's own page).
+
+### Both ways
+
+- Both ways run HyperFrames with `HYPERFRAMES_NO_TELEMETRY=1` and every `PRODUCER_*` variable
+  removed (`renderEnv`). Why these settings (`RENDER_SETTINGS`): the platforms recompress every
+  upload, so a `delivery` source keeps text edges sharper; software mode is faster on the worker's
+  machine than the GPU mode with one worker, and runs without a graphics chip; `--sdr` because the
+  platforms show SDR.
+- Each call sets `HYPERFRAMES_EXTRACT_CACHE_DIR` and `HYPERFRAMES_HISTORY_ROOT` inside its own
+  folder in the job scratch (`renderScratchEnv`: the render's folder for the single call, the
+  layer's folder for a layer page), so removing the job folder takes the frame cache and the
+  history with it (`app_docs/storage.md`). Chrome's `TMPDIR` is not there: it is a short folder of
+  its own per call, `mkdtemp(join(tmpdir(), "hf-"))` (`/tmp` in the container), made by
+  `withChromeTmp` around the call and removed after it, on success, failure and cancel alike.
   Why: Chrome listens on a Unix socket at `<TMPDIR>/org.chromium.Chromium.XXXXXX/SingletonSocket`,
   and a socket path holds at most 107 characters. Under the job scratch folder that path was 108
   characters and every export aborted before rendering. Frames and the MP4 stay in the render's
   folder: HyperFrames writes its frame chunks next to the output (`chunk-encode-*`, `.capture-*`).
   Chrome's profile (its disk cache included) is the one large thing that lands in the short folder,
-  because HyperFrames creates it under `tmpdir()`; the container's `/tmp` must have room for it.
-  The export write records its `export` row in `stored_files` through `recordingStorage`.
-
-- Sound comes only from the edit's sound track, inside the page. HyperFrames mixes at unity gain
+  because HyperFrames creates it under `tmpdir()`; the container's `/tmp` must have room for it
+  (up to three profiles at once for the composite).
+- Sound comes only from the edit's sound track, inside the page (the full page for the single
+  call, the sound page for the composite). HyperFrames mixes at unity gain
   (no `PRODUCER_AUDIO_GAIN`); the worker tools test measures the voice within 0.5 LU of the source
   and each click within 20 ms of its place on the track.
+- The step's progress comes from every process (`app_docs/status.md`), its row sums their CPU, and
+  its span says which way the render went (`render.path`, `render.mode` or `render.route_reason`;
+  `app_docs/measurement.md`).
+- The export write records its `export` row in `stored_files` through `recordingStorage`.
 - Storage: `${R2_KEY_PREFIX}exports/<reel_id>/<export_id>.mp4` (`export-key.ts`), written with
   `putFileIfAbsent`, then the `exports` row. The step log line reads
   `render: exported, <duration>, <size>`.
 
 ### Cancel
 
+- A cancel during the composite kills every process running then (up to two HyperFrames trees and
+  an ffmpeg pass, each in its own process group), and the step settles only once all are gone; the
+  render's folder (the layer folders, their PNG frames, the JPEG copy, the sound) is removed with
+  it, and each Chrome folder by its `withChromeTmp`.
 - A render job's lease keeper (`apps/worker/src/lease.ts`, `keepLease`) also runs one cheap check
   every `cancelCheckEveryMs` (5 seconds, `config.ts`): `jobCancelled` (`queue.ts`) reads only the
   job's `id`, filtered to `status = 'cancelled'`. No other kind runs the check. A cancel aborts the
@@ -168,9 +319,21 @@ latestExport)` (`apps/studio/src/lib/exports.ts`), a pure function of `LiveReel`
 
 ### Render double
 
-`E2E_MOCK_RENDER` set to exactly `"true"` turns the call into
-`/bin/cp fixtures/render/stub-export.mp4 <output>` through the same step runner. The stub was made
-once with:
+`E2E_MOCK_RENDER` set to exactly `"true"` turns every tool call of the render into the double's
+process (`fake-render.ts`) through the same step runner, so no spec needs Chrome or ffmpeg. Nothing
+is probed and the sound is not cut. The route judges the edit's own rules, so a spec's reel goes
+the way a real one would:
+
+- the single call: `fake-render <stub> <output>` prints the committed render sample's
+  `@hf-progress` lines, then copies `fixtures/render/stub-export.mp4` to the output;
+- the composite: one `fake-render layer <share> <output>` per layer page (the same lines, then a
+  placeholder where the page's output goes) and one
+  `fake-render ffmpeg <share> <frames> <stub> <output>` per ffmpeg pass (`frame=N` reports and
+  `progress=end`, then the stub copied for the composite itself; `-` in the stub's place leaves a
+  placeholder). The parts run in the real lanes, each over its share of `E2E_MOCK_RENDER_SECONDS`
+  (`DOUBLE_SHARES`, `app_docs/status.md`), and a cancel kills them all.
+
+The stub was made once with:
 
 ```bash
 ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000:cl=mono -t 1 -c:v libx264 -pix_fmt yuv420p -c:a aac -b:a 32k -shortest -movflags +faststart fixtures/render/stub-export.mp4
@@ -186,7 +349,12 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
 
 ## Configuration
 
-- No new variable for production. `R2_KEY_PREFIX` decides where the export is stored.
+- `R2_KEY_PREFIX` decides where the export is stored.
+- `WORKER_RENDER_PATH` (optional): `composite` (the default) or `single`, which sends every version
+  to the single call. `WORKER_RENDER_MODE` (optional): `match` (the default) or `clean`
+  (`renderSettings`, `render-route.ts`). Any other value fails the render step with a message that
+  names the variable. Both are read by the worker when a render starts; neither is needed in an
+  env file.
 - `E2E_MOCK_RENDER`: tests only. `apps/studio/test-support/worker.ts` sets it to `"true"` for every
   spec; the tools spec passes it empty to render for real.
 - `FFMPEG_PATH` is honoured by `apps/studio/test-support/frames.ts`.
@@ -198,10 +366,21 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
 
 ## Testing
 
-- Unit (worker): `render-call.test.ts`, `render-project.test.ts`, `export-key.test.ts`,
-  `render-step.test.ts` (under `apps/worker/src/render/`; a cancel during the render kills the
-  render double's real child within seconds and leaves no export row and no object, a cancel
-  before the render step stops before it, a refused insert discards the upload), `lease.test.ts`
+- Unit (worker), under `apps/worker/src/render/`: `render-route.test.ts` (the settings, and every
+  reason a version goes to the single call, in order), `composite.test.ts` (the filter graph equal
+  to the one measured on a real six-span reel, `clean` mode, scaled footage and masks, a reel with
+  no cut-out, short and long masks, the sound cut's packet count and expression, the JPEG pass, the
+  mask list, the probe), `render-call.test.ts` (the single call's and each layer's arguments and
+  environment, the ffmpeg passes, `runLanes` stopping the other lanes on a failure, every part of
+  the render double), `render-project.test.ts`, `export-key.test.ts` and `render-step.test.ts` (the
+  composite by default and the single call by setting, by the edit and by the probe; the layer
+  pages exactly as the builder makes them; the behind layer and the mask list; progress from every
+  process; each page's own Chrome folder and scratch folders, all removed; a failed lane stopping
+  the others; a cancel during the render killing every real child of the composite's double within
+  seconds and leaving no export row, no object and an empty scratch folder; a cancel before the
+  render step stopping before it; a refused insert discarding the upload).
+  `packages/edit/src/build-layers.test.ts` and `span-frames.test.ts` cover the layer pages and the
+  frame rules. `step-runner.test.ts` covers a call's own abort signal. `lease.test.ts`
   and `run-job.test.ts` (the cancel check and the `cancelled` outcome), `job-kinds.test.ts` and
   `pipeline/run-pipeline.test.ts` (`setReelStatus: false`).
 - Unit (studio): `apps/studio/src/lib/exports.test.ts` (`exportModalState`, `exportCancellable`,
@@ -218,8 +397,35 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   before or after; Cancel during the render closes the modal, the job ends `cancelled`, no export
   row, no object, no download, and Export is open again; Escape while queued cancels a job the
   worker then never claims.
-- Worker tools: `yarn workspace @edit-issebya/worker test:tools` (`render.tools.test.ts`: format,
-  loudness, click times, group memory), on the owner's Mac only.
+- Worker tools: `yarn workspace @edit-issebya/worker test:tools` (`render.tools.test.ts`: the
+  single call's format, loudness, click times, group memory), on the owner's Mac only.
+
+### Composite matches single call (machine check)
+
+- Command: `yarn workspace @edit-issebya/worker test:tools`
+  (`apps/worker/src/render/render-compare.tools.test.ts`), on the owner's Mac only (real
+  HyperFrames, Chrome, ffmpeg and the MODNet mask tool), never in CI. No database, no storage.
+- It exports each of two fixture reels both ways through the step runner (`renderVersion`, the
+  single call and the composite in `match` mode) and compares the two MP4s:
+  - the short speech (2.69 s) with captions and two clicks on the sound track; its footage has 80
+    frames for 81 output frames, so the last frame is one the footage clip holds;
+  - the ten-second speech (9.4 s, a person talking) with two big words behind her, so two cut-out
+    spans, each with its real MODNet mask: the ffmpeg blend against the page's CSS blend at the
+    person's edge over the words.
+- Acceptance, for each reel: both files are 1080x1920 H.264 at 30 fps with the reel's frame count
+  (`reelFrames`); the container's length, the streams' lengths and their frame counts are equal;
+  every frame of the composite scores at or above 0.9855 (SSIM, ffmpeg's `ssim`, against the same
+  frame of the single call's export; the bound is the guardrail's below); the decoded sound is
+  identical sample for sample, and so are the stored AAC packets.
+- It also checks the composite's progress (rising, ending at 100), its measurements, that no Chrome
+  folder is left, and that `clean` mode gives the same frame count and the same sound (its frames
+  are not held to the bound; its minimum must stay above 0.97).
+- Measured 2026-11-12 on the owner's Mac: the short speech's 81 frames scored 0.99948
+  mean and 0.99946 min; the ten-second speech's 283 frames 0.99037 mean and 0.98948 min (frame
+  120); no frame of either under the bound; the sound identical in both. `clean` on the short
+  speech: 0.99988 mean, 0.99986 min, the same sound.
+- A HyperFrames update can change the clip frame rules, the sound packet rule or the x264 settings
+  this path copies. This test is what catches it: run it after every HyperFrames version change.
 
 ### Preview matches export guardrail
 
@@ -315,9 +521,29 @@ Before the one-screen layout (the 0.99 bound):
   captured at device scale 3 and scaled down to the captured box with the same flags, never compared
   as the browser rasterised it at the player's scale.
 - Render only on export, never for the preview.
-- Software mode with three workers at `delivery` quality; never `--gpu` or `--browser-gpu`.
-- Use the same builder as the preview (`packages/edit`'s `build`); never a worker copy, never a
-  stored page.
+- Software mode at `delivery` quality; never `--gpu` or `--browser-gpu`. The single call takes three
+  workers; the composite's front layer two, its behind layer and sound page one each. Never raise
+  the composite's workers without measuring the tree's peak memory on the worker VM.
+- An export is the composite or the single call, picked by `renderRoute` alone, a pure function.
+  Never send a version to the composite outside it, and never loosen one of its reasons without
+  the machine check passing on a reel of that kind. A new kind of edit the composite cannot draw
+  (anything that changes the footage's own picture or timing) gets a reason there in the same
+  change.
+- The composite's default mode is `match`. Never make `clean` the default before the preview
+  guardrail below is measured on it and its scores are recorded here.
+- The composite must stay the single call's export to the machine: every frame at or above 0.9855
+  against it, the same frame count and length, the same decoded sound. Never change `composite.ts`,
+  `span-frames.ts`, the layer pages or a layer's HyperFrames arguments without running
+  `render-compare.tools.test.ts`.
+- The cut-out blend exists twice, in the builder's page and in `compositeGraph`. Never change one
+  without the other.
+- The composite's sound is the sound page's own AAC packets, cut by count with HyperFrames' `setts`
+  expression. Never re-encode it, and never cut it by time.
+- Every process a render starts runs through the step runner's `tool`, in its own process group,
+  and every file it writes is under the render's folder or a `withChromeTmp` folder. Never spawn
+  one another way: a cancel must kill them all and leave nothing.
+- Use the same builder as the preview (`packages/edit`'s `build`) for every page, the composite's
+  layer pages included; never a worker copy, never a stored page.
 - Never sign a download link past `expires_at`.
 - Never offer a finished export again (no download link, no expiry in the panel): exporting again
   renders again.
@@ -340,6 +566,16 @@ Before the one-screen layout (the 0.99 bound):
   recompression or the R2 lifecycle rule.
 - The page loads GSAP from jsdelivr, so a real render needs network.
 - `--no-best-effort` was considered and not added.
+- The composite came from four rounds of measured experiments (2026-11). Not built, on purpose:
+  streaming the layers' frames into the composite while they render (HyperFrames writes a PNG
+  sequence into its output folder only at the end; its capture folder is not a public interface).
+  Not yet measured: the preview guardrail on the composite (it runs on it by default now, since the
+  spec's real render takes the worker's default path; its scores above are the single call's and
+  must be measured again before the bound is touched), `clean` mode against the preview, a reel of
+  120 s or more, the front layer rendered in two halves, and an idle-machine timing run.
+- The repeated last frame of some cut-out spans is a small defect of the single call's export that
+  the composite reproduces to match it. Whether to keep it or show the true frame (as the preview
+  does) is the owner's decision.
 - Owner steps: the R2 lifecycle rule for `dev/` and the production prefix; applying the migrations
   to the hosted project after merge (`20261103164248_one_step_export.sql` before deploying the
   worker and the studio that use it); the manual acceptance against `rethink-work-02.mp4` and a

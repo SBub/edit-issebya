@@ -237,8 +237,8 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
 - `E2E_MOCK_STEPS=true` (exactly) is the pipeline step double: a fixed step that must run copies
   its committed output from `fixtures/pipeline/` instead of running its tool, and
   `E2E_MOCK_STEP_FAULT` makes one step fail on purpose. See `app_docs/failures.md`.
-  `E2E_MOCK_RENDER=true` (exactly) replaces the HyperFrames render with a copy of
-  `fixtures/render/stub-export.mp4`.
+  `E2E_MOCK_RENDER=true` (exactly) replaces the render's tools with the render double, which ends
+  with a copy of `fixtures/render/stub-export.mp4` (`app_docs/export.md`, "Render double").
 - `fixtures/footage/short-speech.mp4` is the committed short vertical clip with speech, made by
   `scripts/make-test-clip.sh` (macOS only, run by hand). `fixtures/footage/speech-ten.mp4` is the 10 s
   clip with a person that the visual and transition specs seed (`app_docs/pipeline.md`).
@@ -273,7 +273,8 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
   `E2E_MOCK_STORAGE` (tests only).
 - Worker (`apps/worker/.env.development`): `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `WORKER_ID`,
   `R2_WORKER_ACCESS_KEY_ID`, `R2_WORKER_SECRET_ACCESS_KEY`, `WORKER_POLL_INTERVAL_SECONDS`
-  (default 120), `WORKER_MIN_FREE_DISK_GB` (default 10), `WORKER_SCRATCH_DIR`, `OPENROUTER_API_KEY`
+  (default 120), `WORKER_MIN_FREE_DISK_GB` (default 10), `WORKER_SCRATCH_DIR`, `WORKER_RENDER_PATH`
+  and `WORKER_RENDER_MODE` (both optional, `app_docs/export.md`), `OPENROUTER_API_KEY`
   (secret, the AI calls), `POSTHOG_PROJECT_ID`, `POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROMPT_LABEL` (the prompts,
   `app_docs/decide-step.md`, "Prompts"),
   `FFMPEG_PATH`, `E2E_MOCK_AI`, `E2E_MOCK_PROMPTS`, `E2E_MOCK_STORAGE`, `E2E_MOCK_RENDER`,

@@ -91,7 +91,16 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
   each can follow its tool later.
 - `render`: HyperFrames 0.8.222's `hyperframes render`, with stdout not a terminal, prints one
   `@hf-progress` line per progress report. `renderEnv` drops `HYPERFRAMES_STDOUT_IS_TTY`, which
-  set to 1 silences those lines (`apps/worker/src/render/render-call.ts`).
+  set to 1 silences those lines (`apps/worker/src/render/render-call.ts`). The composite export
+  (`app_docs/export.md`) is several processes, some at the same time: each layer page reads its own
+  `@hf-progress` lines, and each ffmpeg pass runs with `-progress pipe:1 -stats_period 2` and reads
+  its `frame=N` lines against its frame count (`ffmpegFrameProgress`, `progress=end` is 100).
+  `weightedParts` gives every call its own parser and its weight of the step's one percentage:
+  front layer 30, sound page 4, behind layer 4, the footage's JPEG pass 4, the composite 58
+  (`PROGRESS_WEIGHTS` in `render-step.ts`, about each part's share of the wall time; a part that
+  does not run counts nothing). The percentage never goes back, whichever process reports, and a
+  report of 0 is not written (the first write is at once, so a 0 would sit there for a whole
+  throttle window).
 - `head_track`: the worker's U2Net entry (`apps/worker/src/pipeline/u2net-entry.ts`,
   `app_docs/pipeline.md`) prints one `@hf-progress {"index","total","pct"}` line per sample of its
   chunk. The step runs its chunks at the same time, so each call gets its own parser from
@@ -193,7 +202,10 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
 - `E2E_MOCK_RENDER_SECONDS` (tests only, with `E2E_MOCK_RENDER=true`): the render double
   (`apps/worker/src/render/fake-render.ts`) prints the `@hf-progress` lines of the committed render
   sample spread evenly over that many seconds, then copies the stub MP4. Unset or 0: all at once. A
-  negative or non-numeric value makes the double exit with an error.
+  negative or non-numeric value makes the double exit with an error. For the composite the double
+  is one process per tool call, each over its share of the seconds (`DOUBLE_SHARES`: front layer
+  0.45, sound page 0.15, behind layer 0.3, footage pass 0.3, then the composite 0.55, which prints
+  `frame=N` reports and copies the stub), so the whole still takes the seconds given.
 - No other setting: the 10 s throttle, the 5-minute heartbeat and the 11-minute offline threshold
   are constants.
 
@@ -205,7 +217,9 @@ aria-live="polite"`); the buttons stay outside it, so updates do not announce th
   `cutout/ensure-cutouts.test.ts` (each span's progress weighted by its length), `step-runner.test.ts` (throttled progress then 100 before `done`, no
   writes without a parser, no 100 on failure), `pipeline/head-track-step.test.ts` and
   `render/render-call.test.ts` (the calls carry their parser, the render env drops
-  `HYPERFRAMES_STDOUT_IS_TTY`, the double is the fake-render process),
+  `HYPERFRAMES_STDOUT_IS_TTY`, the double is the fake-render process, each of its parts prints its
+  progress over its share of the seconds), `render/render-step.test.ts` (every process of the
+  composite moves the step's one percentage, never back, ending at 100),
   `pipeline/run-pipeline.test.ts` (footage seconds after retime: ran, hit without a value, hit with
   one), `heartbeat.test.ts` and `disk-guard.test.ts` (beats at start and every 5 minutes, the
   heartbeat upsert's shape), `keep-awake.test.ts` (caffeinate killed on success and failure, none

@@ -107,7 +107,15 @@ export { type HarfBuzz, type Measurer, createMeasurer } from "./measure.ts";
 export { type ResolvedItem, resolveTimeline } from "./timeline.ts";
 export { type TextBox } from "./engine-space.ts";
 export { type Check, type CheckRule, runChecks } from "./checks.ts";
-export { type AssetRole, type BuildAsset, type BuildResult, build, maskPath } from "./build.ts";
+export {
+  type AssetRole,
+  type BuildAsset,
+  type BuildResult,
+  type Layer,
+  build,
+  maskPath,
+} from "./build.ts";
+export { type ClipFrames, EXPORT_FPS, clipFrames, reelFrames } from "./span-frames.ts";
 export { type BigWordBox, type MaskSpan, maskSpans } from "./behind.ts";
 export { baselineEdit } from "./baseline.ts";
 export {
