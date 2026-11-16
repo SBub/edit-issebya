@@ -157,15 +157,12 @@ async function storedEdit(key: string): Promise<Edit> {
 // plus one accent before it and one click: every kind of layer the export
 // must match.
 async function guardrailEdit(base: Edit): Promise<Edit> {
-  const edit = await withNumberedTransition(base, await transcript());
-  // Before the transition comes in: nothing else shows during one.
-  edit.tracks.overlays.push({
-    id: "accent-guard",
-    start: { word: "w0001" },
-    end: { word: "w0002", edge: "end" },
-    kind: "accent",
-    words: ["w0001"],
-  });
+  // The accent goes in the answer, so the engine places it (a raw overlay has
+  // no position and the build refuses it). Before the transition comes in:
+  // nothing else shows during one.
+  const edit = await withNumberedTransition(base, await transcript(), [
+    { from: "w0001", to: "w0001" },
+  ]);
   edit.tracks.sounds.push({
     id: "click-guard",
     sound: "click",

@@ -44,13 +44,19 @@ async function measurer() {
 
 // `base`'s choices with the LIST, placed by the layout engine the way the
 // worker's decide step places an answer: the transition's layer and its two
-// text levels, its phrase's captions shown only there.
-export async function withNumberedTransition(base: Edit, transcript: Transcript): Promise<Edit> {
+// text levels, its phrase's captions shown only there. `accents` (word ranges)
+// join the answer too, so the engine places them like any other accent.
+export async function withNumberedTransition(
+  base: Edit,
+  transcript: Transcript,
+  accents: { from: string; to: string }[] = [],
+): Promise<Edit> {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
   const headTrack = headTrackSchema.parse(JSON.parse(await readFile(HEAD_TRACK, "utf8")));
+  const choices = choicesOf(base, transcript, ISSEBYA_PRESET);
   const made = editFromAnswer(
     base,
-    { ...choicesOf(base, transcript, ISSEBYA_PRESET), lists: [{ items: [LIST_ITEM] }] },
+    { ...choices, accents: [...choices.accents, ...accents], lists: [{ items: [LIST_ITEM] }] },
     ISSEBYA_PRESET,
     transcript,
     headTrack,
