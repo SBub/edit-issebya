@@ -273,9 +273,9 @@ async function compositionClip() {
 }
 
 // The composition at each moment, as PNG files.
-async function capturePreview(name: string): Promise<Capture[]> {
+async function capturePreview(name: string, moments = MOMENTS): Promise<Capture[]> {
   const captures: Capture[] = [];
-  for (const t of MOMENTS) {
+  for (const t of moments) {
     await seekTo(t);
     const file = join(dir, `${name}-preview-${t}.png`);
     const raw = join(dir, `${name}-preview-${t}-x${CAPTURE_SCALE}.png`);
@@ -323,9 +323,14 @@ async function exportNow(name: string): Promise<{ mp4: string; jobId: string }> 
 }
 
 // SSIM of each export frame against the preview capture at the same moment.
-async function scores(name: string, mp4: string, previews: Capture[]): Promise<number[]> {
+async function scores(
+  name: string,
+  mp4: string,
+  previews: Capture[],
+  moments = MOMENTS,
+): Promise<number[]> {
   const out: number[] = [];
-  for (const [index, t] of MOMENTS.entries()) {
+  for (const [index, t] of moments.entries()) {
     const { file: preview, crop } = previews[index]!;
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the spec's temp folder
     const { width, height } = pngSize(new Uint8Array(await readFile(preview)));
@@ -339,7 +344,7 @@ async function scores(name: string, mp4: string, previews: Capture[]): Promise<n
     });
     await test.info().attach(`${name}-export-${t}.png`, { path: frame, contentType: "image/png" });
   }
-  console.log(`${name}: SSIM ${MOMENTS.map((t, i) => `${t} s ${out[i]}`).join(", ")}`);
+  console.log(`${name}: SSIM ${moments.map((t, i) => `${t} s ${out[i]}`).join(", ")}`);
   return out;
 }
 
@@ -416,10 +421,11 @@ test("text moved by 60 px falls below the bound", async () => {
 // start over job (the scripted answer, decided from version 1) that makes the
 // cut-out with the real mask tool and saves the version, then the composite in
 // the live preview and in the real export are compared at the same moments.
-// The visual and the word each show 2 s from the speech's start (0.038 s), as
-// two versions over the same span. The first two moments are inside it, the
-// last one after it (the composite gone in both). A ready library photo is
-// seeded beside them; no version places it (the placed photo is gone).
+// The visual and the word are two versions, each placed by the layout engine.
+// The visual is compared at the guardrail's moments. The word's moments come
+// from its own placed span (`wordMoments`), so they stay inside it wherever
+// the engine puts its start and end. A ready library photo is seeded beside
+// them; no version places it (the placed photo is gone).
 async function startOverTo(script: string): Promise<string> {
   const { error } = await admin
     .from("jobs")
@@ -436,6 +442,28 @@ async function startOverTo(script: string): Promise<string> {
     .eq("id", reel!.reelId)
     .single<{ current_version_id: string }>();
   return data!.current_version_id;
+}
+
+// The moments of the big word's case, from the version's own edit: one third
+// and two thirds into the word's span, and halfway from its end to the reel's
+// end (the word gone in both). Never the span's end itself: the export shows
+// an item up to its end frame and not on it, while the preview seeked to
+// exactly the end may still show it (app_docs/export.md).
+async function wordMoments(versionId: string): Promise<number[]> {
+  const { data, error } = await admin
+    .from("versions")
+    .select("r2_key")
+    .eq("id", versionId)
+    .single<{ r2_key: string }>();
+  if (error || !data) throw new Error(`version not read: ${error?.message}`);
+  const edit = await storedEdit(data.r2_key);
+  const word = (edit.tracks.behind ?? []).find((item) => item.kind === "word");
+  if (!word) throw new Error("the version has no big word");
+  const { start, end } = resolveTimeline(edit, await transcript()).get(word.id)!;
+  const third = (end - start) / 3;
+  return [start + third, start + 2 * third, (end + edit.duration) / 2].map(
+    (t) => Math.round(t * 100) / 100,
+  );
 }
 
 test("a visual and a big word behind the speaker match between preview and export", async () => {
@@ -467,12 +495,13 @@ test("a visual and a big word behind the speaker match between preview and expor
       expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
     }
 
-    // One big word behind the speaker, a second version over the same span.
+    // One big word behind the speaker, a second version.
     const wordId = await startOverTo(await behindWordAnswerScript(dir, "w0001"));
     await openPreview(wordId);
-    const wordPreviews = await capturePreview("behind-word");
+    const moments = await wordMoments(wordId);
+    const wordPreviews = await capturePreview("behind-word", moments);
     const { mp4: wordMp4 } = await exportNow("behind-word");
-    for (const score of await scores("behind-word", wordMp4, wordPreviews)) {
+    for (const score of await scores("behind-word", wordMp4, wordPreviews, moments)) {
       expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
     }
   } finally {

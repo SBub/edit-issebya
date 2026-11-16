@@ -265,6 +265,11 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   to the captured box with the export frame's flags, for every case. The word's box then scored Y
   0.999684 at 0.5 s, and every case rose; the caption probe's minimum (0.983714) stayed below
   0.9855, so the bound stayed.
+- The big word is compared at moments taken from its own placed span (one third and two thirds
+  into it, and halfway from its end to the reel's end), never at the span's end. In the export an
+  item ends exclusively at its end frame: it shows up to that frame and not on it, while the
+  preview seeked to exactly the end may still show it. That is a one-frame edge, not a mismatch
+  (sampled at 1.5 s, the exact end of the engine's word, the case scored 0.902318).
 
 Measured scores (SSIM, live preview against the exported MP4), composition-box captures:
 
