@@ -100,13 +100,19 @@ with it at that moment. Placement rules will be learnt from these later.
     `Hook`) and a corner handle (`move-handle`) at its bottom right.
   - Dragging a box moves it; dragging the handle resizes it about its top left corner. A press that
     moves less than 3 screen pixels is a click.
+  - Snap guides: while a box is dragged, its centre snaps to the frame's vertical centre line and
+    its horizontal centre line, each axis on its own, when it comes within 8 screen pixels
+    (`SNAP_PX`) of one. A thin line (`move-guide`, `data-axis="vertical|horizontal"`) shows while it
+    is on that line. The snapped place is still settled (`settleOwnerMove`) when the drag ends, so
+    the safe zone wins over a guide.
   - Picking a text from the list selects it and seeks the preview to a moment where it shows whole
     (`showMoment`: 0.4 s before its end, or its middle when it is shorter than 0.8 s).
   - A status line at the bottom (`move-status`): `Saving your changes`, `This text does not fit
 there`, or why a save did not start.
 - `src/lib/owner-edit.ts`: the editor's logic with no DOM in it: `componentLabel`,
   `movableComponents`, `movableAt`, `componentOption`, `showMoment`, `resizeShare` (the direction the
-  handle moved further in, as a share of the box), `draggedBox`, `moveOfDrag`, `withMove`, `boxStyle`.
+  handle moved further in, as a share of the box), `draggedBox`, `moveOfDrag`, `snapDrag` (a move drag with its centre snapped to the centre lines),
+  `withMove`, `boxStyle`.
 - Save calls `requestOwnerEdit` (`src/app/change-actions.ts`): it checks the shape of the moves
   (`parseOwnerMoves`), refuses a blocked reel like going back does (`changeBlockedReason`) and inserts
   the job `{ kind: "owner_edit", owner_edit: { version_id, moves } }` under RLS. The editor then waits
@@ -229,7 +235,8 @@ order by created_at;
 3. Select a text: click its box on the preview (go to a moment where it shows with the ruler), or
    pick it from the list in the bar. Its kind shows above its box.
 4. Drag the box to move it. Drag the square handle at its bottom right corner to make it larger or
-   smaller. The preview is built again after each drag and replaces the old one without a flicker. A text stops at the edge of the safe zone.
+   smaller. The preview is built again after each drag and replaces the old one without a flicker.
+   Near the middle of the frame the text snaps to the centre lines and a thin guide shows. A text stops at the edge of the safe zone.
 5. Press `Save`. A new version, `Edited by you`, becomes current. Press `Cancel` to drop the changes.
 6. To compare, open another version's details in the Versions list and press `Go back to this`.
 
@@ -254,7 +261,7 @@ like decide does (`E2E_MOCK_MASK` in specs).
   nothing moved, a version of another reel), each writing no version. `job-kinds.test.ts`: the
   dispatch and a bad payload.
 - `apps/studio/src/lib/owner-edit.test.ts` (unit): labels, the list of texts, what is on screen at a
-  moment, the moment a picked text shows, a drag as a move and as a resize, the draft's moves.
+  moment, the moment a picked text shows, a drag as a move and as a resize, snapping to the centre lines, the draft's moves.
   `change-requests.test.ts`: `Edited by you` and the details line.
 - `apps/studio/db-tests/owner-edits.test.ts` (`yarn test:db`): the job's insert policy, column grant
   and payload checks; `save_version` with the edited-from version and the learning rows, in one
@@ -263,7 +270,8 @@ like decide does (`E2E_MOCK_MASK` in specs).
 - `apps/studio/e2e/owner-edit.spec.ts` (`yarn test:e2e`): the editor opens paused, a picked text is
   selected with its kind and a handle, a drag moves it, a drag past the safe zone stops at its edge,
   the handle resizes it (a watch on every animation frame during and after the drag finds no frame
-  showing `Loading`, no player on screen, or a video with no decoded frame), Cancel drops the draft, Save queues the moves and the worker saves version 3
+  showing `Loading`, no player on screen, or a video with no decoded frame), a held drag near the middle snaps to both centre lines with both
+  guides shown and drops centred, Cancel drops the draft, Save queues the moves and the worker saves version 3
   `Edited by you` with the edited version unchanged, the learning rows, going back to the version
   before and to the owner's version, Start over leaving the owner's version and its rows alone, and
   another owner refused.

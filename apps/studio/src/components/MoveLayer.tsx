@@ -5,6 +5,7 @@ import { type PointerEvent as ReactPointerEvent, useRef, useState } from "react"
 import {
   CLICK_SLOP_PX,
   type Drag,
+  SNAP_PX,
   boxStyle,
   componentLabel,
   componentOption,
@@ -12,6 +13,7 @@ import {
   movableAt,
   movableComponents,
   moveOfDrag,
+  snapDrag,
 } from "@/lib/owner-edit";
 
 interface Props {
@@ -41,6 +43,8 @@ interface Pressed extends Drag {
   // Frame pixels per screen pixel, read when the press began.
   scale: number;
   dragging: boolean;
+  // Which centre line the dragged box's centre is snapped to.
+  snapped: { x: boolean; y: boolean };
 }
 
 const FRAME = ISSEBYA_PRESET.frame;
@@ -48,7 +52,8 @@ const FRAME = ISSEBYA_PRESET.frame;
 // The move and resize editor over the paused preview (app_docs/owner-edits.md):
 // a box around each text component on screen, a bar on top with the list of
 // texts, Cancel and Save. Click a box to select it (its kind shows above it),
-// drag it to move it, drag its corner handle to resize it. A component has one
+// drag it to move it (its centre snaps to the frame's centre lines, and a thin
+// guide shows while it is on one), drag its corner handle to resize it. A component has one
 // box for its whole time on screen. Nothing here draws the text: after each
 // drag the preview is built again from the draft by the one builder. The bar
 // sits in the frame's top margin, which the platforms cover, so it never hides
@@ -89,6 +94,7 @@ export function MoveLayer({
       dx: 0,
       dy: 0,
       dragging: false,
+      snapped: { x: false, y: false },
     });
   }
 
@@ -99,12 +105,13 @@ export function MoveLayer({
     const screenX = event.clientX - pressed.startX;
     const screenY = event.clientY - pressed.startY;
     const dragging = pressed.dragging || Math.hypot(screenX, screenY) >= CLICK_SLOP_PX;
-    setPressed({
-      ...pressed,
-      dragging,
-      dx: screenX * pressed.scale,
-      dy: screenY * pressed.scale,
-    });
+    const component = components.find((entry) => entry.id === pressed.id);
+    const raw = { ...pressed, dragging, dx: screenX * pressed.scale, dy: screenY * pressed.scale };
+    // The box's centre gravitates to the frame's centre lines.
+    const { drag: snapped, snapped: on } = component
+      ? snapDrag(component, raw, FRAME, SNAP_PX * pressed.scale)
+      : { drag: raw, snapped: { x: false, y: false } };
+    setPressed({ ...snapped, snapped: dragging ? on : { x: false, y: false } });
   }
 
   function release(event: ReactPointerEvent<HTMLElement>) {
@@ -171,6 +178,21 @@ export function MoveLayer({
           {saving ? "Saving" : "Save"}
         </button>
       </div>
+      {/* The centre guides: a thin line while the dragged box's centre is on it. */}
+      {pressed?.dragging && pressed.snapped.x && (
+        <div
+          data-testid="move-guide"
+          data-axis="vertical"
+          className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-accent"
+        />
+      )}
+      {pressed?.dragging && pressed.snapped.y && (
+        <div
+          data-testid="move-guide"
+          data-axis="horizontal"
+          className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-accent"
+        />
+      )}
       {shown.map((component) => {
         const selected = component.id === selectedId;
         const active = pressed?.id === component.id && pressed.dragging ? pressed : null;

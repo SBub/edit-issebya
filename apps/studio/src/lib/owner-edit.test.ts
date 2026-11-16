@@ -10,6 +10,7 @@ import {
   moveOfDrag,
   resizeShare,
   showMoment,
+  snapDrag,
   withMove,
 } from "./owner-edit";
 
@@ -139,6 +140,34 @@ describe("a drag", () => {
         dy: 1,
       }),
     ).toBeNull();
+  });
+});
+
+describe("snapping to the frame's centre lines", () => {
+  const frame = { width: 1080, height: 1920 };
+  const box = { x: 100, y: 300, width: 400, height: 110 };
+
+  it("puts the box's centre on a centre line it comes near, each axis on its own", () => {
+    // Centre at (300 + 236, 355 + 600) = (536, 955): 4 and 5 px off the lines.
+    const near = snapDrag(box, { mode: "move", dx: 236, dy: 600 }, frame, 10);
+    expect(near.snapped).toEqual({ x: true, y: true });
+    expect(near.drag).toEqual({ mode: "move", dx: 240, dy: 605 });
+    const onlyX = snapDrag(box, { mode: "move", dx: 236, dy: 100 }, frame, 10);
+    expect(onlyX.snapped).toEqual({ x: true, y: false });
+    expect(onlyX.drag).toEqual({ mode: "move", dx: 240, dy: 100 });
+  });
+
+  it("leaves a drag away from the lines, and any resize, as it is", () => {
+    const far = snapDrag(box, { mode: "move", dx: 200, dy: 600 }, frame, 10);
+    expect(far).toEqual({
+      drag: { mode: "move", dx: 200, dy: 605 },
+      snapped: { x: false, y: true },
+    });
+    const resize = { mode: "resize" as const, dx: 236, dy: 600 };
+    expect(snapDrag(box, resize, frame, 10)).toEqual({
+      drag: resize,
+      snapped: { x: false, y: false },
+    });
   });
 });
 

@@ -390,6 +390,44 @@ test("the corner handle resizes the text, its corner staying where it is", async
   expect(Math.abs(box.width - ownerAccent.width)).toBeLessThan(3);
 });
 
+test("a dragged text's centre snaps to the frame's centre lines, with a thin guide while it is on one", async () => {
+  await page.getByTestId("move-pick").selectOption("hook");
+  await expect(moveBox("hook")).toHaveAttribute("data-selected", "true");
+  const before = await drawn("hook");
+  const scale = await screenScale();
+  // Aim the box's centre 5 frame pixels off both centre lines (inside the snap).
+  const dx = 540 + 5 - (before.x + before.width / 2);
+  const dy = 960 - 5 - (before.y + before.height / 2);
+  const from = await centreOf(moveBox("hook"));
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + (dx * scale) / 2, from.y + (dy * scale) / 2, { steps: 4 });
+  await page.mouse.move(from.x + dx * scale, from.y + dy * scale, { steps: 4 });
+  // Held: both guides show, and the box sits on both lines.
+  await expect(page.locator('[data-testid="move-guide"][data-axis="vertical"]')).toBeVisible();
+  await expect(page.locator('[data-testid="move-guide"][data-axis="horizontal"]')).toBeVisible();
+  const held = await boxInFrame("hook");
+  expect(Math.abs(held.x + held.width / 2 - 540)).toBeLessThan(2);
+  expect(Math.abs(held.y + held.height / 2 - 960)).toBeLessThan(2);
+  await shot("4-snap-guides.png");
+  await page.mouse.up();
+  await expect(page.getByTestId("move-guide")).toHaveCount(0);
+  await ready();
+  // The page draws it centred (whole pixels), inside the safe zone.
+  const at = await drawn("hook");
+  expect(Math.abs(at.x + at.width / 2 - 540)).toBeLessThan(1);
+  expect(Math.abs(at.y + at.height / 2 - 960)).toBeLessThan(1);
+
+  // Far from both lines: no guide.
+  const away = await centreOf(moveBox("hook"));
+  await page.mouse.move(away.x, away.y);
+  await page.mouse.down();
+  await page.mouse.move(away.x + 120 * scale, away.y + 200 * scale, { steps: 6 });
+  await expect(page.getByTestId("move-guide")).toHaveCount(0);
+  await page.mouse.up();
+  await ready();
+});
+
 test("Cancel drops the draft: the version shows as it was and nothing is queued", async () => {
   await page.getByTestId("move-cancel").click();
   await expect(page.getByTestId("move-layer")).toHaveCount(0);

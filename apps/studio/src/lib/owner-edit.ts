@@ -129,6 +129,32 @@ export function moveOfDrag(component: PlacedComponent, drag: Drag): OwnerMove | 
   };
 }
 
+// How close, in screen pixels, a dragged box's centre comes to one of the
+// frame's centre lines before it snaps onto it.
+export const SNAP_PX = 8;
+
+// A move drag with its box's centre snapped to the frame's vertical and
+// horizontal centre lines, each axis on its own: within `threshold` frame
+// pixels of a line the drag is moved so the centre sits on it. `snapped` says
+// which guide shows. Any other drag is left as it is. What the snapped drag
+// asks for is still settled (`settleOwnerMove`), so the safe zone wins.
+export function snapDrag<T extends Drag>(
+  component: Pick<PlacedComponent, "x" | "y" | "width" | "height">,
+  drag: T,
+  frame: { width: number; height: number },
+  threshold: number,
+): { drag: T; snapped: { x: boolean; y: boolean } } {
+  if (drag.mode !== "move") return { drag, snapped: { x: false, y: false } };
+  const offX = frame.width / 2 - (component.x + drag.dx + component.width / 2);
+  const offY = frame.height / 2 - (component.y + drag.dy + component.height / 2);
+  const x = Math.abs(offX) <= threshold;
+  const y = Math.abs(offY) <= threshold;
+  return {
+    drag: { ...drag, dx: x ? drag.dx + offX : drag.dx, dy: y ? drag.dy + offY : drag.dy },
+    snapped: { x, y },
+  };
+}
+
 // The draft's moves with one more: a component moved again replaces its
 // earlier move, so the list holds each component once, with where it is now.
 export function withMove(moves: readonly OwnerMove[], move: OwnerMove): OwnerMove[] {
