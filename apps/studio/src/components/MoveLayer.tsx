@@ -1,12 +1,16 @@
 "use client";
 
-import { ISSEBYA_PRESET, type OwnerMove, type PlacedComponent } from "@edit-issebya/edit";
+import { ISSEBYA_PRESET, type PlacedComponent } from "@edit-issebya/edit";
 import { type PointerEvent as ReactPointerEvent, useRef, useState } from "react";
 import {
   CLICK_SLOP_PX,
   type Drag,
+  EDGE_MODES,
+  type EdgeMode,
+  type OwnerAsk,
   SNAP_PX,
   boxStyle,
+  canRewrap,
   componentLabel,
   componentOption,
   draggedBox,
@@ -25,8 +29,8 @@ interface Props {
   onSelect: (id: string | null) => void;
   // A text picked from the list: the preview goes to a moment where it shows.
   onPick: (component: PlacedComponent) => void;
-  // A finished drag, before it is made legal.
-  onMove: (move: OwnerMove) => void;
+  // A finished drag, before its lines are chosen and it is made legal.
+  onMove: (ask: OwnerAsk) => void;
   // Whether anything was moved (Save is off until then), and the save's state.
   changed: boolean;
   saving: boolean;
@@ -49,11 +53,33 @@ interface Pressed extends Drag {
 
 const FRAME = ISSEBYA_PRESET.frame;
 
+// Each edge handle: where it sits on the selected box, its cursor and its name.
+const EDGES: Record<EdgeMode, { className: string; label: string }> = {
+  left: {
+    className: "top-1/2 -left-1.5 h-5 w-2 -translate-y-1/2 cursor-ew-resize",
+    label: "Make narrower or wider from the left",
+  },
+  right: {
+    className: "top-1/2 -right-1.5 h-5 w-2 -translate-y-1/2 cursor-ew-resize",
+    label: "Make narrower or wider from the right",
+  },
+  top: {
+    className: "-top-1.5 left-1/2 h-2 w-5 -translate-x-1/2 cursor-ns-resize",
+    label: "Make shorter or taller from the top",
+  },
+  bottom: {
+    className: "-bottom-1.5 left-1/2 h-2 w-5 -translate-x-1/2 cursor-ns-resize",
+    label: "Make shorter or taller from the bottom",
+  },
+};
+
 // The move and resize editor over the paused preview (app_docs/owner-edits.md):
 // a box around each text component on screen, a bar on top with the list of
 // texts, Cancel and Save. Click a box to select it (its kind shows above it),
 // drag it to move it (its centre snaps to the frame's centre lines, and a thin
-// guide shows while it is on one), drag its corner handle to resize it. A component has one
+// guide shows while it is on one), drag its corner handle to resize it in
+// proportion (the text size), drag an edge handle to make the box wider,
+// narrower, taller or shorter at the same text size (its lines set again). A component has one
 // box for its whole time on screen. Nothing here draws the text: after each
 // drag the preview is built again from the draft by the one builder. The bar
 // sits in the frame's top margin, which the platforms cover, so it never hides
@@ -244,6 +270,22 @@ export function MoveLayer({
                   onPointerCancel={() => setPressed(null)}
                   className="absolute -right-2.5 -bottom-2.5 size-4 cursor-nwse-resize border-2 border-white bg-accent"
                 />
+                {canRewrap(component) &&
+                  EDGE_MODES.map((edge) => (
+                    <span
+                      key={edge}
+                      role="button"
+                      aria-label={EDGES[edge].label}
+                      title={EDGES[edge].label}
+                      data-testid="move-edge"
+                      data-edge={edge}
+                      onPointerDown={(event) => press(event, component.id, edge)}
+                      onPointerMove={drag}
+                      onPointerUp={release}
+                      onPointerCancel={() => setPressed(null)}
+                      className={`absolute border border-white bg-accent ${EDGES[edge].className}`}
+                    />
+                  ))}
               </>
             )}
           </div>

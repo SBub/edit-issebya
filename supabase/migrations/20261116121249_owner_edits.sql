@@ -45,7 +45,7 @@ alter table public.jobs
   );
 
 comment on column public.jobs.owner_edit is
-  'An owner_edit job''s payload: { version_id, moves: [{ id, x, y, size }] }; null for every other kind.';
+  'An owner_edit job''s payload: { version_id, moves: [{ id, x, y, size, width? }] }; null for every other kind.';
 
 grant insert (owner_edit) on public.jobs to authenticated;
 
@@ -112,7 +112,12 @@ create table public.owner_moves (
   engine_box jsonb not null check (jsonb_typeof(engine_box) = 'object'),
   owner_box jsonb not null check (jsonb_typeof(owner_box) = 'object'),
   moved boolean not null,
+  -- A new size, or a box of another width or height (its lines set again).
   resized boolean not null,
+  -- The wrap width the owner set with an edge handle, in frame pixels at the
+  -- owner's size (the text set on the fewest balanced lines that fit it); null
+  -- when the version's lines were kept.
+  wrap_width numeric,
   -- The moment: the frame, the font pair, the head's box over the component's
   -- time (null with no head), the zone the engine took, and everything else on
   -- screen with it ({ item, component, text, start, end, box, moved_by_owner }).
@@ -226,7 +231,7 @@ begin
 
   insert into public.owner_moves (
     owner_id, reel_id, version_id, from_version_id, engine_version_id, item, component, variant,
-    text, start_seconds, end_seconds, engine_box, owner_box, moved, resized, context
+    text, start_seconds, end_seconds, engine_box, owner_box, moved, resized, wrap_width, context
   )
   select
     v_owner, p_reel_id, p_id, p_edited_from_id,
@@ -235,6 +240,7 @@ begin
     (m ->> 'start')::numeric, (m ->> 'end')::numeric,
     m -> 'engine', m -> 'owner',
     (m ->> 'moved')::boolean, (m ->> 'resized')::boolean,
+    (m ->> 'wrap_width')::numeric,
     m -> 'context'
   from jsonb_array_elements(coalesce(p_owner_moves, '[]'::jsonb)) as m;
 

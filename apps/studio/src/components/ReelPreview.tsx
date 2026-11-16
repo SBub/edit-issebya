@@ -17,6 +17,7 @@ import {
   createMeasurer,
   effectiveMoves,
   headTrackSchema,
+  ownerWrapOptions,
   parseEdit,
   settleOwnerMove,
   transcriptSchema,
@@ -31,7 +32,7 @@ import { type TimelineFrames, TracksTimeline } from "@/components/TracksTimeline
 import { isChromium } from "@/lib/browser";
 import { editAssetUrl } from "@/lib/edit-assets";
 import type { JobRow } from "@/lib/jobs";
-import { showMoment, withMove } from "@/lib/owner-edit";
+import { type OwnerAsk, resolveAsk, showMoment, withMove } from "@/lib/owner-edit";
 import { previewPage } from "@/lib/preview-page";
 import { recordPreviewBuild } from "@/lib/preview-test-hooks";
 import { type SoundHit, soundHits } from "@/lib/sound-schedule";
@@ -254,24 +255,52 @@ function BuiltPreview({
     setSent(null);
   }
 
-  // A finished drag: made legal (inside the safe zone, a size the text may
-  // take), applied to the draft, and the draft's page built.
-  function move(asked: OwnerMove) {
-    const settled = settleOwnerMove(draft?.edit ?? built.edit, asked, {
-      ...built.context,
-      preset: ISSEBYA_PRESET,
-    });
+  // A finished drag: an edge handle's width or height turned into the lines
+  // that give it (`ownerWrapOptions`), a move or a corner resize keeping the
+  // wrap width an earlier edge drag set (scaled with the size, so its lines
+  // stay), then made legal (inside the safe zone, a size the text may take),
+  // applied to the draft, and the draft's page built.
+  function move(ask: OwnerAsk) {
+    const edit = draft?.edit ?? built.edit;
+    const context = { ...built.context, preset: ISSEBYA_PRESET };
+    let asked: OwnerMove;
+    if (ask.width !== undefined || ask.height !== undefined) {
+      const options = ownerWrapOptions(edit, ask.id, ask, context);
+      if (!options) {
+        setMessage("This text keeps its lines");
+        return;
+      }
+      asked = resolveAsk(ask, options);
+    } else {
+      const earlier = draft?.moves.find((entry) => entry.id === ask.id);
+      asked =
+        earlier?.width === undefined
+          ? { id: ask.id, x: ask.x, y: ask.y, size: ask.size }
+          : {
+              id: ask.id,
+              x: ask.x,
+              y: ask.y,
+              size: ask.size,
+              width: (earlier.width * ask.size) / earlier.size,
+            };
+    }
+    const settled = settleOwnerMove(edit, asked, context);
     if (!settled.ok) {
       setMessage("This text does not fit there");
       return;
     }
     setMessage("");
     setSent(null);
+    const page = built.pageOf(settled.edit);
     setDraft({
       edit: settled.edit,
       // Only what differs from the version: a text put back is no move.
-      moves: effectiveMoves(withMove(draft?.moves ?? [], settled.move), built.page.components),
-      page: built.pageOf(settled.edit),
+      moves: effectiveMoves(
+        withMove(draft?.moves ?? [], settled.move),
+        built.page.components,
+        page.components,
+      ),
+      page,
     });
   }
 

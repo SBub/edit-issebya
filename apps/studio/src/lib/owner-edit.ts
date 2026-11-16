@@ -69,8 +69,15 @@ export function showMoment(component: Pick<PlacedComponent, "start" | "end">): n
 
 // A drag on screen, in frame pixels: `scale` is frame pixels per screen pixel
 // (the frame's width over the preview's width on screen).
+// `resize` is the corner handle (the text size, in proportion); `left` and
+// `right` are the edge handles that set the box's width, `top` and `bottom`
+// the ones that set its height (both by setting its lines again).
+export type DragMode = "move" | "resize" | EdgeMode;
+export type EdgeMode = "left" | "right" | "top" | "bottom";
+export const EDGE_MODES: readonly EdgeMode[] = ["left", "right", "top", "bottom"];
+
 export interface Drag {
-  mode: "move" | "resize";
+  mode: DragMode;
   dx: number;
   dy: number;
 }
@@ -95,8 +102,18 @@ export function resizeShare(
   return Math.max(MIN_RESIZE_SHARE, share);
 }
 
+// The narrowest or shortest an edge drag may make a box, in frame pixels.
+const MIN_EDGE_PX = 20;
+
+// Whether a component's lines can be set again by its edge handles: every
+// text but a big word (one or two words that keep their lines).
+export function canRewrap(component: Pick<PlacedComponent, "component">): boolean {
+  return isMovable(component) && component.component !== "BIGWORD";
+}
+
 // The box a component shows while it is dragged, before it is settled: moved
-// by the drag, or scaled about its top left corner.
+// by the drag, scaled about its top left corner, or one edge moved with the
+// opposite edge kept.
 export function draggedBox(
   component: Pick<PlacedComponent, "x" | "y" | "width" | "height">,
   drag: Drag | null,
@@ -104,15 +121,51 @@ export function draggedBox(
   const { x, y, width, height } = component;
   if (!drag) return { x, y, width, height };
   if (drag.mode === "move") return { x: x + drag.dx, y: y + drag.dy, width, height };
+  if (drag.mode === "right") return { x, y, width: Math.max(MIN_EDGE_PX, width + drag.dx), height };
+  if (drag.mode === "bottom") {
+    return { x, y, width, height: Math.max(MIN_EDGE_PX, height + drag.dy) };
+  }
+  if (drag.mode === "left") {
+    const next = Math.max(MIN_EDGE_PX, width - drag.dx);
+    return { x: x + width - next, y, width: next, height };
+  }
+  if (drag.mode === "top") {
+    const next = Math.max(MIN_EDGE_PX, height - drag.dy);
+    return { x, y: y + height - next, width, height: next };
+  }
   const share = resizeShare(component, drag);
   return { x, y, width: width * share, height: height * share };
 }
 
-// The move a finished drag asks for (before it is made legal, `settleOwnerMove`):
-// a move keeps the size, a resize keeps the corner. Null for a component with
-// no text size.
-export function moveOfDrag(component: PlacedComponent, drag: Drag): OwnerMove | null {
+// What a finished drag asks for, before its lines are chosen (`resolveAsk`)
+// and it is made legal (`settleOwnerMove`): a move, or for an edge handle the
+// width or height the box was dragged to and the edge that stays where it was
+// (the right edge for the left handle, the bottom edge for the top one).
+export interface OwnerAsk extends OwnerMove {
+  height?: number;
+  keep?: { right?: number; bottom?: number };
+}
+
+// The ask of a finished drag: a move keeps the size, a resize keeps the
+// corner, an edge handle keeps the size and asks for a width or a height. Null
+// for a component with no text size.
+export function moveOfDrag(component: PlacedComponent, drag: Drag): OwnerAsk | null {
   if (component.size === null) return null;
+  if (
+    drag.mode === "left" ||
+    drag.mode === "right" ||
+    drag.mode === "top" ||
+    drag.mode === "bottom"
+  ) {
+    const box = draggedBox(component, drag);
+    const at = { id: component.id, x: component.x, y: component.y, size: component.size };
+    if (drag.mode === "right") return { ...at, width: box.width };
+    if (drag.mode === "left") {
+      return { ...at, width: box.width, keep: { right: component.x + component.width } };
+    }
+    if (drag.mode === "bottom") return { ...at, height: box.height };
+    return { ...at, height: box.height, keep: { bottom: component.y + component.height } };
+  }
   if (drag.mode === "move") {
     return {
       id: component.id,
@@ -152,6 +205,42 @@ export function snapDrag<T extends Drag>(
   return {
     drag: { ...drag, dx: x ? drag.dx + offX : drag.dx, dy: y ? drag.dy + offY : drag.dy },
     snapped: { x, y },
+  };
+}
+
+// One wrap width a component may take and the box it gives
+// (`ownerWrapOptions`, widest first).
+export interface WrapOption {
+  width: number;
+  boxWidth: number;
+  boxHeight: number;
+}
+
+// The move an edge drag asks for, from the component's wrap options: a width
+// takes the widest option that fits in it (the narrowest when none does), a
+// height the option whose box is nearest it (the wider of two as near). The
+// kept edge stays where it was. An ask with neither is a plain move.
+export function resolveAsk(ask: OwnerAsk, options: readonly WrapOption[]): OwnerMove {
+  const move: OwnerMove = { id: ask.id, x: ask.x, y: ask.y, size: ask.size };
+  if (ask.width === undefined && ask.height === undefined) return move;
+  if (options.length === 0) return ask.width === undefined ? move : { ...move, width: ask.width };
+  let chosen: WrapOption;
+  if (ask.height !== undefined) {
+    const target = ask.height;
+    chosen = options.reduce((best, option) =>
+      Math.abs(option.boxHeight - target) < Math.abs(best.boxHeight - target) - 1e-6
+        ? option
+        : best,
+    );
+  } else {
+    const target = ask.width!;
+    chosen = options.find((option) => option.width <= target + 1e-6) ?? options.at(-1)!;
+  }
+  return {
+    ...move,
+    x: ask.keep?.right !== undefined ? ask.keep.right - chosen.boxWidth : ask.x,
+    y: ask.keep?.bottom !== undefined ? ask.keep.bottom - chosen.boxHeight : ask.y,
+    width: chosen.width,
   };
 }
 

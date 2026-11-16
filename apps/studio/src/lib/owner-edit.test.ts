@@ -2,6 +2,7 @@ import type { PlacedComponent } from "@edit-issebya/edit";
 import { describe, expect, it } from "vitest";
 import {
   boxStyle,
+  canRewrap,
   componentLabel,
   componentOption,
   draggedBox,
@@ -9,6 +10,7 @@ import {
   movableComponents,
   moveOfDrag,
   resizeShare,
+  resolveAsk,
   showMoment,
   snapDrag,
   withMove,
@@ -140,6 +142,102 @@ describe("a drag", () => {
         dy: 1,
       }),
     ).toBeNull();
+  });
+});
+
+describe("an edge handle", () => {
+  const box = component({});
+
+  it("moves one edge and keeps the opposite one, at the same text size", () => {
+    expect(draggedBox(box, { mode: "right", dx: -140, dy: 30 })).toEqual({
+      x: 300,
+      y: 400,
+      width: 300,
+      height: 110,
+    });
+    expect(draggedBox(box, { mode: "left", dx: 140, dy: 0 })).toEqual({
+      x: 440,
+      y: 400,
+      width: 300,
+      height: 110,
+    });
+    expect(draggedBox(box, { mode: "bottom", dx: 0, dy: 110 })).toEqual({
+      x: 300,
+      y: 400,
+      width: 440,
+      height: 220,
+    });
+    expect(draggedBox(box, { mode: "top", dx: 0, dy: -110 })).toEqual({
+      x: 300,
+      y: 290,
+      width: 440,
+      height: 220,
+    });
+    // Never narrower or shorter than 20 frame pixels.
+    expect(draggedBox(box, { mode: "right", dx: -5000, dy: 0 }).width).toBe(20);
+  });
+
+  it("asks for a width or a height, with the edge that stays", () => {
+    const at = { id: "accent-1", x: 300, y: 400, size: 110 };
+    expect(moveOfDrag(box, { mode: "right", dx: -140, dy: 0 })).toEqual({ ...at, width: 300 });
+    expect(moveOfDrag(box, { mode: "left", dx: 140, dy: 0 })).toEqual({
+      ...at,
+      width: 300,
+      keep: { right: 740 },
+    });
+    expect(moveOfDrag(box, { mode: "bottom", dx: 0, dy: 110 })).toEqual({ ...at, height: 220 });
+    expect(moveOfDrag(box, { mode: "top", dx: 0, dy: -110 })).toEqual({
+      ...at,
+      height: 220,
+      keep: { bottom: 510 },
+    });
+  });
+
+  it("sets the lines of every text but a big word", () => {
+    expect(canRewrap(component({}))).toBe(true);
+    expect(canRewrap(component({ component: "LIST" }))).toBe(true);
+    expect(canRewrap(component({ component: "HOOK" }))).toBe(true);
+    expect(canRewrap(component({ component: "QUESTION" }))).toBe(true);
+    expect(canRewrap(component({ component: "BIGWORD" }))).toBe(false);
+    expect(canRewrap(component({ component: "CAPTION" }))).toBe(false);
+  });
+});
+
+describe("choosing the lines an edge drag asks for", () => {
+  // One line 440 wide, two lines 250 wide, three lines 180 wide.
+  const options = [
+    { width: 440, boxWidth: 440, boxHeight: 110 },
+    { width: 250, boxWidth: 250, boxHeight: 220 },
+    { width: 180, boxWidth: 180, boxHeight: 330 },
+  ];
+  const at = { id: "accent-1", x: 300, y: 400, size: 110 };
+
+  it("takes the widest lines that fit a width, the narrowest when none does", () => {
+    expect(resolveAsk({ ...at, width: 300 }, options)).toEqual({ ...at, width: 250 });
+    expect(resolveAsk({ ...at, width: 1000 }, options)).toEqual({ ...at, width: 440 });
+    expect(resolveAsk({ ...at, width: 50 }, options)).toEqual({ ...at, width: 180 });
+  });
+
+  it("takes the lines whose height is nearest, the wider of two as near", () => {
+    expect(resolveAsk({ ...at, height: 300 }, options)).toEqual({ ...at, width: 180 });
+    expect(resolveAsk({ ...at, height: 165 }, options)).toEqual({ ...at, width: 440 });
+  });
+
+  it("keeps the right or the bottom edge where it was", () => {
+    expect(resolveAsk({ ...at, width: 300, keep: { right: 740 } }, options)).toEqual({
+      ...at,
+      x: 490,
+      width: 250,
+    });
+    expect(resolveAsk({ ...at, height: 330, keep: { bottom: 510 } }, options)).toEqual({
+      ...at,
+      y: 180,
+      width: 180,
+    });
+  });
+
+  it("is a plain move with no width or height", () => {
+    expect(resolveAsk(at, options)).toEqual(at);
   });
 });
 

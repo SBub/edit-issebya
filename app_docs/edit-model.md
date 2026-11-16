@@ -870,8 +870,9 @@ never fatal.
 - Claude never writes times, positions or sizes: every one in a decided version comes from the
   layout engine, never from the answer.
 - The only other writer of a position or a size is the owner, by hand, through `applyOwnerMoves`
-  (`app_docs/owner-edits.md`): a text component's place and text size, inside the safe zone, saved
-  as a new version. Never a time, a word or a line break.
+  (`app_docs/owner-edits.md`): a text component's place, its text size and, through an edge
+  handle's wrap width, its line breaks (set on the engine's balanced lines), inside the safe zone,
+  saved as a new version. Never a time or a word.
 - Never let an overlap pass silently: a front pick or a caption block placed over the face is noted
   `covers-face` (rule `face`), and a caption block set over other text for want of a legal spot is noted
   `no-spot` with the texts it sits over. A text over a visual's card is no overlap (decision 9).

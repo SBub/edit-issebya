@@ -428,6 +428,49 @@ test("a dragged text's centre snaps to the frame's centre lines, with a thin gui
   await ready();
 });
 
+test("the edge handles make a text narrower or shorter at the same size: its lines are set again", async () => {
+  await page.getByTestId("move-pick").selectOption("hook");
+  const box = moveBox("hook");
+  await expect(box).toHaveAttribute("data-selected", "true");
+  // Four edge handles beside the corner handle.
+  await expect(box.getByTestId("move-edge")).toHaveCount(4);
+  // Up where a taller box still fits inside the safe zone below it.
+  await dragBy(await centreOf(box), 0, -400);
+  await ready();
+  const before = await drawn("hook");
+  expect(Math.round(before.height / before.fontSize)).toBe(2);
+  await shot("5-edge-handles.png");
+
+  // The right edge in by a third: more lines, the same size, the left edge kept.
+  await dragBy(await centreOf(box.locator('[data-edge="right"]')), -before.width / 3, 0);
+  await ready();
+  const narrow = await drawn("hook");
+  expect(narrow.fontSize).toBe(before.fontSize);
+  expect(narrow.width).toBeLessThanOrEqual((before.width * 2) / 3 + 1);
+  expect(Math.round(narrow.height / narrow.fontSize)).toBeGreaterThan(2);
+  expect(Math.abs(narrow.x - before.x)).toBeLessThan(1.5);
+  expect(Math.abs(narrow.y - before.y)).toBeLessThan(1.5);
+  const boxed = await boxInFrame("hook");
+  expect(Math.abs(boxed.height - narrow.height)).toBeLessThan(2);
+  await shot("6-edge-narrower.png");
+
+  // The bottom edge back up to two lines' height: two lines again, the top kept.
+  await dragBy(
+    await centreOf(box.locator('[data-edge="bottom"]')),
+    0,
+    before.height - narrow.height,
+  );
+  await ready();
+  const shorter = await drawn("hook");
+  expect(shorter.fontSize).toBe(before.fontSize);
+  expect(Math.round(shorter.height / shorter.fontSize)).toBe(2);
+  expect(Math.abs(shorter.y - before.y)).toBeLessThan(1.5);
+
+  // A big word keeps its lines: no edge handle (none in this reel; the accent has them).
+  await page.getByTestId("move-pick").selectOption("accent-1");
+  await expect(moveBox("accent-1").getByTestId("move-edge")).toHaveCount(4);
+});
+
 test("Cancel drops the draft: the version shows as it was and nothing is queued", async () => {
   await page.getByTestId("move-cancel").click();
   await expect(page.getByTestId("move-layer")).toHaveCount(0);

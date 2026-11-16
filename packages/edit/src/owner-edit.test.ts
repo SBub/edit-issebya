@@ -10,6 +10,7 @@ import {
   ownerMoveProblems,
   ownerMoveRecords,
   ownerSizeRange,
+  ownerWrapOptions,
   parseOwnerMoves,
   settleOwnerMove,
   withOwnerCutouts,
@@ -225,6 +226,109 @@ describe("applying the owner's moves", () => {
     expect(Math.abs(after.width - before.width * 0.7)).toBeLessThan(2);
   });
 
+  it("rewraps a text to a wrap width: more lines when narrower, one when wider, the size and words kept", async () => {
+    const context = await contextOf(hook);
+    const before = byId(await componentsOf(hook), "hook");
+    const narrow = applyOwnerMoves(
+      hook.edit,
+      [{ id: "hook", x: before.x, y: before.y, size: 110, width: before.width * 0.6 }],
+      context,
+    );
+    if (!narrow.ok) throw new Error(narrow.reasons.join("; "));
+    const item = narrow.edit.tracks.overlays.find((overlay) => overlay.id === "hook")!;
+    const after = byId(await componentsOf(hook, narrow.edit), "hook");
+    expect(after.size).toBe(110);
+    expect(after.text).toBe(before.text);
+    expect(after.width).toBeLessThanOrEqual(before.width * 0.6);
+    expect(after.height).toBeGreaterThan(before.height);
+    expect(after.height % 110).toBe(0);
+    expect(item.breaks!.length).toBe(after.height / 110 - 1);
+
+    const wide = applyOwnerMoves(
+      narrow.edit,
+      [{ id: "hook", x: before.x, y: before.y, size: 110, width: 5000 }],
+      context,
+    );
+    if (!wide.ok) throw new Error(wide.reasons.join("; "));
+    expect(wide.edit.tracks.overlays.find((overlay) => overlay.id === "hook")!.breaks).toBe(
+      undefined,
+    );
+    expect(byId(await componentsOf(hook, wide.edit), "hook").height).toBe(110);
+  });
+
+  it("rewraps a LIST's lead-in and key phrase to a wrap width and stacks the levels again", async () => {
+    const context = await contextOf(lists);
+    const before = byId(await componentsOf(lists), "transition-1");
+    const width = before.width * 0.5;
+    const applied = applyOwnerMoves(
+      lists.edit,
+      [{ id: "transition-1", x: before.x, y: before.y, size: before.size!, width }],
+      context,
+    );
+    if (!applied.ok) throw new Error(applied.reasons.join("; "));
+    const was = lists.edit.tracks.transitions[0]!.levels!;
+    const now = applied.edit.tracks.transitions[0]!.levels!;
+    expect([now.number!.size, now.lead!.size, now.key.size]).toEqual([
+      was.number!.size,
+      was.lead!.size,
+      was.key.size,
+    ]);
+    expect(now.number!.breaks).toEqual(was.number!.breaks);
+    const after = byId(await componentsOf(lists, applied.edit), "transition-1");
+    expect(after.y).toBe(before.y);
+    expect(after.width).toBeLessThan(before.width);
+    expect(after.height).toBeGreaterThan(before.height);
+    // Stacked top to bottom with the version's gaps: number, lead-in, key phrase.
+    expect(now.number!.position.y).toBe(before.y);
+    expect(now.lead!.position.y).toBeGreaterThan(now.number!.position.y);
+    expect(now.key.position.y).toBeGreaterThan(now.lead!.position.y);
+  });
+
+  it("refuses a wrap width on a big word and a wrap width that is no positive number", async () => {
+    const context = await contextOf(hook);
+    expect(
+      applyOwnerMoves(
+        hook.edit,
+        [
+          { id: "big-word-1", x: 36, y: 390, size: 197, width: 400 },
+          { id: "hook", x: 135, y: 220, size: 110, width: 0 },
+        ],
+        context,
+      ),
+    ).toEqual({
+      ok: false,
+      reasons: [
+        "big-word-1: a big word keeps its lines",
+        "hook: its wrap width is not a positive number",
+      ],
+    });
+  });
+
+  it("offers the wrap widths of a text, widest first, each with its box", async () => {
+    const context = await contextOf(hook);
+    const before = byId(await componentsOf(hook), "hook");
+    const options = ownerWrapOptions(hook.edit, "hook", { x: 135, y: 220, size: 110 }, context)!;
+    const words = before.text.split(" ").length;
+    expect(options.length).toBeGreaterThan(1);
+    expect(options.length).toBeLessThanOrEqual(words);
+    expect(options[0]!.boxHeight).toBe(110);
+    for (const [index, option] of options.entries()) {
+      if (index === 0) continue;
+      const wider = options[index - 1]!;
+      expect(option.width).toBeLessThan(wider.width);
+      expect(option.boxHeight).toBeGreaterThan(wider.boxHeight);
+      expect(option.boxWidth).toBeLessThanOrEqual(option.width + 1e-6);
+    }
+    expect(
+      ownerWrapOptions(hook.edit, "big-word-1", { x: 36, y: 390, size: 197 }, context),
+    ).toBeNull();
+    const lists2 = await contextOf(lists);
+    const list = byId(await componentsOf(lists), "transition-1");
+    expect(
+      ownerWrapOptions(lists.edit, "transition-1", { ...list, size: list.size! }, lists2)!.length,
+    ).toBeGreaterThan(1);
+  });
+
   it("refuses a caption, a visual, an unknown id, a size out of range and a move made twice", async () => {
     const context = await contextOf(lists);
     const caption = lists.edit.tracks.captions[0]!.id;
@@ -364,6 +468,19 @@ describe("the safe zone, the owner's one hard rule", () => {
     expect(legal.move).toEqual({ id: "hook", x: 300, y: 500, size: 90 });
   });
 
+  it("settles a wrap width no wider than the safe zone, and keeps the lines when it shrinks the size", async () => {
+    const context = await contextOf(hook);
+    const settled = settleOwnerMove(
+      hook.edit,
+      { id: "hook", x: 135, y: 220, size: 110, width: 4000 },
+      context,
+    );
+    if (!settled.ok) throw new Error(settled.reasons.join("; "));
+    expect(settled.move.width).toBe(safe.right - safe.left);
+    const after = byId(await componentsOf(hook, settled.edit), "hook");
+    expect(ownerMoveProblems([after], ["hook"])).toEqual([]);
+  });
+
   it("refuses to settle a caption", async () => {
     const context = await contextOf(hook);
     const id = hook.edit.tracks.captions[0]!.id;
@@ -379,6 +496,9 @@ describe("the moves of one save", () => {
     expect(parseOwnerMoves([{ id: "accent-1", x: 10.5, y: 20, size: 90, extra: true }])).toEqual([
       { id: "accent-1", x: 10.5, y: 20, size: 90 },
     ]);
+    expect(parseOwnerMoves([{ id: "hook", x: 10, y: 20, size: 90, width: 412.5 }])).toEqual([
+      { id: "hook", x: 10, y: 20, size: 90, width: 412.5 },
+    ]);
     for (const bad of [
       null,
       {},
@@ -393,6 +513,9 @@ describe("the moves of one save", () => {
         { id: "a", x: 1, y: 2, size: 3 },
       ],
       Array.from({ length: 201 }, (_, index) => ({ id: `a${index}`, x: 1, y: 2, size: 30 })),
+      [{ id: "a", x: 1, y: 2, size: 30, width: 0 }],
+      [{ id: "a", x: 1, y: 2, size: 30, width: "400" }],
+      [{ id: "a", x: 1, y: 2, size: 30, width: Number.POSITIVE_INFINITY }],
     ]) {
       expect(parseOwnerMoves(bad)).toBeNull();
     }
@@ -410,6 +533,27 @@ describe("the moves of one save", () => {
         components,
       ),
     ).toEqual([{ id: "hook", x: 300, y: 500, size: 110 }]);
+  });
+
+  it("keeps a move with a wrap width, and with the draft's boxes leaves out a rewrap back to the version's lines", async () => {
+    const context = await contextOf(hook);
+    const components = await componentsOf(hook);
+    const hookBox = byId(components, "hook");
+    const back = { id: "hook", x: hookBox.x, y: hookBox.y, size: 110, width: 5000 };
+    expect(effectiveMoves([back], components)).toEqual([back]);
+    const applied = applyOwnerMoves(hook.edit, [back], context);
+    if (!applied.ok) throw new Error(applied.reasons.join("; "));
+    const draft = await componentsOf(hook, applied.edit);
+    const sameLines =
+      byId(draft, "hook").height === hookBox.height &&
+      Math.abs(byId(draft, "hook").width - hookBox.width) < 0.5;
+    expect(effectiveMoves([back], components, draft)).toEqual(sameLines ? [] : [back]);
+    const narrow = { ...back, width: hookBox.width * 0.5 };
+    const rewrapped = applyOwnerMoves(hook.edit, [narrow], context);
+    if (!rewrapped.ok) throw new Error(rewrapped.reasons.join("; "));
+    expect(effectiveMoves([narrow], components, await componentsOf(hook, rewrapped.edit))).toEqual([
+      narrow,
+    ]);
   });
 });
 
@@ -507,6 +651,28 @@ describe("the learning records of a save", () => {
     expect(written.context.engine_zone).toBeNull();
     expect(written.owner.size).toBe(80);
     expect(written.engine.size).toBe(110);
+    expect(accent.wrap_width).toBeNull();
+  });
+
+  it("records a rewrap as a resize, with the wrap width the owner set", async () => {
+    const context = await contextOf(hook);
+    const engine = await componentsOf(hook);
+    const was = byId(engine, "hook");
+    const moves = [{ id: "hook", x: was.x, y: was.y, size: 110, width: was.width * 0.6 }];
+    const applied = applyOwnerMoves(hook.edit, moves, context);
+    if (!applied.ok) throw new Error(applied.reasons.join("; "));
+    const [record] = ownerMoveRecords({
+      ids: ["hook"],
+      moves,
+      engine,
+      owner: await componentsOf(hook, applied.edit),
+      edit: applied.edit,
+      headTrack: hook.headTrack,
+      preset,
+    });
+    expect(record).toMatchObject({ moved: false, resized: true, wrap_width: was.width * 0.6 });
+    expect(record!.owner.size).toBe(110);
+    expect(record!.owner.height).toBeGreaterThan(record!.engine.height);
   });
 
   it("marks another component the owner moved earlier", async () => {

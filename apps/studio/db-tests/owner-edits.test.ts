@@ -55,7 +55,7 @@ async function saveVersion(reelId: string, parentId: string | null = null): Prom
 }
 
 // One learning record as the worker sends it (`OwnerMoveRecord`).
-function moveRecord(item: string, engineVersionId: string) {
+function moveRecord(item: string, engineVersionId: string, wrapWidth: number | null = null) {
   return {
     item,
     component: "ACCENT",
@@ -67,6 +67,7 @@ function moveRecord(item: string, engineVersionId: string) {
     owner: { x: 120, y: 900, width: 448.5, height: 110, size: 110 },
     moved: true,
     resized: false,
+    wrap_width: wrapWidth,
     engine_version_id: engineVersionId,
     context: {
       frame: { width: 1080, height: 1920 },
@@ -102,7 +103,7 @@ async function movesOf(versionId: string) {
   const { data, error } = await admin
     .from("owner_moves")
     .select(
-      "owner_id, reel_id, version_id, from_version_id, engine_version_id, item, component, variant, text, start_seconds, end_seconds, engine_box, owner_box, moved, resized, context",
+      "owner_id, reel_id, version_id, from_version_id, engine_version_id, item, component, variant, text, start_seconds, end_seconds, engine_box, owner_box, moved, resized, wrap_width, context",
     )
     .eq("version_id", versionId)
     .order("item");
@@ -222,7 +223,7 @@ describe("save_version with the owner's edit", () => {
     const { data, error } = await admin.rpc("save_version", {
       ...versionArgs(reelA, edited, versionA),
       p_edited_from_id: versionA,
-      p_owner_moves: [moveRecord("accent-1", versionA), moveRecord("hook", versionA)],
+      p_owner_moves: [moveRecord("accent-1", versionA), moveRecord("hook", versionA, 412.25)],
     });
     expect(error).toBeNull();
     expect(data).toBe(2);
@@ -255,9 +256,11 @@ describe("save_version with the owner's edit", () => {
         owner_box: record.owner,
         moved: true,
         resized: false,
+        wrap_width: null,
         context: record.context,
       },
-      expect.objectContaining({ item: "hook", version_id: edited }),
+      // The wrap width an edge handle set comes back as it was sent.
+      expect.objectContaining({ item: "hook", version_id: edited, wrap_width: 412.25 }),
     ]);
   });
 

@@ -181,6 +181,7 @@ export async function runOwnerEdit({
           : componentsOf(await editOf(engineVersion));
       const records = ownerMoveRecords({
         ids,
+        moves,
         engine: engineComponents,
         owner: built.components,
         edit: moved,

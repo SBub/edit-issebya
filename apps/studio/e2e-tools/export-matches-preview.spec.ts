@@ -422,10 +422,11 @@ test("text moved by 60 px falls below the bound", async () => {
 });
 
 // The owner's moves (app_docs/owner-edits.md): the guardrail's version with
-// its hook resized and moved down and its LIST moved, saved by the worker's
+// its hook resized, moved down and widened (an edge handle's wrap width, so its
+// lines are set again) and its LIST moved, saved by the worker's
 // `owner_edit` job the way the studio's Save queues it. The owner's version
 // must export as its preview shows it, like any other version.
-const OWNER_HOOK = { down: 400, size: 77 };
+const OWNER_HOOK = { down: 400, size: 77, width: 900 };
 const OWNER_LIST_SHIFT = 120;
 
 // The moves, from where the guardrail's version has the two components (the
@@ -442,6 +443,7 @@ function ownerMovesOf(edit: Edit) {
       x: hook.position.x,
       y: hook.position.y + OWNER_HOOK.down,
       size: OWNER_HOOK.size,
+      width: OWNER_HOOK.width,
     },
     {
       id: list.id,
@@ -456,7 +458,7 @@ function ownerMovesOf(edit: Edit) {
   ];
 }
 
-test("a moved and a resized component match between preview and export", async () => {
+test("a moved, a resized and a widened component match between preview and export", async () => {
   test.setTimeout(15 * 60_000);
   expect(previews).toHaveLength(MOMENTS.length);
   const moves = ownerMovesOf(guardrailEditValue);
@@ -495,6 +497,16 @@ test("a moved and a resized component match between preview and export", async (
         };
       });
   expect(await drawn("hook")).toEqual({ x: hookMove!.x, y: hookMove!.y, size: OWNER_HOOK.size });
+  // Widened: its lines set again to the wrap width, no wider than it, and no
+  // more lines than the version had.
+  const hookBox = await composition()
+    .locator('[id="hook"]')
+    .evaluate((el) => ({ width: el.getBoundingClientRect().width, height: el.scrollHeight }));
+  const hookBefore = guardrailEditValue.tracks.overlays.find((item) => item.kind === "hook")!;
+  expect(hookBox.width).toBeLessThanOrEqual(OWNER_HOOK.width + 1);
+  expect(Math.round(hookBox.height / OWNER_HOOK.size)).toBeLessThanOrEqual(
+    (hookBefore.breaks?.length ?? 0) + 1,
+  );
   const key = guardrailEditValue.tracks.transitions[0]!.levels!.key;
   const levels = Object.values(guardrailEditValue.tracks.transitions[0]!.levels!);
   const listTop = Math.min(...levels.map((level) => level.position.y));

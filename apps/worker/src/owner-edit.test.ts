@@ -264,6 +264,26 @@ describe("runOwnerEdit", () => {
     expect(records[0]!.context.others.length).toBeGreaterThan(0);
   });
 
+  it("sets a text's lines again to the wrap width an edge handle gave, and records it as a resize", async () => {
+    const before = await editOf(placedId);
+    const hook = overlay(before, "hook");
+    await ownerEditRun({
+      versionId: placedId,
+      moves: [{ id: "hook", x: hook.position.x, y: hook.position.y, size: hook.size, width: 300 }],
+    });
+    const saved = overlay(await editOf(current!), "hook");
+    expect(saved.size).toBe(hook.size);
+    expect(saved.text).toBe(hook.text);
+    expect(saved.breaks?.length ?? 0).toBeGreaterThan(hook.breaks?.length ?? 0);
+    const { owner_moves: records } = rows.get(current!)!;
+    expect(records[0]).toMatchObject({
+      item: "hook",
+      moved: false,
+      resized: true,
+      wrap_width: 300,
+    });
+  });
+
   it("copies the AI record under the new version, so a later re-layout finds the answer", async () => {
     await ownerEditRun({
       versionId: placedId,

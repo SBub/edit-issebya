@@ -281,8 +281,9 @@ function balancer(
   };
 }
 
-// The lines of `words` on `count` lines, balanced (above).
-function balancedLines(
+// The lines of `words` on `count` lines, balanced (above). The owner's
+// rewrap (`owner-edit.ts`) sets a text's lines the same way.
+export function balancedLines(
   words: readonly string[],
   count: number,
   widthOf: (line: string) => number,

@@ -2,21 +2,25 @@ import { bigWordNeedsCutout, paddedSpan, placedBigWord } from "./behind.ts";
 import { build } from "./build.ts";
 import type { PlacedComponent } from "./components.ts";
 import type { EngineComponent, EngineNote } from "./engine-note.ts";
-import { MIN_SIZE_PX } from "./engine-place.ts";
+import { MIN_SIZE_PX, balancedLines } from "./engine-place.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import { type Box, type HeadTrack, boundingBox, facesOver } from "./head-track.ts";
+import type { FontRole } from "./font-pairs.ts";
+import { breaksOf, textLines } from "./lines.ts";
 import type { Measurer } from "./measure.ts";
-import type { Preset } from "./preset.ts";
+import { type Preset, wordsText } from "./preset.ts";
 import type { Edit, TransitionLevel } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
-import { LEVEL_ROLES, levelBoxes } from "./transitions.ts";
+import { LEVEL_ROLES, levelBoxes, levelStyle } from "./transitions.ts";
+import { STYLES } from "./variants.ts";
 
 // THE OWNER'S MOVES (app_docs/owner-edits.md): in the studio the owner moves
 // and resizes a text component on screen, and Save makes a new version from
 // them. A component has one box for its whole time on screen, so a move moves
-// it for all of it. Only its place and its text size change: never its words,
-// its time, its lines or what its variant draws inside the box.
+// it for all of it. Its place, its text size and, through its wrap width, its
+// line breaks change: never its words, its time or what its variant draws
+// inside the box.
 
 // The components the owner may move and resize: every text pick. Captions and
 // VISUALs are not (visuals get their own step later).
@@ -35,12 +39,17 @@ export function isMovable(component: Pick<PlacedComponent, "component">): boolea
 // One move: the component's id, the top left corner of its box in frame pixels
 // and its text size (a LIST's is its key phrase's; its other levels keep their
 // ratio to it). A move that only moves keeps the size; one that only resizes
-// keeps the corner.
+// keeps the corner. `width`, when set, is the wrap width in frame pixels at the
+// move's size: the text is set again on the fewest balanced lines whose widest
+// fits it (a LIST: its lead-in and its key phrase each), so a wider box has
+// fewer lines and a narrower one more, the letters never stretched. Without
+// it the version's own lines are kept. A big word has no wrap width.
 export interface OwnerMove {
   id: string;
   x: number;
   y: number;
   size: number;
+  width?: number;
 }
 
 // The largest text size of the format (`schema.ts`): an overlay or a level.
@@ -51,6 +60,9 @@ export const OWNER_MOVES_MAX = 200;
 
 const SLACK = 1e-6;
 
+// A wrap width larger than any frame: past it a width is not a width.
+const MAX_WRAP_WIDTH = 100_000;
+
 interface Context {
   transcript: Transcript;
   headTrack: HeadTrack;
@@ -59,22 +71,78 @@ interface Context {
 }
 
 // A job's moves as they arrive (untrusted JSON): a list of at most
-// `OWNER_MOVES_MAX` moves, each an id, finite coordinates and a whole size, no
-// id twice. Null when it is anything else.
+// `OWNER_MOVES_MAX` moves, each an id, finite coordinates, a whole size and
+// optionally a positive wrap width, no id twice. Null when it is anything else.
 export function parseOwnerMoves(json: unknown): OwnerMove[] | null {
   if (!Array.isArray(json) || json.length === 0 || json.length > OWNER_MOVES_MAX) return null;
   const moves: OwnerMove[] = [];
   const seen = new Set<string>();
   for (const entry of json as unknown[]) {
     if (typeof entry !== "object" || entry === null) return null;
-    const { id, x, y, size } = entry as Record<string, unknown>;
+    const { id, x, y, size, width } = entry as Record<string, unknown>;
     if (typeof id !== "string" || id.length === 0 || id.length > 64 || seen.has(id)) return null;
     if (typeof x !== "number" || typeof y !== "number" || typeof size !== "number") return null;
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isInteger(size)) return null;
+    if (width !== undefined && !isWrapWidth(width)) return null;
     seen.add(id);
-    moves.push({ id, x, y, size });
+    moves.push(typeof width === "number" ? { id, x, y, size, width } : { id, x, y, size });
   }
   return moves;
+}
+
+function isWrapWidth(width: unknown): width is number {
+  return (
+    typeof width === "number" && Number.isFinite(width) && width > 0 && width <= MAX_WRAP_WIDTH
+  );
+}
+
+// The lines of a text set at `size` in `font` on the fewest balanced lines (the
+// engine's own balancing) whose widest fits `width`; one word a line when even
+// that is wider (a word is never cut).
+function wrapToWidth(
+  text: string,
+  font: FontRole,
+  size: number,
+  width: number,
+  measurer: Measurer,
+): string[] {
+  const words = text.split(" ");
+  const widthOf = (line: string) => measurer.width(font, size, line);
+  for (let count = 1; count <= words.length; count += 1) {
+    const lines = count === 1 ? [text] : balancedLines(words, count, widthOf);
+    if (Math.max(...lines.map(widthOf)) <= width + SLACK) return lines;
+  }
+  return words;
+}
+
+// The widest line of each balanced line count of a text at `size`, from one
+// line to one word a line: the wrap widths at which its lines change.
+function lineWidths(text: string, font: FontRole, size: number, measurer: Measurer): number[] {
+  const words = text.split(" ");
+  const widthOf = (line: string) => measurer.width(font, size, line);
+  const widths: number[] = [];
+  for (let count = 1; count <= words.length; count += 1) {
+    const lines = count === 1 ? [text] : balancedLines(words, count, widthOf);
+    widths.push(Math.max(...lines.map(widthOf)));
+  }
+  return widths;
+}
+
+// An overlay's font (an accent, a question or the hook): its own, or the
+// accent style's, as the builder reads it.
+function overlayFont(item: { font?: FontRole }): FontRole {
+  return item.font ?? STYLES.accent.font;
+}
+
+// `breaks` for a text's lines: none on one line.
+function breaksFor(lines: readonly string[]): { breaks?: number[] } {
+  return lines.length > 1 ? { breaks: breaksOf(lines) } : {};
+}
+
+function withoutBreaks<T extends { breaks?: number[] }>(item: T): Omit<T, "breaks"> {
+  const copy = { ...item };
+  delete copy.breaks;
+  return copy;
 }
 
 // The sizes a component may take: never under the placer's 30 px (a LIST: its
@@ -102,12 +170,16 @@ export function ownerSizeRange(edit: Edit, id: string, preset: Preset): [number,
 
 // The edit with the moves applied, nothing else changed. An accent, a question
 // or the hook: its `position` (its box's top left corner, left-aligned, which
-// draws the same as any other alignment of the same box) and its `size`. A big
-// word: its `position` and `size`. A LIST: every level, moved with the box and
-// scaled about its top left corner (each level's size and its offset inside
-// the box times the key phrase's new size over its old one), at whole pixels.
-// Refused with reasons: an id that is no text component of the edit (a caption
-// and a VISUAL are not moved), a size outside the component's range.
+// draws the same as any other alignment of the same box), its `size` and, with
+// a wrap width, its `breaks`. A big word: its `position` and `size`. A LIST:
+// every level, moved with the box and scaled about its top left corner (each
+// level's size and its offset inside the box times the key phrase's new size
+// over its old one), at whole pixels; with a wrap width its lead-in and key
+// phrase are set again to it and the levels stacked again, each centred on the
+// widest as the engine stacks them, the gaps between them scaled. Refused with
+// reasons: an id that is no text component of the edit (a caption and a VISUAL
+// are not moved), a size outside the component's range, a wrap width on a big
+// word or one that is no positive number.
 export function applyOwnerMoves(
   edit: Edit,
   moves: readonly OwnerMove[],
@@ -123,6 +195,10 @@ export function applyOwnerMoves(
       reasons.push(`${move.id}: size ${move.size} is outside ${range[0]} to ${range[1]} px`);
     } else if (!Number.isFinite(move.x) || !Number.isFinite(move.y)) {
       reasons.push(`${move.id}: its place is not a number`);
+    } else if (move.width !== undefined && !isWrapWidth(move.width)) {
+      reasons.push(`${move.id}: its wrap width is not a positive number`);
+    } else if (move.width !== undefined && isBigWord(edit, move.id)) {
+      reasons.push(`${move.id}: a big word keeps its lines`);
     }
     byId.set(move.id, move);
   }
@@ -138,10 +214,16 @@ export function applyOwnerMoves(
   const overlays = edit.tracks.overlays.map((item) => {
     const move = byId.get(item.id);
     if (!move) return item;
-    return {
+    const placed = {
       ...item,
       position: { x: move.x, y: move.y, align: "left" as const },
       size: move.size,
+    };
+    if (move.width === undefined) return placed;
+    const text = item.text ?? wordsText(item.words ?? [], transcript, preset);
+    return {
+      ...withoutBreaks(placed),
+      ...breaksFor(wrapToWidth(text, overlayFont(item), move.size, move.width, measurer)),
     };
   });
   const behind = edit.tracks.behind?.map((item) => {
@@ -156,10 +238,24 @@ export function applyOwnerMoves(
     const left = Math.min(...own.map((level) => level.x));
     const top = Math.min(...own.map((level) => level.y));
     const scale = move.size / item.levels.key.size;
+    const restacked =
+      move.width === undefined
+        ? null
+        : restack(item.levels, own, { ...move, width: move.width }, scale, measurer);
     const moved = (role: (typeof LEVEL_ROLES)[number]): TransitionLevel | undefined => {
       const level = item.levels![role];
       const box = own.find((entry) => entry.role === role);
       if (!level || !box) return level;
+      const size = role === "key" ? move.size : Math.round(level.size * scale);
+      const again = restacked?.get(role);
+      if (again) {
+        return {
+          ...withoutBreaks(level),
+          position: { x: again.x, y: again.y, align: "left" },
+          size,
+          ...breaksFor(again.lines),
+        };
+      }
       return {
         ...level,
         position: {
@@ -167,7 +263,7 @@ export function applyOwnerMoves(
           y: Math.round(move.y + (box.y - top) * scale),
           align: "left",
         },
-        size: role === "key" ? move.size : Math.round(level.size * scale),
+        size,
       };
     };
     const number = moved("number");
@@ -188,6 +284,98 @@ export function applyOwnerMoves(
       tracks: { ...edit.tracks, overlays, transitions, ...(behind ? { behind } : {}) },
     },
   };
+}
+
+function isBigWord(edit: Edit, id: string): boolean {
+  return (edit.tracks.behind ?? []).some((item) => item.id === id && item.kind === "word");
+}
+
+// A LIST's levels set again to a wrap width: the number keeps its line, the
+// lead-in and the key phrase are wrapped to the width at their new sizes, and
+// the levels are stacked from the move's corner in their order on screen, each
+// centred on the widest (as `stackPositions` stacks them), the gap before each
+// the version's gap scaled. Whole pixels.
+function restack(
+  levels: NonNullable<Edit["tracks"]["transitions"][number]["levels"]>,
+  own: readonly { role: (typeof LEVEL_ROLES)[number]; y: number; height: number }[],
+  move: OwnerMove & { width: number },
+  scale: number,
+  measurer: Measurer,
+): Map<(typeof LEVEL_ROLES)[number], { x: number; y: number; lines: string[] }> {
+  const order = [...own].sort((a, b) => a.y - b.y);
+  const shaped = order.map((box, index) => {
+    const level = levels[box.role]!;
+    const size = box.role === "key" ? move.size : Math.round(level.size * scale);
+    const { font } = levelStyle(box.role);
+    const lines =
+      box.role === "number"
+        ? textLines(level.text, level.breaks)
+        : wrapToWidth(level.text, font, size, move.width, measurer);
+    const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
+    const before = order[index - 1];
+    const gap = before ? (box.y - (before.y + before.height)) * scale : 0;
+    return { role: box.role, lines, width, height: size * lines.length, gap };
+  });
+  const widest = Math.max(...shaped.map((level) => level.width));
+  const out = new Map<(typeof LEVEL_ROLES)[number], { x: number; y: number; lines: string[] }>();
+  let y = move.y;
+  for (const level of shaped) {
+    y += level.gap;
+    out.set(level.role, {
+      x: Math.round(move.x + Math.max(0, Math.floor((widest - level.width) / 2 + SLACK))),
+      y: Math.round(y),
+      lines: level.lines,
+    });
+    y += level.height;
+  }
+  return out;
+}
+
+// The wrap widths a component may take at a size, from one line to one word a
+// line (a LIST: every width at which its lead-in or its key phrase changes
+// lines), each with the box it gives, widest first; boxes that come out the
+// same are given once. What the studio's edge handles choose from: a width
+// handle takes the widest option that fits where it was dragged, a height
+// handle the option whose height is nearest. Null for a big word (its one or
+// two words keep their lines) and anything that is no text component.
+export function ownerWrapOptions(
+  edit: Edit,
+  id: string,
+  at: { x: number; y: number; size: number },
+  context: Context,
+): { width: number; boxWidth: number; boxHeight: number }[] | null {
+  const { measurer, transcript, preset } = context;
+  let widths: number[];
+  const overlay = edit.tracks.overlays.find((item) => item.id === id);
+  const list = edit.tracks.transitions.find((item) => item.id === id && item.levels);
+  if (overlay) {
+    const text = overlay.text ?? wordsText(overlay.words ?? [], transcript, preset);
+    widths = lineWidths(text, overlayFont(overlay), at.size, measurer);
+  } else if (list?.levels) {
+    const scale = at.size / list.levels.key.size;
+    widths = (["lead", "key"] as const).flatMap((role) => {
+      const level = list.levels![role];
+      if (!level) return [];
+      const size = role === "key" ? at.size : Math.round(level.size * scale);
+      return lineWidths(level.text, levelStyle(role).font, size, measurer);
+    });
+  } else {
+    return null;
+  }
+  const options: { width: number; boxWidth: number; boxHeight: number }[] = [];
+  for (const width of [...new Set(widths)].sort((a, b) => b - a)) {
+    const applied = applyOwnerMoves(edit, [{ id, ...at, width }], context);
+    if (!applied.ok) return null;
+    const box = boxOf(applied.edit, id, context);
+    if (!box) return null;
+    const same = options.some(
+      (option) =>
+        Math.abs(option.boxWidth - box.width) < 0.5 &&
+        Math.abs(option.boxHeight - box.height) < 0.5,
+    );
+    if (!same) options.push({ width, boxWidth: box.width, boxHeight: box.height });
+  }
+  return options;
 }
 
 // Where a box of this size sits nearest `at` inside the safe zone S and clear
@@ -254,10 +442,11 @@ function round(n: number): number {
   return Math.round(n);
 }
 
-// One move made legal, and the edit with it: the size brought into the
-// component's range and shrunk until its box fits the safe zone, then the box
-// moved the least it must to be inside the safe zone and clear of the notch,
-// at whole pixels. What the studio shows after a drag and what the worker
+// One move made legal, and the edit with it: a wrap width no wider than the
+// safe zone, the size brought into the component's range and shrunk until its
+// box fits the safe zone (a wrap width shrinks with it, so the lines stay),
+// then the box moved the least it must to be inside the safe zone and clear of
+// the notch, at whole pixels. What the studio shows after a drag and what the worker
 // accepts are this same result. Refused when the id is no text component or
 // its text fits nowhere in the safe zone even at its smallest size.
 export function settleOwnerMove(
@@ -271,10 +460,20 @@ export function settleOwnerMove(
   let size = Math.min(Math.max(round(move.size), range[0]), range[1]);
   let x = round(move.x);
   let y = round(move.y);
+  let width =
+    move.width === undefined
+      ? undefined
+      : Math.min(move.width * (size / move.size), safe.right - safe.left);
+  const resize = (next: number) => {
+    if (width !== undefined) width *= next / size;
+    size = next;
+  };
+  const asked = (): OwnerMove =>
+    width === undefined ? { id: move.id, x, y, size } : { id: move.id, x, y, size, width };
   // Each pass shrinks or moves; a text that still does not fit at its smallest
   // size ends the loop.
   for (let pass = 0; pass < 8; pass += 1) {
-    const applied = applyOwnerMoves(edit, [{ id: move.id, x, y, size }], context);
+    const applied = applyOwnerMoves(edit, [asked()], context);
     if (!applied.ok) return applied;
     const at = boxOf(applied.edit, move.id, context);
     if (!at) return { ok: false, reasons: [`${move.id}: not on screen in this version`] };
@@ -286,7 +485,7 @@ export function settleOwnerMove(
       if (size <= range[0]) {
         return { ok: false, reasons: [`${move.id}: does not fit the safe zone at any size`] };
       }
-      size = Math.max(range[0], Math.min(size - 1, Math.floor(size * share)));
+      resize(Math.max(range[0], Math.min(size - 1, Math.floor(size * share))));
       continue;
     }
     const spot = fitInSafeZone({ x: at.x, y: at.y, width: at.width, height: at.height });
@@ -294,7 +493,7 @@ export function settleOwnerMove(
       if (size <= range[0]) {
         return { ok: false, reasons: [`${move.id}: does not fit the safe zone at any size`] };
       }
-      size -= 1;
+      resize(size - 1);
       continue;
     }
     // Whole pixels, the box kept inside: its left and top edges round up, and a
@@ -304,7 +503,7 @@ export function settleOwnerMove(
     const fx = nx + at.width > safe.right + SLACK ? nx - 1 : nx;
     const fy = ny + at.height > safe.bottom + SLACK ? ny - 1 : ny;
     if (Math.abs(fx - at.x) < SLACK && Math.abs(fy - at.y) < SLACK) {
-      return { ok: true, move: { id: move.id, x, y, size }, edit: applied.edit };
+      return { ok: true, move: asked(), edit: applied.edit };
     }
     x += fx - at.x;
     y += fy - at.y;
@@ -324,25 +523,44 @@ function boxOf(edit: Edit, id: string, context: Context): PlacedComponent | null
   return components.find((component) => component.id === id) ?? null;
 }
 
-// Whether a component's box or size differs from another placement of it.
+// Whether a component's box or size differs from another placement of it: a
+// new corner is a move; a new size, or a box of another width or height (its
+// lines set again), is a resize.
 function differs(a: PlacedComponent, b: PlacedComponent): { moved: boolean; resized: boolean } {
   return {
     moved: Math.abs(a.x - b.x) >= 0.5 || Math.abs(a.y - b.y) >= 0.5,
-    resized: a.size !== b.size,
+    resized:
+      a.size !== b.size ||
+      Math.abs(a.width - b.width) >= 0.5 ||
+      Math.abs(a.height - b.height) >= 0.5,
   };
 }
 
 // The moves that change something: a move whose corner and size are the
-// component's own in `components` (the version being edited) is left out.
+// component's own in `components` (the version being edited) and that sets
+// no wrap width is left out. With `after` (the components with the moves
+// applied, as the studio's draft has them), a move is left out when its
+// component's box and size there are the version's own, a rewrap that came
+// back to the version's lines included.
 export function effectiveMoves(
   moves: readonly OwnerMove[],
   components: readonly PlacedComponent[],
+  after?: readonly PlacedComponent[],
 ): OwnerMove[] {
   return moves.filter((move) => {
     const at = components.find((component) => component.id === move.id);
     if (!at) return true;
+    if (after) {
+      const now = after.find((component) => component.id === move.id);
+      if (!now) return true;
+      const change = differs(now, at);
+      return change.moved || change.resized;
+    }
     return (
-      Math.abs(at.x - move.x) >= 0.5 || Math.abs(at.y - move.y) >= 0.5 || at.size !== move.size
+      move.width !== undefined ||
+      Math.abs(at.x - move.x) >= 0.5 ||
+      Math.abs(at.y - move.y) >= 0.5 ||
+      at.size !== move.size
     );
   });
 }
@@ -411,6 +629,9 @@ export interface OwnerMoveRecord {
   owner: RecordedPlacement;
   moved: boolean;
   resized: boolean;
+  // The wrap width the owner set (frame pixels at the owner's size), or null
+  // when the version's lines were kept.
+  wrap_width: number | null;
   // The engine-placed version `engine` was read from; set by the worker.
   engine_version_id?: string;
   context: {
@@ -442,9 +663,11 @@ function placementOf(at: PlacedComponent): RecordedPlacement {
 // The learning records of one save: one per moved id whose place or size is
 // not the engine's. `engine` holds the components where the layout engine
 // placed them (the engine-placed version the owner's edits started from),
-// `owner` the components of the version being saved.
+// `owner` the components of the version being saved, `moves` the moves saved
+// (their wrap widths).
 export function ownerMoveRecords({
   ids,
+  moves = [],
   engine,
   owner,
   edit,
@@ -453,6 +676,7 @@ export function ownerMoveRecords({
   engineRecord = [],
 }: {
   ids: readonly string[];
+  moves?: readonly OwnerMove[];
   engine: readonly PlacedComponent[];
   owner: readonly PlacedComponent[];
   edit: Pick<Edit, "font_pair">;
@@ -480,6 +704,7 @@ export function ownerMoveRecords({
       engine: placementOf(theirs),
       owner: placementOf(mine),
       ...change,
+      wrap_width: moves.find((move) => move.id === id)?.width ?? null,
       context: {
         frame: { width: preset.frame.width, height: preset.frame.height },
         font_pair: edit.font_pair,

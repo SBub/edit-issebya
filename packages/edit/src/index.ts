@@ -136,6 +136,7 @@ export {
   ownerMoveProblems,
   ownerMoveRecords,
   ownerSizeRange,
+  ownerWrapOptions,
   parseOwnerMoves,
   settleOwnerMove,
   withOwnerCutouts,
