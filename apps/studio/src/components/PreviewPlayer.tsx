@@ -36,7 +36,8 @@ interface Props {
   // A layer over the frame (the move and resize editor). Never part of the
   // built page.
   overlay?: ReactNode;
-  // More buttons in the control row, before Zones.
+  // More buttons in the control row, before Zones; hidden with Zones while the
+  // preview is expanded.
   controls?: ReactNode;
   // Play is off (the editor works on a paused preview).
   playDisabled?: boolean;
@@ -570,7 +571,7 @@ export function PreviewPlayer({
           </span>
         </span>
         <div className="flex min-w-0 items-center justify-end gap-2">
-          {controls}
+          {!expanded && controls}
           {!expanded && (
             <button
               type="button"
