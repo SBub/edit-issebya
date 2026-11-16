@@ -19,8 +19,7 @@ export type CheckRule =
   | "big-word-timing"
   | "sound-gap"
   | "time-in-speech"
-  | "out-of-reel"
-  | "glossary";
+  | "out-of-reel";
 
 // One failed layout rule; an empty list means every rule passes.
 export interface Check {

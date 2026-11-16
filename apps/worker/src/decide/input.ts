@@ -56,7 +56,7 @@ export function targetPicks(transcript: Transcript, preset: Preset): number {
 
 // What the components prompt is filled with: the script, the written hook
 // (data, never a component), and the reel's intensity and target. Nothing else:
-// no current choices, no glossary, no preset layout, no stored rules; the
+// no current choices, no preset layout, no stored rules; the
 // engine checks the answer against those.
 export interface DecideInput {
   script: ScriptSentence[];

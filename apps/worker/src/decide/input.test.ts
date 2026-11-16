@@ -122,7 +122,7 @@ describe("decideInput", () => {
     JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
   const real = read("../../../../fixtures/pipeline/retime/transcript.json") as Transcript;
 
-  it("carries exactly the script, the hook, the intensity and the target: no glossary", () => {
+  it("carries exactly the script, the hook, the intensity and the target", () => {
     const input = decideInput({
       transcript: real,
       preset: ISSEBYA_PRESET,

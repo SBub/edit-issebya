@@ -90,7 +90,6 @@ export const RULE_WORDS: Record<string, string> = {
   "sound-gap": "two sounds would play too close together",
   "time-in-speech": "an accent would land outside your words",
   "out-of-reel": "something would run past the end",
-  glossary: "a word would be spelled differently from your glossary",
   "answer-json": "the AI's answer could not be used",
   "answer-schema": "the AI's answer could not be used",
   "answer-edit": "the AI's answer could not be used",

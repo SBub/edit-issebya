@@ -55,8 +55,7 @@ version`), the `Working on it` / `Could not finish this step` fallback for an un
   `RULE_WORDS` with `refusalReason(rules)`: the first two distinct rule words of a refused answer,
   joined with "and", from the rule names only. `RULE_WORDS` covers the check rules (`safe-box`,
   `face`, `text-overlap`, `same-text`, `timing`, `big-word-timing`, `sound-gap`, `time-in-speech`,
-  `out-of-reel`), the rules a refused answer carries (`answer-json`, `answer-schema`, `answer-edit` and
-  `glossary`) and the engine's `hidden-footage`. The engine's other notes never refuse, so they have no words.
+  `out-of-reel`), the rules a refused answer carries (`answer-json`, `answer-schema`, `answer-edit`) and the engine's `hidden-footage`. The engine's other notes never refuse, so they have no words.
 - Failure actions (`FailureAction`): every retryable failure offers Try again and Keep the current version.
   Try again calls `requestRetry` and shows its answer (`Queued again`, say). Keep the current version dismisses the failure. Each
   action captures `studio_failure_action` with `reel_id`, `job_id`, `action`, `failure_kind`,

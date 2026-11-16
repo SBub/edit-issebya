@@ -1,8 +1,7 @@
 import type { EngineInput } from "./engine-input.ts";
 import type { EngineComponent, PlaceNote, RecordNote } from "./engine-note.ts";
 import { resolveAnchor } from "./timeline.ts";
-import { wordsText } from "./glossary.ts";
-import { type Preset, SHOWN_FLOOR_SECONDS } from "./preset.ts";
+import { type Preset, SHOWN_FLOOR_SECONDS, wordsText } from "./preset.ts";
 import type { CaptionItem } from "./schema.ts";
 import { type Transcript, type Word } from "./transcript.ts";
 

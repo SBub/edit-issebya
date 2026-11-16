@@ -31,11 +31,10 @@ import {
   placeStack,
 } from "./engine-elements.ts";
 import { type HeadTrack } from "./head-track.ts";
-import { wordsText } from "./glossary.ts";
 import type { Measurer } from "./measure.ts";
 import { type PickedVariants, boxVariantOf, textVariantOf } from "./variant-picker.ts";
 import { VISUAL_STAND_INS, timingOf } from "./variants.ts";
-import { type Preset, SHOWN_FLOOR_SECONDS } from "./preset.ts";
+import { type Preset, SHOWN_FLOOR_SECONDS, wordsText } from "./preset.ts";
 import {
   type Anchor,
   type BehindItem,

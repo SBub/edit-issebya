@@ -162,8 +162,7 @@ and rule 6 (`engine-place.ts`).
   whether people keep watching, at most 7 words (`maxWords`) and 45 characters (`maxCharacters`, both
   passed to the prompt as `hook_length`). The hook's own timing is its entry's window (`hook/written-line`).
 - Caption units: kept capitals (`I`, `I'm`, `I've`, `I'll`, `I'd`, `AI`), a number joined with the
-  unit after it, a month with its day number, and the glossary (`lock-in`, heard as `locking` or
-  `lock in`).
+  unit after it, a month with its day number.
 
 ### Builder contract
 
@@ -330,7 +329,7 @@ word" is now "spoken words, plus one written hook at the start".
   `hook-time` (`clamped-to-end`). A hook that fits nowhere at 30 px or more is a `no-spot`: left out of
   that version and noted (nobody says it, so nothing stands in for it).
 - Checks treat it as text: `safe-box`, `timing` (the hook at least `SHOWN_FLOOR_SECONDS`, 0.5 s; an accent,
-  question or list level has a length, no minimum) and the glossary check (`glossaryChecks` reads every overlay's text).
+  question or list level has a length, no minimum).
 - The written hook is an overlay with its own kind (`hook`, keyed once per reel). The studio's
   tracks timeline shows it in its own `Hook` row
   (`app_docs/studio-reel-layout.md`).
@@ -579,8 +578,7 @@ the platform button column below y 1164` with the right edge past x 945). A tran
 The checks look at overlaps between texts (`text-overlap`) and between a cut-out big word and a visual's
 card (`card-overlap`, decision 24; a big word with no cut-out may sit on a card and draws above it). A
 visual over the face is noted `covers-face` like any front pick, and a visual under a text is no overlap
-(decision 9: the card draws under the text). The glossary check is separate (`src/glossary.ts`,
-`glossaryChecks`).
+(decision 9: the card draws under the text).
 
 ### Versions and restore
 
@@ -762,7 +760,7 @@ never fatal.
   big words (one or two plain words, no count cap); QUESTION; `editFromAnswer` keeping the current
   inputs and sounds, dropping the current masks, and placing a big word said just before the reel
   ends beside a visual.
-- `src/schema.test.ts` (the overlay kind), `src/glossary.test.ts` (a heard form in the hook).
+- `src/schema.test.ts` (the overlay kind).
 - `src/checks.test.ts`: the engine-placed fixture versions pass with an empty list; `safe-box` fails
   for a caption at y 1380 and for text in the button column's notch, and passes it higher up, under the
   platform guard whatever the preset's box; `face` fails for a caption over the head; `sound-gap` and

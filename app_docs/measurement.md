@@ -447,7 +447,7 @@ step decide                        reel.tracks_items
 ```
 
 - `decide.attempt`: `decide.attempt` (1 or 2); `decide.outcome`: `ok`, `invalid` (the answer is
-  not JSON), or `refused` (the schema, the placed edit's parse or the glossary check); `decide.refused_by`
+  not JSON), or `refused` (the schema or the placed edit's parse); `decide.refused_by`
   the rule names, comma-separated, when refused.
 - `decide.engine`: `decide.checks` (layout checks that failed on its output).
 - The stage spans carry no AI facts; the `chat` span under each stage does (see AI calls above).
