@@ -64,7 +64,7 @@ export {
   bigWordSpan,
   choicesOf,
 } from "./engine-input.ts";
-export { type EngineNote } from "./engine-note.ts";
+export { type EngineComponent, type EngineNote } from "./engine-note.ts";
 export {
   type FontPair,
   type FontPairId,
@@ -122,6 +122,24 @@ export {
   build,
   maskPath,
 } from "./build.ts";
+export { type PlacedComponent } from "./components.ts";
+export {
+  type OwnerMove,
+  type OwnerMoveRecord,
+  type RecordedPlacement,
+  MOVABLE_COMPONENTS,
+  OWNER_MOVES_MAX,
+  applyOwnerMoves,
+  effectiveMoves,
+  fitInSafeZone,
+  isMovable,
+  ownerMoveProblems,
+  ownerMoveRecords,
+  ownerSizeRange,
+  parseOwnerMoves,
+  settleOwnerMove,
+  withOwnerCutouts,
+} from "./owner-edit.ts";
 export { type ClipFrames, EXPORT_FPS, clipFrames, reelFrames } from "./span-frames.ts";
 export { type BigWordBox, type MaskSpan, maskSpans } from "./behind.ts";
 export { baselineEdit } from "./baseline.ts";

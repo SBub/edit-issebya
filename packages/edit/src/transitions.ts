@@ -116,7 +116,7 @@ export function hiddenCaptionIds(
 }
 
 export type LevelRole = "number" | "lead" | "key";
-const LEVEL_ROLES = ["number", "lead", "key"] as const satisfies readonly LevelRole[];
+export const LEVEL_ROLES = ["number", "lead", "key"] as const satisfies readonly LevelRole[];
 
 // A level's font and colour, from the style roles: the lead-in is caption
 // text, the key phrase and the number accent text. The sizes are the engine's

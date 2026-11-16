@@ -14,6 +14,7 @@ import type { BehindItem, Edit, EditMask, EditRef } from "./schema.ts";
 import { resolveSpans, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 import { hiddenCaptionIds, levelBoxes } from "./transitions.ts";
+import { type PlacedComponent, placedComponents } from "./components.ts";
 
 export type AssetRole = "footage" | "font" | "sound" | "mask" | "visual";
 
@@ -69,6 +70,9 @@ export interface BuildResult {
   html: string;
   assets: BuildAsset[];
   checks: Check[];
+  // Every component of the version with its box on screen (`components.ts`):
+  // the same on every layer, the full page's.
+  components: PlacedComponent[];
 }
 
 // Which part of the version a page draws. `full` is the whole page, the
@@ -526,7 +530,8 @@ export function build(
   const assets = assetsOf(edit, preset, masks, measurer.pair).filter((asset) =>
     layerNames(layer, asset.role),
   );
-  return { html, assets, checks };
+  const components = placedComponents(edit, boxes, levels, [...bigWords.values()], resolved);
+  return { html, assets, checks, components };
 }
 
 // Whether a layer's page names an asset of this role: the full page names them
