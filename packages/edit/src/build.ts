@@ -6,6 +6,7 @@ import type { HeadTrack } from "./head-track.ts";
 import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
 import type { Measurer } from "./measure.ts";
 import { textLines } from "./lines.ts";
+import { isQuestion, questionReveal, questionText } from "./question.ts";
 import { type Preset, wordsText } from "./preset.ts";
 import { FONT_ROLES, type FontPair, fontPairFiles } from "./font-pairs.ts";
 import { STYLES, VARIANTS } from "./variants.ts";
@@ -51,6 +52,15 @@ const BEHIND_STYLE = [
   "      .mask-under { filter: invert(1); mix-blend-mode: multiply; }",
   "      .mask-front { mix-blend-mode: multiply; }",
 ];
+
+// A QUESTION's words, each hidden until its own moment; only on a page with
+// one. Its lines are left-aligned (the span's default), a block of text.
+const QUESTION_STYLE = "      .q { opacity: 0; }";
+
+// How long a question's word takes to appear: a hard cut, like typing. Not
+// zero: HyperFrames reuses a still frame only between a timeline's keyframes,
+// and a tween is one.
+const QUESTION_WORD_SECONDS = 0.001;
 
 // A big word's class, on any page with one.
 const WORD_STYLE = "      .word { position: absolute; line-height: 1; white-space: nowrap; }";
@@ -196,6 +206,7 @@ export function build(
       : []),
     // The written hook's own class (its lines centred); only on a page with one.
     ...(boxes.some((box) => box.kind === "hook") ? ["      .hook { text-align: center; }"] : []),
+    ...(boxes.some((box) => box.question) ? [QUESTION_STYLE] : []),
   ];
 
   const body: string[] = [];
@@ -401,9 +412,52 @@ export function build(
       `top: ${px(box.y)}px`,
       `font-size: ${px(box.size)}px`,
       `color: ${box.color}`,
-      ...(box.lines.length > 1 && box.kind !== "hook" ? ["text-align: center"] : []),
+      ...(box.lines.length > 1 && box.kind !== "hook" && !box.question
+        ? ["text-align: center"]
+        : []),
       ...(box.style ? [inlineStyle(box.style)] : []),
     ].join("; ");
+    if (box.question) {
+      // A QUESTION: every word is in its final place from the start (the lines
+      // never reflow) and hidden; each cuts in at its own spoken moment, the
+      // question mark with the last one. The whole text then stays until the
+      // question's end and leaves with the accent's fade.
+      const wordId = (index: number) => `${box.itemId}_w${index + 1}`;
+      let index = 0;
+      const lines = box.lines.map((line) =>
+        line
+          .split(" ")
+          .map((word) => {
+            const html = `<span${attrs([
+              ["id", wordId(index)],
+              ["class", "q"],
+            ])}>${escapeHtml(word)}</span>`;
+            index += 1;
+            return html;
+          })
+          .join(" "),
+      );
+      body.push(
+        `        <span${attrs([
+          ["id", box.itemId],
+          ["class", `text f-${box.font}`],
+          ["style", css],
+        ])}>${lines.join("<br />")}</span>`,
+      );
+      const id = selector(box.itemId);
+      js.push(
+        `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(QUESTION_WORD_SECONDS)} }, ${num(box.start)});`,
+      );
+      for (const [at, word] of box.question.entries()) {
+        js.push(
+          `tl.fromTo(${selector(wordId(at))}, { opacity: 0 }, { opacity: 1, duration: ${num(QUESTION_WORD_SECONDS)} }, ${num(word.at)});`,
+        );
+      }
+      js.push(
+        `tl.to(${id}, { opacity: 0, duration: ${num(caption.outSeconds)} }, ${num(Math.max(box.end - caption.outSeconds, box.start + caption.minSeconds))});`,
+      );
+      continue;
+    }
     body.push(
       `        <span${attrs([
         ["id", box.itemId],
@@ -566,6 +620,7 @@ function placedText(
     ...edit.tracks.captions.map((item) => ({ item, kind: "caption" as const })),
     ...edit.tracks.overlays.map((item) => ({ item, kind: item.kind })),
   ];
+  const byId = new Map(transcript.words.map((word) => [word.id, word]));
   return items.map(({ item, kind }): TextBox => {
     if (!item.position)
       throw new Error(`build: ${kind} ${item.id} has no position; place the edit first`);
@@ -573,7 +628,10 @@ function placedText(
     // An item with no size takes its font's style base.
     const size =
       item.size ?? (font === STYLES.accent.font ? STYLES.accent.base : STYLES.caption.base);
-    const text = item.text ?? wordsText(item.words ?? [], transcript, preset);
+    const written = item.text ?? wordsText(item.words ?? [], transcript, preset);
+    // A QUESTION shows its question mark, whatever version stored it.
+    const question = isQuestion({ id: item.id, kind });
+    const text = question ? questionText(written) : written;
     const lines = textLines(text, item.breaks);
     const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
     const { x, y, align } = item.position;
@@ -584,6 +642,18 @@ function placedText(
       kind,
       text,
       lines,
+      ...(question
+        ? {
+            question: questionReveal(
+              text,
+              (item.words ?? []).flatMap((id) => {
+                const word = byId.get(id);
+                return word ? [word] : [];
+              }),
+              span,
+            ),
+          }
+        : {}),
       font,
       size,
       color: item.color ?? (kind === "caption" ? STYLES.caption.color : STYLES.accent.color),

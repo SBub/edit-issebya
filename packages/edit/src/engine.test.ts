@@ -216,7 +216,7 @@ describe("the layout engine's timing", () => {
     expect(record.filter((note) => note.item === "accent-1" && note.rule === "timing")).toEqual([]);
   });
 
-  it("shows a question as an accent on its words: question-1, the accent's timing and look", async () => {
+  it("places and times a question as an accent on its words: question-1, from its first word to its last", async () => {
     const { edit, spans } = await place({ questions: [{ from: "w29", to: "w29" }] });
     expect(edit.tracks.overlays).toEqual([
       expect.objectContaining({
@@ -2915,5 +2915,113 @@ describe("captions through the placer, as sentence blocks", () => {
     const two = await place(input);
     expect(two.edit).toEqual(one.edit);
     expect(two.record).toEqual(one.record);
+  });
+});
+
+describe("the question's look: word by word, a question mark at the end", () => {
+  // "how we spend our time", five words over 3.926 to 5.206 s.
+  const QUESTION = { questions: [{ from: "w13", to: "w17" }] };
+  const IDS = ["w13", "w14", "w15", "w16", "w17"];
+  const line = (html: string, part: string) => html.split("\n").find((row) => row.includes(part))!;
+
+  it("draws each word as its own element, hidden, the mark on the last, the lines left-aligned", async () => {
+    const { edit, html, checks } = await place(QUESTION);
+    const overlay = edit.tracks.overlays.find((item) => item.id === "question-1")!;
+    const element = line(html, '<span id="question-1"');
+    const shown = [...element.matchAll(/<span id="question-1_w(\d+)" class="q">([^<]*)<\/span>/g)];
+    expect(shown.map((match) => match[2])).toEqual(["how", "we", "spend", "our", "time?"]);
+    expect(shown.map((match) => match[1])).toEqual(["1", "2", "3", "4", "5"]);
+    expect(html).toContain("      .q { opacity: 0; }");
+    // The accent's font and colour, the stored size and place, no centring.
+    expect(element).toContain('class="text f-artistic"');
+    expect(element).toContain(`font-size: ${overlay.size}px; color: #FFFFFF"`);
+    expect(element).toContain(`left: ${overlay.position!.x}px; top: ${overlay.position!.y}px`);
+    expect(element).not.toContain("text-align");
+    // Its lines are the stored breaks, each line's words in order.
+    expect(element.split("<br />")).toHaveLength((overlay.breaks ?? []).length + 1);
+    expect(checks).toEqual([]);
+  });
+
+  it("measures and places the question with its mark, inside the safe zone", async () => {
+    const { edit } = await place(QUESTION);
+    const measurer = await nodeMeasurer();
+    const overlay = edit.tracks.overlays.find((item) => item.id === "question-1")!;
+    const lines = textLines("how we spend our time?", overlay.breaks);
+    const width = Math.max(
+      ...lines.map((text) => measurer.width(STYLES.accent.font, overlay.size!, text)),
+    );
+    expect(overlay.position!.align).toBe("left");
+    expect(overlay.position!.x).toBeGreaterThanOrEqual(SAFE_ZONE.box.left);
+    expect(overlay.position!.x + width).toBeLessThanOrEqual(SAFE_ZONE.box.right);
+  });
+
+  it("cuts each word in at the moment it is spoken, and the whole text out as an accent leaves", async () => {
+    const { html, spans } = await place(QUESTION);
+    const span = spans.get("question-1")!;
+    const { caption } = ISSEBYA_PRESET;
+    const at = (t: number) => String(Math.round(t * 1000) / 1000);
+    // The text itself is on from the question's start.
+    expect(html).toContain(
+      `tl.fromTo("#question-1", { opacity: 0 }, { opacity: 1, duration: 0.001 }, ${at(span.start)});`,
+    );
+    IDS.forEach((id, index) => {
+      expect(html).toContain(
+        `tl.fromTo("#question-1_w${index + 1}", { opacity: 0 }, { opacity: 1, duration: 0.001 }, ${at(byId.get(id)!.start)});`,
+      );
+    });
+    // No rise and no fade in: the words are the entrance.
+    expect(html).not.toMatch(/tl\.fromTo\("#question-1[^"]*", \{ opacity: 0, y:/);
+    // It leaves with the accent's own fade, ending on its last word's end.
+    expect(span.end).toBe(byId.get("w17")!.end);
+    expect(html).toContain(
+      `tl.to("#question-1", { opacity: 0, duration: ${caption.outSeconds} }, ${at(span.end - caption.outSeconds)});`,
+    );
+    const accent = await place({ accents: [{ from: "w13", to: "w17" }] });
+    expect(accent.html).toContain(
+      `tl.to("#accent-1", { opacity: 0, duration: ${caption.outSeconds} }, ${at(span.end - caption.outSeconds)});`,
+    );
+  });
+
+  it("leaves an accent and a page with no question as they were", async () => {
+    const { html } = await place({ accents: [{ from: "w13", to: "w17" }] });
+    expect(html).not.toContain(".q {");
+    expect(html).not.toContain('class="q"');
+    expect(line(html, '<span id="accent-1"')).not.toContain("?");
+    expect(html).toContain('tl.fromTo("#accent-1", { opacity: 0, y: 12 }');
+  });
+
+  it("shows a stored question with the new look: the mark added, its stored place and lines kept", async () => {
+    const measurer = await nodeMeasurer();
+    const { edit } = await place(QUESTION);
+    // A version saved before the look: the same overlay, as that engine wrote it.
+    const stored = structuredClone(edit);
+    const overlay = stored.tracks.overlays.find((item) => item.id === "question-1")!;
+    expect(overlay.text).toBeUndefined();
+    const { html } = build(stored, transcript, hand.headTrack, ISSEBYA_PRESET, measurer);
+    const element = line(html, '<span id="question-1"');
+    expect(element).toContain(">time?</span>");
+    expect(element).toContain(`left: ${overlay.position!.x}px; top: ${overlay.position!.y}px`);
+    // Placing it again gives the same version (the engine's own output).
+    const again = editFromAnswer(
+      stored,
+      choicesOf(stored, transcript, ISSEBYA_PRESET),
+      ISSEBYA_PRESET,
+      transcript,
+      hand.headTrack,
+      measurer,
+    );
+    expect(again.ok && again.edit.tracks.overlays).toEqual(stored.tracks.overlays);
+  });
+
+  it("draws the question on the export's front page exactly as on the full page", async () => {
+    const measurer = await nodeMeasurer();
+    const { edit, html } = await place(QUESTION);
+    const front = build(edit, transcript, hand.headTrack, ISSEBYA_PRESET, measurer, {
+      layer: "front",
+    }).html;
+    expect(line(front, '<span id="question-1"')).toBe(line(html, '<span id="question-1"'));
+    const tweens = (page: string) => page.split("\n").filter((row) => row.includes('"#question-1'));
+    expect(tweens(front)).toEqual(tweens(html));
+    expect(tweens(front)).toHaveLength(IDS.length + 2);
   });
 });

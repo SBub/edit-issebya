@@ -127,7 +127,8 @@ and rule 6 (`engine-place.ts`).
   the zone table's.
 - Layout (`layout`): `gap` 12 px, the gap a text keeps from the face and from other text (and the
   zones' gap above and below the face). The global minimum text size is 30 px (`MIN_SIZE_PX`, the placer).
-- Accents, questions and big words: their timing and zones are their entries' (`VARIANTS`). An
+- Accents, questions and big words: their timing and zones are their entries' (`VARIANTS`). A
+  question's look is its own ("The question's look"). An
   accent or question is timed by its words alone. A big word takes its entry's lead (0.2 s) and minimum
   (1.5 s) from its word. `accent.afterSeconds` (1 s) is not a shown time: it only bounds a big word's
   length in the decide limit (`schema.ts`).
@@ -208,7 +209,8 @@ and rule 6 (`engine-place.ts`).
   goldens compare). The same wasm on the same font bytes gives identical widths everywhere.
 - The builder places each caption, accent, hook and big word at the `position` the layout engine set
   on it (`placedText`, `src/build.ts`), with its `size` and, when it has `breaks`, its lines
-  (rendered joined by `<br />`, centred). A shown caption or overlay with no position throws
+  (rendered joined by `<br />`, centred; a question's lines are left-aligned and its words are
+  elements of their own, "The question's look"). A shown caption or overlay with no position throws
   `build: <kind> <id> has no position; place the edit first`, and a big word with no `position` or
   `size` throws the same way. `src/html.ts` escapes text and attributes and formats numbers.
 - `src/lines.ts`: `textLines(text, breaks)` (a text cut after each of its `breaks`, the builder and the transition levels share it) and `breaksOf(lines)` (the breaks the engine writes for its lines).
@@ -334,13 +336,56 @@ word" is now "spoken words, plus one written hook at the start".
   tracks timeline shows it in its own `Hook` row
   (`app_docs/studio-reel-layout.md`).
 
+### The question's look
+
+A QUESTION (a question the speaker puts to the viewer) is placed and timed exactly as an accent, and
+looks different on screen so the owner can tell the two apart (owner decision 2026-11-16). One variant,
+`question/word-by-word`:
+
+- The question builds up word by word, like typing: each word appears at the moment it is spoken (its
+  word's start in the transcript, the same times the captions use). A word cuts in (no fade, no rise);
+  the first word comes in as the question starts.
+- It ends with a question mark, which appears with the last word. `questionText` adds one to a text
+  that has none and never doubles one (the captions' cleaning takes a spoken "?" off, so it is nearly
+  always added).
+- A block of left-aligned lines, in the accent's style: the `artistic` face of the edit's font pair,
+  white, base 110 (`STYLES.accent`). The colours, the font pair and the size scale are the accent's;
+  only the reveal, the mark and the left alignment are the question's.
+- The whole question stays until its end, which is the accent's: its last word's end, with no hold
+  after it. It leaves with the accent's fade (`caption.outSeconds`, 0.15 s, ending on its end).
+- `src/question.ts` holds the shared pure helpers: `QUESTION_PREFIX` and `isQuestion` (an accent
+  overlay with a `question-` id), `questionText`, `questionReveal(text, spoken, span)` (each shown word
+  with its moment: its spoken word's start, never before the question's start nor after its end, never
+  before the word shown before it; a text with another word count than its spoken words, a word fix
+  that joins words, is spread over them in order) and `questionShownAt(reveal, time)` (the question as far as it is
+  built at a time).
+- The engine (`placeAccent`, `engine-elements.ts`) measures, wraps and places the question's text with
+  its mark, so the box it keeps clear holds the mark. The stored overlay is unchanged in shape:
+  `kind: "accent"`, id `question-N`, `words`, `position` (left-aligned), `size`, `breaks`; no `text`.
+- The builder (`placedText`, `build.ts`) gives every question overlay its mark and its reveal
+  (`TextBox.question`), whatever version stored it, and draws it as
+  `<span id="question-N" class="text f-artistic">` holding one `<span id="question-N_wK" class="q">`
+  per shown word (an underscore, which no item id may hold), the words of a line joined by spaces and
+  the lines by `<br />`, with no `text-align`. Every word is in its final place from the start, hidden
+  (`.q { opacity: 0; }`, written only on a page with a question), so the lines never reflow. The
+  timeline holds one tween for the text (opacity 0 to 1 at its start), one per word (opacity 0 to 1 at
+  its moment) and the accent's out-fade. Each in-tween lasts 1 ms, not zero: HyperFrames reuses a still
+  frame only between a timeline's keyframes, so a cut written as a tween is drawn on its frame in the
+  export's front page.
+- A version saved before this look renders with it too, with no new version: the builder reads the
+  same stored overlay. Its stored place, size and line breaks are kept (a stored version is never
+  placed again), and they were measured without the mark, so its last line is wider by the mark. Where
+  that line was the widest and sat at the safe zone's edge or beside another text, the checks of that
+  build report it (`safe-box`, `text-overlap`); nothing is rewritten. A new version (a relayout, a
+  start over) is placed with the mark.
+
 ### The layout engine's input
 
 - `src/engine-input.ts`: `EngineInput` is what the decide answer hands the layout: `accents`
   (word ranges), `questions`
-  (QUESTION: word ranges the engine places as accents, with the ACCENT's look and timing for now; an overlay
-  of kind `accent` with id `question-N`, read back as a question by `choicesOf`; left out in an answer saved
-  before it, which reads as none), `big_words` (a list of `{ from, to }` word ids: one word, or
+  (QUESTION: word ranges the engine places and times as accents, shown with the question's own look, below;
+  an overlay of kind `accent` with id `question-N`, read back as a question by `choicesOf`; left out in an
+  answer saved before it, which reads as none), `big_words` (a list of `{ from, to }` word ids: one word, or
   two consecutive ones, equal for one; the same word allowed
   again), `visuals` (a word range and an optional `description`), `lists` (LIST: each `{ items }` a non-empty list of word ranges, each with `key_from`, where its key phrase starts; no kind), `word_fixes` (a word id and its text), and the optional `hook` (`{ text }` or null). No
   times, positions, sizes or spots.
@@ -352,7 +397,7 @@ word" is now "spoken words, plus one written hook at the start".
   reads back (a two-word one from its first word to its last). The hook reads back as its text, null
   when the version has none.
 - Variants (`src/variants.ts`): `VARIANTS` holds the seven entries, keyed by name (`hook/written-line`,
-  `accent/above-head`, `question/as-accent`, `bigword/behind`, `visual/card`, `list/numbered`,
+  `accent/above-head`, `question/word-by-word`, `bigword/behind`, `visual/card`, `list/numbered`,
   `caption/default`). Each names its component, layer, type, style (a text: one of the `STYLES` table,
   `accent`, `caption` or `bigWord`, each a font role, a colour and a base size, `largest-fit` for the
   big word's; a box: its stroke), ranked zones (names of the zone table only), timing option, whether its
@@ -407,7 +452,7 @@ deterministic (no clock, no randomness, no I/O). Modules in `packages/edit/src`:
 #### Variants and the picker
 
 - `VARIANTS` (`variants.ts`) holds seven entries, one per component: `hook/written-line`,
-  `accent/above-head`, `question/as-accent`, `bigword/behind`, `visual/card`, `list/numbered`,
+  `accent/above-head`, `question/word-by-word`, `bigword/behind`, `visual/card`, `list/numbered`,
   `caption/default`. An entry names its component, `layer` (`front`, or `behind`: the big word, over
   the cut-out), `type` (`text` or `box`), `style`, its ranked `zones`, its `timing` option, whether its
   words `hides` the captions while it shows, and for a box its `aspect` and `width` share, for a stack its
@@ -673,7 +718,7 @@ never fatal.
   `apps/worker/src/decision-trace.test.ts` (one row per proposal, `kept` or `changed`, the summary line).
 - `src/engine.test.ts`, by group:
   - "the layout engine's timing": each caption from its word; an accent exactly its words, no minimum; a
-    question as an accent; a big word from the lead before its word, at least 1.5 s, one word or two in
+    question placed and timed as an accent; a big word from the lead before its word, at least 1.5 s, one word or two in
     one element, the same word again; a visual from its first word, 1 to 2 s, shown even past its short
     sentence.
   - "text picks share the screen in time": a list starting on an accent's last word trimmed to its own
@@ -752,6 +797,15 @@ never fatal.
   - "nothing the answer picks is dropped": a pick at the reel's end, a pick over a cut, a transition
     with no text of its own and a hook on a 1 s reel are all placed. (Random sets of picks are checked in
     "every pick shown, or dropped where another pick shows its text": a pick is dropped only by `same-text`.)
+  - "the question's look: word by word, a question mark at the end": each word its own hidden element,
+    the mark on the last, left-aligned at the stored place and size; measured and placed with its mark
+    inside the safe zone; each word cut in at its spoken moment and the text out with the accent's fade;
+    an accent and a page with no question unchanged; a stored question shown with the look at its stored
+    place; the front page's question equal to the full page's.
+- `src/question.test.ts`: the mark added once and never doubled, appearing with the last word; each word
+  from the moment it is spoken and the words shown at a given time; the first word at the question's
+  start; no word after the question's end or before the one before it; a text with another word count;
+  a question with no spoken word; which overlay is a question.
 - `src/decide.test.ts`: the components' JSON schema (word ids, closed objects, no time, position,
   size, font, colour, spot, style or title anywhere, no hook); the hook's answer (one text, required,
   never null, refused above the word and character limits, one plain line, its final stop taken off,
@@ -783,6 +837,10 @@ never fatal.
 - `src/transitions.test.ts`: `transitionTiming` (in at the first word, out at the last word's end, no hold,
   a phrase with no length lengthened to the floor, a reel's start and end, a reel too short for the floor),
   the style roles, and `hiddenCaptionIds`.
+- E2E, the question's look: `apps/studio/e2e/preview.spec.ts` (the reveal in the live preview) and the
+  export guardrail's question case (`apps/studio/e2e-tools/export-matches-preview.spec.ts`,
+  `app_docs/export.md`). Both place the question with `withQuestion` and read its moments with
+  `questionOf` (`apps/studio/test-support/transitions.ts`).
 - E2E: `apps/studio/e2e/upload.spec.ts` ends with `first_version: version 1 saved, ...`, the
   version row and its R2 key checked.
 
@@ -890,6 +948,16 @@ never fatal.
   the speaker: the face is no obstacle to it, and its 30% visibility rule is hard: it moves up and
   shrinks at the head top until the rule holds, and is left out when nothing does.
 - Never add a shadow, a stroke or an outline to any text, and never change a text colour.
+- A question keeps the accent's style (its font role, colour and base size, `STYLES.accent`), its
+  placement and its timing: never give it a colour, a size scale or a hold of its own without the owner
+  deciding it. Only its reveal, its question mark and its left alignment differ.
+- A question's word never appears before it is spoken, and its question mark never before its last
+  word. Never show a question with two question marks or with none.
+- Never reflow a question while it builds: every word holds its final place from the start, hidden.
+- Never write a question's word cut as a zero-length `tl.set`: it is a tween (1 ms), so the export's
+  front page draws it on its frame.
+- The engine and the builder take a question's text from the same `questionText`: never add the mark
+  in one and not the other, or the placed box and the drawn text differ.
 - A version with a `behind` item is saved only once every mask it names exists; the builder never
   builds a behind item without its mask.
 - A big word is checked against the safe box `S` like every text (`safe-box`); there is no `frame`

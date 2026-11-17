@@ -4,10 +4,10 @@ import {
   type BigWordChoice,
   type EngineInput,
   type HookChoice,
-  QUESTION_PREFIX,
   type TransitionChoice,
   type VisualChoice,
 } from "./engine-input.ts";
+import { QUESTION_PREFIX } from "./question.ts";
 import {
   type EngineComponent,
   type EngineElement,
@@ -381,7 +381,7 @@ function placeOnce(
     hidden.some((range) => during(span, range));
 
   // An ACCENT (`accents[i]`) or a QUESTION (`questions[i]`, `ref`): the same
-  // placement, timing and look.
+  // placement and timing (a question's look is its own, `question.ts`).
   function accentExtra(
     accent: AccentChoice,
     index: number,
@@ -509,7 +509,8 @@ function placeOnce(
     if (skip.has(`accents[${index}]`)) return;
     extras.push(accentExtra(accent, index, `accent-${index + 1}`));
   });
-  // A QUESTION: an accent placed the same way, under its own id (`question-N`).
+  // A QUESTION: placed and timed as an accent, under its own id (`question-N`),
+  // which gives it its look in the builder.
   const { questions } = input;
   questions.forEach((question, index) => {
     if (skip.has(`questions[${index}]`)) return;

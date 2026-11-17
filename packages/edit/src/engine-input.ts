@@ -1,4 +1,5 @@
 import { type Preset, cleanWord, wordsText } from "./preset.ts";
+import { QUESTION_PREFIX } from "./question.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -16,14 +17,15 @@ import type { Transcript } from "./transcript.ts";
 export interface AccentChoice {
   from: string;
   to: string;
-  // Set by the engine on a QUESTION it places with the ACCENT's look and timing
-  // (its overlay id is `question-N`); never in an answer.
+  // Set by the engine on a QUESTION (its overlay id is `question-N`): placed
+  // and timed like an accent, shown with its own look (`question.ts`); never
+  // in an answer.
   question?: boolean;
 }
 
 // A QUESTION: a question the speaker puts to the viewer over the words `from`
-// to `to`, often rhetorical. It is placed as an ACCENT (the same look and
-// timing).
+// to `to`, often rhetorical. It is placed and timed as an ACCENT and shown
+// with its own look (`question.ts`): word by word, a question mark at its end.
 export interface QuestionChoice {
   from: string;
   to: string;
@@ -86,9 +88,6 @@ export interface EngineInput {
   // None (null or left out): no hook.
   hook?: HookChoice | null;
 }
-
-// The overlay id prefix of a QUESTION (`question-1`, ...): an accent overlay.
-export const QUESTION_PREFIX = "question-";
 
 // The ids from `from` to `to`, in transcript order.
 function range(from: string, to: string, transcript: Transcript): string[] {

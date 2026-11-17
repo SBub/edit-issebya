@@ -103,6 +103,13 @@ export {
   SAFE_ZONE,
   zonesAt,
 } from "./engine-zones.ts";
+export {
+  type RevealWord,
+  isQuestion,
+  questionReveal,
+  questionShownAt,
+  questionText,
+} from "./question.ts";
 export { type HarfBuzz, type Measurer, createMeasurer } from "./measure.ts";
 export { type ResolvedItem, resolveTimeline } from "./timeline.ts";
 export { type TextBox } from "./engine-space.ts";

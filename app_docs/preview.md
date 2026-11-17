@@ -141,6 +141,12 @@ jsdelivr.
   from 945/1080 across and 1164/1920 down to the right and bottom zones, no overlap). E2E: `preview.spec.ts` toggles Zones: the layer is absent, then shown with
   its zones at the guard's edges (the bottom at 1470, the right at 1045, the notch at 945 and
   1164), Play still works through it, and it hides again.
+- E2E: `preview.spec.ts`, "a question builds up word by word as it is spoken, with a question mark at
+  its end": a version with a QUESTION on the fixture clip ("test clip for the real studio?"). Before
+  it starts nothing of it shows; halfway through each word exactly the words spoken so far are at full
+  opacity, the mark only with the last word; no word moves while the question builds; it is in the
+  accent's face and colour, not centred; its words are not captions meanwhile
+  (`app_docs/edit-model.md`, "The question's look").
 - E2E: `apps/studio/e2e/behind.spec.ts` is removed with the change box (`app_docs/change-requests.md`).
   The export guardrail (`apps/studio/e2e-tools/export-matches-preview.spec.ts`) still compares a photo
   and a big word behind the speaker, in preview and export, from start over answers.
