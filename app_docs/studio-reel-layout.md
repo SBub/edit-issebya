@@ -233,14 +233,17 @@ not a corner, and is unchanged.
 ### Thumbnails and the reels grid
 
 - `apps/worker/src/pipeline/preview-copies.ts`: the `preview_copies` step is now version 3 and also
-  makes `thumbnail.jpg` (270x480, one representative frame of the first 30) and `frames.jpg` (one row
-  of 32 frames of 90x160, one every 2 seconds, so a longer reel's later frames are absent), both from
+  makes `thumbnail.jpg` (270x480, one representative frame of the first 30) and `frames.jpg` (90x160
+  frames, one every 2 seconds; since version 4 in rows of 32 with enough rows for the longest
+  accepted footage, 5 rows for 5 minutes, see `app_docs/pipeline.md`), both from
   the same retimed footage as the preview copy. `apps/worker/src/preview-copies-record.ts` records
   `thumbnail`, `frames` and `frames_layout` in `reels.preview_copies`. Fixtures under
   `fixtures/pipeline/preview_copies/` carry both images.
 - `apps/studio/src/lib/preview-sources.ts`: parses the new fields (`thumbnail`, `frames`,
-  `frames_layout`); a missing or malformed one is null, never a failure, so an older reel still
-  plays. `thumbnailKey` derives the thumbnail's key from the current version's key prefix.
+  `frames_layout`, with `rows`, read as 1 when a version 3 layout has none); a missing or malformed
+  one is null, never a failure, so an older reel still plays. `frameIndexAt` clamps to the sprite's
+  last tile and `frameTileAt` gives a frame's column and row, which `TracksTimeline` turns into the
+  background size and position. `thumbnailKey` derives the thumbnail's key from the current version's key prefix.
 - `apps/studio/src/lib/reels.ts`: `REEL_GRID_COLUMNS` (summary, `source_bytes`, `current_version_id`,
   `preview_copies` and the current version's `r2_key`, embedded through the named constraint
   `reels_current_version_fkey`) and `formatAge` (`now`, `5m`, `3h`, `2d`, `1w`, `3mo`, `1y`). Server
@@ -308,7 +311,7 @@ read keys (or the storage mock route under `E2E_MOCK_STORAGE`).
   DOM order edit, Versions, library (the tab order). At 1440x900 and 390x844 it checks the versions list:
   every row one height within 1 px whatever its text, the details behind the arrow. It also checks the
   timeline's five rows in order (Footage, Behind, Hook, Accents, Transitions; no Captions or Sounds row,
-  though the edit has captions), the items at `resolveTimeline`'s times with footage frames from the sprite and nothing in the rows focusable
+  though the edit has captions), the items at `resolveTimeline`'s times with footage frames from the sprite (its background five rows tall, a frame of the short reel in the first row) and nothing in the rows focusable
   (the ruler the timeline's one focusable element), the playhead following the clock, and no Undo or
   Redo button, the preview showing the current version and no version marked as showing, at both
   sizes. At both sizes it checks that Play and Pause is one icon

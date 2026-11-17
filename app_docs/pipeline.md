@@ -273,7 +273,40 @@ person gives all `null` (summary `head tracked, 12 samples, 12 without a head`).
 
 The footage preview is 540x960 with the source's frame timing (`-fps_mode passthrough`) and a
 keyframe every 1 s: H.264 medium, 1200k (max 1500k), AAC 128k, `+faststart`. About 8 MB for a 50 s
-reel; made for Chrome.
+reel and about 50 MB for 5 minutes; made for Chrome.
+
+The frames sprite (`frames.jpg`, `FOOTAGE_FRAMES`, version 4) holds one 90x160 frame every 2 s in
+rows of 32 (64 s a row), filled left to right and top to bottom (`tile=32x5`). Its row count is
+`ceil(FOOTAGE_LIMITS.maxSeconds / 64)`, 5 rows (2880x800) for 5 minutes, so every frame of the
+longest accepted footage has a tile; a shorter reel leaves the later tiles black (the short-speech
+fixture's sprite is 14 KB). `frames_layout` in `reels.preview_copies` carries `rows`; a version 3
+layout has none and the studio reads it as one row.
+
+### Longer footage (5 minutes)
+
+The footage limit went from 90 s to 5 minutes (2026-11-17). What was checked downstream:
+
+- Frames sprite: version 3 had one row of 32 frames (64 s), so a reel past 64 s already repeated
+  its last frame in the timeline. Version 4 has rows for the whole limit (above), and the studio's
+  `frameIndexAt` and `frameTileAt` read them.
+- Transcribe: whisper.cpp runs locally through HyperFrames and walks long audio in Whisper's own
+  30 s windows: no request and no size limit. HyperFrames' own timeout scales with the audio (10 s per
+  second, at least 5 minutes), so 5 minutes of footage has 50 minutes.
+- Decide: the target picks scale with the speech (`targetPicks`), and the answer stays far under
+  `MAX_OUTPUT_TOKENS` (16,000). The answer schema inlines the enum of every word id 12 times, so
+  it grows with the script: about 23 KB at 225 words (90 s), about 74 KB at 750 words (5 minutes).
+  The JSON mode fallback appends the same schema to the prompt. Not changed; watch the first long
+  reels' decide calls.
+- Head track: 4 samples a second, so 1,200 samples for 5 minutes, about 0.14 s a sample (about
+  3 minutes) in the same four chunks; memory per chunk does not grow. Its scratch files are raw
+  RGBA at 270x480 (about 0.5 MB a sample): the masks and `frames.rgba` together about 1.3 GB at
+  5 minutes, well under `WORKER_MIN_FREE_DISK_GB` (10).
+- Cut-out: made per padded span of a big word, never for the whole footage; a longer reel has more
+  spans, about 2 s per second of span.
+- Job and step time: no step has a timeout; the lease (300 s) is renewed while a job runs. Only one
+  AI call has a budget (180 s), and it does not depend on the footage length.
+- Export: a reel of 120 s or more (`COMPOSITE_MAX_SECONDS`) takes the slower single call
+  (`long_reel`, `app_docs/export.md`). Known and unchanged.
 
 ### Kept and rebuildable
 
@@ -456,6 +489,8 @@ inputs name the old retime outputs) does not re-run retime.
   never replace it without its new pin, a new `head_track` version and an up-to-date
   `THIRD_PARTY_NOTICES.md` beside it. Never commit its calibration frames.
 - Every output carries a `kept` or `rebuildable` tag.
+- The frames sprite always has a tile for the longest footage `FOOTAGE_LIMITS` accepts: never
+  raise the limit without its row count following (`preview-copies.test.ts` checks it).
 - Never touch `fixtures/footage/short-person.mp4`.
 
 ## Notes

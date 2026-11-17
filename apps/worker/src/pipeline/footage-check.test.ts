@@ -54,9 +54,9 @@ describe("footageRefusal", () => {
   });
 
   it("refuses footage longer than the limit, naming both lengths", () => {
-    expect(FOOTAGE_LIMITS.maxSeconds).toBe(90);
+    expect(FOOTAGE_LIMITS.maxSeconds).toBe(300);
     expect(footageRefusal(fixture("probe-long"))).toBe(
-      "This clip is 1 minute 40 seconds; the studio takes up to 1 minute 30 seconds.",
+      "This clip is 5 minutes 12 seconds; the studio takes up to 5 minutes.",
     );
   });
 
@@ -79,11 +79,12 @@ describe("footageRefusal", () => {
     );
   });
 
-  it("accepts exactly 90 seconds, refuses 90.4 as 1 minute 31 seconds", () => {
+  it("accepts 100 seconds and exactly 5 minutes, refuses 300.4 as 5 minutes 1 second", () => {
     const base = fixture("sdr-cfr")!;
-    expect(footageRefusal({ ...base, durationSeconds: 90 })).toBeNull();
-    expect(footageRefusal({ ...base, durationSeconds: 90.4 })).toBe(
-      "This clip is 1 minute 31 seconds; the studio takes up to 1 minute 30 seconds.",
+    expect(footageRefusal({ ...base, durationSeconds: 100 })).toBeNull();
+    expect(footageRefusal({ ...base, durationSeconds: 300 })).toBeNull();
+    expect(footageRefusal({ ...base, durationSeconds: 300.4 })).toBe(
+      "This clip is 5 minutes 1 second; the studio takes up to 5 minutes.",
     );
   });
 
@@ -116,6 +117,7 @@ describe("formatDuration", () => {
     [90, "1 minute 30 seconds"],
     [130, "2 minutes 10 seconds"],
     [120, "2 minutes"],
+    [300, "5 minutes"],
   ])("%s seconds is %s", (seconds, words) => {
     expect(formatDuration(seconds)).toBe(words);
   });

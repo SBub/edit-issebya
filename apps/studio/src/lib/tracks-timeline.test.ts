@@ -17,6 +17,7 @@ import {
   formatClock,
   formatClockMs,
   frameIndexAt,
+  frameTileAt,
   itemTitle,
   rulerTicks,
   scrubKey,
@@ -33,7 +34,9 @@ function parsed(json: unknown, transcriptJson: unknown) {
   return { edit: result.edit as Edit, transcript };
 }
 
-const LAYOUT = { everySeconds: 2, columns: 32, width: 90, height: 160 };
+const LAYOUT = { everySeconds: 2, columns: 32, rows: 5, width: 90, height: 160 };
+// A layout written before the sprite had rows.
+const ONE_ROW = { ...LAYOUT, rows: 1 };
 // The behind fixture's VISUAL span on the reel's clock.
 const VISUAL_START = 5.206;
 const VISUAL_END = 7.838;
@@ -207,13 +210,30 @@ describe("frameIndexAt", () => {
     expect(frameIndexAt(1.99, LAYOUT)).toBe(0);
     expect(frameIndexAt(2, LAYOUT)).toBe(1);
     expect(frameIndexAt(63.9, LAYOUT)).toBe(31);
+    expect(frameIndexAt(64, LAYOUT)).toBe(32);
+    expect(frameIndexAt(299.9, LAYOUT)).toBe(149);
   });
 
-  it("clamps to the sprite: before the clip, past 64 s, not a number", () => {
+  it("clamps to the sprite: before the clip, past its last frame, not a number", () => {
     expect(frameIndexAt(-1, LAYOUT)).toBe(0);
-    expect(frameIndexAt(64, LAYOUT)).toBe(31);
-    expect(frameIndexAt(500, LAYOUT)).toBe(31);
+    expect(frameIndexAt(320, LAYOUT)).toBe(159);
+    expect(frameIndexAt(500, LAYOUT)).toBe(159);
     expect(frameIndexAt(Number.NaN, LAYOUT)).toBe(0);
+  });
+
+  it("clamps a one-row sprite past 64 s", () => {
+    expect(frameIndexAt(64, ONE_ROW)).toBe(31);
+    expect(frameIndexAt(500, ONE_ROW)).toBe(31);
+  });
+});
+
+describe("frameTileAt", () => {
+  it("fills each row of columns before the next row", () => {
+    expect(frameTileAt(0, LAYOUT)).toEqual({ column: 0, row: 0 });
+    expect(frameTileAt(31, LAYOUT)).toEqual({ column: 31, row: 0 });
+    expect(frameTileAt(32, LAYOUT)).toEqual({ column: 0, row: 1 });
+    expect(frameTileAt(149, LAYOUT)).toEqual({ column: 21, row: 4 });
+    expect(frameTileAt(31, ONE_ROW)).toEqual({ column: 31, row: 0 });
   });
 });
 

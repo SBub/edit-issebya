@@ -5,7 +5,7 @@ import type { ToolPaths } from "./tools.ts";
 
 // The one place the footage limits live; the other rules (a video, with
 // sound, vertical) are yes or no.
-export const FOOTAGE_LIMITS = { maxSeconds: 90 } as const;
+export const FOOTAGE_LIMITS = { maxSeconds: 300 } as const;
 
 export const NOT_A_VIDEO = "This file is not a video. Upload a clip from your phone (MP4 or MOV).";
 export const NO_SOUND = "This clip has no sound. The studio needs your voice to make the captions.";
@@ -46,7 +46,7 @@ function isImageContainer(formatName: string | null): boolean {
 }
 
 // The human reason the footage is refused, or null when it is accepted. The
-// first failing rule wins: a video, with sound, vertical, at most 90 seconds.
+// first failing rule wins: a video, with sound, vertical, at most 5 minutes.
 export function footageRefusal(probe: Probe | null): string | null {
   if (!probe || isImageContainer(probe.formatName)) return NOT_A_VIDEO;
   if (!probe.audio) return NO_SOUND;

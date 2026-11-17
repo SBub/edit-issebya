@@ -229,7 +229,7 @@ test("an uploaded clip goes through every pipeline step, gets version 1 and the 
     footage: previewRef("footage-preview.mp4"),
     thumbnail: previewRef("thumbnail.jpg"),
     frames: previewRef("frames.jpg"),
-    frames_layout: { everySeconds: 2, columns: 32, width: 90, height: 160 },
+    frames_layout: { everySeconds: 2, columns: 32, rows: 5, width: 90, height: 160 },
   });
   const { data: versions } = await admin
     .from("versions")

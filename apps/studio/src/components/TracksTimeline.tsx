@@ -13,6 +13,7 @@ import {
   type TimelineItem,
   clockText,
   frameIndexAt,
+  frameTileAt,
   itemTitle,
   rulerTicks,
   scrubKey,
@@ -68,6 +69,7 @@ function FootageFrames({ item, frames }: { item: TimelineItem; frames: TimelineF
       {Array.from({ length: count }, (_, tile) => {
         const centre = width > 0 ? (((tile + 0.5) * TILE_PX) / width) * length : 0;
         const index = frameIndexAt(centre, layout);
+        const { column, row } = frameTileAt(index, layout);
         return (
           <div
             key={tile}
@@ -76,8 +78,8 @@ function FootageFrames({ item, frames }: { item: TimelineItem; frames: TimelineF
             style={{
               width: TILE_PX,
               backgroundImage: `url("${frames.url}")`,
-              backgroundSize: `${layout.columns * TILE_PX}px ${FOOTAGE_ROW_PX}px`,
-              backgroundPosition: `${-index * TILE_PX}px 0`,
+              backgroundSize: `${layout.columns * TILE_PX}px ${layout.rows * FOOTAGE_ROW_PX}px`,
+              backgroundPosition: `${-column * TILE_PX}px ${-row * FOOTAGE_ROW_PX}px`,
             }}
           />
         );

@@ -651,6 +651,20 @@ test("tracks: rows at resolveTimeline's times, footage frames, nothing focusable
   expect(await frame.evaluate((el) => getComputedStyle(el).backgroundImage)).toMatch(
     /\/cache\/preview_copies\/[0-9a-f]{64}\/frames\.jpg/,
   );
+  // The sprite has 5 rows of 32 frames (enough for 5 minutes of footage): the
+  // background is 32 tiles wide and 5 tiles (9:16) tall, and a frame of this
+  // short reel sits in its first row.
+  const sprite = await frame.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      size: style.backgroundSize.split(" ").map((part) => Number.parseFloat(part)),
+      top: style.backgroundPosition.split(" ")[1],
+      tile: el.getBoundingClientRect().width,
+    };
+  });
+  expect(sprite.size[0]).toBeCloseTo(sprite.tile * 32, 1);
+  expect(sprite.size[1]).toBeCloseTo(((sprite.tile * 16) / 9) * 5, 1);
+  expect(sprite.top).toBe("0px");
 
   // The rows are read only: nothing in them takes focus or a drag. The ruler
   // is the timeline's one focusable element.

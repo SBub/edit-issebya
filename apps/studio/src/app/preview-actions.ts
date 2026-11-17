@@ -138,6 +138,7 @@ export async function loadPreviewSources(
           ? {
               everySeconds: sprite.everySeconds,
               columns: sprite.columns,
+              rows: sprite.rows,
               width: sprite.width,
               height: sprite.height,
             }

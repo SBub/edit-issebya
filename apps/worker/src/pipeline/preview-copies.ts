@@ -1,18 +1,32 @@
 import { rename } from "node:fs/promises";
 import { join } from "node:path";
 import type { PipelineStep } from "./definition.ts";
+import { FOOTAGE_LIMITS } from "./footage-check.ts";
 
 // 2: the footage copy only (no cut-out copy since the cut-out left the pipeline).
 // 3: also a thumbnail and a frames sprite.
-const PREVIEW_VERSION = 3;
+// 4: the frames sprite in rows, enough for the longest accepted footage.
+const PREVIEW_VERSION = 4;
 
-// The studio's frames sprite: one row of small frames, one every two
-// seconds (32 cover 64 s; a longer reel's later frames are simply absent).
-export const FOOTAGE_FRAMES = { everySeconds: 2, columns: 32, width: 90, height: 160 };
+const FRAME_EVERY_SECONDS = 2;
+const FRAME_COLUMNS = 32;
+
+// The studio's frames sprite: small frames, one every two seconds, in rows of
+// 32 (64 s a row), filled left to right and top to bottom. There are enough
+// rows for the longest footage the check accepts (5 rows for 5 minutes); the
+// retimed footage is never longer than its source, so no frame is missing.
+export const FOOTAGE_FRAMES = {
+  everySeconds: FRAME_EVERY_SECONDS,
+  columns: FRAME_COLUMNS,
+  rows: Math.ceil(FOOTAGE_LIMITS.maxSeconds / (FRAME_EVERY_SECONDS * FRAME_COLUMNS)),
+  width: 90,
+  height: 160,
+};
 
 // A small copy of the footage for the studio's live preview (D5), built for
-// Chrome: about 1.3 Mbit/s, so about 8 MB for a 50 s reel. Same frame
-// timing as the source, a keyframe every second for seeking.
+// Chrome: about 1.3 Mbit/s, so about 8 MB for a 50 s reel and about 50 MB for
+// 5 minutes. Same frame timing as the source, a keyframe every second for
+// seeking.
 export const PREVIEW_SETTINGS = {
   width: 540,
   height: 960,
@@ -124,7 +138,8 @@ export function thumbnailArgs(input: string, output: string, settings: PreviewSe
   ];
 }
 
-// One JPEG: a single row of small frames, one every `everySeconds`.
+// One JPEG: `rows` rows of `columns` small frames, one every `everySeconds`
+// (a shorter footage leaves the later tiles black).
 export function framesArgs(input: string, output: string, settings: PreviewSettings): string[] {
   const f = settings.frames;
   return [
@@ -138,7 +153,7 @@ export function framesArgs(input: string, output: string, settings: PreviewSetti
     "0:v:0",
     "-an",
     "-vf",
-    `fps=1/${f.everySeconds},scale=${f.width}:${f.height},tile=${f.columns}x1`,
+    `fps=1/${f.everySeconds},scale=${f.width}:${f.height},tile=${f.columns}x${f.rows}`,
     "-frames:v",
     "1",
     "-q:v",

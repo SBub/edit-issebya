@@ -54,10 +54,10 @@ afterAll(async () => {
 });
 
 describe("checkFootage with the real ffprobe", () => {
-  it("refuses a 100-second portrait clip as too long", async () => {
-    const path = await clip("long.mp4", { size: "90x160", seconds: 100 });
+  it("refuses a 310-second portrait clip as too long", async () => {
+    const path = await clip("long.mp4", { size: "90x160", seconds: 310 });
     expect(await verdict(path)).toBe(
-      "This clip is 1 minute 40 seconds; the studio takes up to 1 minute 30 seconds.",
+      "This clip is 5 minutes 10 seconds; the studio takes up to 5 minutes.",
     );
   });
 
