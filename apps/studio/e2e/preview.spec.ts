@@ -212,16 +212,18 @@ test("the clock waits until the footage can play, on play and after a seek", asy
     }
     // Held until released: nothing of the footage can play before.
     await firstGate;
-    // Then the first three quarters of the file only (about 2.0 s of the 2.69 s
-    // copy): the end of the reel cannot play. Chromium's media reader waits
-    // for whole 32 KiB blocks, so a smaller slice of this 44 KB fixture never
-    // reaches metadata and the clock could never start.
+    // Then the first three quarters of the file only, and never less than one
+    // whole 32 KiB block (about 2.0 s of the 2.7 s copy): the end of the reel
+    // cannot play. Chromium's media reader waits for whole 32 KiB blocks, so a
+    // smaller slice never reaches metadata and the clock could never start
+    // (three quarters of the 44 KB fixture is 33 KB, just over one block).
     const headers = Object.fromEntries(
       Object.entries(route.request().headers()).filter(([name]) => name.toLowerCase() !== "range"),
     );
     const full = await route.fetch({ headers });
     const body = await full.body();
-    const slice = body.subarray(0, Math.floor((body.byteLength * 3) / 4));
+    const slice = body.subarray(0, Math.max(Math.floor((body.byteLength * 3) / 4), 32 * 1024));
+    expect(slice.byteLength).toBeLessThan(body.byteLength);
     await route.fulfill({
       status: 206,
       headers: {
@@ -465,13 +467,14 @@ test.describe("a LIST item on the speech clip", () => {
     // in 0.3 s before its first word and its out-fade runs over the 0.3 s after
     // its last word, unless the next text starts first, so the phrase is at full
     // opacity while spoken. The start anchor is the engine's own pick for 0.3 s
-    // before w0028; the end is clipped at the next caption here (checked below
-    // from the resolved spans, not from the anchor).
+    // before w0028 (the word it anchors to follows the fixture's word times);
+    // both its times are checked below from the resolved spans, not from the
+    // anchors.
     expect(edit.tracks.transitions).toEqual([
       expect.objectContaining({
         type: "numbered",
         words: ["w0028", "w0029", "w0030", "w0031", "w0032"],
-        start: expect.objectContaining({ edge: "end", word: "w0026" }),
+        start: expect.objectContaining({ edge: "end" }),
         end: expect.objectContaining({ edge: "end" }),
         key: "w0031",
         list: 1,

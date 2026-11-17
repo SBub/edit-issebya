@@ -72,16 +72,19 @@ describe("a card the owner adds", () => {
     }
   });
 
-  it("starts on the word under the playhead, else the next one, and lasts a fixed time", () => {
+  it("starts on the word under the playhead, in a pause the one just spoken, and lasts a fixed time", () => {
     const at = word("w10");
     expect(ownerAddWord(hook.transcript, (at.start + at.end) / 2)?.id).toBe("w10");
     const gap = hook.transcript.words.findIndex(
       (entry, index) => hook.transcript.words[index + 1]!.start > entry.end + 0.05,
     );
     const before = hook.transcript.words[gap]!;
-    expect(ownerAddWord(hook.transcript, before.end + 0.01)?.id).toBe(
-      hook.transcript.words[gap + 1]!.id,
-    );
+    // In the pause after a word, the card starts on that word, so it is on
+    // screen at the paused moment.
+    expect(ownerAddWord(hook.transcript, before.end + 0.01)?.id).toBe(before.id);
+    // Before the first word, the first; after the last, the last.
+    expect(ownerAddWord(hook.transcript, -1)?.id).toBe(hook.transcript.words[0]!.id);
+    expect(ownerAddWord(hook.transcript, 1e6)?.id).toBe(hook.transcript.words.at(-1)!.id);
     expect(ownerAddSpan(hook.edit, hook.transcript, "w10")).toEqual({
       start: at.start,
       end: Math.round((at.start + OWNER_ADD_SECONDS) * 1000) / 1000,

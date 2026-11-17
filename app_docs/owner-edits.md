@@ -197,8 +197,11 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
   when no other sound starts within the click's gap (0.25 s, `minGapSeconds`) of it, so the
   `sound-gap` check holds. Refused with reasons: an id already in the edit, a photo not in
   `photos`, a word with no span, a width outside its range.
-- `ownerAddWord(transcript, seconds)`: the word under the playhead (spoken then), else the next one,
-  else the last. `nextOwnerVisualId(edit)`: one past the highest `owner-visual-N`.
+- `ownerAddWord(transcript, seconds)`: the word under the playhead (spoken then); in a pause between
+  words the last one spoken before it, so the card is on screen at the paused moment (with aligned
+  word times, `app_docs/pipeline.md`, the transcript has gaps between words; it used to take the next
+  word, and a card added in a pause then started after the paused moment); before the first word,
+  the first. `nextOwnerVisualId(edit)`: one past the highest `owner-visual-N`.
 - `ownerAddPlacement(edit, photo, span, context)`: where the studio puts a new card: the engine's
   own placement of a `visual/card` (`placeElement`: a corner, else beside the face, the card's full
   width where it fits, at the photo's aspect) over the span's faces, with what is on screen then as
@@ -648,7 +651,7 @@ moved, a resized and a widened component match between preview and export`: the 
   `settleOwnerMove`; a swap settled with its photo, counted by `effectiveMoves`, recorded as
   `swapped` with `photo_id`, `replaced` (the stand-in's file), the photo's description and tags and
   the words spoken. `packages/edit/src/owner-add.test.ts`: `parseOwnerAdds` (absent, a malformed
-  card, more than 20); the word under the playhead and the next one; the 1.5 s span, cut by the
+  card, more than 20); the word under the playhead, the one just spoken in a pause, the first and the last; the 1.5 s span, cut by the
   reel's end and the next hidden footage, none inside it or with under 0.5 s left;
   `nextOwnerVisualId`; a card added at the end of the track with the photo at its aspect, its
   description, `inputs.photos`, its time and its click; no click within the gap of another sound

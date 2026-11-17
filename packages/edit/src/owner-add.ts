@@ -88,14 +88,16 @@ export function nextOwnerVisualId(edit: Pick<Edit, "tracks">): string {
   return `owner-visual-${highest + 1}`;
 }
 
-// The word under the playhead: the one spoken at `seconds`, else the next one
-// to be spoken, else the last. Null for a reel with no words.
+// The word under the playhead: the one spoken at `seconds`; in a pause
+// between words, the last one spoken before it, so the card is already on
+// screen at the paused moment (the transcript's words have gaps between them);
+// before the first word, the first. Null for a reel with no words.
 export function ownerAddWord(transcript: Transcript, seconds: number): Word | null {
   const { words } = transcript;
   return (
     words.find((word) => word.start <= seconds && seconds < word.end) ??
-    words.find((word) => word.start >= seconds) ??
-    words.at(-1) ??
+    words.findLast((word) => word.start <= seconds) ??
+    words[0] ??
     null
   );
 }
