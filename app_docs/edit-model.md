@@ -35,6 +35,12 @@ types until slice 9 brings the live preview.
   showing its stand-in picture, a corner card (the `visual/card` entry), always in front: `box` its place
   and size, which the layout engine always writes, and `image`, the picture's file (one of
   `VISUAL_STAND_INS`, the layout engine's choice). A stored version without `image` renders the empty frame.
+  In place of `image` a VISUAL may show one of the owner's library photos, `photo: { id, width, height }`
+  (the `photos` row's id and pixel size, written by the worker from that row, never from the browser;
+  `app_docs/owner-edits.md`): never both on one card (a refinement refuses it), and the card takes the
+  photo's aspect ratio. The builder draws it like a stand-in, its `<img>` naming
+  `photos/<id>.jpg` (`photoPath`), an asset of role `photo` with its `photoId`; the full page and the
+  front layer page name it, as they name the stand-ins.
   It may carry an optional
   `description` (a short plain phrase of what the frame would show, at most 120 characters, the
   decide answer's own limit is 8 words), which is never shown on screen; the builder draws a
@@ -61,6 +67,13 @@ types until slice 9 brings the live preview.
 start, end }` ref plus the span of the reel it covers, in seconds, by start). A version without
   behind items has none; a VISUAL needs no mask, so a version whose behind items are all VISUALs has none, and
   neither does a big word with `cutout: false`.
+- `inputs.photos`, optional: the library photos the VISUALs show, by id (uuid), sorted, each once,
+  written from the tracks (`withPhotoInputs`, `src/photos.ts`) and checked against them by a
+  refinement (a photo shown and not named, or named and not shown, is refused). A version showing no
+  photo has none. The preview signs each one's large copy and the render downloads it, both from the
+  photo's own `photos` row (`app_docs/preview.md`, `app_docs/export.md`).
+- Several VISUALs may show at the same moment (an owner's added card over the engine's, say): each
+  is a card on track 30, drawn in the `behind` track's order, so a later card is on top.
 - Every item has an `id` (`^[a-z][a-z0-9-]{0,63}$`, unique across tracks), a `start` and an `end`
   anchor. An anchor is a word (`{ word, edge?: "start" | "end", offset? }`, offset within plus or
   minus 1 s), a time in seconds (`{ time }`, only where nobody speaks) or the reel's edge
@@ -717,7 +730,10 @@ never fatal.
   baseline and versions tests, a build of the 50-second edit under 200 ms and a caption drawn above a
   card that overlaps it (the text track 50 after the visual track 30; `src/build.test.ts`), and
   `src/behind.test.ts` (visual boxes, mask spans padded, clamped and merged, a visual left out
-  of them). Each placed fixture's page and widths are compared with its golden in both projects
+  of them), and `src/photos.test.ts` (a VISUAL showing a library photo: `inputs.photos` sorted and
+  each once, a stand-in and a photo on one card refused, inputs that do not name the photos shown
+  refused, the photo's `<img>` and its `photo` asset on the full and front pages and never on the
+  behind page, and two cards at one moment both on track 30, the later one drawn after). Each placed fixture's page and widths are compared with its golden in both projects
   (`src/build.test.ts`, `src/build.browser.test.ts`); the two engine inputs (`rethink-work-hand`,
   `rethink-work-behind`) have no golden, since their captions have no positions.
   `src/build-layers.test.ts`: `full` equals the page built with no option; the `behind` page holds

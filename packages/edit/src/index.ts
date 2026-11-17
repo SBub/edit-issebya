@@ -122,6 +122,7 @@ export {
   build,
   maskPath,
 } from "./build.ts";
+export { type EditPhoto, photoPath, withPhotoInputs } from "./photos.ts";
 export { type PlacedComponent } from "./components.ts";
 export {
   type OwnerBoxMove,

@@ -21,6 +21,9 @@ export interface PlacedComponent extends Span {
   // A VISUAL the owner turned: whole degrees clockwise about its box's centre
   // (`x` to `height` are its box upright). Absent for an upright one.
   rotation?: number;
+  // A VISUAL's picture: its library photo's id, or its stand-in's file;
+  // absent for an empty frame and for a text.
+  picture?: string;
 }
 
 // Every component of a built page with its box: the builder's own text boxes
@@ -97,6 +100,11 @@ export function placedComponents(
         width: item.box.width,
         height: item.box.height,
         ...(item.rotation ? { rotation: item.rotation } : {}),
+        ...(item.photo
+          ? { picture: item.photo.id }
+          : item.image !== undefined
+            ? { picture: item.image }
+            : {}),
       });
       continue;
     }

@@ -156,7 +156,7 @@ function visualOf(edit: Edit, id: string): BehindVisualItem | null {
 // width, so a move that only moves changes nothing else.
 function boxHeight(item: BehindVisualItem, width: number): number {
   if (Math.abs(width - item.box.width) < SLACK) return item.box.height;
-  const picture = VISUAL_STAND_INS.find((entry) => entry.file === item.image);
+  const picture = item.photo ?? VISUAL_STAND_INS.find((entry) => entry.file === item.image);
   const aspect = picture ? picture.height / picture.width : item.box.height / item.box.width;
   return Math.max(1, Math.round(width * aspect));
 }
