@@ -34,7 +34,7 @@ describe("soundHits", () => {
       {
         id: "click-a",
         file: "assets/sounds/mouse-click-trimmed.wav",
-        at: 0.267,
+        at: 0.309,
         // The click at the preset's -6 dB, the same as the export's data-volume.
         gain: expect.closeTo(10 ** (-6 / 20), 10),
         duration: 0.23,
@@ -42,7 +42,7 @@ describe("soundHits", () => {
       {
         id: "click-b",
         file: "assets/sounds/mouse-click-trimmed.wav",
-        at: 0.881,
+        at: 0.825,
         gain: expect.closeTo(0.50119, 4),
         duration: 0.23,
       },

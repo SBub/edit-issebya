@@ -7,8 +7,8 @@
 ## Overview
 
 The worker (`apps/worker`) runs in a Docker container on the owner's Mac (Docker Desktop). Everything
-a job runs is inside the image: ffmpeg, HyperFrames with Chromium and whisper, the MODNet cut-out
-(`onnxruntime-node` on the CPU) and the AI calls (OpenRouter over HTTPS, `OPENROUTER_API_KEY` from the
+a job runs is inside the image: ffmpeg, HyperFrames with Chromium and whisper, the word aligner,
+the MODNet cut-out (`onnxruntime-node` on the CPU) and the AI calls (OpenRouter over HTTPS, `OPENROUTER_API_KEY` from the
 env file). Nothing runs natively on the Mac for the worker; web, studio, Supabase and the otel-lgtm
 monitoring stay as they are.
 
@@ -19,16 +19,17 @@ The worker code is unchanged: the container runs the same `src/main.ts`, step ru
 
 Where each piece runs:
 
-| piece                  | where                           | how the worker reaches it                                                  |
-| ---------------------- | ------------------------------- | -------------------------------------------------------------------------- |
-| worker (`src/main.ts`) | container                       | `docker compose up`                                                        |
-| cut-out (MODNet)       | container, this Node            | `maskToolCall`, the model at `/repo/apps/worker/models` (committed)        |
-| head track (U2Net)     | container, this Node            | `u2netArgs`, the model at `/repo/apps/worker/models` (committed)           |
-| AI calls               | OpenRouter (internet)           | `OPENROUTER_API_KEY` from the env file                                     |
-| Supabase (local)       | Mac, 54431                      | `SUPABASE_URL=http://host.docker.internal:54431` (compose)                 |
-| OTLP (otel-lgtm)       | Mac, 4318                       | `OTEL_EXPORTER_OTLP_ENDPOINT` from `WORKER_DOCKER_OTLP_ENDPOINT` (compose) |
-| R2, PostHog            | internet                        | from the env file, unchanged                                               |
-| scratch folder         | container, the `scratch` volume | `WORKER_SCRATCH_DIR=/scratch` (compose)                                    |
+| piece                   | where                           | how the worker reaches it                                                  |
+| ----------------------- | ------------------------------- | -------------------------------------------------------------------------- |
+| worker (`src/main.ts`)  | container                       | `docker compose up`                                                        |
+| cut-out (MODNet)        | container, this Node            | `maskToolCall`, the model at `/repo/apps/worker/models` (committed)        |
+| head track (U2Net)      | container, this Node            | `u2netArgs`, the model at `/repo/apps/worker/models` (committed)           |
+| word aligner (wav2vec2) | container, this Node            | `alignArgs`, the model at `/repo/apps/worker/models` (fetched at build)    |
+| AI calls                | OpenRouter (internet)           | `OPENROUTER_API_KEY` from the env file                                     |
+| Supabase (local)        | Mac, 54431                      | `SUPABASE_URL=http://host.docker.internal:54431` (compose)                 |
+| OTLP (otel-lgtm)        | Mac, 4318                       | `OTEL_EXPORTER_OTLP_ENDPOINT` from `WORKER_DOCKER_OTLP_ENDPOINT` (compose) |
+| R2, PostHog             | internet                        | from the env file, unchanged                                               |
+| scratch folder          | container, the `scratch` volume | `WORKER_SCRATCH_DIR=/scratch` (compose)                                    |
 
 ### Image
 
@@ -49,6 +50,12 @@ dependencies and the apps the worker does not run out of the context):
   no download stage and no model folder of its own (`apps/worker/src/dockerfile.test.ts`). Each
   model's size and SHA-256 are checked before each run (`verifyModel`, `verifyU2netModel`). The
   models are not among the folders compose mounts in development, so a new model needs a rebuild.
+- The transcribe step's word aligner model (`wav2vec2-base-960h.onnx`, 378 MB, too large to
+  commit): the `aligner` build stage fetches it from Hugging Face at the revision and SHA-256
+  pinned in `align-model.ts` (`ALIGN_MODEL_REVISION`; `sha256sum -c` fails the build on any other
+  file) and the runtime stage copies it to `/repo/apps/worker/models/`, beside the committed models.
+  `.dockerignore` keeps a local copy from `models:fetch` out of the build context. It makes the
+  image about 378 MB larger. Its size and SHA-256 are checked before each run (`verifyAlignModel`).
 - Yarn 4 through corepack, `yarn workspaces focus @edit-issebya/worker` (with `LEFTHOOK=0`), which
   installs `onnxruntime-node`'s prebuilt Linux binary for the image's platform, then the worker's
   source. Runs as `node`, with `CMD node src/main.ts`.
@@ -123,7 +130,11 @@ memory limit on the worker, so the VM's size is the only ceiling.
 - Never change the MODNet pin in one place only: `modnet-model.ts` and the Dockerfile's `MODNET_*`
   `ARG` lines change together (`dockerfile.test.ts` checks it), with `MASK_TOOL_VERSION` when the
   masks change.
-- Never download a model at job time in the container: the image carries the MODNet, U2Net and whisper models.
+- Never download a model at job time in the container: the image carries the MODNet, U2Net,
+  aligner and whisper models.
+- Never change the aligner's pin in one place only: `align-model.ts` and the Dockerfile's `aligner`
+  stage (`ALIGN_MODEL_REVISION`, the SHA-256, the file name) change together (`dockerfile.test.ts`
+  checks it).
 - Never put a secret in the image or in a compose file: secrets come only from the env file
   (`env_file`), and `.dockerignore` keeps every `.env*` file out of the build context.
 - Never drop the empty `OTEL_EXPORTER_OTLP_HEADERS` from `compose.yaml`: it keeps a PostHog token in
@@ -131,8 +142,9 @@ memory limit on the worker, so the VM's size is the only ceiling.
 
 ## Testing
 
-- `yarn workspace @edit-issebya/worker test` (pure): `dockerfile.test.ts` (the Dockerfile's MODNet pin
-  and path match `modnet-model.ts`), and `time-report.test.ts` (the GNU report branch the container uses).
+- `yarn workspace @edit-issebya/worker test` (pure): `dockerfile.test.ts` (the committed models are
+  copied with the worker's folder, the aligner stage's URL, revision, SHA-256 and copy match
+  `align-model.ts`, `.dockerignore` keeps the local copy out), and `time-report.test.ts` (the GNU report branch the container uses).
 - Manual (the owner's Mac, Docker Desktop): `docker compose build worker`, then the doctor in the
   container. The result of the last run is in the Notes.
 

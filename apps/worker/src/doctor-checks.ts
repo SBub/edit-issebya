@@ -68,6 +68,9 @@ export interface DoctorDeps {
   // its pinned size and hash, one run on a 1-second sample (written to `output`), and
   // ffprobe of a file.
   maskTool: () => MaskToolDeps;
+  // The transcribe step's word aligner: its fetched model checked against its
+  // pinned size and hash (`verifyModel` rejects with one line naming the fix).
+  aligner: () => { verifyModel: () => Promise<void>; modelSha256: string };
   // The scratch folder and whether it exists or can be created (never created).
   scratchDir: () => Promise<{ dir: string; state: "exists" | "can be created" }>;
 }
@@ -294,6 +297,11 @@ export async function runDoctor(
     ...(await promptChecks(deps)),
     ...(options.ai ? await aiChecks(deps) : []),
     await check("mask tool", () => maskToolCheck(deps.maskTool())),
+    await check("aligner", async () => {
+      const aligner = deps.aligner();
+      await aligner.verifyModel();
+      return `wav2vec2 ${aligner.modelSha256.slice(0, 8)}`;
+    }),
     // Last, so the earlier lines keep their places.
     await check("scratch dir", async () => {
       const { dir, state } = await deps.scratchDir();

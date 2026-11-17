@@ -10,7 +10,7 @@
 ## Overview
 
 After an upload the worker's `process` job runs five fixed steps as plain TypeScript, with no AI:
-`convert` (phone footage to steady H.264), `transcribe` (word timings from HyperFrames), `retime`
+`convert` (phone footage to steady H.264), `transcribe` (the words from Whisper through HyperFrames, each word's start and end from a forced aligner), `retime`
 (a light speed-up planned from the transcript and the audio), `head_track` (the head position every
 0.25 s, from its own sampled person mask) and `preview_copies` (a small copy of the footage for the
 studio's live preview). Each step is cached in R2
@@ -53,6 +53,48 @@ live status shows one line per step (`name: summary`).
   normalised into the studio format `{ words: [{ id, text, start, end }] }` (seconds, three
   decimals, ids `w0001`... by position). Always the multilingual `small` model told the language:
   `small.en` and `base` drop or merge words on this footage. The HyperFrames version is a setting.
+  Whisper's words are right but its times are not: on the owner's quieter footage (reel dfba7e04,
+  116.7 s) it put "Friction" at 0.08 to 6.00 s (the voice starts at about 5.7 s), and 34 of 162
+  words held 0.4 s or more of silence (37.7 s in all). So the step keeps Whisper's words and ids
+  and takes every time from the aligner below (version 2; version 1 kept HyperFrames' times).
+- The word aligner (`align.ts`, `align-entry.ts`, `align-model.ts`), a second tool call of
+  `transcribe`: the worker's Node runs `align-entry --input <converted.mp4> --words <heard.json>
+--output <aligned.json> --threads <n> --model <onnx> --ffmpeg <path>` (`alignArgs`). It checks the
+  model against its pin, has ffmpeg decode the audio to 16 kHz mono floats (`alignDecodeArgs`), and
+  runs wav2vec2-base-960h (an English CTC model that spells capitals, the apostrophe and a word
+  separator) through `onnxruntime-node` on the CPU in pieces of 20 s with 1 s of audio heard but
+  not kept on each side (`chunksOf`; the input zero mean and unit variance per piece, as the model
+  was trained), one frame of letter probabilities per 20 ms. Then a CTC forced alignment
+  (`forcedAlign`: the Viterbi path through blank, letter, blank, ... in order over the whole clip)
+  places Whisper's words, spelled in the model's letters with the separator between them
+  (`wordTokens`, `transcriptTokens`; accents dropped, punctuation and anything else the model cannot
+  spell left out). A word lasts from its first letter's first frame to the end of its last letter's
+  last frame (`alignedTranscript`). No rule of ours moves a time. The fallback, for a word with no
+  letter the model spells (digits such as "2026", a symbol): such words take the gap between the
+  placed words around them, split evenly in order (from the clip's start or to its end at the
+  edges), so they are never cut; a transcript with no spellable word at all keeps Whisper's times.
+  One `@hf-progress` line per piece. `ALIGN_SETTINGS` (the model and its SHA-256, the rate, the
+  frame step, the receptive field, the piece and context lengths, `provider` `cpu`) is the `align`
+  setting of transcribe, so another model re-runs it. The thread count (the machine's CPUs) is not
+  a setting. On the dfba reel it took about 8.5 s (1.5 GB peak); 0 of 162 words now hold even
+  0.2 s of silence, 0 start 0.2 s or more before their sound, 0 end 0.2 s or more into silence, and
+  "Friction" is 5.66 to 6.06 s.
+- The aligner's model (`align-model.ts`, `ALIGN_MODEL`): the float32 ONNX export of
+  facebook/wav2vec2-base-960h (Apache 2.0) published by Xenova/wav2vec2-base-960h, revision
+  `a19f851b3d42865797e410752b4c570c871e4825`, `onnx/model.onnx`, unchanged, 377,887,594
+  bytes, SHA-256 `e46614273f03ff4b87923a965e417fa72004825522cb007c9c25633b8475490d`. Too large to
+  commit, so it is fetched from that URL into `apps/worker/models/` (gitignored) by
+  `yarn workspace @edit-issebya/worker models:fetch` (`fetch-models.ts`: kept when it already
+  matches its pin, else fetched to `.part`, checked, renamed) and by the worker image's `aligner`
+  build stage (`app_docs/worker-container.md`); never at job time. A missing or changed file fails
+  the entry with `wav2vec2 model missing at <path>, restore it with yarn workspace
+@edit-issebya/worker models:fetch`. Its notice is in `apps/worker/models/THIRD_PARTY_NOTICES.md`.
+  Why float32: the two smaller exports are out. The float16 one (`onnx/model_fp16.onnx`, 189 MB)
+  places every word within one 20 ms frame of it on dfba, but crashes onnxruntime-node 1.31.1 on
+  Linux arm64 (the worker container on the owner's Mac) as soon as a session is created (heap
+  corruption, the process aborts), so every upload failed at transcribe; it runs on macOS. The int8
+  export (95 MB, the smallest) put whole words up to 5 s off (the closing "care of." on a later
+  untranscribed "yes").
 - `apps/worker/src/pipeline/envelope.ts`, `retime-plan.ts`, `retime-encode.ts`, `retime.ts`: a 10 ms
   RMS envelope in dB, a pure planner and one ffmpeg encode. Outputs `source.mp4` (retimed footage),
   `transcript.json` (same ids, new times), `retime.json` (the plan: original to new time map) and
@@ -396,6 +438,9 @@ inputs name the old retime outputs) does not re-run retime.
   `R2_KEY_PREFIX` (a malformed value fails the config, naming the variable).
 - `HYPERFRAMES_NO_TELEMETRY` is forced to `1` for HyperFrames; the `hyperframes` dependency in
   `apps/worker/package.json` is pinned exactly.
+- `yarn workspace @edit-issebya/worker models:fetch`, once per checkout for a native worker, the
+  tools tests and `fixtures:pipeline`: fetches the aligner's model (378 MB) into
+  `apps/worker/models/`. The worker image fetches it at build.
 - `yarn doctor` in the worker checks that ffmpeg and ffprobe are 7.0 or newer (one line, for
   example `ffmpeg 6.1 found, 7 or newer is needed for HEIC photos (-show_stream_groups)`; a git
   build without a version number passes), and the ffmpeg filters `zscale`, `tonemap`, `atempo`, `astats`,
@@ -405,7 +450,8 @@ inputs name the old retime outputs) does not re-run retime.
   real entry and checks the mask is H.264 at the sample's size with 30 frames (give or take one),
   for example `modnet a293b5ae, 1 s masked in 9.4 s`; a missing model fails the line with
   `MODNet model missing at <path>, restore it with git checkout -- apps/worker/models/modnet_int8_13.onnx`.
-  It checks that `OPENROUTER_API_KEY` is set, fetches the five PostHog prompts by name (no AI call;
+  Its `aligner` line checks the aligner's model has its pinned size and SHA-256
+  (`wav2vec2 e4661427`); a missing one names `models:fetch`. It checks that `OPENROUTER_API_KEY` is set, fetches the five PostHog prompts by name (no AI call;
   `POSTHOG_PERSONAL_API_KEY`, `app_docs/decide-step.md`, "Prompts"), and makes no AI call; `doctor --ai`
   adds the two paid OpenRouter calls and the image call.
 - The MODNet model needs no install: it is the committed `apps/worker/models/modnet_int8_13.onnx`,
@@ -421,14 +467,17 @@ inputs name the old retime outputs) does not re-run retime.
   audio with a transcript pinned at 0, word starts moved to the speech onset from a removed or a
   kept silence, a cut at a speed boundary, a clip silent throughout; the reference's longest
   silence is 0.31 s, so the default cuts nothing there), `retime-encode.test.ts` (audio and video
-  of every planned piece trimmed at the same frame), `head-track-step.test.ts` (the sample, count, chunk, join
+  of every planned piece trimmed at the same frame), `align.test.ts` (the model's spelling of a
+  word, the normalised input, the pieces tiling the clip's frames, the forced alignment on
+  synthetic emissions, the times of each word and the fallback for words it cannot spell, the
+  decode arguments), `align-model.test.ts` (the pin, the fetch command when the file is missing,
+  the notice), `transcribe.test.ts` (the aligner's arguments, its settings in the fingerprint), `head-track-step.test.ts` (the sample, count, chunk, join
   and decode calls, the chunks' weighted progress, a failed chunk), `u2net.test.ts` (the model's
   input and mask, the chunks and their threads, the decode and encode arguments),
   `u2net-model.test.ts` (the pin, the file, the notice), and `pipeline-fixtures.test.ts`, which fails when a
   version or setting change leaves either clip's outputs stale (`fixtures/pipeline/` and
   `fixtures/pipeline/speech-ten/`).
-- `yarn workspace @edit-issebya/worker test:tools` (`*.tools.test.ts`): real ffmpeg and HyperFrames
-  on `fixtures/footage/short-speech.mp4`; `head-track.tools.test.ts` runs `head_track` and
+- `yarn workspace @edit-issebya/worker test:tools` (`*.tools.test.ts`): real ffmpeg, HyperFrames and the aligner (its model fetched once with `models:fetch`) on `fixtures/footage/short-speech.mp4`; `head-track.tools.test.ts` runs `head_track` and
   `preview_copies` on `fixtures/footage/short-person.mp4` (the real U2Net entry with the
   committed int8 model, the same track byte for byte in one chunk, in four and by the machine's
   split, at least 80 percent of head samples found, no mask, sample clip or raw frames left, one 540x960 footage preview of the source's duration);
@@ -465,6 +514,15 @@ inputs name the old retime outputs) does not re-run retime.
 - Retime cuts silence by the audio envelope only, never by the transcript's word intervals, and
   never removes a frame of a non-silent run; word starts follow the audio (rule 6), never the
   other way round.
+- Transcribe takes Whisper's words and the aligner's times only. Never add a rule of our own that
+  moves a word time; a word the model cannot spell gets the documented fallback, nothing else.
+- Never commit the aligner's model, never fetch it at job time, and never change its pin in one
+  place only: `align-model.ts`, the Dockerfile's `aligner` stage (`ALIGN_MODEL_REVISION` and the
+  SHA-256, `dockerfile.test.ts` checks it) and the notice change together, with a new transcribe
+  fingerprint (`ALIGN_SETTINGS` names the model).
+- Never use the float16 export of the aligner's model (`onnx/model_fp16.onnx`): it crashes
+  onnxruntime-node on Linux arm64 (the worker container) when the session is created. Never use the
+  int8 export either: it misplaces whole words.
 - Bump a step's version whenever its behaviour changes, then re-run `fixtures:pipeline`.
 - Never report a head top below the mask's first opaque row: `headTopMargin` only raises it, and
   the width band is measured from the real row.

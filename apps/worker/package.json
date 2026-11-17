@@ -11,6 +11,7 @@
     "trace": "node --env-file-if-exists=.env.development src/trace.ts",
     "eval": "node --env-file-if-exists=.env.development src/eval.ts",
     "fixtures:pipeline": "node --env-file-if-exists=.env.development src/make-pipeline-fixtures.ts",
+    "models:fetch": "node src/fetch-models.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

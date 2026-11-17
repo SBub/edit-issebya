@@ -5,7 +5,8 @@
 // name at POSTHOG_PROMPT_LABEL from POSTHOG_PROJECT_ID with
 // POSTHOG_PERSONAL_API_KEY (each line names name@vN, never the text), the
 // cut-out's mask tool (the MODNet
-// model's hash checked, run on one second of a sample), and the scratch folder
+// model's hash checked, run on one second of a sample), the word aligner's
+// model (fetched by `models:fetch`, its size and hash checked), and the scratch folder
 // (exists or can be created, never created here). With `--ai` it also makes one
 // tiny real structured AI call and one image call through OpenRouter (paid, a
 // fraction of a cent); without it no AI call is made. Prints one line per
@@ -22,6 +23,7 @@ import { scratchDirOf, workerConfig } from "./config.ts";
 import { maskToolCall } from "./cutout/mask-tool.ts";
 import { MODNET_MODEL, modnetModelPath, verifyModel } from "./cutout/modnet-model.ts";
 import { type DoctorDeps, runDoctor } from "./doctor-checks.ts";
+import { ALIGN_MODEL, alignModelPath, verifyAlignModel } from "./pipeline/align-model.ts";
 import { promptSourceOf } from "./prompts/select.ts";
 import type { PromptSource } from "./prompts/source.ts";
 import { hyperframesEnv, toolPaths } from "./pipeline/tools.ts";
@@ -133,6 +135,10 @@ const deps: DoctorDeps = {
         frames: Number(stream.nb_read_frames),
       };
     },
+  }),
+  aligner: () => ({
+    modelSha256: ALIGN_MODEL.sha256,
+    verifyModel: () => verifyAlignModel(alignModelPath()),
   }),
   async scratchDir() {
     const dir = scratchDirOf(process.env);

@@ -25,6 +25,18 @@ frames from the owner's reels. The modification is not endorsed by the U-2-Net a
 
 How the file was made is in `app_docs/pipeline.md` (the head track's model).
 
+## wav2vec2-base-960h.onnx
+
+wav2vec2-base-960h speech recognition model, by Facebook AI (Alexei Baevski, Henry Zhou,
+Abdelrahman Mohamed and Michael Auli). Source: https://huggingface.co/facebook/wav2vec2-base-960h.
+Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0). The
+file is the float32 ONNX export published by Xenova at
+https://huggingface.co/Xenova/wav2vec2-base-960h (onnx/model.onnx, revision
+a19f851b3d42865797e410752b4c570c871e4825, SHA-256
+e46614273f03ff4b87923a965e417fa72004825522cb007c9c25633b8475490d), used unchanged. It is not
+committed: `yarn workspace @edit-issebya/worker models:fetch` and the worker image's build fetch it
+into this folder.
+
 ## ONNX Runtime
 
 The models were quantised with, and run on, ONNX Runtime (https://github.com/microsoft/onnxruntime),
@@ -33,7 +45,7 @@ which is under the MIT License, Copyright (c) Microsoft Corporation. The worker 
 
 ## Apache License, Version 2.0
 
-The full text of the licence the MODNet and U-2-Net models are under:
+The full text of the licence the MODNet, U-2-Net and wav2vec2 models are under:
 
 ```text
                                  Apache License
