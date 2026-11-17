@@ -699,7 +699,9 @@ test("a visual, the same visual moved and resized and then turned by the owner, 
     // The owner then turns the moved card 45 degrees about its centre, its box
     // kept: the builder draws it with the `rotate` property in both, so the
     // turned version exports as its preview shows it, and against the upright
-    // card's previews the comparison sees the turn.
+    // card's previews the comparison sees the turn. Measured 2026-11-17: its
+    // lowest score against the upright previews was 0.94604, well below the
+    // bound, so the turn needs no threshold of its own.
     const turn = 45;
     const turnedId = await ownerEditTo(movedId, [
       { id: visualMove.id, kind: "box", x: card.x, y: card.y, width: card.width, rotation: turn },

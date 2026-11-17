@@ -505,15 +505,23 @@ component match between preview and export`: the guardrail's version with its ho
 draws it no wider than that and on no more lines than before) and its LIST moved 120 px, saved by a real `owner_edit` job, then exported and
 compared with its own preview at the guardrail's moments and bound. Its proof that the comparison
 sees the moves: the same export against the previews of the version before the moves must fall
-below the bound. Measured 2026-11-16 (the composite): 0.992532, 0.995585 and 0.995803 at 0.5, 1.5
-and 2.5 s; against the version before the moves 0.915802, 0.901661 and 0.919066. In the same run the
-guardrail scored 0.993226, 0.995332 and 0.996493. The bound is unchanged. These scores predate the
-widened hook (2026-11-16); the case has not been measured again since it was added.
+below the bound. Measured again 2026-11-17 with the widened hook (the composite): 0.992532, 0.995585
+and 0.995803 at 0.5, 1.5 and 2.5 s; against the version before the moves 0.915802, 0.901661 and
+0.919066. In the same run the guardrail scored 0.993226, 0.995332 and 0.996493, its 60 px probe
+0.993226, 0.971395 and 0.996492, and the question 0.995875, 0.993852 and 0.993295 (its probe
+0.955294). The bound is unchanged.
 
 In the behind case, the owner's VISUAL (moved and scaled by a real `owner_edit` job) is then turned
 45 degrees by another one (2026-11-17): its preview draws `rotate: 45deg` and no `transform`, its
 export is compared with its preview at the same moments and bound, and against the upright card's
-previews it must fall below the bound. Written, not run yet: no score is measured.
+previews it must fall below the bound. Measured 2026-11-17 (the composite): the photo behind the
+speaker 0.991497, 0.994721 and 0.996376 at 0.5, 1.5 and 2.5 s; the owner's card moved and scaled
+0.992318, 0.995543 and 0.996385, against the engine's previews 0.905033, 0.908259 and 0.996385; the
+card turned 45 degrees 0.992127, 0.995352 and 0.996383, against the upright card's previews
+0.94604, 0.949265 and 0.996383 (at 2.5 s the card is off screen, so both match). The turned case
+needs no threshold of its own: its lowest score against the upright previews (0.94604) is well
+below `PREVIEW_EXPORT_SSIM_BOUND`, and the check stays that the minimum falls below the bound. The
+big word behind scored 0.991366, 0.994109 and 0.993578. The bound is unchanged.
 
 Composition-box captures at device scale 1 (before the big word):
 

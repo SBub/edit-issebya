@@ -507,7 +507,9 @@ moved, a resized and a widened component match between preview and export`: the 
   its preview the same way, and against the engine's previews it falls below the bound. That
   version is then turned 45 degrees by another `owner_edit` job (its box kept): its preview draws
   `rotate: 45deg` and no `transform`, the export matches its preview at the bound, and against the
-  upright card's previews it falls below the bound. Written, not run yet.
+  upright card's previews it falls below the bound. Measured 2026-11-17: every case at or above
+  the bound, against the version before the moves at most 0.919066 mid-reel, and the turned card
+  against the upright previews 0.94604 at its lowest (`app_docs/export.md`).
 
 ## Rules
 
