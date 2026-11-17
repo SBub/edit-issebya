@@ -961,7 +961,9 @@ never fatal.
   (`afterSeconds`), in a new version; never refuse a stored version for an older, longer
   one.
 - Never click on anything but a visual or a big word coming in, never off its start, and never two
-  clicks closer than the sound's gap in a new version; never rewrite a stored version's sounds.
+  clicks closer than the sound's gap in a new version; never rewrite a stored version's sounds. A
+  card the owner adds (`applyOwnerAdds`, `app_docs/owner-edits.md`) adds only its own click, and
+  none within the gap of another sound.
 - Never place a stored version again: the builder keeps every stored position.
 - The engine is pure and deterministic: no randomness, no clock, no I/O.
 - Never remove a caption, set it below the floor, or put it outside the safe zone. A caption goes over

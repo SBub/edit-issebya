@@ -48,7 +48,10 @@ clicks through Web Audio. It is built and tested for Chrome.
   track and the two font files of the version's own `font_pair` (fetched once per page load and pair), loads
   `harfbuzzjs` by client-only dynamic import, calls `createMeasurer(hb, pair, fonts)` and `build`
   from `@edit-issebya/edit`, runs `previewPage`, fetches the sound files `soundHits` names, and hands
-  everything to the player. `photo-missing` shows `A photo in this version was deleted from the
+  everything to the player. The page's photo URLs are kept by path (`Built.photoUrls`): the
+  version's own, signed with the sources, and each photo the owner picks in the Move editor, from
+  the library's signed large copy, so a draft page shows a newly picked photo before it is saved
+  (`app_docs/owner-edits.md`). `photo-missing` shows `A photo in this version was deleted from the
 library` and `cutout-cleared` shows `This version's cut-out was cleared to save space; Export
 rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) once per mount, shows the
   waiting, error and "The preview is built for Chrome" lines, and reloads when `current_version_id`

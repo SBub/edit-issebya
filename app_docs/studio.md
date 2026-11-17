@@ -134,6 +134,11 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   `public.owner_moves` (owner-only `select`, `service_role` writes, its rows go with their reel: `reel_id`
   cascades) and `save_version`'s two parameters that write it. All of it is in
   `app_docs/owner-edits.md`.
+- `supabase/migrations/20261117122655_owner_photo_cards.sql`: pictures from the library in the
+  owner's edits: the `owner_edit` payload's optional `adds` (moves 0 to 200 plus adds 0 to 20, at
+  least one), `owner_moves`' `added`, `swapped`, `photo_id` and `replaced` with a nullable
+  `engine_box`, and `save_version` replaced with the same signature to write them
+  (`app_docs/owner-edits.md`).
   The sixth job kind, `describe_photo`. `reel_id` is now nullable on `jobs`, `steps` and
   `stored_files`, each with a `photo_id` beside it (`on delete cascade`) and a check that exactly one
   is set (`jobs_target_check` also ties `describe_photo` to `photo_id`). Owners never insert a

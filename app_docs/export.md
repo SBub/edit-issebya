@@ -526,6 +526,17 @@ needs no threshold of its own: its lowest score against the upright previews (0.
 below `PREVIEW_EXPORT_SSIM_BOUND`, and the check stays that the minimum falls below the bound. The
 big word behind scored 0.991366, 0.994109 and 0.993578. The bound is unchanged.
 
+Three more owner cases follow in the behind case (2026-11-17). The card upright with its right
+half past the frame's right edge, low over the platform buttons' notch (an owner's card is free of
+the safe zone, `app_docs/owner-edits.md`): 0.99299, 0.996222 and 0.996379. The card's picture
+swapped for the seeded library photo (the softened sample) by an `owner_edit` job's `photo_id`, the
+preview showing the large copy signed from the library and the export downloading it: 0.992643,
+0.995869 and 0.996385. A second card added over it by the job's `adds`, both on track 30 at once
+and the added one drawn last: 0.992646, 0.995152 and 0.996386; against the one-card previews
+0.992646, 0.966814 and 0.996386 (at 0.5 and 2.5 s the added card is not on screen yet or any
+more), so the comparison sees the second card. Every case is at or above the bound; the bound is
+unchanged.
+
 Composition-box captures at device scale 1 (before the big word):
 
 | Moment | Guardrail | 60 px probe | Photo behind | Photo behind probe |
