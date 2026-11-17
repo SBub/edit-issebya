@@ -15,7 +15,10 @@ export type RetryActionResult =
 type FailedJob = Pick<
   JobRow,
   "id" | "reel_id" | "kind" | "status" | "request" | "restore_version_id" | "version_id"
->;
+> & {
+  // An owner_edit job's payload (its version and moves); null for other kinds.
+  owner_edit: unknown;
+};
 
 // Queues a new job of the failed job's kind and parameters naming it in
 // `retry_of_job_id`; every step before the one that failed is a fingerprint
@@ -44,7 +47,7 @@ export async function requestRetry(input: {
       .maybeSingle<Pick<ReelDetail, "id" | "status">>(),
     supabase
       .from("jobs")
-      .select("id, reel_id, kind, status, request, restore_version_id, version_id")
+      .select("id, reel_id, kind, status, request, restore_version_id, version_id, owner_edit")
       .eq("id", input.jobId)
       .maybeSingle<FailedJob>(),
   ]);
@@ -67,7 +70,7 @@ export async function requestRetry(input: {
   }
 
   const failed = job.data;
-  const row: Record<string, string> = {
+  const row: Record<string, unknown> = {
     reel_id: failed.reel_id,
     kind: failed.kind,
     retry_of_job_id: failed.id,
@@ -75,6 +78,10 @@ export async function requestRetry(input: {
   if (failed.request !== null) row.request = failed.request;
   if (failed.restore_version_id !== null) row.restore_version_id = failed.restore_version_id;
   if (failed.version_id !== null) row.version_id = failed.version_id;
+  // An owner edit is retried with the same version and moves.
+  if (failed.owner_edit !== null && failed.owner_edit !== undefined) {
+    row.owner_edit = failed.owner_edit;
+  }
 
   const { data, error } = await supabase
     .from("jobs")

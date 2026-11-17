@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { requestRestore } from "@/app/change-actions";
-import { versionOrigin, versionTitle } from "@/lib/change-requests";
+import { editedFromLabel, versionOrigin, versionTitle } from "@/lib/change-requests";
 import type { VersionListRow } from "@/lib/versions";
 
 interface Props {
@@ -19,7 +19,8 @@ interface Props {
 // Every version of the reel, newest first, one row each at one fixed height:
 // number, the current mark, a short plain title (up to two lines; the row is
 // sized for two whatever the title) and an arrow that opens the row's details
-// in place (what the owner asked, what changed, Go back). Going back queues a
+// in place (what the owner asked, what changed, Go back). A version the owner
+// made by moving or resizing text reads `Edited by you`. Going back queues a
 // `restore` job: a new version copying the old one, so going back can be
 // undone too.
 export function VersionList({ reelId, versions, currentVersionId, blockedReason, action }: Props) {
@@ -89,12 +90,14 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason,
             const open = expanded.has(version.id);
             const detailsId = `version-details-${version.id}`;
             const title = versionTitle(version, byId);
+            const editedFrom = editedFromLabel(version, byId);
             return (
               <li
                 key={version.id}
                 data-testid="version-item"
                 data-version-number={version.number}
                 data-current={current ? "true" : undefined}
+                data-edited={editedFrom ? "true" : undefined}
               >
                 <div
                   data-testid="version-row"
@@ -149,6 +152,11 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason,
                   <p data-testid="version-origin" className="break-words">
                     {versionOrigin(version, byId)}
                   </p>
+                  {editedFrom && (
+                    <p data-testid="version-edited-from" className="break-words text-muted">
+                      {editedFrom}
+                    </p>
+                  )}
                   {version.change_summary && !version.restored_from_id && (
                     <>
                       <h3 className="mt-1 text-xs font-semibold text-muted">What changed</h3>

@@ -12,6 +12,7 @@ import { loadLibrary } from "@/lib/photo-server";
 import { REEL_DETAIL_COLUMNS, isReelId } from "@/lib/reels";
 import { studioStorage } from "@/lib/storage";
 import { pairOfProfile } from "@/lib/font-pair-faces";
+import { OWNER_EDIT_FLAG, isFlagOn } from "@/lib/feature-flags";
 import { readVersionFontPair } from "@/lib/version-font-pair";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
@@ -72,6 +73,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
     workerStatus,
     profile,
     currentPair,
+    ownerEdit,
     ...histories
   ] = await Promise.all([
     loadLibrary({ supabase, storage: studioStorage(), errors: serverErrorCapture() }),
@@ -116,6 +118,8 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
           userId: user.id,
         }).then((fontPair) => ({ versionId: reel.current_version_id!, fontPair }))
       : Promise.resolve(null),
+    // The owner's Move editor: rendered only when its flag is on for this user.
+    isFlagOn(OWNER_EDIT_FLAG, { id: user.id, email: user.email }),
     ...PROGRESS_STEPS.map(history),
   ]);
   if (jobs.error) throw new Error(`studio: jobs not loaded: ${jobs.error.message}`);
@@ -149,6 +153,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
         library={<PhotoLibrary initial={library.ok ? library.value : []} />}
         fontPair={pairOfProfile(profile.data)}
         currentFontPair={currentPair}
+        ownerEdit={ownerEdit}
       />
     </>
   );

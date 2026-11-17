@@ -70,6 +70,8 @@
         "STUDIO_PORT",
         "R2_*",
         "NEXT_PUBLIC_SUPABASE_*",
+        "POSTHOG_PROJECT_TOKEN",
+        "POSTHOG_HOST",
         "OPENROUTER_API_KEY"
       ]
     },
@@ -89,6 +91,8 @@
         "STUDIO_PORT",
         "R2_*",
         "NEXT_PUBLIC_SUPABASE_*",
+        "POSTHOG_PROJECT_TOKEN",
+        "POSTHOG_HOST",
         "OPENROUTER_API_KEY"
       ]
     },

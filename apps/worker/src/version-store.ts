@@ -4,7 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseFailure } from "./failure.ts";
 
 // Named columns, never `*`.
-const COLUMNS = "id, reel_id, number, parent_id, restored_from_id, checks, inputs, r2_key";
+const COLUMNS =
+  "id, reel_id, number, parent_id, restored_from_id, edited_from_id, checks, inputs, r2_key, engine_record";
 
 // The version rows through the worker's (service role) client: save is the
 // save_version function, which inserts the row and moves the reel's current
@@ -50,6 +51,8 @@ export function supabaseVersionRows(db: SupabaseClient): VersionRows {
         p_rejected_reasons: row.rejected_reasons,
         p_engine_record: row.engine_record,
         p_checklist: row.checklist,
+        p_edited_from_id: row.edited_from_id,
+        p_owner_moves: row.owner_moves,
       });
       if (error) throw supabaseFailure("version not saved", { error, status });
       return data as number;

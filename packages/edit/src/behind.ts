@@ -7,10 +7,45 @@ import { type Span, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 import { STYLES } from "./variants.ts";
 
-// The rectangle a VISUAL covers: the box the layout engine gave it.
+// A VISUAL's box as the layout engine and the owner set it, upright: where the
+// builder draws it before its rotation.
 export function visualBox(item: BehindVisualItem): Box {
   const { box } = item;
   return { left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height };
+}
+
+// An angle in whole degrees, brought into -179 to 180 (a VISUAL's `rotation`).
+export function wholeDegrees(degrees: number): number {
+  const turned = ((Math.round(degrees) % 360) + 360) % 360;
+  return turned > 180 ? turned - 360 : turned;
+}
+
+// The upright rectangle around a box turned `degrees` clockwise about its
+// centre: the box itself when it is not turned.
+export function rotatedBounds(
+  box: { x: number; y: number; width: number; height: number },
+  degrees: number,
+): { x: number; y: number; width: number; height: number } {
+  if (degrees % 360 === 0) return { ...box };
+  const radians = (degrees * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(radians));
+  const sin = Math.abs(Math.sin(radians));
+  const width = box.width * cos + box.height * sin;
+  const height = box.width * sin + box.height * cos;
+  return {
+    x: box.x + (box.width - width) / 2,
+    y: box.y + (box.height - height) / 2,
+    width,
+    height,
+  };
+}
+
+// The rectangle a VISUAL covers on screen: its box, or the upright rectangle
+// around it when the owner turned it. The safe zone rule and the overlap
+// checks read this one.
+export function visualBounds(item: BehindVisualItem): Box {
+  const at = rotatedBounds(item.box, item.rotation ?? 0);
+  return { left: at.x, right: at.x + at.width, top: at.y, bottom: at.y + at.height };
 }
 
 // Whether a behind-track item needs the cut-out: a big word, which sits behind

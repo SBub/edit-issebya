@@ -209,6 +209,10 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
       description: z.string().min(1).max(VISUAL_DESCRIPTION_MAX).optional(),
       image: z.enum(visualFiles).optional(),
       box: visualBox,
+      // The owner's rotation of the card, in whole degrees clockwise about its
+      // box's centre (-179 to 180). The engine never rotates a card: a stored
+      // VISUAL without it, or with 0, is upright.
+      rotation: z.number().int().min(-179).max(180).optional(),
     }),
     z.object({
       ...base,

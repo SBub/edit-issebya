@@ -1,6 +1,7 @@
 import { canonicalJson } from "./canonical-json.ts";
 import type { Check } from "./checks.ts";
 import type { EngineNote } from "./engine-note.ts";
+import type { OwnerMoveRecord } from "./owner-edit.ts";
 import type { Edit, EditInputs } from "./schema.ts";
 
 // One ask of a request as stored with a version written before the change
@@ -28,9 +29,14 @@ export interface StoredVersion {
   number: number;
   parent_id: string | null;
   restored_from_id: string | null;
+  // The version the owner moved or resized components of to make this one
+  // (app_docs/owner-edits.md); null or absent for every other version.
+  edited_from_id?: string | null;
   checks: Check[];
   inputs: EditInputs;
   r2_key: string;
+  // The layout engine's record, when the reader asked for it.
+  engine_record?: EngineNote[];
 }
 
 // What `save_version` takes: the row without its number (given by the
@@ -64,6 +70,12 @@ export interface NewVersion {
   // does it and, when not, why and what the owner can do; empty without a
   // request, for the first version and for a going back.
   checklist: ChecklistOutcome[];
+  // The owner's edit (app_docs/owner-edits.md): the version whose components
+  // the owner moved or resized, and one learning record per component moved,
+  // written to `owner_moves` in the same transaction. Null and empty for every
+  // other version.
+  edited_from_id: string | null;
+  owner_moves: OwnerMoveRecord[];
 }
 
 export interface FreeFieldUse {
@@ -122,6 +134,10 @@ export interface VersionMeta {
   engineRecord?: EngineNote[];
   // The request checklist's outcome; empty when not given.
   checklist?: ChecklistOutcome[];
+  // The owner's edit: the version edited and its learning records; null and
+  // empty when not given.
+  editedFromId?: string | null;
+  ownerMoves?: OwnerMoveRecord[];
 }
 
 // The canonical bytes of an edit: what a version's blob holds.
@@ -159,6 +175,8 @@ async function saveBytes(
     rejected_reasons: meta.rejectedReasons ?? [],
     engine_record: meta.engineRecord ?? [],
     checklist: meta.checklist ?? [],
+    edited_from_id: meta.editedFromId ?? null,
+    owner_moves: meta.ownerMoves ?? [],
   });
   return { id, number, key, bytes: bytes.byteLength };
 }

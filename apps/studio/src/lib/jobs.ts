@@ -7,7 +7,9 @@ export const STEP_COLUMNS =
 
 // `process` after an upload; `change` carries the owner's words; `restore`
 // goes back to an earlier version; `render` exports a version to an MP4;
-// `start_over` (a temporary testing control) decides again from version 1.
+// `start_over` (a temporary testing control) decides again from version 1;
+// `relayout` sets the reel in another font pair; `owner_edit` saves the
+// owner's moves as a new version.
 export const JOB_KINDS = [
   "process",
   "change",
@@ -15,6 +17,7 @@ export const JOB_KINDS = [
   "render",
   "start_over",
   "relayout",
+  "owner_edit",
 ] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 

@@ -1011,10 +1011,14 @@
                   "color": "blue",
                   "index": 13
                 },
+                "step owner_edit": {
+                  "color": "dark-green",
+                  "index": 14
+                },
                 "idle": {
                   "color": "transparent",
                   "text": " ",
-                  "index": 14
+                  "index": 15
                 }
               }
             }

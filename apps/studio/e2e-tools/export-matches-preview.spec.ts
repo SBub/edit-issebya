@@ -351,11 +351,14 @@ async function scores(
 
 let previews: Capture[] = [];
 let guardrailEditValue: Edit;
+// The guardrail's version: the owner's moves case edits it.
+let guardrailVersionId: string;
 
 test("the export matches the live preview at every moment", async ({ baseURL }) => {
   test.setTimeout(15 * 60_000);
   guardrailEditValue = await guardrailEdit(await storedEdit(reel!.versionKey));
   const guard = await saveVersionOf(guardrailEditValue, "guardrail");
+  guardrailVersionId = guard.id;
 
   await page.goto(await signInLink(admin, owner.email, baseURL!));
   await page.goto(`/studio/reels/${reel!.reelId}`);
@@ -418,6 +421,113 @@ test("text moved by 60 px falls below the bound", async () => {
   expect(Math.min(...probeScores)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
 });
 
+// The owner's moves (app_docs/owner-edits.md): the guardrail's version with
+// its hook resized, moved down and widened (an edge handle's wrap width, so its
+// lines are set again) and its LIST moved, saved by the worker's
+// `owner_edit` job the way the studio's Save queues it. The owner's version
+// must export as its preview shows it, like any other version.
+const OWNER_HOOK = { down: 400, size: 77, width: 900 };
+const OWNER_LIST_SHIFT = 120;
+
+// The moves, from where the guardrail's version has the two components (the
+// engine writes left-aligned positions, so a position is its box's corner).
+function ownerMovesOf(edit: Edit) {
+  const hook = edit.tracks.overlays.find((item) => item.kind === "hook");
+  const list = edit.tracks.transitions[0];
+  if (!hook?.position || !list?.levels) throw new Error("the guardrail has no hook or no LIST");
+  const levels = Object.values(list.levels);
+  const top = Math.min(...levels.map((level) => level.position.y));
+  return [
+    {
+      id: hook.id,
+      x: hook.position.x,
+      y: hook.position.y + OWNER_HOOK.down,
+      size: OWNER_HOOK.size,
+      width: OWNER_HOOK.width,
+    },
+    {
+      id: list.id,
+      x: Math.min(...levels.map((level) => level.position.x)),
+      // Up where there is room above it inside the safe zone, else down.
+      y:
+        top - OWNER_LIST_SHIFT >= ISSEBYA_PRESET.frame.height * 0.2
+          ? top - OWNER_LIST_SHIFT
+          : top + OWNER_LIST_SHIFT,
+      size: list.levels.key.size,
+    },
+  ];
+}
+
+test("a moved, a resized and a widened component match between preview and export", async () => {
+  test.setTimeout(15 * 60_000);
+  expect(previews).toHaveLength(MOMENTS.length);
+  const moves = ownerMovesOf(guardrailEditValue);
+  const { error } = await admin.from("jobs").insert({
+    reel_id: reel!.reelId,
+    owner_id: owner.id,
+    kind: "owner_edit",
+    owner_edit: { version_id: guardrailVersionId, moves },
+  });
+  if (error) throw new Error(`owner edit job not queued: ${error.message}`);
+  const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_MASK: "" });
+  expect(worker.code, worker.output).toBe(0);
+  const { data } = await admin
+    .from("versions")
+    .select("id, r2_key, edited_from_id")
+    .eq("reel_id", reel!.reelId)
+    .order("number", { ascending: false })
+    .limit(1)
+    .single<{ id: string; r2_key: string; edited_from_id: string | null }>();
+  expect(data!.edited_from_id).toBe(guardrailVersionId);
+  written.add(data!.r2_key);
+  await openPreview(data!.id);
+
+  // The preview shows the owner's version: the hook where and as large as the
+  // owner put it, the LIST's levels moved with their box.
+  const [hookMove, listMove] = moves;
+  const drawn = (id: string) =>
+    composition()
+      .locator(`[id="${id}"]`)
+      .evaluate((el) => {
+        const style = (el as HTMLElement).style;
+        return {
+          x: parseFloat(style.left),
+          y: parseFloat(style.top),
+          size: parseFloat(style.fontSize),
+        };
+      });
+  expect(await drawn("hook")).toEqual({ x: hookMove!.x, y: hookMove!.y, size: OWNER_HOOK.size });
+  // Widened: its lines set again to the wrap width, no wider than it, and no
+  // more lines than the version had.
+  const hookBox = await composition()
+    .locator('[id="hook"]')
+    .evaluate((el) => ({ width: el.getBoundingClientRect().width, height: el.scrollHeight }));
+  const hookBefore = guardrailEditValue.tracks.overlays.find((item) => item.kind === "hook")!;
+  expect(hookBox.width).toBeLessThanOrEqual(OWNER_HOOK.width + 1);
+  expect(Math.round(hookBox.height / OWNER_HOOK.size)).toBeLessThanOrEqual(
+    (hookBefore.breaks?.length ?? 0) + 1,
+  );
+  const key = guardrailEditValue.tracks.transitions[0]!.levels!.key;
+  const levels = Object.values(guardrailEditValue.tracks.transitions[0]!.levels!);
+  const listTop = Math.min(...levels.map((level) => level.position.y));
+  expect(await drawn(`${listMove!.id}-key`)).toEqual({
+    x: key.position.x,
+    y: key.position.y + (listMove!.y - listTop),
+    size: key.size,
+  });
+
+  const ownerPreviews = await capturePreview("owner-edit");
+  const { mp4 } = await exportNow("owner-edit");
+  for (const score of await scores("owner-edit", mp4, ownerPreviews)) {
+    expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+  }
+  // The comparison sees the moves: against the previews of the version the
+  // owner edited (the same texts where the engine placed them), the owner's
+  // export falls below the bound.
+  const against = await scores("owner-edit-against-engine", mp4, previews);
+  expect(Math.min(...against)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
+});
+
 // A VISUAL over the speaker, then one big word, behind the speaker: each a
 // start over job (the scripted answer, decided from version 1) that makes the
 // cut-out with the real mask tool and saves the version, then the composite in
@@ -445,6 +555,67 @@ async function startOverTo(script: string): Promise<string> {
   return data!.current_version_id;
 }
 
+// The VISUAL of a version moved to the middle of the frame and scaled to
+// seven tenths of its width: a box move as the studio sends it, with the
+// card's aspect ratio for the checks.
+async function ownerVisualMoveOf(versionId: string) {
+  const { data, error } = await admin
+    .from("versions")
+    .select("r2_key")
+    .eq("id", versionId)
+    .single<{ r2_key: string }>();
+  if (error || !data) throw new Error(`version not read: ${error?.message}`);
+  const visual = ((await storedEdit(data.r2_key)).tracks.behind ?? []).find(
+    (item) => item.kind === "visual",
+  );
+  if (visual?.kind !== "visual") throw new Error("the version has no visual");
+  const width = Math.round(visual.box.width * 0.7);
+  return {
+    id: visual.id,
+    kind: "box" as const,
+    x: Math.round(ISSEBYA_PRESET.frame.width / 2 - width / 2),
+    y: 700,
+    width,
+    aspect: visual.box.height / visual.box.width,
+  };
+}
+
+// An `owner_edit` job on a version, run by the worker; the owner's new version.
+async function ownerEditTo(
+  versionId: string,
+  moves: { id: string; kind: "box"; x: number; y: number; width: number; rotation?: number }[],
+): Promise<string> {
+  const { error } = await admin.from("jobs").insert({
+    reel_id: reel!.reelId,
+    owner_id: owner.id,
+    kind: "owner_edit",
+    owner_edit: {
+      version_id: versionId,
+      moves: moves.map(({ id, kind, x, y, width, rotation }) => ({
+        id,
+        kind,
+        x,
+        y,
+        width,
+        ...(rotation === undefined ? {} : { rotation }),
+      })),
+    },
+  });
+  if (error) throw new Error(`owner edit job not queued: ${error.message}`);
+  const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_MASK: "" });
+  expect(worker.code, worker.output).toBe(0);
+  const { data } = await admin
+    .from("versions")
+    .select("id, r2_key, edited_from_id")
+    .eq("reel_id", reel!.reelId)
+    .order("number", { ascending: false })
+    .limit(1)
+    .single<{ id: string; r2_key: string; edited_from_id: string | null }>();
+  expect(data!.edited_from_id).toBe(versionId);
+  written.add(data!.r2_key);
+  return data!.id;
+}
+
 // The moments of the big word's case, from the version's own edit: one third
 // and two thirds into the word's span, and halfway from its end to the reel's
 // end (the word gone in both). Never the span's end itself: the export shows
@@ -467,7 +638,7 @@ async function wordMoments(versionId: string): Promise<number[]> {
   );
 }
 
-test("a visual and a big word behind the speaker match between preview and export", async () => {
+test("a visual, the same visual moved and resized and then turned by the owner, and a big word behind the speaker match between preview and export", async () => {
   test.setTimeout(20 * 60_000);
   const dir = await mkdtemp(join(tmpdir(), "export-guardrail-behind-"));
   try {
@@ -495,6 +666,77 @@ test("a visual and a big word behind the speaker match between preview and expor
     for (const score of await scores("behind", mp4, behindPreviews)) {
       expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
     }
+
+    // The owner moves the VISUAL to the middle of the frame and scales it to
+    // seven tenths (its picture's aspect ratio kept), saved by the worker's
+    // `owner_edit` job the way the studio's Save queues it: the owner's
+    // version exports as its preview shows it, and the comparison sees the
+    // move (against the engine's previews it falls below the bound).
+    const visualMove = await ownerVisualMoveOf(behindId);
+    const movedId = await ownerEditTo(behindId, [visualMove]);
+    await openPreview(movedId);
+    const card = await composition()
+      .locator(`[id="${visualMove.id}"]`)
+      .evaluate((el) => {
+        const style = (el as HTMLElement).style;
+        return {
+          x: parseFloat(style.left),
+          y: parseFloat(style.top),
+          width: parseFloat(style.width),
+          height: parseFloat(style.height),
+        };
+      });
+    expect(card).toMatchObject({ x: visualMove.x, y: visualMove.y, width: visualMove.width });
+    expect(Math.abs(card.height / card.width - visualMove.aspect)).toBeLessThan(0.01);
+    const movedPreviews = await capturePreview("owner-visual");
+    const { mp4: movedMp4 } = await exportNow("owner-visual");
+    for (const score of await scores("owner-visual", movedMp4, movedPreviews)) {
+      expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+    }
+    const againstEngine = await scores("owner-visual-against-engine", movedMp4, behindPreviews);
+    expect(Math.min(...againstEngine)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
+
+    // The owner then turns the moved card 45 degrees about its centre, its box
+    // kept: the builder draws it with the `rotate` property in both, so the
+    // turned version exports as its preview shows it, and against the upright
+    // card's previews the comparison sees the turn. Measured 2026-11-17: its
+    // lowest score against the upright previews was 0.94604, well below the
+    // bound, so the turn needs no threshold of its own.
+    const turn = 45;
+    const turnedId = await ownerEditTo(movedId, [
+      { id: visualMove.id, kind: "box", x: card.x, y: card.y, width: card.width, rotation: turn },
+    ]);
+    await openPreview(turnedId);
+    const turned = await composition()
+      .locator(`[id="${visualMove.id}"]`)
+      .evaluate((el) => {
+        const style = (el as HTMLElement).style;
+        return {
+          x: parseFloat(style.left),
+          y: parseFloat(style.top),
+          width: parseFloat(style.width),
+          rotate: style.rotate,
+          transform: style.transform,
+        };
+      });
+    expect(turned).toMatchObject({
+      x: card.x,
+      y: card.y,
+      width: card.width,
+      rotate: `${turn}deg`,
+      transform: "",
+    });
+    const turnedPreviews = await capturePreview("owner-visual-turned");
+    const { mp4: turnedMp4 } = await exportNow("owner-visual-turned");
+    for (const score of await scores("owner-visual-turned", turnedMp4, turnedPreviews)) {
+      expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+    }
+    const againstUpright = await scores(
+      "owner-visual-turned-against-upright",
+      turnedMp4,
+      movedPreviews,
+    );
+    expect(Math.min(...againstUpright)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
 
     // One big word behind the speaker, a second version.
     const wordId = await startOverTo(await behindWordAnswerScript(dir, "w0001"));

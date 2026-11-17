@@ -1,4 +1,5 @@
 import { type FontPairId, isFontPairId } from "@edit-issebya/edit";
+import { type OwnerEdit, parseOwnerEdit } from "./owner-edit.ts";
 import type { ClaimedJob } from "./queue.ts";
 
 // What each job kind runs, injected so the dispatch is testable without a
@@ -17,14 +18,19 @@ export interface KindRunners {
   start_over: () => Promise<void>;
   // The reel's current version placed again in this font pair, with no AI call.
   relayout: (fontPair: FontPairId) => Promise<void>;
+  // The owner's moves applied to a version, saved as a new version, with no AI call.
+  owner_edit: (ownerEdit: OwnerEdit) => Promise<void>;
 }
 
 // Runs the work of one claimed job by its kind. A change job (the change box
 // is removed, app_docs/change-requests.md), a restore or a render without a
-// version, a describe_photo without a photo, a relayout without a font pair
-// and any other kind fail the job.
+// version, a describe_photo without a photo, a relayout without a font pair,
+// an owner_edit without a version and moves and any other kind fail the job.
 export function runJobKind(
-  job: Pick<ClaimedJob, "kind" | "restore_version_id" | "version_id" | "photo_id" | "font_pair">,
+  job: Pick<
+    ClaimedJob,
+    "kind" | "restore_version_id" | "version_id" | "photo_id" | "font_pair" | "owner_edit"
+  >,
   runners: KindRunners,
 ): Promise<void> {
   switch (job.kind) {
@@ -46,6 +52,11 @@ export function runJobKind(
     case "relayout":
       if (!isFontPairId(job.font_pair)) throw new Error("relayout job has no font pair");
       return runners.relayout(job.font_pair);
+    case "owner_edit": {
+      const ownerEdit = parseOwnerEdit(job.owner_edit);
+      if (!ownerEdit) throw new Error("owner_edit job has no version and moves");
+      return runners.owner_edit(ownerEdit);
+    }
     default:
       throw new Error(`unknown job kind: ${job.kind}`);
   }

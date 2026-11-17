@@ -42,13 +42,13 @@ be kept in step with them and with `README.md`.
 
 ## Workspaces
 
-| name    | path               | dev command                                                                                                                                                                               | port variable | default port | health URL | ADW may start |
-| ------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------ | ---------- | ------------- |
-| web     | `apps/web`         | `set -a; . ./.ports.env; set +a; STUDIO_PORT=$BACKEND_PORT E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true E2E_MOCK_STORAGE=true yarn turbo run dev --filter=./apps/web --filter=./apps/studio` | `PORT`        | 3000         | `/`        | yes           |
-| studio  | `apps/studio`      | started with web                                                                                                                                                                          | `STUDIO_PORT` | 3001         | `/studio`  | no            |
-| worker  | `apps/worker`      | none (specs spawn `once`)                                                                                                                                                                 | none          | none         | none       | never         |
-| storage | `packages/storage` | none (library)                                                                                                                                                                            | none          | none         | none       | never         |
-| edit    | `packages/edit`    | none (library)                                                                                                                                                                            | none          | none         | none       | never         |
+| name    | path               | dev command                                                                                                                                                                                                                | port variable | default port | health URL | ADW may start |
+| ------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------ | ---------- | ------------- |
+| web     | `apps/web`         | `set -a; . ./.ports.env; set +a; STUDIO_PORT=$BACKEND_PORT E2E_MOCK_STRIPE=true E2E_MOCK_RESEND=true E2E_MOCK_STORAGE=true E2E_MOCK_FLAGS=studio-owner-edit yarn turbo run dev --filter=./apps/web --filter=./apps/studio` | `PORT`        | 3000         | `/`        | yes           |
+| studio  | `apps/studio`      | started with web                                                                                                                                                                                                           | `STUDIO_PORT` | 3001         | `/studio`  | no            |
+| worker  | `apps/worker`      | none (specs spawn `once`)                                                                                                                                                                                                  | none          | none         | none       | never         |
+| storage | `packages/storage` | none (library)                                                                                                                                                                                                             | none          | none         | none       | never         |
+| edit    | `packages/edit`    | none (library)                                                                                                                                                                                                             | none          | none         | none       | never         |
 
 - `name` is the directory under `apps/` or `packages/`; the package names are
   `@edit-issebya/web`, `@edit-issebya/studio`, `@edit-issebya/worker`, `@edit-issebya/storage` and
@@ -67,7 +67,9 @@ be kept in step with them and with `README.md`.
   and the `/api/e2e-stripe-mock` and `/api/e2e-resend-mock` routes the checkout and confirmation
   email specs need. `E2E_MOCK_STORAGE=true` makes the studio sign upload parts to its
   `/studio/api/e2e-storage-mock` route on its own origin (`STUDIO_PORT`, part `PUT` only), which writes into the gitignored `.e2e-storage/` folder at
-  the worktree root, where the worker's `once` reads them.
+  the worktree root, where the worker's `once` reads them. `E2E_MOCK_FLAGS=studio-owner-edit`
+  turns the studio's `studio-owner-edit` feature flag (the owner's Move editor) on without PostHog,
+  which the owner-edit specs need (`app_docs/feature-flags.md`).
 - `/` answering 200 proves the landing server is up, `/studio` through it proves the studio is.
   The landing page reads no database; it calls Stripe when the form is submitted and Stripe and
   Resend when the webhook is called, and under the flags those calls never leave the process. The
@@ -131,7 +133,8 @@ Do not start the dev server during install.
   `STUDIO_URL` and `STUDIO_PORT` (the landing page's forwarding target, read at build); for the
   studio `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and
   `NEXT_PUBLIC_SITE_URL` (inlined at build). The studio builds with none of them; its `R2_*` and
-  `E2E_MOCK_STORAGE` are read at run time, never needed to build. Turbo
+  `E2E_MOCK_STORAGE` are read at run time, never needed to build; so are its optional
+  server-only `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` (the feature flags) and `E2E_MOCK_FLAGS`. Turbo
   runs in strict env mode: a variable a task reads must be listed for that task in `turbo.json`.
 
 ## Tests

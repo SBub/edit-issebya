@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   changeBlockedReason,
+  editedFromLabel,
   jobRequestLabel,
   versionOrigin,
   versionTitle,
@@ -103,7 +104,15 @@ describe("labels", () => {
   });
 
   it("names what each job kind was asked to do", () => {
-    expect(JOB_KINDS).toEqual(["process", "change", "restore", "render", "start_over", "relayout"]);
+    expect(JOB_KINDS).toEqual([
+      "process",
+      "change",
+      "restore",
+      "render",
+      "start_over",
+      "relayout",
+      "owner_edit",
+    ]);
     const none = { request: null, restore_version_id: null, version_id: null };
     expect(jobRequestLabel({ kind: "process", ...none }, byId)).toBeNull();
     expect(jobRequestLabel({ kind: "restore", ...none, restore_version_id: "v1" }, byId)).toBe(
@@ -114,5 +123,35 @@ describe("labels", () => {
     );
     expect(jobRequestLabel({ kind: "render", ...none, version_id: "v9" }, byId)).toBe("export");
     expect(jobRequestLabel({ kind: "start_over", ...none }, byId)).toBe("start over from v1");
+    expect(jobRequestLabel({ kind: "owner_edit", ...none }, byId)).toBe("your moves");
+  });
+
+  it("marks a version the owner made by moving text as edited by them", () => {
+    const edited = {
+      restored_from_id: null,
+      edited_from_id: "v3",
+      request: null,
+      parent_id: "v3",
+      change_title: null,
+    };
+    expect(versionOrigin(edited, byId)).toBe("Edited by you");
+    expect(versionTitle(edited, byId)).toBe("Edited by you");
+    // A stored title never replaces the mark.
+    expect(versionTitle({ ...edited, change_title: "Bigger hook" }, byId)).toBe("Edited by you");
+    expect(editedFromLabel(edited, byId)).toBe("You moved or resized text in v3");
+    expect(editedFromLabel({ ...edited, edited_from_id: "gone" }, byId)).toBe(
+      "You moved or resized text",
+    );
+  });
+
+  it("names a going back to an edited version as a going back, and marks no other version", () => {
+    const back = { restored_from_id: "v3", edited_from_id: null, request: null, parent_id: "v3" };
+    expect(versionOrigin(back, byId)).toBe("Back to v3");
+    expect(editedFromLabel(back, byId)).toBeNull();
+    const automatic = { restored_from_id: null, edited_from_id: null, request: null };
+    expect(versionOrigin({ ...automatic, parent_id: "v1" }, byId)).toBe("Styled automatically");
+    expect(editedFromLabel(automatic, byId)).toBeNull();
+    // A row read before the column existed.
+    expect(editedFromLabel({}, byId)).toBeNull();
   });
 });

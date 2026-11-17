@@ -48,9 +48,10 @@ export default defineConfig({
         ? "yarn workspace @edit-issebya/studio start"
         : "yarn workspace @edit-issebya/studio dev",
       url: `http://localhost:${STUDIO_PORT}/studio`,
-      // The storage double (an adopted ADW server already has it from the
-      // profile's dev command).
-      env: { STUDIO_PORT, E2E_MOCK_STORAGE: "true" },
+      // The storage double, and the owner's Move editor flag on without
+      // PostHog (an adopted ADW server already has both from the profile's dev
+      // command).
+      env: { STUDIO_PORT, E2E_MOCK_STORAGE: "true", E2E_MOCK_FLAGS: "studio-owner-edit" },
     },
     {
       ...server,

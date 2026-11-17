@@ -9,6 +9,7 @@ function runners() {
     describe_photo: vi.fn<(photoId: string) => Promise<void>>(async () => {}),
     start_over: vi.fn(async () => {}),
     relayout: vi.fn<(fontPair: string) => Promise<void>>(async () => {}),
+    owner_edit: vi.fn<(ownerEdit: unknown) => Promise<void>>(async () => {}),
   };
 }
 
@@ -99,6 +100,37 @@ describe("runJobKind for a relayout", () => {
     expect(() => runJobKind({ kind: "relayout", ...NONE, font_pair: "primary" }, r)).toThrow(
       /relayout job has no font pair/,
     );
+    expectOnly(r, null);
+  });
+});
+
+describe("runJobKind for an owner edit", () => {
+  const VERSION = "11111111-1111-4111-8111-111111111111";
+
+  it("runs only the owner edit, with the version and the moves", async () => {
+    const r = runners();
+    const moves = [{ id: "accent-1", x: 120, y: 900, size: 110 }];
+    await runJobKind(
+      { kind: "owner_edit", ...NONE, owner_edit: { version_id: VERSION, moves } },
+      r,
+    );
+    expect(r.owner_edit).toHaveBeenCalledExactlyOnceWith({ versionId: VERSION, moves });
+    expectOnly(r, "owner_edit");
+  });
+
+  it("fails an owner edit without a version or without moves, and runs nothing", () => {
+    const r = runners();
+    for (const owner_edit of [
+      null,
+      { moves: [{ id: "accent-1", x: 1, y: 2, size: 30 }] },
+      { version_id: "v1", moves: [{ id: "accent-1", x: 1, y: 2, size: 30 }] },
+      { version_id: VERSION, moves: [] },
+      { version_id: VERSION, moves: [{ id: "accent-1", x: "1", y: 2, size: 30 }] },
+    ]) {
+      expect(() => runJobKind({ kind: "owner_edit", ...NONE, owner_edit }, r)).toThrow(
+        /owner_edit job has no version and moves/,
+      );
+    }
     expectOnly(r, null);
   });
 });

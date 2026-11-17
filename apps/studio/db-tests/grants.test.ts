@@ -59,6 +59,7 @@ describe("public table grants", () => {
         "worker_status",
         "photos",
         "storage_deletions",
+        "owner_moves",
       ]),
     );
     for (const table of tables) {

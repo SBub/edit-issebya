@@ -2,9 +2,10 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
-import { type FontPairId, isFontPairId } from "@edit-issebya/edit";
+import { type FontPairId, type OwnerMove, isFontPairId, parseOwnerMoves } from "@edit-issebya/edit";
 import { changeBlockedReason } from "@/lib/change-requests";
 import { type ReelDetail, isReelId } from "@/lib/reels";
+import { OWNER_EDIT_FLAG, isFlagOn } from "@/lib/feature-flags";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type ChangeActionResult =
@@ -15,7 +16,13 @@ export type ChangeActionResult =
   | { status: "failed" };
 
 type Open =
-  | { ok: true; supabase: SupabaseClient; userId: string; currentVersionId: string | null }
+  | {
+      ok: true;
+      supabase: SupabaseClient;
+      userId: string;
+      email: string | null;
+      currentVersionId: string | null;
+    }
   | { ok: false; result: ChangeActionResult };
 
 // The user's own client, then the reel under RLS: another owner's reel reads
@@ -48,16 +55,23 @@ async function openReel(reelId: string): Promise<Open> {
   if (!reel.data) return { ok: false, result: { status: "failed" } };
   const reason = changeBlockedReason(reel.data);
   if (reason) return { ok: false, result: { status: "blocked", reason } };
-  return { ok: true, supabase, userId: user.id, currentVersionId: reel.data.current_version_id };
+  return {
+    ok: true,
+    supabase,
+    userId: user.id,
+    email: user.email ?? null,
+    currentVersionId: reel.data.current_version_id,
+  };
 }
 
 async function insertJob(
   { supabase, userId }: { supabase: SupabaseClient; userId: string },
   row: {
     reel_id: string;
-    kind: "restore" | "start_over" | "relayout";
+    kind: "restore" | "start_over" | "relayout" | "owner_edit";
     restore_version_id?: string;
     font_pair?: FontPairId;
+    owner_edit?: { version_id: string; moves: OwnerMove[] };
   },
 ): Promise<ChangeActionResult> {
   // Under RLS: the insert policy takes the owner from the session and accepts
@@ -148,5 +162,38 @@ export async function requestFontPair(input: {
     reel_id: input.reelId,
     kind: "relayout",
     font_pair: input.fontPair,
+  });
+}
+
+// The owner's moves (app_docs/owner-edits.md): queues an `owner_edit` job with
+// the version the owner edited and the moves. The worker applies them and
+// saves a new version marked as the owner's; the edited version stays as it
+// was. The moves are checked for shape here and for their rule (text
+// components only, inside the safe zone) by the worker.
+export async function requestOwnerEdit(input: {
+  reelId: string;
+  versionId: string;
+  moves: unknown;
+}): Promise<ChangeActionResult> {
+  if (typeof input.reelId !== "string" || !isReelId(input.reelId)) return { status: "failed" };
+  if (typeof input.versionId !== "string" || !isReelId(input.versionId)) {
+    return { status: "invalid", reason: "Pick a version to edit" };
+  }
+  const moves = parseOwnerMoves(input.moves);
+  if (!moves) return { status: "invalid", reason: "Move or resize a text first" };
+  const open = await openReel(input.reelId);
+  if (!open.ok) return open.result;
+  // The Move editor's flag, evaluated for this user like the page does: off,
+  // nothing is queued whatever the browser sends.
+  if (!(await isFlagOn(OWNER_EDIT_FLAG, { id: open.userId, email: open.email }))) {
+    return { status: "invalid", reason: "Moving is not available yet" };
+  }
+  if (open.currentVersionId === null) {
+    return { status: "invalid", reason: "Editing opens once the first version is ready" };
+  }
+  return insertJob(open, {
+    reel_id: input.reelId,
+    kind: "owner_edit",
+    owner_edit: { version_id: input.versionId, moves },
   });
 }

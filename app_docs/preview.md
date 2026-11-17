@@ -76,6 +76,33 @@ rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) o
   player's time after each message from its frame when it changed: the clock and the playhead rest
   on the player's paused time, never a few frames before it. The root carries
   `data-preview="loading|ready"` and `data-preview-version`.
+- A new `html` for the same mounted player (the editor's rebuilt draft, or the version's page again
+  after Cancel) never remounts it. The new page loads in a second `<hyperframes-player>` under the
+  one on screen (`data-page="next"`, `aria-hidden`, below it in the stack; the frame is `isolate`).
+  Once it is ready it is sought to the moment on screen, again whenever that moment moves, and its
+  videos are put there. When every video showing then has that frame decoded (`showsFrameAt` in
+  `src/lib/preview-clock.ts`: ready state 2 or more, not seeking, at the target) for more than two
+  animation frames, it becomes the page on screen and the old player is removed. After 10 s it is
+  swapped in anyway, so an edit always shows. The page on screen stays the whole time, so the
+  preview never goes black or shows `Loading` for a draft. Neither element moves in the DOM, so
+  neither frame reloads. A page swapped in while playing plays on from where it was. The root
+  carries `data-page="shown|swapping"`: `swapping` from the render that hands over the new `html`
+  until the swap.
+- Until the swap, the page on screen already shows the new page's elements: before the browser paints
+  the player restyles every element whose inline style (but what the timeline animates:
+  `transform`, `opacity`, `visibility`, `display`) or lines differ between the page on screen and the
+  new `html` to the new page's values (`src/lib/live-page.ts`: `pageElements`, `changedElements`,
+  `restyle`). `PreviewPlayerHandle.live(patch)` lays a patch over that while the move and resize
+  editor drags (`app_docs/owner-edits.md`, "Instant moves"); a new `html` drops it. A VISUAL's turn
+  is the `rotate` property, which the restyle always covers (`PATCHED`), so a turn a patch set and
+  neither page has is taken off. So the swap
+  itself changes nothing on screen.
+- The move and resize editor (`app_docs/owner-edits.md`) uses three things of `PreviewPlayer`: `overlay`
+  (a layer drawn inside the frame, after Zones; `MoveLayer`), `controls` (buttons in the control row
+  before Zones, hidden with Zones while expanded; the `Move text` button) and `playDisabled` (Play is
+  off while the editor is open), `PreviewPlayerHandle.pause` and `PreviewPlayerHandle.live`. `ReelPreview` keeps the built
+  version's edit and builds the editor's draft with the same `build` and `previewPage` calls
+  (`pageOf`); each draft page is swapped in behind the one on screen (above), never remounted.
 - `apps/studio/src/components/PlatformZones.tsx`, `src/lib/platform-zones.ts`: the player's `Zones`
   button (`aria-pressed`, off on every open, never saved, switched off when the preview expands and
   left off on collapse) shows a non-interactive layer
@@ -168,6 +195,11 @@ jsdelivr.
 - The Zones layer takes no clicks and is never saved or built into the page. Expanding the preview
   switches it off; collapsing never switches it back on.
 - A photo's key always comes from its own `photos` row read under RLS, never built from the id.
+- A layer given as `overlay` draws over the frame only: it never changes the built page.
+- Never remount the player or blank the frame for a new page of the same version: ready it behind
+  the one on screen and swap it in only once it shows the same moment.
+- A restyle of the page on screen writes only what the builder writes on an element, never what the
+  page's timeline animates.
 
 ## Notes
 
