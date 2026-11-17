@@ -10,8 +10,9 @@
 ## Overview
 
 After an upload the worker's `process` job runs five fixed steps as plain TypeScript, with no AI:
-`convert` (phone footage to steady H.264), `transcribe` (the words from Whisper through HyperFrames, each word's start and end from a forced aligner), `retime`
-(a light speed-up planned from the transcript and the audio), `head_track` (the head position every
+`convert` (phone footage to steady H.264), `transcribe` (the words from Whisper through
+HyperFrames, each word's start and end from a forced aligner), `retime` (a light speed-up and pause
+cut planned from the transcript and the audio), `head_track` (the head position every
 0.25 s, from its own sampled person mask) and `preview_copies` (a small copy of the footage for the
 studio's live preview). Each step is cached in R2
 by a fingerprint of everything it reads, so an input is processed exactly once and a failed job
@@ -97,8 +98,11 @@ live status shows one line per step (`name: summary`).
   untranscribed "yes").
 - `apps/worker/src/pipeline/envelope.ts`, `retime-plan.ts`, `retime-encode.ts`, `retime.ts`: a 10 ms
   RMS envelope in dB, a pure planner and one ffmpeg encode. Outputs `source.mp4` (retimed footage),
-  `transcript.json` (same ids, new times), `retime.json` (the plan: original to new time map) and
-  `envelope.json`.
+  `transcript.json` (same ids, every time through the plan), `retime.json` (the plan: original to
+  new time map) and `envelope.json`. The step line ends with the pauses the final re-check found,
+  if any, and with every possible missed word it kept, at its retimed time (`retimeSummary`:
+  `retimed to 56.1 seconds, 1.05x, 1 pause over 0.3 s left, 0.4 s in all, 1 possible missed word
+kept (sound at speech level in a pause) at 49.6 to 50.0 s`).
 - `apps/worker/src/pipeline/retime-preset.ts`: `RETIME_PRESET`, every retime setting; each value is
   part of the fingerprint.
 - `apps/worker/src/pipeline/u2net.ts` and `u2net-entry.ts`: the person mask `head_track` reads,
@@ -369,45 +373,66 @@ fingerprint. Tags are not part of a fingerprint.
 
 ### Retime rules
 
-1. Silent runs are envelope stretches below `silenceDb`; phrases are the words between silent runs
-   of at least `phraseGapSeconds`.
+1. Pauses come from the transcript first; the audio is a safety check only. The transcript
+   protects speech: every word's span, from its start to its end (the aligner's times), is never
+   cut. Its gaps (before the first word, between neighbouring words from the latest end so far to
+   the next start, after the last word) are the pauses, whatever their loudness: room noise, a
+   breath, a click or a movement in a gap is part of the pause. The one exception is a possible
+   missed word (`missedSpeech`): a stretch inside a gap of at least `missedSpeechSeconds` of
+   10 ms frames in a row, each no more than `missedSpeechBelowSpeechDb` under the clip's speech
+   level. The speech level (`speechLevel`) is the median level of the frames inside the words'
+   spans; a clip with no frame inside a word has none, and then nothing is held back. Such a
+   stretch is kept whole and splits its gap into the pause before it and the pause after it, each
+   treated like any other pause (rule 5), so about half of a kept pause stays on each side of it
+   as its margin. A shorter burst is not one. Phrases are the words between pauses of at least
+   `phraseGapSeconds`.
 2. A phrase is slow when its words per second are under `slowWordsPerSecond`, it holds a word longer
-   than `drawnOutWordSeconds`, or a silent run of `longPauseSeconds` or more follows it. Adjacent
-   slow phrases merge; a stretch shorter than `minSlowStretchSeconds` stays at base speed.
-3. Every speed boundary sits on a frame point strictly inside a silent run, never on a word join.
-4. A silent run shorter than `minGapAfterSeconds` after speed-up that holds a whole frame has that
-   middle frame slowed to `gapRate`.
-5. Pause cutting, by the audio: when `maxPauseSeconds` is a number (the default, 0.3), every
-   silent run of the envelope longer than that once sped up is shortened to it, whatever the
-   transcript says (where the audio is silent, nobody speaks; word intervals are never consulted).
-   A run between two sounds loses whole frames around its middle, so it plays as `maxPauseSeconds`
-   (give or take a frame, about half kept on each side); the run from the clip's start (leading
-   silence) and the one reaching the end of the audio (trailing silence) lose the part away from
-   the speech, so `maxPauseSeconds` stays next to it. Every cut point is a frame point strictly
-   inside its run. A run must be longer than `maxPauseSeconds` at its speed (about 0.32 s) to be
-   cut at all, and the part kept guards soft speech at the edges of a silence; `silentRuns` itself
-   has no minimum length. A clip silent throughout (one run from start to end) is left whole.
-   Audio and video of a piece are trimmed at the same frame, so a cut adds no drift. A pause at a
-   speed boundary keeps its boundary inside the silence; its two halves play at their own speeds.
-   Short-gap frames (rule 4) never reach the limit, so the two rules never meet. `null` cuts
-   nothing. `retime.json` maps original to new time (a time inside a cut maps to the cut point).
-6. Word times by the audio: retime's `transcript.json` (same ids, same order) is the corrected one.
-   A word whose start lies inside a silent run that speech follows starts at that run's end (the
-   speech onset), whether that part of the run was removed or kept, so a caption never leads the
-   voice; then every time goes through `retime.json`. Word ends are not moved (an end inside a cut
-   maps to the cut point). A moved word starts at least a frame after the word before and lasts at
-   least a frame (whisper's pinned opening words become a frame apart at the onset); no word
-   starts later than a frame before the end (a word placed in the trimmed trailing silence still
-   shows); starts never decrease and no word ends before it starts. A start in the trailing run is
-   not moved (no speech follows).
+   than `drawnOutWordSeconds`, or a pause of `longPauseSeconds` or more follows it. Adjacent slow
+   phrases merge; a stretch shorter than `minSlowStretchSeconds` stays at base speed.
+3. Every speed boundary sits on a frame point strictly inside a pause, never inside a word.
+4. A pause between words shorter than `minGapAfterSeconds` after speed-up that holds a whole frame
+   has that middle frame slowed to `gapRate`, but only when the frame is quiet: every 10 ms
+   envelope frame that touches it is at least `gapQuietBelowSpeechDb` under the clip's speech
+   level (rule 1's level; a frame past the audio's end is quiet, and with no speech level no
+   frame is). A frame that is not quiet keeps its speed, and the gap stays as short as it was
+   spoken. A rate under 1x is a plain rate change (`asetrate`), which drops the pitch by the same
+   share (about 40% at 0.6): on room tone nobody hears it, on a voice it is a short deep blip.
+5. Pause cutting: when `maxPauseSeconds` is a number (the default, 0.3), every pause longer than
+   that once sped up is shortened to it. A pause between two words (or a word and a kept possible
+   missed word) loses whole frames around its
+   middle, so it plays as `maxPauseSeconds` (give or take a frame, about half kept on each side);
+   the pause from the clip's start and the one reaching the end of the audio lose the part away
+   from the speech, so `maxPauseSeconds` stays next to it. Every cut point is a frame point
+   strictly inside its pause. A pause must be longer than `maxPauseSeconds` at its speed (about
+   0.32 s) to be cut at all. Audio and video of a piece are trimmed at the same frame, so a cut adds
+   no drift. A pause at a speed boundary keeps its boundary inside the pause; its two halves play
+   at their own speeds. Short-gap frames (rule 4) never reach the limit, so the two rules never
+   meet. `null` cuts nothing. `retime.json` maps original to new time (a time inside a cut maps to
+   the cut point).
+6. Word times: retime's `transcript.json` (same ids, same order) is the transcribe step's, every
+   time through `retime.json` (`retimeTranscript`). No word time lies in a cut, so none is moved;
+   starts never decrease, no word ends before it starts, and no time passes the clip's end.
 7. The last piece carries an `endFadeSeconds` audio fade; the end is the duration rounded to a frame,
-   or the trailing trim point (still in silence, so the fade falls on silence).
+   or the trailing trim point (still in the pause, so the fade falls on the pause). At every join
+   of two pieces (a cut, or a change of speed) the sound of the piece before fades out over
+   `joinFadeSeconds` and the sound of the piece after fades in over it (`retimeFilterGraph`,
+   `afade` by sample position after the piece's trim): a pause is not silent (rule 1), so a join
+   often falls inside a breath or room sound, and two pieces set end to end there click. A fade
+   only scales samples the piece already holds: no piece changes length, the sound keeps its
+   total length and its place against the picture, and the video pieces are never faded or moved.
+   A piece shorter than two fades gets half its length for each.
+8. The final re-check (`pausesLeft`) names, in the step line, what is still longer than
+   `maxPauseSeconds` plus a frame on the retimed timeline: a pause of the transcript the plan
+   could not shorten, and a stretch inside the words' spans with no frame at speech level (rule
+   1's level), which retime never cuts: it shows where a word's span still holds a pause (a word
+   the aligner could not spell takes the whole gap around it). The step line also names every
+   possible missed word kept (rule 1) with its retimed time, so the owner can listen to it.
 
 `RETIME_PRESET` defaults: `baseSpeed` 1.05, `slowSpeed` 1.1, `slowWordsPerSecond` 2.7,
 `drawnOutWordSeconds` 0.6, `longPauseSeconds` 0.3, `phraseGapSeconds` 0.1,
-`minSlowStretchSeconds` 0.8, `silenceDb` -40, `envelopeFrameSeconds` 0.01,
-`minGapAfterSeconds` 0.065, `gapRate` 0.6, `maxPauseSeconds` 0.3, `frameRate` 30,
-`endFadeSeconds` 0.03, plus the encode settings (`libx264`, `medium`, crf 18, `256k`).
+`minSlowStretchSeconds` 0.8, `missedSpeechBelowSpeechDb` 10, `missedSpeechSeconds` 0.25,
+`envelopeFrameSeconds` 0.01, `minGapAfterSeconds` 0.065, `gapRate` 0.6, `gapQuietBelowSpeechDb` 20,
+`maxPauseSeconds` 0.3, `frameRate` 30, `joinFadeSeconds` 0.005, `endFadeSeconds` 0.03, plus the encode settings (`libx264`, `medium`, crf 18, `256k`).
 
 Pause cutting is always on: the owner switched `maxPauseSeconds` from `null` to 0.4 on 2026-11-04
 as the first step toward the rough cut (#166), with no per-reel switch, and lowered it to 0.3 on
@@ -418,7 +443,36 @@ leading and trailing trim but trusted the transcript's word intervals (no cut un
 transcript timing fix: whisper (`small`, through HyperFrames) pins the first word at 0 across
 leading silence and starts a word after a long pause inside it (reel IMG_2013: "There" at 0 with
 speech from about 3.5 s, so version 2 trimmed nothing and captions showed up to 3 s early). A cut
-joins two frames of the same take, so the picture may jump slightly at a cut. The setting and the
+joins two frames of the same take, so the picture may jump slightly at a cut. Version 4 (owner
+decision 2026-11-17) uses the transcript and the audio together (rule 1): version 3's fixed -40 dB
+cut the owner's soft syllables and word endings (-41 to -50 dB) on quieter footage as pauses
+(reel dfba7e04: 116.7 s to 48.7 s, and the retimed audio, transcribed again, gave 155 words of 162,
+"think", "progress", "can take" gone and "publicly" heard as "public"). With version 4 and the
+aligned transcript the same reel is 62.3 s and all 162 words are heard again (the retimed audio
+transcribed again: 160 of 162 in order, "lack" heard as "luck" twice); 311f34dd (louder,
+pre-cut) is 48.9 s against 48.2 s, 162 words heard (159 in order: "push" heard as "pushed",
+"a" as "or", "generation" as "generations"). Version 4 called a gap a pause only where its audio
+was silent (under the clip's noise floor plus 20 dB, at most -40 dB). Version 5 (owner decision
+2026-11-17) takes the transcript's gaps as the pauses whatever their loudness (rule 1): the owner
+records piece by piece, and her pauses are not silent. On reel 40ab0155 (116.7 s, 162 words,
+speech about -11 dB, pauses about -31 dB with bursts up to -8 dB, noise floor -46 dB) version 4
+found no silence in the pauses: 26 gaps over 0.3 s, 54.8 s in all, were still 49.1 s after
+retiming (101.5 s). Whisper run on the three longest pauses alone heard no word. Version 5 gives
+56.1 s: no word is cut, one gap over 0.3 s is left (0.67 s, between "to" and "be"), and it holds
+the one possible missed word kept (0.40 s of sound at speech level right after "to"). The longest
+speech-level burst in any other gap is 0.22 s, under `missedSpeechSeconds`. The check is coarse on
+purpose: only 9 of the reel's 36 words of 0.3 s or more hold 0.25 s of frames in a row at that
+level, so it holds back a clear, sustained sound, not every word. Version 6 (2026-11-18) fixes two
+faults heard in version 5's sound. With every gap a pause, 29 of the short-gap frames of reel
+40ab0155 (rule 4) lay on voiced sound, and at `gapRate` each played about 40% lower, a short deep
+blip (at 1.42, 3.73, 3.95, 13.24, 13.42 and 15.20 s of the retimed reel, among others): rule 4 now
+slows only a quiet frame (`gapQuietBelowSpeechDb`). On the `rethink-work` reference the six
+short-gap frames are five at or above the speech level and one 19.9 dB under it; on the two
+fixture clips all ten are within 12 dB of it, so none is slowed (the short speech is 2.67 s, was
+2.74 s; the ten-second speech 9.52 s, was 9.69 s). And the joins: version 4 cut in silence (the
+levels at its joins were -40 to -66 dB), version 5 cuts inside breaths and room sound (106 joins
+with median levels of -8.6 to -24.6 dB), where a hard join clicks: every join now has a
+`joinFadeSeconds` fade out and fade in (rule 7). The settings and the
 version are in the fingerprint, so retime and every step after it re-run for a new upload; a reel
 processed before keeps its footage, and Start over (which decides again from version 1, whose
 inputs name the old retime outputs) does not re-run retime.
@@ -463,11 +517,15 @@ inputs name the old retime outputs) does not re-run retime.
 - `yarn test` (pure, no ffmpeg, HyperFrames, database or network): fingerprints, every settings
   leaf and the version changing the fingerprint, `run-pipeline.test.ts` (hits spawn nothing, a
   missing output re-runs only its step, resume, statuses, clean-up), probe (HDR, VFR), planner on
-  synthetic and `testdata/rethink-work/` data (pause cuts, leading and trailing trims by the
-  audio with a transcript pinned at 0, word starts moved to the speech onset from a removed or a
-  kept silence, a cut at a speed boundary, a clip silent throughout; the reference's longest
-  silence is 0.31 s, so the default cuts nothing there), `retime-encode.test.ts` (audio and video
-  of every planned piece trimmed at the same frame), `align.test.ts` (the model's spelling of a
+  synthetic and `testdata/rethink-work/` data (pause cuts and leading and trailing trims only
+  inside the transcript's gaps, never inside a word however quiet it is, a long noisy pause with
+  short bursts cut to the kept pause, 0.5 s of speech-level sound in a gap kept with the pauses
+  around it cut, a quieter sound not kept, overlapping words, a cut at a speed boundary;
+  the middle frame of a short pause slowed when quiet and left at its speed when voiced or quiet
+  only in part; `pausesLeft` naming the quiet stretch inside a stretched word), `retime.test.ts`
+  (the step line with the pauses left and the possible missed words kept), `retime-encode.test.ts`
+  (audio and video of every planned piece trimmed at the same frame, a fade out and a fade in at
+  every join, no piece's length changed by them), `align.test.ts` (the model's spelling of a
   word, the normalised input, the pieces tiling the clip's frames, the forced alignment on
   synthetic emissions, the times of each word and the fallback for words it cannot spell, the
   decode arguments), `align-model.test.ts` (the pin, the fetch command when the file is missing,
@@ -477,7 +535,8 @@ inputs name the old retime outputs) does not re-run retime.
   `u2net-model.test.ts` (the pin, the file, the notice), and `pipeline-fixtures.test.ts`, which fails when a
   version or setting change leaves either clip's outputs stale (`fixtures/pipeline/` and
   `fixtures/pipeline/speech-ten/`).
-- `yarn workspace @edit-issebya/worker test:tools` (`*.tools.test.ts`): real ffmpeg, HyperFrames and the aligner (its model fetched once with `models:fetch`) on `fixtures/footage/short-speech.mp4`; `head-track.tools.test.ts` runs `head_track` and
+- `yarn workspace @edit-issebya/worker test:tools` (`*.tools.test.ts`): real ffmpeg, HyperFrames
+  and the aligner (its model fetched once with `models:fetch`) on `fixtures/footage/short-speech.mp4`; `head-track.tools.test.ts` runs `head_track` and
   `preview_copies` on `fixtures/footage/short-person.mp4` (the real U2Net entry with the
   committed int8 model, the same track byte for byte in one chunk, in four and by the machine's
   split, at least 80 percent of head samples found, no mask, sample clip or raw frames left, one 540x960 footage preview of the source's duration);
@@ -511,9 +570,17 @@ inputs name the old retime outputs) does not re-run retime.
 - Every step declares everything it reads (inputs, settings, version) and reads nothing else.
 - Never overwrite a stored output; uploads are put-if-absent.
 - Word ids never change after transcribe; retime keeps them.
-- Retime cuts silence by the audio envelope only, never by the transcript's word intervals, and
-  never removes a frame of a non-silent run; word starts follow the audio (rule 6), never the
-  other way round.
+- Retime never cuts inside a word's span (start to end, the aligner's times) and never removes any
+  part of a possible missed word (`missedSpeechSeconds` or more of frames in a row within
+  `missedSpeechBelowSpeechDb` of the clip's speech level, inside a gap of the transcript). A pause
+  is a gap of the transcript, whatever its loudness. Never decide a pause by a silence level, fixed
+  or measured: the audio only holds back a possible missed word.
+- Retime never plays voiced sound under 1x: the middle frame of a short pause is slowed to
+  `gapRate` only when it is quiet (`gapQuietBelowSpeechDb` under the speech level). Never slow a
+  frame without that check.
+- Every join of two retimed pieces fades the sound out and in (`joinFadeSeconds`). Never join two
+  pieces of sound hard, and never let a fade change a piece's length or touch the video: the
+  picture stays frame-exact and the sound stays in step with it.
 - Transcribe takes Whisper's words and the aligner's times only. Never add a rule of our own that
   moves a word time; a word the model cannot spell gets the documented fallback, nothing else.
 - Never commit the aligner's model, never fetch it at job time, and never change its pin in one

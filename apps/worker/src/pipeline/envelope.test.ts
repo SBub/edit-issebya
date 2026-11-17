@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { envelopeArgs, parseEnvelope, silentRuns } from "./envelope.ts";
+import { envelopeArgs, loudRuns, parseEnvelope } from "./envelope.ts";
 
 const PRINT = `frame:0    pts:0       pts_time:0
 lavfi.astats.Overall.RMS_level=-52.637215
@@ -30,15 +30,15 @@ describe("parseEnvelope", () => {
   });
 });
 
-describe("silentRuns", () => {
-  it("finds runs below the threshold at the right times", () => {
-    const db = [-20, -50, -50, -20, -20, -45, -60, -10, -41];
-    const runs = silentRuns(db, -40, 0.01);
+describe("loudRuns", () => {
+  it("finds runs at or above the level at the right times", () => {
+    const db = [-50, -20, -20, -50, -50, -15, -10, -60, -21];
+    const runs = loudRuns(db, -21, 0.01);
     expect(runs.map(([a, b]) => [a.toFixed(2), b.toFixed(2)])).toEqual([
       ["0.01", "0.03"],
       ["0.05", "0.07"],
       ["0.08", "0.09"],
     ]);
-    expect(silentRuns([-20, -30], -40, 0.01)).toEqual([]);
+    expect(loudRuns([-50, -30], -21, 0.01)).toEqual([]);
   });
 });

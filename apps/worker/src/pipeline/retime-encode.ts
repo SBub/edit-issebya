@@ -6,7 +6,8 @@ function num(value: number): string {
   return String(Number(value.toFixed(6)));
 }
 
-// Pitch kept above 1x (atempo); below 1x a plain rate change on room tone.
+// Pitch kept above 1x (atempo); below 1x a plain rate change, which drops the
+// pitch: the planner slows only quiet frames (room tone), never a voice.
 function tempo(speed: number, sampleRate: number): string {
   return speed >= 1
     ? `atempo=${num(speed)}`
@@ -17,6 +18,16 @@ function tempo(speed: number, sampleRate: number): string {
 // `frameRate`, so every boundary is a whole frame and a whole number of audio
 // samples). Each audio piece is padded and trimmed to its video piece's
 // length, so concat never drifts and no measuring pass is needed.
+//
+// The joins: a pause is a gap of the transcript whatever its loudness, so a
+// join often falls inside a breath or room sound, and two pieces set end to
+// end there click. Every piece but the first fades in over joinFadeSeconds,
+// and every piece but the last fades out over it (the last one carries the
+// longer end fade). A fade only scales samples that are already in the piece
+// (`afade` by sample position, after the trim): no piece changes length, so
+// the sound's total length and its place against the picture stay exactly as
+// planned, and the video pieces are not touched at all. A piece shorter than
+// two fades gets half its length for each.
 export function retimeFilterGraph(
   plan: RetimePlan,
   sampleRate: number,
@@ -31,15 +42,22 @@ export function retimeFilterGraph(
     const end = Math.round(segment.orig[1] * fps);
     const samples = Math.round(((end - first) * samplesPerFrame) / segment.speed);
     const last = index === plan.segments.length - 1;
-    const fade = last
+    const join = Math.min(
+      Math.round(settings.joinFadeSeconds * sampleRate),
+      Math.floor(samples / 2),
+    );
+    const fadeIn = index > 0 && join > 0 ? `,afade=t=in:ss=0:ns=${join}` : "";
+    const fadeOut = last
       ? `,afade=t=out:st=${num(Math.max(0, samples / sampleRate - settings.endFadeSeconds))}:d=${num(settings.endFadeSeconds)}`
-      : "";
+      : join > 0
+        ? `,afade=t=out:ss=${samples - join}:ns=${join}`
+        : "";
     parts.push(
       `[0:v]trim=start_frame=${first}:end_frame=${end},setpts=(PTS-STARTPTS)/${num(segment.speed)}[v${index}]`,
     );
     parts.push(
       `[0:a]atrim=start_sample=${Math.round(first * samplesPerFrame)}:end_sample=${Math.round(end * samplesPerFrame)},` +
-        `asetpts=PTS-STARTPTS,${tempo(segment.speed, sampleRate)},apad,atrim=end_sample=${samples}${fade}[a${index}]`,
+        `asetpts=PTS-STARTPTS,${tempo(segment.speed, sampleRate)},apad,atrim=end_sample=${samples}${fadeIn}${fadeOut}[a${index}]`,
     );
     labels.push(`[v${index}][a${index}]`);
   });

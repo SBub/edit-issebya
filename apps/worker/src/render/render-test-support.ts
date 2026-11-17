@@ -27,8 +27,8 @@ const NO_CHOICES = {
 
 const FIXTURES = new URL("../../../../fixtures/pipeline/", import.meta.url);
 
-// The committed pipeline outputs of a fixture clip: the short speech (2.69 s, a
-// flat picture) at the root, the ten-second speech (9.4 s, a person talking)
+// The committed pipeline outputs of a fixture clip: the short speech (2.67 s, a
+// flat picture) at the root, the ten-second speech (9.5 s, a person talking)
 // in its own folder.
 export type FixtureReel = "short-speech" | "speech-ten";
 const FOLDERS: Record<FixtureReel, string> = { "short-speech": "", "speech-ten": "speech-ten/" };

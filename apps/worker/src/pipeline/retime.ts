@@ -5,7 +5,13 @@ import type { PipelineStep, StepOutput } from "./definition.ts";
 import { envelopeArgs, parseEnvelope } from "./envelope.ts";
 import { parseProbe, probeArgs } from "./probe.ts";
 import { retimeEncodeArgs, retimeFilterGraph } from "./retime-encode.ts";
-import { planRetime, retimeTranscript } from "./retime-plan.ts";
+import {
+  missedSpeech,
+  pausesLeft,
+  planRetime,
+  remapTime,
+  retimeTranscript,
+} from "./retime-plan.ts";
 import { RETIME_PRESET, RETIME_VERSION, type RetimeSettings } from "./retime-preset.ts";
 import { parseTranscript } from "./transcript.ts";
 
@@ -35,9 +41,38 @@ function retimedSeconds(text: string): number {
   return durationSeconds;
 }
 
-// Probe, envelope, plan, one encode; then the retimed transcript (same ids,
-// word starts moved to the speech onset by the audio), the plan and the
-// envelope beside the footage.
+const seconds = (t: number) => t.toFixed(1);
+
+// The step line: the retimed length and speed, then the pauses left, if any
+// ("2 pauses over 0.3 s left, 1.4 s in all"), then every possible missed word
+// kept, with its retimed time ("1 possible missed word kept (sound at speech
+// level in a pause) at 12.3 to 12.8 s").
+export function retimeSummary(
+  durationSeconds: number,
+  left: readonly [number, number][],
+  missed: readonly [number, number][],
+  settings: RetimeSettings,
+): string {
+  const parts = [`retimed to ${seconds(durationSeconds)} seconds, ${settings.baseSpeed}x`];
+  if (left.length > 0) {
+    const total = left.reduce((sum, [a, b]) => sum + b - a, 0);
+    const pauses = left.length === 1 ? "1 pause" : `${left.length} pauses`;
+    parts.push(`${pauses} over ${settings.maxPauseSeconds} s left, ${seconds(total)} s in all`);
+  }
+  if (missed.length > 0) {
+    const words =
+      missed.length === 1 ? "1 possible missed word" : `${missed.length} possible missed words`;
+    const times = missed.map(([a, b]) => `${seconds(a)} to ${seconds(b)} s`).join(", ");
+    parts.push(`${words} kept (sound at speech level in a pause) at ${times}`);
+  }
+  return parts.join(", ");
+}
+
+// Probe, envelope, plan (the transcript's gaps are the pauses, the audio only
+// holds back a possible missed word), one encode; then the retimed transcript
+// (same ids, every time through the plan), the plan and the envelope beside
+// the footage. The summary names the pauses still longer than maxPauseSeconds
+// (pausesLeft) and every possible missed word kept (missedSpeech).
 export const retime: PipelineStep<RetimeSettings> = {
   name: "retime",
   version: RETIME_VERSION,
@@ -70,12 +105,13 @@ export const retime: PipelineStep<RetimeSettings> = {
     const envelope = parseEnvelope(await readFile(join(dir, ENVELOPE_PRINT), "utf8"));
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     const transcript = parseTranscript(await readFile(files["transcript.json"]!, "utf8"));
-    const plan = planRetime({
+    const clip = {
       words: transcript.words,
       envelope,
       durationSeconds: probe.durationSeconds,
       settings,
-    });
+    };
+    const plan = planRetime(clip);
 
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     await writeFile(join(dir, GRAPH), retimeFilterGraph(plan, probe.audio.sampleRate, settings));
@@ -89,12 +125,16 @@ export const retime: PipelineStep<RetimeSettings> = {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     await rename(partial, join(dir, "source.mp4"));
 
-    const retimed = retimeTranscript({ transcript, plan, envelope, settings });
+    const retimed = retimeTranscript({ transcript, plan });
     await writeAtomic(join(dir, "transcript.json"), `${JSON.stringify(retimed, null, 2)}\n`);
     await writeAtomic(join(dir, "retime.json"), json(plan));
     await writeAtomic(join(dir, "envelope.json"), `${JSON.stringify(envelope)}\n`);
+    const missed = missedSpeech(clip).map(([a, b]): [number, number] => [
+      remapTime(plan, a),
+      remapTime(plan, b),
+    ]);
     return {
-      what: `retimed to ${plan.durationSeconds.toFixed(1)} seconds, ${settings.baseSpeed}x`,
+      what: retimeSummary(plan.durationSeconds, pausesLeft({ plan, ...clip }), missed, settings),
     };
   },
 };

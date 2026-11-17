@@ -3,62 +3,62 @@
     {
       "id": "w0001",
       "text": "This",
-      "start": 0.073,
-      "end": 0.2
+      "start": 0.076,
+      "end": 0.21
     },
     {
       "id": "w0002",
       "text": "is",
-      "start": 0.309,
-      "end": 0.364
+      "start": 0.324,
+      "end": 0.381
     },
     {
       "id": "w0003",
       "text": "a",
-      "start": 0.436,
-      "end": 0.473
+      "start": 0.457,
+      "end": 0.495
     },
     {
       "id": "w0004",
       "text": "short",
-      "start": 0.527,
-      "end": 0.727
+      "start": 0.552,
+      "end": 0.762
     },
     {
       "id": "w0005",
       "text": "test",
-      "start": 0.825,
-      "end": 1.043
+      "start": 0.838,
+      "end": 1.067
     },
     {
       "id": "w0006",
       "text": "clip",
-      "start": 1.196,
-      "end": 1.378
+      "start": 1.2,
+      "end": 1.39
     },
     {
       "id": "w0007",
       "text": "for",
-      "start": 1.451,
-      "end": 1.523
+      "start": 1.467,
+      "end": 1.543
     },
     {
       "id": "w0008",
       "text": "the",
-      "start": 1.578,
-      "end": 1.651
+      "start": 1.6,
+      "end": 1.676
     },
     {
       "id": "w0009",
       "text": "real",
-      "start": 1.705,
-      "end": 1.905
+      "start": 1.733,
+      "end": 1.943
     },
     {
       "id": "w0010",
       "text": "studio.",
-      "start": 1.996,
-      "end": 2.541
+      "start": 2.038,
+      "end": 2.61
     }
   ]
 }
