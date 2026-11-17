@@ -876,8 +876,9 @@ never fatal.
   layout engine, never from the answer.
 - The only other writer of a position or a size is the owner, by hand, through `applyOwnerMoves`
   (`app_docs/owner-edits.md`): a text component's place, its text size and, through an edge
-  handle's wrap width, its line breaks (set on the engine's balanced lines), and a VISUAL's box and
-  turn, inside the safe zone, saved as a new version. Never a time or a word.
+  handle's wrap width, its line breaks (set on the engine's balanced lines), inside the safe zone, and
+  a VISUAL's box and turn, free of the safe zone but with at least a fifth of it inside the frame,
+  saved as a new version. Never a time or a word.
 - Never let an overlap pass silently: a front pick or a caption block placed over the face is noted
   `covers-face` (rule `face`), and a caption block set over other text for want of a legal spot is noted
   `no-spot` with the texts it sits over. A text over a visual's card is no overlap (decision 9).
@@ -928,7 +929,8 @@ never fatal.
 - Never let a big word that needs the cut-out sit on a visual's card while both show (decision 24). A big
   word with no cut-out may sit on a card: it is front text, drawn above the card (track 31).
 - Never let a visual leave its card: it is a corner card in front of the speaker, never behind them,
-  always inside the safe zone `S` and off the button column. The placer gives it a corner, then the strip
+  placed by the engine always inside the safe zone `S` and off the button column (the owner may move
+  it past both, `app_docs/owner-edits.md`). The placer gives it a corner, then the strip
   beside the face, the full card (360 wide) where the spot holds it, else shrunk from it at its picture's aspect in 10%
   steps, never under 30 px wide; only when nothing off the face holds a card does it cover the face
   (noted `covers-face`, rule `face`). A front text is no obstacle to the card and the card none to it: a

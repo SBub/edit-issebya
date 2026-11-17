@@ -189,12 +189,14 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     sound: z.enum(SOUND_KEYS),
     gain_db: z.number().min(-60).max(12).optional(),
   });
-  // A placed VISUAL's box: where the layout engine set it (its top left
-  // corner, width and height in the frame). A VISUAL is always in front of the
-  // speaker, over the footage.
+  // A placed VISUAL's box: where the layout engine or the owner set it (its
+  // top left corner, width and height in frame pixels). A VISUAL is always in
+  // front of the speaker, over the footage. The engine keeps it inside the
+  // safe zone; the owner may put it partly past the frame's edge
+  // (app_docs/owner-edits.md), so its corner may be off the frame.
   const visualBox = z.object({
-    x: z.number().int().min(0).max(preset.frame.width),
-    y: z.number().int().min(0).max(preset.frame.height),
+    x: z.number().int().min(-preset.frame.width).max(preset.frame.width),
+    y: z.number().int().min(-preset.frame.height).max(preset.frame.height),
     width: z.number().int().min(1).max(preset.frame.width),
     height: z.number().int().min(1).max(preset.frame.height),
   });

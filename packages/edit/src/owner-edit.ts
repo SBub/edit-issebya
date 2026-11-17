@@ -14,7 +14,7 @@ import { type Box, type HeadTrack, boundingBox, facesOver } from "./head-track.t
 import type { FontRole } from "./font-pairs.ts";
 import { breaksOf, textLines } from "./lines.ts";
 import type { Measurer } from "./measure.ts";
-import { type Preset, wordsText } from "./preset.ts";
+import { ISSEBYA_PRESET, type Preset, wordsText } from "./preset.ts";
 import { isQuestion, questionText } from "./question.ts";
 import type { BehindVisualItem, Edit, TransitionLevel } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
@@ -527,14 +527,80 @@ export function fitInSafeZone(box: {
   return { x, y };
 }
 
-// Why a component's box breaks the owner's one hard rule: like every text, it
-// stays inside the safe zone S and clear of the buttons' notch (what the
-// platforms cover is never readable). A turned VISUAL is read as the upright
-// rectangle around it. Empty when it holds. Everything else (the face, other
+// The least share of a VISUAL's rectangle (the upright one around it when it is
+// turned) that stays inside the frame: a card may reach past the safe zone and
+// even past the frame's edge, but never so far that it is lost off screen.
+const VISUAL_MIN_SHOWN = 0.2;
+
+type Rect = { x: number; y: number; width: number; height: number };
+
+// The share of a rectangle inside the frame (0 to 1).
+export function shownShare(rect: Rect, frame: { width: number; height: number }): number {
+  if (rect.width <= 0 || rect.height <= 0) return 0;
+  const across = Math.max(0, Math.min(rect.x + rect.width, frame.width) - Math.max(rect.x, 0));
+  const down = Math.max(0, Math.min(rect.y + rect.height, frame.height) - Math.max(rect.y, 0));
+  return (across * down) / (rect.width * rect.height);
+}
+
+// Where one axis of a rectangle must start to show `length` of it inside
+// `0..size`, moved the shorter way (the side it is past).
+function shownAt(at: number, extent: number, size: number, length: number): number {
+  const shown = Math.max(0, Math.min(at + extent, size) - Math.max(at, 0));
+  if (shown >= length - SLACK) return at;
+  return at + extent / 2 < size / 2 ? length - extent : size - length;
+}
+
+// The nearest place for a rectangle that keeps `VISUAL_MIN_SHOWN` of it inside
+// the frame: where it is when it already does, else the least move along one
+// axis or both (each axis then showing the square root of the share).
+export function fitInFrame(
+  rect: Rect,
+  frame: { width: number; height: number } = ISSEBYA_PRESET.frame,
+): { x: number; y: number } {
+  if (shownShare(rect, frame) >= VISUAL_MIN_SHOWN - SLACK) return { x: rect.x, y: rect.y };
+  const across = Math.min(rect.width, frame.width);
+  const down = Math.min(rect.height, frame.height);
+  const shareX =
+    Math.max(0, Math.min(rect.x + rect.width, frame.width) - Math.max(rect.x, 0)) / rect.width;
+  const shareY =
+    Math.max(0, Math.min(rect.y + rect.height, frame.height) - Math.max(rect.y, 0)) / rect.height;
+  const root = Math.sqrt(VISUAL_MIN_SHOWN);
+  const options: { x: number; y: number }[] = [];
+  // One axis alone, when the other already shows enough for the product.
+  if (shareY > 0 && VISUAL_MIN_SHOWN / shareY <= across / rect.width + SLACK) {
+    options.push({
+      x: shownAt(rect.x, rect.width, frame.width, (VISUAL_MIN_SHOWN / shareY) * rect.width),
+      y: rect.y,
+    });
+  }
+  if (shareX > 0 && VISUAL_MIN_SHOWN / shareX <= down / rect.height + SLACK) {
+    options.push({
+      x: rect.x,
+      y: shownAt(rect.y, rect.height, frame.height, (VISUAL_MIN_SHOWN / shareX) * rect.height),
+    });
+  }
+  // Both axes, each to the square root of the share at least.
+  options.push({
+    x: shownAt(rect.x, rect.width, frame.width, Math.max(shareX, root) * rect.width),
+    y: shownAt(rect.y, rect.height, frame.height, Math.max(shareY, root) * rect.height),
+  });
+  return options.reduce((best, option) =>
+    Math.hypot(option.x - rect.x, option.y - rect.y) < Math.hypot(best.x - rect.x, best.y - rect.y)
+      ? option
+      : best,
+  );
+}
+
+// Why a component's box breaks the owner's hard rules. A text stays inside the
+// safe zone S and clear of the buttons' notch (what the platforms cover is
+// never readable). A VISUAL is free of the safe zone, even past the frame's
+// edge, but keeps `VISUAL_MIN_SHOWN` of the upright rectangle around it inside
+// the frame. Empty when every one holds. Everything else (the face, other
 // text) is the owner's choice; the version's checks record it.
 export function ownerMoveProblems(
   components: readonly PlacedComponent[],
   ids: readonly string[],
+  frame: { width: number; height: number } = ISSEBYA_PRESET.frame,
 ): string[] {
   const { box: safe, notch } = SAFE_ZONE;
   const reasons: string[] = [];
@@ -545,6 +611,12 @@ export function ownerMoveProblems(
       continue;
     }
     const at = rotatedBounds(placed, placed.rotation ?? 0);
+    if (placed.component === "VISUAL") {
+      if (shownShare(at, frame) < VISUAL_MIN_SHOWN - SLACK) {
+        reasons.push(`${id}: less than a fifth of it is inside the frame`);
+      }
+      continue;
+    }
     const right = at.x + at.width;
     const bottom = at.y + at.height;
     if (
@@ -636,10 +708,11 @@ export function settleOwnerMove(
 }
 
 // A VISUAL's move made legal: its turn in whole degrees (-179 to 180), its
-// width at least `MIN_BOX_PX` and shrunk (its height with it, in proportion)
-// until the upright rectangle around the turned box fits the safe zone and
-// clears the notch, then the box moved the least it must, at whole pixels.
-// Refused when the id is no VISUAL or it fits nowhere even at its narrowest.
+// width at least `MIN_BOX_PX`, at most the frame's width and shrunk (its
+// height with it, in proportion) while its height passes the frame's, then the
+// box moved the least it must to keep `VISUAL_MIN_SHOWN` of the upright
+// rectangle around it inside the frame, at whole pixels. The safe zone does
+// not bind a card. Refused when the id is no VISUAL.
 function settleBoxMove(
   edit: Edit,
   move: OwnerBoxMove,
@@ -647,67 +720,33 @@ function settleBoxMove(
 ): { ok: true; move: OwnerMove; edit: Edit } | { ok: false; reasons: string[] } {
   const visual = visualOf(edit, move.id);
   if (!visual) return { ok: false, reasons: [`${move.id}: not a visual of this version`] };
-  const { box: safe } = SAFE_ZONE;
+  const { frame } = context.preset;
   const rotation = wholeDegrees(move.rotation ?? visual.rotation ?? 0);
-  let width = Math.max(MIN_BOX_PX, Math.round(move.width));
-  for (let pass = 0; pass < 2000 && width >= MIN_BOX_PX; pass += 1) {
-    const height = boxHeight(visual, width);
-    const x = Math.round(move.x);
-    const y = Math.round(move.y);
-    const bounds = rotatedBounds({ x, y, width, height }, rotation);
-    const share = Math.min(
-      (safe.right - safe.left) / bounds.width,
-      (safe.bottom - safe.top) / bounds.height,
-    );
-    if (share < 1 - SLACK) {
-      width = Math.min(width - 1, Math.floor(width * share));
-      continue;
-    }
-    const spot = fitInSafeZone(bounds);
-    if (!spot) {
-      width -= 1;
-      continue;
-    }
-    // The upright box under the rectangle's spot, at whole pixels: the nearest
-    // corners first, then the ones a pixel further in, the first legal one.
-    const fromX = spot.x - (bounds.x - x);
-    const fromY = spot.y - (bounds.y - y);
-    const corner = wholeCorners(fromX, fromY).find(
-      (at) =>
-        ownerMoveProblems(
-          [
-            {
-              id: move.id,
-              component: "VISUAL",
-              text: "",
-              size: null,
-              start: 0,
-              end: 0,
-              ...at,
-              width,
-              height,
-              rotation,
-            },
-          ],
-          [move.id],
-        ).length === 0,
-    );
-    if (!corner) {
-      width -= 1;
-      continue;
-    }
-    const settled: OwnerBoxMove = {
-      id: move.id,
-      kind: "box",
-      ...corner,
-      width,
-      ...(move.rotation !== undefined || visual.rotation ? { rotation } : {}),
-    };
-    const applied = applyOwnerMoves(edit, [settled], context);
-    if (!applied.ok) return applied;
-    return { ok: true, move: settled, edit: applied.edit };
-  }
-  return { ok: false, reasons: [`${move.id}: does not fit the safe zone at any size`] };
+  let width = Math.min(frame.width, Math.max(MIN_BOX_PX, Math.round(move.width)));
+  while (width > MIN_BOX_PX && boxHeight(visual, width) > frame.height) width -= 1;
+  const height = boxHeight(visual, width);
+  const x = Math.round(move.x);
+  const y = Math.round(move.y);
+  const bounds = rotatedBounds({ x, y, width, height }, rotation);
+  const spot = fitInFrame(bounds, frame);
+  // The upright box under the rectangle's spot, at whole pixels: the nearest
+  // corners first, then the ones a pixel further in, the first legal one.
+  const corner = wholeCorners(spot.x - (bounds.x - x), spot.y - (bounds.y - y)).find(
+    (at) =>
+      shownShare(rotatedBounds({ ...at, width, height }, rotation), frame) >=
+      VISUAL_MIN_SHOWN - SLACK,
+  );
+  if (!corner) return { ok: false, reasons: [`${move.id}: no place inside the frame`] };
+  const settled: OwnerBoxMove = {
+    id: move.id,
+    kind: "box",
+    ...corner,
+    width,
+    ...(move.rotation !== undefined || visual.rotation ? { rotation } : {}),
+  };
+  const applied = applyOwnerMoves(edit, [settled], context);
+  if (!applied.ok) return applied;
+  return { ok: true, move: settled, edit: applied.edit };
 }
 
 // Whole-pixel corners near a place, nearest first: the place rounded up (as

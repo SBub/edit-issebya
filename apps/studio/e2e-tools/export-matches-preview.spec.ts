@@ -738,6 +738,28 @@ test("a visual, the same visual moved and resized and then turned by the owner, 
     );
     expect(Math.min(...againstUpright)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
 
+    // A card is free of the safe zone (owner rule, 2026-11-17): the owner puts
+    // it upright with its right half past the frame's right edge, low over the
+    // platform buttons' notch. The page draws it partly off the frame in both,
+    // so the export still matches its preview.
+    const edgeX = ISSEBYA_PRESET.frame.width - Math.round(card.width / 2);
+    const edgeId = await ownerEditTo(turnedId, [
+      { id: visualMove.id, kind: "box", x: edgeX, y: 1400, width: card.width, rotation: 0 },
+    ]);
+    await openPreview(edgeId);
+    const edge = await composition()
+      .locator(`[id="${visualMove.id}"]`)
+      .evaluate((el) => {
+        const style = (el as HTMLElement).style;
+        return { x: parseFloat(style.left), y: parseFloat(style.top), rotate: style.rotate };
+      });
+    expect(edge).toEqual({ x: edgeX, y: 1400, rotate: "" });
+    const edgePreviews = await capturePreview("owner-visual-past-edge");
+    const { mp4: edgeMp4 } = await exportNow("owner-visual-past-edge");
+    for (const score of await scores("owner-visual-past-edge", edgeMp4, edgePreviews)) {
+      expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+    }
+
     // One big word behind the speaker, a second version.
     const wordId = await startOverTo(await behindWordAnswerScript(dir, "w0001"));
     await openPreview(wordId);

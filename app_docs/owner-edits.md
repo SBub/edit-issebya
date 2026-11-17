@@ -19,6 +19,10 @@
   (0 degrees) and to 90, 180 and 270 degrees within a few degrees, with a visible hint while snapped;
   it follows the pointer at once like a drag, and the swap to the rebuilt draft has no jump. Texts
   are never turned, visuals only.
+- Owner rule, 2026-11-17: a VISUAL card may go beyond the safe zone, over the platform buttons'
+  notch and even past the frame's edge, but at least 20% of the upright rectangle around it stays
+  inside the frame, so it is never lost off screen. Text stays bound to the safe zone exactly as
+  before. The engine's own placement of cards is unchanged.
 
 ## Overview
 
@@ -99,8 +103,8 @@ with it at that moment. Placement rules will be learnt from these later.
   `transform`, which the page's timeline owns, so the preview and the export draw the same turned
   card. A text's move has no turn: `parseOwnerMoves` refuses one.
 - A turned card covers the upright rectangle around it (`rotatedBounds`, `visualBounds` in
-  `behind.ts`): the safe zone rule (`ownerMoveProblems`, `settleOwnerMove`) and the `card-overlap`
-  check read that rectangle, never the upright box.
+  `behind.ts`): the frame rule of a card (`ownerMoveProblems`, `settleOwnerMove`) and the
+  `card-overlap` check read that rectangle, never the upright box.
 - It refuses, with reasons: an id that is no text component of the edit (a caption is not moved), a
   size outside the component's range (`ownerSizeRange`), a component moved twice, a wrap width on a
   big word (`a big word keeps its lines`) or one that is no positive number; a text's move on a
@@ -115,9 +119,15 @@ version`) and a VISUAL narrower than 100 px (`MIN_BOX_PX`) or wider than the fra
   the hook; 30 px to the frame's height for a big word; for a LIST the key sizes that keep its
   smallest level at 30 px or more and its largest at 400 px or less (a key of 110 beside a lead-in of
   50 and a number of 300: 66 to 146).
-- **The one hard rule is the safe zone.** `ownerMoveProblems(components, ids)` names every moved
-  component whose box leaves `SAFE_ZONE.box` or reaches the platform buttons' notch: what the
-  platforms cover is never readable, whoever placed the text. Everything else is the owner's choice:
+- **The one hard rule of a text is the safe zone.** `ownerMoveProblems(components, ids)` names every
+  moved text whose box leaves `SAFE_ZONE.box` or reaches the platform buttons' notch: what the
+  platforms cover is never readable, whoever placed the text. **A VISUAL is free of the safe zone**
+  (owner rule, 2026-11-17): it may sit over the notch and reach past the frame's edge, and
+  `ownerMoveProblems` names it only when less than a fifth (`VISUAL_MIN_SHOWN`, 0.2) of the upright
+  rectangle around it is inside the frame (`shownShare`), so it is never lost off screen. The
+  schema lets a card's corner be off the frame (`x` from minus to plus the frame's width, `y` the
+  same with its height); the `safe-box` check reads texts only, never a card. Everything else is
+  the owner's choice:
   a text over the face or over another text is allowed, and the version's stored `checks` record it
   (`text-overlap`, never fatal). The engine's rule 6 (a big word at most 30% behind the head) does
   not bind the owner.
@@ -127,10 +137,12 @@ version`) and a VISUAL narrower than 100 px (`MIN_BOX_PX`) or wider than the fra
   zone, the size brought into its range and shrunk until the box fits the safe zone (a wrap width
   shrinks with the size, so the lines stay), then the box moved the least it must, at whole pixels. The
   studio settles every drag with it, so what the owner sees is what the worker accepts. A VISUAL's
-  move is settled the same way: its turn brought to whole degrees, its width at least 100 px and
-  shrunk (its height with it) until the rectangle around the turned box fits the safe zone and
-  clears the notch, then moved the least it must, at whole pixels (the nearest whole corner whose
-  rectangle holds).
+  move is settled by its own rule: its turn brought to whole degrees, its width at least 100 px and
+  at most the frame's width (shrunk, its height with it, while its height passes the frame's), then
+  moved the least it must (`fitInFrame`: along one axis, or both) to keep a fifth of the rectangle
+  around the turned box inside the frame, at whole pixels (the nearest whole corner whose rectangle
+  holds). A card dropped anywhere with a fifth of it in the frame stays where it is dropped, past
+  the safe zone and the notch included.
 - `effectiveMoves(moves, components, after?)` leaves out a move that changes nothing (a text put back
   where the version has it). Without `after` (the worker) a move with a wrap width always counts.
   With `after` (the studio's draft components) a move counts only when its box or size there differs
@@ -380,6 +392,8 @@ order by created_at;
    it is dropped; the preview is built again after each drag and replaces the old one without a
    flicker or a jump.
    Near the middle of the frame the text snaps to the centre lines and a thin guide shows. A text stops at the edge of the safe zone.
+   A visual card may go past the safe zone, into a corner or partly off the frame; dragged so far
+   that less than a fifth of it would show, it comes back until a fifth does.
 5. Press `Save`. A new version, `Edited by you`, becomes current. Press `Cancel` to drop the changes.
 6. To compare, open another version's details in the Versions list and press `Go back to this`.
 
@@ -403,12 +417,14 @@ like decide does (`E2E_MOCK_MASK` in specs).
   big word's cut-out; the learning records (the engine's box, the owner's, the head, the others, a
   component moved earlier). A VISUAL: movable, moved and scaled as a box with its picture's aspect
   ratio, nothing else changed; a box move on a text, one narrower than 100 px and one made twice
-  refused; settled at the safe zone's edge, at the largest size that fits and at the 100 px floor;
+  refused; settled into the bottom right corner over the notch where it was dropped (past the safe
+  zone), brought back from far off the frame until a fifth of it shows, at the frame's width when
+  wider and at the 100 px floor; `fitInFrame` (unchanged with a fifth in, one axis, a corner);
   parsed; left out when it changes nothing; recorded with no size and no wrap width. A turned
   VISUAL: turned in whole degrees (-350 is 10, -190 is 170, 0 upright with no `rotation`), drawn
   with `rotate` and never `transform`, a move with no turn keeping it; a turn of 12.5 degrees and a
-  turn on a text refused; the safe zone read from the rectangle around it; settled inside the safe
-  zone with its turn, shrunk when too large; a turn alone counted by `effectiveMoves` and recorded as
+  turn on a text refused; the frame rule read from the rectangle around it; settled with a fifth of
+  that rectangle in the frame and its turn kept, left where it is past the safe zone; a turn alone counted by `effectiveMoves` and recorded as
   `rotated` with `engine_rotation` 0 and the owner's. A QUESTION (`question/word-by-word`): one box
   holding its question mark, measured as drawn; moved and resized by its corner with its words,
   mark and reveal kept; its wrap options read from its text with the mark (every box within its
@@ -424,7 +440,9 @@ like decide does (`E2E_MOCK_MASK` in specs).
   owner's, the edited version not rewritten; one learning record per moved component; a wrap width
   setting the hook's lines again, recorded as a resize with `wrap_width`; a VISUAL moved and scaled
   as a box with its aspect ratio kept and recorded as `VISUAL`, then turned -15 degrees with its box
-  kept and recorded as `rotated` against the engine's upright card; the AI record copied; an
+  kept and recorded as `rotated` against the engine's upright card, then moved into the bottom
+  right corner past the safe zone and the frame's edge and saved, and one with less than a fifth
+  in the frame refused with no version written; the AI record copied; an
   earlier version edited; the engine's box read from the engine-placed version on a second edit; the
   refusals (outside the safe zone, a caption, an unknown component, a size under 30 px, nothing
   moved, a version of another reel), each writing no version. `job-kinds.test.ts`: the dispatch and
@@ -481,9 +499,13 @@ like decide does (`E2E_MOCK_MASK` in specs).
   guides, 6 degrees past it no snap and no guide, 3 degrees from upright it snaps to 0; dropped at a
   quarter turn. Save sends the box move with `rotation: 90`, the saved version draws the card turned
   90 degrees and the row is `rotated` with `engine_rotation` 0 and `owner_rotation` 90. With
+  The card is then dragged with its centre onto the frame's right edge, low over the notch: it
+  stays where it is dropped (not clamped to the safe zone), Save keeps it there in the saved
+  version, and its learning row holds that box. With
   `OWNER_EDIT_SHOTS` it keeps `visual-1-selected-with-corner-handle.png`, `visual-2-moved.png`,
   `visual-3-resized.png`, `visual-4-centred.png`, `visual-5-turned.png`,
-  `visual-6-snapped-quarter-turn.png` and `visual-7-snapped-upright.png`.
+  `visual-6-snapped-quarter-turn.png`, `visual-7-snapped-upright.png` and
+  `visual-8-past-the-safe-zone.png`.
 - `apps/studio/e2e/owner-edit-question.spec.ts` (`yarn test:e2e`, the fixture clip with the
   QUESTION "test clip for the real studio?" placed by the engine and saved with its record): picked
   from the list it is selected as `Question` with a corner handle and four edge handles, every word
@@ -507,7 +529,9 @@ moved, a resized and a widened component match between preview and export`: the 
   its preview the same way, and against the engine's previews it falls below the bound. That
   version is then turned 45 degrees by another `owner_edit` job (its box kept): its preview draws
   `rotate: 45deg` and no `transform`, the export matches its preview at the bound, and against the
-  upright card's previews it falls below the bound. Measured 2026-11-17: every case at or above
+  upright card's previews it falls below the bound. A last `owner_edit` puts the card upright with
+  its right half past the frame's right edge, low over the notch: its export matches its preview
+  at the bound. Measured 2026-11-17: every case at or above
   the bound, against the version before the moves at most 0.919066 mid-reel, and the turned card
   against the upright previews 0.94604 at its lowest (`app_docs/export.md`).
 
@@ -517,16 +541,19 @@ moved, a resized and a widened component match between preview and export`: the 
 - Never change anything but the place, the text size and the line breaks of the moved components,
   and a moved VISUAL's box and turn: not a word, a time, a caption, a card's picture or its description. A line break changes only through a wrap width, on the
   engine's balanced lines; never stretch or squeeze letters to fill a box.
-- Never save a moved component outside the safe zone or in the buttons' notch. The studio settles
-  every drag (`settleOwnerMove`) and the worker refuses the job.
+- Never save a moved text outside the safe zone or in the buttons' notch. The studio settles every
+  drag (`settleOwnerMove`) and the worker refuses the job. The safe zone is the one hard rule for
+  text only: a VISUAL is free of it and of the notch, even past the frame's edge, but never with
+  less than a fifth of the upright rectangle around it inside the frame (`VISUAL_MIN_SHOWN`); the
+  studio settles a card's drag to that and the worker refuses one that breaks it.
 - Never stretch a VISUAL: its height always follows its picture's aspect ratio (`boxHeight`), and it
   has no edge handles.
 - Never turn a text: only a VISUAL has a rotate handle and a `rotation`; a text's move with a turn
   is refused.
 - Never draw a turn in `transform`: the builder and the instant view write the `rotate` property,
   so the page's timeline keeps `transform`.
-- Never read a turned card's place from its upright box for the safe zone or an overlap: read the
-  rectangle around it (`visualBounds`).
+- Never read a turned card's place from its upright box for the frame rule or an overlap: read the
+  rectangle around it (`visualBounds`, `rotatedBounds`).
 - Never draw the draft with anything but the one builder: the editor's layer draws boxes and
   handles only, never text, and is never part of the built page or the export. The instant view
   only restyles the builder's own elements on the page on screen (their place, size and lines, from

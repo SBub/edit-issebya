@@ -5,6 +5,7 @@ import { SAFE_ZONE } from "./engine-zones.ts";
 import {
   applyOwnerMoves,
   effectiveMoves,
+  fitInFrame,
   fitInSafeZone,
   isMovable,
   ownerMoveProblems,
@@ -13,6 +14,7 @@ import {
   ownerWrapOptions,
   parseOwnerMoves,
   settleOwnerMove,
+  shownShare,
   withOwnerCutouts,
 } from "./owner-edit.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
@@ -536,31 +538,42 @@ describe("the safe zone, the owner's one hard rule", () => {
     expect(ownerMoveProblems([after], ["hook"])).toEqual([]);
   });
 
-  it("settles a VISUAL dragged past the edge at the edge, and one too large at the largest that fits", async () => {
+  it("lets a VISUAL past the safe zone, keeping a fifth of it inside the frame", async () => {
     const context = await contextOf(hook);
+    // Into the bottom right corner, over the platform buttons' notch: allowed.
+    const corner = settleOwnerMove(
+      hook.edit,
+      { id: "visual-1", kind: "box", x: 900.4, y: 1700, width: 300 },
+      context,
+    );
+    if (!corner.ok) throw new Error(corner.reasons.join("; "));
+    expect(corner.move).toEqual({ id: "visual-1", kind: "box", x: 900, y: 1700, width: 300 });
+    const placed = byId(await componentsOf(hook, corner.edit), "visual-1");
+    expect(ownerMoveProblems([placed], ["visual-1"])).toEqual([]);
+    // Dragged far off the frame: brought back the least so a fifth shows.
     const past = settleOwnerMove(
       hook.edit,
-      { id: "visual-1", kind: "box", x: -80.6, y: 5000, width: 300 },
+      { id: "visual-1", kind: "box", x: -5000, y: 5000, width: 300 },
       context,
     );
     if (!past.ok) throw new Error(past.reasons.join("; "));
-    expect(past.move).toEqual({
-      id: "visual-1",
-      kind: "box",
-      x: safe.left,
-      y: safe.bottom - 383,
-      width: 300,
-    });
+    const after = byId(await componentsOf(hook, past.edit), "visual-1");
+    const share = shownShare(after, preset.frame);
+    expect(share).toBeGreaterThanOrEqual(0.2);
+    expect(share).toBeLessThan(0.21);
+    expect(after.x).toBeLessThan(0);
+    expect(after.y + after.height).toBeGreaterThan(preset.frame.height);
+    expect(ownerMoveProblems([after], ["visual-1"])).toEqual([]);
+    // Wider than the frame: the frame's width; its aspect ratio kept.
     const huge = settleOwnerMove(
       hook.edit,
       { id: "visual-1", kind: "box", x: 75, y: 300, width: 5000 },
       context,
     );
     if (!huge.ok) throw new Error(huge.reasons.join("; "));
-    const after = byId(await componentsOf(hook, huge.edit), "visual-1");
-    expect(ownerMoveProblems([after], ["visual-1"])).toEqual([]);
-    expect(after.width).toBeLessThanOrEqual(safe.right - safe.left);
-    expect(Math.abs(after.height / after.width - 1494 / 1170)).toBeLessThan(0.01);
+    const wide = byId(await componentsOf(hook, huge.edit), "visual-1");
+    expect(wide.width).toBe(preset.frame.width);
+    expect(Math.abs(wide.height / wide.width - 1494 / 1170)).toBeLessThan(0.01);
     // A VISUAL narrower than its floor is brought up to it.
     const tiny = settleOwnerMove(
       hook.edit,
@@ -569,6 +582,25 @@ describe("the safe zone, the owner's one hard rule", () => {
     );
     if (!tiny.ok) throw new Error(tiny.reasons.join("; "));
     expect(tiny.move).toMatchObject({ x: 300, y: 600, width: 100 });
+  });
+
+  it("finds the nearest place that keeps a fifth of a rectangle inside the frame", () => {
+    const frame = { width: 1080, height: 1920 };
+    // Already a fifth or more inside: unchanged.
+    expect(fitInFrame({ x: -200, y: 100, width: 300, height: 300 }, frame)).toEqual({
+      x: -200,
+      y: 100,
+    });
+    // Off the left edge only: moved right until a fifth of its width shows.
+    expect(fitInFrame({ x: -500, y: 100, width: 300, height: 300 }, frame)).toEqual({
+      x: -240,
+      y: 100,
+    });
+    // Off a corner: the rectangle holds a fifth after the move.
+    const at = fitInFrame({ x: 2000, y: 3000, width: 300, height: 300 }, frame);
+    expect(shownShare({ ...at, width: 300, height: 300 }, frame)).toBeCloseTo(0.2, 6);
+    expect(at.x).toBeGreaterThan(frame.width - 300);
+    expect(at.y).toBeGreaterThan(frame.height - 300);
   });
 
   it("refuses to settle a caption", async () => {
@@ -843,7 +875,6 @@ describe("the learning records of a save", () => {
 });
 
 describe("a VISUAL turned by the owner", () => {
-  const safe = SAFE_ZONE.box;
   const visual = (edit: Edit) => {
     const item = edit.tracks.behind!.find((entry) => entry.id === "visual-1");
     if (item?.kind !== "visual") throw new Error("no visual-1");
@@ -931,45 +962,43 @@ describe("a VISUAL turned by the owner", () => {
     ).toEqual([{ id: "visual-1", kind: "box", x: 1, y: 2, width: 200, rotation: -45 }]);
   });
 
-  it("reads a turned card's safe zone from the upright rectangle around it", async () => {
+  it("reads a turned card's place in the frame from the upright rectangle around it", async () => {
     const context = await contextOf(hook);
-    // Upright at the safe zone's left edge it holds; turned 45 degrees its
-    // corners reach past the edge.
-    const at = { id: "visual-1", kind: "box" as const, x: safe.left, y: 700, width: 300 };
+    // Upright with a fifth of its width inside the left edge it holds; turned
+    // 45 degrees the rectangle around it is wider, and less of it is inside.
+    const at = { id: "visual-1", kind: "box" as const, x: -240, y: 700, width: 300 };
     const upright = applyOwnerMoves(hook.edit, [at], context);
-    const turned = applyOwnerMoves(hook.edit, [{ ...at, rotation: 45 }], context);
+    const turned = applyOwnerMoves(hook.edit, [{ ...at, x: -330, rotation: 45 }], context);
     if (!upright.ok || !turned.ok) throw new Error("not applied");
     expect(ownerMoveProblems(await componentsOf(hook, upright.edit), ["visual-1"])).toEqual([]);
     expect(ownerMoveProblems(await componentsOf(hook, turned.edit), ["visual-1"])).toEqual([
-      "visual-1: runs past the safe zone",
+      "visual-1: less than a fifth of it is inside the frame",
     ]);
   });
 
-  it("settles a turned card so the rectangle around it is inside the safe zone, the turn kept", async () => {
+  it("settles a turned card so a fifth of the rectangle around it stays in the frame, the turn kept", async () => {
     const context = await contextOf(hook);
     const past = settleOwnerMove(
       hook.edit,
-      { id: "visual-1", kind: "box", x: safe.left, y: 700, width: 300, rotation: 45 },
+      { id: "visual-1", kind: "box", x: -330, y: 700, width: 300, rotation: 45 },
       context,
     );
     if (!past.ok) throw new Error(past.reasons.join("; "));
     expect(past.move).toMatchObject({ kind: "box", width: 300, rotation: 45 });
-    expect(past.move.x).toBeGreaterThan(safe.left);
+    expect(past.move.x).toBeGreaterThan(-330);
     expect(past.move.y).toBe(700);
     const after = byId(await componentsOf(hook, past.edit), "visual-1");
     expect(after.rotation).toBe(45);
     expect(ownerMoveProblems([after], ["visual-1"])).toEqual([]);
     expect(Number.isInteger(after.x) && Number.isInteger(after.y)).toBe(true);
-    // Too large to fit turned: shrunk until the rectangle around it fits.
-    const huge = settleOwnerMove(
+    // Inside the frame but past the safe zone, turned: left where it is.
+    const free = settleOwnerMove(
       hook.edit,
-      { id: "visual-1", kind: "box", x: 300, y: 600, width: 900, rotation: 30 },
+      { id: "visual-1", kind: "box", x: 10, y: 700, width: 300, rotation: 30 },
       context,
     );
-    if (!huge.ok) throw new Error(huge.reasons.join("; "));
-    const fitted = byId(await componentsOf(hook, huge.edit), "visual-1");
-    expect(fitted.width).toBeLessThan(900);
-    expect(ownerMoveProblems([fitted], ["visual-1"])).toEqual([]);
+    if (!free.ok) throw new Error(free.reasons.join("; "));
+    expect(free.move).toMatchObject({ x: 10, y: 700, width: 300, rotation: 30 });
     // Any angle is brought to whole degrees from -179 to 180.
     const odd = settleOwnerMove(
       hook.edit,

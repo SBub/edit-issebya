@@ -389,3 +389,48 @@ test("Save makes a new version with the VISUAL's new box, and a learning row for
     },
   ]);
 });
+
+test("a VISUAL dragged into a corner past the safe zone and the frame's edge stays there, and Save keeps it there", async () => {
+  await page.getByTestId("move-toggle").click();
+  await expect(page.getByTestId("move-layer")).toBeVisible();
+  await page.getByTestId("move-pick").selectOption(CARD);
+  await ready();
+  const before = await drawn(CARD);
+  const scale = await screenScale();
+  // The card's centre onto the frame's right edge, low over the platform
+  // buttons' notch: half of it past the frame, all of it past the safe zone.
+  const dx = FRAME_WIDTH - (before.x + before.width / 2);
+  const dy = 1700 - (before.y + before.height / 2);
+  const from = await centreOf(moveBox(CARD));
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + dx * scale, from.y + dy * scale, { steps: 8 });
+  await page.mouse.up();
+  await ready();
+  const corner = await drawn(CARD);
+  expect(Math.abs(corner.x + corner.width / 2 - FRAME_WIDTH)).toBeLessThan(2);
+  expect(Math.abs(corner.y + corner.height / 2 - 1700)).toBeLessThan(2);
+  expect(corner.width).toBe(before.width);
+  await shot("visual-8-past-the-safe-zone.png");
+
+  await page.getByTestId("move-save").click();
+  await expect(page.getByTestId("move-status")).toHaveText("Saving your changes");
+  const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX });
+  expect(worker.code, worker.output).toBe(0);
+  const { data: versions } = await admin
+    .from("versions")
+    .select("id, number")
+    .eq("reel_id", reel!.reelId)
+    .order("number");
+  const saved = versions!.at(-1) as { id: string };
+  await expect(page.locator(`[data-preview-version="${saved.id}"]`)).toBeVisible({
+    timeout: 30_000,
+  });
+  await ready();
+  expect(await drawn(CARD)).toEqual(corner);
+  const { data: rows } = await admin
+    .from("owner_moves")
+    .select("owner_box, moved")
+    .eq("version_id", saved.id);
+  expect(rows).toEqual([{ owner_box: { ...corner, size: null }, moved: true }]);
+});

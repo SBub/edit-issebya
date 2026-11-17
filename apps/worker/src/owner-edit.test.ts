@@ -413,6 +413,25 @@ describe("runOwnerEdit", () => {
       engine_rotation: 0,
       owner_rotation: -15,
     });
+    // A card is free of the safe zone: dragged into the bottom right corner,
+    // over the buttons' notch and partly past the frame's edge, it is saved.
+    await ownerEditRun({
+      versionId: current!,
+      moves: [{ id: before.id, kind: "box", x: 900, y: 1700, width, rotation: 0 }],
+    });
+    const corner = await visualOf(current!);
+    expect(corner.box).toMatchObject({ x: 900, y: 1700, width });
+    expect(corner.box.x + corner.box.width).toBeGreaterThan(1080);
+    // Less than a fifth of it inside the frame is refused, and nothing is saved.
+    const saved = rows.size;
+    const reason = await refusal(
+      ownerEditRun({
+        versionId: current!,
+        moves: [{ id: before.id, kind: "box", x: 1050, y: 1880, width }],
+      }),
+    );
+    expect(reason).toMatch(/less than a fifth of it is inside the frame/);
+    expect(rows.size).toBe(saved);
   });
 
   it("refuses a move that leaves the safe zone, writing no version", async () => {
