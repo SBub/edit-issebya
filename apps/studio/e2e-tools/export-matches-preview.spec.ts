@@ -536,7 +536,8 @@ test("a moved, a resized and a widened component match between preview and expor
 // The visual is compared at the guardrail's moments. The word's moments come
 // from its own placed span (`wordMoments`), so they stay inside it wherever
 // the engine puts its start and end. A ready library photo is seeded beside
-// them; no version places it (the placed photo is gone).
+// them; the owner's edits swap the card's picture for it and add a second
+// card showing it.
 async function startOverTo(script: string): Promise<string> {
   const { error } = await admin
     .from("jobs")
@@ -581,9 +582,20 @@ async function ownerVisualMoveOf(versionId: string) {
 }
 
 // An `owner_edit` job on a version, run by the worker; the owner's new version.
+// A move may swap the card's picture for a library photo (`photo_id`), and
+// `adds` adds cards showing library photos.
 async function ownerEditTo(
   versionId: string,
-  moves: { id: string; kind: "box"; x: number; y: number; width: number; rotation?: number }[],
+  moves: {
+    id: string;
+    kind: "box";
+    x: number;
+    y: number;
+    width: number;
+    rotation?: number;
+    photo_id?: string;
+  }[],
+  adds: { id: string; photo_id: string; word: string; x: number; y: number; width: number }[] = [],
 ): Promise<string> {
   const { error } = await admin.from("jobs").insert({
     reel_id: reel!.reelId,
@@ -591,14 +603,16 @@ async function ownerEditTo(
     kind: "owner_edit",
     owner_edit: {
       version_id: versionId,
-      moves: moves.map(({ id, kind, x, y, width, rotation }) => ({
+      moves: moves.map(({ id, kind, x, y, width, rotation, photo_id }) => ({
         id,
         kind,
         x,
         y,
         width,
         ...(rotation === undefined ? {} : { rotation }),
+        ...(photo_id === undefined ? {} : { photo_id }),
       })),
+      ...(adds.length > 0 ? { adds } : {}),
     },
   });
   if (error) throw new Error(`owner edit job not queued: ${error.message}`);
@@ -737,6 +751,86 @@ test("a visual, the same visual moved and resized and then turned by the owner, 
       movedPreviews,
     );
     expect(Math.min(...againstUpright)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
+
+    // A card is free of the safe zone (owner rule, 2026-11-17): the owner puts
+    // it upright with its right half past the frame's right edge, low over the
+    // platform buttons' notch. The page draws it partly off the frame in both,
+    // so the export still matches its preview.
+    const edgeX = ISSEBYA_PRESET.frame.width - Math.round(card.width / 2);
+    const edgeId = await ownerEditTo(turnedId, [
+      { id: visualMove.id, kind: "box", x: edgeX, y: 1400, width: card.width, rotation: 0 },
+    ]);
+    await openPreview(edgeId);
+    const edge = await composition()
+      .locator(`[id="${visualMove.id}"]`)
+      .evaluate((el) => {
+        const style = (el as HTMLElement).style;
+        return { x: parseFloat(style.left), y: parseFloat(style.top), rotate: style.rotate };
+      });
+    expect(edge).toEqual({ x: edgeX, y: 1400, rotate: "" });
+    const edgePreviews = await capturePreview("owner-visual-past-edge");
+    const { mp4: edgeMp4 } = await exportNow("owner-visual-past-edge");
+    for (const score of await scores("owner-visual-past-edge", edgeMp4, edgePreviews)) {
+      expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+    }
+
+    // The owner swaps the card's picture for the library photo (the seeded
+    // ready photo, softened), the card back in the middle: the preview shows
+    // its large copy signed from the library, the export downloads the same
+    // copy, and the two match.
+    const photoId = await ownerEditTo(edgeId, [
+      {
+        id: visualMove.id,
+        kind: "box",
+        x: card.x,
+        y: card.y,
+        width: card.width,
+        rotation: 0,
+        photo_id: photo.id,
+      },
+    ]);
+    await openPreview(photoId);
+    const photoCard = await composition()
+      .locator(`[id="${visualMove.id}"] img`)
+      .evaluate((el) => (el as HTMLImageElement).getAttribute("src") ?? "");
+    expect(photoCard).not.toContain("photos/");
+    expect(photoCard).not.toContain("assets/visuals/");
+    const photoPreviews = await capturePreview("owner-visual-photo");
+    const { mp4: photoMp4 } = await exportNow("owner-visual-photo");
+    for (const score of await scores("owner-visual-photo", photoMp4, photoPreviews)) {
+      expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+    }
+
+    // Then a second card added over it, overlapping it at the same moments
+    // (two cards on track 30 at once, the added one drawn on top): the export
+    // matches the preview with both.
+    const spoken = (await transcript()).words.find((word) => word.end > 1.0)!;
+    const twoId = await ownerEditTo(
+      photoId,
+      [],
+      [
+        {
+          id: "owner-visual-1",
+          photo_id: photo.id,
+          word: spoken.id,
+          x: Math.round(card.x + card.width / 3),
+          y: Math.round(card.y + card.height / 3),
+          width: 300,
+        },
+      ],
+    );
+    await openPreview(twoId);
+    const order = await composition()
+      .locator(`[id="${visualMove.id}"], [id="owner-visual-1"]`)
+      .evaluateAll((elements) => elements.map((element) => element.id));
+    expect(order).toEqual([visualMove.id, "owner-visual-1"]);
+    const twoPreviews = await capturePreview("owner-two-cards");
+    const { mp4: twoMp4 } = await exportNow("owner-two-cards");
+    for (const score of await scores("owner-two-cards", twoMp4, twoPreviews)) {
+      expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+    }
+    const againstOne = await scores("owner-two-cards-against-one", twoMp4, photoPreviews);
+    expect(Math.min(...againstOne)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
 
     // One big word behind the speaker, a second version.
     const wordId = await startOverTo(await behindWordAnswerScript(dir, "w0001"));

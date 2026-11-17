@@ -33,6 +33,15 @@ const PREFIX = "dev/";
 const FIXTURES = new URL("../../../fixtures/pipeline/", import.meta.url);
 const ANSWER = new URL("./decide/testdata/short-speech-answer.json", import.meta.url);
 const REEL = TEST_JOB.reel_id;
+// A ready library photo of the owner's, as the worker reads it.
+const PHOTO = {
+  id: "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c",
+  description: "a bright kitchen with a laptop on the table",
+  tags: ["kitchen", "laptop"],
+  large_key: "dev/library/kitchen/large.jpg",
+  width: 1600,
+  height: 900,
+};
 
 let root: string;
 let scratch: string;
@@ -83,7 +92,16 @@ function deps() {
 }
 
 function ownerEditRun(ownerEdit: OwnerEdit) {
-  return runOwnerEdit({ ...deps(), ownerEdit });
+  return runOwnerEdit({
+    ...deps(),
+    ownerEdit,
+    photos: {
+      async readyPhotos(ownerId, ids) {
+        expect(ownerId).toBe(TEST_JOB.owner_id);
+        return new Map(ids.includes(PHOTO.id) ? [[PHOTO.id, PHOTO]] : []);
+      },
+    },
+  });
 }
 
 async function editOf(id: string): Promise<Edit> {
@@ -183,6 +201,31 @@ afterEach(async () => {
   await rm(scratch, { recursive: true, force: true });
 });
 
+// Version 3: the committed answer with one VISUAL over the sentence instead
+// of the accent (on the short clip the accent holds the screen), placed by the
+// engine. Records are never rewritten: this swaps version 2's.
+async function placeVisualVersion(): Promise<string> {
+  await storage.delete(aiRecordKey(PREFIX, REEL, placedId));
+  await writeAiRecord(storage, PREFIX, {
+    format: 1,
+    reel_id: REEL,
+    version_id: placedId,
+    prompt_version: "reel-components@v1",
+    hook_prompt_version: "reel-hook@v1",
+    calls: [
+      aiCall("hook", hookAnswer),
+      aiCall("decide", {
+        ...decideAnswer,
+        accents: [],
+        lists: [],
+        visuals: [{ from: "w0001", to: "w0010", description: "a messy desk at night" }],
+      }),
+    ],
+  });
+  await runRelayout({ ...deps(), fontPair: "classic", log: () => {} });
+  return current!;
+}
+
 describe("parseOwnerEdit", () => {
   it("reads the version and the moves, and nothing else", () => {
     const version_id = "11111111-1111-4111-8111-111111111111";
@@ -195,6 +238,38 @@ describe("parseOwnerEdit", () => {
     expect(parseOwnerEdit({ version_id: "1", moves: [{ id: "a", x: 1, y: 2, size: 30 }] })).toBe(
       null,
     );
+  });
+
+  it("reads added cards, alone or with moves, and refuses a malformed one", () => {
+    const version_id = "11111111-1111-4111-8111-111111111111";
+    const add = {
+      id: "owner-visual-1",
+      photo_id: PHOTO.id,
+      word: "w0003",
+      x: 40,
+      y: 300,
+      width: 360,
+    };
+    expect(parseOwnerEdit({ version_id, moves: [], adds: [add] })).toEqual({
+      versionId: version_id,
+      moves: [],
+      adds: [add],
+    });
+    const swap = { id: "visual-1", kind: "box", x: 1, y: 2, width: 300, photo_id: PHOTO.id };
+    expect(parseOwnerEdit({ version_id, moves: [swap], adds: [add] })).toEqual({
+      versionId: version_id,
+      moves: [swap],
+      adds: [add],
+    });
+    expect(parseOwnerEdit({ version_id, moves: [], adds: [] })).toBeNull();
+    for (const bad of [
+      { ...add, id: "visual-9" },
+      { ...add, photo_id: "kitchen" },
+      { ...add, word: "" },
+      { ...add, width: 0 },
+    ]) {
+      expect(parseOwnerEdit({ version_id, moves: [], adds: [bad] })).toBeNull();
+    }
   });
 });
 
@@ -339,28 +414,7 @@ describe("runOwnerEdit", () => {
   });
 
   it("moves and scales a VISUAL as a box, keeping its picture's aspect ratio, and records it", async () => {
-    // Version 3: the committed answer with one VISUAL over the sentence instead
-    // of the accent (on the short clip the accent holds the screen), placed by
-    // the engine. Records are never rewritten: the test swaps version 2's.
-    await storage.delete(aiRecordKey(PREFIX, REEL, placedId));
-    await writeAiRecord(storage, PREFIX, {
-      format: 1,
-      reel_id: REEL,
-      version_id: placedId,
-      prompt_version: "reel-components@v1",
-      hook_prompt_version: "reel-hook@v1",
-      calls: [
-        aiCall("hook", hookAnswer),
-        aiCall("decide", {
-          ...decideAnswer,
-          accents: [],
-          lists: [],
-          visuals: [{ from: "w0001", to: "w0010", description: "a messy desk at night" }],
-        }),
-      ],
-    });
-    await runRelayout({ ...deps(), fontPair: "classic", log: () => {} });
-    const withVisual = current!;
+    const withVisual = await placeVisualVersion();
     const visualOf = async (id: string) => {
       const item = (await editOf(id)).tracks.behind?.find((entry) => entry.kind === "visual");
       if (item?.kind !== "visual") throw new Error("no visual");
@@ -413,6 +467,154 @@ describe("runOwnerEdit", () => {
       engine_rotation: 0,
       owner_rotation: -15,
     });
+    // A card is free of the safe zone: dragged into the bottom right corner,
+    // over the buttons' notch and partly past the frame's edge, it is saved.
+    await ownerEditRun({
+      versionId: current!,
+      moves: [{ id: before.id, kind: "box", x: 900, y: 1700, width, rotation: 0 }],
+    });
+    const corner = await visualOf(current!);
+    expect(corner.box).toMatchObject({ x: 900, y: 1700, width });
+    expect(corner.box.x + corner.box.width).toBeGreaterThan(1080);
+    // Less than a fifth of it inside the frame is refused, and nothing is saved.
+    const saved = rows.size;
+    const reason = await refusal(
+      ownerEditRun({
+        versionId: current!,
+        moves: [{ id: before.id, kind: "box", x: 1050, y: 1880, width }],
+      }),
+    );
+    expect(reason).toMatch(/less than a fifth of it is inside the frame/);
+    expect(rows.size).toBe(saved);
+  });
+
+  it("swaps a VISUAL's picture for a library photo the worker reads and sizes itself, and records the swap", async () => {
+    const withVisual = await placeVisualVersion();
+    const before = (await editOf(withVisual)).tracks.behind!.find((item) => item.kind === "visual");
+    if (before?.kind !== "visual") throw new Error("no visual");
+    await ownerEditRun({
+      versionId: withVisual,
+      moves: [
+        {
+          id: before.id,
+          kind: "box",
+          x: before.box.x,
+          y: before.box.y,
+          width: before.box.width,
+          photo_id: PHOTO.id,
+        },
+      ],
+    });
+    const saved = await editOf(current!);
+    const card = saved.tracks.behind!.find((item) => item.id === before.id);
+    expect(card).toMatchObject({
+      photo: { id: PHOTO.id, width: 1600, height: 900 },
+      box: {
+        x: before.box.x,
+        y: before.box.y,
+        width: before.box.width,
+        height: Math.round((before.box.width * 900) / 1600),
+      },
+    });
+    expect(card && "image" in card).toBe(false);
+    expect(saved.inputs.photos).toEqual([PHOTO.id]);
+    const { owner_moves: records } = rows.get(current!)!;
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      item: before.id,
+      component: "VISUAL",
+      swapped: true,
+      added: false,
+      photo_id: PHOTO.id,
+      replaced: before.image,
+      context: { photo: { description: PHOTO.description, tags: PHOTO.tags } },
+    });
+    expect(records[0]!.context.words.length).toBeGreaterThan(0);
+  });
+
+  it("adds a card showing a library photo over the engine's card, with a click only when no other is near, and records it as added", async () => {
+    const withVisual = await placeVisualVersion();
+    const engineCard = (await editOf(withVisual)).tracks.behind!.find(
+      (item) => item.kind === "visual",
+    )!;
+    const word = transcript.words.find((entry) => entry.id === "w0004")!;
+    await ownerEditRun({
+      versionId: withVisual,
+      moves: [],
+      adds: [
+        { id: "owner-visual-1", photo_id: PHOTO.id, word: word.id, x: 600, y: 300, width: 360 },
+      ],
+    });
+    const saved = await editOf(current!);
+    const added = saved.tracks.behind!.at(-1)!;
+    // Last in the track: drawn on top of the engine's card.
+    expect(added).toMatchObject({
+      id: "owner-visual-1",
+      kind: "visual",
+      start: { word: word.id },
+      photo: { id: PHOTO.id, width: 1600, height: 900 },
+      box: { x: 600, y: 300, width: 360, height: 203 },
+    });
+    expect(saved.tracks.behind!.map((item) => item.id)).toEqual([engineCard.id, "owner-visual-1"]);
+    expect(saved.inputs.photos).toEqual([PHOTO.id]);
+    // Its click: more than the gap from the engine card's click at w0001.
+    expect(saved.tracks.sounds.map((sound) => sound.id)).toContain("click-owner-visual-1");
+    const { owner_moves: records } = rows.get(current!)!;
+    expect(records).toEqual([
+      expect.objectContaining({
+        item: "owner-visual-1",
+        component: "VISUAL",
+        added: true,
+        engine: null,
+        moved: false,
+        resized: false,
+        swapped: false,
+        photo_id: PHOTO.id,
+        replaced: null,
+      }),
+    ]);
+    expect(records[0]!.context.others.map((other) => other.item)).toContain(engineCard.id);
+
+    // A second card on the engine card's first word: its click would be
+    // within the gap of that card's, so it gets none.
+    const first = current!;
+    await ownerEditRun({
+      versionId: first,
+      moves: [],
+      adds: [
+        { id: "owner-visual-2", photo_id: PHOTO.id, word: "w0001", x: 600, y: 900, width: 300 },
+      ],
+    });
+    const again = await editOf(current!);
+    expect(again.tracks.behind!.map((item) => item.id)).toEqual([
+      engineCard.id,
+      "owner-visual-1",
+      "owner-visual-2",
+    ]);
+    expect(again.tracks.sounds.map((sound) => sound.id)).not.toContain("click-owner-visual-2");
+  });
+
+  it("refuses a photo that is not a ready photo in the owner's library, writing no version", async () => {
+    const withVisual = await placeVisualVersion();
+    const saved = rows.size;
+    const reason = await refusal(
+      ownerEditRun({
+        versionId: withVisual,
+        moves: [],
+        adds: [
+          {
+            id: "owner-visual-1",
+            photo_id: "00000000-0000-4000-8000-00000000abcd",
+            word: "w0004",
+            x: 600,
+            y: 300,
+            width: 360,
+          },
+        ],
+      }),
+    );
+    expect(reason).toMatch(/is not a ready photo in the owner's library/);
+    expect(rows.size).toBe(saved);
   });
 
   it("refuses a move that leaves the safe zone, writing no version", async () => {

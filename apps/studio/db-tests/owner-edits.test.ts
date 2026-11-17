@@ -29,6 +29,11 @@ const INPUTS = {
   head_track: { step: "head_track", fingerprint: "h", file: "head-track.json" },
 };
 
+// A library photo's id (the column is a plain id, no foreign key).
+const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
+// A card the owner adds from the library.
+const ADDS = [{ id: "owner-visual-1", photo_id: PHOTO, word: "w0004", x: 600, y: 300, width: 360 }];
+
 // A text's move and a VISUAL's box move, the card turned.
 const MOVES = [
   { id: "accent-1", x: 120, y: 900, size: 110 },
@@ -125,7 +130,7 @@ async function movesOf(versionId: string) {
   const { data, error } = await admin
     .from("owner_moves")
     .select(
-      "owner_id, reel_id, version_id, from_version_id, engine_version_id, item, component, variant, text, start_seconds, end_seconds, engine_box, owner_box, moved, resized, rotated, engine_rotation, owner_rotation, wrap_width, context",
+      "owner_id, reel_id, version_id, from_version_id, engine_version_id, item, component, variant, text, start_seconds, end_seconds, engine_box, owner_box, moved, resized, rotated, engine_rotation, owner_rotation, added, swapped, photo_id, replaced, wrap_width, context",
     )
     .eq("version_id", versionId)
     .order("item");
@@ -200,6 +205,27 @@ describe("owner_edit jobs", () => {
     expect(await jobsOf(reelA)).toEqual([]);
   });
 
+  it("lets the owner queue added cards alone, and a swap with them", async () => {
+    const alone = await clientA.from("jobs").insert({
+      reel_id: reelA,
+      kind: "owner_edit",
+      owner_edit: { version_id: versionA, moves: [], adds: ADDS },
+    });
+    expect(alone.error).toBeNull();
+    const swap = { id: "visual-1", kind: "box", x: 600, y: 700, width: 200, photo_id: PHOTO };
+    const both = await clientA.from("jobs").insert({
+      reel_id: reelA,
+      kind: "owner_edit",
+      owner_edit: { version_id: versionA, moves: [swap], adds: ADDS },
+    });
+    expect(both.error).toBeNull();
+    expect((await jobsOf(reelA)).map((job) => job.owner_edit)).toEqual([
+      { version_id: versionA, moves: [], adds: ADDS },
+      { version_id: versionA, moves: [swap], adds: ADDS },
+    ]);
+    await admin.from("jobs").delete().eq("reel_id", reelA);
+  });
+
   it("refuses a payload that is not a version and a list of one to 200 moves", async () => {
     const many = Array.from({ length: 201 }, (_, index) => ({
       id: `accent-${index}`,
@@ -216,6 +242,17 @@ describe("owner_edit jobs", () => {
       { version_id: versionA, moves: {} },
       { version_id: 12, moves: MOVES },
       { version_id: versionA, moves: many },
+      // Adds: none in all, not a list, more than 20.
+      { version_id: versionA, moves: [], adds: [] },
+      { version_id: versionA, moves: [], adds: {} },
+      {
+        version_id: versionA,
+        moves: [],
+        adds: Array.from({ length: 21 }, (_, index) => ({
+          ...ADDS[0],
+          id: `owner-visual-${index + 1}`,
+        })),
+      },
     ]) {
       const { error } = await clientA
         .from("jobs")
@@ -285,6 +322,10 @@ describe("save_version with the owner's edit", () => {
         rotated: false,
         engine_rotation: 0,
         owner_rotation: 0,
+        added: false,
+        swapped: false,
+        photo_id: null,
+        replaced: null,
         wrap_width: null,
         context: record.context,
       },
@@ -304,6 +345,79 @@ describe("save_version with the owner's edit", () => {
         wrap_width: null,
       }),
     ]);
+  });
+
+  it("saves a swapped card's photo and what it replaced, and an added card with no engine box", async () => {
+    // A reel of its own, so the other tests' current versions stay as they are.
+    const reel = await insertReel(admin, { ownerId: userA.id, name: "c.mov", status: "processed" });
+    const base = await saveVersion(reel);
+    const id = randomUUID();
+    const swapped = {
+      ...visualRecord(versionA),
+      swapped: true,
+      photo_id: PHOTO,
+      replaced: "assets/visuals/visual-1.jpg",
+    };
+    const added = {
+      ...visualRecord(versionA),
+      item: "owner-visual-1",
+      engine: null,
+      moved: false,
+      resized: false,
+      rotated: false,
+      owner_rotation: 0,
+      added: true,
+      photo_id: PHOTO,
+      context: {
+        ...visualRecord(versionA).context,
+        words: "and if you look",
+        photo: { description: "a kitchen", tags: ["kitchen"] },
+      },
+    };
+    const { error } = await admin.rpc("save_version", {
+      ...versionArgs(reel, id, base),
+      p_edited_from_id: base,
+      p_owner_moves: [swapped, added],
+    });
+    expect(error).toBeNull();
+    expect(await movesOf(id)).toEqual([
+      expect.objectContaining({
+        item: "owner-visual-1",
+        engine_box: null,
+        added: true,
+        swapped: false,
+        photo_id: PHOTO,
+        replaced: null,
+        context: expect.objectContaining({
+          words: "and if you look",
+          photo: { description: "a kitchen", tags: ["kitchen"] },
+        }),
+      }),
+      expect.objectContaining({
+        item: "visual-1",
+        engine_box: visualRecord(versionA).engine,
+        added: false,
+        swapped: true,
+        photo_id: PHOTO,
+        replaced: "assets/visuals/visual-1.jpg",
+      }),
+    ]);
+    // An added card with an engine box, or a moved one without, is refused.
+    const wrong = randomUUID();
+    const refused = await admin.rpc("save_version", {
+      ...versionArgs(reel, wrong, id),
+      p_edited_from_id: base,
+      p_owner_moves: [{ ...added, engine: visualRecord(versionA).engine }],
+    });
+    expect(refused.error).not.toBeNull();
+    const noBox = await admin.rpc("save_version", {
+      ...versionArgs(reel, wrong, id),
+      p_edited_from_id: base,
+      p_owner_moves: [{ ...swapped, engine: null }],
+    });
+    expect(noBox.error).not.toBeNull();
+    const { data } = await admin.from("versions").select("id").eq("id", wrong);
+    expect(data).toEqual([]);
   });
 
   it("leaves every other version with no edited-from version and no learning row", async () => {

@@ -34,14 +34,22 @@ export function movableComponents(components: readonly PlacedComponent[]): Place
     .sort((a, b) => a.start - b.start || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
-// The movable components on screen at `seconds`.
-export function movableAt(
+// The movable components on screen at `seconds` in the order the page stacks
+// them, bottom first: the cards in the `behind` track's order (a card the
+// owner added last is on top), then the texts, which the page draws above
+// the cards. The editor draws its boxes in this order, so the topmost box
+// takes a click where two overlap.
+export function stackedAt(
   components: readonly PlacedComponent[],
   seconds: number,
 ): PlacedComponent[] {
-  return movableComponents(components).filter(
-    (component) => component.start <= seconds && seconds < component.end,
+  const shown = components.filter(
+    (component) => isMovable(component) && component.start <= seconds && seconds < component.end,
   );
+  return [
+    ...shown.filter((component) => component.component === "VISUAL"),
+    ...shown.filter((component) => component.component !== "VISUAL"),
+  ];
 }
 
 const TEXT_MAX = 28;
@@ -395,5 +403,48 @@ export function boxStyle(
     top: pct(box.y, frame.height),
     width: pct(box.width, frame.width),
     height: pct(box.height, frame.height),
+  };
+}
+
+// A library photo the picker offers: ready, with its large copy signed and its
+// size known (the card takes its aspect ratio). Newest first, as the library
+// lists them.
+export function pickablePhotos<
+  T extends {
+    status: string;
+    largeUrl: string | null;
+    width: number | null;
+    height: number | null;
+  },
+>(items: readonly T[]): (T & { largeUrl: string; width: number; height: number })[] {
+  return items.filter(
+    (item): item is T & { largeUrl: string; width: number; height: number } =>
+      item.status === "ready" &&
+      item.largeUrl !== null &&
+      typeof item.width === "number" &&
+      item.width > 0 &&
+      typeof item.height === "number" &&
+      item.height > 0,
+  );
+}
+
+// The ask of a picture swap: the card keeps its place (its centre) and its
+// area, its shape now the photo's, and its turn; the box move names the photo.
+// The ask is settled like any move (`settleOwnerMove`).
+export function swapAsk(
+  component: Pick<PlacedComponent, "id" | "x" | "y" | "width" | "height" | "rotation">,
+  photo: { id: string; width: number; height: number },
+): OwnerBoxMove {
+  const aspect = photo.width / photo.height;
+  const width = Math.sqrt(component.width * component.height * aspect);
+  const height = width / aspect;
+  return {
+    id: component.id,
+    kind: "box",
+    x: component.x + component.width / 2 - width / 2,
+    y: component.y + component.height / 2 - height / 2,
+    width: Math.round(width),
+    rotation: component.rotation ?? 0,
+    photo_id: photo.id,
   };
 }

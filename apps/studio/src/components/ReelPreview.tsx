@@ -10,16 +10,24 @@ import {
   type HeadTrack,
   ISSEBYA_PRESET,
   type Measurer,
+  type OwnerAdd,
   type OwnerMove,
+  type OwnerPhoto,
   type PlacedComponent,
   type Transcript,
+  applyOwnerAdds,
   build,
   createMeasurer,
   effectiveMoves,
   headTrackSchema,
   applyOwnerMoves,
+  nextOwnerVisualId,
+  ownerAddPlacement,
+  ownerAddSpan,
+  ownerAddWord,
   ownerWrapOptions,
   parseEdit,
+  photoPath,
   settleOwnerMove,
   transcriptSchema,
 } from "@edit-issebya/edit";
@@ -28,6 +36,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { requestOwnerEdit } from "@/app/change-actions";
 import { type PreviewSourcesResult, loadPreviewSources } from "@/app/preview-actions";
 import { MoveLayer } from "@/components/MoveLayer";
+import { type PickedPhoto, PicturePicker } from "@/components/PicturePicker";
 import { PreviewPlayer, type PreviewPlayerHandle } from "@/components/PreviewPlayer";
 import { type TimelineFrames, TracksTimeline } from "@/components/TracksTimeline";
 import { isChromium } from "@/lib/browser";
@@ -41,6 +50,7 @@ import {
   moveOfDrag,
   resolveAsk,
   showMoment,
+  swapAsk,
   withMove,
 } from "@/lib/owner-edit";
 import { previewPage } from "@/lib/preview-page";
@@ -65,6 +75,10 @@ interface Built {
   edit: Edit;
   context: { transcript: Transcript; headTrack: HeadTrack; measurer: Measurer };
   pageOf: (edit: Edit) => Page;
+  // The large copy's URL of each library photo a page may show, by the path
+  // the page names it at: the version's own (signed with the sources), and
+  // each one the owner picks in the editor (the library's signed URL).
+  photoUrls: Map<string, string>;
   soundBytes: Record<string, ArrayBuffer>;
   // The same parsed edit's rows on the reel's clock (no second fetch, no
   // second builder).
@@ -91,6 +105,7 @@ type Outcome = { forVersion: string } & (
 const MESSAGES: Record<Exclude<PreviewSourcesResult["status"], "ready">, string> = {
   "no-version": "The preview appears once the first version is saved",
   "no-previews": "This reel has no preview copies yet",
+  "photo-missing": "A photo in this version was deleted from the library",
   "cutout-cleared": "This version's cut-out was cleared to save space; Export rebuilds it",
   unconfigured: "The preview is not available: storage is not configured",
   "signed-out": "Sign in again to see the preview",
@@ -148,6 +163,7 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
   const pair = FONT_PAIRS[edit.font_pair];
   const fontBytes = await loadFonts(pair);
   const measurer = createMeasurer(hb, pair, fontBytes);
+  const photoUrls = new Map(urls.photos.map((photo) => [photo.path, photo.url]));
   // The one builder, then the preview transform: the version's page and every
   // draft of the editor are made the same way.
   const pageOf = (shown: Edit, record = false): Page => {
@@ -158,7 +174,11 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
       html: previewPage(
         result.html,
         result.assets,
-        { footage: urls.footage, masks: urls.masks },
+        {
+          footage: urls.footage,
+          masks: urls.masks,
+          photos: [...photoUrls].map(([path, url]) => ({ path, url })),
+        },
         pageHits.map((hit) => hit.id),
       ),
       hits: pageHits,
@@ -184,6 +204,7 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
       edit,
       context: { transcript, headTrack, measurer },
       pageOf: (shown) => pageOf(shown),
+      photoUrls,
       soundBytes,
       timeline: timelineRows(edit, transcript),
       frames:
@@ -195,12 +216,17 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
 }
 
 // The move and resize editor's draft (app_docs/owner-edits.md): the version's
-// edit with the owner's moves so far, and its page.
+// edit with the owner's added cards and moves so far, and its page.
 interface Draft {
   edit: Edit;
   moves: OwnerMove[];
+  adds: OwnerAdd[];
   page: Page;
 }
+
+// What the picture picker is open for: a card's picture swapped, or a card
+// added at the paused moment.
+type Picking = { mode: "swap"; id: string } | { mode: "add" };
 
 // One wrap width an edge handle can give, and the elements a page built with
 // it draws.
@@ -253,6 +279,10 @@ function BuiltPreview({
   const [message, setMessage] = useState("");
   // The save: being sent, or the job it queued.
   const [sent, setSent] = useState<"sending" | { jobId: string } | null>(null);
+  const [picking, setPicking] = useState<Picking | null>(null);
+  // The library photos the owner picked in this editor, by id: the draft and
+  // its settling read their size from here (the worker reads its own).
+  const photosRef = useRef(new Map<string, OwnerPhoto>());
   const page = draft?.page ?? built.page;
   const sentJob = sent && sent !== "sending" ? jobs.find((job) => job.id === sent.jobId) : null;
   const saveFailed = sentJob?.status === "failed" || sentJob?.status === "cancelled";
@@ -272,11 +302,18 @@ function BuiltPreview({
   }
 
   function closeEditor() {
+    setPicking(null);
     setDraft(null);
     setEditing(false);
     setSelectedId(null);
     setMessage("");
     setSent(null);
+  }
+
+  // What the draft is built and settled with: the version's own context and
+  // the photos picked so far.
+  function editContext() {
+    return { ...built.context, preset: ISSEBYA_PRESET, photos: photosRef.current };
   }
 
   // One frame of a drag: the page on screen shows the component where the
@@ -313,7 +350,7 @@ function BuiltPreview({
     const known = wrapsRef.current;
     if (known && known.html === page.html && known.component === component) return known.options;
     const edit = draft?.edit ?? built.edit;
-    const context = { ...built.context, preset: ISSEBYA_PRESET };
+    const context = editContext();
     const at = { x: component.x, y: component.y, size: component.size ?? 0 };
     const options = (ownerWrapOptions(edit, component.id, at, context) ?? []).flatMap((option) => {
       const applied = applyOwnerMoves(
@@ -342,11 +379,16 @@ function BuiltPreview({
   // applied to the draft, and the draft's page built.
   function move(ask: OwnerAsk) {
     const edit = draft?.edit ?? built.edit;
-    const context = { ...built.context, preset: ISSEBYA_PRESET };
+    const context = editContext();
     let asked: OwnerMove;
     if (ask.kind === "box") {
-      // A VISUAL: its box, its height following its picture.
-      asked = ask;
+      // A VISUAL: its box, its height following its picture. A card whose
+      // picture was swapped keeps its photo through later drags.
+      const earlier = draft?.moves.find((entry) => entry.id === ask.id);
+      asked =
+        ask.photo_id === undefined && earlier?.kind === "box" && earlier.photo_id !== undefined
+          ? { ...ask, photo_id: earlier.photo_id }
+          : ask;
     } else if (ask.width !== undefined || ask.height !== undefined) {
       const options = ownerWrapOptions(edit, ask.id, ask, context);
       if (!options) {
@@ -388,12 +430,83 @@ function BuiltPreview({
         built.page.components,
         page.components,
       ),
+      adds: draft?.adds ?? [],
       page,
     });
   }
 
+  // A library photo picked: its size kept for the draft and its large copy's
+  // URL for the page.
+  function remember(photo: PickedPhoto) {
+    photosRef.current.set(photo.id, {
+      id: photo.id,
+      width: photo.width,
+      height: photo.height,
+      description: photo.description,
+      tags: photo.tags,
+    });
+    built.photoUrls.set(photoPath(photo.id), photo.largeUrl);
+  }
+
+  // The selected card's picture swapped for a library photo: the card keeps
+  // its place, rescaled to the photo's aspect ratio, settled like a move.
+  function swapPicture(id: string, photo: PickedPhoto) {
+    const component = page.components.find((entry) => entry.id === id);
+    if (!component) return;
+    remember(photo);
+    move(swapAsk(component, photo));
+  }
+
+  // Where a card added now would start: the word under the playhead, and its
+  // span; null over hidden footage or with no room left in the reel.
+  function addSpot() {
+    const edit = draft?.edit ?? built.edit;
+    const word = ownerAddWord(built.context.transcript, position);
+    const span = word && ownerAddSpan(edit, built.context.transcript, word.id);
+    return word && span ? { word, span } : null;
+  }
+
+  // A card added at the paused moment showing a library photo: on the word
+  // under the playhead for a fixed time, placed in a corner by the engine's
+  // own placement, settled like a move, drawn on top of the cards there.
+  function addPicture(photo: PickedPhoto) {
+    const spot = addSpot();
+    if (!spot) {
+      setMessage("No picture can show here");
+      return;
+    }
+    remember(photo);
+    const edit = draft?.edit ?? built.edit;
+    const context = editContext();
+    const id = nextOwnerVisualId(edit);
+    const at = ownerAddPlacement(edit, photo, spot.span, context);
+    const add: OwnerAdd = { id, photo_id: photo.id, word: spot.word.id, ...at };
+    const added = applyOwnerAdds(edit, [add], context);
+    if (!added.ok) {
+      setMessage("No picture can show here");
+      return;
+    }
+    const settled = settleOwnerMove(added.edit, { id, kind: "box", ...at }, context);
+    if (!settled.ok || settled.move.kind !== "box") {
+      setMessage("No picture can show here");
+      return;
+    }
+    const { x, y, width } = settled.move;
+    const placed = applyOwnerAdds(edit, [{ ...add, x, y, width }], context);
+    if (!placed.ok) return;
+    setMessage("");
+    setSent(null);
+    setDraft({
+      edit: placed.edit,
+      moves: draft?.moves ?? [],
+      adds: [...(draft?.adds ?? []), { ...add, x, y, width }],
+      page: built.pageOf(placed.edit),
+    });
+    setSelectedId(id);
+  }
+
   async function save() {
-    if (!draft || draft.moves.length === 0) return;
+    if (!draft || draft.moves.length + draft.adds.length === 0) return;
     setSent("sending");
     setMessage("");
     try {
@@ -401,6 +514,7 @@ function BuiltPreview({
         reelId,
         versionId: built.versionId,
         moves: draft.moves,
+        ...(draft.adds.length > 0 ? { adds: draft.adds } : {}),
       });
       if (result.status === "signed-out") {
         router.refresh();
@@ -470,7 +584,10 @@ function BuiltPreview({
                 move(ask);
               }}
               onDragFrame={dragFrame}
-              changed={(draft?.moves.length ?? 0) > 0}
+              onChangePicture={(component) => setPicking({ mode: "swap", id: component.id })}
+              onAddPicture={() => setPicking({ mode: "add" })}
+              canAdd={addSpot() !== null}
+              changed={(draft?.moves.length ?? 0) + (draft?.adds.length ?? 0) > 0}
               saving={saving}
               message={saveFailed ? SAVE_FAILED : saving ? "Saving your changes" : message}
               onSave={() => void save()}
@@ -479,6 +596,16 @@ function BuiltPreview({
           )
         }
       />
+      {picking && (
+        <PicturePicker
+          title={picking.mode === "swap" ? "Change picture" : "Add a picture here"}
+          onClose={() => setPicking(null)}
+          onPick={(photo) => {
+            if (picking.mode === "swap") swapPicture(picking.id, photo);
+            else addPicture(photo);
+          }}
+        />
+      )}
       {!expanded && (
         <TracksTimeline
           timeline={built.timeline}

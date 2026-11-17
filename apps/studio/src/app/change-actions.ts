@@ -2,7 +2,14 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
-import { type FontPairId, type OwnerMove, isFontPairId, parseOwnerMoves } from "@edit-issebya/edit";
+import {
+  type FontPairId,
+  type OwnerAdd,
+  type OwnerMove,
+  isFontPairId,
+  parseOwnerAdds,
+  parseOwnerMoves,
+} from "@edit-issebya/edit";
 import { changeBlockedReason } from "@/lib/change-requests";
 import { type ReelDetail, isReelId } from "@/lib/reels";
 import { OWNER_EDIT_FLAG, isFlagOn } from "@/lib/feature-flags";
@@ -71,7 +78,7 @@ async function insertJob(
     kind: "restore" | "start_over" | "relayout" | "owner_edit";
     restore_version_id?: string;
     font_pair?: FontPairId;
-    owner_edit?: { version_id: string; moves: OwnerMove[] };
+    owner_edit?: { version_id: string; moves: OwnerMove[]; adds?: OwnerAdd[] };
   },
 ): Promise<ChangeActionResult> {
   // Under RLS: the insert policy takes the owner from the session and accepts
@@ -166,21 +173,28 @@ export async function requestFontPair(input: {
 }
 
 // The owner's moves (app_docs/owner-edits.md): queues an `owner_edit` job with
-// the version the owner edited and the moves. The worker applies them and
+// the version the owner edited, the moves (a swap is a card's box move with a
+// `photo_id`) and the cards the owner added. The worker applies them and
 // saves a new version marked as the owner's; the edited version stays as it
-// was. The moves are checked for shape here and for their rule (text
-// components only, inside the safe zone) by the worker.
+// was. The moves and cards are checked for shape here, and for their rules
+// (the safe zone for a text, the frame for a card, each photo a ready one of
+// the owner's, its size read from the library) by the worker.
 export async function requestOwnerEdit(input: {
   reelId: string;
   versionId: string;
   moves: unknown;
+  adds?: unknown;
 }): Promise<ChangeActionResult> {
   if (typeof input.reelId !== "string" || !isReelId(input.reelId)) return { status: "failed" };
   if (typeof input.versionId !== "string" || !isReelId(input.versionId)) {
     return { status: "invalid", reason: "Pick a version to edit" };
   }
-  const moves = parseOwnerMoves(input.moves);
-  if (!moves) return { status: "invalid", reason: "Move or resize a text first" };
+  const adds = parseOwnerAdds(input.adds);
+  const moves =
+    Array.isArray(input.moves) && input.moves.length === 0 ? [] : parseOwnerMoves(input.moves);
+  if (!moves || !adds || moves.length + adds.length === 0) {
+    return { status: "invalid", reason: "Move or resize a text first" };
+  }
   const open = await openReel(input.reelId);
   if (!open.ok) return open.result;
   // The Move editor's flag, evaluated for this user like the page does: off,
@@ -194,6 +208,6 @@ export async function requestOwnerEdit(input: {
   return insertJob(open, {
     reel_id: input.reelId,
     kind: "owner_edit",
-    owner_edit: { version_id: input.versionId, moves },
+    owner_edit: { version_id: input.versionId, moves, ...(adds.length > 0 ? { adds } : {}) },
   });
 }

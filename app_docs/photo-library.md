@@ -3,7 +3,13 @@
 **Specifications:**
 
 - specs/issue-96-adw-173ac961-sdlc_planner-photo-library.md
-- specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md
+- specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md (its placed photo
+  item was removed with the old layout in 3ca8f67; the path from a version to a photo came back
+  through the owner's Move editor, below)
+- Owner decisions, 2026-11-17 (pictures from the library): the owner puts a library photo on a
+  VISUAL card in the Move editor, by swapping a card's picture or adding a card
+  (`app_docs/owner-edits.md`); the picker shows every ready photo, newest first; deleting a photo a
+  version uses stays allowed, with a warning first that counts those versions.
 
 ## Overview
 
@@ -11,7 +17,9 @@ The studio owner keeps a personal photo library. A photo is uploaded once, strai
 to R2, and described by Claude on upload (one sentence and 3 to 8 lowercase tags). Every reel can
 use the library later: the description and tags are what the AI will use to match a photo to a
 sentence, always quoted as data, never as instructions. The library sits beside the reel on
-desktop and is a fourth tab, `Library`, on a phone.
+desktop and is a fourth tab, `Library`, on a phone. Today a photo reaches a reel only by hand: in
+the Move editor the owner swaps a VISUAL card's picture for a library photo or adds a card showing
+one (`app_docs/owner-edits.md`). The decide step reads no library yet.
 
 ## How it works
 
@@ -87,18 +95,33 @@ desktop and is a fourth tab, `Library`, on a phone.
   The photo row records the prompt's identity (`photos.prompt_version`, `photo-describe@v<n>` for the
   version PostHog served at the label) and the model that answered (`photos.model`).
 - `apps/worker/src/photos/photo-store.ts`: the worker's writes to the `photos` row, and
-  `supabasePhotoLibrary(db).readyPhotos(ownerId)`: the owner's `ready` photos (`id`,
-  `description`, `tags`, `large_key`), oldest first, a row without `large_key` left out.
-- Ready photos are used behind the speaker (`app_docs/edit-model.md`, the `behind` track). For now
-  the decide step reads no library: its components prompt gets no photo, and its answer names no
-  photo (a VISUAL is an empty frame, `app_docs/decide-step.md`), so no new version picks a library
-  photo. The library, its ready photos and `readyPhotos` stay as they are for the studio and the
-  older versions that hold a photo. The live preview signs each shown photo's `large_key` read from its own row under RLS
+  `supabasePhotoLibrary(db).readyPhotos(ownerId, ids)`: those of the given photos that are the
+  owner's, `ready`, with a `large_key`, a width and a height (`id`, `description`, `tags`,
+  `large_key`, `width`, `height`), by id; any other is simply missing. Read with the service role,
+  so filtered by owner here. The `owner_edit` job reads the photos a swap or an added card names
+  through it (the size in the version is the row's, never the browser's), and the render reads the
+  photos a version shows.
+- A version shows a library photo on a VISUAL card (`photo: { id, width, height }` in place of its
+  stand-in `image`, `app_docs/edit-model.md`) and names it by id in `inputs.photos`. The owner puts
+  it there in the Move editor: `Change picture` on a selected card or `Add picture here` opens a
+  picker of every ready photo with a large copy and a size, newest first (`PicturePicker`,
+  `pickablePhotos`; the library's `loadLibrary`), and the editor's draft shows the photo from the
+  library's signed large copy (`app_docs/owner-edits.md`). The decide step reads no library: its
+  components prompt gets no photo and its answer names none (`app_docs/decide-step.md`). The live
+  preview signs each shown photo's `large_key` read from its own row under RLS
   (`app_docs/preview.md`), and the render downloads the same large copy into its project
-  (`app_docs/export.md`). A version names a photo by id only (`inputs.photos`).
-- Deleting a photo a version uses leaves that version as it is (versions never change): its
-  preview then shows `A photo in this version was deleted from the library` (status
+  (`app_docs/export.md`); the composite's front layer names it like a stand-in.
+- Deleting a photo a version uses is allowed and leaves that version as it is (versions never
+  change): its preview then shows `A photo in this version was deleted from the library` (status
   `photo-missing`), and its export fails with `render: photo <id> is no longer in the library`.
+  The library warns first: the bin asks the server how many of the owner's versions show the photo
+  (`photoUsage` in `apps/studio/src/lib/photo-server.ts` and `src/app/photo-actions.ts`: a count of
+  `versions` whose `inputs` contain `{ photos: [id] }`, under RLS, so only the owner's reels count),
+  and with one or more the dialog shows, above the photo, `Used in N versions of your reels. They
+will show a notice instead of the photo, and cannot be exported` (`photo-delete-usage`,
+  `photoUsageWarning` in `src/lib/photos.ts`; `1 version` and `It` for one) beside `Cancel` and `Yes,
+delete`. With none it shows nothing. The learning rows of `owner_moves` keep the photo's id and a
+  snapshot of its description and tags (no foreign key), so they outlive it.
 - `apps/worker/src/ai.ts`: `AiRequest.image` (`{ data, mediaType: "image/jpeg" }`), sent as a file
   part of the user message; only describe_photo sets it. The call's exchange records the image's
   media type and size, never its bytes.
@@ -121,7 +144,10 @@ desktop and is a fourth tab, `Library`, on a phone.
    thumbnail once the photo is ready, its description and tags in the dialog (live, no reload). A
    photo the worker could not process (a HEIC it could not read, say) keeps a `failed` badge.
 4. Open a tile to see the photo large, its description and tags. Delete removes the row and its R2
-   objects (original, thumbnail and large copy).
+   objects (original, thumbnail and large copy). When versions of your reels show the photo, the
+   dialog says how many before you confirm; those versions then show a notice instead.
+5. To show a photo in a reel, open the Move editor on the reel's preview and use `Change picture` on
+   a card or `Add picture here` (`app_docs/owner-edits.md`).
 
 ## Configuration
 
@@ -136,7 +162,9 @@ only, run by hand; CI uses the committed files).
 
 ## Testing
 
-- Unit: `apps/studio/src/lib/photos.test.ts` (badges, tile names, `libraryIntro`), `photo-server.test.ts`; in the worker `src/photos/*.test.ts`,
+- Unit: `apps/studio/src/lib/photos.test.ts` (badges, tile names, `libraryIntro`,
+  `photoUsageWarning`), `photo-server.test.ts` (with `photoUsage`: the count's query, an id that is
+  no photo id, a failed count reported); in the worker `src/photos/*.test.ts`,
   `ai.test.ts`, `queue.test.ts`, `stored-files.test.ts`, `doctor-checks.test.ts`.
 - Tools (owner's Mac only): `yarn workspace @edit-issebya/worker test:tools` runs
   `photos/photo-images.tools.test.ts` with real ffmpeg on the JPEG and HEIC fixtures.
@@ -151,7 +179,7 @@ only, run by hand; CI uses the committed files).
   name as its accessible name), the `describe_photo` step's AI columns and the three
   `stored_files` rows, the dialog's header (the cross found by role and name `Close`, no text, an
   svg, at the top right; the bin directly left of it, the dialog's only two buttons), Delete with
-  its confirmation in the header; then drops on the library section (synthetic `DataTransfer`,
+  its confirmation in the header (no usage warning: no version shows it); then drops on the library section (synthetic `DataTransfer`,
   `apps/studio/e2e/drop.ts`): the highlight on dragenter, kept across a child, off on dragleave; two
   files and a text file upload nothing with their messages; one photo uploads and goes `describing`
   then ready; a `failed` photo (inserted by the admin) keeps its `failed` badge, no image, and opens
@@ -178,12 +206,18 @@ only, run by hand; CI uses the committed files).
 - Never let a photo that is not `ready` look like a ready one: a tile shows a badge for every status
   but `ready`.
 - Never slim a photo's file; only the owner's Delete removes a photo's objects.
+- Never block deleting a photo a version shows: warn first with the number of the owner's versions
+  that show it (`photoUsage`), then delete it on `Yes, delete`; the versions stay as they are.
+- Never take a photo's size or owner from the browser when a version shows it: the worker reads its
+  row (`readyPhotos`).
 - Quote a photo's description and tags as data in any later prompt, never as instructions.
 - Never put the describe prompt's text in the repository: change it in PostHog (a new version, moved to
   the label); the photo row records the identity the worker fetched (AGENTS.md).
 
 ## Notes
 
-- Only the large copy is placed in a reel; the thumbnail stays the library's.
+- Only the large copy is placed in a reel; the thumbnail stays the library's (and the picker's).
+- The deletion E2E case with a version showing the photo is in
+  `apps/studio/e2e/owner-edit-photos.spec.ts`.
 - This change also touched `app_docs/studio.md`, `studio-reel-layout.md`, `storage.md`,
   `decide-step.md`, `failures.md`, `measurement.md` and `error-tracking.md`.

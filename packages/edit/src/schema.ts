@@ -39,6 +39,11 @@ const editInputsSchema = z.object({
   // The masks of the behind items' padded spans, filled by the worker before
   // the version is saved.
   masks: z.array(maskRefSchema).optional(),
+  // The owner's library photos the VISUALs show (by id, sorted, each once),
+  // written from the tracks (`withPhotoInputs`) and checked against them. A
+  // version without one has none. The preview signs and the render downloads
+  // each one's large copy from its `photos` row.
+  photos: z.array(z.uuid()).optional(),
 });
 
 // The overlay kinds: `accent` (words spoken), `hook` (the one written line at
@@ -189,25 +194,38 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     sound: z.enum(SOUND_KEYS),
     gain_db: z.number().min(-60).max(12).optional(),
   });
-  // A placed VISUAL's box: where the layout engine set it (its top left
-  // corner, width and height in the frame). A VISUAL is always in front of the
-  // speaker, over the footage.
+  // A placed VISUAL's box: where the layout engine or the owner set it (its
+  // top left corner, width and height in frame pixels). A VISUAL is always in
+  // front of the speaker, over the footage. The engine keeps it inside the
+  // safe zone; the owner may put it partly past the frame's edge
+  // (app_docs/owner-edits.md), so its corner may be off the frame.
   const visualBox = z.object({
-    x: z.number().int().min(0).max(preset.frame.width),
-    y: z.number().int().min(0).max(preset.frame.height),
+    x: z.number().int().min(-preset.frame.width).max(preset.frame.width),
+    y: z.number().int().min(-preset.frame.height).max(preset.frame.height),
     width: z.number().int().min(1).max(preset.frame.width),
     height: z.number().int().min(1).max(preset.frame.height),
   });
   const behind = z.discriminatedUnion("kind", [
     // A VISUAL: a white stroke frame over the footage, showing its stand-in
-    // picture (`image`, a file of `VISUAL_STAND_INS`) at the box. `description`
-    // says what a visual would show; it is never shown on screen. Stored
-    // versions without `image` parse, and render the empty frame.
+    // picture (`image`, a file of `VISUAL_STAND_INS`) or one of the owner's
+    // library photos (`photo`, never both) at the box. `description` says what
+    // a visual would show; it is never shown on screen. Stored versions with
+    // neither parse, and render the empty frame.
     z.object({
       ...base,
       kind: z.literal("visual"),
       description: z.string().min(1).max(VISUAL_DESCRIPTION_MAX).optional(),
       image: z.enum(visualFiles).optional(),
+      // A library photo the owner chose: its id and its size in pixels (the
+      // `photos` row's, read by the worker, never the browser's), so the card
+      // takes its aspect with no crop. The page shows its large copy.
+      photo: z
+        .object({
+          id: z.uuid(),
+          width: z.number().int().min(1).max(100_000),
+          height: z.number().int().min(1).max(100_000),
+        })
+        .optional(),
       box: visualBox,
       // The owner's rotation of the card, in whole degrees clockwise about its
       // box's centre (-179 to 180). The engine never rotates a card: a stored
@@ -259,11 +277,14 @@ const SLACK = 1e-6;
 // What the JSON Schema cannot say: every id once, no item ending before it
 // starts, an overlay showing words or text, at most one hook, with its own
 // text and no words, a caption hidden only by an accent, a big word or a list
-// (never the hook, which nobody says), and a behind item never at the
-// same time as another one or as a hidden stretch of footage (and, with the
-// decide limit, lasting its kind's length).
+// (never the hook, which nobody says), and a behind item never at the same
+// time as a hidden stretch of footage (and, with the decide limit, lasting
+// its kind's length). Several behind items may share a moment: two VISUALs
+// on screen at once draw in the track's order, the later on top. A VISUAL
+// shows a stand-in or a library photo, never both, and `inputs.photos` names
+// exactly the photos the VISUALs show.
 function refineEdit(
-  edit: { duration: number; tracks: Tracks },
+  edit: { duration: number; inputs: { photos?: string[] }; tracks: Tracks },
   transcript: Transcript,
   preset: Preset,
   limits: EditLimits,
@@ -331,6 +352,34 @@ function refineEdit(
     }
   }
   refineBehind(edit, transcript, preset, limits, ctx);
+  refinePhotos(edit, ctx);
+}
+
+// A VISUAL's picture is a stand-in or a library photo, never both, and the
+// edit's `inputs.photos` is exactly the set of photos its VISUALs show.
+function refinePhotos(
+  edit: { inputs: { photos?: string[] }; tracks: Tracks },
+  ctx: z.RefinementCtx,
+): void {
+  const shown = new Set<string>();
+  for (const item of edit.tracks.behind ?? []) {
+    if (item.kind !== "visual") continue;
+    if (item.image !== undefined && item.photo !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: `behind ${item.id}: a visual shows a stand-in or a photo, never both`,
+      });
+    }
+    if (item.photo) shown.add(item.photo.id);
+  }
+  const named = edit.inputs.photos ?? [];
+  const expected = [...shown].sort();
+  if (named.length !== expected.length || named.some((id, index) => id !== expected[index])) {
+    ctx.addIssue({
+      code: "custom",
+      message: `inputs.photos must name the photos the visuals show, sorted: ${JSON.stringify(expected)}`,
+    });
+  }
 }
 
 // The behind track's own rules (length with the decide limit, clear of hidden

@@ -8,7 +8,6 @@ import {
   componentOption,
   draggedBox,
   draggedTurn,
-  movableAt,
   movableComponents,
   moveOfDrag,
   resizeShare,
@@ -17,6 +16,9 @@ import {
   showMoment,
   snapAngle,
   snapDrag,
+  pickablePhotos,
+  stackedAt,
+  swapAsk,
   turnOfPointer,
   withMove,
 } from "./owner-edit";
@@ -65,16 +67,62 @@ describe("the editor's components", () => {
     ]);
   });
 
-  it("offers only what is on screen at the paused moment", () => {
-    expect(movableAt(ALL, 0).map((entry) => entry.id)).toEqual([]);
-    expect(movableAt(ALL, 2).map((entry) => entry.id)).toEqual(["hook", "visual-1"]);
-    expect(movableAt(ALL, 5.2).map((entry) => entry.id)).toEqual([
-      "accent-1",
-      "big-word-1",
+  it("offers only what is on screen at the paused moment, stacked as the page draws it", () => {
+    expect(stackedAt(ALL, 0).map((entry) => entry.id)).toEqual([]);
+    // The cards first (under the texts), so the hook's box is on top.
+    expect(stackedAt(ALL, 2).map((entry) => entry.id)).toEqual(["visual-1", "hook"]);
+    expect(stackedAt(ALL, 5.2).map((entry) => entry.id)).toEqual([
       "transition-1",
+      "big-word-1",
+      "accent-1",
     ]);
     // A component is gone at its end.
-    expect(movableAt(ALL, 6).map((entry) => entry.id)).toEqual(["transition-1"]);
+    expect(stackedAt(ALL, 6).map((entry) => entry.id)).toEqual(["transition-1"]);
+    // Two cards at once: in the track's order, the added one last, on top.
+    const cards = [
+      component({ id: "visual-1", component: "VISUAL", size: null, start: 1, end: 3 }),
+      component({ id: "owner-visual-1", component: "VISUAL", size: null, start: 1.5, end: 3 }),
+    ];
+    expect(stackedAt(cards, 2).map((entry) => entry.id)).toEqual(["visual-1", "owner-visual-1"]);
+  });
+
+  it("offers ready photos with a large copy and a size, in the library's order", () => {
+    const photo = (id: string, over: object = {}) => ({
+      id,
+      status: "ready",
+      largeUrl: `https://r2.example/${id}.jpg`,
+      width: 1600,
+      height: 900,
+      ...over,
+    });
+    expect(
+      pickablePhotos([
+        photo("new"),
+        photo("describing", { status: "describing" }),
+        photo("unsigned", { largeUrl: null }),
+        photo("unsized", { width: null }),
+        photo("old"),
+      ]).map((entry) => entry.id),
+    ).toEqual(["new", "old"]);
+  });
+
+  it("swaps a card's picture keeping its centre, its area and its turn, its shape the photo's", () => {
+    const card = component({
+      id: "visual-1",
+      component: "VISUAL",
+      size: null,
+      x: 100,
+      y: 200,
+      width: 300,
+      height: 400,
+      rotation: 15,
+    });
+    const ask = swapAsk(card, { id: "p", width: 1600, height: 900 });
+    expect(ask).toMatchObject({ id: "visual-1", kind: "box", rotation: 15, photo_id: "p" });
+    const height = (ask.width * 900) / 1600;
+    expect(Math.abs(ask.width * height - 300 * 400)).toBeLessThan(800);
+    expect(Math.abs(ask.x + ask.width / 2 - 250)).toBeLessThan(1);
+    expect(Math.abs(ask.y + height / 2 - 400)).toBeLessThan(1);
   });
 
   it("writes one line per text for the list, a long text cut short", () => {

@@ -106,9 +106,12 @@ latestExport)` (`apps/studio/src/lib/exports.ts`), a pure function of `LiveReel`
   measured `cutout` step under the same fingerprint and key (`app_docs/storage.md`).
 - Then one measured `render` step through the step runner: it reads the version (it must belong to
   the job's reel), its edit, transcript and head track, and downloads the full-size footage, each
-  mask in `inputs.masks` and the large copy of each library photo the `behind` track names (the
-  owner's ready photos, `large_key` from the `photos` row; a photo no longer in the library fails
-  the step with `render: photo <id> is no longer in the library`). `render-project.ts` places the
+  mask in `inputs.masks` and the large copy of each library photo a VISUAL shows (`inputs.photos`;
+  the owner's ready photos, read with the service role and filtered by the job's owner,
+  `supabasePhotoLibrary` in `photos/photo-store.ts`, `large_key` from the `photos` row; a photo no
+  longer in the library fails the step with `render: photo <id> is no longer in the library`). The
+  composite's front layer page names the photos with the stand-ins (`layerNames`), so its project
+  holds them too. `render-project.ts` places the
   masks and photos at the builder's paths (`maskPath`, `masks/<fingerprint>.mp4`, and `photoPath`,
   `photos/<id>.jpg`); an asset without its file throws. A stored version naming the old whole-clip
   cut-out builds without it, and it is never downloaded. Every page the render uses comes from
@@ -522,6 +525,17 @@ card turned 45 degrees 0.992127, 0.995352 and 0.996383, against the upright card
 needs no threshold of its own: its lowest score against the upright previews (0.94604) is well
 below `PREVIEW_EXPORT_SSIM_BOUND`, and the check stays that the minimum falls below the bound. The
 big word behind scored 0.991366, 0.994109 and 0.993578. The bound is unchanged.
+
+Three more owner cases follow in the behind case (2026-11-17). The card upright with its right
+half past the frame's right edge, low over the platform buttons' notch (an owner's card is free of
+the safe zone, `app_docs/owner-edits.md`): 0.99299, 0.996222 and 0.996379. The card's picture
+swapped for the seeded library photo (the softened sample) by an `owner_edit` job's `photo_id`, the
+preview showing the large copy signed from the library and the export downloading it: 0.992643,
+0.995869 and 0.996385. A second card added over it by the job's `adds`, both on track 30 at once
+and the added one drawn last: 0.992646, 0.995152 and 0.996386; against the one-card previews
+0.992646, 0.966814 and 0.996386 (at 0.5 and 2.5 s the added card is not on screen yet or any
+more), so the comparison sees the second card. Every case is at or above the bound; the bound is
+unchanged.
 
 Composition-box captures at device scale 1 (before the big word):
 

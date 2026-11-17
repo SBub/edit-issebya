@@ -16,7 +16,7 @@ import { runOwnerEdit } from "./owner-edit.ts";
 import { runRelayout } from "./relayout.ts";
 import { runJobKind } from "./job-kinds.ts";
 import { runDescribePhotoJob } from "./photos/describe-photo.ts";
-import { supabasePhotoStore } from "./photos/photo-store.ts";
+import { supabasePhotoLibrary, supabasePhotoStore } from "./photos/photo-store.ts";
 import {
   type ClaimedJob,
   failJob,
@@ -203,6 +203,7 @@ export async function processJob(
                   recordStored,
                   versionId,
                   cutouts,
+                  photos: supabasePhotoLibrary(db),
                   discardExport: supabaseDiscardExport(db, rawStorage),
                 }),
               // Start over (temporary, for testing): decide alone, no
@@ -235,6 +236,7 @@ export async function processJob(
                   tools: cutouts.tools,
                   recordStored,
                   ownerEdit,
+                  photos: supabasePhotoLibrary(db),
                 }),
               // A library photo: its two copies, then the AI's
               // description and tags; no reel is touched.

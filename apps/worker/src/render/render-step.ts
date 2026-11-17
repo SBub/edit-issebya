@@ -20,6 +20,7 @@ import {
   headTrackSchema,
   maskPath,
   parseEdit,
+  photoPath,
   reelFrames,
   transcriptSchema,
 } from "@edit-issebya/edit";
@@ -27,6 +28,7 @@ import type { Storage } from "@edit-issebya/storage";
 import { type CutoutDeps, ensureVersionCutouts } from "../cutout/version-cutouts.ts";
 import { editMeasurer } from "../edit-measurer.ts";
 import { isJobCancelled } from "../lease.ts";
+import type { PhotoLibrary } from "../photos/photo-store.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { probeArgs } from "../pipeline/probe.ts";
 import { runPipeline } from "../pipeline/run-pipeline.ts";
@@ -508,6 +510,8 @@ export interface RenderRun {
   // Given, the version's masks are made sure of after the pipeline (a slimmed
   // one is rebuilt in a `cutout` step).
   cutouts?: CutoutDeps;
+  // The owner's ready library photos: where a VISUAL's photo's large copy is.
+  photos?: PhotoLibrary;
   // Removes an export file uploaded but never recorded (the job was cancelled
   // or the row was not written): its `stored_files` row is marked deleted and
   // the object deleted. Never touches a recorded export.
@@ -549,6 +553,7 @@ export async function runRender({
   spawnTool,
   env = process.env,
   cutouts,
+  photos,
   discardExport,
 }: RenderRun): Promise<void> {
   const started = performance.now();
@@ -649,17 +654,39 @@ export async function runRender({
                   return path;
                 };
                 // An old version may name the whole-clip cut-out: the page never
-                // uses it, so it is never downloaded. Masks are.
+                // uses it, so it is never downloaded. Masks and photos are.
                 const files: Required<RenderFiles> = {
                   footage: await download(version.inputs.footage),
                   masks: {},
+                  photos: {},
                 };
                 for (const mask of parsed.edit.inputs.masks ?? []) {
                   files.masks[maskPath(mask)] = await download(mask, `${mask.fingerprint}.mp4`);
                 }
+                // Each library photo's large copy, its key from its own row
+                // (the owner's, ready); one deleted from the library fails the
+                // export with a clear message.
+                const photoIds = parsed.edit.inputs.photos ?? [];
+                if (photoIds.length > 0) {
+                  const library = photos
+                    ? await photos.readyPhotos(job.owner_id, photoIds)
+                    : new Map();
+                  for (const photoId of photoIds) {
+                    const photo = library.get(photoId);
+                    const gone = `${STEP}: photo ${photoId} is no longer in the library`;
+                    if (!photo) throw new Error(gone);
+                    const path = join(dir, "inputs", "photos", `${photoId}.jpg`);
+                    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
+                    await mkdir(join(dir, "inputs", "photos"), { recursive: true });
+                    if (!(await storage.getFile(photo.large_key, path, { signal }))) {
+                      throw new Error(gone);
+                    }
+                    files.photos[photoPath(photoId)] = path;
+                  }
+                }
                 span.setAttributes({
                   "render.version_number": version.number,
-                  "render.inputs": 1 + (parsed.edit.inputs.masks?.length ?? 0),
+                  "render.inputs": 1 + (parsed.edit.inputs.masks?.length ?? 0) + photoIds.length,
                 });
                 return { version, transcript, headTrack, edit: parsed.edit, files };
               },

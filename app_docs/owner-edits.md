@@ -1,4 +1,4 @@
-# The owner's moves: move and resize a text or a visual on screen, and turn a visual
+# The owner's moves: move and resize a text or a visual on screen, turn a visual, and show pictures from the library
 
 **Specifications:**
 
@@ -19,6 +19,19 @@
   (0 degrees) and to 90, 180 and 270 degrees within a few degrees, with a visible hint while snapped;
   it follows the pointer at once like a drag, and the swap to the rebuilt draft has no jump. Texts
   are never turned, visuals only.
+- Owner rule, 2026-11-17: a VISUAL card may go beyond the safe zone, over the platform buttons'
+  notch and even past the frame's edge, but at least 20% of the upright rectangle around it stays
+  inside the frame, so it is never lost off screen. Text stays bound to the safe zone exactly as
+  before. The engine's own placement of cards is unchanged.
+- Owner decisions, 2026-11-17 (visuals step 3, pictures from the photo library): in the same editor,
+  behind the same flag, a selected VISUAL's `Change picture` and, with nothing selected, `Add
+picture here` open one picker of all the owner's ready library photos, newest first (matching a
+  photo's tags to the reel comes later). One click swaps the picture: the card keeps its place,
+  rescaled to the photo's aspect ratio, and is then moved, resized and turned as usual. An added
+  card appears at the paused moment, starting on the word under the playhead and lasting a fixed
+  1.5 s (clipped to the reel's end), placed in a corner by the engine's placement; it cannot be
+  added over hidden footage. Several cards may show at once, an added one on top. Deleting a
+  library photo a version uses stays allowed, with a warning first that counts the versions.
 
 ## Overview
 
@@ -35,7 +48,13 @@ stretches letters: the text keeps its size and is set again on more or fewer lin
 (not one per frame), so a move moves it for all of it. A VISUAL's box moves and scales: its picture
 and its time stay, and its height always follows its picture's aspect ratio, so a card is never
 stretched. A VISUAL also turns about its box's centre, by any angle in whole degrees; a text never
-turns. Captions are not moved. There is no delete, no timing change and no adding of images.
+turns. Captions are not moved. There is no delete and no timing change.
+
+A card's picture can be one of the owner's library photos (`app_docs/photo-library.md`): `Change
+picture` swaps a selected card's stand-in (or earlier photo) for one, and `Add picture here` adds a
+new card showing one at the paused moment, on top of the cards already there. The worker trusts
+only the photo's id from the browser: it checks the photo is the reel owner's and ready, and reads
+its size itself.
 
 For every component the owner moved or resized, the worker keeps a learning record in the
 `owner_moves` table: where the layout engine placed it, where the owner put it and what was on screen
@@ -99,8 +118,8 @@ with it at that moment. Placement rules will be learnt from these later.
   `transform`, which the page's timeline owns, so the preview and the export draw the same turned
   card. A text's move has no turn: `parseOwnerMoves` refuses one.
 - A turned card covers the upright rectangle around it (`rotatedBounds`, `visualBounds` in
-  `behind.ts`): the safe zone rule (`ownerMoveProblems`, `settleOwnerMove`) and the `card-overlap`
-  check read that rectangle, never the upright box.
+  `behind.ts`): the frame rule of a card (`ownerMoveProblems`, `settleOwnerMove`) and the
+  `card-overlap` check read that rectangle, never the upright box.
 - It refuses, with reasons: an id that is no text component of the edit (a caption is not moved), a
   size outside the component's range (`ownerSizeRange`), a component moved twice, a wrap width on a
   big word (`a big word keeps its lines`) or one that is no positive number; a text's move on a
@@ -115,9 +134,15 @@ version`) and a VISUAL narrower than 100 px (`MIN_BOX_PX`) or wider than the fra
   the hook; 30 px to the frame's height for a big word; for a LIST the key sizes that keep its
   smallest level at 30 px or more and its largest at 400 px or less (a key of 110 beside a lead-in of
   50 and a number of 300: 66 to 146).
-- **The one hard rule is the safe zone.** `ownerMoveProblems(components, ids)` names every moved
-  component whose box leaves `SAFE_ZONE.box` or reaches the platform buttons' notch: what the
-  platforms cover is never readable, whoever placed the text. Everything else is the owner's choice:
+- **The one hard rule of a text is the safe zone.** `ownerMoveProblems(components, ids)` names every
+  moved text whose box leaves `SAFE_ZONE.box` or reaches the platform buttons' notch: what the
+  platforms cover is never readable, whoever placed the text. **A VISUAL is free of the safe zone**
+  (owner rule, 2026-11-17): it may sit over the notch and reach past the frame's edge, and
+  `ownerMoveProblems` names it only when less than a fifth (`VISUAL_MIN_SHOWN`, 0.2) of the upright
+  rectangle around it is inside the frame (`shownShare`), so it is never lost off screen. The
+  schema lets a card's corner be off the frame (`x` from minus to plus the frame's width, `y` the
+  same with its height); the `safe-box` check reads texts only, never a card. Everything else is
+  the owner's choice:
   a text over the face or over another text is allowed, and the version's stored `checks` record it
   (`text-overlap`, never fatal). The engine's rule 6 (a big word at most 30% behind the head) does
   not bind the owner.
@@ -127,10 +152,12 @@ version`) and a VISUAL narrower than 100 px (`MIN_BOX_PX`) or wider than the fra
   zone, the size brought into its range and shrunk until the box fits the safe zone (a wrap width
   shrinks with the size, so the lines stay), then the box moved the least it must, at whole pixels. The
   studio settles every drag with it, so what the owner sees is what the worker accepts. A VISUAL's
-  move is settled the same way: its turn brought to whole degrees, its width at least 100 px and
-  shrunk (its height with it) until the rectangle around the turned box fits the safe zone and
-  clears the notch, then moved the least it must, at whole pixels (the nearest whole corner whose
-  rectangle holds).
+  move is settled by its own rule: its turn brought to whole degrees, its width at least 100 px and
+  at most the frame's width (shrunk, its height with it, while its height passes the frame's), then
+  moved the least it must (`fitInFrame`: along one axis, or both) to keep a fifth of the rectangle
+  around the turned box inside the frame, at whole pixels (the nearest whole corner whose rectangle
+  holds). A card dropped anywhere with a fifth of it in the frame stays where it is dropped, past
+  the safe zone and the notch included.
 - `effectiveMoves(moves, components, after?)` leaves out a move that changes nothing (a text put back
   where the version has it). Without `after` (the worker) a move with a wrap width always counts.
   With `after` (the studio's draft components) a move counts only when its box or size there differs
@@ -146,6 +173,42 @@ version`) and a VISUAL narrower than 100 px (`MIN_BOX_PX`) or wider than the fra
   a whole number from -360 to 360); null otherwise. `effectiveMoves` leaves out a VISUAL's move
   whose corner, width and turn are the version's; a turn alone counts.
 - `ownerMoveRecords(...)` builds the learning records (below).
+
+### Pictures from the library (`packages/edit/src/owner-edit.ts`, `owner-add.ts`)
+
+- A swap is a VISUAL's box move with `photo_id` (`OwnerBoxMove.photo_id`, a uuid; `parseOwnerMoves`
+  refuses another value and any `photo_id` on a text's move). `applyOwnerMoves` and
+  `settleOwnerMove` read the photo from the caller's `photos` (`OwnerPhotos`, by id: `{ id, width,
+height, description?, tags? }`); a photo not in it is refused (`photo <id> is not a ready photo in
+your library`). The card then shows the photo (`photo: { id, width, height }`, its `image`
+  dropped, `withPhoto`), its height the photo's aspect at its width, and the edit's
+  `inputs.photos` is written from its tracks (`withPhotoInputs`, `app_docs/edit-model.md`).
+  `effectiveMoves` counts a swap to another picture as a change; `PlacedComponent.picture` (the
+  photo's id or the stand-in's file) tells the pictures apart.
+- An add is `OwnerAdd`, `{ id: "owner-visual-N", photo_id, word, x, y, width }` (`parseOwnerAdds`:
+  absent is none, at most 20, ids unique and of that shape). `applyOwnerAdds(edit, adds, context)`
+  appends each card to the end of the `behind` track, so the page draws it on top of every card
+  before it (track 30, in the track's order): start `{ word }`, end the word's start plus
+  `OWNER_ADD_SECONDS` (1.5 s) as a word anchor (`anchorAt`), or `{ reel: "end" }`, cut short by the
+  reel's end or the next hidden stretch of footage (`ownerAddSpan`; a word inside a hidden stretch,
+  or less than the shown floor of 0.5 s left, has no span and is refused), its description the
+  photo's (cut at a word to 120 characters), its box the photo's aspect at its width (100 px to the
+  frame's width). It gets a click as it comes in (`click-owner-visual-N`, on its start anchor) only
+  when no other sound starts within the click's gap (0.25 s, `minGapSeconds`) of it, so the
+  `sound-gap` check holds. Refused with reasons: an id already in the edit, a photo not in
+  `photos`, a word with no span, a width outside its range.
+- `ownerAddWord(transcript, seconds)`: the word under the playhead (spoken then), else the next one,
+  else the last. `nextOwnerVisualId(edit)`: one past the highest `owner-visual-N`.
+- `ownerAddPlacement(edit, photo, span, context)`: where the studio puts a new card: the engine's
+  own placement of a `visual/card` (`placeElement`: a corner, else beside the face, the card's full
+  width where it fits, at the photo's aspect) over the span's faces, with what is on screen then as
+  obstacles (a caption blocks it; another card and a big word are kept clear of; a text is not, as
+  a card may sit under a text); without the cards when nothing else fits; the safe zone's top left
+  corner at a third of its width when even that finds none. The studio then settles it like a move
+  (`settleOwnerMove`), so the worker gets a legal box.
+- Several cards at once: the schema lets two VISUALs share a moment (the comment in `schema.ts`
+  says so), each on track 30; the export composite's front page draws them as the preview does
+  (`app_docs/export.md`).
 
 ### The editor (`apps/studio`)
 
@@ -227,6 +290,28 @@ version`) and a VISUAL narrower than 100 px (`MIN_BOX_PX`) or wider than the fra
     (`SNAP_PX`) of one. A thin line (`move-guide`, `data-axis="vertical|horizontal"`) shows while it
     is on that line. The snapped place is still settled (`settleOwnerMove`) when the drag ends, so
     the safe zone wins over a guide.
+  - `Change picture` (`move-change-picture`, in the bar while a VISUAL is selected) and `Add picture
+here` (`move-add-picture`, in the bar while nothing is selected; off where `ownerAddSpan` gives
+    no span, such as over hidden footage, its title saying why) open `PicturePicker`
+    (`src/components/PicturePicker.tsx`, `picture-picker`): a modal dialog headed `Change picture`
+    or `Add a picture here` with every ready photo of the library that has a large copy and a size
+    (`pickablePhotos`), newest first, as thumbnails (`picture-option`, `data-photo-id`, named by the
+    photo's description). `loadLibrary` fills it when it opens. One click picks and closes it; the
+    cross, Escape and the backdrop close it with nothing picked.
+  - A swap (`swapAsk`): the card keeps its centre, its area and its turn, its shape the photo's,
+    and the box move names the photo; it is settled and the draft built again like a drop. A later
+    drag of that card keeps its `photo_id` in the draft's one move for it.
+  - An add: the word under the playhead (`ownerAddWord`) and its span (`ownerAddSpan`), the next id,
+    the engine's placement (`ownerAddPlacement`), then `applyOwnerAdds` and `settleOwnerMove`; the
+    settled box goes into the draft's `adds`, the draft is built again and the new card is
+    selected. A later drag of an added card is an ordinary box move on its id, which the worker
+    applies after the adds.
+  - The draft keeps each picked photo's size, description and tags (`photosRef`, the settling's
+    `photos`) and its large copy's signed URL from the library (`built.photoUrls`, by the path the
+    page names it at), so the draft page shows the photo before anything is saved.
+  - The boxes on screen are drawn in the page's stacking order (`stackedAt`: the cards in the
+    track's order, then the texts), so where two overlap the topmost box takes the click, the
+    added card over the engine's.
   - Picking a text from the list selects it and seeks the preview to a moment where it shows whole
     (`showMoment`: 0.4 s before its end, or its middle when it is shorter than 0.8 s).
   - A status line at the bottom (`move-status`): `Saving your changes`, `This text does not fit
@@ -239,7 +324,9 @@ there`, or why a save did not start.
   `withMove`, `boxStyle`.
 - Save calls `requestOwnerEdit` (`src/app/change-actions.ts`): it checks the shape of the moves
   (`parseOwnerMoves`), refuses when the `studio-owner-edit` flag is off for the user, refuses a blocked reel like going back does (`changeBlockedReason`) and inserts
-  the job `{ kind: "owner_edit", owner_edit: { version_id, moves } }` under RLS. The editor then waits
+  the job `{ kind: "owner_edit", owner_edit: { version_id, moves, adds? } }` under RLS (`adds`
+  only when the owner added a card; `moves` may then be empty). The browser never sends a photo's
+  size. The editor then waits
   for its job (`jobs` from `LiveReel`): the progress overlay shows `Saving your changes`, the new
   version replaces the preview by itself like any new version, and the editor closes. A failed job
   leaves the draft open with `Your changes were not saved. Try again`.
@@ -275,19 +362,38 @@ your changes`); `JOB_STEPS.owner_edit` is that one step.
   - `save_version` takes `p_edited_from_id` and `p_owner_moves` (both with defaults, so every other
     caller is unchanged) and writes the version and its learning rows in one transaction. Learning
     rows without `p_edited_from_id` are refused.
+- `supabase/migrations/20261117122655_owner_photo_cards.sql` (a new migration; the one above is
+  left as it is):
+  - `jobs_owner_edit_shape_check` is replaced: `{ version_id: string, moves: array, adds?: array }`,
+    moves 0 to 200 plus adds 0 to 20, at least one in total, at most 64 KiB. The column comment
+    names the swap's `photo_id` and the adds.
+  - `owner_moves` gets `added`, `swapped` (booleans, default false), `photo_id` (a plain uuid, no
+    foreign key, so a row outlives its photo) and `replaced` (text); `engine_box` becomes nullable,
+    and `owner_moves_added_check` holds `added` exactly when `engine_box` is null. Its grants are
+    restated per role.
+  - `save_version` is replaced with the same signature, writing the four columns (absent keys give
+    false and null; a JSON null engine box is stored as null). Its grants are restated: the
+    service role only.
 - `apps/worker/src/job-kinds.ts`: `owner_edit` runs `runners.owner_edit` with the parsed payload
-  (`parseOwnerEdit`); a payload that is not a version id and moves fails the job.
+  (`parseOwnerEdit`: a version id, moves and optional adds, at least one in all); any other payload
+  fails the job.
 - `apps/worker/src/owner-edit.ts`, `runOwnerEdit`, one step `owner_edit`, no AI call:
   1. Reads the version the job names (it must be one of the reel's), its transcript and head track,
      and builds it for its components.
-  2. Drops the moves that change nothing; none left fails the job (`nothing was moved or resized`).
-  3. Applies the moves, decides each moved big word's cut-out again and builds the result with the
-     edited version's engine record. A move that breaks the safe zone fails the job (`the moves are
-refused: ...`). All of these are permanent failures, and no version is written.
-  4. Finds the engine-placed version the edits started from (`enginePlaced`: back through
+  2. Reads every photo a swap or an added card names from the `photos` table with the service role
+     (`supabasePhotoLibrary(db).readyPhotos(job owner, ids)`: the reel owner's, `ready`, with a
+     `large_key`, a width and a height); one that is not fails the job (`photo <id> is not a ready
+photo in the owner's library`). The photo's size in the version is the row's.
+  3. Applies the added cards (`applyOwnerAdds`), then drops the moves that change nothing; no move
+     and no card fails the job (`nothing was moved or resized`).
+  4. Applies the moves, decides each moved big word's cut-out again and builds the result with the
+     edited version's engine record. A text that breaks the safe zone, or a card with less than a
+     fifth of it in the frame, fails the job (`the moves are refused: ...`; refused cards: `the
+cards are refused: ...`). All of these are permanent failures, and no version is written.
+  5. Finds the engine-placed version the edits started from (`enginePlaced`: back through
      `edited_from_id` and `restored_from_id`) and reads the engine's boxes from it.
-  5. Makes the masks a moved big word now needs (`ensureCutouts`; the cache reuses the rest).
-  6. Copies the edited version's AI record under the new version's id (so a later re-layout finds the
+  6. Makes the masks a moved big word now needs (`ensureCutouts`; the cache reuses the rest).
+  7. Copies the edited version's AI record under the new version's id (so a later re-layout finds the
      same answer) and saves the version: parent the current version, `edited_from_id` the edited
      one, `engine_record` the edited version's, the build's `checks`, no title and no summary, and
      the learning records.
@@ -297,7 +403,8 @@ refused: ...`). All of these are permanent failures, and no version is written.
 
 ### The learning data (`owner_moves`)
 
-One row per component moved or resized in one save, written by `save_version` with the version.
+One row per component moved, resized, turned or swapped, and per card added, in one save, written by
+`save_version` with the version.
 
 | Column                                 | What it holds                                                                                                                                                                             |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -306,20 +413,26 @@ One row per component moved or resized in one save, written by `save_version` wi
 | `engine_version_id`                    | the engine-placed version the engine's box was read from                                                                                                                                  |
 | `item`, `component`, `variant`, `text` | the item id, `ACCENT`, `QUESTION`, `BIGWORD`, `LIST`, `HOOK` or `VISUAL`, the variant entry the engine placed it with (`accent/above-head`), its text (a VISUAL's description)            |
 | `start_seconds`, `end_seconds`         | its time on screen                                                                                                                                                                        |
-| `engine_box`                           | where the engine placed it: `{ x, y, width, height, size }`                                                                                                                               |
+| `engine_box`                           | where the engine placed it: `{ x, y, width, height, size }`; null for a card the owner added                                                                                              |
 | `owner_box`                            | where the owner put it, the same shape                                                                                                                                                    |
 | `moved`, `resized`                     | which of the two differs: a new corner is a move; a new size, or a box of another width or height (its lines set again), a resize                                                         |
 | `rotated`                              | a VISUAL turned: its turn differs from the engine's                                                                                                                                       |
 | `engine_rotation`, `owner_rotation`    | the engine's turn (always 0: the engine never turns a card) and the owner's, whole degrees clockwise (-179 to 180); 0 and 0 for a text. `engine_box` and `owner_box` are the card upright |
+| `added`                                | a card the owner added (`owner-visual-N`): no engine box, `moved`, `resized`, `rotated` and `swapped` false                                                                               |
+| `swapped`                              | a card whose picture differs from the engine's: the owner swapped it for a library photo                                                                                                  |
+| `photo_id`                             | the library photo the card shows (a plain id: the row outlives the photo); null for a text or a card without one                                                                          |
+| `replaced`                             | what a swap replaced: the picture of the version edited when it differs (the stand-in's file or the previous photo's id), else the engine's; null without a swap                          |
 | `wrap_width`                           | the wrap width an edge handle set, in frame pixels at the owner's size; null when the version's lines were kept                                                                           |
 | `context`                              | the moment (below)                                                                                                                                                                        |
 
-`context` is `{ frame, font_pair, head, engine_zone, others }`: the frame's size, the font pair, the
-head over the component's time (the box around the robust faces of the head track, `facesOver`; null
-with no head), the zone the engine took for it (from its engine record), and everything else on
-screen during its time (`{ item, component, text, start, end, box, rotation?, moved_by_owner }`,
-captions and cards included, each where the owner's version has it; `rotation` only for a turned
-card).
+`context` is `{ frame, font_pair, head, engine_zone, words, photo, others }`: the frame's size, the
+font pair, the head over the component's time (the box around the robust faces of the head track,
+`facesOver`; null with no head), the zone the engine took for it (from its engine record), the words
+spoken while it shows (the transcript's, joined by spaces), the photo it shows as the library
+described it then (`{ description, tags }`, a snapshot quoted as data; null without a photo), and
+everything else on screen during its time (`{ item, component, text, start, end, box, rotation?,
+moved_by_owner }`, captions and cards included, each where the owner's version has it; `rotation`
+only for a turned card; an added card counts as moved by the owner).
 
 Why a table, and why these keys:
 
@@ -380,8 +493,16 @@ order by created_at;
    it is dropped; the preview is built again after each drag and replaces the old one without a
    flicker or a jump.
    Near the middle of the frame the text snaps to the centre lines and a thin guide shows. A text stops at the edge of the safe zone.
-5. Press `Save`. A new version, `Edited by you`, becomes current. Press `Cancel` to drop the changes.
-6. To compare, open another version's details in the Versions list and press `Go back to this`.
+   A visual card may go past the safe zone, into a corner or partly off the frame; dragged so far
+   that less than a fifth of it would show, it comes back until a fifth does.
+5. To show one of your library photos on a card, select the card and press `Change picture`, then
+   click a photo: the card keeps its place and takes the photo's shape. To add a new card, select
+   nothing (click beside the boxes), pause where it should start and press `Add picture here`, then
+   click a photo: the card shows from the word being spoken for 1.5 s, in a corner, on top of any
+   card already there. Either can then be moved, resized and turned like any card. Over hidden
+   footage `Add picture here` is off.
+6. Press `Save`. A new version, `Edited by you`, becomes current. Press `Cancel` to drop the changes.
+7. To compare, open another version's details in the Versions list and press `Go back to this`.
 
 ## Configuration
 
@@ -403,12 +524,14 @@ like decide does (`E2E_MOCK_MASK` in specs).
   big word's cut-out; the learning records (the engine's box, the owner's, the head, the others, a
   component moved earlier). A VISUAL: movable, moved and scaled as a box with its picture's aspect
   ratio, nothing else changed; a box move on a text, one narrower than 100 px and one made twice
-  refused; settled at the safe zone's edge, at the largest size that fits and at the 100 px floor;
+  refused; settled into the bottom right corner over the notch where it was dropped (past the safe
+  zone), brought back from far off the frame until a fifth of it shows, at the frame's width when
+  wider and at the 100 px floor; `fitInFrame` (unchanged with a fifth in, one axis, a corner);
   parsed; left out when it changes nothing; recorded with no size and no wrap width. A turned
   VISUAL: turned in whole degrees (-350 is 10, -190 is 170, 0 upright with no `rotation`), drawn
   with `rotate` and never `transform`, a move with no turn keeping it; a turn of 12.5 degrees and a
-  turn on a text refused; the safe zone read from the rectangle around it; settled inside the safe
-  zone with its turn, shrunk when too large; a turn alone counted by `effectiveMoves` and recorded as
+  turn on a text refused; the frame rule read from the rectangle around it; settled with a fifth of
+  that rectangle in the frame and its turn kept, left where it is past the safe zone; a turn alone counted by `effectiveMoves` and recorded as
   `rotated` with `engine_rotation` 0 and the owner's. A QUESTION (`question/word-by-word`): one box
   holding its question mark, measured as drawn; moved and resized by its corner with its words,
   mark and reveal kept; its wrap options read from its text with the mark (every box within its
@@ -424,7 +547,9 @@ like decide does (`E2E_MOCK_MASK` in specs).
   owner's, the edited version not rewritten; one learning record per moved component; a wrap width
   setting the hook's lines again, recorded as a resize with `wrap_width`; a VISUAL moved and scaled
   as a box with its aspect ratio kept and recorded as `VISUAL`, then turned -15 degrees with its box
-  kept and recorded as `rotated` against the engine's upright card; the AI record copied; an
+  kept and recorded as `rotated` against the engine's upright card, then moved into the bottom
+  right corner past the safe zone and the frame's edge and saved, and one with less than a fifth
+  in the frame refused with no version written; the AI record copied; an
   earlier version edited; the engine's box read from the engine-placed version on a second edit; the
   refusals (outside the safe zone, a caption, an unknown component, a size under 30 px, nothing
   moved, a version of another reel), each writing no version. `job-kinds.test.ts`: the dispatch and
@@ -481,9 +606,13 @@ like decide does (`E2E_MOCK_MASK` in specs).
   guides, 6 degrees past it no snap and no guide, 3 degrees from upright it snaps to 0; dropped at a
   quarter turn. Save sends the box move with `rotation: 90`, the saved version draws the card turned
   90 degrees and the row is `rotated` with `engine_rotation` 0 and `owner_rotation` 90. With
+  The card is then dragged with its centre onto the frame's right edge, low over the notch: it
+  stays where it is dropped (not clamped to the safe zone), Save keeps it there in the saved
+  version, and its learning row holds that box. With
   `OWNER_EDIT_SHOTS` it keeps `visual-1-selected-with-corner-handle.png`, `visual-2-moved.png`,
   `visual-3-resized.png`, `visual-4-centred.png`, `visual-5-turned.png`,
-  `visual-6-snapped-quarter-turn.png` and `visual-7-snapped-upright.png`.
+  `visual-6-snapped-quarter-turn.png`, `visual-7-snapped-upright.png` and
+  `visual-8-past-the-safe-zone.png`.
 - `apps/studio/e2e/owner-edit-question.spec.ts` (`yarn test:e2e`, the fixture clip with the
   QUESTION "test clip for the real studio?" placed by the engine and saved with its record): picked
   from the list it is selected as `Question` with a corner handle and four edge handles, every word
@@ -507,26 +636,78 @@ moved, a resized and a widened component match between preview and export`: the 
   its preview the same way, and against the engine's previews it falls below the bound. That
   version is then turned 45 degrees by another `owner_edit` job (its box kept): its preview draws
   `rotate: 45deg` and no `transform`, the export matches its preview at the bound, and against the
-  upright card's previews it falls below the bound. Measured 2026-11-17: every case at or above
+  upright card's previews it falls below the bound. A last `owner_edit` puts the card upright with
+  its right half past the frame's right edge, low over the notch: its export matches its preview
+  at the bound. Measured 2026-11-17: every case at or above
   the bound, against the version before the moves at most 0.919066 mid-reel, and the turned card
   against the upright previews 0.94604 at its lowest (`app_docs/export.md`).
+
+- Pictures from the library. `packages/edit/src/owner-edit.test.ts`: a swap's `photo_id` parsed
+  (another value and one on a text refused); the photo shown in place of the stand-in at its aspect
+  ratio and named in `inputs.photos`, a photo not vouched for refused by `applyOwnerMoves` and
+  `settleOwnerMove`; a swap settled with its photo, counted by `effectiveMoves`, recorded as
+  `swapped` with `photo_id`, `replaced` (the stand-in's file), the photo's description and tags and
+  the words spoken. `packages/edit/src/owner-add.test.ts`: `parseOwnerAdds` (absent, a malformed
+  card, more than 20); the word under the playhead and the next one; the 1.5 s span, cut by the
+  reel's end and the next hidden footage, none inside it or with under 0.5 s left;
+  `nextOwnerVisualId`; a card added at the end of the track with the photo at its aspect, its
+  description, `inputs.photos`, its time and its click; no click within the gap of another sound
+  (and no `sound-gap` check); the refusals; the engine's placement off the card already there,
+  settled with no problem. `apps/worker/src/owner-edit.test.ts`: `parseOwnerEdit` with adds alone or
+  with a swap, and malformed ones; a swap sized from the library (the worker's photo, never the
+  job's) and recorded; a card added over the engine's card, last in the track, with its click, and a
+  second on the engine card's word with none; recorded as `added` with no engine box; a photo not in
+  the owner's library refused with no version written. `apps/studio/src/lib/owner-edit.test.ts`:
+  `stackedAt` (cards under texts, two cards in the track's order), `pickablePhotos`, `swapAsk` (its
+  centre, area and turn kept). `apps/studio/db-tests/owner-edits.test.ts`: a job with adds alone
+  and with a swap queued; no move and no card, adds not a list, and more than 20 refused; a swapped
+  card's row with its photo and what it replaced, an added card's with no engine box, and an added
+  card with an engine box or a moved one without refused, nothing written.
+- `apps/studio/e2e/owner-edit-photos.spec.ts` (`yarn test:e2e`, the speech-ten clip with one VISUAL,
+  two ready photos and one being described): `Change picture` (only with a card selected) opens the
+  picker with the two ready photos, newest first, and not the one being described; one click swaps
+  the picture, the card's centre kept and its shape the photo's, its `<img>` loaded; a drag then
+  keeps the photo. With nothing selected `Add picture here` opens the picker; the picked photo
+  appears as `owner-visual-1`, selected, both cards on screen at the paused moment, the added one
+  last in the page and in the editor. Save sends the swap as a box move with `photo_id` and the
+  card in `adds`, no photo size; the worker saves a version naming both photos in `inputs.photos`
+  that draws both cards where the draft had them, with the large copies signed from the library;
+  the rows: the swap (`swapped`, `replaced` the stand-in's file, the engine's box) and the added
+  card (`added`, no engine box), both with the words and the photo's description and tags. Then
+  the library's Delete on a photo that version shows warns `Used in 1 version of your reels...`
+  first, deletes it all the same, and the version's preview then shows `A photo in this version
+was deleted from the library`. With `OWNER_EDIT_SHOTS` it keeps `photos-1-picker-open.png`,
+  `photos-2-swapped-picture.png`, `photos-3-two-pictures-at-once.png` and
+  `photos-4-delete-warning.png`.
+- The guardrail (`test:tools`, `app_docs/export.md`): after the card past the frame's edge, the
+  card's picture swapped for the library photo (its preview showing the signed large copy) matches
+  its export at the bound, and a second card added over it (both on track 30 at once, the added one
+  drawn last) matches too, while against the one-card previews it falls below the bound.
 
 ## Rules
 
 - Never rewrite the version the owner edited: Save makes a new version after the current one.
 - Never change anything but the place, the text size and the line breaks of the moved components,
-  and a moved VISUAL's box and turn: not a word, a time, a caption, a card's picture or its description. A line break changes only through a wrap width, on the
-  engine's balanced lines; never stretch or squeeze letters to fill a box.
-- Never save a moved component outside the safe zone or in the buttons' notch. The studio settles
-  every drag (`settleOwnerMove`) and the worker refuses the job.
+  a moved VISUAL's box and turn, and a card's picture swapped for one of the owner's ready library
+  photos: not a word, a time, a caption or a card's description. A line break changes only through
+  a wrap width, on the engine's balanced lines; never stretch or squeeze letters to fill a box.
+- Never trust a photo's size or ownership from the browser: the worker reads each photo a swap or
+  an added card shows from the `photos` table with the service role (the reel owner's, `ready`,
+  with a `large_key`, `supabasePhotoLibrary`) and writes its `width` and `height` itself; any other
+  photo fails the job and no version is written.
+- Never save a moved text outside the safe zone or in the buttons' notch. The studio settles every
+  drag (`settleOwnerMove`) and the worker refuses the job. The safe zone is the one hard rule for
+  text only: a VISUAL is free of it and of the notch, even past the frame's edge, but never with
+  less than a fifth of the upright rectangle around it inside the frame (`VISUAL_MIN_SHOWN`); the
+  studio settles a card's drag to that and the worker refuses one that breaks it.
 - Never stretch a VISUAL: its height always follows its picture's aspect ratio (`boxHeight`), and it
   has no edge handles.
 - Never turn a text: only a VISUAL has a rotate handle and a `rotation`; a text's move with a turn
   is refused.
 - Never draw a turn in `transform`: the builder and the instant view write the `rotate` property,
   so the page's timeline keeps `transform`.
-- Never read a turned card's place from its upright box for the safe zone or an overlap: read the
-  rectangle around it (`visualBounds`).
+- Never read a turned card's place from its upright box for the frame rule or an overlap: read the
+  rectangle around it (`visualBounds`, `rotatedBounds`).
 - Never draw the draft with anything but the one builder: the editor's layer draws boxes and
   handles only, never text, and is never part of the built page or the export. The instant view
   only restyles the builder's own elements on the page on screen (their place, size and lines, from
@@ -549,6 +730,14 @@ moved, a resized and a widened component match between preview and export`: the 
 - Never let the owner write, change or delete an `owner_moves` row; only `service_role` writes.
 - Never keep `owner_moves` rows after their reel is deleted: `reel_id` cascades.
 - Never call an AI model in an `owner_edit` job.
+- Never let a swap or an added card show a photo that is not the reel owner's ready photo with a
+  large copy: the worker reads them itself; the browser sends only ids.
+- Never add a card over hidden footage or past the reel's end: its span is `ownerAddSpan`'s, from the
+  word under the playhead for `OWNER_ADD_SECONDS`, cut short by either; the studio's button is off
+  and the worker refuses one.
+- Never give an added card a click within the click's gap of another sound (`sound-gap`).
+- Never draw an added card under the cards already there: it goes to the end of the `behind` track,
+  and the editor stacks its boxes in the page's order (`stackedAt`).
 - Never move a caption with this editor.
 - Never render the editor or queue an `owner_edit` job for a user whose `studio-owner-edit` flag is
   off: the page and `requestOwnerEdit` both evaluate it on the server.
@@ -561,8 +750,9 @@ moved, a resized and a widened component match between preview and export`: the 
   can take, so the box can come out taller or shorter than the handle was dragged. A LIST's single
   wrap width applies to its lead-in and key phrase together; its number keeps its line.
 - Not done yet: touch and phone (the button is hidden below `lg`), keyboard nudging, turning a
-  text, adding or swapping a VISUAL's picture, deleting, timing changes, undo inside the editor (Cancel drops everything), and carrying
-  the owner's moves into another font pair.
+  text, deleting a card, timing changes (an added card always lasts 1.5 s), matching the picker's
+  photos to the reel by their tags (it shows every ready photo), undo inside the editor (Cancel
+  drops everything), and carrying the owner's moves into another font pair.
 - A new version arriving while the editor is open (a job finishing) replaces the preview and closes
   the editor: the draft is lost. The moves are small, so this is accepted for now.
 - Other docs this change touches: `app_docs/change-requests.md` (the list's `Edited by you`),

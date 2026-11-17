@@ -14,6 +14,7 @@ import {
   photoBadge,
   photoKey,
   photoTileLabel,
+  photoUsageWarning,
 } from "./photos";
 
 const ID = "0b9f6c1e-3c1d-4c8e-9a51-2f4d7b6e8a10";
@@ -132,6 +133,18 @@ describe("library intro", () => {
     expect(libraryIntro(12)).toBe(LIBRARY_INTRO);
     expect(LIBRARY_INTRO).toBe(
       "Photos you add here can appear in your reels, placed behind you when they fit what you're saying",
+    );
+  });
+});
+
+describe("photoUsageWarning", () => {
+  it("says how many versions show the photo and what happens to them, nothing for none", () => {
+    expect(photoUsageWarning(0)).toBe("");
+    expect(photoUsageWarning(1)).toBe(
+      "Used in 1 version of your reels. It will show a notice instead of the photo, and cannot be exported",
+    );
+    expect(photoUsageWarning(3)).toBe(
+      "Used in 3 versions of your reels. They will show a notice instead of the photo, and cannot be exported",
     );
   });
 });

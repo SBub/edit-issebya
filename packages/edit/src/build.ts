@@ -15,15 +15,19 @@ import { resolveSpans, resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 import { hiddenCaptionIds, levelBoxes } from "./transitions.ts";
 import { type PlacedComponent, placedComponents } from "./components.ts";
+import { photoPath } from "./photos.ts";
 
-export type AssetRole = "footage" | "font" | "sound" | "mask" | "visual";
+export type AssetRole = "footage" | "font" | "sound" | "mask" | "visual" | "photo";
 
 // A file the page references: the footage and the masks are stored outputs
-// (by producer), fonts, sounds and the stand-in pictures are packages/edit's assets.
+// (by producer), fonts, sounds and the stand-in pictures are packages/edit's
+// assets, and a photo is one of the owner's library photos (by id; its large
+// copy).
 export interface BuildAsset {
   path: string;
   role: AssetRole;
   ref: EditRef | null;
+  photoId?: string;
 }
 
 // Where the page looks for a mask, inside the project.
@@ -36,7 +40,7 @@ export function maskPath(mask: Pick<EditMask, "fingerprint">): string {
 const visualStyle = (stroke: number) =>
   `      .visual { position: absolute; box-sizing: border-box; border: ${stroke}px solid #ffffff; background: transparent; }`;
 
-// A VISUAL with its stand-in picture: the picture fills the card's box exactly
+// A VISUAL with its stand-in picture or library photo: the picture fills the card's box exactly
 // (the box has the picture's aspect, so nothing is cropped), and the stroke is
 // drawn over it as the card's own frame.
 const visualPictureStyle = (stroke: number) => [
@@ -202,7 +206,9 @@ export function build(
     ...(behindItems.some((item) => item.kind === "visual")
       ? [visualStyle(VARIANTS["visual/card"].style.stroke.px)]
       : []),
-    ...(behindItems.some((item) => item.kind === "visual" && item.image !== undefined)
+    ...(behindItems.some(
+      (item) => item.kind === "visual" && (item.image !== undefined || item.photo !== undefined),
+    )
       ? visualPictureStyle(VARIANTS["visual/card"].style.stroke.px)
       : []),
     ...(levels.length > 0
@@ -536,11 +542,11 @@ export function build(
 
 // Whether a layer's page names an asset of this role: the full page names them
 // all, every page the fonts (its style sheet declares them), the front page
-// the cards' pictures, the sound page the footage and the sounds. No layer
-// page names a mask.
+// the cards' pictures (the stand-ins and the library photos), the sound page
+// the footage and the sounds. No layer page names a mask.
 function layerNames(layer: Layer, role: AssetRole): boolean {
   if (layer === "full" || role === "font") return true;
-  if (layer === "front") return role === "visual";
+  if (layer === "front") return role === "visual" || role === "photo";
   if (layer === "sound") return role === "footage" || role === "sound";
   return false;
 }
@@ -573,8 +579,10 @@ function behindElement(
       ...(item.rotation ? [`rotate: ${item.rotation}deg`] : []),
       ...extra,
     ].join("; ");
-    if (item.image !== undefined) {
-      // The stand-in picture, filling the box; the stroke is its frame.
+    const picture = item.photo ? photoPath(item.photo.id) : item.image;
+    if (picture !== undefined) {
+      // The stand-in picture or the library photo's large copy, filling the
+      // box; the stroke is its frame.
       return [
         `<div${attrs([
           ["id", item.id],
@@ -583,7 +591,7 @@ function behindElement(
           ["style", css],
         ])}>`,
         `  <img${attrs([
-          ["src", item.image],
+          ["src", picture],
           ["alt", ""],
         ])}>`,
         "</div>",
@@ -712,6 +720,15 @@ function assetsOf(
   );
   for (const file of pictures) {
     assets.push({ path: file, role: "visual", ref: null });
+  }
+  // Each library photo a visual shows, once.
+  const photos = new Set(
+    (edit.tracks.behind ?? []).flatMap((item) =>
+      item.kind === "visual" && item.photo ? [item.photo.id] : [],
+    ),
+  );
+  for (const photoId of photos) {
+    assets.push({ path: photoPath(photoId), role: "photo", ref: null, photoId });
   }
   return assets.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }

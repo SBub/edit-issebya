@@ -70,6 +70,23 @@ describe("writeRenderProject", () => {
     ).rejects.toThrow("render: no file for mask masks/abc.mp4");
   });
 
+  it("places a library photo from the given files, and throws for one without a file", async () => {
+    const photo = fixturePath("preview_copies", "thumbnail.jpg");
+    const assets = [{ path: "photos/p.jpg", role: "photo" as const, ref: null, photoId: "p" }];
+    const written = await writeRenderProject({
+      dir,
+      html: "<html></html>",
+      assets,
+      files: { ...FILES, photos: { "photos/p.jpg": photo } },
+    });
+    expect(written).toEqual([join(dir, "index.html"), join(dir, "photos/p.jpg")]);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder and the committed fixtures
+    expect(await readFile(join(dir, "photos/p.jpg"))).toEqual(await readFile(photo));
+    await expect(
+      writeRenderProject({ dir, html: "<html></html>", assets, files: FILES }),
+    ).rejects.toThrow("render: no file for photo photos/p.jpg");
+  });
+
   it("refuses an asset path outside the project", async () => {
     for (const path of ["../escape.mp4", "/abs/x.ttf", "assets/../../x.wav"]) {
       await expect(

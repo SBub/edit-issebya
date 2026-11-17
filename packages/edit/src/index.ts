@@ -122,10 +122,23 @@ export {
   build,
   maskPath,
 } from "./build.ts";
+export { type EditPhoto, photoPath, withPhotoInputs } from "./photos.ts";
 export { type PlacedComponent } from "./components.ts";
+export {
+  type OwnerAdd,
+  OWNER_ADD_SECONDS,
+  applyOwnerAdds,
+  nextOwnerVisualId,
+  ownerAddPlacement,
+  ownerAddSpan,
+  ownerAddWord,
+  parseOwnerAdds,
+} from "./owner-add.ts";
 export {
   type OwnerBoxMove,
   type OwnerMove,
+  type OwnerPhoto,
+  type OwnerPhotos,
   type OwnerMoveRecord,
   type OwnerTextMove,
   type RecordedPlacement,

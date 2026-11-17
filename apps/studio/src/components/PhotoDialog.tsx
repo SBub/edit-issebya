@@ -1,8 +1,9 @@
 "use client";
 
 import { type RefObject, useState } from "react";
+import { photoUsage } from "@/app/photo-actions";
 import { CloseButton } from "@/components/CloseButton";
-import { type LibraryItem, formatDimensions } from "@/lib/photos";
+import { type LibraryItem, formatDimensions, photoUsageWarning } from "@/lib/photos";
 import { formatBytes } from "@/lib/reels";
 
 interface Props {
@@ -22,6 +23,17 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  // Before Yes, delete: how many of the owner's versions show the photo.
+  const [usage, setUsage] = useState("");
+
+  // The bin: ask once more, and say first which versions show the photo.
+  async function confirm() {
+    if (!photo) return;
+    setConfirming(true);
+    setUsage("");
+    const answer = await photoUsage(photo.id).catch(() => null);
+    if (answer?.ok) setUsage(photoUsageWarning(answer.value.versions));
+  }
 
   function close() {
     dialogRef.current?.close();
@@ -49,6 +61,7 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
       onClose={() => {
         setConfirming(false);
         setMessage("");
+        setUsage("");
       }}
       className="m-auto max-h-[calc(100dvh-2rem)] w-[min(40rem,calc(100%-2rem))] overflow-y-auto border border-line bg-surface p-5 text-ink backdrop:bg-black/60"
     >
@@ -62,7 +75,10 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => setConfirming(false)}
+                onClick={() => {
+                  setConfirming(false);
+                  setUsage("");
+                }}
                 className="border border-line px-3 py-1 text-sm hover:bg-raised"
               >
                 Cancel
@@ -81,7 +97,7 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
               type="button"
               aria-label="Delete photo"
               title="Delete photo"
-              onClick={() => setConfirming(true)}
+              onClick={() => void confirm()}
               className="flex size-10 flex-none items-center justify-center text-danger transition-opacity hover:opacity-70"
             >
               <svg
@@ -103,6 +119,15 @@ export function PhotoDialog({ dialogRef, photo, onDelete }: Props) {
           ))}
         <CloseButton onClick={close} />
       </div>
+      {photo && confirming && usage && (
+        <p
+          role="alert"
+          data-testid="photo-delete-usage"
+          className="mb-3 border border-danger px-3 py-2 text-sm text-danger"
+        >
+          {usage}
+        </p>
+      )}
       {photo && (
         <div className="flex flex-col gap-3">
           {photo.largeUrl ? (

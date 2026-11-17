@@ -47,6 +47,12 @@ export async function deletePhoto(
   return photos.deletePhoto(await deps(), { photoId });
 }
 
+export async function photoUsage(
+  photoId: string,
+): Promise<photos.PhotoAnswer<{ versions: number }>> {
+  return photos.photoUsage(await deps(), { photoId });
+}
+
 export async function loadLibrary(): Promise<photos.PhotoAnswer<LibraryItem[]>> {
   return photos.loadLibrary(await deps());
 }
