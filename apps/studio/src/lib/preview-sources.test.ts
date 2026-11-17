@@ -29,9 +29,10 @@ const PREVIEW_REF = (file: string) => ({
   fingerprint: fp("preview_copies"),
   file,
 });
-const LAYOUT = { everySeconds: 2, columns: 32, width: 90, height: 160 };
+const LAYOUT = { everySeconds: 2, columns: 32, rows: 5, width: 90, height: 160 };
 
-// The column as the worker writes it since preview_copies version 3.
+// The column as the worker writes it since preview_copies version 4 (version 3
+// wrote no `rows`).
 const RAW = {
   footage: PREVIEW_REF("footage-preview.mp4"),
   thumbnail: PREVIEW_REF("thumbnail.jpg"),
@@ -75,6 +76,15 @@ describe("parsePreviewCopies", () => {
     expect(parsePreviewCopies({ ...RAW, extra: 1 })).toEqual(COPIES);
   });
 
+  it("reads a layout written before the sprite had rows as one row", () => {
+    const { rows: _rows, ...oneRow } = LAYOUT;
+    expect(parsePreviewCopies({ ...RAW, frames_layout: oneRow })?.frames).toEqual({
+      ref: RAW.frames,
+      ...LAYOUT,
+      rows: 1,
+    });
+  });
+
   it("reads a footage-only column with no thumbnail and no frames", () => {
     expect(parsePreviewCopies(FOOTAGE_ONLY)).toEqual(FOOTAGE_ONLY_COPIES);
   });
@@ -85,6 +95,12 @@ describe("parsePreviewCopies", () => {
     expect(parsePreviewCopies({ ...RAW, frames_layout: undefined })?.frames).toBeNull();
     expect(
       parsePreviewCopies({ ...RAW, frames_layout: { ...LAYOUT, columns: 0 } })?.frames,
+    ).toBeNull();
+    expect(
+      parsePreviewCopies({ ...RAW, frames_layout: { ...LAYOUT, rows: 0 } })?.frames,
+    ).toBeNull();
+    expect(
+      parsePreviewCopies({ ...RAW, frames_layout: { ...LAYOUT, rows: 65 } })?.frames,
     ).toBeNull();
     expect(
       parsePreviewCopies({ ...RAW, frames_layout: { ...LAYOUT, everySeconds: 1.5 } })?.frames,

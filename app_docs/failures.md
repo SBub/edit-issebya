@@ -198,15 +198,19 @@ still sees it `queued` and older, so it skips the sibling too. Only `service_rol
   `convert` downloads nothing more) and probes it with `ffprobe`
   (`apps/worker/src/pipeline/footage-check.ts`). `ffprobe` is found beside `FFMPEG_PATH`, or on the
   `PATH` when that is a bare name.
-- `FOOTAGE_LIMITS = { maxSeconds: 90 }` is the one place the limit lives; the other three rules are
-  yes or no. The first failing rule wins, in this order:
+- `FOOTAGE_LIMITS = { maxSeconds: 300 }` is the one place the limit lives; the other three rules
+  are yes or no. It is one general limit for everyone (owner, 2026-11-17: up to 5 minutes, raised
+  from 90 seconds; exports are usually shorter because the pauses are cut; a per-tenant limit is
+  parked). The studio checks no length before the upload: the worker's check is the only one. The
+  sprite of `preview_copies` takes its row count from this limit (`app_docs/pipeline.md`, "Longer
+  footage"). The first failing rule wins, in this order:
 
 | Rule                                                        | Message                                                                     |
 | ----------------------------------------------------------- | --------------------------------------------------------------------------- |
 | a video (no probe, an image container `image2` or `*_pipe`) | `This file is not a video. Upload a clip from your phone (MP4 or MOV).`     |
 | with sound                                                  | `This clip has no sound. The studio needs your voice to make the captions.` |
 | vertical (display height greater than width)                | `This clip is W x H, not vertical. The studio takes vertical clips only.`   |
-| at most 90 seconds                                          | `This clip is <duration>; the studio takes up to 1 minute 30 seconds.`      |
+| at most 5 minutes (300 seconds)                             | `This clip is <duration>; the studio takes up to 5 minutes.`                |
 
 - `<duration>` is whole seconds rounded up: `2 minutes 10 seconds`, `1 minute`, `45 seconds`.
 - An ffprobe exit that is not 0, 126 or 127, output that does not parse, or a probe error is "not a

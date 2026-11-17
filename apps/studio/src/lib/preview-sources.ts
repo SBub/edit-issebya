@@ -1,11 +1,14 @@
 import { type EditInputs, type EditRef, maskPath } from "@edit-issebya/edit";
 import { isStorageKey, keyPrefix } from "@edit-issebya/storage";
 
-// How the frames sprite is laid out: one row of `columns` frames of
-// `width` x `height`, one every `everySeconds` of the footage.
+// How the frames sprite is laid out: `rows` rows of `columns` frames of
+// `width` x `height`, one every `everySeconds` of the footage, filled left to
+// right and top to bottom. A layout written before the sprite had rows has no
+// `rows` and is one row.
 export interface FramesLayout {
   everySeconds: number;
   columns: number;
+  rows: number;
   width: number;
   height: number;
 }
@@ -71,10 +74,10 @@ function isCount(value: unknown, max: number): value is number {
 
 function layoutOf(value: unknown): FramesLayout | null {
   if (typeof value !== "object" || value === null) return null;
-  const { everySeconds, columns, width, height } = value as Record<string, unknown>;
-  if (!isCount(everySeconds, 60) || !isCount(columns, 256)) return null;
+  const { everySeconds, columns, rows = 1, width, height } = value as Record<string, unknown>;
+  if (!isCount(everySeconds, 60) || !isCount(columns, 256) || !isCount(rows, 64)) return null;
   if (!isCount(width, 1080) || !isCount(height, 1920)) return null;
-  return { everySeconds, columns, width, height };
+  return { everySeconds, columns, rows, width, height };
 }
 
 // Narrows the jsonb column; null without a footage ref. The thumbnail and

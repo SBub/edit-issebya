@@ -144,13 +144,20 @@ export function rulerTicks(duration: number): RulerTick[] {
 }
 
 // The sprite frame shown at a footage time: one frame every `everySeconds`,
-// clamped to the sprite (a longer reel repeats its last frame). A clip plays
-// its file from 0, so a clip's footage time is reel time minus its start.
+// clamped to the sprite (a reel longer than the sprite repeats its last
+// frame). A clip plays its file from 0, so a clip's footage time is reel time
+// minus its start.
 export function frameIndexAt(footageSeconds: number, layout: FramesLayout): number {
   const index = Number.isFinite(footageSeconds)
     ? Math.floor(footageSeconds / layout.everySeconds)
     : 0;
-  return Math.min(Math.max(index, 0), layout.columns - 1);
+  return Math.min(Math.max(index, 0), layout.columns * layout.rows - 1);
+}
+
+// Where a sprite frame sits: its column and row (filled left to right, then
+// top to bottom).
+export function frameTileAt(index: number, layout: FramesLayout): { column: number; row: number } {
+  return { column: index % layout.columns, row: Math.floor(index / layout.columns) };
 }
 
 // The ruler is the one scrubber: what an arrow key moves, in seconds, and

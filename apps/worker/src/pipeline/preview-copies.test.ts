@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ToolCall } from "../step-runner.ts";
+import { FOOTAGE_LIMITS } from "./footage-check.ts";
 import {
+  FOOTAGE_FRAMES,
   PREVIEW_SETTINGS,
   footagePreviewArgs,
   framesArgs,
@@ -80,6 +82,21 @@ describe("thumbnailArgs", () => {
   });
 });
 
+describe("FOOTAGE_FRAMES", () => {
+  it("has a tile for every frame of the longest accepted footage, and no spare row", () => {
+    const perRow = FOOTAGE_FRAMES.columns * FOOTAGE_FRAMES.everySeconds;
+    expect(FOOTAGE_FRAMES.rows * perRow).toBeGreaterThanOrEqual(FOOTAGE_LIMITS.maxSeconds);
+    expect((FOOTAGE_FRAMES.rows - 1) * perRow).toBeLessThan(FOOTAGE_LIMITS.maxSeconds);
+    expect(FOOTAGE_FRAMES).toEqual({
+      everySeconds: 2,
+      columns: 32,
+      rows: 5,
+      width: 90,
+      height: 160,
+    });
+  });
+});
+
 describe("framesArgs", () => {
   it("tiles one small frame every two seconds into one row, built from the settings", () => {
     expect(framesArgs("/in/source.mp4", "/out/f.part.jpg", PREVIEW_SETTINGS)).toEqual([
@@ -93,7 +110,7 @@ describe("framesArgs", () => {
       "0:v:0",
       "-an",
       "-vf",
-      "fps=1/2,scale=90:160,tile=32x1",
+      "fps=1/2,scale=90:160,tile=32x5",
       "-frames:v",
       "1",
       "-q:v",
@@ -102,15 +119,15 @@ describe("framesArgs", () => {
     ]);
     const other = {
       ...PREVIEW_SETTINGS,
-      frames: { everySeconds: 1, columns: 8, width: 45, height: 80, quality: 3 },
+      frames: { everySeconds: 1, columns: 8, rows: 2, width: 45, height: 80, quality: 3 },
     };
-    expect(framesArgs("/i", "/o", other)).toContain("fps=1/1,scale=45:80,tile=8x1");
+    expect(framesArgs("/i", "/o", other)).toContain("fps=1/1,scale=45:80,tile=8x2");
   });
 });
 
 describe("previewCopies", () => {
   it("reads the retimed footage only and makes the footage copy, thumbnail and frames, all kept", async () => {
-    expect(previewCopies.version).toBe(3);
+    expect(previewCopies.version).toBe(4);
     expect(previewCopies.outputs).toEqual([
       { file: "footage-preview.mp4", retention: "kept" },
       { file: "thumbnail.jpg", retention: "kept" },

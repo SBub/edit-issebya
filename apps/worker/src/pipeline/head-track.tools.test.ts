@@ -115,7 +115,7 @@ describe("preview_copies", () => {
     expect(Math.abs((await formatDuration(footagePreview)) - source)).toBeLessThanOrEqual(1 / 30);
   });
 
-  it("makes a 270x480 thumbnail and a one-row 32-frame sprite of 90x160 frames", async () => {
+  it("makes a 270x480 thumbnail and a sprite of 5 rows of 32 frames of 90x160", async () => {
     expect(await streamInfo(join(previewsDir, "thumbnail.jpg"))).toMatchObject({
       width: 270,
       height: 480,
@@ -123,7 +123,7 @@ describe("preview_copies", () => {
     });
     expect(await streamInfo(join(previewsDir, "frames.jpg"))).toMatchObject({
       width: 90 * 32,
-      height: 160,
+      height: 160 * 5,
       codec_name: "mjpeg",
     });
   });
