@@ -559,6 +559,119 @@ describe("runRender with a behind big word", () => {
   });
 });
 
+describe("runRender with library photos", () => {
+  const PHOTO = "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
+  const OTHER = "1b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c";
+  const LARGE = `${PREFIX}library/${PHOTO}/large.jpg`;
+  const OTHER_LARGE = `${PREFIX}library/${OTHER}/large.jpg`;
+  let projectFiles: string[];
+
+  // The fixture edit with two cards over its whole speech at the same moment,
+  // each showing a library photo, and both large copies stored.
+  beforeEach(async () => {
+    const { edit } = await fixtureEdit();
+    const card = (id: string, photo: string, x: number) => ({
+      id,
+      kind: "visual" as const,
+      photo: { id: photo, width: 1600, height: 900 },
+      box: { x, y: 700, width: 400, height: 225 },
+      start: { word: "w0001" },
+      end: { word: "w0010", edge: "end" as const },
+    });
+    const withPhotos = {
+      ...edit,
+      inputs: { ...edit.inputs, photos: [OTHER, PHOTO] },
+      tracks: {
+        ...edit.tracks,
+        behind: [card("visual-1", PHOTO, 100), card("owner-visual-1", OTHER, 300)],
+      },
+    };
+    await storage.put(version.r2_key, editBytes(withPhotos));
+    version = { ...version, inputs: withPhotos.inputs };
+    await storage.put(LARGE, new TextEncoder().encode("jpeg"));
+    await storage.put(OTHER_LARGE, new TextEncoder().encode("jpeg 2"));
+    projectFiles = [];
+  });
+
+  function runPhotos(
+    library: { id: string; large_key: string }[],
+    env: NodeJS.ProcessEnv = SINGLE,
+  ) {
+    const { steps, calls } = recordingSteps();
+    const spawnTool: SpawnTool = async (call) => {
+      if (isHyperframes(call) && pageOf(call) === "full") {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+        projectFiles = await readdir(join(call.args[2]!), { recursive: true });
+      }
+      return fakeSpawn(call, new AbortController().signal, () => {});
+    };
+    const done = runRender({
+      ctx: stepContext(steps, { job: JOB }),
+      storage,
+      rows,
+      exports: exportsStore,
+      keyPrefix: PREFIX,
+      scratchDir: join(root, "scratch"),
+      tools: TOOLS,
+      versionId: VERSION_ID,
+      ensureInputs: async () => {},
+      newId: () => EXPORT_ID,
+      spawnTool,
+      env,
+      photos: {
+        async readyPhotos(ownerId, ids) {
+          expect(ownerId).toBe(JOB.owner_id);
+          return new Map(
+            library
+              .filter((photo) => ids.includes(photo.id))
+              .map((photo) => [
+                photo.id,
+                { ...photo, description: "a kitchen", tags: [], width: 1600, height: 900 },
+              ]),
+          );
+        },
+      },
+    });
+    return { done, calls };
+  }
+
+  it("downloads each photo's large copy into the single call's project, both cards drawn", async () => {
+    const { done } = runPhotos([
+      { id: PHOTO, large_key: LARGE },
+      { id: OTHER, large_key: OTHER_LARGE },
+    ]);
+    await done;
+    expect(pages.full).toContain(`src="photos/${PHOTO}.jpg"`);
+    expect(pages.full).toContain(`src="photos/${OTHER}.jpg"`);
+    expect(projectFiles).toEqual(
+      expect.arrayContaining([`photos/${PHOTO}.jpg`, `photos/${OTHER}.jpg`]),
+    );
+    expect(inserted).toHaveLength(1);
+  });
+
+  it("names the photos on the composite's front page", async () => {
+    const { done } = runPhotos(
+      [
+        { id: PHOTO, large_key: LARGE },
+        { id: OTHER, large_key: OTHER_LARGE },
+      ],
+      {},
+    );
+    await done;
+    expect(pages.front).toContain(`src="photos/${PHOTO}.jpg"`);
+    expect(pages.front).toContain(`src="photos/${OTHER}.jpg"`);
+    expect(inserted).toHaveLength(1);
+  });
+
+  it("fails with one line when a photo left the library", async () => {
+    const { done, calls } = runPhotos([{ id: PHOTO, large_key: LARGE }]);
+    await expect(done).rejects.toThrow(`render: photo ${OTHER} is no longer in the library`);
+    const failed = calls.find((call) => call.call === "failed");
+    expect(failed?.call === "failed" && failed.tail).toContain("is no longer in the library");
+    expect(inserted).toEqual([]);
+  });
+});
+
 // A lease whose cancel check reads `cancelledNow` (every 50 ms), as runJob's.
 function cancellable(cancelledNow: () => boolean) {
   return keepLease({

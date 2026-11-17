@@ -65,6 +65,10 @@ interface Built {
   edit: Edit;
   context: { transcript: Transcript; headTrack: HeadTrack; measurer: Measurer };
   pageOf: (edit: Edit) => Page;
+  // The large copy's URL of each library photo a page may show, by the path
+  // the page names it at: the version's own (signed with the sources), and
+  // each one the owner picks in the editor (the library's signed URL).
+  photoUrls: Map<string, string>;
   soundBytes: Record<string, ArrayBuffer>;
   // The same parsed edit's rows on the reel's clock (no second fetch, no
   // second builder).
@@ -91,6 +95,7 @@ type Outcome = { forVersion: string } & (
 const MESSAGES: Record<Exclude<PreviewSourcesResult["status"], "ready">, string> = {
   "no-version": "The preview appears once the first version is saved",
   "no-previews": "This reel has no preview copies yet",
+  "photo-missing": "A photo in this version was deleted from the library",
   "cutout-cleared": "This version's cut-out was cleared to save space; Export rebuilds it",
   unconfigured: "The preview is not available: storage is not configured",
   "signed-out": "Sign in again to see the preview",
@@ -148,6 +153,7 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
   const pair = FONT_PAIRS[edit.font_pair];
   const fontBytes = await loadFonts(pair);
   const measurer = createMeasurer(hb, pair, fontBytes);
+  const photoUrls = new Map(urls.photos.map((photo) => [photo.path, photo.url]));
   // The one builder, then the preview transform: the version's page and every
   // draft of the editor are made the same way.
   const pageOf = (shown: Edit, record = false): Page => {
@@ -158,7 +164,11 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
       html: previewPage(
         result.html,
         result.assets,
-        { footage: urls.footage, masks: urls.masks },
+        {
+          footage: urls.footage,
+          masks: urls.masks,
+          photos: [...photoUrls].map(([path, url]) => ({ path, url })),
+        },
         pageHits.map((hit) => hit.id),
       ),
       hits: pageHits,
@@ -184,6 +194,7 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
       edit,
       context: { transcript, headTrack, measurer },
       pageOf: (shown) => pageOf(shown),
+      photoUrls,
       soundBytes,
       timeline: timelineRows(edit, transcript),
       frames:

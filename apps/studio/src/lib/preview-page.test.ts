@@ -138,4 +138,21 @@ describe("previewPage", () => {
     const mask: BuildAsset = { path: `masks/${"3".repeat(64)}.mp4`, role: "mask", ref: null };
     expect(() => previewPage(behind, [mask], URLS, [])).toThrow(`preview: no URL for ${mask.path}`);
   });
+
+  it("swaps each library photo's <img> for its large copy's signed URL, and throws without one", () => {
+    const photo = "3f6c1a52-8e4d-4b7a-9c21-5d0e8f7b6a14";
+    const path = `photos/${photo}.jpg`;
+    const html = request.replace('src="assets/visuals/visual-1.jpg"', `src="${path}"`);
+    expect(html).toContain(`src="${path}"`);
+    const asset: BuildAsset = { path, role: "photo", ref: null, photoId: photo };
+    const urls = { ...URLS, photos: [{ path, url: "https://r2.example/large.jpg?s=1&t=2" }] };
+    const page = previewPage(html, [...CLIPS, ...FONTS, SOUND, asset], urls, ["click-visual-1"]);
+    expect(page).toContain(' src="https://r2.example/large.jpg?s=1&amp;t=2" alt=""');
+    expect(page).not.toContain(`src="${path}"`);
+    expect(() => previewPage(html, [asset], URLS, [])).toThrow(`preview: no URL for ${path}`);
+    const absent: BuildAsset = { path: "photos/none.jpg", role: "photo", ref: null };
+    expect(() =>
+      previewPage(html, [absent], { ...URLS, photos: [{ path: absent.path, url: "u" }] }, []),
+    ).toThrow("preview: no <img> plays photos/none.jpg");
+  });
 });

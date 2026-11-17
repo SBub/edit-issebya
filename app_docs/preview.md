@@ -27,8 +27,8 @@ clicks through Web Audio. It is built and tested for Chrome.
 - `apps/studio/src/app/preview-actions.ts`: server action `loadPreviewSources(reelId)`. Reads the reel's
   `current_version_id` and `preview_copies` and the version's `r2_key` and `inputs` under RLS, and signs
   one download URL (one hour) for the edit, transcript, head track and footage preview.
-  For a version with `behind` items it also reads each photo the version names from its own
-  `photos` row under RLS (`id`, `large_key`, `status`; the key is the row's, never built from the
+  For a version whose VISUALs show library photos it also reads each photo `inputs.photos` names
+  from its own `photos` row under RLS (`id`, `large_key`, `status`; the key is the row's, never built from the
   id), HEADs each mask before signing anything, and signs both by the path the page names them at
   (`urls.masks` and `urls.photos`, `{ path, url }` each).
   Returns `ready`, `no-version`, `no-previews`, `photo-missing` (a photo the version shows is not a

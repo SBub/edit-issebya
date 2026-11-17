@@ -106,9 +106,12 @@ latestExport)` (`apps/studio/src/lib/exports.ts`), a pure function of `LiveReel`
   measured `cutout` step under the same fingerprint and key (`app_docs/storage.md`).
 - Then one measured `render` step through the step runner: it reads the version (it must belong to
   the job's reel), its edit, transcript and head track, and downloads the full-size footage, each
-  mask in `inputs.masks` and the large copy of each library photo the `behind` track names (the
-  owner's ready photos, `large_key` from the `photos` row; a photo no longer in the library fails
-  the step with `render: photo <id> is no longer in the library`). `render-project.ts` places the
+  mask in `inputs.masks` and the large copy of each library photo a VISUAL shows (`inputs.photos`;
+  the owner's ready photos, read with the service role and filtered by the job's owner,
+  `supabasePhotoLibrary` in `photos/photo-store.ts`, `large_key` from the `photos` row; a photo no
+  longer in the library fails the step with `render: photo <id> is no longer in the library`). The
+  composite's front layer page names the photos with the stand-ins (`layerNames`), so its project
+  holds them too. `render-project.ts` places the
   masks and photos at the builder's paths (`maskPath`, `masks/<fingerprint>.mp4`, and `photoPath`,
   `photos/<id>.jpg`); an asset without its file throws. A stored version naming the old whole-clip
   cut-out builds without it, and it is never downloaded. Every page the render uses comes from

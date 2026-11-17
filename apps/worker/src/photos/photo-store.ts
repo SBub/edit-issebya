@@ -60,3 +60,58 @@ export function supabasePhotoStore(db: SupabaseClient): PhotoStore {
     },
   };
 }
+
+// A library photo as a version may use it: what the owner's edit records of it
+// (its description and tags, quoted as data), where the render finds its
+// large copy, and its size, the card's aspect ratio.
+export interface LibraryPhoto {
+  id: string;
+  description: string | null;
+  tags: string[];
+  large_key: string;
+  width: number;
+  height: number;
+}
+
+// The owner's library photos by id (service role, so filtered by owner here):
+// only the ready ones with a large copy and a size come back, so a photo that
+// is gone, another owner's, not ready or not sized is simply missing.
+export interface PhotoLibrary {
+  readyPhotos(ownerId: string, ids: readonly string[]): Promise<Map<string, LibraryPhoto>>;
+}
+
+export function supabasePhotoLibrary(db: SupabaseClient): PhotoLibrary {
+  return {
+    async readyPhotos(ownerId, ids) {
+      if (ids.length === 0) return new Map();
+      const { data, error, status } = await db
+        .from("photos")
+        .select("id, description, tags, large_key, width, height")
+        .eq("owner_id", ownerId)
+        .eq("status", "ready")
+        .in("id", [...ids]);
+      if (error) throw supabaseFailure("library photos not read", { error, status });
+      const rows = (data ?? []) as {
+        id: string;
+        description: string | null;
+        tags: string[] | null;
+        large_key: string | null;
+        width: number | null;
+        height: number | null;
+      }[];
+      const photos = new Map<string, LibraryPhoto>();
+      for (const row of rows) {
+        if (!row.large_key || !row.width || !row.height) continue;
+        photos.set(row.id, {
+          id: row.id,
+          description: row.description,
+          tags: row.tags ?? [],
+          large_key: row.large_key,
+          width: row.width,
+          height: row.height,
+        });
+      }
+      return photos;
+    },
+  };
+}

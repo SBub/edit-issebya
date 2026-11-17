@@ -22,7 +22,8 @@ export interface PreviewCopies {
 
 // The objects the live preview reads, as storage keys (the frames sprite
 // only when the reel has one), plus the cut-out masks a version with behind
-// items names (each at the path its page plays it from).
+// items names (each at the path its page plays it from) and the library
+// photos its VISUALs show (by id; their keys come from the photos rows).
 export interface PreviewKeys {
   edit: string;
   transcript: string;
@@ -30,7 +31,10 @@ export interface PreviewKeys {
   footage: string;
   frames: string | null;
   masks: { path: string; key: string }[];
+  photoIds: string[];
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const FINGERPRINT = /^[0-9a-f]{64}$/;
 const STEP = /^[a-z0-9_]+$/;
@@ -126,17 +130,27 @@ export function previewKeys({
   const frames = previewCopies.frames
     ? cacheKeyOf(prefix, previewCopies.frames.ref, "preview_copies")
     : null;
-  // Masks: a version without them has none; a malformed one is a failure (the
-  // page would name a file the preview cannot sign).
+  // Masks and photos: a version without them has none; a malformed one is a
+  // failure (the page would name a file the preview cannot sign).
   const rawMasks: unknown = inputs.masks ?? [];
-  if (!Array.isArray(rawMasks)) return null;
+  const rawPhotos: unknown = inputs.photos ?? [];
+  if (!Array.isArray(rawMasks) || !Array.isArray(rawPhotos)) return null;
   const masks: PreviewKeys["masks"] = [];
   for (const mask of rawMasks) {
     const key = cacheKeyOf(prefix, mask, "cutout");
     if (!key) return null;
     masks.push({ path: maskPath(mask as EditRef), key });
   }
-  return { edit: r2Key, transcript, headTrack, footage, frames, masks };
+  if (!rawPhotos.every((id) => typeof id === "string" && UUID.test(id))) return null;
+  return {
+    edit: r2Key,
+    transcript,
+    headTrack,
+    footage,
+    frames,
+    masks,
+    photoIds: [...(rawPhotos as string[])],
+  };
 }
 
 // The key of the reel's thumbnail, beside its other preview copies under the
