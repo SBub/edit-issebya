@@ -51,8 +51,11 @@ with it at that moment. Placement rules will be learnt from these later.
   screen whatever the component's variant draws inside it. `build` returns it as `components` (the
   same list on every layer).
 - The `component` is the engine's name: `HOOK`, `ACCENT`, `QUESTION`, `BIGWORD`, `LIST`, `CAPTION`,
-  `VISUAL`. A QUESTION is read from its item id (`question-N`) alone, so it holds whatever the
-  question's variant draws.
+  `VISUAL`. A QUESTION is read from its item id (`isQuestion` in `src/question.ts`: an accent
+  overlay with a `question-` id) alone. Its variant is `question/word-by-word`
+  (`app_docs/edit-model.md`, "The question's look"): it builds up word by word, each word an element
+  of its own, and ends with a question mark. Its box and `text` are the ones that look draws, the
+  question mark included.
 - A LIST is one component: the box around its levels (the number, the lead-in, the key phrase), its
   `size` its key phrase's. A VISUAL has no text size (`null`). A turned VISUAL's component also
   has `rotation` (whole degrees clockwise); its `x` to `height` stay its box upright.
@@ -70,7 +73,11 @@ with it at that moment. Placement rules will be learnt from these later.
 - `applyOwnerMoves(edit, moves, context)` returns the edit with the moves applied and nothing else
   changed:
   - an accent, a question or the hook: its `position` (the corner, left-aligned, which draws the
-    same as any other alignment of the same box), its `size` and, with a wrap width, its `breaks`;
+    same as any other alignment of the same box), its `size` and, with a wrap width, its `breaks`.
+    A question's lines are set on the text it draws, its question mark included (`questionText`,
+    the same text the engine wraps and the builder draws), so its box never runs past the wrap
+    width; its words keep their order and their moments, so re-wrapped lines still reveal word by
+    word with the mark on the last word;
   - a big word: its `position` and `size`;
   - a LIST: every level moved with the box and scaled about its top left corner (each level's size
     and its offset inside the box times the key phrase's new size over its old one), at whole pixels.
@@ -166,7 +173,12 @@ version`) and a VISUAL narrower than 100 px (`MIN_BOX_PX`) or wider than the fra
   (`wrapPatch`). On the drop the settled draft's page becomes the page to show: the player restyles
   every element whose style or lines differ between the page on screen and the new page to that
   page's own values (`changedElements`, `restyle`) before the browser paints, then drops the drag's
-  patch. So the text is where it was dropped on the very next frame, and the rebuilt page swaps in
+  patch. A QUESTION's lines are lines of word elements (`PageElement.words`, each line the ids of
+  its `question-N_wK` words): the page's timeline reveals each of those elements, so `restyle`
+  sets a question's lines by moving its own word elements between lines (a space between two words,
+  a line break between two lines), never by writing its html anew, which would leave words the
+  timeline never shows. A move or a corner resize writes the question's own element only; its words
+  follow it. So the text is where it was dropped on the very next frame, and the rebuilt page swaps in
   later with nothing moving. A patch never writes what the page's timeline animates (`transform`,
   `opacity`, `visibility`, `display`), so the moment on screen stays the timeline's. A drop that
   changes nothing or is refused drops the patch, and Cancel restyles the page back the same way.
@@ -397,7 +409,12 @@ like decide does (`E2E_MOCK_MASK` in specs).
   with `rotate` and never `transform`, a move with no turn keeping it; a turn of 12.5 degrees and a
   turn on a text refused; the safe zone read from the rectangle around it; settled inside the safe
   zone with its turn, shrunk when too large; a turn alone counted by `effectiveMoves` and recorded as
-  `rotated` with `engine_rotation` 0 and the owner's. `engine.test.ts`: the `card-overlap` check
+  `rotated` with `engine_rotation` 0 and the owner's. A QUESTION (`question/word-by-word`): one box
+  holding its question mark, measured as drawn; moved and resized by its corner with its words,
+  mark and reveal kept; its wrap options read from its text with the mark (every box within its
+  width), re-wrapped with every word its own element in order, the mark on the last only and each
+  word still cut in at its moment, settled with the same lines; recorded as `QUESTION` with its
+  variant, its text with the mark and its wrap width. `engine.test.ts`: the `card-overlap` check
   reads a card turned 45 degrees beside a big word as overlapping it. The rewrap: a text narrower (more lines) and wider (one line) at the
   same size, a LIST's lead-in and key phrase rewrapped and stacked again, a wrap width on a big word
   or of 0 refused, `ownerWrapOptions` (widest first, each taller than the one before; null for a big
@@ -421,7 +438,10 @@ like decide does (`E2E_MOCK_MASK` in specs).
   `live-page.test.ts`: a move, a corner resize, a LIST's levels moved and scaled inside their layer, a
   VISUAL scaled, a VISUAL turned with `rotate` (a text never), a turned VISUAL scaled about its
   shown corner, an edge drag left to the rebuilt lines, a wrapped page's elements moved, the elements
-  that differ between two pages, and a restyle that never touches what the timeline animates.
+  that differ between two pages, and a restyle that never touches what the timeline animates. A
+  QUESTION: its words on other lines named as changed, a wrapped page's question carried as lines
+  of word elements, and a restyle that sets its lines by moving its own word elements (never new
+  ones) and changes nothing for words that are not its own.
   `change-requests.test.ts`: `Edited by you` and the details line.
 - `apps/studio/db-tests/owner-edits.test.ts` (`yarn test:db`): the job's insert policy, column grant
   and payload checks; `save_version` with the edited-from version and the learning rows (their
@@ -464,6 +484,19 @@ like decide does (`E2E_MOCK_MASK` in specs).
   `OWNER_EDIT_SHOTS` it keeps `visual-1-selected-with-corner-handle.png`, `visual-2-moved.png`,
   `visual-3-resized.png`, `visual-4-centred.png`, `visual-5-turned.png`,
   `visual-6-snapped-quarter-turn.png` and `visual-7-snapped-upright.png`.
+- `apps/studio/e2e/owner-edit-question.spec.ts` (`yarn test:e2e`, the fixture clip with the
+  QUESTION "test clip for the real studio?" placed by the engine and saved with its record): picked
+  from the list it is selected as `Question` with a corner handle and four edge handles, every word
+  its own element; a drag moves it on the pointer at every step, its lines and the words shown
+  unchanged, at the drop straight after pointer up and the same once swapped in; the corner handle
+  scales it while held; the right edge handle held in by half sets it on more lines at the same
+  size with the same words shown (its own word elements moved onto the lines), kept at the drop and
+  after the swap. Save queues its move with a wrap width, the worker saves it, the saved version
+  draws it at the owner's place on the owner's lines and still builds it up word by word as it is
+  spoken (`questionShownAt` at the middle of each word), the mark only with the last word; the
+  learning row is `QUESTION`, `question/word-by-word`, its text with the mark, moved and resized,
+  with its wrap width. With `OWNER_EDIT_SHOTS` it keeps `question-1-selected.png`,
+  `question-2-edge-held.png` and `question-3-saved-revealed.png`.
 - `apps/studio/e2e-tools/export-matches-preview.spec.ts` (`test:tools`, the owner's Mac only): `a
 moved, a resized and a widened component match between preview and export`: the guardrail's
   version with its hook resized, moved and widened (a wrap width) and its LIST moved, saved by a real
@@ -501,6 +534,10 @@ moved, a resized and a widened component match between preview and export`: the 
   restyled at once, and the swap that follows never moves anything.
 - Never let the instant view write what the page's timeline animates (`transform`, `opacity`,
   `visibility`, `display`).
+- Never write a QUESTION's words anew in the instant view: its lines change only by moving the
+  page's own word elements, which its timeline reveals.
+- Never set a QUESTION's lines on its words without its question mark: the engine, the builder and
+  a re-wrap all read `questionText`.
 - Never blank the preview for a draft: the player swaps the rebuilt page in only once it shows the
   same moment (`app_docs/preview.md`).
 - Never read a component's box from anything but the builder's own boxes (`build`'s `components`).

@@ -26,7 +26,17 @@ function component(over: Partial<PlacedComponent>): PlacedComponent {
 }
 
 function el(style: Record<string, string>, over: Partial<PageElement> = {}): PageElement {
-  return { style, html: "sense of purpose", children: [], ...over };
+  return { style, html: "sense of purpose", words: null, children: [], ...over };
+}
+
+// A QUESTION as the builder draws it: one element, a word element per word
+// (the timeline reveals each), its lines split by line breaks.
+const QUESTION_WORDS = ["question-1_w1", "question-1_w2", "question-1_w3", "question-1_w4"];
+function questionEl(lines: string[][], style: Record<string, string> = {}): PageElement {
+  return el(
+    { left: "120px", top: "900px", "font-size": "110px", ...style },
+    { html: null, words: lines, children: QUESTION_WORDS },
+  );
 }
 
 const PAGE = new Map<string, PageElement>([
@@ -187,6 +197,34 @@ describe("changedElements", () => {
     );
     expect(changedElements(PAGE, next)).toEqual(["accent-1", "transition-1-key"]);
   });
+
+  it("names a question whose words sit on other lines, its place and size the same", () => {
+    const one = new Map([["question-1", questionEl([QUESTION_WORDS])]]);
+    const two = new Map([
+      ["question-1", questionEl([QUESTION_WORDS.slice(0, 2), QUESTION_WORDS.slice(2)])],
+    ]);
+    expect(changedElements(one, two)).toEqual(["question-1"]);
+    expect(changedElements(two, two)).toEqual([]);
+  });
+});
+
+describe("wrapPatch, a question", () => {
+  it("carries the question's lines as lines of its own word elements", () => {
+    const lines = [QUESTION_WORDS.slice(0, 2), QUESTION_WORDS.slice(2)];
+    expect(
+      wrapPatch(
+        new Map([["question-1", questionEl(lines)]]),
+        component({ id: "question-1", component: "QUESTION" }),
+        10,
+        -5,
+      ),
+    ).toEqual({
+      "question-1": {
+        style: { left: "130px", top: "895px", "font-size": "110px" },
+        words: lines,
+      },
+    });
+  });
 });
 
 describe("restyle", () => {
@@ -226,5 +264,76 @@ describe("restyle", () => {
       opacity: "0.5",
     });
     expect(node.innerHTML).toBe("a b");
+  });
+
+  // An element with child nodes, enough of the DOM for `restyle` to set lines
+  // of word elements.
+  interface FakeNode {
+    tagName?: string;
+    id?: string;
+    text?: string;
+    children?: FakeNode[];
+    getAttribute?: (name: string) => string | null;
+  }
+  function questionNode(lines: string[][]) {
+    const doc = {
+      createElement: (tag: string): FakeNode => ({
+        tagName: tag.toUpperCase(),
+        id: "",
+        children: [],
+      }),
+      createTextNode: (text: string): FakeNode => ({ text }),
+    };
+    const words = new Map(
+      lines
+        .flat()
+        .map((id) => [
+          id,
+          { tagName: "SPAN", id, children: [], getAttribute: () => "q" } as FakeNode,
+        ]),
+    );
+    const node = {
+      nodes: [] as FakeNode[],
+      children: [] as FakeNode[],
+      innerHTML: "never written",
+      ownerDocument: doc,
+      style: { getPropertyValue: () => "", setProperty: () => {}, removeProperty: () => {} },
+      replaceChildren(...nodes: FakeNode[]) {
+        node.nodes = nodes;
+        node.children = nodes.filter((kid) => kid.tagName !== undefined);
+      },
+    };
+    node.replaceChildren(
+      ...lines.flatMap((line, index) => [
+        ...(index > 0 ? [doc.createElement("br")] : []),
+        ...line.flatMap((id, at) => [...(at > 0 ? [doc.createTextNode(" ")] : []), words.get(id)!]),
+      ]),
+    );
+    return { node, words };
+  }
+
+  it("sets a question's lines by moving its own word elements, never writing new ones", () => {
+    const { node, words } = questionNode([QUESTION_WORDS]);
+    restyle(
+      node as unknown as HTMLElement,
+      { style: {}, words: [QUESTION_WORDS.slice(0, 3), QUESTION_WORDS.slice(3)] },
+      [],
+    );
+    // The same elements (the timeline's), on two lines, a space between words.
+    expect(node.nodes.map((kid) => kid.id || kid.tagName || kid.text)).toEqual([
+      "question-1_w1",
+      " ",
+      "question-1_w2",
+      " ",
+      "question-1_w3",
+      "BR",
+      "question-1_w4",
+    ]);
+    for (const id of QUESTION_WORDS) expect(node.children).toContain(words.get(id));
+    expect(node.innerHTML).toBe("never written");
+    // Lines that are not its own words change nothing.
+    const before = node.nodes;
+    restyle(node as unknown as HTMLElement, { style: {}, words: [["question-2_w1"]] }, []);
+    expect(node.nodes).toBe(before);
   });
 });

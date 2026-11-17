@@ -11,20 +11,25 @@ import { type Drag, resizeShare, scaledVisual } from "./owner-edit";
 
 // One element of a built page as the builder wrote it: its inline style, its
 // lines (the inside of a text element, null for anything holding more than
-// lines) and the ids of the elements inside it (a LIST's levels).
+// lines), its lines of words (a text whose every word is an element of its
+// own, a QUESTION's: each line the ids of its words, null otherwise) and the
+// ids of the elements inside it (a LIST's levels, a QUESTION's words).
 export interface PageElement {
   style: Record<string, string>;
   html: string | null;
+  words: string[][] | null;
   children: string[];
 }
 
 export type PageElements = ReadonlyMap<string, PageElement>;
 
 // What the editor asks the page on screen to show for some elements: style
-// properties over the ones the page should have, and the lines.
+// properties over the ones the page should have, and the lines (as html, or
+// as lines of word elements).
 export interface ElementPatch {
   style: Record<string, string>;
   html?: string;
+  words?: string[][];
 }
 
 export type LivePatch = Record<string, ElementPatch>;
@@ -72,10 +77,43 @@ function readPage(html: string): Map<string, PageElement> {
     out.set(el.id, {
       style,
       html: kids.every((kid) => kid.tagName === "BR") ? el.innerHTML : null,
+      words: wordLines(el),
       children: kids.flatMap((kid) => (kid.id ? [kid.id] : [])),
     });
   }
   return out;
+}
+
+// The class of a QUESTION's word element (the builder's `.q`, `build.ts`).
+const WORD_CLASS = "q";
+
+function isWord(el: Element): boolean {
+  return (
+    el.tagName === "SPAN" &&
+    el.id !== "" &&
+    el.children.length === 0 &&
+    (el.getAttribute("class") ?? "").split(" ").includes(WORD_CLASS)
+  );
+}
+
+// A text whose every word is an element of its own (a QUESTION, which shows
+// its words one by one: line breaks and word elements only): each line the
+// ids of its words, in order. Null for any other element (a LIST's layer
+// holds its levels, never words).
+function wordLines(el: Element): string[][] | null {
+  const kids = [...el.children];
+  const words = kids.filter((kid) => kid.tagName !== "BR");
+  if (words.length === 0 || !words.every(isWord)) return null;
+  const lines: string[][] = [[]];
+  for (const kid of kids) {
+    if (kid.tagName === "BR") lines.push([]);
+    else lines.at(-1)!.push(kid.id);
+  }
+  return lines;
+}
+
+function sameLines(a: readonly string[][] | null, b: readonly string[][] | null): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function pxOf(value: string | undefined): number {
@@ -172,6 +210,7 @@ export function wrapPatch(
         top: px(pxOf(el.style.top) + dy),
       },
       ...(el.html !== null ? { html: el.html } : {}),
+      ...(el.words !== null ? { words: el.words } : {}),
     };
   }
   return patch;
@@ -187,7 +226,7 @@ export function changedElements(from: PageElements, to: PageElements): string[] 
     const styled = [...names].some(
       (name) => !isAnimated(name) && was.style[name] !== next.style[name],
     );
-    if (styled || was.html !== next.html) out.push(id);
+    if (styled || was.html !== next.html || !sameLines(was.words, next.words)) out.push(id);
   }
   return out;
 }
@@ -196,6 +235,9 @@ export function changedElements(from: PageElements, to: PageElements): string[] 
 // show, with the editor's patch over it): each written style property set,
 // each one the page on screen or an earlier patch has and `wanted` has not
 // removed, the lines replaced. What the timeline animates is never touched.
+// Lines of word elements are set by moving the page's own word elements
+// between lines, never by writing new ones: the timeline drives each word
+// (a QUESTION's reveal), so a word written anew would never show.
 export function restyle(el: HTMLElement, wanted: ElementPatch, known: readonly string[]): void {
   for (const name of new Set([...known, ...Object.keys(wanted.style)])) {
     if (isAnimated(name)) continue;
@@ -203,5 +245,26 @@ export function restyle(el: HTMLElement, wanted: ElementPatch, known: readonly s
     if (value === undefined) el.style.removeProperty(name);
     else if (el.style.getPropertyValue(name) !== value) el.style.setProperty(name, value);
   }
-  if (wanted.html !== undefined && el.innerHTML !== wanted.html) el.innerHTML = wanted.html;
+  if (wanted.words !== undefined) relineWords(el, wanted.words);
+  else if (wanted.html !== undefined && el.innerHTML !== wanted.html) el.innerHTML = wanted.html;
+}
+
+// A text's own word elements set on `lines` (each the ids of its words): the
+// same elements, a space between two words and a line break between two
+// lines, as the builder writes them. Nothing changes when the text already
+// has those lines, or when a word of `lines` is not one of its own.
+function relineWords(el: HTMLElement, lines: readonly string[][]): void {
+  if (sameLines(wordLines(el), lines as string[][])) return;
+  const own = new Map([...el.children].flatMap((kid) => (kid.id ? [[kid.id, kid] as const] : [])));
+  if (lines.some((line) => line.some((id) => !own.has(id)))) return;
+  const doc = el.ownerDocument;
+  const nodes: Node[] = [];
+  lines.forEach((line, index) => {
+    if (index > 0) nodes.push(doc.createElement("br"));
+    line.forEach((id, at) => {
+      if (at > 0) nodes.push(doc.createTextNode(" "));
+      nodes.push(own.get(id)!);
+    });
+  });
+  el.replaceChildren(...nodes);
 }

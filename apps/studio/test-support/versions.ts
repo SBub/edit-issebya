@@ -1,4 +1,4 @@
-import { type Edit, type VersionRows, saveVersion } from "@edit-issebya/edit";
+import { type Edit, type EngineNote, type VersionRows, saveVersion } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -63,6 +63,7 @@ export async function saveTestVersion({
   request = null,
   changeTitle = null,
   changeSummary,
+  engineRecord,
 }: {
   admin: SupabaseClient;
   storage: Storage;
@@ -72,6 +73,8 @@ export async function saveTestVersion({
   request?: string | null;
   changeTitle?: string | null;
   changeSummary: string;
+  // The engine's record of the edit's placement, as the decide step saves it.
+  engineRecord?: EngineNote[];
 }): Promise<{ id: string; key: string }> {
   const rows = adminVersionRows(admin);
   const saved = await saveVersion(
@@ -96,6 +99,7 @@ export async function saveTestVersion({
       changeSummary,
       checks: [],
       edit,
+      ...(engineRecord ? { engineRecord } : {}),
     },
   );
   return { id: saved.id, key: saved.key };

@@ -1,4 +1,5 @@
 import type { BigWordBox } from "./behind.ts";
+import { isQuestion } from "./question.ts";
 import type { EngineComponent } from "./engine-note.ts";
 import type { TextBox } from "./engine-space.ts";
 import type { Edit } from "./schema.ts";
@@ -22,17 +23,14 @@ export interface PlacedComponent extends Span {
   rotation?: number;
 }
 
-// The overlay id prefix of a QUESTION (`question-1`, ...): an accent overlay.
-// The component is read from the id alone, so it holds whatever variant draws
-// the question.
-const QUESTION_ID = /^question-/;
-
 // Every component of a built page with its box: the builder's own text boxes
 // (`boxes`: the captions shown and the overlays; `levels`: each LIST's text
 // levels; `bigWords`), never a second measurement, so a box here is the box on
 // screen whatever the component's variant draws inside it. A LIST is one
 // component: the box around its levels, its text the levels' in reading order
-// (the number, the lead-in, the key phrase).
+// (the number, the lead-in, the key phrase). A QUESTION is read from its id
+// (`isQuestion`); its box and text are the ones its look draws, the question
+// mark included (`question.ts`).
 export function placedComponents(
   edit: Edit,
   boxes: readonly TextBox[],
@@ -47,7 +45,7 @@ export function placedComponents(
         ? "CAPTION"
         : box.kind === "hook"
           ? "HOOK"
-          : QUESTION_ID.test(box.itemId)
+          : isQuestion({ id: box.itemId, kind: box.kind })
             ? "QUESTION"
             : "ACCENT";
     out.push({

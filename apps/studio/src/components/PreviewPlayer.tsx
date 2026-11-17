@@ -244,13 +244,22 @@ export function PreviewPlayer({
       const patch = live[id];
       const style = { ...wanted.style, ...patch?.style };
       const lines = patch?.html ?? wanted.html;
+      const words = patch?.words ?? wanted.words;
       const known = [
         ...PATCHED,
         ...Object.keys(shown.get(id)?.style ?? {}),
         ...Object.keys(wanted.style),
         ...Object.keys(patch?.style ?? {}),
       ];
-      restyle(el, lines === null ? { style } : { style, html: lines }, known);
+      restyle(
+        el,
+        {
+          style,
+          ...(lines === null ? {} : { html: lines }),
+          ...(words === null ? {} : { words }),
+        },
+        known,
+      );
       touched.add(id);
     }
     touchedRef.current = touched;

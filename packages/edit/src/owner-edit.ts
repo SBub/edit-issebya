@@ -15,6 +15,7 @@ import type { FontRole } from "./font-pairs.ts";
 import { breaksOf, textLines } from "./lines.ts";
 import type { Measurer } from "./measure.ts";
 import { type Preset, wordsText } from "./preset.ts";
+import { isQuestion, questionText } from "./question.ts";
 import type { BehindVisualItem, Edit, TransitionLevel } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -204,6 +205,18 @@ function overlayFont(item: { font?: FontRole }): FontRole {
   return item.font ?? STYLES.accent.font;
 }
 
+// The text an overlay draws (an accent, a question or the hook), as the
+// builder reads it: its own text or its words, a question's with its question
+// mark (`questionText`), so its lines are set on what is on screen.
+function overlayText(
+  item: { id: string; kind: string; text?: string; words?: string[] },
+  transcript: Transcript,
+  preset: Preset,
+): string {
+  const written = item.text ?? wordsText(item.words ?? [], transcript, preset);
+  return isQuestion(item) ? questionText(written) : written;
+}
+
 // `breaks` for a text's lines: none on one line.
 function breaksFor(lines: readonly string[]): { breaks?: number[] } {
   return lines.length > 1 ? { breaks: breaksOf(lines) } : {};
@@ -315,7 +328,7 @@ export function applyOwnerMoves(
       size: move.size,
     };
     if (move.width === undefined) return placed;
-    const text = item.text ?? wordsText(item.words ?? [], transcript, preset);
+    const text = overlayText(item, transcript, preset);
     return {
       ...withoutBreaks(placed),
       ...breaksFor(wrapToWidth(text, overlayFont(item), move.size, move.width, measurer)),
@@ -457,7 +470,7 @@ export function ownerWrapOptions(
   const overlay = edit.tracks.overlays.find((item) => item.id === id);
   const list = edit.tracks.transitions.find((item) => item.id === id && item.levels);
   if (overlay) {
-    const text = overlay.text ?? wordsText(overlay.words ?? [], transcript, preset);
+    const text = overlayText(overlay, transcript, preset);
     widths = lineWidths(text, overlayFont(overlay), at.size, measurer);
   } else if (list?.levels) {
     const scale = at.size / list.levels.key.size;

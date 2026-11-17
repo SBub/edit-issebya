@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import {
   type Edit,
   type EngineInput,
+  type EngineNote,
   DEFAULT_FONT_PAIR_ID,
   FONT_PAIRS,
   FONT_ROLES,
@@ -99,6 +100,15 @@ const QUESTION = { from: "w0005", to: "w0010" } as const;
 // `base`'s choices with the QUESTION as the only question, placed by the
 // layout engine (`question-1`).
 export async function withQuestion(base: Edit, transcript: Transcript): Promise<Edit> {
+  return (await placedQuestion(base, transcript)).edit;
+}
+
+// The same, with the engine's record of it (the variant it placed the question
+// with), to save with the version as the decide step does.
+export async function placedQuestion(
+  base: Edit,
+  transcript: Transcript,
+): Promise<{ edit: Edit; record: EngineNote[] }> {
   const made = await placed(base, transcript, (choices) => ({
     ...choices,
     questions: [QUESTION],
@@ -108,7 +118,7 @@ export async function withQuestion(base: Edit, transcript: Transcript): Promise<
       `the QUESTION was not kept: ${JSON.stringify(made.record.filter((note) => note.item === "question-1"))}`,
     );
   }
-  return made.edit;
+  return { edit: made.edit, record: made.record };
 }
 
 // The shown words of the placed QUESTION (`question-1`) with the moment each

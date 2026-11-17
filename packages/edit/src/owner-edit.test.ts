@@ -17,6 +17,7 @@ import {
 } from "./owner-edit.ts";
 import { ISSEBYA_PRESET } from "./preset.ts";
 import type { Edit } from "./schema.ts";
+import { STYLES } from "./variants.ts";
 import { type Fixture, FIXTURES } from "./test-support/fixtures.ts";
 import { nodeMeasurer } from "./test-support/measurer.node.ts";
 
@@ -1038,5 +1039,161 @@ describe("a VISUAL turned by the owner", () => {
     expect(hookRecord).toMatchObject({ rotated: false, engine_rotation: 0, owner_rotation: 0 });
     const card = hookRecord!.context.others.find((other) => other.item === "visual-1");
     if (card) expect(card).toMatchObject({ rotation: -20, moved_by_owner: true });
+  });
+});
+
+describe("a QUESTION moved and re-wrapped by the owner", () => {
+  // The hook fixture with its first accent made a QUESTION over four words
+  // ("disrupted the way we", w29 to w32): an accent overlay with a `question-`
+  // id, drawn word by word with a question mark.
+  const asked: Edit = {
+    ...hook.edit,
+    tracks: {
+      ...hook.edit.tracks,
+      overlays: hook.edit.tracks.overlays.map((item) =>
+        item.id === "accent-1"
+          ? {
+              ...item,
+              id: "question-1",
+              words: ["w29", "w30", "w31", "w32"],
+              end: { word: "w32", edge: "end" as const },
+            }
+          : item,
+      ),
+      captions: hook.edit.tracks.captions.map((item) =>
+        item.hidden_by === "accent-1" ? { ...item, hidden_by: "question-1" } : item,
+      ),
+    },
+  };
+  const ID = "question-1";
+
+  // The question's words on the built page, line by line: each its own
+  // element (`question-1_wK`), lines split by `<br />`.
+  async function drawnLines(edit: Edit): Promise<string[][]> {
+    const context = await contextOf(hook);
+    const { html } = build(edit, context.transcript, context.headTrack, preset, context.measurer);
+    const element = new RegExp(`<span id="${ID}" class="text[^"]*" style="[^"]*">(.*?)</span>\\n`);
+    const inner = element.exec(html)![1]!;
+    return inner
+      .split("<br />")
+      .map((line) => [...line.matchAll(/<span id="question-1_w(\d+)" class="q">([^<]*)<\/span>/g)])
+      .map((line) => line.map((match) => `${match[1]}:${match[2]}`));
+  }
+
+  it("is one box holding its question mark, measured as drawn", async () => {
+    const context = await contextOf(hook);
+    const question = byId(await componentsOf(hook, asked), ID);
+    expect(question.component).toBe("QUESTION");
+    expect(question.text.endsWith("?")).toBe(true);
+    expect(question.width).toBeCloseTo(
+      context.measurer.width(STYLES.accent.font, question.size!, question.text),
+      6,
+    );
+  });
+
+  it("moves and resizes by its corner, its words, its mark and its reveal kept", async () => {
+    const context = await contextOf(hook);
+    const before = byId(await componentsOf(hook, asked), ID);
+    const applied = applyOwnerMoves(asked, [{ id: ID, x: 100, y: 1000, size: 80 }], context);
+    if (!applied.ok) throw new Error(applied.reasons.join("; "));
+    const after = byId(await componentsOf(hook, applied.edit), ID);
+    expect(after).toMatchObject({ x: 100, y: 1000, size: 80, text: before.text });
+    expect([after.start, after.end]).toEqual([before.start, before.end]);
+    const words = before.text.split(" ");
+    expect((await drawnLines(applied.edit)).flat()).toEqual(
+      words.map((word, index) => `${index + 1}:${word}`),
+    );
+  });
+
+  it("is re-wrapped on its text with the mark: every option's box within its width, every line word by word", async () => {
+    const context = await contextOf(hook);
+    const before = byId(await componentsOf(hook, asked), ID);
+    const options = ownerWrapOptions(asked, ID, { ...before, size: before.size! }, context)!;
+    expect(options.length).toBeGreaterThan(1);
+    // The widths are the drawn text's, the question mark included.
+    for (const option of options) expect(option.boxWidth).toBeLessThanOrEqual(option.width + 1e-6);
+    expect(options[0]!.width).toBeCloseTo(before.width, 6);
+
+    const narrowest = options.at(-1)!;
+    const applied = applyOwnerMoves(
+      asked,
+      [{ id: ID, x: before.x, y: before.y, size: before.size!, width: narrowest.width }],
+      context,
+    );
+    if (!applied.ok) throw new Error(applied.reasons.join("; "));
+    const after = byId(await componentsOf(hook, applied.edit), ID);
+    expect(after.text).toBe(before.text);
+    expect(after.height).toBe(narrowest.boxHeight);
+    const lines = await drawnLines(applied.edit);
+    expect(lines.length).toBe(after.height / before.size!);
+    // Every word its own element, numbered in order across the lines, the
+    // question mark on the last word only.
+    const words = before.text.split(" ");
+    expect(lines.flat()).toEqual(words.map((word, index) => `${index + 1}:${word}`));
+    expect(lines.flat().filter((word) => word.includes("?"))).toEqual([
+      `${words.length}:${words.at(-1)}`,
+    ]);
+    // Each word still cuts in at its own moment.
+    const { html } = build(
+      applied.edit,
+      context.transcript,
+      context.headTrack,
+      preset,
+      context.measurer,
+    );
+    for (const index of words.keys()) {
+      expect(html).toContain(`tl.fromTo("#question-1_w${index + 1}", { opacity: 0 }`);
+    }
+    // Settled where the drag left it, the lines the same.
+    const settled = settleOwnerMove(
+      asked,
+      { id: ID, x: before.x, y: before.y, size: before.size!, width: narrowest.width },
+      context,
+    );
+    if (!settled.ok) throw new Error(settled.reasons.join("; "));
+    expect(await drawnLines(settled.edit)).toEqual(lines);
+  });
+
+  it("is recorded as a QUESTION with its variant, its text with the mark and its wrap width", async () => {
+    const context = await contextOf(hook);
+    const engine = await componentsOf(hook, asked);
+    const was = byId(engine, ID);
+    const moves = [{ id: ID, x: 100, y: 1000, size: was.size!, width: was.width * 0.6 }];
+    const applied = applyOwnerMoves(asked, moves, context);
+    if (!applied.ok) throw new Error(applied.reasons.join("; "));
+    const [record] = ownerMoveRecords({
+      ids: [ID],
+      moves,
+      engine,
+      owner: await componentsOf(hook, applied.edit),
+      edit: applied.edit,
+      headTrack: hook.headTrack,
+      preset,
+      engineRecord: [
+        {
+          item: ID,
+          component: "QUESTION",
+          variant: "question/word-by-word",
+          start: was.start,
+          end: was.end,
+          rule: "zone",
+          outcome: "placed",
+          blockers: [],
+          zone: "above-head",
+          reason: "",
+        },
+      ],
+    });
+    expect(record).toMatchObject({
+      item: ID,
+      component: "QUESTION",
+      variant: "question/word-by-word",
+      text: was.text,
+      moved: true,
+      resized: true,
+      wrap_width: was.width * 0.6,
+    });
+    expect(record!.text.endsWith("?")).toBe(true);
+    expect(record!.owner.height).toBeGreaterThan(record!.engine.height);
   });
 });
