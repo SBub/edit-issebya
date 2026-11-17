@@ -15,11 +15,16 @@ import {
   type OwnerPhoto,
   type PlacedComponent,
   type Transcript,
+  applyOwnerAdds,
   build,
   createMeasurer,
   effectiveMoves,
   headTrackSchema,
   applyOwnerMoves,
+  nextOwnerVisualId,
+  ownerAddPlacement,
+  ownerAddSpan,
+  ownerAddWord,
   ownerWrapOptions,
   parseEdit,
   photoPath,
@@ -221,7 +226,7 @@ interface Draft {
 
 // What the picture picker is open for: a card's picture swapped, or a card
 // added at the paused moment.
-type Picking = { mode: "swap"; id: string };
+type Picking = { mode: "swap"; id: string } | { mode: "add" };
 
 // One wrap width an edge handle can give, and the elements a page built with
 // it draws.
@@ -452,6 +457,54 @@ function BuiltPreview({
     move(swapAsk(component, photo));
   }
 
+  // Where a card added now would start: the word under the playhead, and its
+  // span; null over hidden footage or with no room left in the reel.
+  function addSpot() {
+    const edit = draft?.edit ?? built.edit;
+    const word = ownerAddWord(built.context.transcript, position);
+    const span = word && ownerAddSpan(edit, built.context.transcript, word.id);
+    return word && span ? { word, span } : null;
+  }
+
+  // A card added at the paused moment showing a library photo: on the word
+  // under the playhead for a fixed time, placed in a corner by the engine's
+  // own placement, settled like a move, drawn on top of the cards there.
+  function addPicture(photo: PickedPhoto) {
+    const spot = addSpot();
+    if (!spot) {
+      setMessage("No picture can show here");
+      return;
+    }
+    remember(photo);
+    const edit = draft?.edit ?? built.edit;
+    const context = editContext();
+    const id = nextOwnerVisualId(edit);
+    const at = ownerAddPlacement(edit, photo, spot.span, context);
+    const add: OwnerAdd = { id, photo_id: photo.id, word: spot.word.id, ...at };
+    const added = applyOwnerAdds(edit, [add], context);
+    if (!added.ok) {
+      setMessage("No picture can show here");
+      return;
+    }
+    const settled = settleOwnerMove(added.edit, { id, kind: "box", ...at }, context);
+    if (!settled.ok || settled.move.kind !== "box") {
+      setMessage("No picture can show here");
+      return;
+    }
+    const { x, y, width } = settled.move;
+    const placed = applyOwnerAdds(edit, [{ ...add, x, y, width }], context);
+    if (!placed.ok) return;
+    setMessage("");
+    setSent(null);
+    setDraft({
+      edit: placed.edit,
+      moves: draft?.moves ?? [],
+      adds: [...(draft?.adds ?? []), { ...add, x, y, width }],
+      page: built.pageOf(placed.edit),
+    });
+    setSelectedId(id);
+  }
+
   async function save() {
     if (!draft || draft.moves.length + draft.adds.length === 0) return;
     setSent("sending");
@@ -532,6 +585,8 @@ function BuiltPreview({
               }}
               onDragFrame={dragFrame}
               onChangePicture={(component) => setPicking({ mode: "swap", id: component.id })}
+              onAddPicture={() => setPicking({ mode: "add" })}
+              canAdd={addSpot() !== null}
               changed={(draft?.moves.length ?? 0) + (draft?.adds.length ?? 0) > 0}
               saving={saving}
               message={saveFailed ? SAVE_FAILED : saving ? "Saving your changes" : message}
@@ -543,9 +598,12 @@ function BuiltPreview({
       />
       {picking && (
         <PicturePicker
-          title="Change picture"
+          title={picking.mode === "swap" ? "Change picture" : "Add a picture here"}
           onClose={() => setPicking(null)}
-          onPick={(photo) => swapPicture(picking.id, photo)}
+          onPick={(photo) => {
+            if (picking.mode === "swap") swapPicture(picking.id, photo);
+            else addPicture(photo);
+          }}
         />
       )}
       {!expanded && (

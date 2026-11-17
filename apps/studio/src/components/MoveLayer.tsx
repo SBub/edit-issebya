@@ -45,6 +45,10 @@ interface Props {
   onCancel: () => void;
   // The selected card's picture swapped for a library photo (the picker opens).
   onChangePicture: (component: PlacedComponent) => void;
+  // A new card added at the paused moment (the picker opens); `canAdd` is
+  // false where no card can show (hidden footage, the reel's very end).
+  onAddPicture: () => void;
+  canAdd: boolean;
 }
 
 interface Pressed extends Drag {
@@ -114,6 +118,8 @@ export function MoveLayer({
   onSave,
   onCancel,
   onChangePicture,
+  onAddPicture,
+  canAdd,
 }: Props) {
   const layerRef = useRef<HTMLDivElement>(null);
   const [pressed, setPressed] = useState<Pressed | null>(null);
@@ -248,7 +254,7 @@ export function MoveLayer({
             </option>
           ))}
         </select>
-        {selectedCard && (
+        {selectedCard ? (
           <button
             type="button"
             data-testid="move-change-picture"
@@ -259,6 +265,23 @@ export function MoveLayer({
           >
             Change picture
           </button>
+        ) : (
+          selectedId === null && (
+            <button
+              type="button"
+              data-testid="move-add-picture"
+              onClick={onAddPicture}
+              disabled={saving || !canAdd}
+              title={
+                canAdd
+                  ? "Add a photo from your library at this moment"
+                  : "No picture can show here: the footage is hidden"
+              }
+              className="h-7 flex-none border border-white/40 px-2 hover:bg-white/15 disabled:opacity-50"
+            >
+              Add picture here
+            </button>
+          )
         )}
         <button
           type="button"
