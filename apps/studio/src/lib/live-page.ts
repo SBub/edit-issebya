@@ -1,5 +1,5 @@
 import type { PlacedComponent } from "@edit-issebya/edit";
-import { type Drag, resizeShare } from "./owner-edit";
+import { type Drag, resizeShare, scaledVisual } from "./owner-edit";
 
 // The move and resize editor's instant view (app_docs/owner-edits.md): while
 // a component is dragged, and from the drop until the rebuilt draft is on
@@ -36,6 +36,12 @@ const ANIMATED = new Set(["transform", "translate", "opacity", "visibility", "di
 function isAnimated(property: string): boolean {
   return ANIMATED.has(property);
 }
+
+// What a patch may write that a page may not have: the page on screen is
+// restyled over it too, so a turn a patch set and neither page has (an
+// upright card turned, then the turn dropped) is taken off again. Every other
+// property a patch writes is one the builder writes on that element.
+export const PATCHED = ["rotate"] as const;
 
 // The last few pages read: the editor and the player read the same pages.
 const READ = new Map<string, PageElements>();
@@ -89,11 +95,12 @@ export function componentElements(elements: PageElements, id: string, component:
   return component === "LIST" && own.children.length > 0 ? own.children : [id];
 }
 
-// A move or a corner resize drag as a patch of the page on screen: every
+// A move, a corner resize or a turn as a patch of the page on screen: every
 // element of the component moved by the drag, or scaled about the
-// component's top left corner (its text size, or a VISUAL's box). The edge
-// handles set lines again and are patched from the rebuilt lines
-// (`wrapPatch`), never here.
+// component's top left corner (its text size, or a VISUAL's box, a turned one
+// about the corner it shows at its top left), or a VISUAL turned about its
+// centre (the `rotate` property, never `transform`). The edge handles set
+// lines again and are patched from the rebuilt lines (`wrapPatch`), never here.
 export function dragPatch(
   elements: PageElements,
   component: PlacedComponent,
@@ -102,6 +109,10 @@ export function dragPatch(
   const patch: LivePatch = {};
   const own = elements.get(component.id);
   if (!own) return patch;
+  if (drag.mode === "rotate") {
+    if (component.component !== "VISUAL" || drag.angle === undefined) return patch;
+    return { [component.id]: { style: { rotate: `${drag.angle}deg` } } };
+  }
   const share = drag.mode === "resize" ? resizeShare(component, drag) : 1;
   // A LIST's levels sit inside its layer: their corners are the layer's.
   const nested = component.component === "LIST" && own.children.length > 0;
@@ -127,8 +138,14 @@ export function dragPatch(
       style["font-size"] = px(pxOf(el.style["font-size"]) * share);
     }
     if (component.component === "VISUAL") {
-      style.width = px(pxOf(el.style.width) * share);
-      style.height = px(pxOf(el.style.height) * share);
+      const box = scaledVisual(
+        { ...component, width: pxOf(el.style.width), height: pxOf(el.style.height) },
+        share,
+      );
+      style.left = px(box.x);
+      style.top = px(box.y);
+      style.width = px(box.width);
+      style.height = px(box.height);
     }
     patch[id] = { style };
   }

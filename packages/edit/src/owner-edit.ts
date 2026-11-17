@@ -1,4 +1,10 @@
-import { bigWordNeedsCutout, paddedSpan, placedBigWord } from "./behind.ts";
+import {
+  bigWordNeedsCutout,
+  paddedSpan,
+  placedBigWord,
+  rotatedBounds,
+  wholeDegrees,
+} from "./behind.ts";
 import { build } from "./build.ts";
 import type { PlacedComponent } from "./components.ts";
 import type { EngineComponent, EngineNote } from "./engine-note.ts";
@@ -20,8 +26,8 @@ import { STYLES, VISUAL_STAND_INS } from "./variants.ts";
 // version from them. A component has one box for its whole time on screen, so
 // a move moves it for all of it. A text's place, its text size and, through
 // its wrap width, its line breaks change: never its words, its time or what
-// its variant draws inside the box. A VISUAL's box moves and scales, keeping
-// its picture's aspect ratio.
+// its variant draws inside the box. A VISUAL's box moves, scales (keeping
+// its picture's aspect ratio) and turns about its centre; a text never turns.
 
 // The components the owner may move and resize: every text pick and the
 // VISUALs. Captions are not.
@@ -56,20 +62,32 @@ export interface OwnerTextMove {
 }
 
 // One move of a VISUAL: its box's top left corner and its width in frame
-// pixels. Its height follows from its picture's aspect ratio (`boxHeight`), so
-// a VISUAL is only ever scaled in proportion.
+// pixels, upright. Its height follows from its picture's aspect ratio
+// (`boxHeight`), so a VISUAL is only ever scaled in proportion. `rotation`,
+// when set, turns the box about its centre, in whole degrees clockwise (any
+// angle, kept as -179 to 180); without it the card keeps its own turn.
 export interface OwnerBoxMove {
   id: string;
   kind: "box";
   x: number;
   y: number;
   width: number;
+  rotation?: number;
 }
 
 export type OwnerMove = OwnerTextMove | OwnerBoxMove;
 
 export function isBoxMove(move: OwnerMove): move is OwnerBoxMove {
   return move.kind === "box";
+}
+
+// The largest turn a move may ask for, either way, in degrees.
+const MAX_ROTATION = 360;
+
+function isRotation(rotation: unknown): rotation is number {
+  return (
+    typeof rotation === "number" && Number.isInteger(rotation) && Math.abs(rotation) <= MAX_ROTATION
+  );
 }
 
 // The narrowest a VISUAL may be made, in frame pixels: a card still worth a
@@ -97,25 +115,29 @@ interface Context {
 // A job's moves as they arrive (untrusted JSON): a list of at most
 // `OWNER_MOVES_MAX` moves, no id twice, each either a text's (an id, finite
 // coordinates, a whole size and optionally a positive wrap width) or a
-// VISUAL's box (`kind: "box"`, an id, finite coordinates and a positive
-// width). Null when it is anything else.
+// VISUAL's box (`kind: "box"`, an id, finite coordinates, a positive width
+// and optionally a turn in whole degrees, -360 to 360). Null when it is
+// anything else.
 export function parseOwnerMoves(json: unknown): OwnerMove[] | null {
   if (!Array.isArray(json) || json.length === 0 || json.length > OWNER_MOVES_MAX) return null;
   const moves: OwnerMove[] = [];
   const seen = new Set<string>();
   for (const entry of json as unknown[]) {
     if (typeof entry !== "object" || entry === null) return null;
-    const { id, kind, x, y, size, width } = entry as Record<string, unknown>;
+    const { id, kind, x, y, size, width, rotation } = entry as Record<string, unknown>;
     if (typeof id !== "string" || id.length === 0 || id.length > 64 || seen.has(id)) return null;
     if (typeof x !== "number" || typeof y !== "number") return null;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     seen.add(id);
     if (kind === "box") {
       if (size !== undefined || !isWrapWidth(width)) return null;
-      moves.push({ id, kind, x, y, width });
+      if (rotation !== undefined && !isRotation(rotation)) return null;
+      moves.push(
+        rotation === undefined ? { id, kind, x, y, width } : { id, kind, x, y, width, rotation },
+      );
       continue;
     }
-    if (kind !== undefined) return null;
+    if (kind !== undefined || rotation !== undefined) return null;
     if (typeof size !== "number" || !Number.isInteger(size)) return null;
     if (width !== undefined && !isWrapWidth(width)) return null;
     moves.push(typeof width === "number" ? { id, x, y, size, width } : { id, x, y, size });
@@ -227,7 +249,8 @@ export function ownerSizeRange(edit: Edit, id: string, preset: Preset): [number,
 // widest as the engine stacks them, the gaps between them scaled. Refused with
 // reasons: an id that is no text component of the edit (a caption and a VISUAL
 // are not moved), a size outside the component's range, a wrap width on a big
-// word or one that is no positive number.
+// word or one that is no positive number. A VISUAL's box move writes its
+// `box` and, with a turn, its `rotation` (none when upright).
 export function applyOwnerMoves(
   edit: Edit,
   moves: readonly OwnerMove[],
@@ -255,6 +278,8 @@ export function applyOwnerMoves(
         reasons.push(
           `${move.id}: width ${move.width} is outside ${MIN_BOX_PX} to ${preset.frame.width} px`,
         );
+      } else if (move.rotation !== undefined && !isRotation(move.rotation)) {
+        reasons.push(`${move.id}: its turn is not whole degrees from -360 to 360`);
       }
       if (isBoxMove(move)) boxes.set(move.id, move);
       continue;
@@ -301,9 +326,13 @@ export function applyOwnerMoves(
       const box = boxes.get(item.id);
       if (!box) return item;
       const width = Math.round(box.width);
+      const rotation = box.rotation === undefined ? item.rotation : wholeDegrees(box.rotation);
+      const turned = { ...item };
+      delete turned.rotation;
       return {
-        ...item,
+        ...turned,
         box: { x: Math.round(box.x), y: Math.round(box.y), width, height: boxHeight(item, width) },
+        ...(rotation ? { rotation } : {}),
       };
     }
     const move = byId.get(item.id);
@@ -487,8 +516,9 @@ export function fitInSafeZone(box: {
 
 // Why a component's box breaks the owner's one hard rule: like every text, it
 // stays inside the safe zone S and clear of the buttons' notch (what the
-// platforms cover is never readable). Empty when it holds. Everything else
-// (the face, other text) is the owner's choice; the version's checks record it.
+// platforms cover is never readable). A turned VISUAL is read as the upright
+// rectangle around it. Empty when it holds. Everything else (the face, other
+// text) is the owner's choice; the version's checks record it.
 export function ownerMoveProblems(
   components: readonly PlacedComponent[],
   ids: readonly string[],
@@ -496,11 +526,12 @@ export function ownerMoveProblems(
   const { box: safe, notch } = SAFE_ZONE;
   const reasons: string[] = [];
   for (const id of ids) {
-    const at = components.find((component) => component.id === id);
-    if (!at) {
+    const placed = components.find((component) => component.id === id);
+    if (!placed) {
       reasons.push(`${id}: not on screen in this version`);
       continue;
     }
+    const at = rotatedBounds(placed, placed.rotation ?? 0);
     const right = at.x + at.width;
     const bottom = at.y + at.height;
     if (
@@ -591,10 +622,11 @@ export function settleOwnerMove(
   return { ok: false, reasons: [`${move.id}: no place inside the safe zone`] };
 }
 
-// A VISUAL's move made legal: its width at least `MIN_BOX_PX` and shrunk (its
-// height with it, in proportion) until the box fits the safe zone and clears
-// the notch, then the box moved the least it must, at whole pixels. Refused
-// when the id is no VISUAL or it fits nowhere even at its narrowest.
+// A VISUAL's move made legal: its turn in whole degrees (-179 to 180), its
+// width at least `MIN_BOX_PX` and shrunk (its height with it, in proportion)
+// until the upright rectangle around the turned box fits the safe zone and
+// clears the notch, then the box moved the least it must, at whole pixels.
+// Refused when the id is no VISUAL or it fits nowhere even at its narrowest.
 function settleBoxMove(
   edit: Edit,
   move: OwnerBoxMove,
@@ -603,31 +635,78 @@ function settleBoxMove(
   const visual = visualOf(edit, move.id);
   if (!visual) return { ok: false, reasons: [`${move.id}: not a visual of this version`] };
   const { box: safe } = SAFE_ZONE;
+  const rotation = wholeDegrees(move.rotation ?? visual.rotation ?? 0);
   let width = Math.max(MIN_BOX_PX, Math.round(move.width));
   for (let pass = 0; pass < 2000 && width >= MIN_BOX_PX; pass += 1) {
     const height = boxHeight(visual, width);
-    const share = Math.min((safe.right - safe.left) / width, (safe.bottom - safe.top) / height);
+    const x = Math.round(move.x);
+    const y = Math.round(move.y);
+    const bounds = rotatedBounds({ x, y, width, height }, rotation);
+    const share = Math.min(
+      (safe.right - safe.left) / bounds.width,
+      (safe.bottom - safe.top) / bounds.height,
+    );
     if (share < 1 - SLACK) {
       width = Math.min(width - 1, Math.floor(width * share));
       continue;
     }
-    const spot = fitInSafeZone({ x: Math.round(move.x), y: Math.round(move.y), width, height });
+    const spot = fitInSafeZone(bounds);
     if (!spot) {
+      width -= 1;
+      continue;
+    }
+    // The upright box under the rectangle's spot, at whole pixels: the nearest
+    // corners first, then the ones a pixel further in, the first legal one.
+    const fromX = spot.x - (bounds.x - x);
+    const fromY = spot.y - (bounds.y - y);
+    const corner = wholeCorners(fromX, fromY).find(
+      (at) =>
+        ownerMoveProblems(
+          [
+            {
+              id: move.id,
+              component: "VISUAL",
+              text: "",
+              size: null,
+              start: 0,
+              end: 0,
+              ...at,
+              width,
+              height,
+              rotation,
+            },
+          ],
+          [move.id],
+        ).length === 0,
+    );
+    if (!corner) {
       width -= 1;
       continue;
     }
     const settled: OwnerBoxMove = {
       id: move.id,
       kind: "box",
-      x: Math.ceil(spot.x - SLACK),
-      y: Math.ceil(spot.y - SLACK),
+      ...corner,
       width,
+      ...(move.rotation !== undefined || visual.rotation ? { rotation } : {}),
     };
     const applied = applyOwnerMoves(edit, [settled], context);
     if (!applied.ok) return applied;
     return { ok: true, move: settled, edit: applied.edit };
   }
   return { ok: false, reasons: [`${move.id}: does not fit the safe zone at any size`] };
+}
+
+// Whole-pixel corners near a place, nearest first: the place rounded up (as
+// an upright box always settles), then each way a pixel either side.
+function wholeCorners(x: number, y: number): { x: number; y: number }[] {
+  const baseX = Math.ceil(x - SLACK);
+  const baseY = Math.ceil(y - SLACK);
+  const out: { x: number; y: number }[] = [];
+  for (const dy of [0, -1, 1]) {
+    for (const dx of [0, -1, 1]) out.push({ x: baseX + dx, y: baseY + dy });
+  }
+  return out;
 }
 
 function boxOf(edit: Edit, id: string, context: Context): PlacedComponent | null {
@@ -644,20 +723,28 @@ function boxOf(edit: Edit, id: string, context: Context): PlacedComponent | null
 
 // Whether a component's box or size differs from another placement of it: a
 // new corner is a move; a new size, or a box of another width or height (its
-// lines set again), is a resize.
-function differs(a: PlacedComponent, b: PlacedComponent): { moved: boolean; resized: boolean } {
+// lines set again), is a resize; a VISUAL's new turn is a rotation.
+function differs(
+  a: PlacedComponent,
+  b: PlacedComponent,
+): { moved: boolean; resized: boolean; rotated: boolean } {
   return {
     moved: Math.abs(a.x - b.x) >= 0.5 || Math.abs(a.y - b.y) >= 0.5,
     resized:
       a.size !== b.size ||
       Math.abs(a.width - b.width) >= 0.5 ||
       Math.abs(a.height - b.height) >= 0.5,
+    rotated: (a.rotation ?? 0) !== (b.rotation ?? 0),
   };
 }
 
-// The moves that change something: a move whose corner and size are the
-// component's own in `components` (the version being edited) and that sets
-// no wrap width is left out. With `after` (the components with the moves
+function changes(change: { moved: boolean; resized: boolean; rotated: boolean }): boolean {
+  return change.moved || change.resized || change.rotated;
+}
+
+// The moves that change something: a move whose corner and size (a VISUAL's
+// corner, width and turn) are the component's own in `components` (the
+// version being edited) and that sets no wrap width is left out. With `after` (the components with the moves
 // applied, as the studio's draft has them), a move is left out when its
 // component's box and size there are the version's own, a rewrap that came
 // back to the version's lines included.
@@ -672,14 +759,14 @@ export function effectiveMoves(
     if (after) {
       const now = after.find((component) => component.id === move.id);
       if (!now) return true;
-      const change = differs(now, at);
-      return change.moved || change.resized;
+      return changes(differs(now, at));
     }
     if (isBoxMove(move)) {
       return (
         Math.abs(at.x - move.x) >= 0.5 ||
         Math.abs(at.y - move.y) >= 0.5 ||
-        Math.abs(at.width - move.width) >= 0.5
+        Math.abs(at.width - move.width) >= 0.5 ||
+        (move.rotation !== undefined && wholeDegrees(move.rotation) !== (at.rotation ?? 0))
       );
     }
     return (
@@ -755,6 +842,11 @@ export interface OwnerMoveRecord {
   owner: RecordedPlacement;
   moved: boolean;
   resized: boolean;
+  // A VISUAL turned: the engine's turn (always 0, the engine never turns a
+  // card) and the owner's, in whole degrees clockwise. 0 and 0 for a text.
+  rotated: boolean;
+  engine_rotation: number;
+  owner_rotation: number;
   // The wrap width the owner set (frame pixels at the owner's size), or null
   // when the version's lines were kept.
   wrap_width: number | null;
@@ -777,6 +869,8 @@ export interface OwnerMoveRecord {
       start: number;
       end: number;
       box: RecordedPlacement;
+      // A turned VISUAL's turn, in degrees; absent when upright.
+      rotation?: number;
       moved_by_owner: boolean;
     }[];
   };
@@ -792,8 +886,8 @@ function placementOf(at: PlacedComponent): RecordedPlacement {
   return { x: at.x, y: at.y, width: at.width, height: at.height, size: at.size };
 }
 
-// The learning records of one save: one per moved id whose place or size is
-// not the engine's. `engine` holds the components where the layout engine
+// The learning records of one save: one per moved id whose place, size or
+// turn is not the engine's. `engine` holds the components where the layout engine
 // placed them (the engine-placed version the owner's edits started from),
 // `owner` the components of the version being saved, `moves` the moves saved
 // (their wrap widths).
@@ -823,7 +917,7 @@ export function ownerMoveRecords({
     const theirs = placed.get(id);
     if (!mine || !theirs) continue;
     const change = differs(mine, theirs);
-    if (!change.moved && !change.resized) continue;
+    if (!changes(change)) continue;
     const note = engineRecord.find((entry) => entry.item === id && entry.zone !== undefined);
     const variant = engineRecord.find((entry) => entry.item === id)?.variant ?? null;
     records.push({
@@ -836,6 +930,8 @@ export function ownerMoveRecords({
       engine: placementOf(theirs),
       owner: placementOf(mine),
       ...change,
+      engine_rotation: theirs.rotation ?? 0,
+      owner_rotation: mine.rotation ?? 0,
       wrap_width: wrapWidthOf(moves.find((move) => move.id === id)),
       context: {
         frame: { width: preset.frame.width, height: preset.frame.height },
@@ -849,7 +945,6 @@ export function ownerMoveRecords({
           )
           .map((other) => {
             const was = placed.get(other.id);
-            const otherChange = was ? differs(other, was) : { moved: false, resized: false };
             return {
               item: other.id,
               component: other.component,
@@ -857,7 +952,8 @@ export function ownerMoveRecords({
               start: other.start,
               end: other.end,
               box: placementOf(other),
-              moved_by_owner: otherChange.moved || otherChange.resized,
+              ...(other.rotation ? { rotation: other.rotation } : {}),
+              moved_by_owner: was ? changes(differs(other, was)) : false,
             };
           }),
       },

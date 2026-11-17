@@ -153,7 +153,10 @@ and rule 6 (`engine-place.ts`).
 - Visuals: a white stroke frame over the footage, in front of the speaker, no fill and no text
   (owner decision 2026-11-07), showing a stand-in picture (owner decision 2026-11-10: a visual shows
   a picture so the owner can judge the text with real pictures; the meaning of the picture is not judged).
-  The placer places it as a box from its entry (see Layout engine).
+  The placer places it as a box from its entry (see Layout engine). A VISUAL's optional `rotation`
+  (whole degrees clockwise, -179 to 180) is written only by the owner's turn (`app_docs/owner-edits.md`),
+  never by the engine; the builder draws it as the CSS `rotate` property about the box's centre (never
+  `transform`), in the preview and the export alike.
 - Stand-in pictures: `VISUAL_STAND_INS` in `src/variants.ts`, three JPEGs under `assets/visuals/`
   (`file`, `width`, `height` as data). They are dev stand-ins until a real image search exists. The Nth
   VISUAL of a reel in start-time order (ties by the answer's order) shows image N mod 3 (`engine.ts`).
@@ -218,7 +221,8 @@ and rule 6 (`engine-place.ts`).
   `size` throws the same way. `src/html.ts` escapes text and attributes and formats numbers.
 - `src/lines.ts`: `textLines(text, breaks)` (a text cut after each of its `breaks`, the builder and the transition levels share it) and `breaksOf(lines)` (the breaks the engine writes for its lines).
 - `src/behind.ts`: `visualBox(item)` (a VISUAL's
-  `box`), `needsCutout(item)` (a big word whose `cutout` is not false: a VISUAL is in front, over the footage),
+  `box`, upright), `visualBounds(item)` (the rectangle a turned card covers, from `rotatedBounds`;
+  the box itself upright), `wholeDegrees` (a turn kept as -179 to 180), `needsCutout(item)` (a big word whose `cutout` is not false: a VISUAL is in front, over the footage),
   `bigWordNeedsCutout(box, track, span)` and `paddedSpan(span, duration, preset)` (the mask span of an item,
   shared by `maskSpans` and the layout engine's check),
   `bigWordCoveredShare`, `placedBigWord` (a big word at its stored
@@ -608,7 +612,8 @@ the platform button column below y 1164` with the right edge past x 945). A tran
   needs the record: `build(edit, ..., { engineRecord })`, which the decide step and the first version pass.
   The engine's output never fails it.
 - `card-overlap` (`checks.ts`): a big word that needs the cut-out (`needsCutout`) and a visual's card never
-  overlap while both show (decision 24); the reason names the word and the card. A big word with no cut-out
+  overlap while both show (decision 24); the reason names the word and the card. A card the owner
+  turned is read as the upright rectangle around it (`visualBounds`). A big word with no cut-out
   is front text and may sit on a card. The engine's output never fails it.
 - `same-text` (`checks.ts`): no spoken word (by word id) is shown by two items at a shared moment. The items
   are the captions shown (not those a text hides, `hidden_by`), the accents and questions, the lists and the
@@ -871,8 +876,8 @@ never fatal.
   layout engine, never from the answer.
 - The only other writer of a position or a size is the owner, by hand, through `applyOwnerMoves`
   (`app_docs/owner-edits.md`): a text component's place, its text size and, through an edge
-  handle's wrap width, its line breaks (set on the engine's balanced lines), inside the safe zone,
-  saved as a new version. Never a time or a word.
+  handle's wrap width, its line breaks (set on the engine's balanced lines), and a VISUAL's box and
+  turn, inside the safe zone, saved as a new version. Never a time or a word.
 - Never let an overlap pass silently: a front pick or a caption block placed over the face is noted
   `covers-face` (rule `face`), and a caption block set over other text for want of a legal spot is noted
   `no-spot` with the texts it sits over. A text over a visual's card is no overlap (decision 9).

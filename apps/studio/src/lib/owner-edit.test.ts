@@ -7,13 +7,17 @@ import {
   componentLabel,
   componentOption,
   draggedBox,
+  draggedTurn,
   movableAt,
   movableComponents,
   moveOfDrag,
   resizeShare,
   resolveAsk,
+  scaledVisual,
   showMoment,
+  snapAngle,
   snapDrag,
+  turnOfPointer,
   withMove,
 } from "./owner-edit";
 
@@ -157,6 +161,7 @@ describe("a drag", () => {
       x: 312.5,
       y: 360,
       width: 300,
+      rotation: 0,
     });
     expect(moveOfDrag(visual, { mode: "resize", dx: -90, dy: 0 })).toEqual({
       id: "visual-1",
@@ -164,6 +169,7 @@ describe("a drag", () => {
       x: 300,
       y: 400,
       width: 210,
+      rotation: 0,
     });
     const scaled = draggedBox(visual, { mode: "resize", dx: -90, dy: 0 });
     expect(scaled).toMatchObject({ x: 300, y: 400, width: 210 });
@@ -171,6 +177,80 @@ describe("a drag", () => {
     expect(moveOfDrag(visual, { mode: "right", dx: -90, dy: 0 })).toBeNull();
     expect(canRewrap(visual)).toBe(false);
     expect(componentLabel("VISUAL")).toBe("Visual");
+  });
+});
+
+describe("a VISUAL's rotate handle", () => {
+  const visual = component({
+    id: "visual-1",
+    component: "VISUAL",
+    size: null,
+    width: 300,
+    height: 383,
+  });
+
+  it("turns with the pointer round the box's centre, from the card's own turn", () => {
+    const centre = { x: 100, y: 100 };
+    // From straight above the centre to straight right of it: a quarter turn clockwise.
+    expect(turnOfPointer(centre, { x: 100, y: 50 }, { x: 150, y: 100 }, 0)).toBeCloseTo(90, 6);
+    expect(turnOfPointer(centre, { x: 100, y: 50 }, { x: 50, y: 100 }, 10)).toBeCloseTo(-80, 6);
+  });
+
+  it("snaps upright and to each quarter turn within a few degrees, and keeps whole degrees", () => {
+    expect(snapAngle(3.4)).toEqual({ angle: 0, snapped: true });
+    expect(snapAngle(-4)).toEqual({ angle: 0, snapped: true });
+    expect(snapAngle(87)).toEqual({ angle: 90, snapped: true });
+    expect(snapAngle(183)).toEqual({ angle: 180, snapped: true });
+    expect(snapAngle(-92)).toEqual({ angle: -90, snapped: true });
+    expect(snapAngle(268)).toEqual({ angle: -90, snapped: true });
+    expect(snapAngle(4.6)).toEqual({ angle: 5, snapped: false });
+    expect(snapAngle(-33.2)).toEqual({ angle: -33, snapped: false });
+    expect(snapAngle(200)).toEqual({ angle: -160, snapped: false });
+  });
+
+  it("asks for the card's box with the turn, and keeps the box while it turns", () => {
+    expect(moveOfDrag(visual, { mode: "rotate", dx: 0, dy: 0, angle: 25 })).toEqual({
+      id: "visual-1",
+      kind: "box",
+      x: 300,
+      y: 400,
+      width: 300,
+      rotation: 25,
+    });
+    expect(draggedBox(visual, { mode: "rotate", dx: 0, dy: 0, angle: 25 })).toEqual({
+      x: 300,
+      y: 400,
+      width: 300,
+      height: 383,
+    });
+    expect(draggedTurn(visual, { mode: "rotate", dx: 0, dy: 0, angle: 25 })).toBe(25);
+    expect(draggedTurn({ rotation: 12 }, null)).toBe(12);
+    // A text never turns.
+    expect(moveOfDrag(component({}), { mode: "rotate", dx: 0, dy: 0, angle: 25 })).toBeNull();
+  });
+
+  it("moves and scales a turned card with its turn, the corner it shows at its top left kept", () => {
+    const turned = { ...visual, rotation: 90 };
+    expect(moveOfDrag(turned, { mode: "move", dx: 10, dy: 0 })).toMatchObject({
+      x: 310,
+      rotation: 90,
+    });
+    // Turned a quarter, the box's own width runs down the screen: a drag down
+    // grows it.
+    expect(resizeShare(turned, { dx: 0, dy: 150 })).toBeCloseTo(1.5, 6);
+    const scaled = scaledVisual(turned, 2);
+    // The shown top left corner (the box's own bottom left, turned) stays.
+    const shown = (box: { x: number; y: number; width: number; height: number }) => ({
+      x: box.x + box.width / 2 + box.height / 2,
+      y: box.y + box.height / 2 - box.width / 2,
+    });
+    expect(shown(scaled).x).toBeCloseTo(shown(turned).x, 6);
+    expect(shown(scaled).y).toBeCloseTo(shown(turned).y, 6);
+    expect(scaled.width).toBe(600);
+    const ask = moveOfDrag(turned, { mode: "resize", dx: 0, dy: 300 });
+    expect(ask).toMatchObject({ kind: "box", width: 600, rotation: 90 });
+    // Upright, the box's own corner stays.
+    expect(scaledVisual(visual, 2)).toEqual({ x: 300, y: 400, width: 600, height: 766 });
   });
 });
 

@@ -93,7 +93,9 @@ rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) o
   `transform`, `opacity`, `visibility`, `display`) or lines differ between the page on screen and the
   new `html` to the new page's values (`src/lib/live-page.ts`: `pageElements`, `changedElements`,
   `restyle`). `PreviewPlayerHandle.live(patch)` lays a patch over that while the move and resize
-  editor drags (`app_docs/owner-edits.md`, "Instant moves"); a new `html` drops it. So the swap
+  editor drags (`app_docs/owner-edits.md`, "Instant moves"); a new `html` drops it. A VISUAL's turn
+  is the `rotate` property, which the restyle always covers (`PATCHED`), so a turn a patch set and
+  neither page has is taken off. So the swap
   itself changes nothing on screen.
 - The move and resize editor (`app_docs/owner-edits.md`) uses three things of `PreviewPlayer`: `overlay`
   (a layer drawn inside the frame, after Zones; `MoveLayer`), `controls` (buttons in the control row

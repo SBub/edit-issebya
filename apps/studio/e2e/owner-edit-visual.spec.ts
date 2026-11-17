@@ -10,11 +10,12 @@ import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
-// The owner moves and resizes a VISUAL (app_docs/owner-edits.md): the same
-// editor as a text, its corner handle scaling the card in proportion (its
-// picture's aspect ratio kept) and no edge handle. The page on screen follows
-// the pointer at once, and Save makes a version with the card's new box and a
-// learning row for it.
+// The owner moves, resizes and turns a VISUAL (app_docs/owner-edits.md): the
+// same editor as a text, its corner handle scaling the card in proportion (its
+// picture's aspect ratio kept), no edge handle, and a rotate handle above it
+// that turns it about its centre, snapping upright and to each quarter turn.
+// The page on screen follows the pointer at once, and Save makes a version
+// with the card's new box and turn and a learning row for it.
 
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
 const FRAME_WIDTH = 1080;
@@ -33,6 +34,8 @@ let page: Page;
 // The card as the engine placed it, and where the owner left it.
 let engineCard: Card;
 let ownerCard: Card;
+// The card's turn the owner left, in degrees.
+let ownerTurn = 0;
 
 interface Card {
   x: number;
@@ -105,6 +108,40 @@ async function drawn(id: string): Promise<Card> {
         height: Number.parseFloat(height),
       };
     });
+}
+
+// The card's turn as the page on screen draws it (its element's `rotate`), in
+// degrees; 0 when it has none.
+async function drawnTurn(id: string): Promise<number> {
+  return page
+    .frameLocator('hyperframes-player[data-page="shown"] iframe')
+    .locator(`#${id}`)
+    .evaluate((el) => {
+      const { rotate, transform } = (el as HTMLElement).style;
+      if (transform.includes("rotate")) throw new Error(`a turn in transform: ${transform}`);
+      return rotate === "" || rotate === "none" ? 0 : Number.parseFloat(rotate);
+    });
+}
+
+// The pointer taken from the rotate handle round the card's centre by `degrees`
+// (clockwise), in `steps`, calling `each` after every step with the turn so far.
+async function turnHandle(
+  degrees: number,
+  steps: number,
+  each?: (sofar: number) => Promise<void>,
+): Promise<void> {
+  const centre = await centreOf(moveBox(CARD));
+  const handle = await centreOf(moveBox(CARD).getByTestId("move-rotate"));
+  const radius = Math.hypot(handle.x - centre.x, handle.y - centre.y);
+  const start = Math.atan2(handle.y - centre.y, handle.x - centre.x);
+  await page.mouse.move(handle.x, handle.y);
+  await page.mouse.down();
+  for (let step = 1; step <= steps; step += 1) {
+    const sofar = (degrees * step) / steps;
+    const angle = start + (sofar * Math.PI) / 180;
+    await page.mouse.move(centre.x + radius * Math.cos(angle), centre.y + radius * Math.sin(angle));
+    if (each) await each(sofar);
+  }
 }
 
 async function screenScale(): Promise<number> {
@@ -225,6 +262,72 @@ test("a dragged VISUAL snaps to the frame's centre lines with the guides", async
   await shot("visual-4-centred.png");
 });
 
+test("the rotate handle turns the VISUAL at once: on the pointer during the drag, at the drop straight after, and nothing moves when the draft swaps in", async () => {
+  const box = moveBox(CARD);
+  await expect(box.getByTestId("move-rotate")).toBeVisible();
+  // A text has no rotate handle.
+  await expect(page.locator('[data-testid="move-rotate"]')).toHaveCount(1);
+  const before = await drawn(CARD);
+  expect(await drawnTurn(CARD)).toBe(0);
+  await turnHandle(-30, 6, async (sofar) => {
+    // Past the 4 degrees around upright the card is on the pointer, in whole degrees.
+    if (Math.abs(sofar) <= 5) return;
+    expect(Math.abs((await drawnTurn(CARD)) - sofar)).toBeLessThanOrEqual(1);
+    await expect(page.getByTestId("move-angle")).toHaveText(`${Math.round(sofar)}°`);
+  });
+  await expect(page.getByTestId("move-angle")).not.toHaveAttribute("data-snapped", "true");
+  await page.mouse.up();
+  const dropped = await drawnTurn(CARD);
+  expect(await swapping()).toBe("swapping");
+  expect(Math.abs(dropped + 30)).toBeLessThanOrEqual(1);
+  await ready();
+  expect(await drawnTurn(CARD)).toBe(dropped);
+  // Its box is where it was: it turns about its centre.
+  expect(await drawn(CARD)).toEqual(before);
+  await expect(box).toHaveAttribute("data-rotation", String(dropped));
+  ownerTurn = dropped;
+  await shot("visual-5-turned.png");
+});
+
+test("a turning VISUAL snaps to a quarter turn and back upright, with its angle and guides as the hint", async () => {
+  const guides = page.getByTestId("move-turn-guide");
+  // From -30: 117 degrees round is 87, near a quarter turn.
+  await turnHandle(117, 8);
+  await expect(page.getByTestId("move-angle")).toHaveText("90°");
+  await expect(page.getByTestId("move-angle")).toHaveAttribute("data-snapped", "true");
+  await expect(guides).toHaveCount(2);
+  expect(await drawnTurn(CARD)).toBe(90);
+  await shot("visual-6-snapped-quarter-turn.png");
+  await page.mouse.up();
+  await ready();
+  expect(await drawnTurn(CARD)).toBe(90);
+  await expect(guides).toHaveCount(0);
+  // Held 6 degrees past a quarter turn it does not snap; 3 back from upright it does.
+  await turnHandle(6, 2);
+  await expect(page.getByTestId("move-angle")).toHaveText("96°");
+  await expect(page.getByTestId("move-angle")).not.toHaveAttribute("data-snapped", "true");
+  await expect(guides).toHaveCount(0);
+  await page.mouse.up();
+  await ready();
+  await turnHandle(-93, 6);
+  await expect(page.getByTestId("move-angle")).toHaveText("0°");
+  await expect(page.getByTestId("move-angle")).toHaveAttribute("data-snapped", "true");
+  await expect(guides).toHaveCount(2);
+  expect(await drawnTurn(CARD)).toBe(0);
+  await shot("visual-7-snapped-upright.png");
+  // On to a quarter turn again, and dropped there.
+  await page.mouse.up();
+  await ready();
+  await turnHandle(88, 6);
+  await expect(page.getByTestId("move-angle")).toHaveAttribute("data-snapped", "true");
+  await page.mouse.up();
+  expect(await drawnTurn(CARD)).toBe(90);
+  await ready();
+  expect(await drawnTurn(CARD)).toBe(90);
+  ownerTurn = 90;
+  ownerCard = await drawn(CARD);
+});
+
 test("Save makes a new version with the VISUAL's new box, and a learning row for it", async () => {
   await page.getByTestId("move-save").click();
   await expect(page.getByTestId("move-status")).toHaveText("Saving your changes");
@@ -238,7 +341,14 @@ test("Save makes a new version with the VISUAL's new box, and a learning row for
   };
   await expect.poll(async () => (await jobs()).length).toBe(1);
   expect((await jobs())[0]!.owner_edit.moves).toEqual([
-    { id: CARD, kind: "box", x: ownerCard.x, y: ownerCard.y, width: ownerCard.width },
+    {
+      id: CARD,
+      kind: "box",
+      x: ownerCard.x,
+      y: ownerCard.y,
+      width: ownerCard.width,
+      rotation: ownerTurn,
+    },
   ]);
   const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX });
   expect(worker.code, worker.output).toBe(0);
@@ -256,10 +366,13 @@ test("Save makes a new version with the VISUAL's new box, and a learning row for
   await ready();
   await expect(page.getByTestId("move-layer")).toHaveCount(0);
   expect(await drawn(CARD)).toEqual(ownerCard);
+  expect(await drawnTurn(CARD)).toBe(ownerTurn);
 
   const { data: rows } = await admin
     .from("owner_moves")
-    .select("item, component, engine_box, owner_box, moved, resized, wrap_width")
+    .select(
+      "item, component, engine_box, owner_box, moved, resized, rotated, engine_rotation, owner_rotation, wrap_width",
+    )
     .eq("reel_id", reel!.reelId);
   expect(rows).toEqual([
     {
@@ -269,6 +382,9 @@ test("Save makes a new version with the VISUAL's new box, and a learning row for
       owner_box: { ...ownerCard, size: null },
       moved: true,
       resized: true,
+      rotated: true,
+      engine_rotation: 0,
+      owner_rotation: ownerTurn,
       wrap_width: null,
     },
   ]);

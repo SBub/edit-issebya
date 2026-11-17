@@ -115,6 +115,39 @@ describe("dragPatch", () => {
     });
   });
 
+  it("turns a VISUAL with the rotate property, never transform, and never a text", () => {
+    const visual = component({
+      id: "visual-1",
+      component: "VISUAL",
+      size: null,
+      x: 600,
+      y: 300,
+      width: 400,
+      height: 300,
+    });
+    expect(dragPatch(PAGE, visual, { mode: "rotate", dx: 0, dy: 0, angle: -30 })).toEqual({
+      "visual-1": { style: { rotate: "-30deg" } },
+    });
+    expect(dragPatch(PAGE, component({}), { mode: "rotate", dx: 0, dy: 0, angle: 30 })).toEqual({});
+  });
+
+  it("scales a turned VISUAL about the corner it shows at its top left", () => {
+    const visual = component({
+      id: "visual-1",
+      component: "VISUAL",
+      size: null,
+      x: 600,
+      y: 300,
+      width: 400,
+      height: 300,
+      rotation: 180,
+    });
+    // Turned half round, its shown top left is its own bottom right: that stays.
+    expect(dragPatch(PAGE, visual, { mode: "resize", dx: 100, dy: 0 })).toEqual({
+      "visual-1": { style: { left: "700px", top: "375px", width: "300px", height: "225px" } },
+    });
+  });
+
   it("leaves an edge drag to the rebuilt lines", () => {
     expect(dragPatch(PAGE, component({}), { mode: "right", dx: -100, dy: 0 })).toEqual({});
   });

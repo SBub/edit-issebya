@@ -1,4 +1,4 @@
-import { type BigWordBox, needsCutout, visualBox } from "./behind.ts";
+import { type BigWordBox, needsCutout, visualBounds } from "./behind.ts";
 import type { EngineNote } from "./engine-note.ts";
 import type { TextBox } from "./engine-space.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
@@ -199,6 +199,7 @@ export function runChecks(
   // A big word behind the speaker never sits on a visual card while both show
   // (decision 24: the card is in front of the speaker, the word behind it). A big
   // word with no cut-out is front text: it draws above the card, so it may sit on one.
+  // A card the owner turned covers the upright rectangle around it (`visualBounds`).
   const behindItems = edit.tracks.behind ?? [];
   const cards = behindItems.flatMap((item) => (item.kind === "visual" ? [item] : []));
   for (const word of bigWords) {
@@ -214,7 +215,7 @@ export function runChecks(
     for (const card of cards) {
       const cardSpan = resolved.get(card.id)!;
       if (!(span.start < cardSpan.end - SLACK && cardSpan.start < span.end - SLACK)) continue;
-      if (!overlaps(shrink(rect, SLACK), visualBox(card))) continue;
+      if (!overlaps(shrink(rect, SLACK), visualBounds(card))) continue;
       checks.push({
         rule: "card-overlap",
         item: word.itemId,

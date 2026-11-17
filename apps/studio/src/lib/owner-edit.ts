@@ -5,6 +5,7 @@ import {
   type OwnerTextMove,
   type PlacedComponent,
   isMovable,
+  wholeDegrees,
 } from "@edit-issebya/edit";
 
 // The move and resize editor's own logic (app_docs/owner-edits.md), with no
@@ -74,8 +75,10 @@ export function showMoment(component: Pick<PlacedComponent, "start" | "end">): n
 // (the frame's width over the preview's width on screen).
 // `resize` is the corner handle (the text size, in proportion); `left` and
 // `right` are the edge handles that set the box's width, `top` and `bottom`
-// the ones that set its height (both by setting its lines again).
-export type DragMode = "move" | "resize" | EdgeMode;
+// the ones that set its height (both by setting its lines again); `rotate` is
+// a VISUAL's rotate handle, `angle` the turn it asks for (whole degrees
+// clockwise, snapped).
+export type DragMode = "move" | "resize" | "rotate" | EdgeMode;
 export type EdgeMode = "left" | "right" | "top" | "bottom";
 export const EDGE_MODES: readonly EdgeMode[] = ["left", "right", "top", "bottom"];
 
@@ -83,6 +86,7 @@ export interface Drag {
   mode: DragMode;
   dx: number;
   dy: number;
+  angle?: number;
 }
 
 // Under this many screen pixels a press is a click (it selects), not a drag.
@@ -94,15 +98,86 @@ const MIN_RESIZE_SHARE = 0.05;
 
 // The share a resize drag scales the box by: the direction the handle moved
 // further in, as a share of the box, so dragging the corner handle along
-// either edge resizes it, larger or smaller.
+// either edge resizes it, larger or smaller. A turned VISUAL's drag is read
+// along its own edges.
 export function resizeShare(
-  component: Pick<PlacedComponent, "width" | "height">,
+  component: Pick<PlacedComponent, "width" | "height" | "rotation">,
   drag: Pick<Drag, "dx" | "dy">,
 ): number {
-  const across = (component.width + drag.dx) / component.width;
-  const down = (component.height + drag.dy) / component.height;
+  const { dx, dy } = alongBox(drag, component.rotation ?? 0);
+  const across = (component.width + dx) / component.width;
+  const down = (component.height + dy) / component.height;
   const share = Math.abs(across - 1) >= Math.abs(down - 1) ? across : down;
   return Math.max(MIN_RESIZE_SHARE, share);
+}
+
+// A drag on screen turned back by a box's turn: the same drag along the box's
+// own edges.
+function alongBox(drag: Pick<Drag, "dx" | "dy">, rotation: number): { dx: number; dy: number } {
+  if (rotation === 0) return { dx: drag.dx, dy: drag.dy };
+  const radians = (-rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return { dx: drag.dx * cos - drag.dy * sin, dy: drag.dx * sin + drag.dy * cos };
+}
+
+// A VISUAL's box scaled by `share` with the corner its corner handle is
+// opposite (its top left as it shows, turned) kept where it is: the box's own
+// top left corner for an upright card. Upright, in frame pixels.
+export function scaledVisual(
+  component: Pick<PlacedComponent, "x" | "y" | "width" | "height" | "rotation">,
+  share: number,
+): { x: number; y: number; width: number; height: number } {
+  const { x, y, width, height } = component;
+  const rotation = component.rotation ?? 0;
+  if (rotation === 0) return { x, y, width: width * share, height: height * share };
+  const radians = (rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  // The kept corner, then the new centre from it.
+  const turn = (ox: number, oy: number) => ({ x: ox * cos - oy * sin, y: ox * sin + oy * cos });
+  const from = turn(-width / 2, -height / 2);
+  const cornerX = x + width / 2 + from.x;
+  const cornerY = y + height / 2 + from.y;
+  const next = { width: width * share, height: height * share };
+  const to = turn(next.width / 2, next.height / 2);
+  return {
+    x: cornerX + to.x - next.width / 2,
+    y: cornerY + to.y - next.height / 2,
+    ...next,
+  };
+}
+
+// How close, in degrees, a turning VISUAL comes to upright or a quarter turn
+// (0, 90, 180 or 270 degrees) before it snaps onto it.
+const SNAP_DEGREES = 4;
+
+// A turn in whole degrees (-179 to 180), snapped to the nearest quarter turn
+// when it is within `threshold` degrees of one. `snapped` shows the hint.
+export function snapAngle(
+  degrees: number,
+  threshold = SNAP_DEGREES,
+): { angle: number; snapped: boolean } {
+  const quarter = Math.round(degrees / 90) * 90;
+  if (Math.abs(degrees - quarter) <= threshold) {
+    return { angle: wholeDegrees(quarter), snapped: true };
+  }
+  return { angle: wholeDegrees(degrees), snapped: false };
+}
+
+// The turn a rotate handle asks for: the card's turn when it was pressed plus
+// the angle the pointer went round the box's centre since, the shorter way
+// (-180 to 180 degrees).
+export function turnOfPointer(
+  centre: { x: number; y: number },
+  start: { x: number; y: number },
+  now: { x: number; y: number },
+  from: number,
+): number {
+  const angleOf = (point: { x: number; y: number }) =>
+    (Math.atan2(point.y - centre.y, point.x - centre.x) * 180) / Math.PI;
+  const swept = (((angleOf(now) - angleOf(start) + 540) % 360) + 360) % 360;
+  return from + swept - 180;
 }
 
 // The narrowest or shortest an edge drag may make a box, in frame pixels.
@@ -122,11 +197,11 @@ export function canRewrap(component: Pick<PlacedComponent, "component">): boolea
 // by the drag, scaled about its top left corner, or one edge moved with the
 // opposite edge kept.
 export function draggedBox(
-  component: Pick<PlacedComponent, "x" | "y" | "width" | "height">,
+  component: Pick<PlacedComponent, "x" | "y" | "width" | "height" | "rotation">,
   drag: Drag | null,
 ): { x: number; y: number; width: number; height: number } {
   const { x, y, width, height } = component;
-  if (!drag) return { x, y, width, height };
+  if (!drag || drag.mode === "rotate") return { x, y, width, height };
   if (drag.mode === "move") return { x: x + drag.dx, y: y + drag.dy, width, height };
   if (drag.mode === "right") return { x, y, width: Math.max(MIN_EDGE_PX, width + drag.dx), height };
   if (drag.mode === "bottom") {
@@ -141,14 +216,27 @@ export function draggedBox(
     return { x, y: y + height - next, width, height: next };
   }
   const share = resizeShare(component, drag);
+  if (component.rotation) return scaledVisual(component, share);
   return { x, y, width: width * share, height: height * share };
+}
+
+// The turn a component shows while it is dragged: the rotate handle's angle,
+// or its own.
+export function draggedTurn(
+  component: Pick<PlacedComponent, "rotation">,
+  drag: Drag | null,
+): number {
+  return drag?.mode === "rotate" && drag.angle !== undefined
+    ? drag.angle
+    : (component.rotation ?? 0);
 }
 
 // What a finished drag asks for, before its lines are chosen (`resolveAsk`)
 // and it is made legal (`settleOwnerMove`): a move, or for an edge handle the
 // width or height the box was dragged to and the edge that stays where it was
 // (the right edge for the left handle, the bottom edge for the top one).
-// A VISUAL's ask is its box (`kind: "box"`): moved, or scaled about its corner.
+// A VISUAL's ask is its box (`kind: "box"`): moved, scaled about its corner or
+// turned, always with its turn, so the draft's one move per card carries it.
 export interface OwnerTextAsk extends OwnerTextMove {
   height?: number;
   keep?: { right?: number; bottom?: number };
@@ -163,6 +251,7 @@ export type OwnerAsk = OwnerTextAsk | OwnerBoxMove;
 // no text size.
 export function moveOfDrag(component: PlacedComponent, drag: Drag): OwnerAsk | null {
   if (component.component === "VISUAL") {
+    const rotation = component.rotation ?? 0;
     if (drag.mode === "move") {
       return {
         id: component.id,
@@ -170,18 +259,32 @@ export function moveOfDrag(component: PlacedComponent, drag: Drag): OwnerAsk | n
         x: component.x + drag.dx,
         y: component.y + drag.dy,
         width: component.width,
+        rotation,
+      };
+    }
+    if (drag.mode === "rotate") {
+      if (drag.angle === undefined) return null;
+      return {
+        id: component.id,
+        kind: "box",
+        x: component.x,
+        y: component.y,
+        width: component.width,
+        rotation: wholeDegrees(drag.angle),
       };
     }
     if (drag.mode !== "resize") return null;
+    const box = scaledVisual(component, resizeShare(component, drag));
     return {
       id: component.id,
       kind: "box",
-      x: component.x,
-      y: component.y,
-      width: Math.round(component.width * resizeShare(component, drag)),
+      x: box.x,
+      y: box.y,
+      width: Math.round(box.width),
+      rotation,
     };
   }
-  if (component.size === null) return null;
+  if (component.size === null || drag.mode === "rotate") return null;
   if (
     drag.mode === "left" ||
     drag.mode === "right" ||

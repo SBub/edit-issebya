@@ -17,6 +17,9 @@ export interface PlacedComponent extends Span {
   y: number;
   width: number;
   height: number;
+  // A VISUAL the owner turned: whole degrees clockwise about its box's centre
+  // (`x` to `height` are its box upright). Absent for an upright one.
+  rotation?: number;
 }
 
 // The overlay id prefix of a QUESTION (`question-1`, ...): an accent overlay.
@@ -95,6 +98,7 @@ export function placedComponents(
         y: item.box.y,
         width: item.box.width,
         height: item.box.height,
+        ...(item.rotation ? { rotation: item.rotation } : {}),
       });
       continue;
     }

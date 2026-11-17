@@ -280,8 +280,8 @@ function BuiltPreview({
   }
 
   // One frame of a drag: the page on screen shows the component where the
-  // pointer has it, at once (app_docs/owner-edits.md, "Instant moves"). A move
-  // or a corner resize restyles its elements; an edge handle shows the lines
+  // pointer has it, at once (app_docs/owner-edits.md, "Instant moves"). A move,
+  // a corner resize or a card's turn restyles its elements; an edge handle shows the lines
   // the drop would give, read from pages built with each wrap width once per
   // press. Null when the drag is dropped with nothing to show.
   function dragFrame(component: PlacedComponent, drag: Drag | null) {
@@ -292,7 +292,7 @@ function BuiltPreview({
       player.live(null);
       return;
     }
-    if (drag.mode === "move" || drag.mode === "resize") {
+    if (drag.mode === "move" || drag.mode === "resize" || drag.mode === "rotate") {
       player.live(dragPatch(pageElements(page.html), component, drag));
       return;
     }

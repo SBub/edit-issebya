@@ -1214,6 +1214,38 @@ describe("a big word behind the speaker never sits on a visual card (decision 24
     }
     expect(checksOf(noCutout)).toEqual([]);
   });
+
+  it("the checker reads a turned card as the upright rectangle around it", async () => {
+    const spoken = transcript;
+    const placed = await place(
+      { visuals: [{ from: "w84", to: "w99" }], big_words: [{ from: "w86", to: "w86" }] },
+      { headTrack: BIG_FACE },
+    );
+    const { cards, words } = await boxesOf(placed.edit);
+    const word = words[0]!.box;
+    const width = cards[0]!.right - cards[0]!.left;
+    const height = cards[0]!.bottom - cards[0]!.top;
+    // The card beside the word, 10 px clear of it, on the side with room.
+    const x = word.left - width - 10 >= 0 ? word.left - width - 10 : word.right + 10;
+    const beside = (rotation: number) => {
+      const edit = structuredClone(placed.edit);
+      for (const item of edit.tracks.behind ?? []) {
+        if (item.kind !== "visual") continue;
+        item.box = { x, y: word.top, width, height };
+        if (rotation) item.rotation = rotation;
+      }
+      return edit;
+    };
+    const measurer = await nodeMeasurer();
+    const checksOf = (edit: Edit) =>
+      build(withPlaceholderMasks(edit, spoken), spoken, BIG_FACE, ISSEBYA_PRESET, measurer, {
+        engineRecord: placed.record,
+      }).checks.filter((check) => check.rule === "card-overlap");
+    expect(checksOf(beside(0))).toEqual([]);
+    expect(checksOf(beside(45))).toEqual([
+      expect.objectContaining({ rule: "card-overlap", item: "big-word-1" }),
+    ]);
+  });
 });
 
 describe("the head track's glitch samples (decisions 22 and 23)", () => {

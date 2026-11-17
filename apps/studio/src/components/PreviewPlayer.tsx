@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { type LivePatch, changedElements, pageElements, restyle } from "@/lib/live-page";
+import { type LivePatch, PATCHED, changedElements, pageElements, restyle } from "@/lib/live-page";
 import {
   type MediaState,
   activeAt,
@@ -245,6 +245,7 @@ export function PreviewPlayer({
       const style = { ...wanted.style, ...patch?.style };
       const lines = patch?.html ?? wanted.html;
       const known = [
+        ...PATCHED,
         ...Object.keys(shown.get(id)?.style ?? {}),
         ...Object.keys(wanted.style),
         ...Object.keys(patch?.style ?? {}),

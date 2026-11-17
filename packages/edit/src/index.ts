@@ -145,7 +145,13 @@ export {
   withOwnerCutouts,
 } from "./owner-edit.ts";
 export { type ClipFrames, EXPORT_FPS, clipFrames, reelFrames } from "./span-frames.ts";
-export { type BigWordBox, type MaskSpan, maskSpans } from "./behind.ts";
+export {
+  type BigWordBox,
+  type MaskSpan,
+  maskSpans,
+  rotatedBounds,
+  wholeDegrees,
+} from "./behind.ts";
 export { baselineEdit } from "./baseline.ts";
 export {
   type ChecklistOutcome,

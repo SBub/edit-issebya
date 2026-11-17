@@ -14,10 +14,13 @@ import {
   componentLabel,
   componentOption,
   draggedBox,
+  draggedTurn,
   movableAt,
   movableComponents,
   moveOfDrag,
+  snapAngle,
   snapDrag,
+  turnOfPointer,
 } from "@/lib/owner-edit";
 
 interface Props {
@@ -52,6 +55,11 @@ interface Pressed extends Drag {
   dragging: boolean;
   // Which centre line the dragged box's centre is snapped to.
   snapped: { x: boolean; y: boolean };
+  // A rotate handle's press: the box's centre on screen and the card's turn
+  // when it began; `turnSnapped` while the turn sits on a quarter turn.
+  centre: { x: number; y: number };
+  from: number;
+  turnSnapped: boolean;
 }
 
 const FRAME = ISSEBYA_PRESET.frame;
@@ -83,7 +91,9 @@ const EDGES: Record<EdgeMode, { className: string; label: string }> = {
 // guide shows while it is on one), drag its corner handle to resize it in
 // proportion (the text size), drag an edge handle to make the box wider,
 // narrower, taller or shorter at the same text size (its lines set again; a
-// VISUAL has no edge handle, its corner keeps its picture's aspect ratio). A component has one
+// VISUAL has no edge handle, its corner keeps its picture's aspect ratio; its
+// rotate handle above the box turns it about its centre, snapping upright and
+// to each quarter turn with a guide and its angle shown). A component has one
 // box for its whole time on screen. Nothing here draws the text: after each
 // drag the preview is built again from the draft by the one builder. The bar
 // sits in the frame's top margin, which the platforms cover, so it never hides
@@ -109,8 +119,11 @@ export function MoveLayer({
 
   function press(event: ReactPointerEvent<HTMLElement>, id: string, mode: Drag["mode"]) {
     if (saving || event.button !== 0) return;
-    const width = layerRef.current?.getBoundingClientRect().width ?? 0;
-    if (width <= 0) return;
+    const rect = layerRef.current?.getBoundingClientRect();
+    const width = rect?.width ?? 0;
+    if (!rect || width <= 0) return;
+    const component = components.find((entry) => entry.id === id);
+    const perFrame = width / FRAME.width;
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -126,6 +139,14 @@ export function MoveLayer({
       dy: 0,
       dragging: false,
       snapped: { x: false, y: false },
+      centre: component
+        ? {
+            x: rect.left + (component.x + component.width / 2) * perFrame,
+            y: rect.top + (component.y + component.height / 2) * perFrame,
+          }
+        : { x: 0, y: 0 },
+      from: component?.rotation ?? 0,
+      turnSnapped: false,
     });
   }
 
@@ -137,6 +158,28 @@ export function MoveLayer({
     const screenY = event.clientY - pressed.startY;
     const dragging = pressed.dragging || Math.hypot(screenX, screenY) >= CLICK_SLOP_PX;
     const component = components.find((entry) => entry.id === pressed.id);
+    if (pressed.mode === "rotate") {
+      // The card turns with the pointer round its centre, snapping upright and
+      // to each quarter turn.
+      const turn = snapAngle(
+        turnOfPointer(
+          pressed.centre,
+          { x: pressed.startX, y: pressed.startY },
+          { x: event.clientX, y: event.clientY },
+          pressed.from,
+        ),
+      );
+      setPressed({
+        ...pressed,
+        dragging,
+        angle: turn.angle,
+        turnSnapped: dragging && turn.snapped,
+      });
+      if (dragging && component) {
+        onDragFrame(component, { mode: "rotate", dx: 0, dy: 0, angle: turn.angle });
+      }
+      return;
+    }
     const raw = { ...pressed, dragging, dx: screenX * pressed.scale, dy: screenY * pressed.scale };
     // The box's centre gravitates to the frame's centre lines.
     const { drag: snapped, snapped: on } = component
@@ -234,10 +277,54 @@ export function MoveLayer({
           className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-accent"
         />
       )}
+      {/* The turn's hint: its angle at the card's centre, and a guide through
+          the centre while it sits upright or on a quarter turn. */}
+      {pressed?.dragging &&
+        pressed.mode === "rotate" &&
+        (() => {
+          const component = components.find((entry) => entry.id === pressed.id);
+          if (!component) return null;
+          const centre = {
+            left: `${((component.x + component.width / 2) / FRAME.width) * 100}%`,
+            top: `${((component.y + component.height / 2) / FRAME.height) * 100}%`,
+          };
+          return (
+            <>
+              {pressed.turnSnapped && (
+                <>
+                  <div
+                    data-testid="move-turn-guide"
+                    data-axis="horizontal"
+                    style={{ top: centre.top }}
+                    className="pointer-events-none absolute inset-x-0 h-px -translate-y-1/2 bg-accent"
+                  />
+                  <div
+                    data-testid="move-turn-guide"
+                    data-axis="vertical"
+                    style={{ left: centre.left }}
+                    className="pointer-events-none absolute inset-y-0 w-px -translate-x-1/2 bg-accent"
+                  />
+                </>
+              )}
+              <span
+                data-testid="move-angle"
+                data-snapped={pressed.turnSnapped ? "true" : undefined}
+                style={centre}
+                className={`pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[11px] leading-4 font-semibold whitespace-nowrap ${
+                  pressed.turnSnapped ? "bg-accent text-black" : "bg-black/75 text-white"
+                }`}
+              >
+                {draggedTurn(component, pressed)}°
+              </span>
+            </>
+          );
+        })()}
       {shown.map((component) => {
         const selected = component.id === selectedId;
         const active = pressed?.id === component.id && pressed.dragging ? pressed : null;
         const label = componentLabel(component.component);
+        const turn = draggedTurn(component, active);
+        const visual = component.component === "VISUAL";
         return (
           <div
             key={component.id}
@@ -249,6 +336,7 @@ export function MoveLayer({
             data-component-id={component.id}
             data-component={component.component}
             data-selected={selected ? "true" : undefined}
+            data-rotation={visual ? turn : undefined}
             onPointerDown={(event) => press(event, component.id, "move")}
             onPointerMove={drag}
             onPointerUp={release}
@@ -264,16 +352,42 @@ export function MoveLayer({
                 ? "cursor-move outline outline-2 outline-accent"
                 : "cursor-pointer outline-dashed outline-1 outline-white/80 hover:outline-2 hover:outline-white"
             }`}
-            style={boxStyle(draggedBox(component, active), FRAME)}
+            style={{
+              ...boxStyle(draggedBox(component, active), FRAME),
+              // A turned card's box turns with it, about its centre.
+              ...(turn !== 0 ? { rotate: `${turn}deg` } : {}),
+            }}
           >
             {selected && (
               <>
                 <span
                   data-testid="move-kind"
-                  className="absolute bottom-full left-0 mb-1 -ml-0.5 bg-accent px-1.5 py-0.5 text-[11px] leading-4 font-semibold whitespace-nowrap text-black"
+                  className={`absolute left-0 -ml-0.5 bg-accent px-1.5 py-0.5 text-[11px] leading-4 font-semibold whitespace-nowrap text-black ${
+                    // A card's rotate handle is above it: its kind shows below.
+                    visual ? "top-full mt-1" : "bottom-full mb-1"
+                  }`}
                 >
                   {label}
                 </span>
+                {visual && (
+                  <>
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute -top-5 left-1/2 h-5 w-px -translate-x-1/2 bg-accent"
+                    />
+                    <span
+                      role="button"
+                      aria-label={`Rotate ${label.toLowerCase()}`}
+                      title="Drag to rotate"
+                      data-testid="move-rotate"
+                      onPointerDown={(event) => press(event, component.id, "rotate")}
+                      onPointerMove={drag}
+                      onPointerUp={release}
+                      onPointerCancel={cancel}
+                      className="absolute -top-7 left-1/2 size-4 -translate-x-1/2 cursor-grab rounded-full border-2 border-white bg-accent active:cursor-grabbing"
+                    />
+                  </>
+                )}
                 <span
                   role="button"
                   aria-label={`Resize ${label.toLowerCase()}`}

@@ -29,10 +29,10 @@ const INPUTS = {
   head_track: { step: "head_track", fingerprint: "h", file: "head-track.json" },
 };
 
-// A text's move and a VISUAL's box move.
+// A text's move and a VISUAL's box move, the card turned.
 const MOVES = [
   { id: "accent-1", x: 120, y: 900, size: 110 },
-  { id: "visual-1", kind: "box", x: 600, y: 700, width: 200 },
+  { id: "visual-1", kind: "box", x: 600, y: 700, width: 200, rotation: -20 },
 ];
 
 function versionArgs(reelId: string, id: string, parentId: string | null) {
@@ -71,6 +71,9 @@ function moveRecord(item: string, engineVersionId: string, wrapWidth: number | n
     owner: { x: 120, y: 900, width: 448.5, height: 110, size: 110 },
     moved: true,
     resized: false,
+    rotated: false,
+    engine_rotation: 0,
+    owner_rotation: 0,
     wrap_width: wrapWidth,
     engine_version_id: engineVersionId,
     context: {
@@ -93,7 +96,7 @@ function moveRecord(item: string, engineVersionId: string, wrapWidth: number | n
   };
 }
 
-// A VISUAL's learning record: its card's boxes, no text size.
+// A VISUAL's learning record: its card's boxes, no text size, turned by the owner.
 function visualRecord(engineVersionId: string) {
   return {
     ...moveRecord("visual-1", engineVersionId),
@@ -103,6 +106,8 @@ function visualRecord(engineVersionId: string) {
     engine: { x: 75, y: 1047, width: 300, height: 383, size: null },
     owner: { x: 600, y: 700, width: 200, height: 255, size: null },
     resized: true,
+    rotated: true,
+    owner_rotation: -20,
   };
 }
 
@@ -120,7 +125,7 @@ async function movesOf(versionId: string) {
   const { data, error } = await admin
     .from("owner_moves")
     .select(
-      "owner_id, reel_id, version_id, from_version_id, engine_version_id, item, component, variant, text, start_seconds, end_seconds, engine_box, owner_box, moved, resized, wrap_width, context",
+      "owner_id, reel_id, version_id, from_version_id, engine_version_id, item, component, variant, text, start_seconds, end_seconds, engine_box, owner_box, moved, resized, rotated, engine_rotation, owner_rotation, wrap_width, context",
     )
     .eq("version_id", versionId)
     .order("item");
@@ -277,18 +282,25 @@ describe("save_version with the owner's edit", () => {
         owner_box: record.owner,
         moved: true,
         resized: false,
+        rotated: false,
+        engine_rotation: 0,
+        owner_rotation: 0,
         wrap_width: null,
         context: record.context,
       },
       // The wrap width an edge handle set comes back as it was sent.
       expect.objectContaining({ item: "hook", version_id: edited, wrap_width: 412.25 }),
-      // A VISUAL moved and scaled: its boxes with no size, no wrap width.
+      // A VISUAL moved, scaled and turned: its boxes with no size, no wrap
+      // width, the engine's turn 0 and the owner's.
       expect.objectContaining({
         item: "visual-1",
         component: "VISUAL",
         engine_box: visualRecord(versionA).engine,
         owner_box: visualRecord(versionA).owner,
         resized: true,
+        rotated: true,
+        engine_rotation: 0,
+        owner_rotation: -20,
         wrap_width: null,
       }),
     ]);
@@ -317,7 +329,7 @@ describe("save_version with the owner's edit", () => {
     expect(await movesOf(id)).toEqual([]);
   });
 
-  it("refuses learning rows without the version they were made on, and a component it does not know", async () => {
+  it("refuses learning rows without the version they were made on, a component it does not know and a turn past 180 degrees", async () => {
     const id = randomUUID();
     const orphan = await admin.rpc("save_version", {
       ...versionArgs(reelA, id, edited),
@@ -330,6 +342,12 @@ describe("save_version with the owner's edit", () => {
       p_owner_moves: [{ ...moveRecord("w0001", versionA), component: "CAPTION" }],
     });
     expect(caption.error).not.toBeNull();
+    const overTurned = await admin.rpc("save_version", {
+      ...versionArgs(reelA, id, edited),
+      p_edited_from_id: edited,
+      p_owner_moves: [{ ...visualRecord(versionA), owner_rotation: 181 }],
+    });
+    expect(overTurned.error?.message).toMatch(/owner_moves_owner_rotation_check/);
     // One transaction: the version is not saved either.
     const { data } = await admin.from("versions").select("id").eq("id", id);
     expect(data).toEqual([]);

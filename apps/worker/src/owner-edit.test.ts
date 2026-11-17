@@ -389,7 +389,29 @@ describe("runOwnerEdit", () => {
       owner: { ...after.box, size: null },
       moved: true,
       resized: true,
+      rotated: false,
+      engine_rotation: 0,
+      owner_rotation: 0,
       wrap_width: null,
+    });
+    // The owner's version edited again: the card turned, its box kept. The
+    // record compares with the engine's upright card.
+    const scaled = current!;
+    await ownerEditRun({
+      versionId: scaled,
+      moves: [{ id: before.id, kind: "box", x: 120, y: 600, width, rotation: -15 }],
+    });
+    const turned = await visualOf(current!);
+    expect(turned.box).toEqual(after.box);
+    expect(turned.rotation).toBe(-15);
+    const { owner_moves: turnRecords } = rows.get(current!)!;
+    expect(turnRecords[0]).toMatchObject({
+      item: before.id,
+      engine: { ...before.box, size: null },
+      owner: { ...after.box, size: null },
+      rotated: true,
+      engine_rotation: 0,
+      owner_rotation: -15,
     });
   });
 

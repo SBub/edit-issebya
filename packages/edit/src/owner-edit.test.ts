@@ -840,3 +840,203 @@ describe("the learning records of a save", () => {
     ).toBe(true);
   });
 });
+
+describe("a VISUAL turned by the owner", () => {
+  const safe = SAFE_ZONE.box;
+  const visual = (edit: Edit) => {
+    const item = edit.tracks.behind!.find((entry) => entry.id === "visual-1");
+    if (item?.kind !== "visual") throw new Error("no visual-1");
+    return item;
+  };
+
+  it("turns the card about its centre in whole degrees, its box kept, and the builder draws the turn", async () => {
+    const context = await contextOf(hook);
+    const turned = applyOwnerMoves(
+      hook.edit,
+      [{ id: "visual-1", kind: "box", x: 400, y: 700, width: 300, rotation: -350 }],
+      context,
+    );
+    if (!turned.ok) throw new Error(turned.reasons.join("; "));
+    expect(visual(turned.edit)).toMatchObject({
+      box: { x: 400, y: 700, width: 300, height: 383 },
+      rotation: 10,
+    });
+    const built = build(
+      turned.edit,
+      context.transcript,
+      context.headTrack,
+      preset,
+      context.measurer,
+    );
+    expect(byId(built.components, "visual-1")).toMatchObject({
+      x: 400,
+      y: 700,
+      width: 300,
+      height: 383,
+      rotation: 10,
+    });
+    // The `rotate` property about the box's centre, never `transform`.
+    const element = built.html.match(/<div id="visual-1"[^>]*>/)![0];
+    expect(element).toContain("rotate: 10deg");
+    expect(element).not.toContain("transform");
+    // -190 is 170; a move with no turn keeps the card's own; 0 is upright again.
+    const back = applyOwnerMoves(
+      turned.edit,
+      [{ id: "visual-1", kind: "box", x: 400, y: 700, width: 300, rotation: -190 }],
+      context,
+    );
+    if (!back.ok) throw new Error(back.reasons.join("; "));
+    expect(visual(back.edit).rotation).toBe(170);
+    const kept = applyOwnerMoves(
+      turned.edit,
+      [{ id: "visual-1", kind: "box", x: 450, y: 700, width: 300 }],
+      context,
+    );
+    if (!kept.ok) throw new Error(kept.reasons.join("; "));
+    expect(visual(kept.edit).rotation).toBe(10);
+    const upright = applyOwnerMoves(
+      turned.edit,
+      [{ id: "visual-1", kind: "box", x: 400, y: 700, width: 300, rotation: 0 }],
+      context,
+    );
+    if (!upright.ok) throw new Error(upright.reasons.join("; "));
+    expect("rotation" in visual(upright.edit)).toBe(false);
+    expect(
+      build(upright.edit, context.transcript, context.headTrack, preset, context.measurer).html,
+    ).not.toContain("rotate:");
+  });
+
+  it("refuses a turn that is not whole degrees, and a turn on a text", async () => {
+    const context = await contextOf(hook);
+    expect(
+      applyOwnerMoves(
+        hook.edit,
+        [{ id: "visual-1", kind: "box", x: 400, y: 700, width: 300, rotation: 12.5 }],
+        context,
+      ),
+    ).toEqual({
+      ok: false,
+      reasons: ["visual-1: its turn is not whole degrees from -360 to 360"],
+    });
+    expect(parseOwnerMoves([{ id: "hook", x: 1, y: 2, size: 80, rotation: 10 }])).toBeNull();
+    expect(
+      parseOwnerMoves([{ id: "visual-1", kind: "box", x: 1, y: 2, width: 200, rotation: 1.5 }]),
+    ).toBeNull();
+    expect(
+      parseOwnerMoves([{ id: "visual-1", kind: "box", x: 1, y: 2, width: 200, rotation: 361 }]),
+    ).toBeNull();
+    expect(
+      parseOwnerMoves([{ id: "visual-1", kind: "box", x: 1, y: 2, width: 200, rotation: -45 }]),
+    ).toEqual([{ id: "visual-1", kind: "box", x: 1, y: 2, width: 200, rotation: -45 }]);
+  });
+
+  it("reads a turned card's safe zone from the upright rectangle around it", async () => {
+    const context = await contextOf(hook);
+    // Upright at the safe zone's left edge it holds; turned 45 degrees its
+    // corners reach past the edge.
+    const at = { id: "visual-1", kind: "box" as const, x: safe.left, y: 700, width: 300 };
+    const upright = applyOwnerMoves(hook.edit, [at], context);
+    const turned = applyOwnerMoves(hook.edit, [{ ...at, rotation: 45 }], context);
+    if (!upright.ok || !turned.ok) throw new Error("not applied");
+    expect(ownerMoveProblems(await componentsOf(hook, upright.edit), ["visual-1"])).toEqual([]);
+    expect(ownerMoveProblems(await componentsOf(hook, turned.edit), ["visual-1"])).toEqual([
+      "visual-1: runs past the safe zone",
+    ]);
+  });
+
+  it("settles a turned card so the rectangle around it is inside the safe zone, the turn kept", async () => {
+    const context = await contextOf(hook);
+    const past = settleOwnerMove(
+      hook.edit,
+      { id: "visual-1", kind: "box", x: safe.left, y: 700, width: 300, rotation: 45 },
+      context,
+    );
+    if (!past.ok) throw new Error(past.reasons.join("; "));
+    expect(past.move).toMatchObject({ kind: "box", width: 300, rotation: 45 });
+    expect(past.move.x).toBeGreaterThan(safe.left);
+    expect(past.move.y).toBe(700);
+    const after = byId(await componentsOf(hook, past.edit), "visual-1");
+    expect(after.rotation).toBe(45);
+    expect(ownerMoveProblems([after], ["visual-1"])).toEqual([]);
+    expect(Number.isInteger(after.x) && Number.isInteger(after.y)).toBe(true);
+    // Too large to fit turned: shrunk until the rectangle around it fits.
+    const huge = settleOwnerMove(
+      hook.edit,
+      { id: "visual-1", kind: "box", x: 300, y: 600, width: 900, rotation: 30 },
+      context,
+    );
+    if (!huge.ok) throw new Error(huge.reasons.join("; "));
+    const fitted = byId(await componentsOf(hook, huge.edit), "visual-1");
+    expect(fitted.width).toBeLessThan(900);
+    expect(ownerMoveProblems([fitted], ["visual-1"])).toEqual([]);
+    // Any angle is brought to whole degrees from -179 to 180.
+    const odd = settleOwnerMove(
+      hook.edit,
+      { id: "visual-1", kind: "box", x: 400, y: 700, width: 300, rotation: -180 },
+      context,
+    );
+    if (!odd.ok) throw new Error(odd.reasons.join("; "));
+    expect(odd.move).toMatchObject({ rotation: 180 });
+  });
+
+  it("counts a turn alone as a change, and leaves out a turn back to the card's own", async () => {
+    const context = await contextOf(hook);
+    const components = await componentsOf(hook);
+    const still = { id: "visual-1", kind: "box" as const, x: 75, y: 1047, width: 300 };
+    const turned = { ...still, rotation: 15 };
+    expect(effectiveMoves([turned], components)).toEqual([turned]);
+    expect(effectiveMoves([{ ...still, rotation: 360 }], components)).toEqual([]);
+    const applied = applyOwnerMoves(hook.edit, [turned], context);
+    if (!applied.ok) throw new Error(applied.reasons.join("; "));
+    const after = await componentsOf(hook, applied.edit);
+    expect(effectiveMoves([turned], components, after)).toEqual([turned]);
+    expect(effectiveMoves([{ ...still, rotation: 0 }], components, components)).toEqual([]);
+  });
+
+  it("records a turn alone: the engine's turn 0 and the owner's, rotated, not moved or resized", async () => {
+    const context = await contextOf(hook);
+    const engine = await componentsOf(hook);
+    const moves = [
+      { id: "visual-1", kind: "box" as const, x: 75, y: 1047, width: 300, rotation: -20 },
+    ];
+    const applied = applyOwnerMoves(hook.edit, moves, context);
+    if (!applied.ok) throw new Error(applied.reasons.join("; "));
+    const [record] = ownerMoveRecords({
+      ids: ["visual-1"],
+      moves,
+      engine,
+      owner: await componentsOf(hook, applied.edit),
+      edit: applied.edit,
+      headTrack: hook.headTrack,
+      preset,
+    });
+    expect(record).toMatchObject({
+      item: "visual-1",
+      component: "VISUAL",
+      engine: { x: 75, y: 1047, width: 300, height: 383, size: null },
+      owner: { x: 75, y: 1047, width: 300, height: 383, size: null },
+      moved: false,
+      resized: false,
+      rotated: true,
+      engine_rotation: 0,
+      owner_rotation: -20,
+      wrap_width: null,
+    });
+    // A text's record says no turn.
+    const hookMoves = [{ id: "hook", x: 135, y: 400, size: 110 }];
+    const hookApplied = applyOwnerMoves(applied.edit, hookMoves, context);
+    if (!hookApplied.ok) throw new Error(hookApplied.reasons.join("; "));
+    const [hookRecord] = ownerMoveRecords({
+      ids: ["hook"],
+      moves: hookMoves,
+      engine,
+      owner: await componentsOf(hook, hookApplied.edit),
+      edit: hookApplied.edit,
+      headTrack: hook.headTrack,
+      preset,
+    });
+    expect(hookRecord).toMatchObject({ rotated: false, engine_rotation: 0, owner_rotation: 0 });
+    const card = hookRecord!.context.others.find((other) => other.item === "visual-1");
+    if (card) expect(card).toMatchObject({ rotation: -20, moved_by_owner: true });
+  });
+});

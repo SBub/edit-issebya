@@ -568,6 +568,9 @@ function behindElement(
       `top: ${px(box.top)}px`,
       `width: ${px(box.right - box.left)}px`,
       `height: ${px(box.bottom - box.top)}px`,
+      // The owner's turn, about the box's centre. The `rotate` property, never
+      // `transform`, which the page's timeline owns (app_docs/owner-edits.md).
+      ...(item.rotation ? [`rotate: ${item.rotation}deg`] : []),
       ...extra,
     ].join("; ");
     if (item.image !== undefined) {

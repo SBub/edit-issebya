@@ -1,5 +1,6 @@
 -- The owner's moves (app_docs/owner-edits.md): in the studio the owner moves
--- and resizes a text component or a VISUAL of a version and presses Save. That queues an
+-- and resizes a text component or a VISUAL of a version (and turns a VISUAL)
+-- and presses Save. That queues an
 -- `owner_edit` job; the worker applies the moves to the version and saves the
 -- result as a new version, marked as the owner's. For every component moved it
 -- also keeps a learning record: where the layout engine placed it, where the
@@ -45,7 +46,7 @@ alter table public.jobs
   );
 
 comment on column public.jobs.owner_edit is
-  'An owner_edit job''s payload: { version_id, moves: [{ id, x, y, size, width? } or { id, kind: "box", x, y, width }] }; null for every other kind.';
+  'An owner_edit job''s payload: { version_id, moves: [{ id, x, y, size, width? } or { id, kind: "box", x, y, width, rotation? }] }; null for every other kind.';
 
 grant insert (owner_edit) on public.jobs to authenticated;
 
@@ -117,6 +118,15 @@ create table public.owner_moves (
   -- A new size, or a box of another width or height (its lines set again, or
   -- a VISUAL scaled).
   resized boolean not null,
+  -- A VISUAL turned: the engine's turn (always 0, the engine never turns a
+  -- card) and the owner's, in whole degrees clockwise about the box's centre
+  -- (-179 to 180). 0 and 0 for a text, which is never turned. The boxes above
+  -- are the card upright.
+  rotated boolean not null default false,
+  engine_rotation integer not null default 0
+    constraint owner_moves_engine_rotation_check check (engine_rotation between -179 and 180),
+  owner_rotation integer not null default 0
+    constraint owner_moves_owner_rotation_check check (owner_rotation between -179 and 180),
   -- The wrap width the owner set with an edge handle, in frame pixels at the
   -- owner's size (the text set on the fewest balanced lines that fit it); null
   -- when the version's lines were kept.
@@ -234,7 +244,8 @@ begin
 
   insert into public.owner_moves (
     owner_id, reel_id, version_id, from_version_id, engine_version_id, item, component, variant,
-    text, start_seconds, end_seconds, engine_box, owner_box, moved, resized, wrap_width, context
+    text, start_seconds, end_seconds, engine_box, owner_box, moved, resized, rotated,
+    engine_rotation, owner_rotation, wrap_width, context
   )
   select
     v_owner, p_reel_id, p_id, p_edited_from_id,
@@ -243,6 +254,9 @@ begin
     (m ->> 'start')::numeric, (m ->> 'end')::numeric,
     m -> 'engine', m -> 'owner',
     (m ->> 'moved')::boolean, (m ->> 'resized')::boolean,
+    coalesce((m ->> 'rotated')::boolean, false),
+    coalesce((m ->> 'engine_rotation')::integer, 0),
+    coalesce((m ->> 'owner_rotation')::integer, 0),
     (m ->> 'wrap_width')::numeric,
     m -> 'context'
   from jsonb_array_elements(coalesce(p_owner_moves, '[]'::jsonb)) as m;

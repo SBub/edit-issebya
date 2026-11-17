@@ -510,6 +510,11 @@ and 2.5 s; against the version before the moves 0.915802, 0.901661 and 0.919066.
 guardrail scored 0.993226, 0.995332 and 0.996493. The bound is unchanged. These scores predate the
 widened hook (2026-11-16); the case has not been measured again since it was added.
 
+In the behind case, the owner's VISUAL (moved and scaled by a real `owner_edit` job) is then turned
+45 degrees by another one (2026-11-17): its preview draws `rotate: 45deg` and no `transform`, its
+export is compared with its preview at the same moments and bound, and against the upright card's
+previews it must fall below the bound. Written, not run yet: no score is measured.
+
 Composition-box captures at device scale 1 (before the big word):
 
 | Moment | Guardrail | 60 px probe | Photo behind | Photo behind probe |

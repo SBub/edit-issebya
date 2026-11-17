@@ -583,7 +583,7 @@ async function ownerVisualMoveOf(versionId: string) {
 // An `owner_edit` job on a version, run by the worker; the owner's new version.
 async function ownerEditTo(
   versionId: string,
-  moves: { id: string; kind: "box"; x: number; y: number; width: number }[],
+  moves: { id: string; kind: "box"; x: number; y: number; width: number; rotation?: number }[],
 ): Promise<string> {
   const { error } = await admin.from("jobs").insert({
     reel_id: reel!.reelId,
@@ -591,7 +591,14 @@ async function ownerEditTo(
     kind: "owner_edit",
     owner_edit: {
       version_id: versionId,
-      moves: moves.map(({ id, kind, x, y, width }) => ({ id, kind, x, y, width })),
+      moves: moves.map(({ id, kind, x, y, width, rotation }) => ({
+        id,
+        kind,
+        x,
+        y,
+        width,
+        ...(rotation === undefined ? {} : { rotation }),
+      })),
     },
   });
   if (error) throw new Error(`owner edit job not queued: ${error.message}`);
@@ -631,7 +638,7 @@ async function wordMoments(versionId: string): Promise<number[]> {
   );
 }
 
-test("a visual, the same visual moved and resized by the owner, and a big word behind the speaker match between preview and export", async () => {
+test("a visual, the same visual moved and resized and then turned by the owner, and a big word behind the speaker match between preview and export", async () => {
   test.setTimeout(20 * 60_000);
   const dir = await mkdtemp(join(tmpdir(), "export-guardrail-behind-"));
   try {
@@ -688,6 +695,46 @@ test("a visual, the same visual moved and resized by the owner, and a big word b
     }
     const againstEngine = await scores("owner-visual-against-engine", movedMp4, behindPreviews);
     expect(Math.min(...againstEngine)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
+
+    // The owner then turns the moved card 45 degrees about its centre, its box
+    // kept: the builder draws it with the `rotate` property in both, so the
+    // turned version exports as its preview shows it, and against the upright
+    // card's previews the comparison sees the turn.
+    const turn = 45;
+    const turnedId = await ownerEditTo(movedId, [
+      { id: visualMove.id, kind: "box", x: card.x, y: card.y, width: card.width, rotation: turn },
+    ]);
+    await openPreview(turnedId);
+    const turned = await composition()
+      .locator(`[id="${visualMove.id}"]`)
+      .evaluate((el) => {
+        const style = (el as HTMLElement).style;
+        return {
+          x: parseFloat(style.left),
+          y: parseFloat(style.top),
+          width: parseFloat(style.width),
+          rotate: style.rotate,
+          transform: style.transform,
+        };
+      });
+    expect(turned).toMatchObject({
+      x: card.x,
+      y: card.y,
+      width: card.width,
+      rotate: `${turn}deg`,
+      transform: "",
+    });
+    const turnedPreviews = await capturePreview("owner-visual-turned");
+    const { mp4: turnedMp4 } = await exportNow("owner-visual-turned");
+    for (const score of await scores("owner-visual-turned", turnedMp4, turnedPreviews)) {
+      expect(score).toBeGreaterThanOrEqual(PREVIEW_EXPORT_SSIM_BOUND);
+    }
+    const againstUpright = await scores(
+      "owner-visual-turned-against-upright",
+      turnedMp4,
+      movedPreviews,
+    );
+    expect(Math.min(...againstUpright)).toBeLessThan(PREVIEW_EXPORT_SSIM_BOUND);
 
     // One big word behind the speaker, a second version.
     const wordId = await startOverTo(await behindWordAnswerScript(dir, "w0001"));
