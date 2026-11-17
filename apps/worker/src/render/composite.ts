@@ -165,8 +165,9 @@ export function soundPackets(frames: number): number {
 }
 
 // The sound page's AAC cut to the single call's exact packets, by stream copy.
-// The page is rendered at 1 fps, so HyperFrames pads its mix to a whole second:
-// longer than the reel, but its first packets are the same bytes. Keep
+// The page's frames end exactly at the reel's end (soundPageFps, a whole
+// rate), so its packets are the single call's bytes; HyperFrames still writes
+// the page's stream with its own last-packet length. Keep
 // `soundPackets` of them and shorten the last with HyperFrames' own `setts`
 // expression. Never cut by time (`-t`): that drops packets by timestamp and
 // cannot shorten the last one.
@@ -198,6 +199,38 @@ export function soundCutArgs({
     `setts=duration='if(gte((PTS+DURATION)*TB,${target}),round(${target}/TB-PTS),DURATION)'`,
     output,
   ];
+}
+
+// ffprobe's arguments counting the packets of the cut sound's stream.
+export function soundPacketsArgs(path: string): string[] {
+  return [
+    "-v",
+    "error",
+    "-select_streams",
+    "a:0",
+    "-count_packets",
+    "-show_entries",
+    "stream=nb_read_packets",
+    "-of",
+    "csv=p=0",
+    path,
+  ];
+}
+
+// Refuses a cut sound shorter than the video: fewer packets than
+// `soundPackets(frames)` means the sound page's stream ended before the reel
+// does, and the export would play its tail silent. `counted` is ffprobe's
+// answer to `soundPacketsArgs`.
+export function assertSoundCovers(counted: string, frames: number): void {
+  const packets = Number.parseInt(counted.trim(), 10);
+  const needed = soundPackets(frames);
+  if (Number.isInteger(packets) && packets >= needed) return;
+  const have = Number.isInteger(packets)
+    ? `${packets} packets (${((packets * AAC_PACKET) / AAC_RATE).toFixed(2)} s)`
+    : `no packet count (${JSON.stringify(counted.trim())})`;
+  throw new Error(
+    `render: the sound is shorter than the video: ${have}, the reel needs ${needed} packets (${(frames / FPS).toFixed(2)} s)`,
+  );
 }
 
 export interface CompositeInput {

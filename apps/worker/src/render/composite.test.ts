@@ -10,8 +10,10 @@ import {
   footageJpegArgs,
   maskListText,
   parseMediaFacts,
+  assertSoundCovers,
   soundCutArgs,
   soundPackets,
+  soundPacketsArgs,
 } from "./composite.ts";
 import type { MediaFacts } from "./render-route.ts";
 import { fixtureEdit } from "./render-test-support.ts";
@@ -275,6 +277,51 @@ describe("the sound cut", () => {
       `setts=duration='if(gte((PTS+DURATION)*TB,${target}),round(${target}/TB-PTS),DURATION)'`,
       "/r/sound.m4a",
     ]);
+  });
+
+  it("counts the packets of several reel lengths", () => {
+    // 1683 frames is 56.1 s, 2,692,800 samples: 2630 packets and one more.
+    expect(soundPackets(1683)).toBe(2631);
+    expect(soundPackets(1013)).toBe(1584);
+    expect(soundPackets(3045)).toBe(4759);
+  });
+
+  it("counts the cut sound's packets with ffprobe", () => {
+    expect(soundPacketsArgs("/r/sound.m4a")).toEqual([
+      "-v",
+      "error",
+      "-select_streams",
+      "a:0",
+      "-count_packets",
+      "-show_entries",
+      "stream=nb_read_packets",
+      "-of",
+      "csv=p=0",
+      "/r/sound.m4a",
+    ]);
+  });
+
+  it("accepts a cut sound that holds every packet of the reel", () => {
+    for (const frames of [81, 289, 1013, 1683, 3045]) {
+      expect(() => assertSoundCovers(`${soundPackets(frames)}\n`, frames)).not.toThrow();
+    }
+  });
+
+  it("refuses a cut sound shorter than the video, naming both lengths", () => {
+    // What the fractional page rate left of a 1683-frame reel: 103 packets.
+    expect(() => assertSoundCovers("103\n", 1683)).toThrow(
+      "render: the sound is shorter than the video: 103 packets (2.20 s), the reel needs 2631 packets (56.10 s)",
+    );
+    for (const frames of [1013, 1683, 3045]) {
+      expect(() => assertSoundCovers(String(soundPackets(frames) - 1), frames)).toThrow(
+        /shorter than the video/,
+      );
+    }
+  });
+
+  it("refuses an answer that is no packet count", () => {
+    expect(() => assertSoundCovers("", 81)).toThrow(/no packet count \(""\)/);
+    expect(() => assertSoundCovers("N/A", 81)).toThrow(/shorter than the video/);
   });
 
   it("never cuts by time", () => {

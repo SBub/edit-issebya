@@ -216,9 +216,11 @@ and rule 6 (`engine-place.ts`).
   measured against its own export. `EXPORT_FPS` is 30. `reelFrames(duration)` is
   `ceil(duration x 30)`. `clipFrames({ start, end }, total)` gives the clip's first output frame
   (`ceil(start x 30)`), its last (`ceil(end x 30) - 1`, never past the reel), how many of its own
-  frames HyperFrames extracts (`round((end - start) x 30)`) and `held`, the output frames on which
-  the clip has no frame of its own left and repeats its last one. A span of 16.033 to 17.767 s is on
-  53 frames (481 to 533) and extracts 52, so frame 533 repeats frame 532. The worker's composite
+  frames HyperFrames extracts (`round((end - first / 30) x 30)`: HyperFrames moves a start between
+  two frames forward to the next frame and extracts from there) and `held`, the output frames on
+  which the clip has no frame of its own left and repeats its last one. A span of 16.033 to 17.767 s
+  is on 53 frames (481 to 533) and extracts 52, so frame 533 repeats frame 532; one of 0.867 to
+  2.367 s is on frames 27 to 71 and extracts 44 from 0.9 s, so frame 71 repeats frame 70. The worker's composite
   follows these rules (`apps/worker/src/render/composite.ts`).
 - `src/measure.ts`: `createMeasurer(hb, pair, fonts)` over the initialised `harfbuzzjs` module, the pair and its
   two files' bytes, all passed in by the caller (the worker's `apps/worker/src/edit-measurer.ts` reads

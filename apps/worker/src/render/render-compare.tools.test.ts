@@ -4,15 +4,24 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { type Edit, reelFrames } from "@edit-issebya/edit";
+import { type Edit, ISSEBYA_PRESET, build, reelFrames } from "@edit-issebya/edit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spanCropTop } from "../cutout/crop.ts";
 import { maskToolCall } from "../cutout/mask-tool.ts";
 import { withMasks } from "../cutout/spans.ts";
+import { editMeasurer } from "../edit-measurer.ts";
 import { REAL_TOOLS } from "../pipeline/tools-test-support.ts";
 import { recordingSteps, stepContext } from "../recording-steps.ts";
 import { runToolsStep, spawnChild } from "../step-runner.ts";
-import type { RenderFiles } from "./render-project.ts";
+import { assertSoundCovers, soundCutArgs, soundPackets, soundPacketsArgs } from "./composite.ts";
+import {
+  layerArgs,
+  renderEnv,
+  renderScratchEnv,
+  soundPageFps,
+  withChromeTmp,
+} from "./render-call.ts";
+import { type RenderFiles, writeRenderProject } from "./render-project.ts";
 import type { RenderRoute, RenderSettings } from "./render-route.ts";
 import { renderVersion } from "./render-step.ts";
 import { type FixtureReel, fixtureEdit, fixturePath } from "./render-test-support.ts";
@@ -229,8 +238,8 @@ afterAll(async () => {
 
 describe("the composite export against the single call", () => {
   // The short fixture reel with two clicks: captions over the footage and the
-  // sound track mixed in. Its footage has 80 frames for 81 output frames, so
-  // the last frame is one the footage clip holds.
+  // sound track mixed in. Its footage has 79 frames for 81 output frames, so
+  // the last frames are ones the footage clip holds.
   describe("a reel with captions and clicks", () => {
     const FILES = { footage: fixturePath("retime", "source.mp4") };
     let edit: Edit;
@@ -345,5 +354,59 @@ describe("the composite export against the single call", () => {
     it("matches on every frame and in every sample", async () => {
       await expectSameExport("behind", composite, single, edit);
     });
+  });
+});
+
+// The sound page alone, at a reel length the page's earlier fractional rate
+// broke: 187 frames ran at 210/187 fps, HyperFrames read the file back at
+// another rate and trimmed the sound to 0.3 s of 6.2 s (the same fault left
+// 2.2 s of a 1683-frame reel's 56.1 s). 187 shares no factor with 30, so the
+// page runs at 30 fps.
+describe("the sound page of a reel whose length is no whole number of seconds", () => {
+  const FRAMES = 187;
+
+  it("holds every packet of the reel, and the cut keeps them all", async () => {
+    const { edit: whole, transcript, headTrack } = await fixtureEdit("speech-ten");
+    // The ten-second reel, ended early: 6.22 s is 187 export frames.
+    const edit = { ...whole, duration: 6.22 };
+    expect(reelFrames(edit.duration)).toBe(FRAMES);
+    expect(soundPageFps(FRAMES)).toBe("30");
+    const pageDir = join(dir, "sound-187");
+    const projectDir = join(pageDir, "project");
+    const page = join(pageDir, "sound.mp4");
+    const cut = join(pageDir, "sound.m4a");
+    const { html, assets } = build(
+      edit,
+      transcript,
+      headTrack,
+      ISSEBYA_PRESET,
+      await editMeasurer(edit.font_pair),
+      { layer: "sound" },
+    );
+    await writeRenderProject({
+      dir: projectDir,
+      html,
+      assets,
+      files: { footage: fixturePath("retime", "source.mp4", "speech-ten") },
+    });
+    await withChromeTmp((chromeTmp) =>
+      run(
+        REAL_TOOLS.hyperframes[0],
+        [
+          REAL_TOOLS.hyperframes[1],
+          ...layerArgs({ layer: "sound", projectDir, output: page, frames: FRAMES }),
+        ],
+        {
+          env: { ...renderEnv(process.env), ...renderScratchEnv(pageDir), TMPDIR: chromeTmp },
+          maxBuffer: 64 * 1024 * 1024,
+        },
+      ),
+    );
+    await run(REAL_TOOLS.ffmpeg, soundCutArgs({ input: page, output: cut, frames: FRAMES }));
+    const { stdout: counted } = await run(REAL_TOOLS.ffprobe, soundPacketsArgs(cut));
+    expect(() => assertSoundCovers(counted, FRAMES)).not.toThrow();
+    expect(Number(counted)).toBe(soundPackets(FRAMES));
+    // The sound lasts the reel, to the millisecond the container keeps.
+    expect(Number(await probe(cut, "stream=duration", "a:0"))).toBeCloseTo(FRAMES / 30, 2);
   });
 });
