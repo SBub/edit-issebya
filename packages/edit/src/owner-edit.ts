@@ -16,6 +16,7 @@ import { breaksOf, textLines } from "./lines.ts";
 import type { Measurer } from "./measure.ts";
 import { ISSEBYA_PRESET, type Preset, wordsText } from "./preset.ts";
 import { isQuestion, questionText } from "./question.ts";
+import { type EditPhoto, withPhotoInputs } from "./photos.ts";
 import type { BehindVisualItem, Edit, TransitionLevel } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -67,6 +68,10 @@ export interface OwnerTextMove {
 // (`boxHeight`), so a VISUAL is only ever scaled in proportion. `rotation`,
 // when set, turns the box about its centre, in whole degrees clockwise (any
 // angle, kept as -179 to 180); without it the card keeps its own turn.
+// `photo_id`, when set, swaps the card's picture for one of the owner's
+// library photos (its stand-in or an earlier photo goes): the card takes the
+// photo's aspect ratio at its width. The photo's size comes from the caller's
+// `photos` (the worker reads them from the owner's library), never the move.
 export interface OwnerBoxMove {
   id: string;
   kind: "box";
@@ -74,6 +79,24 @@ export interface OwnerBoxMove {
   y: number;
   width: number;
   rotation?: number;
+  photo_id?: string;
+}
+
+// The owner's library photos a save may show, by id, as the caller read them
+// (the worker: the reel owner's ready photos with a large copy, from the
+// database; the studio: the library it was given). The description and tags
+// go to the learning records as a snapshot.
+export interface OwnerPhoto extends EditPhoto {
+  description?: string | null;
+  tags?: readonly string[];
+}
+
+export type OwnerPhotos = ReadonlyMap<string, OwnerPhoto>;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export function isPhotoId(value: unknown): value is string {
+  return typeof value === "string" && UUID.test(value);
 }
 
 export type OwnerMove = OwnerTextMove | OwnerBoxMove;
@@ -92,8 +115,8 @@ function isRotation(rotation: unknown): rotation is number {
 }
 
 // The narrowest a VISUAL may be made, in frame pixels: a card still worth a
-// look. The safe zone bounds the widest (`settleOwnerMove`).
-const MIN_BOX_PX = 100;
+// look. The frame bounds the widest (`settleOwnerMove`).
+export const MIN_BOX_PX = 100;
 
 // The largest text size of the format (`schema.ts`): an overlay or a level.
 const MAX_TEXT_SIZE = 400;
@@ -111,6 +134,8 @@ interface Context {
   headTrack: HeadTrack;
   preset: Preset;
   measurer: Measurer;
+  // The library photos a swap or an add may show; none: no photo is shown.
+  photos?: OwnerPhotos;
 }
 
 // A job's moves as they arrive (untrusted JSON): a list of at most
@@ -130,15 +155,23 @@ export function parseOwnerMoves(json: unknown): OwnerMove[] | null {
     if (typeof x !== "number" || typeof y !== "number") return null;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     seen.add(id);
+    const photoId = (entry as Record<string, unknown>).photo_id;
     if (kind === "box") {
       if (size !== undefined || !isWrapWidth(width)) return null;
       if (rotation !== undefined && !isRotation(rotation)) return null;
-      moves.push(
-        rotation === undefined ? { id, kind, x, y, width } : { id, kind, x, y, width, rotation },
-      );
+      if (photoId !== undefined && !isPhotoId(photoId)) return null;
+      moves.push({
+        id,
+        kind,
+        x,
+        y,
+        width,
+        ...(rotation === undefined ? {} : { rotation }),
+        ...(photoId === undefined ? {} : { photo_id: photoId }),
+      });
       continue;
     }
-    if (kind !== undefined || rotation !== undefined) return null;
+    if (kind !== undefined || rotation !== undefined || photoId !== undefined) return null;
     if (typeof size !== "number" || !Number.isInteger(size)) return null;
     if (width !== undefined && !isWrapWidth(width)) return null;
     moves.push(typeof width === "number" ? { id, x, y, size, width } : { id, x, y, size });
@@ -149,6 +182,18 @@ export function parseOwnerMoves(json: unknown): OwnerMove[] | null {
 function visualOf(edit: Edit, id: string): BehindVisualItem | null {
   const item = (edit.tracks.behind ?? []).find((entry) => entry.id === id);
   return item?.kind === "visual" ? item : null;
+}
+
+// A VISUAL showing a library photo in place of its picture (its stand-in or an
+// earlier photo), its box's height set to the photo's aspect at its width.
+function withPhoto(item: BehindVisualItem, photo: EditPhoto): BehindVisualItem {
+  const pictured: BehindVisualItem = {
+    ...item,
+    photo: { id: photo.id, width: photo.width, height: photo.height },
+  };
+  delete pictured.image;
+  const height = Math.max(1, Math.round((item.box.width * photo.height) / photo.width));
+  return { ...pictured, box: { ...item.box, height } };
 }
 
 // A VISUAL's height at a width: its picture's aspect ratio (its box's own,
@@ -267,7 +312,12 @@ export function ownerSizeRange(edit: Edit, id: string, preset: Preset): [number,
 export function applyOwnerMoves(
   edit: Edit,
   moves: readonly OwnerMove[],
-  { transcript, preset, measurer }: Pick<Context, "transcript" | "preset" | "measurer">,
+  {
+    transcript,
+    preset,
+    measurer,
+    photos,
+  }: Pick<Context, "transcript" | "preset" | "measurer" | "photos">,
 ): { ok: true; edit: Edit } | { ok: false; reasons: string[] } {
   const reasons: string[] = [];
   const byId = new Map<string, OwnerTextMove>();
@@ -293,6 +343,8 @@ export function applyOwnerMoves(
         );
       } else if (move.rotation !== undefined && !isRotation(move.rotation)) {
         reasons.push(`${move.id}: its turn is not whole degrees from -360 to 360`);
+      } else if (move.photo_id !== undefined && !photos?.has(move.photo_id)) {
+        reasons.push(`${move.id}: photo ${move.photo_id} is not a ready photo in your library`);
       }
       if (isBoxMove(move)) boxes.set(move.id, move);
       continue;
@@ -338,13 +390,20 @@ export function applyOwnerMoves(
     if (item.kind === "visual") {
       const box = boxes.get(item.id);
       if (!box) return item;
+      const photo = box.photo_id === undefined ? undefined : photos?.get(box.photo_id);
+      const pictured = photo ? withPhoto(item, photo) : item;
       const width = Math.round(box.width);
       const rotation = box.rotation === undefined ? item.rotation : wholeDegrees(box.rotation);
-      const turned = { ...item };
+      const turned = { ...pictured };
       delete turned.rotation;
       return {
         ...turned,
-        box: { x: Math.round(box.x), y: Math.round(box.y), width, height: boxHeight(item, width) },
+        box: {
+          x: Math.round(box.x),
+          y: Math.round(box.y),
+          width,
+          height: boxHeight(pictured, width),
+        },
         ...(rotation ? { rotation } : {}),
       };
     }
@@ -400,10 +459,10 @@ export function applyOwnerMoves(
   });
   return {
     ok: true,
-    edit: {
+    edit: withPhotoInputs({
       ...edit,
       tracks: { ...edit.tracks, overlays, transitions, ...(behind ? { behind } : {}) },
-    },
+    }),
   };
 }
 
@@ -718,8 +777,17 @@ function settleBoxMove(
   move: OwnerBoxMove,
   context: Context,
 ): { ok: true; move: OwnerMove; edit: Edit } | { ok: false; reasons: string[] } {
-  const visual = visualOf(edit, move.id);
-  if (!visual) return { ok: false, reasons: [`${move.id}: not a visual of this version`] };
+  const own = visualOf(edit, move.id);
+  if (!own) return { ok: false, reasons: [`${move.id}: not a visual of this version`] };
+  // A swap: the card as it shows the new photo, so its height follows it.
+  const photo = move.photo_id === undefined ? undefined : context.photos?.get(move.photo_id);
+  if (move.photo_id !== undefined && !photo) {
+    return {
+      ok: false,
+      reasons: [`${move.id}: photo ${move.photo_id} is not a ready photo in your library`],
+    };
+  }
+  const visual = photo ? withPhoto(own, photo) : own;
   const { frame } = context.preset;
   const rotation = wholeDegrees(move.rotation ?? visual.rotation ?? 0);
   let width = Math.min(frame.width, Math.max(MIN_BOX_PX, Math.round(move.width)));
@@ -743,6 +811,7 @@ function settleBoxMove(
     ...corner,
     width,
     ...(move.rotation !== undefined || visual.rotation ? { rotation } : {}),
+    ...(move.photo_id === undefined ? {} : { photo_id: move.photo_id }),
   };
   const applied = applyOwnerMoves(edit, [settled], context);
   if (!applied.ok) return applied;
@@ -776,10 +845,14 @@ function boxOf(edit: Edit, id: string, context: Context): PlacedComponent | null
 // Whether a component's box or size differs from another placement of it: a
 // new corner is a move; a new size, or a box of another width or height (its
 // lines set again), is a resize; a VISUAL's new turn is a rotation.
-function differs(
-  a: PlacedComponent,
-  b: PlacedComponent,
-): { moved: boolean; resized: boolean; rotated: boolean } {
+interface Change {
+  moved: boolean;
+  resized: boolean;
+  rotated: boolean;
+  swapped: boolean;
+}
+
+function differs(a: PlacedComponent, b: PlacedComponent): Change {
   return {
     moved: Math.abs(a.x - b.x) >= 0.5 || Math.abs(a.y - b.y) >= 0.5,
     resized:
@@ -787,11 +860,12 @@ function differs(
       Math.abs(a.width - b.width) >= 0.5 ||
       Math.abs(a.height - b.height) >= 0.5,
     rotated: (a.rotation ?? 0) !== (b.rotation ?? 0),
+    swapped: a.picture !== b.picture,
   };
 }
 
-function changes(change: { moved: boolean; resized: boolean; rotated: boolean }): boolean {
-  return change.moved || change.resized || change.rotated;
+function changes(change: Change): boolean {
+  return change.moved || change.resized || change.rotated || change.swapped;
 }
 
 // The moves that change something: a move whose corner and size (a VISUAL's
@@ -815,6 +889,7 @@ export function effectiveMoves(
     }
     if (isBoxMove(move)) {
       return (
+        (move.photo_id !== undefined && move.photo_id !== at.picture) ||
         Math.abs(at.x - move.x) >= 0.5 ||
         Math.abs(at.y - move.y) >= 0.5 ||
         Math.abs(at.width - move.width) >= 0.5 ||
@@ -878,9 +953,10 @@ export interface RecordedPlacement {
   size: number | null;
 }
 
-// One component the owner moved or resized, for learning placement rules
-// later (the `owner_moves` table): where the engine placed it, where the owner
-// put it, and what was on screen with it at that moment.
+// One component the owner moved, resized, turned, swapped or added, for
+// learning placement rules later (the `owner_moves` table): where the engine
+// placed it (none for a card the owner added), where the owner put it, and
+// what was on screen with it at that moment.
 export interface OwnerMoveRecord {
   item: string;
   component: EngineComponent;
@@ -890,7 +966,8 @@ export interface OwnerMoveRecord {
   text: string;
   start: number;
   end: number;
-  engine: RecordedPlacement;
+  // Null for a card the owner added: the engine never placed it.
+  engine: RecordedPlacement | null;
   owner: RecordedPlacement;
   moved: boolean;
   resized: boolean;
@@ -899,6 +976,14 @@ export interface OwnerMoveRecord {
   rotated: boolean;
   engine_rotation: number;
   owner_rotation: number;
+  // A VISUAL the owner added (`owner-visual-N`), and one whose picture the
+  // owner swapped for a library photo.
+  added: boolean;
+  swapped: boolean;
+  // The library photo the card shows, when it shows one.
+  photo_id: string | null;
+  // What a swap replaced: the stand-in's file or the previous photo's id.
+  replaced: string | null;
   // The wrap width the owner set (frame pixels at the owner's size), or null
   // when the version's lines were kept.
   wrap_width: number | null;
@@ -912,6 +997,11 @@ export interface OwnerMoveRecord {
     head: Box | null;
     // The zone the engine took for it, when its record names one.
     engine_zone: string | null;
+    // The words spoken while it shows, as the transcript has them.
+    words: string;
+    // The library photo it shows, as the library described it then (a
+    // snapshot, quoted as data); null without one.
+    photo: { description: string | null; tags: string[] } | null;
     // Everything else on screen during its time, where the owner's version has
     // it; `moved_by_owner` when that is not where the engine placed it.
     others: {
@@ -938,40 +1028,60 @@ function placementOf(at: PlacedComponent): RecordedPlacement {
   return { x: at.x, y: at.y, width: at.width, height: at.height, size: at.size };
 }
 
-// The learning records of one save: one per moved id whose place, size or
-// turn is not the engine's. `engine` holds the components where the layout engine
-// placed them (the engine-placed version the owner's edits started from),
-// `owner` the components of the version being saved, `moves` the moves saved
-// (their wrap widths).
+// The learning records of one save: one per id whose place, size, turn or
+// picture is not the engine's, and one per card the owner added (no engine
+// placement). `engine` holds the components where the layout engine placed
+// them (the engine-placed version the owner's edits started from), `before`
+// the version the owner edited (what a swap replaced), `owner` the components
+// of the version being saved, `moves` the moves saved (their wrap widths),
+// `photos` the library photos shown (their description and tags) and
+// `transcript` the words spoken.
 export function ownerMoveRecords({
   ids,
   moves = [],
   engine,
+  before = engine,
   owner,
   edit,
   headTrack,
   preset,
   engineRecord = [],
+  photos,
+  transcript,
 }: {
   ids: readonly string[];
   moves?: readonly OwnerMove[];
   engine: readonly PlacedComponent[];
+  before?: readonly PlacedComponent[];
   owner: readonly PlacedComponent[];
   edit: Pick<Edit, "font_pair">;
   headTrack: HeadTrack;
   preset: Preset;
   engineRecord?: readonly EngineNote[];
+  photos?: OwnerPhotos;
+  transcript?: Transcript;
 }): OwnerMoveRecord[] {
   const placed = new Map(engine.map((component) => [component.id, component]));
   const records: OwnerMoveRecord[] = [];
   for (const id of ids) {
     const mine = owner.find((component) => component.id === id);
+    if (!mine) continue;
     const theirs = placed.get(id);
-    if (!mine || !theirs) continue;
-    const change = differs(mine, theirs);
-    if (!changes(change)) continue;
+    const added = theirs === undefined;
+    const change: Change = theirs
+      ? differs(mine, theirs)
+      : { moved: false, resized: false, rotated: false, swapped: false };
+    if (theirs && !changes(change)) continue;
     const note = engineRecord.find((entry) => entry.item === id && entry.zone !== undefined);
     const variant = engineRecord.find((entry) => entry.item === id)?.variant ?? null;
+    const photoId = isPhotoId(mine.picture) ? mine.picture : null;
+    const earlier = before.find((component) => component.id === id)?.picture;
+    const replaced = !change.swapped
+      ? null
+      : earlier !== undefined && earlier !== mine.picture
+        ? earlier
+        : (theirs?.picture ?? null);
+    const photo = photoId ? photos?.get(photoId) : undefined;
     records.push({
       item: id,
       component: mine.component,
@@ -979,17 +1089,27 @@ export function ownerMoveRecords({
       text: mine.text,
       start: mine.start,
       end: mine.end,
-      engine: placementOf(theirs),
+      engine: theirs ? placementOf(theirs) : null,
       owner: placementOf(mine),
       ...change,
-      engine_rotation: theirs.rotation ?? 0,
+      engine_rotation: theirs?.rotation ?? 0,
       owner_rotation: mine.rotation ?? 0,
+      added,
+      photo_id: photoId,
+      replaced,
       wrap_width: wrapWidthOf(moves.find((move) => move.id === id)),
       context: {
         frame: { width: preset.frame.width, height: preset.frame.height },
         font_pair: edit.font_pair,
         head: boundingBox(facesOver(headTrack, mine.start, mine.end)),
         engine_zone: note?.zone ?? null,
+        words: (transcript?.words ?? [])
+          .filter((word) => word.start < mine.end - SLACK && mine.start < word.end - SLACK)
+          .map((word) => word.text)
+          .join(" "),
+        photo: photoId
+          ? { description: photo?.description ?? null, tags: [...(photo?.tags ?? [])] }
+          : null,
         others: owner
           .filter(
             (other) =>
@@ -1005,7 +1125,7 @@ export function ownerMoveRecords({
               end: other.end,
               box: placementOf(other),
               ...(other.rotation ? { rotation: other.rotation } : {}),
-              moved_by_owner: was ? changes(differs(other, was)) : false,
+              moved_by_owner: was ? changes(differs(other, was)) : true,
             };
           }),
       },

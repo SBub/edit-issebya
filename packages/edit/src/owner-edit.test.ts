@@ -788,7 +788,7 @@ describe("the learning records of a save", () => {
     expect(written.variant).toBeNull();
     expect(written.context.engine_zone).toBeNull();
     expect(written.owner.size).toBe(80);
-    expect(written.engine.size).toBe(110);
+    expect(written.engine!.size).toBe(110);
     expect(accent.wrap_width).toBeNull();
   });
 
@@ -810,7 +810,7 @@ describe("the learning records of a save", () => {
     });
     expect(record).toMatchObject({ moved: false, resized: true, wrap_width: was.width * 0.6 });
     expect(record!.owner.size).toBe(110);
-    expect(record!.owner.height).toBeGreaterThan(record!.engine.height);
+    expect(record!.owner.height).toBeGreaterThan(record!.engine!.height);
   });
 
   it("records a VISUAL moved and scaled: its boxes, no size and no wrap width", async () => {
@@ -1223,6 +1223,87 @@ describe("a QUESTION moved and re-wrapped by the owner", () => {
       wrap_width: was.width * 0.6,
     });
     expect(record!.text.endsWith("?")).toBe(true);
-    expect(record!.owner.height).toBeGreaterThan(record!.engine.height);
+    expect(record!.owner.height).toBeGreaterThan(record!.engine!.height);
+  });
+});
+
+describe("a VISUAL's picture swapped for a library photo", () => {
+  const PHOTO = {
+    id: "11111111-2222-4333-8444-555555555555",
+    width: 1600,
+    height: 900,
+    description: "a bright kitchen with a laptop",
+    tags: ["kitchen", "laptop"],
+  };
+  const photos = new Map([[PHOTO.id, PHOTO]]);
+  const swap = {
+    id: "visual-1",
+    kind: "box" as const,
+    x: 75,
+    y: 1047,
+    width: 300,
+    photo_id: PHOTO.id,
+  };
+
+  it("parses a box move's photo id, and refuses one that is no photo id or on a text", () => {
+    expect(parseOwnerMoves([swap])).toEqual([swap]);
+    expect(parseOwnerMoves([{ ...swap, photo_id: "kitchen" }])).toBeNull();
+    expect(parseOwnerMoves([{ id: "hook", x: 1, y: 2, size: 80, photo_id: PHOTO.id }])).toBeNull();
+  });
+
+  it("shows the photo in place of the stand-in, at the photo's aspect ratio, and names it in the inputs", async () => {
+    const context = { ...(await contextOf(hook)), photos };
+    const applied = applyOwnerMoves(hook.edit, [swap], context);
+    if (!applied.ok) throw new Error(applied.reasons.join("; "));
+    const card = applied.edit.tracks.behind!.find((item) => item.id === "visual-1");
+    expect(card).toMatchObject({
+      kind: "visual",
+      photo: { id: PHOTO.id, width: 1600, height: 900 },
+      box: { x: 75, y: 1047, width: 300, height: 169 },
+    });
+    expect(card && "image" in card).toBe(false);
+    expect(applied.edit.inputs.photos).toEqual([PHOTO.id]);
+    // A photo the caller did not vouch for is refused.
+    const unknown = applyOwnerMoves(hook.edit, [swap], await contextOf(hook));
+    expect(unknown).toEqual({
+      ok: false,
+      reasons: [`visual-1: photo ${PHOTO.id} is not a ready photo in your library`],
+    });
+    expect(settleOwnerMove(hook.edit, swap, await contextOf(hook)).ok).toBe(false);
+  });
+
+  it("settles a swap with its photo, counts it as a change, and records it as swapped with what it replaced", async () => {
+    const context = { ...(await contextOf(hook)), photos };
+    const settled = settleOwnerMove(hook.edit, swap, context);
+    if (!settled.ok) throw new Error(settled.reasons.join("; "));
+    expect(settled.move).toEqual(swap);
+    const before = await componentsOf(hook);
+    expect(effectiveMoves([swap], before)).toEqual([swap]);
+    const after = await componentsOf(hook, settled.edit);
+    expect(byId(after, "visual-1").picture).toBe(PHOTO.id);
+    expect(effectiveMoves([swap], before, after)).toEqual([swap]);
+    const [record] = ownerMoveRecords({
+      ids: ["visual-1"],
+      moves: [swap],
+      engine: before,
+      owner: after,
+      edit: settled.edit,
+      headTrack: hook.headTrack,
+      preset,
+      photos,
+      transcript: hook.transcript,
+    });
+    expect(record).toMatchObject({
+      item: "visual-1",
+      component: "VISUAL",
+      added: false,
+      swapped: true,
+      moved: false,
+      resized: true,
+      photo_id: PHOTO.id,
+      replaced: "assets/visuals/visual-1.jpg",
+      context: { photo: { description: PHOTO.description, tags: PHOTO.tags } },
+    });
+    expect(record!.context.words.length).toBeGreaterThan(0);
   });
 });

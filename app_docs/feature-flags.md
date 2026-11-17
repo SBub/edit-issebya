@@ -6,15 +6,17 @@
   the owner for now. One flag covers the whole editor: text now, visuals later.
 - Owner decision, 2026-11-16 (visuals step 1): the one flag covers moving texts and VISUALs.
 - Owner decision, 2026-11-17 (visuals step 2): the same flag covers turning a VISUAL.
+- Owner decision, 2026-11-17 (library photos): the same flag covers changing a card's picture and
+  adding a card from the owner's photo library.
 
 ## Overview
 
 The studio reads PostHog feature flags on the server, for the signed-in user, so a page renders
 nothing behind an off flag and a server action refuses it. There is one flag today:
 
-| Key                 | What it gates                                                                                                                      | Read by                                                           |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `studio-owner-edit` | the owner's Move editor (`app_docs/owner-edits.md`) for texts and VISUALs (a VISUAL's turn included): its button, the editor, Save | the reel page (`src/app/reels/[id]/page.tsx`), `requestOwnerEdit` |
+| Key                 | What it gates                                                                                                                                                               | Read by                                                           |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `studio-owner-edit` | the owner's Move editor (`app_docs/owner-edits.md`) for texts and VISUALs (a VISUAL's turn, `Change picture` and `Add picture here` included): its button, the editor, Save | the reel page (`src/app/reels/[id]/page.tsx`), `requestOwnerEdit` |
 
 A flag is off unless PostHog says it is on. PostHog unconfigured, unreachable, slow (over 1.5 s for
 its answer, 3 s in all) or failing means off.

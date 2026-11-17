@@ -236,6 +236,7 @@ export async function processJob(
                   tools: cutouts.tools,
                   recordStored,
                   ownerEdit,
+                  photos: supabasePhotoLibrary(db),
                 }),
               // A library photo: its two copies, then the AI's
               // description and tags; no reel is touched.

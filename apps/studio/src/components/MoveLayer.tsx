@@ -15,11 +15,11 @@ import {
   componentOption,
   draggedBox,
   draggedTurn,
-  movableAt,
   movableComponents,
   moveOfDrag,
   snapAngle,
   snapDrag,
+  stackedAt,
   turnOfPointer,
 } from "@/lib/owner-edit";
 
@@ -43,6 +43,8 @@ interface Props {
   message: string;
   onSave: () => void;
   onCancel: () => void;
+  // The selected card's picture swapped for a library photo (the picker opens).
+  onChangePicture: (component: PlacedComponent) => void;
 }
 
 interface Pressed extends Drag {
@@ -111,11 +113,15 @@ export function MoveLayer({
   message,
   onSave,
   onCancel,
+  onChangePicture,
 }: Props) {
   const layerRef = useRef<HTMLDivElement>(null);
   const [pressed, setPressed] = useState<Pressed | null>(null);
   const all = movableComponents(components);
-  const shown = movableAt(components, position);
+  const shown = stackedAt(components, position);
+  const selectedCard = components.find(
+    (entry) => entry.id === selectedId && entry.component === "VISUAL",
+  );
 
   function press(event: ReactPointerEvent<HTMLElement>, id: string, mode: Drag["mode"]) {
     if (saving || event.button !== 0) return;
@@ -242,6 +248,18 @@ export function MoveLayer({
             </option>
           ))}
         </select>
+        {selectedCard && (
+          <button
+            type="button"
+            data-testid="move-change-picture"
+            onClick={() => onChangePicture(selectedCard)}
+            disabled={saving}
+            title="Show a photo from your library on this card"
+            className="h-7 flex-none border border-white/40 px-2 hover:bg-white/15 disabled:opacity-50"
+          >
+            Change picture
+          </button>
+        )}
         <button
           type="button"
           data-testid="move-cancel"

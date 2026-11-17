@@ -4,10 +4,13 @@ import {
   type FontPairId,
   ISSEBYA_PRESET,
   type Measurer,
+  type OwnerAdd,
   type OwnerMove,
+  type OwnerPhotos,
   type StoredVersion,
   type VersionBlobs,
   type VersionRows,
+  applyOwnerAdds,
   applyOwnerMoves,
   build,
   effectiveMoves,
@@ -15,6 +18,7 @@ import {
   ownerMoveProblems,
   ownerMoveRecords,
   parseEdit,
+  parseOwnerAdds,
   parseOwnerMoves,
   saveVersion,
   transcriptSchema,
@@ -29,6 +33,7 @@ import { ensureCutouts } from "./cutout/ensure-cutouts.ts";
 import { withMasks } from "./cutout/spans.ts";
 import { editMeasurer } from "./edit-measurer.ts";
 import { PermanentError } from "./failure.ts";
+import type { PhotoLibrary } from "./photos/photo-store.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
 import { type ToolPaths } from "./pipeline/tools.ts";
 import { reelOf } from "./queue.ts";
@@ -43,20 +48,26 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const CHAIN_MAX = 200;
 
 // An `owner_edit` job's payload (`jobs.owner_edit`): the version the owner
-// edited and the moves.
+// edited, the moves (a swap is a box move with a `photo_id`) and the cards
+// the owner added, each showing a library photo.
 export interface OwnerEdit {
   versionId: string;
   moves: OwnerMove[];
+  adds?: OwnerAdd[];
 }
 
 // The payload as the job carries it (the owner's own JSON, untrusted): null
-// when it is not `{ version_id, moves }` with a version id and a list of moves.
+// when it is not `{ version_id, moves, adds? }` with a version id, a list of
+// moves and a list of added cards, at least one move or card in all.
 export function parseOwnerEdit(json: unknown): OwnerEdit | null {
   if (typeof json !== "object" || json === null) return null;
-  const { version_id: versionId, moves } = json as Record<string, unknown>;
+  const { version_id: versionId, moves, adds } = json as Record<string, unknown>;
   if (typeof versionId !== "string" || !UUID.test(versionId)) return null;
-  const parsed = parseOwnerMoves(moves);
-  return parsed ? { versionId, moves: parsed } : null;
+  const added = parseOwnerAdds(adds);
+  if (!added) return null;
+  const parsed = Array.isArray(moves) && moves.length === 0 ? [] : parseOwnerMoves(moves);
+  if (!parsed || parsed.length + added.length === 0) return null;
+  return { versionId, moves: parsed, ...(added.length > 0 ? { adds: added } : {}) };
 }
 
 export interface OwnerEditRun {
@@ -74,6 +85,9 @@ export interface OwnerEditRun {
   ownerEdit: OwnerEdit;
   measurer?: (pair: FontPairId) => Promise<Measurer>;
   newId?: () => string;
+  // The owner's ready library photos: a swap's or an added card's photo is
+  // checked and sized from them, never from the job.
+  photos?: PhotoLibrary;
 }
 
 // The version the layout engine placed, which the owner's edits started from:
@@ -115,6 +129,7 @@ export async function runOwnerEdit({
   ownerEdit,
   measurer = editMeasurer,
   newId = randomUUID,
+  photos,
 }: OwnerEditRun): Promise<void> {
   return runToolsStep(ctx, {
     name: STEP,
@@ -150,17 +165,48 @@ export async function runOwnerEdit({
       };
       const baseEdit = await editOf(base);
       const measure = await measurer(baseEdit.font_pair);
-      const context = { transcript, headTrack, preset, measurer: measure };
+      const adds = ownerEdit.adds ?? [];
+      // The photos a swap or an added card shows: the reel owner's, ready, with
+      // a large copy and a size, read here (service role), never trusted from
+      // the job. One that is not is a permanent failure.
+      const photoIds = [
+        ...new Set([
+          ...ownerEdit.moves.flatMap((move) =>
+            move.kind === "box" && move.photo_id ? [move.photo_id] : [],
+          ),
+          ...adds.map((add) => add.photo_id),
+        ]),
+      ];
+      const library: OwnerPhotos =
+        photoIds.length > 0 && photos
+          ? await photos.readyPhotos(ctx.job.owner_id, photoIds)
+          : new Map();
+      const missing = photoIds.filter((id) => !library.has(id));
+      if (missing.length > 0) {
+        throw new PermanentError(
+          `${STEP}: photo ${missing.join(", ")} is not a ready photo in the owner's library`,
+        );
+      }
+      const context = { transcript, headTrack, preset, measurer: measure, photos: library };
       const engineRecord = base.engine_record ?? [];
       const componentsOf = (edit: Edit) =>
         build(edit, transcript, headTrack, preset, measure, { layer: "front", engineRecord })
           .components;
 
-      // The moves that change something, applied; the safe zone is the one rule.
-      const moves = effectiveMoves(ownerEdit.moves, componentsOf(baseEdit));
-      if (moves.length === 0) throw new PermanentError(`${STEP}: nothing was moved or resized`);
-      const ids = moves.map((move) => move.id);
-      const applied = applyOwnerMoves(baseEdit, moves, context);
+      // The added cards first (a later move may move one), then the moves
+      // that change something; the safe zone is a text's one rule, a card's
+      // is to keep a fifth of it in the frame.
+      const baseComponents = componentsOf(baseEdit);
+      const added = applyOwnerAdds(baseEdit, adds, context);
+      if (!added.ok) {
+        throw new PermanentError(`${STEP}: the cards are refused: ${added.reasons.join("; ")}`);
+      }
+      const moves = effectiveMoves(ownerEdit.moves, baseComponents);
+      if (moves.length === 0 && adds.length === 0) {
+        throw new PermanentError(`${STEP}: nothing was moved or resized`);
+      }
+      const ids = [...new Set([...adds.map((add) => add.id), ...moves.map((move) => move.id)])];
+      const applied = applyOwnerMoves(added.edit, moves, context);
       if (!applied.ok) {
         throw new PermanentError(`${STEP}: the moves are refused: ${applied.reasons.join("; ")}`);
       }
@@ -176,13 +222,14 @@ export async function runOwnerEdit({
       // earlier owner edit or a going back).
       const engineVersion = await enginePlaced(rows, base);
       const engineComponents =
-        engineVersion.id === base.id
-          ? componentsOf(baseEdit)
-          : componentsOf(await editOf(engineVersion));
+        engineVersion.id === base.id ? baseComponents : componentsOf(await editOf(engineVersion));
       const records = ownerMoveRecords({
         ids,
         moves,
         engine: engineComponents,
+        before: baseComponents,
+        photos: library,
+        transcript,
         owner: built.components,
         edit: moved,
         headTrack,

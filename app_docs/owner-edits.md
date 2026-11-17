@@ -539,8 +539,13 @@ moved, a resized and a widened component match between preview and export`: the 
 
 - Never rewrite the version the owner edited: Save makes a new version after the current one.
 - Never change anything but the place, the text size and the line breaks of the moved components,
-  and a moved VISUAL's box and turn: not a word, a time, a caption, a card's picture or its description. A line break changes only through a wrap width, on the
-  engine's balanced lines; never stretch or squeeze letters to fill a box.
+  a moved VISUAL's box and turn, and a card's picture swapped for one of the owner's ready library
+  photos: not a word, a time, a caption or a card's description. A line break changes only through
+  a wrap width, on the engine's balanced lines; never stretch or squeeze letters to fill a box.
+- Never trust a photo's size or ownership from the browser: the worker reads each photo a swap or
+  an added card shows from the `photos` table with the service role (the reel owner's, `ready`,
+  with a `large_key`, `supabasePhotoLibrary`) and writes its `width` and `height` itself; any other
+  photo fails the job and no version is written.
 - Never save a moved text outside the safe zone or in the buttons' notch. The studio settles every
   drag (`settleOwnerMove`) and the worker refuses the job. The safe zone is the one hard rule for
   text only: a VISUAL is free of it and of the notch, even past the frame's edge, but never with

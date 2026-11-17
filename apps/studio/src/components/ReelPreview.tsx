@@ -10,7 +10,9 @@ import {
   type HeadTrack,
   ISSEBYA_PRESET,
   type Measurer,
+  type OwnerAdd,
   type OwnerMove,
+  type OwnerPhoto,
   type PlacedComponent,
   type Transcript,
   build,
@@ -20,6 +22,7 @@ import {
   applyOwnerMoves,
   ownerWrapOptions,
   parseEdit,
+  photoPath,
   settleOwnerMove,
   transcriptSchema,
 } from "@edit-issebya/edit";
@@ -28,6 +31,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { requestOwnerEdit } from "@/app/change-actions";
 import { type PreviewSourcesResult, loadPreviewSources } from "@/app/preview-actions";
 import { MoveLayer } from "@/components/MoveLayer";
+import { type PickedPhoto, PicturePicker } from "@/components/PicturePicker";
 import { PreviewPlayer, type PreviewPlayerHandle } from "@/components/PreviewPlayer";
 import { type TimelineFrames, TracksTimeline } from "@/components/TracksTimeline";
 import { isChromium } from "@/lib/browser";
@@ -41,6 +45,7 @@ import {
   moveOfDrag,
   resolveAsk,
   showMoment,
+  swapAsk,
   withMove,
 } from "@/lib/owner-edit";
 import { previewPage } from "@/lib/preview-page";
@@ -206,12 +211,17 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
 }
 
 // The move and resize editor's draft (app_docs/owner-edits.md): the version's
-// edit with the owner's moves so far, and its page.
+// edit with the owner's added cards and moves so far, and its page.
 interface Draft {
   edit: Edit;
   moves: OwnerMove[];
+  adds: OwnerAdd[];
   page: Page;
 }
+
+// What the picture picker is open for: a card's picture swapped, or a card
+// added at the paused moment.
+type Picking = { mode: "swap"; id: string };
 
 // One wrap width an edge handle can give, and the elements a page built with
 // it draws.
@@ -264,6 +274,10 @@ function BuiltPreview({
   const [message, setMessage] = useState("");
   // The save: being sent, or the job it queued.
   const [sent, setSent] = useState<"sending" | { jobId: string } | null>(null);
+  const [picking, setPicking] = useState<Picking | null>(null);
+  // The library photos the owner picked in this editor, by id: the draft and
+  // its settling read their size from here (the worker reads its own).
+  const photosRef = useRef(new Map<string, OwnerPhoto>());
   const page = draft?.page ?? built.page;
   const sentJob = sent && sent !== "sending" ? jobs.find((job) => job.id === sent.jobId) : null;
   const saveFailed = sentJob?.status === "failed" || sentJob?.status === "cancelled";
@@ -283,11 +297,18 @@ function BuiltPreview({
   }
 
   function closeEditor() {
+    setPicking(null);
     setDraft(null);
     setEditing(false);
     setSelectedId(null);
     setMessage("");
     setSent(null);
+  }
+
+  // What the draft is built and settled with: the version's own context and
+  // the photos picked so far.
+  function editContext() {
+    return { ...built.context, preset: ISSEBYA_PRESET, photos: photosRef.current };
   }
 
   // One frame of a drag: the page on screen shows the component where the
@@ -324,7 +345,7 @@ function BuiltPreview({
     const known = wrapsRef.current;
     if (known && known.html === page.html && known.component === component) return known.options;
     const edit = draft?.edit ?? built.edit;
-    const context = { ...built.context, preset: ISSEBYA_PRESET };
+    const context = editContext();
     const at = { x: component.x, y: component.y, size: component.size ?? 0 };
     const options = (ownerWrapOptions(edit, component.id, at, context) ?? []).flatMap((option) => {
       const applied = applyOwnerMoves(
@@ -353,11 +374,16 @@ function BuiltPreview({
   // applied to the draft, and the draft's page built.
   function move(ask: OwnerAsk) {
     const edit = draft?.edit ?? built.edit;
-    const context = { ...built.context, preset: ISSEBYA_PRESET };
+    const context = editContext();
     let asked: OwnerMove;
     if (ask.kind === "box") {
-      // A VISUAL: its box, its height following its picture.
-      asked = ask;
+      // A VISUAL: its box, its height following its picture. A card whose
+      // picture was swapped keeps its photo through later drags.
+      const earlier = draft?.moves.find((entry) => entry.id === ask.id);
+      asked =
+        ask.photo_id === undefined && earlier?.kind === "box" && earlier.photo_id !== undefined
+          ? { ...ask, photo_id: earlier.photo_id }
+          : ask;
     } else if (ask.width !== undefined || ask.height !== undefined) {
       const options = ownerWrapOptions(edit, ask.id, ask, context);
       if (!options) {
@@ -399,12 +425,35 @@ function BuiltPreview({
         built.page.components,
         page.components,
       ),
+      adds: draft?.adds ?? [],
       page,
     });
   }
 
+  // A library photo picked: its size kept for the draft and its large copy's
+  // URL for the page.
+  function remember(photo: PickedPhoto) {
+    photosRef.current.set(photo.id, {
+      id: photo.id,
+      width: photo.width,
+      height: photo.height,
+      description: photo.description,
+      tags: photo.tags,
+    });
+    built.photoUrls.set(photoPath(photo.id), photo.largeUrl);
+  }
+
+  // The selected card's picture swapped for a library photo: the card keeps
+  // its place, rescaled to the photo's aspect ratio, settled like a move.
+  function swapPicture(id: string, photo: PickedPhoto) {
+    const component = page.components.find((entry) => entry.id === id);
+    if (!component) return;
+    remember(photo);
+    move(swapAsk(component, photo));
+  }
+
   async function save() {
-    if (!draft || draft.moves.length === 0) return;
+    if (!draft || draft.moves.length + draft.adds.length === 0) return;
     setSent("sending");
     setMessage("");
     try {
@@ -412,6 +461,7 @@ function BuiltPreview({
         reelId,
         versionId: built.versionId,
         moves: draft.moves,
+        ...(draft.adds.length > 0 ? { adds: draft.adds } : {}),
       });
       if (result.status === "signed-out") {
         router.refresh();
@@ -481,7 +531,8 @@ function BuiltPreview({
                 move(ask);
               }}
               onDragFrame={dragFrame}
-              changed={(draft?.moves.length ?? 0) > 0}
+              onChangePicture={(component) => setPicking({ mode: "swap", id: component.id })}
+              changed={(draft?.moves.length ?? 0) + (draft?.adds.length ?? 0) > 0}
               saving={saving}
               message={saveFailed ? SAVE_FAILED : saving ? "Saving your changes" : message}
               onSave={() => void save()}
@@ -490,6 +541,13 @@ function BuiltPreview({
           )
         }
       />
+      {picking && (
+        <PicturePicker
+          title="Change picture"
+          onClose={() => setPicking(null)}
+          onPick={(photo) => swapPicture(picking.id, photo)}
+        />
+      )}
       {!expanded && (
         <TracksTimeline
           timeline={built.timeline}
