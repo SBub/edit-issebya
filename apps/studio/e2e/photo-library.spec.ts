@@ -306,6 +306,8 @@ test("1440x900: upload, described live, opened and deleted, beside the reel", as
   // The confirmation takes the bin's place in the header, still left of Close.
   const confirm = dialog.getByTestId("photo-delete-confirm");
   await expect(confirm.getByRole("button")).toHaveText(["Cancel", "Yes, delete"]);
+  // No version shows the photo: no warning.
+  await expect(dialog.getByTestId("photo-delete-usage")).toHaveCount(0);
   await expectLeftOfClose(dialog, confirm);
   await dialog.getByRole("button", { name: "Yes, delete" }).click();
   await expect(dialog).toBeHidden();

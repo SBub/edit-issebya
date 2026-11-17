@@ -2,7 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Storage } from "@edit-issebya/storage";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ErrorCapture } from "./error-tracking";
-import { deletePhoto, finishPhotoUpload, loadLibrary, startPhotoUpload } from "./photo-server";
+import {
+  deletePhoto,
+  finishPhotoUpload,
+  loadLibrary,
+  photoUsage,
+  startPhotoUpload,
+} from "./photo-server";
 import { MAX_PHOTO_BYTES, type PhotoRow } from "./photos";
 import { PART_URL_SECONDS } from "./upload-server";
 
@@ -374,5 +380,52 @@ describe("loadLibrary", () => {
       ok: false,
       error: "signed-out",
     });
+  });
+});
+
+describe("photoUsage", () => {
+  // A client whose versions query records its filter and answers a count.
+  function counting(count: number | null, error: unknown = null) {
+    const asked: unknown[] = [];
+    const supabase = {
+      auth: { getUser: async () => ({ data: { user: { id: "u" } } }) },
+      from: (table: string) => ({
+        select: (_columns: string, options: unknown) => ({
+          contains: async (column: string, value: unknown) => {
+            asked.push({ table, options, column, value });
+            return { count, error };
+          },
+        }),
+      }),
+    } as unknown as SupabaseClient;
+    return { supabase, asked };
+  }
+
+  it("counts the caller's versions whose inputs name the photo", async () => {
+    const { supabase, asked } = counting(2);
+    const answer = await photoUsage({ supabase, storage: null, errors }, { photoId: PHOTO });
+    expect(answer).toEqual({ ok: true, value: { versions: 2 } });
+    expect(asked).toEqual([
+      {
+        table: "versions",
+        options: { count: "exact", head: true },
+        column: "inputs",
+        value: { photos: [PHOTO] },
+      },
+    ]);
+  });
+
+  it("refuses an id that is no photo id, and reports a failed count", async () => {
+    const { supabase, asked } = counting(0);
+    expect(await photoUsage({ supabase, storage: null, errors }, { photoId: "x" })).toEqual({
+      ok: false,
+      error: "not-found",
+    });
+    expect(asked).toEqual([]);
+    const failing = counting(null, { message: "boom" });
+    expect(
+      await photoUsage({ supabase: failing.supabase, storage: null, errors }, { photoId: PHOTO }),
+    ).toEqual({ ok: false, error: "failed" });
+    expect(captured).toContain("studio: photo usage not counted");
   });
 });

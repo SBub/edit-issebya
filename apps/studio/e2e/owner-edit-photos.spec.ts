@@ -74,6 +74,8 @@ test.beforeAll(async ({ browser }, testInfo) => {
     .from("photos")
     .update({ width: 900, height: 1200, created_at: new Date(Date.now() + 60_000).toISOString() })
     .eq("id", newer.id);
+  // A name of its own, for its tile in the library.
+  await admin.from("photos").update({ file_name: "kitchen.jpg" }).eq("id", older.id);
   describing = crypto.randomUUID();
   const { error } = await admin.from("photos").insert({
     id: describing,
@@ -336,4 +338,33 @@ test("Save makes a version showing both photos, and a learning row for the swap 
       tags: ["test pattern", "colour bars", "abstract"],
     });
   }
+});
+
+test("deleting a photo a version shows warns first with the number of versions, and the version then shows a notice", async () => {
+  const library = page.getByTestId("photo-drop");
+  await library.getByRole("button", { name: "kitchen.jpg", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "kitchen.jpg" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("photo-delete-usage")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Delete photo" }).click();
+  // One version shows it: the owner's saved version (the version before it
+  // shows the stand-in).
+  await expect(dialog.getByTestId("photo-delete-usage")).toHaveText(
+    "Used in 1 version of your reels. It will show a notice instead of the photo, and cannot be exported",
+  );
+  await expect(dialog.getByTestId("photo-delete-confirm").getByRole("button")).toHaveText([
+    "Cancel",
+    "Yes, delete",
+  ]);
+  await shot("photos-4-delete-warning.png");
+  // Allowed all the same.
+  await dialog.getByRole("button", { name: "Yes, delete" }).click();
+  await expect(dialog).toBeHidden();
+  const { data } = await admin.from("photos").select("id").eq("id", older.id);
+  expect(data).toEqual([]);
+  // The version that shows it is unchanged, and its preview names the gap.
+  await page.reload();
+  await expect(page.getByText("A photo in this version was deleted from the library")).toBeVisible({
+    timeout: 30_000,
+  });
 });

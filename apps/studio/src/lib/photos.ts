@@ -141,3 +141,11 @@ export const LIBRARY_INTRO =
 export function libraryIntro(photoCount: number): string {
   return photoCount > 0 ? LIBRARY_INTRO : LIBRARY_INTRO_EMPTY;
 }
+
+// The warning before a photo some versions show is deleted: how many, and
+// what happens to them. Empty when no version shows it.
+export function photoUsageWarning(versions: number): string {
+  if (versions <= 0) return "";
+  const count = versions === 1 ? "1 version" : `${versions} versions`;
+  return `Used in ${count} of your reels. ${versions === 1 ? "It" : "They"} will show a notice instead of the photo, and cannot be exported`;
+}

@@ -294,3 +294,31 @@ export async function loadLibrary(deps: PhotoDeps): Promise<PhotoAnswer<LibraryI
   );
   return { ok: true, value: items };
 }
+
+// How many of the owner's versions show the photo (`versions.inputs.photos`
+// names it), counted under RLS, so only the caller's own reels count. Deleting
+// it stays allowed (owner decision, 2026-11-17); the library warns first with
+// this number, as those versions then show a notice and cannot be exported.
+export async function photoUsage(
+  deps: PhotoDeps,
+  input: { photoId: unknown },
+): Promise<PhotoAnswer<{ versions: number }>> {
+  if (!isPhotoId(input.photoId)) return fail("not-found");
+  const session = await signedIn(deps.supabase);
+  if (!session.ok) return session;
+  const { supabase, userId } = session.value;
+  const { count, error } = await supabase
+    .from("versions")
+    .select("id", { count: "exact", head: true })
+    .contains("inputs", { photos: [input.photoId] });
+  if (error) {
+    await reportFailure(deps.errors, {
+      message: "studio: photo usage not counted",
+      error,
+      userId,
+      properties: { photo_id: input.photoId },
+    });
+    return fail("failed");
+  }
+  return { ok: true, value: { versions: count ?? 0 } };
+}
