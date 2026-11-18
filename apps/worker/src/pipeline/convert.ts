@@ -118,7 +118,11 @@ export const convert: PipelineStep<ConvertSettings> = {
     const source = files.source!;
     const probe = parseProbe(await tool({ file: tools.ffprobe, args: probeArgs(source) }));
     const partial = join(dir, PARTIAL);
-    await tool({ file: tools.ffmpeg, args: convertArgs(probe, source, partial, settings) });
+    await tool({
+      file: tools.ffmpeg,
+      args: convertArgs(probe, source, partial, settings),
+      ignoreStdout: true,
+    });
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     await rename(partial, join(dir, OUTPUT));
     return { what: convertWhat(probe) };

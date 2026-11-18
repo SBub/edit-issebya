@@ -95,7 +95,7 @@ live status shows one line per step (`name: summary`).
   into a scratch VP9-alpha `mask.part.webm`, with the arguments HyperFrames encodes its `.webm`
   with at `balanced` quality (`-crf 18 -cpu-used 4`, BT.709 video range); ffmpeg decodes it
   (`headTrackDecodeArgs`, `-c:v libvpx-vp9` before `-i`, so alpha survives) to raw RGBA in a
-  scratch `frames.rgba` (stdout through the step runner is capped at 64 KB, so it cannot carry
+  scratch `frames.rgba` (stdout through the step runner is capped at 64 KB and a call over its cap fails, so it cannot carry
   frames), read back one frame at a time. The VP9 round trip is kept from version 2 on purpose: the
   tracker sees what it saw then, so the int8 weights are the only change to the mask. Every scratch
   file is deleted in the step, never uploaded. Version 3 (2 ran HyperFrames' `removeBackground`

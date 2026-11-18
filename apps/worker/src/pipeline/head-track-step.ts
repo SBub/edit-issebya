@@ -223,6 +223,7 @@ export function headTrackStep({
         await tool({
           file: tools.ffmpeg,
           args: headTrackSampleArgs(files["source.mp4"]!, sampled, settings),
+          ignoreStdout: true,
         });
         const count = parseSampleCount(
           await tool({ file: tools.ffprobe, args: sampleCountArgs(sampled) }),
@@ -246,15 +247,21 @@ export function headTrackStep({
             // The call's memory is the entry's and its ffmpeg's together.
             sampleGroupMemory: true,
             progress: progress[index]!,
+            ignoreStdout: true,
           });
           signal.throwIfAborted();
         });
         await tool({
           file: tools.ffmpeg,
           args: maskEncodeArgs(parts, mask, settings, settings.mask),
+          ignoreStdout: true,
         });
         for (const part of parts) await rm(part, { force: true });
-        await tool({ file: tools.ffmpeg, args: headTrackDecodeArgs(mask, frames, settings) });
+        await tool({
+          file: tools.ffmpeg,
+          args: headTrackDecodeArgs(mask, frames, settings),
+          ignoreStdout: true,
+        });
         samples = await trackFrames(frames, settings);
       } finally {
         for (const path of scratch) await rm(path, { force: true });

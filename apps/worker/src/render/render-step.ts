@@ -159,6 +159,7 @@ export async function renderExport({
         tool({
           ...renderCall({ tools, dir, chromeTmp, projectDir, output, range, env }),
           parent: context,
+          ignoreStdout: true,
         }),
       );
     },
@@ -309,6 +310,7 @@ async function renderComposite({
               env,
             }),
             parent: context,
+            ignoreStdout: true,
           }),
         );
       await runLanes([
@@ -326,6 +328,7 @@ async function renderComposite({
               env: { ...env },
               signal,
               parent: context,
+              ignoreStdout: true,
             });
           }
           if (hasCutout) await page("behind", framesDir("behind"), behindProgress, signal);
@@ -345,6 +348,7 @@ async function renderComposite({
                     env,
                   }),
                   parent: context,
+                  ignoreStdout: true,
                 });
               },
             ]
@@ -378,6 +382,7 @@ async function renderComposite({
           env,
         }),
         parent: context,
+        ignoreStdout: true,
       });
     },
   );

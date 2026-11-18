@@ -74,8 +74,33 @@ one (`app_docs/owner-edits.md`). The decide step reads no library yet.
 - `apps/studio/src/components/ReelScreen.tsx`, `LiveReel.tsx`, `apps/studio/src/app/reels/[id]/page.tsx`:
   the `library` slot (top 68% of the third desktop column, third phone tab). Layout rules are in
   `app_docs/studio-reel-layout.md`.
-- `apps/worker/src/photos/photo-images.ts`: the `photo_images` step: ffprobe for width and height,
-  ffmpeg for `thumbnail.jpg` (long side 480) and `large.jpg` (long side 1568), both `rebuildable`.
+- `apps/worker/src/photos/photo-images.ts`: the `photo_images` step: ffprobe for the picture's size
+  and how it is turned, ffmpeg for `thumbnail.jpg` (long side 480) and `large.jpg` (long side 1568),
+  both `rebuildable` and both upright.
+  - The probe (`photoProbeArgs`) asks ffprobe only for the fields `parsePhotoProbe` reads
+    (`-show_entries`: a stream's `index`, `codec_type`, `width`, `height`, its `rotate` tag and its
+    side data's `rotation`; a stream group's `type`, its component's size and offsets, each
+    subcomponent's `stream_index` and tile offsets; the first frame's `stream_index`, its
+    `Orientation` tag and its side data's `rotation`), as compact JSON, and reads one packet
+    (`-read_intervals %+#1`) for that frame. An iPhone HEIC is a tile grid of some 48 streams:
+    `-show_streams -show_stream_groups` printed 211 KB for one, over the step runner's 64 KB
+    stdout cap, so the JSON lost its start and the photo failed. The trimmed probe is about 20 KB
+    for the same file and under 1 KB for a JPEG. The call's cap is `PROBE_STDOUT_BYTES` (4 MB); a
+    probe over it fails the step with the tool, the bytes and the cap (`app_docs/measurement.md`,
+    "Step runner"), it is never parsed cut.
+  - The turn (a `Turn`: `mirrored` left to right first, then `rotation` 0, 90, 180 or 270 degrees
+    clockwise) comes from one place per kind of file. A HEIC or HEIF, tile grid or one picture: the
+    file's own boxes, read by `readHeifTurn` in `heif-turn.ts` (the primary item's `irot` and `imir`
+    properties, in the file's order, from the first 1 MB), because ffprobe 7.1 and 8.0 print no turn
+    for a tile grid and ffprobe 7.1 none for a one-picture HEIC either. Any other file: the first
+    frame's EXIF `Orientation` tag (1 to 8, the mirrored values included: a JPEG says how it is
+    turned only there, never on its stream), else the frame's display matrix, else the stream's,
+    else the `rotate` tag.
+  - `photoImageArgs` turns the picture itself (`hflip`, `vflip`, `transpose`) before the scale, and
+    always passes `-noautorotate`: ffmpeg 7.1 (the worker image) turns by a stream's display matrix
+    but not by a JPEG's Orientation tag, ffmpeg 8 (the owner's Mac, CI) by both, so leaving it to
+    ffmpeg gave a sideways copy on one and would turn twice on the other. The copies carry no
+    Orientation tag. `photos.width` and `photos.height` are the upright size.
 - `apps/worker/src/photos/describe-photo.ts`, `describe-schema.ts`, `describe-prompt.ts`: the
   `describe_photo` step. Its prompt is `photo-describe`, fetched from PostHog before the step's work
   (`app_docs/decide-step.md`, "Prompts"); the repository holds no prompt text. The prompt is the call's system message and the large copy's bytes are its user message, the
@@ -152,8 +177,8 @@ delete`. With none it shows nothing. The learning rows of `owner_moves` keep the
 ## Configuration
 
 None of its own. It needs the same R2 variables as footage (`app_docs/storage.md`) and the worker's
-`OPENROUTER_API_KEY`. ffmpeg and ffprobe must be 7.0 or newer: `photo_images` probes with
-`-show_stream_groups` (a HEIC tile grid), which older ffprobe rejects (`Option not found`). The
+`OPENROUTER_API_KEY`. ffmpeg and ffprobe must be 7.0 or newer: `photo_images` probes the
+stream group sections (a HEIC tile grid), which older ffprobe rejects. The
 worker's `yarn doctor` fails its ffmpeg line on an older ffmpeg or ffprobe, and CI installs the
 static ffmpeg 8.0.1 build (`mwader/static-ffmpeg`, pinned by digest in `.github/workflows/ci.yml`)
 instead of Ubuntu's 6.1. `E2E_MOCK_AI_SCRIPT` scripts the AI answer in specs.
@@ -166,8 +191,18 @@ only, run by hand; CI uses the committed files).
   `photoUsageWarning`), `photo-server.test.ts` (with `photoUsage`: the count's query, an id that is
   no photo id, a failed count reported); in the worker `src/photos/*.test.ts`,
   `ai.test.ts`, `queue.test.ts`, `stored-files.test.ts`, `doctor-checks.test.ts`.
+- Unit, for the probe and the turn: `photos/photo-images.test.ts` (the trimmed probe arguments, a
+  probe of 48 tile streams, the turn from the frame's Orientation tag for all eight values and from
+  the display matrix, the upright size, `-noautorotate` and the turn filters) and
+  `photos/heif-turn.test.ts` (`irot` and `imir` of the primary item from boxes built in the test,
+  null for a file that is not HEIF); `step-runner.test.ts` (a stdout over its cap fails the call).
 - Tools (owner's Mac only): `yarn workspace @edit-issebya/worker test:tools` runs
-  `photos/photo-images.tools.test.ts` with real ffmpeg on the JPEG and HEIC fixtures.
+  `photos/photo-images.tools.test.ts` with real ffmpeg on the JPEG and HEIC fixtures, and on turned
+  copies made in the test from those fixtures, never from a real photo: the JPEG with an EXIF
+  block written in for each Orientation value 1 to 8, and the tiled HEIC with its `irot` byte
+  changed (ffmpeg cannot write a tiled HEIC, so the committed one, made by `sips`, is the base).
+  Each copy must be upright by its pixels (PSNR against the fixture turned by ffmpeg) and carry no
+  Orientation tag.
 - DB: `apps/studio/db-tests/photos.test.ts` (RLS, insert policy, status and ready checks,
   `finish_photo_upload`, `delete_photo`, `record_photo_file`, `jobs_target_check`), plus
   `job-order.test.ts` and `stored-files.test.ts`.
@@ -180,7 +215,8 @@ only, run by hand; CI uses the committed files).
   `stored_files` rows, the dialog's header (the cross found by role and name `Close`, no text, an
   svg, at the top right; the bin directly left of it, the dialog's only two buttons), Delete with
   its confirmation in the header (no usage warning: no version shows it); then drops on the library section (synthetic `DataTransfer`,
-  `apps/studio/e2e/drop.ts`): the highlight on dragenter, kept across a child, off on dragleave; two
+  `apps/studio/e2e/drop.ts`; the dropped photo is the fixture with EXIF Orientation 6 written in,
+  `turnedJpeg`, and must come out 900x1200 in its row and 360x480 in the thumbnail's own pixels): the highlight on dragenter, kept across a child, off on dragleave; two
   files and a text file upload nothing with their messages; one photo uploads and goes `describing`
   then ready; a `failed` photo (inserted by the admin) keeps its `failed` badge, no image, and opens
   the dialog; and at 390x844 the Library tab, whose add tile uploads a photo by tap, and whose dialog header (bin, cross, and
@@ -206,6 +242,16 @@ only, run by hand; CI uses the committed files).
 - Never let a photo that is not `ready` look like a ready one: a tile shows a badge for every status
   but `ready`.
 - Never slim a photo's file; only the owner's Delete removes a photo's objects.
+- The thumbnail, the large copy and the stored `width` and `height` are always upright. Never let
+  ffmpeg turn a photo itself: every `photoImageArgs` call passes `-noautorotate` and turns by the
+  probe's `Turn`, so no version of ffmpeg leaves a photo sideways or turns it twice.
+- A HEIC's turn comes from its own boxes (`readHeifTurn`), never from ffprobe or its EXIF; any other
+  file's from its first frame (the Orientation tag, then the display matrix), then its stream.
+- The photo probe asks ffprobe only for the fields `parsePhotoProbe` reads. Never go back to
+  `-show_streams` or `-show_stream_groups` without `-show_entries`: a tiled HEIC then overruns the
+  stdout cap. A field `parsePhotoProbe` starts to read is added to `PROBE_FIELDS` in the same change.
+- Never parse a probe whose stdout was cut: the step runner fails a call over its cap, and the
+  photo fails with that reason.
 - Never block deleting a photo a version shows: warn first with the number of the owner's versions
   that show it (`photoUsage`), then delete it on `Yes, delete`; the versions stay as they are.
 - Never take a photo's size or owner from the browser when a version shows it: the worker reads its

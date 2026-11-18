@@ -161,7 +161,12 @@ export async function ensureCutouts({
                 { tools, env },
               );
               // The call's memory is the entry's and its two ffmpegs' together.
-              await tool({ ...call, sampleGroupMemory: true, progress: progress[index]! });
+              await tool({
+                ...call,
+                sampleGroupMemory: true,
+                progress: progress[index]!,
+                ignoreStdout: true,
+              });
               signal.throwIfAborted();
               await storage.putFileIfAbsent(span.key, output, { contentType: "video/mp4" });
             });
