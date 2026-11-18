@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { type Locator, type Page, expect, test } from "@playwright/test";
@@ -11,7 +11,7 @@ import {
 } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
-import { dropFiles, fileTransfer } from "./drop.ts";
+import { dropFiles, fileTransfer, turnedJpeg } from "./drop.ts";
 
 // The worker's own folder for the derived files (thumbnail and large copy).
 const WORKER_PREFIX = `e2e-${crypto.randomUUID()}/`;
@@ -334,7 +334,11 @@ test("1440x900: a photo dropped on the section uploads; several files or a non-i
     "data-ready",
     "true",
   );
-  const one = await fileTransfer(page, [{ name: "sample.jpg", type: "image/jpeg", path: SAMPLE }]);
+  // The 1200x900 fixture as a phone held upright stores it (EXIF Orientation
+  // 6): the worker must make it 900x1200, upright.
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
+  const turned = turnedJpeg(await readFile(SAMPLE));
+  const one = await fileTransfer(page, [{ name: "sample.jpg", type: "image/jpeg", bytes: turned }]);
 
   // The highlight: on with the drag's enter, kept while it crosses a child
   // (the heading's own enter and leave), off with the zone's leave.
@@ -394,6 +398,16 @@ test("1440x900: a photo dropped on the section uploads; several files or a non-i
   await expectOnlyThumbnail(library.getByRole("button", { name: "sample.jpg", exact: true }));
   const [described] = await photoRows();
   leftKeys.push(described!.thumbnail_key!, described!.large_key!);
+  // The turned photo is stored upright: its size in the row, and the
+  // thumbnail's own pixels (it carries no tag the browser would turn it by).
+  const size = await admin.from("photos").select("width, height").eq("id", photo!.id).single();
+  expect(size.data).toEqual({ width: 900, height: 1200 });
+  const thumbnail = library.getByRole("button", { name: "sample.jpg", exact: true }).locator("img");
+  await expect
+    .poll(() =>
+      thumbnail.evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight]),
+    )
+    .toEqual([360, 480]);
 });
 
 test("1440x900: a failed photo keeps its status on the tile", async ({ page, baseURL }) => {

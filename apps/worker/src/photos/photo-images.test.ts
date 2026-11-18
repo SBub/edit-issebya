@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   LARGE_LONG_SIDE,
+  PROBE_STDOUT_BYTES,
   THUMBNAIL_LONG_SIDE,
   fitWithin,
   parsePhotoProbe,
@@ -34,6 +35,7 @@ describe("parsePhotoProbe", () => {
     expect(parsePhotoProbe(json)).toEqual({
       width: 4032,
       height: 3024,
+      mirrored: false,
       rotation: 0,
       source: { kind: "stream", index: 0 },
     });
@@ -49,6 +51,134 @@ describe("parsePhotoProbe", () => {
       ],
     });
     expect(parsePhotoProbe(turned)).toMatchObject({ width: 3024, height: 4032, rotation: 90 });
+  });
+
+  // What ffprobe prints for a JPEG: nothing on the stream, the EXIF
+  // Orientation tag (padded) and a display matrix on the frame.
+  function jpeg(frame: object) {
+    return JSON.stringify({
+      frames: [{ stream_index: 0, ...frame }],
+      streams: [{ index: 0, codec_type: "video", width: 4032, height: 3024 }],
+    });
+  }
+
+  it("turns a JPEG by its frame's Orientation tag, the stored size upright", () => {
+    const upright = (orientation: number, rotation?: number) =>
+      parsePhotoProbe(
+        jpeg({
+          tags: { Orientation: `    ${orientation}` },
+          ...(rotation === undefined ? {} : { side_data_list: [{ rotation }] }),
+        }),
+      );
+    expect(upright(6, -90)).toMatchObject({
+      width: 3024,
+      height: 4032,
+      mirrored: false,
+      rotation: 90,
+    });
+    expect(upright(8, 90)).toMatchObject({
+      width: 3024,
+      height: 4032,
+      mirrored: false,
+      rotation: 270,
+    });
+    expect(upright(3, -180)).toMatchObject({
+      width: 4032,
+      height: 3024,
+      mirrored: false,
+      rotation: 180,
+    });
+    expect(upright(1)).toMatchObject({ width: 4032, height: 3024, mirrored: false, rotation: 0 });
+    // The mirrored ones: the matrix's angle alone would be wrong for them.
+    expect(upright(2, -180)).toMatchObject({ width: 4032, mirrored: true, rotation: 0 });
+    expect(upright(4, 0)).toMatchObject({ width: 4032, mirrored: true, rotation: 180 });
+    expect(upright(5, -90)).toMatchObject({ width: 3024, mirrored: true, rotation: 270 });
+    expect(upright(7, 90)).toMatchObject({ width: 3024, mirrored: true, rotation: 90 });
+  });
+
+  it("falls back to the frame's display matrix, then to no turn", () => {
+    expect(parsePhotoProbe(jpeg({ side_data_list: [{ rotation: -90 }] }))).toMatchObject({
+      width: 3024,
+      height: 4032,
+      rotation: 90,
+    });
+    expect(parsePhotoProbe(jpeg({ tags: { Orientation: "    9" } }))).toMatchObject({
+      width: 4032,
+      mirrored: false,
+      rotation: 0,
+    });
+    // A frame of another stream says nothing about the picture.
+    const other = JSON.stringify({
+      frames: [{ stream_index: 1, tags: { Orientation: "6" } }],
+      streams: [{ index: 0, codec_type: "video", width: 4032, height: 3024 }],
+    });
+    expect(parsePhotoProbe(other)).toMatchObject({ width: 4032, rotation: 0 });
+  });
+
+  it("turns a HEIC by its own boxes, never by the probe", () => {
+    const single = jpeg({ tags: { Orientation: "6" }, side_data_list: [{ rotation: -90 }] });
+    expect(parsePhotoProbe(single, { mirrored: true, rotation: 270 })).toMatchObject({
+      width: 3024,
+      height: 4032,
+      mirrored: true,
+      rotation: 270,
+    });
+    expect(parsePhotoProbe(single, { mirrored: false, rotation: 0 })).toMatchObject({
+      width: 4032,
+      height: 3024,
+      rotation: 0,
+    });
+  });
+
+  // An iPhone HEIC: a grid of 35 tiles, a smaller grid of 12 and one more
+  // stream, as the trimmed probe prints them.
+  function tiledHeic() {
+    const tile = (index: number) => ({ index, codec_type: "video", width: 512, height: 512 });
+    const group = (first: number, columns: number, rows: number, width: number, height: number) => {
+      const indexes = Array.from({ length: columns * rows }, (_, n) => first + n);
+      return {
+        type: "Tile Grid",
+        components: [
+          {
+            horizontal_offset: 0,
+            vertical_offset: 0,
+            width,
+            height,
+            subcomponents: indexes.map((index, n) => ({
+              stream_index: index,
+              tile_horizontal_offset: (n % columns) * 512,
+              tile_vertical_offset: Math.floor(n / columns) * 512,
+            })),
+          },
+        ],
+        streams: indexes.map(tile),
+      };
+    };
+    return JSON.stringify(
+      {
+        frames: [{ stream_index: 0 }],
+        programs: [],
+        stream_groups: [group(0, 7, 5, 3088, 2316), group(35, 4, 3, 1544, 1158)],
+        streams: Array.from({ length: 48 }, (_, index) => tile(index)),
+      },
+      null,
+      4,
+    );
+  }
+
+  it("reads a large probe of many tile streams, turned by the file's boxes", () => {
+    const json = tiledHeic();
+    // Larger than a real one, and far under the call's cap.
+    expect(json.length).toBeGreaterThan(20_000);
+    expect(json.length).toBeLessThan(PROBE_STDOUT_BYTES / 10);
+    const probe = parsePhotoProbe(json, { mirrored: true, rotation: 270 });
+    expect(probe).toMatchObject({ width: 2316, height: 3088, mirrored: true, rotation: 270 });
+    if (probe.source.kind !== "grid") throw new Error("not a grid");
+    expect(probe.source.crop).toEqual({ x: 0, y: 0, width: 3088, height: 2316 });
+    expect(probe.source.tiles).toHaveLength(35);
+    expect(probe.source.tiles[34]).toEqual({ index: 34, x: 3072, y: 2048 });
+    // Without the boxes (ffprobe prints no turn for a grid) it stays as stored.
+    expect(parsePhotoProbe(json)).toMatchObject({ width: 3088, height: 2316, rotation: 0 });
   });
 
   it("puts a HEIC tile grid together from its group", () => {
@@ -75,6 +205,7 @@ describe("parsePhotoProbe", () => {
     expect(parsePhotoProbe(json)).toEqual({
       width: 1000,
       height: 500,
+      mirrored: false,
       rotation: 0,
       source: {
         kind: "grid",
@@ -95,16 +226,42 @@ describe("parsePhotoProbe", () => {
 });
 
 describe("tool arguments", () => {
-  it("probes streams and stream groups as JSON", () => {
-    expect(photoProbeArgs("/s/original.jpg")).toEqual([
+  it("probes only the fields it reads, and one frame", () => {
+    const args = photoProbeArgs("/s/original.jpg");
+    const entries = args[7]!;
+    expect(args).toEqual([
       "-v",
       "error",
       "-print_format",
-      "json",
-      "-show_streams",
-      "-show_stream_groups",
+      "json=compact=1",
+      "-read_intervals",
+      "%+#1",
+      "-show_entries",
+      entries,
       "/s/original.jpg",
     ]);
+    // `section=field,field:section=field`, with ffprobe 7.1's section names.
+    const fields = Object.fromEntries(
+      entries.split(":").map((part) => {
+        const [section, list] = part.split("=");
+        return [section, list?.split(",")];
+      }),
+    );
+    expect(fields).toEqual({
+      stream: ["index", "codec_type", "width", "height"],
+      stream_tags: ["rotate"],
+      stream_side_data: ["rotation"],
+      stream_group: ["type"],
+      stream_group_component: ["width", "height", "horizontal_offset", "vertical_offset"],
+      subcomponent: ["stream_index", "tile_horizontal_offset", "tile_vertical_offset"],
+      frame: ["stream_index"],
+      frame_tags: ["Orientation"],
+      frame_side_data: ["rotation"],
+    });
+    // Never every field of every stream: that is what overran the cap.
+    expect(args).not.toContain("-show_streams");
+    expect(args).not.toContain("-show_stream_groups");
+    expect(PROBE_STDOUT_BYTES).toBe(4 * 1024 * 1024);
   });
 
   it("scales one stream to one JPEG frame", () => {
@@ -116,6 +273,7 @@ describe("tool arguments", () => {
       "-v",
       "error",
       "-y",
+      "-noautorotate",
       "-i",
       "/s/in.jpg",
       "-map",
@@ -132,12 +290,34 @@ describe("tool arguments", () => {
     ]);
   });
 
+  it("turns one stream itself, upright before the scale, and never lets ffmpeg turn it", () => {
+    const filter = (mirrored: boolean, rotation: number) => {
+      const args = photoImageArgs(
+        "/s/in.jpg",
+        { width: 3024, height: 4032, mirrored, rotation, source: { kind: "stream", index: 0 } },
+        { width: 360, height: 480 },
+        "/s/t.jpg",
+      );
+      expect(args.indexOf("-noautorotate")).toBeLessThan(args.indexOf("-i"));
+      return args[args.indexOf("-vf") + 1];
+    };
+    expect(filter(false, 0)).toBe("scale=360:480");
+    expect(filter(false, 90)).toBe("transpose=clock,scale=360:480");
+    expect(filter(false, 180)).toBe("hflip,vflip,scale=360:480");
+    expect(filter(false, 270)).toBe("transpose=cclock,scale=360:480");
+    expect(filter(true, 0)).toBe("hflip,scale=360:480");
+    expect(filter(true, 90)).toBe("hflip,transpose=clock,scale=360:480");
+    expect(filter(true, 180)).toBe("vflip,scale=360:480");
+    expect(filter(true, 270)).toBe("hflip,transpose=cclock,scale=360:480");
+  });
+
   it("stacks, crops, turns and scales a tile grid", () => {
     const args = photoImageArgs(
       "/s/in.heic",
       {
         width: 500,
         height: 1000,
+        mirrored: false,
         rotation: 90,
         source: {
           kind: "grid",
