@@ -12,6 +12,8 @@ import {
   build,
   editBytes,
   reelFrames,
+  resolveTimeline,
+  soundCues,
   versionKey,
 } from "@edit-issebya/edit";
 import { type Storage, fakeStorage } from "@edit-issebya/storage";
@@ -318,6 +320,51 @@ describe("runRender", () => {
     const { edit, transcript, headTrack } = await fixtureEdit();
     const { html } = build(edit, transcript, headTrack, ISSEBYA_PRESET, await editMeasurer());
     expect(pages).toEqual({ full: html });
+  });
+
+  it("mixes a typed hook's key sounds on the sound page beside the voice, and nowhere else", async () => {
+    const { edit, transcript } = await fixtureEdit("short-speech", "Typed for you");
+    await storage.put(version.r2_key, editBytes(edit));
+    await run(recordingSteps().steps);
+    // The composite as for any reel: the two pages, the sound cut and its
+    // length check, the footage pass, the blend.
+    expect(Object.keys(pages).sort()).toEqual(["front", "sound"]);
+    expect(spawned.filter(isSoundCount)).toHaveLength(1);
+    expect(spawned.at(-1)).toSatisfy(isComposite);
+    const clips = (html: string) =>
+      html
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith("<audio "));
+    const cues = soundCues(
+      edit,
+      resolveTimeline(edit, transcript),
+      ISSEBYA_PRESET,
+      transcript.voice,
+    );
+    expect(cues).toHaveLength(11);
+    // The fixture's transcript holds its measured voice, and the export reads
+    // the same transcript as the preview: each clip's volume is the cue's own.
+    expect(transcript.voice).toBeDefined();
+    expect(cues.every((cue) => cue.volume > 0.2 && cue.volume < 1.5)).toBe(true);
+    // The voice (the footage as an audio element) first, then one clip a key
+    // sound, each at its letter's moment and at the gain set against the voice.
+    const sound = clips(pages.sound!);
+    expect(sound).toHaveLength(1 + cues.length);
+    expect(sound[0]).toMatch(/^<audio id="[^"]+" class="clip full" [^>]*data-has-audio="true">/);
+    expect(sound[0]).not.toContain("data-volume");
+    expect(sound.slice(1)).toEqual(
+      cues.map(
+        (cue) =>
+          `<audio id="${cue.id}" class="clip" src="${cue.file}" data-start="${cue.at.toFixed(3)}" data-duration="${cue.duration.toFixed(3)}" data-track-index="61" data-volume="${cue.volume.toFixed(4)}"></audio>`,
+      ),
+    );
+    // The picture page holds the typed letters and no sound.
+    expect(clips(pages.front!)).toEqual([]);
+    // The picture page holds the typed letters with their carets.
+    expect(pages.front).toContain(
+      '<span id="hook_c1" class="ch">T<i id="hook_b1" class="cr"></i></span>',
+    );
   });
 
   it("goes to the single call for a version the composite does not handle", async () => {

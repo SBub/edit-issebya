@@ -3,7 +3,13 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { type Edit, ISSEBYA_PRESET, resolveTimeline } from "@edit-issebya/edit";
+import {
+  type Edit,
+  ISSEBYA_PRESET,
+  type SoundCue,
+  resolveTimeline,
+  soundCues,
+} from "@edit-issebya/edit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { REAL_TOOLS, formatDuration, streamInfo } from "../pipeline/tools-test-support.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
@@ -28,6 +34,8 @@ const RANGE = { start: 0, end: 3 };
 const REEL_SECONDS = 2.67;
 const CLICK_WORDS = ["w0005", "w0009"];
 const ONSET_TOLERANCE_S = 0.02;
+// How far the AAC encoder may move a key sound's peak from the mixed one.
+const KEY_PEAK_TOLERANCE_DB = 3;
 
 let dir: string;
 
@@ -157,7 +165,12 @@ function pcm(path: string, seconds: number): Promise<Float32Array> {
 // at least 0.25 s apart (the preset's gap), longer than one click.
 const ONSET_FACTOR = 60;
 
-function clickOnsets(exported: Float32Array, source: Float32Array): number[] {
+function clickOnsets(
+  exported: Float32Array,
+  source: Float32Array,
+  factor = ONSET_FACTOR,
+  soundMs = Math.round(ISSEBYA_PRESET.sounds.click.durationSeconds * 1000),
+): number[] {
   const window = RATE / 1000;
   const length = Math.min(exported.length, source.length);
   let cross = 0;
@@ -177,8 +190,8 @@ function clickOnsets(exported: Float32Array, source: Float32Array): number[] {
     rms.push(Math.sqrt(sum / window));
   }
   const sorted = [...rms].sort((a, b) => a - b);
-  const bound = ONSET_FACTOR * (sorted[Math.floor(sorted.length / 2)] ?? 0);
-  const clickMs = Math.round(ISSEBYA_PRESET.sounds.click.durationSeconds * 1000);
+  const bound = factor * (sorted[Math.floor(sorted.length / 2)] ?? 0);
+  const clickMs = soundMs;
   const onsets: number[] = [];
   let lastOnsetMs = -Infinity;
   for (const [index, value] of rms.entries()) {
@@ -296,6 +309,105 @@ describe("the real render", () => {
       expect(rendered.peakRssBytes).toBe(rendered.child.groupPeakBytes);
       expect(rendered.child.groupPeakBytes!).toBeGreaterThan(single!.peakRssBytes);
     }
+  });
+});
+
+// The typed hook's key sounds in a real export: each hit where its letter
+// appears and as loud as the reel's measured voice sets it, the voice at its
+// own level under them, the mix never clipped.
+describe("the real render of a typed hook", () => {
+  // 11 letters over 60% of the hook's time on the 2.67 s reel (0.2 s to its
+  // end): 148 ms apart, so a hit on every letter.
+  const HOOK = "Typed for you";
+  // A key hit is mixed 8 dB under the voice's measured level (the fixture's
+  // transcript holds the measure), under its ceilings: a gain of 0.72 to 1.07
+  // here. Against the silent export what the encoder leaves of the voice
+  // outside the hits is 29 times the median residual at most, and the hits
+  // rise far above that.
+  const KEY_FACTOR = 45;
+  const KEY_MS = 70;
+  // The key files' peak, of full scale (-6.02 dBFS).
+  const KEY_PEAK = 0.5;
+  let typed: Rendered;
+  let cues: SoundCue[];
+  let expected: number[];
+
+  beforeAll(async () => {
+    const { edit, transcript } = await fixtureEdit("short-speech", HOOK);
+    typed = await render("typed", edit);
+    expect(transcript.voice).toBeDefined();
+    cues = soundCues(edit, resolveTimeline(edit, transcript), ISSEBYA_PRESET, transcript.voice);
+    expected = cues.map((cue) => cue.at);
+  });
+
+  it("has a key sound for every letter of the hook", () => {
+    expect(expected).toHaveLength(11);
+    expect(expected[0]).toBe(0.2);
+  });
+
+  it("lands each key sound within 20 ms of the moment its letter appears", async () => {
+    // Against the silent export of the same reel (the same voice through the
+    // same AAC encoder), so what is left is the key sounds alone.
+    const onsets = clickOnsets(
+      await pcm(typed.output, REEL_SECONDS),
+      await pcm(silent.output, REEL_SECONDS),
+      KEY_FACTOR,
+      KEY_MS,
+    );
+    console.log(`keys: expected ${expected.join(", ")} s, heard ${onsets.join(", ")} s`);
+    for (const start of expected) {
+      expect(onsets.some((onset) => Math.abs(onset - start) <= ONSET_TOLERANCE_S)).toBe(true);
+    }
+    for (const onset of onsets) {
+      expect(expected.some((start) => Math.abs(onset - start) <= ONSET_TOLERANCE_S)).toBe(true);
+    }
+  });
+
+  it("mixes each key sound at the gain set against the voice, and never clips the mix", async () => {
+    const exported = await pcm(typed.output, REEL_SECONDS);
+    const voice = await pcm(silent.output, REEL_SECONDS);
+    // What the typing adds: the export less the silent export of the same
+    // reel. A hit's peak is its gain times the key file's peak; the AAC
+    // encoder moves a 70 ms transient's peak by a few dB.
+    const heard = cues.map((cue) => {
+      let peak = 0;
+      const first = Math.round(cue.at * RATE);
+      for (let i = first; i < first + Math.round(cue.duration * RATE); i += 1) {
+        peak = Math.max(peak, Math.abs(exported[i]! - voice[i]!));
+      }
+      return peak;
+    });
+    const wanted = cues.map((cue) => cue.volume * KEY_PEAK);
+    const off = heard.map((peak, index) => 20 * Math.log10(peak / wanted[index]!));
+    console.log(
+      `key peaks: wanted ${wanted.map((x) => x.toFixed(3)).join(", ")}, heard ${heard
+        .map((x) => x.toFixed(3))
+        .join(", ")} (off by ${off.map((x) => x.toFixed(1)).join(", ")} dB)`,
+    );
+    for (const value of off) expect(Math.abs(value)).toBeLessThanOrEqual(KEY_PEAK_TOLERANCE_DB);
+    // Clearly over the fixed fifth of full volume the typing once had.
+    for (const peak of heard) expect(peak).toBeGreaterThan(2 * 0.2 * KEY_PEAK);
+    // No sample of the mix at full scale, and no hit's peak over the voice's.
+    let top = 0;
+    let voiceTop = 0;
+    for (let i = 0; i < exported.length; i += 1) {
+      top = Math.max(top, Math.abs(exported[i]!));
+      voiceTop = Math.max(voiceTop, Math.abs(voice[i] ?? 0));
+    }
+    console.log(`mix peak ${top.toFixed(3)}, voice peak ${voiceTop.toFixed(3)}`);
+    expect(top).toBeLessThan(1);
+    for (const peak of wanted) expect(peak).toBeLessThanOrEqual(voiceTop);
+  });
+
+  it("keeps the voice at its own level under the typing, within 0.5 LU of the source", async () => {
+    const exported = await integratedLoudness(typed.output, REEL_SECONDS);
+    const source = await integratedLoudness(SOURCE, REEL_SECONDS);
+    console.log(`typed loudness: export ${exported} LUFS, source ${source} LUFS`);
+    expect(Math.abs(exported - source)).toBeLessThanOrEqual(0.5);
+  });
+
+  it("is as long as the silent export: the typing never shortens or lengthens the sound", async () => {
+    expect(await formatDuration(typed.output)).toBe(await formatDuration(silent.output));
   });
 });
 
