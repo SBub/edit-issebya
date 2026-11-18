@@ -95,3 +95,21 @@ export function matchesResume(
     record.lastModified === file.lastModified
   );
 }
+
+// Fired on the window by this tab after it changes the record, since the
+// storage event reaches only the other tabs.
+export const RESUME_CHANGED = "studio-upload-resume-changed";
+
+// Clears the record when it names this reel (a deleted reel cannot resume).
+// Another reel's record stays.
+export function clearResumeFor(store: ResumeStore, reelId: string): void {
+  const record = readResume(store);
+  if (record?.reelId === reelId) clearResume(store);
+}
+
+// The resume answer for a reel that is gone: the upload routes answer
+// `404 not-found` when the reel is missing or no longer uploading. Any other
+// failure is not this.
+export function resumeIsGone(answer: { status: number; error: string | null } | null): boolean {
+  return answer?.status === 404 && answer.error === "not-found";
+}

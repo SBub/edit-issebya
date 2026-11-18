@@ -3,8 +3,10 @@ import {
   RESUME_KEY,
   type ResumeRecord,
   clearResume,
+  clearResumeFor,
   matchesResume,
   readResume,
+  resumeIsGone,
   writeResume,
 } from "./upload-resume";
 
@@ -81,5 +83,48 @@ describe("the resume record", () => {
     expect(matchesResume(RECORD, { ...file, name: "other.mp4" })).toBe(false);
     expect(matchesResume(RECORD, { ...file, size: 1 })).toBe(false);
     expect(matchesResume(RECORD, { ...file, lastModified: 1 })).toBe(false);
+  });
+});
+
+describe("clearing the record for a deleted reel", () => {
+  it("clears the record that names the reel", () => {
+    const store = memory({ [RESUME_KEY]: JSON.stringify(RECORD) });
+    clearResumeFor(store, REEL);
+    expect(store.items.has(RESUME_KEY)).toBe(false);
+  });
+
+  it("keeps the record of another reel", () => {
+    const store = memory({ [RESUME_KEY]: JSON.stringify(RECORD) });
+    clearResumeFor(store, "11111111-2222-4333-8444-555555555555");
+    expect(readResume(store)).toEqual(RECORD);
+  });
+
+  it("does nothing without a record, and survives a store that throws", () => {
+    expect(() => clearResumeFor(memory(), REEL)).not.toThrow();
+    const throwing = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+      removeItem: () => {
+        throw new Error("blocked");
+      },
+    };
+    expect(() => clearResumeFor(throwing, REEL)).not.toThrow();
+  });
+});
+
+describe("a resume answered as a gone reel", () => {
+  it("is the 404 not-found answer of the upload routes", () => {
+    expect(resumeIsGone({ status: 404, error: "not-found" })).toBe(true);
+  });
+
+  it("is not any other failure", () => {
+    expect(resumeIsGone(null)).toBe(false);
+    expect(resumeIsGone({ status: 404, error: null })).toBe(false);
+    expect(resumeIsGone({ status: 500, error: "not-found" })).toBe(false);
+    expect(resumeIsGone({ status: 401, error: "signed-out" })).toBe(false);
   });
 });

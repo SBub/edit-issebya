@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState, useTransition } from "react";
 import { deleteReel } from "@/app/reel-actions";
+import { RESUME_CHANGED, clearResumeFor } from "@/lib/upload-resume";
 
 interface Props {
   reelId: string;
@@ -36,6 +37,10 @@ export function DeleteReelButton({ reelId, title }: Props) {
     startTransition(async () => {
       const answer = await deleteReel(reelId);
       if (answer.ok || answer.error === "not-found") {
+        // An upload of this reel can no longer resume: drop its record here
+        // and tell this tab's upload form (the storage event skips this tab).
+        clearResumeFor(window.localStorage, reelId);
+        window.dispatchEvent(new Event(RESUME_CHANGED));
         close();
         router.refresh();
         return;
