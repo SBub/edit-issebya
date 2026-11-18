@@ -88,7 +88,7 @@ describe("runSlimming", () => {
       failed: 0,
     });
     expect(logs).toEqual([
-      "slimming: 2 rebuildable files (3.0 MB), 1 expired exports (512.0 KB) deleted",
+      "slimming: 2 rebuildable files (3.0 MB), 1 expired or replaced exports (512.0 KB) deleted",
     ]);
   });
 

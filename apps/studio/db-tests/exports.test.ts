@@ -16,7 +16,8 @@ import {
 
 const admin = localSupabaseAdmin();
 const DAY_MS = 24 * 3600 * 1000;
-const HOUR_MS = 3600 * 1000;
+// How long an export is kept: `export_keep_interval()`, the one setting.
+const KEEP_MS = 48 * 3600 * 1000;
 let userA: { id: string; email: string };
 let userB: { id: string; email: string };
 let clientA: SupabaseClient;
@@ -201,7 +202,7 @@ describe("render jobs", () => {
 describe("exports", () => {
   let exportA: string;
 
-  it("expires exactly 1 hour after it was made and belongs to the reel's owner", async () => {
+  it("expires exactly 48 hours after it was made and belongs to the reel's owner", async () => {
     const row = exportRow(reelA, jobA, versionA, {
       owner_id: userB.id,
       expires_at: new Date(Date.now() + 365 * DAY_MS).toISOString(),
@@ -213,11 +214,11 @@ describe("exports", () => {
       .single<{ id: string; owner_id: string; created_at: string; expires_at: string }>();
     expect(error).toBeNull();
     expect(data!.owner_id).toBe(userA.id);
-    expect(Date.parse(data!.expires_at) - Date.parse(data!.created_at)).toBe(HOUR_MS);
+    expect(Date.parse(data!.expires_at) - Date.parse(data!.created_at)).toBe(KEEP_MS);
     exportA = data!.id;
   });
 
-  it("keeps an older created_at's expiry 1 hour after it", async () => {
+  it("keeps an older created_at's expiry 48 hours after it", async () => {
     const created = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
     const otherJob = await doneRenderJob(reelA, userA.id, versionA);
     const { data, error } = await admin
@@ -226,8 +227,17 @@ describe("exports", () => {
       .select("id, expires_at")
       .single<{ id: string; expires_at: string }>();
     expect(error).toBeNull();
-    expect(Date.parse(data!.expires_at)).toBe(Date.parse(created) + HOUR_MS);
+    expect(Date.parse(data!.expires_at)).toBe(Date.parse(created) + KEEP_MS);
     await admin.from("exports").delete().eq("id", data!.id);
+  });
+
+  it("takes the time kept from the one setting, which only the service role may read", async () => {
+    const setting = await admin.rpc("export_keep_interval");
+    expect(setting.error).toBeNull();
+    expect(setting.data).toBe("48:00:00");
+    for (const client of [clientA, localSupabaseClient()]) {
+      expect((await client.rpc("export_keep_interval")).error).not.toBeNull();
+    }
   });
 
   it("refuses a version of another reel and a second export of one job", async () => {

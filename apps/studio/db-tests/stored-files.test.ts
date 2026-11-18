@@ -454,24 +454,39 @@ describe("slim_rebuildable_files", () => {
 });
 
 describe("expire_export_files", () => {
-  it("marks and returns the files of expired exports only", async () => {
+  it("marks and returns the files of expired and replaced exports only", async () => {
     const now = new Date(Date.now() + 60_000);
-    const reel = await reelOf(userA.id);
-    const old = await exportAt(reel, userA.id, new Date(now.getTime() - 25 * 3600 * 1000));
-    // Expiry is 1 hour after an export is made.
-    const fresh = await exportAt(reel, userA.id, new Date(now.getTime() - 30 * 60 * 1000));
-    await record(reel, old, "export", 1234, "render");
-    await record(reel, fresh, "export", 1234, "render");
+    const hoursAgo = (hours: number) => new Date(now.getTime() - hours * 3600 * 1000);
+    // An export is kept 48 hours, and only the newest one of a reel.
+    const expiredReel = await reelOf(userA.id);
+    const expired = await exportAt(expiredReel, userA.id, hoursAgo(49));
+    const keptReel = await reelOf(userA.id);
+    const kept = await exportAt(keptReel, userA.id, hoursAgo(47));
+    const twiceReel = await reelOf(userA.id);
+    const replaced = await exportAt(twiceReel, userA.id, hoursAgo(3));
+    const newest = await exportAt(twiceReel, userA.id, hoursAgo(1));
+    await record(expiredReel, expired, "export", 1234, "render");
+    await record(keptReel, kept, "export", 1234, "render");
+    await record(twiceReel, replaced, "export", 500, "render");
+    await record(twiceReel, newest, "export", 600, "render");
 
     const { data, error } = await admin.rpc("expire_export_files", {
       p_now: now.toISOString(),
       p_prefix: PREFIX,
     });
     expect(error).toBeNull();
-    expect(data).toEqual([{ r2_key: old, bytes: 1234 }]);
-    const rows = await rowsOf(reel);
-    expect(rows.find((r) => r.r2_key === old)!.deleted_at).not.toBeNull();
-    expect(rows.find((r) => r.r2_key === fresh)!.deleted_at).toBeNull();
+    expect(data).toEqual(
+      [
+        { r2_key: expired, bytes: 1234 },
+        { r2_key: replaced, bytes: 500 },
+      ].sort((a, b) => (a.r2_key < b.r2_key ? -1 : 1)),
+    );
+    const deleted = async (reel: string, key: string) =>
+      (await rowsOf(reel)).find((r) => r.r2_key === key)!.deleted_at;
+    expect(await deleted(expiredReel, expired)).not.toBeNull();
+    expect(await deleted(twiceReel, replaced)).not.toBeNull();
+    expect(await deleted(keptReel, kept)).toBeNull();
+    expect(await deleted(twiceReel, newest)).toBeNull();
 
     const again = await admin.rpc("expire_export_files", {
       p_now: now.toISOString(),

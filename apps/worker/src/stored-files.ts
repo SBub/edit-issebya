@@ -125,7 +125,7 @@ export function supabaseStoredFiles(db: SupabaseClient): StoredFileRecords {
         p_now: now.toISOString(),
         p_prefix: prefix,
       });
-      if (error) throw new Error(`expired exports not marked: ${error.message}`);
+      if (error) throw new Error(`old exports not marked: ${error.message}`);
       return storedFiles(data);
     },
   };

@@ -156,7 +156,9 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
 - `supabase/migrations/20261103164248_one_step_export.sql`: job status `cancelled`, set only by
   `cancel_job(p_job_id)` (`security definer`, `authenticated` may execute, never `anon`): the owner
   of the reel cancels their own `render` job while it is `queued`, `running` or `waiting_ai` and has
-  no export. Exports now expire 1 hour after they are made. See `app_docs/export.md`.
+  no export. See `app_docs/export.md`.
+- `supabase/migrations/20261118151744_export_kept_48_hours.sql`: an export's file is kept 48 hours
+  (`export_keep_interval()`), and only the newest one of a reel. See `app_docs/export.md`.
 - `claim_job(p_worker, p_lease_seconds, p_only_kinds default null, p_except_kinds default null)`:
   one statement picks the oldest `queued` job, or a
   `running` one whose lease expired, with `for update skip locked`, then takes the lease and counts

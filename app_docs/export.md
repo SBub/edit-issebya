@@ -11,7 +11,7 @@ Export is one action. The Export button on a reel's page queues a `render` job f
 version and opens a modal that shows the render's live progress. When the render finishes, the MP4
 downloads by itself and the modal closes. Nothing is kept or offered afterwards: exporting again
 renders again. Closing the modal (Cancel, Escape or the close control) cancels the export. The
-uploaded file is only a hand-over and is deleted 1 hour after it was made.
+uploaded file is kept 48 hours, and only the newest one of a reel.
 
 ## How it works
 
@@ -34,9 +34,8 @@ uploaded file is only a hand-over and is deleted 1 hour after it was made.
 
 `supabase/migrations/20261103164248_one_step_export.sql`:
 
-- The hand-over file lives 1 hour: the trigger sets `expires_at = created_at + 1 hour` and the new
-  `exports_expiry_check` repeats it. The check is added `not valid`, so it holds for every new row
-  and rows made before keep their 24 hours.
+- The file lived 1 hour (`exports_expiry_check`, added `not valid`). Replaced by the 48 hours
+  below.
 - A new job status, `cancelled` (`jobs_status_check`: `queued`, `running`, `waiting_ai`, `done`,
   `failed`, `cancelled`).
 - `cancel_job(p_job_id uuid) returns boolean`, `security definer`: locks the job row, then cancels
@@ -53,6 +52,18 @@ uploaded file is only a hand-over and is deleted 1 hour after it was made.
   with an expired lease, so a cancelled job is never claimed and holds no later job of its reel back.
 - `discard_export_file(p_r2_key)` (service role only) marks deleted and returns an export file's
   `stored_files` row only while no `exports` row records the key (see Worker).
+
+`supabase/migrations/20261118151744_export_kept_48_hours.sql`:
+
+- `export_keep_interval()` returns `interval '48 hours'`: the one named setting for how long an
+  export's file is kept. The insert trigger sets `expires_at = created_at + export_keep_interval()`,
+  whatever the insert passes. To change the time, replace the function in a new migration; rows
+  already made keep the expiry they were given. Only `service_role` may execute it.
+- `exports_expiry_check` no longer repeats the value: it only requires `expires_at > created_at`.
+- One kept export per reel, the newest. `expire_export_files` returns the file of an export whose
+  `expires_at` has passed and also the file of an export that a newer export of the same reel
+  replaced (newer by `(created_at, id)`), so the slimming removes a replaced file on its next
+  pass. The `exports` rows stay.
 
 ### Studio
 
@@ -385,10 +396,14 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
 - `E2E_MOCK_RENDER`: tests only. `apps/studio/test-support/worker.ts` sets it to `"true"` for every
   spec; the tools spec passes it empty to render for real.
 - `FFMPEG_PATH` is honoured by `apps/studio/test-support/frames.ts`.
-- The worker's slimming deletes an export's object once `expires_at` passes
-  (`expire_export_files`, see `app_docs/storage.md`), 1 hour after it was made. The owner's R2
-  lifecycle rule, which deletes `<prefix>exports/` objects 1 day after creation, stays as a
-  backstop.
+- `export_keep_interval()` (the database, 48 hours): how long an export's file is kept. The
+  worker's slimming deletes an export's object once `expires_at` passes, or once a newer export
+  of the same reel replaced it (`expire_export_files`, see `app_docs/storage.md`). The slimming
+  runs at most once an hour and only while the worker runs no job, so a file may outlive its
+  expiry by that long; the studio never signs a link past `expires_at`.
+- The owner's R2 lifecycle rule on `<prefix>exports/` is a backstop and must be longer than the
+  time kept: 3 days after creation or more. A rule of 1 day (what the 1-hour hand-over had)
+  deletes a kept export's object a day before its Download goes away.
 - `cancelCheckEveryMs` (5000) is fixed in `apps/worker/src/config.ts`, not a variable.
 
 ## Testing
@@ -415,9 +430,10 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   `apps/studio/src/app/api/e2e-storage-mock/[...key]/route.test.ts`.
 - Unit (storage): `packages/storage/src/r2.test.ts` and `fake.test.ts` (the download name).
 - DB: `apps/studio/db-tests/exports.test.ts` (the render job policy and the `exports` table, its
-  1-hour expiry), `cancel-jobs.test.ts` (`cancel_job` on own queued and running renders, refusals,
+  48-hour expiry from `export_keep_interval()`), `cancel-jobs.test.ts` (`cancel_job` on own queued and running renders, refusals,
   no `anon` execute, the refused export of a cancelled job, `claim_job` never taking a cancelled
-  job) and `stored-files.test.ts` (`discard_export_file`).
+  job) and `stored-files.test.ts` (`discard_export_file`; `expire_export_files` returning expired
+  and replaced exports' files and keeping a reel's newest).
 - E2E: `apps/studio/e2e/export.spec.ts`: Export opens the modal, the bar rises with the render
   double (`E2E_MOCK_RENDER_SECONDS=25`), the download starts by itself with the
   `reel-v2-<YYYYMMDD-HHMM>.mp4` name and the modal closes; no download link or expiry in the panel
@@ -665,7 +681,9 @@ Before the one-screen layout (the 0.99 bound):
 - The repeated last frame of some cut-out spans is a small defect of the single call's export that
   the composite reproduces to match it. Whether to keep it or show the true frame (as the preview
   does) is the owner's decision.
-- Owner steps: the R2 lifecycle rule for `dev/` and the production prefix; applying the migrations
-  to the hosted project after merge (`20261103164248_one_step_export.sql` before deploying the
-  worker and the studio that use it); the manual acceptance against `rethink-work-02.mp4` and a
+- Owner steps: the R2 lifecycle rule for `dev/` and the production prefix, now 3 days or more
+  (see Configuration); applying the migrations
+  to the hosted project after merge (`20261103164248_one_step_export.sql` and
+  `20261118151744_export_kept_48_hours.sql` before deploying the
+  worker and the studio that use them); the manual acceptance against `rethink-work-02.mp4` and a
   platform draft upload.

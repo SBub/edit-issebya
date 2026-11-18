@@ -11,8 +11,8 @@
 
 Every object a job or an upload writes to R2 gets a `stored_files` row: its reel, the step that
 made it, its size and kind, and when it was deleted. Heavy rebuildable files are deleted seven days
-after the last export of every reel that holds them, and expired exports are deleted (an export's
-file is a 1-hour hand-over, `app_docs/export.md`). Each job's
+after the last export of every reel that holds them, and exports no longer kept are deleted (an
+export's file is kept 48 hours, and only the newest one of a reel, `app_docs/export.md`). Each job's
 scratch folder is removed after the job, whatever happened. No job is claimed while the worker's
 disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why under a queued job.
 
@@ -105,8 +105,11 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   (`app_docs/pipeline.md`) and slimmed like
   any file of their tag: `subject.webm` is rebuildable and deleted under the same seven-day rule;
   nothing re-runs to rebuild it, since no version built since needs it.
-- Deleted: export files once their export's `expires_at` has passed (1 hour after the export was
-  made; rows made before `20261103164248_one_step_export.sql` keep their 24 hours), and an
+- Deleted: export files once their export's `expires_at` has passed (48 hours after the export
+  was made: `export_keep_interval()`, the one setting, in
+  `supabase/migrations/20261118151744_export_kept_48_hours.sql`; rows made before it keep the
+  expiry they were given), export files a newer export of the same reel replaced (on the next
+  pass, whatever their expiry: one kept export per reel, the newest), and an
   export file no export records, at once, by the render that uploaded it (`discard_export_file`,
   then a delete from the raw storage, `supabaseDiscardExport` in `apps/worker/src/stored-files.ts`).
 - The next export rebuilds whatever rebuildable output is missing: only `convert` and `retime`
@@ -122,7 +125,7 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   `expire_export_files` under `R2_KEY_PREFIX`, then deletes each returned object from the raw
   storage (never a job's). The database marks the deletion first; a failed delete is logged
   (`slimming: <key> not deleted: <message>`) and the pass goes on. Each pass logs
-  `slimming: <n> rebuildable files (<size>), <n> expired exports (<size>) deleted`.
+  `slimming: <n> rebuildable files (<size>), <n> expired or replaced exports (<size>) deleted`.
 - `slim_rebuildable_files` may select masks like any other `rebuildable` row; no migration was
   needed (`stored_files.step` accepts `cutout`).
 - `createSlimmer` runs a pass when at least an hour passed since the last one started (the first
