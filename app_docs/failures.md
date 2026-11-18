@@ -182,11 +182,13 @@ and the job waits with `the OpenRouter credits are used up`.
 ### Per-reel order in `claim_job`
 
 `claim_job(p_worker, p_lease_seconds)` takes the oldest claimable job (`order by created_at, id`,
-`for update skip locked`): `queued`, `waiting_ai` past its `not_before`, or `running` with an
+`for update skip locked`; of the caller's kinds when it passes a lane's filter,
+`app_docs/studio.md`, "Worker"): `queued`, `waiting_ai` past its `not_before`, or `running` with an
 expired lease. A `cancelled` job (`app_docs/export.md`) is never claimed and holds no other job of
 its reel back. A job is skipped while another job of its reel is `running` under a live lease, or
 while an older job of its reel is still `queued`, `running` or `waiting_ai`. So one job per reel
-runs at a time, in the order they were created; jobs of other reels keep running. Two workers
+runs at a time, in the order they were created, whatever lane each job belongs to; jobs of other
+reels keep running. Two workers
 claiming at once cannot run two jobs of a reel: the second skips the row the first has locked and
 still sees it `queued` and older, so it skips the sibling too. Only `service_role` may execute it.
 
@@ -269,7 +271,7 @@ worker's `job <id>: failed:` log line and the job's `error_tail` keep that first
 - Tools: `apps/worker/src/pipeline/footage-check.tools.test.ts` (real ffprobe, `yarn workspace
 @edit-issebya/worker test:tools`).
 - Unit (`apps/studio`): `src/lib/failures.test.ts`, `src/lib/change-requests.test.ts`.
-- DB: `apps/studio/db-tests/job-order.test.ts` (one job per reel, in order, `not_before`; its
+- DB: `apps/studio/db-tests/job-order.test.ts` (one job per reel, in order, `not_before`; the lanes' kind filter, with the per-reel order kept across lanes; its
   two-worker loop holds the overlapping jobs until an event, never for a fixed time, so a slow
   session cannot turn the overlap checks into a race),
   `retry-jobs.test.ts` (the Retry insert policy through `is_retry_of_failed_job`) and

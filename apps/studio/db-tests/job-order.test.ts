@@ -207,6 +207,102 @@ describe("claim_job order with photo jobs", () => {
   });
 });
 
+// The worker's two lanes (20261118151340_worker_lanes.sql): the kind filter
+// narrows what a caller may take, and the per-reel order still counts every kind.
+describe("claim_job lanes", () => {
+  const EXPORT = "p_only_kinds => array['render']";
+  const MAIN = "p_except_kinds => array['render']";
+
+  async function claimIn(lane: string): Promise<string[]> {
+    const { rows } = await db.query<ClaimedRow>(
+      `select * from public.claim_job('job-order', 300, ${lane})`,
+    );
+    return rows.map((job) => job.id);
+  }
+
+  // A queued render of the reel's first version, saved as the worker saves it.
+  async function insertRender(reelId: string, secondsAgo: number): Promise<string> {
+    const versionId = crypto.randomUUID();
+    const saved = await admin.rpc("save_version", {
+      p_id: versionId,
+      p_reel_id: reelId,
+      p_parent_id: null,
+      p_restored_from_id: null,
+      p_request: null,
+      p_model: null,
+      p_prompt_version: null,
+      p_change_summary: "test",
+      p_checks: [],
+      p_inputs: {
+        footage: { step: "retime", fingerprint: "f", file: "source.mp4" },
+        transcript: { step: "retime", fingerprint: "f", file: "transcript.json" },
+        cutout: { step: "remove_background", fingerprint: "r", file: "subject.webm" },
+        head_track: { step: "head_track", fingerprint: "h", file: "head-track.json" },
+      },
+      p_r2_key: `job-order/reels/${reelId}/versions/${versionId}.json`,
+    });
+    if (saved.error) throw new Error(`version not saved: ${saved.error.message}`);
+    const { rows } = await db.query<{ id: string }>(
+      `insert into public.jobs (reel_id, owner_id, kind, version_id, created_at)
+       values ($1, $2, 'render', $3, now() - make_interval(secs => $4::int))
+       returning id`,
+      [reelId, owner.id, versionId, secondsAgo],
+    );
+    return rows[0]!.id;
+  }
+
+  it("takes only the lane's kinds, so another reel's upload runs beside an export", async () => {
+    const reelG = await newReel("g.mov");
+    const reelH = await newReel("h.mov");
+    const renderG = await insertRender(reelG, 300);
+    const processH = await insertJob(reelH, 200);
+    const renderH = await insertRender(reelH, 50);
+
+    // The main lane never takes the older render; the export lane never the upload.
+    expect(await claimIn(MAIN)).toEqual([processH]);
+    expect(await claimIn(EXPORT)).toEqual([renderG]);
+    // One export at a time for the lane's caller is the worker's rule; here H's
+    // render waits because H's upload still runs.
+    expect(await claimIn(EXPORT)).toEqual([]);
+    expect(await claimIn(MAIN)).toEqual([]);
+
+    await setDone([processH]);
+    expect(await claimIn(MAIN)).toEqual([]);
+    expect(await claimIn(EXPORT)).toEqual([renderH]);
+    await setDone([renderG, renderH]);
+  });
+
+  it("keeps one job per reel in order across the lanes", async () => {
+    const reel = await newReel("i.mov");
+    const render = await insertRender(reel, 300);
+    const change = await insertJob(reel, 100, { kind: "change" });
+
+    // The reel's change is the main lane's, but it waits for the reel's export,
+    // queued or running.
+    expect(await claimIn(MAIN)).toEqual([]);
+    expect(await claimIn(EXPORT)).toEqual([render]);
+    expect(await claimIn(MAIN)).toEqual([]);
+    await setDone([render]);
+    expect(await claimIn(MAIN)).toEqual([change]);
+    await setDone([change]);
+  });
+
+  it("claims any kind with no filter, and takes a filter over the API as the service role", async () => {
+    const reel = await newReel("j.mov");
+    const render = await insertRender(reel, 300);
+    expect((await claim()).map((job) => job.id)).toEqual([render]);
+    await setDone([render]);
+
+    const { data, error } = await admin.rpc("claim_job", {
+      p_worker: "job-order",
+      p_lease_seconds: 300,
+      p_only_kinds: ["render"],
+    });
+    expect(error).toBeNull();
+    expect(data).toEqual([]);
+  });
+});
+
 interface ClaimEvent {
   jobId: string;
   reel: string;

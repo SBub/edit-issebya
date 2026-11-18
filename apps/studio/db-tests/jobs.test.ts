@@ -120,6 +120,13 @@ describe("claim_job", () => {
     for (const client of [ownerClient, localSupabaseClient()]) {
       const { error } = await client.rpc("claim_job", { p_worker: "x", p_lease_seconds: 300 });
       expect(error).not.toBeNull();
+      // The lanes' filter is the service role's too.
+      const lane = await client.rpc("claim_job", {
+        p_worker: "x",
+        p_lease_seconds: 300,
+        p_except_kinds: ["render"],
+      });
+      expect(lane.error).not.toBeNull();
     }
     expect(await readJob(olderJob)).toEqual(before);
   });

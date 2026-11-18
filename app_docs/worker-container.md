@@ -78,8 +78,8 @@ dependencies and the apps the worker does not run out of the context):
 
 ### The scratch folder
 
-Only the worker reads or writes its scratch folder (one folder per job, removed after it, swept at
-start-up), so it needs no path shared with the Mac. It is a named Docker volume: faster than a
+Only the worker reads or writes its scratch folder (one folder per job, so the two jobs of the two
+lanes never share one; removed after the job, swept at start-up), so it needs no path shared with the Mac. It is a named Docker volume: faster than a
 bind-mounted Mac folder on Docker Desktop, and kept across restarts like the native folder.
 `WORKER_MIN_FREE_DISK_GB` is measured on that volume, which is Docker Desktop's disk image, not the
 Mac's disk.
@@ -122,6 +122,17 @@ the recommendation, not a measurement on this Mac. What a step really uses (CPU 
 cores, memory against the VM's total, disk, network, waiting) is on the "Worker resources" dashboard
 of local monitoring: `app_docs/measurement.md`, Resource metrics. `compose.yaml` sets no CPU or
 memory limit on the worker, so the VM's size is the only ceiling.
+
+The worker runs two lanes at once (`app_docs/studio.md`, "Worker"): one export and, beside it, one
+other job (an upload's processing, a photo, an edit). The two share the VM's CPUs and memory, and
+nothing limits their sum. Measured alone on the 7.75 GiB VM, an export's process tree peaks at 4.5
+to 5.8 GB (`app_docs/export.md`) and a cut-out at about 3.0 GB (`app_docs/pipeline.md`), so an
+export and a new reel's heavy steps running together can pass the VM's memory, and each runs slower
+than alone. Not measured together yet: watch the "Worker resources" dashboard on the first exports
+that overlap an upload, and give the VM more memory if the tree comes near its total. Each job's
+scratch folder, Chrome folders (`/tmp/hf-*`) and memory samples are its own, so two jobs never
+read each other's files; `/tmp` holds up to three Chrome profiles of the export at once, as before
+(only the export lane renders).
 
 ## Rules
 

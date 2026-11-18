@@ -1,10 +1,13 @@
 // The long-running worker on the owner's machine (never on Vercel). It wakes
 // on Realtime inserts into public.jobs, checks the table every
 // WORKER_POLL_INTERVAL_SECONDS reading only ids (of claimable jobs and of one
-// due storage_deletions row), and runs one job at a time.
-// Between jobs it deletes the objects of deleted reels (the storage_deletions
-// queue, also drained by the poll when no job is waiting) and slims storage at
-// most once an hour, and it claims nothing
+// due storage_deletions row), and runs two lanes side by side (queue.ts,
+// JOB_LANES): exports (`render` jobs) one at a time in one lane, every other
+// kind one at a time in the other, so an upload or a photo never waits behind
+// an export.
+// While no lane runs a job it deletes the objects of deleted reels (the
+// storage_deletions queue, also drained by the poll when no job is waiting)
+// and slims storage at most once an hour, and it claims nothing
 // while the scratch volume is below WORKER_MIN_FREE_DISK_GB. It writes a
 // heartbeat at start and every five minutes. Before anything reads the scratch
 // volume it creates the scratch folder, and exits 1 naming it when it cannot.
@@ -13,9 +16,9 @@ import { workerConfig } from "./config.ts";
 import { createErrorTracker, installCrashCapture } from "./error-tracking.ts";
 import { freeBytesFn, guardedClaim, supabaseWorkerStatus } from "./disk-guard.ts";
 import { startHeartbeat } from "./heartbeat.ts";
-import { createDrainer } from "./loop.ts";
+import { createLanes } from "./loop.ts";
 import { processJob } from "./process-job.ts";
-import { claimJob, claimableJobIds } from "./queue.ts";
+import { JOB_LANES, claimJob, claimableJobIds } from "./queue.ts";
 import { prepareScratchDir, sweepStaleScratch } from "./scratch.ts";
 import { createSlimmer, runSlimming } from "./slimming.ts";
 import {
@@ -52,12 +55,12 @@ const heartbeat = startHeartbeat({
   beat: async () => status.heartbeat({ freeDiskBytes: await freeBytes(config.scratchDir) }),
 });
 
-// Only between this worker's jobs: never while it runs one.
+// Only while no lane of this worker runs a job (createLanes' `between`).
 const slimmer = createSlimmer({
   run: (now) => runSlimming({ records, storage, keyPrefix: config.keyPrefix, now }),
 });
 
-// Only between this worker's jobs too; a failed pass is logged, and its keys
+// Only while no lane runs a job too; a failed pass is logged, and its keys
 // stay queued for the next one.
 async function deleteQueuedObjects() {
   try {
@@ -67,19 +70,29 @@ async function deleteQueuedObjects() {
   }
 }
 
-const drainer = createDrainer({
-  claim: async () => {
+// One drainer per lane; a signal (Realtime, the poll, start-up) wakes both.
+const drainer = createLanes({
+  lanes: JOB_LANES.map((lane) => ({
+    name: lane.name,
+    claim: () =>
+      guardedClaim({
+        dir: config.scratchDir,
+        minFreeDiskGb: config.minFreeDiskGb,
+        freeBytes,
+        status,
+        claim: () => claimJob(db, config, lane),
+      }),
+  })),
+  between: async () => {
     await deleteQueuedObjects();
     await slimmer.maybeRun();
-    return guardedClaim({
-      dir: config.scratchDir,
-      minFreeDiskGb: config.minFreeDiskGb,
-      freeBytes,
-      status,
-      claim: () => claimJob(db, config),
-    });
   },
-  run: (job) => processJob(db, storage, config, telemetry, errors, job, aiObserver),
+  run: (job, lane) => {
+    console.log(
+      `job ${job.id}: claimed in the ${lane} lane (${job.kind}, attempt ${job.attempts})`,
+    );
+    return processJob(db, storage, config, telemetry, errors, job, aiObserver);
+  },
   onError: (error) => {
     console.error("worker: drain failed:", error);
     errors.crashed(error);
@@ -121,7 +134,7 @@ let stopping = false;
 async function stop(signal: string) {
   if (stopping) return;
   stopping = true;
-  console.log(`worker: ${signal}, finishing the current job`);
+  console.log(`worker: ${signal}, finishing the running jobs`);
   clearInterval(poll);
   heartbeat.stop();
   await db.removeChannel(channel);

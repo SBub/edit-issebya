@@ -185,7 +185,7 @@ byte for byte, like the Node project does. The DB layer is `apps/studio/db-tests
 RLS, `jobs.test.ts` for `claim_job`'s lease, `versions.test.ts` for `save_version`, version
 immutability and its RLS (and the `checklist` column, a list stored through `save_version`'s `p_checklist`), `steps-measurements.test.ts` for the exact
 `steps` column set (`progress_percent` and `progress_updated_at` included), `job-order.test.ts` for
-`claim_job`'s order (one job per reel at a time, oldest first, `not_before` skipped until due),
+`claim_job`'s order (one job per reel at a time, oldest first, `not_before` skipped until due) and the worker lanes' kind filter (`p_only_kinds`, `p_except_kinds`),
 `retry-jobs.test.ts` for the Retry insert policy through `is_retry_of_failed_job`, `failure-and-size-columns.test.ts` for the checks on `jobs.failure_kind` and `failure_rules` and the reel's `source_seconds`, `source_width`, `source_height` and `word_count`, readable but never writable by the owner, and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit` (the reel's `footage_seconds` column comes from the progress migration and is written once by the worker after `retime`, unit-tested in `apps/worker/src/pipeline/run-pipeline.test.ts`, no DB test), `exports.test.ts` for
 the render job policy and the `exports` table: 1-hour expiry, owner from the reel, never updated,
 owner-only select, `cancel-jobs.test.ts` for `cancel_job` (own queued and running renders only,

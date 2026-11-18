@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   AI_RETRY_MINUTES,
   type ClaimedJob,
+  JOB_LANES,
+  claimJob,
   claimableJobIds,
   failJob,
   finishJob,
@@ -204,5 +206,46 @@ describe("claimableJobIds", () => {
     const filter = filters.find((f) => f.startsWith("status.eq.queued"));
     expect(filter).toMatch(/and\(status\.eq\.waiting_ai,not_before\.lt\.[0-9T:.Z-]+\)/);
     expect(filter).toMatch(/and\(status\.eq\.running,lease_expires_at\.lt\./);
+  });
+});
+
+describe("claiming in a lane", () => {
+  function rpcClient() {
+    const calls: { name: string; params: Record<string, unknown> }[] = [];
+    const db = {
+      rpc: async (name: string, params: Record<string, unknown>) => {
+        calls.push({ name, params });
+        return { data: [], error: null };
+      },
+    } as unknown as SupabaseClient;
+    return { db, calls };
+  }
+
+  it("has an export lane of renders only and a main lane of every other kind", () => {
+    expect(JOB_LANES).toEqual([
+      { name: "export", onlyKinds: ["render"] },
+      { name: "main", exceptKinds: ["render"] },
+    ]);
+  });
+
+  it("passes the lane's kinds to claim_job", async () => {
+    const { db, calls } = rpcClient();
+    for (const lane of JOB_LANES) await claimJob(db, CONFIG, lane);
+    expect(calls).toEqual([
+      {
+        name: "claim_job",
+        params: { p_worker: "w1", p_lease_seconds: 60, p_only_kinds: ["render"] },
+      },
+      {
+        name: "claim_job",
+        params: { p_worker: "w1", p_lease_seconds: 60, p_except_kinds: ["render"] },
+      },
+    ]);
+  });
+
+  it("claims any kind without a lane (the run-once worker)", async () => {
+    const { db, calls } = rpcClient();
+    expect(await claimJob(db, CONFIG)).toBeNull();
+    expect(calls[0]!.params).toEqual({ p_worker: "w1", p_lease_seconds: 60 });
   });
 });
