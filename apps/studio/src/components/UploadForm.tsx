@@ -16,12 +16,14 @@ import { formatBytes } from "@/lib/reels";
 import { capture, captureException } from "@/lib/track";
 import { CLIP_ACCEPT, CLIP_LIMITS, parseUploadRequest } from "@/lib/upload";
 import {
+  RESUME_CHANGED,
   RESUME_KEY,
   type ResumeRecord,
   clearResume,
   matchesResume,
   parseResume,
   readResume,
+  resumeIsGone,
   writeResume,
 } from "@/lib/upload-resume";
 import { type Uploader, createUploader } from "@/lib/uploader";
@@ -49,9 +51,11 @@ function subscribe(listener: () => void) {
     if (event.key === RESUME_KEY) listener();
   };
   window.addEventListener("storage", onStorage);
+  window.addEventListener(RESUME_CHANGED, listener);
   return () => {
     listeners.delete(listener);
     window.removeEventListener("storage", onStorage);
+    window.removeEventListener(RESUME_CHANGED, listener);
   };
 }
 
@@ -151,14 +155,23 @@ export function UploadForm() {
       setState("invalid");
       return;
     }
-    const resumed = resume && matchesResume(resume, file) ? resume : null;
+    let resumed = resume && matchesResume(resume, file) ? resume : null;
     pending.current = file;
     setPercent(0);
     setState("uploading");
-    const outcome = await uploaderOf().start(
+    let outcome = await uploaderOf().start(
       file,
       resumed ? { key: resumed.key, uploadId: resumed.uploadId } : undefined,
     );
+    if (resumed && outcome.status === "failed" && resumeIsGone(outcome.answer)) {
+      // The record names a reel that is gone (deleted, or no longer uploading):
+      // the same file starts fresh at once, with no message.
+      clearResume(window.localStorage);
+      notify();
+      resumed = null;
+      setPercent(0);
+      outcome = await uploaderOf().start(file);
+    }
     pending.current = null;
     if (outcome.status === "finished") {
       clearResume(window.localStorage);

@@ -122,8 +122,13 @@ exists; a malformed record reads as none and is cleared. After a reload the form
 (`matchesResume`: same name, size and modified time), Uppy is given `{ key, uploadId }`, lists the
 stored parts and sends only the missing ones. Any other file starts a fresh upload. The record is
 cleared on finish and on cancel, and also when a resumed attempt fails (the upload finished
-elsewhere, was cancelled or is gone), so the next attempt starts over ("Pick the file again to start
-over"). The bytes are never kept: a browser cannot read a picked file after a reload.
+elsewhere or was cancelled), so the next attempt starts over ("Pick the file again to start
+over"). Deleting a reel (`DeleteReelButton`) clears the record when it names that reel: this tab
+through `clearResumeFor` and the `RESUME_CHANGED` window event, which the upload form also listens
+to (the storage event skips the tab that wrote it). A resumed attempt whose routes answer
+`404 not-found` (the reel is gone or no longer uploading, `resumeIsGone`) clears the record and
+starts the same file fresh at once, with no message and no exception captured. The bytes are never
+kept: a browser cannot read a picked file after a reload.
 
 ### Storage
 
@@ -190,6 +195,12 @@ Not done by the pipeline and not verified by it, any more than real network drop
   signed-out caller cannot sign, list, complete or abort; cancel leaves the reel `failed` with no
   parts and no job. A reel an earlier test left `uploading` is skipped when a test picks its own
   uploading reel.
+- E2E, the same spec, two tests with their own user: a reel interrupted at part 3 is deleted from
+  the list (the record is gone at once), and the same file then uploads with no failure; the same
+  interruption with the reel set to `failed` (the resume answers `404 not-found`) starts the file
+  fresh with no message and no exception captured.
+- Unit: `upload-resume.test.ts` covers `clearResumeFor` (its own reel only, a store that throws) and
+  `resumeIsGone` (the 404 `not-found` answer only).
 
 ## Rules
 
@@ -200,6 +211,8 @@ Not done by the pipeline and not verified by it, any more than real network drop
   key and upload id from the row, never from the browser.
 - Never call `finish_upload` with a size the browser reported; the size comes from storage.
 - Never use `@uppy/golden-retriever`'s file store for footage; resume keeps only the record.
+- Never keep a resume record for a deleted reel: deleting a reel clears it, and a resume answered
+  `404 not-found` starts the same file fresh, with no failure shown.
 - Keep a fixed part size: every part but the last the same size.
 - Do not add Uppy UI packages; the uploader stays headless.
 - Never go to the reel after a finished upload before the bar shows 100.

@@ -419,3 +419,127 @@ test("Create fails: the form shows Upload failed and one exception is captured",
   expect(eventsNamed(events, "studio_footage_uploaded")).toEqual([]);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+// An upload held at part 3 (parts 1 and 2 stored): the record is written, the
+// reel is uploading, and the page is left on the reels list. The user is the
+// caller's own, so the list holds only this reel.
+async function interruptAtPartThree(
+  page: Page,
+  baseURL: string,
+  user: { id: string; email: string },
+) {
+  const held: Route[] = [];
+  await page.route(
+    (url) => isPart(url.href) && new URL(url.href).searchParams.get("partNumber") === "3",
+    (route) => {
+      held.push(route);
+    },
+  );
+  await signIn(page, user.email, baseURL);
+  await pickAndUpload(page);
+  const row = await uploadingReel(user.id);
+  await expect
+    .poll(async () =>
+      (await storage.listUploadParts(row.source_key, { uploadId: row.source_upload_id }))?.map(
+        (part) => part.partNumber,
+      ),
+    )
+    .toEqual([1, 2]);
+  await expect.poll(() => held.length).toBe(1);
+  return row;
+}
+
+async function removeUser(user: { id: string }) {
+  await admin.from("jobs").delete().eq("owner_id", user.id);
+  await deleteTestUser(admin, user.id);
+}
+
+test("Deleted reel: the interrupted upload's reel is deleted, and the same file uploads again with no failure", async ({
+  page,
+  baseURL,
+}) => {
+  const user = await createTestUser(admin, "multipart-deleted");
+  const events = await recordEvents(page);
+  try {
+    const row = await interruptAtPartThree(page, baseURL!, user);
+
+    // The owner deletes the reel from the list (its bin). A full load of the
+    // list ends the interrupted upload, as closing the tab would.
+    await page.goto("/studio");
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await expect(page.getByRole("list", { name: "Reels" }).getByRole("listitem")).toHaveCount(1);
+    await page
+      .getByRole("list", { name: "Reels" })
+      .getByRole("listitem")
+      .getByRole("button", { name: "Delete reel" })
+      .click();
+    await page.getByTestId("delete-reel-dialog").getByTestId("confirm-delete-reel").click();
+    await expect(page.getByRole("list", { name: "Reels" }).getByRole("listitem")).toHaveCount(0);
+    expect((await admin.from("reels").select("id").eq("id", row.id)).data).toEqual([]);
+    // The deletion cleared the record that named the reel.
+    expect(await page.evaluate(() => localStorage.getItem("studio_upload_resume"))).toBeNull();
+
+    // The same file, picked again, uploads from the start.
+    await page.getByRole("button", { name: "Upload a reel" }).click();
+    await expect(page.getByTestId("upload-drop")).toBeVisible();
+    await expect(page.getByTestId("upload-resume")).toHaveCount(0);
+    await pickAndUpload(page);
+
+    await expect(page).toHaveURL(REEL_URL, { timeout: 60_000 });
+    const reelId = new URL(page.url()).pathname.split("/").pop()!;
+    expect(reelId).not.toBe(row.id);
+    expect(await finished(reelId)).toEqual({
+      reel: { status: "uploaded", source_bytes: 36700160 },
+      jobs: ONE_JOB,
+      sha256: footage.sha256,
+    });
+    expect(eventsNamed(events, "$exception")).toEqual([]);
+    await expect
+      .poll(() => eventsNamed(events, "studio_footage_uploaded"))
+      .toEqual([
+        { event: "studio_footage_uploaded", properties: { app: "studio", reel_id: reelId } },
+      ]);
+  } finally {
+    await removeUser(user);
+  }
+});
+
+test("Gone reel: a resume answered not-found starts the same file fresh, with no message", async ({
+  page,
+  baseURL,
+}) => {
+  const user = await createTestUser(admin, "multipart-gone");
+  const events = await recordEvents(page);
+  try {
+    const row = await interruptAtPartThree(page, baseURL!, user);
+
+    await page.reload();
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await page.getByRole("button", { name: "Upload a reel" }).click();
+    await expect(page.getByTestId("upload-resume")).toHaveText(
+      `An upload of ${basename(footage.path)} was interrupted. Pick the same file to resume`,
+    );
+    // The reel is no longer uploading, so the resume's list answers 404 not-found.
+    await admin.from("reels").update({ status: "failed" }).eq("id", row.id);
+    await pickAndUpload(page);
+
+    await expect(page).toHaveURL(REEL_URL, { timeout: 60_000 });
+    const reelId = new URL(page.url()).pathname.split("/").pop()!;
+    expect(reelId).not.toBe(row.id);
+    // No failure was shown or captured on the way.
+    expect(eventsNamed(events, "$exception")).toEqual([]);
+    expect(await finished(reelId)).toEqual({
+      reel: { status: "uploaded", source_bytes: 36700160 },
+      jobs: ONE_JOB,
+      sha256: footage.sha256,
+    });
+    await expect
+      .poll(() => eventsNamed(events, "studio_footage_uploaded"))
+      .toEqual([
+        { event: "studio_footage_uploaded", properties: { app: "studio", reel_id: reelId } },
+      ]);
+    expect(await page.evaluate(() => localStorage.getItem("studio_upload_resume"))).toBeNull();
+  } finally {
+    await removeUser(user);
+  }
+});
