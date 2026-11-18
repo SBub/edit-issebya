@@ -18,9 +18,11 @@ RUN git clone --depth 1 --branch "${WHISPER_CPP_TAG}" https://github.com/ggml-or
  && cmake --build /src/build --config Release --target whisper-cli -j \
  && cp /src/build/bin/whisper-cli /whisper-cli
 
-# The model HyperFrames' `small` names (ggml-small.bin), fetched at the revision
-# HyperFrames pins and checked against its sha256, so the image holds the same file
-# HyperFrames would download on first use.
+# The models HyperFrames' `small` and `medium` name (ggml-small.bin for the
+# whole clip, ggml-medium.bin for transcribe's re-listen, 1.5 GB), fetched at the
+# revision HyperFrames pins and checked against its sha256, so the image holds the
+# same files HyperFrames would download on first use. The medium pin is also in
+# apps/worker/src/pipeline/whisper-model.ts.
 FROM node:24-trixie-slim AS model
 ARG WHISPER_MODEL_REVISION=5359861c739e955e79d9a303bcbc70fb988958b1
 RUN apt-get update \
@@ -29,6 +31,9 @@ RUN apt-get update \
 RUN wget -q -O /ggml-small.bin \
       "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REVISION}/ggml-small.bin" \
  && echo "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b  /ggml-small.bin" | sha256sum -c -
+RUN wget -q -O /ggml-medium.bin \
+      "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REVISION}/ggml-medium.bin" \
+ && echo "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208  /ggml-medium.bin" | sha256sum -c -
 
 # The transcribe step's word aligner (wav2vec2-base-960h, float32 ONNX), fetched
 # at the revision and SHA-256 pinned in apps/worker/src/pipeline/align-model.ts,
@@ -61,6 +66,7 @@ ENV HOME=/home/node \
 RUN mkdir -p /home/node/.cache/hyperframes/whisper/models /scratch \
  && chown -R node:node /home/node /scratch
 COPY --from=model --chown=node:node /ggml-small.bin /home/node/.cache/hyperframes/whisper/models/ggml-small.bin
+COPY --from=model --chown=node:node /ggml-medium.bin /home/node/.cache/hyperframes/whisper/models/ggml-medium.bin
 
 # The worker's workspace and its two packages, with their dependencies only: the
 # lockfile and every workspace's manifest, then `yarn workspaces focus`. It installs

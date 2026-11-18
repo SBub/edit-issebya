@@ -71,6 +71,9 @@ export interface DoctorDeps {
   // The transcribe step's word aligner: its fetched model checked against its
   // pinned size and hash (`verifyModel` rejects with one line naming the fix).
   aligner: () => { verifyModel: () => Promise<void>; modelSha256: string };
+  // The transcribe step's re-listen: Whisper `medium` in HyperFrames' model
+  // folder, checked against its pinned size and hash the same way.
+  relisten: () => { verifyModel: () => Promise<void>; modelSha256: string };
   // The scratch folder and whether it exists or can be created (never created).
   scratchDir: () => Promise<{ dir: string; state: "exists" | "can be created" }>;
 }
@@ -301,6 +304,11 @@ export async function runDoctor(
       const aligner = deps.aligner();
       await aligner.verifyModel();
       return `wav2vec2 ${aligner.modelSha256.slice(0, 8)}`;
+    }),
+    await check("relisten", async () => {
+      const relisten = deps.relisten();
+      await relisten.verifyModel();
+      return `whisper medium ${relisten.modelSha256.slice(0, 8)}`;
     }),
     // Last, so the earlier lines keep their places.
     await check("scratch dir", async () => {

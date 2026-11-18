@@ -274,3 +274,28 @@ export function alignedTranscript(
   }
   return out;
 }
+
+// The letter probabilities of a clip as one file, so a second alignment of
+// the same audio (transcribe's re-listen changed the words) skips the model:
+// the clip's sample count (8 bytes, a double), then the frames' log
+// probabilities (float32, frames x size), little-endian.
+export function packEmissions(samples: number, emissions: Float32Array): Buffer {
+  const out = Buffer.alloc(8 + emissions.length * 4);
+  out.writeDoubleLE(samples, 0);
+  emissions.forEach((value, index) => out.writeFloatLE(value, 8 + index * 4));
+  return out;
+}
+
+export function unpackEmissions(
+  file: Buffer,
+  size: number,
+): { samples: number; emissions: Float32Array; frames: number } {
+  const values = (file.length - 8) / 4;
+  if (file.length < 8 || !Number.isInteger(values / size)) {
+    throw new Error(`the saved letter probabilities are damaged (${file.length} bytes)`);
+  }
+  const emissions = new Float32Array(values);
+  for (let index = 0; index < values; index += 1)
+    emissions[index] = file.readFloatLE(8 + index * 4);
+  return { samples: file.readDoubleLE(0), emissions, frames: values / size };
+}

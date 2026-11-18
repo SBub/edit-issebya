@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ALIGN_SETTINGS } from "./align.ts";
+import { fingerprint } from "./fingerprint.ts";
+import { RELISTEN_SETTINGS } from "./relisten.ts";
 import { TRANSCRIBE_SETTINGS, alignArgs, transcribeArgs } from "./transcribe.ts";
 
 const WORKER_PACKAGE = JSON.parse(
@@ -43,6 +45,7 @@ describe("alignArgs", () => {
         words: "/job/heard.json",
         output: "/job/aligned.json",
         threads: 8,
+        emissions: "/job/emissions.f32",
       },
       "/models/wav2vec2.onnx",
       { ffmpeg: "/bin/ffmpeg" },
@@ -61,10 +64,46 @@ describe("alignArgs", () => {
       "/models/wav2vec2.onnx",
       "--ffmpeg",
       "/bin/ffmpeg",
+      "--emissions",
+      "/job/emissions.f32",
     ]);
   });
 
   it("puts the aligner's settings in transcribe's fingerprint", () => {
     expect(TRANSCRIBE_SETTINGS.align).toBe(ALIGN_SETTINGS);
+  });
+});
+
+describe("re-listen settings", () => {
+  it("asks whisper medium for a window, through the same HyperFrames call", () => {
+    expect(
+      transcribeArgs("/job/relisten-0.wav", "/job/relisten-0", {
+        ...TRANSCRIBE_SETTINGS,
+        model: TRANSCRIBE_SETTINGS.relisten.model,
+      }),
+    ).toEqual([
+      "transcribe",
+      "/job/relisten-0.wav",
+      "--engine",
+      "whisper",
+      "--model",
+      "medium",
+      "--language",
+      "en",
+      "--json",
+      "--dir",
+      "/job/relisten-0",
+    ]);
+  });
+
+  it("are part of transcribe's fingerprint: another threshold or model re-runs it", () => {
+    expect(TRANSCRIBE_SETTINGS.relisten).toBe(RELISTEN_SETTINGS);
+    const of = (settings: object) => fingerprint({ inputs: [], settings, version: 3 });
+    const base = of(TRANSCRIBE_SETTINGS);
+    for (const [key, value] of Object.entries(RELISTEN_SETTINGS)) {
+      const other = typeof value === "number" ? value + 1 : `${value}x`;
+      const changed = { ...TRANSCRIBE_SETTINGS, relisten: { ...RELISTEN_SETTINGS, [key]: other } };
+      expect(of(changed), key).not.toBe(base);
+    }
   });
 });
