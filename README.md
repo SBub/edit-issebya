@@ -45,6 +45,8 @@ image and a native worker both have them after a checkout. The transcribe step's
 (378 MB) is too large to commit: the worker image fetches it at build, and a native worker, the
 worker's tool tests and `fixtures:pipeline` need it fetched once with
 `yarn workspace @edit-issebya/worker models:fetch` (see [the pipeline doc](app_docs/pipeline.md)).
+The same command fetches the Whisper `medium` model (1.5 GB) that transcribe uses to hear a doubtful
+spot again, into HyperFrames' model folder in your home directory; the worker image carries it too.
 
 `scripts/dev-studio.sh` checks that Docker is running, starts the local Supabase stack
 (`edit-issebya`, `supabase/config.toml`) if it is down, applies pending migrations

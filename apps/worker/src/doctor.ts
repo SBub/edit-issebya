@@ -6,7 +6,8 @@
 // POSTHOG_PERSONAL_API_KEY (each line names name@vN, never the text), the
 // cut-out's mask tool (the MODNet
 // model's hash checked, run on one second of a sample), the word aligner's
-// model (fetched by `models:fetch`, its size and hash checked), and the scratch folder
+// model and the re-listen's Whisper `medium` (both fetched by `models:fetch`,
+// size and hash checked), and the scratch folder
 // (exists or can be created, never created here). With `--ai` it also makes one
 // tiny real structured AI call and one image call through OpenRouter (paid, a
 // fraction of a cent); without it no AI call is made. Prints one line per
@@ -24,6 +25,11 @@ import { maskToolCall } from "./cutout/mask-tool.ts";
 import { MODNET_MODEL, modnetModelPath, verifyModel } from "./cutout/modnet-model.ts";
 import { type DoctorDeps, runDoctor } from "./doctor-checks.ts";
 import { ALIGN_MODEL, alignModelPath, verifyAlignModel } from "./pipeline/align-model.ts";
+import {
+  RELISTEN_MODEL,
+  relistenModelPath,
+  verifyRelistenModel,
+} from "./pipeline/whisper-model.ts";
 import { promptSourceOf } from "./prompts/select.ts";
 import type { PromptSource } from "./prompts/source.ts";
 import { hyperframesEnv, toolPaths } from "./pipeline/tools.ts";
@@ -139,6 +145,10 @@ const deps: DoctorDeps = {
   aligner: () => ({
     modelSha256: ALIGN_MODEL.sha256,
     verifyModel: () => verifyAlignModel(alignModelPath()),
+  }),
+  relisten: () => ({
+    modelSha256: RELISTEN_MODEL.sha256,
+    verifyModel: () => verifyRelistenModel(relistenModelPath()),
   }),
   async scratchDir() {
     const dir = scratchDirOf(process.env);

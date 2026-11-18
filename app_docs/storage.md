@@ -110,7 +110,11 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
   export file no export records, at once, by the render that uploaded it (`discard_export_file`,
   then a delete from the raw storage, `supabaseDiscardExport` in `apps/worker/src/stored-files.ts`).
 - The next export rebuilds whatever rebuildable output is missing: only `convert` and `retime`
-  re-run from their fingerprints, and the kept outputs stay cache hits.
+  re-run from their fingerprints, and the kept outputs stay cache hits. This holds while the
+  version's inputs carry the current fingerprints. A version made before a step's version changed
+  names a `source.mp4` the pipeline no longer makes: once cleared it cannot come back, and the
+  export fails saying so (`missingInput`, `app_docs/pipeline.md`, "Saved versions and a new
+  transcribe version").
 - A cleared mask is rebuilt by the next export, restore or Start over that needs it (a `cutout` step,
   the same fingerprint and key). Until then the live preview of a version naming it shows the
   `cutout-cleared` notice (`This version's cut-out was cleared to save space; Export rebuilds it`,

@@ -44,3 +44,17 @@ export async function recordPreviewCopies(
   const { error } = await db.from("reels").update({ preview_copies: refs }).eq("id", reelId);
   if (error) throw new Error(`preview copies not recorded: ${error.message}`);
 }
+
+// Whether the reel keeps the preview copies it has: true once it has a
+// version. Every version of a reel is built on the pipeline outputs of the
+// reel's first run (the edit's `inputs`), and the preview plays the reel's
+// copies under whichever version is shown. A `process` job run again after a
+// step's version changed (a retry, a job taken again) makes new outputs with
+// other cuts and other word ids; recording their copies would put new footage
+// under the old versions' words.
+export async function keepsPreviewCopies(
+  rows: { current(reelId: string): Promise<unknown> },
+  reelId: string,
+): Promise<boolean> {
+  return (await rows.current(reelId)) !== null;
+}

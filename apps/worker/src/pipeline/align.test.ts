@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  packEmissions,
+  unpackEmissions,
   ALIGN_SETTINGS,
   VOCABULARY_SIZE,
   alignDecodeArgs,
@@ -177,5 +179,24 @@ describe("transcriptTokens and alignedTranscript", () => {
   it("keeps Whisper's times when no word can be spelled", () => {
     const words = [word(1, "42", 1, 2)];
     expect(alignedTranscript(words, [[]], [], FRAME, 3)).toEqual(words);
+  });
+});
+
+describe("packEmissions and unpackEmissions", () => {
+  it("give back the clip's sample count and every log probability", () => {
+    const emissions = Float32Array.from({ length: 3 * 4 }, (_, index) => -index / 7);
+    const {
+      samples,
+      frames,
+      emissions: back,
+    } = unpackEmissions(packEmissions(1_810_400, emissions), 4);
+    expect(samples).toBe(1_810_400);
+    expect(frames).toBe(3);
+    expect([...back]).toEqual([...emissions]);
+  });
+
+  it("refuse a file that is not whole frames", () => {
+    expect(() => unpackEmissions(Buffer.alloc(8 + 4 * 5), 4)).toThrow(/damaged/);
+    expect(() => unpackEmissions(Buffer.alloc(3), 4)).toThrow(/damaged/);
   });
 });

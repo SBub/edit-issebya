@@ -43,7 +43,10 @@ dependencies and the apps the worker does not run out of the context):
 - `whisper-cli`, built from the pinned whisper.cpp tag `v1.9.5` with the libraries linked in, at
   `HYPERFRAMES_WHISPER_PATH`. The `small` model (`ggml-small.bin`, HyperFrames' pinned revision and
   sha256) is in the image at `/home/node/.cache/hyperframes/whisper/models`, so the first transcribe
-  does not download it.
+  does not download it. The `medium` model (`ggml-medium.bin`, 1.5 GB, the same revision, its
+  sha256 also pinned in `whisper-model.ts`) is fetched by the same `model` build stage and sits
+  beside it: transcribe's re-listen hears its windows with it (`app_docs/pipeline.md`). It makes
+  the image about 1.5 GB larger.
 - The MODNet model (`modnet_int8_13.onnx`), the head track's U2Net model
   (`u2net_int8_static13.onnx`) and their notice, part of the worker's folder
   (`apps/worker/models/`, committed), so `COPY apps/worker` puts them at `/repo/apps/worker/models`:
@@ -121,7 +124,10 @@ transcribes and the cut-out are the heavy steps; below that they swap or slow do
 the recommendation, not a measurement on this Mac. What a step really uses (CPU against the VM's
 cores, memory against the VM's total, disk, network, waiting) is on the "Worker resources" dashboard
 of local monitoring: `app_docs/measurement.md`, Resource metrics. `compose.yaml` sets no CPU or
-memory limit on the worker, so the VM's size is the only ceiling.
+memory limit on the worker, and neither does `compose.prod.yaml`, so the VM's size is the only
+ceiling. The largest single process is transcribe's re-listen: Whisper `medium` holds about 2.1 GB
+at its peak (alone: the step's calls run one after the other), which fits the 6 GB recommended
+above and the owner's 7.75 GiB VM.
 
 ## Rules
 
@@ -131,7 +137,10 @@ memory limit on the worker, so the VM's size is the only ceiling.
   `ARG` lines change together (`dockerfile.test.ts` checks it), with `MASK_TOOL_VERSION` when the
   masks change.
 - Never download a model at job time in the container: the image carries the MODNet, U2Net,
-  aligner and whisper models.
+  aligner and whisper (`small` and `medium`) models.
+- Never change the Whisper `medium` pin in one place only: `whisper-model.ts` and the Dockerfile's
+  `model` stage (`WHISPER_MODEL_REVISION`, the SHA-256, the file name) change together
+  (`dockerfile.test.ts` checks it).
 - Never change the aligner's pin in one place only: `align-model.ts` and the Dockerfile's `aligner`
   stage (`ALIGN_MODEL_REVISION`, the SHA-256, the file name) change together (`dockerfile.test.ts`
   checks it).
@@ -144,7 +153,8 @@ memory limit on the worker, so the VM's size is the only ceiling.
 
 - `yarn workspace @edit-issebya/worker test` (pure): `dockerfile.test.ts` (the committed models are
   copied with the worker's folder, the aligner stage's URL, revision, SHA-256 and copy match
-  `align-model.ts`, `.dockerignore` keeps the local copy out), and `time-report.test.ts` (the GNU report branch the container uses).
+  `align-model.ts`, `.dockerignore` keeps the local copy out, the `model` stage's `medium` URL,
+  revision, SHA-256 and copy into HyperFrames' folder match `whisper-model.ts`), and `time-report.test.ts` (the GNU report branch the container uses).
 - Manual (the owner's Mac, Docker Desktop): `docker compose build worker`, then the doctor in the
   container. The result of the last run is in the Notes.
 

@@ -1,8 +1,8 @@
 import type { Transcript, Word } from "@edit-issebya/edit";
 
 // The studio's transcript (the type is packages/edit's, so the writer here and
-// the builder cannot drift): every word with a stable id (`w0001`), given once
-// by transcribe and never changed by a later step. Times in seconds, to the
+// the builder cannot drift): every word with a stable id (`w0001`), given by
+// transcribe to its final word list and never changed by a later step. Times in seconds, to the
 // millisecond.
 export type { Transcript, Word };
 
@@ -43,6 +43,12 @@ export function normaliseHyperframes(raw: unknown): Transcript {
   }
   if (words.length === 0) throw new Error("transcribe: no words heard");
   return { words };
+}
+
+// Words in their final order, numbered by position (`w0001`...). Transcribe
+// calls it once, on the list it writes; no later step renumbers.
+export function numberWords(words: readonly Omit<Word, "id">[]): Word[] {
+  return words.map(({ text, start, end }, index) => ({ id: wordId(index), text, start, end }));
 }
 
 // The same words at new times (a retime's map): ids and texts unchanged.

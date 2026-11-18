@@ -31,7 +31,7 @@ import { type Telemetry, createTelemetry } from "../telemetry.ts";
 import type { ExportStore, NewExport } from "./export-store.ts";
 import { FAKE_RENDER, STUB_EXPORT } from "./render-call.ts";
 import { renderExport, renderVersion } from "./render-step.ts";
-import { runRender } from "./render-step.ts";
+import { missingInput, runRender } from "./render-step.ts";
 import { fixtureEdit, fixtureManifest, fixturePath } from "./render-test-support.ts";
 
 const PREFIX = "dev/";
@@ -1265,5 +1265,21 @@ describe("renderVersion's composite", () => {
     };
     const { done } = await compositeOf(tool);
     await expect(done).rejects.toThrow("render: the render wrote no MP4");
+  });
+});
+
+describe("missingInput", () => {
+  const ref = { step: "retime", fingerprint: "old", file: "source.mp4" };
+  const key = "dev/cache/retime/old/source.mp4";
+
+  it("names the key when the pipeline still makes that output", () => {
+    expect(missingInput(key, ref, { retime: "old" })).toBe(`render: input missing: ${key}`);
+    expect(missingInput(key, ref, undefined)).toBe(`render: input missing: ${key}`);
+  });
+
+  it("says a version made before a step changed cannot get its cleared footage back", () => {
+    expect(missingInput(key, ref, { retime: "new" })).toBe(
+      `render: input missing: ${key}: this version was made by an earlier version of the retime step, its source.mp4 was cleared to save space and can no longer be made again; upload the footage again as a new reel`,
+    );
   });
 });

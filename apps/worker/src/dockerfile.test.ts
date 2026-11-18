@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { modnetModelPath } from "./cutout/modnet-model.ts";
 import { ALIGN_MODEL } from "./pipeline/align-model.ts";
 import { u2netModelPath } from "./pipeline/u2net-model.ts";
+import {
+  RELISTEN_MODEL,
+  WHISPER_MODEL_REVISION,
+  relistenModelPath,
+} from "./pipeline/whisper-model.ts";
 
 // The worker image (apps/worker/Dockerfile) carries the MODNet and U2Net
 // models as part of the worker's folder (committed, no download stage), and
@@ -34,5 +39,18 @@ describe("worker Dockerfile", () => {
       `COPY --from=aligner /${ALIGN_MODEL.file} apps/worker/models/${ALIGN_MODEL.file}`,
     );
     expect(DOCKERIGNORE).toContain(`apps/worker/models/${ALIGN_MODEL.file}`);
+  });
+
+  it("fetches the re-listen's whisper medium at its pinned URL and hash, into HyperFrames' folder", () => {
+    expect(DOCKERFILE).toContain(`ARG WHISPER_MODEL_REVISION=${WHISPER_MODEL_REVISION}`);
+    expect(DOCKERFILE).toContain(
+      RELISTEN_MODEL.url!.replace(WHISPER_MODEL_REVISION, "${WHISPER_MODEL_REVISION}"),
+    );
+    expect(DOCKERFILE).toContain(`${RELISTEN_MODEL.sha256}  /${RELISTEN_MODEL.file}`);
+    // The image's HOME is /home/node: where HyperFrames, and the step's check, look.
+    expect(DOCKERFILE).toContain("ENV HOME=/home/node");
+    expect(DOCKERFILE).toContain(
+      `COPY --from=model --chown=node:node /${RELISTEN_MODEL.file} ${relistenModelPath("/home/node")}`,
+    );
   });
 });

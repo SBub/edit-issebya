@@ -5,14 +5,9 @@ import type { PipelineStep, StepOutput } from "./definition.ts";
 import { envelopeArgs, parseEnvelope } from "./envelope.ts";
 import { parseProbe, probeArgs } from "./probe.ts";
 import { retimeEncodeArgs, retimeFilterGraph } from "./retime-encode.ts";
-import {
-  missedSpeech,
-  pausesLeft,
-  planRetime,
-  remapTime,
-  retimeTranscript,
-} from "./retime-plan.ts";
+import { pausesLeft, planRetime, remapTime, retimeTranscript } from "./retime-plan.ts";
 import { RETIME_PRESET, RETIME_VERSION, type RetimeSettings } from "./retime-preset.ts";
+import { missedSpeech } from "./speech-gaps.ts";
 import { parseTranscript } from "./transcript.ts";
 
 // The retimed footage is heavy and rebuilt from the kept upload; the small

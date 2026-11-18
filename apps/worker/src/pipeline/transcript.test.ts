@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { normaliseHyperframes, parseTranscript, remapTranscript } from "./transcript.ts";
+import {
+  normaliseHyperframes,
+  numberWords,
+  parseTranscript,
+  remapTranscript,
+} from "./transcript.ts";
 
 const WHISPER = JSON.parse(
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- a committed test fixture
@@ -71,5 +76,18 @@ describe("parseTranscript", () => {
   it("reads a stored transcript and refuses one without words", () => {
     expect(parseTranscript('{"words":[]}')).toEqual({ words: [] });
     expect(() => parseTranscript("[]")).toThrow("no word list");
+  });
+});
+
+describe("numberWords", () => {
+  it("numbers the words by position, whatever ids they came with", () => {
+    const words = [
+      { id: "w0007", text: "Warm", start: 1, end: 1.2 },
+      { text: "meals", start: 1.3, end: 1.6 },
+    ];
+    expect(numberWords(words)).toEqual([
+      { id: "w0001", text: "Warm", start: 1, end: 1.2 },
+      { id: "w0002", text: "meals", start: 1.3, end: 1.6 },
+    ]);
   });
 });

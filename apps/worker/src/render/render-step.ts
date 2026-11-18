@@ -539,6 +539,27 @@ function elapsedMs(started: number): number {
   return Math.max(0, Math.round(performance.now() - started));
 }
 
+// The current pipeline's fingerprints, when the inputs were made sure of by
+// the pipeline itself (a test's stand-in gives none).
+function currentFingerprints(ensured: unknown): Record<string, string> | undefined {
+  return (ensured as { fingerprints?: Record<string, string> } | undefined)?.fingerprints;
+}
+
+// The failure of a version's missing heavy input. The pipeline rebuilds a
+// cleared file only under its current fingerprints, so a version made before a
+// step's version changed (its input names another fingerprint) cannot get its
+// file back: the line says so, and what to do.
+export function missingInput(
+  key: string,
+  ref: { step: string; fingerprint: string; file: string },
+  current: Record<string, string> | undefined,
+): string {
+  const line = `${STEP}: input missing: ${key}`;
+  const now = current?.[ref.step];
+  if (now === undefined || now === ref.fingerprint) return line;
+  return `${line}: this version was made by an earlier version of the ${ref.step} step, its ${ref.file} was cleared to save space and can no longer be made again; upload the footage again as a new reel`;
+}
+
 // A render job: the pipeline's hits (or a rebuilt output), then one measured
 // `render` step that renders the version (`renderVersion`), uploads the MP4 put-if-absent to
 // `${prefix}exports/<reel_id>/<export_id>.mp4` and records the `exports` row.
@@ -586,7 +607,7 @@ export async function runRender({
     });
     return;
   }
-  await (
+  const ensured = await (
     ensureInputs ??
     (() =>
       runPipeline({
@@ -666,7 +687,7 @@ export async function runRender({
                   // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the render's scratch folder
                   await mkdir(join(dir, "inputs", ref.step), { recursive: true });
                   if (!(await storage.getFile(key, path, { signal }))) {
-                    throw new Error(`${STEP}: input missing: ${key}`);
+                    throw new Error(missingInput(key, ref, currentFingerprints(ensured)));
                   }
                   return path;
                 };

@@ -3,12 +3,15 @@
 // by the worker's Node as one tool call of the `transcribe` step.
 //
 //   align-entry --input <media> --words <transcript.json> --output <json>
-//               --threads <n> --model <onnx> --ffmpeg <path>
+//               --threads <n> --model <onnx> --ffmpeg <path> --emissions <file>
 //
 // Checks the model against its pinned SHA-256; ffmpeg decodes the audio to
 // 16 kHz mono; the model hears it in chunks (align.ts, chunksOf), and the
 // forced alignment places the words (alignedTranscript). Written to
-// <output>.part, renamed to <output> once finished. One `@hf-progress
+// <output>.part, renamed to <output> once finished. The model's letter
+// probabilities are saved to <emissions>; when that file is already there
+// (the same audio aligned again with other words), they are read from it and
+// neither ffmpeg nor the model runs. One `@hf-progress
 // {"index","total","pct"}` line per chunk on stdout; any failure exits
 // non-zero with one `align: ...` line.
 import { spawn } from "node:child_process";
@@ -25,7 +28,9 @@ import {
   forcedAlign,
   logSoftmax,
   normaliseSamples,
+  packEmissions,
   transcriptTokens,
+  unpackEmissions,
 } from "./align.ts";
 import { parseTranscript } from "./transcript.ts";
 
@@ -36,9 +41,10 @@ interface Options {
   threads: number;
   model: string;
   ffmpeg: string;
+  emissions: string;
 }
 
-const NAMES = ["--input", "--words", "--output", "--threads", "--model", "--ffmpeg"];
+const NAMES = ["--input", "--words", "--output", "--threads", "--model", "--ffmpeg", "--emissions"];
 
 function parseOptions(argv: string[]): Options {
   const flags = new Map<string, string>();
@@ -61,6 +67,7 @@ function parseOptions(argv: string[]): Options {
     threads,
     model: flags.get("--model")!,
     ffmpeg: flags.get("--ffmpeg")!,
+    emissions: flags.get("--emissions")!,
   };
 }
 
@@ -79,10 +86,18 @@ async function decode(options: Options): Promise<Float32Array> {
   return samples;
 }
 
-async function align(options: Options): Promise<void> {
+interface Heard {
+  // The clip's length in samples.
+  samples: number;
+  frames: number;
+  // The frames' log probabilities.
+  emissions: Float32Array;
+}
+
+// The model over the whole clip: the model checked, the audio decoded, each
+// chunk run, the log probabilities saved to the emissions file.
+async function hear(options: Options): Promise<Heard> {
   await verifyAlignModel(options.model);
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the step's own scratch file
-  const words = parseTranscript(await readFile(options.words, "utf8")).words;
   const samples = await decode(options);
   const settings = ALIGN_SETTINGS;
   const chunks = chunksOf(samples.length, settings);
@@ -120,6 +135,31 @@ async function align(options: Options): Promise<void> {
   await session.release();
 
   logSoftmax(emissions, frames, VOCABULARY_SIZE);
+  const part = `${options.emissions}.part`;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the step's own scratch file
+  await writeFile(part, packEmissions(samples.length, emissions));
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the step's own scratch files
+  await rename(part, options.emissions);
+  return { samples: samples.length, frames, emissions };
+}
+
+// What was heard before, when the emissions file is there; null otherwise.
+async function heardBefore(options: Options): Promise<Heard | null> {
+  let file: Buffer;
+  try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- the step's own scratch file
+    file = await readFile(options.emissions);
+  } catch {
+    return null;
+  }
+  return unpackEmissions(file, VOCABULARY_SIZE);
+}
+
+async function align(options: Options): Promise<void> {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the step's own scratch file
+  const words = parseTranscript(await readFile(options.words, "utf8")).words;
+  const settings = ALIGN_SETTINGS;
+  const { samples, frames, emissions } = (await heardBefore(options)) ?? (await hear(options));
   const { tokens, owned } = transcriptTokens(words);
   const spans = forcedAlign(emissions, frames, VOCABULARY_SIZE, tokens);
   const aligned = alignedTranscript(
@@ -127,7 +167,7 @@ async function align(options: Options): Promise<void> {
     owned,
     spans,
     settings.samplesPerFrame / settings.sampleRate,
-    samples.length / settings.sampleRate,
+    samples / settings.sampleRate,
   );
   const part = `${options.output}.part`;
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the step's own scratch file
@@ -142,6 +182,7 @@ try {
     await align(options);
   } catch (error) {
     await rm(`${options.output}.part`, { force: true });
+    await rm(`${options.emissions}.part`, { force: true });
     throw error;
   }
   // No process.exit: exiting with onnxruntime's threads still up aborts the

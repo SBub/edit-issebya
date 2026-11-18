@@ -11,7 +11,8 @@
 
 After an upload the worker's `process` job runs five fixed steps as plain TypeScript, with no AI:
 `convert` (phone footage to steady H.264), `transcribe` (the words from Whisper through
-HyperFrames, each word's start and end from a forced aligner), `retime` (a light speed-up and pause
+HyperFrames, each word's start and end from a forced aligner, and the spots where a word may be
+missing heard again by a larger Whisper model), `retime` (a light speed-up and pause
 cut planned from the transcript and the audio), `head_track` (the head position every
 0.25 s, from its own sampled person mask) and `preview_copies` (a small copy of the footage for the
 studio's live preview). Each step is cached in R2
@@ -58,9 +59,14 @@ live status shows one line per step (`name: summary`).
   116.7 s) it put "Friction" at 0.08 to 6.00 s (the voice starts at about 5.7 s), and 34 of 162
   words held 0.4 s or more of silence (37.7 s in all). So the step keeps Whisper's words and ids
   and takes every time from the aligner below (version 2; version 1 kept HyperFrames' times).
+  Version 3 adds the re-listen, further down. The step's calls, in order: Whisper `small` on the
+  whole clip, the aligner, ffmpeg for the envelope, then per spot one ffmpeg cut and Whisper
+  `medium`, and the aligner once more when the words changed. Ids are given last, by position
+  (`numberWords`), to the list the step writes.
 - The word aligner (`align.ts`, `align-entry.ts`, `align-model.ts`), a second tool call of
   `transcribe`: the worker's Node runs `align-entry --input <converted.mp4> --words <heard.json>
---output <aligned.json> --threads <n> --model <onnx> --ffmpeg <path>` (`alignArgs`). It checks the
+--output <aligned.json> --threads <n> --model <onnx> --ffmpeg <path> --emissions <file>`
+  (`alignArgs`). It checks the
   model against its pin, has ffmpeg decode the audio to 16 kHz mono floats (`alignDecodeArgs`), and
   runs wav2vec2-base-960h (an English CTC model that spells capitals, the apostrophe and a word
   separator) through `onnxruntime-node` on the CPU in pieces of 20 s with 1 s of audio heard but
@@ -79,7 +85,94 @@ live status shows one line per step (`name: summary`).
   setting of transcribe, so another model re-runs it. The thread count (the machine's CPUs) is not
   a setting. On the dfba reel it took about 8.5 s (1.5 GB peak); 0 of 162 words now hold even
   0.2 s of silence, 0 start 0.2 s or more before their sound, 0 end 0.2 s or more into silence, and
-  "Friction" is 5.66 to 6.06 s.
+  "Friction" is 5.66 to 6.06 s. The entry saves the model's letter probabilities (after the
+  log-softmax) with the clip's sample count to `--emissions` (`packEmissions`); when that file is
+  already there it reads them (`unpackEmissions`) and runs neither ffmpeg nor the model. That is
+  how the re-listen's second alignment costs about a second instead of the model's run again.
+  The step deletes the file before its first alignment, so a file from an earlier try is never read.
+- The re-listen (`relisten.ts`, pure; run by `transcribe.ts`). Whisper `small` sometimes drops
+  words: on the owner's reel b2170604 it wrote "together? And hugs" where she says "together? Warm
+  meals made from local produce. And hugs", and the aligner stretched "And" over 1.2 s. The step
+  looks for such spots, has Whisper `medium` hear a short window around each one, and takes its
+  words only where both models agree on the words around them.
+  1. Spots (`relistenSpots`), from the aligned words and the 10 ms envelope (`envelope.ts`, the
+     same ffmpeg call retime makes). A gap spot: a stretch inside a gap of the transcript of at
+     least `gapSeconds` (0.45 s) of envelope frames in a row within `gapBelowSpeechDb` (10 dB) of
+     the clip's speech level. It is retime's `missedSpeech` (`speech-gaps.ts`) with a longer
+     length, so every gap spot is also a possible missed word retime would keep. A stretched word
+     (`stretchedWords`): its seconds per letter (the aligner's letters, `wordTokens`) are at least
+     `stretchRatio` (3) times the clip's median, and it is at least `stretchExtraSeconds` (0.4 s)
+     longer than the median would make it. Candidates closer than `joinSeconds` (1 s) are one spot.
+  2. The window (`relistenWindow`, `windowArgs`): the old words that touch the spot and
+     `windowWords` (3) more on each side, with up to `windowPadSeconds` (0.3 s) of the pause before
+     and after, never more than half of that pause. ffmpeg cuts it to a 16 kHz mono WAV.
+  3. Whisper `medium` hears the window through the same HyperFrames call as `small`
+     (`transcribeArgs` with `--model medium`). HyperFrames, not `whisper-cli` directly, because
+     it already finds the binary on every machine, passes the same arguments (0.8.222:
+     `--output-json-full --suppress-nst --language en`), pins `ggml-medium.bin` by size and
+     SHA-256, and groups tokens into words the same way as for the whole clip, so the two word
+     lists compare like for like. Only the texts are read (`heardTexts`).
+  4. The merge (`mergeHeard`): the window's old words and the heard ones are matched in order
+     (the longest common run of the same words, compared without capitals, accents and
+     punctuation). The nearest matched old word ending before the spot and the nearest one
+     starting after it are the anchors; only the words between them can change. Without an anchor
+     on one side the old words stay (so a spot at the very start or end of the clip is never
+     changed), and the same words heard again change nothing. Between the anchors the heard words
+     are taken, except where they would only swap old words that lie wholly outside the spot for
+     other words: there the old words stay (on the ten-second fixture `medium` hears "earn" as
+     "earth" right after the spot). Replacements of several spots are made in order; one that
+     overlaps an earlier one is dropped (`applyReplacements`).
+  5. The writing at the join (`joinWriting`), three rules, because a window is a fragment and
+     Whisper writes it without the sentences of the whole clip: a re-heard word that is one of
+     the old words it replaces keeps the old writing (capital and punctuation); an old word that
+     started a sentence (a capital, after a word ending in `.`, `?` or `!`) still starts one, so
+     the word now before it gets a full stop when it ends in a letter or a digit ("produce. And
+     hugs"); a new word right after a word ending in `.`, `?` or `!` gets a capital. Nothing else
+     is rewritten.
+  6. When a replacement was made, the new list (the new words spread evenly between their
+     neighbours as placeholders) goes through the aligner again, which times every word, and the
+     step numbers the result. Otherwise the first alignment is the output.
+     The step line: `transcribed, 95 words, 1 spot re-listened, 6 words added` (`relistenSummary`;
+     also `1 word removed`, `words changed`, or `no change` when every window was a false alarm);
+     with no spot it is `transcribed, 89 words`, as before. `RELISTEN_SETTINGS` (the model's name and
+     SHA-256 and every threshold above) is the `relisten` setting of transcribe. Measured natively on
+     the owner's Mac (M3, whisper.cpp on Metal), reel b2170604 (113 s): Whisper `small` 4.9 s, the
+     aligner 7.9 s, the envelope 1.4 s, the window cut 0.1 s, Whisper `medium` on the 13.7 s window
+     3.7 s, the second alignment 1.3 s; 89 words became 95. On four other reels of the owner (91 to
+     162 words) no spot was found, so nothing was heard twice. In the worker container Whisper runs
+     on the CPU and `medium` holds about 2.1 GB at its peak (the prototype's measurement).
+     What it does not catch: a short dropped word in fast speech leaves less than 0.45 s of sound in
+     its gap and stretches no neighbour enough; on the ten-second fixture, taking out "distribution"
+     or "project," gives no spot.
+- The re-listen's model (`whisper-model.ts`, `RELISTEN_MODEL`): `ggml-medium.bin` of
+  ggerganov/whisper.cpp at the revision HyperFrames pins
+  (`5359861c739e955e79d9a303bcbc70fb988958b1`), 1,533,763,059 bytes, SHA-256
+  `6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208` (HyperFrames' own pin for
+  `medium`). It lives where HyperFrames looks for its models,
+  `~/.cache/hyperframes/whisper/models/` (`relistenModelPath`), outside the repository, so neither
+  `.gitignore` nor `.dockerignore` names it. `models:fetch` fetches it there and the worker
+  image's `model` build stage puts it in the image; never at job time. Before the first window of
+  a run the step checks the file's size and SHA-256 (`verifyRelistenModel`): a missing or changed
+  file fails transcribe with `whisper medium model missing at <path>, restore it with yarn
+workspace @edit-issebya/worker models:fetch`, so HyperFrames never downloads 1.5 GB inside a job.
+  A clip with no spot never needs the file.
+- Saved versions and a new transcribe version. Every version of a reel names the exact outputs
+  it was built from (`inputs`: retime's `transcript.json` and `source.mp4`, the head track, each
+  by step and fingerprint, written once by `first_version` and copied by every later version).
+  The preview, restore, the font pair relayout, the owner's edits and Start over all read those
+  stored outputs, which are `kept`, so a reel made before version 3 keeps its old transcript and
+  its old word ids for good and its versions load as before: no job pairs an old version's word
+  ids with a new transcript. Two things do change for such a reel. An export first runs the
+  current pipeline (`runRender`), which now makes new outputs the old version does not use (once,
+  then they are hits), and then renders from the version's own inputs; if slimming already
+  cleared the old `source.mp4` (the reel was last exported more than seven days ago), the
+  pipeline cannot make that file again, and the export fails with `render: input missing: <key>:
+this version was made by an earlier version of the retime step, its source.mp4 was cleared to save
+space and can no longer be made again; upload the footage again as a new reel` (`missingInput`,
+  `render-step.ts`). That is true of every step version change, not only this one. And a `process`
+  job run again on a reel that already has a version (a retry after a failed decide) no longer
+  overwrites `reels.preview_copies` (`keepsPreviewCopies`): the new copies would show new cuts
+  under the old versions' words.
 - The aligner's model (`align-model.ts`, `ALIGN_MODEL`): the float32 ONNX export of
   facebook/wav2vec2-base-960h (Apache 2.0) published by Xenova/wav2vec2-base-960h, revision
   `a19f851b3d42865797e410752b4c570c871e4825`, `onnx/model.onnx`, unchanged, 377,887,594
@@ -96,8 +189,10 @@ live status shows one line per step (`name: summary`).
   corruption, the process aborts), so every upload failed at transcribe; it runs on macOS. The int8
   export (95 MB, the smallest) put whole words up to 5 s off (the closing "care of." on a later
   untranscribed "yes").
-- `apps/worker/src/pipeline/envelope.ts`, `retime-plan.ts`, `retime-encode.ts`, `retime.ts`: a 10 ms
-  RMS envelope in dB, a pure planner and one ffmpeg encode. Outputs `source.mp4` (retimed footage),
+- `apps/worker/src/pipeline/envelope.ts`, `speech-gaps.ts`, `retime-plan.ts`, `retime-encode.ts`,
+  `retime.ts`: a 10 ms RMS envelope in dB, what the audio says about the transcript's gaps (the
+  gaps, the clip's speech level, `missedSpeech`; shared with transcribe's re-listen), a pure planner
+  and one ffmpeg encode. Outputs `source.mp4` (retimed footage),
   `transcript.json` (same ids, every time through the plan), `retime.json` (the plan: original to
   new time map) and `envelope.json`. The step line ends with the pauses the final re-check found,
   if any, and with every possible missed word it kept, at its retimed time (`retimeSummary`:
@@ -494,7 +589,9 @@ inputs name the old retime outputs) does not re-run retime.
   `apps/worker/package.json` is pinned exactly.
 - `yarn workspace @edit-issebya/worker models:fetch`, once per checkout for a native worker, the
   tools tests and `fixtures:pipeline`: fetches the aligner's model (378 MB) into
-  `apps/worker/models/`. The worker image fetches it at build.
+  `apps/worker/models/` and the re-listen's Whisper `medium` (1.5 GB) into HyperFrames' model
+  folder (`~/.cache/hyperframes/whisper/models/`, once per machine). The worker image fetches both
+  at build.
 - `yarn doctor` in the worker checks that ffmpeg and ffprobe are 7.0 or newer (one line, for
   example `ffmpeg 6.1 found, 7 or newer is needed for HEIC photos (-show_stream_groups)`; a git
   build without a version number passes), and the ffmpeg filters `zscale`, `tonemap`, `atempo`, `astats`,
@@ -505,7 +602,8 @@ inputs name the old retime outputs) does not re-run retime.
   for example `modnet a293b5ae, 1 s masked in 9.4 s`; a missing model fails the line with
   `MODNet model missing at <path>, restore it with git checkout -- apps/worker/models/modnet_int8_13.onnx`.
   Its `aligner` line checks the aligner's model has its pinned size and SHA-256
-  (`wav2vec2 e4661427`); a missing one names `models:fetch`. It checks that `OPENROUTER_API_KEY` is set, fetches the five PostHog prompts by name (no AI call;
+  (`wav2vec2 e4661427`); a missing one names `models:fetch`. Its `relisten` line checks Whisper
+  `medium` the same way (`whisper medium 6c14d5ad`). It checks that `OPENROUTER_API_KEY` is set, fetches the five PostHog prompts by name (no AI call;
   `POSTHOG_PERSONAL_API_KEY`, `app_docs/decide-step.md`, "Prompts"), and makes no AI call; `doctor --ai`
   adds the two paid OpenRouter calls and the image call.
 - The MODNet model needs no install: it is the committed `apps/worker/models/modnet_int8_13.onnx`,
@@ -529,14 +627,20 @@ inputs name the old retime outputs) does not re-run retime.
   word, the normalised input, the pieces tiling the clip's frames, the forced alignment on
   synthetic emissions, the times of each word and the fallback for words it cannot spell, the
   decode arguments), `align-model.test.ts` (the pin, the fetch command when the file is missing,
-  the notice), `transcribe.test.ts` (the aligner's arguments, its settings in the fingerprint), `head-track-step.test.ts` (the sample, count, chunk, join
+  the notice), `transcribe.test.ts` (the aligner's arguments, its settings and every re-listen setting in the
+  fingerprint, the `medium` call), `relisten.test.ts` (the gap rule, the stretched word rule, the
+  joining, the window's bounds, the merge between anchors, no anchor and a false alarm changing
+  nothing, an old word outside the spot kept, the writing at the join, the ids, the step line), `head-track-step.test.ts` (the sample, count, chunk, join
   and decode calls, the chunks' weighted progress, a failed chunk), `u2net.test.ts` (the model's
   input and mask, the chunks and their threads, the decode and encode arguments),
   `u2net-model.test.ts` (the pin, the file, the notice), and `pipeline-fixtures.test.ts`, which fails when a
   version or setting change leaves either clip's outputs stale (`fixtures/pipeline/` and
   `fixtures/pipeline/speech-ten/`).
 - `yarn workspace @edit-issebya/worker test:tools` (`*.tools.test.ts`): real ffmpeg, HyperFrames
-  and the aligner (its model fetched once with `models:fetch`) on `fixtures/footage/short-speech.mp4`; `head-track.tools.test.ts` runs `head_track` and
+  and the aligner (both models fetched once with `models:fetch`) on `fixtures/footage/short-speech.mp4`;
+  `transcribe.tools.test.ts` also runs the step on `fixtures/footage/speech-ten.mp4` with a tool
+  that takes "alternative" and "ways" out of what Whisper `small` wrote: the aligner stretches
+  "to", `medium` hears the window, and the two words come back with times of their own; `head-track.tools.test.ts` runs `head_track` and
   `preview_copies` on `fixtures/footage/short-person.mp4` (the real U2Net entry with the
   committed int8 model, the same track byte for byte in one chunk, in four and by the machine's
   split, at least 80 percent of head samples found, no mask, sample clip or raw frames left, one 540x960 footage preview of the source's duration);
@@ -569,7 +673,10 @@ inputs name the old retime outputs) does not re-run retime.
 - No AI in the fixed steps.
 - Every step declares everything it reads (inputs, settings, version) and reads nothing else.
 - Never overwrite a stored output; uploads are put-if-absent.
-- Word ids never change after transcribe; retime keeps them.
+- Word ids never change after transcribe; retime keeps them. Transcribe gives them once, by
+  position, to the list it writes (after the re-listen). Never renumber a stored transcript, and
+  never read a version's words from a transcript other than the one its `inputs` name: an id of
+  another transcribe run may be another word.
 - Retime never cuts inside a word's span (start to end, the aligner's times) and never removes any
   part of a possible missed word (`missedSpeechSeconds` or more of frames in a row within
   `missedSpeechBelowSpeechDb` of the clip's speech level, inside a gap of the transcript). A pause
@@ -583,6 +690,14 @@ inputs name the old retime outputs) does not re-run retime.
   picture stays frame-exact and the sound stays in step with it.
 - Transcribe takes Whisper's words and the aligner's times only. Never add a rule of our own that
   moves a word time; a word the model cannot spell gets the documented fallback, nothing else.
+- The re-listen never changes a word outside the two anchors of a spot, never changes anything
+  without an anchor on both sides, and never writes a word no Whisper model heard: the only text
+  of our own is the full stop and the capital of the join rules. Never loosen the merge to take a
+  window's words whole.
+- Never fetch Whisper `medium` at job time, and never change its pin in one place only:
+  `whisper-model.ts` and the Dockerfile's `model` stage (`WHISPER_MODEL_REVISION` and the SHA-256,
+  `dockerfile.test.ts` checks it) change together, and must stay the pin of the installed
+  HyperFrames, with a new transcribe fingerprint (`RELISTEN_SETTINGS` names the model).
 - Never commit the aligner's model, never fetch it at job time, and never change its pin in one
   place only: `align-model.ts`, the Dockerfile's `aligner` stage (`ALIGN_MODEL_REVISION` and the
   SHA-256, `dockerfile.test.ts` checks it) and the notice change together, with a new transcribe
