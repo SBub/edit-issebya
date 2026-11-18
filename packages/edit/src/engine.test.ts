@@ -3245,17 +3245,17 @@ describe("accents and captions come in word by word, as they are spoken", () => 
     }
   });
 
-  it("leaves the hook, a list's levels and a big word as they were", async () => {
+  it("leaves a list's levels and a big word as they were, and the hook to its typing", async () => {
     const { html } = await place({
       hook: { text: "Gen Z won't work like you did" },
       lists: [{ items: [{ from: "w100", to: "w103", key_from: "w102" }] }],
       big_words: [{ from: "w113", to: "w113" }],
     });
-    // The hook: whole, with the rise.
+    // The hook, which nobody says: typed letter by letter (`build-typed.test.ts`),
+    // never word by word and never with the rise.
     expect(line(html, '<span id="hook"')).not.toContain('class="q"');
-    expect(html).toContain(
-      `tl.fromTo("#hook", { opacity: 0, y: ${CAPTION.rise} }, { opacity: 1, y: 0, duration: ${CAPTION.inSeconds}, ease: "${CAPTION.inEase}" }`,
-    );
+    expect(line(html, '<span id="hook"')).toContain('<span id="hook_c1" class="ch">');
+    expect(html).not.toMatch(/tl\.fromTo\("#hook", \{ opacity: 0, y:/);
     // The list's levels: whole, each with the rise.
     const levels = html.split("\n").filter((row) => row.includes('class="level '));
     expect(levels.length).toBeGreaterThan(0);

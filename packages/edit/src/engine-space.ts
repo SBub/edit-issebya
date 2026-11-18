@@ -1,6 +1,6 @@
 import type { Box } from "./head-track.ts";
 import type { FontRole } from "./font-pairs.ts";
-import type { RevealWord } from "./reveal.ts";
+import type { RevealLetter, RevealWord } from "./reveal.ts";
 import type { Span } from "./timeline.ts";
 
 // One piece of text on screen, in frame pixels: `x`, `y` its top left corner,
@@ -14,9 +14,12 @@ export interface TextBox extends Span {
   // The text's lines: one, or more for a text set with `breaks`.
   lines: string[];
   // A caption, an accent or a QUESTION: its shown words in order, each with the
-  // moment it appears (`wordReveal`). The builder draws it word by word. The
-  // hook and a list's level have none.
+  // moment it appears (`wordReveal`). The builder draws it word by word. A
+  // list's level has none.
   words?: RevealWord[];
+  // The hook only: its letters in order, each with the moment it appears
+  // (`hookReveal`). The builder draws it typed letter by letter.
+  typed?: RevealLetter[];
   font: FontRole;
   size: number;
   color: string;

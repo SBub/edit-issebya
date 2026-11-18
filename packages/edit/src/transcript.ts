@@ -10,8 +10,20 @@ export interface Word {
   end: number;
 }
 
+// The speaker's voice as measured on the retimed footage's sound (retime
+// writes it): one RMS level and one sample peak, in dBFS, for every window of
+// `windowSeconds` (0.1 s) from the reel's start. What a sound mixed over the
+// voice takes its level from (`sounds.ts`: the typed hook's key sounds). A
+// transcript written before this measure has none.
+export interface Voice {
+  windowSeconds: number;
+  levels: number[];
+  peaks: number[];
+}
+
 export interface Transcript {
   words: Word[];
+  voice?: Voice;
 }
 
 const wordSchema = z
@@ -23,8 +35,18 @@ const wordSchema = z
   })
   .refine((word) => word.end >= word.start, { message: "a word ends before it starts" });
 
+const voiceSchema = z
+  .object({
+    windowSeconds: z.number().positive(),
+    levels: z.array(z.number()),
+    peaks: z.array(z.number()),
+  })
+  .refine((voice) => voice.levels.length === voice.peaks.length, {
+    message: "the voice has a level and a peak for every window",
+  });
+
 export const transcriptSchema = z
-  .object({ words: z.array(wordSchema) })
+  .object({ words: z.array(wordSchema), voice: voiceSchema.optional() })
   .superRefine((transcript, ctx) => {
     const seen = new Set<string>();
     for (const word of transcript.words) {

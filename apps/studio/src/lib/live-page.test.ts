@@ -275,7 +275,7 @@ describe("restyle", () => {
     children?: FakeNode[];
     getAttribute?: (name: string) => string | null;
   }
-  function questionNode(lines: string[][]) {
+  function questionNode(lines: string[][], wordClass = "q", letters = 0) {
     const doc = {
       createElement: (tag: string): FakeNode => ({
         tagName: tag.toUpperCase(),
@@ -285,12 +285,21 @@ describe("restyle", () => {
       createTextNode: (text: string): FakeNode => ({ text }),
     };
     const words = new Map(
-      lines
-        .flat()
-        .map((id) => [
+      lines.flat().map((id) => [
+        id,
+        {
+          tagName: "SPAN",
           id,
-          { tagName: "SPAN", id, children: [], getAttribute: () => "q" } as FakeNode,
-        ]),
+          // A typed hook's word holds its letters, each an element.
+          children: Array.from({ length: letters }, (_, at) => ({
+            tagName: "SPAN",
+            id: `${id}_c${at + 1}`,
+            children: [],
+            getAttribute: () => "ch",
+          })),
+          getAttribute: () => wordClass,
+        } as FakeNode,
+      ]),
     );
     const node = {
       nodes: [] as FakeNode[],
@@ -335,5 +344,28 @@ describe("restyle", () => {
     const before = node.nodes;
     restyle(node as unknown as HTMLElement, { style: {}, words: [["question-2_w1"]] }, []);
     expect(node.nodes).toBe(before);
+  });
+
+  it("sets the typed hook's lines by moving its own words, each with its letters inside", () => {
+    const HOOK_WORDS = ["hook_w1", "hook_w2", "hook_w3"];
+    const { node, words } = questionNode([HOOK_WORDS], "w", 4);
+    restyle(
+      node as unknown as HTMLElement,
+      { style: {}, words: [HOOK_WORDS.slice(0, 2), HOOK_WORDS.slice(2)] },
+      [],
+    );
+    expect(node.nodes.map((kid) => kid.id || kid.tagName || kid.text)).toEqual([
+      "hook_w1",
+      " ",
+      "hook_w2",
+      "BR",
+      "hook_w3",
+    ]);
+    // The same word elements, so the letters the timeline types stay its own.
+    for (const id of HOOK_WORDS) {
+      expect(node.children).toContain(words.get(id));
+      expect(words.get(id)!.children).toHaveLength(4);
+    }
+    expect(node.innerHTML).toBe("never written");
   });
 });

@@ -4,10 +4,13 @@ import { join } from "node:path";
 import {
   type Edit,
   ISSEBYA_PRESET,
+  hookReveal,
   parseEdit,
   revealShownAt,
   resolveTimeline,
+  soundCues,
   transcriptSchema,
+  typedCount,
 } from "@edit-issebya/edit";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { type Page, expect, test } from "@playwright/test";
@@ -153,6 +156,234 @@ test("the reel opens with the player, the first caption, one open event and the 
   // A second look at the page sends no second open event.
   expect(eventsNamed(events, "studio_preview_opened")).toHaveLength(1);
   expect(cutoutRequests).toEqual([]);
+});
+
+// The hook of the seeded version ("A short test for the real studio", from
+// 0.2 s to the reel's end): the preview types it letter by letter, a steady
+// caret after the last typed letter, every letter in its final place from the
+// start, the whole line on screen (and the caret gone) from 60% of its time,
+// and a key sound scheduled on the letters at the gain set against the voice.
+test("the hook is typed letter by letter, whole at 60% of its time, with a key sound in step", async ({
+  page,
+  baseURL,
+}) => {
+  await routePreviewCdn(page);
+  await openReel(page, baseURL!);
+  const transcript = await fixtureTranscript();
+  const stored = await storage.get(reel!.versionKey);
+  const parsed = parseEdit(
+    JSON.parse(new TextDecoder().decode(stored!)),
+    ISSEBYA_PRESET,
+    transcript,
+  );
+  expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
+  const edit = (parsed as { ok: true; edit: Edit }).edit;
+  const item = edit.tracks.overlays.find((overlay) => overlay.kind === "hook")!;
+  expect(item.text).toBe("A short test for the real studio");
+  const resolved = resolveTimeline(edit, transcript);
+  const span = resolved.get(item.id)!;
+  const reveal = hookReveal(item.text!, span);
+  const letters = reveal.map((letter) => letter.text).join("");
+  expect(letters).toBe("Ashorttestfortherealstudio");
+  // Fully typed at 60% of its shown span, then held.
+  const typedAt = reveal.at(-1)!.at;
+  expect(reveal[0]!.at).toBe(span.start);
+  expect(typedAt).toBeCloseTo(span.start + (span.end - span.start) * 0.6, 3);
+
+  const hook = composition(page).locator('[id="hook"]');
+  // Every letter is its own element, and every one but the last holds its
+  // caret; nothing else is in the line.
+  await expect(hook.locator(".ch")).toHaveCount(reveal.length);
+  await expect(hook.locator(".ch > .cr")).toHaveCount(reveal.length - 1);
+  await expect(hook.locator(".cr")).toHaveCount(reveal.length - 1);
+  expect(await hook.evaluate((el) => el.textContent)).toBe("A short test forthe real studio");
+  expect(await hook.evaluate((el) => el.querySelectorAll("br").length)).toBe(1);
+  // The hook's own look is unchanged: the accent's face, white, centred lines.
+  expect(await hook.evaluate((el) => getComputedStyle(el).fontFamily)).toContain(
+    "Playfair Display",
+  );
+  await expect(hook).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(hook).toHaveCSS("text-align", "center");
+
+  // The letters on screen: at full opacity inside a line at full opacity.
+  const onScreen = () =>
+    hook.evaluate((el) =>
+      getComputedStyle(el).opacity === "1"
+        ? [...el.querySelectorAll<HTMLElement>(".ch")]
+            .filter((letter) => getComputedStyle(letter).opacity === "1")
+            .map((letter) => letter.textContent)
+            .join("")
+        : "",
+    );
+  const places = () =>
+    hook.evaluate((el) =>
+      [...el.querySelectorAll<HTMLElement>(".ch")].map((letter) => {
+        const box = letter.getBoundingClientRect();
+        return [Math.round(box.left), Math.round(box.top)];
+      }),
+    );
+
+  // A seek rests on a frame of the reel, so the letters on screen are read
+  // together with the page's own time (its timeline's), which must be clear
+  // of any letter's moment.
+  const typedNear = async (target: number) => {
+    await setPosition(page, target);
+    const read = () =>
+      hook.evaluate((el) => {
+        const timelines = (
+          el.ownerDocument.defaultView as unknown as {
+            __timelines: Record<string, { time(): number }>;
+          }
+        ).__timelines;
+        return {
+          time: timelines.main!.time(),
+          shown:
+            getComputedStyle(el).opacity === "1"
+              ? [...el.querySelectorAll<HTMLElement>(".ch")]
+                  .filter((letter) => getComputedStyle(letter).opacity === "1")
+                  .map((letter) => letter.textContent)
+                  .join("")
+              : "",
+        };
+      });
+    await expect.poll(async () => Math.abs((await read()).time - target)).toBeLessThan(0.05);
+    const { time, shown } = await read();
+    expect(reveal.every((letter) => Math.abs(letter.at - time) > 0.002)).toBe(true);
+    // Exactly the letters whose moment has come, in order, and none after.
+    const count = typedCount(reveal, time);
+    expect(shown).toBe(letters.slice(0, count));
+    return count;
+  };
+
+  // The carets on screen: the bar of each caret at full opacity inside a
+  // letter and a line at full opacity, with the letter it stands after.
+  const carets = () =>
+    hook.evaluate((el) => {
+      const root = el.ownerDocument.documentElement.getBoundingClientRect();
+      const view = el.ownerDocument.defaultView!;
+      if (view.getComputedStyle(el).opacity !== "1") return [];
+      return [...el.querySelectorAll<HTMLElement>(".cr")]
+        .filter(
+          (caret) =>
+            view.getComputedStyle(caret).opacity === "1" &&
+            view.getComputedStyle(caret.parentElement!).opacity === "1",
+        )
+        .map((caret) => {
+          const letter = caret.parentElement!;
+          const bar = view.getComputedStyle(caret, "::before");
+          const box = caret.getBoundingClientRect();
+          const of = letter.getBoundingClientRect();
+          const size = parseFloat(view.getComputedStyle(el).fontSize);
+          const scale = of.height / letter.offsetHeight || 1;
+          return {
+            after: [...el.querySelectorAll(".ch")].indexOf(letter) + 1,
+            left: box.left - root.left,
+            letterRight: of.right - root.left,
+            top: box.top - root.top,
+            letterTop: of.top - root.top,
+            letterBottom: of.bottom - root.top,
+            // In the page's own pixels, against the text's size.
+            width: parseFloat(bar.width) / size,
+            height: parseFloat(bar.height) / size,
+            color: bar.backgroundColor,
+            animation: bar.animationName,
+            scale,
+          };
+        });
+    });
+  // One steady bar right after the last typed letter: thin, about a capital's
+  // height, in the hook's colour, starting where the letter ends.
+  const caretAfter = async (count: number) => {
+    const shown = await carets();
+    expect(shown).toHaveLength(1);
+    const [caret] = shown;
+    expect(caret!.after).toBe(count);
+    expect(caret!.color).toBe("rgb(255, 255, 255)");
+    expect(caret!.animation).toBe("none");
+    expect(caret!.width).toBeCloseTo(0.05, 2);
+    expect(caret!.height).toBeCloseTo(0.7, 2);
+    expect(caret!.left).toBeGreaterThanOrEqual(caret!.letterRight - 1);
+    expect(caret!.left - caret!.letterRight).toBeLessThanOrEqual(0.1 * 110 * caret!.scale);
+    // On the letter's own line.
+    expect(caret!.top).toBeGreaterThanOrEqual(caret!.letterTop - 1);
+    expect(caret!.top).toBeLessThan(caret!.letterBottom);
+    return caret!;
+  };
+
+  // Before it starts: nothing of it.
+  await setPosition(page, span.start - 0.1);
+  await expect.poll(onScreen).toBe("");
+  expect(await carets()).toEqual([]);
+  // In the middle of the typing: the first part of the text and nothing
+  // after it.
+  const shown = await typedNear((span.start + typedAt) / 2);
+  expect(shown).toBeGreaterThan(reveal.length / 4);
+  expect(shown).toBeLessThan((reveal.length * 3) / 4);
+  const placesDuring = await places();
+  const caretDuring = await caretAfter(shown);
+  // A moment later: more of it, still not all, and the caret has moved on
+  // with the letters (here onto the second line).
+  const later = await typedNear(typedAt - 0.15);
+  expect(later).toBeGreaterThan(shown);
+  expect(later).toBeLessThan(reveal.length);
+  const caretLater = await caretAfter(later);
+  expect(caretLater.top).toBeGreaterThan(caretDuring.top);
+  // From 60% of its time on: the whole line, and it holds, with no caret.
+  await setPosition(page, typedAt + 0.1);
+  await expect.poll(onScreen).toBe(letters);
+  expect(await carets()).toEqual([]);
+  await setPosition(page, span.end - ISSEBYA_PRESET.caption.outSeconds - 0.1);
+  await expect.poll(onScreen).toBe(letters);
+  expect(await carets()).toEqual([]);
+  // No letter moved while the line was typed: the lines never reflow.
+  expect(await places()).toEqual(placesDuring);
+  // The line is as wide as the same text written in one piece: a letter of
+  // its own is set exactly where the plain text has it.
+  const widths = await hook.evaluate((el) => {
+    const plain = el.cloneNode(false) as HTMLElement;
+    plain.removeAttribute("id");
+    plain.style.visibility = "hidden";
+    plain.innerHTML = [...el.childNodes]
+      .map((node) => (node.nodeName === "BR" ? "<br />" : (node.textContent ?? "")))
+      .join("");
+    el.parentElement!.append(plain);
+    const out = [el.getBoundingClientRect().width, plain.getBoundingClientRect().width];
+    plain.remove();
+    return out;
+  });
+  expect(widths[0]).toBeGreaterThan(0);
+  expect(Math.abs(widths[0]! - widths[1]!)).toBeLessThanOrEqual(0.5);
+
+  // The key sounds play through Web Audio only, never through the page's
+  // <audio>, each scheduled on the moment its letter appears.
+  await expect(composition(page).locator("audio")).toHaveCount(0);
+  // Their gain is set against the voice the seeded transcript measured, the
+  // number the export's clips carry.
+  expect(transcript.voice).toBeDefined();
+  const cues = soundCues(edit, resolved, ISSEBYA_PRESET, transcript.voice);
+  expect(cues.length).toBeGreaterThan(5);
+  expect(cues.every((cue) => cue.volume > 0.2)).toBe(true);
+  expect(cues.every((cue) => cue.id.startsWith("hook_k"))).toBe(true);
+  const moments = new Set(reveal.map((letter) => letter.at));
+  expect(cues.every((cue) => moments.has(cue.at) && cue.at <= typedAt)).toBe(true);
+  await setPosition(page, 0);
+  await page.getByRole("button", { name: "Play" }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.__previewSounds?.starts.length ?? 0), {
+      timeout: 10_000,
+    })
+    .toBeGreaterThanOrEqual(cues.length);
+  const sounds = (await page.evaluate(() => window.__previewSounds))!;
+  const { ctxTime, playhead } = sounds.playbacks[0]!;
+  expect(playhead).toBeLessThan(span.start);
+  const starts = sounds.starts.slice(0, cues.length);
+  expect(starts.map((start) => start.id)).toEqual(cues.map((cue) => cue.id));
+  for (const [index, start] of starts.entries()) {
+    expect(start.offset).toBe(0);
+    expect(Math.abs(start.when - (ctxTime - playhead) - cues[index]!.at)).toBeLessThanOrEqual(0.01);
+    // Played at the very gain the export's clip is mixed at.
+    expect(start.gain).toBe(cues[index]!.volume);
+  }
 });
 
 test("the Zones toggle shades what TikTok and Instagram cover, and takes no clicks", async ({
@@ -327,11 +558,19 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
   );
   // The clicks play through Web Audio only, never through the page's <audio>.
   await expect(composition(page).locator('audio[data-track-index="60"]')).toHaveCount(0);
-  // The card comes in with the pop, the other
-  // sound stays the click (app_docs/edit-model.md, "Preset values").
+  // The card comes in with the pop, the other sound stays the click
+  // (app_docs/edit-model.md, "Preset values"), and the version's typed hook
+  // plays its four key sounds ("The typed hook").
   await expect
     .poll(() => [...new Set(soundFiles)].sort())
-    .toEqual(["mouse-click-trimmed.wav", "pop.wav"]);
+    .toEqual([
+      "mouse-click-trimmed.wav",
+      "pop.wav",
+      "typing-key-1.wav",
+      "typing-key-2.wav",
+      "typing-key-3.wav",
+      "typing-key-4.wav",
+    ]);
 
   await page.getByRole("button", { name: "Play" }).click();
   await expect

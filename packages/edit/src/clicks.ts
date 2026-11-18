@@ -15,8 +15,9 @@ const CUE_ENTRY = {
 // (`click-<the item's id>`) plays its entry's `sound` knob, a pop for a VISUAL
 // and for a big word; every other sound item plays the sound it names. Read at
 // every build, never stored: the sound track keeps saying `click`, so a
-// version saved before the pop plays it too, and the builder (the export) and
-// the preview's schedule both ask here, so they always agree.
+// version saved before the pop plays it too. The one list of a version's
+// sounds asks here (`soundCues`, `sounds.ts`), and the builder (the export)
+// and the preview's schedule both play that list, so they always agree.
 export function cueSound(sound: SoundItem, behind: readonly BehindItem[] | undefined): SoundKey {
   if (sound.sound !== "click" || !sound.id.startsWith(CUE_PREFIX)) return sound.sound;
   const item = (behind ?? []).find((entry) => `${CUE_PREFIX}${entry.id}` === sound.id);

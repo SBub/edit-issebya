@@ -32,7 +32,9 @@ const WORDS = [
 ];
 const ENVELOPE_PRINT = Array.from({ length: 200 }, (_, index) => {
   const level = index < 10 || (index >= 80 && index < 100) || index >= 190 ? "-inf" : "-20.0";
-  return `frame:${index}\nlavfi.astats.Overall.RMS_level=${level}\n`;
+  // The peak line is read by the voice's measure alone (the same print stands
+  // in for both of retime's listening passes).
+  return `frame:${index}\nlavfi.astats.Overall.RMS_level=${level}\nlavfi.astats.Overall.Peak_level=${level}\n`;
 }).join("");
 
 let root: string;
@@ -331,6 +333,21 @@ describe("runPipeline", () => {
       "w0002",
       "w0003",
     ]);
+    // Retime's transcript also holds the voice's measure, taken on the
+    // retimed footage it has just written (one sound-only pass).
+    const retimedKey = (await outputKeys()).find((key) =>
+      /\/retime\/[^/]+\/transcript\.json$/.test(key),
+    )!;
+    const retimed = JSON.parse(new TextDecoder().decode((await storage.get(retimedKey))!));
+    expect(retimed.words).toHaveLength(3);
+    expect(retimed.voice.windowSeconds).toBe(0.1);
+    expect(retimed.voice.levels).toHaveLength(200);
+    expect(retimed.voice.peaks).toHaveLength(200);
+    const listened = spawned.filter(
+      (call) => call.args.includes("-af") && option(call.args, "-af").includes("Peak_level"),
+    );
+    expect(listened).toHaveLength(1);
+    expect(option(listened[0]!.args, "-i")).toMatch(/\/source\.mp4$/);
     // The source is downloaded once; later steps use the job's own outputs.
     expect(counts.getFile).toBe(1);
     const done = calls.filter((call) => call.call === "done");

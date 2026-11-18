@@ -507,7 +507,7 @@ function placeAccent(pass: Pass, extra: Extra, span: { start: number; end: numbe
 }
 
 // The written hook through the placer: the element of the entry it was
-// picked with (`hook/written-line`: the upper third, then anywhere in the
+// picked with (`hook/typed`: the upper third, then anywhere in the
 // safe zone, the accent style), over its whole window, around whatever is
 // on screen with it. Its position, size and `breaks` are the placer's. False
 // when no candidate keeps the hard rules (settled: a hook that fits nowhere

@@ -376,7 +376,7 @@ export function PreviewPlayer({
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       const gain = ctx.createGain();
-      gain.gain.value = hit.gain;
+      gain.gain.value = start.gain;
       source.connect(gain).connect(ctx.destination);
       source.start(start.when, start.offset);
       sourcesRef.current.push(source);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EngineComponent } from "./engine-note.ts";
+import { ISSEBYA_PRESET } from "./preset.ts";
 import { STYLES, VARIANTS, type TextStyle, type Variant } from "./variants.ts";
 
 const COMPONENTS: EngineComponent[] = [
@@ -40,7 +41,7 @@ describe("the variant entries", () => {
         entries.map(([name, entry]) => [name, [entry.zones, entry.timing, entry.hides]]),
       ),
     ).toEqual({
-      "hook/written-line": [
+      "hook/typed": [
         ["upper-third", "anywhere-in-safe-zone"],
         { option: "window", from: 0.2, to: 3 },
         false,
@@ -103,7 +104,7 @@ describe("the variant entries", () => {
     );
     for (const style of named) expect(styles.has(style)).toBe(true);
     // Two entries on the same style share one base by construction.
-    expect(VARIANTS["hook/written-line"].style).toBe(VARIANTS["accent/above-head"].style);
+    expect(VARIANTS["hook/typed"].style).toBe(VARIANTS["accent/above-head"].style);
     expect(VARIANTS["question/word-by-word"].style).toBe(VARIANTS["accent/above-head"].style);
     expect(VARIANTS["list/numbered"].levels[2]!.style).toBe(STYLES.accent);
     expect(VARIANTS["list/numbered"].levels[1]!.style).toBe(STYLES.caption);
@@ -118,6 +119,42 @@ describe("the variant entries", () => {
         )
         .map(([name]) => name),
     ).toEqual(["bigword/behind"]);
+  });
+
+  it("types the hook letter by letter, done at 60% of its window, with the typing sound", () => {
+    expect(VARIANTS["hook/typed"]).toMatchObject({
+      entrance: "type",
+      entranceUnit: "letter",
+      entranceSpan: 0.6,
+      sound: "typing",
+      soundLevel: -8,
+      caret: "bar",
+    });
+    // The hook's own: no other entry has an entrance or a level against the
+    // voice (a cue's pop plays at the preset's gain).
+    for (const [name, entry] of entries) {
+      if (name === "hook/typed") continue;
+      expect(entry).not.toHaveProperty("entrance");
+      expect(entry).not.toHaveProperty("soundLevel");
+    }
+    // Its sound is one of the preset's: a few short takes in the assets
+    // folder, two hits at least a file's length apart.
+    const sound = ISSEBYA_PRESET.sounds[VARIANTS["hook/typed"].sound];
+    expect(sound.files.length).toBeGreaterThan(1);
+    for (const file of sound.files) expect(file).toMatch(/^assets\/sounds\/[a-z0-9-]+\.wav$/);
+    expect(sound.minGapSeconds).toBeGreaterThanOrEqual(sound.durationSeconds);
+  });
+
+  it("rejects a half-named entrance or an unknown sound at compile time", () => {
+    // @ts-expect-error an entrance names its unit, its span and its sound too
+    const bare: Variant = { ...VARIANTS["accent/above-head"], entrance: "type" };
+    // @ts-expect-error a sound level is a typed text's only: a cue plays at the preset's gain
+    const half: Variant = { ...VARIANTS["bigword/behind"], soundLevel: -8 };
+    // @ts-expect-error `bell` is not a sound of the sound table
+    const unknownSound: Variant = { ...VARIANTS["hook/typed"], sound: "bell" };
+    // @ts-expect-error a box is never typed
+    const typedBox: Variant = { ...VARIANTS["visual/card"], entrance: "type" };
+    expect([bare, half, unknownSound, typedBox]).toHaveLength(4);
   });
 
   it("rejects a wrong field or an unknown zone at compile time", () => {

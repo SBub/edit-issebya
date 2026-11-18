@@ -12,8 +12,8 @@ When the owner opens a reel that has a current version, the reel page plays a li
 HyperFrames player (`@hyperframes/player`) shows the page that the one shared builder
 (`packages/edit`, `build`) makes in the browser from the current version, using the small preview
 copy of the footage instead of the full-size file. A studio-owned
-wrapper fixes the bare player's clock (it starts before the videos can play) and plays the transition
-clicks through Web Audio. It is built and tested for Chrome.
+wrapper fixes the bare player's clock (it starts before the videos can play) and plays the version's
+sounds (the clicks and the typed hook's key sounds) through Web Audio. It is built and tested for Chrome.
 
 ## How it works
 
@@ -43,7 +43,7 @@ clicks through Web Audio. It is built and tested for Chrome.
   entry as `{ path: maskPath(mask), key }`, step `cutout`) and `photoIds` (`inputs.photos`, each a
   uuid); a version without them has none, and a malformed list fails the whole read.
 - `apps/studio/src/app/api/edit-assets/[...path]/route.ts` and `src/lib/edit-assets.ts`: serve the
-  every font pair's files and the preset's sounds from `packages/edit/assets/` (allow-list: `allFontFiles()` and the preset,
+  every font pair's files and every file of the preset's sounds (the click, the shutter, the whoosh, the pop and the typed hook's four key sounds) from `packages/edit/assets/` (allow-list: `allFontFiles()` and `soundFiles(preset)`,
   404 for anything else, immutable cache). `outputFileTracingIncludes` in `apps/studio/next.config.ts`
   traces the files into the server output.
 - `apps/studio/src/components/ReelPreview.tsx`: loads the sources, fetches the edit, transcript, head
@@ -61,7 +61,8 @@ rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) o
 - `apps/studio/src/lib/preview-page.ts`: `previewPage(html, assets, urls, soundIds)` swaps the
   footage path for its signed URL (the cut-out's footage copies included), each `mask` asset's
   path for its signed URL (both adding `preload="auto"`) and each `photo` asset's `<img>` path for
-  its signed URL, points fonts at the edit-assets route and drops the sound items' `<audio>` clips.
+  its signed URL, points fonts at the edit-assets route and drops the sound cues' `<audio>` clips
+  (the clicks and the hook's key sounds: the studio plays them itself).
   Throws if the page is not shaped the way the builder writes it, or a mask or photo has no URL.
   Nothing else changes.
 - `apps/studio/src/components/PreviewPlayer.tsx`: renders `<hyperframes-player>` (no `controls`,
@@ -122,9 +123,17 @@ rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) o
   `mediaTimeAt(item, t)` is `t - start + mediaStart`: the wrapper reads each video's
   `data-media-start` (a cut-out's footage copy starts inside its file; 0 when unset), so a seek
   places the copy at the same footage frame as the main clip.
-- `apps/studio/src/lib/sound-schedule.ts`: `soundHits(edit, transcript, preset)` resolves every sound
-  item through `resolveTimeline`; `scheduleAt(hits, playhead, ctxNow)` returns start times and offsets
-  (a hit in progress starts part way in, earlier hits are skipped).
+- `apps/studio/src/lib/sound-schedule.ts`: `soundHits(edit, transcript, preset)` is the builder's own
+  list of sounds (`soundCues` in `packages/edit`, `app_docs/edit-model.md`): every sound item resolved
+  through `resolveTimeline`, then the typed hook's key sounds, one hit per `<audio>` clip the builder
+  writes, with the clip's file, start, length and gain. `scheduleAt(hits, playhead, ctxNow)` returns
+  start times and offsets (a hit in progress starts part way in, earlier hits are skipped), so a Play
+  from the middle of the typing plays only the key sounds still to come. A start carries its hit's
+  `gain`, and the player sets it on the hit's gain node: for a key sound the gain the builder set
+  against the voice measured in the transcript the preview already reads (`transcript.voice`,
+  `app_docs/edit-model.md`, "The typed hook"), the same number as the export's `data-volume`. The key sounds are in step
+  with the hook's letters because both come from the same `hookReveal`: a hit is scheduled on the
+  audio clock at the letter's own moment.
 - `apps/studio/src/lib/preview-test-hooks.ts`: `window.__previewBuild` and `window.__previewSounds`,
   set only when `navigator.webdriver` is true, in memory only.
 - `apps/studio/src/lib/browser.ts`: `isChromium`.
@@ -183,7 +192,7 @@ jsdelivr.
   shows it with no code of its own, since the builder writes it into the page (a hidden element per
   word and a 1 ms tween at the moment the word is spoken) and the player runs that page's timeline.
   Every accent and every caption builds up word by word as it is spoken, in place, and leaves with its
-  usual fade; the hook, the list, the big word and the visual come in as before. Every version shows
+  usual fade; the hook is typed letter by letter (below); the list, the big word and the visual come in as before. Every version shows
   it, old ones too, with no new version. E2E: `preview.spec.ts`, "an accent and a caption build up
   word by word as they are spoken": a version with an ACCENT on the fixture clip ("test clip for the
   real studio") and the caption of "is" written as two words ("is so"). Before the accent starts
@@ -191,6 +200,22 @@ jsdelivr.
   no word moves and the text never rises; the captions of the accent's words are not on the page. The
   caption "this" is on at its word and "is so" not yet; 0.03 s after its word starts "is so" is whole
   at full opacity (the old 0.18 s rise would still be fading in), both words together, unmoved.
+- E2E: `preview.spec.ts`, "the hook is typed letter by letter, whole at 60% of its time, with a key
+  sound in step": the seeded version's hook ("A short test for the real studio", 0.2 s to the reel's
+  end). Before it starts nothing of it shows; in the middle of the typing exactly the first letters
+  are at full opacity (read at the player's own time: a seek rests on a frame of the reel) and none
+  after them; later more, still not all; from 60% of its time on the whole line, which holds; no
+  letter moves while it is typed; the line is as wide as the same text written in one piece; one
+  steady caret right after the last typed letter while it is typed (thin, 0.7 em tall, white, no
+  animation, on the second line once the typing is there) and none before the hook, once it is
+  typed or while it holds; the accent's face, white, centred. No `<audio>` is
+  left in the frame, and on Play every key sound is scheduled within 10 ms of its letter's moment,
+  at the gain of the export's clip
+  (`app_docs/edit-model.md`, "The typed hook").
+- Unit: `sound-schedule.test.ts` (the hook's hits: one per key sound, the builder's own clips at
+  the builder's own gain, the assumed voice's gain for a transcript with no measure, a Play from
+  the middle of the typing, each start carrying its gain), `edit-assets.test.ts` (every file of the preset's sounds served, the key files each small),
+  `live-page.test.ts` (the hook's lines set again by moving its own word elements, letters inside).
 - E2E: `apps/studio/e2e/behind.spec.ts` is removed with the change box (`app_docs/change-requests.md`).
   The export guardrail (`apps/studio/e2e-tools/export-matches-preview.spec.ts`) still compares a photo
   and a big word behind the speaker, in preview and export, from start over answers.
@@ -201,10 +226,15 @@ jsdelivr.
 - One builder: never write a preview-only copy of the build logic. The transform only swaps asset
   URLs, adds `preload` and drops the sound clips.
 - The clock never advances while a video cannot play from the current point.
-- Sounds come only from the edit's sound track, never hard-coded. Which sound an item plays is
-  `cueSound`'s answer (`packages/edit`), the same the builder writes for the export: a VISUAL's cue and a big word's play the pop
+- Sounds come only from the builder's sound cues (`soundCues`, `packages/edit`: the edit's sound
+  track and its typed hook's key sounds), never hard-coded in the studio and never from a list of
+  the studio's own. Which sound an item of the track plays is `cueSound`'s answer inside that list,
+  the same the builder writes for the export: a VISUAL's cue and a big word's play the pop
   (`app_docs/edit-model.md`, "Preset values"); `sound-schedule.test.ts` checks it. The edit-assets
-  route serves every sound of the preset (the click, the shutter, the whoosh, the pop).
+  route serves every file of the preset's sounds (the click, the shutter, the whoosh, the pop, the
+  typing keys).
+- A sound the preview plays is a clip the export mixes, at the same moment and gain: never play one
+  the builder does not write, and never leave a cue's `<audio>` in the frame (it would play twice).
 - Never poll: read once, then follow Realtime.
 - Never store the built page.
 - Chrome only, but never block other browsers (show the note).

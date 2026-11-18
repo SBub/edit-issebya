@@ -100,17 +100,20 @@ describe("cueSound", () => {
 });
 
 describe("the sounds a version can play", () => {
-  it("are click, shutter, whoosh and pop, each a short file at the click's level", () => {
+  it("are click, shutter, whoosh, pop and the typing, each a short file at the click's level", () => {
     expect(Object.keys(ISSEBYA_PRESET.sounds).sort()).toEqual([
       "click",
       "pop",
       "shutter",
+      "typing",
       "whoosh",
     ]);
-    expect(ISSEBYA_PRESET.sounds.shutter.file).toBe("assets/sounds/camera-shutter.wav");
-    expect(ISSEBYA_PRESET.sounds.pop.file).toBe("assets/sounds/pop.wav");
+    expect(ISSEBYA_PRESET.sounds.shutter.files).toEqual(["assets/sounds/camera-shutter.wav"]);
+    expect(ISSEBYA_PRESET.sounds.pop.files).toEqual(["assets/sounds/pop.wav"]);
     for (const [name, sound] of Object.entries(ISSEBYA_PRESET.sounds)) {
-      expect(sound.file, name).toMatch(/^assets\/sounds\/[a-z-]+\.wav$/);
+      for (const file of sound.files) {
+        expect(file, name).toMatch(/^assets\/sounds\/[a-z0-9-]+\.wav$/);
+      }
       // Brief: under 0.5 s.
       expect(sound.durationSeconds, name).toBeLessThan(0.5);
       // One gain for all: the files are levelled to the click's loudness.
@@ -118,11 +121,12 @@ describe("the sounds a version can play", () => {
     }
   });
 
-  it("names the pop as the big word entry's sound and the visual's, and no other entry has one", () => {
+  it("names the pop as the big word entry's sound and the visual's, and the typing as the hook's", () => {
     const withSound = Object.values(VARIANTS as Record<string, Variant>).filter(
       (entry) => entry.sound !== undefined,
     );
     expect(withSound.map((entry) => [entry.variant, entry.sound])).toEqual([
+      ["hook/typed", "typing"],
       ["bigword/behind", "pop"],
       ["visual/card", "pop"],
     ]);

@@ -1,6 +1,7 @@
 export {
   type Word,
   type Transcript,
+  type Voice,
   type SentenceSpan,
   sentenceSpans,
   transcriptSchema,
@@ -95,7 +96,7 @@ export {
 } from "./engine-place.ts";
 export { pickVariants } from "./variant-picker.ts";
 export { type StandIn, VISUAL_STAND_INS } from "./variants.ts";
-export { cueSound } from "./clicks.ts";
+export { type SoundCue, soundCues, soundFiles } from "./sounds.ts";
 export {
   type Point,
   type SafeZone,
@@ -105,7 +106,14 @@ export {
   zonesAt,
 } from "./engine-zones.ts";
 export { isQuestion, questionText } from "./question.ts";
-export { type RevealWord, revealShownAt, wordReveal } from "./reveal.ts";
+export {
+  type RevealLetter,
+  type RevealWord,
+  hookReveal,
+  revealShownAt,
+  typedCount,
+  wordReveal,
+} from "./reveal.ts";
 export { type HarfBuzz, type Measurer, createMeasurer } from "./measure.ts";
 export { type ResolvedItem, resolveTimeline } from "./timeline.ts";
 export { type TextBox } from "./engine-space.ts";

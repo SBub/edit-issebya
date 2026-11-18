@@ -2,8 +2,8 @@ import {
   type Edit,
   type Preset,
   type Transcript,
-  cueSound,
   resolveTimeline,
+  soundCues,
 } from "@edit-issebya/edit";
 
 // One hit of a sound on the edit's sound track, in reel seconds.
@@ -16,31 +16,31 @@ export interface SoundHit {
   duration: number;
 }
 
-// One AudioBufferSourceNode start: context time and offset into the sound.
+// One AudioBufferSourceNode start: context time, offset into the sound and
+// the gain it plays at (the hit's own).
 export interface SoundStart {
   id: string;
   when: number;
   offset: number;
+  gain: number;
 }
 
-// Every sound item of the edit, its start resolved through the transcript the
-// way the builder resolves it, its file and length from the preset (clamped to
-// the reel's end, as the builder writes data-duration). The sound is the one
-// the builder plays (`cueSound`: a visual's cue and a big word's are the pop).
+// Every sound the version plays over the voice (`soundCues`, the builder's
+// own list: the sound track's items, their starts resolved through the
+// transcript, a visual's cue and a big word's playing the pop, and the typed
+// hook's key sounds, their gain set against the transcript's measured voice),
+// so the preview plays exactly the `<audio>` clips the export mixes, each at
+// the clip's own gain.
 export function soundHits(edit: Edit, transcript: Transcript, preset: Preset): SoundHit[] {
-  const resolved = resolveTimeline(edit, transcript);
-  return edit.tracks.sounds.map((item) => {
-    const sound = preset.sounds[cueSound(item, edit.tracks.behind)];
-    const span = resolved.get(item.id);
-    if (!span) throw new Error(`sound ${item.id} not resolved`);
-    return {
-      id: item.id,
-      file: sound.file,
-      at: span.start,
-      gain: 10 ** ((item.gain_db ?? sound.gainDb) / 20),
-      duration: Math.min(sound.durationSeconds, Math.max(edit.duration - span.start, 0)),
-    };
-  });
+  return soundCues(edit, resolveTimeline(edit, transcript), preset, transcript.voice).map(
+    (cue) => ({
+      id: cue.id,
+      file: cue.file,
+      at: cue.at,
+      gain: cue.volume,
+      duration: cue.duration,
+    }),
+  );
 }
 
 // The starts for playback from `playhead` (reel seconds) with the audio
@@ -54,9 +54,9 @@ export function scheduleAt(
   const starts: SoundStart[] = [];
   for (const hit of hits) {
     if (hit.at >= playhead) {
-      starts.push({ id: hit.id, when: ctxNow + (hit.at - playhead), offset: 0 });
+      starts.push({ id: hit.id, when: ctxNow + (hit.at - playhead), offset: 0, gain: hit.gain });
     } else if (playhead < hit.at + hit.duration) {
-      starts.push({ id: hit.id, when: ctxNow, offset: playhead - hit.at });
+      starts.push({ id: hit.id, when: ctxNow, offset: playhead - hit.at, gain: hit.gain });
     }
   }
   return starts;

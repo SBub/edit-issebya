@@ -25,11 +25,6 @@ export function sec(n: number): string {
   return (rounded === 0 ? 0 : rounded).toFixed(3);
 }
 
-// A gain in dB as HyperFrames' linear `data-volume`, four decimals.
-export function volume(gainDb: number): string {
-  return (10 ** (gainDb / 20)).toFixed(4);
-}
-
 // A JavaScript string literal for an element selector (ids are checked by the
 // schema, so this is belt and braces).
 export function selector(id: string): string {
