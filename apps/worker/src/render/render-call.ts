@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { EXPORT_FPS } from "@edit-issebya/edit";
 import { type ProgressParser, parseRenderProgress } from "../progress-parsers.ts";
 import type { ToolCall } from "../step-runner.ts";
 import { type ToolPaths, hyperframesEnv } from "../pipeline/tools.ts";
@@ -25,14 +26,37 @@ export const RENDER_SETTINGS = {
 // three the tree's peak memory was at the single call's level (5.4 to 5.8 GB);
 // with two it is about 4.3 GB for 0 to 9 s of wall time. The behind layer is
 // mostly still frames HyperFrames reuses, and the sound page draws nothing:
-// one worker each. The sound page runs at 1 fps: HyperFrames mixes the sound
-// from the page's elements, whatever the frame rate.
+// one worker each. The sound page runs at a whole rate of 1 to 30 fps
+// (soundPageFps).
 export const LAYER_SETTINGS = {
   frontWorkers: 2,
   behindWorkers: 1,
   soundWorkers: 1,
-  soundFps: 1,
 } as const;
+
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+
+// The sound page's frame rate for a reel of `frames` export frames: the lowest
+// whole rate whose frames end exactly at `frames / 30` seconds, 30 / gcd(frames, 30)
+// (10 for 1683 frames, 2 for 3045, 30 for 1013). Two things hold the rule:
+// - HyperFrames mixes the sound from the page's elements whatever the rate, and
+//   pads its mix to the page's last frame. The page's `frames / gcd` frames at
+//   this rate last exactly `frames / 30` seconds, so the mix ends where the
+//   single call's does, the AAC encoder ends its stream at the same sample,
+//   and the first `soundPackets(frames)` packets, the last one included, are
+//   the single call's bytes: the packet-count cut (soundCutArgs) stays exact.
+//   At a plain 1 fps the mix ran on to the next whole second, and the packet
+//   holding the reel's end could be encoded differently.
+// - The rate must be a whole number, never a fraction. HyperFrames writes a
+//   fractional rate (190/187 for 1683 frames) at timescale 90000, reads the
+//   file back at another rate (317/12) and trims the sound to the length that
+//   rate gives the page's frames (2.158 s of 56.1 s).
+// The page draws nothing: it renders at about 20 page frames a second.
+export function soundPageFps(frames: number): string {
+  return String(EXPORT_FPS / gcd(frames, EXPORT_FPS));
+}
 
 export type RenderLayer = "behind" | "front" | "sound";
 
@@ -43,10 +67,13 @@ export function layerArgs({
   layer,
   projectDir,
   output,
+  frames,
 }: {
   layer: RenderLayer;
   projectDir: string;
   output: string;
+  // The reel's export frames (`reelFrames`): the sound page's rate.
+  frames: number;
 }): string[] {
   const workers = {
     front: LAYER_SETTINGS.frontWorkers,
@@ -66,7 +93,7 @@ export function layerArgs({
     "--sdr",
     "--format",
     layer === "sound" ? "mp4" : "png-sequence",
-    ...(layer === "sound" ? ["--fps", String(LAYER_SETTINGS.soundFps)] : []),
+    ...(layer === "sound" ? ["--fps", soundPageFps(frames)] : []),
   ];
 }
 
@@ -181,6 +208,7 @@ export function layerCall({
   chromeTmp,
   projectDir,
   output,
+  frames,
   progress,
   signal,
   env = process.env,
@@ -191,6 +219,7 @@ export function layerCall({
   chromeTmp: string;
   projectDir: string;
   output: string;
+  frames: number;
   progress: ProgressParser;
   signal?: AbortSignal;
   env?: NodeJS.ProcessEnv;
@@ -207,7 +236,7 @@ export function layerCall({
   }
   return {
     file: tools.hyperframes[0],
-    args: [tools.hyperframes[1], ...layerArgs({ layer, projectDir, output })],
+    args: [tools.hyperframes[1], ...layerArgs({ layer, projectDir, output, frames })],
     env: { ...renderEnv(env), ...renderScratchEnv(dir), TMPDIR: chromeTmp },
     sampleGroupMemory: true,
     progress,

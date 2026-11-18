@@ -3,14 +3,17 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-// A model the worker runs itself: a modified file that no official URL
-// serves, so it is committed at apps/worker/models/ beside its notice
-// (THIRD_PARTY_NOTICES.md) and pinned by name, size and SHA-256. Never
-// downloaded.
+// A model the worker runs itself, at apps/worker/models/ beside its notice
+// (THIRD_PARTY_NOTICES.md), pinned by name, size and SHA-256. Either a
+// modified file that no official URL serves, committed and never downloaded,
+// or (`url`) a published file too large to commit, fetched from that pinned
+// URL by `models:fetch` (fetch-models.ts) and by the worker image's build,
+// never at job time.
 export interface ModelFile {
   file: string;
   sha256: string;
   bytes: number;
+  url?: string;
 }
 
 // apps/worker/models/<file>, in the repository and in the worker image.
@@ -18,8 +21,10 @@ export function modelPath(model: ModelFile): string {
   return fileURLToPath(new URL(`../models/${model.file}`, import.meta.url));
 }
 
-// How a missing or changed model comes back: it is a committed file.
+// How a missing or changed model comes back: a committed file from git, a
+// published one by fetching it again.
 export function modelRestore(model: ModelFile): string {
+  if (model.url) return "yarn workspace @edit-issebya/worker models:fetch";
   return `git checkout -- apps/worker/models/${model.file}`;
 }
 

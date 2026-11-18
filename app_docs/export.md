@@ -170,7 +170,7 @@ the footage and the masks once, blends, and encodes.
    ```bash
    hyperframes render <dir>/front/project  -o <dir>/front/frames   --quality delivery --workers 2 --no-browser-gpu --sdr --format png-sequence
    hyperframes render <dir>/behind/project -o <dir>/behind/frames  --quality delivery --workers 1 --no-browser-gpu --sdr --format png-sequence
-   hyperframes render <dir>/sound/project  -o <dir>/sound/sound.mp4 --quality delivery --workers 1 --no-browser-gpu --sdr --format mp4 --fps 1
+   hyperframes render <dir>/sound/project  -o <dir>/sound/sound.mp4 --quality delivery --workers 1 --no-browser-gpu --sdr --format mp4 --fps <soundPageFps(frames)>
    ```
 
    `LAYER_SETTINGS`: two front workers, not three. With three the tree's peak memory was at the
@@ -178,11 +178,23 @@ the footage and the masks once, blends, and encodes.
    Each call has its own frame cache and history (`renderScratchEnv` of its own folder) and its
    own Chrome `TMPDIR` (`withChromeTmp`).
 
-3. The sound cut (`soundCutArgs`). The sound page is rendered at 1 fps (HyperFrames mixes the sound
-   from the page's elements, whatever the frame rate), so HyperFrames pads its mix to a whole
-   second: longer than the reel, but its first AAC packets are the same bytes as the single
-   call's. The single call pads its mix to `frames / 30` seconds and keeps
-   `ceil(samples / 1024) + 1` packets at 48 kHz, the last one shortened. The cut keeps the same
+3. The sound cut (`soundCutArgs`). HyperFrames mixes the sound from the page's elements whatever
+   the frame rate, and pads its mix to the page's last frame. The single call pads its mix to
+   `frames / 30` seconds and keeps `ceil(samples / 1024) + 1` packets at 48 kHz, the last one
+   shortened. The sound page is rendered at the lowest whole rate whose frames end exactly there
+   (`soundPageFps`: `30 / gcd(frames, 30)`, so 10 fps for 1683 frames, 2 fps for 3045, 30 fps for
+   1013 or 289, 1 fps for a whole number of seconds): the page's `frames / gcd` frames last exactly
+   `frames / 30` seconds, so its mix ends at the same sample, the AAC encoder ends its stream at
+   the same point, and every packet is the same bytes as the single call's, the last one included.
+   At a plain 1 fps the mix ran on to the next whole second: the packet holding the reel's end was
+   then encoded mid-stream instead of at the end of the stream, and on the speech-ten reel it came
+   out one byte different (decoding to the same samples), which the machine check below caught.
+   The rate is always a whole number. A fraction (`190/187` for 1683 frames, the rate that ends
+   `ceil(frames / 30)` page frames at the reel's end) is written at timescale 90000; HyperFrames
+   then reads the file back at another rate (`317/12`) and trims the sound to the length that rate
+   gives the page's frames: 2.158 s of 56.1 s, and the export played silent after it. The page
+   draws nothing and renders at about 20 page frames a second, so a 30 fps page takes about 1.3
+   times the reel's length. The cut keeps the same
    count (`soundPackets`: 1533 for 980 frames) by stream copy and shortens the last packet with
    HyperFrames' own `setts` expression:
 
@@ -192,6 +204,14 @@ the footage and the masks once, blends, and encodes.
    ```
 
    Never cut by time (`-t`): that drops packets by timestamp and cannot shorten the last one.
+
+   After the cut, ffprobe counts the cut sound's packets (`soundPacketsArgs`), and the export
+   fails before the blend when there are fewer than `soundPackets(frames)` (`assertSoundCovers`).
+   A sound shorter than the video is never blended into an MP4 with a silent tail. The error:
+
+   ```
+   render: the sound is shorter than the video: 103 packets (2.20 s), the reel needs 2631 packets (56.10 s)
+   ```
 
 4. `match` mode only, the footage's JPEG pass (`footageJpegArgs`): the footage through HyperFrames'
    own extraction chain (a bt601 full-range JPEG of every frame, `-q:v 2`) into one Motion JPEG
@@ -216,8 +236,11 @@ the footage and the masks once, blends, and encodes.
 
 The frames follow HyperFrames' own rules for a timed clip (`clipFrames`,
 `packages/edit/src/span-frames.ts`): a clip is on output frames `ceil(start x 30)` to
-`ceil(end x 30) - 1` and extracts `round(duration x 30)` of its own frames. A cut-out span on screen
-one frame longer than it extracts (16.033 to 17.767 s: 53 frames, 52 extracted) shows its last
+`ceil(end x 30) - 1`. A start between two frames is first moved forward to the next frame
+(HyperFrames' `alignClipStartToFirstOutputFrame`; the end stays), and the clip extracts
+`round((end - first / 30) x 30)` of its own frames, counted from that frame, not from the written
+start. A cut-out span on screen one frame longer than it extracts (16.033 to 17.767 s: 53 frames, 52
+extracted; 0.867 to 2.367 s: frames 27 to 71, 45 frames, 44 extracted from 0.9 s) shows its last
 frame twice in the single call's export: the span's footage copy, person copy and masks all hold.
 The composite reproduces that: it drops the footage frame the span never extracts so the frame
 before fills its place, and holds the mask the same way. The footage clip itself holds its last
@@ -285,9 +308,10 @@ with the page built with no `layer` option (the preview's own page).
   because HyperFrames creates it under `tmpdir()`; the container's `/tmp` must have room for it
   (up to three profiles at once for the composite).
 - Sound comes only from the edit's sound track, inside the page (the full page for the single
-  call, the sound page for the composite). HyperFrames mixes at unity gain
-  (no `PRODUCER_AUDIO_GAIN`); the worker tools test measures the voice within 0.5 LU of the source
-  and each click within 20 ms of its place on the track.
+  call, the sound page for the composite). HyperFrames mixes with no gain of ours
+  (no `PRODUCER_AUDIO_GAIN`), but may lower the gain of the whole mix to keep its peaks legal
+  (about 2.8 dB on a source peaking at +1.1 dBTP); the worker tools test measures the voice within
+  0.5 LU of the source and each click within 20 ms of its place on the track.
 - The step's progress comes from every process (`app_docs/status.md`), its row sums their CPU, and
   its span says which way the render went (`render.path`, `render.mode` or `render.route_reason`;
   `app_docs/measurement.md`).
@@ -410,9 +434,9 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   HyperFrames, Chrome, ffmpeg and the MODNet mask tool), never in CI. No database, no storage.
 - It exports each of two fixture reels both ways through the step runner (`renderVersion`, the
   single call and the composite in `match` mode) and compares the two MP4s:
-  - the short speech (2.69 s) with captions and two clicks on the sound track; its footage has 80
-    frames for 81 output frames, so the last frame is one the footage clip holds;
-  - the ten-second speech (9.4 s, a person talking) with two big words behind her, so two cut-out
+  - the short speech (2.67 s) with captions and two clicks on the sound track; its footage has 79
+    frames for 81 output frames, so the last frames are ones the footage clip holds;
+  - the ten-second speech (9.5 s, a person talking) with two big words behind her, so two cut-out
     spans, each with its real MODNet mask: the ffmpeg blend against the page's CSS blend at the
     person's edge over the words.
 - Acceptance, for each reel: both files are 1080x1920 H.264 at 30 fps with the reel's frame count
@@ -427,6 +451,16 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   mean and 0.99946 min; the ten-second speech's 283 frames 0.99037 mean and 0.98948 min (frame
   120); no frame of either under the bound; the sound identical in both. `clean` on the short
   speech: 0.99988 mean, 0.99986 min, the same sound.
+- Measured 2026-11-17, after the fixtures were remade with aligned word times (transcribe version 2,
+  retime version 4): the ten-second speech's cut-out span of 0.867 to 2.367 s starts between two
+  frames. HyperFrames moves such a start to the next frame and extracts from there (44 frames, not
+  45), so its export holds frame 70 on frame 71; the composite counted from the written start and
+  showed frame 71, and the frame scored 0.97898. With `clipFrames` counting from the moved start
+  the composite holds it too. The same reel's last AAC packet was then 7 bytes against the single
+  call's 8 (the same decoded samples), fixed by ending the sound page's frames at the reel's end
+  (`soundPageFps`, the sound cut above). Then: the short speech's 78 frames 0.99948 mean and
+  0.99947 min; the ten-second speech's 289 frames 0.99039 mean and 0.98956 min (frame 144); no
+  frame under the bound; the decoded sound and the stored packets identical in both.
 - A HyperFrames update can change the clip frame rules, the sound packet rule or the x264 settings
   this path copies. This test is what catches it: run it after every HyperFrames version change.
 
@@ -588,6 +622,9 @@ Before the one-screen layout (the 0.99 bound):
   without the other.
 - The composite's sound is the sound page's own AAC packets, cut by count with HyperFrames' `setts`
   expression. Never re-encode it, and never cut it by time.
+- The sound page's rate is a whole number, `30 / gcd(frames, 30)`, for every reel length. Never
+  pass HyperFrames a fractional `--fps`: it trims the sound to a few seconds. Never blend a cut
+  sound with fewer packets than `soundPackets(frames)`: the export fails instead.
 - Every process a render starts runs through the step runner's `tool`, in its own process group,
   and every file it writes is under the render's folder or a `withChromeTmp` folder. Never spawn
   one another way: a cancel must kill them all and leave nothing.

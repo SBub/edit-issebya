@@ -31,10 +31,10 @@ container's CPU, memory, disk and network are measured too and shown above a ree
   it is not retried. The runner keeps only the last bytes up to the cap, so a longer stdout has
   lost its start: before this rule a JSON answer was handed back cut and failed in `JSON.parse`
   with a reason that named neither the tool nor the size. A call that never reads its stdout says
-  so (`ignoreStdout`: an ffmpeg that writes a file, a render or a mask tool that prints its
-  progress): it answers an empty string and no cap applies. `runStep` (a step of one call) always
+  so (`ignoreStdout`: an ffmpeg that writes a file, a render, a mask tool or the word aligner
+  that prints its progress): it answers an empty string and no cap applies. `runStep` (a step of one call) always
   does. The calls that read stdout are the ffprobe probes (`probeArgs`, `sampleCountArgs`, a few
-  KB) and the photo probe (`app_docs/photo-library.md`).
+  KB; `soundPacketsArgs`, one number) and the photo probe (`app_docs/photo-library.md`).
 - A step attempt's times agree. The worker stamps its start (`startedAt`, one instant) and writes it as
   the row's `started_at` and the span's start; the row finishes `wall_ms` later (`finishedAt` in
   `step-store.ts`), and the span ends there too. A cache hit (`recordHit`) is the same: its skipped row and

@@ -2,21 +2,21 @@
   "format": 1,
   "preset": "issebya",
   "font_pair": "classic",
-  "duration": 2.69,
+  "duration": 2.667,
   "inputs": {
     "footage": {
       "step": "retime",
-      "fingerprint": "7ab01e62528d8855f980fd499c16b3c229f9713034cbfc90cc88b3af00f59d08",
+      "fingerprint": "310acc8ea28f8f00c46f43476965bd39642a22b0aad37255f09b0680ec1a5f93",
       "file": "source.mp4"
     },
     "transcript": {
       "step": "retime",
-      "fingerprint": "7ab01e62528d8855f980fd499c16b3c229f9713034cbfc90cc88b3af00f59d08",
+      "fingerprint": "310acc8ea28f8f00c46f43476965bd39642a22b0aad37255f09b0680ec1a5f93",
       "file": "transcript.json"
     },
     "head_track": {
       "step": "head_track",
-      "fingerprint": "355531e12fa9b61302d31321e4cf77af746d3246925cf1aa9d36ac38f57d3ae8",
+      "fingerprint": "a4329f455543bddd840d384012a82dfd53325880bf1ccd6981c6e4c5b21a0f51",
       "file": "head-track.json"
     }
   },
@@ -41,13 +41,13 @@
         "end": {
           "word": "w0004",
           "edge": "end",
-          "offset": 0.129
+          "offset": 0.076
         },
         "words": [
           "w0001"
         ],
         "position": {
-          "x": 391.17,
+          "x": 390.56,
           "y": 1290,
           "align": "left"
         },
@@ -61,13 +61,13 @@
         "end": {
           "word": "w0004",
           "edge": "end",
-          "offset": 0.129
+          "offset": 0.076
         },
         "words": [
           "w0002"
         ],
         "position": {
-          "x": 484.99,
+          "x": 484.39,
           "y": 1290,
           "align": "left"
         },
@@ -81,13 +81,13 @@
         "end": {
           "word": "w0004",
           "edge": "end",
-          "offset": 0.129
+          "offset": 0.076
         },
         "words": [
           "w0003"
         ],
         "position": {
-          "x": 532.26,
+          "x": 531.65,
           "y": 1290,
           "align": "left"
         },
@@ -101,13 +101,13 @@
         "end": {
           "word": "w0004",
           "edge": "end",
-          "offset": 0.129
+          "offset": 0.076
         },
         "words": [
           "w0004"
         ],
         "position": {
-          "x": 569.81,
+          "x": 569.2,
           "y": 1290,
           "align": "left"
         },
@@ -119,15 +119,15 @@
           "word": "w0005"
         },
         "end": {
-          "word": "w0005",
+          "word": "w0006",
           "edge": "end",
-          "offset": 0.15
+          "offset": 0.077
         },
         "words": [
           "w0005"
         ],
         "position": {
-          "x": 496.63,
+          "x": 451.42,
           "y": 1290,
           "align": "left"
         },
@@ -139,15 +139,15 @@
           "word": "w0006"
         },
         "end": {
-          "word": "w0010",
+          "word": "w0006",
           "edge": "end",
-          "offset": 0.085
+          "offset": 0.077
         },
         "words": [
           "w0006"
         ],
         "position": {
-          "x": 300,
+          "x": 549.2,
           "y": 1290,
           "align": "left"
         },
@@ -161,13 +161,13 @@
         "end": {
           "word": "w0010",
           "edge": "end",
-          "offset": 0.085
+          "offset": 0.057
         },
         "words": [
           "w0007"
         ],
         "position": {
-          "x": 389.2,
+          "x": 344,
           "y": 1290,
           "align": "left"
         },
@@ -181,13 +181,13 @@
         "end": {
           "word": "w0010",
           "edge": "end",
-          "offset": 0.085
+          "offset": 0.057
         },
         "words": [
           "w0008"
         ],
         "position": {
-          "x": 462.3,
+          "x": 417.09,
           "y": 1290,
           "align": "left"
         },
@@ -201,13 +201,13 @@
         "end": {
           "word": "w0010",
           "edge": "end",
-          "offset": 0.085
+          "offset": 0.057
         },
         "words": [
           "w0009"
         ],
         "position": {
-          "x": 547.07,
+          "x": 501.86,
           "y": 1290,
           "align": "left"
         },
@@ -221,13 +221,13 @@
         "end": {
           "word": "w0010",
           "edge": "end",
-          "offset": 0.085
+          "offset": 0.057
         },
         "words": [
           "w0010"
         ],
         "position": {
-          "x": 640.28,
+          "x": 595.07,
           "y": 1290,
           "align": "left"
         },

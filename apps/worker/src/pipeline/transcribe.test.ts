@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { TRANSCRIBE_SETTINGS, transcribeArgs } from "./transcribe.ts";
+import { ALIGN_SETTINGS } from "./align.ts";
+import { TRANSCRIBE_SETTINGS, alignArgs, transcribeArgs } from "./transcribe.ts";
 
 const WORKER_PACKAGE = JSON.parse(
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the worker's own package.json
@@ -31,5 +32,39 @@ describe("transcribeArgs", () => {
       "--dir",
       "/job/transcribe/hyperframes",
     ]);
+  });
+});
+
+describe("alignArgs", () => {
+  it("runs the worker's aligner entry on the footage with Whisper's words", () => {
+    const args = alignArgs(
+      {
+        footage: "/job/converted.mp4",
+        words: "/job/heard.json",
+        output: "/job/aligned.json",
+        threads: 8,
+      },
+      "/models/wav2vec2.onnx",
+      { ffmpeg: "/bin/ffmpeg" },
+    );
+    expect(args[0]).toMatch(/apps\/worker\/src\/pipeline\/align-entry\.ts$/);
+    expect(args.slice(1)).toEqual([
+      "--input",
+      "/job/converted.mp4",
+      "--words",
+      "/job/heard.json",
+      "--output",
+      "/job/aligned.json",
+      "--threads",
+      "8",
+      "--model",
+      "/models/wav2vec2.onnx",
+      "--ffmpeg",
+      "/bin/ffmpeg",
+    ]);
+  });
+
+  it("puts the aligner's settings in transcribe's fingerprint", () => {
+    expect(TRANSCRIBE_SETTINGS.align).toBe(ALIGN_SETTINGS);
   });
 });

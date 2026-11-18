@@ -314,6 +314,8 @@ test("Move text opens the editor on the paused preview: a text picked from the l
   await expect(moveBox("hook")).toHaveAttribute("data-component", "HOOK");
   await expect(moveBox("hook").getByTestId("move-kind")).toHaveText("Hook");
   await expect(moveBox("hook").getByTestId("move-handle")).toBeVisible();
+  // showMoment: the hook ends with the reel (2.667 s in the fixture, 0.057 s
+  // after w0010's end), less 0.4 s, shown on the frame grid.
   await expect(page.getByTestId("preview-clock-position")).toHaveText("00:02.267");
 
   // The box is the text's own box on screen.

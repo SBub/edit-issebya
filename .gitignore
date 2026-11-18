@@ -50,3 +50,8 @@ blob-report/
 # app_docs/evals.md): they quote reel transcripts; never commit them.
 eval-output/
 
+
+# The word aligner's model: a published file too large to commit, fetched by
+# `yarn workspace @edit-issebya/worker models:fetch` (app_docs/pipeline.md).
+apps/worker/models/wav2vec2-base-960h.onnx
+apps/worker/models/*.part

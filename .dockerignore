@@ -40,3 +40,8 @@ supabase
 fixtures/**
 !fixtures/footage/short-speech.mp4
 !fixtures/photos/sample.jpg
+
+# The word aligner's model, fetched by its own build stage at its pin (a local
+# copy from models:fetch is never sent).
+apps/worker/models/wav2vec2-base-960h.onnx
+apps/worker/models/*.part

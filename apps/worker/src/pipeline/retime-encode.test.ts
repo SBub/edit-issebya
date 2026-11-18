@@ -35,11 +35,54 @@ describe("retimeFilterGraph", () => {
     expect(graph).toContain("atempo=1.1");
   });
 
-  it("trims every audio piece to its video length and fades the last one", () => {
+  it("trims every audio piece to its video length and fades the last one out", () => {
     // 30 frames at 1.05x: 45714 samples.
-    expect(graph).toContain("apad,atrim=end_sample=45714[a0]");
-    expect(count(graph, "afade=")).toBe(1);
+    expect(graph).toContain("apad,atrim=end_sample=45714,");
     expect(graph).toMatch(/afade=t=out:st=[\d.]+:d=0\.03\[a2\]/);
+    expect(count(graph, ":d=0.03")).toBe(1);
+  });
+
+  it("fades the sound out before every join and in after it, 5 ms each", () => {
+    expect(RETIME_PRESET.joinFadeSeconds).toBe(0.005);
+    // 240 samples at 48 kHz. The first piece only fades out, the last only
+    // fades in (and carries the end fade), the middle one does both.
+    expect(graph).toContain("atrim=end_sample=45714,afade=t=out:ss=45474:ns=240[a0]");
+    // One frame at 0.6x: 2667 samples.
+    expect(graph).toContain(
+      "atrim=end_sample=2667,afade=t=in:ss=0:ns=240,afade=t=out:ss=2427:ns=240[a1]",
+    );
+    expect(graph).toMatch(/atrim=end_sample=42182,afade=t=in:ss=0:ns=240,afade=t=out:st=/);
+    expect(count(graph, "afade=t=in")).toBe(2);
+    expect(count(graph, "afade=t=out")).toBe(3);
+  });
+
+  it("changes no length: the fades come after each piece's trim, the video has none", () => {
+    const audio = [...graph.matchAll(/apad,atrim=end_sample=(\d+)[^;]*\[a\d\]/g)];
+    expect(audio.map((match) => Number(match[1]))).toEqual([45714, 2667, 42182]);
+    // Every piece's sound is its video's length (its frames at its speed),
+    // to the sample, so the whole is as long as the pieces planned.
+    const planned = PLAN.segments.map(
+      ({ orig, speed }) => (Math.round((orig[1] - orig[0]) * 30) / 30 / speed) * 48000,
+    );
+    audio.forEach((match, index) => {
+      expect(Math.abs(Number(match[1]) - planned[index]!)).toBeLessThanOrEqual(0.5);
+    });
+    const lines = graph.split(";\n");
+    for (const line of lines.filter((part) => part.startsWith("[0:v]"))) {
+      expect(line).not.toContain("fade");
+    }
+    // The graph without fades is the same graph: nothing else moved.
+    const plain = retimeFilterGraph(PLAN, 48000, { ...RETIME_PRESET, joinFadeSeconds: 0 });
+    expect(count(plain, "afade=")).toBe(1);
+    expect(graph.replaceAll(/,afade=t=(in|out):ss=\d+:ns=\d+/g, "")).toBe(plain);
+  });
+
+  it("gives a piece shorter than two fades half its length for each", () => {
+    const long = retimeFilterGraph(PLAN, 48000, { ...RETIME_PRESET, joinFadeSeconds: 0.05 });
+    // The 2667-sample piece: 1333 in, 1333 out, never overlapping.
+    expect(long).toContain(
+      "atrim=end_sample=2667,afade=t=in:ss=0:ns=1333,afade=t=out:ss=1334:ns=1333[a1]",
+    );
   });
 });
 
@@ -62,16 +105,19 @@ describe("retimeFilterGraph with cut pauses", () => {
     expect(graph).toContain("concat=n=2:v=1:a=1[vc][a]");
   });
 
-  it("still fades only the last piece", () => {
-    expect(count(graph, "afade=")).toBe(1);
-    expect(graph).toMatch(/afade=t=out:st=[\d.]+:d=0\.03\[a1\]/);
+  it("fades out into the cut and in after it, and ends with the end fade", () => {
+    // 15 frames at 1.05x: 22857 samples.
+    expect(graph).toContain("atrim=end_sample=22857,afade=t=out:ss=22617:ns=240[a0]");
+    expect(graph).toMatch(
+      /atrim=end_sample=22857,afade=t=in:ss=0:ns=240,afade=t=out:st=[\d.]+:d=0\.03\[a1\]/,
+    );
+    expect(count(graph, "afade=")).toBe(3);
   });
 });
 
-describe("retimeFilterGraph on a plan cut by the audio", () => {
-  // 3 s of leading silence (the transcript's first word pinned at 0 in it), a
-  // 1.2 s pause and trailing silence: every piece's audio starts and ends on
-  // its video's frame.
+describe("retimeFilterGraph on a plan with cut pauses", () => {
+  // 3 s of silence before the first word, a 1.2 s pause and trailing
+  // silence: every piece's audio starts and ends on its video's frame.
   const silent: [number, number][] = [
     [0, 3],
     [4, 5.2],
@@ -82,8 +128,8 @@ describe("retimeFilterGraph on a plan cut by the audio", () => {
   );
   const plan = planRetime({
     words: [
-      { id: "w0001", text: "there", start: 0, end: 1 },
-      { id: "w0002", text: "are", start: 3, end: 4 },
+      { id: "w0001", text: "there", start: 3, end: 3.5 },
+      { id: "w0002", text: "are", start: 3.5, end: 4 },
       { id: "w0003", text: "two", start: 5.2, end: 6.2 },
     ],
     envelope,
@@ -104,7 +150,9 @@ describe("retimeFilterGraph on a plan cut by the audio", () => {
     // The leading silence is trimmed and the pause cut: the pieces skip frames.
     expect(Number(video[0]![1])).toBeGreaterThan(0);
     expect(video.some((match, index) => index > 0 && match[1] !== video[index - 1]![2])).toBe(true);
-    expect(count(graph, "afade=")).toBe(1);
+    // A fade out and a fade in at each join, and the end fade.
+    expect(count(graph, "afade=t=in")).toBe(video.length - 1);
+    expect(count(graph, "afade=t=out")).toBe(video.length);
   });
 });
 

@@ -17,7 +17,7 @@ import type { RenderFiles } from "./render-project.ts";
 import { renderExport } from "./render-step.ts";
 import { fixtureEdit, fixturePath } from "./render-test-support.ts";
 
-// The real HyperFrames render of the fixture reel (2.69 s), through the step
+// The real HyperFrames render of the fixture reel (2.67 s), through the step
 // runner exactly as a render job runs it: the voice keeps its level, the
 // clicks land where the edit's sound track puts them, and the row's peak
 // memory comes from sampling the whole process tree.
@@ -25,7 +25,7 @@ const run = promisify(execFile);
 const SOURCE = fixturePath("retime", "source.mp4");
 const FILES = { footage: SOURCE };
 const RANGE = { start: 0, end: 3 };
-const REEL_SECONDS = 2.69;
+const REEL_SECONDS = 2.67;
 const CLICK_WORDS = ["w0005", "w0009"];
 const ONSET_TOLERANCE_S = 0.02;
 
@@ -145,7 +145,10 @@ function pcm(path: string, seconds: number): Promise<Float32Array> {
 }
 
 // Click onsets in seconds: the export minus the source leaves the clicks and
-// only AAC re-encoding residue of the voice. 1 ms RMS windows; an onset is a
+// only AAC re-encoding residue of the voice. HyperFrames lowers the whole mix
+// when a click on a loud syllable would pass its true-peak limit (-1.4 dB on
+// this fixture), so the source is first scaled by the gain that fits the
+// export best (least squares; 1 when nothing was lowered). 1 ms RMS windows; an onset is a
 // window rising above 60 times the median residual. Measured on this fixture:
 // the voice's residue peaks near 24 times the median and the clicks (mixed at
 // -13 dB) near 175 times, so 60 sits well clear of both. The click sample has
@@ -157,11 +160,18 @@ const ONSET_FACTOR = 60;
 function clickOnsets(exported: Float32Array, source: Float32Array): number[] {
   const window = RATE / 1000;
   const length = Math.min(exported.length, source.length);
+  let cross = 0;
+  let power = 0;
+  for (let i = 0; i < length; i += 1) {
+    cross += exported[i]! * source[i]!;
+    power += source[i]! * source[i]!;
+  }
+  const gain = power > 0 ? cross / power : 1;
   const rms: number[] = [];
   for (let start = 0; start + window <= length; start += window) {
     let sum = 0;
     for (let i = start; i < start + window; i += 1) {
-      const d = exported[i]! - source[i]!;
+      const d = exported[i]! - gain * source[i]!;
       sum += d * d;
     }
     rms.push(Math.sqrt(sum / window));

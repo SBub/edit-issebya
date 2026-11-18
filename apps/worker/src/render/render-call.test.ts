@@ -14,6 +14,7 @@ import {
   STUB_EXPORT,
   ffmpegPassCall,
   layerArgs,
+  soundPageFps,
   layerCall,
   renderArgs,
   renderCall,
@@ -241,20 +242,53 @@ describe("withChromeTmp", () => {
 });
 
 describe("LAYER_SETTINGS", () => {
-  it("is two front workers, one for the behind layer and the sound page, the sound at 1 fps", () => {
+  it("is two front workers, one for the behind layer and the sound page", () => {
     expect(LAYER_SETTINGS).toEqual({
       frontWorkers: 2,
       behindWorkers: 1,
       soundWorkers: 1,
-      soundFps: 1,
     });
+  });
+});
+
+describe("soundPageFps", () => {
+  it("gives the lowest whole rate whose frames end exactly at frames / 30", () => {
+    // 1683 frames (56.1 s): 561 page frames at 10 fps. The fraction 190/187
+    // made HyperFrames trim the sound to 2.158 s.
+    expect(soundPageFps(1683)).toBe("10");
+    // 1013 frames shares no factor with 30: the page runs at the export's rate.
+    expect(soundPageFps(1013)).toBe("30");
+    // 3045 frames (101.5 s): 203 page frames at 2 fps.
+    expect(soundPageFps(3045)).toBe("2");
+    // The fixture reels, a whole second, half a second.
+    expect(soundPageFps(289)).toBe("30");
+    expect(soundPageFps(81)).toBe("10");
+    expect(soundPageFps(90)).toBe("1");
+    expect(soundPageFps(15)).toBe("2");
+  });
+
+  it("is a whole number from 1 to 30 for every reel length, never a fraction", () => {
+    // Every length up to the footage limit of five minutes.
+    for (let frames = 1; frames <= 9000; frames += 1) {
+      const text = soundPageFps(frames);
+      expect(text).toMatch(/^[1-9][0-9]?$/);
+      const rate = Number(text);
+      expect(rate).toBeLessThanOrEqual(30);
+      // A whole number of page frames lasts exactly the reel: frames / 30 s.
+      expect((frames * rate) % 30).toBe(0);
+    }
   });
 });
 
 describe("layerArgs", () => {
   it("renders a picture layer as PNG frames with the export's settings and its own workers", () => {
     expect(
-      layerArgs({ layer: "front", projectDir: "/s/front/project", output: "/s/front/frames" }),
+      layerArgs({
+        layer: "front",
+        projectDir: "/s/front/project",
+        output: "/s/front/frames",
+        frames: 289,
+      }),
     ).toEqual([
       "render",
       "/s/front/project",
@@ -269,7 +303,7 @@ describe("layerArgs", () => {
       "--format",
       "png-sequence",
     ]);
-    const behind = layerArgs({ layer: "behind", projectDir: "/p", output: "/o" });
+    const behind = layerArgs({ layer: "behind", projectDir: "/p", output: "/o", frames: 289 });
     expect(behind.slice(5)).toEqual([
       "delivery",
       "--workers",
@@ -281,9 +315,14 @@ describe("layerArgs", () => {
     ]);
   });
 
-  it("renders the sound page as an MP4 at 1 fps with one worker", () => {
+  it("renders the sound page as an MP4 at the reel's sound page rate with one worker", () => {
     expect(
-      layerArgs({ layer: "sound", projectDir: "/s/sound/project", output: "/s/sound/sound.mp4" }),
+      layerArgs({
+        layer: "sound",
+        projectDir: "/s/sound/project",
+        output: "/s/sound/sound.mp4",
+        frames: 289,
+      }),
     ).toEqual([
       "render",
       "/s/sound/project",
@@ -298,13 +337,13 @@ describe("layerArgs", () => {
       "--format",
       "mp4",
       "--fps",
-      "1",
+      "30",
     ]);
   });
 
   it("never asks for a GPU mode", () => {
     for (const layer of ["front", "behind", "sound"] as const) {
-      const args = layerArgs({ layer, projectDir: "/p", output: "/o" });
+      const args = layerArgs({ layer, projectDir: "/p", output: "/o", frames: 289 });
       expect(args).not.toContain("--gpu");
       expect(args).not.toContain("--browser-gpu");
     }
@@ -321,6 +360,7 @@ describe("layerCall", () => {
       chromeTmp: "/tmp/hf-AbCdEf",
       projectDir: "/scratch/job/render-x/front/project",
       output: "/scratch/job/render-x/front/frames",
+      frames: 289,
       progress: parseRenderProgress,
       signal: stop,
       env,
@@ -335,6 +375,7 @@ describe("layerCall", () => {
         layer: "front",
         projectDir: "/scratch/job/render-x/front/project",
         output: "/scratch/job/render-x/front/frames",
+        frames: 289,
       }),
     ]);
     expect(made.env).toEqual({

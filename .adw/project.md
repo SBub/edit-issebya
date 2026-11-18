@@ -154,7 +154,8 @@ the gitignored `next-env.d.ts`, never stage it); dead code `yarn knip` (whole re
 `^transit`, a no-op task in every workspace, so an app's test hash covers the internal packages it
 lists in `dependencies` and a change in `packages/*` reruns it instead of replaying the cache; an app
 that imports an internal package must list it there); for a run targeting
-the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (real ffmpeg and
+the worker, the tool tests `yarn workspace @edit-issebya/worker test:tools` (the aligner's model fetched once
+first with `yarn workspace @edit-issebya/worker models:fetch`; real ffmpeg and
 HyperFrames on the committed clip, `footage-check.tools.test.ts` with real ffprobe, and
 `photos/photo-images.tools.test.ts` with real ffmpeg on `fixtures/photos/sample.jpg` and `sample.heic`,
 `cutout/mask-tool.tools.test.ts` with the real MODNet mask tool (ONNX Runtime on the CPU, the model

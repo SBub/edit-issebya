@@ -41,7 +41,10 @@ yarn dev:studio add-owner <email>  # once: creates the owner account in the loca
 
 The cut-out's MODNet model and the head track's U2Net model are committed files
 (`apps/worker/models/`, about 7 MB and 44 MB, with their licence notice beside them), so the worker
-image and a native worker both have them after a checkout: nothing to download (see [the pipeline doc](app_docs/pipeline.md)).
+image and a native worker both have them after a checkout. The transcribe step's word aligner model
+(378 MB) is too large to commit: the worker image fetches it at build, and a native worker, the
+worker's tool tests and `fixtures:pipeline` need it fetched once with
+`yarn workspace @edit-issebya/worker models:fetch` (see [the pipeline doc](app_docs/pipeline.md)).
 
 `scripts/dev-studio.sh` checks that Docker is running, starts the local Supabase stack
 (`edit-issebya`, `supabase/config.toml`) if it is down, applies pending migrations

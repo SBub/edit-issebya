@@ -53,8 +53,10 @@ import {
   cutoutSpans,
   footageJpegArgs,
   maskListText,
+  assertSoundCovers,
   parseMediaFacts,
   soundCutArgs,
+  soundPacketsArgs,
 } from "./composite.ts";
 import { exportKey } from "./export-key.ts";
 import type { ExportStore } from "./export-store.ts";
@@ -305,6 +307,7 @@ async function renderComposite({
               chromeTmp,
               projectDir: join(dir, layer, "project"),
               output: pageOutput,
+              frames,
               progress,
               signal,
               env,
@@ -330,6 +333,15 @@ async function renderComposite({
               parent: context,
               ignoreStdout: true,
             });
+            // A sound shorter than the video fails the export here, before
+            // the blend: never an MP4 with a silent tail.
+            const counted = await tool({
+              file: tools.ffprobe,
+              args: soundPacketsArgs(sound),
+              signal,
+              parent: context,
+            });
+            assertSoundCovers(counted, frames);
           }
           if (hasCutout) await page("behind", framesDir("behind"), behindProgress, signal);
         },

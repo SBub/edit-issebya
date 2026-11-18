@@ -1,5 +1,5 @@
 // The audio envelope: the RMS level in dB of every 10 ms of audio (480
-// samples at 48 kHz), the measure the silent gaps are found on.
+// samples at 48 kHz), the measure the speech level and the sounds in a pause are found on.
 const RMS_KEY = "lavfi.astats.Overall.RMS_level";
 // What digital silence (-inf) counts as.
 const SILENCE_FLOOR_DB = -180;
@@ -43,16 +43,16 @@ export function parseEnvelope(text: string): number[] {
   return values;
 }
 
-// [start, end] times of every run of frames below the threshold.
-export function silentRuns(
+// [start, end] times of every run of frames at or above the level.
+export function loudRuns(
   envelope: readonly number[],
-  thresholdDb: number,
+  levelDb: number,
   frameSeconds: number,
 ): [number, number][] {
   const runs: [number, number][] = [];
   let start: number | null = null;
   envelope.forEach((db, index) => {
-    if (db < thresholdDb) {
+    if (db >= levelDb) {
       start ??= index;
     } else if (start !== null) {
       runs.push([start * frameSeconds, index * frameSeconds]);

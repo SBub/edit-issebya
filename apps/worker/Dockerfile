@@ -1,8 +1,8 @@
 # The worker in a container (Docker Desktop on the owner's Mac, or any Linux host;
 # arm64 or amd64). Built from the repository root (compose.yaml sets the context).
 # Everything a job runs is inside: ffmpeg, HyperFrames with Chromium and whisper,
-# the MODNet cut-out and the head track's U2Net mask (onnxruntime-node on the
-# CPU) and the AI calls (OpenRouter over HTTPS). See app_docs/worker-container.md.
+# the word aligner, the MODNet cut-out and the head track's U2Net mask
+# (onnxruntime-node on the CPU) and the AI calls (OpenRouter over HTTPS). See app_docs/worker-container.md.
 
 # whisper-cli, the transcribe step's engine, built from a pinned whisper.cpp tag
 # with the libraries linked in (one binary). HyperFrames finds it through
@@ -29,6 +29,19 @@ RUN apt-get update \
 RUN wget -q -O /ggml-small.bin \
       "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REVISION}/ggml-small.bin" \
  && echo "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b  /ggml-small.bin" | sha256sum -c -
+
+# The transcribe step's word aligner (wav2vec2-base-960h, float32 ONNX), fetched
+# at the revision and SHA-256 pinned in apps/worker/src/pipeline/align-model.ts,
+# the same file `yarn workspace @edit-issebya/worker models:fetch` fetches. Too
+# large to commit (378 MB), so it is not in the build context (.dockerignore).
+FROM node:24-trixie-slim AS aligner
+ARG ALIGN_MODEL_REVISION=a19f851b3d42865797e410752b4c570c871e4825
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates wget \
+ && rm -rf /var/lib/apt/lists/*
+RUN wget -q -O /wav2vec2-base-960h.onnx \
+      "https://huggingface.co/Xenova/wav2vec2-base-960h/resolve/${ALIGN_MODEL_REVISION}/onnx/model.onnx" \
+ && echo "e46614273f03ff4b87923a965e417fa72004825522cb007c9c25633b8475490d  /wav2vec2-base-960h.onnx" | sha256sum -c -
 
 FROM node:24-trixie-slim AS runtime
 # ffmpeg 7 (ffprobe's -show_stream_groups for HEIC photos); procps (ps, the
@@ -67,6 +80,7 @@ RUN yarn workspaces focus @edit-issebya/worker
 # U2Net model and their notice (apps/worker/models, committed; each model's
 # SHA-256 is checked before each run).
 COPY apps/worker apps/worker
+COPY --from=aligner /wav2vec2-base-960h.onnx apps/worker/models/wav2vec2-base-960h.onnx
 COPY packages/edit packages/edit
 COPY packages/storage packages/storage
 COPY fixtures/footage/short-speech.mp4 fixtures/footage/short-speech.mp4

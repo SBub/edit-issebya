@@ -84,6 +84,7 @@ const PASSING: DoctorDeps = {
   prompts: () => fakePromptSource(),
   ai: () => answeringAi(),
   maskTool: () => maskTool(),
+  aligner: () => ({ modelSha256: "e46614273f03ff4b", verifyModel: async () => {} }),
   scratchDir: async () => ({ dir: "/scratch", state: "exists" }),
 };
 
@@ -201,6 +202,7 @@ describe("runDoctor", () => {
         "ok   prompt reel-components@v1 (label production)",
         "ok   prompt photo-describe@v1 (label production)",
         "ok   mask tool modnet a293b5ae, 1 s masked in 0.0 s",
+        "ok   aligner wav2vec2 e4661427",
         "ok   scratch dir /scratch exists",
       ],
       exitCode: 0,
@@ -244,6 +246,7 @@ describe("runDoctor", () => {
         "ok   ai hook call anthropic/claude-haiku-5.5",
         "ok   ai image call",
         "ok   mask tool modnet a293b5ae, 1 s masked in 0.0 s",
+        "ok   aligner wav2vec2 e4661427",
         "ok   scratch dir /scratch exists",
       ],
       exitCode: 0,
@@ -307,13 +310,13 @@ describe("runDoctor", () => {
       ...PASSING,
       scratchDir: async () => ({ dir: "/scratch/prod", state: "can be created" }),
     });
-    expect(creatable.lines[13]).toBe("ok   scratch dir /scratch/prod can be created");
+    expect(creatable.lines[14]).toBe("ok   scratch dir /scratch/prod can be created");
     expect(creatable.exitCode).toBe(0);
     const failing = await runDoctor({
       ...PASSING,
       scratchDir: async () => Promise.reject(new Error("/scratch is not a folder")),
     });
-    expect(failing.lines[13]).toBe("FAIL scratch dir: /scratch is not a folder");
+    expect(failing.lines[14]).toBe("FAIL scratch dir: /scratch is not a folder");
     expect(failing.exitCode).toBe(1);
   });
 
@@ -472,7 +475,16 @@ describe("runDoctor", () => {
         { maskTool: () => maskTool({ verifyModel: async () => Promise.reject(new Error("x")) }) },
         15,
       ],
-      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 16],
+      [
+        {
+          aligner: () => ({
+            modelSha256: "e4661427",
+            verifyModel: async () => Promise.reject(new Error("x")),
+          }),
+        },
+        16,
+      ],
+      [{ scratchDir: async () => Promise.reject(new Error("/scratch is not writable")) }, 17],
     ];
     for (const [override, failing] of cases) {
       const { lines, exitCode } = await runDoctor({ ...PASSING, ...override }, { ai: true });

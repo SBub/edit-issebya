@@ -84,7 +84,11 @@ const PROBED = JSON.stringify({
 });
 
 const isDouble = (call: ToolCall) => call.args[0] === FAKE_RENDER;
-const isProbe = (call: ToolCall) => call.file === TOOLS.ffprobe;
+// The composite's count of the cut sound's packets (its own ffprobe call).
+const isSoundCount = (call: ToolCall) =>
+  call.file === TOOLS.ffprobe && call.args.includes("-count_packets");
+// A media probe: the footage or a mask.
+const isProbe = (call: ToolCall) => call.file === TOOLS.ffprobe && !isSoundCount(call);
 const isFfmpeg = (call: ToolCall) => call.file === TOOLS.ffmpeg;
 const isHyperframes = (call: ToolCall) => call.args[0] === TOOLS.hyperframes[1];
 // The composite's own pass: the one ffmpeg call with a filter graph.
@@ -97,11 +101,13 @@ function pageOf(call: ToolCall): string {
 
 const bytes = () => new Uint8Array(2048).fill(7);
 
-// Each tool leaves what the real one would: ffprobe its JSON, HyperFrames some
+// Each tool leaves what the real one would: ffprobe its JSON (or, counting the
+// cut sound, more packets than any fixture reel needs), HyperFrames some
 // bytes at `-o` (a folder of frames for a picture layer), ffmpeg some bytes at
 // its output (its last argument); the render double does what its part does.
 const fakeSpawn: SpawnTool = async (call) => {
   spawned.push(call);
+  if (isSoundCount(call)) return ok(call, "100000\n");
   if (isProbe(call)) return ok(call, PROBED);
   if (isDouble(call)) {
     const [, part] = call.args;
@@ -256,8 +262,10 @@ describe("runRender", () => {
       },
     ]);
     // The composite: the footage probed, the front and sound pages, the sound
-    // cut, the footage's JPEG pass, then the one blend.
+    // cut and the count of its packets, the footage's JPEG pass, then the one
+    // blend.
     expect(spawned.filter(isProbe)).toHaveLength(1);
+    expect(spawned.filter(isSoundCount)).toHaveLength(1);
     const hyperframes = spawned.filter(isHyperframes);
     expect(hyperframes.map(pageOf).sort()).toEqual(["front", "sound"]);
     for (const call of hyperframes) {
@@ -266,7 +274,7 @@ describe("runRender", () => {
     }
     expect(spawned.filter(isFfmpeg)).toHaveLength(3);
     expect(spawned.at(-1)).toSatisfy(isComposite);
-    expect(spawned).toHaveLength(6);
+    expect(spawned).toHaveLength(7);
     // The scratch folder is gone.
     expect(await storage.list(`${PREFIX}exports/`)).toEqual([key]);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
@@ -386,7 +394,7 @@ describe("runRender", () => {
       spawned.filter((call) => call.progress).map((call) => [part(call), call.progress!]),
     );
     expect([...parsers.keys()].sort()).toEqual(["composite", "footage", "front", "sound"]);
-    expect(spawned.filter((call) => !call.progress)).toHaveLength(2);
+    expect(spawned.filter((call) => !call.progress)).toHaveLength(3);
     const [front, sound, footage, composite] = ["front", "sound", "footage", "composite"].map(
       (name) => parsers.get(name),
     );
@@ -881,7 +889,8 @@ describe("runRender spans", () => {
     expect(childrenOf(finished, route).map((span) => span.name)).toEqual(["exec ffprobe"]);
     expect(route?.attributes).toEqual({ "render.path": "composite", "render.mode": "match" });
     const encode = named(finished, "render.encode");
-    // Two pages, the sound cut, the footage pass and the blend.
+    // Two pages, the sound cut and its packet count, the footage pass and the
+    // blend.
     expect(
       childrenOf(finished, encode)
         .map((span) => span.name)
@@ -890,6 +899,7 @@ describe("runRender spans", () => {
       "exec ffmpeg",
       "exec ffmpeg",
       "exec ffmpeg",
+      "exec ffprobe",
       "exec hyperframes",
       "exec hyperframes",
     ]);
@@ -1230,6 +1240,22 @@ describe("renderVersion's composite", () => {
     expect(chromeTmps).toHaveLength(2);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- the test's own temp folder
     for (const chromeTmp of chromeTmps) expect(existsSync(chromeTmp)).toBe(false);
+  });
+
+  it("fails before the blend when the cut sound is shorter than the video", async () => {
+    // The sound page's stream ended long before the reel does.
+    const tool: Tool = async (call) => {
+      if (isSoundCount(call)) {
+        spawned.push(call);
+        return "3\n";
+      }
+      return fakeTool(call);
+    };
+    const { dir, done } = await compositeOf(tool);
+    await expect(done).rejects.toThrow(/^render: the sound is shorter than the video: 3 packets/);
+    expect(spawned.filter(isSoundCount)).toHaveLength(1);
+    expect(spawned.filter(isSoundCount)[0]!.args.at(-1)).toBe(join(dir, "sound.m4a"));
+    expect(spawned.some(isComposite)).toBe(false);
   });
 
   it("refuses a composite that wrote no MP4", async () => {

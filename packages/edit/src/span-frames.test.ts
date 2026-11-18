@@ -36,10 +36,26 @@ describe("clipFrames", () => {
   });
 
   it("holds nothing when the millisecond rounding goes the other way", () => {
-    // 16.067 to 17.733: frames 483 to 531, 49 frames, 1.666 s x 30 = 49.98
-    // rounds to 50 extracted: more than it shows, nothing held.
+    // 16.067 to 17.733: frames 483 to 531, 49 frames. HyperFrames starts the
+    // clip on frame 483 (16.1 s) and extracts from there: 1.633 s x 30 =
+    // 48.99 rounds to 49, as many as it shows, nothing held.
     const frames = clipFrames({ start: 16.067, end: 17.733 }, 980);
-    expect(frames).toMatchObject({ first: 483, last: 531, count: 49, extracted: 50, held: [] });
+    expect(frames).toMatchObject({ first: 483, last: 531, count: 49, extracted: 49, held: [] });
+  });
+
+  it("counts the extracted frames from the frame a between-frames start moves to", () => {
+    // Measured on a real export (the speech-ten reel's EARN span): 0.867 to
+    // 2.367 s. 0.867 x 30 = 26.01, so HyperFrames starts the clip on frame 27
+    // (0.9 s) and extracts 1.467 s: 44 frames, the footage's 27 to 70. The
+    // span is on frames 27 to 71 (2.367 x 30 = 71.01), so frame 71 repeats
+    // frame 70. Counted from the written start (1.5 s x 30 = 45) it would not.
+    expect(clipFrames({ start: 0.867, end: 2.367 }, 289)).toEqual({
+      first: 27,
+      last: 71,
+      count: 45,
+      extracted: 44,
+      held: [71],
+    });
   });
 
   it("starts a span on the first frame at or after its start", () => {

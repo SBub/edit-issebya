@@ -59,7 +59,7 @@ function option(args: string[], name: string): string {
 // Plays each tool: ffprobe answers fixture JSON, ffmpeg writes the file its
 // arguments name (two transparent raw frames for the head tracker),
 // the U2Net entry writes head_track's chunk of masks to --output, HyperFrames
-// writes its transcript into --dir.
+// writes its transcript into --dir, the aligner copies --words to --output.
 function fakeTools({ failTranscribe = 0 } = {}): SpawnTool {
   let transcribeFailures = failTranscribe;
   return async (call) => {
@@ -77,6 +77,14 @@ function fakeTools({ failTranscribe = 0 } = {}): SpawnTool {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
       await writeFile(call.args.at(-1)!, new Uint8Array(2 * frameBytes(HEAD_TRACK_SETTINGS)));
       return ok();
+    }
+    if (call.args.includes("--words")) {
+      // The aligner: Whisper's words at its own times (here, the same).
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+      const heard = await readFile(option(call.args, "--words"), "utf8");
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder
+      await writeFile(option(call.args, "--output"), heard);
+      return ok('@hf-progress {"index":1,"total":1,"pct":100}\n');
     }
     if (call.file === TOOLS.hyperframes[0]) {
       if (transcribeFailures > 0) {
