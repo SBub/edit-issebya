@@ -252,7 +252,11 @@ not a corner, and is unchanged.
   server and renders `ThumbnailGrid` (replaces `ReelList`) plus `UploadDialog`. Each reel passes
   `DeleteReelButton` as its tile's `corner`: the bin in the bottom-right corner, always visible (no
   hover), 44 px on a phone, a plain `text-ink` icon with no background or shape and a slight fade on
-  hover (see `app_docs/studio.md`).
+  hover (see `app_docs/studio.md`). A reel with a kept export (`app_docs/export.md`) also gets
+  `DownloadExportButton` directly left of the bin, the same size and look, and its tile passes
+  `cornerControls: 2` so the title and meta lines keep room for both (on a phone that leaves the
+  title little room; the reel's page shows the full name). `ExportsWatcher` reads the list again
+  when one of the owner's exports finishes.
 - `apps/studio/src/components/ThumbnailGrid.tsx`: generic tile grid, each tile with a thumbnail or
   neutral block, title, a meta line (age and size, `1w · 62.2 MB`) and a status badge
   (`reel-list-status` kept). Title, meta and badge are each optional: an item without them shows

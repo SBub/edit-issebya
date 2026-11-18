@@ -207,12 +207,14 @@ worker's `once`, every step a cache hit, then the `first_version` step saves ver
 its AI answer keeping version 1 unchanged, so version 2 matches the version 1 golden)
 and plays its live preview: the HyperFrames runtime and GSAP routed from the pinned local
 packages, so no network), `change-requests.spec.ts` seeds a processed reel the same way, its third version comes from Start over (the scripted answer keeps version 1's bytes), going back makes a new version copying the old one and going back again, another owner cannot queue a going back, and a going back needs a version, `export.spec.ts` seeds a processed reel the same way, Export
-opens the export modal and queues a `render` job the worker's `once` runs with the stubbed render
+queues a `render` job the worker's `once` runs with the stubbed render
 (`E2E_MOCK_RENDER=true`, set by `test-support/worker.ts` for every spec, so no spec renders for
-real; `E2E_MOCK_RENDER_SECONDS` for a rising bar), the stub downloads by itself and the modal
-closes, with no download link or expiry in the panel, Cancel during the render ends the job
-`cancelled` with no export and no download, and Escape while queued cancels a job `once` never
-claims, `delete-reel.spec.ts` shows the bin in every reels tile's bottom-right corner without hover at 1440x900 and 390x844 (44 px on the phone), Cancel and Escape keeping the reel, and Delete removing it and its queued job without a reload, its source key queued in `storage_deletions` and its page then `Reel not found`, `decide-behind.spec.ts` seeds a processed reel of `speech-ten` (`fixtures/footage/speech-ten.mp4`) whose automatic decide (scripted answer) proposes a VISUAL over w0021 to w0027, and the live preview shows its frame (version 2, its `inputs` name no photo), and `preview.spec.ts`'s transition test seeds the same clip with a scripted LIST over w0028 to w0030, run last by the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
+real; `E2E_MOCK_RENDER_SECONDS` for a rising percent) and shows `Exporting…` with Cancel in the
+header and no dialog, the reel's editing is off with its reason, the owner leaves for the reels
+list while it renders, the Download icon appears beside the bin and downloads the stub, the reel's
+page offers `Download v2`, an export that finishes with the page open downloads by itself, and
+only Cancel ends an export (`cancelled`, no export row, no download; a queued one is never
+claimed), `delete-reel.spec.ts` shows the bin in every reels tile's bottom-right corner without hover at 1440x900 and 390x844 (44 px on the phone), Cancel and Escape keeping the reel, and Delete removing it and its queued job without a reload, its source key queued in `storage_deletions` and its page then `Reel not found`, `decide-behind.spec.ts` seeds a processed reel of `speech-ten` (`fixtures/footage/speech-ten.mp4`) whose automatic decide (scripted answer) proposes a VISUAL over w0021 to w0027, and the live preview shows its frame (version 2, its `inputs` name no photo), and `preview.spec.ts`'s transition test seeds the same clip with a scripted LIST over w0028 to w0030, run last by the test phase as `PORT=<run port> STUDIO_PORT=<BACKEND_PORT> yarn test:e2e` (turbo passes `PORT`,
 `STUDIO_PORT`, `CI`, `PW_*`, the mock flags and the Supabase variables through; extra Playwright
 arguments go after `--`). On macOS 14 `PW_WEBKIT_WS` is already in the environment (set by
 `.adw/worktree-env`) and is passed through as is; never set, unset or override it. On other machines

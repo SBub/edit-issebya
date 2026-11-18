@@ -7,11 +7,16 @@
 
 ## Overview
 
-Export is one action. The Export button on a reel's page queues a `render` job for the current
-version and opens a modal that shows the render's live progress. When the render finishes, the MP4
-downloads by itself and the modal closes. Nothing is kept or offered afterwards: exporting again
-renders again. Closing the modal (Cancel, Escape or the close control) cancels the export. The
-uploaded file is kept 48 hours, and only the newest one of a reel.
+Export never blocks the studio. The Export button on a reel's page queues a `render` job for the
+current version, and the page shows its progress in place (`Exporting… 40%`) with a Cancel button:
+no dialog opens. The owner may leave the reel, open other reels, use the photo library or upload a
+new reel; the export keeps going. Only Cancel stops it. While a reel exports, editing that reel is
+off (other reels are not held) and the page says why. The finished MP4 is kept for 48 hours, and
+only the newest one of a reel: a Download icon beside the bin in the reels list and a Download
+button on the reel's page give it for as long as it is kept. If the owner is still on the reel's
+page when the render finishes, the file also downloads by itself; anywhere else nothing pops up.
+There are no notifications of any kind. The worker runs exports in a lane of their own, so an
+upload or a photo never waits behind one (`app_docs/studio.md`, "Worker").
 
 ## How it works
 
@@ -70,38 +75,81 @@ uploaded file is kept 48 hours, and only the newest one of a reel.
 - `requestExport` (`apps/studio/src/app/export-actions.ts`) reads the reel and its jobs under RLS,
   checks `exportBlockedReason` again and inserts `{ reel_id, kind: "render", version_id }` with the
   reel's `current_version_id`. The browser never picks the version.
-- `exportBlockedReason` (`apps/studio/src/lib/exports.ts`) gives one of three reasons: `No version
-to export yet`, `Export opens once the reel is processed`, or `Exporting this version...` while
-  a render of the current version is queued or running. A change, or a render of an older version,
-  does not hold the button.
+- `apps/studio/src/lib/exports.ts` holds the state logic, all pure functions of `LiveReel`'s
+  Realtime rows:
+  - `liveRenderJobId(jobs)`: the reel's export in progress, its newest `render` job that is
+    `queued`, `running` or `waiting_ai`, whatever version it exports.
+  - `exportBlockedReason`: `No version to export yet`, `Export opens once the reel is processed`,
+    or `This reel is already exporting` while one is live. One export of a reel at a time.
+  - `exportingReason(jobs)`: `Editing is off while this reel exports. Cancel the export to edit
+now` (`EDITING_OFF_WHILE_EXPORTING`) while an export is live, else null.
+  - `exportProgress(jobId, jobs, steps, latestExport)`: `waiting` before the render step runs
+    (`waiting to start` while queued, `getting ready` during the pipeline's hits or a cut-out) and
+    after it until the export row arrives (`finishing`); `rendering` with the running `render`
+    step's live `steps.progress_percent` (0 before the first write); `ready` once the job's
+    `exports` row arrived; `failed`; `cancelled`.
+  - `exportRunning(progress)`: `waiting` or `rendering`. `exportProgressLabel`: the one line,
+    `Exporting… 40%` or `Exporting… waiting to start`.
+  - `keptExports(rows, now)`: per reel, its newest export while `expires_at` has not passed. This
+    is the one definition of "a reel has a kept export".
+- `ExportPanel.tsx` (the reel page's header) has two states, `data-export-state`:
+  - `idle`: the Export button with its blocked reason and, while the reel has a kept export, a
+    `Download vN` button (`DownloadExportButton`, N the version the export holds).
+  - `exporting`: the line `Exporting… 40%`, a thin bar (indeterminate until the render step runs),
+    a Cancel button, and under them `You can leave this page, the export keeps going. Editing is
+off while this reel exports. Cancel the export to edit now`. The Export button is not shown.
+
+  The panel follows one job: the one Export queued here, or a live one found when the page opens
+  or started in another tab. Leaving the page does nothing to the job. Opening the page again
+  during the export shows the same state, with Cancel.
+
+- Cancel calls `cancelExport(jobId)`, which calls `cancel_job` under the owner's session. Nothing
+  else cancels: not leaving, not closing the tab, not Escape.
+- Editing off. `changeBlockedReason(reel, jobs)` (`lib/change-requests.ts`) returns
+  `exportingReason(jobs)` after the reel's own reasons, so going back, Start over and the font pair
+  picker are disabled with that line (the versions panel shows it under the list, the buttons in
+  their `title`). `ReelPreview` gets the same line as `editBlockedReason`: `Move text` cannot be
+  opened, and an editor already open is frozen (no drag, no Save, no Cancel) with the line in its
+  status, keeping its draft until the export ends. The server checks it too: `openReel` in
+  `change-actions.ts` reads the reel's live render jobs and answers `blocked`, so a stale tab
+  cannot queue an edit. Why editing is off and not only queued: the reel's jobs run one at a time
+  in order, so an edit could only sit behind the export, and the page would show an edit that is
+  not in the file being rendered. Playing the preview, the photo library, uploads and every other
+  reel stay on.
 - `loadExport(reelId, exportId)` reads that one export under RLS, checks its key is this reel's
   (`isExportKey`) and signs it with `signDownload(key, { expiresInSeconds: exportLinkSeconds(...),
 downloadName: exportFileName(...) })`. The name is `reel-v<N>-<YYYYMMDD-HHMM>.mp4` in UTC and the
-  link carries `Content-Disposition: attachment`. The seconds are measured again just before
-  signing, so a link is never signed past `expires_at`; an expired export is never signed at all.
-- `cancelExport(jobId)` calls `cancel_job` under the owner's session.
-- `ExportPanel.tsx` shows only the button and its blocked reason. Pressing Export queues the job
-  (`requestExport`, `studio_export_requested`) and opens a native `<dialog>`, "Exporting version N",
-  that follows that job. What it shows comes from `exportModalState(jobId, jobs, steps,
-latestExport)` (`apps/studio/src/lib/exports.ts`), a pure function of `LiveReel`'s Realtime state:
-  - `waiting` before the render step runs (queued: `Waiting to start`; the pipeline's hits or a
-    cut-out: `Getting ready`) and after it until the export row arrives (`Finishing`): an
-    indeterminate bar;
-  - `rendering`: the job's running `render` step, its live `steps.progress_percent` as the bar
-    (`Rendering, N%`), 0 before the first write;
-  - `ready`: the job's `exports` row arrived (Realtime INSERT): the modal calls `loadExport` once
-    and starts the download at once with a programmatic anchor click, sends
-    `studio_export_downloaded`, shows `Downloaded` with a `Download` link as the fallback for a
-    browser that blocks a download no click started (it cannot be detected, so the link always
-    shows), and closes after 4 seconds;
-  - `failed`: `The export failed. Try again` until the owner closes it; `cancelled`: closed.
-- Cancel, Escape and the close control all close the modal; while the job is `waiting` or
-  `rendering` they also call `cancelExport`. The modal closes at once and the job's row follows
-  live; the panel returns to idle. Closing after the download changes nothing.
-- A page opened while a render of the current version is live (`liveRenderJobId`) opens the modal
-  for that job again, so it can still be followed or cancelled.
-- `LiveReel.tsx` follows `exports` INSERTs for the reel over Realtime and keeps the newest export's
-  `id` and `job_id` (read once on open and on each ready subscription). No polling.
+  link carries `Content-Disposition: attachment`. A link is made at the click that uses it and
+  lives the seconds left until `expires_at`, an hour at most; the seconds are measured again just
+  before signing, so a link is never signed past `expires_at`, and an expired export is never
+  signed at all.
+- `DownloadExportButton.tsx`: Download as an icon (`variant="icon"`, the reels list, accessible
+  name `Download the export`) or a button (the reel's page). One click calls `loadExport` and
+  starts the download with a programmatic anchor click (`studio_export_downloaded`). An export that
+  expired meanwhile says `This export is no longer kept. Export again` and the page refreshes,
+  which takes the control away; a failure says `The file could not be fetched. Try again`.
+- The reels list (`apps/studio/src/app/page.tsx`) reads the owner's exports with `expires_at` in
+  the future (RLS: only their own) and gives each reel in `keptExports` a Download icon left of
+  the bin (`ThumbnailGrid`'s `corner`, `cornerControls: 2`). `ExportsWatcher.tsx` follows `exports`
+  INSERTs over Realtime and reads the list again (`router.refresh()`, once more when the
+  subscription is ready), so the icon appears without a reload. It shows nothing itself.
+- The download by itself: when the job the reel's page follows becomes `ready` while the page is
+  open, `ExportPanel` calls the same download once and shows `Downloaded` under the buttons. A
+  browser may block a download no click started; the `Download vN` button beside it is the way to
+  the file then. A page opened after the export finished downloads nothing by itself.
+- `LiveReel.tsx` follows `exports` INSERTs for the reel over Realtime and keeps the reel's kept
+  export (`EXPORT_REF_COLUMNS`, read once on open and on each ready subscription, `expires_at` in
+  the future). No polling.
+- A failed export shows `The export failed. Try again` under the Export button, and the progress
+  overlay's failure card (`app_docs/status.md`).
+
+#### The replace rule
+
+One kept export per reel: the newest. A newer export of the same reel replaces the older one, even
+when it exports another version. The studio only ever offers the newest (`keptExports`, and the
+reel page's query), and the worker's slimming deletes the replaced file on its next pass
+(`expire_export_files`, above). Until that pass the older object still exists but nothing links to
+it. An export that failed or was cancelled replaces nothing: the earlier kept export stays offered.
 
 ### Worker
 
@@ -337,6 +385,7 @@ with the page built with no `layer` option (the preview's own page).
   an ffmpeg pass, each in its own process group), and the step settles only once all are gone; the
   render's folder (the layer folders, their PNG frames, the JPEG copy, the sound) is removed with
   it, and each Chrome folder by its `withChromeTmp`.
+- Only the Cancel button of the reel's page cancels (`cancel_job`); see Studio.
 - A render job's lease keeper (`apps/worker/src/lease.ts`, `keepLease`) also runs one cheap check
   every `cancelCheckEveryMs` (5 seconds, `config.ts`): `jobCancelled` (`queue.ts`) reads only the
   job's `id`, filtered to `status = 'cancelled'`. No other kind runs the check. A cancel aborts the
@@ -352,8 +401,8 @@ with the page built with no `layer` option (the preview's own page).
   removal the worker makes after a cancel; it never touches a recorded export. A refused insert
   for a cancelled job turns into the abort, so the step writes no `failed` row.
 - A cancelled render's step rows keep what was written so far: the `render` row stays `running`
-  with its last percent, as on any abort. The overlay and the modal show nothing for a cancelled
-  job.
+  with its last percent, as on any abort. The overlay and the export panel show nothing for a
+  cancelled job.
 
 ### Render double
 
@@ -379,11 +428,14 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
 
 ## How to Use
 
-1. Open a processed reel and press Export.
-2. Watch the modal's progress. The MP4 downloads by itself when the render finishes, and the modal
-   closes. If the browser blocked it, click `Download` in the modal while it shows.
-3. To stop an export, press Cancel or Escape, or close the modal.
-4. To have the file again, press Export again: it renders again.
+1. Open a processed reel and press Export. The header shows `Exporting… N%` and Cancel.
+2. Stay, or leave: open another reel, the photo library, upload a new reel. The export keeps going.
+3. To stop an export, open the reel and press Cancel.
+4. When it is done: if the reel's page is still open, the MP4 downloads by itself. Otherwise, or
+   to have the file again, click the Download icon beside the bin in the reels list, or
+   `Download vN` on the reel's page. The file is kept for 48 hours.
+5. To edit the reel again, wait for the export to end or cancel it. Exporting again replaces the
+   kept file.
 
 ## Configuration
 
@@ -425,8 +477,10 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   frame rules. `step-runner.test.ts` covers a call's own abort signal. `lease.test.ts`
   and `run-job.test.ts` (the cancel check and the `cancelled` outcome), `job-kinds.test.ts` and
   `pipeline/run-pipeline.test.ts` (`setReelStatus: false`).
-- Unit (studio): `apps/studio/src/lib/exports.test.ts` (`exportModalState`, `exportCancellable`,
-  `liveRenderJobId`), `change-requests.test.ts` (the `export of vN` label) and the storage mock's
+- Unit (studio): `apps/studio/src/lib/exports.test.ts` (`exportBlockedReason`, `liveRenderJobId`,
+  `exportingReason`, `exportProgress`, `exportRunning`, `exportProgressLabel`, `keptExports`, the
+  link's hour cap), `change-requests.test.ts` (editing blocked exactly while the reel exports; the
+  `export of vN` label) and the storage mock's
   `apps/studio/src/app/api/e2e-storage-mock/[...key]/route.test.ts`.
 - Unit (storage): `packages/storage/src/r2.test.ts` and `fake.test.ts` (the download name).
 - DB: `apps/studio/db-tests/exports.test.ts` (the render job policy and the `exports` table, its
@@ -434,12 +488,16 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   no `anon` execute, the refused export of a cancelled job, `claim_job` never taking a cancelled
   job) and `stored-files.test.ts` (`discard_export_file`; `expire_export_files` returning expired
   and replaced exports' files and keeping a reel's newest).
-- E2E: `apps/studio/e2e/export.spec.ts`: Export opens the modal, the bar rises with the render
-  double (`E2E_MOCK_RENDER_SECONDS=25`), the download starts by itself with the
-  `reel-v2-<YYYYMMDD-HHMM>.mp4` name and the modal closes; no download link or expiry in the panel
-  before or after; Cancel during the render closes the modal, the job ends `cancelled`, no export
-  row, no object, no download, and Export is open again; Escape while queued cancels a job the
-  worker then never claims.
+- E2E: `apps/studio/e2e/export.spec.ts`: Export shows `Exporting…` with Cancel in the header and
+  no dialog; the reel's editing controls are disabled with the reason; the line rises with the
+  render double (`E2E_MOCK_RENDER_SECONDS=25`); the owner goes to the reels list while it renders
+  and the job is not cancelled; the Download icon appears beside the bin with no reload and no
+  download by itself, and a click downloads `reel-v2-<YYYYMMDD-HHMM>.mp4`; the export row expires
+  48 hours after it was made; back on the reel `Download v2` gives the file again and editing is
+  on. A second test stays on the page and gets the download by itself. A third leaves and comes
+  back during a long render, sees the export still running, and Cancel ends it: the job
+  `cancelled`, no export row, no object, no download, the earlier kept export still offered. A
+  fourth cancels a queued job the worker then never claims (Escape does nothing).
 - Worker tools: `yarn workspace @edit-issebya/worker test:tools` (`render.tools.test.ts`: the
   single call's format, loudness, click times, group memory), on the owner's Mac only.
 
@@ -650,10 +708,20 @@ Before the one-screen layout (the 0.99 bound):
 - Use the same builder as the preview (`packages/edit`'s `build`) for every page, the composite's
   layer pages included; never a worker copy, never a stored page.
 - Never sign a download link past `expires_at`.
-- Never offer a finished export again (no download link, no expiry in the panel): exporting again
-  renders again.
-- Closing the export modal while its render is live always cancels it, only through `cancel_job`;
-  never give the owner an update right on `jobs`.
+- Export never blocks the studio: never show its progress in a dialog or anything that covers the
+  page, and never hold another reel, the photo library or an upload because a reel exports.
+- Only Cancel cancels an export, and only through `cancel_job`. Never cancel on leaving the page,
+  closing a tab, Escape or unmounting a component; never give the owner an update right on `jobs`.
+- While a reel exports, editing that reel is off, in the page (`exportingReason`) and in the
+  server actions (`openReel`). Never turn it off without showing the reason, and never turn off
+  editing of another reel.
+- No notifications for an export: no web push, no email, no toast, nothing that shows on another
+  page. The download by itself happens only on the reel's own page, for the export that page was
+  following when it finished; never start a download anywhere else without a click.
+- One kept export per reel, the newest, offered only while `expires_at` has not passed
+  (`keptExports`). Never offer an older export of a reel, and never keep a second file on purpose.
+- The time an export is kept is `export_keep_interval()` alone. Never write the 48 hours in a
+  second place that decides anything (a check, a query, the worker).
 - Never let `anon` execute `cancel_job`; only a `render` job can be cancelled.
 - The worker writes nothing after a cancel, except removing its own unrecorded upload through
   `discard_export_file`; never record an export for a cancelled job.

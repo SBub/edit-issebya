@@ -1,3 +1,4 @@
+import { exportingReason } from "./exports";
 import type { JobKind, JobRow } from "./jobs";
 import type { ReelDetail } from "./reels";
 import type { VersionListRow } from "./versions";
@@ -5,17 +6,20 @@ import type { VersionListRow } from "./versions";
 // A going back or a Start over may be sent while the reel is processing or
 // other jobs run: the database runs one job per reel at a time, in order
 // (lib/failures startOverQueueNote says what Start over waits for). Blocked
-// only when no job could ever use it. Null when open, otherwise the one-line
-// reason shown beside the disabled control.
+// when no job could ever use it, and while the reel exports (lib/exports
+// exportingReason: editing a reel is off for as long as its export runs).
+// Null when open, otherwise the one-line reason shown beside the disabled
+// control.
 export function changeBlockedReason(
   reel: Pick<ReelDetail, "status" | "current_version_id">,
+  jobs: readonly Pick<JobRow, "id" | "kind" | "status">[],
 ): string | null {
   if (reel.status === "refused") return "This clip was refused; upload another clip";
   if (reel.status === "uploading") return "Changes open once the upload finishes";
   if (reel.status === "failed" && reel.current_version_id === null) {
     return "Processing failed; press Try again on the preview first";
   }
-  return null;
+  return exportingReason(jobs);
 }
 
 // The title of a version the owner made by moving or resizing text

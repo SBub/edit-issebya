@@ -40,8 +40,9 @@ machine from idle-sleeping while a job runs.
   handled it on this page load), then `notice` (`New version N`), then `working` (the oldest
   `queued`, `running` or `waiting_ai` job), then `hidden` (nothing rendered). A `cancelled` job
   (`app_docs/export.md`) is neither live nor failed, so it shows nothing.
-- The export modal (`app_docs/export.md`) reads the same render step's `progress_percent` from the
-  same Realtime state, for the job it follows.
+- The export panel in the reel page's header (`app_docs/export.md`) reads the same render step's
+  `progress_percent` from the same Realtime state, for the job it follows, and shows it as
+  `Exporting… N%` with Cancel. The overlay shows the same job as any other (`Exporting`).
 - `jobProgress`: step k of n from `JOB_STEPS[job.kind]` in `step-words.ts` (`process` runs eight
   steps, `change` and `start_over` are `decide`, `restore`, `render`, `relayout` and `owner_edit` one each). A `cutout` step counts as `decide`;
   the current step is the running one, else a `waiting` one (so a `cutout` row finished inside a

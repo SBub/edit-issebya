@@ -20,10 +20,13 @@ export interface ThumbnailGridItem {
   badge?: string;
   // The badge's test id (the reels list keeps `reel-list-status`).
   badgeTestId?: string;
-  // A control in the tile's bottom-right corner (the reels list's bin): a
-  // sibling of the link or button, never inside it, so using it never opens
-  // the tile.
+  // The controls in the tile's bottom-right corner (the reels list's bin, and
+  // Download left of it while the reel has a kept export): siblings of the
+  // link or button, never inside it, so using one never opens the tile.
   corner?: ReactNode;
+  // How many controls `corner` holds (1 when absent): the title and meta
+  // lines keep that much room free.
+  cornerControls?: 1 | 2;
 }
 
 // The grid's first tile, before every item: a dashed "+" that adds one (a
@@ -66,9 +69,9 @@ const COLUMNS = {
   panel: "grid-cols-3",
 } as const;
 
-// The room a corner control takes beside the title and meta lines, so their
-// text never runs under it (size-11 on a phone, size-8 above).
-const PAD = "pr-12 sm:pr-9";
+// The room the corner controls take beside the title and meta lines, so their
+// text never runs under them (each size-11 on a phone, size-8 above).
+const PADS = { 1: "pr-12 sm:pr-9", 2: "pr-[5.75rem] sm:pr-[4.25rem]" } as const;
 
 const TILE = "group flex flex-col gap-1 text-left focus-visible:outline-offset-4";
 
@@ -116,6 +119,7 @@ export function ThumbnailGrid({
         </li>
       )}
       {items.map((item) => {
+        const PAD = PADS[item.cornerControls ?? 1];
         const body = (
           <>
             <span
@@ -173,7 +177,7 @@ export function ThumbnailGrid({
                 {body}
               </button>
             )}
-            {item.corner && <div className="absolute right-0 bottom-0">{item.corner}</div>}
+            {item.corner && <div className="absolute right-0 bottom-0 flex">{item.corner}</div>}
           </li>
         );
       })}

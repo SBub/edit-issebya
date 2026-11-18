@@ -3,8 +3,11 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { SignOutButton } from "@/components/SignOutButton";
 import { StudioIdentify } from "@/components/StudioIdentify";
 import { DeleteReelButton } from "@/components/DeleteReelButton";
+import { DownloadExportButton } from "@/components/DownloadExportButton";
+import { ExportsWatcher } from "@/components/ExportsWatcher";
 import { type ThumbnailGridItem, ThumbnailGrid } from "@/components/ThumbnailGrid";
 import { UploadDialog } from "@/components/UploadDialog";
+import { EXPORT_REF_COLUMNS, type ExportRef, keptExports } from "@/lib/exports";
 import { parsePreviewCopies, thumbnailKey } from "@/lib/preview-sources";
 import {
   REEL_GRID_COLUMNS,
@@ -23,10 +26,15 @@ const THUMBNAIL_URL_SECONDS = 3600;
 // One tile per reel: its thumbnail signed from the key derived (here, on the
 // server) from the current version's key and reels.preview_copies; a reel
 // without one, or whose signing fails, gets a neutral tile. The version key
-// never reaches the client.
-async function reelTiles(rows: readonly ReelGridRow[]): Promise<ThumbnailGridItem[]> {
+// never reaches the client. A reel with a kept export (its newest one, inside
+// its 48 hours) gets a Download icon beside the bin.
+async function reelTiles(
+  rows: readonly ReelGridRow[],
+  exports: readonly ExportRef[],
+): Promise<ThumbnailGridItem[]> {
   const storage = studioStorage();
   const now = Date.now();
+  const kept = keptExports(exports, now);
   return Promise.all(
     rows.map(async (reel) => {
       const key =
@@ -61,7 +69,19 @@ async function reelTiles(rows: readonly ReelGridRow[]): Promise<ThumbnailGridIte
         ),
         badge: reel.status,
         badgeTestId: "reel-list-status",
-        corner: <DeleteReelButton reelId={reel.id} title={reelName(reel)} />,
+        corner: (
+          <>
+            {kept.has(reel.id) && (
+              <DownloadExportButton
+                reelId={reel.id}
+                exportId={kept.get(reel.id)!.id}
+                variant="icon"
+              />
+            )}
+            <DeleteReelButton reelId={reel.id} title={reelName(reel)} />
+          </>
+        ),
+        cornerControls: kept.has(reel.id) ? 2 : 1,
       };
     }),
   );
@@ -109,11 +129,21 @@ export default async function StudioHome({
     .order("created_at", { ascending: false })
     .returns<ReelGridRow[]>();
   if (error) throw new Error(`studio: reels not loaded: ${error.message}`);
-  const tiles = await reelTiles(data ?? []);
+  // The owner's exports still inside their 48 hours (RLS: only their own),
+  // newest first; the tiles keep the newest of each reel (`keptExports`).
+  const exports = await supabase
+    .from("exports")
+    .select(EXPORT_REF_COLUMNS)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .returns<ExportRef[]>();
+  if (exports.error) throw new Error(`studio: exports not loaded: ${exports.error.message}`);
+  const tiles = await reelTiles(data ?? [], exports.data ?? []);
 
   return (
     <div className="flex h-dvh flex-col">
       <StudioIdentify userId={user.id} />
+      <ExportsWatcher />
       <header className="flex flex-none flex-wrap items-center justify-between gap-3 border-b border-line bg-chrome px-4 py-3">
         <div className="min-w-0">
           <h1 className="text-lg font-semibold">Your reels</h1>

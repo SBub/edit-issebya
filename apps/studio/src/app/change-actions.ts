@@ -11,6 +11,7 @@ import {
   parseOwnerMoves,
 } from "@edit-issebya/edit";
 import { changeBlockedReason } from "@/lib/change-requests";
+import type { JobRow } from "@/lib/jobs";
 import { type ReelDetail, isReelId } from "@/lib/reels";
 import { OWNER_EDIT_FLAG, isFlagOn } from "@/lib/feature-flags";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -34,7 +35,8 @@ type Open =
 
 // The user's own client, then the reel under RLS: another owner's reel reads
 // as missing. The blocked rule is checked here as well as in the page, so a
-// stale tab cannot queue a job on a refused or unusable reel. The order of
+// stale tab cannot queue a job on a refused or unusable reel, nor an edit of a
+// reel that is exporting (its live render jobs are read for that). The order of
 // jobs is the database's (claim_job runs one job per reel at a time).
 async function openReel(reelId: string): Promise<Open> {
   const supabase = await createSupabaseServerClient();
@@ -60,7 +62,24 @@ async function openReel(reelId: string): Promise<Open> {
     return { ok: false, result: { status: "failed" } };
   }
   if (!reel.data) return { ok: false, result: { status: "failed" } };
-  const reason = changeBlockedReason(reel.data);
+  const renders = await supabase
+    .from("jobs")
+    .select("id, kind, status")
+    .eq("reel_id", reelId)
+    .eq("kind", "render")
+    .in("status", ["queued", "running", "waiting_ai"])
+    .returns<Pick<JobRow, "id" | "kind" | "status">[]>();
+  if (renders.error) {
+    await reportFailure(serverErrorCapture(), {
+      message: "studio: reel's exports not read for a change",
+      error: renders.error,
+      userId: user.id,
+      properties: { reel_id: reelId },
+      log: [renders.error.code],
+    });
+    return { ok: false, result: { status: "failed" } };
+  }
+  const reason = changeBlockedReason(reel.data, renders.data ?? []);
   if (reason) return { ok: false, result: { status: "blocked", reason } };
   return {
     ok: true,

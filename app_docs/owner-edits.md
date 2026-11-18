@@ -326,7 +326,7 @@ there`, or why a save did not start.
   `scaledVisual`, `snapAngle`, `turnOfPointer`, `draggedTurn` (the turn a card shows while dragged),
   `withMove`, `boxStyle`.
 - Save calls `requestOwnerEdit` (`src/app/change-actions.ts`): it checks the shape of the moves
-  (`parseOwnerMoves`), refuses when the `studio-owner-edit` flag is off for the user, refuses a blocked reel like going back does (`changeBlockedReason`) and inserts
+  (`parseOwnerMoves`), refuses when the `studio-owner-edit` flag is off for the user, refuses a blocked reel like going back does (`changeBlockedReason`, which includes a reel that is exporting: `Move text` cannot be opened then, and an open editor is frozen with the reason and keeps its draft, `app_docs/export.md`) and inserts
   the job `{ kind: "owner_edit", owner_edit: { version_id, moves, adds? } }` under RLS (`adds`
   only when the owner added a card; `moves` may then be empty). The browser never sends a photo's
   size. The editor then waits

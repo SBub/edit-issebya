@@ -259,9 +259,12 @@ function BuiltPreview({
   onExpandedChange,
   jobs,
   ownerEdit,
+  editBlockedReason,
 }: {
   reelId: string;
   built: Built;
+  // Why editing is off (the reel is exporting), or null.
+  editBlockedReason: string | null;
   // The Move editor's flag: off, neither its button nor the editor exists.
   ownerEdit: boolean;
   handoff: Handoff;
@@ -287,6 +290,10 @@ function BuiltPreview({
   const sentJob = sent && sent !== "sending" ? jobs.find((job) => job.id === sent.jobId) : null;
   const saveFailed = sentJob?.status === "failed" || sentJob?.status === "cancelled";
   const saving = sent !== null && !saveFailed;
+  // While the reel exports the editor is frozen: it cannot be opened, and an
+  // open one keeps its draft but takes no drag and no Save until the export
+  // ends or is cancelled.
+  const frozen = saving || editBlockedReason !== null;
   // The lines an edge handle can give the component it is held on, each with
   // the elements a page built with them draws: read once per press.
   const wrapsRef = useRef<{
@@ -558,9 +565,9 @@ function BuiltPreview({
               type="button"
               data-testid="move-toggle"
               aria-pressed={editing}
-              title="Move or resize a text on screen"
+              title={editBlockedReason ?? "Move or resize a text on screen"}
               onClick={editing ? closeEditor : openEditor}
-              disabled={saving}
+              disabled={frozen}
               className="hidden h-8 flex-none items-center border border-line px-2.5 text-xs hover:bg-raised disabled:opacity-50 aria-pressed:bg-raised aria-pressed:font-semibold lg:flex"
             >
               Move text
@@ -588,8 +595,15 @@ function BuiltPreview({
               onAddPicture={() => setPicking({ mode: "add" })}
               canAdd={addSpot() !== null}
               changed={(draft?.moves.length ?? 0) + (draft?.adds.length ?? 0) > 0}
-              saving={saving}
-              message={saveFailed ? SAVE_FAILED : saving ? "Saving your changes" : message}
+              saving={frozen}
+              frozenReason={saving ? null : editBlockedReason}
+              message={
+                saveFailed
+                  ? SAVE_FAILED
+                  : saving
+                    ? "Saving your changes"
+                    : (editBlockedReason ?? message)
+              }
               onSave={() => void save()}
               onCancel={closeEditor}
             />
@@ -632,9 +646,13 @@ export function ReelPreview({
   versionId,
   jobs = [],
   ownerEdit = false,
+  editBlockedReason = null,
 }: {
   reelId: string;
   versionId: string | null;
+  // Why editing this reel is off (it is exporting), or null: the Move editor
+  // cannot be opened, and an open one is frozen with this line.
+  editBlockedReason?: string | null;
   // The reel's jobs: the editor follows the job its Save queued.
   jobs?: readonly LiveJob[];
   // Whether the owner's Move editor is on (the `studio-owner-edit` flag).
@@ -712,6 +730,7 @@ export function ReelPreview({
           built={built}
           jobs={jobs}
           ownerEdit={ownerEdit}
+          editBlockedReason={editBlockedReason}
           handoff={handoff}
           onHandoff={(change) => {
             handoffRef.current = { ...handoffRef.current, ...change };

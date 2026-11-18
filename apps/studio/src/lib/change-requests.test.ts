@@ -6,6 +6,7 @@ import {
   versionOrigin,
   versionTitle,
 } from "./change-requests";
+import { EDITING_OFF_WHILE_EXPORTING } from "./exports";
 import { JOB_KINDS } from "./jobs";
 
 describe("changeBlockedReason", () => {
@@ -17,28 +18,58 @@ describe("changeBlockedReason", () => {
       "converting",
       "making_previews",
     ] as const) {
-      expect(changeBlockedReason({ status, current_version_id: null })).toBeNull();
+      expect(changeBlockedReason({ status, current_version_id: null }, [])).toBeNull();
     }
     // A failed reel with a version keeps its version usable.
-    expect(changeBlockedReason({ status: "failed", current_version_id: "v1" })).toBeNull();
+    expect(changeBlockedReason({ status: "failed", current_version_id: "v1" }, [])).toBeNull();
   });
 
   it("blocks a refused reel", () => {
-    expect(changeBlockedReason({ status: "refused", current_version_id: null })).toBe(
+    expect(changeBlockedReason({ status: "refused", current_version_id: null }, [])).toBe(
       "This clip was refused; upload another clip",
     );
   });
 
   it("blocks while uploading", () => {
-    expect(changeBlockedReason({ status: "uploading", current_version_id: null })).toBe(
+    expect(changeBlockedReason({ status: "uploading", current_version_id: null }, [])).toBe(
       "Changes open once the upload finishes",
     );
   });
 
   it("blocks a failed reel without a version", () => {
-    expect(changeBlockedReason({ status: "failed", current_version_id: null })).toBe(
+    expect(changeBlockedReason({ status: "failed", current_version_id: null }, [])).toBe(
       "Processing failed; press Try again on the preview first",
     );
+  });
+
+  it("blocks editing while the reel exports, and only then", () => {
+    const reel = { status: "processed" as const, current_version_id: "v2" };
+    const job = (
+      kind: string,
+      status: "queued" | "running" | "waiting_ai" | "done" | "cancelled",
+    ) => ({
+      id: `${kind}-${status}`,
+      kind,
+      status,
+    });
+    for (const status of ["queued", "running", "waiting_ai"] as const) {
+      expect(changeBlockedReason(reel, [job("render", status)])).toBe(EDITING_OFF_WHILE_EXPORTING);
+    }
+    // A finished or cancelled export, and any other live job, hold nothing.
+    expect(
+      changeBlockedReason(reel, [
+        job("render", "done"),
+        job("render", "cancelled"),
+        job("owner_edit", "running"),
+        job("relayout", "queued"),
+      ]),
+    ).toBeNull();
+    // The reel's own state still comes first.
+    expect(
+      changeBlockedReason({ status: "refused", current_version_id: null }, [
+        job("render", "running"),
+      ]),
+    ).toBe("This clip was refused; upload another clip");
   });
 });
 

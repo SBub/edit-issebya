@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  EDITING_OFF_WHILE_EXPORTING,
+  type ExportRef,
   exportBlockedReason,
   exportFileName,
-  exportCancellable,
   exportLinkSeconds,
-  exportModalState,
+  exportProgress,
+  exportProgressLabel,
+  exportRunning,
+  exportingReason,
   isExportKey,
+  keptExports,
   liveRenderJobId,
 } from "./exports";
 
@@ -13,17 +18,21 @@ const REEL = "5f1c9e2a-0d3b-4a7e-8c6f-2b9d4e1a7c30";
 const OTHER = "0b6f2a52-7d0e-4c55-9d4a-3c1f0e8a1b01";
 const EXPORT = "3e0c7b1a-5d2f-4a6e-9b8c-1f2e3d4c5b6a";
 
+type Status = "queued" | "running" | "waiting_ai" | "done" | "failed" | "cancelled";
+const render = (id: string, status: Status) => ({ id, kind: "render", status });
+
 describe("exportBlockedReason", () => {
   const reel = { status: "processed" as const, current_version_id: "v2" };
-  const render = (status: "queued" | "running" | "done" | "failed", version_id = "v2") => ({
-    kind: "render",
-    status,
-    version_id,
-  });
 
-  it("is open on a processed reel with a version and no render of it running", () => {
+  it("is open on a processed reel with a version and no export running", () => {
     expect(exportBlockedReason(reel, [])).toBeNull();
-    expect(exportBlockedReason(reel, [render("done"), render("failed")])).toBeNull();
+    expect(
+      exportBlockedReason(reel, [
+        render("a", "done"),
+        render("b", "failed"),
+        render("c", "cancelled"),
+      ]),
+    ).toBeNull();
   });
 
   it("needs a version and a processed reel", () => {
@@ -35,29 +44,92 @@ describe("exportBlockedReason", () => {
     );
   });
 
-  it("holds while a render of the current version is queued or running", () => {
-    expect(exportBlockedReason(reel, [render("queued")])).toBe("Exporting this version...");
-    expect(exportBlockedReason(reel, [render("running")])).toBe("Exporting this version...");
+  it("holds while an export of the reel is queued, running or waiting", () => {
+    for (const status of ["queued", "running", "waiting_ai"] as const) {
+      expect(exportBlockedReason(reel, [render("a", status)])).toBe(
+        "This reel is already exporting",
+      );
+    }
   });
 
-  it("is not held by a render of an older version or another kind of job", () => {
-    expect(exportBlockedReason(reel, [render("running", "v1")])).toBeNull();
+  it("is not held by another kind of job", () => {
     expect(
-      exportBlockedReason(reel, [{ kind: "change", status: "running", version_id: null }]),
+      exportBlockedReason(reel, [{ id: "c", kind: "owner_edit", status: "running" }]),
     ).toBeNull();
+  });
+});
+
+describe("liveRenderJobId and exportingReason", () => {
+  it("is the newest live render of the reel, whatever version it exports", () => {
+    expect(liveRenderJobId([render("a", "done"), render("b", "running")])).toBe("b");
+    expect(liveRenderJobId([render("a", "queued")])).toBe("a");
+    expect(liveRenderJobId([render("a", "waiting_ai")])).toBe("a");
+  });
+
+  it("is null without one", () => {
+    expect(liveRenderJobId([])).toBeNull();
+    expect(liveRenderJobId([render("a", "cancelled"), render("b", "done")])).toBeNull();
+    expect(liveRenderJobId([{ id: "p", kind: "process", status: "running" }])).toBeNull();
+  });
+
+  it("turns editing off exactly while an export is live, with the reason shown", () => {
+    expect(exportingReason([render("a", "running")])).toBe(EDITING_OFF_WHILE_EXPORTING);
+    expect(exportingReason([render("a", "queued")])).toBe(EDITING_OFF_WHILE_EXPORTING);
+    expect(exportingReason([render("a", "done")])).toBeNull();
+    expect(exportingReason([render("a", "cancelled")])).toBeNull();
+    expect(exportingReason([])).toBeNull();
+    expect(EDITING_OFF_WHILE_EXPORTING).toMatch(/Cancel the export/);
   });
 });
 
 describe("exportLinkSeconds", () => {
   const now = Date.parse("2026-11-01T12:00:00.000Z");
 
-  it("gives the whole seconds left, never past the expiry", () => {
+  it("gives the whole seconds left, never past the expiry, an hour at most", () => {
     expect(exportLinkSeconds("2026-11-01T13:00:00.000Z", now)).toBe(3600);
+    expect(exportLinkSeconds("2026-11-01T12:30:00.000Z", now)).toBe(1800);
+    // A fresh export has 48 hours left; a link still lives one hour.
+    expect(exportLinkSeconds("2026-11-03T12:00:00.000Z", now)).toBe(3600);
     expect(exportLinkSeconds("2026-11-01T12:00:01.999Z", now)).toBe(1);
     expect(exportLinkSeconds("2026-11-01T12:00:00.999Z", now)).toBeNull();
     expect(exportLinkSeconds("2026-11-01T12:00:00.000Z", now)).toBeNull();
     expect(exportLinkSeconds("2026-11-01T11:00:00.000Z", now)).toBeNull();
     expect(exportLinkSeconds("not a date", now)).toBeNull();
+  });
+});
+
+describe("keptExports", () => {
+  const now = Date.parse("2026-11-10T12:00:00.000Z");
+  const row = (id: string, reel_id: string, created_at: string, expires_at: string): ExportRef => ({
+    id,
+    reel_id,
+    job_id: `job-${id}`,
+    version_id: `version-${id}`,
+    created_at,
+    expires_at,
+  });
+
+  it("keeps the newest export of each reel, whatever order the rows come in", () => {
+    const older = row("e1", "r1", "2026-11-09T10:00:00.000Z", "2026-11-11T10:00:00.000Z");
+    const newer = row("e2", "r1", "2026-11-10T09:00:00.000Z", "2026-11-12T09:00:00.000Z");
+    const other = row("e3", "r2", "2026-11-09T08:00:00.000Z", "2026-11-11T08:00:00.000Z");
+    for (const rows of [
+      [older, newer, other],
+      [other, newer, older],
+    ]) {
+      const kept = keptExports(rows, now);
+      expect([...kept.keys()].sort()).toEqual(["r1", "r2"]);
+      expect(kept.get("r1")).toBe(newer);
+      expect(kept.get("r2")).toBe(other);
+    }
+  });
+
+  it("offers nothing once the newest export's 48 hours have passed", () => {
+    const expired = row("e1", "r1", "2026-11-08T11:00:00.000Z", "2026-11-10T11:00:00.000Z");
+    const last = row("e2", "r2", "2026-11-08T12:00:01.000Z", "2026-11-10T12:00:01.000Z");
+    const kept = keptExports([expired, last], now);
+    expect([...kept.keys()]).toEqual(["r2"]);
+    expect(keptExports([], now).size).toBe(0);
   });
 });
 
@@ -83,11 +155,9 @@ describe("exportFileName", () => {
   });
 });
 
-describe("exportModalState", () => {
+describe("exportProgress", () => {
   const JOB = "j1";
-  const job = (status: "queued" | "running" | "waiting_ai" | "done" | "failed" | "cancelled") => [
-    { id: JOB, status },
-  ];
+  const job = (status: Status) => [{ id: JOB, status }];
   const step = (
     name: string,
     status: "running" | "done" | "skipped",
@@ -96,96 +166,81 @@ describe("exportModalState", () => {
   ) => ({ job_id, name, status, progress_percent });
 
   it("waits with a plain label before the render step runs", () => {
-    expect(exportModalState(JOB, [], [], null)).toEqual({
+    expect(exportProgress(JOB, [], [], null)).toEqual({
       kind: "waiting",
-      label: "Waiting to start",
+      label: "waiting to start",
     });
-    expect(exportModalState(JOB, job("queued"), [], null)).toEqual({
+    expect(exportProgress(JOB, job("queued"), [], null)).toEqual({
       kind: "waiting",
-      label: "Waiting to start",
+      label: "waiting to start",
     });
     expect(
-      exportModalState(
+      exportProgress(
         JOB,
         job("running"),
         [step("convert", "skipped"), step("cutout", "running")],
         null,
       ),
-    ).toEqual({ kind: "waiting", label: "Getting ready" });
+    ).toEqual({ kind: "waiting", label: "getting ready" });
   });
 
   it("follows the running render step's percent, 0 before its first write", () => {
-    expect(exportModalState(JOB, job("running"), [step("render", "running")], null)).toEqual({
+    expect(exportProgress(JOB, job("running"), [step("render", "running")], null)).toEqual({
       kind: "rendering",
       percent: 0,
     });
-    expect(exportModalState(JOB, job("running"), [step("render", "running", 42.6)], null)).toEqual({
+    expect(exportProgress(JOB, job("running"), [step("render", "running", 42.6)], null)).toEqual({
       kind: "rendering",
       percent: 43,
     });
     // Another job's render step is not this one's.
     expect(
-      exportModalState(JOB, job("running"), [step("render", "running", 80, "j2")], null),
-    ).toEqual({ kind: "waiting", label: "Getting ready" });
+      exportProgress(JOB, job("running"), [step("render", "running", 80, "j2")], null),
+    ).toEqual({ kind: "waiting", label: "getting ready" });
   });
 
   it("finishes after the render step until the export row arrives", () => {
-    expect(exportModalState(JOB, job("running"), [step("render", "done", 100)], null)).toEqual({
+    expect(exportProgress(JOB, job("running"), [step("render", "done", 100)], null)).toEqual({
       kind: "waiting",
-      label: "Finishing",
+      label: "finishing",
     });
-    expect(exportModalState(JOB, job("done"), [], null)).toEqual({
+    expect(exportProgress(JOB, job("done"), [], null)).toEqual({
       kind: "waiting",
-      label: "Finishing",
+      label: "finishing",
     });
   });
 
   it("is ready once this job's export arrives, never for another job's", () => {
-    expect(exportModalState(JOB, job("running"), [], { id: "e1", job_id: JOB })).toEqual({
+    expect(exportProgress(JOB, job("running"), [], { id: "e1", job_id: JOB })).toEqual({
       kind: "ready",
       exportId: "e1",
     });
-    expect(exportModalState(JOB, job("done"), [], { id: "e0", job_id: "older" })).toEqual({
+    // An older kept export of the reel is not this job's.
+    expect(exportProgress(JOB, job("done"), [], { id: "e0", job_id: "older" })).toEqual({
       kind: "waiting",
-      label: "Finishing",
+      label: "finishing",
     });
   });
 
   it("ends failed or cancelled", () => {
-    expect(exportModalState(JOB, job("failed"), [], null)).toEqual({ kind: "failed" });
-    expect(exportModalState(JOB, job("cancelled"), [], null)).toEqual({ kind: "cancelled" });
+    expect(exportProgress(JOB, job("failed"), [], null)).toEqual({ kind: "failed" });
+    expect(exportProgress(JOB, job("cancelled"), [], null)).toEqual({ kind: "cancelled" });
   });
 
-  it("can be cancelled only while waiting or rendering", () => {
-    expect(exportCancellable({ kind: "waiting", label: "Waiting to start" })).toBe(true);
-    expect(exportCancellable({ kind: "rendering", percent: 10 })).toBe(true);
-    expect(exportCancellable({ kind: "ready", exportId: "e1" })).toBe(false);
-    expect(exportCancellable({ kind: "failed" })).toBe(false);
-    expect(exportCancellable({ kind: "cancelled" })).toBe(false);
-  });
-});
-
-describe("liveRenderJobId", () => {
-  const reel = { current_version_id: "v2" };
-  const render = (
-    id: string,
-    status: "queued" | "running" | "done" | "cancelled",
-    version_id = "v2",
-  ) => ({
-    id,
-    kind: "render",
-    status,
-    version_id,
+  it("runs (progress and Cancel shown) only while waiting or rendering", () => {
+    expect(exportRunning({ kind: "waiting", label: "waiting to start" })).toBe(true);
+    expect(exportRunning({ kind: "rendering", percent: 10 })).toBe(true);
+    expect(exportRunning({ kind: "ready", exportId: "e1" })).toBe(false);
+    expect(exportRunning({ kind: "failed" })).toBe(false);
+    expect(exportRunning({ kind: "cancelled" })).toBe(false);
+    expect(exportRunning(null)).toBe(false);
   });
 
-  it("is the newest live render of the current version", () => {
-    expect(liveRenderJobId(reel, [render("a", "done"), render("b", "running")])).toBe("b");
-    expect(liveRenderJobId(reel, [render("a", "queued")])).toBe("a");
-  });
-
-  it("is null without one", () => {
-    expect(liveRenderJobId(reel, [])).toBeNull();
-    expect(liveRenderJobId(reel, [render("a", "cancelled"), render("b", "done")])).toBeNull();
-    expect(liveRenderJobId(reel, [render("a", "running", "v1")])).toBeNull();
+  it("words a running export in one line", () => {
+    expect(exportProgressLabel({ kind: "rendering", percent: 40 })).toBe("Exporting… 40%");
+    expect(exportProgressLabel({ kind: "waiting", label: "waiting to start" })).toBe(
+      "Exporting… waiting to start",
+    );
+    expect(exportProgressLabel({ kind: "ready", exportId: "e1" })).toBe("");
   });
 });
