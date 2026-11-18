@@ -2,14 +2,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   type RetimePlan,
-  missedSpeech,
   pausesLeft,
   planRetime,
   remapTime,
   retimeTranscript,
-  speechLevel,
 } from "./retime-plan.ts";
 import { RETIME_PRESET, type RetimeSettings } from "./retime-preset.ts";
+import { missedSpeech, speechLevel } from "./speech-gaps.ts";
 import { type Word, normaliseHyperframes } from "./transcript.ts";
 
 const FPS = RETIME_PRESET.frameRate;

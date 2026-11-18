@@ -96,8 +96,10 @@ live status shows one line per step (`name: summary`).
   corruption, the process aborts), so every upload failed at transcribe; it runs on macOS. The int8
   export (95 MB, the smallest) put whole words up to 5 s off (the closing "care of." on a later
   untranscribed "yes").
-- `apps/worker/src/pipeline/envelope.ts`, `retime-plan.ts`, `retime-encode.ts`, `retime.ts`: a 10 ms
-  RMS envelope in dB, a pure planner and one ffmpeg encode. Outputs `source.mp4` (retimed footage),
+- `apps/worker/src/pipeline/envelope.ts`, `speech-gaps.ts`, `retime-plan.ts`, `retime-encode.ts`,
+  `retime.ts`: a 10 ms RMS envelope in dB, what the audio says about the transcript's gaps (the
+  gaps, the clip's speech level, `missedSpeech`; shared with transcribe's re-listen), a pure planner
+  and one ffmpeg encode. Outputs `source.mp4` (retimed footage),
   `transcript.json` (same ids, every time through the plan), `retime.json` (the plan: original to
   new time map) and `envelope.json`. The step line ends with the pauses the final re-check found,
   if any, and with every possible missed word it kept, at its retimed time (`retimeSummary`:
