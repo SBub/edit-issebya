@@ -188,7 +188,7 @@ export const previewCopies: PipelineStep<PreviewSettings> = {
     ];
     for (const [partial, file, args] of made) {
       const path = join(dir, partial);
-      await tool({ file: tools.ffmpeg, args: args(source, path, settings) });
+      await tool({ file: tools.ffmpeg, args: args(source, path, settings), ignoreStdout: true });
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
       await rename(path, join(dir, file));
     }

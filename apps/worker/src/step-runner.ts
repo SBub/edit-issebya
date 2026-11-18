@@ -85,9 +85,13 @@ export interface ToolCall {
   sampleGroupMemory?: boolean;
   // Written to the tool's stdin, then closed; without it stdin is ignored.
   stdin?: string;
-  // The cap on the returned stdout (default 64 KB); the logged output keeps
-  // the default.
+  // The cap on the returned stdout, in UTF-8 bytes (default 64 KB); the logged
+  // output keeps the default. A call whose tool writes more fails: a cut
+  // stdout is never returned.
   maxStdoutBytes?: number;
+  // The caller never reads this call's stdout (ffmpeg writing a file, a tool
+  // that prints its progress): the call answers "" and no cap applies.
+  ignoreStdout?: boolean;
   // Reads the tool's progress from its output lines (the two long steps
   // only); the step writes it to its row, throttled, and 100 before `done`.
   progress?: ProgressParser;
@@ -424,6 +428,9 @@ export interface ChildRun {
   output: string;
   // stdout alone (a tool's JSON answer), capped the same way.
   stdout: string;
+  // Every UTF-8 byte the tool wrote to stdout, the lines cut from `stdout`
+  // included (a fake that leaves it out wrote what `stdout` holds).
+  stdoutBytes?: number;
   groupPeakBytes: number | null;
 }
 
@@ -460,6 +467,7 @@ export const spawnChild: SpawnTool = (spec, signal, log) => {
     const stdoutCap = spec.maxStdoutBytes ?? OUTPUT_CAP;
     let output = "";
     let stdout = "";
+    let stdoutBytes = 0;
     let report = "";
     let groupPeakBytes: number | null = null;
     let sampling: Promise<void> = Promise.resolve();
@@ -472,6 +480,7 @@ export const spawnChild: SpawnTool = (spec, signal, log) => {
     };
     eachLine(child.stdout!, (line) => {
       stdout = capped(`${stdout}${line}\n`, stdoutCap);
+      stdoutBytes += Buffer.byteLength(line) + 1;
       keep(line, "stdout");
     });
     eachLine(child.stdio[3] as Readable, (line) => keep(line, "stderr"));
@@ -545,7 +554,7 @@ export const spawnChild: SpawnTool = (spec, signal, log) => {
       // The SIGKILL stays armed until the group is gone.
       void Promise.all([sampling, groupExit()]).then(() => {
         clearTimeout(killer);
-        resolve({ code, exitSignal, report, output, stdout, groupPeakBytes });
+        resolve({ code, exitSignal, report, output, stdout, stdoutBytes, groupPeakBytes });
       });
     });
   });
@@ -594,6 +603,8 @@ interface ExecEnd {
   toolStarted: boolean;
   // The signal that ended the call, or null.
   exitSignal: string | null;
+  // The bytes and the cap of a stdout the caller reads that went over its cap.
+  overCap: { bytes: number; cap: number } | null;
   cpuMs: number | null;
   // This call's peak alone (the step keeps the largest of its calls).
   peakRssBytes: number | null;
@@ -601,11 +612,11 @@ interface ExecEnd {
 }
 
 // Ends a call's span with what it measured and how it ended. An abort, a tool
-// that did not start, a signal and a non-zero exit are errors. The stdout
-// count is the captured stdout, capped as the call returns it.
+// that did not start, a signal, a non-zero exit and a stdout over its cap are
+// errors. The stdout count is the captured stdout, capped as it was kept.
 function endExecSpan(
   span: Span,
-  { run, toolStarted, exitSignal, cpuMs, peakRssBytes, aborted }: ExecEnd,
+  { run, toolStarted, exitSignal, overCap, cpuMs, peakRssBytes, aborted }: ExecEnd,
 ): void {
   span.setAttribute("edit_issebya.exec.stdout_bytes", Buffer.byteLength(run.stdout));
   if (run.code !== null) span.setAttribute("process.exit.code", run.code);
@@ -620,7 +631,9 @@ function endExecSpan(
         ? "signal"
         : run.code !== 0
           ? "nonzero_exit"
-          : null;
+          : overCap
+            ? "stdout_over_cap"
+            : null;
   if (errorType !== null) {
     const message = aborted
       ? "aborted"
@@ -628,7 +641,9 @@ function endExecSpan(
         ? `did not start, exit ${run.code}`
         : exitSignal !== null
           ? `killed by ${exitSignal}`
-          : `exited with ${run.code}`;
+          : run.code !== 0
+            ? `exited with ${run.code}`
+            : `wrote ${overCap?.bytes} bytes to stdout, over the cap of ${overCap?.cap}`;
     span.setAttribute("error.type", errorType);
     span.recordException(message);
     span.setStatus({ code: SpanStatusCode.ERROR });
@@ -762,11 +777,18 @@ export function runToolsStep(
           : toolStarted
             ? reportedSignal(process.platform, run.report)
             : null;
+      // A stdout the caller reads that went over its cap: the start is gone,
+      // so the call fails instead of answering a cut stdout.
+      const cap = call.maxStdoutBytes ?? OUTPUT_CAP;
+      const wrote = run.stdoutBytes ?? Buffer.byteLength(run.stdout);
+      const overCap =
+        run.code === 0 && !call.ignoreStdout && wrote > cap ? { bytes: wrote, cap } : null;
       // Ended before any throw below, so the span always ends.
       endExecSpan(exec, {
         run,
         toolStarted,
         exitSignal,
+        overCap,
         cpuMs: report?.cpuMs ?? null,
         peakRssBytes: callPeakBytes,
         aborted: signal.aborted,
@@ -778,19 +800,26 @@ export function runToolsStep(
       if (callPeakBytes !== null) {
         peaks.push({ started: startedAt, ended: (moment += 1), bytes: callPeakBytes });
       }
-      if (run.code === 0) return run.stdout;
-      const tail = outputTail(run.output);
-      const how = exitSignal ? `signal ${exitSignal}` : (run.code ?? "unknown");
-      // Measured here: the step's own calls so far, its wall time to the failing call.
-      const failed = new StepFailure(
-        `${spec.name} exited with ${how}\n${tail}`,
-        tail,
-        await measure(),
-        {
-          exitCode: exitSignal ? null : run.code,
-          exitSignal,
-        },
-      );
+      if (run.code === 0 && !overCap) return call.ignoreStdout ? "" : run.stdout;
+      let failed: StepFailure;
+      if (overCap) {
+        const { name } = execIdentity(call.file, call.args);
+        const reason = `${name.replace(/^exec /, "")} wrote ${overCap.bytes} bytes to stdout, over the cap of ${overCap.cap} bytes for this call`;
+        failed = new StepFailure(`${spec.name}: ${reason}`, reason, await measure());
+      } else {
+        const tail = outputTail(run.output);
+        const how = exitSignal ? `signal ${exitSignal}` : (run.code ?? "unknown");
+        // Measured here: the step's own calls so far, its wall time to the failing call.
+        failed = new StepFailure(
+          `${spec.name} exited with ${how}\n${tail}`,
+          tail,
+          await measure(),
+          {
+            exitCode: exitSignal ? null : run.code,
+            exitSignal,
+          },
+        );
+      }
       ownFailures.add(failed);
       throw failed;
     };
@@ -869,7 +898,8 @@ export function runStep(ctx: StepContext, spec: ChildStep): Promise<void> {
     outputs,
     sizeOf,
     async work(tool) {
-      await tool(call);
+      // A step of one call reads no stdout.
+      await tool({ ...call, ignoreStdout: true });
       return { what: describe };
     },
   });

@@ -60,7 +60,12 @@ export const retime: PipelineStep<RetimeSettings> = {
     const footage = files["converted.mp4"]!;
     const probe = parseProbe(await tool({ file: tools.ffprobe, args: probeArgs(footage) }));
     if (!probe.audio) throw new Error("retime: the footage has no audio");
-    await tool({ file: tools.ffmpeg, args: envelopeArgs(footage, ENVELOPE_PRINT), cwd: dir });
+    await tool({
+      file: tools.ffmpeg,
+      args: envelopeArgs(footage, ENVELOPE_PRINT),
+      cwd: dir,
+      ignoreStdout: true,
+    });
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     const envelope = parseEnvelope(await readFile(join(dir, ENVELOPE_PRINT), "utf8"));
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
@@ -79,6 +84,7 @@ export const retime: PipelineStep<RetimeSettings> = {
       file: tools.ffmpeg,
       args: retimeEncodeArgs(footage, GRAPH, partial, settings),
       cwd: dir,
+      ignoreStdout: true,
     });
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     await rename(partial, join(dir, "source.mp4"));

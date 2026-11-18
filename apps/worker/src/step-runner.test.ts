@@ -509,7 +509,90 @@ describe("runToolsStep stdin", () => {
     expect(onlyDone(calls).summary).toMatch(/^echoed, /);
   });
 
-  it("caps stdout at maxStdoutBytes when given", TIMEOUT, async () => {
+  const print = (kb: number) => ["-e", `process.stdout.write("x".repeat(${kb} * 1024) + "\\n")`];
+
+  it(
+    "fails a call whose stdout went over the cap, naming the tool, the bytes and the cap",
+    TIMEOUT,
+    async () => {
+      const { steps, calls } = recordingSteps();
+      await expect(
+        runToolsStep(stepContext(steps), {
+          name: "big",
+          async work(tool) {
+            await tool({ file: NODE, args: print(100) });
+            return { what: "printed" };
+          },
+        }),
+      ).rejects.toThrow(
+        "big: node wrote 102401 bytes to stdout, over the cap of 65536 bytes for this call",
+      );
+      const failed = calls.find((c) => c.call === "failed");
+      expect(failed).toMatchObject({
+        call: "failed",
+        tail: "node wrote 102401 bytes to stdout, over the cap of 65536 bytes for this call",
+      });
+      // Never retried: the same tool would write the same again.
+      expect(calls.filter((c) => c.call === "start")).toHaveLength(1);
+    },
+  );
+
+  it("answers nothing, whatever the size, for a call that ignores stdout", TIMEOUT, async () => {
+    const { steps, calls } = recordingSteps();
+    let answer = "unset";
+    await runToolsStep(stepContext(steps), {
+      name: "big",
+      async work(tool) {
+        answer = await tool({ file: NODE, args: print(100), ignoreStdout: true });
+        return { what: "printed" };
+      },
+    });
+    expect(answer).toBe("");
+    expect(onlyDone(calls).summary).toMatch(/^printed, /);
+    // A step of one call (runStep) reads no stdout either.
+    await runStep(stepContext(recordingSteps().steps), {
+      name: "big",
+      file: NODE,
+      args: print(100),
+      describe: "printed",
+    });
+  });
+
+  it("counts a fake spawn's stdout against the cap too", async () => {
+    const run =
+      (stdout: string, stdoutBytes?: number): SpawnTool =>
+      () =>
+        Promise.resolve({
+          code: 0,
+          exitSignal: null,
+          report: "",
+          output: "",
+          stdout,
+          stdoutBytes,
+          groupPeakBytes: null,
+        });
+    const call = (spawnTool: SpawnTool, maxStdoutBytes?: number) =>
+      runToolsStep(
+        stepContext(recordingSteps().steps),
+        {
+          name: "probe",
+          async work(tool) {
+            await tool({ file: "/usr/bin/ffprobe", args: [], maxStdoutBytes });
+            return { what: "probed" };
+          },
+        },
+        spawnTool,
+      );
+    await expect(call(run("{}", 70_000))).rejects.toThrow(
+      "probe: ffprobe wrote 70000 bytes to stdout, over the cap of 65536 bytes for this call",
+    );
+    await expect(call(run("x".repeat(11)), 10)).rejects.toThrow(
+      /wrote 11 bytes .* cap of 10 bytes/,
+    );
+    await expect(call(run("{}", 70_000), 70_000)).resolves.toBeUndefined();
+  });
+
+  it("returns the whole stdout under a larger maxStdoutBytes", TIMEOUT, async () => {
     const { steps } = recordingSteps();
     let big = "";
     await runToolsStep(stepContext(steps), {

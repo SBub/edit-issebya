@@ -25,6 +25,16 @@ container's CPU, memory, disk and network are measured too and shown above a ree
   call): it records `wall_ms` only and leaves the other four measurements null, because moving one
   call into a child would measure Node's start-up, not the step. `first_version` and `restore` are such
   steps. Both share the row, the span, the summary and the tail.
+- A tool call answers its stdout, up to a cap in UTF-8 bytes: 64 KB, or the call's `maxStdoutBytes`.
+  A call whose tool writes more fails the step, its reason naming the tool, the bytes and the cap
+  (`photo_images: ffprobe wrote 211406 bytes to stdout, over the cap of 65536 bytes for this call`);
+  it is not retried. The runner keeps only the last bytes up to the cap, so a longer stdout has
+  lost its start: before this rule a JSON answer was handed back cut and failed in `JSON.parse`
+  with a reason that named neither the tool nor the size. A call that never reads its stdout says
+  so (`ignoreStdout`: an ffmpeg that writes a file, a render or a mask tool that prints its
+  progress): it answers an empty string and no cap applies. `runStep` (a step of one call) always
+  does. The calls that read stdout are the ffprobe probes (`probeArgs`, `sampleCountArgs`, a few
+  KB) and the photo probe (`app_docs/photo-library.md`).
 - A step attempt's times agree. The worker stamps its start (`startedAt`, one instant) and writes it as
   the row's `started_at` and the span's start; the row finishes `wall_ms` later (`finishedAt` in
   `step-store.ts`), and the span ends there too. A cache hit (`recordHit`) is the same: its skipped row and
@@ -413,11 +423,12 @@ took the time.
   `edit_issebya.exec.cpu_ms` and `edit_issebya.exec.peak_rss_bytes` (this call's own report, read the
   way the step row reads it, so the step's CPU is the sum of its calls' and its peak the largest,
   or the total of the calls that ran at the same time);
-  `edit_issebya.exec.stdout_bytes` (the stdout the call returned, UTF-8 bytes, capped as the call
-  returns it); `edit_issebya.exec.signal` when a signal ended the call.
+  `edit_issebya.exec.stdout_bytes` (the stdout the runner kept, UTF-8 bytes, capped at the call's
+  cap); `edit_issebya.exec.signal` when a signal ended the call.
 - Errors: a call the abort ended (`error.type` `aborted`), one that could not be spawned (`spawn_error`,
-  or sh's 126 and 127 for a tool it could not run), one a signal killed (`signal`) and one that exited
-  non-zero (`nonzero_exit`) have an error status, `error.type` and an `exception` event. The step's
+  or sh's 126 and 127 for a tool it could not run), one a signal killed (`signal`), one that exited
+  non-zero (`nonzero_exit`) and one whose stdout went over its cap (`stdout_over_cap`, see "Step
+  runner") have an error status, `error.type` and an `exception` event. The step's
   failure, retry and row are the same as before.
 - Not on the span: the command line, the arguments, the stdin (a prompt, a schema) and the environment.
   The step's output lines stay log records of the step span.
@@ -810,6 +821,9 @@ does. Retention is the cut-out's (15 days).
   reports, or, for a call whose response carries no cost, the list price of its reported tokens
   (`PRICES` in `apps/worker/src/ai.ts`).
 - Never measure the whole machine for a step.
+- Never hand a caller a cut stdout: a call over its cap fails. A new call that does not read its
+  stdout sets `ignoreStdout`; one that reads a large answer sets `maxStdoutBytes` and asks its tool
+  for no more than it reads.
 - Never rename a `studio_*` event or a property once shipped.
 - The studio never reads `edit_notrack` or `?notrack`.
 - Never use the email as the distinct id.

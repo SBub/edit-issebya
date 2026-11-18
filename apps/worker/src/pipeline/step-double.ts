@@ -72,6 +72,7 @@ export function stepDouble(env: Env = process.env): RunStep | null {
         ...outputFiles(step),
       ],
       env: { ...process.env, ...env, E2E_MOCK_STEPS: "true" },
+      ignoreStdout: true,
     });
     return { what: `${step.name} (double)` };
   };

@@ -62,6 +62,7 @@ export const transcribe: PipelineStep<TranscribeSettings> = {
       file: node,
       args: [entry, ...transcribeArgs(files["converted.mp4"]!, work, settings)],
       env: hyperframesEnv(),
+      ignoreStdout: true,
     });
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     const raw = JSON.parse(await readFile(join(work, "transcript.json"), "utf8")) as unknown;
