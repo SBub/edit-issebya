@@ -20,10 +20,12 @@ clicks through Web Audio. It is built and tested for Chrome.
 - `supabase/migrations/20261101165643_reel_preview_copies.sql`: nullable `reels.preview_copies jsonb`
   (`{ footage }`, `{ step: "preview_copies", fingerprint, file }`; old rows with `cutout` still parse), a check that it is null
   or an object. Owners get no `insert` or `update` grant on it; they only read it.
-- `apps/worker/src/preview-copies-record.ts`: `previewCopiesRefs(fingerprints)` and
-  `recordPreviewCopies`. `apps/worker/src/process-job.ts` calls them right after the pipeline and before
+- `apps/worker/src/preview-copies-record.ts`: `previewCopiesRefs(fingerprints)`,
+  `recordPreviewCopies` and `keepsPreviewCopies` (a reel that already has a version keeps the
+  copies recorded with it: a `process` job run again after a step's version changed would record
+  copies with other cuts than the versions' words were timed on). `apps/worker/src/process-job.ts` calls them right after the pipeline and before
   `first_version`, so a reel with a current version already says where its preview copies are. A retry
-  writes the same value.
+  of a reel that has no version yet writes the same value; one that has a version writes nothing.
 - `apps/studio/src/app/preview-actions.ts`: server action `loadPreviewSources(reelId)`. Reads the reel's
   `current_version_id` and `preview_copies` and the version's `r2_key` and `inputs` under RLS, and signs
   one download URL (one hour) for the edit, transcript, head track and footage preview.

@@ -31,7 +31,11 @@ import {
 import { promptSourceOf } from "./prompts/select.ts";
 import type { PromptSource } from "./prompts/source.ts";
 import { runPipeline } from "./pipeline/run-pipeline.ts";
-import { previewCopiesRefs, recordPreviewCopies } from "./preview-copies-record.ts";
+import {
+  keepsPreviewCopies,
+  previewCopiesRefs,
+  recordPreviewCopies,
+} from "./preview-copies-record.ts";
 import { stepDouble } from "./pipeline/step-double.ts";
 import { toolPaths } from "./pipeline/tools.ts";
 import { supabaseExportStore } from "./render/export-store.ts";
@@ -174,8 +178,11 @@ export async function processJob(
                   runStep: stepDouble(process.env) ?? undefined,
                 });
                 // Before the first version, so a reel with a current version
-                // already says where its preview copies are.
-                await recordPreviewCopies(db, reelOf(job), previewCopiesRefs(fingerprints));
+                // already says where its preview copies are. A reel that has a
+                // version keeps the copies recorded with it (keepsPreviewCopies).
+                if (!(await keepsPreviewCopies(rows, reelOf(job)))) {
+                  await recordPreviewCopies(db, reelOf(job), previewCopiesRefs(fingerprints));
+                }
                 await saveFirstVersion({
                   ctx,
                   storage,

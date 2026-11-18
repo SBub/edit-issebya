@@ -156,6 +156,39 @@ live status shows one line per step (`name: summary`).
   file fails transcribe with `whisper medium model missing at <path>, restore it with yarn
 workspace @edit-issebya/worker models:fetch`, so HyperFrames never downloads 1.5 GB inside a job.
   A clip with no spot never needs the file.
+- Saved versions and a new transcribe version. Every version of a reel names the exact outputs
+  it was built from (`inputs`: retime's `transcript.json` and `source.mp4`, the head track, each
+  by step and fingerprint, written once by `first_version` and copied by every later version).
+  The preview, restore, the font pair relayout, the owner's edits and Start over all read those
+  stored outputs, which are `kept`, so a reel made before version 3 keeps its old transcript and
+  its old word ids for good and its versions load as before: no job pairs an old version's word
+  ids with a new transcript. Two things do change for such a reel. An export first runs the
+  current pipeline (`runRender`), which now makes new outputs the old version does not use (once,
+  then they are hits), and then renders from the version's own inputs; if slimming already
+  cleared the old `source.mp4` (the reel was last exported more than seven days ago), the
+  pipeline cannot make that file again, and the export fails with `render: input missing: <key>:
+this version was made by an earlier version of the retime step, its source.mp4 was cleared to save
+space and can no longer be made again; upload the footage again as a new reel` (`missingInput`,
+  `render-step.ts`). That is true of every step version change, not only this one. And a `process`
+  job run again on a reel that already has a version (a retry after a failed decide) no longer
+  overwrites `reels.preview_copies` (`keepsPreviewCopies`): the new copies would show new cuts
+  under the old versions' words.
+- The aligner's model (`align-model.ts`, `ALIGN_MODEL`): the float32 ONNX export of
+  facebook/wav2vec2-base-960h (Apache 2.0) published by Xenova/wav2vec2-base-960h, revision
+  `a19f851b3d42865797e410752b4c570c871e4825`, `onnx/model.onnx`, unchanged, 377,887,594
+  bytes, SHA-256 `e46614273f03ff4b87923a965e417fa72004825522cb007c9c25633b8475490d`. Too large to
+  commit, so it is fetched from that URL into `apps/worker/models/` (gitignored) by
+  `yarn workspace @edit-issebya/worker models:fetch` (`fetch-models.ts`: kept when it already
+  matches its pin, else fetched to `.part`, checked, renamed) and by the worker image's `aligner`
+  build stage (`app_docs/worker-container.md`); never at job time. A missing or changed file fails
+  the entry with `wav2vec2 model missing at <path>, restore it with yarn workspace
+@edit-issebya/worker models:fetch`. Its notice is in `apps/worker/models/THIRD_PARTY_NOTICES.md`.
+  Why float32: the two smaller exports are out. The float16 one (`onnx/model_fp16.onnx`, 189 MB)
+  places every word within one 20 ms frame of it on dfba, but crashes onnxruntime-node 1.31.1 on
+  Linux arm64 (the worker container on the owner's Mac) as soon as a session is created (heap
+  corruption, the process aborts), so every upload failed at transcribe; it runs on macOS. The int8
+  export (95 MB, the smallest) put whole words up to 5 s off (the closing "care of." on a later
+  untranscribed "yes").
 - `apps/worker/src/pipeline/envelope.ts`, `speech-gaps.ts`, `retime-plan.ts`, `retime-encode.ts`,
   `retime.ts`: a 10 ms RMS envelope in dB, what the audio says about the transcript's gaps (the
   gaps, the clip's speech level, `missedSpeech`; shared with transcribe's re-listen), a pure planner

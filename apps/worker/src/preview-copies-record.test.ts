@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
-import { previewCopiesRefs, recordPreviewCopies } from "./preview-copies-record.ts";
+import {
+  keepsPreviewCopies,
+  previewCopiesRefs,
+  recordPreviewCopies,
+} from "./preview-copies-record.ts";
 
 const FP = "663cba62bed2a62bac39ab4999cbb73fc546176fe1884f068c0962e208b98bfc";
 const REEL = "3f0c2a8e-1b2d-4c3e-8f4a-5b6c7d8e9f01";
@@ -58,5 +62,12 @@ describe("recordPreviewCopies", () => {
     await expect(
       recordPreviewCopies(db, REEL, previewCopiesRefs({ preview_copies: FP })),
     ).rejects.toThrow("preview copies not recorded: boom");
+  });
+});
+
+describe("keepsPreviewCopies", () => {
+  it("keeps the recorded copies once the reel has a version, records them before", async () => {
+    expect(await keepsPreviewCopies({ current: async () => ({ id: "v1" }) }, REEL)).toBe(true);
+    expect(await keepsPreviewCopies({ current: async () => null }, REEL)).toBe(false);
   });
 });
