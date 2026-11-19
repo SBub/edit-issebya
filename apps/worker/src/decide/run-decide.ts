@@ -10,20 +10,26 @@ import {
   ISSEBYA_PRESET,
   type Measurer,
   type Preset,
+  type StoredCorrection,
   type VersionBlobs,
   type VersionRows,
+  applyWordCorrections,
   build,
+  correctedTranscript,
   decideCounts,
   decideJsonSchema,
   editFromAnswer,
   headTrackSchema,
   hookJsonSchema,
+  keepOwnerAdds,
+  liveCorrections,
   parseDecideAnswer,
   parseEdit,
   parseHookAnswer,
   saveVersion,
   transcriptSchema,
   usedFreeField,
+  withWordCorrections,
   type FontPairId,
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
@@ -73,6 +79,10 @@ export interface DecideRun {
   startFrom?: string | null;
   // The reel owner's font pair (`font-pair-store.ts`), read when the step starts.
   ownerFontPair: () => Promise<FontPairId>;
+  // The reel's transcript corrections (`word-corrections-store.ts`), read when
+  // the step starts: the AI reads the transcript with them and the engine
+  // writes them. None by default.
+  corrections?: () => Promise<StoredCorrection[]>;
   measurer?: (pair: FontPairId) => Promise<Measurer>;
   newId?: () => string;
   // For the cut-out a behind item needs before the version is saved.
@@ -96,6 +106,8 @@ type Attempt =
       edit: Edit;
       record: EngineNote[];
       checks: Check[];
+      // The owner's transcript corrections shown, and those that could not be.
+      corrected: { kept: number; dropped: number };
       reasons: [];
     }
   | { ok: false; reasons: string[]; rules: string[] };
@@ -127,7 +139,8 @@ function roundLines(round: number, reasons: readonly string[]): string[] {
 // The pipeline's AI step, two calls before the layout: first the written hook
 // (role `hook`, prompt `reel-hook`), the one text the reel opens with, then the
 // components (role `decide`), which see the reel's script, the hook as data and
-// the target count, and answer in meaning only (word ids) with a JSON Schema
+// the target count (both calls read the transcript with the owner's
+// corrections, `owner-corrections.ts`), and answer in meaning only (word ids) with a JSON Schema
 // made for this reel. Each answer is checked again by Zod and by the layout
 // engine's placement; only an answer breaking those is refused. Each goes
 // back once with its reasons; a second refusal of either fails the step with
@@ -155,6 +168,7 @@ export function runDecide({
   scratchDir,
   startFrom = null,
   ownerFontPair,
+  corrections = () => Promise.resolve([]),
   measurer = editMeasurer,
   newId = randomUUID,
   tools = toolPaths(),
@@ -199,6 +213,22 @@ export function runDecide({
         if (!parsed.ok) {
           throw new Error(`${STEP}: current version does not parse: ${parsed.reasons.join("; ")}`);
         }
+        // A Start over decides from version 1, while the reel's current
+        // version may hold cards the owner added: read here, kept on the new
+        // answer's placement below. Nothing else of the owner's version goes
+        // with a Start over.
+        let ownerWork: Edit | null = null;
+        if (baseId !== currentId) {
+          const currentRow = await rows.get(currentId);
+          const currentBytes = currentRow ? await blobs.get(currentRow.r2_key) : null;
+          const owned = currentBytes
+            ? parseEdit(JSON.parse(new TextDecoder().decode(currentBytes)), preset, transcript)
+            : null;
+          if (owned?.ok) ownerWork = owned.edit;
+        }
+        // The owner's corrections that hold for this transcript: every decide
+        // builds from the transcript with them.
+        const fixes = liveCorrections(await corrections(), transcript);
         return {
           currentId,
           currentNumber,
@@ -206,9 +236,15 @@ export function runDecide({
           transcript,
           headTrack,
           current: { ...parsed.edit, font_pair: fontPair },
+          ownerWork,
+          fixes,
         };
       });
-      const { currentId, currentNumber, row, transcript, headTrack, current } = loaded;
+      const { currentId, currentNumber, row, transcript, headTrack, current, ownerWork, fixes } =
+        loaded;
+      // The transcript as the AI reads it: the owner's words in place of the
+      // corrected ones.
+      const spoken = correctedTranscript(transcript, fixes);
       const prepared = await inSpan(ctx.telemetry, stepContext, "decide.prepare", {}, async () => {
         const schema = decideJsonSchema(preset, transcript);
         return {
@@ -225,7 +261,7 @@ export function runDecide({
       // The written hook: its own call, before the components. Its answer is
       // refused only by its schema, and it goes back once; a
       // second refusal fails the step, so no reel is saved without a hook.
-      const hookSource = hookInput(transcript, preset);
+      const hookSource = hookInput(spoken, preset);
       const hookSchema = hookJsonSchema(preset);
       const hookOnce = async (context: Context, previous?: string[]): Promise<HookAttempt> => {
         const result = await ai.call({
@@ -281,7 +317,7 @@ export function runDecide({
       const hookText = writtenHook.text;
       // The components' prompt: the script, the hook as data and the target.
       const input = decideInput({
-        transcript,
+        transcript: spoken,
         preset,
         hook: { text: hookText },
       });
@@ -321,10 +357,11 @@ export function runDecide({
           "decide.engine",
           {},
           async (engine): Promise<Attempt> => {
-            // Meaning only: the layout engine places the answer's words.
+            // Meaning only: the layout engine places the answer's words, the
+            // owner's corrections over the transcript's and the curator's.
             const composed = editFromAnswer(
               current,
-              engineAnswer(answer.answer),
+              withWordCorrections(engineAnswer(answer.answer), fixes),
               preset,
               transcript,
               headTrack,
@@ -333,22 +370,32 @@ export function runDecide({
             if (!composed.ok) {
               return { ok: false, reasons: composed.reasons, rules: ["answer-edit"] };
             }
+            // A caption the owner typed over several spoken words is one
+            // caption again, and the corrected captions are marked as hers.
+            const corrected = applyWordCorrections(composed.edit, fixes, {
+              transcript,
+              headTrack,
+              preset,
+              measurer: measure,
+            });
+            const record = [...composed.record, ...corrected.notes];
             // Built with the masks it will name: their fingerprints are known
             // before any is made.
             const { checks } = build(
-              withMasks(composed.edit, transcript, headTrack),
+              withMasks(corrected.edit, transcript, headTrack),
               transcript,
               headTrack,
               preset,
               measure,
-              { engineRecord: composed.record },
+              { engineRecord: record },
             );
             engine.setAttribute("decide.checks", checks.length);
             return {
               ok: true,
-              edit: composed.edit,
-              record: composed.record,
+              edit: corrected.edit,
+              record,
               checks,
+              corrected: { kept: corrected.kept, dropped: corrected.dropped },
               reasons: [],
             };
           },
@@ -393,7 +440,26 @@ export function runDecide({
       ctx.signal.throwIfAborted();
       // The placed answer: its edit, the engine's record and the layout checks
       // of its build (the engine's own output, never a second placement).
-      const { edit: placed, record, checks } = passed;
+      // A Start over is a fresh answer: no place, size or element text of the
+      // owner's version goes with it. Only the cards the owner added are kept
+      // as they were (`keepOwnerAdds`), beside the transcript corrections the
+      // placement already holds.
+      let { edit: placed, checks } = passed;
+      const { record } = passed;
+      if (ownerWork) {
+        const kept = keepOwnerAdds(ownerWork, placed, { transcript, preset });
+        if (kept !== placed) {
+          placed = kept;
+          checks = build(
+            withMasks(placed, transcript, headTrack),
+            transcript,
+            headTrack,
+            preset,
+            measure,
+            { engineRecord: record },
+          ).checks;
+        }
+      }
       // The engine's only allowed face covering: captions it put over the
       // face because nothing else was free, each said so in its record.
       const coversFace = new Set(
@@ -477,6 +543,12 @@ export function runDecide({
           ? [`${counts.behindVisuals + counts.behindWords} behind`]
           : []),
         ...(startFrom !== null ? [`started over from version ${row.number}`] : []),
+        ...(passed.corrected.kept > 0
+          ? [`${plural(passed.corrected.kept, "word correction")} of yours kept`]
+          : []),
+        ...(passed.corrected.dropped > 0
+          ? [`${plural(passed.corrected.dropped, "word correction")} of yours could not be kept`]
+          : []),
       ].join(", ");
       return { what, ai: usage };
     },

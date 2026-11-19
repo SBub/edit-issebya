@@ -5,9 +5,9 @@
 - specs/issue-96-adw-173ac961-sdlc_planner-photo-library.md
 - specs/issue-20-adw-182ee234-sdlc_planner-behind-speaker-photos-big-word.md (its placed photo
   item was removed with the old layout in 3ca8f67; the path from a version to a photo came back
-  through the owner's Move editor, below)
+  through the owner's editor, below)
 - Owner decisions, 2026-11-17 (pictures from the library): the owner puts a library photo on a
-  VISUAL card in the Move editor, by swapping a card's picture or adding a card
+  VISUAL card in the editor, by swapping a card's picture or adding a card
   (`app_docs/owner-edits.md`); the picker shows every ready photo, newest first; deleting a photo a
   version uses stays allowed, with a warning first that counts those versions.
 
@@ -18,7 +18,7 @@ to R2, and described by Claude on upload (one sentence and 3 to 8 lowercase tags
 use the library later: the description and tags are what the AI will use to match a photo to a
 sentence, always quoted as data, never as instructions. The library sits beside the reel on
 desktop and is a fourth tab, `Library`, on a phone. Today a photo reaches a reel only by hand: in
-the Move editor the owner swaps a VISUAL card's picture for a library photo or adds a card showing
+the editor the owner swaps a VISUAL card's picture for a library photo or adds a card showing
 one (`app_docs/owner-edits.md`). The decide step reads no library yet.
 
 ## How it works
@@ -128,7 +128,7 @@ one (`app_docs/owner-edits.md`). The decide step reads no library yet.
   photos a version shows.
 - A version shows a library photo on a VISUAL card (`photo: { id, width, height }` in place of its
   stand-in `image`, `app_docs/edit-model.md`) and names it by id in `inputs.photos`. The owner puts
-  it there in the Move editor: `Change picture` on a selected card or `Add picture here` opens a
+  it there in the editor: `Change picture` on a selected card or `Add picture here` opens a
   picker of every ready photo with a large copy and a size, newest first (`PicturePicker`,
   `pickablePhotos`; the library's `loadLibrary`), and the editor's draft shows the photo from the
   library's signed large copy (`app_docs/owner-edits.md`). The decide step reads no library: its
@@ -174,7 +174,7 @@ delete`. With none it shows nothing. The learning rows of `owner_moves` keep the
 4. Open a tile to see the photo large, its description and tags. Delete removes the row and its R2
    objects (original, thumbnail and large copy). When versions of your reels show the photo, the
    dialog says how many before you confirm; those versions then show a notice instead.
-5. To show a photo in a reel, open the Move editor on the reel's preview and use `Change picture` on
+5. To show a photo in a reel, open the editor on the reel's preview and use `Change picture` on
    a card or `Add picture here` (`app_docs/owner-edits.md`).
 
 ## Configuration

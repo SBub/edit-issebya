@@ -30,7 +30,7 @@ export function liveRenderJobId(jobs: readonly RenderJob[]): string | null {
 }
 
 // Why editing this reel is off, shown beside every editing control while the
-// reel exports (going back, Start over, the font pair, Move text). The export
+// reel exports (going back, Start over, the font pair, Edit). The export
 // renders the current version, and the reel's jobs run one at a time, so an
 // edit could only wait behind it. Null when no export is live. Other reels,
 // the photo library and uploads are never held.

@@ -11,7 +11,7 @@ import { type SeededPhoto, seedReadyPhoto } from "../test-support/photos.ts";
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
 import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 
-// Pictures from the owner's photo library in the Move editor
+// Pictures from the owner's photo library in the editor
 // (app_docs/owner-edits.md): a selected VISUAL's picture swapped for a library
 // photo, and a new card added at the paused moment over the engine's card, so
 // two cards show at once. Save makes a version showing both photos and a
@@ -160,7 +160,7 @@ test("Change picture opens a picker of every ready library photo, newest first",
   await page.goto(await signInLink(admin, owner.email, baseURL!));
   await page.goto(`/studio/reels/${reel!.reelId}`);
   await ready();
-  await page.getByTestId("move-toggle").click();
+  await page.getByTestId("edit-toggle").click();
   await expect(page.getByTestId("move-layer")).toBeVisible();
   // Nothing selected: a card can be added; no picture to change.
   await expect(page.getByTestId("move-change-picture")).toHaveCount(0);

@@ -1,4 +1,4 @@
-# The owner's moves: move and resize a text or a visual on screen, turn a visual, and show pictures from the library
+# The owner's edits: move and resize a text or a visual on screen, fix a text's words in place, turn a visual, and show pictures from the library
 
 **Specifications:**
 
@@ -32,29 +32,85 @@ picture here` open one picker of all the owner's ready library photos, newest fi
   1.5 s (clipped to the reel's end), placed in a corner by the engine's placement; it cannot be
   added over hidden footage. Several cards may show at once, an added one on top. Deleting a
   library photo a version uses stays allowed, with a warning first that counts the versions.
+- Owner decisions, 2026-11-19 (the Edit mode):
+  1. The button `Move text` is renamed `Edit`: the mode is for more than moving.
+  2. Caption blocks are selectable like the other texts: the owner moves and resizes a block (the
+     corner handle, and the edge handles as a text has them) for the whole time of that block, one
+     sentence's captions. The earlier rule "captions are not moved" is gone.
+  3. Fix words in place: on a selected text (an accent, a question, a big word, a list's lead-in or
+     key phrase, the hook, a caption block) the owner edits its text inline (a double-click on the
+     text, or the small `Edit text` control on the selection; Enter or a click outside ends the
+     edit, Escape cancels it). The box keeps its place and its text size; the text is wrapped again
+     inside the box's width and the box grows downward when it needs to; the owner can resize it
+     after. Text stays bound to the safe zone and the existing checks apply. The engine places
+     nothing again: the human places it. The earlier rule "never its words" is gone.
+  4. A fix changes only the element edited. The same spoken word in another element (an accent, the
+     hook) keeps its text. The curator's `word_fixes` apply everywhere; the owner's text edit is per
+     element.
+  5. Timing stays tied to the spoken words: the edited text is spread over the element's same
+     spoken words in order (the rule `reveal.ts` uses for a text with another word count), so the
+     word-by-word entrance still follows the voice and the time on screen never changes. The hook
+     has no spoken words: its text just changes, its window kept, and the new text is typed
+     letter by letter like any hook (`hook/typed`), with its caret and its key sounds.
+  6. Text edits are saved with Save in the same `owner_edit` job, into a new version `Edited by
+you`, like moves, and each one leaves a learning record (the text before, the text after, the
+     element, its spoken words) beside the move records.
+  7. Limits: no element is added or deleted and no time changes. A text may be at most three times
+     the characters of the text it replaces (never fewer than 40 allowed, never more than the
+     format holds), and an empty text is refused; each with a clear message.
+- Owner feedback, 2026-11-19 (after the first Edit mode build):
+  1. The owner's text for a big word follows only the general length limit; the "one or two plain
+     words, at most 24 letters" rule stays the AI answer's alone.
+  2. A question always keeps its question mark (confirmed).
+  3. A font pair change and a Start over must not lose the owner's work: text fixes and places are
+     carried (rules in "What later steps do with an owner's version"), and an edit that cannot be
+     kept is noted, never dropped silently.
+- Owner decisions, 2026-11-19 (option 1, which replaces item 3 for a Start over):
+  1. A text fix made on a caption is a transcript correction: kept per spoken word for the reel
+     (she wins over the transcript and over the curator's word fixes) and lasting through any
+     processing again. The version she saved shows the fix only where she typed it.
+  2. Every rebuild uses the corrected transcript: a font pair change and a Start over build from
+     it, the captions show the corrections, the AI calls of a Start over (the hook and the
+     components) read the corrected words, and elements placed on a corrected word show them.
+  3. A fix typed into an accent, a question, a big word, a list or the hook stays on that element
+     only and is never a correction.
+  4. Start over carries no place, size or element text and not the hook's text (the AI picks
+     afresh): only the corrections, and the cards she added by hand.
+  5. A font pair change keeps her moves, sizes, caption block moves and element text fixes, plus
+     the corrections.
+  6. The learning record of a text fix keeps the text before and after (`owner_texts`).
 
 ## Overview
 
-On a reel's page the owner presses `Move text`, selects a text component on the paused preview (an
+On a reel's page the owner presses `Edit`, selects a text component on the paused preview (an
 accent, a question, a big word, a list or the hook) or a VISUAL card, drags it to move it, drags its
 corner handle to resize it, (a text) drags an edge handle to make its box wider, narrower, taller
 or shorter or (a VISUAL) drags its rotate handle to turn it, and presses Save. Save queues an `owner_edit` job; the worker applies the moves to the
 version and saves the result as a **new** version titled `Edited by you`. The version the owner
 edited stays as it was, and going back works as for any version.
 
-Only the place, the text size and, through an edge handle, the line breaks of a component change.
-Never its words, its time on screen or what its variant draws inside its box. An edge handle never
+A move changes only the place, the text size and, through an edge handle, the line breaks of a
+component. A text edit (below, "A text edit") changes the words of one element and nothing else.
+Never a component's time on screen or what its variant draws inside its box. An edge handle never
 stretches letters: the text keeps its size and is set again on more or fewer lines. A component has one box for its whole time on screen
 (not one per frame), so a move moves it for all of it. A VISUAL's box moves and scales: its picture
 and its time stay, and its height always follows its picture's aspect ratio, so a card is never
 stretched. A VISUAL also turns about its box's centre, by any angle in whole degrees; a text never
-turns. Captions are not moved. There is no delete and no timing change.
+turns. The captions of one spoken sentence are one block (`Captions`): the block moves, resizes
+and re-wraps as one box for the sentence's whole time, like any text; a single caption is never
+moved on its own. There is no delete and no timing change.
 
 A card's picture can be one of the owner's library photos (`app_docs/photo-library.md`): `Change
 picture` swaps a selected card's stand-in (or earlier photo) for one, and `Add picture here` adds a
 new card showing one at the paused moment, on top of the cards already there. The worker trusts
 only the photo's id from the browser: it checks the photo is the reel owner's and ready, and reads
 its size itself.
+
+The owner also fixes words in place: a double-click on a text (or `Edit text` on the selected one)
+opens a field over it with its words; Enter or a click outside keeps the owner's text, Escape
+drops it. Only that element changes: its box keeps its place and its text size, the text is
+wrapped again inside the box's width, and its time and its spoken words stay, so it still comes
+in with the voice. Each text edit leaves a learning record in the `owner_texts` table.
 
 For every component the owner moved or resized, the worker keeps a learning record in the
 `owner_moves` table: where the layout engine placed it, where the owner put it and what was on screen
@@ -75,6 +131,18 @@ with it at that moment. Placement rules will be learnt from these later.
   (`app_docs/edit-model.md`, "The question's look"): it builds up word by word, each word an element
   of its own, and ends with a question mark. Its box and `text` are the ones that look draws, the
   question mark included.
+- A caption block (`packages/edit/src/caption-blocks.ts`) is one more component, after the single
+  captions in `components`: `component` `CAPTION`, its id `block_<its first caption's id>` (an
+  underscore, which no item id holds, so a block is never taken for an item), its text the
+  sentence's captions joined, its `size` theirs, its box the box around them, its time from its
+  first caption's start to its last group's end, and `parts`: its groups (`ComponentPart`: the
+  captions on screen together, with the group's own box and time, `items` its captions' ids).
+  `isCaptionBlock` tells a block from a single caption (only a block has `parts`). The stored edit
+  holds no block: `captionBlocks(edit, transcript)` reads it back the way the engine made it
+  (`placeCaptions`): a group is a run of consecutive captions ending on the same moment, counted
+  over the captions that show and have a place (one a text shows in its place, `hidden_by`, takes
+  no room), and a block is the groups whose first caption's first word is in the same spoken
+  sentence (`sentenceSpans`).
 - A LIST is one component: the box around its levels (the number, the lead-in, the key phrase), its
   `size` its key phrase's. A VISUAL has no text size (`null`). A turned VISUAL's component also
   has `rotation` (whole degrees clockwise); its `x` to `height` stay its box upright.
@@ -103,6 +171,17 @@ with it at that moment. Placement rules will be learnt from these later.
     With a wrap width its lead-in and key phrase are each set again to it at their own sizes (the
     number keeps its line), and the levels are stacked again from the corner in their order on
     screen, each centred on the widest as the engine stacks them, the gaps the version's scaled.
+- A caption block's move is a text's move with the block's id (`movedBlock`). A move that only
+  moves carries every caption of the sentence with the box. A new size lays the block again from
+  the move's corner on its own lines, exactly as the engine lays a block (`layBlock`: the block as
+  wide as its widest line, every line centred in it, the lines `caption.lineGap` apart, each
+  caption after the ones before it on its line), every caption at the new size. A wrap width sets
+  each group again on the fewest balanced lines that fit it, between whole captions (`wrapGroup`;
+  a caption is never cut, so a caption wider than the width keeps its line). Its words, its text
+  and its times stay; the captions a text shows in their place are left as they are.
+  `ownerSizeRange` gives a block a text's range (30 to 400 px), `ownerWrapOptions` every width at
+  which one of its groups changes lines, and `settleOwnerMove` and `ownerMoveProblems` bind it to
+  the safe zone like any text.
 - A VISUAL's move is `OwnerBoxMove`, `{ id, kind: "box", x, y, width }`: its box's top left corner
   and its width in frame pixels. Its height is derived (`boxHeight`): the width times its stand-in
   picture's height over its width (`VISUAL_STAND_INS`; the box's own ratio for a VISUAL with no
@@ -120,7 +199,8 @@ with it at that moment. Placement rules will be learnt from these later.
 - A turned card covers the upright rectangle around it (`rotatedBounds`, `visualBounds` in
   `behind.ts`): the frame rule of a card (`ownerMoveProblems`, `settleOwnerMove`) and the
   `card-overlap` check read that rectangle, never the upright box.
-- It refuses, with reasons: an id that is no text component of the edit (a caption is not moved), a
+- It refuses, with reasons: an id that is no text component of the edit (a single caption is not
+  moved, only its block; a block id that names no block: `not a caption block of this version`), a
   size outside the component's range (`ownerSizeRange`), a component moved twice, a wrap width on a
   big word (`a big word keeps its lines`) or one that is no positive number; a text's move on a
   VISUAL (`a visual moves as a box`), a box move on anything but a VISUAL (`not a visual of this
@@ -174,6 +254,76 @@ version`) and a VISUAL narrower than 100 px (`MIN_BOX_PX`) or wider than the fra
   whose corner, width and turn are the version's; a turn alone counts.
 - `ownerMoveRecords(...)` builds the learning records (below).
 
+### A text edit (`packages/edit/src/owner-text.ts`)
+
+- `OwnerText` is `{ id, part?, text }`: the component's id (a caption block's is its block's), the
+  part edited where the component has parts (`part`: a LIST's level, `lead` or `key`; a caption
+  block's group, by its first caption's id) and the owner's text. A LIST's number is not a text
+  the owner edits. `PlacedComponent.parts` lists a caption block's groups and a LIST's lead-in and
+  key phrase, each with its own box and time.
+- **The stored format is the edit's own text fields**, so no new field and no new format: an accent,
+  a question or the hook gets `text` (an accent or a question keeps its `words`; the builder has
+  always drawn an overlay's `text` in place of its words' text, and `wordReveal` has always spread
+  such a text over the spoken words); a big word its `text`; a LIST's level its `text`; a caption
+  its `text` (the field the curator's word fix writes). A version saved before text edits has
+  none of the owner's texts and builds byte for byte as before.
+- `cleanOwnerText(raw)`: the text as stored: every run of white space (a line break included) one
+  space, none at the ends, no control character.
+- `ownerTextLimit(original, formatMax)`: how long a text that replaces `original` may be: three
+  times its characters, never fewer than 40 (so a short text can still be rewritten), never more
+  than the format holds (200 characters; a list's level 300). `original` is always the text of
+  the version being edited, never an earlier draft's, so the limit does not grow edit after edit.
+- `ownerTextOf(edit, { id, part })`: the text the element shows now (a question's with its mark, a
+  caption group's captions joined) and its limit; null for anything that is no text (a VISUAL, a
+  single caption, a list's number).
+- `ownerTextProblem(edit, text)`: why a text cannot replace the element's, in the owner's words:
+  `A text cannot be empty`, `This text can be at most N characters (it has M)`, `This text cannot
+be edited`. A big word has no rule of its own for the owner (owner feedback, 2026-11-19: she
+  adapts the size herself): any text within the general limit. The "one or two plain words of at
+  most 24 letters" rule is the AI answer's (`decide.ts`) and stays there.
+- `applyOwnerTexts(edit, texts, context)` returns the edit with the text edits applied and nothing
+  else changed. The element's box is read from a build (like every box); the text is wrapped again
+  inside that box's width on the engine's balanced lines (`wrapToWidth`), a word never cut, so the
+  box grows downward when the text needs more lines and wider only for a word wider than the box:
+  - an accent, a question or the hook: its `text` and `breaks`; the box's top stays and its lines
+    stay centred where they were (a question, set left-aligned, keeps its left edge; its mark is
+    added when the owner's text has none, never doubled);
+  - a big word: its `text` and, when the text needs more than one line inside the word's width,
+    its `breaks` (the stored big word takes any text up to 200 characters and optional `breaks`;
+    the builder draws its lines centred, measured line by line), its top and centre kept, its
+    `words` and time as they were; the worker decides its cut-out again;
+  - a LIST's lead-in or key phrase: that level's `text`, that level alone wrapped to the list's
+    width (`restack` with the one role; the other level keeps its lines, the number its line), the
+    levels stacked again on the list's centre line;
+  - a caption block's group (`captionsWithText`): the text's words are spread over the group's
+    captions in order (`spreadWords`: as many words as captions, one each; else word i goes to
+    caption floor(i x captions / words), the reveal's own rule). A caption given two words shows
+    both on its one spoken word. A caption left with no word goes: its spoken words join the
+    caption before it, which shows on the first of them, so no spoken word is lost and no time
+    changes (the group still starts on its first word and ends where it ended). A caption whose
+    text is its words' own keeps no `text`. The edited group is wrapped to the block's width
+    between whole captions and the block laid again on its centre line with its top kept; when
+    the block is as wide as it was, the other groups' captions are left byte for byte.
+- It refuses, with reasons: an element that is no text of the edit (`not a text of this version`),
+  a part that is none, an empty text, a text over its limit, a big word that is no big word, an
+  element edited twice.
+- `effectiveTexts(texts, edit)` leaves out an edit whose text is what the element already shows.
+- **Timing.** A text edit writes no anchor and no word id beyond joining a caption that lost its
+  word to the one before it. The builder then reveals the element as before: `wordReveal` spreads
+  the shown words over the element's spoken words in order, so more words than spoken come in
+  together on their spoken word and fewer come in on the first of theirs. The hook, which nobody
+  says, is typed as before: `hookReveal` spreads the letters of the new text over the first 60% of
+  its window, each but the last with its caret, and `soundCues` puts the key sounds in step with
+  them, in the preview and in the export alike (app_docs/edit-model.md).
+- **Scope.** Each edit names one element and writes that element only. A caption that shows the
+  same spoken word, an accent on it, the hook: none is touched. The curator's `word_fixes` are
+  the engine's and apply to every element of the word; the owner's text edit is never turned into
+  one.
+- `parseOwnerTexts(json)`: a job's text edits as they arrive (untrusted): absent is none; else at
+  most 200 (`OWNER_TEXTS_MAX`), each an id, an optional part and a clean text of at most 300
+  characters, no element twice; null otherwise.
+- `ownerTextRecords(...)` builds the learning records (below).
+
 ### Pictures from the library (`packages/edit/src/owner-edit.ts`, `owner-add.ts`)
 
 - A swap is a VISUAL's box move with `photo_id` (`OwnerBoxMove.photo_id`, a uuid; `parseOwnerMoves`
@@ -216,8 +366,9 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
 
 ### The editor (`apps/studio`)
 
-- `isMovable` (`MOVABLE_COMPONENTS`): the five text kinds and `VISUAL`.
-- `src/components/ReelPreview.tsx` (`BuiltPreview`): the `Move text` button (`data-testid="move-toggle"`,
+- `isMovable` (`MOVABLE_COMPONENTS`): the five text kinds, `VISUAL` and a caption block (never a
+  single caption).
+- `src/components/ReelPreview.tsx` (`BuiltPreview`): the `Edit` button (`data-testid="edit-toggle"`,
   `aria-pressed`) in the player's control row, before `Zones`; desktop only (`lg:`), built for a
   mouse. It pauses the preview and shows the editor; Play is off while it is open; the ruler still
   seeks. The draft is the version's edit with the moves so far. Each finished drag is settled
@@ -232,7 +383,9 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
   pixels (snapped), and `ReelPreview` hands the player a patch: a move sets the component's
   elements' `left` and `top`, a corner resize scales their `font-size` (a VISUAL's `width` and
   `height`) and their corners about the box's top left corner (a LIST: its levels inside its layer,
-  never the layer; a turned card about the corner it shows at its top left), and a VISUAL's turn
+  never the layer; a caption block: each of its captions, a caption's line set at the new size
+  with the gap between lines kept, as the block is laid; a turned card about the corner it shows
+  at its top left), and a VISUAL's turn
   sets its element's `rotate` (`rotate: -30deg`). The player always restyles `rotate` too
   (`PATCHED` in `live-page.ts`), so a turn the patch set and neither page has is taken off again. An edge handle shows the lines the drop would give: once per press, a page is
   built with each of the component's wrap widths (`ownerWrapOptions`, then `applyOwnerMoves` and
@@ -256,18 +409,21 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
 - `src/components/MoveLayer.tsx`: the layer over the frame (`data-testid="move-layer"`), given to
   `PreviewPlayer` as its `overlay`.
   - A bar on top (`move-bar`), as tall as the frame's top margin, which the platforms cover and no
-    text sits in: the list (`move-pick`, a `select` named `Text or visual to move`, first line
+    text sits in: the list (`move-pick`, a `select` named `Text or visual to edit`, first line
     `Pick a text or visual`, one line per movable component, `Kind: text`; a VISUAL's text is its
     description), `Cancel` (`move-cancel`) and `Save` (`move-save`, off until
     something is moved).
   - A box (`move-box`, `data-component-id`, `data-component`) around each movable component on
     screen at the paused moment: dashed until selected. Clicking it selects it; the selected box
     (`data-selected`) shows its kind above it (`move-kind`: `Accent`, `Question`, `Big word`, `List`,
-    `Hook`, `Visual`), a corner handle (`move-handle`) at its bottom right and, for every text but a
+    `Hook`, `Visual`, `Captions`), a corner handle (`move-handle`) at its bottom right and, for every text but a
     big word (`canRewrap`; never a VISUAL), four edge handles (`move-edge`, `data-edge="left|right|top|bottom"`) at the
     middle of its edges. A VISUAL's box instead has a rotate handle (`move-rotate`, a round handle
     on a short stem above the middle of its top edge), and its kind shows below it. A turned card's
-    box turns with it (`rotate` on the box, `data-rotation` its degrees), handles included.
+    box turns with it (`rotate` on the box, `data-rotation` its degrees), handles included. A
+    caption block has one box for its sentence (`data-component="CAPTION"`,
+    `data-component-id="block_..."`), with the corner handle and the four edge handles; its single
+    captions have no box.
   - Dragging a box moves it; dragging the corner handle resizes it about its top left corner, in
     proportion (the text size; a VISUAL's width, its height following its picture). For a VISUAL
     `moveOfDrag` asks for its box (`{ kind: "box", x, y, width }`). A press that moves less than 3
@@ -316,30 +472,58 @@ here` (`move-add-picture`, in the bar while nothing is selected; off where `owne
     `photos`) and its large copy's signed URL from the library (`built.photoUrls`, by the path the
     page names it at), so the draft page shows the photo before anything is saved.
   - The boxes on screen are drawn in the page's stacking order (`stackedAt`: the cards in the
-    track's order, then the texts), so where two overlap the topmost box takes the click, the
-    added card over the engine's.
+    track's order, then the caption blocks, then the other texts), so where two overlap the
+    topmost box takes the click, the added card over the engine's, and a text inside a sentence's
+    box over that box.
+  - An inline text edit (`TextField` in `MoveLayer.tsx`): a double-click on a text's box, or `Edit
+text` (`move-edit-text`, beside the kind above the selected box; never on a VISUAL), opens a
+    field over the text's box (`move-text-field`; the input `move-text-input`, named `Text of this
+<kind>`, at least 55% of the frame wide) holding the words the element shows in the draft, all
+    selected. The part edited is `textPartAt`'s: a caption block's group on screen at the paused
+    moment (the nearest in time when none is), a LIST's level under the pointer (its key phrase
+    from `Edit text` or on the number), the whole text otherwise. Under the field a line reads `N
+of M characters. Enter to keep, Esc to cancel` (`move-text-count`); the input's `maxlength` is
+    the limit, so a text too long cannot be typed. Enter or a click outside the field ends the
+    edit and sends the text (`onText`); Escape ends it with nothing sent. While the field is open
+    no box is dragged. The field is the editor's own and never part of the built page.
   - Picking a text from the list selects it and seeks the preview to a moment where it shows whole
     (`showMoment`: 0.4 s before its end, or its middle when it is shorter than 0.8 s).
   - A status line at the bottom (`move-status`): `Saving your changes`, `This text does not fit
-there`, or why a save did not start.
-- `src/lib/owner-edit.ts`: the editor's logic with no DOM in it: `componentLabel`,
+there`, why a text was refused (`A text cannot be empty. The text stays as it was`), or why a
+    save did not start.
+- `ReelPreview.tsx`, `editText`: the end of an inline edit. The text is cleaned
+  (`cleanOwnerText`) and checked against the version's own text (`ownerTextProblem`); a refused one
+  shows its reason and changes nothing. The draft's edit is then made again from the version in
+  the worker's own order (`draftEdit`: the added cards, the text edits, the moves), so what shows
+  is what Save saves. A box the longer text pushed out of the safe zone is settled like a drag
+  (`settleOwnerMove`, the move kept in the draft). The draft's page is built and swapped in like
+  after a drag. A text put back to the version's own is no edit (`effectiveTexts`). A move of an
+  element whose text the owner edited always stays in the draft (`keptMoves`), as its box is no
+  longer the version's. The instant view shows a fixed word at once: a word of a caption, an
+  accent or a question is an element of its own, and the page on screen sets that element's text
+  (`changedElements` names it, `restyle` writes it), so the page's timeline still reveals the
+  same element. A text with another number of words shows whole only once the rebuilt page is
+  swapped in, a few hundred milliseconds later.
+- `src/lib/owner-edit.ts`: the editor's logic with no DOM in it: `canEditText`, `textPartAt`,
+  `textBox`, `componentLabel`,
   `movableComponents`, `movableAt`, `componentOption`, `showMoment`, `canRewrap`, `resolveAsk`,
   `resizeShare` (the direction the
   handle moved further in, as a share of the box), `draggedBox`, `moveOfDrag`, `snapDrag` (a move drag with its centre snapped to the centre lines),
   `scaledVisual`, `snapAngle`, `turnOfPointer`, `draggedTurn` (the turn a card shows while dragged),
   `withMove`, `boxStyle`.
 - Save calls `requestOwnerEdit` (`src/app/change-actions.ts`): it checks the shape of the moves
-  (`parseOwnerMoves`), refuses when the `studio-owner-edit` flag is off for the user, refuses a blocked reel like going back does (`changeBlockedReason`, which includes a reel that is exporting: `Move text` cannot be opened then, and an open editor is frozen with the reason and keeps its draft, `app_docs/export.md`) and inserts
-  the job `{ kind: "owner_edit", owner_edit: { version_id, moves, adds? } }` under RLS (`adds`
-  only when the owner added a card; `moves` may then be empty). The browser never sends a photo's
+  (`parseOwnerMoves`), refuses when the `studio-owner-edit` flag is off for the user, refuses a blocked reel like going back does (`changeBlockedReason`, which includes a reel that is exporting: `Edit` cannot be opened then, and an open editor is frozen with the reason and keeps its draft, `app_docs/export.md`) and inserts
+  the job `{ kind: "owner_edit", owner_edit: { version_id, moves, adds?, texts? } }` under RLS (`adds`
+  only when the owner added a card, `texts` only when the owner edited a text, checked with
+  `parseOwnerTexts`; `moves` may then be empty). The browser never sends a photo's
   size. The editor then waits
   for its job (`jobs` from `LiveReel`): the progress overlay shows `Saving your changes`, the new
   version replaces the preview by itself like any new version, and the editor closes. A failed job
   leaves the draft open with `Your changes were not saved. Try again`.
-- Cancel (or `Move text` again) drops the draft and shows the version as it was. Nothing is queued.
+- Cancel (or `Edit` again) drops the draft and shows the version as it was. Nothing is queued.
 - `src/components/VersionList.tsx`, `src/lib/change-requests.ts`: a version with `edited_from_id`
   reads `Edited by you` (`versionOrigin`, `versionTitle`; the row carries `data-edited`), and its
-  details add `You moved or resized text in vN` (`editedFromLabel`, `version-edited-from`). A going
+  details add `You moved, resized or edited text in vN` (`editedFromLabel`, `version-edited-from`). A going
   back to it reads `Back to vN` like any going back.
 - `src/lib/step-words.ts`: the step `owner_edit` reads `Saving your changes` (failed: `Could not save
 your changes`); `JOB_STEPS.owner_edit` is that one step.
@@ -380,9 +564,23 @@ your changes`); `JOB_STEPS.owner_edit` is that one step.
   - `save_version` is replaced with the same signature, writing the four columns (absent keys give
     false and null; a JSON null engine box is stored as null). Its grants are restated: the
     service role only.
+- `supabase/migrations/20261119114356_owner_caption_moves.sql` (a new migration):
+  `owner_moves_component_check` accepts `CAPTION` (a caption block's row; its `item` is the
+  block's id). The grants are restated per role.
+- `supabase/migrations/20261119115900_owner_text_edits.sql` (a new migration):
+  - `jobs_owner_edit_shape_check` is replaced: `{ version_id, moves, adds?, texts? }`, texts an
+    array of 0 to 200, at least one move, card or text in total. The column comment names the
+    texts.
+  - `owner_texts`: the learning table of the text edits (below), with RLS on and each role granted
+    explicitly: `authenticated` selects its own rows, `service_role` everything, `anon` nothing.
+  - `save_version` gets one more parameter with a default, `p_owner_texts`, written to
+    `owner_texts` in the same transaction as the version and its `owner_moves` rows. A new
+    parameter is a new signature, so the old function is dropped first (never an overload) and the
+    grants are stated again: the service role only. Text rows without `p_edited_from_id` are
+    refused (`owner texts need the version they were made on`).
 - `apps/worker/src/job-kinds.ts`: `owner_edit` runs `runners.owner_edit` with the parsed payload
-  (`parseOwnerEdit`: a version id, moves and optional adds, at least one in all); any other payload
-  fails the job.
+  (`parseOwnerEdit`: a version id, moves, optional adds and optional texts, at least one in all);
+  any other payload fails the job.
 - `apps/worker/src/owner-edit.ts`, `runOwnerEdit`, one step `owner_edit`, no AI call:
   1. Reads the version the job names (it must be one of the reel's), its transcript and head track,
      and builds it for its components.
@@ -390,10 +588,14 @@ your changes`); `JOB_STEPS.owner_edit` is that one step.
      (`supabasePhotoLibrary(db).readyPhotos(job owner, ids)`: the reel owner's, `ready`, with a
      `large_key`, a width and a height); one that is not fails the job (`photo <id> is not a ready
 photo in the owner's library`). The photo's size in the version is the row's.
-  3. Applies the added cards (`applyOwnerAdds`), then drops the moves that change nothing; no move
-     and no card fails the job (`nothing was moved or resized`).
+  3. Applies the added cards (`applyOwnerAdds`), then the text edits that change a text
+     (`effectiveTexts`, `applyOwnerTexts`; a refused one fails the job: `the texts are refused:
+...`), then drops the moves that change nothing (a move of an element whose text was edited
+     always counts); no move, no card and no text fails the job (`nothing was moved, resized or
+edited`).
   4. Applies the moves, decides each moved big word's cut-out again and builds the result with the
-     edited version's engine record. A text that breaks the safe zone, or a card with less than a
+     edited version's engine record. A text that breaks the safe zone (moved, or grown by a text
+     edit), or a card with less than a
      fifth of it in the frame, fails the job (`the moves are refused: ...`; refused cards: `the
 cards are refused: ...`). All of these are permanent failures, and no version is written.
   5. Finds the engine-placed version the edits started from (`enginePlaced`: back through
@@ -402,8 +604,9 @@ cards are refused: ...`). All of these are permanent failures, and no version is
   7. Copies the edited version's AI record under the new version's id (so a later re-layout finds the
      same answer) and saves the version: parent the current version, `edited_from_id` the edited
      one, `engine_record` the edited version's, the build's `checks`, no title and no summary, and
-     the learning records.
-- The step summary reads `version N: M components moved by the owner, from version K`.
+     the learning records of the moves and of the text edits (`ownerTextRecords`).
+- The step summary reads `version N: M components moved by the owner, from version K`, with `and
+T texts edited` after `moved` when texts were edited.
 - `apps/worker/src/version-store.ts` reads `edited_from_id` and `engine_record` with a version and
   passes the two new parameters to `save_version`.
 
@@ -412,24 +615,24 @@ cards are refused: ...`). All of these are permanent failures, and no version is
 One row per component moved, resized, turned or swapped, and per card added, in one save, written by
 `save_version` with the version.
 
-| Column                                 | What it holds                                                                                                                                                                             |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `owner_id`, `reel_id`                  | whose move, on which reel                                                                                                                                                                 |
-| `version_id`, `from_version_id`        | the owner's version, and the version the owner edited                                                                                                                                     |
-| `engine_version_id`                    | the engine-placed version the engine's box was read from                                                                                                                                  |
-| `item`, `component`, `variant`, `text` | the item id, `ACCENT`, `QUESTION`, `BIGWORD`, `LIST`, `HOOK` or `VISUAL`, the variant entry the engine placed it with (`accent/above-head`), its text (a VISUAL's description)            |
-| `start_seconds`, `end_seconds`         | its time on screen                                                                                                                                                                        |
-| `engine_box`                           | where the engine placed it: `{ x, y, width, height, size }`; null for a card the owner added                                                                                              |
-| `owner_box`                            | where the owner put it, the same shape                                                                                                                                                    |
-| `moved`, `resized`                     | which of the two differs: a new corner is a move; a new size, or a box of another width or height (its lines set again), a resize                                                         |
-| `rotated`                              | a VISUAL turned: its turn differs from the engine's                                                                                                                                       |
-| `engine_rotation`, `owner_rotation`    | the engine's turn (always 0: the engine never turns a card) and the owner's, whole degrees clockwise (-179 to 180); 0 and 0 for a text. `engine_box` and `owner_box` are the card upright |
-| `added`                                | a card the owner added (`owner-visual-N`): no engine box, `moved`, `resized`, `rotated` and `swapped` false                                                                               |
-| `swapped`                              | a card whose picture differs from the engine's: the owner swapped it for a library photo                                                                                                  |
-| `photo_id`                             | the library photo the card shows (a plain id: the row outlives the photo); null for a text or a card without one                                                                          |
-| `replaced`                             | what a swap replaced: the picture of the version edited when it differs (the stand-in's file or the previous photo's id), else the engine's; null without a swap                          |
-| `wrap_width`                           | the wrap width an edge handle set, in frame pixels at the owner's size; null when the version's lines were kept                                                                           |
-| `context`                              | the moment (below)                                                                                                                                                                        |
+| Column                                 | What it holds                                                                                                                                                                                                                                                                                                              |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `owner_id`, `reel_id`                  | whose move, on which reel                                                                                                                                                                                                                                                                                                  |
+| `version_id`, `from_version_id`        | the owner's version, and the version the owner edited                                                                                                                                                                                                                                                                      |
+| `engine_version_id`                    | the engine-placed version the engine's box was read from                                                                                                                                                                                                                                                                   |
+| `item`, `component`, `variant`, `text` | the item id (a caption block's `block_<first caption>`), `ACCENT`, `QUESTION`, `BIGWORD`, `LIST`, `HOOK`, `VISUAL` or `CAPTION` (a caption block), the variant entry the engine placed it with (`accent/above-head`; a block's is its captions', `caption/default`), its text (a VISUAL's description; a block's sentence) |
+| `start_seconds`, `end_seconds`         | its time on screen                                                                                                                                                                                                                                                                                                         |
+| `engine_box`                           | where the engine placed it: `{ x, y, width, height, size }`; null for a card the owner added                                                                                                                                                                                                                               |
+| `owner_box`                            | where the owner put it, the same shape                                                                                                                                                                                                                                                                                     |
+| `moved`, `resized`                     | which of the two differs: a new corner is a move; a new size, or a box of another width or height (its lines set again), a resize                                                                                                                                                                                          |
+| `rotated`                              | a VISUAL turned: its turn differs from the engine's                                                                                                                                                                                                                                                                        |
+| `engine_rotation`, `owner_rotation`    | the engine's turn (always 0: the engine never turns a card) and the owner's, whole degrees clockwise (-179 to 180); 0 and 0 for a text. `engine_box` and `owner_box` are the card upright                                                                                                                                  |
+| `added`                                | a card the owner added (`owner-visual-N`): no engine box, `moved`, `resized`, `rotated` and `swapped` false                                                                                                                                                                                                                |
+| `swapped`                              | a card whose picture differs from the engine's: the owner swapped it for a library photo                                                                                                                                                                                                                                   |
+| `photo_id`                             | the library photo the card shows (a plain id: the row outlives the photo); null for a text or a card without one                                                                                                                                                                                                           |
+| `replaced`                             | what a swap replaced: the picture of the version edited when it differs (the stand-in's file or the previous photo's id), else the engine's; null without a swap                                                                                                                                                           |
+| `wrap_width`                           | the wrap width an edge handle set, in frame pixels at the owner's size; null when the version's lines were kept                                                                                                                                                                                                            |
+| `context`                              | the moment (below)                                                                                                                                                                                                                                                                                                         |
 
 `context` is `{ frame, font_pair, head, engine_zone, words, photo, others }`: the frame's size, the
 font pair, the head over the component's time (the box around the robust faces of the head track,
@@ -438,7 +641,9 @@ spoken while it shows (the transcript's, joined by spaces), the photo it shows a
 described it then (`{ description, tags }`, a snapshot quoted as data; null without a photo), and
 everything else on screen during its time (`{ item, component, text, start, end, box, rotation?,
 moved_by_owner }`, captions and cards included, each where the owner's version has it; `rotation`
-only for a turned card; an added card counts as moved by the owner).
+only for a turned card; an added card counts as moved by the owner). The captions are listed one
+by one where they are, never a block's box on top of them, and a block's own captions are left out
+of its record.
 
 Why a table, and why these keys:
 
@@ -472,24 +677,146 @@ from owner_moves
 order by created_at;
 ```
 
+### The learning data of text edits (`owner_texts`)
+
+One row per text edited in one save, written by `save_version` with the version, beside the
+`owner_moves` rows.
+
+| Column                          | What it holds                                                                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `owner_id`, `reel_id`           | whose edit, on which reel                                                                                                     |
+| `version_id`, `from_version_id` | the owner's version, and the version the owner edited                                                                         |
+| `item`, `part`                  | the element's id (a caption block's `block_<first caption>`) and its part: `lead` or `key`, a group's first caption, or empty |
+| `component`, `variant`          | `ACCENT`, `QUESTION`, `BIGWORD`, `LIST`, `HOOK` or `CAPTION`, and the variant entry the engine placed it with                 |
+| `before_text`, `after_text`     | the text of the version edited, and the owner's (a question's with its mark); never empty, never the same                     |
+| `words`, `word_ids`             | the spoken words the text is tied to, as the transcript has them, and their ids; empty for the hook                           |
+| `start_seconds`, `end_seconds`  | its time on screen, which a text edit never changes                                                                           |
+| `context`                       | `{ frame, font_pair, size, before_box, after_box }`: the element's box before the edit and in the saved version               |
+
+A sibling table and not more columns on `owner_moves`: a move's row compares two boxes and always
+has both, a text edit's row compares two texts and often has no move at all. Like `owner_moves`
+it is written in the version's transaction, its rows go with their reel (`reel_id` cascades, so
+`delete_reel` removes them) and with the owner's account, `authenticated` only reads its own rows
+(RLS `owner_texts: owner selects own`), `anon` nothing, and only `service_role` writes. One row
+per element and part and save (`unique (version_id, item, part)`).
+
+```sql
+select component, before_text, after_text, words
+from owner_texts
+order by created_at;
+```
+
 ### What later steps do with an owner's version
 
 - Every outcome is a new version; nothing rewrites one (`app_docs/edit-model.md`). So Start over, the
   automatic decide, a font pair change and a going back all leave the owner's version in the list,
   with its bytes and its learning rows as they were.
-- Start over decides from version 1, so its new version has the engine's placement, not the owner's.
-- A font pair change (`relayout`) places the version's AI answer again in the new pair, so its new
-  version has the engine's placement too. The owner's moves are not carried into the new pair. The
-  owner's pictures are (`app_docs/font-pairs.md`, "The relayout job"): a card that shows a library
-  photo is placed again showing it, at the photo's aspect, and an added card is kept as it was (its
-  photo, word, time, box and turn).
-- Going back to the owner's version copies its bytes: the moved texts and cards come back.
+- **A caption fix is a transcript correction of the reel** (owner decisions, 2026-11-19, option 1).
+  A text the owner types into a caption says what was really spoken, so it is kept for the reel,
+  not only in the version (`packages/edit/src/owner-corrections.ts`, the `owner_word_corrections`
+  table below):
+  - on Save the worker compares the captions of the version edited with the owner's
+    (`captionCorrections`): each caption whose text or words changed gives one correction per
+    spoken word it covers. Its first word gets the caption's text, each other word an empty text
+    (a word the owner's caption no longer shows: she typed fewer words than were spoken). A
+    caption she did not change gives none, so a correction is only ever what she typed. A fix
+    typed into an accent, a question, a big word, a list or the hook is that element's only and
+    is never a correction;
+  - the corrections are written per spoken word, with the word as the transcript had it, before
+    the version is saved (`apps/worker/src/word-corrections-store.ts`, an upsert: a later fix of
+    the same word replaces the earlier one, and a retry writes the same rows again). The version
+    the owner saved shows the fix only where she typed it, exactly as she saw it in the editor;
+  - every rebuild reads the reel's corrections (`liveCorrections`: only those whose word is still
+    in the transcript with the text it was corrected from, so a reel processed again from other
+    words keeps none by accident) and builds from the corrected transcript. The owner wins over
+    the transcript and over the curator's `word_fixes` (`withWordCorrections` replaces the
+    curator's fix of a corrected word). The engine then writes every caption and every list
+    phrase placed on a corrected word with her text, and `applyWordCorrections` marks those
+    captions as hers (`edit.owner.texts`, so they are never counted as the curator's words
+    fixed), makes a caption she typed over several spoken words one caption again (`relaidBlock`
+    inside its block), and writes an accent, a question or a big word placed on a corrected word
+    with the corrected words, wrapped inside its box, with no mark (the text is the reel's, not
+    that element's). The hook is never touched: it is the AI's written line, not spoken words. A
+    caption run that cannot be one caption in the new placement (a text on screen hides part of
+    its words) is a note (`rule` `owner-edit`, `outcome` `dropped`), its first word still showing
+    her text;
+  - on a Start over and on the automatic decide the AI reads the corrected transcript too
+    (`correctedTranscript`): in the hook's call and in the components' script each corrected word
+    says her text inside the spoken word's punctuation, a word her caption does not show is left
+    out (its sentence end moved to the word before it), and every word keeps its id and times.
+- **A font pair change keeps the owner's work** (owner feedback, 2026-11-19). It places the same
+  AI answer again in another pair, with the corrections, and must not lose what she did by hand.
+  Her version says what that is: `edit.owner` (`packages/edit/src/owner-marks.ts`), `{ placed,
+texts }`, the ids of the items she placed (`applyOwnerMoves` marks each moved item; a moved
+  caption block: each of its captions) and of the texts she wrote (`applyOwnerTexts`; a list's
+  level is `<id>/<role>`), sorted, each once. A version she never edited has no `owner` field and
+  is placed exactly as before. `carryOwnerEdits(from, placed, context)`
+  (`packages/edit/src/owner-carry.ts`) carries each mark onto the new placement, found by its id
+  (the same answer gives the same ids), and marks it again, so the next change carries it too:
+  - a text of an accent, a question, a big word, a list or the hook: written on the element again
+    (`applyOwnerTexts`, bound only by the format's length: it was within its limit when written)
+    and wrapped inside the element's box in the new font. A caption's text is not carried from
+    the version: it is the reel's correction, already on the placement;
+  - a place: the owner's box keeps its top and its centre line (a question its left edge) and its
+    text size (the styles' base sizes are the same in every pair, so the owner's size relative to
+    the base is her size in pixels); its lines are set again to the owner's box width in the new
+    font, when that width gives the owner's own lines back in the owner's font (a list or a
+    caption block can hold a level or a group on more lines than its width needs, which is the
+    engine's choice and is made again). A caption block is found by its sentence (the block
+    showing most of the same spoken words). The box is then settled (`settleOwnerMove`): one that
+    no longer fits the safe zone is moved in, or made smaller, the least it must, with a note in
+    the engine record (`moved` or `shrunk`), never dropped. A VISUAL's box and turn do not depend
+    on the font and are kept as they were; a moved big word's cut-out is decided again. The
+    owner's pictures are kept as before (`app_docs/font-pairs.md`, "The relayout job":
+    `ownerPictures`, `keepOwnerAdds`);
+  - each edit that cannot be kept is one note in the new version's `engine_record`: the old item's
+    id, its component, `rule` `owner-edit`, `outcome` `dropped`, and a reason in plain words
+    (`your text "..." could not be kept: the new version has no accent on the same words`). The
+    step's line counts the corrections shown and the edits carried together: `, 3 of your edits
+kept, 2 of your edits could not be kept`.
+- **A Start over keeps only the corrections** (owner decisions, 2026-11-19, option 1). It is a
+  fresh AI answer: no place, no size, no caption block move and no element text of the owner's
+  version goes with it, and not the hook's text; the AI picks everything again from the corrected
+  transcript and the captions show her corrections. The cards she added by hand (`Add picture
+here`) are kept as they were (`keepOwnerAdds`, the reel's current version read beside version
+  1), since no answer can place them again. Nothing is noted as kept or lost; the step's line says
+  `, N word corrections of yours kept` (and `, M word corrections of yours could not be kept`).
+  The owner's own version stays in the list with everything in it.
+- Going back to the owner's version copies its bytes: the moved texts and cards, the fixed words
+  and the marks come back.
 - Export renders the owner's version like any version (`app_docs/export.md`).
+
+### The reel's transcript corrections (`owner_word_corrections`)
+
+One row per spoken word the owner corrected in a caption, per reel (migration
+`20261119154434_owner_word_corrections.sql`). No pipeline step writes it, so a reel processed
+again (transcribe and retime caches included) keeps it.
+
+| Column                     | What it holds                                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `reel_id`, `word_id`       | the reel and the spoken word's id in its transcript (`w0004`); the primary key, so one row per word   |
+| `owner_id`                 | whose correction                                                                                      |
+| `text`                     | what her caption shows for the word; empty: the word joined the caption of the word before it         |
+| `original_text`            | the word as the transcript had it: the correction holds only while the transcript still has this text |
+| `created_at`, `updated_at` | when the word was first corrected, and last                                                           |
+
+The learning record of each fix (the text before and after, per save) stays in `owner_texts`; this
+table holds only the reel's current corrections. RLS is on: `authenticated` only reads its own rows
+(`owner_word_corrections: owner selects own`), `anon` nothing, and only `service_role` (the worker's
+`owner_edit` job) writes. The rows go with their reel (`reel_id` cascades, so `delete_reel` removes
+them) and with the owner's account.
+
+```sql
+select word_id, original_text, text
+from owner_word_corrections
+where reel_id = '<reel>'
+order by word_id;
+```
 
 ## How to Use
 
 1. Open a reel in the studio on a desktop and wait for the preview.
-2. Press `Move text` under the preview. The preview pauses and a bar appears on top of it.
+2. Press `Edit` under the preview. The preview pauses and a bar appears on top of it.
 3. Select a text or a visual card: click its box on the preview (go to a moment where it shows with
    the ruler), or pick it from the list in the bar. Its kind shows above its box.
 4. Drag the box to move it. Drag the square handle at its bottom right corner to make it larger or
@@ -510,15 +837,23 @@ order by created_at;
    click a photo: the card shows from the word being spoken for 1.5 s, in a corner, on top of any
    card already there. Either can then be moved, resized and turned like any card. Over hidden
    footage `Add picture here` is off.
-6. Press `Save`. A new version, `Edited by you`, becomes current. Press `Cancel` to drop the changes.
-7. To compare, open another version's details in the Versions list and press `Go back to this`.
+6. To fix a word, double-click the text (or select it and press `Edit text` above its box). A
+   field opens over it with its words. Type the text and press Enter, or click outside the field;
+   press Esc to leave it as it was. Only that text changes: the same word in a caption, an accent
+   or the hook stays. The text keeps its place and size and is set on more lines when it needs
+   them; resize or move it after if you want. On a caption block the field holds the captions on
+   screen at the paused moment; on a list, the level you double-clicked (the key phrase from
+   `Edit text`). A text cannot be empty, and can be at most three times as long as it was (40
+   characters at least).
+7. Press `Save`. A new version, `Edited by you`, becomes current. Press `Cancel` to drop the changes.
+8. To compare, open another version's details in the Versions list and press `Go back to this`.
 
 ## Configuration
 
 The whole editor sits behind the PostHog feature flag `studio-owner-edit`, which gates the owner's
-Move editor (`app_docs/feature-flags.md`). It is evaluated on the server for the signed-in user:
-off, the reel page renders neither the `Move text` button nor the editor, and `requestOwnerEdit`
-refuses (`Moving is not available yet`) before anything is queued. PostHog unconfigured, slow or
+editor (`app_docs/feature-flags.md`). It is evaluated on the server for the signed-in user:
+off, the reel page renders neither the `Edit` button nor the editor, and `requestOwnerEdit`
+refuses (`Editing is not available yet`) before anything is queued. PostHog unconfigured, slow or
 unreachable means off. The specs turn it on with `E2E_MOCK_FLAGS=studio-owner-edit` (the studio's
 Playwright config and the ADW dev command set it). The job needs no AI and no prompt. A moved big word that now needs a cut-out uses the mask tool
 like decide does (`E2E_MOCK_MASK` in specs).
@@ -651,6 +986,126 @@ moved, a resized and a widened component match between preview and export`: the 
   the bound, against the version before the moves at most 0.919066 mid-reel, and the turned card
   against the upright previews 0.94604 at its lowest (`app_docs/export.md`).
 
+- Caption blocks. `packages/edit/src/caption-blocks.test.ts` (unit): every shown caption in one
+  group of one block, each group ending on one moment, the blocks in time order; a block as a
+  component of the built page (its box around its captions, its parts); a block laid from its
+  corner on its stored lines exactly where the engine put its captions; a block moved (every
+  caption by the same amount, nothing else changed), resized about its corner on the same lines,
+  set on more lines by a narrower wrap width with its words and times kept, settled at the safe
+  zone's edge and named when it leaves it; a single caption and a block id that names none
+  refused; left out when it changes nothing, and recorded as `CAPTION` with the engine's box, the
+  captions' variant and zone, its own captions not among the others. `apps/worker/src/owner-edit.test.ts`:
+  a block moved, every caption of the sentence shifted and nothing else, recorded as `CAPTION`
+  against the engine's box, and refused past the safe zone. `apps/studio/src/lib/owner-edit.test.ts`:
+  a block listed as `Captions` (never a single caption), moved, resized and re-wrapped like a
+  text. `live-page.test.ts`: a block's elements are its captions, moved by a drag and scaled about
+  the block's corner with the gap between lines kept. `apps/studio/db-tests/owner-edits.test.ts`:
+  a `CAPTION` row saved, an unknown component refused.
+- `apps/studio/e2e/owner-edit-captions.spec.ts` (`yarn test:e2e`, the fixture clip with the
+  QUESTION, whose first four words show as the captions "this is a short"): the button reads
+  `Edit` and the list is named `Text or visual to edit`; the block is one line of the list
+  (`Captions: this is a short`), selected as `Captions` with a corner handle and four edge
+  handles, no box for a single caption; a drag moves all four captions on the pointer at every
+  step, at the drop straight after pointer up while the draft is `swapping`, and the same once
+  swapped in; the corner handle scales every caption while held, the block's corner kept; the
+  right edge handle held in by half sets the captions on more lines at the same size, kept at the
+  drop and after the swap. Save queues one move with the block's id and a wrap width, the worker
+  saves the version, the preview draws the captions where the owner left them, and the learning
+  row is `CAPTION`, `caption/default`, moved and resized, with both boxes and its wrap width. With
+  `OWNER_EDIT_SHOTS` it keeps `captions-1-selected.png` to `captions-4-saved.png`.
+- Carrying the owner's work. `packages/edit/src/owner-carry.test.ts` (unit): into another font
+  pair, every element text fix and every place kept (the box's top, centre line and size; nothing
+  outside the safe zone) on a placement made with the reel's correction, the marks carried and
+  carried again by a second change; a caption's text never carried from the version (without the
+  correction the caption says its spoken word); a version the owner never edited left as the
+  engine placed it; a hook as large as the safe zone allows moved in or made smaller in three
+  other pairs, noted and never dropped. `schema.test.ts`: a big word takes an owner's longer text
+  with `breaks`. `apps/worker/src/owner-edit.test.ts`: a font pair change after the owner's edits
+  keeps the accent's text, size and top, the caption fix (from the reel's corrections), the
+  block's top and the hook's text, with the marks, no dropped note and the step's line (`N of your
+edits kept`), and a second change carries them again; the captions are written from the reel's
+  corrections, never from the version's own caption texts (a newer correction wins, and with none
+  the captions say the spoken words); a version never edited gets no such line.
+- Transcript corrections. `packages/edit/src/owner-corrections.test.ts` (unit): a save's
+  corrections are the one caption the owner's text changed, by its spoken word; a word her caption
+  no longer shows gets an empty text; another element's fix gives none; only corrections whose
+  word still has its original text hold; the transcript the AI reads says her words in the spoken
+  word's punctuation, leaves out a word she dropped and keeps its sentence end; in a rebuild the
+  corrections win over the curator's fix, show on the caption (marked as hers, never counted as a
+  word fixed) and on a component placed on the word, make a caption typed over several words one
+  caption again, and are noted when that cannot be. `apps/worker/src/owner-edit.test.ts`: a
+  caption fix is written per spoken word with the word as the transcript has it; a fix typed into
+  an accent or the hook writes none. `apps/worker/src/decide/run-decide.test.ts`: a Start over
+  after the owner's edits sends the corrected words to both AI calls, shows the corrections in the
+  captions over the curator's own fix, marks only those captions as hers, keeps no hook text,
+  accent text or block place of her version, notes nothing as kept or lost and says `N word
+corrections of yours kept`. `apps/studio/db-tests/owner-edits.test.ts`: one row per spoken
+  word (a later fix replaces it), a bad word id or a text too long refused, the rows gone with
+  their reel; the owner reads only her own rows and writes none, `anon` reads none.
+  `apps/studio/db-tests/grants.test.ts` lists the table. `apps/studio/e2e/owner-edit-text.spec.ts`:
+  the save writes one correction (`w0004`, `brief`, from `short`) and none for the accent's or the
+  hook's text; picking the `bold` pair makes a version set in `bold` whose caption still shows
+  `brief`, with `cw0004` among its marks, one dropped note each for the hand-made accent and for
+  the hook (this reel's AI answer wrote none) and the step's line `1 of your edits kept, 2 of your
+edits could not be kept`; Start over (with the mocked AI's unchanged answer) makes a version
+  whose captions read `this is a brief`, whose only mark is `cw0004`, with the AI's hook, without
+  the hand-made accent and with no `owner-edit` note, whose AI record shows `brief` and not
+  `short` in both calls, and whose step line says `1 word correction of yours kept`.
+- Text edits. `packages/edit/src/owner-text.test.ts` (unit): the stored text (one line, single
+  spaces, no control character), the limit (three times, 40 at least, the format's most), the
+  parsed edits and every malformed one, `spreadWords` against the reveal's own spread; an accent's
+  text changed with its words, time, size and every other element kept, its box's top and centre
+  line kept; another accent on the same spoken word, the hook and the captions left as they were;
+  a longer text wrapped inside the box's width, the box taller and no wider; three words written
+  for one spoken word all in on that word (the page's word elements and their tweens), the
+  out-fade where it was; the hook's text changed with its window kept, and its new text typed letter by letter with
+  its carets and its key sounds in step; a
+  question's mark and left edge kept, a typed mark never doubled; a big word changed to any text within
+  the general limit, wrapped inside its width with `breaks`, built on centred lines and escaped; a LIST's key phrase changed with the other level's lines
+  and the number kept, the number refused; a caption group: one word fixed in that caption only
+  with every caption's word and time kept, more words spread over the same captions, fewer words
+  joining a caption to the one before with no spoken word lost and the block read back the same,
+  the edited group wrapped inside the block's width with the other groups left where they are,
+  two groups of one sentence in one save; the limits (empty, too long, an unknown element, an
+  element twice); a version with no text edit left as it is and an edit that changes nothing left
+  out; a text edit with a move of the same element; the learning records (the text before and
+  after, the part, the spoken words and their ids, none for the hook, the boxes).
+  `packages/edit/src/owner-edit.test.ts`: a LIST's and a caption block's `parts`.
+  `apps/worker/src/owner-edit.test.ts`: `parseOwnerEdit` with texts alone, with moves, and
+  malformed; a text edit saved as a new version with only that element's words changed, its time
+  and every other element kept, one `owner_texts` record and no move record, the edited version
+  not rewritten; a caption group's word and the hook fixed with a move applied after the text,
+  each recorded; an empty text, one too long, an element that is no text and a text that changes
+  nothing refused with no version written. `apps/studio/src/lib/owner-edit.test.ts`: which
+  components have a text to edit, the part an edit is for (a block's group at the paused moment,
+  a list's level under the pointer), the field's box. `live-page.test.ts`: a word element whose
+  text changed is the one named as changed. `change-requests.test.ts`: the details line.
+  `apps/studio/db-tests/owner-edits.test.ts`: a job with texts alone queued; texts that are no
+  list, none at all or more than 200 refused; `save_version` writing the text rows with the
+  version, read by their owner only and never written by them; rows without the version edited, a
+  text that did not change, an empty one, a component with no text and an element twice refused
+  with nothing written; the rows gone with their reel. `grants.test.ts` covers `owner_texts`.
+- `apps/studio/e2e/owner-edit-text.spec.ts` (`yarn test:e2e`, the fixture clip with the QUESTION
+  and an accent added by hand on the spoken word "short", which its caption shows too): `Edit
+text` on the selected caption block opens the field with `this is a short` and `15 of 45
+characters`; Enter with `this is a brief` shows `brief` at once in that caption's own word
+  element, the accent on the same spoken word still `short`, the hook and the other captions
+  unchanged, the block's top and size kept, Save enabled. A double-click on the accent opens the
+  field with `short` (`5 of 40 characters`); a click outside keeps `short and sweet` (typed with
+  stray spaces), the caption still `brief`, and its three words all come in as "short" is spoken.
+  Escape on the hook's field changes nothing; an empty text is refused with `A text cannot be
+empty. The text stays as it was`; the field's `maxlength` is three times the hook's characters.
+  `Edit text` on the hook with `A brief test for the real studio` changes the hook only, its top
+  and size kept, and the new text is typed like any hook: every letter an element of its own,
+  each but the last with its caret, exactly the letters whose moment has come on screen with one
+  caret after the last of them halfway through, and the whole text with no caret past 60% of the
+  hook's window (`hookReveal`, `typedCount`).
+  Save sends the three texts, the worker saves a version `Edited by you` that draws them, the
+  stored edit holds the text on the one caption, the one accent and the hook with their words and
+  times as they were and every other overlay unchanged, the caption's new word still comes in on
+  its spoken word, and the three `owner_texts` rows hold the text before and after and the spoken
+  words (none for the hook, placed with `hook/typed`). With
+  `OWNER_EDIT_SHOTS` it keeps `text-1-field-open.png` to `text-4-saved.png`.
 - Pictures from the library. `packages/edit/src/owner-edit.test.ts`: a swap's `photo_id` parsed
   (another value and one on a text refused); the photo shown in place of the stand-in at its aspect
   ratio and named in `inputs.photos`, a photo not vouched for refused by `applyOwnerMoves` and
@@ -702,9 +1157,50 @@ was deleted from the library`. Before the Delete, picking the `bold` font pair q
 
 - Never rewrite the version the owner edited: Save makes a new version after the current one.
 - Never change anything but the place, the text size and the line breaks of the moved components,
-  a moved VISUAL's box and turn, and a card's picture swapped for one of the owner's ready library
-  photos: not a word, a time, a caption or a card's description. A line break changes only through
-  a wrap width, on the engine's balanced lines; never stretch or squeeze letters to fill a box.
+  a moved VISUAL's box and turn, a card's picture swapped for one of the owner's ready library
+  photos, and the words of a text the owner edited: not a time, a spoken word or a card's
+  description. A line break changes only through a wrap width or a text edit's wrap inside the
+  box, on the engine's balanced lines; never stretch or squeeze letters to fill a box.
+- Never let a text edit change another element: it writes the one element it names (a caption
+  block's group: that group's captions). The same spoken word in a caption, an accent, a list or
+  the hook keeps its text. Never turn an owner's text edit into a `word_fixes` entry.
+- Never change a time or an anchor in a text edit, and never drop a spoken word: a caption left
+  with no word joins its spoken words to the caption before it. The edited text is revealed over
+  the element's same spoken words by `wordReveal`.
+- Never add or delete a whole element in a text edit (a text, a caption block, a group).
+- Never save an empty text or one over `ownerTextLimit` (three times the version's own text, 40
+  characters at least, the format's limit at most); the studio says why and the worker refuses.
+- Never measure a text's limit against a draft: the original is the version being edited.
+- Never place an edited text again with the engine: its box keeps its top and its centre line (a
+  question its left edge), the text wraps inside the box's width, and only the safe zone moves
+  it (`settleOwnerMove`).
+- Never lose the owner's work in a font pair change without saying so: every mark of `edit.owner`
+  is carried onto the new placement (`carryOwnerEdits`) or noted in the new version's engine
+  record (`rule` `owner-edit`, `outcome` `dropped`) and counted in the step's line. A carried box
+  that no longer fits the safe zone is moved in or made smaller and noted, never dropped and never
+  left outside the safe zone.
+- Never carry a place, a size or an element's text into a Start over, and never the hook's text:
+  a Start over is a fresh answer with only the reel's corrections and the cards she added.
+- Never carry a component's fix or place onto another component: an element is found by its id
+  in the same answer.
+- Never treat a fix typed into an accent, a question, a big word, a list or the hook as a
+  transcript correction, and never change the hook with a correction.
+- Never build a rebuild (a font pair change, a Start over, the automatic decide) from the
+  transcript without the reel's live corrections, and never let the curator's `word_fixes` win
+  over one.
+- Never write `owner_word_corrections` from a pipeline step or from the studio: only the
+  `owner_edit` job writes it, with the service role; no step that processes a reel again touches
+  it.
+- Never write `edit.owner` by hand or from the engine: `applyOwnerMoves`, `applyOwnerTexts`,
+  `carryOwnerEdits` and `applyWordCorrections` write it, and a placement made again starts with
+  none.
+- Never apply the AI answer's big word rule to the owner's text: only the general length limit
+  binds it.
+- Never apply a save's parts in another order than added cards, text edits, moves: the studio's
+  draft (`draftEdit`) and the worker both do, so the draft is what is saved.
+- Never save a text edit without its `owner_texts` row, nor the row without the version: both go
+  through `save_version` in one transaction; only `service_role` writes the table, and its rows
+  go with their reel.
 - Never trust a photo's size or ownership from the browser: the worker reads each photo a swap or
   an added card shows from the `photos` table with the service role (the reel owner's, `ready`,
   with a `large_key`, `supabasePhotoLibrary`) and writes its `width` and `height` itself; any other
@@ -723,7 +1219,8 @@ was deleted from the library`. Before the Delete, picking the `bold` font pair q
 - Never read a turned card's place from its upright box for the frame rule or an overlap: read the
   rectangle around it (`visualBounds`, `rotatedBounds`).
 - Never draw the draft with anything but the one builder: the editor's layer draws boxes and
-  handles only, never text, and is never part of the built page or the export. The instant view
+  handles only, never the text on screen (its one text is the field of an inline edit, open only
+  while the owner types), and is never part of the built page or the export. The instant view
   only restyles the builder's own elements on the page on screen (their place, size and lines, from
   a page the builder built, or scaled from them while a corner is held), and a drop always ends on
   the rebuilt page's own values.
@@ -752,21 +1249,38 @@ was deleted from the library`. Before the Delete, picking the `bold` font pair q
 - Never give an added card a click within the click's gap of another sound (`sound-gap`).
 - Never draw an added card under the cards already there: it goes to the end of the `behind` track,
   and the editor stacks its boxes in the page's order (`stackedAt`).
-- Never move a caption with this editor.
+- Never move a single caption with this editor: a sentence's captions move, resize and re-wrap as
+  one block, and a block is never cut inside a caption.
+- Never store a caption block: it is read back from the captions (`captionBlocks`) the way the
+  engine made it, so a version saved before blocks were movable has the same blocks.
 - Never render the editor or queue an `owner_edit` job for a user whose `studio-owner-edit` flag is
   off: the page and `requestOwnerEdit` both evaluate it on the server.
 
 ## Notes
 
-- A big word cannot be rewrapped: it is one or two words, and its schema has no `breaks`. Its corner
-  handle still resizes it; it has no edge handles, and a wrap width on it is refused.
+- A big word has no edge handles and a wrap width on it is refused: its lines come from its text
+  edit (wrapped inside its width) and its corner handle resizes it.
 - A wrap width can only give whole lines. A top or bottom drag picks the nearest height the text
   can take, so the box can come out taller or shorter than the handle was dragged. A LIST's single
   wrap width applies to its lead-in and key phrase together; its number keeps its line.
 - Not done yet: touch and phone (the button is hidden below `lg`), keyboard nudging, turning a
   text, deleting a card, timing changes (an added card always lasts 1.5 s), matching the picker's
   photos to the reel by their tags (it shows every ready photo), undo inside the editor (Cancel
-  drops everything), and carrying the owner's moves into another font pair.
+  drops everything), and carrying a swapped photo of an answer's card through a Start over (the
+  new answer's cards are other cards; a font pair change keeps it).
+- A correction is undone only by typing the spoken word back into the caption (it is then stored
+  as the word's own text); there is no list of corrections to clear yet. A reel processed again
+  whose transcript changed a corrected word drops that correction silently (`liveCorrections`).
+- A text edit keeps the element's box width, so a word added to a narrow box (a one-word accent)
+  goes on a new line; the owner widens the box with an edge handle after. A word wider than the
+  box makes the box that wide.
+- A LIST's number and a VISUAL's description are not edited. A caption block is edited one group
+  at a time (the captions on screen at the paused moment), not the whole sentence at once.
+- The export guardrail (`test:tools`, the owner's Mac only) has no case for an edited text yet:
+  the builder draws an owner's text through the same `text` fields it always drew.
+- A caption block's time is its sentence's, and its box is the box around all its groups: at a
+  paused moment the box can be larger than the captions then on screen, when another group of the
+  sentence takes more lines.
 - A new version arriving while the editor is open (a job finishing) replaces the preview and closes
   the editor: the draft is lost. The moves are small, so this is accepted for now.
 - Other docs this change touches: `app_docs/change-requests.md` (the list's `Edited by you`),
@@ -774,4 +1288,5 @@ was deleted from the library`. Before the Delete, picking the `bold` font pair q
   `app_docs/preview.md` (the player's `overlay`, `controls` and `pause`), `app_docs/studio.md` (the
   job kind and the table), `app_docs/status.md` (the step's words), `app_docs/studio-reel-layout.md`
   (the control row), `app_docs/export.md` (the guardrail's case), `app_docs/failures.md` (Try again),
-  `app_docs/font-pairs.md` (a re-layout does not carry the moves).
+  `app_docs/font-pairs.md` (a re-layout carries the owner's work and the corrections),
+  `app_docs/decide-step.md` (the AI reads the corrected transcript).

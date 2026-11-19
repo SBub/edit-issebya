@@ -188,7 +188,10 @@ export function build(
     options.engineRecord,
   );
   const spans = maskSpans(edit, transcript, preset);
-  const masks = spans.map((maskSpan) => {
+  // Only the full page draws the cut-out's composites and names its masks: a
+  // layer page needs none, so an edit whose masks are not made yet still
+  // builds its front page (the owner's editor and the carry read its boxes).
+  const masks = (layer === "full" ? spans : []).map((maskSpan) => {
     const mask = (edit.inputs.masks ?? []).find(
       (entry) =>
         Math.abs(entry.start - maskSpan.start) < 0.0005 &&
@@ -620,7 +623,14 @@ export function build(
   const assets = assetsOf(edit, cues, masks, measurer.pair).filter((asset) =>
     layerNames(layer, asset.role),
   );
-  const components = placedComponents(edit, boxes, levels, [...bigWords.values()], resolved);
+  const components = placedComponents(
+    edit,
+    boxes,
+    levels,
+    [...bigWords.values()],
+    resolved,
+    transcript,
+  );
   return { html, assets, checks, components };
 }
 
@@ -696,6 +706,8 @@ function behindElement(
     `top: ${px(box.y)}px`,
     `font-size: ${px(box.size)}px`,
     `color: ${box.color}`,
+    // An owner's text on several lines: centred, like an accent's.
+    ...(box.lines.length > 1 ? ["text-align: center"] : []),
     ...extra,
   ].join("; ");
   return `<div${attrs([
@@ -703,7 +715,7 @@ function behindElement(
     ["class", `clip word f-${box.font}`],
     ...timing,
     ["style", css],
-  ])}>${escapeHtml(box.text)}</div>`;
+  ])}>${box.lines.map(escapeHtml).join("<br />")}</div>`;
 }
 
 // The text the page shows in its own place, each at the position the layout

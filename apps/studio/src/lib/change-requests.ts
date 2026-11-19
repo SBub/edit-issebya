@@ -57,7 +57,9 @@ export function editedFromLabel(
 ): string | null {
   if (!version.edited_from_id || version.restored_from_id) return null;
   const from = versionsById.get(version.edited_from_id);
-  return from ? `You moved or resized text in v${from.number}` : "You moved or resized text";
+  return from
+    ? `You moved, resized or edited text in v${from.number}`
+    : "You moved, resized or edited text";
 }
 
 // A version's one-line title in the versions list. A going back, the owner's

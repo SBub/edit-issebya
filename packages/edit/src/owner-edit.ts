@@ -6,8 +6,25 @@ import {
   wholeDegrees,
 } from "./behind.ts";
 import { build } from "./build.ts";
-import type { PlacedComponent } from "./components.ts";
+import {
+  type BlockUnitText,
+  type CaptionBlock,
+  boxAround,
+  captionBlocks,
+  captionFont,
+  captionRect,
+  captionSize,
+  captionText,
+  groupLineWidths,
+  CAPTION_BLOCK_PREFIX,
+  isCaptionBlockId,
+  layBlock,
+  storedLines,
+  wrapGroup,
+} from "./caption-blocks.ts";
+import { type PlacedComponent, isCaptionBlock } from "./components.ts";
 import type { EngineComponent, EngineNote } from "./engine-note.ts";
+import { withOwnerMarks } from "./owner-marks.ts";
 import { MIN_SIZE_PX, balancedLines } from "./engine-place.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import { type Box, type HeadTrack, boundingBox, facesOver } from "./head-track.ts";
@@ -17,7 +34,7 @@ import type { Measurer } from "./measure.ts";
 import { ISSEBYA_PRESET, type Preset, wordsText } from "./preset.ts";
 import { isQuestion, questionText } from "./question.ts";
 import { type EditPhoto, withPhotoInputs } from "./photos.ts";
-import type { BehindVisualItem, Edit, TransitionLevel } from "./schema.ts";
+import type { BehindVisualItem, CaptionItem, Edit, TransitionLevel } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
 import { LEVEL_ROLES, levelBoxes, levelStyle } from "./transitions.ts";
@@ -31,8 +48,9 @@ import { STYLES, VISUAL_STAND_INS } from "./variants.ts";
 // its variant draws inside the box. A VISUAL's box moves, scales (keeping
 // its picture's aspect ratio) and turns about its centre; a text never turns.
 
-// The components the owner may move and resize: every text pick and the
-// VISUALs. Captions are not.
+// The components the owner may move and resize: every text pick, the VISUALs
+// and the captions, a sentence's captions as one block (`caption-blocks.ts`;
+// owner decision 2026-11-19). A single caption is never moved on its own.
 export const MOVABLE_COMPONENTS: readonly EngineComponent[] = [
   "ACCENT",
   "QUESTION",
@@ -40,9 +58,11 @@ export const MOVABLE_COMPONENTS: readonly EngineComponent[] = [
   "LIST",
   "HOOK",
   "VISUAL",
+  "CAPTION",
 ];
 
-export function isMovable(component: Pick<PlacedComponent, "component">): boolean {
+export function isMovable(component: Pick<PlacedComponent, "component" | "parts">): boolean {
+  if (component.component === "CAPTION") return isCaptionBlock(component);
   return MOVABLE_COMPONENTS.includes(component.component);
 }
 
@@ -51,9 +71,11 @@ export function isMovable(component: Pick<PlacedComponent, "component">): boolea
 // ratio to it). A move that only moves keeps the size; one that only resizes
 // keeps the corner. `width`, when set, is the wrap width in frame pixels at the
 // move's size: the text is set again on the fewest balanced lines whose widest
-// fits it (a LIST: its lead-in and its key phrase each), so a wider box has
-// fewer lines and a narrower one more, the letters never stretched. Without
-// it the version's own lines are kept. A big word has no wrap width.
+// fits it (a LIST: its lead-in and its key phrase each; a caption block: each
+// of its groups, between whole captions), so a wider box has fewer lines and a
+// narrower one more, the letters never stretched. Without it the version's own
+// lines are kept. A big word has no wrap width. A caption block's id is its
+// block's (`block_<first caption>`): the move is for the whole sentence.
 export interface OwnerTextMove {
   id: string;
   kind?: never;
@@ -215,7 +237,7 @@ function isWrapWidth(width: unknown): width is number {
 // The lines of a text set at `size` in `font` on the fewest balanced lines (the
 // engine's own balancing) whose widest fits `width`; one word a line when even
 // that is wider (a word is never cut).
-function wrapToWidth(
+export function wrapToWidth(
   text: string,
   font: FontRole,
   size: number,
@@ -246,7 +268,7 @@ function lineWidths(text: string, font: FontRole, size: number, measurer: Measur
 
 // An overlay's font (an accent, a question or the hook): its own, or the
 // accent style's, as the builder reads it.
-function overlayFont(item: { font?: FontRole }): FontRole {
+export function overlayFont(item: { font?: FontRole }): FontRole {
   return item.font ?? STYLES.accent.font;
 }
 
@@ -263,11 +285,11 @@ function overlayText(
 }
 
 // `breaks` for a text's lines: none on one line.
-function breaksFor(lines: readonly string[]): { breaks?: number[] } {
+export function breaksFor(lines: readonly string[]): { breaks?: number[] } {
   return lines.length > 1 ? { breaks: breaksOf(lines) } : {};
 }
 
-function withoutBreaks<T extends { breaks?: number[] }>(item: T): Omit<T, "breaks"> {
+export function withoutBreaks<T extends { breaks?: number[] }>(item: T): Omit<T, "breaks"> {
   const copy = { ...item };
   delete copy.breaks;
   return copy;
@@ -277,6 +299,11 @@ function withoutBreaks<T extends { breaks?: number[] }>(item: T): Omit<T, "break
 // smallest level never under it) nor above the format's largest text (a big
 // word: the frame's height). The safe zone bounds it further (`settleOwnerMove`).
 export function ownerSizeRange(edit: Edit, id: string, preset: Preset): [number, number] | null {
+  if (isCaptionBlockId(id)) {
+    const first = id.slice(CAPTION_BLOCK_PREFIX.length);
+    const placed = edit.tracks.captions.some((item) => item.id === first && item.position);
+    return placed ? [MIN_SIZE_PX, MAX_TEXT_SIZE] : null;
+  }
   const overlay = edit.tracks.overlays.find((item) => item.id === id);
   if (overlay) return [MIN_SIZE_PX, MAX_TEXT_SIZE];
   const word = (edit.tracks.behind ?? []).find((item) => item.id === id && item.kind === "word");
@@ -305,9 +332,10 @@ export function ownerSizeRange(edit: Edit, id: string, preset: Preset): [number,
 // over its old one), at whole pixels; with a wrap width its lead-in and key
 // phrase are set again to it and the levels stacked again, each centred on the
 // widest as the engine stacks them, the gaps between them scaled. Refused with
-// reasons: an id that is no text component of the edit (a caption and a VISUAL
-// are not moved), a size outside the component's range, a wrap width on a big
-// word or one that is no positive number. A VISUAL's box move writes its
+// reasons: an id that is no text component of the edit (a single caption is
+// not moved, only its block), a size outside the component's range, a wrap
+// width on a big word or one that is no positive number. A caption block:
+// every caption of the sentence (`movedBlock`). A VISUAL's box move writes its
 // `box` and, with a turn, its `rotation` (none when upright).
 export function applyOwnerMoves(
   edit: Edit,
@@ -362,7 +390,35 @@ export function applyOwnerMoves(
     }
     byId.set(move.id, move);
   }
+  // The caption blocks moved: every caption of the sentence, as one box.
+  const captionPlaces = new Map<string, { x: number; y: number; size: number }>();
+  const blockMoves = [...byId.values()].filter((move) => isCaptionBlockId(move.id));
+  if (reasons.length === 0 && blockMoves.length > 0) {
+    const blocks = captionBlocks(edit, transcript);
+    for (const move of blockMoves) {
+      const block = blocks.find((entry) => entry.id === move.id);
+      if (!block) {
+        reasons.push(`${move.id}: not a caption block of this version`);
+        continue;
+      }
+      for (const [id, place] of movedBlock(edit, block, move, { transcript, preset, measurer })) {
+        captionPlaces.set(id, place);
+      }
+    }
+  }
   if (reasons.length > 0) return { ok: false, reasons };
+  const captions =
+    captionPlaces.size === 0
+      ? edit.tracks.captions
+      : edit.tracks.captions.map((item) => {
+          const place = captionPlaces.get(item.id);
+          if (!place) return item;
+          return {
+            ...item,
+            position: { x: place.x, y: place.y, align: "left" as const },
+            size: place.size,
+          };
+        });
 
   const levels = levelBoxes(
     edit,
@@ -459,11 +515,101 @@ export function applyOwnerMoves(
   });
   return {
     ok: true,
-    edit: withPhotoInputs({
-      ...edit,
-      tracks: { ...edit.tracks, overlays, transitions, ...(behind ? { behind } : {}) },
-    }),
+    edit: withOwnerMarks(
+      withPhotoInputs({
+        ...edit,
+        tracks: { ...edit.tracks, captions, overlays, transitions, ...(behind ? { behind } : {}) },
+      }),
+      // What the owner placed, marked in the version: each item moved, a moved
+      // caption block as each of its captions.
+      {
+        placed: [
+          ...[...byId.keys()].filter((id) => !isCaptionBlockId(id)),
+          ...boxes.keys(),
+          ...captionPlaces.keys(),
+        ],
+      },
+    ),
   };
+}
+
+// A caption block's captions as the block lays them: each with its text and
+// font, by group.
+export function blockUnits(
+  edit: Edit,
+  block: CaptionBlock,
+  { transcript, preset }: Pick<Context, "transcript" | "preset">,
+): { items: CaptionItem[]; units: BlockUnitText[] }[] {
+  const byId = new Map(edit.tracks.captions.map((item) => [item.id, item]));
+  return block.groups.map((group) => {
+    const items = group.captions.map((id) => byId.get(id)!);
+    return {
+      items,
+      units: items.map((item) => ({
+        id: item.id,
+        text: captionText(item, transcript, preset),
+        font: captionFont(item),
+      })),
+    };
+  });
+}
+
+// A caption block's box as stored: the box around its captions.
+function blockRect(
+  groups: readonly { items: readonly CaptionItem[] }[],
+  { transcript, preset, measurer }: Pick<Context, "transcript" | "preset" | "measurer">,
+) {
+  return boxAround(
+    groups.flatMap((group) =>
+      group.items.map((item) => captionRect(item, transcript, preset, measurer)),
+    ),
+  );
+}
+
+export const hundredth = (n: number): number => Math.round(n * 100) / 100;
+
+// A caption block after a move: each of its captions' place and size. A move
+// that only moves carries every caption with the box. A new size lays the block
+// again from the move's corner on its own lines, as the engine lays a block
+// (every line centred in the block's width); a wrap width sets each group again
+// on the fewest balanced lines that fit it, between whole captions.
+function movedBlock(
+  edit: Edit,
+  block: CaptionBlock,
+  move: OwnerTextMove,
+  context: Pick<Context, "transcript" | "preset" | "measurer">,
+): Map<string, { x: number; y: number; size: number }> {
+  const groups = blockUnits(edit, block, context);
+  const out = new Map<string, { x: number; y: number; size: number }>();
+  const size = captionSize(groups[0]!.items[0]!);
+  if (move.width === undefined && move.size === size) {
+    const at = blockRect(groups, context);
+    for (const item of groups.flatMap((group) => group.items)) {
+      const own = captionRect(item, context.transcript, context.preset, context.measurer);
+      out.set(item.id, {
+        x: hundredth(own.x + move.x - at.x),
+        y: hundredth(own.y + move.y - at.y),
+        size,
+      });
+    }
+    return out;
+  }
+  const width = move.width;
+  const laid = layBlock(
+    groups.map((group) => ({
+      units: group.units,
+      lines:
+        width === undefined
+          ? storedLines(group.items)
+          : wrapGroup(group.units, move.size, width, context.measurer),
+    })),
+    move,
+    move.size,
+    context.preset.caption.lineGap,
+    context.measurer,
+  );
+  for (const [id, place] of laid.places) out.set(id, { ...place, size: move.size });
+  return out;
 }
 
 function isBigWord(edit: Edit, id: string): boolean {
@@ -474,30 +620,36 @@ function isBigWord(edit: Edit, id: string): boolean {
 // lead-in and the key phrase are wrapped to the width at their new sizes, and
 // the levels are stacked from the move's corner in their order on screen, each
 // centred on the widest (as `stackPositions` stacks them), the gap before each
-// the version's gap scaled. Whole pixels.
-function restack(
+// the version's gap scaled. Whole pixels. `rewrap` names the levels wrapped
+// to the width (the lead-in and the key phrase for a move; the one level whose
+// text the owner edited); every other level keeps its lines. Each level comes
+// back with its width, so the caller knows the stack's.
+export function restack(
   levels: NonNullable<Edit["tracks"]["transitions"][number]["levels"]>,
   own: readonly { role: (typeof LEVEL_ROLES)[number]; y: number; height: number }[],
   move: OwnerTextMove & { width: number },
   scale: number,
   measurer: Measurer,
-): Map<(typeof LEVEL_ROLES)[number], { x: number; y: number; lines: string[] }> {
+  rewrap: readonly (typeof LEVEL_ROLES)[number][] = ["lead", "key"],
+): Map<(typeof LEVEL_ROLES)[number], { x: number; y: number; lines: string[]; width: number }> {
   const order = [...own].sort((a, b) => a.y - b.y);
   const shaped = order.map((box, index) => {
     const level = levels[box.role]!;
     const size = box.role === "key" ? move.size : Math.round(level.size * scale);
     const { font } = levelStyle(box.role);
-    const lines =
-      box.role === "number"
-        ? textLines(level.text, level.breaks)
-        : wrapToWidth(level.text, font, size, move.width, measurer);
+    const lines = rewrap.includes(box.role)
+      ? wrapToWidth(level.text, font, size, move.width, measurer)
+      : textLines(level.text, level.breaks);
     const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
     const before = order[index - 1];
     const gap = before ? (box.y - (before.y + before.height)) * scale : 0;
     return { role: box.role, lines, width, height: size * lines.length, gap };
   });
   const widest = Math.max(...shaped.map((level) => level.width));
-  const out = new Map<(typeof LEVEL_ROLES)[number], { x: number; y: number; lines: string[] }>();
+  const out = new Map<
+    (typeof LEVEL_ROLES)[number],
+    { x: number; y: number; lines: string[]; width: number }
+  >();
   let y = move.y;
   for (const level of shaped) {
     y += level.gap;
@@ -505,6 +657,7 @@ function restack(
       x: Math.round(move.x + Math.max(0, Math.floor((widest - level.width) / 2 + SLACK))),
       y: Math.round(y),
       lines: level.lines,
+      width: level.width,
     });
     y += level.height;
   }
@@ -528,7 +681,14 @@ export function ownerWrapOptions(
   let widths: number[];
   const overlay = edit.tracks.overlays.find((item) => item.id === id);
   const list = edit.tracks.transitions.find((item) => item.id === id && item.levels);
-  if (overlay) {
+  const block = isCaptionBlockId(id)
+    ? captionBlocks(edit, transcript).find((entry) => entry.id === id)
+    : undefined;
+  if (block) {
+    widths = blockUnits(edit, block, context).flatMap((group) =>
+      groupLineWidths(group.units, at.size, measurer),
+    );
+  } else if (overlay) {
     const text = overlayText(overlay, transcript, preset);
     widths = lineWidths(text, overlayFont(overlay), at.size, measurer);
   } else if (list?.levels) {
@@ -1072,8 +1232,12 @@ export function ownerMoveRecords({
       ? differs(mine, theirs)
       : { moved: false, resized: false, rotated: false, swapped: false };
     if (theirs && !changes(change)) continue;
-    const note = engineRecord.find((entry) => entry.item === id && entry.zone !== undefined);
-    const variant = engineRecord.find((entry) => entry.item === id)?.variant ?? null;
+    // A caption block's notes are its captions': the engine wrote the block's
+    // under each caption's id.
+    const noted = isCaptionBlock(mine) ? (mine.parts?.[0]?.id ?? id) : id;
+    const inside = new Set((mine.parts ?? []).flatMap((part) => part.items ?? []));
+    const note = engineRecord.find((entry) => entry.item === noted && entry.zone !== undefined);
+    const variant = engineRecord.find((entry) => entry.item === noted)?.variant ?? null;
     const photoId = isPhotoId(mine.picture) ? mine.picture : null;
     const earlier = before.find((component) => component.id === id)?.picture;
     const replaced = !change.swapped
@@ -1112,8 +1276,14 @@ export function ownerMoveRecords({
           : null,
         others: owner
           .filter(
+            // Each caption is listed where it is, never a block's box on top of
+            // them, nor the captions of the block this record is for.
             (other) =>
-              other.id !== id && other.start < mine.end - SLACK && mine.start < other.end - SLACK,
+              other.id !== id &&
+              !isCaptionBlock(other) &&
+              !inside.has(other.id) &&
+              other.start < mine.end - SLACK &&
+              mine.start < other.end - SLACK,
           )
           .map((other) => {
             const was = placed.get(other.id);

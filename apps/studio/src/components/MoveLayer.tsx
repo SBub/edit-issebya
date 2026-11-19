@@ -1,7 +1,7 @@
 "use client";
 
 import { ISSEBYA_PRESET, type PlacedComponent } from "@edit-issebya/edit";
-import { type PointerEvent as ReactPointerEvent, useRef, useState } from "react";
+import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import {
   CLICK_SLOP_PX,
   type Drag,
@@ -10,6 +10,7 @@ import {
   type OwnerAsk,
   SNAP_PX,
   boxStyle,
+  canEditText,
   canRewrap,
   componentLabel,
   componentOption,
@@ -20,6 +21,8 @@ import {
   snapAngle,
   snapDrag,
   stackedAt,
+  textBox,
+  textPartAt,
   turnOfPointer,
 } from "@/lib/owner-edit";
 
@@ -53,6 +56,24 @@ interface Props {
   // false where no card can show (hidden footage, the reel's very end).
   onAddPicture: () => void;
   canAdd: boolean;
+  // The text an element shows now (a part of it: a caption block's group, a
+  // list's level) and how long its replacement may be; null when it has no
+  // text the owner edits.
+  textOf: (component: PlacedComponent, part: string | null) => TextNow | null;
+  // The owner's text for an element, when the inline edit ends (Enter, or a
+  // click outside). Escape ends it with nothing sent.
+  onText: (component: PlacedComponent, part: string | null, text: string) => void;
+}
+
+interface TextNow {
+  text: string;
+  limit: number;
+}
+
+// The text being edited in place: the element, its part and what it showed.
+interface TextEdit extends TextNow {
+  id: string;
+  part: string | null;
 }
 
 interface Pressed extends Drag {
@@ -73,6 +94,85 @@ interface Pressed extends Drag {
 }
 
 const FRAME = ISSEBYA_PRESET.frame;
+
+// The narrowest the inline text field is, as a share of the frame's width: a
+// one-word caption still gets room to type in.
+const TEXT_FIELD_MIN = 0.55;
+
+// The inline text field over an element's box: the owner types the element's
+// words where they are. Enter or a click outside ends the edit and sends the
+// text; Escape ends it and sends nothing. It is the editor's own field, never
+// part of the built page: the text on screen is drawn by the builder once the
+// edit ends.
+function TextField({
+  edit,
+  box,
+  label,
+  onDone,
+}: {
+  edit: TextEdit;
+  box: { x: number; y: number; width: number; height: number };
+  label: string;
+  onDone: (text: string | null) => void;
+}) {
+  const [value, setValue] = useState(edit.text);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // One end per edit: Enter also takes the focus away.
+  const done = useRef(false);
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+  function end(text: string | null) {
+    if (done.current) return;
+    done.current = true;
+    onDone(text);
+  }
+  const width = Math.max(box.width / FRAME.width, TEXT_FIELD_MIN);
+  const left = Math.max(0.01, Math.min(box.x / FRAME.width, 0.99 - width));
+  return (
+    <div
+      data-testid="move-text-field"
+      onPointerDown={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      className="absolute z-20 flex flex-col gap-0.5"
+      style={{
+        left: `${left * 100}%`,
+        top: `${(box.y / FRAME.height) * 100}%`,
+        width: `${width * 100}%`,
+      }}
+    >
+      <input
+        ref={inputRef}
+        type="text"
+        data-testid="move-text-input"
+        aria-label={`Text of this ${label.toLowerCase()}`}
+        value={value}
+        maxLength={edit.limit}
+        spellCheck
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Enter") {
+            event.preventDefault();
+            end(value);
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            end(null);
+          }
+        }}
+        onBlur={() => end(value)}
+        className="h-8 w-full touch-auto border-2 border-accent bg-black px-1.5 text-sm text-white outline-none select-text"
+      />
+      <span
+        data-testid="move-text-count"
+        className="self-start bg-black/75 px-1 text-[10px] leading-4 text-white"
+      >
+        {value.length} of {edit.limit} characters. Enter to keep, Esc to cancel
+      </span>
+    </div>
+  );
+}
 
 // Each edge handle: where it sits on the selected box, its cursor and its name.
 const EDGES: Record<EdgeMode, { className: string; label: string }> = {
@@ -104,8 +204,11 @@ const EDGES: Record<EdgeMode, { className: string; label: string }> = {
 // VISUAL has no edge handle, its corner keeps its picture's aspect ratio; its
 // rotate handle above the box turns it about its centre, snapping upright and
 // to each quarter turn with a guide and its angle shown). A component has one
-// box for its whole time on screen. Nothing here draws the text: after each
-// drag the preview is built again from the draft by the one builder. The bar
+// box for its whole time on screen. Double-click a text, or press its `Edit
+// text`, to type its words in a field over it (`TextField`): Enter or a click
+// outside keeps them, Escape drops them. Nothing here draws the text on screen:
+// after each drag and each text edit the preview is built again from the draft
+// by the one builder. The bar
 // sits in the frame's top margin, which the platforms cover, so it never hides
 // a text. Never part of the built page or the export.
 export function MoveLayer({
@@ -125,9 +228,34 @@ export function MoveLayer({
   onChangePicture,
   onAddPicture,
   canAdd,
+  textOf,
+  onText,
 }: Props) {
   const layerRef = useRef<HTMLDivElement>(null);
   const [pressed, setPressed] = useState<Pressed | null>(null);
+  const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
+  const edited = textEdit && components.find((entry) => entry.id === textEdit.id);
+
+  // The inline text edit of a component: on the part under the pointer (a
+  // list's level) or on screen now (a caption block's group).
+  function startText(component: PlacedComponent, pointer?: { clientX: number; clientY: number }) {
+    if (saving || !canEditText(component)) return;
+    const rect = layerRef.current?.getBoundingClientRect();
+    const point =
+      pointer && rect && rect.width > 0
+        ? {
+            x: ((pointer.clientX - rect.left) / rect.width) * FRAME.width,
+            y: ((pointer.clientY - rect.top) / rect.width) * FRAME.width,
+          }
+        : undefined;
+    const part = textPartAt(component, position, point);
+    const now = textOf(component, part);
+    if (!now) return;
+    onSelect(component.id);
+    setPressed(null);
+    setTextEdit({ id: component.id, part, ...now });
+  }
+
   const all = movableComponents(components);
   const shown = stackedAt(components, position);
   const selectedCard = components.find(
@@ -135,7 +263,8 @@ export function MoveLayer({
   );
 
   function press(event: ReactPointerEvent<HTMLElement>, id: string, mode: Drag["mode"]) {
-    if (saving || event.button !== 0) return;
+    // While a text is typed nothing is dragged: the press ends the edit.
+    if (saving || edited || event.button !== 0) return;
     const rect = layerRef.current?.getBoundingClientRect();
     const width = rect?.width ?? 0;
     if (!rect || width <= 0) return;
@@ -241,7 +370,7 @@ export function MoveLayer({
         className="absolute inset-x-0 top-0 flex h-[11.4%] min-h-9 items-center gap-1.5 bg-black/75 px-2 text-xs text-white"
       >
         <select
-          aria-label="Text or visual to move"
+          aria-label="Text or visual to edit"
           data-testid="move-pick"
           value={selectedId ?? ""}
           disabled={saving || all.length === 0}
@@ -252,7 +381,7 @@ export function MoveLayer({
           }}
           className="h-7 min-w-0 flex-1 border border-white/40 bg-black px-1 text-xs text-white disabled:opacity-50"
         >
-          <option value="">{all.length === 0 ? "Nothing to move" : "Pick a text or visual"}</option>
+          <option value="">{all.length === 0 ? "Nothing to edit" : "Pick a text or visual"}</option>
           {all.map((entry) => (
             <option key={entry.id} value={entry.id}>
               {componentOption(entry)}
@@ -303,7 +432,8 @@ export function MoveLayer({
           onClick={onSave}
           disabled={saving || !changed}
           title={
-            frozenReason ?? (changed ? "Save as a new version" : "Move or resize a text first")
+            frozenReason ??
+            (changed ? "Save as a new version" : "Move, resize or edit a text first")
           }
           className="h-7 flex-none border border-white bg-white px-2 font-semibold text-black hover:bg-white/85 disabled:opacity-50"
         >
@@ -389,6 +519,7 @@ export function MoveLayer({
             onPointerMove={drag}
             onPointerUp={release}
             onPointerCancel={cancel}
+            onDoubleClick={(event) => startText(component, event)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
@@ -408,14 +539,32 @@ export function MoveLayer({
           >
             {selected && (
               <>
+                {/* The kind above the box (a card's below: its rotate handle is
+                    above), and beside it the way into the text's words. */}
                 <span
-                  data-testid="move-kind"
-                  className={`absolute left-0 -ml-0.5 bg-accent px-1.5 py-0.5 text-[11px] leading-4 font-semibold whitespace-nowrap text-black ${
-                    // A card's rotate handle is above it: its kind shows below.
+                  className={`absolute left-0 -ml-0.5 flex items-stretch gap-1 ${
                     visual ? "top-full mt-1" : "bottom-full mb-1"
                   }`}
                 >
-                  {label}
+                  <span
+                    data-testid="move-kind"
+                    className="bg-accent px-1.5 py-0.5 text-[11px] leading-4 font-semibold whitespace-nowrap text-black"
+                  >
+                    {label}
+                  </span>
+                  {canEditText(component) && !edited && (
+                    <button
+                      type="button"
+                      data-testid="move-edit-text"
+                      title="Edit the words of this text (or double-click it)"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={() => startText(component)}
+                      disabled={saving}
+                      className="cursor-pointer bg-white px-1.5 py-0.5 text-[11px] leading-4 font-semibold whitespace-nowrap text-black hover:bg-white/85 disabled:opacity-50"
+                    >
+                      Edit text
+                    </button>
+                  )}
                 </span>
                 {visual && (
                   <>
@@ -468,6 +617,18 @@ export function MoveLayer({
           </div>
         );
       })}
+      {textEdit && edited && (
+        <TextField
+          key={`${textEdit.id} ${textEdit.part ?? ""}`}
+          edit={textEdit}
+          box={textBox(edited, textEdit.part)}
+          label={componentLabel(edited.component)}
+          onDone={(text) => {
+            setTextEdit(null);
+            if (text !== null) onText(edited, textEdit.part, text);
+          }}
+        />
+      )}
       <p
         role="status"
         data-testid="move-status"

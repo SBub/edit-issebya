@@ -1,5 +1,5 @@
 import { build } from "./build.ts";
-import type { PlacedComponent } from "./components.ts";
+import { type PlacedComponent, isCaptionBlock } from "./components.ts";
 import { type Obstacle, placeElement } from "./engine-place.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import { type HeadTrack, facesOver } from "./head-track.ts";
@@ -12,7 +12,7 @@ import { anchorAt, resolveSpans, resolveTimeline } from "./timeline.ts";
 import type { Transcript, Word } from "./transcript.ts";
 import { VARIANTS } from "./variants.ts";
 
-// THE OWNER'S ADDED CARDS (app_docs/owner-edits.md): in the Move editor the
+// THE OWNER'S ADDED CARDS (app_docs/owner-edits.md): in the editor the
 // owner adds a VISUAL showing one of their library photos at the paused
 // moment. It starts on the word under the playhead and lasts a fixed time,
 // cut short by the reel's end or a hidden stretch of footage; the studio
@@ -313,7 +313,12 @@ export function ownerAddPlacement(
   const components = build(edit, transcript, headTrack, preset, measurer, {
     layer: "front",
   }).components.filter(
-    (component) => component.start < span.end - 1e-6 && span.start < component.end - 1e-6,
+    // Each caption is an obstacle where it is; a caption block's box (the
+    // editor's one box for a sentence) is not one more.
+    (component) =>
+      !isCaptionBlock(component) &&
+      component.start < span.end - 1e-6 &&
+      span.start < component.end - 1e-6,
   );
   const faces = facesOver(headTrack, span.start - 0.25, span.end + 0.25);
   const element = {

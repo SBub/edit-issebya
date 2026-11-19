@@ -19,7 +19,7 @@ interface Props {
 type Loaded =
   { status: "loading" } | { status: "ready"; photos: PickedPhoto[] } | { status: "failed" };
 
-// The Move editor's picture picker (app_docs/owner-edits.md): every ready photo
+// The editor's picture picker (app_docs/owner-edits.md): every ready photo
 // of the owner's library, newest first, as a grid of thumbnails. One click
 // picks a photo and closes the dialog; the cross, Escape and the backdrop close
 // it with nothing picked. Opens as a modal dialog over the whole page.

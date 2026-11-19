@@ -1,3 +1,4 @@
+import { textLines } from "./lines.ts";
 import { type Box, type HeadTrack, facesOver } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
 import type { Preset } from "./preset.ts";
@@ -103,6 +104,8 @@ export function bigWordCoveredShare(box: Box, faces: readonly Box[]): number {
 export interface BigWordBox {
   itemId: string;
   text: string;
+  // Its lines: one, or more for an owner's text set with `breaks`.
+  lines: string[];
   font: FontRole;
   size: number;
   color: string;
@@ -121,16 +124,18 @@ export function placedBigWord(
   measurer: Measurer,
 ): BigWordBox {
   const word = STYLES.bigWord;
+  const lines = textLines(item.text, item.breaks);
   return {
     itemId: item.id,
     text: item.text,
+    lines,
     font: word.font,
     size,
     color: word.color,
     x: position.x,
     y: position.y,
-    width: measurer.width(word.font, 1, item.text) * size,
-    height: size,
+    width: Math.max(...lines.map((line) => measurer.width(word.font, 1, line))) * size,
+    height: size * lines.length,
   };
 }
 

@@ -169,9 +169,9 @@ describe("labels", () => {
     expect(versionTitle(edited, byId)).toBe("Edited by you");
     // A stored title never replaces the mark.
     expect(versionTitle({ ...edited, change_title: "Bigger hook" }, byId)).toBe("Edited by you");
-    expect(editedFromLabel(edited, byId)).toBe("You moved or resized text in v3");
+    expect(editedFromLabel(edited, byId)).toBe("You moved, resized or edited text in v3");
     expect(editedFromLabel({ ...edited, edited_from_id: "gone" }, byId)).toBe(
-      "You moved or resized text",
+      "You moved, resized or edited text",
     );
   });
 

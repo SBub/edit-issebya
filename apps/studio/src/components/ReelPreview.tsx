@@ -13,14 +13,21 @@ import {
   type OwnerAdd,
   type OwnerMove,
   type OwnerPhoto,
+  type OwnerText,
   type PlacedComponent,
   type Transcript,
   applyOwnerAdds,
+  applyOwnerTexts,
   build,
+  cleanOwnerText,
   createMeasurer,
   effectiveMoves,
+  effectiveTexts,
   headTrackSchema,
   applyOwnerMoves,
+  ownerMoveProblems,
+  ownerTextOf,
+  ownerTextProblem,
   nextOwnerVisualId,
   ownerAddPlacement,
   ownerAddSpan,
@@ -216,11 +223,12 @@ async function loadPreview(reelId: string, versionId: string): Promise<Outcome> 
 }
 
 // The move and resize editor's draft (app_docs/owner-edits.md): the version's
-// edit with the owner's added cards and moves so far, and its page.
+// edit with the owner's added cards, text edits and moves so far, and its page.
 interface Draft {
   edit: Edit;
   moves: OwnerMove[];
   adds: OwnerAdd[];
+  texts: OwnerText[];
   page: Page;
 }
 
@@ -243,9 +251,10 @@ const SAVE_FAILED = "Your changes were not saved. Try again";
 // by version, so a new version mounts a new player, started from the
 // hand-off (the previous version's position and play or pause state).
 //
-// Move text opens the editor over the paused preview: the owner selects a
-// text component, drags it or its corner handle, and each drag builds the
-// draft again with the one builder, so what shows is what Save will save. The
+// Edit opens the editor over the paused preview: the owner selects a
+// text component, drags it or its corner handle, or types its words in place,
+// and each drag or text edit builds the draft again with the one builder, so
+// what shows is what Save will save. The
 // player readies the draft's page behind the one on screen and swaps it in
 // once it shows the same moment: the video never goes black.
 // Save queues an `owner_edit` job; the worker saves a new version and the
@@ -265,7 +274,7 @@ function BuiltPreview({
   built: Built;
   // Why editing is off (the reel is exporting), or null.
   editBlockedReason: string | null;
-  // The Move editor's flag: off, neither its button nor the editor exists.
+  // The editor's flag: off, neither its button nor the editor exists.
   ownerEdit: boolean;
   handoff: Handoff;
   onHandoff: (change: Partial<Handoff>) => void;
@@ -431,15 +440,123 @@ function BuiltPreview({
     if (page.html === (draft?.page ?? built.page).html) playerRef.current?.live(null);
     setDraft({
       edit: settled.edit,
-      // Only what differs from the version: a text put back is no move.
-      moves: effectiveMoves(
-        withMove(draft?.moves ?? [], settled.move),
+      moves: keptMoves(withMove(draft?.moves ?? [], settled.move), draft?.texts ?? [], page),
+      adds: draft?.adds ?? [],
+      texts: draft?.texts ?? [],
+      page,
+    });
+  }
+
+  // Only the moves that differ from the version: a text put back is no move.
+  // A move of an element whose words the owner edited always counts, as its
+  // box is no longer the version's (the worker keeps it the same way).
+  function keptMoves(moves: OwnerMove[], texts: readonly OwnerText[], page: Page): OwnerMove[] {
+    const edited = new Set(texts.map((text) => text.id));
+    const kept = new Set(
+      effectiveMoves(
+        moves.filter((entry) => !edited.has(entry.id)),
         built.page.components,
         page.components,
       ),
-      adds: draft?.adds ?? [],
-      page,
-    });
+    );
+    return moves.filter((entry) => edited.has(entry.id) || kept.has(entry));
+  }
+
+  // The version's edit with a draft's cards, text edits and moves, applied in
+  // the worker's own order (cards, texts, moves), so the draft is what Save
+  // saves. Null when one of them is refused.
+  function draftEdit(
+    adds: readonly OwnerAdd[],
+    texts: readonly OwnerText[],
+    moves: readonly OwnerMove[],
+  ): Edit | null {
+    const context = editContext();
+    const added = applyOwnerAdds(built.edit, adds, context);
+    if (!added.ok) return null;
+    const texted = applyOwnerTexts(added.edit, texts, context);
+    if (!texted.ok) return null;
+    const moved = applyOwnerMoves(texted.edit, moves, context);
+    return moved.ok ? moved.edit : null;
+  }
+
+  // The text an element shows in the draft, and how long the owner's text for
+  // it may be (measured against the version's own text).
+  function textOf(component: PlacedComponent, part: string | null) {
+    const target = { id: component.id, ...(part === null ? {} : { part }) };
+    const context = editContext();
+    const own = ownerTextOf(built.edit, target, context);
+    const now = ownerTextOf(draft?.edit ?? built.edit, target, context);
+    return own && now ? { text: now.text, limit: own.limit } : null;
+  }
+
+  // An inline text edit ended: the owner's words for one element (a part of
+  // it), and for that element only. The text is cleaned, checked against its
+  // limits, applied to the draft with everything else and wrapped again inside
+  // the element's box; a box that then leaves the safe zone is settled like a
+  // drag. The draft's page is built and swapped in like after a drag.
+  function editText(component: PlacedComponent, part: string | null, raw: string) {
+    const context = editContext();
+    const target = { id: component.id, ...(part === null ? {} : { part }) };
+    const text = cleanOwnerText(raw);
+    const problem = ownerTextProblem(built.edit, { ...target, text }, context);
+    if (problem) {
+      setMessage(`${problem}. The text stays as it was`);
+      return;
+    }
+    const adds = draft?.adds ?? [];
+    let moves = draft?.moves ?? [];
+    // A text put back to the version's own is no edit.
+    const texts = effectiveTexts(
+      [
+        ...(draft?.texts ?? []).filter(
+          (entry) => entry.id !== target.id || (entry.part ?? null) !== part,
+        ),
+        { ...target, text },
+      ],
+      built.edit,
+      context,
+    );
+    let edit = draftEdit(adds, texts, moves);
+    if (!edit) {
+      setMessage("This text does not fit there");
+      return;
+    }
+    let page = built.pageOf(edit);
+    if (ownerMoveProblems(page.components, [component.id]).length > 0) {
+      // The longer text runs past the safe zone: moved in, or made smaller,
+      // the least it must, keeping a wrap width an edge handle set.
+      const at = page.components.find((entry) => entry.id === component.id);
+      const earlier = moves.find((entry) => entry.id === component.id);
+      const others = moves.filter((entry) => entry.id !== component.id);
+      const base = draftEdit(adds, texts, others);
+      const settled =
+        at && at.size !== null && base
+          ? settleOwnerMove(
+              base,
+              {
+                id: at.id,
+                x: at.x,
+                y: at.y,
+                size: at.size,
+                ...(earlier && earlier.kind !== "box" && earlier.width !== undefined
+                  ? { width: earlier.width }
+                  : {}),
+              },
+              context,
+            )
+          : null;
+      if (!settled?.ok) {
+        setMessage("This text does not fit there");
+        return;
+      }
+      moves = [...others, settled.move];
+      edit = settled.edit;
+      page = built.pageOf(edit);
+    }
+    wrapsRef.current = null;
+    setMessage("");
+    setSent(null);
+    setDraft({ edit, moves: keptMoves(moves, texts, page), adds, texts, page });
   }
 
   // A library photo picked: its size kept for the draft and its large copy's
@@ -507,13 +624,14 @@ function BuiltPreview({
       edit: placed.edit,
       moves: draft?.moves ?? [],
       adds: [...(draft?.adds ?? []), { ...add, x, y, width }],
+      texts: draft?.texts ?? [],
       page: built.pageOf(placed.edit),
     });
     setSelectedId(id);
   }
 
   async function save() {
-    if (!draft || draft.moves.length + draft.adds.length === 0) return;
+    if (!draft || draft.moves.length + draft.adds.length + draft.texts.length === 0) return;
     setSent("sending");
     setMessage("");
     try {
@@ -522,6 +640,7 @@ function BuiltPreview({
         versionId: built.versionId,
         moves: draft.moves,
         ...(draft.adds.length > 0 ? { adds: draft.adds } : {}),
+        ...(draft.texts.length > 0 ? { texts: draft.texts } : {}),
       });
       if (result.status === "signed-out") {
         router.refresh();
@@ -563,14 +682,14 @@ function BuiltPreview({
           ownerEdit && (
             <button
               type="button"
-              data-testid="move-toggle"
+              data-testid="edit-toggle"
               aria-pressed={editing}
-              title={editBlockedReason ?? "Move or resize a text on screen"}
+              title={editBlockedReason ?? "Move, resize or fix the words of a text on screen"}
               onClick={editing ? closeEditor : openEditor}
               disabled={frozen}
               className="hidden h-8 flex-none items-center border border-line px-2.5 text-xs hover:bg-raised disabled:opacity-50 aria-pressed:bg-raised aria-pressed:font-semibold lg:flex"
             >
-              Move text
+              Edit
             </button>
           )
         }
@@ -594,7 +713,14 @@ function BuiltPreview({
               onChangePicture={(component) => setPicking({ mode: "swap", id: component.id })}
               onAddPicture={() => setPicking({ mode: "add" })}
               canAdd={addSpot() !== null}
-              changed={(draft?.moves.length ?? 0) + (draft?.adds.length ?? 0) > 0}
+              changed={
+                (draft?.moves.length ?? 0) +
+                  (draft?.adds.length ?? 0) +
+                  (draft?.texts.length ?? 0) >
+                0
+              }
+              textOf={textOf}
+              onText={editText}
               saving={frozen}
               frozenReason={saving ? null : editBlockedReason}
               message={
@@ -650,12 +776,12 @@ export function ReelPreview({
 }: {
   reelId: string;
   versionId: string | null;
-  // Why editing this reel is off (it is exporting), or null: the Move editor
+  // Why editing this reel is off (it is exporting), or null: the editor
   // cannot be opened, and an open one is frozen with this line.
   editBlockedReason?: string | null;
   // The reel's jobs: the editor follows the job its Save queued.
   jobs?: readonly LiveJob[];
-  // Whether the owner's Move editor is on (the `studio-owner-edit` flag).
+  // Whether the owner's editor is on (the `studio-owner-edit` flag).
   ownerEdit?: boolean;
 }) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);

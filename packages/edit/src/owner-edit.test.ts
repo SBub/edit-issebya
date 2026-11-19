@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { build } from "./build.ts";
-import type { PlacedComponent } from "./components.ts";
+import { type PlacedComponent, isCaptionBlock } from "./components.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import {
   applyOwnerMoves,
@@ -68,7 +68,12 @@ describe("the components of a built page", () => {
       height: 198,
     });
     expect(byId(components, "visual-1")).toMatchObject({ component: "VISUAL", size: null });
-    expect(components.filter((component) => component.component === "CAPTION").length).toBe(
+    // Each shown caption once (a caption block, the editor's box for a sentence,
+    // comes on top of them and has parts).
+    const single = components.filter(
+      (component) => component.component === "CAPTION" && component.parts === undefined,
+    );
+    expect(single.length).toBe(
       hook.edit.tracks.captions.filter((caption) => caption.hidden_by === undefined).length,
     );
   });
@@ -105,8 +110,12 @@ describe("the components of a built page", () => {
   it("says which components the owner may move", async () => {
     const components = await componentsOf(lists);
     const movable = components.filter(isMovable).map((component) => component.component);
-    expect(new Set(movable)).toEqual(new Set(["ACCENT", "BIGWORD", "LIST", "VISUAL"]));
+    expect(new Set(movable)).toEqual(new Set(["ACCENT", "BIGWORD", "LIST", "VISUAL", "CAPTION"]));
+    // A single caption is never moved on its own, only its sentence's block.
     expect(isMovable({ component: "CAPTION" })).toBe(false);
+    expect(
+      components.filter((component) => component.component === "CAPTION").filter(isMovable),
+    ).toEqual(components.filter(isCaptionBlock));
     expect(isMovable({ component: "VISUAL" })).toBe(true);
     expect(isMovable({ component: "HOOK" })).toBe(true);
     expect(isMovable({ component: "QUESTION" })).toBe(true);
@@ -143,7 +152,12 @@ describe("applying the owner's moves", () => {
     expect(overlays.filter((item) => item.id !== "hook")).toEqual(
       original.filter((item) => item.id !== "hook"),
     );
-    expect({ ...applied.edit, tracks: null }).toEqual({ ...hook.edit, tracks: null });
+    // Outside the tracks, only the owner's mark for the moved item is new.
+    expect({ ...applied.edit, tracks: null }).toEqual({
+      ...hook.edit,
+      tracks: null,
+      owner: { placed: ["hook"], texts: [] },
+    });
   });
 
   it("resizes a text: the size scales the box, the corner stays", async () => {

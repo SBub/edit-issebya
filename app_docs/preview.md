@@ -51,7 +51,7 @@ sounds (the clicks and the typed hook's key sounds) through Web Audio. It is bui
   `harfbuzzjs` by client-only dynamic import, calls `createMeasurer(hb, pair, fonts)` and `build`
   from `@edit-issebya/edit`, runs `previewPage`, fetches the sound files `soundHits` names, and hands
   everything to the player. The page's photo URLs are kept by path (`Built.photoUrls`): the
-  version's own, signed with the sources, and each photo the owner picks in the Move editor, from
+  version's own, signed with the sources, and each photo the owner picks in the editor, from
   the library's signed large copy, so a draft page shows a newly picked photo before it is saved
   (`app_docs/owner-edits.md`). `photo-missing` shows `A photo in this version was deleted from the
 library` and `cutout-cleared` shows `This version's cut-out was cleared to save space; Export
@@ -105,7 +105,7 @@ rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) o
   itself changes nothing on screen.
 - The move and resize editor (`app_docs/owner-edits.md`) uses three things of `PreviewPlayer`: `overlay`
   (a layer drawn inside the frame, after Zones; `MoveLayer`), `controls` (buttons in the control row
-  before Zones, hidden with Zones while expanded; the `Move text` button) and `playDisabled` (Play is
+  before Zones, hidden with Zones while expanded; the `Edit` button) and `playDisabled` (Play is
   off while the editor is open), `PreviewPlayerHandle.pause` and `PreviewPlayerHandle.live`. `ReelPreview` keeps the built
   version's edit and builds the editor's draft with the same `build` and `previewPage` calls
   (`pageOf`); each draft page is swapped in behind the one on screen (above), never remounted.

@@ -8,6 +8,8 @@
 - specs/issue-155-adw-2a28c287-sdlc_planner-fulfil-change-requests-make-room.md
 - specs/issue-156-adw-ca502a36-sdlc_planner-honest-version-summary-from-diff.md
 - specs/issue-157-adw-3c1a1736-sdlc_planner-transitions-tied-to-phrases.md
+- Owner decisions, 2026-11-19 (option 1): every decide builds from the transcript with the owner's
+  caption fixes (transcript corrections), and the AI calls read the corrected words.
 
 ## Overview
 
@@ -176,7 +178,17 @@ input, reasons?)` fills them as fenced JSON and, on the retry, appends the refus
   box, `clear_spots`, safe box, font size or spot: the layout owns free space.
 - `packages/edit/src/checks.ts`: the layout checks are the engine's final guard, never a refusal of the answer (`app_docs/edit-model.md`, "Checks").
 - `apps/worker/src/decide/run-decide.ts`: `runDecide`, a `runToolsStep` named `decide`. It reads the
-  current version and its inputs, builds the schemas, and makes the hook call first (`decide.hook`
+  current version and its inputs and the reel's transcript corrections (`corrections`, the words
+  the owner fixed in a caption, `owner_word_corrections` through
+  `apps/worker/src/word-corrections-store.ts`; only those `liveCorrections` keeps for this
+  transcript; `app_docs/owner-edits.md`, "What later steps do with an owner's version"). Both calls
+  read the corrected transcript (`correctedTranscript`: a corrected word says the owner's text, a
+  word her caption does not show is left out, ids and times kept), and the answer is placed with
+  the corrections as its word fixes, over the curator's (`withWordCorrections`, then
+  `applyWordCorrections` marks those captions as hers, so they are not counted as words fixed). On
+  a Start over nothing else of the owner's version is carried but the cards she added
+  (`keepOwnerAdds`), and the step's line adds `, N word corrections of yours kept`. It builds the
+  schemas, and makes the hook call first (`decide.hook`
   span, at most two attempts: a hook refused by its schema goes back once with the
   reasons), then the components' call (at most two attempts), never a loop. The three prompts are
   fetched before the first call (`decidePrompts`); a fetch failure is a transient step failure. A hook that fails twice
@@ -405,7 +417,7 @@ word fixed`; the AI record holding the hook and decide calls; the hook refused b
   placed visual run on the 47 s reel, see "Testing" below) and `step-runner.test.ts`. `ai.test.ts` also covers the
   double's hook lane. `apps/worker/src/decision-trace.test.ts` (`hookOf`: the hook call's text, the last
   readable one, else an older record's decide `hook`). `packages/edit/src/engine.test.ts` ("the written
-  hook": the fixed slot, an accent and an image asked for in its window never move or remove it). `run-decide.test.ts` builds its refused answer as two fixes of one word
+  hook": the fixed slot, an accent and an image asked for in its window never move or remove it). `run-decide.test.ts` ("runDecide starting over") also covers a Start over after the owner's edits: both calls read her corrected word, the captions show the corrections over the curator's own fix, only those captions are marked hers, nothing else of her version is carried, and the step's line says `N word corrections of yours kept`. `run-decide.test.ts` builds its refused answer as two fixes of one word
   (the schema refuses a word fixed twice).
   The messages: `prompts/source.test.ts` (a prompt with no placeholder is the system message unchanged,
   each input a labelled section of the user message, the retry's reasons the last section; a prompt with
@@ -548,6 +560,9 @@ worker's own variables and writes nothing (`src/trace.ts`, `src/decision-trace.t
 - No density target in the schema. The target count is the prompt's input only, computed in code from
   the speech and `preset.picksEverySeconds`; the schema does not count picks, and the overlap limits are
   the prompt's (see "Prompts").
+- Every decide reads the transcript with the reel's live corrections (the owner's caption fixes):
+  the AI never reads a word she corrected as it was misheard, and the curator's `word_fixes`
+  never win over one.
 - Never give Claude geometry or times to decide with (no face box, spots, safe box, font sizes or word
   times in the input; the hook's length, never its window).
 - The hook is the one text Claude writes itself, in its own call, on every reel: always one (never null),

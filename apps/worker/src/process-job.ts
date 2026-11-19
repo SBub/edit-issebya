@@ -14,6 +14,7 @@ import { saveFirstVersion } from "./first-version.ts";
 import { ownerFontPair } from "./font-pair-store.ts";
 import { runOwnerEdit } from "./owner-edit.ts";
 import { runRelayout } from "./relayout.ts";
+import { supabaseWordCorrections } from "./word-corrections-store.ts";
 import { runJobKind } from "./job-kinds.ts";
 import { runDescribePhotoJob } from "./photos/describe-photo.ts";
 import { supabasePhotoLibrary, supabasePhotoStore } from "./photos/photo-store.ts";
@@ -164,6 +165,7 @@ export async function processJob(
                 tools: cutouts.tools,
                 recordStored,
                 ownerFontPair: () => ownerFontPair(db, job.owner_id),
+                corrections: () => supabaseWordCorrections(db).read(reelOf(job)),
               });
             await runJobKind(job, {
               async process() {
@@ -229,6 +231,7 @@ export async function processJob(
                   tools: cutouts.tools,
                   recordStored,
                   fontPair,
+                  corrections: () => supabaseWordCorrections(db).read(reelOf(job)),
                 }),
               // The owner's moves (app_docs/owner-edits.md): applied to the version
               // the owner edited and saved as a new version, with no AI call.
@@ -244,6 +247,7 @@ export async function processJob(
                   recordStored,
                   ownerEdit,
                   photos: supabasePhotoLibrary(db),
+                  corrections: supabaseWordCorrections(db),
                 }),
               // A library photo: its two copies, then the AI's
               // description and tags; no reel is touched.

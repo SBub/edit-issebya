@@ -21,6 +21,8 @@ const LABELS: Partial<Record<EngineComponent, string>> = {
   LIST: "List",
   HOOK: "Hook",
   VISUAL: "Visual",
+  // A sentence's captions, moved as one block.
+  CAPTION: "Captions",
 };
 
 export function componentLabel(component: EngineComponent): string {
@@ -37,8 +39,8 @@ export function movableComponents(components: readonly PlacedComponent[]): Place
 // The movable components on screen at `seconds` in the order the page stacks
 // them, bottom first: the cards in the `behind` track's order (a card the
 // owner added last is on top), then the texts, which the page draws above
-// the cards. The editor draws its boxes in this order, so the topmost box
-// takes a click where two overlap.
+// the cards, the caption blocks under the other texts. The editor draws its
+// boxes in this order, so the topmost box takes a click where two overlap.
 export function stackedAt(
   components: readonly PlacedComponent[],
   seconds: number,
@@ -46,9 +48,14 @@ export function stackedAt(
   const shown = components.filter(
     (component) => isMovable(component) && component.start <= seconds && seconds < component.end,
   );
+  // A caption block's box is a whole sentence's, so it goes under the other
+  // texts: a text inside it still takes its own click.
   return [
     ...shown.filter((component) => component.component === "VISUAL"),
-    ...shown.filter((component) => component.component !== "VISUAL"),
+    ...shown.filter((component) => component.component === "CAPTION"),
+    ...shown.filter(
+      (component) => component.component !== "VISUAL" && component.component !== "CAPTION",
+    ),
   ];
 }
 
@@ -61,6 +68,53 @@ export function componentOption(component: PlacedComponent): string {
       ? `${component.text.slice(0, TEXT_MAX - 1).trimEnd()}…`
       : component.text;
   return `${componentLabel(component.component)}: ${text}`;
+}
+
+// Whether the owner may edit a component's words in place: every text, never
+// a VISUAL (a card has a picture and a description nobody sees).
+export function canEditText(component: Pick<PlacedComponent, "component" | "parts">): boolean {
+  return isMovable(component) && component.component !== "VISUAL";
+}
+
+// The part of a component an inline text edit is for, at the paused moment:
+// a caption block's group on screen then (the nearest in time when none is),
+// a LIST's level under `point` (frame pixels; its key phrase when the point
+// is on neither, or there is no point), nothing for a text with no parts.
+export function textPartAt(
+  component: Pick<PlacedComponent, "component" | "parts">,
+  seconds: number,
+  point?: { x: number; y: number },
+): string | null {
+  const parts = component.parts ?? [];
+  if (parts.length === 0) return null;
+  if (component.component === "CAPTION") {
+    const shown = parts.find((part) => part.start <= seconds && seconds < part.end);
+    if (shown) return shown.id;
+    const away = (part: { start: number; end: number }) =>
+      seconds < part.start ? part.start - seconds : seconds - part.end;
+    return parts.reduce((best, part) => (away(part) < away(best) ? part : best)).id;
+  }
+  const under =
+    point &&
+    parts.find(
+      (part) =>
+        point.x >= part.x &&
+        point.x <= part.x + part.width &&
+        point.y >= part.y &&
+        point.y <= part.y + part.height,
+    );
+  return (under ?? parts.find((part) => part.id === "key") ?? parts.at(-1)!).id;
+}
+
+// The box an inline text edit sits on: the part's own (a group, a level), or
+// the component's.
+export function textBox(
+  component: Pick<PlacedComponent, "x" | "y" | "width" | "height" | "parts">,
+  part: string | null,
+): { x: number; y: number; width: number; height: number } {
+  const own = part === null ? undefined : component.parts?.find((entry) => entry.id === part);
+  const { x, y, width, height } = own ?? component;
+  return { x, y, width, height };
 }
 
 // How long before a component's end the preview stops to show it whole: past
@@ -192,7 +246,8 @@ export function turnOfPointer(
 const MIN_EDGE_PX = 20;
 
 // Whether a component's lines can be set again by its edge handles: every
-// text but a big word (one or two words that keep their lines). A VISUAL has
+// text but a big word (one or two words that keep their lines), a caption
+// block included (each of its groups is set again between whole captions). A VISUAL has
 // no lines: its corner handle scales it in proportion, and it has no edge
 // handles.
 export function canRewrap(component: Pick<PlacedComponent, "component">): boolean {

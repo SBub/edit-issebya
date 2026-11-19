@@ -134,7 +134,7 @@ off while this reel exports. Cancel the export to edit now` while the reel expor
 - Editing off. `changeBlockedReason(reel, jobs)` (`lib/change-requests.ts`) returns
   `exportingReason(jobs)` after the reel's own reasons, so going back, Start over and the font pair
   picker are disabled with that line (the versions panel shows it under the list, the buttons in
-  their `title`). `ReelPreview` gets the same line as `editBlockedReason`: `Move text` cannot be
+  their `title`). `ReelPreview` gets the same line as `editBlockedReason`: `Edit` cannot be
   opened, and an editor already open is frozen (no drag, no Save, no Cancel) with the line in its
   status, keeping its draft until the export ends. The server checks it too: `openReel` in
   `change-actions.ts` reads the reel's live render jobs and answers `blocked`, so a stale tab

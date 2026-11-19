@@ -183,7 +183,7 @@ test("a QUESTION picked from the list is selected as a Question, with its corner
   await expect(
     page.locator(`[data-preview-version="${questionVersionId}"][data-preview="ready"]`),
   ).toBeVisible({ timeout: 30_000 });
-  await page.getByTestId("move-toggle").click();
+  await page.getByTestId("edit-toggle").click();
   await expect(page.getByTestId("move-layer")).toBeVisible();
   const pick = page.getByTestId("move-pick");
   await expect(pick.locator("option")).toContainText([/^Question: test clip/]);

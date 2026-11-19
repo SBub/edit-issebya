@@ -2,10 +2,13 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  type Edit,
   ISSEBYA_PRESET,
   type NewVersion,
+  type StoredCorrection,
   type StoredVersion,
   type VersionRows,
+  captionBlocks,
   parseEdit,
   transcriptSchema,
   type FontPairId,
@@ -33,6 +36,8 @@ import { saveFirstVersion } from "../first-version.ts";
 import { cacheKey } from "../pipeline/fingerprint.ts";
 import { FROZEN_CLOCK, TEST_JOB, recordingSteps, stepContext } from "../recording-steps.ts";
 import { storageVersionBlobs } from "../version-store.ts";
+import { runOwnerEdit } from "../owner-edit.ts";
+import { toolPaths } from "../pipeline/tools.ts";
 import { BEHIND_TRANSCRIPT, behindEdit, fakeMaskSpawn } from "../cutout/test-support.ts";
 import type { SpawnTool } from "../step-runner.ts";
 import { fakePromptSource } from "../../test-support/fake-prompts.ts";
@@ -900,6 +905,132 @@ describe("runDecide starting over", () => {
     const done = lastCall(calls);
     if (done.call !== "done") throw new Error(JSON.stringify(calls));
     expect(done.summary).toMatch(/^version 3: .*started over from version 1/);
+  });
+
+  it("keeps only the owner's transcript corrections: the captions and the AI read them, and no place, size or element text is carried", async () => {
+    const first = await decide(aiScript([scripted]));
+    await first.run;
+    const preset = ISSEBYA_PRESET;
+    const transcript = transcriptSchema.parse(
+      JSON.parse(
+        new TextDecoder().decode(
+          (await storage.get(cacheKey(PREFIX, "retime", fingerprints.retime!, "transcript.json")))!,
+        ),
+      ),
+    );
+    const read = async (id: string) => {
+      const parsed = parseEdit(
+        JSON.parse(new TextDecoder().decode((await storage.get(rows.get(id)!.r2_key))!)),
+        preset,
+        transcript,
+      );
+      if (!parsed.ok) throw new Error(parsed.reasons.join("; "));
+      return parsed.edit;
+    };
+    const v2 = await read(current!);
+    const block = captionBlocks(v2, transcript)[0]!;
+    const group = block.groups[0]!;
+    const fixed = group.captions
+      .map((_, index) => (index === 0 ? "OWNERFIX" : `w${index}`))
+      .join(" ");
+    const blockTop = v2.tracks.captions.find((item) => item.id === group.id)!.position!.y;
+    const blockLeft = Math.min(
+      ...v2.tracks.captions
+        .filter((item) => block.groups.some((entry) => entry.captions.includes(item.id)))
+        .map((item) => item.position!.x),
+    );
+    // The reel's corrections, as the table keeps them.
+    const corrected = new Map<string, StoredCorrection>();
+    await runOwnerEdit({
+      ctx: stepContext(recordingSteps().steps),
+      storage,
+      rows: memoryRows(),
+      blobs: storageVersionBlobs(storage),
+      keyPrefix: PREFIX,
+      scratchDir: scratch,
+      tools: toolPaths(),
+      newId,
+      corrections: {
+        async write(_reel, _owner, entries) {
+          for (const entry of entries) corrected.set(entry.word, entry);
+        },
+      },
+      ownerEdit: {
+        versionId: current!,
+        moves: [
+          {
+            id: block.id,
+            x: blockLeft,
+            y: blockTop - 80,
+            size: v2.tracks.captions.find((item) => item.id === group.id)!.size!,
+          },
+        ],
+        texts: [
+          { id: "hook", text: "My own hook line" },
+          { id: "accent-1", text: "my accent" },
+          { id: block.id, part: group.id, text: fixed },
+        ],
+      },
+    });
+    const v3 = current!;
+    expect((await read(v3)).owner!.texts).toContain("accent-1");
+    const words = group.captions.flatMap(
+      (id) => v2.tracks.captions.find((item) => item.id === id)!.words,
+    );
+    expect([...corrected.keys()]).toEqual(words);
+    // A new answer: the same accent, and the curator fixing the owner's first
+    // word its own way.
+    const again = answered(
+      answer((a) => {
+        a.lists = [];
+        a.word_fixes = [{ word: words[0]!, text: "curatorfix" }];
+      }),
+    );
+    const ai = aiScript([again]);
+    const { steps, calls } = recordingSteps();
+    await runDecide({
+      ctx: stepContext(steps),
+      storage,
+      rows: memoryRows(),
+      blobs: storageVersionBlobs(storage),
+      keyPrefix: PREFIX,
+      ai,
+      prompts: fakePromptSource(),
+      scratchDir: scratch,
+      ownerFontPair: CLASSIC_PAIR,
+      corrections: async () => [...corrected.values()],
+      newId,
+      startFrom: firstId,
+      log: () => {},
+    });
+    const v4 = rows.get(current!)!;
+    expect(v4).toMatchObject({ number: 4, parent_id: v3 });
+    const made = await read(v4.id);
+    // The AI read the transcript with the owner's words, in both calls.
+    expect(ai.calls.map((call) => call.role)).toEqual(["hook", "decide"]);
+    for (const call of ai.calls) expect(call.prompt, call.role).toContain("OWNERFIX");
+    // The captions show the corrections: the owner wins over the curator.
+    const caption = (edit: Edit, id: string) => edit.tracks.captions.find((item) => item.id === id);
+    expect(group.captions.map((id) => caption(made, id)!.text)).toEqual(fixed.split(" "));
+    expect(made.owner).toEqual({ placed: [], texts: [...group.captions].sort() });
+    // Nothing else of the owner's version: the hook and the accent are the
+    // AI's, and the caption block is where the engine places it.
+    const fresh = made.tracks.overlays.map((item) => [item.id, item.text]);
+    expect(fresh).toContainEqual(["hook", HOOK_TEXT]);
+    expect(fresh.find(([id]) => id === "accent-1")?.[1]).not.toBe("my accent");
+    expect(caption(made, group.id)!.position!.y).not.toBe(blockTop - 80);
+    // No edit is noted as kept or lost: a Start over carries none.
+    expect(
+      (v4.engine_record as { rule: string }[]).filter((note) => note.rule === "owner-edit"),
+    ).toEqual([]);
+    const done = lastCall(calls);
+    if (done.call !== "done") throw new Error(JSON.stringify(calls));
+    expect(done.summary).toContain(
+      `started over from version 1, ${group.captions.length} word corrections of yours kept`,
+    );
+    expect(done.summary).not.toMatch(/your edits/);
+    // The owner's caption texts are never counted as the curator's fixes.
+    expect(done.summary).toMatch(/0 words fixed/);
   });
 
   it("refuses a version of another reel", async () => {

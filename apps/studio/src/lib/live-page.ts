@@ -1,4 +1,4 @@
-import type { PlacedComponent } from "@edit-issebya/edit";
+import { ISSEBYA_PRESET, type PlacedComponent, isCaptionBlock } from "@edit-issebya/edit";
 import { type Drag, resizeShare, scaledVisual } from "./owner-edit";
 
 // The move and resize editor's instant view (app_docs/owner-edits.md): while
@@ -129,12 +129,25 @@ function px(n: number): string {
 }
 
 // The elements that draw a component: a LIST's levels (its layer stays where
-// the builder put it), any other component's own element.
-export function componentElements(elements: PageElements, id: string, component: string): string[] {
-  const own = elements.get(id);
+// the builder put it), a caption block's captions (a sentence's, each an
+// element of its own), any other component's own element.
+export function componentElements(
+  elements: PageElements,
+  component: Pick<PlacedComponent, "id" | "component" | "parts">,
+): string[] {
+  if (isCaptionBlock(component)) {
+    return (component.parts ?? [])
+      .flatMap((part) => part.items ?? [])
+      .filter((id) => elements.has(id));
+  }
+  const own = elements.get(component.id);
   if (!own) return [];
-  return component === "LIST" && own.children.length > 0 ? own.children : [id];
+  return component.component === "LIST" && own.children.length > 0 ? own.children : [component.id];
 }
+
+// The gap between two lines of a caption block (`caption.lineGap`): it stays
+// while the block's size changes, so a line's place is not simply scaled.
+const CAPTION_LINE_GAP = ISSEBYA_PRESET.caption.lineGap;
 
 // A move, a corner resize or a turn as a patch of the page on screen: every
 // element of the component moved by the drag, or scaled about the
@@ -148,18 +161,19 @@ export function dragPatch(
   drag: Drag,
 ): LivePatch {
   const patch: LivePatch = {};
+  const block = isCaptionBlock(component);
   const own = elements.get(component.id);
-  if (!own) return patch;
+  if (!own && !block) return patch;
   if (drag.mode === "rotate") {
     if (component.component !== "VISUAL" || drag.angle === undefined) return patch;
     return { [component.id]: { style: { rotate: `${drag.angle}deg` } } };
   }
   const share = drag.mode === "resize" ? resizeShare(component, drag) : 1;
   // A LIST's levels sit inside its layer: their corners are the layer's.
-  const nested = component.component === "LIST" && own.children.length > 0;
+  const nested = component.component === "LIST" && own !== undefined && own.children.length > 0;
   const originX = nested ? pxOf(own.style.left) : 0;
   const originY = nested ? pxOf(own.style.top) : 0;
-  for (const id of componentElements(elements, component.id, component.component)) {
+  for (const id of componentElements(elements, component)) {
     const el = elements.get(id);
     if (!el) continue;
     const left = pxOf(el.style.left);
@@ -177,6 +191,12 @@ export function dragPatch(
     };
     if (el.style["font-size"] !== undefined) {
       style["font-size"] = px(pxOf(el.style["font-size"]) * share);
+    }
+    if (block && component.size) {
+      // A caption block is laid again at the new size: its lines keep the gap
+      // between them, so a caption's line is found and set at the new pitch.
+      const line = Math.round((top - cornerY) / (component.size + CAPTION_LINE_GAP));
+      style.top = px(cornerY + line * (component.size * share + CAPTION_LINE_GAP));
     }
     if (component.component === "VISUAL") {
       const box = scaledVisual(
@@ -198,12 +218,12 @@ export function dragPatch(
 // held.
 export function wrapPatch(
   elements: PageElements,
-  component: Pick<PlacedComponent, "id" | "component">,
+  component: Pick<PlacedComponent, "id" | "component" | "parts">,
   dx: number,
   dy: number,
 ): LivePatch {
   const patch: LivePatch = {};
-  for (const id of componentElements(elements, component.id, component.component)) {
+  for (const id of componentElements(elements, component)) {
     const el = elements.get(id);
     if (!el) continue;
     patch[id] = {

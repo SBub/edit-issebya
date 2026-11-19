@@ -49,8 +49,11 @@ types until slice 9 brings the live preview.
   `div.clip.visual-picture` filling the box with an `<img>` of the same box (no crop), the stroke drawn
   over it (the `.visual-picture` rules: the card, its picture and its stroke share the 16 px radius, and the
   card hides what is outside it). Or a big word (`kind: "word"`,
-  `text` one or two words of 1 to 24 characters each, with no space inside a
-  word and no `<`, `>` or `&`, the two joined by one space: "distribution channel"). It is anchored
+  `text` as the engine writes it one or two words of 1 to 24 characters each, with no space inside a
+  word and no `<`, `>` or `&`, the two joined by one space: "distribution channel"; that rule is the
+  decide answer's (`BEHIND_WORD`, `decide.ts`), and the stored format takes any text of 1 to 200
+  characters and optional `breaks`, so the owner's own text for a big word parses and is drawn on
+  centred lines, `app_docs/owner-edits.md`). It is anchored
   on words like a caption (a big word starts on its first word with a negative
   `offset`, the lead), cuts in and out with no animation. Its optional `cutout` (`false` when the head cannot
   reach it, decision 21; missing = true) says whether it needs the person's cut-out. A big word is a text pick: the text picks (the
@@ -89,6 +92,13 @@ start, end }` ref plus the span of the reel it covers, in seconds, by start). A 
   takes an optional `hidden_by` (the id of the accent, big word or list showing its words while it is on
   screen; the builder leaves it out, and a refinement refuses an id that is none of those, the hook
   included).
+  The owner's text edit (`src/owner-text.ts`, `app_docs/owner-edits.md`) is stored in these same
+  `text` fields and in no new one: an accent or a question gets `text` beside its `words` (the
+  builder draws the text, the reveal spreads it over the words), a caption its `text`, a big word
+  and a list's level theirs. A caption of an edited group that is left with no word is removed and
+  its `words` are appended to the caption before it, so a caption's `words` can then hold words
+  that are not next to each other in the transcript. A version without an owner's text builds
+  byte for byte as before.
   The hook (`kind: "hook"`, id `hook`) takes `text` and never `words`: it is the one text on screen
   nobody says. A refinement refuses a hook with words or without text, and a second hook. Versions
   saved before it have none and parse as before.
@@ -100,6 +110,12 @@ start, end }` ref plus the span of the reel it covers, in seconds, by start). A 
   preset.
 - `style` is the free custom-style field: CSS property to value, added to the element. Values
   cannot leave the style attribute (no `;`, `{`, `}`, `<`, `>`, backslash or `url(`).
+- `owner`, optional, at the top of the edit: `{ placed, texts }`, the ids of the items the owner
+  placed by hand and of the texts the owner wrote in the studio's Edit mode (`src/owner-marks.ts`;
+  sorted, each once; a list's level is `<id>/<role>`). Written only by the owner's edit, its carry
+  and the reel's transcript corrections, which mark the captions they write
+  (`app_docs/owner-edits.md`); the builder does not read it; a version the owner never edited and
+  no correction touched has none.
 - Validation is Zod 4. `editSchemaFor(preset, transcript)` is built per reel: word ids are the
   transcript's and fonts the preset's, so an unknown word or font is refused by the schema itself;
   a refinement refuses a duplicate id, an end before its start, an overlay with neither words
@@ -220,7 +236,12 @@ item's id>`: a visual's, the engine's and an owner's added card's, and a big wor
 - `src/build.ts`: `build(edit, transcript, headTrack, preset, measurer, options) -> { html, assets, checks, components }`.
   `components` is every component with its box on screen (`src/components.ts`, `placedComponents`,
   from the builder's own text boxes; the same list on every layer): the studio's move and resize
-  editor and the owner's learning records read it (`app_docs/owner-edits.md`).
+  editor and the owner's learning records read it (`app_docs/owner-edits.md`). After the single
+  captions it lists the caption blocks (`src/caption-blocks.ts`, `captionBlocks`): each spoken
+  sentence's captions as one component with `parts` (its groups), read back from the stored
+  captions the way the engine blocked them. The page's bytes are unchanged by it. A LIST's
+  component has `parts` too (its lead-in and its key phrase, each with its box): what the owner's
+  text edit names.
   `html` is a HyperFrames composition (`data-composition-id="main"`, a paused GSAP 3.14.2 timeline
   registered on `window.__timelines`); `assets` lists every referenced file with its role
   (`footage`, `font`, `sound`, `mask`, `visual`), sorted (a `sound` asset is each file a sound cue
@@ -307,7 +328,9 @@ item's id>`: a visual's, the engine's and an owner's added card's, and a big wor
   where the person is not), and an untimed `plus-lighter` sub-group (`.cutout-front`) of a second
   footage copy times the mask (the person back in front). Every layer is a plain timed element, so
   the player and the render's frame injector show the same pixels. A span with no matching entry
-  in `inputs.masks` (start and end within half a millisecond) throws. Per pixel the group is
+  in `inputs.masks` (start and end within half a millisecond) throws on the full page (a layer
+  page draws no composite and names no mask, so it builds without them: the owner's editor and the
+  carry read their boxes from the `front` page of an edit whose masks are not made yet). Per pixel the group is
   `(footage with the words over it) x (1 - mask) + footage x mask`. The export's composite does the
   same blend a second time in ffmpeg (`compositeGraph` in `apps/worker/src/render/composite.ts`,
   `app_docs/export.md`), from the `behind` page's frames, the footage and the mask.
@@ -584,7 +607,8 @@ rise and the fade in are gone for them.
 - `src/reveal.ts`, `wordReveal`, gives the moments, for a question, an accent and a caption alike:
   - a text with as many shown words as spoken ones: each on its own word;
   - a text with another word count (a caption whose word fix is written as several words or joins
-    words, an accent with its own `text`): spread over the spoken words in order (two words written
+    words, an accent with its own `text`, a text the owner edited in the studio,
+    `app_docs/owner-edits.md`): spread over the spoken words in order (two words written
     for one spoken word come in together on it; one word written for two comes in on the first);
   - a word said before the text's own start (a text that starts late) shows as the text starts; the
     first word always does; no word shows after the text's end, nor before the word shown before it;
@@ -894,7 +918,9 @@ v<n>`). Restores saved before read `restored version <n>`.
   every other version), and `save_version` takes `p_edited_from_id` and `p_owner_moves`, writing the
   owner's learning rows (`owner_moves`) in the same transaction. `saveVersion`'s meta carries them as
   `editedFromId` and `ownerMoves`; `StoredVersion` reads `edited_from_id` and, when asked for,
-  `engine_record`.
+  `engine_record`. Migration `20261119115900_owner_text_edits.sql` adds `p_owner_texts` (the meta's
+  `ownerTexts`): one learning row per text the owner edited, written to `owner_texts` in the same
+  transaction.
 
 ### First version
 

@@ -5,6 +5,8 @@
 - specs/issue-34-adw-87bca34b-sdlc_planner-change-requests-versions-list.md
 - Owner request, 2026-11-03: one-line version rows with details behind an arrow, plain titles.
 - Owner request, 2026-11-04: a temporary Start over button for testing the first edit.
+- Owner decisions, 2026-11-19 (option 1): Start over keeps only the owner's caption fixes, as
+  transcript corrections, and the cards she added; the AI picks everything else afresh.
 - Owner decision, 2026-11-07: the change box is removed until the product works end to end.
 - specs/issue-156-adw-ca502a36-sdlc_planner-honest-version-summary-from-diff.md
 
@@ -56,7 +58,7 @@ first`, Try again being the progress overlay's, `app_docs/status.md`), `versionO
   going back, the owner's own words for an old change, `First version` (no parent), else `Styled
 automatically` (the decide run after the first version). A version the owner made by moving or
   resizing text (`edited_from_id`, `app_docs/owner-edits.md`) reads `Edited by you` in both, and its
-  details add `You moved or resized text in vN` (`editedFromLabel`). `versionTitle`: `Back to vN` and `First
+  details add `You moved, resized or edited text in vN` (`editedFromLabel`). `versionTitle`: `Back to vN` and `First
 version` as above; otherwise the version's `change_title`, falling back (versions saved before
   titles) to the owner's request, else the origin label. A version saved now has no title (null), so
   it reads its origin label: `Styled automatically` for the automatic run and Start over.
@@ -111,6 +113,16 @@ A control for the owner's testing of the first edit; it will be removed. It reru
 edit from the decide step on the existing reel, with no upload and no request, and saves the result
 as a new version beside the old ones, so first runs can be compared.
 
+- Start over is a fresh answer (owner decisions, 2026-11-19, option 1; `app_docs/owner-edits.md`,
+  "What later steps do with an owner's version"). It carries no place, size, caption block move or
+  element text of the owner's version, and not the hook's text: the AI picks everything again. It
+  builds from the transcript with the reel's corrections (the words the owner fixed in a caption,
+  `owner_word_corrections`): both AI calls read the corrected words, the captions show them over
+  the curator's own fixes, and elements placed on a corrected word show them. The cards the owner
+  added by hand are kept as they were (`keepOwnerAdds`, the reel's current version read beside
+  version 1). Nothing is noted as kept or lost; the step's line says `, N word corrections of
+yours kept`. A corrected caption is not counted among the words fixed. The owner's own version
+  stays in the list.
 - `supabase/migrations/20261104153506_start_over_jobs.sql`: one more job kind, `start_over`, with no
   request, no version and no photo (the existing checks refuse any), and the policy `jobs: owner
 inserts a start over job for own reel` (own reel, status `queued`) through the existing

@@ -127,7 +127,14 @@ export {
   maskPath,
 } from "./build.ts";
 export { type EditPhoto, photoPath, withPhotoInputs } from "./photos.ts";
-export { type PlacedComponent } from "./components.ts";
+export { type ComponentPart, type PlacedComponent, isCaptionBlock } from "./components.ts";
+export {
+  type CaptionBlock,
+  type CaptionGroup,
+  CAPTION_BLOCK_PREFIX,
+  captionBlocks,
+  isCaptionBlockId,
+} from "./caption-blocks.ts";
 export {
   type OwnerAdd,
   OWNER_ADD_SECONDS,
@@ -163,6 +170,29 @@ export {
   settleOwnerMove,
   withOwnerCutouts,
 } from "./owner-edit.ts";
+export {
+  type OwnerText,
+  type OwnerTextRecord,
+  OWNER_TEXTS_MAX,
+  applyOwnerTexts,
+  cleanOwnerText,
+  effectiveTexts,
+  ownerTextOf,
+  ownerTextProblem,
+  ownerTextRecords,
+  parseOwnerTexts,
+} from "./owner-text.ts";
+export { type OwnerCarry, OWNER_CARRY_RULE, carryOwnerEdits } from "./owner-carry.ts";
+export {
+  type CorrectionsApplied,
+  type StoredCorrection,
+  type WordCorrection,
+  applyWordCorrections,
+  captionCorrections,
+  correctedTranscript,
+  liveCorrections,
+  withWordCorrections,
+} from "./owner-corrections.ts";
 export { type ClipFrames, EXPORT_FPS, clipFrames, reelFrames } from "./span-frames.ts";
 export {
   type BigWordBox,
