@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  currentVersionExport,
   EDITING_OFF_WHILE_EXPORTING,
   EXPORTING_LEAD,
   type ExportRef,
@@ -10,8 +11,8 @@ import {
   exportProgressDetail,
   exportRunning,
   exportingReason,
+  followsCurrentVersion,
   isExportKey,
-  keptExports,
   liveRenderJobId,
 } from "./exports";
 
@@ -99,38 +100,50 @@ describe("exportLinkSeconds", () => {
   });
 });
 
-describe("keptExports", () => {
-  const now = Date.parse("2026-11-10T12:00:00.000Z");
-  const row = (id: string, reel_id: string, created_at: string, expires_at: string): ExportRef => ({
-    id,
-    reel_id,
-    job_id: `job-${id}`,
-    version_id: `version-${id}`,
-    created_at,
-    expires_at,
+describe("currentVersionExport", () => {
+  const row = (version_id: string): ExportRef => ({
+    id: "e1",
+    reel_id: "r1",
+    job_id: "j1",
+    version_id,
+    created_at: "2026-11-09T10:00:00.000Z",
+    expires_at: "2026-11-11T10:00:00.000Z",
   });
 
-  it("keeps the newest export of each reel, whatever order the rows come in", () => {
-    const older = row("e1", "r1", "2026-11-09T10:00:00.000Z", "2026-11-11T10:00:00.000Z");
-    const newer = row("e2", "r1", "2026-11-10T09:00:00.000Z", "2026-11-12T09:00:00.000Z");
-    const other = row("e3", "r2", "2026-11-09T08:00:00.000Z", "2026-11-11T08:00:00.000Z");
-    for (const rows of [
-      [older, newer, other],
-      [other, newer, older],
-    ]) {
-      const kept = keptExports(rows, now);
-      expect([...kept.keys()].sort()).toEqual(["r1", "r2"]);
-      expect(kept.get("r1")).toBe(newer);
-      expect(kept.get("r2")).toBe(other);
+  it("offers the export of the reel's current version", () => {
+    const held = row("v2");
+    expect(currentVersionExport(held, "v2")).toBe(held);
+  });
+
+  it("offers nothing once another version is current, whatever made it", () => {
+    // An edit, a font change, Start over and going back all save a new
+    // version with a new id: the export of v2 is of no version that is current.
+    expect(currentVersionExport(row("v2"), "v3")).toBeNull();
+    expect(currentVersionExport(row("v2"), null)).toBeNull();
+    expect(currentVersionExport(null, "v2")).toBeNull();
+  });
+});
+
+describe("followsCurrentVersion", () => {
+  const job = (status: Status, version_id: string | null) => ({ status, version_id });
+
+  it("follows an export of the current version to its end", () => {
+    for (const status of ["queued", "running", "waiting_ai", "done", "failed"] as const) {
+      expect(followsCurrentVersion(job(status, "v2"), "v2"), status).toBe(true);
     }
   });
 
-  it("offers nothing once the newest export's 48 hours have passed", () => {
-    const expired = row("e1", "r1", "2026-11-08T11:00:00.000Z", "2026-11-10T11:00:00.000Z");
-    const last = row("e2", "r2", "2026-11-08T12:00:01.000Z", "2026-11-10T12:00:01.000Z");
-    const kept = keptExports([expired, last], now);
-    expect([...kept.keys()]).toEqual(["r2"]);
-    expect(keptExports([], now).size).toBe(0);
+  it("follows a job whose row has not arrived yet, and any live one", () => {
+    expect(followsCurrentVersion(undefined, "v2")).toBe(true);
+    for (const status of ["queued", "running", "waiting_ai"] as const) {
+      expect(followsCurrentVersion(job(status, "v2"), "v3"), status).toBe(true);
+    }
+  });
+
+  it("stops following an ended export once a newer version is current", () => {
+    for (const status of ["done", "failed", "cancelled"] as const) {
+      expect(followsCurrentVersion(job(status, "v2"), "v3"), status).toBe(false);
+    }
   });
 });
 

@@ -188,7 +188,7 @@ immutability and its RLS (and the `checklist` column, a list stored through `sav
 `claim_job`'s order (one job per reel at a time, oldest first, `not_before` skipped until due) and the worker lanes' kind filter (`p_only_kinds`, `p_except_kinds`),
 `retry-jobs.test.ts` for the Retry insert policy through `is_retry_of_failed_job`, `failure-and-size-columns.test.ts` for the checks on `jobs.failure_kind` and `failure_rules` and the reel's `source_seconds`, `source_width`, `source_height` and `word_count`, readable but never writable by the owner, and `pipeline-statuses.test.ts` for the pipeline's reel statuses and `cache_hit` (the reel's `footage_seconds` column comes from the progress migration and is written once by the worker after `retime`, unit-tested in `apps/worker/src/pipeline/run-pipeline.test.ts`, no DB test), `exports.test.ts` for
 the render job policy and the `exports` table: 48-hour expiry from `export_keep_interval()`, owner from the reel, never updated,
-owner-only select, `cancel-jobs.test.ts` for `cancel_job` (own queued and running renders only,
+owner-only select, and the `kept_exports` view (the current version's export only), `cancel-jobs.test.ts` for `cancel_job` (own queued and running renders only,
 no `anon` execute, no export for a cancelled job, never claimed), `sync-columns.test.ts` for the `updated_at` column and `<table>_set_updated_at` trigger on
 every table PostHog syncs (`reels`, `jobs`, `steps`, `versions`, `exports`, `stored_files`),
 `dashboard-queries.test.ts` for the dashboard queries' columns and events against the real schema and

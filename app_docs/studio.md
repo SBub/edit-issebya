@@ -73,7 +73,7 @@ definer`, executable by `authenticated` only, revoked from `public`, `anon` and 
   unavailable, maps `P0002` to `not-found`, and captures any other error as
   `studio: reel not deleted` and answers `failed`. `apps/studio/src/app/reel-actions.ts` is the
   server action that calls it.
-- A reel with a kept export has a Download icon left of the bin (`DownloadExportButton.tsx`,
+- A reel with a kept export (of its current version) has a Download icon left of the bin (`DownloadExportButton.tsx`,
   `app_docs/export.md`).
 - `apps/studio/src/components/DeleteReelButton.tsx`: the bin in each reels tile's bottom-right
   corner (accessible name `Delete reel`, always visible, 44 px on a phone, 32 px from `sm`): a

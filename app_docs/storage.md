@@ -108,8 +108,10 @@ disk has less than `WORKER_MIN_FREE_DISK_GB` free, and the studio shows why unde
 - Deleted: export files once their export's `expires_at` has passed (48 hours after the export
   was made: `export_keep_interval()`, the one setting, in
   `supabase/migrations/20261118151744_export_kept_48_hours.sql`; rows made before it keep the
-  expiry they were given), export files a newer export of the same reel replaced (on the next
-  pass, whatever their expiry: one kept export per reel, the newest), and an
+  expiry they were given), export files whose version is no longer the reel's current version or
+  that a newer export of the same reel replaced (on the next pass, whatever their expiry: one kept
+  export per reel, the newest of its current version,
+  `supabase/migrations/20261119172916_export_current_version_only.sql`), and an
   export file no export records, at once, by the render that uploaded it (`discard_export_file`,
   then a delete from the raw storage, `supabaseDiscardExport` in `apps/worker/src/stored-files.ts`).
 - The next export rebuilds whatever rebuildable output is missing: only `convert` and `retime`

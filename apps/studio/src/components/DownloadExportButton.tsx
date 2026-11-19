@@ -38,7 +38,7 @@ export async function downloadExport(reelId: string, exportId: string): Promise<
 
 interface Props {
   reelId: string;
-  // The reel's kept export (its newest one, not yet expired).
+  // The reel's kept export (its current version's, not yet expired).
   exportId: string;
   // `icon`: the reels list's control beside the bin. `button`: the reel
   // page's, with `label` as its text from `sm` up; on a phone it shows the
@@ -46,8 +46,8 @@ interface Props {
   variant: "icon" | "button";
   label?: string;
   // `button` only: what a click had to say (empty when a click starts), for
-  // the header's notes. The button shows no words of its own, so it never
-  // changes size.
+  // the header's read-out notes. The button shows no words of its own (they
+  // are its `title`), so it never changes size.
   onProblem?: (text: string) => void;
 }
 
@@ -77,8 +77,8 @@ function DownloadIcon({ className }: { className: string }) {
 // on the reel's page a button of a fixed size (32 px tall like Export; the
 // icon alone on a phone, `Download vN` from `sm` up). One click downloads the
 // MP4. Nothing else happens anywhere: no notice, no dialog. An export that
-// expired meanwhile says so and the page refreshes, which takes the control
-// away.
+// is no longer kept (it expired meanwhile, or a newer version became the
+// current one) says so and the page refreshes, which takes the control away.
 export function DownloadExportButton({ reelId, exportId, variant, label, onProblem }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -112,8 +112,9 @@ export function DownloadExportButton({ reelId, exportId, variant, label, onProbl
         aria-label={name}
         onClick={() => void download()}
         disabled={busy}
-        title="Download the finished export (kept for 48 hours)"
-        className="flex h-8 w-8 flex-none items-center justify-center border border-line text-sm font-medium hover:bg-raised disabled:opacity-50 sm:w-32 sm:px-2"
+        title={message || "Download the finished export (kept for 48 hours)"}
+        data-failed={message ? "true" : undefined}
+        className="flex h-8 w-8 flex-none items-center justify-center border border-line text-sm font-medium hover:bg-raised disabled:opacity-50 data-[failed]:text-danger sm:w-32 sm:px-2"
       >
         <DownloadIcon className="size-4 sm:hidden" />
         <span className="hidden min-w-0 truncate sm:block">{name}</span>

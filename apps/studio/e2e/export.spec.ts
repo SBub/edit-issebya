@@ -153,6 +153,9 @@ test.afterAll(async () => {
   if (reel) {
     const { data } = await admin.from("exports").select("r2_key").eq("reel_id", reel.reelId);
     for (const row of (data ?? []) as { r2_key: string }[]) written.add(row.r2_key);
+    // The versions the going-back test made.
+    const versions = await admin.from("versions").select("r2_key").eq("reel_id", reel.reelId);
+    for (const row of (versions.data ?? []) as { r2_key: string }[]) written.add(row.r2_key);
   }
   for (const key of written) await storage.delete(key);
   // The cascade removes the reel, its jobs, versions and exports.
@@ -389,6 +392,66 @@ async function expectEditingOff() {
   await expect(others.first()).toHaveAttribute("title", EDITING_OFF);
 }
 
+// The header shows no notes: they are read out only (a box of one pixel, never
+// seen), so the only words in the slot are its buttons' and the progress line's.
+async function expectNoNotesShown() {
+  const notes = (await page.getByTestId("export-notes").boundingBox())!;
+  expect(notes.width).toBeLessThanOrEqual(1);
+  expect(notes.height).toBeLessThanOrEqual(1);
+  // What the slot shows, without the read-out notes.
+  const shown = await panel().evaluate((slot) => {
+    const copy = slot.cloneNode(true) as HTMLElement;
+    for (const hidden of copy.querySelectorAll('h2, [data-testid="export-notes"]')) {
+      hidden.remove();
+    }
+    return (copy.textContent ?? "").replace(/\s+/g, " ").trim();
+  });
+  const idle = shown.replace(/^Download v\d+/, "") === "Export";
+  const exporting = shown.startsWith("Exporting… ") && shown.endsWith("Cancel");
+  expect(idle || exporting, `the export slot shows "${shown}"`).toBe(true);
+}
+
+// What the studio may offer of the reel (`kept_exports`, the one definition).
+async function keptExportIds(): Promise<string[]> {
+  const { data, error } = await admin.from("kept_exports").select("id").eq("reel_id", reel!.reelId);
+  if (error) throw new Error(`kept exports not read: ${error.message}`);
+  return ((data ?? []) as { id: string }[]).map((row) => row.id);
+}
+
+async function versionNumbers(): Promise<number[]> {
+  const { data, error } = await admin
+    .from("versions")
+    .select("number")
+    .eq("reel_id", reel!.reelId)
+    .order("number");
+  if (error) throw new Error(`versions not read: ${error.message}`);
+  return ((data ?? []) as { number: number }[]).map((row) => row.number);
+}
+
+// Goes back to version `number` from its details in the Versions column, and
+// runs the worker: a new version becomes the current one.
+async function goBackTo(number: number) {
+  const item = page.locator(`[data-testid="version-item"][data-version-number="${number}"]`);
+  const toggle = item.getByTestId("version-toggle");
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  const before = await versionNumbers();
+  await item.getByRole("button", { name: "Go back to this" }).click();
+  await expect
+    .poll(async () => {
+      const { data } = await admin
+        .from("jobs")
+        .select("id")
+        .eq("reel_id", reel!.reelId)
+        .eq("kind", "restore")
+        .eq("status", "queued");
+      return (data ?? []).length;
+    })
+    .toBe(1);
+  const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX });
+  expect(worker.code, worker.output).toBe(0);
+  expect(await versionNumbers()).toEqual([...before, before.length + 1]);
+}
+
 async function expectEditingOn() {
   await expect(page.getByTestId("start-over")).toBeEnabled();
   await expect(page.locator("#versions-status")).toHaveText("");
@@ -547,10 +610,12 @@ test("still on the reel's page when the export finishes: the file downloads by i
   );
   expect(result.code, result.output).toBe(0);
   await expectStub(await downloaded);
+  // `Downloaded` is read out only: the header shows no note.
   await expect(page.getByTestId("export-message")).toHaveText("Downloaded");
+  await expectNoNotesShown();
   await expect(panel()).toHaveAttribute("data-export-state", "idle");
   await expect(page.getByTestId("export-download")).toBeVisible();
-  // `Downloaded` and Download are inside the slot: nothing moved at any measure.
+  // Download is inside the slot: nothing moved at any measure.
   await expectNoShiftWhileWatched("Export to the download by itself", [
     "idle",
     "exporting",
@@ -709,4 +774,130 @@ test("nothing in the header moves or changes size at any state of an export", as
   await expectNoShift("after Cancel");
   await expect(page.getByTestId("export-download")).toHaveText("Download v2");
   expect((await renderJobs()).at(-1)).toMatchObject({ status: "cancelled" });
+});
+
+// The failure is told once, by the card over the preview. The header says
+// nothing of it: the slot is as it was before Export.
+test("a failed export shows no words in the header: the card over the preview tells it", async () => {
+  test.setTimeout(120_000);
+  const before = await exportsOf();
+  const known = new Set((await renderJobs()).map((job) => job.id));
+  await expect(page.getByTestId("export-download")).toHaveText("Download v2");
+  await expectNoNotesShown();
+  await watchHeader();
+  await page.getByTestId("export-button").click();
+  await expect(panel()).toHaveAttribute("data-export-state", "exporting");
+  await expect
+    .poll(async () => (await renderJobs()).filter((job) => !known.has(job.id)))
+    .toEqual([expect.objectContaining({ status: "queued" })]);
+  const [job] = (await renderJobs()).filter((candidate) => !known.has(candidate.id));
+
+  // The render step failed and the job with it, as a worker leaves them (no
+  // worker runs here: the rows are written by hand).
+  const step = await admin.from("steps").insert({
+    job_id: job!.id,
+    reel_id: reel!.reelId,
+    owner_id: owner.id,
+    name: "render",
+    status: "failed",
+    finished_at: new Date().toISOString(),
+  });
+  if (step.error) throw new Error(`step not inserted: ${step.error.message}`);
+  const failed = await admin
+    .from("jobs")
+    .update({ status: "failed", finished_at: new Date().toISOString() })
+    .eq("id", job!.id);
+  if (failed.error) throw new Error(`job not updated: ${failed.error.message}`);
+
+  // The card over the preview: what failed and the two ways on.
+  await expect(page.getByTestId("overlay-headline")).toHaveText("Could not finish exporting");
+  await expect(page.getByTestId("overlay-try-again")).toBeVisible();
+  await expect(page.getByTestId("overlay-keep")).toBeVisible();
+
+  // The header: Export is back, no failure words anywhere in it, seen or
+  // read out, and nothing moved on the way.
+  await expect(panel()).toHaveAttribute("data-export-state", "idle");
+  await expect(page.getByTestId("export-button")).toBeEnabled();
+  await expect(page.locator("header")).not.toContainText(/fail|try again/i);
+  await expect(page.getByTestId("export-message")).toHaveText("");
+  await expectNoNotesShown();
+  await expectNoShiftWhileWatched("Export to a failed export", ["idle", "exporting", "idle"]);
+  await expectNoShift("a failed export");
+  await expect(page.locator("dialog[open]")).toHaveCount(0);
+
+  // A failed export replaces nothing: the current version's kept export is
+  // still offered.
+  expect(await exportsOf()).toEqual(before);
+  await expect(page.getByTestId("export-download")).toHaveText("Download v2");
+  expect(await keptExportIds()).toEqual([before.at(-1)!.id]);
+
+  await page.getByTestId("overlay-keep").click();
+  await expect(page.getByTestId("overlay-headline")).toHaveCount(0);
+  await expectEditingOn();
+});
+
+// Download gives the current version's export only. The reel holds exports of
+// v2, its current version; going back makes v3, then v4.
+test("a new version takes Download away at once, on the reel's page and in the reels list", async () => {
+  test.setTimeout(180_000);
+  const exported = await exportsOf();
+  expect(exported.length).toBeGreaterThan(0);
+  expect(await keptExportIds()).toEqual([exported.at(-1)!.id]);
+  await expect(page.getByTestId("export-download")).toHaveText("Download v2");
+  await page.evaluate(() => {
+    (window as unknown as { __noReload: string }).__noReload = "marker";
+  });
+  const downloads = countDownloads();
+  try {
+    // Going back to v1 saves v3: the page follows it with no reload, and the
+    // export of v2 is no longer offered.
+    await watchHeader();
+    await goBackTo(1);
+    await expect(page.locator('[data-testid="version-item"][data-version-number="3"]')).toBeVisible(
+      { timeout: 30_000 },
+    );
+    await expect(page.getByTestId("export-download")).toHaveCount(0);
+    await expect(panel()).toHaveAttribute("data-export-state", "idle");
+    await expect(page.getByTestId("export-button")).toBeEnabled();
+    await expectNoNotesShown();
+    await expectNoShiftWhileWatched("a newer version becomes current", ["idle"]);
+    await expectNoShift("a newer version, no kept export");
+    expect(await noReloadMarker()).toBe("marker");
+    expect(await keptExportIds()).toEqual([]);
+    // The rows and the files are still there until the worker's clean-up.
+    expect(await exportsOf()).toEqual(exported);
+
+    // Going back to the exported version saves v4, a different version: the
+    // old file does not come back.
+    await goBackTo(2);
+    await expect(page.locator('[data-testid="version-item"][data-version-number="4"]')).toBeVisible(
+      { timeout: 30_000 },
+    );
+    await expect(page.getByTestId("export-download")).toHaveCount(0);
+    expect(await keptExportIds()).toEqual([]);
+
+    // Opened again, the page offers nothing either, and neither does the list.
+    await openReelPage();
+    await expect(page.getByTestId("export-button")).toBeEnabled();
+    await expect(page.getByTestId("export-download")).toHaveCount(0);
+    await expectNoShift("opened again, an older version's export only");
+    await page.getByRole("link", { name: "Back to your reels" }).click();
+    await expect(page).toHaveURL("/studio");
+    await expect(reelTile().getByTestId("delete-reel")).toBeVisible();
+    await expect(reelTile().getByTestId("download-export")).toHaveCount(0);
+    expect(downloads.count()).toBe(0);
+
+    // The worker's clean-up takes every file of the older version on its next
+    // pass, though none has reached its 48 hours.
+    const expired = await admin.rpc("expire_export_files", {
+      p_now: new Date().toISOString(),
+      p_prefix: CACHE_PREFIX,
+    });
+    expect(expired.error).toBeNull();
+    expect(((expired.data ?? []) as { r2_key: string }[]).map((row) => row.r2_key).sort()).toEqual(
+      exported.map((row) => row.r2_key).sort(),
+    );
+  } finally {
+    downloads.stop();
+  }
 });

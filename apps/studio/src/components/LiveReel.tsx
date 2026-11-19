@@ -26,6 +26,7 @@ import { changeBlockedReason } from "@/lib/change-requests";
 import {
   EXPORT_REF_COLUMNS,
   type ExportRef,
+  KEPT_EXPORTS,
   LEAVE_WHILE_EXPORTING,
   exportingReason,
 } from "@/lib/exports";
@@ -48,7 +49,7 @@ interface Snapshot {
   jobs: JobRow[];
   steps: StepRow[];
   versions: VersionListRow[];
-  // The reel's kept export (its newest one, not yet expired): Download shows
+  // The reel's kept export (its current version's, not yet expired): Download shows
   // while there is one, and the export this page follows downloads by itself
   // the moment its row arrives.
   latestExport: ExportRef | null;
@@ -101,12 +102,9 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
       .order("number")
       .returns<VersionListRow[]>(),
     supabase
-      .from("exports")
+      .from(KEPT_EXPORTS)
       .select(EXPORT_REF_COLUMNS)
       .eq("reel_id", id)
-      .gt("expires_at", new Date().toISOString())
-      .order("created_at", { ascending: false })
-      .limit(1)
       .maybeSingle<ExportRef>(),
     supabase.from("worker_status").select(WORKER_STATUS_COLUMNS).returns<WorkerStatusRow[]>(),
   ]);
@@ -292,7 +290,9 @@ export function LiveReel({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "exports", filter: `reel_id=eq.${id}` },
         (payload) => {
-          // Exports are never updated; a new one is the newest.
+          // Exports are never updated; a new one is the newest. Whether it is
+          // offered (its version is still the current one) is ExportPanel's
+          // `currentVersionExport`.
           setLatestExport(pickColumns<ExportRef>(payload.new, EXPORT_REF_COLUMNS));
         },
       )
