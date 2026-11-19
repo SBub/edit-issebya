@@ -37,6 +37,10 @@ export function liveRenderJobId(jobs: readonly RenderJob[]): string | null {
 export const EDITING_OFF_WHILE_EXPORTING =
   "Editing is off while this reel exports. Cancel the export to edit now";
 
+// Said with that reason in the Versions column while the reel exports: only
+// Cancel ends an export.
+export const LEAVE_WHILE_EXPORTING = "You can leave this page, the export keeps going";
+
 export function exportingReason(jobs: readonly RenderJob[]): string | null {
   return liveRenderJobId(jobs) === null ? null : EDITING_OFF_WHILE_EXPORTING;
 }
@@ -162,10 +166,14 @@ export function exportRunning(progress: ExportProgress | null): boolean {
   return progress?.kind === "waiting" || progress?.kind === "rendering";
 }
 
-// The one line the reel's page shows for a running export: `Exporting… 40%`
-// while the render step runs, else `Exporting… <what it waits for>`.
-export function exportProgressLabel(progress: ExportProgress): string {
-  if (progress.kind === "rendering") return `Exporting… ${progress.percent}%`;
-  if (progress.kind === "waiting") return `Exporting… ${progress.label}`;
+// The line the reel's header shows for a running export is `Exporting… 40%`
+// while the render step runs, else `Exporting… <what it waits for>`: this
+// lead, then the detail. On a phone only the detail is seen (the lead is read
+// out), so the line fits the header's one row.
+export const EXPORTING_LEAD = "Exporting…";
+
+export function exportProgressDetail(progress: ExportProgress): string {
+  if (progress.kind === "rendering") return `${progress.percent}%`;
+  if (progress.kind === "waiting") return progress.label;
   return "";
 }

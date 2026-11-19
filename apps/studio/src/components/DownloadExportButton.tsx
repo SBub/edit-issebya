@@ -41,58 +41,83 @@ interface Props {
   // The reel's kept export (its newest one, not yet expired).
   exportId: string;
   // `icon`: the reels list's control beside the bin. `button`: the reel
-  // page's, with `label` as its text.
+  // page's, with `label` as its text from `sm` up; on a phone it shows the
+  // icon and `label` is only its name.
   variant: "icon" | "button";
   label?: string;
+  // `button` only: what a click had to say (empty when a click starts), for
+  // the header's notes. The button shows no words of its own, so it never
+  // changes size.
+  onProblem?: (text: string) => void;
 }
 
 const FAILED = "The file could not be fetched. Try again";
 const GONE = "This export is no longer kept. Export again";
 
+function DownloadIcon({ className }: { className: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M12 4v11" />
+      <path d="M7 11l5 5 5-5" />
+      <path d="M5 20h14" />
+    </svg>
+  );
+}
+
 // Download of a reel's kept export: in the reels list an icon beside the bin,
-// on the reel's page a button. One click downloads the MP4. Nothing else
-// happens anywhere: no notice, no dialog. An export that expired meanwhile
-// says so and the page refreshes, which takes the control away.
-export function DownloadExportButton({ reelId, exportId, variant, label }: Props) {
+// on the reel's page a button of a fixed size (32 px tall like Export; the
+// icon alone on a phone, `Download vN` from `sm` up). One click downloads the
+// MP4. Nothing else happens anywhere: no notice, no dialog. An export that
+// expired meanwhile says so and the page refreshes, which takes the control
+// away.
+export function DownloadExportButton({ reelId, exportId, variant, label, onProblem }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<{ exportId: string; text: string } | null>(null);
   // A message belongs to the export it was about: a newer export starts clean.
   const message = problem?.exportId === exportId ? problem.text : "";
 
+  function say(text: string) {
+    setProblem(text ? { exportId, text } : null);
+    onProblem?.(text);
+  }
+
   async function download() {
     setBusy(true);
-    setProblem(null);
+    say("");
     const outcome = await downloadExport(reelId, exportId);
     setBusy(false);
     if (outcome === "signed-out") router.refresh();
     else if (outcome === "gone") {
-      setProblem({ exportId, text: GONE });
+      say(GONE);
       router.refresh();
-    } else if (outcome === "failed") setProblem({ exportId, text: FAILED });
+    } else if (outcome === "failed") say(FAILED);
   }
 
   if (variant === "button") {
+    const name = label ?? "Download";
     return (
-      <span className="flex flex-col items-end gap-0.5">
-        <button
-          type="button"
-          data-testid="export-download"
-          onClick={() => void download()}
-          disabled={busy}
-          title="Download the finished export (kept for 48 hours)"
-          className="border border-line px-3 py-1.5 text-sm font-medium hover:bg-raised disabled:opacity-50"
-        >
-          {label ?? "Download"}
-        </button>
-        <span
-          role="status"
-          data-testid="export-download-status"
-          className="text-xs break-words text-danger empty:hidden"
-        >
-          {message}
-        </span>
-      </span>
+      <button
+        type="button"
+        data-testid="export-download"
+        aria-label={name}
+        onClick={() => void download()}
+        disabled={busy}
+        title="Download the finished export (kept for 48 hours)"
+        className="flex h-8 w-8 flex-none items-center justify-center border border-line text-sm font-medium hover:bg-raised disabled:opacity-50 sm:w-32 sm:px-2"
+      >
+        <DownloadIcon className="size-4 sm:hidden" />
+        <span className="hidden min-w-0 truncate sm:block">{name}</span>
+      </button>
     );
   }
 
@@ -107,20 +132,7 @@ export function DownloadExportButton({ reelId, exportId, variant, label }: Props
       disabled={busy}
       className="flex size-11 items-center justify-center text-ink transition-opacity hover:opacity-70 disabled:opacity-50 data-[failed]:text-danger sm:size-8"
     >
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="size-5 sm:size-4"
-      >
-        <path d="M12 4v11" />
-        <path d="M7 11l5 5 5-5" />
-        <path d="M5 20h14" />
-      </svg>
+      <DownloadIcon className="size-5 sm:size-4" />
     </button>
   );
 }

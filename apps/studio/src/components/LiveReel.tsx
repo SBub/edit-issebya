@@ -23,7 +23,12 @@ import { ReelScreen } from "@/components/ReelScreen";
 import { StartOverButton } from "@/components/StartOverButton";
 import { VersionList } from "@/components/VersionList";
 import { changeBlockedReason } from "@/lib/change-requests";
-import { EXPORT_REF_COLUMNS, type ExportRef, exportingReason } from "@/lib/exports";
+import {
+  EXPORT_REF_COLUMNS,
+  type ExportRef,
+  LEAVE_WHILE_EXPORTING,
+  exportingReason,
+} from "@/lib/exports";
 import { startOverQueueNote } from "@/lib/failures";
 import { type FailureAction, overlayState } from "@/lib/progress-overlay";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, reelName } from "@/lib/reels";
@@ -466,6 +471,7 @@ export function LiveReel({
                 versions={versions}
                 currentVersionId={currentId}
                 blockedReason={blockedReason}
+                notice={exportingReason(jobs) === null ? null : LEAVE_WHILE_EXPORTING}
                 action={
                   <StartOverButton
                     reelId={reel.id}

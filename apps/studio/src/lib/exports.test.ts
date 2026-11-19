@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   EDITING_OFF_WHILE_EXPORTING,
+  EXPORTING_LEAD,
   type ExportRef,
   exportBlockedReason,
   exportFileName,
   exportLinkSeconds,
   exportProgress,
-  exportProgressLabel,
+  exportProgressDetail,
   exportRunning,
   exportingReason,
   isExportKey,
@@ -236,11 +237,12 @@ describe("exportProgress", () => {
     expect(exportRunning(null)).toBe(false);
   });
 
-  it("words a running export in one line", () => {
-    expect(exportProgressLabel({ kind: "rendering", percent: 40 })).toBe("Exporting… 40%");
-    expect(exportProgressLabel({ kind: "waiting", label: "waiting to start" })).toBe(
-      "Exporting… waiting to start",
+  it("words a running export in one short line after its lead", () => {
+    expect(EXPORTING_LEAD).toBe("Exporting…");
+    expect(exportProgressDetail({ kind: "rendering", percent: 40 })).toBe("40%");
+    expect(exportProgressDetail({ kind: "waiting", label: "waiting to start" })).toBe(
+      "waiting to start",
     );
-    expect(exportProgressLabel({ kind: "ready", exportId: "e1" })).toBe("");
+    expect(exportProgressDetail({ kind: "ready", exportId: "e1" })).toBe("");
   });
 });

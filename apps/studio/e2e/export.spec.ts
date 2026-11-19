@@ -17,6 +17,26 @@ const STUB = fileURLToPath(new URL("../../../fixtures/render/stub-export.mp4", i
 // How long a finished export is kept (`export_keep_interval()`).
 const KEEP_MS = 48 * 3600 * 1000;
 const EDITING_OFF = "Editing is off while this reel exports. Cancel the export to edit now";
+const MAY_LEAVE = "You can leave this page, the export keeps going";
+// The widths the header is measured at: the spec's desktop, a laptop and a
+// phone.
+const DESKTOP = { width: 1920, height: 1080 };
+const WIDTHS = [DESKTOP, { width: 1280, height: 800 }, { width: 390, height: 844 }];
+// The most a box may differ between two states, in CSS pixels.
+const SHIFT_TOLERANCE = 0.5;
+
+interface Box {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+type Boxes = Record<string, Box>;
+// The page's own probes, set before any page script runs (see beforeAll).
+interface HeaderProbe {
+  __headerBoxes: () => Boxes;
+  __headerWatch?: { stop: boolean; frames: number; low: Boxes; high: Boxes };
+}
 // The two scripts the composition loads from jsdelivr, served from the pinned
 // local packages so the spec needs no network.
 const CDN = [
@@ -83,6 +103,37 @@ test.beforeAll(async ({ browser }, testInfo) => {
     );
   }
   events = await recordEvents(page);
+  // The boxes the no-shift checks compare, measured from the root box: the
+  // header, each of its children (the back link, the title, the export slot),
+  // what is under the header, and inside the slot the one action button
+  // (Export or Cancel), the progress line, its bar and Download when shown.
+  await page.addInitScript(() => {
+    (window as unknown as HeaderProbe).__headerBoxes = () => {
+      const header = document.querySelector("header");
+      if (!header) return {};
+      const part = (id: string) => header.querySelector(`[data-testid="${id}"]`);
+      const found: Record<string, Element | null | undefined> = {
+        root: document.documentElement,
+        header,
+        "under the header": header.nextElementSibling,
+        "second under the header": header.nextElementSibling?.nextElementSibling,
+        "Export or Cancel": part("export-button") ?? part("export-cancel"),
+        "progress line": part("export-status"),
+        "progress bar": part("export-progress"),
+        Download: part("export-download"),
+      };
+      [...header.children].forEach((child, index) => {
+        found[`header child ${index + 1} (${child.tagName.toLowerCase()})`] = child;
+      });
+      const boxes: Boxes = {};
+      for (const [name, element] of Object.entries(found)) {
+        if (!element) continue;
+        const { left, top, width, height } = element.getBoundingClientRect();
+        boxes[name] = { left, top, width, height };
+      }
+      return boxes;
+    };
+  });
 });
 
 test.afterAll(async () => {
@@ -159,12 +210,121 @@ async function expectStub(download: Download) {
   );
 }
 
-// While the reel exports, its editing controls are off and say why.
+// The parts every state must show (the rest come and go with the state).
+const ALWAYS = [
+  "root",
+  "header",
+  "under the header",
+  "second under the header",
+  "header child 1 (a)",
+  "header child 2 (h1)",
+  "header child 3 (section)",
+  "Export or Cancel",
+];
+const SIDES = ["left", "top", "width", "height"] as const;
+// The first box each part had at each width. Every later state is held to it,
+// across the whole file: nothing in the header may move or change size.
+const firstBoxes = new Map<string, Box>();
+
+function expectSameBoxes(boxes: Boxes, width: number, state: string) {
+  for (const name of ALWAYS) {
+    expect(boxes, `${name} at "${state}", ${width} wide`).toHaveProperty([name]);
+  }
+  const root = boxes.root!;
+  const header = boxes.header!;
+  for (const [name, box] of Object.entries(boxes)) {
+    const key = `${width} wide, ${name}`;
+    const first = firstBoxes.get(key);
+    if (!first) {
+      firstBoxes.set(key, box);
+    } else {
+      for (const side of SIDES) {
+        expect(
+          Math.abs(box[side] - first[side]),
+          `${key}: ${side} was ${first[side]}, is ${box[side]} at "${state}"`,
+        ).toBeLessThanOrEqual(SHIFT_TOLERANCE);
+      }
+    }
+    // Everything of the slot is inside the header's one row and the page.
+    if (name.startsWith("under") || name.startsWith("second") || name === "root") continue;
+    expect(box.top, `${key} at "${state}"`).toBeGreaterThanOrEqual(header.top);
+    expect(box.top + box.height, `${key} at "${state}"`).toBeLessThanOrEqual(
+      header.top + header.height,
+    );
+    expect(box.left, `${key} at "${state}"`).toBeGreaterThanOrEqual(root.left);
+    expect(box.left + box.width, `${key} at "${state}"`).toBeLessThanOrEqual(
+      root.left + root.width,
+    );
+  }
+}
+
+// The strict check: at the desktop, laptop and phone widths, the header, each
+// of its children, what is under it and the parts of the export slot are
+// where, and as large as, they were in every state before (0.5 px at most).
+async function expectNoShift(state: string) {
+  try {
+    for (const viewport of WIDTHS) {
+      await page.setViewportSize(viewport);
+      const boxes = await page.evaluate(() => (window as unknown as HeaderProbe).__headerBoxes());
+      expectSameBoxes(boxes, viewport.width, state);
+    }
+  } finally {
+    await page.setViewportSize(DESKTOP);
+  }
+}
+
+// Between two states too: from now on the page measures the same boxes on
+// every frame and keeps the lowest and highest value of each side.
+async function watchHeader() {
+  await page.evaluate(() => {
+    const probe = window as unknown as HeaderProbe;
+    const watch = { stop: false, frames: 0, low: {} as Boxes, high: {} as Boxes };
+    probe.__headerWatch = watch;
+    const frame = () => {
+      if (watch.stop) return;
+      watch.frames += 1;
+      for (const [name, box] of Object.entries(probe.__headerBoxes())) {
+        const low = (watch.low[name] ??= { ...box });
+        const high = (watch.high[name] ??= { ...box });
+        for (const side of ["left", "top", "width", "height"] as const) {
+          low[side] = Math.min(low[side], box[side]);
+          high[side] = Math.max(high[side], box[side]);
+        }
+      }
+      requestAnimationFrame(frame);
+    };
+    frame();
+  });
+}
+
+// Ends the watch: no box moved on any frame since `watchHeader`.
+async function expectNoShiftWhileWatched(state: string) {
+  const watch = await page.evaluate(() => {
+    const held = (window as unknown as HeaderProbe).__headerWatch!;
+    held.stop = true;
+    return held;
+  });
+  expect(watch.frames).toBeGreaterThan(10);
+  for (const name of ALWAYS) expect(watch.low, `${name} during "${state}"`).toHaveProperty([name]);
+  for (const [name, low] of Object.entries(watch.low)) {
+    const high = watch.high[name]!;
+    for (const side of SIDES) {
+      expect(
+        high[side] - low[side],
+        `${name}: ${side} went from ${low[side]} to ${high[side]} during "${state}"`,
+      ).toBeLessThanOrEqual(SHIFT_TOLERANCE);
+    }
+  }
+}
+
+// While the reel exports, its editing controls are off and say why. The words
+// are in the Versions column, never in the header.
 async function expectEditingOff() {
-  await expect(page.getByTestId("export-editing-off")).toContainText(EDITING_OFF);
+  await expect(page.locator("header")).not.toContainText("Editing is off");
+  await expect(page.locator("header")).not.toContainText(MAY_LEAVE);
   await expect(page.getByTestId("start-over")).toBeDisabled();
   await expect(page.getByTestId("start-over")).toHaveAttribute("title", EDITING_OFF);
-  await expect(page.locator("#versions-status")).toHaveText(EDITING_OFF);
+  await expect(page.locator("#versions-status")).toHaveText(`${MAY_LEAVE}. ${EDITING_OFF}`);
   // Every font pair but the chosen one (which never queues anything).
   const others = page
     .getByTestId("font-pair-picker")
@@ -174,7 +334,6 @@ async function expectEditingOff() {
 }
 
 async function expectEditingOn() {
-  await expect(page.getByTestId("export-editing-off")).toHaveCount(0);
   await expect(page.getByTestId("start-over")).toBeEnabled();
   await expect(page.locator("#versions-status")).toHaveText("");
 }
@@ -194,6 +353,8 @@ test("Export never blocks: the owner leaves while it renders, and the kept file 
   await expect(panel()).toHaveAttribute("data-export-state", "idle");
   await expect(page.getByTestId("export-download")).toHaveCount(0);
   await expectEditingOn();
+  // The boxes every later state is held to.
+  await expectNoShift("before Export, no kept export");
   await button.click();
 
   // Progress on the reel itself, with Cancel; no dialog covers the page.
@@ -204,6 +365,8 @@ test("Export never blocks: the owner leaves while it renders, and the kept file 
   await expect(page.getByTestId("export-cancel")).toBeVisible();
   await expect(page.locator("dialog[open]")).toHaveCount(0);
   await expect(button).toHaveCount(0);
+  // Cancel is where Export was, and nothing else in the header moved.
+  await expectNoShift("waiting to start");
   const { current_version_id: versionId } = await reelRow();
   await expect
     .poll(renderJobs)
@@ -230,6 +393,7 @@ test("Export never blocks: the owner leaves while it renders, and the kept file 
     // The line follows the render step's live percent and rises.
     await expect.poll(progressPercent, { timeout: 60_000 }).toBeGreaterThan(0);
     await expect(page.getByTestId("export-status")).toHaveText(/^Exporting… \d+%$/);
+    await expectNoShift("the percent rising");
     const first = await progressPercent();
     await expect.poll(progressPercent, { timeout: 30_000 }).toBeGreaterThan(first);
 
@@ -296,6 +460,8 @@ test("Export never blocks: the owner leaves while it renders, and the kept file 
     await expectEditingOn();
     const kept = page.getByTestId("export-download");
     await expect(kept).toHaveText("Download v2");
+    // Download took its place in the slot: Export and the title did not move.
+    await expectNoShift("Download shown");
     expect(downloads.count()).toBe(1);
     const fromPage = page.waitForEvent("download", { timeout: 30_000 });
     await kept.click();
@@ -312,6 +478,8 @@ test("still on the reel's page when the export finishes: the file downloads by i
   await page.evaluate(() => {
     (window as unknown as { __noReload: string }).__noReload = "marker";
   });
+  // Every frame from the press on Export to the finished download is measured.
+  await watchHeader();
   await page.getByTestId("export-button").click();
   await expect(panel()).toHaveAttribute("data-export-state", "exporting");
 
@@ -324,6 +492,10 @@ test("still on the reel's page when the export finishes: the file downloads by i
   await expectStub(await downloaded);
   await expect(page.getByTestId("export-message")).toHaveText("Downloaded");
   await expect(panel()).toHaveAttribute("data-export-state", "idle");
+  await expect(page.getByTestId("export-download")).toBeVisible();
+  // `Downloaded` and Download are inside the slot: no frame moved anything.
+  await expectNoShiftWhileWatched("Export to the download by itself");
+  await expectNoShift("downloaded by itself");
   await expect(page.locator("dialog[open]")).toHaveCount(0);
   expect(await noReloadMarker()).toBe("marker");
 
@@ -356,9 +528,14 @@ test("only Cancel stops an export: leaving and coming back keeps it, Cancel ends
       await expect(page.getByTestId("export-status")).toHaveText(/^Exporting… /);
       expect((await renderJobs()).at(-1)).toMatchObject({ status: "running" });
       await expectEditingOff();
+      await expectNoShift("opened again while exporting");
 
+      await watchHeader();
       await page.getByTestId("export-cancel").click();
       await expect(panel()).toHaveAttribute("data-export-state", "idle");
+      await expect(page.getByTestId("export-button")).toBeEnabled();
+      await expectNoShiftWhileWatched("Cancel while rendering");
+      await expectNoShift("after Cancel");
 
       const exited = await worker.exited;
       expect(exited.output).toMatch(/cancelled, leaving it/);
@@ -404,4 +581,71 @@ test("Cancel while queued: the render is never claimed", async () => {
   expect(job).toMatchObject({ status: "cancelled", attempts: 0, started_at: null });
   expect(await exportsOf()).toEqual(before);
   await expect(page.getByTestId("export-button")).toBeEnabled();
+});
+
+// Each state of an export in turn, with no worker (the rows a worker would
+// write are written here, so every percent is exact), measured at every width.
+test("nothing in the header moves or changes size at any state of an export", async () => {
+  test.setTimeout(120_000);
+  const status = page.getByTestId("export-status");
+  const known = new Set((await renderJobs()).map((job) => job.id));
+  await expectNoShift("before Export, a kept export");
+  await page.getByTestId("export-button").click();
+  await expect(status).toHaveText("Exporting… waiting to start");
+  await expectNoShift("waiting to start");
+
+  const [job] = (await renderJobs()).filter((candidate) => !known.has(candidate.id));
+  // Claimed, as far as the page can tell; the lease keeps a worker off it.
+  const claimed = await admin
+    .from("jobs")
+    .update({
+      status: "running",
+      started_at: new Date().toISOString(),
+      lease_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+    })
+    .eq("id", job!.id);
+  if (claimed.error) throw new Error(`job not updated: ${claimed.error.message}`);
+  await expect(status).toHaveText("Exporting… getting ready");
+  await expectNoShift("getting ready");
+
+  const step = await admin
+    .from("steps")
+    .insert({
+      job_id: job!.id,
+      reel_id: reel!.reelId,
+      owner_id: owner.id,
+      name: "render",
+      status: "running",
+      progress_percent: 0,
+    })
+    .select("id")
+    .single<{ id: string }>();
+  if (step.error || !step.data) throw new Error(`step not inserted: ${step.error?.message}`);
+  // One, two and three digits: the line and the bar stay where they are.
+  for (const percent of [0, 7, 55, 100]) {
+    const moved = await admin
+      .from("steps")
+      .update({ progress_percent: percent })
+      .eq("id", step.data.id);
+    if (moved.error) throw new Error(`step not updated: ${moved.error.message}`);
+    await expect(status).toHaveText(`Exporting… ${percent}%`);
+    await expect(page.getByTestId("export-progress")).toHaveAttribute(
+      "data-percent",
+      String(percent),
+    );
+    await expectNoShift(`${percent}%`);
+  }
+  const rendered = await admin.from("steps").update({ status: "done" }).eq("id", step.data.id);
+  if (rendered.error) throw new Error(`step not updated: ${rendered.error.message}`);
+  await expect(status).toHaveText("Exporting… finishing");
+  await expectNoShift("finishing");
+
+  await watchHeader();
+  await page.getByTestId("export-cancel").click();
+  await expect(panel()).toHaveAttribute("data-export-state", "idle");
+  await expect(page.getByTestId("export-button")).toBeEnabled();
+  await expectNoShiftWhileWatched("Cancel");
+  await expectNoShift("after Cancel");
+  await expect(page.getByTestId("export-download")).toHaveText("Download v2");
+  expect((await renderJobs()).at(-1)).toMatchObject({ status: "cancelled" });
 });
