@@ -1,4 +1,4 @@
-import { EXPORT_REF_COLUMNS, type ExportRef } from "@/lib/exports";
+import { EXPORT_REF_COLUMNS, type ExportRef, KEPT_EXPORTS } from "@/lib/exports";
 import { notFound, redirect } from "next/navigation";
 import { LiveReel } from "@/components/LiveReel";
 import { NotConfigured } from "@/components/NotConfigured";
@@ -18,7 +18,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { VERSION_LIST_COLUMNS, type VersionListRow } from "@/lib/versions";
 import { WORKER_STATUS_COLUMNS, type WorkerStatusRow } from "@/lib/worker-status";
 
-// Reads the reel, its jobs, its steps, its versions, its kept export (the newest, not expired),
+// Reads the reel, its jobs, its steps, its versions, its kept export (the current version's, not expired),
 // every worker's status row, the owner's photo library and profile, the font pair
 // of the current version and, per long step, the owner's newest earlier
 // done rows (the time-left history) once on the server; LiveReel then
@@ -96,13 +96,11 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
       .order("number")
       .returns<VersionListRow[]>(),
     supabase
-      .from("exports")
+      // The kept export only: the current version's, not expired (the view
+      // holds at most one row per reel).
+      .from(KEPT_EXPORTS)
       .select(EXPORT_REF_COLUMNS)
       .eq("reel_id", id)
-      // Kept ones only: an expired export is never offered.
-      .gt("expires_at", new Date().toISOString())
-      .order("created_at", { ascending: false })
-      .limit(1)
       .maybeSingle<ExportRef>(),
     supabase.from("worker_status").select(WORKER_STATUS_COLUMNS).returns<WorkerStatusRow[]>(),
     supabase

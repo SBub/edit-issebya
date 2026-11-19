@@ -12,10 +12,13 @@ current version, and the page shows its progress in place (`Exporting… 40%`) w
 no dialog opens. The owner may leave the reel, open other reels, use the photo library or upload a
 new reel; the export keeps going. Only Cancel stops it. While a reel exports, editing that reel is
 off (other reels are not held) and the page says why. Nothing in the reel page's header moves or
-changes size at any moment of an export: Export, the progress with Cancel, `Downloaded` and the
-Download button all sit inside one slot of a fixed size. The finished MP4 is kept for 48 hours, and
-only the newest one of a reel: a Download icon beside the bin in the reels list and a Download
-button on the reel's page give it for as long as it is kept. If the owner is still on the reel's
+changes size at any moment of an export: Export, the progress with Cancel and the
+Download button all sit inside one slot of a fixed size, and the header shows no notes: a failed
+export is told by the failure card over the preview, never in the header. The finished MP4 is kept
+for 48 hours, and only while the version it holds is the reel's current version: a Download icon
+beside the bin in the reels list and a Download button on the reel's page give it for as long as it
+is kept. A new version of any kind (an edit, a font change, Start over, going back) takes both away
+at once. If the owner is still on the reel's
 page when the render finishes, the file also downloads by itself; anywhere else nothing pops up.
 There are no notifications of any kind. The worker runs exports in a lane of their own, so an
 upload or a photo never waits behind one (`app_docs/studio.md`, "Worker").
@@ -72,6 +75,21 @@ upload or a photo never waits behind one (`app_docs/studio.md`, "Worker").
   replaced (newer by `(created_at, id)`), so the slimming removes a replaced file on its next
   pass. The `exports` rows stay.
 
+`supabase/migrations/20261119172916_export_current_version_only.sql`:
+
+- The view `kept_exports` is the one definition of "a reel has a kept export". It holds at most one
+  row per reel: the newest export (by `(created_at, id)`) whose `version_id` is the reel's
+  `current_version_id` and whose `expires_at` has not passed (the database's `now()`). Its columns
+  are the `exports` columns (`id`, `reel_id`, `owner_id`, `job_id`, `version_id`, `r2_key`, `bytes`,
+  `created_at`, `expires_at`). It is `security_invoker`, so the caller's grants and RLS on `exports`
+  and `reels` apply: an owner reads only their own. `authenticated` and `service_role` may select
+  it; `anon` holds nothing; it cannot be written.
+- A new current version takes the reel's row out of the view in the same moment, with no write to
+  `exports`. Going back saves a new version (`app_docs/change-requests.md`), so going back to the
+  exported version does not bring its export back.
+- `expire_export_files` also returns the file of an export whose version is no longer the reel's
+  current version, beside the expired and the replaced ones. The `exports` rows stay.
+
 ### Studio
 
 - `requestExport` (`apps/studio/src/app/export-actions.ts`) reads the reel and its jobs under RLS,
@@ -93,8 +111,16 @@ now` (`EDITING_OFF_WHILE_EXPORTING`) while an export is live, else null.
   - `exportRunning(progress)`: `waiting` or `rendering`. `EXPORTING_LEAD` (`Exporting…`)
     and `exportProgressDetail` (`40%` or `waiting to start`) make the header's one line,
     `Exporting… 40%` or `Exporting… waiting to start`.
-  - `keptExports(rows, now)`: per reel, its newest export while `expires_at` has not passed. This
-    is the one definition of "a reel has a kept export".
+  - `KEPT_EXPORTS` (`kept_exports`): the view every read of "what may be offered" goes to (the
+    reels list, the reel's page, `LiveReel`'s snapshot, `loadExport`). No studio code picks the
+    newest export or compares an expiry to decide it.
+  - `currentVersionExport(row, currentVersionId)`: the same rule for a page already open. The
+    export `LiveReel` holds is offered only while its `version_id` is the reel's live
+    `current_version_id`, so Download goes away at once when a new version arrives over Realtime,
+    with no read.
+  - `followsCurrentVersion(job, currentVersionId)`: the page stops following an export that has
+    ended once a newer version is current (a live export, and one whose row has not arrived, are
+    always followed).
 - `ExportPanel.tsx` (the reel page's header) is one slot of a fixed size: 32 px tall (`h-8`) and
   216 px wide (`w-[13.5rem]`), 384 px from `sm` up (`sm:w-[24rem]`), `flex-none`. Everything it
   shows is laid out inside that box from its right edge, so the title beside it, the header and the
@@ -111,13 +137,14 @@ now` (`EDITING_OFF_WHILE_EXPORTING`) while an export is live, else null.
     the word `Exporting…` is only read out (`sr-only`), so a phone shows the percent (or what the
     export waits for), the bar and Cancel. The Export and Download buttons are not shown.
 
-  The notes (`export-notes`) take the room left at the slot's left edge in both states: why Export
-  is closed (`export-blocked-reason`), `Downloaded` or a failure (`export-message`) and what a
-  click on Download had to say (`export-download-status`). They are small text clipped to the
-  slot's two lines (`line-clamp-2`), with the full words as each note's `title`; a note never makes
-  the slot or the header larger. The room is 152 px beside Download and 88 px beside the progress
-  from `sm` up; on a phone 96 px beside Download and close to none beside the progress (the note is
-  still read out).
+  The header shows no notes. The only words in the slot are its buttons' and the one progress
+  line's. The notes (`export-notes`) are read out and never seen (`sr-only`): why Export is closed
+  (`export-blocked-reason`), `Downloaded` or that the export was not started or not cancelled
+  (`export-message`), and what a click on Download had to say (`export-download-status`). Each is
+  also the `title` of the button it belongs to (Export, Cancel, Download; Download turns to the
+  danger colour after a failed click). A failed export has no note at all: the progress overlay's
+  failure card over the preview tells it (`Could not finish exporting`, with `Try again` and
+  `Keep the current version`; `app_docs/status.md`).
 
   The words `You can leave this page, the export keeps going` (`LEAVE_WHILE_EXPORTING`) are not in the
   header: `LiveReel` hands them to `VersionList` as `notice`, and the Versions column's status
@@ -154,10 +181,12 @@ downloadName: exportFileName(...) })`. The name is `reel-v<N>-<YYYYMMDD-HHMM>.mp
   `loadExport` and starts the download with a programmatic anchor click
   (`studio_export_downloaded`). An export that expired meanwhile says `This export is no longer
 kept. Export again` and the page refreshes, which takes the control away; a failure says `The
-file could not be fetched. Try again`. The reel page's button shows no words of its own: it hands
-  them to `ExportPanel` (`onProblem`), which shows them in the slot's notes.
-- The reels list (`apps/studio/src/app/page.tsx`) reads the owner's exports with `expires_at` in
-  the future (RLS: only their own) and gives each reel in `keptExports` a Download icon left of
+file could not be fetched. Try again`. The reel page's button shows no words of its own: they are
+  its `title`, and it hands them to `ExportPanel` (`onProblem`) for the read-out notes. An export
+  whose version is no longer current is answered the same way as an expired one (`loadExport`
+  reads `kept_exports`, finds no row and signs nothing).
+- The reels list (`apps/studio/src/app/page.tsx`) reads the owner's `kept_exports` rows (RLS: only
+  their own) and gives each reel that has one a Download icon left of
   the bin (`ThumbnailGrid`'s `corner`, `cornerControls: 2`). `ExportsWatcher.tsx` follows `exports`
   INSERTs over Realtime and reads the list again (`router.refresh()`, once more when the
   subscription is ready), so the icon appears without a reload. It shows nothing itself.
@@ -165,19 +194,30 @@ file could not be fetched. Try again`. The reel page's button shows no words of 
   open, `ExportPanel` calls the same download once and shows `Downloaded` in the slot's notes. A
   browser may block a download no click started; the `Download vN` button beside it is the way to
   the file then. A page opened after the export finished downloads nothing by itself.
-- `LiveReel.tsx` follows `exports` INSERTs for the reel over Realtime and keeps the reel's kept
-  export (`EXPORT_REF_COLUMNS`, read once on open and on each ready subscription, `expires_at` in
-  the future). No polling.
-- A failed export shows `The export failed. Try again` in the slot's notes, and the progress
-  overlay's failure card (`app_docs/status.md`).
+- `LiveReel.tsx` follows `exports` INSERTs for the reel over Realtime and keeps the reel's newest
+  export it knows of (`EXPORT_REF_COLUMNS`, read from `kept_exports` once on open and on each ready
+  subscription). `ExportPanel` offers it through `currentVersionExport`. No polling.
+- A failed export shows nothing in the header: Export is simply back. The progress overlay's
+  failure card tells it (`app_docs/status.md`).
 
 #### The replace rule
 
-One kept export per reel: the newest. A newer export of the same reel replaces the older one, even
-when it exports another version. The studio only ever offers the newest (`keptExports`, and the
-reel page's query), and the worker's slimming deletes the replaced file on its next pass
+One kept export per reel: the newest export of its current version. An export is kept only while
+its version is the reel's current version and its 48 hours have not passed.
+
+- A newer export of the same version replaces the older one.
+- A new current version of any kind (an edit, a font change, Start over, going back) ends the
+  keeping of every earlier export of the reel at once, even inside the 48 hours. The reel then
+  has no kept export until the new version is exported.
+- Going back to the exported version saves a new version with a new id. It is a different
+  version, so the old file is not offered again.
+- An export that failed or was cancelled replaces nothing: the current version's earlier kept
+  export stays offered.
+
+The studio only ever offers what `kept_exports` holds (and, on an open page,
+`currentVersionExport`), and the worker's slimming deletes the other files on its next pass
 (`expire_export_files`, above). Until that pass the older object still exists but nothing links to
-it. An export that failed or was cancelled replaces nothing: the earlier kept export stays offered.
+it, and `loadExport` never signs it.
 
 ### Worker
 
@@ -474,9 +514,13 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
 3. To stop an export, open the reel and press Cancel.
 4. When it is done: if the reel's page is still open, the MP4 downloads by itself. Otherwise, or
    to have the file again, click the Download icon beside the bin in the reels list, or
-   `Download vN` on the reel's page. The file is kept for 48 hours.
+   `Download vN` on the reel's page. The file is kept for 48 hours, and only while that version is
+   the current one.
 5. To edit the reel again, wait for the export to end or cancel it. Exporting again replaces the
-   kept file.
+   kept file. Any new version (an edit, a font change, Start over, going back) takes Download
+   away: export the new version to have a file again.
+6. If an export fails, the card over the preview says so, with `Try again` and
+   `Keep the current version`. The header shows nothing about it.
 
 ## Configuration
 
@@ -490,8 +534,9 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   spec; the tools spec passes it empty to render for real.
 - `FFMPEG_PATH` is honoured by `apps/studio/test-support/frames.ts`.
 - `export_keep_interval()` (the database, 48 hours): how long an export's file is kept. The
-  worker's slimming deletes an export's object once `expires_at` passes, or once a newer export
-  of the same reel replaced it (`expire_export_files`, see `app_docs/storage.md`). The slimming
+  worker's slimming deletes an export's object once `expires_at` passes, once its version is no
+  longer the reel's current version, or once a newer export of the same reel replaced it
+  (`expire_export_files`, see `app_docs/storage.md`). The slimming
   runs at most once an hour and only while the worker runs no job, so a file may outlive its
   expiry by that long; the studio never signs a link past `expires_at`.
 - The owner's R2 lifecycle rule on `<prefix>exports/` is a backstop and must be longer than the
@@ -519,16 +564,21 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   and `run-job.test.ts` (the cancel check and the `cancelled` outcome), `job-kinds.test.ts` and
   `pipeline/run-pipeline.test.ts` (`setReelStatus: false`).
 - Unit (studio): `apps/studio/src/lib/exports.test.ts` (`exportBlockedReason`, `liveRenderJobId`,
-  `exportingReason`, `exportProgress`, `exportRunning`, `exportProgressDetail`, `keptExports`, the
+  `exportingReason`, `exportProgress`, `exportRunning`, `exportProgressDetail`,
+  `currentVersionExport` (the current version's export only), `followsCurrentVersion`, the
   link's hour cap), `change-requests.test.ts` (editing blocked exactly while the reel exports; the
   `export of vN` label) and the storage mock's
   `apps/studio/src/app/api/e2e-storage-mock/[...key]/route.test.ts`.
 - Unit (storage): `packages/storage/src/r2.test.ts` and `fake.test.ts` (the download name).
 - DB: `apps/studio/db-tests/exports.test.ts` (the render job policy and the `exports` table, its
-  48-hour expiry from `export_keep_interval()`), `cancel-jobs.test.ts` (`cancel_job` on own queued and running renders, refusals,
+  48-hour expiry from `export_keep_interval()`; the `kept_exports` view: the current version's
+  newest export to its owner only, nothing once a newer version is current, nothing for a version
+  made by going back to the exported one, nothing after 48 hours, select only), `cancel-jobs.test.ts` (`cancel_job` on own queued and running renders, refusals,
   no `anon` execute, the refused export of a cancelled job, `claim_job` never taking a cancelled
   job) and `stored-files.test.ts` (`discard_export_file`; `expire_export_files` returning expired
-  and replaced exports' files and keeping a reel's newest).
+  and replaced exports' files and keeping a reel's newest; an export's file returned once a newer
+  version is current, the newest of two exports of the current version kept, every export of a
+  reel whose current version has none returned).
 - E2E: `apps/studio/e2e/export.spec.ts`: Export shows `Exporting…` with Cancel in the header and
   no dialog; nothing in the header moves (`expectNoShift`: at 1920, 1280 and 390 px wide, the
   header, each of its children, what is under it, the Export or Cancel box, the progress line, its
@@ -548,7 +598,13 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   fourth cancels a queued job the worker then never claims (Escape does nothing). A fifth walks
   one export through every state with no worker (it writes the job's and the render step's rows
   itself: `waiting to start`, `getting ready`, `0%`, `7%`, `55%`, `100%`, `finishing`, Cancel) and
-  holds each to the same boxes.
+  holds each to the same boxes. A sixth fails an export (rows written by hand): the card over the
+  preview says `Could not finish exporting` with its two actions, the header holds no failure
+  words, seen or read out, the notes are never seen (`expectNoNotesShown`), nothing moved, and the
+  kept export is still offered. A seventh goes back to v1 (v3) and then to the exported v2 (v4):
+  `Download v2` is gone from the reel's page with no reload and nothing moved, `kept_exports` holds
+  no row, the reels list shows no Download icon, and `expire_export_files` returns every file of
+  the older version.
 - Worker tools: `yarn workspace @edit-issebya/worker test:tools` (`render.tools.test.ts`: the
   single call's format, loudness, click times, group memory; a typed hook's export: a key sound
   within 20 ms of every letter's moment and nowhere else, each hit's peak within 3 dB of its gain
@@ -739,10 +795,15 @@ Before the one-screen layout (the 0.99 bound):
 ## Rules
 
 - Nothing in the reel page's header may move or change size at any state of an export (before
-  Export, waiting, every percent, done, Download shown, after Cancel), at any width. Never give
+  Export, waiting, every percent, done, failed, Download shown or taken away, after Cancel), at any
+  width. Never give
   `ExportPanel`'s slot a size that depends on what it shows, never give Export and Cancel
   different boxes, and never put a note, a label or a button outside the slot's 32 px row. A new
   state or control goes inside the slot and into `export.spec.ts`'s `expectNoShift`.
+- The header shows no notes: no failure text, no reason, no `Downloaded`. Never show words in the
+  export slot other than its buttons' and the one progress line (`Exporting… 40%`). A note is read
+  out (`export-notes`, `sr-only`) and is the `title` of its button. Never repeat an export's
+  failure in the header: the failure card over the preview is the one place that tells it.
 - Never lower `PREVIEW_EXPORT_SSIM_BOUND` below 0.9, and never change it without re-measuring both
   score sets and recording them here.
 - The guardrail compares the composition's own box, never the player element: the export frame is
@@ -790,8 +851,11 @@ Before the one-screen layout (the 0.99 bound):
 - No notifications for an export: no web push, no email, no toast, nothing that shows on another
   page. The download by itself happens only on the reel's own page, for the export that page was
   following when it finished; never start a download anywhere else without a click.
-- One kept export per reel, the newest, offered only while `expires_at` has not passed
-  (`keptExports`). Never offer an older export of a reel, and never keep a second file on purpose.
+- One kept export per reel: the newest export of its current version, offered only while
+  `expires_at` has not passed. The `kept_exports` view is the one definition. Never read `exports`
+  in the studio to decide what to offer, never offer or sign an export of a version that is not
+  the reel's current version (going back to that version makes a new one and does not count), and
+  never keep a second file on purpose.
 - The time an export is kept is `export_keep_interval()` alone. Never write the 48 hours in a
   second place that decides anything (a check, a query, the worker).
 - Never let `anon` execute `cancel_job`; only a `render` job can be cancelled.
@@ -828,7 +892,8 @@ Before the one-screen layout (the 0.99 bound):
   does) is the owner's decision.
 - Owner steps: the R2 lifecycle rule for `dev/` and the production prefix, now 3 days or more
   (see Configuration); applying the migrations
-  to the hosted project after merge (`20261103164248_one_step_export.sql` and
-  `20261118151744_export_kept_48_hours.sql` before deploying the
-  worker and the studio that use them); the manual acceptance against `rethink-work-02.mp4` and a
+  to the hosted project after merge (`20261103164248_one_step_export.sql`,
+  `20261118151744_export_kept_48_hours.sql` and `20261119172916_export_current_version_only.sql`
+  before deploying the worker and the studio that use them; the studio reads `kept_exports` and
+  fails to load the reels list without it); the manual acceptance against `rethink-work-02.mp4` and a
   platform draft upload.

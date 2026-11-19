@@ -7,7 +7,7 @@ import { DownloadExportButton } from "@/components/DownloadExportButton";
 import { ExportsWatcher } from "@/components/ExportsWatcher";
 import { type ThumbnailGridItem, ThumbnailGrid } from "@/components/ThumbnailGrid";
 import { UploadDialog } from "@/components/UploadDialog";
-import { EXPORT_REF_COLUMNS, type ExportRef, keptExports } from "@/lib/exports";
+import { EXPORT_REF_COLUMNS, type ExportRef, KEPT_EXPORTS } from "@/lib/exports";
 import { parsePreviewCopies, thumbnailKey } from "@/lib/preview-sources";
 import {
   REEL_GRID_COLUMNS,
@@ -26,15 +26,15 @@ const THUMBNAIL_URL_SECONDS = 3600;
 // One tile per reel: its thumbnail signed from the key derived (here, on the
 // server) from the current version's key and reels.preview_copies; a reel
 // without one, or whose signing fails, gets a neutral tile. The version key
-// never reaches the client. A reel with a kept export (its newest one, inside
-// its 48 hours) gets a Download icon beside the bin.
+// never reaches the client. A reel with a kept export (the newest one of its
+// current version, inside its 48 hours) gets a Download icon beside the bin.
 async function reelTiles(
   rows: readonly ReelGridRow[],
   exports: readonly ExportRef[],
 ): Promise<ThumbnailGridItem[]> {
   const storage = studioStorage();
   const now = Date.now();
-  const kept = keptExports(exports, now);
+  const kept = new Map(exports.map((row) => [row.reel_id, row]));
   return Promise.all(
     rows.map(async (reel) => {
       const key =
@@ -129,13 +129,12 @@ export default async function StudioHome({
     .order("created_at", { ascending: false })
     .returns<ReelGridRow[]>();
   if (error) throw new Error(`studio: reels not loaded: ${error.message}`);
-  // The owner's exports still inside their 48 hours (RLS: only their own),
-  // newest first; the tiles keep the newest of each reel (`keptExports`).
+  // The owner's kept exports (RLS: only their own): at most one per reel, the
+  // export of its current version inside its 48 hours. The view decides, not
+  // this page.
   const exports = await supabase
-    .from("exports")
+    .from(KEPT_EXPORTS)
     .select(EXPORT_REF_COLUMNS)
-    .gt("expires_at", new Date().toISOString())
-    .order("created_at", { ascending: false })
     .returns<ExportRef[]>();
   if (exports.error) throw new Error(`studio: exports not loaded: ${exports.error.message}`);
   const tiles = await reelTiles(data ?? [], exports.data ?? []);

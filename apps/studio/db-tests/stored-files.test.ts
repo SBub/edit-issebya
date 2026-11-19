@@ -106,9 +106,9 @@ async function rowsOf(reelId: string) {
   }[];
 }
 
-// An export of the reel made at `createdAt`, as the worker records one: a
-// new current version, a finished render job and the `exports` row.
-async function exportAt(reelId: string, ownerId: string, createdAt: Date) {
+// A new version of the reel, saved the way the worker saves one: it becomes
+// the reel's current version.
+async function newVersion(reelId: string): Promise<string> {
   const versionId = randomUUID();
   const reel = await admin
     .from("reels")
@@ -129,6 +129,14 @@ async function exportAt(reelId: string, ownerId: string, createdAt: Date) {
     p_r2_key: `${PREFIX}reels/${reelId}/versions/${versionId}.json`,
   });
   if (saved.error) throw new Error(`version not saved: ${saved.error.message}`);
+  return versionId;
+}
+
+// An export of the reel made at `createdAt`, as the worker records one: a
+// finished render job and the `exports` row, of `version` or else of a new
+// version saved for it (then the reel's current one).
+async function exportAt(reelId: string, ownerId: string, createdAt: Date, version?: string) {
+  const versionId = version ?? (await newVersion(reelId));
   const job = await admin
     .from("jobs")
     .insert({
@@ -487,6 +495,19 @@ describe("expire_export_files", () => {
     expect(await deleted(twiceReel, replaced)).not.toBeNull();
     expect(await deleted(keptReel, kept)).toBeNull();
     expect(await deleted(twiceReel, newest)).toBeNull();
+    // What is left is exactly what the studio offers.
+    const offered = await admin
+      .from("kept_exports")
+      .select("reel_id, r2_key")
+      .in("reel_id", [expiredReel, keptReel, twiceReel]);
+    expect(offered.error).toBeNull();
+    expect(offered.data).toEqual(
+      expect.arrayContaining([
+        { reel_id: keptReel, r2_key: kept },
+        { reel_id: twiceReel, r2_key: newest },
+      ]),
+    );
+    expect(offered.data).toHaveLength(2);
 
     const again = await admin.rpc("expire_export_files", {
       p_now: now.toISOString(),
@@ -498,6 +519,62 @@ describe("expire_export_files", () => {
       p_prefix: PREFIX,
     });
     expect(asOwner.error).not.toBeNull();
+  });
+});
+
+describe("expire_export_files and the current version", () => {
+  const now = () => new Date(Date.now() + 60_000);
+  const expire = async () => {
+    const { data, error } = await admin.rpc("expire_export_files", {
+      p_now: now().toISOString(),
+      p_prefix: PREFIX,
+    });
+    expect(error).toBeNull();
+    return data as { r2_key: string; bytes: number }[];
+  };
+  const deletedAt = async (reel: string, key: string) =>
+    (await rowsOf(reel)).find((r) => r.r2_key === key)!.deleted_at;
+
+  it("keeps the export of the current version, and removes it once a newer version is current", async () => {
+    const reel = await reelOf(userA.id);
+    const exported = await exportAt(reel, userA.id, new Date(Date.now() - 3600 * 1000));
+    await record(reel, exported, "export", 700, "render");
+    // Still the current version: kept.
+    expect(await expire()).toEqual([]);
+    expect(await deletedAt(reel, exported)).toBeNull();
+
+    // Any new version (an edit, a font change, Start over, going back): no
+    // newer export exists, and the file is still inside its 48 hours.
+    await newVersion(reel);
+    expect(await expire()).toEqual([{ r2_key: exported, bytes: 700 }]);
+    expect(await deletedAt(reel, exported)).not.toBeNull();
+    expect(await expire()).toEqual([]);
+  });
+
+  it("keeps only the newest of two exports of the current version", async () => {
+    const reel = await reelOf(userA.id);
+    const version = await newVersion(reel);
+    const first = await exportAt(reel, userA.id, new Date(Date.now() - 2 * 3600 * 1000), version);
+    const second = await exportAt(reel, userA.id, new Date(Date.now() - 3600 * 1000), version);
+    await record(reel, first, "export", 300, "render");
+    await record(reel, second, "export", 400, "render");
+    expect(await expire()).toEqual([{ r2_key: first, bytes: 300 }]);
+    expect(await deletedAt(reel, second)).toBeNull();
+  });
+
+  it("removes every export of a reel whose current version has none", async () => {
+    const reel = await reelOf(userA.id);
+    const older = await exportAt(reel, userA.id, new Date(Date.now() - 2 * 3600 * 1000));
+    const newer = await exportAt(reel, userA.id, new Date(Date.now() - 3600 * 1000));
+    await newVersion(reel);
+    await record(reel, older, "export", 300, "render");
+    await record(reel, newer, "export", 400, "render");
+    expect(await expire()).toEqual(
+      [
+        { r2_key: older, bytes: 300 },
+        { r2_key: newer, bytes: 400 },
+      ].sort((a, b) => (a.r2_key < b.r2_key ? -1 : 1)),
+    );
   });
 });
 

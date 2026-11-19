@@ -4,6 +4,7 @@ import { reportFailure, serverErrorCapture } from "@/lib/error-tracking";
 import {
   EXPORT_COLUMNS,
   type ExportRow,
+  KEPT_EXPORTS,
   exportBlockedReason,
   exportFileName,
   exportLinkSeconds,
@@ -88,7 +89,8 @@ export type ExportFileResult =
   | { status: "signed-out" }
   | { status: "failed" };
 
-// One export of the reel, read under RLS as the signed-in owner, with a
+// The reel's kept export (`kept_exports`: only the current version's, so an
+// older version's file is never signed), read under RLS as the signed-in owner, with a
 // download link signed for no longer than the time left until its expiry, an
 // hour at most (`Content-Disposition: attachment`, a readable name). Called
 // at the click on Download (the reels list's icon, the reel page's button)
@@ -107,7 +109,7 @@ export async function loadExport(reelId: string, exportId: string): Promise<Expo
   if (!user) return { status: "signed-out" };
 
   const found = await supabase
-    .from("exports")
+    .from(KEPT_EXPORTS)
     .select(EXPORT_COLUMNS)
     .eq("id", exportId)
     .eq("reel_id", reelId)

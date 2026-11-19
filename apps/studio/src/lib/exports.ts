@@ -103,20 +103,34 @@ export interface ExportRef {
   expires_at: string;
 }
 
-// The kept export of each reel: its newest export, while its 48 hours have not
-// passed (an older one was replaced by it; the worker removes that file). The
-// Download icon in the reels list and the Download button on the reel's page
-// show exactly while a reel has one.
-export function keptExports(rows: readonly ExportRef[], nowMs: number): Map<string, ExportRef> {
-  const newest = new Map<string, ExportRef>();
-  for (const row of rows) {
-    const held = newest.get(row.reel_id);
-    if (!held || held.created_at < row.created_at) newest.set(row.reel_id, row);
-  }
-  for (const [reelId, row] of newest) {
-    if (exportLinkSeconds(row.expires_at, nowMs) === null) newest.delete(reelId);
-  }
-  return newest;
+// Where the studio reads what it may offer: the database's `kept_exports`
+// view, the one definition of "a reel has a kept export". At most one row per
+// reel: the newest export of the reel's current version, inside its 48 hours.
+// The reels list, the reel's page and the download link all read it, never the
+// `exports` table, so an export of an older version is offered nowhere.
+export const KEPT_EXPORTS = "kept_exports";
+
+// The same rule for a page that is already open and follows the reel live:
+// the export it holds is offered only while its version is the reel's current
+// version. A new version (an edit, a font change, Start over, going back)
+// takes Download away at once, with no read.
+export function currentVersionExport<T extends Pick<ExportRef, "version_id">>(
+  row: T | null,
+  currentVersionId: string | null,
+): T | null {
+  return row !== null && row.version_id === currentVersionId ? row : null;
+}
+
+// Whether the export the page follows is still about the reel's current
+// version. Once it has ended and a newer version is current, the page stops
+// following it: its file is no longer kept and nothing more is said of it.
+// A job whose row has not arrived yet, and a live one, are always followed.
+export function followsCurrentVersion(
+  job: Pick<JobRow, "status" | "version_id"> | undefined,
+  currentVersionId: string | null,
+): boolean {
+  if (!job || LIVE.includes(job.status)) return true;
+  return job.version_id === currentVersionId;
 }
 
 // How far the export the page follows is (a pure function of the live rows,

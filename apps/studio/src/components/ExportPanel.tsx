@@ -9,10 +9,12 @@ import {
   EXPORTING_LEAD,
   type ExportRef,
   LEAVE_WHILE_EXPORTING,
+  currentVersionExport,
   exportBlockedReason,
   exportProgress,
   exportProgressDetail,
   exportRunning,
+  followsCurrentVersion,
   liveRenderJobId,
 } from "@/lib/exports";
 import type { JobRow, StepRow } from "@/lib/jobs";
@@ -27,14 +29,18 @@ interface Props {
   steps: readonly Pick<StepRow, "job_id" | "name" | "status" | "progress_percent">[];
   // For "Download vN".
   versions: readonly { id: string; number: number }[];
-  // The reel's kept export (its newest one, not yet expired), followed
-  // through Realtime: Download shows while there is one.
+  // The reel's newest export the page knows of (read from `kept_exports`,
+  // then followed through Realtime). Download shows only while its version is
+  // the reel's current version (`currentVersionExport`).
   latestExport: ExportRef | null;
 }
 
 // The one box Export and Cancel share: the same size at the same place, so
 // pressing Export moves nothing.
 const ACTION_BOX = "h-8 w-[4.5rem] flex-none text-sm sm:w-20";
+
+// Read out when the file downloaded by itself; never a button's `title`.
+const DOWNLOADED = "Downloaded";
 
 // Export on the reel page, never in the way. The button queues a `render` job
 // for the current version; the panel then shows its progress in place
@@ -44,13 +50,17 @@ const ACTION_BOX = "h-8 w-[4.5rem] flex-none text-sm sm:w-20";
 // Nothing in the header moves, ever: the panel is one slot of a fixed size
 // (32 px tall, a fixed width per breakpoint), and every state is laid out
 // inside it. Cancel takes exactly the Export button's box, the progress line
-// and its bar have a fixed width (so no label, `0%` or `100%`, moves them),
-// and the notes (why Export is closed, `Downloaded`, a failure) are clipped to
-// the slot's two small lines. The words about leaving and about editing being
-// off are in the Versions column (`VersionList`), not here. The finished
-// MP4 is kept for 48 hours: Download shows here (and in the reels list) while
-// it is. When the export this page was following finishes with the page still
-// open, the file also downloads by itself; anywhere else nothing pops up.
+// and its bar have a fixed width (so no label, `0%` or `100%`, moves them).
+// The header shows no notes: the only words in the slot are the buttons and
+// the one progress line. Why Export is closed, `Downloaded` and what a click
+// had to say are read out (`export-notes`, never seen) and are the `title` of
+// the button they belong to. A failed export says nothing here at all: the
+// failure card over the preview shows it (`ProgressOverlay`). The words about
+// leaving and about editing being off are in the Versions column
+// (`VersionList`). The finished MP4 is kept for 48 hours and only while its
+// version is the current one: Download shows here (and in the reels list)
+// while it is. When the export this page was following finishes with the page
+// still open, the file also downloads by itself; anywhere else nothing pops up.
 export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -68,12 +78,20 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
   const [followedId, setFollowedId] = useState<string | null>(liveId);
   if (liveId !== null && liveId !== followedId) setFollowedId(liveId);
 
-  const progress = followedId ? exportProgress(followedId, jobs, steps, latestExport) : null;
+  // An ended export of a version that is no longer current is not followed.
+  const followed = followsCurrentVersion(
+    jobs.find((job) => job.id === followedId),
+    reel.current_version_id,
+  );
+  const progress =
+    followedId && followed ? exportProgress(followedId, jobs, steps, latestExport) : null;
   const running = exportRunning(progress);
   const readyId = progress?.kind === "ready" ? progress.exportId : null;
   const blockedReason = exportBlockedReason(reel, jobs);
-  const keptVersion = latestExport
-    ? (versions.find((version) => version.id === latestExport.version_id)?.number ?? null)
+  // The export Download gives: the current version's only.
+  const kept = currentVersionExport(latestExport, reel.current_version_id);
+  const keptVersion = kept
+    ? (versions.find((version) => version.id === kept.version_id)?.number ?? null)
     : null;
 
   // The followed export finished with this page open: download it at once,
@@ -85,7 +103,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
     void downloadExport(reelId, readyId).then((outcome) => {
       if (!active) return;
       if (outcome === "signed-out") router.refresh();
-      else if (outcome === "downloaded") setMessage("Downloaded");
+      else if (outcome === "downloaded") setMessage(DOWNLOADED);
     });
     return () => {
       active = false;
@@ -131,13 +149,9 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
   }
 
   const percent = progress?.kind === "rendering" ? progress.percent : null;
-  const failed = progress?.kind === "failed" && liveId === null;
   const reason = running ? "" : (blockedReason ?? "");
-  const note = message || (failed ? "The export failed. Try again" : "");
   const downloadNote =
-    !running && latestExport && downloadProblem?.exportId === latestExport.id
-      ? downloadProblem.text
-      : "";
+    !running && kept && downloadProblem?.exportId === kept.id ? downloadProblem.text : "";
 
   return (
     // The slot: its size never depends on what it shows, so the title beside
@@ -151,34 +165,17 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
       <h2 id="export-heading" className="sr-only">
         Export
       </h2>
-      {/* The notes: at most the slot's two lines, the rest is cut (the full
-          words are each note's `title`). */}
-      <div
-        data-testid="export-notes"
-        className="flex h-8 min-w-0 flex-1 flex-col justify-center overflow-hidden text-right text-xs leading-4"
-      >
-        <p
-          id="export-reason"
-          data-testid="export-blocked-reason"
-          title={reason || undefined}
-          className="line-clamp-2 text-muted empty:hidden"
-        >
+      {/* The notes are read out, never seen: no words in the header but the
+          buttons' and the progress line's. A failed export has no note; the
+          failure card over the preview shows it. */}
+      <div data-testid="export-notes" className="sr-only">
+        <p id="export-reason" data-testid="export-blocked-reason">
           {reason}
         </p>
-        <p
-          aria-live="polite"
-          data-testid="export-message"
-          title={note || undefined}
-          className="line-clamp-2 empty:hidden"
-        >
-          {note}
+        <p aria-live="polite" data-testid="export-message">
+          {message}
         </p>
-        <p
-          role="status"
-          data-testid="export-download-status"
-          title={downloadNote || undefined}
-          className="line-clamp-2 text-danger empty:hidden"
-        >
+        <p role="status" data-testid="export-download-status">
           {downloadNote}
         </p>
       </div>
@@ -223,6 +220,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
             data-testid="export-cancel"
             onClick={() => void cancel()}
             disabled={busy}
+            title={message || undefined}
             className={`${ACTION_BOX} border border-line hover:bg-raised disabled:opacity-50`}
           >
             Cancel
@@ -230,13 +228,13 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
         </>
       ) : (
         <>
-          {latestExport && (
+          {kept && (
             <DownloadExportButton
               reelId={reelId}
-              exportId={latestExport.id}
+              exportId={kept.id}
               variant="button"
               label={keptVersion === null ? "Download" : `Download v${keptVersion}`}
-              onProblem={(text) => setDownloadProblem({ exportId: latestExport.id, text })}
+              onProblem={(text) => setDownloadProblem({ exportId: kept.id, text })}
             />
           )}
           <button
@@ -245,6 +243,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
             onClick={() => void exportNow()}
             disabled={busy || blockedReason !== null}
             aria-describedby="export-reason"
+            title={reason || (message === DOWNLOADED ? "" : message) || undefined}
             className={`${ACTION_BOX} rounded-reel bg-primary font-semibold text-on-primary enabled:hover:opacity-90 disabled:opacity-50`}
           >
             Export
