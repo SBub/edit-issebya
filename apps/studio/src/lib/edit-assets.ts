@@ -1,16 +1,22 @@
-import { ISSEBYA_PRESET, VISUAL_STAND_INS, allFontFiles, type Preset } from "@edit-issebya/edit";
+import {
+  ISSEBYA_PRESET,
+  VISUAL_STAND_INS,
+  allFontFiles,
+  soundFiles,
+  type Preset,
+} from "@edit-issebya/edit";
 
 // The route the preset's fonts and sounds are served from (they ship with
 // packages/edit, not R2).
 const EDIT_ASSETS_BASE = "/studio/api/edit-assets/";
 
-// Every file the preset names and every stand-in picture (relative to
+// Every file the preset names (its fonts, each take of its sounds) and every stand-in picture (relative to
 // packages/edit, as the built page writes them), with its content type. Nothing
 // else is ever served.
 function editAssetFiles(preset: Preset = ISSEBYA_PRESET): Map<string, string> {
   const files = new Map<string, string>();
   for (const file of allFontFiles()) files.set(file, "font/ttf");
-  for (const sound of Object.values(preset.sounds)) files.set(sound.file, "audio/wav");
+  for (const file of soundFiles(preset)) files.set(file, "audio/wav");
   for (const image of VISUAL_STAND_INS) files.set(image.file, "image/jpeg");
   return files;
 }

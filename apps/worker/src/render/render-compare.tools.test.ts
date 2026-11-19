@@ -289,6 +289,30 @@ describe("the composite export against the single call", () => {
     });
   });
 
+  // The short fixture reel with a typed hook: its letters cut in one by one on
+  // the front page, and its key sounds are mixed on the sound page beside the
+  // voice. The sound's packet cut and its length check hold as for any reel.
+  describe("a reel with a typed hook", () => {
+    const FILES = { footage: fixturePath("retime", "source.mp4") };
+    let edit: Edit;
+    let single: Exported;
+    let composite: Exported;
+
+    beforeAll(async () => {
+      edit = structuredClone((await fixtureEdit("short-speech", "Typed for you")).edit);
+      single = await exportReel("typed-single", "short-speech", edit, FILES, SINGLE);
+      composite = await exportReel("typed-composite", "short-speech", edit, FILES, MATCH);
+    });
+
+    it("has the hook on screen", () => {
+      expect(edit.tracks.overlays.map((item) => item.kind)).toEqual(["hook"]);
+    });
+
+    it("matches on every frame and in every sample", async () => {
+      await expectSameExport("typed", composite, single, edit);
+    });
+  });
+
   // The ten-second fixture reel, a person talking, with two big words behind
   // her: two cut-out spans, each with its real MODNet mask (the committed
   // model), so the ffmpeg blend is held against the page's CSS blend where it

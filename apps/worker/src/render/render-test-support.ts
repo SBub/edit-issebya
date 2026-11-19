@@ -56,8 +56,12 @@ async function json(step: string, file: string, reel: FixtureReel): Promise<unkn
   return JSON.parse(await readFile(fixturePath(step, file, reel), "utf8")) as unknown;
 }
 
-// A fixture reel's inputs, transcript, head track and baseline edit.
-export async function fixtureEdit(reel: FixtureReel = "short-speech"): Promise<{
+// A fixture reel's inputs, transcript, head track and baseline edit; with
+// `hook`, the same edit with that written hook placed by the engine.
+export async function fixtureEdit(
+  reel: FixtureReel = "short-speech",
+  hook?: string,
+): Promise<{
   inputs: EditInputs;
   transcript: Transcript;
   headTrack: HeadTrack;
@@ -78,10 +82,11 @@ export async function fixtureEdit(reel: FixtureReel = "short-speech"): Promise<{
     { inputs, duration: retime.durationSeconds, fontPair: DEFAULT_FONT_PAIR_ID },
     ISSEBYA_PRESET,
   );
+  const choices = hook === undefined ? NO_CHOICES : { ...NO_CHOICES, hook: { text: hook } };
   const { tracks } = placeEdit(
     baseline,
-    NO_CHOICES,
-    pickVariants(NO_CHOICES),
+    choices,
+    pickVariants(choices),
     transcript,
     headTrack,
     ISSEBYA_PRESET,

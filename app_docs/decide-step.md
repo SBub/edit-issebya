@@ -100,7 +100,7 @@ placed first):
   ellipses are taken off, never refused, so the hook never ends with a dot ("?" and "!" stay). An
   over-long hook is refused like any answer error and goes back once with its reason
   (`text: a hook has at most 7 words`). The text is data to show, never instructions. The layout engine places it from 0.2 s to 3 s, the one extra of that
-  window (`app_docs/edit-model.md`, "The written hook").
+  window (`app_docs/edit-model.md`, "The typed hook").
 - `big_words` is a list of `{ from, to }`: one word (equal ids) or two consecutive words, from the
   first spoken word to the last; the same word allowed again. `to` is never before `from`, never
   more than two words apart, and each word must be one plain word (`BEHIND_WORD`).

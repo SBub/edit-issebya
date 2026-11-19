@@ -136,8 +136,8 @@ and rule 6 (`engine-place.ts`).
   bases, `accent` 110 px and `caption` 50 px, and the big word's `largest-fit`. An item with no size
   in an edit takes its font's style base.
 - Captions: `#FFFFFF`, each word cut in as it is spoken ("The
-  word-by-word entrance"; the preset's rise of 12 px over 0.18 s, `power2.out`, is now the hook's and the
-  list levels' only), fade out 0.15 s after the group's last word
+  word-by-word entrance"; the preset's rise of 12 px over 0.18 s, `power2.out`, is now the
+  list levels' only: the hook is typed, "The typed hook"), fade out 0.15 s after the group's last word
   (the span ends one fade past it, never past the next group's start; spec decision 25), at least 0.25 s on
   screen, a group breaks at a 0.35 s pause or after 4 units, line gap 14. The caption line (y 1290) is
   the zone table's.
@@ -158,24 +158,36 @@ and rule 6 (`engine-place.ts`).
   a stored click with no `gain_db` plays at it too, in the preview through
   `apps/studio/src/lib/sound-schedule.ts` and in the export through the page's `data-volume`, both from
   `gain_db ?? gainDb`), at least 0.25 s apart.
-- The sounds: `sounds` holds four brief sounds by name, `SoundKey` (`click`, `shutter`, `whoosh`,
-  `pop`): `shutter` `assets/sounds/camera-shutter.wav` 0.448 s, `whoosh` `assets/sounds/whoosh.wav`
+- The sounds: `sounds` is the one sound table. It holds five brief sounds by name, `SoundKey` (`click`, `shutter`, `whoosh`,
+  `pop`, `typing`): `shutter` `assets/sounds/camera-shutter.wav` 0.448 s, `whoosh` `assets/sounds/whoosh.wav`
   0.47 s, `pop` `assets/sounds/pop.wav` 0.152 s, each -6 dB and 0.25 s apart like the click. All are real
-  recordings under CC0, mono, trimmed, with short fades; source, author, licence and changes are in
+  recordings under CC0, mono, trimmed, with short fades; source, author, licence and changes of every sound are in
   `assets/sounds/LICENSE-sounds.md`. Each file is levelled so that its loudest 100 ms has the click's
   RMS (-22.8 dBFS), which is what makes sounds this short equally loud, so the one gain suits all four.
+  `typing` is the typed hook's key sound: four takes of one key press each
+  (`assets/sounds/typing-key-1.wav` to `-4.wav`, public domain), 0.07 s a file, two hits at least 0.07 s apart, played in
+  turn. It is not levelled to the click: the hook sets its gain from the speaker's voice ("The typed hook").
+- One sound's fields (`PresetSound`): `files` (its recordings: one, or a few takes played in turn; an item of the sound
+  track plays the first), `durationSeconds` (each file's length), `gainDb` (the fixed gain it plays at as an item of
+  the sound track), `minGapSeconds`, and the files' own measured loudness in dBFS, `level` (the RMS over a whole
+  file, as a mean of the files' power) and `peak` (the highest sample), which a sound played against the voice takes
+  its gain from (click -26.4 and -0.2, shutter -26.2 and -4.5, whoosh -29.4 and -14.89, pop -24.6 and -5.2, typing -26.3
+  and -6). `sounds.test.ts` reads the files and holds every number.
 - A variant entry may name one as its `sound` knob (`Common.sound`, `src/variants.ts`), typed
-  `SoundKey`: a name the preset does not have fails typecheck. Two entries have one, both `pop`
-  (owner request 2026-11-19): `visual/card` and `bigword/behind`, so
+  `SoundKey`: a name the preset does not have fails typecheck. Three entries have one: `hook/typed` names `typing`
+  (played in step with its letters at its `soundLevel`, "The typed hook"), and `visual/card` and `bigword/behind` name `pop`
+  (owner request 2026-11-19), so
   a VISUAL and a BIGWORD come in with a pop where they had the click. `cueSound(sound, behind)`
   (`src/clicks.ts`) says which sound a sound item plays: the cue of a behind item (`click-<the
 item's id>`: a visual's, the engine's and an owner's added card's, and a big word's) plays its
   entry's `sound`; any other item plays the sound it names. It is read at every build and never
   stored: the sound track is written as before (`sound: "click"`, same id, same anchors, same gap,
   the big word's cue still on its 0.2 s lead), so the timing and the -6 dB gain are unchanged and a
-  version saved before plays the pop too, with no new version. The builder (the full page and the
-  export's sound page, and the `assets` list) and the preview's schedule (`soundHits`) both call
-  it. `shutter` and `whoosh` stay in the set, cued by nothing yet.
+  version saved before plays the pop too, with no new version. The one list of a version's sounds calls it
+  (`soundCues`, `src/sounds.ts`), and the builder (the full page and the export's sound page, and the `assets` list)
+  and the preview's schedule (`soundHits`) both play that list. A pop plays at the preset's fixed gain; only the typing
+  is set against the voice. `shutter` and `whoosh` stay in the set, cued by nothing yet.
+- The typing is never an item of the sound track: its hits are worked out from the hook at every build ("The typed hook").
 - Behind (`behind`): `padFrames` 3 and `frameRate` 30: the cut-out covers each big word that needs one plus 3 frames
   on each side. A big word needs it only where the head reaches it (`bigWordNeedsCutout`, the box's bottom
   below the highest robust face's top (`facesOver`, the faces the placer reads) over its padded span less
@@ -199,7 +211,7 @@ item's id>`: a visual's, the engine's and an owner's added card's, and a big wor
   that level's; a later level, `calm` or `medium`, is one more name with its own block). The written hook
   (`pace.hook`): from 0.2 s (`fromSeconds`) to 3 s (`untilSeconds`), the first seconds that decide
   whether people keep watching, at most 7 words (`maxWords`) and 45 characters (`maxCharacters`, both
-  passed to the prompt as `hook_length`). The hook's own timing is its entry's window (`hook/written-line`).
+  passed to the prompt as `hook_length`). The hook's own timing is its entry's window (`hook/typed`).
 - Caption units: kept capitals (`I`, `I'm`, `I've`, `I'll`, `I'd`, `AI`), a number joined with the
   unit after it, a month with its day number.
 
@@ -211,7 +223,8 @@ item's id>`: a visual's, the engine's and an owner's added card's, and a big wor
   editor and the owner's learning records read it (`app_docs/owner-edits.md`).
   `html` is a HyperFrames composition (`data-composition-id="main"`, a paused GSAP 3.14.2 timeline
   registered on `window.__timelines`); `assets` lists every referenced file with its role
-  (`footage`, `font`, `sound`, `mask`, `visual`), sorted; `checks` is the layout check list. A
+  (`footage`, `font`, `sound`, `mask`, `visual`), sorted (a `sound` asset is each file a sound cue
+  plays, once: a click or a pop, the typed hook's key sounds); `checks` is the layout check list. A
   `mask` asset carries its `cutout` ref at `maskPath(mask)` (`masks/<fingerprint>.mp4`).
 - Deterministic: no clock, no randomness, no I/O. The same inputs give the same bytes in Node and in
   the browser. One builder serves the preview and the export.
@@ -229,8 +242,8 @@ item's id>`: a visual's, the engine's and an owner's added card's, and a big wor
     transitions with their levels, captions, accents and the hook), with the full page's own
     timeline, on a transparent page, with no footage, mask or sound.
   - `sound`: no picture. The footage clip as an `<audio>` element with the `<video>`'s attributes
-    (HyperFrames mixes sound from the page's elements, never from frames) and the sound track's
-    `<audio>` elements.
+    (HyperFrames mixes sound from the page's elements, never from frames) and one `<audio>`
+    element per sound cue (`soundCues`: the sound track's clicks and the typed hook's key sounds).
     A layer page's `assets` are only what it names: the pair's fonts on every page, a card's picture on
     `front`, the footage and the sounds on `sound`, never a mask. `checks` are the full page's on every
     layer.
@@ -273,10 +286,20 @@ item's id>`: a visual's, the engine's and an owner's added card's, and a big wor
   captions with `hidden_by`, and a stored list caption with none whose start falls inside its list's layer),
   so the page and the checks never see it. The engine splits a caption in time so that `hidden_by` covers
   only a stretch the text is on screen for (see Placement, "never the same word twice").
-- The hook renders in the accent's style (the artistic font, white, no shadow), whole, with the rise
-  in (12 px over 0.18 s) and the caption's fade out, and with its own class: `<span class="text hook f-artistic">`, its lines centred by the
-  `.hook { text-align: center; }` rule, written only on a page with a hook (so every stored page
-  builds byte for byte as before). `TextBox.kind` is `hook` for it.
+- The hook is in the accent's style (the artistic font, white, no shadow) with its own class:
+  `<span class="text hook f-artistic">`, its lines centred by the `.hook { text-align: center; }`
+  rule, written only on a page with a hook (so a stored page without one builds byte for byte as
+  before). It is typed letter by letter and leaves with the caption's fade ("The typed hook").
+  `TextBox.kind` is `hook` for it, and `TextBox.typed` its letters with their moments.
+- `src/sounds.ts`: `soundCues(edit, resolved, preset, voice)` is every sound a version plays over the
+  voice, one cue a sound (`id`, `file`, `at`, `duration`, `volume` as a linear gain, `track`): the
+  sound track's items in order (track 60, each playing `cueSound`'s sound, the pop for a visual's cue and a big word's,
+  at the preset's `gainDb` or its own `gain_db`), then the typed
+  hook's key sounds (track 61), their gain set against `voice` (the transcript's measure,
+  "The typed hook"). The builder writes one `<audio class="clip">` per cue on the `full` and the
+  `sound` page (`data-start`, `data-duration`, `data-track-index`, `data-volume`), and the studio's
+  preview plays the same list through Web Audio (`app_docs/preview.md`), so the preview and the
+  export play the same sounds at the same moments.
 - Behind the speaker, one composite per mask span, above the footage and under transitions and
   text: an untimed isolated group (`.cutout`, id `cut_<n>`) holding a footage copy (`muted`,
   `data-media-start` equal to its `data-start`), the span's big words (the `<div>` at its measured
@@ -338,7 +361,7 @@ item's id>`: a visual's, the engine's and an owner's added card's, and a big wor
   order (an item without `list`, an older version's, reads back as a list of its own). One without
   `words` is read by its anchors, with `key_from` its first word.
 
-### The written hook
+### The typed hook
 
 On social media the first seconds decide whether people keep watching; before the hook, nothing
 but captions showed in a reel's first seconds. The basic rule "every text on screen is a spoken
@@ -370,16 +393,133 @@ word" is now "spoken words, plus one written hook at the start".
   freely, moves down its zones and shrinks to 30 px before it covers the face (`covers-face`, rule
   `face`); it never sits on the hook. A caption-heavy opening never pushes the hook out.
 - Placement: the placer, as for every element (`placeExtra` in `src/engine-elements.ts`, with the
-  `hook/written-line` entry): the `accent` style (artistic, white, base 110), zones the upper third then
+  `hook/typed` entry): the `accent` style (artistic, white, base 110), zones the upper third then
   anywhere in the safe zone, shrunk in 10% steps to 30 px, wrapped freely (cost 0), the face a cost of
   100, never over other text (hard). Notes: `placed`, `moved`, `shrunk`, `wrapped`, `covers-face`, and
   `hook-time` (`clamped-to-end`). A hook that fits nowhere at 30 px or more is a `no-spot`: left out of
   that version and noted (nobody says it, so nothing stands in for it).
 - Checks treat it as text: `safe-box`, `timing` (the hook at least `SHOWN_FLOOR_SECONDS`, 0.5 s; an accent,
   question or list level has a length, no minimum).
-- The written hook is an overlay with its own kind (`hook`, keyed once per reel). The studio's
+- The hook is an overlay with its own kind (`hook`, keyed once per reel). The studio's
   tracks timeline shows it in its own `Hook` row
   (`app_docs/studio-reel-layout.md`).
+
+Its look, `hook/typed` (owner decision 2026-11-18), the hook's one look, in place of the written line
+that rose in:
+
+- The hook is typed on screen letter by letter, with a steady caret after the last typed letter
+  ("The caret" below). The letters are spread
+  evenly over the first 60% of the hook's shown span (the entry's `entranceSpan`, 0.6): the first
+  letter at the hook's start, the last at `start + 0.6 x (end - start)`. The span is the hook's
+  window after any clamp (`hook-time`), so a hook cut to a short reel's end is typed over 60% of the
+  time it really has. On the whole window (0.2 s to 3 s) it is fully typed at 1.88 s.
+- Then the whole line holds until the hook's end and leaves with the caption's fade
+  (`caption.outSeconds`, 0.15 s, ending on its end), as before. It does not rise in: the line is in
+  its place from the start.
+- A letter is one visible character with what belongs to it (a combining mark, an emoji's variation
+  selector, skin tone and joined parts), so nothing that draws as one glyph is typed in two steps.
+  Spaces and line breaks are no letters and take no time: a hook on two lines is typed in reading
+  order, straight on from one line to the next.
+- Font, colour, size, zones, placement and the timing window are the hook's as before: the stored
+  overlay is unchanged in shape (`kind: "hook"`, `text`, `position`, `size`, `breaks`), and the
+  engine places it exactly as it placed the written line.
+- `src/reveal.ts` holds the shared pure helpers, beside the word-by-word reveal's ("The word-by-word entrance": one
+  file for both reveals, words for what is spoken, letters for the hook; a revealed unit is `{ text, at }` in both,
+  `RevealWord` and `RevealLetter`): `typedParts` and `typedLetters` (a text's letters),
+  `typedReveal(text, span, share)` (each letter with its moment, to the millisecond), `typedUntil`,
+  `typedCount(reveal, time)` (how many letters are on screen at a time) and
+  `hookReveal(text, span)` (the hook's reveal, with its entry's share).
+- The builder (`placedText`, `build.ts`) gives every hook overlay its reveal (`TextBox.typed`),
+  whatever version stored it, and draws it as `<span id="hook" class="text hook f-artistic">` holding
+  one `<span id="hook_wN" class="w">` per word and, inside it, one `<span id="hook_cK" class="ch">`
+  per letter (an underscore, which no item id may hold); the words of a line joined by spaces and the
+  lines by `<br />`. Every letter is in its final place from the start, hidden (`.ch { opacity: 0; }`,
+  written only on a page with a hook), so the lines never reflow, and the line is exactly as wide as
+  the same text written in one piece. The timeline holds one tween for the line (opacity 0 to 1 at
+  its start), one per letter (opacity 0 to 1 at its moment) and the out-fade. Each in-tween lasts
+  1 ms (the builder's one `REVEAL_SECONDS`, a revealed word's too), not zero: HyperFrames reuses a still frame only
+  between a timeline's keyframes. Deterministic and seekable: the same frame every time.
+- The caret (`caret: "bar"`, owner decision 2026-11-19): a thin vertical bar right after the last
+  typed letter, in the hook's colour (`background: currentColor`), 0.05 em wide and 0.7 em tall
+  (about a capital's height), 0.04 em after the letter, standing on the line's baseline. It is
+  steady: it never blinks. It moves on with every letter, onto the next line when the typing goes
+  there, and it is gone the moment the text is fully typed (60% of the hook's time). How: every
+  letter but the last holds its own caret, `<i id="hook_bN" class="cr"></i>`, written right after
+  the letter's text inside its `hook_cN` element. The caret is `position: absolute` with no offsets,
+  so it sits at the place the next letter starts and takes no room in the line (the line is exactly
+  as wide as without it, and nothing reflows); its bar is the `::before` of that element, an inline
+  block on a line of its own with the text's font and line height, which is what puts it on the
+  baseline. A caret shows with its letter (it is inside it) and has one tween, a 1 ms cut to
+  opacity 0 at the next letter's moment, so exactly one bar is on screen while the hook is typed
+  and none after. `caret: "none"` writes no caret element, no rule and no tween. The same page
+  draws it in the preview and in the export.
+- The typing sound (`sound: "typing"`, one of the preset's sounds, "Preset values"; `soundLevel: -8`): a key sound plays in step with the
+  letters, in the studio's preview and in the exported MP4. `typingCues` (`src/sounds.ts`) puts a
+  hit at the very moment a letter appears: on every letter while the letters are at least the
+  sound's `minGapSeconds` (0.07 s) apart, else on every second, third, ... letter (the smallest step that
+  keeps two hits a gap apart), so a long hook typed fast still sounds like typing and never like a
+  buzz. A 23-letter hook on the whole window gets a hit on each letter (76 ms apart); the longest
+  hook the prompt may write (45 characters, 38 letters) a hit on every second one (91 ms apart).
+  The four key files are played in turn, so two hits in a row never sound the same. A hit ends
+  where the next one starts and at the reel's end. Each hit is one sound cue (`hook_kN`, track 61).
+- Why key sounds and not one typing recording cut to length: a hit placed on a letter's own
+  millisecond is in sync by construction for every hook length and every clamp, the preview and the
+  export use the same list, and nothing has to be stretched, looped or faded. HyperFrames has no
+  per-letter fade to offer a trimmed loop, and a loop's own key rhythm would never match the letters.
+- How loud (owner rule 2026-11-19: the typing's level comes from the speaker's measured voice,
+  clearly audible and never hiding the voice). `soundLevel` is the key sounds' loudness against the
+  voice, in dB: `-8` is 8 dB under the voice's level where the hook is typed. There is no fixed
+  gain. `typingGain` (`src/sounds.ts`) works a hit's gain out:
+  - The voice: retime measures it on the retimed footage's sound and stores it in its
+    `transcript.json` as `voice` (`windowSeconds` 0.1, and for every window from the reel's start
+    its RMS `levels` and sample `peaks` in dBFS; `app_docs/pipeline.md`). The builder and the
+    studio's preview both read that transcript, so both get the same level.
+  - The measure is RMS in dBFS, not LUFS: a key press lasts 70 ms and the shortest LUFS window is
+    400 ms, so only a plain RMS measures a hit and the voice the same way. The pauses are left out
+    the way BS.1770 gates them: windows under -50 dBFS are dropped, then windows more than 10 dB
+    under the mean of the rest; the level is the mean power of what is left (`voiceLevel`).
+  - Where: the hook's typing span, from its first hit to the end of its last. When that span holds
+    under 0.3 s of voice (the speaker starts after the hook is typed), the whole reel's voice is
+    taken. A transcript with no `voice` (written before the measure) and a reel with no voice at
+    all take the assumed voice, `ASSUMED_VOICE`: level -20 dBFS, peaks at -3 dBFS.
+  - The keys: the preset's `sounds.typing` holds the files' own loudness, measured once: `level` -26.3 dBFS (the
+    RMS over a whole file, the mean of the four files' power) and `peak` -6 dBFS.
+    `sounds.test.ts` reads the four files and fails when either number is off by 0.05 dB (it holds every preset
+    sound's two numbers the same way).
+  - The gain, in dB: `voice level + soundLevel - key level`, under two hard ceilings. One: a hit's
+    peak is never over the voice's peak (`voice peak - key peak`). Two: a hit's peak and the voice's
+    peak in the 0.1 s windows the hit plays over never add up to more than full scale, so the mix
+    cannot clip whatever the two waves do. The second ceiling is per hit: a hit under a loud
+    syllable is turned down and the others are not, and a hit over a voice already at full scale is
+    silent. The gain is written to four decimals, rounded down; that number is the cue's `volume`,
+    the clip's `data-volume` and the preview's gain.
+  - Why -8: a key press is all peak (its peak is 20 dB over its level, a voice's 12 to 14 dB), so at
+    -8 a hit's peak sits just under the voice's peaks, which is where the first ceiling is: a
+    louder setting changes almost nothing. Above 4 kHz, where a key is heard through a voice, the
+    loudest 10 ms of a hit is then 10 to 13 dB over the fixture voice's median (at the old fixed
+    gain it was level with it, which is why it was hardly heard), while over the whole band it stays
+    6 to 10 dB under the voice's loud moments.
+  - On the fixture reel (the voice where the hook is typed: level -17.7 dBFS, peak -3.9 dBFS) the
+    hits get gains of 0.72 to 1.07, a hit peaks at 0.54 of full scale beside the voice's 0.69, and
+    the mix peaks at 0.74. The old fixed gain was 0.2. The same reel with its voice 12 dB quieter
+    gets 0.27 for every hit (the keys follow the voice down, 12 dB). With its voice 3 dB louder
+    (peaks at -0.9 dBFS) the second ceiling rules: 0.20 for a hit under the loudest syllable, up to
+    1.32 in the gaps, so under a voice recorded close to full scale the typing is uneven and
+    quieter. That is the price of never clipping.
+- The key sounds: `assets/sounds/typing-key-1.wav` to `typing-key-4.wav`, four single key presses of
+  a laptop keyboard cut from one public domain recording (`assets/sounds/LICENSE-sounds.md`), each
+  0.07 s, mono, 6 KB. The preset's `sounds.typing` (`src/preset.ts`) names them with their length and gap.
+- The variant entry's knobs, named after CSS where one exists: `entrance: "type"`,
+  `entranceUnit: "letter"`, `entranceSpan: 0.6`, `sound: "typing"`, `soundLevel: -8`, `caret: "bar"`.
+  `sound` is the knob every entry may have (`Common.sound`, a `SoundKey`: the same one a VISUAL and a big word name
+  their pop with); the other five are a typed text's only, and an entry names all five with a `sound` or none of them.
+  A sound must be a name of the preset's sounds. A wrong or half-named entrance, a `soundLevel` on an entry that is
+  not typed and a typed box all fail typecheck. `soundLevel` is the typing's alone: a cue's pop plays at the preset's
+  fixed gain (-6 dB), as it did before the two looks met.
+- A version saved before this look renders with it too, with no new version: the builder reads the
+  same stored overlay, and nothing about its place, size or lines changes. Its typing sound is not in
+  its stored sound track; the builder adds the cues on every build. A version whose transcript holds
+  no `voice` renders too: its keys play against the assumed voice, a gain of 0.5827 for every hit.
 
 ### The question's look
 
@@ -458,8 +598,8 @@ rise and the fade in are gone for them.
   timeline holds one tween for the text (opacity 0 to 1 at its start), one per word (opacity 0 to 1 at
   its moment), each lasting 1 ms (HyperFrames reuses a still frame only between a timeline's
   keyframes), and the out-fade. The export's front page draws the same elements and tweens.
-- Unchanged: the hook (nobody says it: whole, with the rise), a list's levels (whole, each on its
-  word with the rise), a big word and a visual (hard cuts).
+- Not word by word: the hook (nobody says it: it is typed letter by letter, "The typed hook"), a list's levels
+  (whole, each on its word with the rise), a big word and a visual (hard cuts).
 - A version saved before this entrance renders with it too, with no new version: the builder reads
   the same stored captions and overlays. A stored version is never rewritten.
 - The studio's move and resize editor reads a caption's and an accent's lines as lines of word
@@ -482,7 +622,7 @@ rise and the fade in are gone for them.
   from its words is a fix on its first word. A VISUAL reads back with its description. Every big word
   reads back (a two-word one from its first word to its last). The hook reads back as its text, null
   when the version has none.
-- Variants (`src/variants.ts`): `VARIANTS` holds the seven entries, keyed by name (`hook/written-line`,
+- Variants (`src/variants.ts`): `VARIANTS` holds the seven entries, keyed by name (`hook/typed`,
   `accent/above-head`, `question/word-by-word`, `bigword/behind`, `visual/card`, `list/numbered`,
   `caption/default`). Each names its component, layer, type, style (a text: one of the `STYLES` table,
   `accent`, `caption` or `bigWord`, each a font role, a colour and a base size, `largest-fit` for the
@@ -541,12 +681,16 @@ deterministic (no clock, no randomness, no I/O). Modules in `packages/edit/src`:
 
 #### Variants and the picker
 
-- `VARIANTS` (`variants.ts`) holds seven entries, one per component: `hook/written-line`,
+- `VARIANTS` (`variants.ts`) holds seven entries, one per component: `hook/typed`,
   `accent/above-head`, `question/word-by-word`, `bigword/behind`, `visual/card`, `list/numbered`,
   `caption/default`. An entry names its component, `layer` (`front`, or `behind`: the big word, over
   the cut-out), `type` (`text` or `box`), `style`, its ranked `zones`, its `timing` option, whether its
   words `hides` the captions while it shows, and for a box its `aspect` and `width` share, for a stack its
-  `levels`. It holds no size and no position. A wrong field or an unknown zone fails typecheck.
+  `levels`, and optionally the `sound` it comes in with. A typed text also names its entrance (`entrance`, `entranceUnit`,
+  `entranceSpan`, `soundLevel`, `caret`, with its `sound`: the hook's, "The typed hook"). It holds no size and no
+  position. A wrong field or an unknown zone fails typecheck.
+- An entry's `sound` is a name of the preset's sounds (`SoundKey`, "Preset values"): there is no sound table of the
+  variants' own.
 - `STYLES` is the style table: `accent` (`artistic`, white, base 110), `caption` (`simple`, white,
   base 50), `bigWord` (`artistic`, white, `largest-fit`: Inter Tight Bold in the `modern` pair, each pair's accent face in the
   others). The placer measures the big word's largest fit in that face (`entry.style.font`,
@@ -874,8 +1018,8 @@ never fatal.
     word's built with the pop, the track saying `click` for both.
 - `src/clicks.test.ts`: the cues and their gap; `cueSound` (the pop for a visual's cue, for an
   owner's added card's and for a big word's, an item that is no behind item's cue and a sound named
-  on the track kept); the four sounds, each under 0.5 s at -6 dB; the pop the visual entry's
-  `sound` and the big word entry's, and no other entry with one; a sound name the preset lacks
+  on the track kept); the five sounds, each under 0.5 s at -6 dB; the pop the visual entry's
+  `sound` and the big word entry's, the typing the hook entry's; a sound name the preset lacks
   refused at compile time. `src/build.test.ts`: the pop on the full page and on the export's sound
   page for both cues, the one sound file in `assets`, none on the front page.
   - "transitions": a transition shows exactly its phrase (in at its first word, out at its last word's
@@ -965,6 +1109,23 @@ never fatal.
 - E2E, the word-by-word entrance: `apps/studio/e2e/preview.spec.ts`, "an
   accent and a caption build up word by word as they are spoken", places an accent and a caption word
   fix with `withAccent` and reads their moments with `revealOf` (the same file), `app_docs/preview.md`.
+- The typed hook: `src/reveal.test.ts` (a text's letters; the 60% rule on the whole window, on a
+  window cut to the reel's end and on the 0.5 s floor; short and long hooks done at the same moment;
+  one letter; two lines typed in reading order; the count on screen at a time),
+  `src/sounds.test.ts` (a hit on every letter of a slow hook and on every second letter of a fast
+  one, always on a letter's moment, never one over the next, the files in turn, the cut at
+  the reel's end; every preset sound's measured level and peak; the voice a sound is set against: the
+  span's, the pauses left out, the reel's for a near silent span, the assumed one with no measure;
+  the gain: `soundLevel` dB under the voice, a quiet and a louder voice, the two ceilings, silence
+  under a voice at full scale; a version's cues: the sound track's items first, a behind item's cue playing the pop, the key sounds after them on
+  their own track, set against the fixture's measured voice) and `src/build-typed.test.ts` (the hook's place, size, colour and centred lines kept; a
+  letter element per letter inside its word; a caret inside every letter but the last, its rule, its
+  one cut at the next letter's moment, nothing that blinks; one 1 ms tween per letter at its moment;
+  no rise; each clip's volume the cue's own number; the front page's hook the full page's; one `<audio>` clip per cue on the full and the sound
+  page only, the voice and the sound track's pops beside them; the key files as `sound` assets; a page with no
+  hook unchanged). `src/variants.test.ts` holds the entry's entrance fields and the compile-time
+  refusals. E2E: `apps/studio/e2e/preview.spec.ts`, "the hook is typed letter by letter"
+  (`app_docs/preview.md`). The worker's tests of the sound in the export are in `app_docs/export.md`.
 - E2E: `apps/studio/e2e/upload.spec.ts` ends with `first_version: version 1 saved, ...`, the
   version row and its R2 key checked.
 
@@ -1022,6 +1183,33 @@ never fatal.
   said in that window is placed around it. Its spot is the placer's, like any element's (a pick said
   before 0.2 s is placed before it, by start time, and the hook then avoids it).
 - The hook's window never shifts: its only clamp is `hook-time` (a reel too short for its window).
+- The hook has one look, `hook/typed`, on every reel and every stored version: never render a hook
+  another way for an older version, and never rewrite a stored version for it.
+- The hook is fully typed at `entranceSpan` (60%) of its shown span, the span after any clamp: never
+  type past it, never before the hook's start, and never show a letter before the one before it.
+- Never draw a caret or a cursor on the hook.
+- Never reflow the hook while it is typed: every letter holds its final place from the start, hidden.
+  Never set its letters apart from the plain text's (no spacing, no style of a letter's own).
+- Never write a letter's cut as a zero-length `tl.set`: it is a tween (1 ms), so the export's front
+  page draws it on its frame.
+- Never change the hook's font, colour, size, zones, placement or window for its look: only its
+  entrance and its sound are the look's.
+- A key sound always starts on the millisecond a letter appears, and two are never closer than the
+  sound's `minGapSeconds`. Never play the typing from a list of its own: the builder's clips and the preview's
+  hits both come from `soundCues`.
+- Never store a key sound in the edit's sound track, and never count one in the `sound-gap` check:
+  the cues are the builder's, from the hook, on every build.
+- Never give the typing a fixed gain: its level comes from the voice's measure (`soundLevel` dB
+  against the voice where the hook is typed), and a change of `soundLevel` is the owner's.
+- Never let a key sound's peak pass the voice's peak, and never let a hit and the voice's peak under
+  it add up to more than full scale: both ceilings are hard, whatever `soundLevel` says.
+- Never work the typing's gain out in two places: the builder's clips and the preview's hits take
+  the one number `soundCues` gives, from the one transcript both read.
+- Never change a sound file without measuring its preset `level` and `peak` again.
+- The caret never blinks, never takes room in the line and never stays once the text is typed. It
+  is drawn by the built page alone: never add a caret in the studio or in the worker.
+- The builder and the sound cues take the hook's letters from the same `hookReveal`: never time the
+  sound in one place and the letters in another.
 - Never let a caption drop the hook: the hook is placed before the captions, and the captions in its
   window keep clear of it (move, shrink, or last, over the face).
 - Captions take the space the components leave: no component is placed around a caption (the hook,

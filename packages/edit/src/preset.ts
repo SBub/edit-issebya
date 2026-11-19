@@ -17,24 +17,39 @@ export interface PresetTransition {
 }
 
 // The brief sounds a version can play, by name: the files and levels are the
-// preset's (`sounds`). A variant names one as its `sound` knob (`variants.ts`),
-// so a name that is not here fails typecheck. `pop` is cued (a visual and a
-// big word); `click` is what the track stores and what any other item plays;
-// `shutter` and `whoosh` are data for later.
-export type SoundKey = "click" | "shutter" | "whoosh" | "pop";
+// preset's (`sounds`), the one sound table. A variant names one as its `sound`
+// knob (`variants.ts`), so a name that is not here fails typecheck. `pop` is
+// cued (a visual and a big word); `typing` is the typed hook's key sound;
+// `click` is what the track stores and what any other item plays; `shutter`
+// and `whoosh` are data for later.
+export type SoundKey = "click" | "shutter" | "whoosh" | "pop" | "typing";
 export const SOUND_KEYS = [
   "click",
   "shutter",
   "whoosh",
   "pop",
+  "typing",
 ] as const satisfies readonly SoundKey[];
 
+// One sound (`assets/sounds/LICENSE-sounds.md`). `files` are its recordings:
+// one, or a few takes of it (one key press each) played in turn, so two hits
+// in a row never sound the same; an item of the sound track plays the first.
+// `durationSeconds` is the length of each file. `gainDb` is the fixed gain it
+// plays at as an item of the sound track (a click, a cue's pop). `level` and
+// `peak` are the files' own loudness, in dBFS, measured once (the files never
+// change; `sounds.test.ts` reads them and holds both numbers): `level` the RMS
+// over a whole file, as a mean of the files' power, `peak` the highest sample
+// of any of them. A sound played against the speaker's voice (a variant
+// entry's `soundLevel`: the typed hook's) takes its gain from these two and
+// never reads `gainDb`.
 export interface PresetSound {
-  file: string;
+  files: readonly [string, ...string[]];
   durationSeconds: number;
   gainDb: number;
   // Two hits of the sound are never closer than this.
   minGapSeconds: number;
+  level: number;
+  peak: number;
 }
 
 // The behind layer's cut-out and its frames. A VISUAL's card, a big word's style
@@ -190,31 +205,57 @@ export const ISSEBYA_PRESET: Preset = {
   picksEverySeconds: { intense: 2.5, medium: 4.5, calm: 10 },
   sounds: {
     click: {
-      file: "assets/sounds/mouse-click-trimmed.wav",
+      files: ["assets/sounds/mouse-click-trimmed.wav"],
       durationSeconds: 0.23,
       gainDb: -6,
       minGapSeconds: 0.25,
+      level: -26.4,
+      peak: -0.2,
     },
     // The other sounds (assets/sounds/LICENSE-sounds.md): each
     // file is levelled so that its loudest 100 ms has the click's energy, so
     // one gain gives all four the click's loudness under the voice.
     shutter: {
-      file: "assets/sounds/camera-shutter.wav",
+      files: ["assets/sounds/camera-shutter.wav"],
       durationSeconds: 0.448,
       gainDb: -6,
       minGapSeconds: 0.25,
+      level: -26.2,
+      peak: -4.5,
     },
     whoosh: {
-      file: "assets/sounds/whoosh.wav",
+      files: ["assets/sounds/whoosh.wav"],
       durationSeconds: 0.47,
       gainDb: -6,
       minGapSeconds: 0.25,
+      level: -29.4,
+      // Rounded up, never under the real one (-14.898).
+      peak: -14.89,
     },
     pop: {
-      file: "assets/sounds/pop.wav",
+      files: ["assets/sounds/pop.wav"],
       durationSeconds: 0.152,
       gainDb: -6,
       minGapSeconds: 0.25,
+      level: -24.6,
+      peak: -5.2,
+    },
+    // A laptop keyboard, one key press a file: the typed hook's key sound,
+    // played in turn. Not levelled to the click: the hook sets its level from
+    // the speaker's voice (`soundLevel`). Two hits keep a file's length apart,
+    // so a hit never plays over the one before it.
+    typing: {
+      files: [
+        "assets/sounds/typing-key-1.wav",
+        "assets/sounds/typing-key-2.wav",
+        "assets/sounds/typing-key-3.wav",
+        "assets/sounds/typing-key-4.wav",
+      ],
+      durationSeconds: 0.07,
+      gainDb: -6,
+      minGapSeconds: 0.07,
+      level: -26.3,
+      peak: -6,
     },
   },
   // Starting values; the owner tunes them by eye on a real reel.

@@ -36,7 +36,7 @@ const COMPONENTS: EngineComponent[] = [
 
 describe("variantOf", () => {
   it("gives every component its entry", () => {
-    expect(variantOf("HOOK")).toBe(VARIANTS["hook/written-line"]);
+    expect(variantOf("HOOK")).toBe(VARIANTS["hook/typed"]);
     expect(variantOf("ACCENT")).toBe(VARIANTS["accent/above-head"]);
     expect(variantOf("QUESTION")).toBe(VARIANTS["question/word-by-word"]);
     expect(variantOf("BIGWORD")).toBe(VARIANTS["bigword/behind"]);

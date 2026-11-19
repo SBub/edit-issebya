@@ -18,7 +18,7 @@ import {
 export function variantOf(component: EngineComponent): Variant {
   switch (component) {
     case "HOOK":
-      return VARIANTS["hook/written-line"];
+      return VARIANTS["hook/typed"];
     case "ACCENT":
       return VARIANTS["accent/above-head"];
     case "QUESTION":

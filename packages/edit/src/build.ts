@@ -1,14 +1,14 @@
 import { type BigWordBox, maskSpans, placedBigWord, visualBox } from "./behind.ts";
 import { type Check, runChecks } from "./checks.ts";
-import { cueSound } from "./clicks.ts";
 import type { EngineNote } from "./engine-note.ts";
 import { type TextBox } from "./engine-space.ts";
 import type { HeadTrack } from "./head-track.ts";
-import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
+import { attrs, escapeHtml, px, sec, selector } from "./html.ts";
 import type { Measurer } from "./measure.ts";
 import { textLines } from "./lines.ts";
 import { isQuestion, questionText } from "./question.ts";
-import { wordReveal } from "./reveal.ts";
+import { hookReveal, typedParts, wordReveal } from "./reveal.ts";
+import { type SoundCue, soundCues } from "./sounds.ts";
 import { type Preset, wordsText } from "./preset.ts";
 import { FONT_ROLES, type FontPair, fontPairFiles } from "./font-pairs.ts";
 import { STYLES, VARIANTS } from "./variants.ts";
@@ -65,10 +65,30 @@ const BEHIND_STYLE = [
 // QUESTION), each hidden until its own moment; only on a page with one.
 const REVEAL_STYLE = "      .q { opacity: 0; }";
 
-// How long a revealed word takes to appear: a hard cut, like typing. Not
-// zero: HyperFrames reuses a still frame only between a timeline's keyframes,
-// and a tween is one.
-const REVEAL_WORD_SECONDS = 0.001;
+// How long a revealed unit (a word, a typed letter) takes to appear: a hard
+// cut, like typing. Not zero: HyperFrames reuses a still frame only between a
+// timeline's keyframes, and a tween is one.
+const REVEAL_SECONDS = 0.001;
+
+// The typed hook's letters, each hidden until its own moment; only on a page
+// with a hook.
+const TYPED_STYLE = "      .ch { opacity: 0; }";
+
+// The typed hook's caret (`caret: "bar"`): a thin steady bar right after the
+// last typed letter, in the text's colour, about as tall as a capital. Every
+// letter but the last holds one, out of the flow (it takes no room, so the
+// line is as wide as without it and nothing reflows) at the place the next
+// letter starts, standing on the line's baseline: the bar is an inline block
+// on a line of its own with the text's font and line height. A letter's caret
+// shows with its letter and is cut the moment the next letter appears, so one
+// bar is on screen at a time and none once the text is typed.
+const CARET_STYLE = [
+  "      .cr { position: absolute; margin-left: 0.04em; }",
+  '      .cr::before { content: ""; display: inline-block; width: 0.05em; height: 0.7em; background: currentColor; }',
+];
+
+// Whether the typed hook shows its caret (the entry's `caret`).
+const TYPED_CARET = VARIANTS["hook/typed"].caret === "bar";
 
 // A big word's class, on any page with one.
 const WORD_STYLE = "      .word { position: absolute; line-height: 1; white-space: nowrap; }";
@@ -220,6 +240,8 @@ export function build(
     // The written hook's own class (its lines centred); only on a page with one.
     ...(boxes.some((box) => box.kind === "hook") ? ["      .hook { text-align: center; }"] : []),
     ...(boxes.some((box) => box.words) ? [REVEAL_STYLE] : []),
+    ...(boxes.some((box) => box.typed) ? [TYPED_STYLE] : []),
+    ...(boxes.some((box) => box.typed) && TYPED_CARET ? CARET_STYLE : []),
   ];
 
   const body: string[] = [];
@@ -463,11 +485,11 @@ export function build(
       );
       const id = selector(box.itemId);
       js.push(
-        `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(REVEAL_WORD_SECONDS)} }, ${num(box.start)});`,
+        `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(REVEAL_SECONDS)} }, ${num(box.start)});`,
       );
       for (const [at, word] of box.words.entries()) {
         js.push(
-          `tl.fromTo(${selector(wordId(at))}, { opacity: 0 }, { opacity: 1, duration: ${num(REVEAL_WORD_SECONDS)} }, ${num(word.at)});`,
+          `tl.fromTo(${selector(wordId(at))}, { opacity: 0 }, { opacity: 1, duration: ${num(REVEAL_SECONDS)} }, ${num(word.at)});`,
         );
       }
       js.push(
@@ -475,37 +497,89 @@ export function build(
       );
       continue;
     }
+    // Every text is revealed: a spoken one word by word (above), the hook
+    // typed, the one text nobody says.
+    if (!box.typed) throw new Error(`build: text ${box.itemId} has no reveal`);
+    // The typed hook: every letter is in its final place from the start (the
+    // lines never reflow) and hidden; each cuts in at its own moment, evenly
+    // spread, the last at 60% of the hook's time on screen. Every letter
+    // but the last holds the caret that stands after it (CARET_STYLE). Each
+    // word is an element of its own holding its letters, so the studio's
+    // editor can set the lines again by moving the words. The whole line
+    // then holds until the hook's end and leaves with the caption's fade.
+    let word = 0;
+    let letter = 0;
+    const carets = TYPED_CARET ? box.typed.length - 1 : 0;
+    const lines = box.lines.map((line) =>
+      line
+        .split(" ")
+        .map((text) => {
+          word += 1;
+          const letters = typedParts(text).map((part) => {
+            if (!part.letter) return escapeHtml(part.text);
+            letter += 1;
+            const caret =
+              letter <= carets
+                ? `<i${attrs([
+                    ["id", `${box.itemId}_b${letter}`],
+                    ["class", "cr"],
+                  ])}></i>`
+                : "";
+            return `<span${attrs([
+              ["id", `${box.itemId}_c${letter}`],
+              ["class", "ch"],
+            ])}>${escapeHtml(part.text)}${caret}</span>`;
+          });
+          return `<span${attrs([
+            ["id", `${box.itemId}_w${word}`],
+            ["class", "w"],
+          ])}>${letters.join("")}</span>`;
+        })
+        .join(" "),
+    );
     body.push(
       `        <span${attrs([
         ["id", box.itemId],
-        ["class", box.kind === "hook" ? `text hook f-${box.font}` : `text f-${box.font}`],
+        ["class", `text hook f-${box.font}`],
         ["style", css],
-      ])}>${box.lines.map(escapeHtml).join("<br />")}</span>`,
+      ])}>${lines.join("<br />")}</span>`,
     );
-    // The written hook, the one text nobody says: whole, with the rise.
     const id = selector(box.itemId);
     js.push(
-      `tl.fromTo(${id}, { opacity: 0, y: ${caption.rise} }, { opacity: 1, y: 0, duration: ${num(caption.inSeconds)}, ease: "${caption.inEase}" }, ${num(box.start)});`,
+      `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(REVEAL_SECONDS)} }, ${num(box.start)});`,
+    );
+    for (const [index, typed] of box.typed.entries()) {
+      js.push(
+        `tl.fromTo(${selector(`${box.itemId}_c${index + 1}`)}, { opacity: 0 }, { opacity: 1, duration: ${num(REVEAL_SECONDS)} }, ${num(typed.at)});`,
+      );
+    }
+    // Each caret leaves the moment the next letter appears.
+    for (const [index, typed] of box.typed.entries()) {
+      if (index === 0 || index > carets) continue;
+      js.push(
+        `tl.fromTo(${selector(`${box.itemId}_b${index}`)}, { opacity: 1 }, { opacity: 0, duration: ${num(REVEAL_SECONDS)} }, ${num(typed.at)});`,
+      );
+    }
+    js.push(
       `tl.to(${id}, { opacity: 0, duration: ${num(caption.outSeconds)} }, ${num(Math.max(box.end - caption.outSeconds, box.start + caption.minSeconds))});`,
     );
   }
   body.push("      </div>");
 
-  for (const item of drawsSound ? tracks.sounds : []) {
-    // A visual's cue and a big word's play the pop (`cueSound`), whatever
-    // version stored it.
-    const sound = preset.sounds[cueSound(item, edit.tracks.behind)];
-    const { start } = span(item.id);
-    const length = Math.min(sound.durationSeconds, Math.max(edit.duration - start, 0));
+  // Every sound over the voice, one element a cue: the sound track's items
+  // (a visual's cue and a big word's play the pop, whatever version stored
+  // them) and the typed hook's key sounds (`sounds.ts`).
+  const cues = soundCues(edit, resolved, preset, transcript.voice);
+  for (const cue of drawsSound ? cues : []) {
     body.push(
       `      <audio${attrs([
-        ["id", item.id],
+        ["id", cue.id],
         ["class", "clip"],
-        ["src", sound.file],
-        ["data-start", sec(start)],
-        ["data-duration", sec(length)],
-        ["data-track-index", "60"],
-        ["data-volume", volume(item.gain_db ?? sound.gainDb)],
+        ["src", cue.file],
+        ["data-start", sec(cue.at)],
+        ["data-duration", sec(cue.duration)],
+        ["data-track-index", String(cue.track)],
+        ["data-volume", cue.volume.toFixed(4)],
       ])}></audio>`,
     );
   }
@@ -543,7 +617,7 @@ export function build(
     "",
   ].join("\n");
 
-  const assets = assetsOf(edit, preset, masks, measurer.pair).filter((asset) =>
+  const assets = assetsOf(edit, cues, masks, measurer.pair).filter((asset) =>
     layerNames(layer, asset.role),
   );
   const components = placedComponents(edit, boxes, levels, [...bigWords.values()], resolved);
@@ -668,10 +742,10 @@ function placedText(
       kind,
       text,
       lines,
-      // Every spoken text builds up word by word (its only
-      // entrance); the hook, which nobody says, comes in whole.
+      // Every spoken text builds up word by word (its only entrance); the
+      // hook, which nobody says, is typed, whatever version stored it.
       ...(kind === "hook"
-        ? {}
+        ? { typed: hookReveal(text, span) }
         : {
             words: wordReveal(
               text,
@@ -705,7 +779,7 @@ function inlineStyle(style: Record<string, string>): string {
 
 function assetsOf(
   edit: Edit,
-  preset: Preset,
+  cues: readonly SoundCue[],
   masks: readonly EditMask[],
   pair: FontPair,
 ): BuildAsset[] {
@@ -721,8 +795,9 @@ function assetsOf(
   for (const file of fontPairFiles(pair)) {
     assets.push({ path: file, role: "font", ref: null });
   }
-  for (const key of new Set(edit.tracks.sounds.map((item) => cueSound(item, edit.tracks.behind)))) {
-    assets.push({ path: preset.sounds[key].file, role: "sound", ref: null });
+  // Each sound file a cue plays, once.
+  for (const file of new Set(cues.map((cue) => cue.file))) {
+    assets.push({ path: file, role: "sound", ref: null });
   }
   // Each stand-in picture a visual shows, once.
   const pictures = new Set(

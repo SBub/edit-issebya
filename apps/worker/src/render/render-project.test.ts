@@ -44,6 +44,38 @@ describe("writeRenderProject", () => {
     expect(await readFile(join(dir, footage.path))).toEqual(await readFile(FILES.footage));
   });
 
+  it("copies a typed hook's key sounds from packages/edit into the sound page's project", async () => {
+    const { edit, transcript, headTrack } = await fixtureEdit("short-speech", "Typed for you");
+    const { html, assets } = build(
+      edit,
+      transcript,
+      headTrack,
+      ISSEBYA_PRESET,
+      await editMeasurer(),
+      {
+        layer: "sound",
+      },
+    );
+    const sounds = assets.filter((asset) => asset.role === "sound");
+    expect(sounds.map((asset) => asset.path)).toEqual([
+      "assets/sounds/typing-key-1.wav",
+      "assets/sounds/typing-key-2.wav",
+      "assets/sounds/typing-key-3.wav",
+      "assets/sounds/typing-key-4.wav",
+    ]);
+    await writeRenderProject({ dir, html, assets, files: FILES });
+    const packaged = new URL("../../../../packages/edit/", import.meta.url);
+    for (const asset of sounds) {
+      // Every clip of the page finds its file, the committed one.
+      expect(html).toContain(`src="${asset.path}"`);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the test's temp folder and the committed assets
+      expect(await readFile(join(dir, asset.path))).toEqual(
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed asset
+        await readFile(new URL(asset.path, packaged)),
+      );
+    }
+  });
+
   it("copies a visual's stand-in picture from packages/edit at the path the page names", async () => {
     const picture = { path: "assets/visuals/visual-2.jpg", role: "visual" as const, ref: null };
     await writeRenderProject({ dir, html: "<!doctype html>", assets: [picture], files: FILES });

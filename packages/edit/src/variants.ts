@@ -34,8 +34,12 @@ interface Common {
   zones: Zones;
   timing: Timing;
   hides: boolean; // its words leave the captions while it shows
-  // The sound its cue plays as it comes in (`cueSound`, `clicks.ts`): one of
-  // the preset's sounds by name. An entry without it plays the cue's own.
+  // The sound it plays as it comes in: one of the preset's sounds by name
+  // (`preset.ts`, the one sound table). A VISUAL and a big word play it once,
+  // as their cue, at the preset's gain for that sound (`cueSound`,
+  // `clicks.ts`); a typed text plays it in step with its letters, at its
+  // `soundLevel` (the entrance below). An entry without it plays nothing of
+  // its own (its cue, if it has one, plays the sound the track names).
   sound?: SoundKey;
 }
 
@@ -67,15 +71,45 @@ export const STYLES = {
   bigWord: { font: "artistic", color: WHITE, base: "largest-fit" },
 } satisfies Record<string, TextStyle>;
 
-// A text: its style (font, colour, base size). Text is `front` or `behind`.
-export interface TextVariant extends Common {
-  layer: "front" | "behind";
-  type: "text";
-  style: TextStyle;
-  levels?: never;
-  aspect?: never;
-  width?: never;
-}
+// How a text comes in when it is not word by word as it is spoken
+// (`reveal.ts`): typed, one unit after the other, the last one in at
+// `entranceSpan` of its shown span (0.6: fully typed at 60% of its time on
+// screen), with the entry's `sound` in step with the units. `soundLevel` is
+// how loud that sound plays against the speaker's voice, in dB: -8 is 8 dB
+// under the voice's measured level where the text is typed (`sounds.ts`, never
+// over its ceilings). `caret` is the mark after the last typed unit while the
+// text is typed: `bar` (a thin steady bar, gone the moment the text is fully
+// typed) or `none`. An entry names all six (the five here and its `sound`) or
+// none of the five: a `soundLevel` is a typed text's only, every other sound
+// plays at the preset's gain.
+type Entrance =
+  | {
+      entrance: "type";
+      entranceUnit: "letter";
+      entranceSpan: number;
+      sound: SoundKey;
+      soundLevel: number;
+      caret: "bar" | "none";
+    }
+  | {
+      entrance?: never;
+      entranceUnit?: never;
+      entranceSpan?: never;
+      soundLevel?: never;
+      caret?: never;
+    };
+
+// A text: its style (font, colour, base size) and, for a typed one, its
+// entrance. Text is `front` or `behind`.
+export type TextVariant = Common &
+  Entrance & {
+    layer: "front" | "behind";
+    type: "text";
+    style: TextStyle;
+    levels?: never;
+    aspect?: never;
+    width?: never;
+  };
 
 // One level of a stack (LIST): its role, its style, and for the number its
 // ratio to the key level (the number's size is the key's times the ratio, so
@@ -140,15 +174,24 @@ export function timingOf<O extends Timing["option"]>(
 // The seven entries, keyed by their name. `satisfies` checks each one against
 // `Variant` (a wrong field or an unknown zone name fails typecheck).
 export const VARIANTS = {
-  "hook/written-line": {
+  // Placed and timed as the written line it replaced, in the accent's style.
+  // Its look is its own (`reveal.ts`, the builder): typed letter by letter,
+  // fully typed at 60% of its window, with a key sound in step.
+  "hook/typed": {
     component: "HOOK",
-    variant: "hook/written-line",
+    variant: "hook/typed",
     layer: "front",
     type: "text",
     style: STYLES.accent,
     zones: ["upper-third", "anywhere-in-safe-zone"],
     timing: { option: "window", from: 0.2, to: 3 },
     hides: false, // nobody says it
+    entrance: "type",
+    entranceUnit: "letter",
+    entranceSpan: 0.6,
+    sound: "typing",
+    soundLevel: -8,
+    caret: "bar",
   },
   "accent/above-head": {
     component: "ACCENT",

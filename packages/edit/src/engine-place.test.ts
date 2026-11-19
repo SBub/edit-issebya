@@ -43,7 +43,7 @@ function text(variant: TextVariant, words: string, id = "accent-1", lineGap = 0)
   return { type: "text", id, variant, text: words, lineGap, ...span };
 }
 
-const hook = (words: string) => text(VARIANTS["hook/written-line"], words, "hook");
+const hook = (words: string) => text(VARIANTS["hook/typed"], words, "hook");
 const accent = (words: string) => text(VARIANTS["accent/above-head"], words);
 const caption = (words: string) => text(VARIANTS["caption/default"], words, "w0012", 14);
 // The big word as the engine passes it: on one line (the behind word item has
@@ -103,7 +103,7 @@ describe("an empty scene", () => {
     expect(result.notes[0]).toMatchObject({
       item: "hook",
       component: "HOOK",
-      variant: "hook/written-line",
+      variant: "hook/typed",
       start: 3.2,
       end: 4.1,
       rule: "zone",
@@ -379,7 +379,7 @@ describe("no legal spot", () => {
 
 describe("the 30 px floor", () => {
   // One zone only, so the strip the obstacle leaves is the one place to be.
-  const upperOnly: TextVariant = { ...VARIANTS["hook/written-line"], zones: ["upper-third"] };
+  const upperOnly: TextVariant = { ...VARIANTS["hook/typed"], zones: ["upper-third"] };
   const strip = (height: number) => [textAt("accent-1", { ...S, top: S.top + height + 12 })];
 
   it("a strip one pixel under the floor fits nothing", () => {
@@ -428,7 +428,7 @@ describe("wrapping", () => {
   it("comes before shrinking: a capped text in a column narrower than its line wraps at its base size, at no cost", () => {
     // "start here" is 475 px at 110; the column is 353. Two lines ("here",
     // 227 px) fit at 110, so nothing is given up but a line.
-    const upperOnly: TextVariant = { ...VARIANTS["hook/written-line"], zones: ["upper-third"] };
+    const upperOnly: TextVariant = { ...VARIANTS["hook/typed"], zones: ["upper-third"] };
     const clear = placeElement(text(upperOnly, "start here", "hook"), scene([]), measurer);
     const result = placeElement(
       text(upperOnly, "start here", "hook"),
@@ -445,7 +445,7 @@ describe("wrapping", () => {
   it("shrinks as little as it must: two lines four steps down beat one line seven steps down", () => {
     // A column of 150 px: two lines fit at 74 px (four steps under 110), one
     // line at 34 px (seven steps).
-    const upperOnly: TextVariant = { ...VARIANTS["hook/written-line"], zones: ["upper-third"] };
+    const upperOnly: TextVariant = { ...VARIANTS["hook/typed"], zones: ["upper-third"] };
     const result = placeElement(
       text(upperOnly, "start here", "hook"),
       scene([], columnOf(150)),

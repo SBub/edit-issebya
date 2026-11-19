@@ -189,12 +189,33 @@ space and can no longer be made again; upload the footage again as a new reel` (
   corruption, the process aborts), so every upload failed at transcribe; it runs on macOS. The int8
   export (95 MB, the smallest) put whole words up to 5 s off (the closing "care of." on a later
   untranscribed "yes").
+- The voice's measure (`voice.ts`, owner rule 2026-11-19). After its encode retime listens to the
+  retimed `source.mp4` once more, sound only (`voiceArgs`: `aresample=48000`, windows of 4800
+  samples, `astats` with `RMS_level` and `Peak_level` over all channels), and stores the result in
+  its `transcript.json` as `voice`: `windowSeconds` 0.1 and, for every 0.1 s from the reel's
+  start, the RMS level (`levels`, to the nearest tenth of a dB) and the sample peak (`peaks`, to
+  the tenth above, so a ceiling worked out from it is never over the real peak), in dBFS, digital
+  silence as -120. It is measured on the retimed file and not on the upload because that is the
+  voice the reel plays: sped up, faded at the joins, through the AAC encoder. The transcript is
+  what the builder and the studio's preview already read, so the typed hook's key sounds get the
+  same level in both (`app_docs/edit-model.md`, "The typed hook"). RMS and not LUFS: a key press
+  lasts 70 ms, under the shortest LUFS window. `transcriptJson` writes the two lists on a line
+  each. The retime version is NOT raised for it (`RETIME_VERSION` stays 6): the field is an
+  addition every reader treats as optional, and a new version would make every reel's retime,
+  head track and preview copies again and end the exports of old versions whose `source.mp4` was
+  slimmed (see "Saved versions" above). So a transcript stored before this has no `voice`, and
+  its versions play the typing against the assumed voice; a reel uploaded from now on, and a
+  reel whose retime runs again because its `source.mp4` was cleared, has the measure. Tests:
+  `voice.test.ts` (the arguments, the print read to a tenth of a dB, the stored transcript's
+  shape and that it reads back), `run-pipeline.test.ts` (retime's transcript holds the measure,
+  one sound-only pass over `source.mp4`) and, with the real ffmpeg, `voice.tools.test.ts` (the
+  committed clips measured again equal the `voice` their fixture transcripts hold).
 - `apps/worker/src/pipeline/envelope.ts`, `speech-gaps.ts`, `retime-plan.ts`, `retime-encode.ts`,
   `retime.ts`: a 10 ms RMS envelope in dB, what the audio says about the transcript's gaps (the
   gaps, the clip's speech level, `missedSpeech`; shared with transcribe's re-listen), a pure planner
   and one ffmpeg encode. Outputs `source.mp4` (retimed footage),
-  `transcript.json` (same ids, every time through the plan), `retime.json` (the plan: original to
-  new time map) and `envelope.json`. The step line ends with the pauses the final re-check found,
+  `transcript.json` (same ids, every time through the plan, and the voice's measure), `retime.json`
+  (the plan: original to new time map) and `envelope.json`. The step line ends with the pauses the final re-check found,
   if any, and with every possible missed word it kept, at its retimed time (`retimeSummary`:
   `retimed to 56.1 seconds, 1.05x, 1 pause over 0.3 s left, 0.4 s in all, 1 possible missed word
 kept (sound at speech level in a pause) at 49.6 to 50.0 s`).

@@ -8,7 +8,8 @@ import { retimeEncodeArgs, retimeFilterGraph } from "./retime-encode.ts";
 import { pausesLeft, planRetime, remapTime, retimeTranscript } from "./retime-plan.ts";
 import { RETIME_PRESET, RETIME_VERSION, type RetimeSettings } from "./retime-preset.ts";
 import { missedSpeech } from "./speech-gaps.ts";
-import { parseTranscript } from "./transcript.ts";
+import { type Transcript, parseTranscript } from "./transcript.ts";
+import { parseVoice, voiceArgs } from "./voice.ts";
 
 // The retimed footage is heavy and rebuilt from the kept upload; the small
 // JSON files stay.
@@ -19,11 +20,25 @@ const OUTPUTS: readonly StepOutput[] = [
   { file: "envelope.json", retention: "kept" },
 ];
 const ENVELOPE_PRINT = "envelope.txt";
+const VOICE_PRINT = "voice.txt";
 const GRAPH = "retime-graph.txt";
 const PARTIAL = "source.part.mp4";
 
 function json(value: unknown): string {
   return `${JSON.stringify(value, null, 1)}\n`;
+}
+
+// The transcript as stored: a word a block, the voice's two lists a line each.
+export function transcriptJson(transcript: Transcript): string {
+  const { voice, ...rest } = transcript;
+  const words = JSON.stringify(rest, null, 2);
+  if (!voice) return `${words}\n`;
+  const lines = [
+    `    "windowSeconds": ${voice.windowSeconds},`,
+    `    "levels": ${JSON.stringify(voice.levels)},`,
+    `    "peaks": ${JSON.stringify(voice.peaks)}`,
+  ];
+  return `${words.slice(0, -2)},\n  "voice": {\n${lines.join("\n")}\n  }\n}\n`;
 }
 
 // The retimed length from `retime.json`: what background removal and the
@@ -65,9 +80,11 @@ export function retimeSummary(
 
 // Probe, envelope, plan (the transcript's gaps are the pauses, the audio only
 // holds back a possible missed word), one encode; then the retimed transcript
-// (same ids, every time through the plan), the plan and the envelope beside
-// the footage. The summary names the pauses still longer than maxPauseSeconds
-// (pausesLeft) and every possible missed word kept (missedSpeech).
+// (same ids, every time through the plan, and the voice's measure taken on the
+// retimed sound: `voice.ts`), the plan and the envelope beside the footage.
+// The summary names the pauses still longer than maxPauseSeconds (pausesLeft)
+// and every possible missed word kept (missedSpeech). The step's version is
+// not raised for the voice's measure (app_docs/pipeline.md says why).
 export const retime: PipelineStep<RetimeSettings> = {
   name: "retime",
   version: RETIME_VERSION,
@@ -120,8 +137,19 @@ export const retime: PipelineStep<RetimeSettings> = {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     await rename(partial, join(dir, "source.mp4"));
 
-    const retimed = retimeTranscript({ transcript, plan });
-    await writeAtomic(join(dir, "transcript.json"), `${JSON.stringify(retimed, null, 2)}\n`);
+    // The voice as the reel plays it (sped up, the joins faded, through the
+    // AAC encoder): a sound-only pass over the file just written.
+    await tool({
+      file: tools.ffmpeg,
+      args: voiceArgs(join(dir, "source.mp4"), VOICE_PRINT),
+      cwd: dir,
+      ignoreStdout: true,
+    });
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
+    const voice = parseVoice(await readFile(join(dir, VOICE_PRINT), "utf8"));
+
+    const retimed = { ...retimeTranscript({ transcript, plan }), voice };
+    await writeAtomic(join(dir, "transcript.json"), transcriptJson(retimed));
     await writeAtomic(join(dir, "retime.json"), json(plan));
     await writeAtomic(join(dir, "envelope.json"), `${JSON.stringify(envelope)}\n`);
     const missed = missedSpeech(clip).map(([a, b]): [number, number] => [

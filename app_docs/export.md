@@ -394,11 +394,24 @@ with the page built with no `layer` option (the preview's own page).
   Chrome's profile (its disk cache included) is the one large thing that lands in the short folder,
   because HyperFrames creates it under `tmpdir()`; the container's `/tmp` must have room for it
   (up to three profiles at once for the composite).
-- Sound comes only from the edit's sound track, inside the page (the full page for the single
-  call, the sound page for the composite). HyperFrames mixes with no gain of ours
+- Sound comes only from the page's own elements (the full page for the single call, the sound page
+  for the composite): the footage's voice and one `<audio>` clip per sound cue of the builder
+  (`soundCues` in `packages/edit`: the edit's sound track, the clicks and the pops, and the typed hook's key
+  sounds, `app_docs/edit-model.md`, "The typed hook"). The worker adds, mixes and times nothing
+  itself: HyperFrames gives every clip an input of its own, trims it to its `data-duration`, sets its
+  `data-volume`, delays it to its `data-start` (to the millisecond) and sums all of them at unity
+  (`amix`, no normalising), then pads or trims the mix to the reel's length. A key sound's
+  `data-volume` is the gain the builder set against the reel's measured voice (`soundLevel` dB
+  under the voice where the hook is typed, a hit's peak never over the voice's and never adding up
+  with it to more than full scale; `app_docs/edit-model.md`, "The typed hook"): the very number
+  the studio's preview plays, because both read it from the same transcript. So a key sound never
+  changes the voice's level, the mix's length, the packet cut or its length check
+  (`assertSoundCovers`), and the fades at the retime's joins, which are in the footage's own sound,
+  stay as they are. HyperFrames mixes with no gain of ours
   (no `PRODUCER_AUDIO_GAIN`), but may lower the gain of the whole mix to keep its peaks legal
   (about 2.8 dB on a source peaking at +1.1 dBTP); the worker tools test measures the voice within
-  0.5 LU of the source and each click within 20 ms of its place on the track.
+  0.5 LU of the source, each click within 20 ms of its place on the track and each key sound of a
+  typed hook within 20 ms of its letter's moment (measured: within 2 ms).
 - The step's progress comes from every process (`app_docs/status.md`), its row sums their CPU, and
   its span says which way the render went (`render.path`, `render.mode` or `render.route_reason`;
   `app_docs/measurement.md`).
@@ -537,17 +550,28 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   itself: `waiting to start`, `getting ready`, `0%`, `7%`, `55%`, `100%`, `finishing`, Cancel) and
   holds each to the same boxes.
 - Worker tools: `yarn workspace @edit-issebya/worker test:tools` (`render.tools.test.ts`: the
-  single call's format, loudness, click times, group memory), on the owner's Mac only.
+  single call's format, loudness, click times, group memory; a typed hook's export: a key sound
+  within 20 ms of every letter's moment and nowhere else, each hit's peak within 3 dB of its gain
+  times the key file's peak and clearly over the old fixed gain, no hit's peak over the voice's, no
+  sample of the mix at full scale, the voice within 0.5 LU of the source under the typing, the same
+  length as the export without it), on the owner's Mac only.
+- Unit, the typing sound in the export: `render-step.test.ts` (a version with a hook goes the
+  composite's way as any reel; its sound page holds the voice and one clip per key sound at the
+  gain set against the fixture's measured voice, its front page the typed letters and no sound) and `render-project.test.ts` (the
+  key files copied from `packages/edit` into the sound page's project).
 
 ### Composite matches single call (machine check)
 
 - Command: `yarn workspace @edit-issebya/worker test:tools`
   (`apps/worker/src/render/render-compare.tools.test.ts`), on the owner's Mac only (real
   HyperFrames, Chrome, ffmpeg and the MODNet mask tool), never in CI. No database, no storage.
-- It exports each of two fixture reels both ways through the step runner (`renderVersion`, the
+- It exports each of three fixture reels both ways through the step runner (`renderVersion`, the
   single call and the composite in `match` mode) and compares the two MP4s:
   - the short speech (2.67 s) with captions and two clicks on the sound track; its footage has 79
     frames for 81 output frames, so the last frames are ones the footage clip holds;
+  - the short speech with a typed hook ("Typed for you"): its letters cut in one by one on the front
+    page and its eleven key sounds are mixed on the sound page (the same acceptance, added with the
+    typed hook; not in the measured table below);
   - the ten-second speech (9.5 s, a person talking) with two big words behind her, so two cut-out
     spans, each with its real MODNet mask: the ffmpeg blend against the page's CSS blend at the
     person's edge over the words.
@@ -588,6 +612,11 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   speech is too short for both in one version) scores at or above `PREVIEW_EXPORT_SSIM_BOUND`
   (0.9855), and each case's probe (a caption, or the photo, moved by 60 px) scores at least one
   frame below it.
+- The typed hook (`app_docs/edit-model.md`, "The typed hook") is in every guardrail version: the
+  guardrail's own moments 0.5 s and 1.5 s fall inside its typing (the seeded hook is typed from
+  0.2 s to 1.68 s) and 2.5 s after it, so the preview and the export are compared with part of the
+  hook typed and with the whole line. Measured with the typed hook (2026-11-18): the guardrail
+  0.995862, 0.996316 and 0.996485; its 60 px probe 0.995862, 0.972691 and 0.996485.
 - A QUESTION (`app_docs/edit-model.md`, "The question's look") is a version of its own: "test clip
   for the real studio?" (w0005 to w0010) placed by the layout engine. It is compared twice
   mid-reveal, in the two longest waits between two of its words (one word on screen, then five), and
@@ -768,8 +797,10 @@ Before the one-screen layout (the 0.99 bound):
 - Never let `anon` execute `cancel_job`; only a `render` job can be cancelled.
 - The worker writes nothing after a cancel, except removing its own unrecorded upload through
   `discard_export_file`; never record an export for a cancelled job.
-- Sounds come only from the edit's sound track. The page names each item's file through `cueSound`
-  (`packages/edit`), so a VISUAL and a
+- Sounds come only from the page the builder made (the footage's voice and its sound cues,
+  `soundCues` in `packages/edit`: the edit's sound track and the typed hook's key sounds). Never mix
+  a sound in ffmpeg or add one in the worker: a sound that is not a clip of the page is not in the
+  preview either. The cue list names each track item's file through `cueSound`, so a VISUAL and a
   big word come in with the pop in the export as in the preview, at the click's own time and gain
   (`app_docs/edit-model.md`, "Preset values").
 - Never write an `exports` row from the studio; only the worker does.
